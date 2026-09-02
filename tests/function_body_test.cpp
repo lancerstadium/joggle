@@ -145,6 +145,7 @@ int main() {
 joggle 1;
 module cfg@1.0.0 {
   type word();
+  fn identity(input: word) -> word;
   fn choose(condition: i1, lhs: word, rhs: word) -> word {
     entry():
       branch condition, left(), right();
@@ -159,10 +160,18 @@ module cfg@1.0.0 {
       return value;
   }
   fn structured(condition: i1, lhs: word, rhs: word) -> word {
-    return if condition { lhs } else { rhs };
+    return if condition { identity(lhs) } else { identity(rhs) };
   }
   fn specialized(lhs: word, rhs: word) -> word {
-    return if true { lhs } else { rhs };
+    return if true { identity(lhs) } else { identity(rhs) };
+  }
+  fn nested(first: i1, second: i1, lhs: word, middle: word, rhs: word)
+      -> word {
+    return if first {
+      if second { identity(lhs) } else { identity(middle) }
+    } else {
+      identity(rhs)
+    };
   }
 }
 )";
@@ -183,7 +192,8 @@ module cfg@1.0.0 {
                    cfg_canonical.find("merge(value: word):") !=
                        std::string::npos &&
                    cfg_canonical.find(
-                       "return if condition { lhs } else { rhs };") !=
+                       "return if condition { identity(lhs) } else { "
+                       "identity(rhs) };") !=
                        std::string::npos,
                "one expression tree round-trips structured and explicit "
                "region-free control flow");
@@ -197,17 +207,25 @@ module cfg@1.0.0 {
       cfg_linked ? cfg_compiler.function("cfg.structured") : std::nullopt;
   const auto cfg_specialized =
       cfg_linked ? cfg_compiler.function("cfg.specialized") : std::nullopt;
+  const auto cfg_nested =
+      cfg_linked ? cfg_compiler.function("cfg.nested") : std::nullopt;
   const std::string cfg_ir =
       cfg_function ? joggle::format(*cfg_function, "choose") : std::string{};
   ok &= expect(cfg_function && cfg_structured && cfg_specialized &&
+                   cfg_nested &&
                    cfg_compiler.verify(*cfg_function) &&
                    cfg_compiler.verify(*cfg_structured) &&
                    cfg_compiler.verify(*cfg_specialized) &&
+                   cfg_compiler.verify(*cfg_nested) &&
                    cfg_function->blocks().size() == 4U &&
                    cfg_structured->blocks().size() == 4U &&
                    cfg_specialized->blocks().size() == 1U &&
+                   cfg_nested->blocks().size() == 7U &&
+                   cfg_structured->instructions().size() == 2U &&
+                   cfg_specialized->instructions().size() == 1U &&
+                   cfg_nested->instructions().size() == 3U &&
                    cfg_specialized->entry().terminator().returned().front() ==
-                       cfg_specialized->arguments().front() &&
+                       cfg_specialized->instructions().front().result(0) &&
                    cfg_function->entry().terminator().kind() ==
                        joggle::Terminator::Kind::Branch &&
                    cfg_structured->entry().terminator().kind() ==

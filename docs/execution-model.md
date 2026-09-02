@@ -276,7 +276,8 @@ registered external functions. Evaluation happens automatically when a call is
 fully Known; `@(expression)` adds the explicit Known requirement.
 
 Known `if` conditions select one arm without creating IR. A Residual `i1`
-condition with value-reference arms becomes sibling then/else/merge Blocks and
-typed successor arguments. General statement sequences inside arms, loops,
-closures, effect capabilities, materialization, and configurable evaluation
-budgets remain to be implemented.
+condition residualizes each expression arm independently, including nested
+calls and nested `if`, then joins them through sibling Blocks and typed
+successor arguments. General statement sequences inside arms, loops, closures,
+effect capabilities, materialization, and configurable evaluation budgets
+remain to be implemented.

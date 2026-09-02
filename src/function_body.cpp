@@ -1478,6 +1478,25 @@ private:
     return matches.front();
   }
 
+  std::pair<Block, std::optional<Value>>
+  instantiate_expression(const Module::Expression& expression,
+                         detail::SyntaxRange range, Block block) {
+    using Kind = Module::Expression::Kind;
+    const detail::ExpressionSyntax syntax{expression, range};
+    if ((expression.kind == Kind::Variable ||
+         expression.kind == Kind::Reference) &&
+        expression.arguments.empty()) {
+      return {block, use(syntax)};
+    }
+    const std::string name = "$value" + std::to_string(next_temporary_++);
+    detail::StatementSyntax statement;
+    statement.bindings.push_back({name, std::nullopt, range});
+    statement.expression = syntax;
+    statement.range = range;
+    Block tail = instantiate_statement(statement, block);
+    return {tail, use(detail::LocalUseSyntax{name, range})};
+  }
+
   Block instantiate_statement(const detail::StatementSyntax& statement,
                               Block block) {
     using Kind = Module::Expression::Kind;
@@ -1524,35 +1543,39 @@ private:
     }
 
     auto condition = use(condition_syntax);
-    const detail::ExpressionSyntax true_syntax{
-        expression.arguments[1], statement.expression.range};
-    const detail::ExpressionSyntax false_syntax{
-        expression.arguments[2], statement.expression.range};
-    auto true_value = use(true_syntax);
-    auto false_value = use(false_syntax);
-    if (!condition || !true_value || !false_value) {
+    if (!condition) {
+      return block;
+    }
+    const Block yes = edit_->block();
+    const Block no = edit_->block();
+    edit_->branch(block, *condition, yes, {}, no, {});
+    auto [true_tail, true_value] = instantiate_expression(
+        expression.arguments[1], statement.expression.range, yes);
+    auto [false_tail, false_value] = instantiate_expression(
+        expression.arguments[2], statement.expression.range, no);
+    if (!true_value || !false_value) {
       return block;
     }
     if (true_value->known() || false_value->known()) {
-      if (*true_value == *false_value) {
-        define(statement.bindings.front().name, std::move(*true_value),
-               statement.bindings.front().range);
-      } else {
+      if (*true_value != *false_value) {
         report("unequal Known branch values need a registered materializer",
                statement.range);
+        return block;
       }
-      return block;
+      const Block merge = edit_->block();
+      edit_->jump(true_tail, merge);
+      edit_->jump(false_tail, merge);
+      define(statement.bindings.front().name, std::move(*true_value),
+             statement.bindings.front().range);
+      return merge;
     }
     if (true_value->type() != false_value->type()) {
       report("if branches produce different types", statement.range);
       return block;
     }
-    const Block yes = edit_->block();
-    const Block no = edit_->block();
     const Block merge = edit_->block({true_value->type()});
-    edit_->branch(block, *condition, yes, {}, no, {});
-    edit_->jump(yes, merge, {*true_value});
-    edit_->jump(no, merge, {*false_value});
+    edit_->jump(true_tail, merge, {*true_value});
+    edit_->jump(false_tail, merge, {*false_value});
     define(statement.bindings.front().name, merge.arguments().front(),
            statement.bindings.front().range);
     return merge;
@@ -1810,6 +1833,7 @@ private:
       scopes_;
   std::unordered_map<std::string, Type> expected_values_;
   std::unordered_map<std::string, Block> blocks_;
+  std::size_t next_temporary_ = 0;
 };
 
 class RuntimeSyntax {
