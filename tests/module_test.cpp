@@ -150,10 +150,10 @@ int main() {
       fn empty() {
         return;
       }
-      fn pipeline(input: graph) -> graph {
+      fn pipeline(input: function) -> function {
         return @(external(input));
       }
-      fn external(input: graph) -> graph;
+      fn external(input: function) -> function;
       fn collect<T: type>(items: T...) -> T : marker;
       fn identity(value: int) -> int {
         return value;
@@ -314,7 +314,7 @@ int main() {
     module client@1.0.0 {
       import test_ir@1 as math;
       fn inference<T: type>(input: T) -> T : math.elementwise;
-      fn pipeline(input: graph) -> graph {
+      fn pipeline(input: function) -> function {
         return math.canonicalize(input);
       }
     }
@@ -391,7 +391,7 @@ int main() {
     module broken_rule@1.0.0 {
       type integer();
       fn identity<T: type>(input: T) -> T;
-      fn incomplete(input: graph) -> graph {
+      fn incomplete(input: function) -> function {
         return rewrite(input) {
           identity($input) => $missing;
         };
@@ -412,7 +412,7 @@ int main() {
                                "type value(); "
                                "fn first<T: type>(input: T) -> T; "
                                "fn second<T: type>(input: T) -> T; "
-                               "fn invalid(input: graph) -> graph { "
+                               "fn invalid(input: function) -> function { "
                                "return rewrite(input) { " +
                                std::string(rule) + " }; } }";
     return !joggle::parse_module(source, diagnostics, "invalid-rule.joggle") &&
@@ -493,10 +493,10 @@ int main() {
   pass_cycle.add(R"(
     joggle 1;
     module pass_cycle@1.0.0 {
-      fn first(input: graph) -> graph {
+      fn first(input: function) -> function {
         return second(input);
       }
-      fn second(input: graph) -> graph {
+      fn second(input: function) -> function {
         return first(input);
       }
     }

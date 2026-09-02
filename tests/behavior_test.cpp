@@ -24,11 +24,11 @@ int main() {
     module testing@1.0.0 {
       import test_ir@1;
       fn marker<T: type>(input: T) -> T;
-      fn cleanup(input: graph) -> graph;
-      fn optimize(input: graph) -> graph {
+      fn cleanup(input: function) -> function;
+      fn optimize(input: function) -> function {
         return cleanup(test_ir.canonicalize(input));
       }
-      fn abort(input: graph) -> graph;
+      fn abort(input: function) -> function;
     }
   )",
                "testing.joggle");
@@ -63,7 +63,7 @@ int main() {
                   }
                   return true;
                 });
-  const auto same_type = [](const joggle::Operation& operation,
+  const auto same_type = [](const joggle::Instruction& operation,
                             joggle::Diagnostics& diagnostics) {
     const auto operands = operation.operands();
     const auto results = operation.results();
@@ -81,28 +81,28 @@ int main() {
   compiler.bind(*marker_schema, same_type);
 
   std::size_t query_runs = 0;
-  const auto compute_nodes = [&](const joggle::Graph& graph) {
+  const auto compute_nodes = [&](const joggle::Function& function) {
     ++query_runs;
-    return graph.all_operations().size();
+    return function.instructions().size();
   };
 
   compiler.bind(
       *cleanup_schema,
-      [&compute_nodes](joggle::Graph& graph,
+      [&compute_nodes](joggle::Function& function,
                        joggle::Diagnostics& diagnostics) {
-        static_cast<void>(compute_nodes(graph));
-        const auto operations = graph.all_operations();
+        static_cast<void>(compute_nodes(function));
+        const auto operations = function.instructions();
         const bool has_marker =
             std::any_of(operations.begin(), operations.end(),
-                        [](const joggle::Operation& operation) {
-                          return operation.schema().name() == "marker";
+                        [](const joggle::Instruction& operation) {
+                          return operation.callee().name() == "marker";
                         });
         if (!has_marker) {
           return true;
         }
-        auto edit = graph.edit();
-        for (const joggle::Operation& operation : operations) {
-          if (operation.schema().name() != "marker") {
+        auto edit = function.edit();
+        for (const joggle::Instruction& operation : operations) {
+          if (operation.callee().name() != "marker") {
             continue;
           }
           edit.replace(operation.result(0), operation.operands()[0]);
@@ -112,13 +112,13 @@ int main() {
       });
 
   const auto integer = compiler.make(*integer_schema, 8);
-  auto graph = compiler.graph();
-  if (!integer || !graph) {
+  auto function = compiler.function();
+  if (!integer || !function) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
   {
-    auto edit = graph->edit();
+    auto edit = function->edit();
     const auto lhs = edit.argument(*integer);
     const auto rhs = edit.argument(*integer);
     const auto add = edit.append(*add_schema, {lhs, rhs});
@@ -132,18 +132,18 @@ int main() {
   }
 
   bool ok = true;
-  ok &= expect(compiler.verify(*graph), "native operation verification");
-  ok &= expect(compiler.run(*graph, *optimize_schema),
+  ok &= expect(compiler.verify(*function), "native operation verification");
+  ok &= expect(compiler.run(*function, *optimize_schema),
                "composed rule and C++ pass runs");
-  ok &= expect(graph->operations().size() == 1U,
-               "composed pass transforms through Graph::Edit");
+  ok &= expect(function->instructions().size() == 1U,
+               "composed pass transforms through Function::Edit");
   ok &= expect(query_runs == 1U,
                "pass-local analysis executes explicitly without a side API");
 
   compiler.bind(*abort_schema, [marker_schema,
-                                integer](joggle::Compiler&, joggle::Graph& current,
+                                integer](joggle::Compiler&, joggle::Function& current,
                                       joggle::Diagnostics& diagnostics) {
-    const auto producer = current.operations().front();
+    const auto producer = current.instructions().front();
     auto edit = current.edit();
     edit.append(*marker_schema, {producer.result(0)});
     if (!edit.commit(diagnostics)) {
@@ -151,9 +151,9 @@ int main() {
     }
     return false;
   });
-  ok &= expect(!compiler.run(*graph, *abort_schema),
+  ok &= expect(!compiler.run(*function, *abort_schema),
                "failing pass reports failure");
-  ok &= expect(graph->operations().size() == 1U,
+  ok &= expect(function->instructions().size() == 1U,
                "pass-level checkpoint restores committed inner edits");
 
   joggle::Compiler invalid;

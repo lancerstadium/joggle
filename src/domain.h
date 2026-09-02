@@ -15,7 +15,7 @@ enum class ValueKind {
   String,
   Type,
   Attribute,
-  Graph,
+  Function,
   Bytes,
 };
 

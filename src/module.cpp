@@ -3,7 +3,7 @@
 #include "domain.h"
 #include "expression_syntax.h"
 #include "prelude.h"
-#include "graph_member.h"
+#include "function_body.h"
 #include "module_internal.h"
 #include "sha256.h"
 #include "syntax_lexer.h"
@@ -275,7 +275,7 @@ private:
       }
       term.name = std::move(*variable);
     } else {
-      term.kind = ParsedModule::TermDefinition::Kind::Operation;
+      term.kind = ParsedModule::TermDefinition::Kind::Instruction;
       auto operation = reference("an operation name");
       if (!operation) {
         return std::nullopt;
@@ -411,8 +411,8 @@ private:
     if (match_name("attr")) {
       return ValueKind::Attribute;
     }
-    if (match_name("graph")) {
-      return ValueKind::Graph;
+    if (match_name("function")) {
+      return ValueKind::Function;
     }
     if (match_name("bytes")) {
       return ValueKind::Bytes;
@@ -557,7 +557,7 @@ private:
         const bool is_parameter_domain =
             is_name("int") || is_name("real") || is_name("bool") ||
             is_name("string") || is_name("type") || is_name("attr") ||
-            is_name("graph") || is_name("bytes") || is_name("list");
+            is_name("function") || is_name("bytes") || is_name("list");
         if (is_parameter_domain) {
           domain = parameter_domain();
         } else {
@@ -814,7 +814,7 @@ private:
         if (match(TokenKind::Equal)) {
           const auto domain = detail::kernel_domain(input.domain);
           if (input.kind != Parameter::Kind::Static || !domain ||
-              domain->list || domain->element == ValueKind::Graph ||
+              domain->list || domain->element == ValueKind::Function ||
               domain->element == ValueKind::Bytes || input.variadic) {
             error("this parameter cannot have a default value");
           } else {
@@ -1411,7 +1411,7 @@ private:
     };
     if (rule.terms.empty() ||
         rule.terms[rule.match].kind !=
-            ParsedModule::TermDefinition::Kind::Operation) {
+            ParsedModule::TermDefinition::Kind::Instruction) {
       report("rewrite function '" + function.name +
              "' rule must match a function call");
       return;
@@ -1663,12 +1663,12 @@ private:
       }
       const bool graph_transform =
           function.inputs.size() == 1U &&
-          detail::is_domain(function.inputs.front().domain, ValueKind::Graph) &&
+          detail::is_domain(function.inputs.front().domain, ValueKind::Function) &&
           function.results.size() == 1U &&
-          detail::is_domain(function.results.front().domain, ValueKind::Graph);
+          detail::is_domain(function.results.front().domain, ValueKind::Function);
       if (function.body && !function.body->rules.empty() && !graph_transform) {
         error("rewrite function '" + function.name +
-                  "' must have type graph -> graph",
+                  "' must have type function -> function",
               function.source);
       }
       if (function.body) {

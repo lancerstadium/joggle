@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "joggle/diagnostic.h"
-#include "joggle/graph.h"
+#include "joggle/ir.h"
 
 namespace joggle {
 
@@ -25,7 +25,7 @@ struct SyntaxRange {
 };
 
 struct TermDefinition {
-  enum class Kind { Variable, Operation };
+  enum class Kind { Variable, Instruction };
   Kind kind = Kind::Variable;
   std::string name;
   std::vector<std::size_t> arguments;
@@ -113,8 +113,8 @@ struct FunctionArgumentSyntax {
   ValueSyntax type;
 };
 
-// Transient surface form used only when formatting the transitional Graph
-// API. Module-owned function signatures remain authoritative.
+// Surface form used when formatting an in-memory Function. Module-owned
+// function signatures remain authoritative for named functions.
 struct FunctionSyntax {
   std::string name;
   std::vector<FunctionArgumentSyntax> arguments;
@@ -131,7 +131,7 @@ std::string format_function_body(const FunctionBody& body,
                                  std::size_t indent = 0);
 std::string format_function_syntax(const FunctionSyntax& function,
                                    std::size_t indent = 0);
-std::optional<Graph> instantiate_function(Compiler& compiler,
+std::optional<Function> instantiate_function(Compiler& compiler,
                                           Module::FunctionDecl function,
                                           const FunctionBody& body,
                                           Diagnostics& diagnostics);

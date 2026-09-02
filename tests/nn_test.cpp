@@ -68,29 +68,29 @@ module projected_schema@1.0.0 {
 
   const auto nn = compiler.module("nn");
   const auto model = compiler.module("resnet18_basic_block");
-  const auto graph = compiler.graph("resnet18_basic_block.main");
-  const auto tensor_value = compiler.graph("projected_schema.tensor_value");
-  const auto storage_value = compiler.graph("projected_schema.storage_value");
-  if (!nn || !model || !graph || !tensor_value || !storage_value) {
+  const auto function = compiler.function("resnet18_basic_block.main");
+  const auto tensor_value = compiler.function("projected_schema.tensor_value");
+  const auto storage_value = compiler.function("projected_schema.storage_value");
+  if (!nn || !model || !function || !tensor_value || !storage_value) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
 
-  const auto operations = graph->operations();
-  const auto outputs = graph->outputs();
+  const auto operations = function->instructions();
+  const auto outputs = function->entry().terminator().returned();
   const auto shape =
       outputs.empty()
           ? std::optional<std::vector<std::int64_t>>{}
           : outputs.front().type().get<std::vector<std::int64_t>>("shape");
   bool ok = true;
   ok &= expect(operations.size() == 7U &&
-                   operations[0].schema().symbol().qualified_name() ==
+                   operations[0].callee().symbol().qualified_name() ==
                        "nn.conv2d_nchw" &&
-                   operations[1].schema().symbol().qualified_name() ==
+                   operations[1].callee().symbol().qualified_name() ==
                        "nn.batch_norm_nchw" &&
-                   operations[5].schema().symbol().qualified_name() ==
+                   operations[5].callee().symbol().qualified_name() ==
                        "nn.add" &&
-                   operations[6].schema().symbol().qualified_name() ==
+                   operations[6].callee().symbol().qualified_name() ==
                        "nn.relu",
                "the ResNet-18 basic block resolves to ordinary NN Module "
                "operations");
@@ -98,10 +98,10 @@ module projected_schema@1.0.0 {
                    *shape == std::vector<std::int64_t>({1, 64, 56, 56}),
                "convolution formulas and residual addition preserve the "
                "declared output shape");
-  const auto tensor_descriptor = tensor_value->outputs().front().type();
-  const auto storage_descriptor = storage_value->outputs().front().type();
-  const auto tensor_input = tensor_value->inputs().front().type();
-  const auto storage_input = storage_value->inputs().front().type();
+  const auto tensor_descriptor = tensor_value->entry().terminator().returned().front().type();
+  const auto storage_descriptor = storage_value->entry().terminator().returned().front().type();
+  const auto tensor_input = tensor_value->arguments().front().type();
+  const auto storage_input = storage_value->arguments().front().type();
   const auto tensor_element = tensor_descriptor.get<joggle::Type>("element");
   const auto tensor_shape =
       tensor_descriptor.get<std::vector<std::int64_t>>("shape");

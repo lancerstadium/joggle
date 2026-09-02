@@ -27,8 +27,8 @@ add_library(joggle
   src/diagnostic.cpp
   src/domain.cpp
   src/expression_syntax.cpp
-  src/graph.cpp
-  src/graph_member.cpp
+  src/ir.cpp
+  src/function_body.cpp
   src/module.cpp
   src/module_repository.cpp
   src/sha256.cpp
@@ -138,16 +138,16 @@ if(JOGGLE_BUILD_TESTS)
   )
   add_test(NAME type COMMAND joggle_type_test)
 
-  add_executable(joggle_graph_test tests/graph_test.cpp)
-  target_link_libraries(joggle_graph_test PRIVATE joggle::joggle)
-  target_compile_definitions(joggle_graph_test PRIVATE
+  add_executable(joggle_ir_test tests/ir_test.cpp)
+  target_link_libraries(joggle_ir_test PRIVATE joggle::joggle)
+  target_compile_definitions(joggle_ir_test PRIVATE
     JOGGLE_TEST_MODULE="${JOGGLE_TEST_MODULE}"
   )
-  add_test(NAME graph COMMAND joggle_graph_test)
+  add_test(NAME ir COMMAND joggle_ir_test)
 
-  add_executable(joggle_graph_member_test tests/graph_member_test.cpp)
-  target_link_libraries(joggle_graph_member_test PRIVATE joggle::joggle)
-  add_test(NAME graph_member COMMAND joggle_graph_member_test)
+  add_executable(joggle_function_body_test tests/function_body_test.cpp)
+  target_link_libraries(joggle_function_body_test PRIVATE joggle::joggle)
+  add_test(NAME function_body COMMAND joggle_function_body_test)
 
   add_executable(joggle_nn_test tests/nn_test.cpp)
   target_link_libraries(joggle_nn_test PRIVATE joggle::joggle)
@@ -165,19 +165,19 @@ if(JOGGLE_BUILD_TESTS)
       --with ${CMAKE_CURRENT_SOURCE_DIR}/modules/tensor.joggle
   )
 
-  add_test(NAME graph_cli
+  add_test(NAME function_cli
     COMMAND $<TARGET_FILE:joggle_cli> check
-      ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/graph_cli.joggle
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/function_cli.joggle
   )
-  add_test(NAME graph_run_cli
+  add_test(NAME function_run_cli
     COMMAND ${CMAKE_COMMAND}
       -DJOGGLE_CLI=$<TARGET_FILE:joggle_cli>
-      -DJOGGLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/graph_cli.joggle
-      -DJOGGLE_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/graph_run_output.joggle
+      -DJOGGLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/function_cli.joggle
+      -DJOGGLE_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/function_run_output.joggle
       -DJOGGLE_BEHAVIOR_SOURCE=${CMAKE_CURRENT_BINARY_DIR}/behavior_plugin.joggle
       -DJOGGLE_BEHAVIOR=$<TARGET_FILE:joggle_test_behavior>
-      -DJOGGLE_TARGET=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/graph_target.joggle
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/graph_run_cli.cmake
+      -DJOGGLE_TARGET=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/function_target.joggle
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/function_run_cli.cmake
   )
 
   add_executable(joggle_behavior_test tests/behavior_test.cpp)

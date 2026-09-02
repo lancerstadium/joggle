@@ -209,15 +209,16 @@ format(parse(format(parse(source)))) = format(parse(source))
 Comments, paths, host addresses, and registration order do not affect content
 identity.
 
-## Migration state
+## Implementation state
 
-The nested `Region` API and storage have been deleted. The current C++
-`Graph`/`Operation` names are a flat transitional shell around the transaction,
-def-use, inference, and verifier code being moved to
-Function/Block/Instruction/Value. They are migration sources, not compatibility
-requirements. No new control-flow feature is implemented on the old ownership
-model. The `graph` compiler domain disappears after its callers migrate to
-ordinary Module-declared handle types.
+The owning C++ IR is Function/Block/Instruction/Value. The nested `Region` API
+and storage, the owning `Graph` type, and their source declarations have been
+removed. Blocks have typed arguments and terminators; structural verification
+checks reachability, dominance, successor edges, and all function exits.
+
+The remaining `function` kernel domain used by compiler callbacks is temporary.
+It will be replaced by ordinary Module-declared handle types once host
+representations participate in staged values.
 
 Likewise, the current separate compile-time-expression and dataflow-body parser
 paths are temporary. The final parser produces one function syntax tree, and

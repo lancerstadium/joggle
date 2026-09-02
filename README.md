@@ -1,7 +1,7 @@
 # Joggle
 
 Joggle is a lightweight C++ compiler framework for AI hardware/software
-co-design. Its user model is converging on four public concepts:
+co-design. Its user model has four public concepts:
 
 - `Module` is a versioned package of types, functions, and contracts.
 - `fn` is the one callable declaration used for program operations and
@@ -18,9 +18,10 @@ Input decoding, transformation, analysis, and output encoding are ordinary
 typed functions over module-owned types. The source language does not impose a
 frontend/backend direction, a graph domain, or a second pass namespace.
 
-The current C++ implementation still exposes `Graph` while its storage and
-editing facilities are migrated to `Function` and `Block`. The
-normative architecture and staging semantics are specified in
+The C++ IR follows `Module -> Function -> Block -> Instruction/Value`.
+`Graph` and `Region` are not ownership objects: def-use and control-flow graphs
+are relationships over a Function and may be exposed by non-owning analysis
+views. The normative architecture and staging semantics are specified in
 [the design](docs/design.md) and
 [the execution model](docs/execution-model.md).
 
@@ -33,10 +34,8 @@ then participate in interface-constrained generic operations.
 joggle 1;
 
 module example@1.0.0 {
-  fn choose<T: type>(condition: i1, yes: T, no: T) -> T;
-
   fn main(condition: i1, lhs: i32, rhs: i32) -> i32 {
-    result = choose(condition, lhs, rhs);
+    result = if condition { lhs } else { rhs };
     return result;
   }
 }

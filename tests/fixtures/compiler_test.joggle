@@ -18,7 +18,7 @@ module test_ir@1.0.0 {
   }
   fn cast<T: type>(input: T) -> T : elementwise;
   fn add<T: type>(lhs: T, rhs: T) -> T as + : elementwise, commutative;
-  fn canonicalize(input: graph) -> graph {
+  fn canonicalize(input: function) -> function {
     return rewrite(input) {
       cast($input) => $input;
     };

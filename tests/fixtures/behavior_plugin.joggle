@@ -4,7 +4,7 @@ module behavior_plugin@1.0.0 {
   type positive(value: int);
 
   fn source() -> positive<1>;
-  fn noop(input: graph) -> graph;
+  fn noop(input: function) -> function;
   fn main() -> positive<1> {
     value = source();
     return value;

@@ -44,7 +44,7 @@ std::optional<ParameterValue::Kind> expected_kind(detail::ValueKind kind) {
     return ParameterValue::Kind::Type;
   case detail::ValueKind::Attribute:
     return ParameterValue::Kind::Attribute;
-  case detail::ValueKind::Graph:
+  case detail::ValueKind::Function:
   case detail::ValueKind::Bytes:
     return std::nullopt;
   }

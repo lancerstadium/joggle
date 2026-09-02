@@ -1,4 +1,4 @@
-#include "graph_member.h"
+#include "function_body.h"
 
 #include "expression_syntax.h"
 #include "prelude.h"
@@ -6,7 +6,7 @@
 
 #include "diagnostic_internal.h"
 #include "domain.h"
-#include "graph_internal.h"
+#include "ir_internal.h"
 #include "joggle/compiler.h"
 #include "syntax_lexer.h"
 #include "type_contract.h"
@@ -758,7 +758,7 @@ std::optional<detail::ValueSyntax> value_syntax(
   return result;
 }
 
-// Adapter used only while the old Graph bridge is being removed. The source
+// Adapter used only while the old Function bridge is being removed. The source
 // AST above keeps one Expression; this shape exists solely to feed the legacy
 // operation constructor without making Call a second syntax node again.
 struct ResidualPropertySyntax {
@@ -781,27 +781,17 @@ class Instantiator {
 public:
   Instantiator(Compiler& compiler, Module::FunctionDecl function,
                const detail::FunctionBody& body, Diagnostics& diagnostics)
-      : compiler_(compiler), function_(std::move(function)), body_(body),
-        owner_(function_.symbol().module_name()),
+      : compiler_(compiler), declaration_(std::move(function)), body_(body),
+        owner_(declaration_.symbol().module_name()),
         diagnostics_(diagnostics), initial_diagnostics_(diagnostics.size()) {}
 
-  std::optional<Graph> instantiate() {
-    graph_ = compiler_.graph();
-    if (!graph_) {
+  std::optional<Function> instantiate() {
+    function_ = compiler_.function();
+    if (!function_) {
       return std::nullopt;
     }
-    edit_.emplace(graph_->edit());
-    scopes_.emplace_back();
-    if (body_.blocks.size() != 1U ||
-        body_.blocks.front().terminator.kind !=
-            detail::TerminatorSyntax::Kind::Return) {
-      report("residual control flow is not yet available in the Graph bridge",
-             body_.range);
-      return std::nullopt;
-    }
-    const detail::BlockSyntax& entry = body_.blocks.front();
     std::vector<Type> result_types;
-    const auto results = function_.value_results();
+    const auto results = declaration_.value_results();
     for (const auto& result : results) {
       auto syntax = value_syntax(result.domain, body_.range);
       if (!syntax) {
@@ -813,24 +803,29 @@ public:
         result_types.push_back(*result_type);
       }
     }
-    if (entry.terminator.values.size() == result_types.size()) {
-      for (std::size_t index = 0; index < entry.terminator.values.size();
-           ++index) {
-        const auto& expression = entry.terminator.values[index];
-        if ((expression.value.kind != Module::Expression::Kind::Reference &&
-             expression.value.kind != Module::Expression::Kind::Variable) ||
-            !expression.value.arguments.empty()) {
-          continue;
-        }
-        const auto [found, inserted] = expected_values_.emplace(
-            expression.value.text, result_types[index]);
-        if (!inserted && found->second != result_types[index]) {
-          report("one returned value is constrained to different types",
-                 expression.range);
+    for (const detail::BlockSyntax& block : body_.blocks) {
+      if (block.terminator.kind == detail::TerminatorSyntax::Kind::Return &&
+          block.terminator.values.size() == result_types.size()) {
+        for (std::size_t index = 0; index < block.terminator.values.size();
+             ++index) {
+          const auto& expression = block.terminator.values[index];
+          if ((expression.value.kind != Module::Expression::Kind::Reference &&
+               expression.value.kind != Module::Expression::Kind::Variable) ||
+              !expression.value.arguments.empty()) {
+            continue;
+          }
+          const auto [found, inserted] = expected_values_.emplace(
+              expression.value.text, result_types[index]);
+          if (!inserted && found->second != result_types[index]) {
+            report("one returned value is constrained to different types",
+                   expression.range);
+          }
         }
       }
     }
-    for (const auto& argument : function_.value_inputs()) {
+    std::vector<Type> argument_types;
+    const auto inputs = declaration_.value_inputs();
+    for (const auto& argument : inputs) {
       auto syntax = value_syntax(argument.domain, body_.range);
       if (!syntax) {
         report("a residual input type cannot yet be instantiated", body_.range);
@@ -838,37 +833,133 @@ public:
       }
       auto argument_type = type(*syntax);
       if (argument_type) {
-        define(argument.name, edit_->argument(*argument_type), body_.range);
+        argument_types.push_back(*argument_type);
       }
     }
-    for (const auto& operation : entry.instructions) {
-      instantiate_operation(operation);
+    if (argument_types.size() != inputs.size() ||
+        result_types.size() != results.size()) {
+      return std::nullopt;
     }
-    if (entry.terminator.values.size() != results.size()) {
-      report("function return count does not match its result signature",
+
+    detail::FunctionAccess::declare(*function_, declaration_, argument_types,
+                                    result_types);
+    edit_.emplace(function_->edit());
+    scopes_.emplace_back();
+    for (std::size_t index = 0; index < inputs.size(); ++index) {
+      define(inputs[index].name, edit_->argument(argument_types[index]),
              body_.range);
-    } else if (result_types.size() == results.size()) {
-      for (std::size_t index = 0; index < entry.terminator.values.size();
-           ++index) {
-        auto value = use(entry.terminator.values[index]);
-        if (!value) {
+    }
+
+    blocks_.emplace("entry", function_->entry());
+    for (std::size_t index = 1; index < body_.blocks.size(); ++index) {
+      const detail::BlockSyntax& block = body_.blocks[index];
+      std::vector<Type> block_argument_types;
+      for (const detail::BlockArgumentSyntax& argument : block.arguments) {
+        if (auto argument_type = type(argument.type)) {
+          block_argument_types.push_back(*argument_type);
+        }
+      }
+      if (block_argument_types.size() == block.arguments.size()) {
+        blocks_.emplace(block.name,
+                        edit_->block(std::move(block_argument_types)));
+      }
+    }
+
+    for (const detail::BlockSyntax& block : body_.blocks) {
+      const auto ir = blocks_.find(block.name);
+      if (ir == blocks_.end()) {
+        continue;
+      }
+      const auto arguments = ir->second.arguments();
+      for (std::size_t index = 0;
+           index < block.arguments.size() && index < arguments.size(); ++index) {
+        define(block.arguments[index].name, arguments[index],
+               block.arguments[index].range);
+      }
+    }
+
+    for (const detail::BlockSyntax& block : body_.blocks) {
+      const auto ir = blocks_.find(block.name);
+      if (ir == blocks_.end()) {
+        continue;
+      }
+      for (const auto& instruction : block.instructions) {
+        instantiate_operation(instruction, ir->second);
+      }
+      const detail::TerminatorSyntax& terminator = block.terminator;
+      if (terminator.kind == detail::TerminatorSyntax::Kind::Return) {
+        std::vector<Value> returned;
+        if (terminator.values.size() != results.size()) {
+          report("function return count does not match its result signature",
+                 terminator.range);
+        } else if (result_types.size() == results.size()) {
+          for (std::size_t index = 0; index < terminator.values.size(); ++index) {
+            auto value = use(terminator.values[index]);
+            if (!value) {
+              continue;
+            }
+            if (value->type() != result_types[index]) {
+              report("returned value type does not match function result " +
+                         std::to_string(index),
+                     terminator.values[index].range);
+              continue;
+            }
+            returned.push_back(*value);
+          }
+        }
+        edit_->ret(ir->second, std::move(returned));
+        continue;
+      }
+      std::vector<std::vector<Value>> edge_arguments;
+      for (const detail::SuccessorSyntax& successor : terminator.successors) {
+        std::vector<Value> values;
+        for (const detail::ExpressionSyntax& argument : successor.arguments) {
+          if (auto value = use(argument)) {
+            values.push_back(*value);
+          }
+        }
+        edge_arguments.push_back(std::move(values));
+      }
+      const auto target = [&](std::size_t index) -> std::optional<Block> {
+        if (index >= terminator.successors.size()) {
+          return std::nullopt;
+        }
+        const auto found = blocks_.find(terminator.successors[index].target);
+        if (found == blocks_.end()) {
+          report("unknown successor block '" +
+                     terminator.successors[index].target + "'",
+                 terminator.successors[index].range);
+          return std::nullopt;
+        }
+        return found->second;
+      };
+      if (terminator.kind == detail::TerminatorSyntax::Kind::Branch) {
+        if (auto destination = target(0)) {
+          edit_->jump(ir->second, *destination,
+                      edge_arguments.empty() ? std::vector<Value>{}
+                                             : std::move(edge_arguments[0]));
+        }
+      } else {
+        auto condition = terminator.condition
+                             ? use(*terminator.condition)
+                             : std::optional<Value>{};
+        auto true_target = target(0);
+        auto false_target = target(1);
+        if (!condition || !true_target || !false_target ||
+            edge_arguments.size() != 2U) {
           continue;
         }
-        if (value->type() != result_types[index]) {
-          report("returned value type does not match function result " +
-                     std::to_string(index),
-                 entry.terminator.values[index].range);
-          continue;
-        }
-        edit_->output(*value);
+        edit_->branch(ir->second, *condition, *true_target,
+                      std::move(edge_arguments[0]), *false_target,
+                      std::move(edge_arguments[1]));
       }
     }
     if (!ok() ||
-        !detail::GraphAccess::commit(*edit_, compiler_, diagnostics_)) {
+        !detail::FunctionAccess::commit(*edit_, compiler_, diagnostics_)) {
       return std::nullopt;
     }
     edit_.reset();
-    return compiler_.verify(*graph_) ? std::move(graph_) : std::nullopt;
+    return compiler_.verify(*function_) ? std::move(function_) : std::nullopt;
   }
 
 private:
@@ -896,7 +987,7 @@ private:
       result.operator_fixity = Module::FunctionDecl::Fixity::Postfix;
     } else {
       report("residual expression evaluation is not yet available in the "
-             "Graph bridge",
+             "Function bridge",
              statement.expression.range);
       return std::nullopt;
     }
@@ -910,7 +1001,7 @@ private:
         auto converted = value_syntax(argument, statement.expression.range);
         if (!converted) {
           report("named argument '" + std::string(label) +
-                     "' is not known in the Graph bridge",
+                     "' is not known in the Function bridge",
                  statement.expression.range);
           return std::nullopt;
         }
@@ -1087,7 +1178,7 @@ private:
       return value ? std::optional<ParameterValue>{ParameterValue(*value)}
                    : std::nullopt;
     }
-    case detail::ValueKind::Graph:
+    case detail::ValueKind::Function:
     case detail::ValueKind::Bytes:
       break;
     }
@@ -1165,7 +1256,7 @@ private:
          expression.value.kind != Module::Expression::Kind::Variable) ||
         !expression.value.arguments.empty()) {
       report("residual expression evaluation is not yet available in the "
-             "Graph bridge",
+             "Function bridge",
              expression.range);
       return std::nullopt;
     }
@@ -1247,7 +1338,8 @@ private:
     return matches.front();
   }
 
-  void instantiate_operation(const detail::StatementSyntax& statement) {
+  void instantiate_operation(const detail::StatementSyntax& statement,
+                             Block block) {
     auto lowered = residual_call(statement);
     if (!lowered) {
       std::vector<std::string> results;
@@ -1357,9 +1449,10 @@ private:
       invalidate(syntax.results, syntax.range);
       return;
     }
-    Operation operation =
-        edit_->append(*schema, std::move(operands), resolved->results);
-    detail::GraphAccess::locate(*edit_, operation, source(syntax.range));
+    Instruction operation =
+        edit_->append(std::move(block), *schema, std::move(operands),
+                      resolved->results);
+    detail::FunctionAccess::locate(*edit_, operation, source(syntax.range));
 
     for (std::size_t index = 0; index < property_values.size(); ++index) {
       if (property_values[index]) {
@@ -1373,43 +1466,56 @@ private:
   }
 
   Compiler& compiler_;
-  Module::FunctionDecl function_;
+  Module::FunctionDecl declaration_;
   const detail::FunctionBody& body_;
   std::string owner_;
   Diagnostics& diagnostics_;
   std::size_t initial_diagnostics_ = 0;
-  std::optional<Graph> graph_;
-  std::optional<Graph::Edit> edit_;
+  std::optional<Function> function_;
+  std::optional<Function::Edit> edit_;
   std::vector<
       std::unordered_map<std::string, std::optional<Value>>>
       scopes_;
   std::unordered_map<std::string, Type> expected_values_;
+  std::unordered_map<std::string, Block> blocks_;
 };
 
 class RuntimeSyntax {
 public:
-  RuntimeSyntax(const Graph& graph, std::string_view name) : graph_(graph) {
+  RuntimeSyntax(const Function& function, std::string_view name) : function_(function) {
     syntax_.name = std::string(name);
   }
 
   detail::FunctionSyntax build() {
-    detail::BlockSyntax entry;
-    entry.name = "entry";
-    for (const Value& argument : graph_.inputs()) {
+    for (const Value& argument : function_.arguments()) {
       const std::string name = bind(argument, "arg");
       syntax_.arguments.push_back({name, value(argument.type())});
     }
-    for (const Value& output : graph_.outputs()) {
-      syntax_.result_types.push_back(value(output.type()));
+    for (const Type& result : function_.result_types()) {
+      syntax_.result_types.push_back(value(result));
     }
-    for (const Operation& operation : graph_.operations()) {
-      entry.instructions.push_back(convert(operation));
+    const auto blocks = function_.blocks();
+    for (std::size_t index = 0; index < blocks.size(); ++index) {
+      block_names_.emplace_back(
+          blocks[index], index == 0U ? "entry" : "block" + std::to_string(index));
     }
-    for (const Value& output : graph_.outputs()) {
-      entry.terminator.values.push_back(
-          {Module::Expression::reference(use(output)), {}});
+    for (const Block& block : blocks) {
+      for (const Value& argument : block.arguments()) {
+        bind(argument, "arg");
+      }
     }
-    syntax_.body.blocks.push_back(std::move(entry));
+    for (const Block& block : blocks) {
+      detail::BlockSyntax syntax;
+      syntax.name = block_name(block);
+      for (const Value& argument : block.arguments()) {
+        syntax.arguments.push_back({use(argument), value(argument.type()), {}});
+      }
+      for (const Instruction& instruction : block.instructions()) {
+        syntax.instructions.push_back(convert(instruction));
+      }
+      syntax.terminator = convert(block.terminator());
+      syntax_.body.blocks.push_back(std::move(syntax));
+    }
     return std::move(syntax_);
   }
 
@@ -1468,7 +1574,7 @@ private:
       const auto text = detail::canonical_real(*parameter.as_f64());
       if (!text) {
         throw std::invalid_argument(
-            "the Graph contains an unformattable real parameter");
+            "the Function contains an unformattable real parameter");
       }
       result.text = *text;
       break;
@@ -1508,7 +1614,17 @@ private:
                      [&](const auto& entry) { return entry.first == value; });
     if (found == names_.end()) {
       throw std::invalid_argument(
-          "the graph contains a value before its definition");
+          "the function contains a value before its definition");
+    }
+    return found->second;
+  }
+
+  std::string block_name(const Block& block) const {
+    const auto found = std::find_if(
+        block_names_.begin(), block_names_.end(),
+        [&](const auto& entry) { return entry.first == block; });
+    if (found == block_names_.end()) {
+      throw std::invalid_argument("the function has an unknown successor");
     }
     return found->second;
   }
@@ -1532,11 +1648,11 @@ private:
     return result;
   }
 
-  detail::StatementSyntax convert(const Operation& operation) {
+  detail::StatementSyntax convert(const Instruction& operation) {
     detail::StatementSyntax result;
     result.expression.value.kind = Module::Expression::Kind::Call;
     result.expression.value.text =
-        operation.schema().symbol().qualified_name();
+        operation.callee().symbol().qualified_name();
     for (const Value& output : operation.results()) {
       result.bindings.push_back(
           {bind(output, "v"), value(output.type()), {}});
@@ -1547,23 +1663,23 @@ private:
       result.expression.value.labels.emplace_back();
     }
     for (const Module::ParameterDecl& parameter :
-         operation.schema().static_inputs()) {
+         operation.callee().static_inputs()) {
       if (const auto property =
-              detail::GraphAccess::property(operation, parameter.name)) {
+              detail::FunctionAccess::property(operation, parameter.name)) {
         result.expression.value.arguments.push_back(
             expression(value(*property)));
         result.expression.value.labels.push_back(parameter.name);
       }
     }
-    const auto notation = operation.schema().operator_symbol();
-    const auto fixity = operation.schema().operator_fixity();
+    const auto notation = operation.callee().operator_symbol();
+    const auto fixity = operation.callee().operator_fixity();
     const bool valid_arity =
         fixity && ((*fixity == Module::FunctionDecl::Fixity::Infix &&
                     operation.operands().size() == 2U) ||
                    (*fixity != Module::FunctionDecl::Fixity::Infix &&
                     operation.operands().size() == 1U));
     if (notation && valid_arity && result.bindings.size() == 1U &&
-        operation.schema().static_inputs().empty()) {
+        operation.callee().static_inputs().empty()) {
       result.expression.value.text = std::string(*notation);
       if (*fixity == Module::FunctionDecl::Fixity::Prefix) {
         result.expression.value.kind = Module::Expression::Kind::Prefix;
@@ -1577,9 +1693,39 @@ private:
     return result;
   }
 
-  const Graph& graph_;
+  detail::TerminatorSyntax convert(const Terminator& terminator) const {
+    detail::TerminatorSyntax result;
+    if (terminator.kind() == Terminator::Kind::Return) {
+      result.kind = detail::TerminatorSyntax::Kind::Return;
+      for (const Value& value : terminator.returned()) {
+        result.values.push_back(
+            {Module::Expression::reference(use(value)), {}});
+      }
+      return result;
+    }
+    result.kind = terminator.kind() == Terminator::Kind::Jump
+                      ? detail::TerminatorSyntax::Kind::Branch
+                      : detail::TerminatorSyntax::Kind::CondBranch;
+    if (const auto condition = terminator.condition()) {
+      result.condition = detail::ExpressionSyntax{
+          Module::Expression::reference(use(*condition)), {}};
+    }
+    for (std::size_t index = 0; index < terminator.successor_count(); ++index) {
+      detail::SuccessorSyntax successor;
+      successor.target = block_name(terminator.successor(index));
+      for (const Value& argument : terminator.arguments(index)) {
+        successor.arguments.push_back(
+            {Module::Expression::reference(use(argument)), {}});
+      }
+      result.successors.push_back(std::move(successor));
+    }
+    return result;
+  }
+
+  const Function& function_;
   detail::FunctionSyntax syntax_;
   std::vector<std::pair<Value, std::string>> names_;
+  std::vector<std::pair<Block, std::string>> block_names_;
   std::size_t next_value_ = 0;
 };
 
@@ -1730,7 +1876,7 @@ std::string format_function_syntax(const FunctionSyntax& function,
   return SyntaxWriter(function, indent).write();
 }
 
-std::optional<Graph> instantiate_function(Compiler& compiler,
+std::optional<Function> instantiate_function(Compiler& compiler,
                                           Module::FunctionDecl function,
                                           const FunctionBody& body,
                                           Diagnostics& diagnostics) {
@@ -1740,7 +1886,7 @@ std::optional<Graph> instantiate_function(Compiler& compiler,
 
 }  // namespace detail
 
-std::string format(const Graph& graph, std::string_view name) {
+std::string format(const Function& function, std::string_view name) {
   const auto identifier_character = [](char character) {
     return std::isalnum(static_cast<unsigned char>(character)) != 0 ||
            character == '_';
@@ -1749,9 +1895,9 @@ std::string format(const Graph& graph, std::string_view name) {
       (std::isalpha(static_cast<unsigned char>(name.front())) == 0 &&
        name.front() != '_') ||
       !std::all_of(name.begin() + 1, name.end(), identifier_character)) {
-    throw std::invalid_argument("a formatted Graph needs a valid name");
+    throw std::invalid_argument("a formatted Function needs a valid name");
   }
-  return detail::format_function_syntax(RuntimeSyntax(graph, name).build(), 0U);
+  return detail::format_function_syntax(RuntimeSyntax(function, name).build(), 0U);
 }
 
 }  // namespace joggle

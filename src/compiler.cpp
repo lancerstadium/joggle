@@ -2,8 +2,8 @@
 
 #include "prelude.h"
 #include "domain.h"
-#include "graph_internal.h"
-#include "graph_member.h"
+#include "ir_internal.h"
+#include "function_body.h"
 #include "joggle/behavior.h"
 #include "module_internal.h"
 #include "module_repository.h"
@@ -177,7 +177,7 @@ pass_value_domain(const detail::PassValue& value) {
   case 7:
     return detail::ValueKind::Bytes;
   case 8:
-    return detail::ValueKind::Graph;
+    return detail::ValueKind::Function;
   default:
     return std::nullopt;
   }
@@ -390,13 +390,19 @@ evaluate_interface_method(bool linked, const Subject& subject,
                           const BindingMap& bindings, const Modules& modules,
                           Diagnostics& diagnostics, Conforms conforms,
                           std::string_view subject_kind) {
-  if constexpr (std::is_same_v<Subject, Operation>) {
+  if constexpr (std::is_same_v<Subject, Instruction>) {
     if (!subject.valid()) {
       diagnostics.report("invalid operation used as an interface subject");
       return std::nullopt;
     }
   }
-  const auto declaration = subject.schema();
+  const auto declaration = [&] {
+    if constexpr (std::is_same_v<Subject, Instruction>) {
+      return subject.callee();
+    } else {
+      return subject.schema();
+    }
+  }();
   if (!linked || !conforms(declaration, method.owner())) {
     diagnostics.report(std::string(subject_kind) + " '" +
                        declaration.symbol().qualified_name() +
@@ -424,8 +430,8 @@ evaluate_interface_method(bool linked, const Subject& subject,
                     "' did not produce a value");
   }
   std::optional<SourceRange> location;
-  if constexpr (std::is_same_v<Subject, Operation>) {
-    location = detail::GraphAccess::location(subject);
+  if constexpr (std::is_same_v<Subject, Instruction>) {
+    location = detail::FunctionAccess::location(subject);
   }
   for (const Diagnostic& entry : reported.entries()) {
     Diagnostic diagnostic = entry;
@@ -504,7 +510,7 @@ std::string term_key(const detail::RuleDefinition& rule, std::size_t index) {
 }
 
 struct RuleMatch {
-  Operation root;
+  Instruction root;
   Value replacement;
 };
 
@@ -524,9 +530,9 @@ bool match_term(const Value& value, const detail::RuleDefinition& rule,
     return true;
   }
   const auto target = resolve_rule_operation(modules, pass, term.name);
-  const auto defining = value.defining_operation();
+  const auto defining = value.defining_instruction();
   if (!target || !defining || defining->results().size() != 1U ||
-      defining->result(0) != value || defining->schema() != *target) {
+      defining->result(0) != value || defining->callee() != *target) {
     return false;
   }
   const auto operands = defining->operands();
@@ -545,10 +551,10 @@ bool match_term(const Value& value, const detail::RuleDefinition& rule,
 
 template <typename Modules>
 std::optional<RuleMatch>
-find_rule_match(const Graph& graph, const Module::FunctionDecl& pass,
+find_rule_match(const Function& function, const Module::FunctionDecl& pass,
                 const detail::RuleDefinition& rule, const Modules& modules) {
   const auto try_operation =
-      [&](const Operation& operation) -> std::optional<RuleMatch> {
+      [&](const Instruction& operation) -> std::optional<RuleMatch> {
     const auto results = operation.results();
     if (results.size() != 1U) {
       return std::nullopt;
@@ -565,7 +571,7 @@ find_rule_match(const Graph& graph, const Module::FunctionDecl& pass,
     return RuleMatch{operation, replacement->second};
   };
 
-  for (const Operation& operation : graph.operations()) {
+  for (const Instruction& operation : function.instructions()) {
     if (auto match = try_operation(operation)) {
       return match;
     }
@@ -574,11 +580,11 @@ find_rule_match(const Graph& graph, const Module::FunctionDecl& pass,
 }
 
 template <typename Modules>
-bool apply_contraction_rule(Graph& graph, const Module::FunctionDecl& pass,
+bool apply_contraction_rule(Function& function, const Module::FunctionDecl& pass,
                             const detail::RuleDefinition& rule,
                             const Modules& modules, Diagnostics& diagnostics) {
-  while (auto match = find_rule_match(graph, pass, rule, modules)) {
-    auto edit = graph.edit();
+  while (auto match = find_rule_match(function, pass, rule, modules)) {
+    auto edit = function.edit();
     const Value result = match->root.result(0);
     if (result.type() != match->replacement.type()) {
       diagnostics.report("pass '" + pass.symbol().qualified_name() +
@@ -621,11 +627,11 @@ struct Compiler::State {
   std::map<std::string, VerifierFunction<Type>, std::less<>> type_verifiers;
   std::map<std::string, VerifierFunction<Attribute>, std::less<>>
       attribute_verifiers;
-  std::map<std::string, VerifierFunction<Operation>, std::less<>>
+  std::map<std::string, VerifierFunction<Instruction>, std::less<>>
       operation_verifiers;
   std::map<std::string, MethodFunction<Attribute>, std::less<>>
       attribute_methods;
-  std::map<std::string, MethodFunction<Operation>, std::less<>>
+  std::map<std::string, MethodFunction<Instruction>, std::less<>>
       operation_methods;
   std::map<std::string, PassFunction, std::less<>> passes;
   std::set<std::string, std::less<>> constructing_types;
@@ -2278,10 +2284,10 @@ Compiler::make(const Module::AttributeDecl& schema,
   return attribute;
 }
 
-std::optional<Graph> Compiler::graph() {
+std::optional<Function> Compiler::function() {
   if (!state_->linked) {
     state_->diagnostics.report(
-        "cannot create a graph before the compiler is linked");
+        "cannot create a function before the compiler is linked");
     return std::nullopt;
   }
   std::vector<Module> modules;
@@ -2290,53 +2296,53 @@ std::optional<Graph> Compiler::graph() {
     static_cast<void>(name);
     modules.push_back(module);
   }
-  return Graph(std::move(modules));
+  return Function(std::move(modules));
 }
 
-std::optional<Graph> Compiler::graph(std::string_view name) {
+std::optional<Function> Compiler::function(std::string_view name) {
   if (!state_->linked) {
     state_->diagnostics.report(
-        "cannot construct a graph before the compiler is linked");
+        "cannot construct a function before the compiler is linked");
     return std::nullopt;
   }
   const auto member = qualified_member(name);
   if (!member) {
-    state_->diagnostics.report("graph name '" + std::string(name) +
+    state_->diagnostics.report("function name '" + std::string(name) +
                                "' must be qualified as module.member");
     return std::nullopt;
   }
   const auto [module_name, member_name] = *member;
   const auto owner = state_->modules.find(module_name);
   if (owner == state_->modules.end()) {
-    state_->diagnostics.report("graph '" + std::string(name) +
+    state_->diagnostics.report("function '" + std::string(name) +
                                "' names an unlinked module");
     return std::nullopt;
   }
   const auto symbol =
       owner->second.symbol(Module::SymbolKind::Function, member_name);
   if (!symbol) {
-    state_->diagnostics.report("unknown graph '" + std::string(name) + "'");
+    state_->diagnostics.report("unknown function '" + std::string(name) + "'");
     return std::nullopt;
   }
-  return graph(*symbol);
+  return function(*symbol);
 }
 
-std::optional<Graph> Compiler::graph(Module::Symbol symbol) {
+std::optional<Function> Compiler::function(Module::Symbol symbol) {
   if (!state_->linked) {
     state_->diagnostics.report(
-        "cannot construct a graph before the compiler is linked");
+        "cannot construct a function before the compiler is linked");
     return std::nullopt;
   }
   if (symbol.kind() != Module::SymbolKind::Function) {
     state_->diagnostics.report("symbol '" + symbol.qualified_name() +
-                               "' is not a graph");
+                               "' is not a function");
     return std::nullopt;
   }
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
       owner->second.digest() != symbol.module_digest()) {
-    state_->diagnostics.report("graph '" + symbol.qualified_name() +
+    state_->diagnostics.report("function '" + symbol.qualified_name() +
                                "' is not in this compilation");
     return std::nullopt;
   }
@@ -2356,7 +2362,7 @@ std::optional<Graph> Compiler::graph(Module::Symbol symbol) {
       function->value_results().empty() &&
       detail::ModuleAccess::expression(*function) != nullptr;
   if (!definition || compile_time_only || !definition->rules.empty()) {
-    state_->diagnostics.report("unknown graph '" + symbol.qualified_name() +
+    state_->diagnostics.report("unknown function '" + symbol.qualified_name() +
                                "'");
     return std::nullopt;
   }
@@ -2439,7 +2445,7 @@ void Compiler::bind_method(Module::AttributeDecl declaration,
 
 void Compiler::bind_method(Module::FunctionDecl declaration,
                            Module::InterfaceDecl::MethodDecl method,
-                           MethodFunction<Operation> function) {
+                           MethodFunction<Instruction> function) {
   bind_interface_method(
       state_->linked, std::move(declaration), std::move(method),
       std::move(function), state_->operation_methods, state_->diagnostics,
@@ -2463,7 +2469,7 @@ Compiler::call(const Attribute& subject,
 }
 
 std::optional<ParameterValue>
-Compiler::call(const Operation& subject,
+Compiler::call(const Instruction& subject,
                Module::InterfaceDecl::MethodDecl method,
                std::span<const ParameterValue> parameters) {
   return evaluate_interface_method(
@@ -2522,7 +2528,7 @@ void Compiler::bind_verifier(Module::AttributeDecl schema,
 }
 
 void Compiler::bind_verifier(Module::FunctionDecl schema,
-                             VerifierFunction<Operation> verifier) {
+                             VerifierFunction<Instruction> verifier) {
   const Module::Symbol symbol = schema.symbol();
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
@@ -2843,25 +2849,25 @@ Compiler::lookup_method(const Attribute& subject, std::string_view reference) {
 }
 
 std::optional<Module::InterfaceDecl::MethodDecl>
-Compiler::lookup_method(const Operation& subject, std::string_view reference) {
-  return lookup_method(subject.schema(), reference);
+Compiler::lookup_method(const Instruction& subject, std::string_view reference) {
+  return lookup_method(subject.callee(), reference);
 }
 
-bool Compiler::verify(const Graph& graph) {
+bool Compiler::verify(const Function& function) {
   if (!state_->linked) {
     state_->diagnostics.report(
-        "cannot verify a graph before the compiler is linked");
+        "cannot verify a function before the compiler is linked");
     return false;
   }
-  if (!detail::GraphAccess::verify_structure(graph, state_->diagnostics)) {
+  if (!detail::FunctionAccess::verify_structure(function, state_->diagnostics)) {
     return false;
   }
-  bool valid = detail::GraphAccess::verify_contracts(
-      graph, *this, state_->diagnostics);
-  for (const Operation& operation : graph.operations()) {
-      const Module::FunctionDecl schema = operation.schema();
+  bool valid = detail::FunctionAccess::verify_contracts(
+      function, *this, state_->diagnostics);
+  for (const Instruction& operation : function.instructions()) {
+      const Module::FunctionDecl schema = operation.callee();
       const Module::Symbol symbol = schema.symbol();
-      const auto location = detail::GraphAccess::location(operation);
+      const auto location = detail::FunctionAccess::location(operation);
       const auto verifier =
           state_->operation_verifiers.find(symbol.stable_name());
       if (verifier != state_->operation_verifiers.end()) {
@@ -2959,16 +2965,16 @@ Compiler::run_pass(Module::FunctionDecl pass,
     }
   }
 
-  std::vector<std::pair<std::shared_ptr<Graph>,
-                        std::shared_ptr<const Graph::Snapshot>>>
+  std::vector<std::pair<std::shared_ptr<Function>,
+                        std::shared_ptr<const Function::Snapshot>>>
       checkpoints;
   for (detail::PassValue& argument : arguments) {
-    if (pass_value_domain(argument) == detail::ValueKind::Graph) {
-      auto graph = std::get<std::shared_ptr<Graph>>(argument);
-      if (!verify(*graph)) {
+    if (pass_value_domain(argument) == detail::ValueKind::Function) {
+      auto function = std::get<std::shared_ptr<Function>>(argument);
+      if (!verify(*function)) {
         return std::nullopt;
       }
-      checkpoints.emplace_back(graph, graph->snapshot());
+      checkpoints.emplace_back(function, function->snapshot());
     }
   }
   const std::size_t before = state_->diagnostics.size();
@@ -2990,13 +2996,13 @@ Compiler::run_pass(Module::FunctionDecl pass,
         return std::nullopt;
       }
       if (pass_field_domain(current.inputs()[index]) ==
-          detail::ValueKind::Graph) {
-        const auto graph =
-            std::get<std::shared_ptr<Graph>>(values[index]);
-        if (!graph->accepts(current.symbol())) {
+          detail::ValueKind::Function) {
+        const auto function =
+            std::get<std::shared_ptr<Function>>(values[index]);
+        if (!function->accepts(current.symbol())) {
           state_->diagnostics.report(
               "pass '" + current.symbol().qualified_name() +
-              "' is outside the graph's module closure");
+              "' is outside the function's module closure");
           return std::nullopt;
         }
       }
@@ -3046,9 +3052,9 @@ Compiler::run_pass(Module::FunctionDecl pass,
               ? std::span<const detail::RuleDefinition>{}
               : detail::ModuleAccess::rules(owner->second, current);
       if (!rules.empty()) {
-        auto graph = std::get<std::shared_ptr<Graph>>(values.front());
+        auto function = std::get<std::shared_ptr<Function>>(values.front());
         for (const detail::RuleDefinition& rule : rules) {
-          if (!apply_contraction_rule(*graph, current, rule, state_->modules,
+          if (!apply_contraction_rule(*function, current, rule, state_->modules,
                                       state_->diagnostics)) {
             return std::nullopt;
           }
@@ -3115,46 +3121,46 @@ Compiler::run_pass(Module::FunctionDecl pass,
   try {
     result = execute(execute, pass, std::move(arguments));
   } catch (...) {
-    for (auto& [graph, snapshot] : checkpoints) {
-      graph->restore(std::move(snapshot));
+    for (auto& [function, snapshot] : checkpoints) {
+      function->restore(std::move(snapshot));
     }
     throw;
   }
   bool valid = result.has_value() && state_->diagnostics.size() == before;
   if (valid && pass_value_domain(*result).has_value() &&
-      pass_value_domain(*result) == detail::ValueKind::Graph) {
-    valid = verify(*std::get<std::shared_ptr<Graph>>(*result)) && valid;
+      pass_value_domain(*result) == detail::ValueKind::Function) {
+    valid = verify(*std::get<std::shared_ptr<Function>>(*result)) && valid;
   }
   if (!valid) {
-    for (auto& [graph, snapshot] : checkpoints) {
-      graph->restore(std::move(snapshot));
+    for (auto& [function, snapshot] : checkpoints) {
+      function->restore(std::move(snapshot));
     }
     return std::nullopt;
   }
   return result;
 }
 
-bool Compiler::run(Graph& graph, Module::FunctionDecl pass) {
+bool Compiler::run(Function& function, Module::FunctionDecl pass) {
   const Module::Symbol symbol = pass.symbol();
-  const bool graph_transform =
+  const bool function_transform =
       pass.inputs().size() == 1U &&
-      pass_field_domain(pass.inputs().front()) == detail::ValueKind::Graph &&
+      pass_field_domain(pass.inputs().front()) == detail::ValueKind::Function &&
       pass.results().size() == 1U &&
-      pass_field_domain(pass.results().front()) == detail::ValueKind::Graph;
-  if (!graph_transform) {
+      pass_field_domain(pass.results().front()) == detail::ValueKind::Function;
+  if (!function_transform) {
     state_->diagnostics.report("pass '" + symbol.qualified_name() +
-                               "' is not a graph -> graph transformation");
+                               "' is not a function -> function transformation");
     return false;
   }
   std::vector<detail::PassValue> arguments;
   arguments.push_back(
-      {std::shared_ptr<Graph>(&graph, [](Graph*) {})});
+      {std::shared_ptr<Function>(&function, [](Function*) {})});
   return run_pass(std::move(pass), std::move(arguments)).has_value();
 }
 
-bool Compiler::run(Graph& graph, std::string_view pass) {
+bool Compiler::run(Function& function, std::string_view pass) {
   const auto declaration = find_pass(pass);
-  return declaration && run(graph, *declaration);
+  return declaration && run(function, *declaration);
 }
 
 const Diagnostics& Compiler::diagnostics() const { return state_->diagnostics; }

@@ -23,7 +23,7 @@ module logic@1.0.0 {
   fn source<T: type>(name: string, meta: attr) -> T;
   fn identity<T: type>(input: T) -> T;
   fn add<T: type>(lhs: T, rhs: T) -> T;
-  fn simplify(input: graph) -> graph {
+  fn simplify(input: function) -> function {
     return rewrite(input) {
       identity($input) => $input;
     };
@@ -53,58 +53,66 @@ bool expect(bool condition, std::string_view message) {
   return condition;
 }
 
-std::optional<joggle::Graph> load_graph(joggle::Compiler& compiler,
-                                        std::string_view text) {
+std::optional<joggle::Function> load_function(joggle::Compiler& compiler,
+                                              std::string_view text) {
   compiler.add(text, "logic.joggle");
   if (!compiler.link()) {
     return std::nullopt;
   }
-  return compiler.graph("logic.main");
+  return compiler.function("logic.main");
 }
 
 }  // namespace
 
 int main() {
   joggle::Compiler compiler;
-  const auto graph = load_graph(compiler, source);
-  if (!graph) {
+  const auto function = load_function(compiler, source);
+  if (!function) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
 
   const auto module = compiler.module("logic");
-  const auto operations = graph->operations();
+  const auto operations = function->instructions();
   bool ok = true;
-  ok &= expect(module.has_value(), "the graph owner remains available");
+  ok &= expect(module.has_value(), "the function owner remains available");
   const auto configured_decl =
       module ? module->function("configured") : std::nullopt;
-  const auto configured = compiler.graph("logic.configured");
+  const auto configured = compiler.function("logic.configured");
   ok &= expect(configured_decl && configured &&
                    configured_decl->static_inputs().size() == 1U &&
                    configured_decl->static_inputs().front().name == "scale" &&
                    configured_decl->value_inputs().size() == 1U &&
-                   configured->inputs().size() == 1U,
+                   configured->arguments().size() == 1U,
                "a function signature is parsed once and retains availability "
                "while its residual body receives only residual inputs");
   const auto main_symbol =
       module ? module->symbol(joggle::Module::SymbolKind::Function, "main")
              : std::nullopt;
-  const auto reflected_graph =
-      main_symbol ? compiler.graph(*main_symbol) : std::nullopt;
-  ok &= expect(reflected_graph && reflected_graph->operations().size() == 2U,
-               "a reflected graph symbol opens without rebuilding its name");
-  ok &= expect(graph->inputs().size() == 1U && operations.size() == 2U &&
-                   graph->outputs().size() == 1U &&
-                   graph->outputs().front() == operations.back().result(0) &&
-                   operations.back().result(0).type() ==
-                       graph->inputs().front().type(),
-               "type variables infer a graph operation and its SSA boundary");
+  const auto reflected_function =
+      main_symbol ? compiler.function(*main_symbol) : std::nullopt;
+  ok &= expect(reflected_function &&
+                   reflected_function->instructions().size() == 2U,
+               "a reflected function symbol opens without rebuilding its name");
+  ok &= expect(
+      function->declaration() && main_symbol &&
+          function->declaration()->symbol() == *main_symbol &&
+          function->result_types().size() == 1U &&
+          function->arguments().size() == 1U && operations.size() == 2U &&
+          function->entry().terminator().returned().size() == 1U &&
+          function->entry().terminator().returned().front() ==
+              operations.back().result(0) &&
+          operations.back().result(0).type() ==
+              function->arguments().front().type() &&
+          function->result_types().front() ==
+              operations.back().result(0).type(),
+      "a concrete function signature and its SSA boundary agree");
   ok &= expect(operations.front().get<std::string>("name") ==
                    "input } // still a string",
-               "graph boundaries are parsed by the real string grammar");
+               "function boundaries are parsed by the real string grammar");
 
   const std::string emitted =
-      joggle::format(*graph, "compiled");
+      joggle::format(*function, "compiled");
   joggle::Compiler emitted_compiler;
   emitted_compiler.add(source, "logic.joggle");
   emitted_compiler.add("joggle 1;\nmodule artifact@1.0.0 {\n"
@@ -112,27 +120,27 @@ int main() {
                            emitted + "}\n",
                        "artifact.joggle");
   const bool emitted_linked = emitted_compiler.link();
-  const auto emitted_graph = emitted_linked
-                                 ? emitted_compiler.graph("artifact.compiled")
-                                 : std::optional<joggle::Graph>{};
-  ok &= expect(emitted_graph &&
-                   joggle::format(*emitted_graph, "compiled") == emitted,
-               "a committed Graph formats to round-trippable canonical DSL");
-  bool rejected_graph_name = false;
+  const auto emitted_function =
+      emitted_linked ? emitted_compiler.function("artifact.compiled")
+                     : std::optional<joggle::Function>{};
+  ok &= expect(emitted_function &&
+                   joggle::format(*emitted_function, "compiled") == emitted,
+               "a committed Function formats to round-trippable canonical DSL");
+  bool rejected_function_name = false;
   try {
-    static_cast<void>(joggle::format(*graph, "not.a.name"));
+    static_cast<void>(joggle::format(*function, "not.a.name"));
   } catch (const std::invalid_argument&) {
-    rejected_graph_name = true;
+    rejected_function_name = true;
   }
-  ok &= expect(rejected_graph_name,
-               "Graph formatting rejects a non-DSL member name");
+  ok &= expect(rejected_function_name,
+               "Function formatting rejects a non-DSL member name");
 
   joggle::Diagnostics roundtrip_diagnostics;
   const std::string canonical = joggle::format(*module);
   const auto roundtrip = joggle::parse_module(canonical, roundtrip_diagnostics,
                                               "canonical.joggle");
   ok &= expect(roundtrip && joggle::format(*roundtrip) == canonical,
-               "one module formatter owns schema and graph syntax");
+               "one module formatter owns schema and function syntax");
 
   constexpr std::string_view cfg_source = R"(
 joggle 1;
@@ -178,6 +186,27 @@ module cfg@1.0.0 {
                "one expression tree round-trips structured and explicit "
                "region-free control flow");
 
+  joggle::Compiler cfg_compiler;
+  cfg_compiler.add(cfg_source, "cfg.joggle");
+  const bool cfg_linked = cfg_compiler.link();
+  const auto cfg_function =
+      cfg_linked ? cfg_compiler.function("cfg.choose") : std::nullopt;
+  const std::string cfg_ir =
+      cfg_function ? joggle::format(*cfg_function, "choose") : std::string{};
+  ok &= expect(cfg_function && cfg_compiler.verify(*cfg_function) &&
+                   cfg_function->blocks().size() == 4U &&
+                   cfg_function->entry().terminator().kind() ==
+                       joggle::Terminator::Kind::Branch &&
+                   cfg_function->blocks().back().arguments().size() == 1U &&
+                   cfg_function->blocks().back().terminator().returned().front() ==
+                       cfg_function->blocks().back().arguments().front() &&
+                   cfg_ir.find("branch arg0, block1(), block2();") !=
+                       std::string::npos &&
+                   cfg_ir.find("block3(arg3: cfg.word):") !=
+                       std::string::npos,
+               "explicit source blocks instantiate as Function-owned CFG and "
+               "format without a nested ownership container");
+
   joggle::Diagnostics invalid_cfg_diagnostics;
   const auto invalid_cfg = joggle::parse_module(R"(
 joggle 1;
@@ -220,14 +249,15 @@ module logic@1.0.0 {
 }
 )";
   joggle::Compiler invalid;
-  const auto invalid_graph = load_graph(invalid, undefined);
+  const auto invalid_function = load_function(invalid, undefined);
   const auto invalid_diagnostics = invalid.diagnostics().entries();
   ok &=
-      expect(!invalid_graph && !invalid.ok() && !invalid_diagnostics.empty() &&
+      expect(!invalid_function && !invalid.ok() &&
+                 !invalid_diagnostics.empty() &&
                  invalid_diagnostics.front().source.has_value() &&
                  invalid_diagnostics.front().source->source == "logic.joggle" &&
                  invalid_diagnostics.front().source->begin.line == 7U,
-             "undefined SSA diagnostics point into the graph");
+             "undefined SSA diagnostics point into the function");
 
   joggle::Compiler unknown;
   unknown.add(R"(
@@ -240,21 +270,21 @@ module logic@1.0.0 {
   if (!unknown.link()) {
     return EXIT_FAILURE;
   }
-  const auto foreign = unknown.graph("logic.main");
+  const auto foreign = unknown.function("logic.main");
   ok &= expect(!foreign && !unknown.ok(),
-               "a named graph keeps its module identity");
+               "a named function keeps its module identity");
 
   joggle::Compiler unqualified;
   unqualified.add(source, "logic.joggle");
   const bool unqualified_linked = unqualified.link();
   const auto unqualified_graph = unqualified_linked
-                                     ? unqualified.graph("main")
-                                     : std::optional<joggle::Graph>{};
+                                     ? unqualified.function("main")
+                                     : std::optional<joggle::Function>{};
   const auto unqualified_diagnostics = unqualified.diagnostics().entries();
   ok &= expect(!unqualified_graph && !unqualified_diagnostics.empty() &&
                    unqualified_diagnostics.back().message.find(
                        "module.member") != std::string::npos,
-               "graph lookup requires one unambiguous qualified member name");
+               "function lookup requires one unambiguous qualified member name");
 
   joggle::Compiler mismatch;
   mismatch.add(R"(
@@ -271,8 +301,8 @@ module mismatch@1.0.0 {
 )",
                "mismatch.joggle");
   const bool mismatch_linked = mismatch.link();
-  const auto mismatch_graph = mismatch_linked ? mismatch.graph("mismatch.main")
-                                              : std::optional<joggle::Graph>{};
+  const auto mismatch_graph = mismatch_linked ? mismatch.function("mismatch.main")
+                                              : std::optional<joggle::Function>{};
   ok &= expect(!mismatch_graph && !mismatch.ok(),
                "one type variable rejects operands with different types");
 
@@ -291,11 +321,11 @@ module return_inferred@1.0.0 {
                       "return-inferred.joggle");
   const bool return_inferred_linked = return_inferred.link();
   const auto return_inferred_graph =
-      return_inferred_linked ? return_inferred.graph("return_inferred.main")
-                             : std::optional<joggle::Graph>{};
+      return_inferred_linked ? return_inferred.function("return_inferred.main")
+                             : std::optional<joggle::Function>{};
   ok &= expect(return_inferred_graph &&
-                   return_inferred_graph->outputs().size() == 1U,
-               "a graph result constrains an output-only type variable");
+                   return_inferred_graph->entry().terminator().returned().size() == 1U,
+               "a function result constrains an output-only type variable");
 
   joggle::Compiler unbound;
   unbound.add(R"(
@@ -311,8 +341,8 @@ module unbound@1.0.0 {
 )",
               "unbound.joggle");
   const bool unbound_linked = unbound.link();
-  const auto unbound_graph = unbound_linked ? unbound.graph("unbound.main")
-                                            : std::optional<joggle::Graph>{};
+  const auto unbound_graph = unbound_linked ? unbound.function("unbound.main")
+                                            : std::optional<joggle::Function>{};
   ok &=
       expect(!unbound_graph && !unbound.ok(),
              "an unconstrained output-only type variable needs an annotation");
@@ -335,10 +365,10 @@ module dependent@1.0.0 {
   const bool dependent_linked = dependent.link();
   const auto dependent_module = dependent.module("dependent");
   auto dependent_graph =
-      dependent_linked ? dependent.graph("dependent.inferred") : std::nullopt;
+      dependent_linked ? dependent.function("dependent.inferred") : std::nullopt;
   const auto dependent_operations =
-      dependent_graph ? dependent_graph->operations()
-                      : std::vector<joggle::Operation>{};
+      dependent_graph ? dependent_graph->instructions()
+                      : std::vector<joggle::Instruction>{};
   const auto dependent_width =
       dependent_operations.empty()
           ? std::optional<std::int64_t>{}
@@ -352,7 +382,7 @@ module dependent@1.0.0 {
                    joggle::format(*dependent_module).find(
                        "fn default_input<N: int>(width: N = 8) -> word<N>;") !=
                        std::string::npos,
-               "a named property binds a generic and infers a text graph "
+               "a named property binds a generic and infers a text function "
                "result without another annotation");
 
   joggle::Compiler inconsistent;
@@ -370,7 +400,7 @@ module dependent@1.0.0 {
   const auto word8 = inconsistent_word
                          ? inconsistent.make(*inconsistent_word, std::int64_t{8})
                          : std::nullopt;
-  auto inconsistent_graph = inconsistent.graph();
+  auto inconsistent_graph = inconsistent.function();
   if (!inconsistent_linked || !inconsistent_input || !default_input || !word8 ||
       !inconsistent_graph) {
     return EXIT_FAILURE;
@@ -380,12 +410,12 @@ module dependent@1.0.0 {
     auto edit = inconsistent_graph->edit();
     const auto value = edit.append(*inconsistent_input, {}, {*word8});
     edit.set(value, "width", std::int64_t{7});
-    edit.output(value.result(0));
+    edit.ret(inconsistent_graph->entry(), {value.result(0)});
     joggle::Diagnostics diagnostics;
     inconsistent_rejected = !edit.commit(diagnostics) && !diagnostics.ok();
   }
-  ok &= expect(inconsistent_rejected && inconsistent_graph->inputs().empty() &&
-                   inconsistent_graph->operations().empty(),
+  ok &= expect(inconsistent_rejected && inconsistent_graph->arguments().empty() &&
+                   inconsistent_graph->instructions().empty(),
                "commit validates an explicit result against its dependent "
                "property and rolls back on mismatch");
 
@@ -398,7 +428,7 @@ module dependent@1.0.0 {
                        : std::nullopt;
   const auto named_input =
       defaulted_module ? defaulted_module->function("input") : std::nullopt;
-  auto defaulted_graph = defaulted.graph();
+  auto defaulted_graph = defaulted.function();
   if (!defaulted_linked || !defaulted_input || !named_input ||
       !defaulted_graph) {
     return EXIT_FAILURE;
@@ -406,20 +436,20 @@ module dependent@1.0.0 {
   {
     auto edit = defaulted_graph->edit();
     const auto value = edit.append(*defaulted_input);
-    edit.output(value.result(0));
+    edit.ret(defaulted_graph->entry(), {value.result(0)});
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
       return EXIT_FAILURE;
     }
   }
   const auto defaulted_width =
-      defaulted_graph->outputs().front().type().get<std::int64_t>("width");
+      defaulted_graph->entry().terminator().returned().front().type().get<std::int64_t>("width");
   ok &= expect(defaulted_width && *defaulted_width == 8 &&
                    defaulted.verify(*defaulted_graph),
                "C++ append infers a result from a schema-owned property "
                "default without repeating the type");
 
-  auto named_graph = defaulted.graph();
+  auto named_graph = defaulted.function();
   if (!named_graph) {
     return EXIT_FAILURE;
   }
@@ -433,14 +463,14 @@ module dependent@1.0.0 {
                            .append(*named_input, {},
                                    std::move(width_property))
                            .value();
-    edit.output(value);
+    edit.ret(named_graph->entry(), {value});
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
       return EXIT_FAILURE;
     }
   }
   const auto named_width =
-      named_graph->outputs().front().type().get<std::int64_t>("width");
+      named_graph->entry().terminator().returned().front().type().get<std::int64_t>("width");
   ok &= expect(named_width && *named_width == 12 &&
                    defaulted.verify(*named_graph),
                "a named C++ property participates in result inference at "
@@ -564,52 +594,52 @@ module computed@1.0.0 {
                   [](std::int64_t value) { return value * 2; });
   }
   const auto computed_graph =
-      computed_linked ? computed.graph("computed.main") : std::nullopt;
+      computed_linked ? computed.function("computed.main") : std::nullopt;
   const auto packed_graph =
-      computed_linked ? computed.graph("computed.pack") : std::nullopt;
+      computed_linked ? computed.function("computed.pack") : std::nullopt;
   const auto aligned_graph =
-      computed_linked ? computed.graph("computed.align_width") : std::nullopt;
+      computed_linked ? computed.function("computed.align_width") : std::nullopt;
   const auto sum_graph =
-      computed_linked ? computed.graph("computed.sum") : std::nullopt;
+      computed_linked ? computed.function("computed.sum") : std::nullopt;
   const auto quotient_graph =
-      computed_linked ? computed.graph("computed.quotient") : std::nullopt;
+      computed_linked ? computed.function("computed.quotient") : std::nullopt;
   const auto compile_time_operator_graph =
-      computed_linked ? computed.graph("computed.compile_time_operator")
+      computed_linked ? computed.function("computed.compile_time_operator")
                       : std::nullopt;
   const auto compile_time_branch_graph =
-      computed_linked ? computed.graph("computed.compile_time_branch")
+      computed_linked ? computed.function("computed.compile_time_branch")
                       : std::nullopt;
   const auto compile_time_host_graph =
-      computed_linked ? computed.graph("computed.compile_time_host")
+      computed_linked ? computed.function("computed.compile_time_host")
                       : std::nullopt;
   const auto main_width =
-      computed_graph && !computed_graph->outputs().empty()
-          ? computed_graph->outputs().front().type().get<std::int64_t>("width")
+      computed_graph && !computed_graph->entry().terminator().returned().empty()
+          ? computed_graph->entry().terminator().returned().front().type().get<std::int64_t>("width")
           : std::optional<std::int64_t>{};
   const auto packed_width =
-      packed_graph && !packed_graph->outputs().empty()
-          ? packed_graph->outputs().front().type().get<std::int64_t>("width")
+      packed_graph && !packed_graph->entry().terminator().returned().empty()
+          ? packed_graph->entry().terminator().returned().front().type().get<std::int64_t>("width")
           : std::optional<std::int64_t>{};
   const auto aligned_width =
-      aligned_graph && !aligned_graph->outputs().empty()
-          ? aligned_graph->outputs().front().type().get<std::int64_t>("width")
+      aligned_graph && !aligned_graph->entry().terminator().returned().empty()
+          ? aligned_graph->entry().terminator().returned().front().type().get<std::int64_t>("width")
           : std::optional<std::int64_t>{};
   const std::string computed_text =
       computed_module ? joggle::format(*computed_module) : std::string{};
   const auto compile_time_operator_width =
       compile_time_operator_graph &&
-              !compile_time_operator_graph->outputs().empty()
-          ? compile_time_operator_graph->outputs().front().type().get<std::int64_t>(
+              !compile_time_operator_graph->entry().terminator().returned().empty()
+          ? compile_time_operator_graph->entry().terminator().returned().front().type().get<std::int64_t>(
                 "width")
           : std::optional<std::int64_t>{};
   const auto compile_time_branch_width =
-      compile_time_branch_graph && !compile_time_branch_graph->outputs().empty()
-          ? compile_time_branch_graph->outputs().front().type().get<std::int64_t>(
+      compile_time_branch_graph && !compile_time_branch_graph->entry().terminator().returned().empty()
+          ? compile_time_branch_graph->entry().terminator().returned().front().type().get<std::int64_t>(
                 "width")
           : std::optional<std::int64_t>{};
   const auto compile_time_host_width =
-      compile_time_host_graph && !compile_time_host_graph->outputs().empty()
-          ? compile_time_host_graph->outputs().front().type().get<std::int64_t>(
+      compile_time_host_graph && !compile_time_host_graph->entry().terminator().returned().empty()
+          ? compile_time_host_graph->entry().terminator().returned().front().type().get<std::int64_t>(
                 "width")
           : std::optional<std::int64_t>{};
   if (!computed_graph || !packed_graph || !aligned_graph || !sum_graph ||
@@ -630,10 +660,10 @@ module computed@1.0.0 {
                    *aligned_width == 16 && *compile_time_operator_width == 8 &&
                    *compile_time_branch_width == 8 &&
                    *compile_time_host_width == 14 &&
-                   sum_graph->operations().size() == 1U &&
-                   sum_graph->operations().front().schema().name() == "add" &&
-                   quotient_graph->operations().size() == 1U &&
-                   quotient_graph->operations().front().schema().name() ==
+                   sum_graph->instructions().size() == 1U &&
+                   sum_graph->instructions().front().callee().name() == "add" &&
+                   quotient_graph->instructions().size() == 1U &&
+                   quotient_graph->instructions().front().callee().name() ==
                        "floor_word" &&
                    computed_text.find("word<W + 1>") != std::string::npos &&
                    computed_text.find("word<ceildiv(M * N, 8)>") !=
@@ -698,10 +728,10 @@ module projected@1.0.0 {
                 "projected.joggle");
   const bool projected_linked = projected.link();
   const auto encode13 = projected_linked
-                            ? projected.graph("projected.encode13")
+                            ? projected.function("projected.encode13")
                             : std::nullopt;
   const auto align13 = projected_linked
-                           ? projected.graph("projected.align13")
+                           ? projected.function("projected.align13")
                            : std::nullopt;
   const auto format_module = projected.module("formats");
   const std::string format_text =
@@ -711,13 +741,13 @@ module projected@1.0.0 {
   }
   ok &= expect(
       encode13 && align13 &&
-          encode13->outputs().front().type().get<std::int64_t>("width") ==
+          encode13->entry().terminator().returned().front().type().get<std::int64_t>("width") ==
               std::optional<std::int64_t>{13} &&
-          encode13->outputs().front().type().get<bool>("signed") ==
+          encode13->entry().terminator().returned().front().type().get<bool>("signed") ==
               std::optional<bool>{true} &&
-          align13->outputs().front().type().get<std::int64_t>("width") ==
+          align13->entry().terminator().returned().front().type().get<std::int64_t>("width") ==
               std::optional<std::int64_t>{16} &&
-          align13->outputs().front().type().get<bool>("signed") ==
+          align13->entry().terminator().returned().front().type().get<bool>("signed") ==
               std::optional<bool>{true} &&
           format_text.find("storage_bits = width;") != std::string::npos &&
           format_text.find("fn align") != std::string::npos,
@@ -823,11 +853,11 @@ module imported_function@1.0.0 {
   const bool imported_function_linked = imported_function.link();
   const auto imported_function_graph =
       imported_function_linked
-          ? imported_function.graph("imported_function.main")
+          ? imported_function.function("imported_function.main")
           : std::nullopt;
   const auto imported_width =
-      imported_function_graph && !imported_function_graph->outputs().empty()
-          ? imported_function_graph->outputs()
+      imported_function_graph && !imported_function_graph->entry().terminator().returned().empty()
+          ? imported_function_graph->entry().terminator().returned()
                 .front()
                 .type()
                 .get<std::int64_t>("width")
@@ -862,16 +892,16 @@ module imported_operator@1.0.0 {
   const bool imported_operator_linked = imported_operator.link();
   const auto imported_operator_graph =
       imported_operator_linked
-          ? imported_operator.graph("imported_operator.main")
+          ? imported_operator.function("imported_operator.main")
           : std::nullopt;
   if (!imported_operator_graph) {
     imported_operator.diagnostics().print(std::cerr);
   }
   ok &= expect(imported_operator_graph &&
-                   imported_operator_graph->operations().size() == 1U &&
-                   imported_operator_graph->operations()
+                   imported_operator_graph->instructions().size() == 1U &&
+                   imported_operator_graph->instructions()
                            .front()
-                           .schema()
+                           .callee()
                            .symbol()
                            .qualified_name() == "native_arith.add",
                "imported operator notation resolves for native SSA types");
@@ -895,7 +925,7 @@ module ambiguous_operator@1.0.0 {
   const bool ambiguous_operator_linked = ambiguous_operator.link();
   const auto ambiguous_operator_graph =
       ambiguous_operator_linked
-          ? ambiguous_operator.graph("ambiguous_operator.main")
+          ? ambiguous_operator.function("ambiguous_operator.main")
           : std::nullopt;
   const bool reports_operator_ambiguity = std::any_of(
       ambiguous_operator.diagnostics().entries().begin(),
@@ -923,7 +953,7 @@ module unsafe_expression@1.0.0 {
                         "unsafe-expression.joggle");
   const bool unsafe_linked = unsafe_expression.link();
   const auto unsafe_graph =
-      unsafe_linked ? unsafe_expression.graph("unsafe_expression.main")
+      unsafe_linked ? unsafe_expression.function("unsafe_expression.main")
                     : std::nullopt;
   const bool reports_division_by_zero =
       std::any_of(unsafe_expression.diagnostics().entries().begin(),

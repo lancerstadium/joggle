@@ -39,11 +39,11 @@ int main(int argc, char** argv) {
   const auto positive = module->type("positive");
   const auto value = positive ? compiler.make(*positive, std::int64_t{7})
                               : std::optional<joggle::Type>{};
-  auto graph = compiler.graph();
+  auto function = compiler.function();
   bool ok = true;
   ok &= expect(value.has_value(),
                "the loaded behavior refines type construction");
-  ok &= expect(graph && compiler.run(*graph, "behavior_plugin.noop"),
+  ok &= expect(function && compiler.run(*function, "behavior_plugin.noop"),
                "the loaded behavior implements a bodyless pass");
   ok &= expect(compiler.load_behavior("behavior_plugin", argv[2]),
                "loading the same exact behavior is idempotent");

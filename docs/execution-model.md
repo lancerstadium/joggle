@@ -246,10 +246,10 @@ type. These are ordinary module-owned types with host representations, not
 trusted kernel domains. Loading, analysis, transformation, and emission remain
 ordinary registered functions over those types.
 
-The C++ `Graph` API is transitional. Region ownership has already been removed
-from its storage; its useful transactional editing logic moves behind
-`Function` and `Block`, after which the `Graph` name and graph-specific
-compiler domain disappear as well.
+The C++ owning API is Function/Block/Instruction/Value. Analysis views may use
+graph terminology, but they neither own nor mutate program objects. The
+temporary compiler-callback `function` domain will disappear when ordinary
+Module-declared handle types gain host representations.
 
 ## Minimal trusted kernel
 

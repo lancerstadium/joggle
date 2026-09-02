@@ -13,12 +13,12 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
   }
 
   compiler.bind(*convert, [keep = *keep, converted = *converted](
-                            joggle::Graph& graph,
+                            joggle::Function& function,
                             joggle::Diagnostics& pass_diagnostics) {
-    const auto operations = graph.all_operations();
-    auto edit = graph.edit();
-    for (const joggle::Operation& operation : operations) {
-      if (operation.schema() == keep) {
+    const auto operations = function.instructions();
+    auto edit = function.edit();
+    for (const joggle::Instruction& operation : operations) {
+      if (operation.callee() == keep) {
         edit.replace(operation, converted);
       }
     }

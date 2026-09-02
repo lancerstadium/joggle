@@ -6,7 +6,7 @@ module external@1.0.0 {
   fn make<N: int>(bits: N) -> scalar<N>;
   fn keep<T: type>(input: T) -> T;
   fn converted<T: type>(input: T) -> T;
-  fn convert(input: graph) -> graph;
+  fn convert(input: function) -> function;
   fn main(input: scalar<8>) -> scalar<8> {
     output = keep(input);
     return output;

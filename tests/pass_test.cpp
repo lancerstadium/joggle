@@ -24,11 +24,11 @@ int main() {
 joggle 1;
 module pipeline@1.0.0 {
   import test_ir@1;
-  fn read(input: bytes) -> graph;
-  fn inspect(input: graph) -> int;
-  fn emit(input: graph) -> bytes;
+  fn read(input: bytes) -> function;
+  fn inspect(input: function) -> int;
+  fn emit(input: function) -> bytes;
   fn consume(input: bytes);
-  fn clean(input: graph) -> graph {
+  fn clean(input: function) -> function {
     return test_ir.canonicalize(input);
   }
   fn compile(input: bytes) -> bytes {
@@ -67,12 +67,12 @@ module pipeline@1.0.0 {
     return EXIT_FAILURE;
   }
   const auto integer = compiler.make(*integer_decl, std::int64_t{8});
-  auto graph = compiler.graph();
-  if (!integer || !graph) {
+  auto function = compiler.function();
+  if (!integer || !function) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
-  auto edit = graph->edit();
+  auto edit = function->edit();
   const auto input = edit.argument(*integer);
   const auto first = edit.append(*arith_cast_decl, {input});
   const auto second = edit.append(*arith_cast_decl, {first.result(0)});
@@ -89,9 +89,9 @@ module pipeline@1.0.0 {
                        joggle::Module::Expression::reference("bytes") &&
                    read->results().size() == 1U &&
                    read->results().front().domain ==
-                       joggle::Module::Expression::reference("graph") &&
+                       joggle::Module::Expression::reference("function") &&
                    emit->inputs().front().domain ==
-                       joggle::Module::Expression::reference("graph") &&
+                       joggle::Module::Expression::reference("function") &&
                    emit->results().front().domain ==
                        joggle::Module::Expression::reference("bytes") &&
                    compile->inputs().front().domain ==
@@ -102,19 +102,19 @@ module pipeline@1.0.0 {
 
   compiler.bind(*read,
                 [](joggle::Compiler& current,
-                   const joggle::Bytes& bytes) -> std::optional<joggle::Graph> {
-                  return bytes.empty() ? std::nullopt : current.graph();
+                   const joggle::Bytes& bytes) -> std::optional<joggle::Function> {
+                  return bytes.empty() ? std::nullopt : current.function();
                 });
-  compiler.bind(*inspect, [](const joggle::Graph& current) -> std::int64_t {
-    return static_cast<std::int64_t>(current.operations().size());
+  compiler.bind(*inspect, [](const joggle::Function& current) -> std::int64_t {
+    return static_cast<std::int64_t>(current.instructions().size());
   });
-  compiler.bind(*emit, [](const joggle::Graph& current) -> joggle::Bytes {
-    return {static_cast<std::byte>(current.operations().size())};
+  compiler.bind(*emit, [](const joggle::Function& current) -> joggle::Bytes {
+    return {static_cast<std::byte>(current.instructions().size())};
   });
   bool consumed = false;
   compiler.bind(*consume, [&](const joggle::Bytes&) { consumed = true; });
   const joggle::Bytes encoded{std::byte{0x42}};
-  auto decoded = compiler.run<joggle::Graph>(*read, encoded);
+  auto decoded = compiler.run<joggle::Function>(*read, encoded);
   auto count = decoded
                    ? compiler.run<std::int64_t>(*inspect, *decoded)
                    : std::optional<std::int64_t>{};
@@ -140,9 +140,9 @@ module pipeline@1.0.0 {
                "derived parameters share the ordinary Type query path");
   ok &= expect(canonicalize->form() == joggle::Module::FunctionDecl::Form::Body,
                "a rewrite uses the same function body form");
-  ok &= expect(compiler.run(*graph, *clean),
+  ok &= expect(compiler.run(*function, *clean),
                "an imported rule pass composes without a C++ binding");
-  ok &= expect(graph->operations().empty(),
+  ok &= expect(function->instructions().empty(),
                "greedy contraction removes redundant same-type casts");
 
   constexpr std::string_view repeated_source = R"(
@@ -150,7 +150,7 @@ joggle 1;
 module repeated@1.0.0 {
   type value();
   fn pair<T: type>(lhs: T, rhs: T) -> T;
-  fn deduplicate(input: graph) -> graph {
+  fn deduplicate(input: function) -> function {
     return rewrite(input) {
       pair($x, $x) => $x;
     };
@@ -169,7 +169,7 @@ module repeated@1.0.0 {
       repeated ? repeated->function("deduplicate") : std::nullopt;
   const auto value = value_decl ? repeated_compiler.make(*value_decl)
                                 : std::optional<joggle::Type>{};
-  auto repeated_graph = repeated_compiler.graph();
+  auto repeated_graph = repeated_compiler.function();
   if (!pair_decl || !deduplicate || !value || !repeated_graph) {
     return EXIT_FAILURE;
   }
@@ -183,7 +183,7 @@ module repeated@1.0.0 {
     return EXIT_FAILURE;
   }
   ok &= expect(repeated_compiler.run(*repeated_graph, *deduplicate) &&
-                   repeated_graph->operations().size() == 1U,
+                   repeated_graph->instructions().size() == 1U,
                "repeated pass variables require the same SSA value");
 
   constexpr std::string_view mismatch_source = R"(
@@ -192,7 +192,7 @@ module repeated@1.0.0 {
       type a();
       type b();
       fn cast<A: type, B: type>(input: A) -> B;
-      fn simplify(input: graph) -> graph {
+      fn simplify(input: function) -> function {
         return rewrite(input) {
           cast($input) => $input;
         };
@@ -219,7 +219,7 @@ module repeated@1.0.0 {
   }
   const auto a = mismatch_compiler.make(*a_decl);
   const auto b = mismatch_compiler.make(*b_decl);
-  auto mismatch_graph = mismatch_compiler.graph();
+  auto mismatch_graph = mismatch_compiler.function();
   if (!a || !b || !mismatch_graph) {
     return EXIT_FAILURE;
   }
@@ -232,18 +232,18 @@ module repeated@1.0.0 {
   }
   ok &= expect(
       !mismatch_compiler.run(*mismatch_graph, *simplify) &&
-          mismatch_graph->operations().size() == 1U &&
-          mismatch_graph->operations().front().schema().name() ==
+          mismatch_graph->instructions().size() == 1U &&
+          mismatch_graph->instructions().front().callee().name() ==
               "cast" &&
-          mismatch_graph->operations().front().result(0).type() == *b,
-      "type-incompatible rule fails and restores the whole Graph");
+          mismatch_graph->instructions().front().result(0).type() == *b,
+      "type-incompatible rule fails and restores the whole Function");
 
   constexpr std::string_view guarded_source = R"(
     joggle 1;
     module guarded@1.0.0 {
       type a();
       fn identity<T: type>(input: T) -> T;
-      fn touch(input: graph) -> graph;
+      fn touch(input: function) -> function;
     }
   )";
   joggle::Compiler guarded_compiler;
@@ -257,7 +257,7 @@ module repeated@1.0.0 {
       guarded ? guarded->function("identity") : std::nullopt;
   const auto guarded_a =
       guarded_a_decl ? guarded_compiler.make(*guarded_a_decl) : std::nullopt;
-  auto guarded_graph = guarded_compiler.graph();
+  auto guarded_graph = guarded_compiler.function();
   if (!guarded || !guarded_identity || !guarded_a || !guarded_graph) {
     return EXIT_FAILURE;
   }
@@ -272,7 +272,7 @@ module repeated@1.0.0 {
   }
   guarded_compiler.bind(
       *guarded_identity,
-      [](const joggle::Operation&, joggle::Diagnostics& diagnostics) {
+      [](const joggle::Instruction&, joggle::Diagnostics& diagnostics) {
         diagnostics.report("guarded pass input rejected");
         return false;
       });
@@ -283,29 +283,29 @@ module repeated@1.0.0 {
   }
   guarded_compiler.bind(
       *guarded_touch,
-      [&](joggle::Compiler&, joggle::Graph&, joggle::Diagnostics&) {
+      [&](joggle::Compiler&, joggle::Function&, joggle::Diagnostics&) {
         pass_called = true;
         return true;
       });
   ok &= expect(!guarded_compiler.run(*guarded_graph, "guarded.touch") &&
                    !pass_called && !guarded_compiler.ok(),
-               "a pass does not execute on a Graph rejected by bound domain "
+               "a pass does not execute on a Function rejected by bound domain "
                "semantics");
 
   joggle::Compiler named_compiler;
   named_compiler.add("joggle 1; module named@1.0.0 { "
-                     "fn noop(input: graph) -> graph; }",
+                     "fn noop(input: function) -> function; }",
                      "named.joggle");
   const bool named_linked = named_compiler.link();
   const auto named_module = named_compiler.module("named");
-  auto named_graph = named_compiler.graph();
+  auto named_graph = named_compiler.function();
   bool named_called = false;
   if (named_module) {
     const auto noop = named_module->function("noop");
     if (!noop) {
       return EXIT_FAILURE;
     }
-    named_compiler.bind(*noop, [&](joggle::Compiler&, joggle::Graph&,
+    named_compiler.bind(*noop, [&](joggle::Compiler&, joggle::Function&,
                                    joggle::Diagnostics&) {
       named_called = true;
       return true;
@@ -324,9 +324,9 @@ module repeated@1.0.0 {
   incompatible.add(R"(
 joggle 1;
 module incompatible@1.0.0 {
-  fn read(input: bytes) -> graph;
-  fn inspect(input: graph) -> int;
-  fn broken(input: bytes) -> graph {
+  fn read(input: bytes) -> function;
+  fn inspect(input: function) -> int;
+  fn broken(input: bytes) -> function {
     return inspect(read(input));
   }
 }
@@ -340,9 +340,9 @@ module incompatible@1.0.0 {
 joggle 1;
 module transactional@1.0.0 {
   fn token() -> i32;
-  fn mutate(input: graph) -> graph;
-  fn reject(input: graph) -> bytes;
-  fn pipeline(input: graph) -> bytes {
+  fn mutate(input: function) -> function;
+  fn reject(input: function) -> bytes;
+  fn pipeline(input: function) -> bytes {
     return reject(mutate(input));
   }
 }
@@ -362,13 +362,13 @@ module transactional@1.0.0 {
   const auto transaction = transactional_module
                                ? transactional_module->function("pipeline")
                                : std::nullopt;
-  auto transactional_graph = transactional.graph();
+  auto transactional_graph = transactional.function();
   if (!transactional_linked || !token || !mutate || !reject || !transaction ||
       !transactional_graph) {
     return EXIT_FAILURE;
   }
   transactional.bind(
-      *mutate, [token = *token](joggle::Graph& current,
+      *mutate, [token = *token](joggle::Function& current,
                                joggle::Diagnostics& diagnostics) {
         auto edit = current.edit();
         edit.append(token);
@@ -376,18 +376,18 @@ module transactional@1.0.0 {
       });
   transactional.bind(
       *reject,
-      [](const joggle::Graph&) -> std::optional<joggle::Bytes> {
+      [](const joggle::Function&) -> std::optional<joggle::Bytes> {
         return std::nullopt;
       });
   const auto rejected =
       transactional.run<joggle::Bytes>(*transaction, *transactional_graph);
-  ok &= expect(!rejected && transactional_graph->operations().empty(),
-               "typed sequence failure restores its existing Graph input");
+  ok &= expect(!rejected && transactional_graph->instructions().empty(),
+               "typed sequence failure restores its existing Function input");
 
   joggle::Compiler binding_mismatch;
   binding_mismatch.add(
       "joggle 1; module binding_mismatch@1.0.0 { "
-      "fn count(input: graph) -> int; }",
+      "fn count(input: function) -> int; }",
       "binding-mismatch.joggle");
   const bool mismatch_linked = binding_mismatch.link();
   const auto binding_module = binding_mismatch.module("binding_mismatch");
@@ -397,7 +397,7 @@ module transactional@1.0.0 {
     return EXIT_FAILURE;
   }
   binding_mismatch.bind(*count_pass,
-                        [](const joggle::Graph&) { return std::string{"bad"}; });
+                        [](const joggle::Function&) { return std::string{"bad"}; });
   ok &= expect(!binding_mismatch.ok(),
                "C++ pass binding is checked against its declared type");
 

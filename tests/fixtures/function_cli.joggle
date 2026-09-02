@@ -1,11 +1,11 @@
 joggle 1;
 
-module graph_cli@1.0.0 {
+module function_cli@1.0.0 {
   type word();
 
   fn source<T: type>() -> T;
   fn identity<T: type>(input: T) -> T;
-  fn simplify(input: graph) -> graph {
+  fn simplify(input: function) -> function {
     return rewrite(input) {
       identity($input) => $input;
     };

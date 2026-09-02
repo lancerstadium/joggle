@@ -17,7 +17,7 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
     const auto value = type.get<std::int64_t>("value");
     return value && *value > 0;
   });
-  compiler.bind(*noop, [](joggle::Compiler&, joggle::Graph&,
+  compiler.bind(*noop, [](joggle::Compiler&, joggle::Function&,
                           joggle::Diagnostics&) { return true; });
 #if defined(JOGGLE_TEST_BEHAVIOR_FAIL)
   return false;

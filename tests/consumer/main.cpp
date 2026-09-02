@@ -26,18 +26,18 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  auto graph = compiler.graph("external.main");
-  if (!graph || !compiler.run(*graph, "external.convert")) {
+  auto function = compiler.function("external.main");
+  if (!function || !compiler.run(*function, "external.convert")) {
     compiler.diagnostics().print(std::cerr);
     return 1;
   }
-  const auto operations = graph->operations();
-  if (operations.size() != 1U || operations.front().schema() != *converted) {
+  const auto operations = function->instructions();
+  if (operations.size() != 1U || operations.front().callee() != *converted) {
     compiler.diagnostics().print(std::cerr);
     return 1;
   }
 
-  auto constructed = compiler.graph();
+  auto constructed = compiler.function();
   if (!constructed) {
     return 1;
   }
@@ -45,13 +45,13 @@ int main(int argc, char** argv) {
   auto value =
       edit.append(*make, {}, joggle::property("bits", std::int64_t{12}))
           .value();
-  edit.output(value);
+  edit.ret(constructed->entry(), {value});
   joggle::Diagnostics diagnostics;
   if (!edit.commit(diagnostics)) {
     diagnostics.print(std::cerr);
     return 1;
   }
-  const auto output_count = constructed->outputs().size();
+  const auto output_count = constructed->entry().terminator().returned().size();
   const auto bits = value.type().get<std::int64_t>("bits");
   if (output_count != 1U || !bits || *bits != 12) {
     compiler.diagnostics().print(std::cerr);

@@ -68,16 +68,16 @@ int main() {
                   return attribute.get<std::string>("name");
                 });
   compiler.bind(*work_decl, *latency,
-                [](const joggle::Operation&) -> std::int64_t { return 2; });
+                [](const joggle::Instruction&) -> std::int64_t { return 2; });
 
   const auto scalar = compiler.make(*scalar_decl);
   const auto label = compiler.make(*label_decl);
-  auto graph = compiler.graph();
-  if (!scalar || !label || !graph) {
+  auto function = compiler.function();
+  if (!scalar || !label || !function) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
-  auto edit = graph->edit();
+  auto edit = function->edit();
   const auto work = edit.append(*work_decl, {}, {*scalar});
   joggle::Diagnostics edit_diagnostics;
   if (!edit.commit(edit_diagnostics)) {

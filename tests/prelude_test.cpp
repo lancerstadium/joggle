@@ -72,11 +72,11 @@ module native_test@1.0.0 {
   const auto u32 = compiler.make("u32");
   const auto f32 = compiler.make("f32");
   const auto embedded_prelude = compiler.module("prelude");
-  const auto integers = compiler.graph("native_test.integers");
-  const auto floating = compiler.graph("native_test.floating");
-  const auto custom = compiler.graph("native_test.custom");
-  const auto native_width = compiler.graph("native_test.native_width");
-  const auto custom_width = compiler.graph("native_test.custom_width");
+  const auto integers = compiler.function("native_test.integers");
+  const auto floating = compiler.function("native_test.floating");
+  const auto custom = compiler.function("native_test.custom");
+  const auto native_width = compiler.function("native_test.native_width");
+  const auto custom_width = compiler.function("native_test.custom_width");
   const auto scalar =
       embedded_prelude ? embedded_prelude->interface("scalar") : std::nullopt;
   const auto storage_bits = scalar && !scalar->fields().empty()
@@ -101,11 +101,11 @@ module native_test@1.0.0 {
                "native and interface-conforming custom types instantiate");
   const auto native_bits =
       native_width
-          ? native_width->outputs().front().type().get<std::int64_t>("width")
+          ? native_width->entry().terminator().returned().front().type().get<std::int64_t>("width")
           : std::nullopt;
   const auto custom_bits =
       custom_width
-          ? custom_width->outputs().front().type().get<std::int64_t>("width")
+          ? custom_width->entry().terminator().returned().front().type().get<std::int64_t>("width")
           : std::nullopt;
   ok &= expect(native_bits == std::optional<std::int64_t>{32} &&
                    custom_bits == std::optional<std::int64_t>{4},

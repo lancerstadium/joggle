@@ -236,10 +236,9 @@ successor     := identifier "(" [ expressions ] ")"
 
 The implementation is currently migrating to this single grammar. Direct
 Known `if`, ordinary straight-line bodies, and explicit typed CFG blocks are
-implemented. Closure parsing, residual `if`, loop syntax, and the final public
-Function/Block C++ API remain under construction. Nested Region syntax and
-storage have been removed; the remaining flat `Graph` C++ name is only a
-transactional migration shell and is not part of the language model.
+implemented. The public owning IR is Function/Block/Instruction/Value.
+Closure parsing, residual `if`, loop syntax, and the unified staged evaluator
+remain under construction. Nested Region syntax and storage have been removed.
 
 ## Canonical source
 

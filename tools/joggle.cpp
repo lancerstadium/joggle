@@ -15,7 +15,7 @@
 
 #include <joggle/joggle.h>
 
-#include "graph_internal.h"
+#include "ir_internal.h"
 #include "module_internal.h"
 #include "module_repository.h"
 #include "type_internal.h"
@@ -32,7 +32,7 @@ void usage(std::ostream& output) {
          << "  joggle check <file.joggle> [--with <module.joggle>] "
             "[--behavior <library>] [--root <directory>]\n"
          << "  joggle fmt <file.joggle> [--write | -o <file>]\n"
-         << "  joggle run <file.joggle> <graph> [pass ...] "
+         << "  joggle run <file.joggle> <function> [pass ...] "
             "[--with <module.joggle>] [--load-behavior <module[=library]>] "
             "[--behavior <library>] [--root <directory>] [-o <file>]\n"
          << "  joggle install <module.joggle> [--behavior <library>] "
@@ -335,7 +335,7 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::detail::ModuleAccess::expression(function) == nullptr &&
           (!function.value_inputs().empty() ||
            !function.value_results().empty()) &&
-          !compiler.graph(function.symbol())) {
+          !compiler.function(function.symbol())) {
         return false;
       }
     }
@@ -377,15 +377,15 @@ void collect_modules(const joggle::detail::ParameterValue& value,
   }
 }
 
-void collect_modules(const joggle::Operation& operation,
+void collect_modules(const joggle::Instruction& operation,
                      std::set<std::string, std::less<>>& modules) {
-  modules.emplace(operation.schema().symbol().module_name());
+  modules.emplace(operation.callee().symbol().module_name());
   for (const joggle::Value& result : operation.results()) {
     collect_modules(result.type(), modules);
   }
   for (const joggle::Module::ParameterDecl& parameter :
-       operation.schema().static_inputs()) {
-    if (const auto property = joggle::detail::GraphAccess::property(
+       operation.callee().static_inputs()) {
+    if (const auto property = joggle::detail::FunctionAccess::property(
             operation, parameter.name)) {
       collect_modules(*property, modules);
     }
@@ -393,15 +393,15 @@ void collect_modules(const joggle::Operation& operation,
 }
 
 std::set<std::string, std::less<>>
-referenced_modules(const joggle::Graph& graph) {
+referenced_modules(const joggle::Function& function) {
   std::set<std::string, std::less<>> modules;
-  for (const joggle::Value& input : graph.inputs()) {
+  for (const joggle::Value& input : function.arguments()) {
     collect_modules(input.type(), modules);
   }
-  for (const joggle::Operation& operation : graph.operations()) {
+  for (const joggle::Instruction& operation : function.instructions()) {
     collect_modules(operation, modules);
   }
-  for (const joggle::Value& output : graph.outputs()) {
+  for (const joggle::Value& output : function.entry().terminator().returned()) {
     collect_modules(output.type(), modules);
   }
   return modules;
@@ -502,7 +502,7 @@ int main(int argc, char** argv) {
   if (command == "run") {
     if (parsed.positional.size() < 2U) {
       return usage_error(
-          diagnostics, "run expects a Module source file and graph name");
+          diagnostics, "run expects a Module source file and function name");
     }
     if (parsed.in_place) {
       return usage_error(diagnostics, "run does not accept --write");
@@ -556,29 +556,29 @@ int main(int argc, char** argv) {
                  : std::string(member);
     };
     const std::string graph_name = qualified(parsed.positional[1]);
-    auto graph = compiler.graph(graph_name);
-    if (!graph) {
+    auto function = compiler.function(graph_name);
+    if (!function) {
       return fail(compiler.diagnostics());
     }
     for (std::size_t index = 2U; index < parsed.positional.size(); ++index) {
-      if (!compiler.run(*graph, qualified(parsed.positional[index]))) {
+      if (!compiler.run(*function, qualified(parsed.positional[index]))) {
         return fail(compiler.diagnostics());
       }
     }
     const std::size_t separator = graph_name.find('.');
-    const std::string graph_member = graph_name.substr(separator + 1U);
+    const std::string function_body = graph_name.substr(separator + 1U);
     const std::string graph_source =
-        joggle::format(*graph, graph_member);
-    const auto dependencies = referenced_modules(*graph);
+        joggle::format(*function, function_body);
+    const auto dependencies = referenced_modules(*function);
     std::string artifact_name(root->name());
     const auto root_members = root->members();
     const bool already_derived =
         artifact_name.ends_with("_compiled") && root_members.size() == 1U &&
         root_members.front().kind() == joggle::Module::SymbolKind::Function &&
-        root_members.front().local_name() == graph_member &&
+        root_members.front().local_name() == function_body &&
         !dependencies.contains(artifact_name);
     if (!already_derived) {
-      artifact_name += "_" + graph_member + "_compiled";
+      artifact_name += "_" + function_body + "_compiled";
     }
     while (dependencies.contains(artifact_name)) {
       artifact_name += "_compiled";
@@ -589,7 +589,7 @@ int main(int argc, char** argv) {
     for (const std::string& dependency : dependencies) {
       const auto module = compiler.module(dependency);
       if (!module) {
-        diagnostics.report("compiled Graph references unknown module '" +
+        diagnostics.report("compiled Function references unknown module '" +
                            dependency + "'");
         return fail(diagnostics);
       }
