@@ -157,9 +157,21 @@ With a Known condition, the compiler executes only the selected branch. With a
 Residual condition, the same expression becomes Blocks and typed successor
 edges. `@(if ...)` rejects a Residual condition.
 
-Structured loops will use direct `while` and `for` syntax. Known control may
-execute within the evaluation budget; Residual control becomes CFG. Loop-carried
-bindings become Block arguments rather than phi or yield operations.
+Structured loops use direct syntax:
+
+```joggle
+current = start;
+while less(current, limit) {
+  current = next(current);
+}
+```
+
+A Known condition executes the loop in the compiler within its deterministic
+evaluation budget. A Residual `i1` condition becomes header, body, and exit
+Blocks. Rebound values used after the loop become typed Block arguments; the
+author writes no phi, `yield`, `iter_args`, or Region signature. `break` and
+`continue` are reserved for the same direct-control model but are not yet
+implemented.
 
 Most authors never write Blocks explicitly. The low-level form exists for
 lossless formatting of arbitrary pass output:
@@ -215,6 +227,7 @@ fn            := "fn" identifier [ generics ] parameters
 body          := "{" { statement } "}"
 statement     := binding "=" expression ";"
                | expression ";"
+               | "while" expression "{" { statement } "}"
                | "return" [ expressions ] ";"
                | explicit-block
 binding       := identifier [ ":" expression ]
@@ -237,10 +250,11 @@ successor     := identifier "(" [ expressions ] ")"
 ```
 
 The implementation uses this single expression grammar for direct Known `if`,
-ordinary straight-line bodies, Residual and nested `if`, and explicit typed CFG
-blocks. The public owning IR is Function/Block/Instruction/Value. Closure and
-loop syntax remain under construction. Nested Region syntax and storage have
-been removed.
+ordinary straight-line bodies, Residual and nested `if`, structured `while`,
+and explicit typed CFG blocks. The public owning IR is
+Function/Block/Instruction/Value. Multi-statement branch expressions,
+`break`, `continue`, `for`, and closures remain under construction. Nested
+Region syntax and storage have been removed.
 
 ## Canonical source
 

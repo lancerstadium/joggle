@@ -20,8 +20,9 @@ frontend/backend direction, a graph domain, or a second pass namespace.
 
 The C++ IR follows `Module -> Function -> Block -> Instruction/Value`.
 `Graph` and `Region` are not ownership objects: def-use and control-flow graphs
-are relationships over a Function and may be exposed by non-owning analysis
-views. The normative architecture and staging semantics are specified in
+are relationships directly queryable from a Function. Dominance, liveness,
+topological order, and similar products are analyses of that one Function,
+not additional program containers. The normative architecture and staging semantics are specified in
 [the design](docs/design.md) and
 [the execution model](docs/execution-model.md).
 

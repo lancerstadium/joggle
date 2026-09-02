@@ -73,5 +73,6 @@ ownership hierarchy.
 
 Mutating compiler functions use one transactional `Function::Edit`. Failure,
 diagnostics, exceptions, or failed verification restore the input checkpoint.
-Analyses can consume immutable `Function`, `CFGView`, or `DefUseView` handles
-without becoming owners of the program.
+Analyses consume an immutable `Function` and return ordinary Module-declared
+results. CFG and def-use are relations already present in that Function, not
+separate handles or owners.

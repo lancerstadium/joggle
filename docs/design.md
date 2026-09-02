@@ -46,8 +46,9 @@ explicit parameters.
 
 Straight-line functions naturally form a def-use graph. Multiple Blocks add a
 control-flow graph. These are relationships over Function-owned objects, not an
-additional `Graph` owner or value domain. Analyses may construct `DataflowView`
-or `CFGView` caches, but a view cannot own or mutate the program.
+additional `Graph` owner or value domain. Algorithms consume the same Function;
+cached predecessors, uses, dominance, liveness, or traversal order are analysis
+results rather than alternative graph APIs.
 
 ## Function IR
 

@@ -61,11 +61,16 @@ struct BindingSyntax {
   std::string name;
   std::optional<ValueSyntax> type;
   SyntaxRange range;
+  bool rebind = false;
 };
 
 struct StatementSyntax {
+  enum class Kind { Expression, While };
+
+  Kind kind = Kind::Expression;
   std::vector<BindingSyntax> bindings;
   ExpressionSyntax expression;
+  std::vector<StatementSyntax> body;
   SyntaxRange range;
 };
 

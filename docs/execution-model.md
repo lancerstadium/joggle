@@ -158,11 +158,11 @@ and no `Region` object. A later function may turn this CFG shape into
 predication, a mux, or another target operation. Those choices are extensions,
 not source-language control-flow kinds.
 
-`return` and direct calls follow the same rule. Loops will use the same block
-and typed-edge representation: a Known trip count may specialize or unroll;
-a Residual trip count leaves a loop in the program. The source spelling will be
-fixed only together with closure and loop-carried-value semantics, rather than
-exposing an internal region/yield protocol.
+`return` and direct calls follow the same rule. A source `while` evaluates in
+the compiler while its condition is Known. A Residual `i1` condition creates
+header, body, and exit Blocks. Lexical names rebound by the body are converted
+to loop-carried Block arguments automatically. The source never exposes an
+internal region, phi, iteration-argument, or yield protocol.
 
 ## Nested code without `region`
 
@@ -191,7 +191,7 @@ return choose(
 );
 ```
 
-Common control flow receives direct syntax (`if`, later structured loops).
+Common control flow receives direct syntax (`if` and `while`).
 Extension-defined structured operations use function-typed parameters. Both
 elaborate to functions and blocks. A captured closure is normalized to a
 generated function whose captures are explicit parameters; it does not create
@@ -239,9 +239,10 @@ The word *graph* remains useful descriptively: def-use edges form a dataflow
 graph and blocks form a control-flow graph. It is not, however, a declaration,
 a value domain, or a top-level C++ ownership object in the final API.
 
-Graph algorithms consume non-owning views such as `CFGView(Function)` and
-`DefUseView(Function)`. A view may cache predecessors, dominators, use lists,
-or traversal order, but it cannot own Blocks or serve as a language value.
+Graph algorithms consume the Function directly. Blocks expose successor edges;
+Values and Instructions expose definitions and operands. Predecessors, use
+lists, dominators, liveness, and traversal orders are computed analysis
+products, not public graph containers that can own or mutate the program.
 
 Compiler transformations operate on registered IR handle types. A standard IR
 Module may provide `ir.Module`, while an extension may register another handle
@@ -249,8 +250,8 @@ type. These are ordinary module-owned types with host representations, not
 trusted kernel domains. Loading, analysis, transformation, and emission remain
 ordinary registered functions over those types.
 
-The C++ owning API is Function/Block/Instruction/Value. Analysis views may use
-graph terminology, but they neither own nor mutate program objects. The
+The C++ owning API is Function/Block/Instruction/Value. Analysis results may
+use graph terminology, but they neither own nor mutate program objects. The
 temporary compiler-callback `function` domain will disappear when ordinary
 Module-declared handle types gain host representations.
 
@@ -285,11 +286,15 @@ runtime arguments.
 Known `if` conditions select one arm without creating IR. A Residual `i1`
 condition residualizes each expression arm independently, including nested
 calls and nested `if`, then joins them through sibling Blocks and typed
-successor arguments. Configurable expression-step and nesting-depth budgets
-bound compile-time evaluation and fail with a diagnostic instead of silently
-residualizing. General statement sequences inside arms, loops, closures,
-allocation budgets, and materialization remain to be implemented. Registered
-host implementations are conservatively forbidden beneath Residual control,
-so constructing both branches never executes host side effects. A future
-explicit pure/effect capability may permit safe calls without weakening this
-default.
+successor arguments. Structured `while` uses the same evaluator: Known loops
+execute during specialization, including values later consumed by dependent
+types; Residual loops become header/body/exit Blocks with inferred loop-carried
+arguments. Configurable expression-step, loop-iteration, and nesting-depth
+budgets fail with a diagnostic instead of silently residualizing.
+
+General statement sequences inside `if` arms, `break`, `continue`, closures,
+allocation budgets, and Known-value materialization remain to be implemented.
+Registered host implementations are conservatively forbidden beneath
+Residual control, so constructing both branches never executes host side
+effects. A future hermetic-call contract may permit safe native evaluation
+without weakening this default.

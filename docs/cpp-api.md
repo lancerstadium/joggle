@@ -8,7 +8,8 @@ Function -> Block -> Instruction / Value
 ```
 
 `Graph`, `Region`, `Operation`, and `Property` are not public ownership
-objects. Graph algorithms may later expose non-owning views over a `Function`.
+objects. Graph algorithms query a `Function` and return analysis results;
+they do not introduce a second program representation.
 
 ## Load and reflect Modules
 

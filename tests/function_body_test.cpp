@@ -267,6 +267,113 @@ module cfg@1.0.0 {
                "explicit source blocks instantiate as Function-owned CFG and "
                "format without a nested ownership container");
 
+  constexpr std::string_view loop_source = R"(
+joggle 1;
+module loops@1.0.0 {
+  type word(width: int);
+  fn source<T: type>() -> T;
+  fn less(lhs: i32, rhs: i32) -> i1;
+  fn next(input: i32) -> i32;
+
+  fn repeat(start: i32, limit: i32) -> i32 {
+    current = start;
+    while less(current, limit) {
+      current = next(current);
+    }
+    return current;
+  }
+
+  fn specialize() -> word<1> {
+    count = 0;
+    running = true;
+    while running {
+      count = count + 1;
+      running = false;
+    }
+    value: word<count> = source();
+    return value;
+  }
+}
+)";
+  joggle::Diagnostics loop_parse_diagnostics;
+  const auto loop_module = joggle::parse_module(
+      loop_source, loop_parse_diagnostics, "loops.joggle");
+  const std::string loop_canonical =
+      loop_module ? joggle::format(*loop_module) : std::string{};
+  joggle::Diagnostics loop_roundtrip_diagnostics;
+  const auto loop_roundtrip = loop_module
+                                  ? joggle::parse_module(
+                                        loop_canonical,
+                                        loop_roundtrip_diagnostics,
+                                        "loops-canonical.joggle")
+                                  : std::nullopt;
+  ok &= expect(loop_module && loop_roundtrip &&
+                   loop_parse_diagnostics.ok() &&
+                   loop_roundtrip_diagnostics.ok() &&
+                   joggle::format(*loop_roundtrip) == loop_canonical &&
+                   loop_canonical.find("while less(current, limit) {") !=
+                       std::string::npos,
+               "structured while syntax round-trips without a Region form");
+
+  joggle::Compiler loop_compiler;
+  loop_compiler.add(loop_source, "loops.joggle");
+  const bool loops_linked = loop_compiler.link();
+  const auto repeat = loops_linked
+                          ? loop_compiler.function("loops.repeat")
+                          : std::optional<joggle::Function>{};
+  const auto specialize = loops_linked
+                              ? loop_compiler.function("loops.specialize")
+                              : std::optional<joggle::Function>{};
+  ok &= expect(repeat && loop_compiler.verify(*repeat) &&
+                   repeat->blocks().size() == 4U &&
+                   repeat->instructions().size() == 2U &&
+                   repeat->entry().terminator().kind() ==
+                       joggle::Terminator::Kind::Jump &&
+                   repeat->blocks()[1].arguments().size() == 1U &&
+                   repeat->blocks()[1].terminator().kind() ==
+                       joggle::Terminator::Kind::Branch &&
+                   repeat->blocks()[3].arguments().size() == 1U,
+               "Residual loops carry rebinding through typed Block "
+               "arguments");
+  ok &= expect(specialize && loop_compiler.verify(*specialize) &&
+                   specialize->blocks().size() == 1U &&
+                   specialize->instructions().size() == 1U &&
+                   specialize->result_types().front() ==
+                       specialize->instructions().front().result(0).type(),
+               "Known loops execute during specialization without entering "
+               "the residual CFG");
+
+  joggle::Compiler bounded_loop({.steps = 2, .depth = 64});
+  bounded_loop.add(R"(
+joggle 1;
+module bounded_loop@1.0.0 {
+  fn never_finishes() {
+    running = true;
+    while running {
+      running = true;
+    }
+    return;
+  }
+}
+)",
+                   "bounded-loop.joggle");
+  const bool bounded_loop_linked = bounded_loop.link();
+  const auto never_finishes =
+      bounded_loop_linked
+          ? bounded_loop.function("bounded_loop.never_finishes")
+          : std::optional<joggle::Function>{};
+  const bool reports_loop_limit = std::any_of(
+      bounded_loop.diagnostics().entries().begin(),
+      bounded_loop.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find(
+                   "compile-time while iteration limit exceeded") !=
+               std::string::npos;
+      });
+  ok &= expect(bounded_loop_linked && !never_finishes && reports_loop_limit,
+               "Known loops fail deterministically when their evaluation "
+               "budget is exhausted");
+
   joggle::Diagnostics invalid_cfg_diagnostics;
   const auto invalid_cfg = joggle::parse_module(R"(
 joggle 1;

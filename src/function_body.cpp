@@ -45,7 +45,11 @@ public:
                std::span<const Module::FunctionDecl::GenericDecl> variables)
       : lexer_(lexer), diagnostics_(diagnostics), source_(std::move(source)),
         initial_diagnostics_(diagnostics.size()), current_(current),
-        variables_(variables.begin(), variables.end()) {}
+        variables_(variables.begin(), variables.end()) {
+    for (const auto& variable : variables_) {
+      locals_.insert(variable.name);
+    }
+  }
 
   std::optional<detail::FunctionBody> parse() {
     const SourcePosition begin = current_.begin;
@@ -257,6 +261,7 @@ private:
         variables_.push_back(
             {argument.name, Module::Expression::reference("type"),
              std::nullopt});
+        locals_.insert(argument.name);
         block.arguments.push_back(std::move(argument));
       } while (match(TokenKind::Comma));
       expect(TokenKind::RightParen, "')'");
@@ -351,17 +356,41 @@ private:
   detail::StatementSyntax parse_statement() {
     detail::StatementSyntax statement;
     const SourcePosition begin = current_.begin;
+    if (match_name("while")) {
+      statement.kind = detail::StatementSyntax::Kind::While;
+      statement.expression = expression();
+      expect(TokenKind::LeftBrace, "'{' after while condition");
+      const auto outer_variables = variables_;
+      const auto outer_locals = locals_;
+      while (!is(TokenKind::RightBrace) && !is(TokenKind::End) && ok()) {
+        if (is_terminator()) {
+          error("return, jump, and branch are not allowed inside a structured "
+                "while body");
+          break;
+        }
+        statement.body.push_back(parse_statement());
+      }
+      expect(TokenKind::RightBrace, "'}' after while body");
+      variables_ = outer_variables;
+      locals_ = outer_locals;
+      statement.range = {begin, previous_end_};
+      return statement;
+    }
     if (starts_binding()) {
       auto add_binding = [&](std::string name, SourcePosition binding_begin) {
         detail::BindingSyntax binding;
         binding.name = std::move(name);
+        binding.rebind = locals_.contains(binding.name);
         if (match(TokenKind::Colon)) {
           binding.type = parse_value();
         }
         binding.range = {binding_begin, previous_end_};
-        variables_.push_back(
-            {binding.name, Module::Expression::reference("type"),
-             std::nullopt});
+        if (!binding.rebind) {
+          locals_.insert(binding.name);
+          variables_.push_back(
+              {binding.name, Module::Expression::reference("type"),
+               std::nullopt});
+        }
         statement.bindings.push_back(std::move(binding));
       };
       const SourcePosition first_begin = current_.begin;
@@ -398,6 +427,7 @@ private:
   Token& current_;
   SourcePosition previous_end_;
   std::vector<Module::FunctionDecl::GenericDecl> variables_;
+  std::unordered_set<std::string> locals_;
 };
 
 std::string escape(std::string_view value) {
@@ -654,6 +684,16 @@ private:
 
   void write_statement(const detail::StatementSyntax& statement,
                        std::size_t level) {
+    if (statement.kind == detail::StatementSyntax::Kind::While) {
+      output_ << spaces(level) << "while "
+              << detail::format_expression(statement.expression.value)
+              << " {\n";
+      for (const auto& nested : statement.body) {
+        write_statement(nested, level + 1U);
+      }
+      output_ << spaces(level) << "}\n";
+      return;
+    }
     std::size_t prefix_width = 0U;
     output_ << spaces(level);
     for (std::size_t index = 0; index < statement.bindings.size(); ++index) {
@@ -1147,6 +1187,17 @@ private:
              syntax.range);
       return std::nullopt;
     }
+    if (syntax.kind == detail::ValueSyntax::Kind::Reference &&
+        syntax.elements.empty()) {
+      auto local = lookup(syntax.text);
+      auto expected_type = reflected_type(expected.domain);
+      if (local && local->known() && expected_type &&
+          local->type() == *expected_type) {
+        if (auto value = detail::FunctionAccess::known_value(*local)) {
+          return *value;
+        }
+      }
+    }
     if (domain->list) {
       if (syntax.kind != detail::ValueSyntax::Kind::List) {
         report("expected a list value for parameter '" + expected.name + "'",
@@ -1453,12 +1504,19 @@ private:
         });
   }
 
-  std::optional<Value> use(const detail::LocalUseSyntax& use) {
+  std::optional<Value> lookup(std::string_view name) const {
     for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
-      const auto found = scope->find(use.name);
+      const auto found = scope->find(std::string(name));
       if (found != scope->end()) {
         return found->second;
       }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<Value> use(const detail::LocalUseSyntax& use) {
+    if (auto value = lookup(use.name)) {
+      return value;
     }
     report("use of undefined local value '" + use.name + "'", use.range);
     return std::nullopt;
@@ -1482,12 +1540,28 @@ private:
     }
   }
 
-  void invalidate(std::span<const std::string> names,
-                  detail::SyntaxRange range) {
-    for (const std::string& name : names) {
-      if (!scopes_.back().emplace(name, std::nullopt).second) {
-        report("a local value may only be defined once", range);
+  void bind(const detail::BindingSyntax& binding,
+            std::optional<Value> value) {
+    if (!binding.rebind) {
+      if (!scopes_.back().emplace(binding.name, std::move(value)).second) {
+        report("a local value may only be defined once", binding.range);
       }
+      return;
+    }
+    for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
+      const auto found = scope->find(binding.name);
+      if (found != scope->end()) {
+        found->second = std::move(value);
+        return;
+      }
+    }
+    report("cannot rebind undefined local value '" + binding.name + "'",
+           binding.range);
+  }
+
+  void invalidate(std::span<const detail::BindingSyntax> bindings) {
+    for (const auto& binding : bindings) {
+      bind(binding, std::nullopt);
     }
   }
 
@@ -1568,8 +1642,132 @@ private:
     return {tail, use(detail::LocalUseSyntax{name, range})};
   }
 
+  Block instantiate_while(const detail::StatementSyntax& statement,
+                          Block block) {
+    if (known_result(statement.expression.value, statement.expression.range)) {
+      while (ok()) {
+        auto condition = evaluate_known(statement.expression);
+        const auto selected = condition ? condition->get<bool>() : std::nullopt;
+        if (!selected) {
+          report("Known while condition must have type bool",
+                 statement.expression.range);
+          return block;
+        }
+        if (!*selected) {
+          return block;
+        }
+        if (loop_iterations_++ >= compiler_.evaluation_limits().steps) {
+          report("compile-time while iteration limit exceeded",
+                 statement.range);
+          return block;
+        }
+        scopes_.emplace_back();
+        for (const auto& nested : statement.body) {
+          block = instantiate_statement(nested, block);
+        }
+        scopes_.pop_back();
+      }
+      return block;
+    }
+
+    std::vector<std::string> carried_names;
+    std::unordered_set<std::string> seen;
+    const auto collect = [&](const auto& self,
+                             const std::vector<detail::StatementSyntax>& body)
+        -> void {
+      for (const auto& nested : body) {
+        if (nested.kind == detail::StatementSyntax::Kind::While) {
+          self(self, nested.body);
+          continue;
+        }
+        for (const auto& binding : nested.bindings) {
+          if (binding.rebind && lookup(binding.name) &&
+              seen.insert(binding.name).second) {
+            carried_names.push_back(binding.name);
+          }
+        }
+      }
+    };
+    collect(collect, statement.body);
+
+    std::vector<Value> initial;
+    std::vector<Type> carried_types;
+    for (const std::string& name : carried_names) {
+      auto value = lookup(name);
+      if (!value) {
+        report("loop-carried value '" + name + "' is unavailable",
+               statement.range);
+        continue;
+      }
+      if (value->known()) {
+        report("a Known loop-carried value needs a registered materializer",
+               statement.range);
+        continue;
+      }
+      initial.push_back(*value);
+      carried_types.push_back(value->type());
+    }
+    if (initial.size() != carried_names.size()) {
+      return block;
+    }
+
+    const Block header = edit_->block(carried_types);
+    const Block body = edit_->block();
+    const Block exit = edit_->block(carried_types);
+    edit_->jump(block, header, initial);
+
+    for (std::size_t index = 0; index < carried_names.size(); ++index) {
+      bind({carried_names[index], std::nullopt, statement.range, true},
+           header.arguments()[index]);
+    }
+    auto [condition_tail, condition] = instantiate_expression(
+        statement.expression.value, statement.expression.range, header);
+    const auto i1 = compiler_.make("i1");
+    if (!condition || condition->known() || !i1 || condition->type() != *i1) {
+      report("Residual while condition must have type i1",
+             statement.expression.range);
+      return block;
+    }
+    edit_->branch(condition_tail, *condition, body, {}, exit,
+                  header.arguments());
+
+    ++residual_control_depth_;
+    scopes_.emplace_back();
+    Block body_tail = body;
+    for (const auto& nested : statement.body) {
+      body_tail = instantiate_statement(nested, body_tail);
+    }
+    std::vector<Value> updated;
+    for (const std::string& name : carried_names) {
+      if (auto value = lookup(name)) {
+        if (value->known()) {
+          report("a Known loop-carried value needs a registered materializer",
+                 statement.range);
+          continue;
+        }
+        updated.push_back(*value);
+      }
+    }
+    scopes_.pop_back();
+    --residual_control_depth_;
+    if (updated.size() != carried_names.size()) {
+      report("while body does not produce every loop-carried value",
+             statement.range);
+      return block;
+    }
+    edit_->jump(body_tail, header, updated);
+    for (std::size_t index = 0; index < carried_names.size(); ++index) {
+      bind({carried_names[index], std::nullopt, statement.range, true},
+           exit.arguments()[index]);
+    }
+    return exit;
+  }
+
   Block instantiate_statement(const detail::StatementSyntax& statement,
                               Block block) {
+    if (statement.kind == detail::StatementSyntax::Kind::While) {
+      return instantiate_while(statement, block);
+    }
     using Kind = Module::Expression::Kind;
     const Module::Expression& expression = statement.expression.value;
     if (expression.kind == Kind::Variable ||
@@ -1580,8 +1778,7 @@ private:
         return block;
       }
       if (auto value = use(statement.expression)) {
-        define(statement.bindings.front().name, std::move(*value),
-               statement.bindings.front().range);
+        bind(statement.bindings.front(), std::move(*value));
       }
       return block;
     }
@@ -1638,8 +1835,7 @@ private:
       const Block merge = edit_->block();
       edit_->jump(true_tail, merge);
       edit_->jump(false_tail, merge);
-      define(statement.bindings.front().name, std::move(*true_value),
-             statement.bindings.front().range);
+      bind(statement.bindings.front(), std::move(*true_value));
       return merge;
     }
     if (true_value->type() != false_value->type()) {
@@ -1649,8 +1845,7 @@ private:
     const Block merge = edit_->block({true_value->type()});
     edit_->jump(true_tail, merge, {*true_value});
     edit_->jump(false_tail, merge, {*false_value});
-    define(statement.bindings.front().name, merge.arguments().front(),
-           statement.bindings.front().range);
+    bind(statement.bindings.front(), merge.arguments().front());
     return merge;
   }
 
@@ -1670,23 +1865,13 @@ private:
       }
       auto value = evaluate_known(statement.expression);
       if (value) {
-        define(statement.bindings.front().name, std::move(*value),
-               statement.bindings.front().range);
+        bind(statement.bindings.front(), std::move(*value));
       } else {
-        const std::vector<std::string> names{
-            statement.bindings.front().name};
-        invalidate(names, statement.range);
+        invalidate(statement.bindings);
       }
       return;
     }
-    const auto invalidate_results = [&] {
-      std::vector<std::string> names;
-      names.reserve(statement.bindings.size());
-      for (const auto& binding : statement.bindings) {
-        names.push_back(binding.name);
-      }
-      invalidate(names, statement.range);
-    };
+    const auto invalidate_results = [&] { invalidate(statement.bindings); };
     const Module::Expression& expression = statement.expression.value;
     using Kind = Module::Expression::Kind;
     std::optional<Module::FunctionDecl::Fixity> fixity;
@@ -1888,8 +2073,7 @@ private:
       return;
     }
     for (std::size_t index = 0; index < statement.bindings.size(); ++index) {
-      define(statement.bindings[index].name, operation.result(index),
-             statement.bindings[index].range);
+      bind(statement.bindings[index], operation.result(index));
     }
   }
 
@@ -1908,6 +2092,7 @@ private:
   std::unordered_map<std::string, Block> blocks_;
   std::size_t next_temporary_ = 0;
   std::size_t residual_control_depth_ = 0;
+  std::size_t loop_iterations_ = 0;
   std::vector<Value> supplied_known_;
 };
 
@@ -2203,6 +2388,24 @@ bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics) {
 
   std::unordered_map<std::string_view, const BlockSyntax*> blocks;
   std::unordered_set<std::string_view> definitions;
+  const auto check_statements = [&](const auto& self,
+                                    const std::vector<StatementSyntax>& statements,
+                                    std::unordered_set<std::string_view>& names)
+      -> void {
+    for (const StatementSyntax& statement : statements) {
+      if (statement.kind == StatementSyntax::Kind::While) {
+        auto nested = names;
+        self(self, statement.body, nested);
+        continue;
+      }
+      for (const BindingSyntax& binding : statement.bindings) {
+        if (!binding.rebind && !names.insert(binding.name).second) {
+          report("duplicate local value '" + binding.name + "'",
+                 statement.range);
+        }
+      }
+    }
+  };
   for (const BlockSyntax& block : body.blocks) {
     if (block.name.empty()) {
       report("a block must have a name", block.range);
@@ -2215,14 +2418,7 @@ bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics) {
                argument.range);
       }
     }
-    for (const StatementSyntax& instruction : block.instructions) {
-      for (const BindingSyntax& binding : instruction.bindings) {
-        if (!definitions.insert(binding.name).second) {
-          report("duplicate local value '" + binding.name + "'",
-                 instruction.range);
-        }
-      }
-    }
+    check_statements(check_statements, block.instructions, definitions);
   }
 
   const auto check_successor = [&](const SuccessorSyntax& successor) {
