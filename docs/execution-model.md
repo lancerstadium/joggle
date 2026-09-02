@@ -284,5 +284,8 @@ Known `if` conditions select one arm without creating IR. A Residual `i1`
 condition residualizes each expression arm independently, including nested
 calls and nested `if`, then joins them through sibling Blocks and typed
 successor arguments. General statement sequences inside arms, loops, closures,
-effect capabilities, materialization, and configurable evaluation budgets
-remain to be implemented.
+materialization, and configurable evaluation budgets remain to be implemented.
+Registered host implementations are conservatively forbidden beneath Residual
+control, so constructing both branches never executes host side effects. A
+future explicit pure/effect capability may permit safe calls without weakening
+this default.

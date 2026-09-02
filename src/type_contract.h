@@ -22,7 +22,8 @@ std::optional<ParameterValue> evaluate_known_expression(
     const Module::Expression& expression,
     const Module::ParameterDecl& expected, const KnownBindings& bindings,
     Diagnostics& diagnostics,
-    std::optional<SourceRange> source = std::nullopt);
+    std::optional<SourceRange> source = std::nullopt,
+    bool allow_host_evaluation = true);
 
 std::optional<std::vector<ParameterValue>> resolve_derived_parameters(
     Compiler& compiler, const Module::TypeDecl& schema,

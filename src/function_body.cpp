@@ -1392,7 +1392,7 @@ private:
     } else {
       payload = detail::evaluate_known_expression(
           compiler_, owner_, syntax.value, *expected, known_bindings(),
-          diagnostics_, source(syntax.range));
+          diagnostics_, source(syntax.range), residual_control_depth_ == 0U);
     }
     auto type = payload ? reflected_type(expected->domain) : std::nullopt;
     return payload && type
@@ -1620,10 +1620,12 @@ private:
     const Block yes = edit_->block();
     const Block no = edit_->block();
     edit_->branch(block, *condition, yes, {}, no, {});
+    ++residual_control_depth_;
     auto [true_tail, true_value] = instantiate_expression(
         expression.arguments[1], statement.expression.range, yes);
     auto [false_tail, false_value] = instantiate_expression(
         expression.arguments[2], statement.expression.range, no);
+    --residual_control_depth_;
     if (!true_value || !false_value) {
       return block;
     }
@@ -1905,6 +1907,7 @@ private:
   std::unordered_map<std::string, Type> expected_values_;
   std::unordered_map<std::string, Block> blocks_;
   std::size_t next_temporary_ = 0;
+  std::size_t residual_control_depth_ = 0;
   std::vector<Value> supplied_known_;
 };
 

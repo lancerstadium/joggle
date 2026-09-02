@@ -97,6 +97,8 @@ checked_integer_binary(std::string_view symbol, std::int64_t left,
 }
 
 struct Environment {
+  using Evaluator = std::function<std::optional<ParameterValue>(
+      Module::FunctionDecl, std::span<const ParameterValue>)>;
   std::function<std::optional<Module>(std::string_view)> module;
   std::function<std::optional<Type>(const Module::TypeDecl&,
                                     std::span<const ParameterValue>)>
@@ -107,12 +109,11 @@ struct Environment {
   std::function<bool(const Module::TypeDecl&,
                      const Module::InterfaceDecl&)>
       conforms;
-  std::function<std::optional<ParameterValue>(
-      Module::FunctionDecl, std::span<const ParameterValue>)>
-      evaluate;
+  Evaluator evaluate;
+  bool host_evaluation_forbidden = false;
 };
 
-Environment environment(Compiler& compiler) {
+Environment environment(Compiler& compiler, bool allow_host_evaluation = true) {
   return {[&](std::string_view name) { return compiler.module(name); },
           [&](const Module::TypeDecl& schema,
               std::span<const ParameterValue> parameters) {
@@ -128,11 +129,15 @@ Environment environment(Compiler& compiler) {
               const Module::InterfaceDecl& interface) {
             return compiler.conforms(declaration, interface);
           },
-          [&](Module::FunctionDecl function,
-              std::span<const ParameterValue> arguments) {
-            return CompilerAccess::evaluate(compiler, std::move(function),
-                                            arguments);
-          }};
+          allow_host_evaluation
+              ? Environment::Evaluator{
+                    [&](Module::FunctionDecl function,
+                        std::span<const ParameterValue> arguments) {
+                      return CompilerAccess::evaluate(
+                          compiler, std::move(function), arguments);
+                    }}
+              : Environment::Evaluator{},
+          !allow_host_evaluation};
 }
 
 Environment environment(std::span<const Module> modules,
@@ -201,7 +206,7 @@ Environment environment(std::span<const Module> modules,
                           : std::nullopt;
           },
           conforms,
-          {}};
+          {}, false};
 }
 
 class Solver {
@@ -767,6 +772,8 @@ private:
           scope_ = caller_scope;
         } else if (environment_.evaluate) {
           value = environment_.evaluate(function, values);
+        } else if (environment_.host_evaluation_forbidden) {
+          report("host evaluation is not allowed under Residual control");
         } else {
           report("compile-time operator '" + expression.text +
                  "' has no registered evaluator");
@@ -918,6 +925,8 @@ private:
         scope_ = caller_scope;
       } else if (environment_.evaluate) {
         value = environment_.evaluate(*function, values);
+      } else if (environment_.host_evaluation_forbidden) {
+        report("host evaluation is not allowed under Residual control");
       } else {
         report("compile-time call '" + expression.text +
                "' has no registered evaluator");
@@ -1217,8 +1226,10 @@ std::optional<ParameterValue> evaluate_known_expression(
     Compiler& compiler, std::string_view scope,
     const Module::Expression& expression,
     const Module::ParameterDecl& expected, const KnownBindings& bindings,
-    Diagnostics& diagnostics, std::optional<SourceRange> source) {
-  return Solver(environment(compiler), std::string(scope), diagnostics,
+    Diagnostics& diagnostics, std::optional<SourceRange> source,
+    bool allow_host_evaluation) {
+  return Solver(environment(compiler, allow_host_evaluation),
+                std::string(scope), diagnostics,
                 std::move(source))
       .evaluate_known(expression, expected, bindings);
 }

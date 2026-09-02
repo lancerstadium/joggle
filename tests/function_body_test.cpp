@@ -1062,5 +1062,45 @@ module dynamic_at@1.0.0 {
                    reports_dynamic_at,
                "@ rejects a Residual value instead of changing its stage");
 
+  joggle::Compiler guarded_host;
+  guarded_host.add(R"(
+joggle 1;
+module guarded_host@1.0.0 {
+  fn observe(value: int) -> int;
+  fn invalid(condition: i1) {
+    selected = if condition { observe(1) } else { observe(2) };
+    return;
+  }
+}
+)",
+                   "guarded-host.joggle");
+  const bool guarded_host_linked = guarded_host.link();
+  const auto guarded_host_module = guarded_host.module("guarded_host");
+  const auto observe = guarded_host_module
+                           ? guarded_host_module->function("observe")
+                           : std::nullopt;
+  std::int64_t observations = 0;
+  if (observe) {
+    guarded_host.bind(*observe, [&](std::int64_t value) {
+      ++observations;
+      return value;
+    });
+  }
+  const auto guarded_host_function =
+      guarded_host_linked && observe
+          ? guarded_host.function("guarded_host.invalid")
+          : std::nullopt;
+  const bool reports_guarded_host = std::any_of(
+      guarded_host.diagnostics().entries().begin(),
+      guarded_host.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find(
+                   "host evaluation is not allowed under Residual control") !=
+               std::string::npos;
+      });
+  ok &= expect(!guarded_host_function && observations == 0 &&
+                   reports_guarded_host,
+               "Residual branches never speculatively execute host code");
+
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }
