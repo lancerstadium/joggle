@@ -170,7 +170,7 @@ compiler.bind(simplify,
 Transitional whole-function passes can iterate `graph.operations()` directly;
 `all_operations()` is currently the same flat ordered snapshot. For a
 same-result-shape conversion, `edit.replace(operation, target)`
-inserts the target with the source operands and result types, redirects every
+inserts the target with the source arguments and result types, redirects every
 result use including graph outputs, and erases the source as one edit action.
 Target properties begin with the target declaration's defaults and can then be
 set through `edit.set` before commit.

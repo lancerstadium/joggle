@@ -773,7 +773,7 @@ struct ResidualCallSyntax {
   std::vector<std::optional<detail::ValueSyntax>> result_types;
   std::string operation;
   std::optional<Module::FunctionDecl::Fixity> operator_fixity;
-  std::vector<detail::LocalUseSyntax> operands;
+  std::vector<detail::LocalUseSyntax> arguments;
   std::vector<ResidualPropertySyntax> properties;
   detail::SyntaxRange range;
 };
@@ -1014,11 +1014,11 @@ private:
       if ((argument.kind != Kind::Reference &&
            argument.kind != Kind::Variable) ||
           !argument.arguments.empty()) {
-        report("a residual call operand is not a local value",
+        report("a residual call argument is not a local value",
                statement.expression.range);
         return std::nullopt;
       }
-      result.operands.push_back(
+      result.arguments.push_back(
           {argument.text, statement.expression.range});
     }
     return result;
@@ -1284,7 +1284,7 @@ private:
   std::optional<Module::FunctionDecl>
   operator_declaration(std::string_view notation,
                        Module::FunctionDecl::Fixity fixity,
-                       std::span<const Type> operand_types,
+                       std::span<const Type> argument_types,
                        detail::SyntaxRange range) {
     const auto owner = compiler_.module(owner_);
     if (!owner) {
@@ -1313,7 +1313,7 @@ private:
             detail::ir_results(candidate).size());
         Diagnostics attempt;
         if (detail::resolve_operation_types(
-                compiler_, candidate, operand_types, properties, expected,
+                compiler_, candidate, argument_types, properties, expected,
                 attempt)) {
           matches.push_back(candidate);
         }
@@ -1321,7 +1321,7 @@ private:
     }
     if (matches.empty()) {
       report("no visible function matches operator '" +
-                 std::string(notation) + "' for these operand types",
+                 std::string(notation) + "' for these argument types",
              range);
       return std::nullopt;
     }
@@ -1356,25 +1356,25 @@ private:
                       ? std::optional<Module::FunctionDecl>{}
                       : declaration<Module::FunctionDecl>(syntax.operation,
                                                            syntax.range);
-    std::vector<Value> operands;
-    bool invalid_operand = false;
-    for (const auto& operand_syntax : syntax.operands) {
-      auto operand = use(operand_syntax);
-      if (operand) {
-        operands.push_back(*operand);
+    std::vector<Value> arguments;
+    bool invalid_call_argument = false;
+    for (const auto& argument_syntax : syntax.arguments) {
+      auto argument = use(argument_syntax);
+      if (argument) {
+        arguments.push_back(*argument);
       } else {
-        invalid_operand = true;
+        invalid_call_argument = true;
       }
     }
-    if (invalid_operand) {
+    if (invalid_call_argument) {
       invalidate(syntax.results, syntax.range);
       return;
     }
     if (syntax.operator_fixity) {
       std::vector<Type> types;
-      types.reserve(operands.size());
-      for (const Value& operand : operands) {
-        types.push_back(operand.type());
+      types.reserve(arguments.size());
+      for (const Value& argument : arguments) {
+        types.push_back(argument.type());
       }
       schema = operator_declaration(syntax.operation, *syntax.operator_fixity,
                                     types, syntax.range);
@@ -1408,10 +1408,10 @@ private:
       invalidate(syntax.results, syntax.range);
       return;
     }
-    std::vector<Type> operand_types;
-    operand_types.reserve(operands.size());
-    for (const Value& operand : operands) {
-      operand_types.push_back(operand.type());
+    std::vector<Type> argument_types;
+    argument_types.reserve(arguments.size());
+    for (const Value& argument : arguments) {
+      argument_types.push_back(argument.type());
     }
     std::vector<std::optional<ParameterValue>> property_values(
         detail::parameter_inputs(*schema).size());
@@ -1443,7 +1443,7 @@ private:
       return;
     }
     auto resolved = detail::resolve_operation_types(
-        compiler_, *schema, operand_types, property_values, expected_types,
+        compiler_, *schema, argument_types, property_values, expected_types,
         diagnostics_,
         source(syntax.range));
     if (!resolved) {
@@ -1451,7 +1451,7 @@ private:
       return;
     }
     Instruction operation =
-        edit_->append(std::move(block), *schema, std::move(operands),
+        edit_->append(std::move(block), *schema, std::move(arguments),
                       resolved->results);
     detail::FunctionAccess::locate(*edit_, operation, source(syntax.range));
 
@@ -1658,9 +1658,9 @@ private:
       result.bindings.push_back(
           {bind(output, "v"), value(output.type()), {}});
     }
-    for (const Value& operand : operation.operands()) {
+    for (const Value& argument : operation.arguments()) {
       result.expression.value.arguments.push_back(
-          Module::Expression::reference(use(operand)));
+          Module::Expression::reference(use(argument)));
       result.expression.value.labels.emplace_back();
     }
     for (const Module::ParameterDecl& parameter :
@@ -1676,9 +1676,9 @@ private:
     const auto fixity = operation.callee().operator_fixity();
     const bool valid_arity =
         fixity && ((*fixity == Module::FunctionDecl::Fixity::Infix &&
-                    operation.operands().size() == 2U) ||
+                    operation.arguments().size() == 2U) ||
                    (*fixity != Module::FunctionDecl::Fixity::Infix &&
-                    operation.operands().size() == 1U));
+                    operation.arguments().size() == 1U));
     if (notation && valid_arity && result.bindings.size() == 1U &&
         detail::parameter_inputs(operation.callee()).empty()) {
       result.expression.value.text = std::string(*notation);

@@ -219,7 +219,7 @@ public:
         scope_(schema.symbol().module_name()) {}
 
   std::optional<OperationTypes>
-  infer(std::span<const Type> operands,
+  infer(std::span<const Type> arguments,
         std::span<const std::optional<ParameterValue>> properties,
         std::span<const std::optional<Type>> expected) {
     if (schema_ == nullptr || contract_ == nullptr) {
@@ -234,21 +234,21 @@ public:
       return std::nullopt;
     }
     Bindings bindings;
-    std::size_t operand = 0;
+    std::size_t argument = 0;
     for (const auto& input : value_inputs) {
-      const std::size_t count = input.variadic ? operands.size() - operand : 1U;
-      if (operand + count > operands.size()) {
-        report("operation has too few operands");
+      const std::size_t count = input.variadic ? arguments.size() - argument : 1U;
+      if (argument + count > arguments.size()) {
+        report("operation has too few arguments");
         return std::nullopt;
       }
       for (std::size_t item = 0; item < count; ++item) {
-        if (!unify(input.domain, ParameterValue(operands[operand++]), bindings)) {
+        if (!unify(input.domain, ParameterValue(arguments[argument++]), bindings)) {
           return std::nullopt;
         }
       }
     }
-    if (operand != operands.size()) {
-      report("operation has too many operands");
+    if (argument != arguments.size()) {
+      report("operation has too many arguments");
       return std::nullopt;
     }
     std::size_t property = 0;
@@ -818,7 +818,7 @@ private:
                        right_real &&
                        *right_real == 0.0
                    ? "compile-time division by zero"
-                   : "compile-time arithmetic operands have different kinds");
+                   : "compile-time arithmetic arguments have different kinds");
         return std::nullopt;
       }
       const double value = expression.text == "+"   ? *left_real + *right_real
@@ -1203,12 +1203,12 @@ private:
 
 std::optional<std::vector<Type>>
 infer_operation_types(Compiler& compiler, const Module::FunctionDecl& schema,
-                      std::span<const Type> operands,
+                      std::span<const Type> arguments,
                       std::span<const std::optional<ParameterValue>> properties,
                       std::span<const std::optional<Type>> expected_results,
                       Diagnostics& diagnostics,
                       std::optional<SourceRange> source) {
-  auto resolved = resolve_operation_types(compiler, schema, operands,
+  auto resolved = resolve_operation_types(compiler, schema, arguments,
                                           properties, expected_results,
                                           diagnostics, std::move(source));
   return resolved ? std::optional<std::vector<Type>>{
@@ -1218,11 +1218,11 @@ infer_operation_types(Compiler& compiler, const Module::FunctionDecl& schema,
 
 std::optional<std::vector<Type>> infer_operation_types(
     std::span<const Module> modules, const Module::FunctionDecl& schema,
-    std::span<const Type> operands,
+    std::span<const Type> arguments,
     std::span<const std::optional<ParameterValue>> properties,
     std::span<const std::optional<Type>> expected_results,
     Diagnostics& diagnostics, std::optional<SourceRange> source) {
-  auto resolved = resolve_operation_types(modules, schema, operands,
+  auto resolved = resolve_operation_types(modules, schema, arguments,
                                           properties, expected_results,
                                           diagnostics, std::move(source));
   return resolved ? std::optional<std::vector<Type>>{
@@ -1233,24 +1233,24 @@ std::optional<std::vector<Type>> infer_operation_types(
 std::optional<OperationTypes>
 resolve_operation_types(Compiler& compiler,
                         const Module::FunctionDecl& schema,
-                        std::span<const Type> operands,
+                        std::span<const Type> arguments,
                         std::span<const std::optional<ParameterValue>> properties,
                         std::span<const std::optional<Type>> expected_results,
                         Diagnostics& diagnostics,
                         std::optional<SourceRange> source) {
   return Solver(environment(compiler), schema, diagnostics, std::move(source))
-      .infer(operands, properties, expected_results);
+      .infer(arguments, properties, expected_results);
 }
 
 std::optional<OperationTypes> resolve_operation_types(
     std::span<const Module> modules, const Module::FunctionDecl& schema,
-    std::span<const Type> operands,
+    std::span<const Type> arguments,
     std::span<const std::optional<ParameterValue>> properties,
     std::span<const std::optional<Type>> expected_results,
     Diagnostics& diagnostics, std::optional<SourceRange> source) {
   return Solver(environment(modules, diagnostics), schema, diagnostics,
                 std::move(source))
-      .infer(operands, properties, expected_results);
+      .infer(arguments, properties, expected_results);
 }
 
 std::optional<std::vector<ParameterValue>> resolve_derived_parameters(

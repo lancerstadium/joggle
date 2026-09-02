@@ -26,6 +26,7 @@ int main() {
     module control@1.0.0 {
       type other();
       fn source<T: type>() -> T;
+      fn add_i32(lhs: i32, rhs: i32) -> i32;
     }
   )", "control.joggle");
   if (!compiler.link()) {
@@ -43,9 +44,11 @@ int main() {
       test_ir ? test_ir->function("cast") : std::nullopt;
   const auto source_schema =
       control ? control->function("source") : std::nullopt;
+  const auto add_i32_schema =
+      control ? control->function("add_i32") : std::nullopt;
   const auto other_schema = control ? control->type("other") : std::nullopt;
   if (!integer_schema || !add_schema || !cast_schema || !source_schema ||
-      !other_schema) {
+      !add_i32_schema || !other_schema) {
     return EXIT_FAILURE;
   }
   compiler.bind(*integer_schema,
@@ -53,8 +56,9 @@ int main() {
   const auto integer = compiler.make(*integer_schema, std::int64_t{8});
   const auto other = compiler.make(*other_schema);
   const auto boolean = compiler.make("i1");
+  const auto i32 = compiler.make("i32");
   auto function = compiler.function();
-  if (!integer || !other || !boolean || !function) {
+  if (!integer || !other || !boolean || !i32 || !function) {
     return EXIT_FAILURE;
   }
 
@@ -82,6 +86,28 @@ int main() {
                    !add->result(0).is_function_argument() &&
                    !add->result(0).is_block_argument(),
                "instruction results retain their inferred type");
+
+  const auto known_seven = compiler.known(*i32, std::int64_t{7});
+  auto mixed = compiler.function();
+  if (!known_seven || !mixed) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = mixed->edit();
+    const auto input = edit.argument(*i32);
+    const auto sum = edit.append(*add_i32_schema, {*known_seven, input});
+    edit.ret(mixed->entry(), {sum.result(0)});
+    joggle::Diagnostics diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  const auto mixed_arguments = mixed->instructions().front().arguments();
+  ok &= expect(mixed_arguments.size() == 2U && mixed_arguments.front().known() &&
+                   mixed_arguments.front().get<std::int64_t>() == 7 &&
+                   !mixed_arguments.back().known(),
+               "one argument sequence carries Known and Residual Values");
 
   bool needs_explicit_result = false;
   try {
@@ -118,8 +144,8 @@ int main() {
       return EXIT_FAILURE;
     }
   }
-  ok &= expect(add && !original_add.valid() && add->operands().size() == 2U,
-               "replacement preserves operands and invalidates the old handle");
+  ok &= expect(add && !original_add.valid() && add->arguments().size() == 2U,
+               "replacement preserves arguments and invalidates the old handle");
 
   std::optional<joggle::Instruction> rolled_back;
   {
@@ -157,7 +183,7 @@ int main() {
     }
   }
   ok &= expect(first_cast && !first_cast->valid() && second_cast &&
-                   second_cast->operands().front() == add->result(0) &&
+                   second_cast->arguments().front() == add->result(0) &&
                    function->entry().terminator().returned().front() == add->result(0),
                "replace rewires instruction and boundary uses before erase");
 

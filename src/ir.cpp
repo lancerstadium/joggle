@@ -25,10 +25,20 @@ struct ValueData {
   std::size_t index = 0;
 };
 
+struct KnownValueStorage {
+  Type type;
+  ParameterValue value;
+};
+
+struct StoredValue {
+  std::uint64_t id = 0;
+  std::shared_ptr<const KnownValueStorage> known;
+};
+
 struct InstructionData {
   Module::FunctionDecl schema;
   std::uint64_t parent = 0;
-  std::vector<std::uint64_t> operands;
+  std::vector<StoredValue> arguments;
   std::vector<std::uint64_t> results;
   std::map<std::string, ParameterValue, std::less<>> properties;
   std::optional<SourceRange> location;
@@ -94,11 +104,28 @@ const std::shared_ptr<FunctionIdentity>& FunctionAccess::owner(const Block& bloc
   return block.function_;
 }
 
+const std::shared_ptr<const KnownValueStorage>&
+FunctionAccess::known(const Value& value) {
+  return value.known_;
+}
+
 std::uint64_t FunctionAccess::id(const Value& value) { return value.id_; }
 std::uint64_t FunctionAccess::id(const Instruction& instruction) {
   return instruction.id_;
 }
 std::uint64_t FunctionAccess::id(const Block& block) { return block.id_; }
+
+Value FunctionAccess::restore(std::shared_ptr<FunctionIdentity> function,
+                              std::uint64_t id,
+                              std::shared_ptr<const KnownValueStorage> known) {
+  if (known) {
+    Value value(std::move(function), 0);
+    value.function_.reset();
+    value.known_ = std::move(known);
+    return value;
+  }
+  return Value(std::move(function), id);
+}
 std::string PropertyAccess::take_name(Property& property) {
   return std::move(property.name_);
 }
@@ -316,9 +343,9 @@ bool verify_instruction(
     valid = false;
   }
   if (!accepts_count(detail::ir_inputs(instruction.schema),
-                     instruction.operands.size())) {
+                     instruction.arguments.size())) {
     diagnostics.report("instruction '" + name +
-                       "' has the wrong number of operands");
+                       "' has the wrong number of arguments");
     valid = false;
   }
   if (!accepts_count(detail::ir_results(instruction.schema),
@@ -363,14 +390,25 @@ bool verify_instruction(
       valid = false;
     }
   }
-  for (std::size_t index = 0; index < instruction.operands.size(); ++index) {
-    const auto value = function.values.find(instruction.operands[index]);
+  for (std::size_t index = 0; index < instruction.arguments.size(); ++index) {
+    const detail::StoredValue& argument = instruction.arguments[index];
+    if (argument.known) {
+      if (!owns(function, argument.known->type) ||
+          !owns(function, argument.known->value)) {
+        diagnostics.report("argument " + std::to_string(index) +
+                           " of instruction '" + name +
+                           "' is a Known value outside the module closure");
+        valid = false;
+      }
+      continue;
+    }
+    const auto value = function.values.find(argument.id);
     if (value == function.values.end()) {
-      diagnostics.report("instruction '" + name + "' has an invalid operand");
+      diagnostics.report("instruction '" + name + "' has an invalid argument");
       valid = false;
     } else if (contains(function.blocks, instruction.parent) &&
                !dominates(function, value->second, instruction.parent, id, dom)) {
-      diagnostics.report("operand " + std::to_string(index) +
+      diagnostics.report("argument " + std::to_string(index) +
                          " of instruction '" + name +
                          "' is not dominated by its definition");
       valid = false;
@@ -592,10 +630,12 @@ bool verify_instruction_contracts(const FunctionState& function,
       const InstructionData& instruction = function.instructions.at(instruction_id);
       const Module::FunctionDecl schema = instruction.schema;
 
-      std::vector<Type> operands;
-      operands.reserve(instruction.operands.size());
-      for (const std::uint64_t operand : instruction.operands) {
-        operands.push_back(function.values.at(operand).type);
+      std::vector<Type> arguments;
+      arguments.reserve(instruction.arguments.size());
+      for (const detail::StoredValue& argument : instruction.arguments) {
+        arguments.push_back(argument.known
+                               ? argument.known->type
+                               : function.values.at(argument.id).type);
       }
 
       std::vector<std::optional<Type>> results;
@@ -614,7 +654,7 @@ bool verify_instruction_contracts(const FunctionState& function,
                                  : value->second);
       }
 
-      auto resolved = resolve(schema, operands, properties, results,
+      auto resolved = resolve(schema, arguments, properties, results,
                               diagnostics, instruction.location);
       if (!resolved) {
         valid = false;
@@ -634,11 +674,11 @@ bool verify_instruction_contracts(const FunctionState& function,
   }
   return verify_instruction_contracts(
       function, diagnostics,
-      [&](const Module::FunctionDecl& schema, std::span<const Type> operands,
+      [&](const Module::FunctionDecl& schema, std::span<const Type> arguments,
           std::span<const std::optional<ParameterValue>> properties,
           std::span<const std::optional<Type>> results,
           Diagnostics& reported, std::optional<SourceRange> location) {
-        return resolve_operation_types(modules, schema, operands, properties,
+        return resolve_operation_types(modules, schema, arguments, properties,
                                        results, reported, std::move(location));
       });
 }
@@ -647,11 +687,11 @@ bool verify_instruction_contracts(const FunctionState& function, Compiler& compi
                                 Diagnostics& diagnostics) {
   return verify_instruction_contracts(
       function, diagnostics,
-      [&](const Module::FunctionDecl& schema, std::span<const Type> operands,
+      [&](const Module::FunctionDecl& schema, std::span<const Type> arguments,
           std::span<const std::optional<ParameterValue>> properties,
           std::span<const std::optional<Type>> results,
           Diagnostics& reported, std::optional<SourceRange> location) {
-        return resolve_operation_types(compiler, schema, operands, properties,
+        return resolve_operation_types(compiler, schema, arguments, properties,
                                        results, reported, std::move(location));
       });
 }
@@ -660,6 +700,23 @@ template <typename Handle>
 void check_same_function(const std::shared_ptr<FunctionIdentity>& function,
                       const Handle& handle, std::string_view kind) {
   if (detail::FunctionAccess::owner(handle) != function || !handle.valid()) {
+    throw std::invalid_argument(std::string(kind) +
+                                " does not belong to this function edit");
+  }
+}
+
+void check_same_function(const std::shared_ptr<FunctionIdentity>& function,
+                         const Value& value, std::string_view kind) {
+  const auto& known = detail::FunctionAccess::known(value);
+  if (known) {
+    if (!owns(*function->state, known->type) ||
+        !owns(*function->state, known->value)) {
+      throw std::invalid_argument(std::string(kind) +
+                                  " is outside this function's module closure");
+    }
+    return;
+  }
+  if (detail::FunctionAccess::owner(value) != function || !value.valid()) {
     throw std::invalid_argument(std::string(kind) +
                                 " does not belong to this function edit");
   }
@@ -740,11 +797,20 @@ bool detail::FunctionAccess::commit(Function::Edit& edit, Compiler& compiler,
 Value::Value(std::shared_ptr<FunctionIdentity> function, std::uint64_t id)
     : function_(std::move(function)), id_(id) {}
 
+Value::Value(Type type, ParameterValue value)
+    : known_(std::make_shared<const detail::KnownValueStorage>(
+          detail::KnownValueStorage{std::move(type), std::move(value)})) {}
+
 bool Value::valid() const {
-  return function_ && contains(function_->state->values, id_);
+  return known_ || (function_ && contains(function_->state->values, id_));
 }
 
+bool Value::known() const { return static_cast<bool>(known_); }
+
 Type Value::type() const {
+  if (known_) {
+    return known_->type;
+  }
   const auto found = function_->state->values.find(id_);
   if (found == function_->state->values.end()) {
     throw std::logic_error("value is no longer valid");
@@ -752,19 +818,40 @@ Type Value::type() const {
   return found->second.type;
 }
 
+std::optional<ParameterValue> Value::known_value() const {
+  return known_ ? std::optional<ParameterValue>{known_->value} : std::nullopt;
+}
+
+bool Value::operator==(const Value& other) const {
+  if (known_ || other.known_) {
+    return known_ && other.known_ && known_->type == other.known_->type &&
+           known_->value == other.known_->value;
+  }
+  return function_ == other.function_ && id_ == other.id_;
+}
+
 bool Value::is_function_argument() const {
+  if (!function_) {
+    return false;
+  }
   const auto found = function_->state->values.find(id_);
   return found != function_->state->values.end() &&
          found->second.origin == ValueData::Origin::FunctionArgument;
 }
 
 bool Value::is_block_argument() const {
+  if (!function_) {
+    return false;
+  }
   const auto found = function_->state->values.find(id_);
   return found != function_->state->values.end() &&
          found->second.origin == ValueData::Origin::BlockArgument;
 }
 
 std::optional<Instruction> Value::defining_instruction() const {
+  if (!function_) {
+    return std::nullopt;
+  }
   const auto found = function_->state->values.find(id_);
   if (found == function_->state->values.end() ||
       found->second.origin != ValueData::Origin::InstructionResult) {
@@ -797,15 +884,16 @@ Block Instruction::parent() const {
   return Block(function_, found->second.parent);
 }
 
-std::vector<Value> Instruction::operands() const {
+std::vector<Value> Instruction::arguments() const {
   const auto found = function_->state->instructions.find(id_);
   if (found == function_->state->instructions.end()) {
     throw std::logic_error("instruction is no longer valid");
   }
   std::vector<Value> values;
-  values.reserve(found->second.operands.size());
-  for (std::uint64_t value : found->second.operands) {
-    values.push_back(Value(function_, value));
+  values.reserve(found->second.arguments.size());
+  for (const detail::StoredValue& value : found->second.arguments) {
+    values.push_back(detail::FunctionAccess::restore(
+        function_, value.id, value.known));
   }
   return values;
 }
@@ -1041,69 +1129,71 @@ Block Function::Edit::block(std::vector<Type> argument_types) {
 }
 
 Instruction Function::Edit::append(Module::FunctionDecl schema,
-                                   std::vector<Value> operands,
+                                   std::vector<Value> arguments,
                                    std::vector<Type> result_types) {
-  return append_with_properties(std::move(schema), std::move(operands),
+  return append_with_properties(std::move(schema), std::move(arguments),
                                 std::move(result_types), {});
 }
 
 Instruction Function::Edit::append_with_properties(
-    Module::FunctionDecl schema, std::vector<Value> operands,
+    Module::FunctionDecl schema, std::vector<Value> arguments,
     std::vector<Type> result_types, std::vector<Property> properties) {
   return append_with_properties(
       Function::make_block(state_->function, state_->function->state->entry),
-      std::move(schema), std::move(operands), std::move(result_types),
+      std::move(schema), std::move(arguments), std::move(result_types),
       std::move(properties));
 }
 
 Instruction Function::Edit::append(Block block, Module::FunctionDecl schema,
-                              std::vector<Value> operands,
+                              std::vector<Value> arguments,
                               std::vector<Type> result_types) {
   return append_with_properties(std::move(block), std::move(schema),
-                                std::move(operands), std::move(result_types),
+                                std::move(arguments), std::move(result_types),
                                 {});
 }
 
 Instruction Function::Edit::append_with_properties(
-    Block block, Module::FunctionDecl schema, std::vector<Value> operands,
+    Block block, Module::FunctionDecl schema, std::vector<Value> arguments,
     std::vector<Type> result_types, std::vector<Property> properties) {
   return add(std::move(block), std::nullopt, std::move(schema),
-             std::move(operands), std::move(result_types),
+             std::move(arguments), std::move(result_types),
              std::move(properties));
 }
 
 Instruction Function::Edit::insert(Instruction before, Module::FunctionDecl schema,
-                              std::vector<Value> operands,
+                              std::vector<Value> arguments,
                               std::vector<Type> result_types) {
   return insert_with_properties(std::move(before), std::move(schema),
-                                std::move(operands), std::move(result_types), {});
+                                std::move(arguments), std::move(result_types), {});
 }
 
 Instruction Function::Edit::insert_with_properties(
-    Instruction before, Module::FunctionDecl schema, std::vector<Value> operands,
+    Instruction before, Module::FunctionDecl schema, std::vector<Value> arguments,
     std::vector<Type> result_types, std::vector<Property> properties) {
   check_same_function(state_->function, before, "insertion point");
-  return add(before.parent(), before, std::move(schema), std::move(operands),
+  return add(before.parent(), before, std::move(schema), std::move(arguments),
              std::move(result_types), std::move(properties));
 }
 
 Instruction Function::Edit::add(Block block,
                            std::optional<Instruction> before,
                            Module::FunctionDecl schema,
-                           std::vector<Value> operands,
+                           std::vector<Value> arguments,
                            std::vector<Type> result_types,
-                           std::vector<Property> arguments) {
+                           std::vector<Property> property_arguments) {
   check_same_function(state_->function, block, "block");
   const std::uint64_t block_id = detail::FunctionAccess::id(block);
   const auto location = before ? state_->function->state->instructions
                                      .at(detail::FunctionAccess::id(*before))
                                      .location
                                : std::optional<SourceRange>{};
-  std::vector<std::uint64_t> operand_ids;
-  operand_ids.reserve(operands.size());
-  for (const Value& operand : operands) {
-    check_same_function(state_->function, operand, "operand");
-    operand_ids.push_back(detail::FunctionAccess::id(operand));
+  std::vector<detail::StoredValue> argument_ids;
+  argument_ids.reserve(arguments.size());
+  for (const Value& argument : arguments) {
+    check_same_function(state_->function, argument, "argument");
+    argument_ids.push_back(
+        {detail::FunctionAccess::id(argument),
+         detail::FunctionAccess::known(argument)});
   }
 
   std::map<std::string, ParameterValue, std::less<>> properties;
@@ -1117,7 +1207,7 @@ Instruction Function::Edit::add(Block block,
   }
   std::unordered_set<std::string> explicit_properties;
   const auto static_inputs = detail::parameter_inputs(schema);
-  for (Property& argument : arguments) {
+  for (Property& argument : property_arguments) {
     std::string name = detail::PropertyAccess::take_name(argument);
     ParameterValue value = detail::PropertyAccess::take_value(argument);
     const auto parameter = std::find_if(
@@ -1147,10 +1237,10 @@ Instruction Function::Edit::add(Block block,
   }
 
   if (result_types.empty() && !detail::ir_results(schema).empty()) {
-    std::vector<Type> operand_types;
-    operand_types.reserve(operands.size());
-    for (const Value& operand : operands) {
-      operand_types.push_back(operand.type());
+    std::vector<Type> argument_types;
+    argument_types.reserve(arguments.size());
+    for (const Value& argument : arguments) {
+      argument_types.push_back(argument.type());
     }
     std::vector<std::optional<Type>> expected(
         detail::ir_results(schema).size());
@@ -1171,7 +1261,7 @@ Instruction Function::Edit::add(Block block,
     }
     Diagnostics diagnostics;
     auto inferred = detail::infer_operation_types(
-        modules, schema, operand_types, inference_properties, expected,
+        modules, schema, argument_types, inference_properties, expected,
         diagnostics);
     if (!inferred) {
       std::string message = "cannot infer results for instruction '" +
@@ -1196,7 +1286,7 @@ Instruction Function::Edit::add(Block block,
   state_->function->state->instructions.emplace(id,
                                            InstructionData{std::move(schema),
                                                          block_id,
-                                                         std::move(operand_ids),
+                                                         std::move(argument_ids),
                                                          std::move(results),
                                                          std::move(properties),
                                                          location});
@@ -1229,6 +1319,10 @@ void Function::Edit::ret(Block block, std::vector<Value> values) {
   ids.reserve(values.size());
   for (const Value& value : values) {
     check_same_function(state_->function, value, "return value");
+    if (value.known()) {
+      throw std::invalid_argument(
+          "a Known value must be materialized before it is returned");
+    }
     ids.push_back(detail::FunctionAccess::id(value));
   }
   auto& terminator = state_->function->state->blocks
@@ -1246,6 +1340,10 @@ void Function::Edit::jump(Block block, Block target,
   ids.reserve(arguments.size());
   for (const Value& value : arguments) {
     check_same_function(state_->function, value, "jump argument");
+    if (value.known()) {
+      throw std::invalid_argument(
+          "a Known value must be materialized before it crosses an edge");
+    }
     ids.push_back(detail::FunctionAccess::id(value));
   }
   auto& terminator = state_->function->state->blocks
@@ -1262,6 +1360,10 @@ void Function::Edit::branch(Block block, Value condition, Block true_target,
                             std::vector<Value> false_arguments) {
   check_same_function(state_->function, block, "branch block");
   check_same_function(state_->function, condition, "branch condition");
+  if (condition.known()) {
+    throw std::invalid_argument(
+        "a Known branch condition must be specialized before IR construction");
+  }
   check_same_function(state_->function, true_target, "true target");
   check_same_function(state_->function, false_target, "false target");
   const auto ids = [&](std::span<const Value> values) {
@@ -1269,6 +1371,10 @@ void Function::Edit::branch(Block block, Value condition, Block true_target,
     result.reserve(values.size());
     for (const Value& value : values) {
       check_same_function(state_->function, value, "branch argument");
+      if (value.known()) {
+        throw std::invalid_argument(
+            "a Known value must be materialized before it crosses an edge");
+      }
       result.push_back(detail::FunctionAccess::id(value));
     }
     return result;
@@ -1285,6 +1391,10 @@ void Function::Edit::branch(Block block, Value condition, Block true_target,
 void Function::Edit::replace(Value from, Value to) {
   check_same_function(state_->function, from, "source value");
   check_same_function(state_->function, to, "replacement value");
+  if (from.known() || to.known()) {
+    throw std::invalid_argument(
+        "Known values are immutable and cannot cross a Function boundary");
+  }
   if (from.type() != to.type()) {
     throw std::invalid_argument("replacement value has a different type");
   }
@@ -1292,8 +1402,11 @@ void Function::Edit::replace(Value from, Value to) {
   const std::uint64_t to_id = detail::FunctionAccess::id(to);
   for (auto& [id, instruction] : state_->function->state->instructions) {
     static_cast<void>(id);
-    std::replace(instruction.operands.begin(), instruction.operands.end(), from_id,
-                 to_id);
+    for (detail::StoredValue& argument : instruction.arguments) {
+      if (!argument.known && argument.id == from_id) {
+        argument.id = to_id;
+      }
+    }
   }
   for (auto& [id, block] : state_->function->state->blocks) {
     static_cast<void>(id);
@@ -1321,7 +1434,7 @@ Instruction Function::Edit::replace(Instruction instruction,
     result_types.push_back(result.type());
   }
   const Instruction replacement =
-      insert(instruction, std::move(schema), instruction.operands(), result_types);
+      insert(instruction, std::move(schema), instruction.arguments(), result_types);
   for (std::size_t index = 0; index < result_types.size(); ++index) {
     replace(instruction.result(index), replacement.result(index));
   }
@@ -1341,8 +1454,10 @@ void Function::Edit::erase(Instruction instruction) {
       continue;
     }
     if (std::any_of(
-            user.operands.begin(), user.operands.end(),
-            [&](std::uint64_t operand) { return values.contains(operand); })) {
+            user.arguments.begin(), user.arguments.end(),
+            [&](const detail::StoredValue& argument) {
+              return !argument.known && values.contains(argument.id);
+            })) {
       throw std::invalid_argument(
           "instruction still has live result uses");
     }

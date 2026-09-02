@@ -136,6 +136,51 @@ bool belongs_to(const Modules& modules, const ParameterValue& value) {
   return true;
 }
 
+bool accepts_known_value(const Type& type, const ParameterValue& value) {
+  const Module::Symbol symbol = type.schema().symbol();
+  if (symbol.module_name() != detail::prelude_module_name) {
+    return false;
+  }
+  const std::string_view name = symbol.local_name();
+  if (name == "int" || name == "i8" || name == "i16" || name == "i32" ||
+      name == "i64" || name == "index") {
+    return value.kind() == ParameterValue::Kind::I64;
+  }
+  if (name == "u8" || name == "u16" || name == "u32" || name == "u64") {
+    return value.kind() == ParameterValue::Kind::I64 &&
+           *value.as_i64() >= 0;
+  }
+  if (name == "real" || name == "f16" || name == "bf16" || name == "f32" ||
+      name == "f64") {
+    return value.kind() == ParameterValue::Kind::I64 ||
+           value.kind() == ParameterValue::Kind::F64;
+  }
+  if (name == "bool" || name == "i1") {
+    return value.kind() == ParameterValue::Kind::Boolean;
+  }
+  if (name == "string") {
+    return value.kind() == ParameterValue::Kind::String;
+  }
+  if (name == "type") {
+    return value.kind() == ParameterValue::Kind::Type;
+  }
+  if (name == "attr") {
+    return value.kind() == ParameterValue::Kind::Attribute;
+  }
+  if (name != "list" || value.kind() != ParameterValue::Kind::List) {
+    return false;
+  }
+  const auto parameters = detail::TypeAccess::parameters(type);
+  if (parameters.size() != 1U || parameters.front().as_type() == nullptr) {
+    return false;
+  }
+  return std::all_of(
+      value.elements().begin(), value.elements().end(),
+      [&](const ParameterValue& element) {
+        return accepts_known_value(*parameters.front().as_type(), element);
+      });
+}
+
 std::string_view trim(std::string_view text) {
   while (!text.empty() &&
          std::isspace(static_cast<unsigned char>(text.front())) != 0) {
@@ -535,12 +580,12 @@ bool match_term(const Value& value, const detail::RuleDefinition& rule,
       defining->result(0) != value || defining->callee() != *target) {
     return false;
   }
-  const auto operands = defining->operands();
-  if (operands.size() != term.arguments.size()) {
+  const auto arguments = defining->arguments();
+  if (arguments.size() != term.arguments.size()) {
     return false;
   }
-  for (std::size_t index = 0; index < operands.size(); ++index) {
-    if (!match_term(operands[index], rule, term.arguments[index], pass, modules,
+  for (std::size_t index = 0; index < arguments.size(); ++index) {
+    if (!match_term(arguments[index], rule, term.arguments[index], pass, modules,
                     bindings)) {
       return false;
     }
@@ -2231,6 +2276,27 @@ std::optional<Type> Compiler::make(std::string_view prelude_type) {
     return std::nullopt;
   }
   return make(*declaration, std::span<const ParameterValue>{});
+}
+
+std::optional<Value> Compiler::make_known(Type type, ParameterValue value) {
+  if (!state_->linked) {
+    state_->diagnostics.report(
+        "cannot create a Known value before the compiler is linked");
+    return std::nullopt;
+  }
+  if (!belongs_to(state_->modules, ParameterValue(type)) ||
+      !belongs_to(state_->modules, value)) {
+    state_->diagnostics.report(
+        "Known value references a declaration outside this compiler");
+    return std::nullopt;
+  }
+  if (!accepts_known_value(type, value)) {
+    state_->diagnostics.report(
+        "Known value payload does not match type '" +
+        type.schema().symbol().qualified_name() + "'");
+    return std::nullopt;
+  }
+  return Value(std::move(type), std::move(value));
 }
 
 std::optional<Attribute>

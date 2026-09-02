@@ -316,6 +316,11 @@ public:
   // or index. Parameterized Prelude types use the declaration overload above.
   std::optional<Type> make(std::string_view prelude_type);
 
+  template <typename T> std::optional<Value> known(Type type, T&& value) {
+    return make_known(std::move(type),
+                      detail::encode_parameter(std::forward<T>(value)));
+  }
+
   template <typename... Arguments>
   std::optional<Attribute> make(const Module::AttributeDecl& schema,
                                 Arguments&&... arguments) {
@@ -585,6 +590,8 @@ public:
   const Diagnostics& diagnostics() const;
 
 private:
+  std::optional<Value> make_known(Type type,
+                                  detail::ParameterValue value);
   std::optional<Type> make(const Module::TypeDecl& schema,
                            std::span<const detail::ParameterValue> parameters);
   std::optional<Attribute>

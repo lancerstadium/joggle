@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -80,6 +81,16 @@ module native_test@1.0.0 {
       list_schema && integer_value_type
           ? compiler.make(*list_schema, *integer_value_type)
           : std::nullopt;
+  const auto known_integer =
+      integer_value_type
+          ? compiler.known(*integer_value_type, std::int64_t{42})
+          : std::nullopt;
+  const auto same_known_integer =
+      integer_value_type
+          ? compiler.known(*integer_value_type, std::int64_t{42})
+          : std::nullopt;
+  const auto known_i32 =
+      i32 ? compiler.known(*i32, std::int64_t{7}) : std::nullopt;
   const auto integers = compiler.function("native_test.integers");
   const auto floating = compiler.function("native_test.floating");
   const auto custom = compiler.function("native_test.custom");
@@ -114,6 +125,12 @@ module native_test@1.0.0 {
                "reflected Prelude declarations");
   ok &= expect(integers && floating && custom && native_width && custom_width,
                "native and interface-conforming custom types instantiate");
+  ok &= expect(known_integer && same_known_integer && known_i32 &&
+                   known_integer->known() && !known_i32->is_function_argument() &&
+                   known_integer->type() == *integer_value_type &&
+                   known_integer->get<std::int64_t>() == 42 &&
+                   *known_integer == *same_known_integer,
+               "one Value model represents typed Known compiler values");
   const auto native_bits =
       native_width
           ? native_width->entry().terminator().returned().front().type().get<std::int64_t>("width")

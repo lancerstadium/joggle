@@ -65,10 +65,10 @@ int main() {
                 });
   const auto same_type = [](const joggle::Instruction& operation,
                             joggle::Diagnostics& diagnostics) {
-    const auto operands = operation.operands();
+    const auto arguments = operation.arguments();
     const auto results = operation.results();
     if (results.empty() ||
-        std::any_of(operands.begin(), operands.end(), [&](const auto& value) {
+        std::any_of(arguments.begin(), arguments.end(), [&](const auto& value) {
           return value.type() != results[0].type();
         })) {
       diagnostics.report("integer operation types must agree");
@@ -105,7 +105,7 @@ int main() {
           if (operation.callee().name() != "marker") {
             continue;
           }
-          edit.replace(operation.result(0), operation.operands()[0]);
+          edit.replace(operation.result(0), operation.arguments()[0]);
           edit.erase(operation);
         }
         return edit.commit(diagnostics);

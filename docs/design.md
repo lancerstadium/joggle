@@ -56,7 +56,7 @@ The core instruction contract is deliberately small:
 ```text
 Instruction
   callee       resolved Function symbol
-  operands     ordered Values
+  arguments     ordered Values
   arguments    compiler-known named values
   results      typed Values
 
@@ -83,7 +83,7 @@ nor yield operations. The verifier checks at least:
 3. exactly one valid terminator per Block;
 4. existing successor targets and exact edge arity/type;
 5. reachability from entry;
-6. dominance of every operand use;
+6. dominance of every argument use;
 7. exact return arity/type against the Function signature;
 8. exact call contracts against the resolved callee.
 

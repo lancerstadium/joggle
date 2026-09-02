@@ -17,10 +17,15 @@ struct FunctionAccess {
   static const std::shared_ptr<FunctionIdentity>&
   owner(const Instruction& instruction);
   static const std::shared_ptr<FunctionIdentity>& owner(const Block& block);
+  static const std::shared_ptr<const KnownValueStorage>&
+  known(const Value& value);
 
   static std::uint64_t id(const Value& value);
   static std::uint64_t id(const Instruction& instruction);
   static std::uint64_t id(const Block& block);
+  static Value restore(std::shared_ptr<FunctionIdentity> function,
+                       std::uint64_t id,
+                       std::shared_ptr<const KnownValueStorage> known);
 
   static void locate(Function::Edit& edit, const Instruction& instruction,
                      SourceRange source);

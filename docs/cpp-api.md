@@ -54,12 +54,12 @@ name strings or process-local numeric tokens.
 An operation declaration reflects its three semantic parts directly:
 
 ```cpp
-auto operands = add->operands();
+auto arguments = add->arguments();
 auto properties = add->properties();
 auto results = add->results();
 ```
 
-Operands and results are `PortDecl` values with a name, variadic flag, and the
+Arguments and results are `PortDecl` values with a name, variadic flag, and the
 same public immutable `Module::Expression` used by parsing, formatting, linking,
 and type inference. Properties use `ParameterDecl`; its `domain` member is the
 compile-time value domain, while `PortDecl::type` is an SSA type expression.
