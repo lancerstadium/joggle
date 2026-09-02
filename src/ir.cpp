@@ -140,24 +140,6 @@ void FunctionAccess::locate(Function::Edit& edit, const Instruction& instruction
       std::move(source);
 }
 
-FunctionEditCheckpoint FunctionAccess::checkpoint(Function::Edit& edit) {
-  if (!edit.state_ || !edit.state_->active) {
-    throw std::logic_error("cannot checkpoint an inactive function edit");
-  }
-  return {std::make_shared<FunctionState>(
-              *edit.state_->function->state),
-          edit.state_->function->next_id};
-}
-
-void FunctionAccess::restore(Function::Edit& edit,
-                             FunctionEditCheckpoint checkpoint) {
-  if (!edit.state_ || !edit.state_->active || !checkpoint.state) {
-    throw std::logic_error("cannot restore an inactive function edit");
-  }
-  edit.state_->function->state = std::move(checkpoint.state);
-  edit.state_->function->next_id = checkpoint.next_id;
-}
-
 std::optional<SourceRange> FunctionAccess::location(const Instruction& instruction) {
   if (!instruction.valid()) {
     return std::nullopt;

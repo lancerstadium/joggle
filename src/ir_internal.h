@@ -12,11 +12,6 @@ namespace joggle::detail {
 struct FunctionIdentity;
 struct FunctionState;
 
-struct FunctionEditCheckpoint {
-  std::shared_ptr<FunctionState> state;
-  std::uint64_t next_id = 0;
-};
-
 // Internal access shared by the parser and compiler. Source provenance is
 // deliberately not part of the public function-editing surface.
 struct FunctionAccess {
@@ -36,9 +31,6 @@ struct FunctionAccess {
 
   static void locate(Function::Edit& edit, const Instruction& instruction,
                      SourceRange source);
-  static FunctionEditCheckpoint checkpoint(Function::Edit& edit);
-  static void restore(Function::Edit& edit,
-                      FunctionEditCheckpoint checkpoint);
   static std::optional<SourceRange> location(const Instruction& instruction);
   static std::optional<ParameterValue> known_value(const Value& value);
   static std::size_t argument_parameter(const Instruction& instruction,
