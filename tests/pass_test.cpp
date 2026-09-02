@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <tuple>
 
 #include <joggle/joggle.h>
 
@@ -455,30 +456,108 @@ module represented@1.0.0 {
                "Module types can use ordinary registered C++ values through "
                "composed compiler functions");
 
-  joggle::Compiler parameterized_host;
-  parameterized_host.add(
+  joggle::Compiler missing_projection;
+  missing_projection.add(
       "joggle 1; module parameterized_host@1.0.0 { "
       "type target(lanes: int); }",
       "parameterized-host.joggle");
-  const bool parameterized_linked = parameterized_host.link();
-  const auto parameterized_module =
-      parameterized_host.module("parameterized_host");
-  const auto parameterized_type = parameterized_module
-                                      ? parameterized_module->type("target")
-                                      : std::nullopt;
+  const bool missing_projection_linked = missing_projection.link();
+  const auto missing_projection_module =
+      missing_projection.module("parameterized_host");
+  const auto missing_projection_type =
+      missing_projection_module
+          ? missing_projection_module->type("target")
+          : std::nullopt;
   const bool parameterized_rejected =
-      parameterized_linked && parameterized_type &&
-      !parameterized_host.represent<Target>(*parameterized_type);
+      missing_projection_linked && missing_projection_type &&
+      !missing_projection.represent<Target>(*missing_projection_type);
   const bool reports_projection = std::any_of(
-      parameterized_host.diagnostics().entries().begin(),
-      parameterized_host.diagnostics().entries().end(),
+      missing_projection.diagnostics().entries().begin(),
+      missing_projection.diagnostics().entries().end(),
       [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find("value-to-Type projection") !=
+        return diagnostic.message.find("needs a projection") !=
                std::string::npos;
       });
   ok &= expect(parameterized_rejected && reports_projection,
                "host registration rejects parameterized schemas instead of "
                "discarding their type arguments");
+
+  joggle::Compiler parameterized_host;
+  parameterized_host.add(R"(
+joggle 1;
+module parameterized_host@1.0.0 {
+  type target(lanes: int);
+  type estimate(lanes: int);
+
+  fn measure<N: int>(input: target<N>) -> estimate<N>;
+  fn analyze<N: int>(input: target<N>) -> estimate<N> {
+    return measure(input);
+  }
+  fn fixed(input: target<32>) -> estimate<32>;
+  fn wrong(input: target<32>) -> estimate<32>;
+}
+)",
+                         "parameterized-host.joggle");
+  const bool parameterized_linked = parameterized_host.link();
+  const auto parameterized_module =
+      parameterized_host.module("parameterized_host");
+  const auto parameterized_target =
+      parameterized_module ? parameterized_module->type("target")
+                           : std::nullopt;
+  const auto parameterized_estimate =
+      parameterized_module ? parameterized_module->type("estimate")
+                           : std::nullopt;
+  const auto parameterized_measure =
+      parameterized_module ? parameterized_module->function("measure")
+                           : std::nullopt;
+  const auto parameterized_analyze =
+      parameterized_module ? parameterized_module->function("analyze")
+                           : std::nullopt;
+  const auto fixed = parameterized_module
+                         ? parameterized_module->function("fixed")
+                         : std::nullopt;
+  const auto wrong = parameterized_module
+                         ? parameterized_module->function("wrong")
+                         : std::nullopt;
+  if (!parameterized_linked || !parameterized_target ||
+      !parameterized_estimate || !parameterized_measure ||
+      !parameterized_analyze || !fixed || !wrong ||
+      !parameterized_host.represent<Target>(
+          *parameterized_target,
+          [](const Target& target) { return std::tuple{target.lanes}; }) ||
+      !parameterized_host.represent<Estimate>(
+          *parameterized_estimate,
+          [](const Estimate& estimate) { return std::tuple{estimate.cycles}; })) {
+    parameterized_host.diagnostics().print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  parameterized_host.bind(*parameterized_measure,
+                          [](const Target& target) {
+                            return Estimate{.cycles = target.lanes};
+                          });
+  std::int64_t fixed_invocations = 0;
+  parameterized_host.bind(*fixed, [&](const Target& target) {
+    ++fixed_invocations;
+    return Estimate{.cycles = target.lanes};
+  });
+  parameterized_host.bind(*wrong, [](const Target&) {
+    return Estimate{.cycles = 64};
+  });
+  const auto parameterized_result =
+      parameterized_host.run<Estimate>(*parameterized_analyze, Target{32});
+  ok &= expect(parameterized_result && parameterized_result->cycles == 32,
+               "a host projection preserves concrete type parameters through "
+               "a composed generic compiler function");
+  const auto rejected_input =
+      parameterized_host.run<Estimate>(*fixed, Target{16});
+  ok &= expect(!rejected_input && fixed_invocations == 0,
+               "concrete projected input types are checked before native "
+               "compiler code executes");
+  const auto rejected_result =
+      parameterized_host.run<Estimate>(*wrong, Target{32});
+  ok &= expect(!rejected_result,
+               "a native compiler function cannot return the wrong "
+               "parameterized type instance");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -152,9 +152,10 @@ expression evaluator; it does not select another callable or assignment rule.
 Compiler-oriented functions currently use `Compiler::bind` and
 `Compiler::run`. Parameterless Module types may be associated one-to-one with
 ordinary copyable C++ types through `Compiler::represent<T>`, after which the
-same typed binding and invocation path accepts them. Parameterized host
-representations require a future value-to-concrete-Type projection; the API
-rejects them instead of discarding type arguments. See
+same typed binding and invocation path accepts them. Parameterized host types
+provide a projection lambda returning a `std::tuple` of declaration parameters;
+the compiler constructs and validates the concrete `Type` and preserves it
+through composed compiler functions. See
 [the execution model](execution-model.md) for the staging contract and
 [bindings](bindings.md) for examples.
 

@@ -102,10 +102,31 @@ auto result = compiler.run<Estimate>(measure, Target{/* ... */});
 
 No base class, generated wrapper, trait specialization, or adapter object is
 required. Registration is one-to-one between a linked Module Type declaration
-and a copyable C++ type. Parameterized host representations intentionally wait
-for a value-to-concrete-Type projection contract; accepting only the schema
-would lose its type arguments. Program data formats remain freely
-parameterized because they use ordinary `Type` and `Value` IR handles.
+and a copyable C++ type.
+
+A parameterized representation adds one ordinary projection lambda. It returns
+the declaration's parameters in their declared order:
+
+```joggle
+type target(lanes: int);
+type estimate(lanes: int);
+fn measure<N: int>(input: target<N>) -> estimate<N>;
+```
+
+```cpp
+compiler.represent<Target>(target_type, [](const Target& value) {
+  return std::tuple{value.lanes};
+});
+compiler.represent<Estimate>(estimate_type, [](const Estimate& value) {
+  return std::tuple{value.lanes};
+});
+```
+
+Joggle constructs the concrete `target<value.lanes>` or
+`estimate<value.lanes>` itself. The existing type solver checks these concrete
+instances before native code executes and checks its result afterward, so a
+binding cannot silently erase or change dependent type arguments. A
+parameterized declaration registered without a projection is rejected.
 
 ## Known evaluation
 

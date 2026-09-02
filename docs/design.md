@@ -219,8 +219,9 @@ checks reachability, dominance, successor edges, and all function exits.
 The `function` kernel domain remains the bootstrap representation for direct
 `joggle::Function` callbacks. Parameterless Module-declared types can now
 register ordinary copyable C++ host representations and flow through composed
-compiler functions. Parameterized host values and their concrete-Type
-projection remain future work.
+compiler functions. Parameterized host values provide an ordered tuple
+projection; their concrete Type travels with the payload and is checked by the
+same dependent-type solver used for IR calls.
 
 Likewise, the current separate compile-time-expression and dataflow-body parser
 paths are temporary. The final parser produces one function syntax tree, and

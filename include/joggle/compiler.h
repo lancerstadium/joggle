@@ -31,8 +31,9 @@ namespace detail {
 struct CompilerAccess;
 
 struct HostValue {
-  std::string type;
+  std::string cpp_type;
   std::shared_ptr<void> storage;
+  std::optional<Type> concrete_type;
 };
 
 using PassValue =
@@ -98,7 +99,7 @@ template <typename T> decltype(auto) pass_argument(PassValue& value) {
     return static_cast<T>(stored);
   } else {
     auto& host = std::get<HostValue>(value);
-    if (host.type != host_type_name<Value>() || !host.storage) {
+    if (host.cpp_type != host_type_name<Value>() || !host.storage) {
       throw std::bad_variant_access{};
     }
     auto& stored = *static_cast<Value*>(host.storage.get());
@@ -115,7 +116,7 @@ template <typename T> std::optional<T> take_pass_value(PassValue value) {
     return std::get<Value>(std::move(value));
   } else {
     auto host = std::get<HostValue>(std::move(value));
-    if (host.type != host_type_name<Value>() || !host.storage) {
+    if (host.cpp_type != host_type_name<Value>() || !host.storage) {
       return std::nullopt;
     }
     return std::move(*static_cast<Value*>(host.storage.get()));
@@ -293,6 +294,8 @@ private:
   using VerifierFunction = std::function<bool(const Subject&, Diagnostics&)>;
   using PassFunction = std::function<std::optional<detail::PassValue>(
       Compiler&, std::span<detail::PassValue>, Diagnostics&)>;
+  using RepresentationProjector = std::function<std::optional<Type>(
+      Compiler&, const Module::TypeDecl&, const void*)>;
 
 public:
   struct EvaluationLimits {
@@ -335,6 +338,41 @@ public:
                   "a host representation must be copy constructible");
     return bind_representation(std::move(schema),
                                detail::host_type_name<Value>());
+  }
+
+  // A parameterized host representation projects a C++ value to the ordered
+  // parameters of its Module Type declaration. A std::tuple keeps the Module
+  // as the schema authority without requiring a wrapper or generated class.
+  template <typename T, typename Projection>
+  bool represent(Module::TypeDecl schema, Projection&& projection) {
+    using Value = std::remove_cvref_t<T>;
+    using Callable = std::decay_t<Projection>;
+    using Parameters =
+        std::remove_cvref_t<std::invoke_result_t<Callable&, const Value&>>;
+    static_assert(std::is_copy_constructible_v<Value>,
+                  "a host representation must be copy constructible");
+    static_assert(requires { std::tuple_size<Parameters>::value; },
+                  "a host type projection must return a std::tuple");
+    RepresentationProjector erased =
+        [callable = Callable(std::forward<Projection>(projection))](
+            Compiler& compiler, const Module::TypeDecl& declaration,
+            const void* storage) mutable -> std::optional<Type> {
+      if (storage == nullptr) {
+        return std::nullopt;
+      }
+      auto parameters =
+          std::invoke(callable, *static_cast<const Value*>(storage));
+      return std::apply(
+          [&](auto&&... values) {
+            return compiler.make(
+                declaration,
+                std::forward<decltype(values)>(values)...);
+          },
+          std::move(parameters));
+    };
+    return bind_representation(std::move(schema),
+                               detail::host_type_name<Value>(),
+                               std::move(erased));
   }
 
   template <typename... Arguments>
@@ -649,6 +687,12 @@ private:
   void bind_verifier(Module::FunctionDecl schema,
                      VerifierFunction<Instruction> verifier);
   bool bind_representation(Module::TypeDecl schema, std::string_view type);
+  bool bind_representation(Module::TypeDecl schema, std::string_view type,
+                           RepresentationProjector projector);
+  bool project_host_value(detail::PassValue& value);
+  bool check_host_values(const Module::FunctionDecl& function,
+                         std::span<const detail::PassValue> arguments,
+                         const detail::PassValue* result = nullptr);
   bool accepts_host_type(const Module::FunctionDecl& function,
                          const Module::ParameterDecl& field,
                          std::string_view type) const;

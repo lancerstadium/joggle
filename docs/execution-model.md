@@ -94,9 +94,11 @@ A Known compiler-function value is not restricted to a closed kernel variant.
 A Module may associate a parameterless declared type with an ordinary copyable
 C++ type; typed `Compiler::bind` adapters erase and recover that payload
 internally, so extension authors do not implement an evaluator interface or
-subclass an IR node. Parameterized host representations will additionally need
-a projection from each payload to its concrete Joggle `Type`; schema-only
-registration is deliberately rejected because it would lose type arguments.
+subclass an IR node. For a parameterized declared type, registration supplies a
+lambda returning its ordered parameter tuple. The compiler constructs the
+concrete Joggle `Type`, carries it with the erased payload, and applies the
+ordinary dependent-type solver before and after native execution. Schema-only
+registration remains rejected because it would lose type arguments.
 
 Equality, canonical serialization, and materialization are optional
 capabilities of a host representation. Equality can preserve a Known value

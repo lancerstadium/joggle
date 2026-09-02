@@ -223,7 +223,7 @@ std::string_view pass_value_type(const detail::PassValue& value) {
   case 8:
     return typeid(Function).name();
   case 9:
-    return std::get<detail::HostValue>(value).type;
+    return std::get<detail::HostValue>(value).cpp_type;
   default:
     return typeid(void).name();
   }
@@ -717,6 +717,10 @@ struct Compiler::State {
     std::string target;
     std::string digest;
   };
+  struct HostRepresentation {
+    Module::TypeDecl schema;
+    RepresentationProjector project;
+  };
   Diagnostics diagnostics;
   std::map<std::string, Module, std::less<>> modules;
   std::map<std::string, std::filesystem::path, std::less<>> module_sources;
@@ -737,7 +741,7 @@ struct Compiler::State {
   std::map<std::string, MethodFunction<Instruction>, std::less<>>
       operation_methods;
   std::map<std::string, PassFunction, std::less<>> passes;
-  std::map<std::string, Module::TypeDecl, std::less<>> host_types;
+  std::map<std::string, HostRepresentation, std::less<>> host_types;
   std::map<std::string, std::string, std::less<>> host_representations;
   std::set<std::string, std::less<>> constructing_types;
   std::set<std::string, std::less<>> evaluating_functions;
@@ -2715,6 +2719,21 @@ void Compiler::bind_verifier(Module::FunctionDecl schema,
 
 bool Compiler::bind_representation(Module::TypeDecl schema,
                                    std::string_view type) {
+  if (!schema.parameters().empty()) {
+    state_->diagnostics.report(
+        "a parameterized host representation needs a projection returning "
+        "its ordered type parameters");
+    return false;
+  }
+  RepresentationProjector projector =
+      [](Compiler& compiler, const Module::TypeDecl& declaration,
+         const void*) { return compiler.make(declaration); };
+  return bind_representation(std::move(schema), type, std::move(projector));
+}
+
+bool Compiler::bind_representation(Module::TypeDecl schema,
+                                   std::string_view type,
+                                   RepresentationProjector projector) {
   if (!state_->linked) {
     state_->diagnostics.report(
         "cannot register a host representation before the compiler is linked");
@@ -2736,10 +2755,8 @@ bool Compiler::bind_representation(Module::TypeDecl schema,
         "registered again");
     return false;
   }
-  if (!schema.parameters().empty()) {
-    state_->diagnostics.report(
-        "a host representation currently requires a parameterless Module "
-        "type; parameterized types need a value-to-Type projection");
+  if (!projector) {
+    state_->diagnostics.report("a host representation projection is empty");
     return false;
   }
   const std::string identity = symbol.stable_name();
@@ -2749,7 +2766,7 @@ bool Compiler::bind_representation(Module::TypeDecl schema,
       by_schema != state_->host_representations.end()) {
     if (by_type != state_->host_types.end() &&
         by_schema != state_->host_representations.end() &&
-        by_type->second == schema && by_schema->second == type) {
+        by_type->second.schema == schema && by_schema->second == type) {
       return true;
     }
     state_->diagnostics.report(
@@ -2757,7 +2774,9 @@ bool Compiler::bind_representation(Module::TypeDecl schema,
         "representation");
     return false;
   }
-  state_->host_types.emplace(std::string(type), schema);
+  state_->host_types.emplace(
+      std::string(type),
+      State::HostRepresentation{schema, std::move(projector)});
   state_->host_representations.emplace(identity, std::string(type));
   return true;
 }
@@ -2776,6 +2795,94 @@ bool Compiler::accepts_host_type(const Module::FunctionDecl& function,
                   : state_->host_representations.end();
   return representation != state_->host_representations.end() &&
          representation->second == type;
+}
+
+bool Compiler::project_host_value(detail::PassValue& value) {
+  auto* host = std::get_if<detail::HostValue>(&value);
+  if (host == nullptr || host->concrete_type) {
+    return true;
+  }
+  const auto representation = state_->host_types.find(host->cpp_type);
+  if (representation == state_->host_types.end()) {
+    state_->diagnostics.report(
+        "a C++ value has no registered Module type representation");
+    return false;
+  }
+  std::optional<Type> projected;
+  try {
+    projected = representation->second.project(
+        *this, representation->second.schema, host->storage.get());
+  } catch (const std::exception& exception) {
+    state_->diagnostics.report(
+        "host type projection threw: " + std::string(exception.what()));
+    return false;
+  } catch (...) {
+    state_->diagnostics.report("host type projection threw an unknown exception");
+    return false;
+  }
+  if (!projected ||
+      projected->schema() != representation->second.schema ||
+      !belongs_to(state_->modules, ParameterValue(*projected))) {
+    state_->diagnostics.report(
+        "host type projection did not produce an instance of its registered "
+        "Module type");
+    return false;
+  }
+  host->concrete_type = std::move(*projected);
+  return true;
+}
+
+bool Compiler::check_host_values(
+    const Module::FunctionDecl& function,
+    std::span<const detail::PassValue> arguments,
+    const detail::PassValue* result) {
+  const bool has_host_input =
+      std::any_of(arguments.begin(), arguments.end(), [](const auto& value) {
+        return std::holds_alternative<detail::HostValue>(value);
+      });
+  const bool has_host_result =
+      result != nullptr &&
+      std::holds_alternative<detail::HostValue>(*result);
+  if (!has_host_input && !has_host_result) {
+    return true;
+  }
+
+  const auto& contract = detail::FunctionTypeAccess::get(function);
+  if (arguments.size() != function.inputs().size()) {
+    return false;
+  }
+  std::vector<Type> value_arguments;
+  std::vector<std::optional<ParameterValue>> known_arguments;
+  for (std::size_t index = 0; index < arguments.size(); ++index) {
+    if (contract.ir_inputs[index]) {
+      const auto* host = std::get_if<detail::HostValue>(&arguments[index]);
+      if (host == nullptr || !host->concrete_type) {
+        state_->diagnostics.report(
+            "compiler function IR input has no concrete Joggle type");
+        return false;
+      }
+      value_arguments.push_back(*host->concrete_type);
+      continue;
+    }
+    known_arguments.push_back(parameter_value(arguments[index]));
+  }
+
+  std::vector<std::optional<Type>> expected_results;
+  expected_results.reserve(detail::ir_results(function).size());
+  for (std::size_t index = 0; index < function.results().size(); ++index) {
+    if (!contract.ir_results[index]) {
+      continue;
+    }
+    const auto* host = result == nullptr
+                           ? nullptr
+                           : std::get_if<detail::HostValue>(result);
+    expected_results.push_back(host == nullptr ? std::optional<Type>{}
+                                               : host->concrete_type);
+  }
+  return detail::resolve_operation_types(
+             *this, function, value_arguments, known_arguments,
+             expected_results, state_->diagnostics)
+      .has_value();
 }
 
 bool Compiler::check_pass_signature(
@@ -3190,6 +3297,11 @@ Compiler::run_pass(Module::FunctionDecl pass,
                                "' received the wrong argument count");
     return std::nullopt;
   }
+  for (auto& argument : arguments) {
+    if (!project_host_value(argument)) {
+      return std::nullopt;
+    }
+  }
   for (std::size_t index = 0; index < arguments.size(); ++index) {
     if (!accepts_host_type(pass, pass.inputs()[index],
                            pass_value_type(arguments[index]))) {
@@ -3198,6 +3310,9 @@ Compiler::run_pass(Module::FunctionDecl pass,
                                  "' received an argument with the wrong type");
       return std::nullopt;
     }
+  }
+  if (!check_host_values(pass, arguments)) {
+    return std::nullopt;
   }
 
   std::vector<std::pair<std::shared_ptr<Function>,
@@ -3222,6 +3337,11 @@ Compiler::run_pass(Module::FunctionDecl pass,
                                  "' received the wrong argument count");
       return std::nullopt;
     }
+    for (auto& value : values) {
+      if (!project_host_value(value)) {
+        return std::nullopt;
+      }
+    }
     for (std::size_t index = 0; index < values.size(); ++index) {
       if (!accepts_host_type(current, current.inputs()[index],
                              pass_value_type(values[index]))) {
@@ -3240,6 +3360,9 @@ Compiler::run_pass(Module::FunctionDecl pass,
           return std::nullopt;
         }
       }
+    }
+    if (!check_host_values(current, values)) {
+      return std::nullopt;
     }
     switch (current.form()) {
     case Module::FunctionDecl::Form::External: {
@@ -3268,6 +3391,9 @@ Compiler::run_pass(Module::FunctionDecl pass,
         }
         return std::nullopt;
       }
+      if (!project_host_value(*execution)) {
+        return std::nullopt;
+      }
       if (!current.results().empty()) {
         if (current.results().size() != 1U ||
             !accepts_host_type(current, current.results().front(),
@@ -3277,6 +3403,9 @@ Compiler::run_pass(Module::FunctionDecl pass,
                                      "' produced a value with the wrong type");
           return std::nullopt;
         }
+      }
+      if (!check_host_values(current, values, &*execution)) {
+        return std::nullopt;
       }
       return execution;
     }
@@ -3346,8 +3475,13 @@ Compiler::run_pass(Module::FunctionDecl pass,
         }
         return self(self, *next, std::move(arguments));
       };
-      return evaluate(
+      auto evaluated = evaluate(
           evaluate, *detail::ModuleAccess::returned_expression(current));
+      if (!evaluated || !project_host_value(*evaluated) ||
+          !check_host_values(current, values, &*evaluated)) {
+        return std::nullopt;
+      }
+      return evaluated;
     }
     }
     return std::nullopt;
