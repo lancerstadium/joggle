@@ -762,26 +762,96 @@ std::optional<detail::ValueSyntax> value_syntax(
 class Instantiator {
 public:
   Instantiator(Compiler& compiler, Module::FunctionDecl function,
-               const detail::FunctionBody& body, Diagnostics& diagnostics)
+               const detail::FunctionBody& body, Diagnostics& diagnostics,
+               std::vector<Value> known_arguments)
       : compiler_(compiler), declaration_(std::move(function)), body_(body),
         owner_(declaration_.symbol().module_name()),
-        diagnostics_(diagnostics), initial_diagnostics_(diagnostics.size()) {}
+        diagnostics_(diagnostics), initial_diagnostics_(diagnostics.size()),
+        supplied_known_(std::move(known_arguments)) {}
 
   std::optional<Function> instantiate() {
     function_ = compiler_.function();
     if (!function_) {
       return std::nullopt;
     }
-    std::vector<Type> result_types;
-    const auto results = detail::ir_results(declaration_);
-    for (const auto& result : results) {
-      auto syntax = value_syntax(result.domain, body_.range);
-      if (!syntax) {
-        report("a residual result type cannot yet be instantiated",
+    const auto& contract = detail::FunctionTypeAccess::get(declaration_);
+    const auto parameters = declaration_.inputs();
+    std::vector<std::optional<Value>> known_parameters(parameters.size());
+    detail::KnownBindings bindings;
+    std::size_t supplied = 0;
+    for (std::size_t index = 0; index < parameters.size(); ++index) {
+      if (contract.ir_inputs[index]) {
+        continue;
+      }
+      const Module::ParameterDecl& parameter = parameters[index];
+      std::size_t required_after = 0;
+      for (std::size_t next = index + 1U; next < parameters.size(); ++next) {
+        if (!contract.ir_inputs[next] && !parameters[next].default_value) {
+          ++required_after;
+        }
+      }
+      const bool use_default = parameter.default_value &&
+                               supplied_known_.size() - supplied ==
+                                   required_after;
+      std::optional<Value> value;
+      if (!use_default && supplied < supplied_known_.size()) {
+        value = supplied_known_[supplied++];
+      } else if (parameter.default_value) {
+        auto payload = detail::parameter_default(parameter);
+        auto type = reflected_type(parameter.domain);
+        value = payload && type
+                    ? compiler_.known(std::move(*type), std::move(*payload))
+                    : std::optional<Value>{};
+      }
+      const auto payload = value && value->known()
+                               ? detail::FunctionAccess::known_value(*value)
+                               : std::nullopt;
+      if (!value || !payload ||
+          !detail::matches_parameter(parameter, *payload)) {
+        report("function specialization needs a compatible Known argument '" +
+                   parameter.name + "'",
                body_.range);
         continue;
       }
-      if (auto result_type = type(*syntax)) {
+      known_parameters[index] = *value;
+      bindings.insert_or_assign(parameter.name, *payload);
+      if (index < contract.bindings.size() && contract.bindings[index] &&
+          contract.bindings[index]->kind ==
+              Module::Expression::Kind::Variable) {
+        bindings.insert_or_assign(contract.bindings[index]->text, *payload);
+      }
+    }
+    if (supplied != supplied_known_.size()) {
+      report("function specialization has too many Known arguments",
+             body_.range);
+    }
+    if (!ok()) {
+      return std::nullopt;
+    }
+
+    const auto resolve_type = [&](const Module::Expression& expression,
+                                  std::string_view role)
+        -> std::optional<Type> {
+      const Module::ParameterDecl expected{
+          std::string(role), detail::domain_expression(detail::ValueKind::Type),
+          false, std::nullopt};
+      auto value = detail::evaluate_known_expression(
+          compiler_, owner_, expression, expected, bindings, diagnostics_,
+          source(body_.range));
+      const Type* type = value ? value->as_type() : nullptr;
+      if (type == nullptr) {
+        report("cannot resolve " + std::string(role) + " type during "
+               "function specialization",
+               body_.range);
+        return std::nullopt;
+      }
+      return *type;
+    };
+
+    std::vector<Type> result_types;
+    const auto results = detail::ir_results(declaration_);
+    for (const auto& result : results) {
+      if (auto result_type = resolve_type(result.domain, "result")) {
         result_types.push_back(*result_type);
       }
     }
@@ -806,19 +876,15 @@ public:
       }
     }
     std::vector<Type> argument_types;
-    const auto inputs = detail::ir_inputs(declaration_);
-    for (const auto& argument : inputs) {
-      auto syntax = value_syntax(argument.domain, body_.range);
-      if (!syntax) {
-        report("a residual input type cannot yet be instantiated", body_.range);
-        continue;
-      }
-      auto argument_type = type(*syntax);
-      if (argument_type) {
-        argument_types.push_back(*argument_type);
+    for (std::size_t index = 0; index < parameters.size(); ++index) {
+      if (contract.ir_inputs[index]) {
+        if (auto argument_type =
+                resolve_type(parameters[index].domain, "input")) {
+          argument_types.push_back(*argument_type);
+        }
       }
     }
-    if (argument_types.size() != inputs.size() ||
+    if (argument_types.size() != detail::ir_inputs(declaration_).size() ||
         result_types.size() != results.size()) {
       return std::nullopt;
     }
@@ -827,9 +893,14 @@ public:
                                     result_types);
     edit_.emplace(function_->edit());
     scopes_.emplace_back();
-    for (std::size_t index = 0; index < inputs.size(); ++index) {
-      define(inputs[index].name, edit_->argument(argument_types[index]),
-             body_.range);
+    std::size_t residual = 0;
+    for (std::size_t index = 0; index < parameters.size(); ++index) {
+      if (contract.ir_inputs[index]) {
+        define(parameters[index].name,
+               edit_->argument(argument_types[residual++]), body_.range);
+      } else if (known_parameters[index]) {
+        define(parameters[index].name, *known_parameters[index], body_.range);
+      }
     }
 
     blocks_.emplace("entry", function_->entry());
@@ -1834,6 +1905,7 @@ private:
   std::unordered_map<std::string, Type> expected_values_;
   std::unordered_map<std::string, Block> blocks_;
   std::size_t next_temporary_ = 0;
+  std::vector<Value> supplied_known_;
 };
 
 class RuntimeSyntax {
@@ -2242,8 +2314,10 @@ std::string format_function_syntax(const FunctionSyntax& function,
 std::optional<Function> instantiate_function(Compiler& compiler,
                                           Module::FunctionDecl function,
                                           const FunctionBody& body,
-                                          Diagnostics& diagnostics) {
-  return Instantiator(compiler, std::move(function), body, diagnostics)
+                                          Diagnostics& diagnostics,
+                                          std::vector<Value> known_arguments) {
+  return Instantiator(compiler, std::move(function), body, diagnostics,
+                      std::move(known_arguments))
       .instantiate();
 }
 

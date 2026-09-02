@@ -2365,7 +2365,24 @@ std::optional<Function> Compiler::function() {
   return Function(std::move(modules));
 }
 
+std::optional<Function>
+Compiler::function(Module::FunctionDecl declaration) {
+  return function(std::move(declaration), {});
+}
+
+std::optional<Function>
+Compiler::function(Module::FunctionDecl declaration,
+                   std::vector<Value> known_arguments) {
+  return function(declaration.symbol(), std::move(known_arguments));
+}
+
 std::optional<Function> Compiler::function(std::string_view name) {
+  return function(name, {});
+}
+
+std::optional<Function>
+Compiler::function(std::string_view name,
+                   std::vector<Value> known_arguments) {
   if (!state_->linked) {
     state_->diagnostics.report(
         "cannot construct a function before the compiler is linked");
@@ -2390,10 +2407,16 @@ std::optional<Function> Compiler::function(std::string_view name) {
     state_->diagnostics.report("unknown function '" + std::string(name) + "'");
     return std::nullopt;
   }
-  return function(*symbol);
+  return function(*symbol, std::move(known_arguments));
 }
 
 std::optional<Function> Compiler::function(Module::Symbol symbol) {
+  return function(std::move(symbol), {});
+}
+
+std::optional<Function>
+Compiler::function(Module::Symbol symbol,
+                   std::vector<Value> known_arguments) {
   if (!state_->linked) {
     state_->diagnostics.report(
         "cannot construct a function before the compiler is linked");
@@ -2433,7 +2456,8 @@ std::optional<Function> Compiler::function(Module::Symbol symbol) {
     return std::nullopt;
   }
   return detail::instantiate_function(*this, *function, *definition,
-                                      state_->diagnostics);
+                                      state_->diagnostics,
+                                      std::move(known_arguments));
 }
 
 bool Compiler::conforms(const Module::TypeDecl& declaration,

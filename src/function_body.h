@@ -134,7 +134,8 @@ std::string format_function_syntax(const FunctionSyntax& function,
 std::optional<Function> instantiate_function(Compiler& compiler,
                                           Module::FunctionDecl function,
                                           const FunctionBody& body,
-                                          Diagnostics& diagnostics);
+                                          Diagnostics& diagnostics,
+                                          std::vector<Value> known_arguments = {});
 
 }  // namespace detail
 }  // namespace joggle

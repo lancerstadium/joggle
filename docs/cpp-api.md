@@ -55,6 +55,21 @@ A function argument or instruction result is normally Residual. One
 instruction argument sequence may contain both kinds. The sequence follows the
 callee declaration order; there is no separate property map or setter.
 
+Known inputs specialize a named Function before its residual boundary is
+created:
+
+```cpp
+auto int_type = compiler.make("int");
+auto width = compiler.known(*int_type, std::int64_t{8});
+auto kernel_decl = module->function("kernel");
+auto kernel = compiler.function(*kernel_decl, {*width});
+```
+
+For `fn kernel<N: int>(width: N, input: tensor<f32, [N]>)`, the resulting
+`Function` has one Residual `tensor<f32, [8]>` argument. The Known `width`
+remains available while evaluating its body but is not exposed as a runtime
+parameter. Defaults are inserted through the same mechanism.
+
 ## Construct a Function
 
 ```cpp

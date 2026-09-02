@@ -38,7 +38,11 @@ module logic@1.0.0 {
     return sum;
   }
 
-  fn configured(scale: int, input: word<8>) -> word<8> {
+  fn configured<N: int>(scale: N, input: word<N>) -> word<N> {
+    result = identity(input);
+    return result;
+  }
+  fn default_configured<N: int>(scale: N = 8, input: word<N>) -> word<N> {
     result = identity(input);
     return result;
   }
@@ -78,13 +82,36 @@ int main() {
   ok &= expect(module.has_value(), "the function owner remains available");
   const auto configured_decl =
       module ? module->function("configured") : std::nullopt;
-  const auto configured = compiler.function("logic.configured");
-  ok &= expect(configured_decl && configured &&
+  const auto default_configured_decl =
+      module ? module->function("default_configured") : std::nullopt;
+  const auto configured_int = compiler.make("int");
+  const auto scale =
+      configured_int ? compiler.known(*configured_int, std::int64_t{8})
+                     : std::nullopt;
+  const auto configured =
+      scale && configured_decl
+          ? compiler.function(*configured_decl, {*scale})
+          : std::nullopt;
+  const auto default_configured =
+      default_configured_decl
+          ? compiler.function(*default_configured_decl)
+          : std::nullopt;
+  ok &= expect(configured_decl && configured && default_configured &&
                    configured_decl->inputs().size() == 2U &&
                    configured_decl->inputs().front().name == "scale" &&
-                   configured->arguments().size() == 1U,
+                   configured->arguments().size() == 1U &&
+                   configured->arguments().front().type().get<std::int64_t>(
+                       "width") == std::optional<std::int64_t>{8} &&
+                   configured->result_types().front().get<std::int64_t>(
+                       "width") == std::optional<std::int64_t>{8} &&
+                   default_configured->arguments().front().type().get<
+                       std::int64_t>("width") ==
+                       std::optional<std::int64_t>{8} &&
+                   default_configured->result_types().front().get<
+                       std::int64_t>("width") ==
+                       std::optional<std::int64_t>{8},
                "a function signature has one public parameter sequence while "
-               "the residual Function boundary receives program inputs");
+               "Known specialization resolves its residual boundary");
   const auto main_symbol =
       module ? module->symbol(joggle::Module::SymbolKind::Function, "main")
              : std::nullopt;

@@ -275,6 +275,11 @@ lists, type and attribute constructors, text-defined pure functions, and
 registered external functions. Evaluation happens automatically when a call is
 fully Known; `@(expression)` adds the explicit Known requirement.
 
+Named Function construction accepts its compiler-domain inputs as Known
+`Value`s. Those values bind generics and compute concrete residual input and
+result types before the Function boundary is created; they do not become
+runtime arguments.
+
 Known `if` conditions select one arm without creating IR. A Residual `i1`
 condition residualizes each expression arm independently, including nested
 calls and nested `if`, then joins them through sibling Blocks and typed

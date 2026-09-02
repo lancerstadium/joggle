@@ -332,8 +332,15 @@ public:
     return make(schema, std::span<const detail::ParameterValue>(values));
   }
   std::optional<Function> function();
+  std::optional<Function> function(Module::FunctionDecl declaration);
+  std::optional<Function> function(Module::FunctionDecl declaration,
+                                   std::vector<Value> known_arguments);
   std::optional<Function> function(Module::Symbol symbol);
+  std::optional<Function> function(Module::Symbol symbol,
+                                   std::vector<Value> known_arguments);
   std::optional<Function> function(std::string_view name);
+  std::optional<Function> function(std::string_view name,
+                                   std::vector<Value> known_arguments);
 
   bool conforms(const Module::TypeDecl& declaration,
                 const Module::InterfaceDecl& interface) const;
