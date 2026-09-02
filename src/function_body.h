@@ -59,7 +59,7 @@ struct ExpressionSyntax {
 
 struct BindingSyntax {
   std::string name;
-  std::optional<ValueSyntax> type;
+  std::optional<ExpressionSyntax> type;
   SyntaxRange range;
   bool rebind = false;
 };
@@ -79,7 +79,7 @@ struct StatementSyntax {
 
 struct BlockArgumentSyntax {
   std::string name;
-  ValueSyntax type;
+  ExpressionSyntax type;
   SyntaxRange range;
 };
 

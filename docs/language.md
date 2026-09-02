@@ -105,6 +105,21 @@ tile = @(choose_tile(device, shape));
 `@` does not change overload resolution, select a second body, or change the
 meaning of `=`.
 
+Type annotations use the same expression grammar as signatures and ordinary
+function bodies. Computed local types do not fall back to a restricted
+constructor-only syntax:
+
+```joggle
+fn build() -> word<6> {
+  value: word<@(sum([1, 2, 3]))> = source();
+  return value;
+}
+```
+
+The same rule applies to explicitly written Block argument types. Every such
+annotation must evaluate to one Known `type`; a Residual result is a staging
+error rather than a request to create a second type language.
+
 ## Known values entering the program
 
 A Known compiler value sometimes has to become a Residual program value, for
@@ -307,12 +322,13 @@ terminator    := "return" [ expressions ] ";"
 successor     := identifier "(" [ expressions ] ")"
 ```
 
-The implementation uses this single expression grammar for direct Known `if`,
-ordinary straight-line bodies, Residual and nested `if`, structured `while`,
-multi-statement `if`, structured early returns, and explicit typed CFG blocks.
-The public owning IR is Function/Block/Instruction/Value. Multi-statement
-*expression* arms, `for`, and closures remain under construction. Nested
-Region syntax and storage have been removed.
+The implementation uses this single expression grammar for local and Block
+argument type annotations, direct Known `if`, ordinary straight-line bodies,
+Residual and nested `if`, structured `while`, multi-statement `if`, structured
+early returns, and explicit typed CFG blocks. The public owning IR is
+Function/Block/Instruction/Value. Multi-statement *expression* arms, `for`, and
+closures remain under construction. Nested Region syntax and storage have
+been removed.
 
 A remaining staging restriction is deliberate and diagnosed: a Residual
 decision cannot yet control `break` or `continue` when the enclosing loop

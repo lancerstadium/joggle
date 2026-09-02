@@ -161,6 +161,12 @@ fn align(value: int, multiple: int) -> int {
 fn widen<W: int>(input: word<W>) -> word<@(align(W + 1, 8))>;
 ```
 
+The identical expression syntax is valid in a local type annotation:
+
+```joggle
+aligned: word<@(align(W + 1, 8))> = source();
+```
+
 There is no separate `const fn` declaration. The signature and body are
 sufficient. `@(expression)` makes the Known-value requirement explicit at the
 use site.

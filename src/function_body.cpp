@@ -255,7 +255,7 @@ private:
           argument.name = std::move(*argument_name);
         }
         expect(TokenKind::Colon, "':'");
-        argument.type = parse_value();
+        argument.type = expression();
         argument.range = {argument_begin, previous_end_};
         variables_.push_back(
             {argument.name, Module::Expression::reference("type"),
@@ -277,69 +277,6 @@ private:
     }
     block.range = {begin, previous_end_};
     return block;
-  }
-
-  detail::ValueSyntax parse_value() {
-    const SourcePosition begin = current_.begin;
-    if (is(TokenKind::String)) {
-      detail::ValueSyntax result{
-          detail::ValueSyntax::Kind::String, current_.text, {}, {}};
-      advance();
-      result.range = {begin, previous_end_};
-      return result;
-    }
-    const bool negative = match(TokenKind::Minus);
-    if (is(TokenKind::Integer) || is(TokenKind::Number)) {
-      detail::ValueSyntax result{
-          detail::ValueSyntax::Kind::Number,
-          negative ? "-" + current_.text : current_.text, {}, {}};
-      advance();
-      result.range = {begin, previous_end_};
-      return result;
-    }
-    if (negative) {
-      error("expected a number after '-'");
-      return {detail::ValueSyntax::Kind::Number, {}, {},
-              {begin, previous_end_}};
-    }
-    if (match_name("true")) {
-      detail::ValueSyntax result{
-          detail::ValueSyntax::Kind::Boolean, "true", {}, {}};
-      result.range = {begin, previous_end_};
-      return result;
-    }
-    if (match_name("false")) {
-      detail::ValueSyntax result{
-          detail::ValueSyntax::Kind::Boolean, "false", {}, {}};
-      result.range = {begin, previous_end_};
-      return result;
-    }
-    if (match(TokenKind::LeftBracket)) {
-      detail::ValueSyntax result{detail::ValueSyntax::Kind::List, {}, {}, {}};
-      if (!match(TokenKind::RightBracket)) {
-        do {
-          result.elements.push_back(parse_value());
-        } while (match(TokenKind::Comma));
-        expect(TokenKind::RightBracket, "']'");
-      }
-      result.range = {begin, previous_end_};
-      return result;
-    }
-    auto symbol = reference("a type or attribute name");
-    detail::ValueSyntax result{detail::ValueSyntax::Kind::Reference,
-                               symbol.value_or(std::string{}),
-                               {},
-                               {}};
-    if (match(TokenKind::Less)) {
-      if (!match(TokenKind::Greater)) {
-        do {
-          result.elements.push_back(parse_value());
-        } while (match(TokenKind::Comma));
-        expect(TokenKind::Greater, "'>'");
-      }
-    }
-    result.range = {begin, previous_end_};
-    return result;
   }
 
   bool starts_binding() const {
@@ -435,7 +372,7 @@ private:
         binding.name = std::move(name);
         binding.rebind = locals_.contains(binding.name);
         if (match(TokenKind::Colon)) {
-          binding.type = parse_value();
+          binding.type = expression();
         }
         binding.range = {binding_begin, previous_end_};
         if (!binding.rebind) {
@@ -598,7 +535,8 @@ private:
             output_ << ", ";
           }
           output_ << block.arguments[argument].name << ": ";
-          write_value(block.arguments[argument].type);
+          output_ << detail::format_expression(
+              block.arguments[argument].type.value);
         }
         output_ << "):\n";
         for (const auto& statement : block.statements) {
@@ -799,8 +737,10 @@ private:
       prefix_width += statement.bindings[index].name.size();
       if (statement.bindings[index].type) {
         output_ << ": ";
-        prefix_width += 2U + value_width(*statement.bindings[index].type);
-        write_value(*statement.bindings[index].type);
+        const std::string type = detail::format_expression(
+            statement.bindings[index].type->value);
+        prefix_width += 2U + type.size();
+        output_ << type;
       }
     }
     if (!statement.bindings.empty()) {
@@ -848,49 +788,6 @@ split_reference(std::string_view owner, std::string_view reference) {
              ? std::pair<std::string_view, std::string_view>{owner, reference}
              : std::pair<std::string_view, std::string_view>{
                    reference.substr(0, dot), reference.substr(dot + 1U)};
-}
-
-std::optional<detail::ValueSyntax> value_syntax(
-    const Module::Expression& expression, detail::SyntaxRange range) {
-  detail::ValueSyntax result;
-  result.range = range;
-  using Kind = Module::Expression::Kind;
-  switch (expression.kind) {
-  case Kind::Number:
-    result.kind = detail::ValueSyntax::Kind::Number;
-    break;
-  case Kind::Boolean:
-    result.kind = detail::ValueSyntax::Kind::Boolean;
-    break;
-  case Kind::String:
-    result.kind = detail::ValueSyntax::Kind::String;
-    break;
-  case Kind::List:
-    result.kind = detail::ValueSyntax::Kind::List;
-    break;
-  case Kind::Reference:
-  case Kind::Variable:
-    result.kind = detail::ValueSyntax::Kind::Reference;
-    break;
-  case Kind::Call:
-  case Kind::If:
-  case Kind::Evaluate:
-  case Kind::Prefix:
-  case Kind::Infix:
-  case Kind::Postfix:
-    return std::nullopt;
-  }
-  result.text = expression.kind == Kind::Reference
-                    ? detail::display_type_name(expression.text)
-                    : expression.text;
-  for (const auto& argument : expression.arguments) {
-    auto converted = value_syntax(argument, range);
-    if (!converted) {
-      return std::nullopt;
-    }
-    result.elements.push_back(std::move(*converted));
-  }
-  return result;
 }
 
 class Instantiator {
@@ -1301,100 +1198,6 @@ private:
     return std::nullopt;
   }
 
-  std::optional<ParameterValue>
-  parameter(const detail::ValueSyntax& syntax,
-            const Module::ParameterDecl& expected) {
-    const auto domain = detail::kernel_domain(expected.domain);
-    if (!domain) {
-      report("unknown parameter domain for '" + expected.name + "'",
-             syntax.range);
-      return std::nullopt;
-    }
-    if (syntax.kind == detail::ValueSyntax::Kind::Reference &&
-        syntax.elements.empty()) {
-      auto local = lookup(syntax.text);
-      auto expected_type = reflected_type(expected.domain);
-      if (local && local->known() && expected_type &&
-          local->type() == *expected_type) {
-        if (auto value = detail::FunctionAccess::known_value(*local)) {
-          return *value;
-        }
-      }
-    }
-    if (domain->list) {
-      if (syntax.kind != detail::ValueSyntax::Kind::List) {
-        report("expected a list value for parameter '" + expected.name + "'",
-               syntax.range);
-        return std::nullopt;
-      }
-      std::vector<ParameterValue> elements;
-      for (const auto& element : syntax.elements) {
-        Module::ParameterDecl scalar = expected;
-        scalar.domain = detail::domain_expression(domain->element);
-        auto value = parameter(element, scalar);
-        if (!value) {
-          return std::nullopt;
-        }
-        elements.push_back(std::move(*value));
-      }
-      return ParameterValue::list(std::move(elements));
-    }
-    switch (domain->element) {
-    case detail::ValueKind::Integer: {
-      if (syntax.kind != detail::ValueSyntax::Kind::Number) {
-        break;
-      }
-      std::int64_t value = 0;
-      const auto parsed = std::from_chars(
-          syntax.text.data(), syntax.text.data() + syntax.text.size(), value);
-      if (parsed.ec == std::errc{} &&
-          parsed.ptr == syntax.text.data() + syntax.text.size()) {
-        return ParameterValue(value);
-      }
-      break;
-    }
-    case detail::ValueKind::Real: {
-      if (syntax.kind != detail::ValueSyntax::Kind::Number) {
-        break;
-      }
-      double value = 0.0;
-      std::istringstream input(syntax.text);
-      input.imbue(std::locale::classic());
-      input >> value;
-      if (input && input.peek() == std::char_traits<char>::eof()) {
-        return ParameterValue(value);
-      }
-      break;
-    }
-    case detail::ValueKind::Boolean:
-      if (syntax.kind == detail::ValueSyntax::Kind::Boolean) {
-        return ParameterValue(syntax.text == "true");
-      }
-      break;
-    case detail::ValueKind::String:
-      if (syntax.kind == detail::ValueSyntax::Kind::String) {
-        return ParameterValue(syntax.text);
-      }
-      break;
-    case detail::ValueKind::Type: {
-      auto value = type(syntax);
-      return value ? std::optional<ParameterValue>{ParameterValue(*value)}
-                   : std::nullopt;
-    }
-    case detail::ValueKind::Attribute: {
-      auto value = attribute(syntax);
-      return value ? std::optional<ParameterValue>{ParameterValue(*value)}
-                   : std::nullopt;
-    }
-    case detail::ValueKind::Function:
-    case detail::ValueKind::Bytes:
-      break;
-    }
-    report("value has the wrong kind for parameter '" + expected.name + "'",
-           syntax.range);
-    return std::nullopt;
-  }
-
   std::optional<Type> reflected_type(const Module::Expression& expression) {
     const auto domain = detail::kernel_domain(expression);
     if (!domain) {
@@ -1549,82 +1352,29 @@ private:
              syntax.range);
       return std::nullopt;
     }
-    std::optional<ParameterValue> payload;
-    if (syntax.value.kind == Module::Expression::Kind::Reference &&
-        !syntax.value.arguments.empty()) {
-      auto value = value_syntax(syntax.value, syntax.range);
-      const auto kind = declaration_kind(syntax.value.text);
-      if (value && kind == Module::SymbolKind::Type) {
-        if (auto result = type(*value)) {
-          payload = ParameterValue(*result);
-        }
-      } else if (value && kind == Module::SymbolKind::Attribute) {
-        if (auto result = attribute(*value)) {
-          payload = ParameterValue(*result);
-        }
-      }
-    } else {
-      payload = detail::evaluate_known_expression(
-          compiler_, owner_, syntax.value, *expected, known_bindings(),
-          diagnostics_, source(syntax.range), residual_control_depth_ == 0U);
-    }
+    auto payload = detail::evaluate_known_expression(
+        compiler_, owner_, syntax.value, *expected, known_bindings(),
+        diagnostics_, source(syntax.range), residual_control_depth_ == 0U);
     auto type = payload ? reflected_type(expected->domain) : std::nullopt;
     return payload && type
                ? compiler_.known(std::move(*type), std::move(*payload))
                : std::optional<Value>{};
   }
 
-  template <typename Declaration, typename Construct>
-  auto construct(const detail::ValueSyntax& syntax, Construct create)
-      -> decltype(create(std::declval<Declaration>(),
-                         std::declval<std::vector<ParameterValue>>())) {
-    using Return =
-        decltype(create(std::declval<Declaration>(),
-                        std::declval<std::vector<ParameterValue>>()));
-    if (syntax.kind != detail::ValueSyntax::Kind::Reference) {
-      report("expected a declaration reference", syntax.range);
-      return Return{};
-    }
-    auto schema = declaration<Declaration>(syntax.text, syntax.range);
-    if (!schema) {
-      return Return{};
-    }
-    if (syntax.elements.size() > schema->parameters().size()) {
-      report("too many parameters for '" + syntax.text + "'", syntax.range);
-      return Return{};
-    }
-    std::vector<ParameterValue> parameters;
-    for (std::size_t index = 0; index < syntax.elements.size(); ++index) {
-      auto value =
-          parameter(syntax.elements[index], schema->parameters()[index]);
-      if (!value) {
-        return Return{};
-      }
-      parameters.push_back(std::move(*value));
-    }
+  std::optional<Type> type(const detail::ExpressionSyntax& syntax) {
+    const Module::ParameterDecl expected{
+        "type", detail::domain_expression(detail::ValueKind::Type), false,
+        std::nullopt};
     const std::size_t before = diagnostics_.size();
-    Return value = create(*schema, std::move(parameters));
-    detail::DiagnosticAccess::attach_since(diagnostics_, before,
-                                           source(syntax.range));
-    return value;
-  }
-
-  std::optional<Type> type(const detail::ValueSyntax& syntax) {
-    return construct<Module::TypeDecl>(
-        syntax, [this](const Module::TypeDecl& schema,
-                       std::vector<ParameterValue> parameters) {
-          return detail::CompilerAccess::make(
-              compiler_, schema, std::span<const ParameterValue>(parameters));
-        });
-  }
-
-  std::optional<Attribute> attribute(const detail::ValueSyntax& syntax) {
-    return construct<Module::AttributeDecl>(
-        syntax, [this](const Module::AttributeDecl& schema,
-                       std::vector<ParameterValue> parameters) {
-          return detail::CompilerAccess::make(
-              compiler_, schema, std::span<const ParameterValue>(parameters));
-        });
+    auto value = detail::evaluate_known_expression(
+        compiler_, owner_, syntax.value, expected, known_bindings(),
+        diagnostics_, source(syntax.range), residual_control_depth_ == 0U);
+    const Type* resolved = value ? value->as_type() : nullptr;
+    if (resolved == nullptr && diagnostics_.size() == before) {
+      report("type annotation does not evaluate to a Known type",
+             syntax.range);
+    }
+    return resolved ? std::optional<Type>{*resolved} : std::nullopt;
   }
 
   std::optional<Value> lookup(std::string_view name) const {
@@ -2668,7 +2418,8 @@ public:
       detail::BlockSyntax syntax;
       syntax.name = block_name(block);
       for (const Value& argument : block.arguments()) {
-        syntax.arguments.push_back({use(argument), value(argument.type()), {}});
+        syntax.arguments.push_back(
+            {use(argument), type_expression(argument.type()), {}});
       }
       for (const Instruction& instruction : block.instructions()) {
         syntax.statements.push_back(convert(instruction));
@@ -2808,6 +2559,10 @@ private:
     return result;
   }
 
+  static detail::ExpressionSyntax type_expression(const Type& type) {
+    return {expression(value(type)), {}};
+  }
+
   detail::StatementSyntax convert(const Instruction& operation) {
     detail::StatementSyntax result;
     result.expression.value.kind = Module::Expression::Kind::Call;
@@ -2815,7 +2570,7 @@ private:
         operation.callee().symbol().qualified_name();
     for (const Value& output : operation.results()) {
       result.bindings.push_back(
-          {bind(output, "v"), value(output.type()), {}});
+          {bind(output, "v"), type_expression(output.type()), {}});
     }
     const auto arguments = operation.arguments();
     const auto parameters = operation.callee().inputs();

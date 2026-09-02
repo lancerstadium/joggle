@@ -1619,16 +1619,17 @@ joggle 1;
 module list_evaluation@1.0.0 {
   type word(width: int);
 
+  fn source<T: type>() -> T;
   fn sum(values: list<int>) -> int;
-  fn populated_source() -> word<@(sum([1, 2, 3]))>;
-  fn empty_source() -> word<@(sum([]))>;
 
   fn populated() -> word<6> {
-    return populated_source();
+    value: word<@(sum([1, 2, 3]))> = source();
+    return value;
   }
 
   fn empty() -> word<0> {
-    return empty_source();
+    value: word<@(sum([]))> = source();
+    return value;
   }
 }
 )",
@@ -1636,6 +1637,16 @@ module list_evaluation@1.0.0 {
   const bool list_evaluation_linked = list_evaluation.link();
   const auto list_evaluation_module =
       list_evaluation.module("list_evaluation");
+  const std::string list_evaluation_text =
+      list_evaluation_module ? joggle::format(*list_evaluation_module)
+                             : std::string{};
+  joggle::Diagnostics list_evaluation_roundtrip_diagnostics;
+  const auto list_evaluation_roundtrip =
+      list_evaluation_module
+          ? joggle::parse_module(list_evaluation_text,
+                                 list_evaluation_roundtrip_diagnostics,
+                                 "list-evaluation-roundtrip.joggle")
+          : std::nullopt;
   const auto list_sum = list_evaluation_module
                             ? list_evaluation_module->function("sum")
                             : std::nullopt;
@@ -1666,9 +1677,17 @@ module list_evaluation@1.0.0 {
       empty ? empty->result_types().front().get<std::int64_t>("width")
             : std::nullopt;
   ok &= expect(populated_width == std::optional<std::int64_t>{6} &&
-                   empty_width == std::optional<std::int64_t>{0},
-               "list-valued host functions participate in dependent type "
-               "evaluation, including schema-typed empty lists");
+                   empty_width == std::optional<std::int64_t>{0} &&
+                   list_evaluation_roundtrip &&
+                   list_evaluation_roundtrip_diagnostics.ok() &&
+                   joggle::format(*list_evaluation_roundtrip) ==
+                       list_evaluation_text &&
+                   list_evaluation_text.find(
+                       "value: word<@(sum([1, 2, 3]))> = source();") !=
+                       std::string::npos,
+               "local type annotations use the full compile-time expression "
+               "grammar, including list-valued host functions and empty "
+               "lists");
 
   const joggle::Compiler::EvaluationLimits limits{2, 64};
   joggle::Compiler bounded(limits);
