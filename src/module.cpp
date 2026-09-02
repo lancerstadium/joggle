@@ -2304,6 +2304,11 @@ const Module::Expression* detail::ModuleAccess::expression(
       !FunctionTypeAccess::ir_results(function).empty()) {
     return nullptr;
   }
+  return returned_expression(function);
+}
+
+const Module::Expression* detail::ModuleAccess::returned_expression(
+    const Module::FunctionDecl& function) {
   const auto& body = function.storage_->functions[function.index_].body;
   if (!body || body->blocks.size() != 1U ||
       !body->blocks.front().instructions.empty() ||

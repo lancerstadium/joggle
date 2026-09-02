@@ -215,9 +215,11 @@ and storage, the owning `Graph` type, and their source declarations have been
 removed. Blocks have typed arguments and terminators; structural verification
 checks reachability, dominance, successor edges, and all function exits.
 
-The remaining `function` kernel domain used by compiler callbacks is temporary.
-It will be replaced by ordinary Module-declared handle types once host
-representations participate in staged values.
+The `function` kernel domain remains the bootstrap representation for direct
+`joggle::Function` callbacks. Parameterless Module-declared types can now
+register ordinary copyable C++ host representations and flow through composed
+compiler functions. Parameterized host values and their concrete-Type
+projection remain future work.
 
 Likewise, the current separate compile-time-expression and dataflow-body parser
 paths are temporary. The final parser produces one function syntax tree, and

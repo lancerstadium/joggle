@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -14,6 +15,14 @@ bool expect(bool condition, std::string_view message) {
   }
   return condition;
 }
+
+struct Target {
+  std::int64_t lanes = 0;
+};
+
+struct Estimate {
+  std::int64_t cycles = 0;
+};
 
 }  // namespace
 
@@ -400,6 +409,76 @@ module transactional@1.0.0 {
                         [](const joggle::Function&) { return std::string{"bad"}; });
   ok &= expect(!binding_mismatch.ok(),
                "C++ pass binding is checked against its declared type");
+
+  joggle::Compiler represented;
+  represented.add(R"(
+joggle 1;
+module represented@1.0.0 {
+  type target();
+  type estimate();
+
+  fn measure(input: target) -> estimate;
+  fn analyze(input: target) -> estimate {
+    return measure(input);
+  }
+}
+)",
+                  "represented.joggle");
+  const bool represented_linked = represented.link();
+  const auto represented_module = represented.module("represented");
+  const auto target_type = represented_module
+                               ? represented_module->type("target")
+                               : std::nullopt;
+  const auto estimate_type = represented_module
+                                 ? represented_module->type("estimate")
+                                 : std::nullopt;
+  const auto measure = represented_module
+                           ? represented_module->function("measure")
+                           : std::nullopt;
+  const auto analyze = represented_module
+                           ? represented_module->function("analyze")
+                           : std::nullopt;
+  if (!represented_linked || !target_type || !estimate_type || !measure ||
+      !analyze || !represented.represent<Target>(*target_type) ||
+      !represented.represent<Estimate>(*estimate_type)) {
+    represented.diagnostics().print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  represented.bind(*measure, [](const Target& target) {
+    return Estimate{.cycles = 1024 / target.lanes};
+  });
+  const auto estimate = represented.run<Estimate>(*analyze, Target{32});
+  if (!estimate || !represented.ok()) {
+    represented.diagnostics().print(std::cerr);
+  }
+  ok &= expect(estimate && estimate->cycles == 32 && represented.ok(),
+               "Module types can use ordinary registered C++ values through "
+               "composed compiler functions");
+
+  joggle::Compiler parameterized_host;
+  parameterized_host.add(
+      "joggle 1; module parameterized_host@1.0.0 { "
+      "type target(lanes: int); }",
+      "parameterized-host.joggle");
+  const bool parameterized_linked = parameterized_host.link();
+  const auto parameterized_module =
+      parameterized_host.module("parameterized_host");
+  const auto parameterized_type = parameterized_module
+                                      ? parameterized_module->type("target")
+                                      : std::nullopt;
+  const bool parameterized_rejected =
+      parameterized_linked && parameterized_type &&
+      !parameterized_host.represent<Target>(*parameterized_type);
+  const bool reports_projection = std::any_of(
+      parameterized_host.diagnostics().entries().begin(),
+      parameterized_host.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("value-to-Type projection") !=
+               std::string::npos;
+      });
+  ok &= expect(parameterized_rejected && reports_projection,
+               "host registration rejects parameterized schemas instead of "
+               "discarding their type arguments");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

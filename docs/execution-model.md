@@ -90,11 +90,13 @@ Residual(expression, effects)
 Error(diagnostic)
 ```
 
-A Known value is not restricted to a closed kernel variant. Its representation
-is a Joggle `Type` plus a type-erased host payload. A Module may associate one
-of its declared types with an ordinary C++ type; typed `Compiler::bind`
-adapters erase and recover that payload internally, so extension authors do
-not implement an evaluator interface or subclass an IR node.
+A Known compiler-function value is not restricted to a closed kernel variant.
+A Module may associate a parameterless declared type with an ordinary copyable
+C++ type; typed `Compiler::bind` adapters erase and recover that payload
+internally, so extension authors do not implement an evaluator interface or
+subclass an IR node. Parameterized host representations will additionally need
+a projection from each payload to its concrete Joggle `Type`; schema-only
+registration is deliberately rejected because it would lose type arguments.
 
 Equality, canonical serialization, and materialization are optional
 capabilities of a host representation. Equality can preserve a Known value

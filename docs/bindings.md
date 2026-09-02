@@ -81,10 +81,31 @@ auto nodes = compiler.run<std::int64_t>(count, function);
 invokes the callable, and verifies the result. A false result, diagnostic,
 exception, or failed verification restores the Function checkpoint.
 
-This bootstrap path is implemented today. General Module-declared host
-representations are the next extension boundary: they will let Modules map
-types such as `device.target`, `cost.report`, or `ir.module` to ordinary C++
-types without adding another callable namespace.
+Module-declared host representations can map parameterless types such as
+`device.target`, `cost.report`, or `ir.module` to ordinary C++ value types:
+
+```joggle
+type target();
+type estimate();
+fn measure(input: target) -> estimate;
+```
+
+```cpp
+compiler.represent<Target>(target_type);
+compiler.represent<Estimate>(estimate_type);
+compiler.bind(measure, [](const Target& target) {
+  return Estimate{estimate_cycles(target)};
+});
+
+auto result = compiler.run<Estimate>(measure, Target{/* ... */});
+```
+
+No base class, generated wrapper, trait specialization, or adapter object is
+required. Registration is one-to-one between a linked Module Type declaration
+and a copyable C++ type. Parameterized host representations intentionally wait
+for a value-to-concrete-Type projection contract; accepting only the schema
+would lose its type arguments. Program data formats remain freely
+parameterized because they use ordinary `Type` and `Value` IR handles.
 
 ## Known evaluation
 

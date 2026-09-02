@@ -204,28 +204,57 @@ qualified_member(std::string_view name) {
   return std::pair{name.substr(0U, separator), name.substr(separator + 1U)};
 }
 
-std::optional<detail::ValueKind>
-pass_value_domain(const detail::PassValue& value) {
+std::string_view pass_value_type(const detail::PassValue& value) {
   switch (value.index()) {
   case 1:
-    return detail::ValueKind::Integer;
+    return typeid(std::int64_t).name();
   case 2:
-    return detail::ValueKind::Real;
+    return typeid(double).name();
   case 3:
-    return detail::ValueKind::Boolean;
+    return typeid(bool).name();
   case 4:
-    return detail::ValueKind::String;
+    return typeid(std::string).name();
   case 5:
-    return detail::ValueKind::Type;
+    return typeid(Type).name();
   case 6:
-    return detail::ValueKind::Attribute;
+    return typeid(Attribute).name();
   case 7:
-    return detail::ValueKind::Bytes;
+    return typeid(Bytes).name();
   case 8:
-    return detail::ValueKind::Function;
+    return typeid(Function).name();
+  case 9:
+    return std::get<detail::HostValue>(value).type;
   default:
-    return std::nullopt;
+    return typeid(void).name();
   }
+}
+
+std::optional<detail::ValueKind> cpp_value_domain(std::string_view type) {
+  if (type == typeid(std::int64_t).name()) {
+    return detail::ValueKind::Integer;
+  }
+  if (type == typeid(double).name()) {
+    return detail::ValueKind::Real;
+  }
+  if (type == typeid(bool).name()) {
+    return detail::ValueKind::Boolean;
+  }
+  if (type == typeid(std::string).name()) {
+    return detail::ValueKind::String;
+  }
+  if (type == typeid(Type).name()) {
+    return detail::ValueKind::Type;
+  }
+  if (type == typeid(Attribute).name()) {
+    return detail::ValueKind::Attribute;
+  }
+  if (type == typeid(Bytes).name()) {
+    return detail::ValueKind::Bytes;
+  }
+  if (type == typeid(Function).name()) {
+    return detail::ValueKind::Function;
+  }
+  return std::nullopt;
 }
 
 std::optional<detail::ValueKind>
@@ -234,6 +263,34 @@ pass_field_domain(const Module::ParameterDecl& field) {
   return domain && !domain->list
              ? std::optional<detail::ValueKind>{domain->element}
              : std::nullopt;
+}
+
+std::string_view resolve_prefix(const Module& module, std::string_view prefix);
+
+template <typename Modules>
+std::optional<Module::TypeDecl> field_type_declaration(
+    const Modules& modules, const Module::FunctionDecl& function,
+    const Module::ParameterDecl& field) {
+  if (field.domain.kind != Module::Expression::Kind::Reference ||
+      detail::kernel_domain(field.domain)) {
+    return std::nullopt;
+  }
+  const std::size_t dot = field.domain.text.find('.');
+  std::string_view module_name = function.symbol().module_name();
+  const auto owner = modules.find(module_name);
+  if (dot != std::string::npos) {
+    module_name = owner == modules.end()
+                      ? std::string_view(field.domain.text).substr(0, dot)
+                      : resolve_prefix(
+                            owner->second,
+                            std::string_view(field.domain.text).substr(0, dot));
+  }
+  const std::string_view local =
+      dot == std::string::npos
+          ? std::string_view(field.domain.text)
+          : std::string_view(field.domain.text).substr(dot + 1U);
+  const auto module = modules.find(module_name);
+  return module == modules.end() ? std::nullopt : module->second.type(local);
 }
 
 std::optional<detail::PassValue> pass_value(const ParameterValue& value) {
@@ -632,7 +689,8 @@ bool apply_contraction_rule(Function& function, const Module::FunctionDecl& pass
     auto edit = function.edit();
     const Value result = match->root.result(0);
     if (result.type() != match->replacement.type()) {
-      diagnostics.report("pass '" + pass.symbol().qualified_name() +
+      diagnostics.report("compiler function '" +
+                         pass.symbol().qualified_name() +
                          "' matched a replacement with incompatible type");
       return false;
     }
@@ -679,6 +737,8 @@ struct Compiler::State {
   std::map<std::string, MethodFunction<Instruction>, std::less<>>
       operation_methods;
   std::map<std::string, PassFunction, std::less<>> passes;
+  std::map<std::string, Module::TypeDecl, std::less<>> host_types;
+  std::map<std::string, std::string, std::less<>> host_representations;
   std::set<std::string, std::less<>> constructing_types;
   std::set<std::string, std::less<>> evaluating_functions;
   EvaluationLimits evaluation_limits;
@@ -1844,7 +1904,7 @@ bool Compiler::link() {
             resolve_rule_operation(state_->modules, pass, term.name);
         if (!target) {
           state_->diagnostics.report(
-              "pass '" + name + "." + std::string(pass.name()) +
+              "compiler function '" + name + "." + std::string(pass.name()) +
                   "' matches unknown operation '" + term.name + "'",
               source);
           return;
@@ -1852,7 +1912,7 @@ bool Compiler::link() {
         if (detail::ir_inputs(*target).size() != term.arguments.size() ||
             detail::ir_results(*target).size() != 1U) {
           state_->diagnostics.report(
-              "pass '" + name + "." + std::string(pass.name()) +
+              "compiler function '" + name + "." + std::string(pass.name()) +
                   "' has a term incompatible with operation '" + term.name +
                   "'",
               source);
@@ -2146,6 +2206,8 @@ bool Compiler::load_behavior(const Module& module,
   auto attribute_methods = state_->attribute_methods;
   auto operation_methods = state_->operation_methods;
   auto passes = state_->passes;
+  auto host_types = state_->host_types;
+  auto host_representations = state_->host_representations;
   const std::size_t before = state_->diagnostics.size();
   bool bound = false;
   try {
@@ -2164,6 +2226,8 @@ bool Compiler::load_behavior(const Module& module,
     state_->attribute_methods = std::move(attribute_methods);
     state_->operation_methods = std::move(operation_methods);
     state_->passes = std::move(passes);
+    state_->host_types = std::move(host_types);
+    state_->host_representations = std::move(host_representations);
     if (!bound && state_->diagnostics.size() == before) {
       state_->diagnostics.report("behavior binding for '" + identity +
                                  "' failed");
@@ -2649,6 +2713,71 @@ void Compiler::bind_verifier(Module::FunctionDecl schema,
   }
 }
 
+bool Compiler::bind_representation(Module::TypeDecl schema,
+                                   std::string_view type) {
+  if (!state_->linked) {
+    state_->diagnostics.report(
+        "cannot register a host representation before the compiler is linked");
+    return false;
+  }
+  const Module::Symbol symbol = schema.symbol();
+  const auto owner = state_->modules.find(symbol.module_name());
+  if (owner == state_->modules.end() ||
+      owner->second.version() != symbol.module_version() ||
+      owner->second.digest() != symbol.module_digest()) {
+    state_->diagnostics.report("cannot represent type '" +
+                               symbol.qualified_name() +
+                               "' outside this compiler");
+    return false;
+  }
+  if (cpp_value_domain(type)) {
+    state_->diagnostics.report(
+        "built-in C++ representations belong to Prelude and cannot be "
+        "registered again");
+    return false;
+  }
+  if (!schema.parameters().empty()) {
+    state_->diagnostics.report(
+        "a host representation currently requires a parameterless Module "
+        "type; parameterized types need a value-to-Type projection");
+    return false;
+  }
+  const std::string identity = symbol.stable_name();
+  const auto by_type = state_->host_types.find(type);
+  const auto by_schema = state_->host_representations.find(identity);
+  if (by_type != state_->host_types.end() ||
+      by_schema != state_->host_representations.end()) {
+    if (by_type != state_->host_types.end() &&
+        by_schema != state_->host_representations.end() &&
+        by_type->second == schema && by_schema->second == type) {
+      return true;
+    }
+    state_->diagnostics.report(
+        "a C++ type and a Module type must have a one-to-one host "
+        "representation");
+    return false;
+  }
+  state_->host_types.emplace(std::string(type), schema);
+  state_->host_representations.emplace(identity, std::string(type));
+  return true;
+}
+
+bool Compiler::accepts_host_type(const Module::FunctionDecl& function,
+                                 const Module::ParameterDecl& field,
+                                 std::string_view type) const {
+  if (const auto domain = cpp_value_domain(type)) {
+    return pass_field_domain(field) == domain;
+  }
+  const auto declaration =
+      field_type_declaration(state_->modules, function, field);
+  const auto representation =
+      declaration ? state_->host_representations.find(
+                        declaration->symbol().stable_name())
+                  : state_->host_representations.end();
+  return representation != state_->host_representations.end() &&
+         representation->second == type;
+}
+
 bool Compiler::check_pass_signature(
     const Module::FunctionDecl& schema,
     std::span<const std::string_view> inputs,
@@ -2656,20 +2785,19 @@ bool Compiler::check_pass_signature(
   const bool input_match = schema.inputs().size() == inputs.size() &&
                            std::equal(schema.inputs().begin(),
                                       schema.inputs().end(), inputs.begin(),
-                                      [](const auto& field, auto kind) {
-                                        return detail::has_domain(field, kind);
+                                      [&](const auto& field, auto type) {
+                                        return accepts_host_type(schema, field,
+                                                                 type);
                                       });
-  const auto result_domain = schema.results().empty()
-                               ? std::optional<detail::ValueKind>{}
-                               : pass_field_domain(schema.results().front());
-  const std::optional<std::string_view> declared_result =
-      result_domain ? std::optional<std::string_view>{
-                          detail::domain_name(*result_domain)}
-                  : std::nullopt;
-  if (!input_match || schema.results().size() > 1U ||
-      (!schema.results().empty() && !result_domain) ||
-      declared_result != result) {
-    state_->diagnostics.report("C++ binding for pass '" +
+  const bool result_match =
+      schema.results().size() <= 1U &&
+      (schema.results().empty() ? !result
+                                : result && accepts_host_type(
+                                                schema,
+                                                schema.results().front(),
+                                                *result));
+  if (!input_match || !result_match) {
+    state_->diagnostics.report("C++ binding for function '" +
                                schema.symbol().qualified_name() +
                                "' does not match its declared type");
     return false;
@@ -2683,22 +2811,25 @@ void Compiler::bind_pass(Module::FunctionDecl schema, PassFunction function) {
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
       owner->second.digest() != symbol.module_digest()) {
-    state_->diagnostics.report("cannot bind pass '" + symbol.qualified_name() +
+    state_->diagnostics.report("cannot bind compiler function '" +
+                               symbol.qualified_name() +
                                "' outside this compiler");
     return;
   }
   if (schema.form() != Module::FunctionDecl::Form::External) {
-    state_->diagnostics.report("text-defined pass '" + symbol.qualified_name() +
+    state_->diagnostics.report("text-defined compiler function '" +
+                               symbol.qualified_name() +
                                "' cannot receive a C++ binding");
     return;
   }
   if (!function) {
-    state_->diagnostics.report("pass binding is empty");
+    state_->diagnostics.report("compiler-function binding is empty");
     return;
   }
   if (!state_->passes.emplace(symbol.stable_name(), std::move(function))
            .second) {
-    state_->diagnostics.report("pass '" + symbol.qualified_name() +
+    state_->diagnostics.report("compiler function '" +
+                               symbol.qualified_name() +
                                "' already has a binding");
   }
 }
@@ -2999,20 +3130,19 @@ bool Compiler::check_run_signature(
   const bool input_match = schema.inputs().size() == inputs.size() &&
                            std::equal(schema.inputs().begin(),
                                       schema.inputs().end(), inputs.begin(),
-                                      [](const auto& field, auto kind) {
-                                        return detail::has_domain(field, kind);
+                                      [&](const auto& field, auto type) {
+                                        return accepts_host_type(schema, field,
+                                                                 type);
                                       });
-  const auto result_domain = schema.results().empty()
-                               ? std::optional<detail::ValueKind>{}
-                               : pass_field_domain(schema.results().front());
-  const std::optional<std::string_view> declared_result =
-      result_domain ? std::optional<std::string_view>{
-                          detail::domain_name(*result_domain)}
-                  : std::nullopt;
-  if (!input_match || schema.results().size() > 1U ||
-      (!schema.results().empty() && !result_domain) ||
-      declared_result != result) {
-    state_->diagnostics.report("invocation of pass '" +
+  const bool result_match =
+      schema.results().size() <= 1U &&
+      (schema.results().empty() ? !result
+                                : result && accepts_host_type(
+                                                schema,
+                                                schema.results().front(),
+                                                *result));
+  if (!input_match || !result_match) {
+    state_->diagnostics.report("invocation of function '" +
                                schema.symbol().qualified_name() +
                                "' does not match its declared type");
     return false;
@@ -3022,24 +3152,26 @@ bool Compiler::check_run_signature(
 
 std::optional<Module::FunctionDecl> Compiler::find_pass(std::string_view pass) {
   if (!state_->linked) {
-    state_->diagnostics.report("cannot run a pass before the compiler is linked");
+    state_->diagnostics.report(
+        "cannot run a compiler function before the compiler is linked");
     return std::nullopt;
   }
   const auto member = qualified_member(pass);
   if (!member) {
-    state_->diagnostics.report("pass name '" + std::string(pass) +
+    state_->diagnostics.report("compiler-function name '" + std::string(pass) +
                                "' must be qualified as module.member");
     return std::nullopt;
   }
   const auto owner = state_->modules.find(member->first);
   if (owner == state_->modules.end()) {
-    state_->diagnostics.report("pass '" + std::string(pass) +
+    state_->diagnostics.report("compiler function '" + std::string(pass) +
                                "' names an unlinked module");
     return std::nullopt;
   }
   const auto declaration = owner->second.function(member->second);
   if (!declaration) {
-    state_->diagnostics.report("unknown pass '" + std::string(pass) + "'");
+    state_->diagnostics.report("unknown compiler function '" +
+                               std::string(pass) + "'");
   }
   return declaration;
 }
@@ -3048,18 +3180,21 @@ std::optional<detail::PassValue>
 Compiler::run_pass(Module::FunctionDecl pass,
                    std::vector<detail::PassValue> arguments) {
   if (!state_->linked) {
-    state_->diagnostics.report("cannot run a pass before the compiler is linked");
+    state_->diagnostics.report(
+        "cannot run a compiler function before the compiler is linked");
     return std::nullopt;
   }
   if (arguments.size() != pass.inputs().size()) {
-    state_->diagnostics.report("pass '" + pass.symbol().qualified_name() +
+    state_->diagnostics.report("compiler function '" +
+                               pass.symbol().qualified_name() +
                                "' received the wrong argument count");
     return std::nullopt;
   }
   for (std::size_t index = 0; index < arguments.size(); ++index) {
-    if (pass_value_domain(arguments[index]) !=
-        pass_field_domain(pass.inputs()[index])) {
-      state_->diagnostics.report("pass '" + pass.symbol().qualified_name() +
+    if (!accepts_host_type(pass, pass.inputs()[index],
+                           pass_value_type(arguments[index]))) {
+      state_->diagnostics.report("compiler function '" +
+                                 pass.symbol().qualified_name() +
                                  "' received an argument with the wrong type");
       return std::nullopt;
     }
@@ -3069,7 +3204,7 @@ Compiler::run_pass(Module::FunctionDecl pass,
                         std::shared_ptr<const Function::Snapshot>>>
       checkpoints;
   for (detail::PassValue& argument : arguments) {
-    if (pass_value_domain(argument) == detail::ValueKind::Function) {
+    if (pass_value_type(argument) == typeid(Function).name()) {
       auto function = std::get<std::shared_ptr<Function>>(argument);
       if (!verify(*function)) {
         return std::nullopt;
@@ -3082,26 +3217,25 @@ Compiler::run_pass(Module::FunctionDecl pass,
                            std::vector<detail::PassValue> values)
       -> std::optional<detail::PassValue> {
     if (values.size() != current.inputs().size()) {
-      state_->diagnostics.report("pass '" +
+      state_->diagnostics.report("compiler function '" +
                                  current.symbol().qualified_name() +
                                  "' received the wrong argument count");
       return std::nullopt;
     }
     for (std::size_t index = 0; index < values.size(); ++index) {
-      if (pass_value_domain(values[index]) !=
-          pass_field_domain(current.inputs()[index])) {
-        state_->diagnostics.report("pass '" +
+      if (!accepts_host_type(current, current.inputs()[index],
+                             pass_value_type(values[index]))) {
+        state_->diagnostics.report("compiler function '" +
                                    current.symbol().qualified_name() +
                                    "' received an argument with the wrong type");
         return std::nullopt;
       }
-      if (pass_field_domain(current.inputs()[index]) ==
-          detail::ValueKind::Function) {
+      if (pass_value_type(values[index]) == typeid(Function).name()) {
         const auto function =
             std::get<std::shared_ptr<Function>>(values[index]);
         if (!function->accepts(current.symbol())) {
           state_->diagnostics.report(
-              "pass '" + current.symbol().qualified_name() +
+              "compiler function '" + current.symbol().qualified_name() +
               "' is outside the function's module closure");
           return std::nullopt;
         }
@@ -3111,7 +3245,7 @@ Compiler::run_pass(Module::FunctionDecl pass,
     case Module::FunctionDecl::Form::External: {
       const auto binding = state_->passes.find(current.symbol().stable_name());
       if (binding == state_->passes.end()) {
-        state_->diagnostics.report("pass '" +
+        state_->diagnostics.report("compiler function '" +
                                    current.symbol().qualified_name() +
                                    "' has no C++ binding");
         return std::nullopt;
@@ -3121,13 +3255,14 @@ Compiler::run_pass(Module::FunctionDecl pass,
         execution = binding->second(*this, values, state_->diagnostics);
       } catch (const std::bad_variant_access&) {
         state_->diagnostics.report(
-            "C++ binding for pass '" + current.symbol().qualified_name() +
-            "' disagrees with the registered pass value representation");
+            "C++ binding for compiler function '" +
+            current.symbol().qualified_name() +
+            "' disagrees with its registered host representation");
         return std::nullopt;
       }
       if (!execution) {
         if (state_->diagnostics.size() == before) {
-          state_->diagnostics.report("pass '" +
+          state_->diagnostics.report("compiler function '" +
                                      current.symbol().qualified_name() +
                                      "' failed");
         }
@@ -3135,9 +3270,9 @@ Compiler::run_pass(Module::FunctionDecl pass,
       }
       if (!current.results().empty()) {
         if (current.results().size() != 1U ||
-            pass_value_domain(*execution) !=
-                pass_field_domain(current.results().front())) {
-          state_->diagnostics.report("pass '" +
+            !accepts_host_type(current, current.results().front(),
+                               pass_value_type(*execution))) {
+          state_->diagnostics.report("compiler function '" +
                                      current.symbol().qualified_name() +
                                      "' produced a value with the wrong type");
           return std::nullopt;
@@ -3161,7 +3296,7 @@ Compiler::run_pass(Module::FunctionDecl pass,
         }
         return std::optional<detail::PassValue>{values.front()};
       }
-      if (detail::ModuleAccess::expression(current) == nullptr) {
+      if (detail::ModuleAccess::returned_expression(current) == nullptr) {
         state_->diagnostics.report(
             "residual function '" + current.symbol().qualified_name() +
             "' cannot be executed as a compiler function");
@@ -3211,7 +3346,8 @@ Compiler::run_pass(Module::FunctionDecl pass,
         }
         return self(self, *next, std::move(arguments));
       };
-      return evaluate(evaluate, *detail::ModuleAccess::expression(current));
+      return evaluate(
+          evaluate, *detail::ModuleAccess::returned_expression(current));
     }
     }
     return std::nullopt;
@@ -3227,8 +3363,7 @@ Compiler::run_pass(Module::FunctionDecl pass,
     throw;
   }
   bool valid = result.has_value() && state_->diagnostics.size() == before;
-  if (valid && pass_value_domain(*result).has_value() &&
-      pass_value_domain(*result) == detail::ValueKind::Function) {
+  if (valid && pass_value_type(*result) == typeid(Function).name()) {
     valid = verify(*std::get<std::shared_ptr<Function>>(*result)) && valid;
   }
   if (!valid) {
@@ -3248,7 +3383,8 @@ bool Compiler::run(Function& function, Module::FunctionDecl pass) {
       pass.results().size() == 1U &&
       pass_field_domain(pass.results().front()) == detail::ValueKind::Function;
   if (!function_transform) {
-    state_->diagnostics.report("pass '" + symbol.qualified_name() +
+    state_->diagnostics.report("compiler function '" +
+                               symbol.qualified_name() +
                                "' is not a function -> function transformation");
     return false;
   }

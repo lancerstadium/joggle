@@ -149,10 +149,13 @@ a source name. `@(...)` adds a Known-result requirement to the ordinary
 expression evaluator; it does not select another callable or assignment rule.
 
 Compiler-oriented functions currently use `Compiler::bind` and
-`Compiler::run`. The registration surface is being generalized from the
-bootstrap scalar/Function representations to Module-declared host value
-representations. See [the execution model](execution-model.md) for the stable
-staging contract and [bindings](bindings.md) for the current adapter API.
+`Compiler::run`. Parameterless Module types may be associated one-to-one with
+ordinary copyable C++ types through `Compiler::represent<T>`, after which the
+same typed binding and invocation path accepts them. Parameterized host
+representations require a future value-to-concrete-Type projection; the API
+rejects them instead of discarding type arguments. See
+[the execution model](execution-model.md) for the staging contract and
+[bindings](bindings.md) for examples.
 
 ## Formatting and verification
 

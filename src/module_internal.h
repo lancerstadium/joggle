@@ -68,6 +68,8 @@ struct ModuleAccess {
       const Module& module, const Module::FunctionDecl&);
   static const Module::Expression* expression(
       const Module::FunctionDecl& function);
+  static const Module::Expression* returned_expression(
+      const Module::FunctionDecl& function);
   static std::optional<SourceRange> import_source(const Module& module,
                                                   std::size_t index);
   static std::optional<SourceRange> declaration_source(const Module& module,

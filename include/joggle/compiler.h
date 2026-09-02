@@ -30,39 +30,28 @@ namespace detail {
 
 struct CompilerAccess;
 
+struct HostValue {
+  std::string type;
+  std::shared_ptr<void> storage;
+};
+
 using PassValue =
     std::variant<std::monostate, std::int64_t, double, bool, std::string, Type,
-                 Attribute, Bytes, std::shared_ptr<Function>>;
-
-template <typename T> struct PassDomain;
-template <> struct PassDomain<std::int64_t> {
-  static constexpr std::string_view value = "int";
-};
-template <> struct PassDomain<double> {
-  static constexpr std::string_view value = "real";
-};
-template <> struct PassDomain<bool> {
-  static constexpr std::string_view value = "bool";
-};
-template <> struct PassDomain<std::string> {
-  static constexpr std::string_view value = "string";
-};
-template <> struct PassDomain<Type> {
-  static constexpr std::string_view value = "type";
-};
-template <> struct PassDomain<Attribute> {
-  static constexpr std::string_view value = "attr";
-};
-template <> struct PassDomain<Function> {
-  static constexpr std::string_view value = "function";
-};
-template <> struct PassDomain<Bytes> {
-  static constexpr std::string_view value = "bytes";
-};
+                 Attribute, Bytes, std::shared_ptr<Function>, HostValue>;
 
 template <typename T>
-inline constexpr std::string_view pass_domain =
-    PassDomain<std::remove_cvref_t<T>>::value;
+inline constexpr bool is_builtin_host_value =
+    std::is_same_v<std::remove_cvref_t<T>, std::int64_t> ||
+    std::is_same_v<std::remove_cvref_t<T>, double> ||
+    std::is_same_v<std::remove_cvref_t<T>, bool> ||
+    std::is_same_v<std::remove_cvref_t<T>, std::string> ||
+    std::is_same_v<std::remove_cvref_t<T>, Type> ||
+    std::is_same_v<std::remove_cvref_t<T>, Attribute> ||
+    std::is_same_v<std::remove_cvref_t<T>, Bytes>;
+
+template <typename T> std::string_view host_type_name() {
+  return typeid(std::remove_cvref_t<T>).name();
+}
 
 inline bool has_domain(const Module::ParameterDecl& field,
                        std::string_view domain) {
@@ -74,8 +63,11 @@ template <typename T> PassValue store_pass_value(T&& value) {
   using Value = std::remove_cvref_t<T>;
   if constexpr (std::is_same_v<Value, Function>) {
     return {std::make_shared<Function>(std::forward<T>(value))};
-  } else {
+  } else if constexpr (is_builtin_host_value<Value>) {
     return {Value(std::forward<T>(value))};
+  } else {
+    return {HostValue{std::string(host_type_name<Value>()),
+                      std::make_shared<Value>(std::forward<T>(value))}};
   }
 }
 
@@ -83,12 +75,16 @@ template <typename T> PassValue store_pass_input(T&& value) {
   using Value = std::remove_cvref_t<T>;
   if constexpr (std::is_same_v<Value, Function>) {
     static_assert(std::is_lvalue_reference_v<T>,
-                  "a Function pass input must be an lvalue");
+                  "a Function compiler input must be an lvalue");
     static_assert(!std::is_const_v<std::remove_reference_t<T>>,
-                  "pass invocation requires a non-const Function handle");
+                  "compiler-function invocation requires a non-const Function "
+                  "handle");
     return {std::shared_ptr<Function>(std::addressof(value), [](Function*) {})};
-  } else {
+  } else if constexpr (is_builtin_host_value<Value>) {
     return {Value(std::forward<T>(value))};
+  } else {
+    return {HostValue{std::string(host_type_name<Value>()),
+                      std::make_shared<Value>(std::forward<T>(value))}};
   }
 }
 
@@ -97,9 +93,32 @@ template <typename T> decltype(auto) pass_argument(PassValue& value) {
   if constexpr (std::is_same_v<Value, Function>) {
     auto& function = *std::get<std::shared_ptr<Function>>(value);
     return static_cast<T>(function);
-  } else {
+  } else if constexpr (is_builtin_host_value<Value>) {
     auto& stored = std::get<Value>(value);
     return static_cast<T>(stored);
+  } else {
+    auto& host = std::get<HostValue>(value);
+    if (host.type != host_type_name<Value>() || !host.storage) {
+      throw std::bad_variant_access{};
+    }
+    auto& stored = *static_cast<Value*>(host.storage.get());
+    return static_cast<T>(stored);
+  }
+}
+
+template <typename T> std::optional<T> take_pass_value(PassValue value) {
+  using Value = std::remove_cvref_t<T>;
+  if constexpr (std::is_same_v<Value, Function>) {
+    auto function = std::get<std::shared_ptr<Function>>(std::move(value));
+    return function ? std::optional<T>{std::move(*function)} : std::nullopt;
+  } else if constexpr (is_builtin_host_value<Value>) {
+    return std::get<Value>(std::move(value));
+  } else {
+    auto host = std::get<HostValue>(std::move(value));
+    if (host.type != host_type_name<Value>() || !host.storage) {
+      return std::nullopt;
+    }
+    return std::move(*static_cast<Value*>(host.storage.get()));
   }
 }
 
@@ -308,6 +327,16 @@ public:
                      const std::filesystem::path& library);
   bool load_behavior(std::string_view module);
 
+  // Associates an ordinary C++ value type with a Module-declared type for
+  // compiler-function invocation. The Module remains the schema authority.
+  template <typename T> bool represent(Module::TypeDecl schema) {
+    using Value = std::remove_cvref_t<T>;
+    static_assert(std::is_copy_constructible_v<Value>,
+                  "a host representation must be copy constructible");
+    return bind_representation(std::move(schema),
+                               detail::host_type_name<Value>());
+  }
+
   template <typename... Arguments>
   std::optional<Type> make(const Module::TypeDecl& schema,
                            Arguments&&... arguments) {
@@ -487,7 +516,7 @@ public:
         arity - static_cast<std::size_t>(with_compiler) -
         static_cast<std::size_t>(with_diagnostics);
     constexpr std::size_t offset = with_compiler ? 1U : 0U;
-    const auto argument_domains = []<std::size_t... Indices>(
+    const auto argument_types = []<std::size_t... Indices>(
                                     std::index_sequence<Indices...>) {
       static_assert(
           ((!std::is_same_v<
@@ -497,10 +526,10 @@ public:
             std::is_reference_v<
                 std::tuple_element_t<offset + Indices, Arguments>>) &&
            ...),
-          "a Function pass input must be Function& or const Function&");
+          "a Function compiler input must be Function& or const Function&");
       return std::array<std::string_view, sizeof...(Indices)>{
-          detail::pass_domain<
-              std::tuple_element_t<offset + Indices, Arguments>>...};
+          detail::host_type_name<
+              std::tuple_element_t<offset + Indices, Arguments>>()...};
     }(std::make_index_sequence<argument_count>{});
     const bool function_transform =
         schema.inputs().size() == 1U &&
@@ -508,19 +537,20 @@ public:
         schema.results().size() == 1U &&
         detail::has_domain(schema.results().front(), "function");
     using Produced = std::remove_cvref_t<typename Traits::result>;
-    std::optional<std::string_view> result_domain;
+    std::optional<std::string_view> result_type;
     if constexpr (!std::is_void_v<Produced>) {
       using Value = std::conditional_t<detail::OptionalValue<Produced>::value,
                                        typename detail::OptionalValue<Produced>::type,
                                        Produced>;
       if constexpr (std::is_same_v<Produced, bool>) {
-        result_domain = function_transform ? std::string_view{"function"}
-                                        : std::string_view{"bool"};
+        result_type =
+            function_transform ? detail::host_type_name<joggle::Function>()
+                               : detail::host_type_name<bool>();
       } else {
-        result_domain = detail::pass_domain<Value>;
+        result_type = detail::host_type_name<Value>();
       }
     }
-    if (!check_pass_signature(schema, argument_domains, result_domain)) {
+    if (!check_pass_signature(schema, argument_types, result_type)) {
       return;
     }
     PassFunction pass =
@@ -529,7 +559,8 @@ public:
                           std::span<detail::PassValue> arguments,
                           Diagnostics& diagnostics) mutable {
           if (arguments.size() != argument_count) {
-            diagnostics.report("pass binding received the wrong argument count");
+            diagnostics.report(
+                "compiler-function binding received the wrong argument count");
             return std::optional<detail::PassValue>{};
           }
           return detail::invoke_typed_pass<Callable, Arguments, offset,
@@ -547,9 +578,9 @@ public:
 
   template <typename... Arguments>
   bool run(Module::FunctionDecl pass, Arguments&&... arguments) {
-    const std::array<std::string_view, sizeof...(Arguments)> domains{
-        detail::pass_domain<Arguments>...};
-    if (!check_run_signature(pass, domains, std::nullopt)) {
+    const std::array<std::string_view, sizeof...(Arguments)> types{
+        detail::host_type_name<Arguments>()...};
+    if (!check_run_signature(pass, types, std::nullopt)) {
       return false;
     }
     std::vector<detail::PassValue> values;
@@ -569,9 +600,10 @@ public:
 
   template <typename Result, typename... Arguments>
   std::optional<Result> run(Module::FunctionDecl pass, Arguments&&... arguments) {
-    const std::array<std::string_view, sizeof...(Arguments)> domains{
-        detail::pass_domain<Arguments>...};
-    if (!check_run_signature(pass, domains, detail::pass_domain<Result>)) {
+    const std::array<std::string_view, sizeof...(Arguments)> types{
+        detail::host_type_name<Arguments>()...};
+    if (!check_run_signature(pass, types,
+                             detail::host_type_name<Result>())) {
       return std::nullopt;
     }
     std::vector<detail::PassValue> values;
@@ -583,13 +615,7 @@ public:
     if (!value) {
       return std::nullopt;
     }
-    if constexpr (std::is_same_v<Result, Function>) {
-      auto function =
-          std::get<std::shared_ptr<Function>>(std::move(*value));
-      return function ? std::optional<Function>{std::move(*function)} : std::nullopt;
-    } else {
-      return std::get<Result>(std::move(*value));
-    }
+    return detail::take_pass_value<Result>(std::move(*value));
   }
 
   template <typename Result, typename... Arguments>
@@ -622,6 +648,10 @@ private:
                      VerifierFunction<Attribute> verifier);
   void bind_verifier(Module::FunctionDecl schema,
                      VerifierFunction<Instruction> verifier);
+  bool bind_representation(Module::TypeDecl schema, std::string_view type);
+  bool accepts_host_type(const Module::FunctionDecl& function,
+                         const Module::ParameterDecl& field,
+                         std::string_view type) const;
   void bind_pass(Module::FunctionDecl schema, PassFunction function);
   bool check_pass_signature(
       const Module::FunctionDecl& schema,
