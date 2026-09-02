@@ -204,6 +204,31 @@ module cfg@1.0.0 {
   fn materialized(condition: i1) -> i32 {
     return if condition { 1 } else { 2 };
   }
+  fn statement_branch(condition: i1, lhs: word, rhs: word) -> word {
+    value = lhs;
+    if condition {
+      value = identity(value);
+    } else {
+      value = identity(rhs);
+    }
+    return value;
+  }
+  fn statement_specialized(lhs: word, rhs: word) -> word {
+    value = lhs;
+    if true {
+      value = identity(value);
+    } else {
+      value = identity(rhs);
+    }
+    return value;
+  }
+  fn statement_without_else(condition: i1, lhs: word, rhs: word) -> word {
+    value = lhs;
+    if condition {
+      value = identity(rhs);
+    }
+    return value;
+  }
 }
 )";
   joggle::Diagnostics cfg_diagnostics;
@@ -225,6 +250,8 @@ module cfg@1.0.0 {
                    cfg_canonical.find(
                        "return if condition { identity(lhs) } else { "
                        "identity(rhs) };") !=
+                       std::string::npos &&
+                   cfg_canonical.find("if condition {\n") !=
                        std::string::npos,
                "one expression tree round-trips structured and explicit "
                "region-free control flow");
@@ -242,6 +269,15 @@ module cfg@1.0.0 {
       cfg_linked ? cfg_compiler.function("cfg.nested") : std::nullopt;
   const auto cfg_materialized =
       cfg_linked ? cfg_compiler.function("cfg.materialized") : std::nullopt;
+  const auto cfg_statement_branch =
+      cfg_linked ? cfg_compiler.function("cfg.statement_branch")
+                 : std::nullopt;
+  const auto cfg_statement_specialized =
+      cfg_linked ? cfg_compiler.function("cfg.statement_specialized")
+                 : std::nullopt;
+  const auto cfg_statement_without_else =
+      cfg_linked ? cfg_compiler.function("cfg.statement_without_else")
+                 : std::nullopt;
   const std::string cfg_ir =
       cfg_function ? joggle::format(*cfg_function, "choose") : std::string{};
   const auto materialized_operations =
@@ -290,6 +326,24 @@ module cfg@1.0.0 {
                        cfg_materialized->blocks().back().arguments().front().type(),
                "unequal Known branch values use a visible literal function "
                "before crossing Residual edges");
+  ok &= expect(cfg_statement_branch && cfg_statement_specialized &&
+                   cfg_statement_without_else &&
+                   cfg_compiler.verify(*cfg_statement_branch) &&
+                   cfg_compiler.verify(*cfg_statement_specialized) &&
+                   cfg_compiler.verify(*cfg_statement_without_else) &&
+                   cfg_statement_branch->blocks().size() == 4U &&
+                   cfg_statement_branch->instructions().size() == 2U &&
+                   cfg_statement_branch->blocks().back().arguments().size() ==
+                       1U &&
+                   cfg_statement_specialized->blocks().size() == 1U &&
+                   cfg_statement_specialized->instructions().size() == 1U &&
+                   cfg_statement_without_else->blocks().size() == 4U &&
+                   cfg_statement_without_else->instructions().size() == 1U &&
+                   cfg_statement_without_else->blocks().back()
+                           .arguments()
+                           .size() == 1U,
+               "statement if specializes Known control and automatically "
+               "merges outer rebindings under Residual control");
 
   joggle::Compiler missing_literal;
   missing_literal.add(R"(

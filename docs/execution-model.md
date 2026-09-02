@@ -150,6 +150,13 @@ Both arms are name-resolved and type-checked during linking. "Evaluate only the
 selected block" means that unselected host calls and effects do not run; it
 does not make ill-typed source legal.
 
+The statement form uses the identical rule for a sequence of computations.
+Each arm starts from the same lexical environment. New names are arm-local;
+outer names rebound in either arm are compared afterward. Equal values remain
+unchanged, while differing compatible values become merge Block arguments. If
+`else` is absent, the false arm contributes the incoming value. This is source
+reassignment elaborated to SSA, not mutable storage in the IR.
+
 The residual form is target-neutral ordinary control flow:
 
 ```text
@@ -301,8 +308,8 @@ types; Residual loops become header/body/exit Blocks with inferred loop-carried
 arguments. Configurable expression-step, loop-iteration, and nesting-depth
 budgets fail with a diagnostic instead of silently residualizing.
 
-General statement sequences inside `if` arms, `break`, `continue`, closures,
-allocation budgets, and host-object serialization remain to be implemented.
+Multi-statement expression arms, `break`, `continue`, closures, allocation
+budgets, and host-object serialization remain to be implemented.
 Registered host implementations are conservatively forbidden beneath
 Residual control, so constructing both branches never executes host side
 effects. A future hermetic-call contract may permit safe native evaluation

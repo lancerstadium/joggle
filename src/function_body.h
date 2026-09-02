@@ -65,12 +65,14 @@ struct BindingSyntax {
 };
 
 struct StatementSyntax {
-  enum class Kind { Expression, While };
+  enum class Kind { Expression, If, While };
 
   Kind kind = Kind::Expression;
   std::vector<BindingSyntax> bindings;
   ExpressionSyntax expression;
   std::vector<StatementSyntax> body;
+  std::vector<StatementSyntax> otherwise;
+  bool has_else = false;
   SyntaxRange range;
 };
 

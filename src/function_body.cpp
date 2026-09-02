@@ -357,6 +357,36 @@ private:
   detail::StatementSyntax parse_statement() {
     detail::StatementSyntax statement;
     const SourcePosition begin = current_.begin;
+    if (match_name("if")) {
+      statement.kind = detail::StatementSyntax::Kind::If;
+      statement.expression = expression();
+      const auto outer_variables = variables_;
+      const auto outer_locals = locals_;
+      const auto parse_arm = [&](std::vector<detail::StatementSyntax>& arm,
+                                 std::string_view role) {
+        expect(TokenKind::LeftBrace, "'{' after " + std::string(role));
+        while (!is(TokenKind::RightBrace) && !is(TokenKind::End) && ok()) {
+          if (is_terminator()) {
+            error("return, jump, and branch are not allowed inside a "
+                  "structured if arm");
+            break;
+          }
+          arm.push_back(parse_statement());
+        }
+        expect(TokenKind::RightBrace, "'}' after " + std::string(role));
+      };
+      parse_arm(statement.body, "if condition");
+      variables_ = outer_variables;
+      locals_ = outer_locals;
+      if (match_name("else")) {
+        statement.has_else = true;
+        parse_arm(statement.otherwise, "else");
+        variables_ = outer_variables;
+        locals_ = outer_locals;
+      }
+      statement.range = {begin, previous_end_};
+      return statement;
+    }
     if (match_name("while")) {
       statement.kind = detail::StatementSyntax::Kind::While;
       statement.expression = expression();
@@ -685,6 +715,24 @@ private:
 
   void write_statement(const detail::StatementSyntax& statement,
                        std::size_t level) {
+    if (statement.kind == detail::StatementSyntax::Kind::If) {
+      output_ << spaces(level) << "if "
+              << detail::format_expression(statement.expression.value)
+              << " {\n";
+      for (const auto& nested : statement.body) {
+        write_statement(nested, level + 1U);
+      }
+      output_ << spaces(level) << '}';
+      if (statement.has_else) {
+        output_ << " else {\n";
+        for (const auto& nested : statement.otherwise) {
+          write_statement(nested, level + 1U);
+        }
+        output_ << spaces(level) << '}';
+      }
+      output_ << '\n';
+      return;
+    }
     if (statement.kind == detail::StatementSyntax::Kind::While) {
       output_ << spaces(level) << "while "
               << detail::format_expression(statement.expression.value)
@@ -1735,6 +1783,150 @@ private:
     return {tail, use(detail::LocalUseSyntax{name, range})};
   }
 
+  void collect_rebindings(
+      const std::vector<detail::StatementSyntax>& statements,
+      std::vector<std::string>& names,
+      std::unordered_set<std::string>& seen) const {
+    for (const auto& statement : statements) {
+      if (statement.kind != detail::StatementSyntax::Kind::Expression) {
+        collect_rebindings(statement.body, names, seen);
+        if (statement.kind == detail::StatementSyntax::Kind::If) {
+          collect_rebindings(statement.otherwise, names, seen);
+        }
+        continue;
+      }
+      for (const auto& binding : statement.bindings) {
+        if (binding.rebind && lookup(binding.name) &&
+            seen.insert(binding.name).second) {
+          names.push_back(binding.name);
+        }
+      }
+    }
+  }
+
+  Block instantiate_if_statement(const detail::StatementSyntax& statement,
+                                 Block block) {
+    if (known_result(statement.expression.value, statement.expression.range)) {
+      auto condition = evaluate_known(statement.expression);
+      const auto selected = condition ? condition->get<bool>() : std::nullopt;
+      if (!selected) {
+        report("Known if condition must have type bool",
+               statement.expression.range);
+        return block;
+      }
+      const auto& arm = *selected ? statement.body : statement.otherwise;
+      scopes_.emplace_back();
+      for (const auto& nested : arm) {
+        block = instantiate_statement(nested, block);
+      }
+      scopes_.pop_back();
+      return block;
+    }
+
+    std::vector<std::string> carried_names;
+    std::unordered_set<std::string> seen;
+    collect_rebindings(statement.body, carried_names, seen);
+    collect_rebindings(statement.otherwise, carried_names, seen);
+
+    auto [condition_tail, condition] = instantiate_expression(
+        statement.expression.value, statement.expression.range, block);
+    const auto i1 = compiler_.make("i1");
+    if (!condition || condition->known() || !i1 || condition->type() != *i1) {
+      report("Residual if condition must have type i1",
+             statement.expression.range);
+      return block;
+    }
+    const Block yes = edit_->block();
+    const Block no = edit_->block();
+    edit_->branch(condition_tail, *condition, yes, {}, no, {});
+
+    const auto incoming = scopes_;
+    const auto elaborate = [&](const std::vector<detail::StatementSyntax>& arm,
+                               Block start) {
+      scopes_ = incoming;
+      scopes_.emplace_back();
+      Block tail = start;
+      for (const auto& nested : arm) {
+        tail = instantiate_statement(nested, tail);
+      }
+      scopes_.pop_back();
+      std::vector<std::optional<Value>> values;
+      values.reserve(carried_names.size());
+      for (const std::string& name : carried_names) {
+        values.push_back(lookup(name));
+      }
+      return std::pair{tail, std::move(values)};
+    };
+
+    ++residual_control_depth_;
+    auto [true_tail, true_values] = elaborate(statement.body, yes);
+    auto [false_tail, false_values] = elaborate(statement.otherwise, no);
+    --residual_control_depth_;
+    scopes_ = incoming;
+
+    std::vector<Type> merge_types;
+    std::vector<Value> true_arguments;
+    std::vector<Value> false_arguments;
+    std::vector<std::optional<Value>> unchanged(carried_names.size());
+    std::vector<std::optional<std::size_t>> merged(carried_names.size());
+    for (std::size_t index = 0; index < carried_names.size(); ++index) {
+      if (!true_values[index] || !false_values[index]) {
+        report("if arm does not produce outer binding '" +
+                   carried_names[index] + "'",
+               statement.range);
+        continue;
+      }
+      if (*true_values[index] == *false_values[index]) {
+        unchanged[index] = *true_values[index];
+        continue;
+      }
+      std::optional<Type> target;
+      if (!true_values[index]->known()) {
+        target = true_values[index]->type();
+      } else if (!false_values[index]->known()) {
+        target = false_values[index]->type();
+      } else if (true_values[index]->type() == false_values[index]->type()) {
+        target = true_values[index]->type();
+      }
+      if (!target ||
+          (!true_values[index]->known() &&
+           true_values[index]->type() != *target) ||
+          (!false_values[index]->known() &&
+           false_values[index]->type() != *target)) {
+        report("if arms assign incompatible types to '" +
+                   carried_names[index] + "'",
+               statement.range);
+        continue;
+      }
+      auto true_value = materialize(*true_values[index], *target, true_tail,
+                                    statement.range);
+      auto false_value = materialize(*false_values[index], *target, false_tail,
+                                     statement.range);
+      if (!true_value || !false_value) {
+        continue;
+      }
+      merged[index] = merge_types.size();
+      merge_types.push_back(*target);
+      true_arguments.push_back(*true_value);
+      false_arguments.push_back(*false_value);
+    }
+    if (!ok()) {
+      return block;
+    }
+
+    const Block merge = edit_->block(merge_types);
+    edit_->jump(true_tail, merge, true_arguments);
+    edit_->jump(false_tail, merge, false_arguments);
+    const auto arguments = merge.arguments();
+    for (std::size_t index = 0; index < carried_names.size(); ++index) {
+      const auto value = merged[index]
+                             ? std::optional<Value>{arguments[*merged[index]]}
+                             : unchanged[index];
+      bind({carried_names[index], std::nullopt, statement.range, true}, value);
+    }
+    return merge;
+  }
+
   Block instantiate_while(const detail::StatementSyntax& statement,
                           Block block) {
     if (known_result(statement.expression.value, statement.expression.range)) {
@@ -1765,23 +1957,7 @@ private:
 
     std::vector<std::string> carried_names;
     std::unordered_set<std::string> seen;
-    const auto collect = [&](const auto& self,
-                             const std::vector<detail::StatementSyntax>& body)
-        -> void {
-      for (const auto& nested : body) {
-        if (nested.kind == detail::StatementSyntax::Kind::While) {
-          self(self, nested.body);
-          continue;
-        }
-        for (const auto& binding : nested.bindings) {
-          if (binding.rebind && lookup(binding.name) &&
-              seen.insert(binding.name).second) {
-            carried_names.push_back(binding.name);
-          }
-        }
-      }
-    };
-    collect(collect, statement.body);
+    collect_rebindings(statement.body, carried_names, seen);
 
     std::vector<Value> initial;
     std::vector<Type> carried_types;
@@ -1856,6 +2032,9 @@ private:
 
   Block instantiate_statement(const detail::StatementSyntax& statement,
                               Block block) {
+    if (statement.kind == detail::StatementSyntax::Kind::If) {
+      return instantiate_if_statement(statement, block);
+    }
     if (statement.kind == detail::StatementSyntax::Kind::While) {
       return instantiate_while(statement, block);
     }
@@ -2512,9 +2691,13 @@ bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics) {
                                     std::unordered_set<std::string_view>& names)
       -> void {
     for (const StatementSyntax& statement : statements) {
-      if (statement.kind == StatementSyntax::Kind::While) {
+      if (statement.kind != StatementSyntax::Kind::Expression) {
         auto nested = names;
         self(self, statement.body, nested);
+        if (statement.kind == StatementSyntax::Kind::If) {
+          nested = names;
+          self(self, statement.otherwise, nested);
+        }
         continue;
       }
       for (const BindingSyntax& binding : statement.bindings) {

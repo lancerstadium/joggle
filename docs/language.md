@@ -177,6 +177,25 @@ With a Known condition, the compiler executes only the selected branch. With a
 Residual condition, the same expression becomes Blocks and typed successor
 edges. `@(if ...)` rejects a Residual condition.
 
+`if` is also an ordinary statement when several computations or outer
+rebindings are needed:
+
+```joggle
+value = input;
+if condition {
+  value = fast(value);
+} else {
+  value = safe(value);
+}
+return value;
+```
+
+Names first introduced inside an arm remain local. Existing names rebound by
+an arm are converted to SSA internally: Known control keeps the selected value;
+Residual control carries the value from each arm into a merge Block argument.
+An omitted `else` carries the incoming value along the false edge. Authors do
+not declare merge variables or write `yield`.
+
 Structured loops use direct syntax:
 
 ```joggle
@@ -247,6 +266,8 @@ fn            := "fn" identifier [ generics ] parameters
 body          := "{" { statement } "}"
 statement     := binding "=" expression ";"
                | expression ";"
+               | "if" expression "{" { statement } "}"
+                 [ "else" "{" { statement } "}" ]
                | "while" expression "{" { statement } "}"
                | "return" [ expressions ] ";"
                | explicit-block
@@ -271,8 +292,8 @@ successor     := identifier "(" [ expressions ] ")"
 
 The implementation uses this single expression grammar for direct Known `if`,
 ordinary straight-line bodies, Residual and nested `if`, structured `while`,
-and explicit typed CFG blocks. The public owning IR is
-Function/Block/Instruction/Value. Multi-statement branch expressions,
+multi-statement `if`, and explicit typed CFG blocks. The public owning IR is
+Function/Block/Instruction/Value. Multi-statement *expression* arms,
 `break`, `continue`, `for`, and closures remain under construction. Nested
 Region syntax and storage have been removed.
 

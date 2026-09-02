@@ -130,6 +130,12 @@ The formatter prefers structured syntax when a CFG can be represented without
 changing meaning and uses explicit Blocks otherwise. Both forms denote the
 same Function IR; neither introduces a Graph or Region declaration.
 
+The statement form may contain several calls and rebind outer lexical names.
+The two arms are instantiated from the same incoming environment and compatible
+live-out rebindings become Block arguments automatically. A missing `else`
+uses the incoming binding on its edge. The IR remains SSA even though source
+authors use ordinary assignment syntax.
+
 ## Residualizing evaluation
 
 Type and availability are independent:
