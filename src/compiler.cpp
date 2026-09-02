@@ -682,135 +682,6 @@ std::optional<Module::FunctionDecl> resolve_pass(const Modules& modules,
   return module == modules.end() ? std::nullopt : module->second.function(local);
 }
 
-template <typename Modules>
-std::optional<Module::FunctionDecl>
-resolve_rule_operation(const Modules& modules, const Module::FunctionDecl& pass,
-                       std::string_view reference) {
-  const Module::Symbol owner = pass.symbol();
-  const std::size_t dot = reference.find('.');
-  std::string_view module_name = owner.module_name();
-  if (dot != std::string_view::npos) {
-    const auto source = modules.find(owner.module_name());
-    module_name =
-        source == modules.end()
-            ? reference.substr(0, dot)
-            : resolve_prefix(source->second, reference.substr(0, dot));
-  }
-  const std::string_view local =
-      dot == std::string_view::npos ? reference : reference.substr(dot + 1U);
-  const auto module = modules.find(module_name);
-  return module == modules.end() ? std::nullopt
-                                 : module->second.function(local);
-}
-
-std::string term_key(const detail::RuleDefinition& rule, std::size_t index) {
-  const detail::TermDefinition& term = rule.terms[index];
-  if (term.kind == detail::TermDefinition::Kind::Variable) {
-    return "%" + term.name;
-  }
-  std::string result(term.name);
-  result += '(';
-  for (std::size_t argument = 0; argument < term.arguments.size(); ++argument) {
-    if (argument != 0U) {
-      result += ',';
-    }
-    result += term_key(rule, term.arguments[argument]);
-  }
-  return result + ')';
-}
-
-struct RuleMatch {
-  Instruction root;
-  Value replacement;
-};
-
-template <typename Modules>
-bool match_term(const Value& value, const detail::RuleDefinition& rule,
-                std::size_t term_index, const Module::FunctionDecl& pass,
-                const Modules& modules,
-                std::map<std::string, Value>& bindings) {
-  const detail::TermDefinition& term = rule.terms[term_index];
-  const std::string key = term_key(rule, term_index);
-  const auto bound = bindings.find(key);
-  if (bound != bindings.end()) {
-    return bound->second == value;
-  }
-  if (term.kind == detail::TermDefinition::Kind::Variable) {
-    bindings.emplace(key, value);
-    return true;
-  }
-  const auto target = resolve_rule_operation(modules, pass, term.name);
-  const auto defining = value.defining_instruction();
-  if (!target || !defining || defining->results().size() != 1U ||
-      defining->result(0) != value || defining->callee() != *target) {
-    return false;
-  }
-  const auto arguments = defining->arguments();
-  if (arguments.size() != term.arguments.size()) {
-    return false;
-  }
-  for (std::size_t index = 0; index < arguments.size(); ++index) {
-    if (!match_term(arguments[index], rule, term.arguments[index], pass, modules,
-                    bindings)) {
-      return false;
-    }
-  }
-  bindings.emplace(key, value);
-  return true;
-}
-
-template <typename Modules>
-std::optional<RuleMatch>
-find_rule_match(const Function& function, const Module::FunctionDecl& pass,
-                const detail::RuleDefinition& rule, const Modules& modules) {
-  const auto try_operation =
-      [&](const Instruction& operation) -> std::optional<RuleMatch> {
-    const auto results = operation.results();
-    if (results.size() != 1U) {
-      return std::nullopt;
-    }
-    std::map<std::string, Value> bindings;
-    if (!match_term(results.front(), rule, rule.match, pass, modules,
-                    bindings)) {
-      return std::nullopt;
-    }
-    const auto replacement = bindings.find(term_key(rule, rule.replacement));
-    if (replacement == bindings.end()) {
-      return std::nullopt;
-    }
-    return RuleMatch{operation, replacement->second};
-  };
-
-  for (const Instruction& operation : function.instructions()) {
-    if (auto match = try_operation(operation)) {
-      return match;
-    }
-  }
-  return std::nullopt;
-}
-
-template <typename Modules>
-bool apply_contraction_rule(Function& function, const Module::FunctionDecl& pass,
-                            const detail::RuleDefinition& rule,
-                            const Modules& modules, Diagnostics& diagnostics) {
-  while (auto match = find_rule_match(function, pass, rule, modules)) {
-    auto edit = function.edit();
-    const Value result = match->root.result(0);
-    if (result.type() != match->replacement.type()) {
-      diagnostics.report("compiler function '" +
-                         pass.symbol().qualified_name() +
-                         "' matched a replacement with incompatible type");
-      return false;
-    }
-    edit.replace(result, match->replacement);
-    edit.erase(match->root);
-    if (!edit.commit(diagnostics)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 }  // namespace
 
 struct Compiler::State {
@@ -1998,46 +1869,6 @@ bool Compiler::link() {
       }
     }
 
-    for (const Module::FunctionDecl& pass : module.functions()) {
-      if (detail::ModuleAccess::rules(module, pass).empty()) {
-        continue;
-      }
-      const auto pass_source = detail::ModuleAccess::declaration_source(
-          module, Module::SymbolKind::Function, pass.name());
-      const auto validate_rule_term = [&](const auto& self,
-                                          const detail::RuleDefinition& rule,
-                                          std::size_t index) -> void {
-        const auto source = rule.source ? rule.source : pass_source;
-        const detail::TermDefinition& term = rule.terms[index];
-        if (term.kind == detail::TermDefinition::Kind::Variable) {
-          return;
-        }
-        const auto target =
-            resolve_rule_operation(state_->modules, pass, term.name);
-        if (!target) {
-          state_->diagnostics.report(
-              "compiler function '" + name + "." + std::string(pass.name()) +
-                  "' matches unknown operation '" + term.name + "'",
-              source);
-          return;
-        }
-        if (detail::ir_inputs(*target).size() != term.arguments.size() ||
-            detail::ir_results(*target).size() != 1U) {
-          state_->diagnostics.report(
-              "compiler function '" + name + "." + std::string(pass.name()) +
-                  "' has a term incompatible with operation '" + term.name +
-                  "'",
-              source);
-        }
-        for (std::size_t argument : term.arguments) {
-          self(self, rule, argument);
-        }
-      };
-      const auto rules = detail::ModuleAccess::rules(module, pass);
-      for (const detail::RuleDefinition& rule : rules) {
-        validate_rule_term(validate_rule_term, rule, rule.match);
-      }
-    }
   }
   if (!state_->diagnostics.ok()) {
     return false;
@@ -2634,7 +2465,7 @@ Compiler::function(Module::Symbol symbol,
       function != overloads.end() && detail::ir_inputs(*function).empty() &&
       detail::ir_results(*function).empty() &&
       detail::ModuleAccess::expression(*function) != nullptr;
-  if (!definition || compile_time_only || !definition->rules.empty()) {
+  if (!definition || compile_time_only) {
     state_->diagnostics.report("unknown function '" + symbol.qualified_name() +
                                "'");
     return std::nullopt;
@@ -3520,21 +3351,6 @@ Compiler::run_pass(Module::FunctionDecl pass,
       return execution;
     }
     case Module::FunctionDecl::Form::Body: {
-      const auto owner = state_->modules.find(current.symbol().module_name());
-      const auto rules =
-          owner == state_->modules.end()
-              ? std::span<const detail::RuleDefinition>{}
-              : detail::ModuleAccess::rules(owner->second, current);
-      if (!rules.empty()) {
-        auto function = std::get<std::shared_ptr<Function>>(values.front());
-        for (const detail::RuleDefinition& rule : rules) {
-          if (!apply_contraction_rule(*function, current, rule, state_->modules,
-                                      state_->diagnostics)) {
-            return std::nullopt;
-          }
-        }
-        return std::optional<detail::PassValue>{values.front()};
-      }
       if (detail::ModuleAccess::returned_expression(current) == nullptr) {
         state_->diagnostics.report(
             "residual function '" + current.symbol().qualified_name() +

@@ -32,7 +32,7 @@ string(FIND "${target_function}" "module function_cli_main_compiled@1.0.0"
 string(FIND "${target_function}" "function_cli.identity" target_identity_position)
 string(FIND "${target_function}" "import function_target" target_import_position)
 string(FIND "${target_function}" "function_cli.source()" target_source_position)
-if(target_module_position EQUAL -1 OR NOT target_identity_position EQUAL -1 OR
+if(target_module_position EQUAL -1 OR target_identity_position EQUAL -1 OR
    NOT target_import_position EQUAL -1 OR target_source_position EQUAL -1)
   message(FATAL_ERROR
     "cross-Module pipeline retained converted or unused target state:\n${target_function}")
@@ -80,7 +80,7 @@ string(FIND "${function}" "function_cli.source()" source_position)
 string(FIND "${function}" "function_cli.identity" identity_position)
 if(module_position EQUAL -1 OR import_position EQUAL -1 OR
    function_position EQUAL -1 OR source_position EQUAL -1 OR
-   NOT identity_position EQUAL -1)
+   identity_position EQUAL -1)
   message(FATAL_ERROR "joggle run did not publish the transformed Function:\n${function}")
 endif()
 

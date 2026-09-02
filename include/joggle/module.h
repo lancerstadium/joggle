@@ -216,8 +216,8 @@ public:
   class FunctionDecl {
   public:
     // A function is either declared by the environment or defined by one
-    // body. Whether that body evaluates, residualizes, or performs a rewrite
-    // is not a declaration kind.
+    // body. Known evaluation and residualization are execution outcomes, not
+    // declaration kinds.
     enum class Form { External, Body };
     enum class Fixity { Prefix, Infix, Postfix };
 

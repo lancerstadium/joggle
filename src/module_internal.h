@@ -13,7 +13,6 @@
 namespace joggle::detail {
 
 struct FunctionBody;
-struct RuleDefinition;
 
 using TypeExpression = Module::Expression;
 
@@ -75,8 +74,6 @@ struct ModuleAccess {
   static std::optional<SourceRange> declaration_source(const Module& module,
                                                        Module::SymbolKind kind,
                                                        std::string_view name);
-  static std::span<const RuleDefinition> rules(const Module& module,
-                                               const Module::FunctionDecl&);
 };
 
 }  // namespace joggle::detail

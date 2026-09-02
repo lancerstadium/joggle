@@ -45,11 +45,12 @@ int main() {
   const auto integer_schema = test_ir->type("integer");
   const auto add_schema = test_ir->function("add");
   const auto cast_schema = test_ir->function("cast");
+  const auto canonicalize_schema = test_ir->function("canonicalize");
   const auto marker_schema = testing->function("marker");
   const auto cleanup_schema = testing->function("cleanup");
   const auto optimize_schema = testing->function("optimize");
   const auto abort_schema = testing->function("abort");
-  if (!integer_schema || !add_schema || !cast_schema ||
+  if (!integer_schema || !add_schema || !cast_schema || !canonicalize_schema ||
       !marker_schema || !cleanup_schema || !optimize_schema || !abort_schema) {
     return EXIT_FAILURE;
   }
@@ -79,6 +80,20 @@ int main() {
   compiler.bind(*add_schema, same_type);
   compiler.bind(*cast_schema, same_type);
   compiler.bind(*marker_schema, same_type);
+  compiler.bind(
+      *canonicalize_schema,
+      [cast_schema](joggle::Function& function,
+                    joggle::Diagnostics& diagnostics) {
+        auto edit = function.edit();
+        for (const joggle::Instruction& instruction : function.instructions()) {
+          if (instruction.callee() != *cast_schema) {
+            continue;
+          }
+          edit.replace(instruction.result(0), instruction.arguments().front());
+          edit.erase(instruction);
+        }
+        return edit.commit(diagnostics);
+      });
 
   std::size_t query_runs = 0;
   const auto compute_nodes = [&](const joggle::Function& function) {
@@ -134,7 +149,7 @@ int main() {
   bool ok = true;
   ok &= expect(compiler.verify(*function), "native operation verification");
   ok &= expect(compiler.run(*function, *optimize_schema),
-               "composed rule and C++ pass runs");
+               "composed native transformations run");
   ok &= expect(function->instructions().size() == 1U,
                "composed pass transforms through Function::Edit");
   ok &= expect(query_runs == 1U,

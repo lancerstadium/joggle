@@ -2845,14 +2845,9 @@ bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics) {
     diagnostics.report(std::move(message), locate(range));
   };
 
-  const std::size_t forms = static_cast<std::size_t>(!body.blocks.empty()) +
-                            static_cast<std::size_t>(!body.rules.empty());
-  if (forms != 1U) {
-    report("a function definition must have exactly one body", body.range);
-    return false;
-  }
   if (body.blocks.empty()) {
-    return diagnostics.size() == initial_diagnostics;
+    report("a function definition must have a body", body.range);
+    return false;
   }
 
   if (body.blocks.front().name != "entry") {

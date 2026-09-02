@@ -24,20 +24,6 @@ struct SyntaxRange {
   SourcePosition end;
 };
 
-struct TermDefinition {
-  enum class Kind { Variable, Instruction };
-  Kind kind = Kind::Variable;
-  std::string name;
-  std::vector<std::size_t> arguments;
-};
-
-struct RuleDefinition {
-  std::vector<TermDefinition> terms;
-  std::size_t match = 0;
-  std::size_t replacement = 0;
-  std::optional<SourceRange> source;
-};
-
 struct ValueSyntax {
   enum class Kind { Number, Boolean, String, List, Reference };
 
@@ -113,7 +99,6 @@ struct BlockSyntax {
 
 struct FunctionBody {
   std::vector<BlockSyntax> blocks;
-  std::vector<RuleDefinition> rules;
   std::string source;
   SyntaxRange range;
 };

@@ -67,9 +67,9 @@ result to be Known but does not select another function namespace.
 ## Rewrites and analyses
 
 Pattern rewriting, dominance, cost estimation, scheduling, simulation, and
-emission are libraries over `Function` or Module-defined handle types. A
-rewrite DSL may be provided by a Module, but it does not change the core
-ownership hierarchy.
+emission are libraries over `Function` or Module-defined handle types. The
+core language has no privileged rewrite form; a Module may expose pattern
+types and ordinary functions as a library without changing ownership.
 
 Mutating compiler functions use one transactional `Function::Edit`. Failure,
 diagnostics, exceptions, or failed verification restore the input checkpoint.

@@ -4,8 +4,6 @@ module function_target@1.0.0 {
   import function_cli@1;
 
   fn convert(input: function) -> function {
-    return rewrite(input) {
-      function_cli.identity($input) => $input;
-    };
+    return input;
   }
 }

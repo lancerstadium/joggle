@@ -90,8 +90,6 @@ struct ParsedModule {
   using FunctionDefinition = detail::FunctionDefinition;
   using TypeExpression = detail::TypeExpression;
   using GenericDefinition = detail::GenericDefinition;
-  using TermDefinition = detail::TermDefinition;
-  using RuleDefinition = detail::RuleDefinition;
 
   std::string name;
   Version version;
@@ -264,37 +262,6 @@ private:
     }
     error("expected an operator symbol");
     return std::nullopt;
-  }
-
-  std::optional<std::size_t> pass_term(ParsedModule::RuleDefinition& rule) {
-    ParsedModule::TermDefinition term;
-    if (match(TokenKind::Dollar)) {
-      term.kind = ParsedModule::TermDefinition::Kind::Variable;
-      auto variable = name("a pass variable name");
-      if (!variable) {
-        return std::nullopt;
-      }
-      term.name = std::move(*variable);
-    } else {
-      term.kind = ParsedModule::TermDefinition::Kind::Instruction;
-      auto operation = reference("an operation name");
-      if (!operation) {
-        return std::nullopt;
-      }
-      term.name = std::move(*operation);
-      expect(TokenKind::LeftParen, "'('");
-      if (!match(TokenKind::RightParen)) {
-        do {
-          auto argument = pass_term(rule);
-          if (argument) {
-            term.arguments.push_back(*argument);
-          }
-        } while (match(TokenKind::Comma));
-        expect(TokenKind::RightParen, "')'");
-      }
-    }
-    rule.terms.push_back(std::move(term));
-    return rule.terms.size() - 1U;
   }
 
   std::optional<std::uint64_t> integer() {
@@ -881,85 +848,19 @@ private:
               : std::nullopt;
     }
 
-    if (is(TokenKind::LeftBrace)) {
-      Lexer body_lexer = lexer_;
-      const Token first_body_token = body_lexer.take();
-      const bool starts_with_return =
-          first_body_token.kind == TokenKind::Name &&
-          first_body_token.text == "return";
-      const Token second_body_token = body_lexer.take();
-      const bool starts_with_rewrite =
-          starts_with_return && second_body_token.kind == TokenKind::Name &&
-          second_body_token.text == "rewrite";
-      if (!starts_with_rewrite) {
-        std::vector<ParsedModule::GenericDefinition> variables =
-            definition.generics;
-        for (const auto& input : definition.inputs) {
-          variables.push_back({input.name, input.domain, std::nullopt});
-        }
-        Lexer probe_lexer = lexer_;
-        Token probe_current = current_;
-        Diagnostics probe_diagnostics;
-        auto body = detail::parse_function_body(
-            probe_lexer, probe_current, probe_diagnostics, source_, variables);
-        if (body) {
-          lexer_ = probe_lexer;
-          current_ = probe_current;
-          definition.body = std::move(*body);
-          definition.source = SourceRange{source_, begin, current_.begin};
-          module_.functions.push_back(std::move(definition));
-          return;
-        }
-        for (const Diagnostic& diagnostic : probe_diagnostics.entries()) {
-          diagnostics_.report(diagnostic);
-        }
-        return;
-      }
-    }
-
     if (match(TokenKind::Semicolon)) {
     } else if (is(TokenKind::LeftBrace)) {
-      Lexer body_lexer = lexer_;
-      const Token first_body_token = body_lexer.take();
-      if (first_body_token.kind == TokenKind::Name &&
-          first_body_token.text == "return") {
-        advance();
-        expect_name("return");
-        if (match_name("rewrite")) {
-          definition.body.emplace();
-          definition.body->source = source_;
-          definition.body->range = {begin, current_.begin};
-          expect(TokenKind::LeftParen, "'('");
-          auto input = name("a Function parameter name");
-          expect(TokenKind::RightParen, "')'");
-          if (input && (definition.inputs.empty() ||
-                        definition.inputs.front().name != *input)) {
-            error("rewrite must name its Function input");
-          }
-          expect(TokenKind::LeftBrace, "'{' after rewrite input");
-          while (!is(TokenKind::RightBrace) && ok()) {
-            const SourcePosition rule_begin = current_.begin;
-            ParsedModule::RuleDefinition rule;
-            auto match_term = pass_term(rule);
-            expect(TokenKind::FatArrow, "'=>'");
-            auto replacement = pass_term(rule);
-            if (match_term) {
-              rule.match = *match_term;
-            }
-            if (replacement) {
-              rule.replacement = *replacement;
-            }
-            expect(TokenKind::Semicolon, "';'");
-            rule.source = SourceRange{source_, rule_begin, current_.begin};
-            definition.body->rules.push_back(std::move(rule));
-          }
-          expect(TokenKind::RightBrace, "'}'");
-        }
-        expect(TokenKind::Semicolon, "';'");
-        expect(TokenKind::RightBrace, "'}'");
-      } else {
-        error("a function body must use ordinary statements and control flow");
+      std::vector<ParsedModule::GenericDefinition> variables =
+          definition.generics;
+      for (const auto& input : definition.inputs) {
+        variables.push_back({input.name, input.domain, std::nullopt});
       }
+      auto body = detail::parse_function_body(
+          lexer_, current_, diagnostics_, source_, variables);
+      if (!body) {
+        return;
+      }
+      definition.body = std::move(*body);
     } else {
       error("expected ';' or a function body");
     }
@@ -1321,108 +1222,6 @@ private:
     return true;
   }
 
-  static bool same_term(const ParsedModule::RuleDefinition& rule,
-                        std::size_t left, std::size_t right) {
-    const auto& lhs = rule.terms[left];
-    const auto& rhs = rule.terms[right];
-    if (lhs.kind != rhs.kind || lhs.name != rhs.name ||
-        lhs.arguments.size() != rhs.arguments.size()) {
-      return false;
-    }
-    for (std::size_t index = 0; index < lhs.arguments.size(); ++index) {
-      if (!same_term(rule, lhs.arguments[index], rhs.arguments[index])) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  static bool contains_term(const ParsedModule::RuleDefinition& rule,
-                            std::size_t root, std::size_t candidate) {
-    if (same_term(rule, root, candidate)) {
-      return true;
-    }
-    const auto& term = rule.terms[root];
-    return std::any_of(term.arguments.begin(), term.arguments.end(),
-                       [&](std::size_t argument) {
-                         return contains_term(rule, argument, candidate);
-                       });
-  }
-
-  void validate_term(const ParsedModule::FunctionDefinition& function,
-                     const ParsedModule::RuleDefinition& rule,
-                     std::size_t index) {
-    const auto report = [&](std::string message) {
-      error(std::move(message),
-            rule.source ? rule.source : function.source);
-    };
-    const auto& term = rule.terms[index];
-    if (term.kind == ParsedModule::TermDefinition::Kind::Variable) {
-      return;
-    }
-    if (!reference_is_visible(term.name, "function", rule.source)) {
-      return;
-    }
-    const std::size_t dot = term.name.find('.');
-    const bool local =
-        dot == std::string::npos || term.name.substr(0, dot) == module_.name;
-    const std::string_view function_name =
-        dot == std::string::npos ? std::string_view(term.name)
-                                 : std::string_view(term.name).substr(dot + 1U);
-    if (local) {
-      const auto target =
-          std::find_if(module_.functions.begin(), module_.functions.end(),
-                       [&](const auto& candidate) {
-                         return candidate.name == function_name &&
-                                std::find(candidate.types.ir_inputs.begin(),
-                                          candidate.types.ir_inputs.end(),
-                                          true) !=
-                                    candidate.types.ir_inputs.end();
-                       });
-      if (target == module_.functions.end()) {
-        report("rewrite function '" + function.name +
-               "' matches unknown IR function '" +
-               term.name + "'");
-      } else {
-        const auto value_inputs = static_cast<std::size_t>(
-            std::count(target->types.ir_inputs.begin(),
-                       target->types.ir_inputs.end(), true));
-        const auto value_results = static_cast<std::size_t>(
-            std::count(target->types.ir_results.begin(),
-                       target->types.ir_results.end(), true));
-        if (value_inputs != term.arguments.size() || value_results != 1U) {
-          report("rewrite function '" + function.name +
-                 "' term arity does not match IR function '" + term.name +
-                 "'");
-        }
-      }
-    }
-    for (std::size_t argument : term.arguments) {
-      validate_term(function, rule, argument);
-    }
-  }
-
-  void validate_rule(const ParsedModule::FunctionDefinition& function,
-                     const ParsedModule::RuleDefinition& rule) {
-    const auto report = [&](std::string message) {
-      error(std::move(message),
-            rule.source ? rule.source : function.source);
-    };
-    if (rule.terms.empty() ||
-        rule.terms[rule.match].kind !=
-            ParsedModule::TermDefinition::Kind::Instruction) {
-      report("rewrite function '" + function.name +
-             "' rule must match a function call");
-      return;
-    }
-    validate_term(function, rule, rule.match);
-    if (same_term(rule, rule.match, rule.replacement) ||
-        !contains_term(rule, rule.match, rule.replacement)) {
-      report("rewrite function '" + function.name +
-             "' replacement must be a proper subterm of its match");
-    }
-  }
-
   void validate() {
     std::unordered_set<std::string_view> import_names;
     std::unordered_set<std::string_view> import_prefixes;
@@ -1659,21 +1458,6 @@ private:
         validate_declaration_expression(
             variables, owner, function.source, *expression,
             function.results.front().domain);
-      }
-      const bool graph_transform =
-          function.inputs.size() == 1U &&
-          detail::is_domain(function.inputs.front().domain, ValueKind::Function) &&
-          function.results.size() == 1U &&
-          detail::is_domain(function.results.front().domain, ValueKind::Function);
-      if (function.body && !function.body->rules.empty() && !graph_transform) {
-        error("rewrite function '" + function.name +
-                  "' must have type function -> function",
-              function.source);
-      }
-      if (function.body) {
-        for (const auto& rule : function.body->rules) {
-          validate_rule(function, rule);
-        }
       }
     }
   }
@@ -2550,18 +2334,6 @@ std::optional<SourceRange> detail::ModuleAccess::declaration_source(
   return std::nullopt;
 }
 
-std::span<const detail::RuleDefinition>
-detail::ModuleAccess::rules(const Module& module,
-                            const Module::FunctionDecl& function) {
-  if (function.storage_.get() != module.storage_.get() ||
-      function.index_ >= module.storage_->functions.size()) {
-    return {};
-  }
-  const auto& body = module.storage_->functions[function.index_].body;
-  return body ? std::span<const detail::RuleDefinition>(body->rules)
-              : std::span<const detail::RuleDefinition>{};
-}
-
 std::optional<Module> parse_module(std::string_view text,
                                    Diagnostics& diagnostics,
                                    std::string source) {
@@ -2650,25 +2422,6 @@ std::string format(const Module& module) {
     }
     wrote_group = true;
   };
-  const auto write_term = [&](const auto& self,
-                              const detail::RuleDefinition& rule,
-                              std::size_t index) -> void {
-    const auto& term = rule.terms[index];
-    if (term.kind == detail::TermDefinition::Kind::Variable) {
-      output << '$' << term.name;
-      return;
-    }
-    output << term.name << '(';
-    for (std::size_t argument = 0; argument < term.arguments.size();
-         ++argument) {
-      if (argument != 0U) {
-        output << ", ";
-      }
-      self(self, rule, term.arguments[argument]);
-    }
-    output << ')';
-  };
-
   begin_group(!module.storage_->interfaces.empty());
   for (const auto& interface : module.storage_->interfaces) {
     output << "  interface " << interface.name << ": "
@@ -2884,24 +2637,8 @@ std::string format(const Module& module) {
         output << suffix;
       }
     }
-    if (function.body && function.body->rules.empty()) {
+    if (function.body) {
       output << ' ' << detail::format_function_body(*function.body, 1U);
-      continue;
-    }
-    if (function.body && !function.body->rules.empty()) {
-      output << " {\n    return rewrite(";
-      if (!function.inputs.empty()) {
-        output << function.inputs.front().name;
-      }
-      output << ") {\n";
-      for (const auto& rule : function.body->rules) {
-        output << "      ";
-        write_term(write_term, rule, rule.match);
-        output << " => ";
-        write_term(write_term, rule, rule.replacement);
-        output << ";\n";
-      }
-      output << "    };\n  }\n";
       continue;
     }
     output << ";\n";

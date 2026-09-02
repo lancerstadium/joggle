@@ -122,6 +122,20 @@ module pipeline@1.0.0 {
   compiler.bind(*emit, [](const joggle::Function& current) -> joggle::Bytes {
     return {static_cast<std::byte>(current.instructions().size())};
   });
+  compiler.bind(
+      *canonicalize,
+      [arith_cast_decl](joggle::Function& current,
+                        joggle::Diagnostics& diagnostics) {
+        auto edit = current.edit();
+        for (const joggle::Instruction& instruction : current.instructions()) {
+          if (instruction.callee() != *arith_cast_decl) {
+            continue;
+          }
+          edit.replace(instruction.result(0), instruction.arguments().front());
+          edit.erase(instruction);
+        }
+        return edit.commit(diagnostics);
+      });
   bool consumed = false;
   compiler.bind(*consume, [&](const joggle::Bytes&) { consumed = true; });
   const joggle::Bytes encoded{std::byte{0x42}};
@@ -149,105 +163,13 @@ module pipeline@1.0.0 {
   const auto bits = integer->get<std::int64_t>("storage_bits");
   ok &= expect(bits && *bits == 8,
                "derived parameters share the ordinary Type query path");
-  ok &= expect(canonicalize->form() == joggle::Module::FunctionDecl::Form::Body,
-               "a rewrite uses the same function body form");
+  ok &= expect(canonicalize->form() ==
+                   joggle::Module::FunctionDecl::Form::External,
+               "a native transformation uses an ordinary function declaration");
   ok &= expect(compiler.run(*function, *clean),
-               "an imported rule pass composes without a C++ binding");
+               "an imported transformation composes through an ordinary fn");
   ok &= expect(function->instructions().empty(),
-               "greedy contraction removes redundant same-type casts");
-
-  constexpr std::string_view repeated_source = R"(
-joggle 1;
-module repeated@1.0.0 {
-  type value();
-  fn pair<T: type>(lhs: T, rhs: T) -> T;
-  fn deduplicate(input: function) -> function {
-    return rewrite(input) {
-      pair($x, $x) => $x;
-    };
-  }
-}
-)";
-  joggle::Compiler repeated_compiler;
-  repeated_compiler.add(repeated_source, "repeated.joggle");
-  if (!repeated_compiler.link()) {
-    return EXIT_FAILURE;
-  }
-  const auto repeated = repeated_compiler.module("repeated");
-  const auto value_decl = repeated ? repeated->type("value") : std::nullopt;
-  const auto pair_decl = repeated ? repeated->function("pair") : std::nullopt;
-  const auto deduplicate =
-      repeated ? repeated->function("deduplicate") : std::nullopt;
-  const auto value = value_decl ? repeated_compiler.make(*value_decl)
-                                : std::optional<joggle::Type>{};
-  auto repeated_graph = repeated_compiler.function();
-  if (!pair_decl || !deduplicate || !value || !repeated_graph) {
-    return EXIT_FAILURE;
-  }
-  auto repeated_edit = repeated_graph->edit();
-  const auto lhs = repeated_edit.argument(*value);
-  const auto rhs = repeated_edit.argument(*value);
-  repeated_edit.append(*pair_decl, {lhs, lhs});
-  repeated_edit.append(*pair_decl, {lhs, rhs});
-  joggle::Diagnostics repeated_diagnostics;
-  if (!repeated_edit.commit(repeated_diagnostics)) {
-    return EXIT_FAILURE;
-  }
-  ok &= expect(repeated_compiler.run(*repeated_graph, *deduplicate) &&
-                   repeated_graph->instructions().size() == 1U,
-               "repeated pass variables require the same SSA value");
-
-  constexpr std::string_view mismatch_source = R"(
-    joggle 1;
-    module mismatch@1.0.0 {
-      type a();
-      type b();
-      fn cast<A: type, B: type>(input: A) -> B;
-      fn simplify(input: function) -> function {
-        return rewrite(input) {
-          cast($input) => $input;
-        };
-      }
-    }
-  )";
-  joggle::Compiler mismatch_compiler;
-  mismatch_compiler.add(mismatch_source, "mismatch.joggle");
-  if (!mismatch_compiler.link()) {
-    mismatch_compiler.diagnostics().print(std::cerr);
-    return EXIT_FAILURE;
-  }
-  const auto mismatch_module = mismatch_compiler.module("mismatch");
-  const auto a_decl =
-      mismatch_module ? mismatch_module->type("a") : std::nullopt;
-  const auto b_decl =
-      mismatch_module ? mismatch_module->type("b") : std::nullopt;
-  const auto cast_decl =
-      mismatch_module ? mismatch_module->function("cast") : std::nullopt;
-  const auto simplify =
-      mismatch_module ? mismatch_module->function("simplify") : std::nullopt;
-  if (!a_decl || !b_decl || !cast_decl || !simplify) {
-    return EXIT_FAILURE;
-  }
-  const auto a = mismatch_compiler.make(*a_decl);
-  const auto b = mismatch_compiler.make(*b_decl);
-  auto mismatch_graph = mismatch_compiler.function();
-  if (!a || !b || !mismatch_graph) {
-    return EXIT_FAILURE;
-  }
-  auto mismatch_edit = mismatch_graph->edit();
-  const auto mismatch_input = mismatch_edit.argument(*a);
-  mismatch_edit.append(*cast_decl, {mismatch_input}, {*b});
-  joggle::Diagnostics mismatch_edit_diagnostics;
-  if (!mismatch_edit.commit(mismatch_edit_diagnostics)) {
-    return EXIT_FAILURE;
-  }
-  ok &= expect(
-      !mismatch_compiler.run(*mismatch_graph, *simplify) &&
-          mismatch_graph->instructions().size() == 1U &&
-          mismatch_graph->instructions().front().callee().name() ==
-              "cast" &&
-          mismatch_graph->instructions().front().result(0).type() == *b,
-      "type-incompatible rule fails and restores the whole Function");
+               "the native transformation removes redundant casts");
 
   constexpr std::string_view guarded_source = R"(
     joggle 1;

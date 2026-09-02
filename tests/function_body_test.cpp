@@ -23,12 +23,6 @@ module logic@1.0.0 {
   fn source<T: type>(name: string, meta: attr) -> T;
   fn identity<T: type>(input: T) -> T;
   fn add<T: type>(lhs: T, rhs: T) -> T;
-  fn simplify(input: function) -> function {
-    return rewrite(input) {
-      identity($input) => $input;
-    };
-  }
-
   fn main(lhs: tensor<word<8>, [2, 4]>) -> tensor<word<8>, [2, 4]> {
     input: tensor<word<8>, [2, 4]> = source(
       name = "input } // still a string",

@@ -120,8 +120,8 @@ int main() {
                    add->interfaces().size() == 2U,
                "add signature");
   ok &= expect(canonicalize && canonicalize->form() ==
-                                   joggle::Module::FunctionDecl::Form::Body,
-               "a rewrite is an ordinary function body");
+                                   joggle::Module::FunctionDecl::Form::External,
+               "external compiler functions use ordinary declarations");
   if (!ok || !integer) {
     return EXIT_FAILURE;
   }
@@ -385,48 +385,24 @@ int main() {
                        4U,
                "unknown local interface is rejected");
 
-  joggle::Diagnostics rule_diagnostics;
-  auto invalid_rule =
+  joggle::Diagnostics legacy_rewrite_diagnostics;
+  auto legacy_rewrite =
       joggle::parse_module(R"(
     joggle 1;
-    module broken_rule@1.0.0 {
+    module legacy_rewrite@1.0.0 {
       type integer();
       fn identity<T: type>(input: T) -> T;
-      fn incomplete(input: function) -> function {
+      fn simplify(input: function) -> function {
         return rewrite(input) {
-          identity($input) => $missing;
+          identity($input) => $input;
         };
       }
     }
   )",
-                           rule_diagnostics, "broken-rule.joggle");
-  ok &= expect(!invalid_rule && !rule_diagnostics.ok() &&
-                   rule_diagnostics.entries().back().source &&
-                   rule_diagnostics.entries().back().source->source ==
-                       "broken-rule.joggle" &&
-                   rule_diagnostics.entries().back().source->begin.line == 8U,
-               "a replacement outside the matched term is rejected");
-
-  const auto rejects_rule = [&](std::string_view rule) {
-    joggle::Diagnostics diagnostics;
-    const std::string source = "joggle 1; module invalid_rule@1.0.0 { "
-                               "type value(); "
-                               "fn first<T: type>(input: T) -> T; "
-                               "fn second<T: type>(input: T) -> T; "
-                               "fn invalid(input: function) -> function { "
-                               "return rewrite(input) { " +
-                               std::string(rule) + " }; } }";
-    return !joggle::parse_module(source, diagnostics, "invalid-rule.joggle") &&
-           !diagnostics.ok();
-  };
-  ok &= expect(rejects_rule("first($x) => second($x);"),
-               "a contraction cannot construct a new operation");
-  ok &= expect(rejects_rule("first($x) => first($x);"),
-               "an identity contraction cannot make no progress");
-  ok &= expect(rejects_rule("$x => $x;"),
-               "a contraction must match an operation root");
-  ok &= expect(rejects_rule("first(x) => x;"),
-               "an SSA name is not accepted as a pass pattern variable");
+                           legacy_rewrite_diagnostics,
+                           "legacy-rewrite.joggle");
+  ok &= expect(!legacy_rewrite && !legacy_rewrite_diagnostics.ok(),
+               "the removed core rewrite sublanguage is rejected");
 
   joggle::Diagnostics removed_analysis_diagnostics;
   auto removed_analysis = joggle::parse_module(
