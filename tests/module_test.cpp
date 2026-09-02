@@ -105,14 +105,15 @@ int main() {
                    align->symbol().kind() ==
                        joggle::Module::SymbolKind::Function,
                "pure function reflection");
-  ok &= expect(add && add->value_inputs().size() == 2U &&
-                   add->static_inputs().empty() &&
-                   add->value_results().size() == 1U &&
-                   add->value_inputs().front().domain.kind ==
+  ok &= expect(add && add->inputs().size() == 2U &&
+                   add->results().size() == 1U &&
+                   add->inputs().front().domain.kind ==
                        joggle::Module::Expression::Kind::Variable &&
-                   add->value_inputs().front().domain.text == "T" &&
-                   add->value_results().front().domain ==
-                       add->value_inputs().front().domain &&
+                   add->inputs().front().domain.text == "T" &&
+                   add->results().front().domain ==
+                       add->inputs().front().domain &&
+                   add->signature().find("static:") == std::string::npos &&
+                   add->signature().find("value:") == std::string::npos &&
                    add->operator_symbol() == std::string_view("+") &&
                    add->operator_fixity() ==
                        joggle::Module::FunctionDecl::Fixity::Infix &&

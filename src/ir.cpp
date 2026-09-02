@@ -1,6 +1,7 @@
 #include "joggle/ir.h"
 
 #include "ir_internal.h"
+#include "module_internal.h"
 #include "prelude.h"
 #include "type_contract.h"
 #include "type_internal.h"
@@ -314,19 +315,21 @@ bool verify_instruction(
     diagnostics.report("instruction '" + name + "' has no parent block");
     valid = false;
   }
-  if (!accepts_count(instruction.schema.value_inputs(), instruction.operands.size())) {
+  if (!accepts_count(detail::ir_inputs(instruction.schema),
+                     instruction.operands.size())) {
     diagnostics.report("instruction '" + name +
                        "' has the wrong number of operands");
     valid = false;
   }
-  if (!accepts_count(instruction.schema.value_results(), instruction.results.size())) {
+  if (!accepts_count(detail::ir_results(instruction.schema),
+                     instruction.results.size())) {
     diagnostics.report("instruction '" + name +
                        "' has the wrong number of results");
     valid = false;
   }
 
   for (const Module::ParameterDecl& parameter :
-       instruction.schema.static_inputs()) {
+       detail::parameter_inputs(instruction.schema)) {
     const auto property = instruction.properties.find(parameter.name);
     if (property == instruction.properties.end()) {
       if (!parameter.default_value) {
@@ -340,7 +343,7 @@ bool verify_instruction(
       valid = false;
     }
   }
-  const auto static_inputs = instruction.schema.static_inputs();
+  const auto static_inputs = detail::parameter_inputs(instruction.schema);
   for (const auto& [property_name, value] : instruction.properties) {
     const auto parameter = std::find_if(
         static_inputs.begin(), static_inputs.end(),
@@ -602,8 +605,9 @@ bool verify_instruction_contracts(const FunctionState& function,
       }
 
       std::vector<std::optional<ParameterValue>> properties;
-      properties.reserve(schema.static_inputs().size());
-      for (const Module::ParameterDecl& input : schema.static_inputs()) {
+      properties.reserve(detail::parameter_inputs(schema).size());
+      for (const Module::ParameterDecl& input :
+           detail::parameter_inputs(schema)) {
         const auto value = instruction.properties.find(input.name);
         properties.push_back(value == instruction.properties.end()
                                  ? std::optional<ParameterValue>{}
@@ -694,8 +698,8 @@ void detail::FunctionAccess::declare(Function& function,
     throw std::logic_error("function signature must be fixed before its body");
   }
   if (!owns(state, declaration.symbol()) ||
-      declaration.value_inputs().size() != argument_types.size() ||
-      declaration.value_results().size() != result_types.size()) {
+      detail::ir_inputs(declaration).size() != argument_types.size() ||
+      detail::ir_results(declaration).size() != result_types.size()) {
     throw std::invalid_argument(
         "function signature does not match its declaration");
   }
@@ -1103,7 +1107,8 @@ Instruction Function::Edit::add(Block block,
   }
 
   std::map<std::string, ParameterValue, std::less<>> properties;
-  for (const Module::ParameterDecl& parameter : schema.static_inputs()) {
+  for (const Module::ParameterDecl& parameter :
+       detail::parameter_inputs(schema)) {
     if (parameter.default_value) {
       if (const auto value = detail::parameter_default(parameter)) {
         properties.emplace(parameter.name, *value);
@@ -1111,7 +1116,7 @@ Instruction Function::Edit::add(Block block,
     }
   }
   std::unordered_set<std::string> explicit_properties;
-  const auto static_inputs = schema.static_inputs();
+  const auto static_inputs = detail::parameter_inputs(schema);
   for (Property& argument : arguments) {
     std::string name = detail::PropertyAccess::take_name(argument);
     ParameterValue value = detail::PropertyAccess::take_value(argument);
@@ -1141,16 +1146,18 @@ Instruction Function::Edit::add(Block block,
     properties.insert_or_assign(std::move(name), std::move(value));
   }
 
-  if (result_types.empty() && !schema.value_results().empty()) {
+  if (result_types.empty() && !detail::ir_results(schema).empty()) {
     std::vector<Type> operand_types;
     operand_types.reserve(operands.size());
     for (const Value& operand : operands) {
       operand_types.push_back(operand.type());
     }
-    std::vector<std::optional<Type>> expected(schema.value_results().size());
+    std::vector<std::optional<Type>> expected(
+        detail::ir_results(schema).size());
     std::vector<std::optional<ParameterValue>> inference_properties;
-    inference_properties.reserve(schema.static_inputs().size());
-    for (const Module::ParameterDecl& parameter : schema.static_inputs()) {
+    inference_properties.reserve(detail::parameter_inputs(schema).size());
+    for (const Module::ParameterDecl& parameter :
+         detail::parameter_inputs(schema)) {
       const auto property_value = properties.find(parameter.name);
       inference_properties.push_back(property_value == properties.end()
                                          ? std::optional<ParameterValue>{}

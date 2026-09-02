@@ -8,6 +8,7 @@
 #include "domain.h"
 #include "ir_internal.h"
 #include "joggle/compiler.h"
+#include "module_internal.h"
 #include "syntax_lexer.h"
 #include "type_contract.h"
 #include "type_internal.h"
@@ -791,7 +792,7 @@ public:
       return std::nullopt;
     }
     std::vector<Type> result_types;
-    const auto results = declaration_.value_results();
+    const auto results = detail::ir_results(declaration_);
     for (const auto& result : results) {
       auto syntax = value_syntax(result.domain, body_.range);
       if (!syntax) {
@@ -824,7 +825,7 @@ public:
       }
     }
     std::vector<Type> argument_types;
-    const auto inputs = declaration_.value_inputs();
+    const auto inputs = detail::ir_inputs(declaration_);
     for (const auto& argument : inputs) {
       auto syntax = value_syntax(argument.domain, body_.range);
       if (!syntax) {
@@ -1307,9 +1308,9 @@ private:
           continue;
         }
         std::vector<std::optional<ParameterValue>> properties(
-            candidate.static_inputs().size());
+            detail::parameter_inputs(candidate).size());
         std::vector<std::optional<Type>> expected(
-            candidate.value_results().size());
+            detail::ir_results(candidate).size());
         Diagnostics attempt;
         if (detail::resolve_operation_types(
                 compiler_, candidate, operand_types, properties, expected,
@@ -1413,8 +1414,8 @@ private:
       operand_types.push_back(operand.type());
     }
     std::vector<std::optional<ParameterValue>> property_values(
-        schema->static_inputs().size());
-    const auto static_inputs = schema->static_inputs();
+        detail::parameter_inputs(*schema).size());
+    const auto static_inputs = detail::parameter_inputs(*schema);
     bool invalid_property = false;
     for (const auto& property : syntax.properties) {
       const auto input = std::find_if(
@@ -1456,7 +1457,7 @@ private:
 
     for (std::size_t index = 0; index < property_values.size(); ++index) {
       if (property_values[index]) {
-        edit_->set(operation, schema->static_inputs()[index].name,
+        edit_->set(operation, static_inputs[index].name,
                    std::move(*property_values[index]));
       }
     }
@@ -1663,7 +1664,7 @@ private:
       result.expression.value.labels.emplace_back();
     }
     for (const Module::ParameterDecl& parameter :
-         operation.callee().static_inputs()) {
+         detail::parameter_inputs(operation.callee())) {
       if (const auto property =
               detail::FunctionAccess::property(operation, parameter.name)) {
         result.expression.value.arguments.push_back(
@@ -1679,7 +1680,7 @@ private:
                    (*fixity != Module::FunctionDecl::Fixity::Infix &&
                     operation.operands().size() == 1U));
     if (notation && valid_arity && result.bindings.size() == 1U &&
-        operation.callee().static_inputs().empty()) {
+        detail::parameter_inputs(operation.callee()).empty()) {
       result.expression.value.text = std::string(*notation);
       if (*fixity == Module::FunctionDecl::Fixity::Prefix) {
         result.expression.value.kind = Module::Expression::Kind::Prefix;

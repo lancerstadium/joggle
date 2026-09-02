@@ -80,12 +80,11 @@ int main() {
       module ? module->function("configured") : std::nullopt;
   const auto configured = compiler.function("logic.configured");
   ok &= expect(configured_decl && configured &&
-                   configured_decl->static_inputs().size() == 1U &&
-                   configured_decl->static_inputs().front().name == "scale" &&
-                   configured_decl->value_inputs().size() == 1U &&
+                   configured_decl->inputs().size() == 2U &&
+                   configured_decl->inputs().front().name == "scale" &&
                    configured->arguments().size() == 1U,
-               "a function signature is parsed once and retains availability "
-               "while its residual body receives only residual inputs");
+               "a function signature has one public parameter sequence while "
+               "the current IR bridge receives its representable inputs");
   const auto main_symbol =
       module ? module->symbol(joggle::Module::SymbolKind::Function, "main")
              : std::nullopt;

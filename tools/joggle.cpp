@@ -333,8 +333,8 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
     for (const joggle::Module::FunctionDecl& function : loaded.functions()) {
       if (function.form() == joggle::Module::FunctionDecl::Form::Body &&
           joggle::detail::ModuleAccess::expression(function) == nullptr &&
-          (!function.value_inputs().empty() ||
-           !function.value_results().empty()) &&
+          (!joggle::detail::ir_inputs(function).empty() ||
+           !joggle::detail::ir_results(function).empty()) &&
           !compiler.function(function.symbol())) {
         return false;
       }
@@ -384,7 +384,7 @@ void collect_modules(const joggle::Instruction& operation,
     collect_modules(result.type(), modules);
   }
   for (const joggle::Module::ParameterDecl& parameter :
-       operation.callee().static_inputs()) {
+       joggle::detail::parameter_inputs(operation.callee())) {
     if (const auto property = joggle::detail::FunctionAccess::property(
             operation, parameter.name)) {
       collect_modules(*property, modules);

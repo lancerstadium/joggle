@@ -585,11 +585,11 @@ private:
     return found == generics.end() ? nullptr : &*found;
   }
 
-  Parameter::Kind signature_kind(
+  bool is_ir_port(
       const ParsedModule::TypeExpression& annotation,
       std::span<const ParsedModule::GenericDefinition> generics) const {
     if (detail::kernel_domain(annotation)) {
-      return Parameter::Kind::Static;
+      return false;
     }
     if (annotation.kind == ParsedModule::TypeExpression::Kind::Variable) {
       const auto* generic = operation_generic(generics, annotation.text);
@@ -597,10 +597,10 @@ private:
                               ? std::optional<detail::Domain>{}
                               : detail::kernel_domain(generic->domain);
       if (domain && domain->element != ValueKind::Type) {
-        return Parameter::Kind::Static;
+        return false;
       }
     }
-    return Parameter::Kind::Value;
+    return true;
   }
 
   ParsedModule::TypeExpression type_expression(
@@ -782,6 +782,7 @@ private:
     auto generics = operation_generics();
     std::vector<Parameter> inputs;
     std::vector<std::optional<ParsedModule::TypeExpression>> input_bindings;
+    std::vector<bool> ir_inputs;
     expect(TokenKind::LeftParen, "'('");
     if (!match(TokenKind::RightParen)) {
       do {
@@ -792,10 +793,9 @@ private:
           input.name = std::move(*input_name);
         }
         input.domain = type_expression(generics);
-        input.kind = signature_kind(input.domain, generics);
+        const bool ir_input = is_ir_port(input.domain, generics);
         std::optional<ParsedModule::TypeExpression> binding;
-        if (input.kind == Parameter::Kind::Static &&
-            !detail::kernel_domain(input.domain)) {
+        if (!ir_input && !detail::kernel_domain(input.domain)) {
           const auto* generic =
               input.domain.kind == ParsedModule::TypeExpression::Kind::Variable
                   ? operation_generic(generics, input.domain.text)
@@ -813,8 +813,8 @@ private:
         }
         if (match(TokenKind::Equal)) {
           const auto domain = detail::kernel_domain(input.domain);
-          if (input.kind != Parameter::Kind::Static || !domain ||
-              domain->list || domain->element == ValueKind::Function ||
+          if (ir_input || !domain || domain->list ||
+              domain->element == ValueKind::Function ||
               domain->element == ValueKind::Bytes || input.variadic) {
             error("this parameter cannot have a default value");
           } else {
@@ -823,6 +823,7 @@ private:
         }
         inputs.push_back(std::move(input));
         input_bindings.push_back(std::move(binding));
+        ir_inputs.push_back(ir_input);
       } while (match(TokenKind::Comma));
       expect(TokenKind::RightParen, "')'");
     }
@@ -851,23 +852,24 @@ private:
     definition.types.generics = std::move(generics);
     definition.inputs = std::move(inputs);
     definition.types.bindings = std::move(input_bindings);
+    definition.types.ir_inputs = std::move(ir_inputs);
     for (std::size_t index = 0; index < result_types.size(); ++index) {
-      const auto kind = signature_kind(result_types[index], generics);
+      const bool ir_result =
+          is_ir_port(result_types[index], definition.generics);
       definition.results.push_back(
           {result_types.size() == 1U
                ? "result"
                : "result" + std::to_string(index),
-           std::move(result_types[index]), false, std::nullopt, kind});
+           std::move(result_types[index]), false, std::nullopt});
+      definition.types.ir_results.push_back(ir_result);
     }
     definition.interfaces = std::move(interfaces);
     definition.operator_symbol = std::move(declared_operator);
     definition.operator_fixity = declared_fixity;
     if (definition.operator_symbol && !definition.operator_fixity) {
-      const auto value_inputs = static_cast<std::size_t>(std::count_if(
-          definition.inputs.begin(), definition.inputs.end(),
-          [](const auto& input) {
-            return input.kind == Parameter::Kind::Value;
-          }));
+      const auto value_inputs = static_cast<std::size_t>(std::count(
+          definition.types.ir_inputs.begin(),
+          definition.types.ir_inputs.end(), true));
       const std::size_t operands =
           value_inputs == 0U ? definition.inputs.size() : value_inputs;
       definition.operator_fixity =
@@ -985,13 +987,14 @@ private:
 
   void validate_parameters(const std::vector<Parameter>& values,
                            std::string_view owner,
-                           std::optional<SourceRange> source) {
+                           std::optional<SourceRange> source,
+                           const std::vector<bool>& ir_ports = {}) {
     if (!unique_parameter_names(values)) {
       error("duplicate parameter in '" + std::string(owner) + "'", source);
     }
     for (std::size_t index = 0; index < values.size(); ++index) {
-      if (values[index].kind == Parameter::Kind::Static &&
-          !detail::kernel_domain(values[index].domain)) {
+      const bool ir_port = index < ir_ports.size() && ir_ports[index];
+      if (!ir_port && !detail::kernel_domain(values[index].domain)) {
         error("unknown parameter domain on '" + values[index].name +
                   "' in '" + std::string(owner) + "'",
               source);
@@ -1370,27 +1373,22 @@ private:
           std::find_if(module_.functions.begin(), module_.functions.end(),
                        [&](const auto& candidate) {
                          return candidate.name == function_name &&
-                                std::any_of(candidate.inputs.begin(),
-                                            candidate.inputs.end(),
-                                            [](const auto& input) {
-                                              return input.kind ==
-                                                     Parameter::Kind::Value;
-                                            });
+                                std::find(candidate.types.ir_inputs.begin(),
+                                          candidate.types.ir_inputs.end(),
+                                          true) !=
+                                    candidate.types.ir_inputs.end();
                        });
       if (target == module_.functions.end()) {
         report("rewrite function '" + function.name +
                "' matches unknown IR function '" +
                term.name + "'");
       } else {
-        const auto value_inputs = static_cast<std::size_t>(std::count_if(
-            target->inputs.begin(), target->inputs.end(), [](const auto& input) {
-              return input.kind == Parameter::Kind::Value;
-            }));
-        const auto value_results = static_cast<std::size_t>(std::count_if(
-            target->results.begin(), target->results.end(),
-            [](const auto& result) {
-              return result.kind == Parameter::Kind::Value;
-            }));
+        const auto value_inputs = static_cast<std::size_t>(
+            std::count(target->types.ir_inputs.begin(),
+                       target->types.ir_inputs.end(), true));
+        const auto value_results = static_cast<std::size_t>(
+            std::count(target->types.ir_results.begin(),
+                       target->types.ir_results.end(), true));
         if (value_inputs != term.arguments.size() || value_results != 1U) {
           report("rewrite function '" + function.name +
                  "' term arity does not match IR function '" + term.name +
@@ -1453,19 +1451,20 @@ private:
         if (function.name != candidate.name ||
             function.generics.size() != candidate.generics.size() ||
             function.inputs.size() != candidate.inputs.size() ||
-            function.results.size() != candidate.results.size()) {
+            function.results.size() != candidate.results.size() ||
+            function.types.ir_inputs != candidate.types.ir_inputs ||
+            function.types.ir_results != candidate.types.ir_results) {
           continue;
         }
         const bool same_inputs = std::equal(
             function.inputs.begin(), function.inputs.end(),
             candidate.inputs.begin(), [](const auto& lhs, const auto& rhs) {
-              return lhs.kind == rhs.kind && lhs.variadic == rhs.variadic &&
-                     lhs.domain == rhs.domain;
+              return lhs.variadic == rhs.variadic && lhs.domain == rhs.domain;
             });
         const bool same_results = std::equal(
             function.results.begin(), function.results.end(),
             candidate.results.begin(), [](const auto& lhs, const auto& rhs) {
-              return lhs.kind == rhs.kind && lhs.domain == rhs.domain;
+              return lhs.domain == rhs.domain;
             });
         if (same_inputs && same_results) {
           error("duplicate function overload '" + function.name + "'",
@@ -1518,8 +1517,10 @@ private:
                               attribute.source);
     }
     for (const auto& function : module_.functions) {
-      validate_parameters(function.inputs, function.name, function.source);
-      validate_parameters(function.results, function.name, function.source);
+      validate_parameters(function.inputs, function.name, function.source,
+                          function.types.ir_inputs);
+      validate_parameters(function.results, function.name, function.source,
+                          function.types.ir_results);
       std::unordered_set<std::string> input_names;
       for (std::size_t index = 0; index < function.inputs.size(); ++index) {
         const auto& input = function.inputs[index];
@@ -1582,8 +1583,9 @@ private:
       }
       const auto type_domain = detail::domain_expression(ValueKind::Type);
       const std::string owner = "function '" + function.name + "'";
-      for (const auto& input : function.inputs) {
-        if (input.kind == Parameter::Kind::Value) {
+      for (std::size_t index = 0; index < function.inputs.size(); ++index) {
+        const auto& input = function.inputs[index];
+        if (function.types.ir_inputs[index]) {
           validate_declaration_expression(function.generics, owner,
                                           function.source, input.domain,
                                           type_domain);
@@ -1605,34 +1607,30 @@ private:
           }
         }
       }
-      for (const auto& result : function.results) {
-        const auto expected = result.kind == Parameter::Kind::Value
-                                  ? type_domain
-                                  : result.domain;
-        if (result.kind == Parameter::Kind::Value) {
+      for (std::size_t index = 0; index < function.results.size(); ++index) {
+        const auto& result = function.results[index];
+        const auto expected =
+            function.types.ir_results[index] ? type_domain : result.domain;
+        if (function.types.ir_results[index]) {
           validate_declaration_expression(function.generics, owner,
                                           function.source, result.domain,
                                           expected);
         }
       }
       if (function.operator_symbol) {
-        const auto program_values = static_cast<std::size_t>(std::count_if(
-            function.inputs.begin(), function.inputs.end(),
-            [](const auto& input) {
-              return input.kind == Parameter::Kind::Value;
-            }));
+        const auto program_values = static_cast<std::size_t>(std::count(
+            function.types.ir_inputs.begin(), function.types.ir_inputs.end(),
+            true));
         const std::size_t operands =
             program_values == 0U ? function.inputs.size() : program_values;
         const std::size_t required =
             function.operator_fixity == Module::FunctionDecl::Fixity::Infix
                 ? 2U
                 : 1U;
-        const auto expected_result_kind =
-            program_values == 0U ? Parameter::Kind::Static
-                                 : Parameter::Kind::Value;
+        const bool expected_ir_result = program_values != 0U;
         if (!function.operator_fixity || operands != required ||
             function.results.size() != 1U ||
-            function.results.front().kind != expected_result_kind) {
+            function.types.ir_results.front() != expected_ir_result) {
           error("operator on function '" + function.name +
                     "' has an incompatible signature",
                 function.source);
@@ -1645,15 +1643,15 @@ private:
       if (const Module::Expression* expression =
               body_expression(function.body);
           expression != nullptr && function.results.size() == 1U &&
-          function.results.front().kind == Parameter::Kind::Static &&
-          std::all_of(function.inputs.begin(), function.inputs.end(),
-                      [](const Parameter& input) {
-                        return input.kind == Parameter::Kind::Static;
-                      })) {
+          !function.types.ir_results.front() &&
+          std::find(function.types.ir_inputs.begin(),
+                    function.types.ir_inputs.end(), true) ==
+              function.types.ir_inputs.end()) {
         std::vector<ParsedModule::GenericDefinition> variables =
             function.generics;
-        for (const auto& input : function.inputs) {
-          if (input.kind == Parameter::Kind::Static) {
+        for (std::size_t index = 0; index < function.inputs.size(); ++index) {
+          const auto& input = function.inputs[index];
+          if (!function.types.ir_inputs[index]) {
             variables.push_back({input.name, input.domain, std::nullopt});
           }
         }
@@ -2249,30 +2247,37 @@ std::span<const Module::ParameterDecl> Module::FunctionDecl::results() const {
 namespace {
 std::vector<Module::ParameterDecl> select_parameters(
     std::span<const Module::ParameterDecl> parameters,
-    Module::ParameterDecl::Kind kind) {
+    const std::vector<bool>& ir_ports, bool select_ir) {
   std::vector<Module::ParameterDecl> result;
-  std::copy_if(parameters.begin(), parameters.end(), std::back_inserter(result),
-               [kind](const auto& parameter) {
-                 return parameter.kind == kind;
-               });
+  for (std::size_t index = 0;
+       index < parameters.size() && index < ir_ports.size(); ++index) {
+    if (ir_ports[index] == select_ir) {
+      result.push_back(parameters[index]);
+    }
+  }
   return result;
 }
 }  // namespace
 
-std::vector<Module::ParameterDecl> Module::FunctionDecl::static_inputs() const {
-  return select_parameters(inputs(), ParameterDecl::Kind::Static);
+std::vector<Module::ParameterDecl> detail::FunctionTypeAccess::parameter_inputs(
+    const Module::FunctionDecl& function) {
+  return select_parameters(function.inputs(), get(function).ir_inputs, false);
 }
 
-std::vector<Module::ParameterDecl> Module::FunctionDecl::value_inputs() const {
-  return select_parameters(inputs(), ParameterDecl::Kind::Value);
+std::vector<Module::ParameterDecl> detail::FunctionTypeAccess::ir_inputs(
+    const Module::FunctionDecl& function) {
+  return select_parameters(function.inputs(), get(function).ir_inputs, true);
 }
 
-std::vector<Module::ParameterDecl> Module::FunctionDecl::static_results() const {
-  return select_parameters(results(), ParameterDecl::Kind::Static);
+std::vector<Module::ParameterDecl>
+detail::FunctionTypeAccess::parameter_results(
+    const Module::FunctionDecl& function) {
+  return select_parameters(function.results(), get(function).ir_results, false);
 }
 
-std::vector<Module::ParameterDecl> Module::FunctionDecl::value_results() const {
-  return select_parameters(results(), ParameterDecl::Kind::Value);
+std::vector<Module::ParameterDecl> detail::FunctionTypeAccess::ir_results(
+    const Module::FunctionDecl& function) {
+  return select_parameters(function.results(), get(function).ir_results, true);
 }
 
 std::span<const std::string> Module::FunctionDecl::interfaces() const {
@@ -2295,7 +2300,8 @@ Module::FunctionDecl::Form Module::FunctionDecl::form() const {
 
 const Module::Expression* detail::ModuleAccess::expression(
     const Module::FunctionDecl& function) {
-  if (!function.value_inputs().empty() || !function.value_results().empty()) {
+  if (!FunctionTypeAccess::ir_inputs(function).empty() ||
+      !FunctionTypeAccess::ir_results(function).empty()) {
     return nullptr;
   }
   const auto& body = function.storage_->functions[function.index_].body;
@@ -2329,9 +2335,6 @@ std::string Module::FunctionDecl::signature() const {
     if (index != 0U) {
       result += ',';
     }
-    result += inputs()[index].kind == ParameterDecl::Kind::Value
-                  ? "value:"
-                  : "static:";
     result += type_expression_text(inputs()[index].domain);
     if (inputs()[index].variadic) {
       result += "...";
@@ -2345,9 +2348,6 @@ std::string Module::FunctionDecl::signature() const {
     if (index != 0U) {
       result += ',';
     }
-    result += results()[index].kind == ParameterDecl::Kind::Value
-                  ? "value:"
-                  : "static:";
     result += type_expression_text(results()[index].domain);
   }
   if (results().size() != 1U) {

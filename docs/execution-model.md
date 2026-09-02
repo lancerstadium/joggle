@@ -17,8 +17,9 @@ value must remain in the generated program. A target `i32` constant can be
 Known; a symbolic `int` parameter can be Residual. Therefore a type name does
 not select a compilation stage.
 
-The current `ParameterDecl::Kind::{Static,Value}` split is transitional and
-must not become part of the language contract.
+`ParameterDecl` has no static/value kind. The current implementation still
+records privately which parameters its legacy IR bridge can represent as SSA
+values; staged call arguments replace that temporary storage distinction.
 
 ## One function and one overload set
 

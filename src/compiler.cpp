@@ -1419,15 +1419,15 @@ bool Compiler::link() {
 
     for (const Module::FunctionDecl& function : module.functions()) {
       if (detail::ModuleAccess::expression(function) == nullptr ||
-          !function.value_inputs().empty() ||
-          !function.value_results().empty() ||
-          function.static_results().size() != 1U) {
+          !detail::ir_inputs(function).empty() ||
+          !detail::ir_results(function).empty() ||
+          detail::parameter_results(function).size() != 1U) {
         continue;
       }
       const auto location = detail::ModuleAccess::declaration_source(
           module, Module::SymbolKind::Function, function.name());
-      const auto inputs = function.static_inputs();
-      const auto results = function.static_results();
+      const auto inputs = detail::parameter_inputs(function);
+      const auto results = detail::parameter_results(function);
       validate_compile_time_expression(
           validate_compile_time_expression,
           *detail::ModuleAccess::expression(function),
@@ -1435,8 +1435,8 @@ bool Compiler::link() {
           function.name(), location);
     }
     for (const Module::FunctionDecl& declaration : module.functions()) {
-      if (declaration.value_inputs().empty() &&
-          declaration.value_results().empty()) {
+      if (detail::ir_inputs(declaration).empty() &&
+          detail::ir_results(declaration).empty()) {
         continue;
       }
       const auto operation_source = detail::ModuleAccess::declaration_source(
@@ -1760,7 +1760,7 @@ bool Compiler::link() {
                          "' has an invalid type contract");
         continue;
       }
-      for (const auto& input : declaration.value_inputs()) {
+      for (const auto& input : detail::ir_inputs(declaration)) {
         validate_expression(validate_expression, input.domain,
                             detail::domain_expression(detail::ValueKind::Type));
       }
@@ -1771,7 +1771,7 @@ bool Compiler::link() {
                               declaration.inputs()[index].domain);
         }
       }
-      for (const auto& result : declaration.value_results()) {
+      for (const auto& result : detail::ir_results(declaration)) {
         validate_expression(validate_expression, result.domain,
                             detail::domain_expression(detail::ValueKind::Type));
       }
@@ -1800,8 +1800,8 @@ bool Compiler::link() {
               source);
           return;
         }
-        if (target->value_inputs().size() != term.arguments.size() ||
-            target->value_results().size() != 1U) {
+        if (detail::ir_inputs(*target).size() != term.arguments.size() ||
+            detail::ir_results(*target).size() != 1U) {
           state_->diagnostics.report(
               "pass '" + name + "." + std::string(pass.name()) +
                   "' has a term incompatible with operation '" + term.name +
@@ -2358,8 +2358,8 @@ std::optional<Function> Compiler::function(Module::Symbol symbol) {
           ? std::shared_ptr<const detail::FunctionBody>{}
           : detail::ModuleAccess::body(owner->second, *function);
   const bool compile_time_only =
-      function != overloads.end() && function->value_inputs().empty() &&
-      function->value_results().empty() &&
+      function != overloads.end() && detail::ir_inputs(*function).empty() &&
+      detail::ir_results(*function).empty() &&
       detail::ModuleAccess::expression(*function) != nullptr;
   if (!definition || compile_time_only || !definition->rules.empty()) {
     state_->diagnostics.report("unknown function '" + symbol.qualified_name() +
@@ -2616,9 +2616,10 @@ std::optional<detail::ParameterValue> Compiler::evaluate_binding(
                                "' has no registered evaluator");
     return std::nullopt;
   }
-  if (!function.value_inputs().empty() || !function.value_results().empty() ||
-      function.static_inputs().size() != arguments.size() ||
-      function.static_results().size() != 1U) {
+  if (!detail::ir_inputs(function).empty() ||
+      !detail::ir_results(function).empty() ||
+      detail::parameter_inputs(function).size() != arguments.size() ||
+      detail::parameter_results(function).size() != 1U) {
     state_->diagnostics.report("function '" +
                                function.symbol().qualified_name() +
                                "' cannot be evaluated from Known values");
@@ -2654,7 +2655,8 @@ std::optional<detail::ParameterValue> Compiler::evaluate_binding(
   }
   auto result = parameter_value(*produced);
   if (!result ||
-      !detail::matches_parameter(function.static_results().front(), *result)) {
+      !detail::matches_parameter(detail::parameter_results(function).front(),
+                                 *result)) {
     state_->diagnostics.report("registered evaluator for function '" +
                                function.symbol().qualified_name() +
                                "' produced a value with the wrong type");

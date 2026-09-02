@@ -90,13 +90,10 @@ public:
   };
 
   struct ParameterDecl {
-    enum class Kind { Static, Value };
-
     std::string name;
     Expression domain = Expression::reference("int");
     bool variadic = false;
     std::optional<Expression> default_value;
-    Kind kind = Kind::Static;
 
     bool operator==(const ParameterDecl&) const = default;
   };
@@ -236,10 +233,6 @@ public:
     std::span<const GenericDecl> generics() const;
     std::span<const ParameterDecl> inputs() const;
     std::span<const ParameterDecl> results() const;
-    std::vector<ParameterDecl> static_inputs() const;
-    std::vector<ParameterDecl> value_inputs() const;
-    std::vector<ParameterDecl> static_results() const;
-    std::vector<ParameterDecl> value_results() const;
     std::span<const std::string> interfaces() const;
     std::optional<std::string_view> operator_symbol() const;
     std::optional<Fixity> operator_fixity() const;

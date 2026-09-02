@@ -226,9 +226,9 @@ public:
       report("operation solver has no operation schema");
       return std::nullopt;
     }
-    const auto static_inputs = schema_->static_inputs();
-    const auto value_inputs = schema_->value_inputs();
-    const auto value_results = schema_->value_results();
+    const auto static_inputs = parameter_inputs(*schema_);
+    const auto value_inputs = ir_inputs(*schema_);
+    const auto value_results = ir_results(*schema_);
     if (properties.size() != static_inputs.size()) {
       report("operation property map does not match its schema");
       return std::nullopt;
@@ -255,7 +255,7 @@ public:
     for (std::size_t input_index = 0; input_index < schema_->inputs().size();
          ++input_index) {
       const auto& input = schema_->inputs()[input_index];
-      if (input.kind != Module::ParameterDecl::Kind::Static) {
+      if (contract_->ir_inputs[input_index]) {
         continue;
       }
       std::optional<ParameterValue> actual = properties[property++];
@@ -603,12 +603,11 @@ private:
     }
     for (const Module& module : visible) {
       for (const auto& candidate : module.functions()) {
-        const auto static_inputs = candidate.static_inputs();
-        const auto static_results = candidate.static_results();
+        const auto static_inputs = parameter_inputs(candidate);
+        const auto static_results = parameter_results(candidate);
         if (candidate.operator_symbol() != symbol ||
             candidate.operator_fixity() != fixity ||
-            !candidate.value_inputs().empty() ||
-            !candidate.value_results().empty() ||
+            !ir_inputs(candidate).empty() || !ir_results(candidate).empty() ||
             static_inputs.size() != arity || static_results.size() != 1U ||
             static_results.front().domain != expected.domain) {
           continue;
@@ -731,7 +730,7 @@ private:
         Bindings arguments;
         std::vector<ParameterValue> values;
         values.reserve(arity);
-        const auto inputs = function.static_inputs();
+        const auto inputs = parameter_inputs(function);
         for (std::size_t index = 0; index < arity; ++index) {
           auto value = evaluate(expression.arguments[index], inputs[index],
                                 bindings);
@@ -752,7 +751,7 @@ private:
           const std::string caller_scope = scope_;
           scope_ = std::string(function.symbol().module_name());
           value = evaluate(*ModuleAccess::expression(function),
-                           function.static_results().front(), arguments);
+                           parameter_results(function).front(), arguments);
           scope_ = caller_scope;
         } else if (environment_.evaluate) {
           value = environment_.evaluate(function, values);
@@ -868,17 +867,17 @@ private:
       }
 
       auto function = declaration<Module::FunctionDecl>(expression.text);
-      if (!function || !function->value_inputs().empty() ||
-          !function->value_results().empty() ||
-          function->static_results().size() != 1U ||
-          function->static_results().front().domain != expected.domain ||
-          function->static_inputs().size() != expression.arguments.size()) {
+      if (!function || !ir_inputs(*function).empty() ||
+          !ir_results(*function).empty() ||
+          parameter_results(*function).size() != 1U ||
+          parameter_results(*function).front().domain != expected.domain ||
+          parameter_inputs(*function).size() != expression.arguments.size()) {
         if (function) {
           report("ill-typed const call '" + expression.text + "'");
         }
         return std::nullopt;
       }
-      const auto inputs = function->static_inputs();
+      const auto inputs = parameter_inputs(*function);
       Bindings arguments;
       std::vector<ParameterValue> values;
       values.reserve(expression.arguments.size());
@@ -903,7 +902,7 @@ private:
         const std::string caller_scope = scope_;
         scope_ = std::string(function->symbol().module_name());
         value = evaluate(*ModuleAccess::expression(*function),
-                         function->static_results().front(), arguments);
+                         parameter_results(*function).front(), arguments);
         scope_ = caller_scope;
       } else if (environment_.evaluate) {
         value = environment_.evaluate(*function, values);
@@ -1073,12 +1072,11 @@ private:
         if (generic == generic_end) {
           auto function = declaration<Module::FunctionDecl>(expression.text);
           if (!function || ModuleAccess::expression(*function) == nullptr ||
-              !function->value_inputs().empty() ||
-              !function->value_results().empty() ||
-              function->static_results().size() != 1U) {
+              !ir_inputs(*function).empty() || !ir_results(*function).empty() ||
+              parameter_results(*function).size() != 1U) {
             return false;
           }
-          expected = function->static_results().front();
+          expected = parameter_results(*function).front();
           if (!matches_parameter(expected, actual)) {
             report("const function result does not match the type parameter");
             return false;
