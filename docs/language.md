@@ -333,13 +333,11 @@ been removed.
 A Residual decision may control `break` or `continue` inside a finite Known
 loop. Joggle retains separate specialized continuations, so path-specific Known
 state need not acquire an arbitrary program type. A runtime-dependent cycle
-whose condition is a directly bound Known `bool` is replayed as a Residual loop
-when one visible `prelude.literal` function maps that value to `i1`. The replay
-starts from an internal Function-edit checkpoint, not a source Region. Missing
-or ambiguous representations are diagnostics. Other carried values preserve an
-existing program type or use a concrete downstream result constraint; no
-unconstrained compiler-domain value acquires an implicit width. Replay of
-arbitrary computed conditions remains under construction.
+over a repeated staged state becomes a CFG backedge to the first Block for that
+state. This supports computed Known conditions and compiler-only carried state
+without materializing them as target values. States containing continually new
+Residual values remain bounded by the deterministic evaluation limit; the
+compiler does not guess an equivalence relation.
 
 ## Canonical source
 

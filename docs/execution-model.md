@@ -207,20 +207,19 @@ such as an `i32` return, so the compiler never guesses that compiler `int` or
 
 A runtime-dependent cycle may prevent that path set from reaching a finite
 specialization. The evaluator detects a repeated staged loop state before
-blindly exhausting its budget. If the source condition is a directly bound
-Known `bool` and exactly one visible literal function can materialize it as
-`i1`, the evaluator restores the Function-edit checkpoint taken at the loop
-frontier and replays the same source as a Residual CFG loop. The speculative
-Blocks and Instructions disappear with the checkpoint. Without that explicit
-representation, replay fails rather than guessing a target type.
+blindly exhausting its budget. When the repeated path is already beneath
+Residual control, it terminates the current Block with an edge to the Block
+where that staged state first appeared. The resulting finite-state CFG encodes
+Known control state in Block identity instead of inventing a runtime type for
+it. This works for computed Known conditions as well as direct variables and
+does not require a `bool -> i1` materialization.
 
-Other loop-carried values follow the same evidence rule. An existing Residual
-value keeps its type. A Known value may use a concrete downstream constraint,
-such as the Function result type imposed by `return state`; the corresponding
-visible literal function performs materialization at the replay frontier.
-Semantically identical repeated literal constructions are recognized by
-function symbol, result position, type, and operands rather than transient SSA
-identity.
+Residual values participate in state identity using their SSA identity. Known
+values use their payload identity. Semantically identical visible literal
+constructions are also recognized by function symbol, result position, type,
+and operands rather than transient SSA identity. If runtime state keeps
+producing genuinely new Residual values, no finite quotient has been proved;
+the normal evaluation limit remains a deterministic diagnostic.
 
 ## Nested code without `region`
 
@@ -355,11 +354,10 @@ Multi-statement expression arms, closures, allocation budgets, and host-object
 serialization remain to be implemented. Statement `break` and `continue` are
 implemented for Known and Residual loops. Residual transfers inside finite
 Known loops preserve multiple specialized continuations. Runtime-dependent
-cycles whose condition has an unambiguous `bool -> i1` representation are
-rebuilt from the last staging frontier as Residual loops. Multiple carried
-values are supported when they already have a program type or receive a
-concrete downstream result constraint. General replay for computed conditions
-and unconstrained compiler-domain state remains to be implemented.
+cycles over a repeated staged state close directly into CFG backedges. This
+also covers computed Known conditions and compiler-only state without assigning
+it a target representation. General quotienting of ever-changing Residual
+state remains to be implemented.
 Registered host implementations are conservatively forbidden beneath
 Residual control, so constructing both branches never executes host side
 effects. A future hermetic-call contract may permit safe native evaluation

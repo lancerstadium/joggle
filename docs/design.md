@@ -200,19 +200,17 @@ Residual decision inside a finite Known loop to multi-version the remaining
 continuation without choosing a target representation for Known state. If the
 paths later reach a typed boundary, the ordinary `prelude.literal` resolution
 materializes each value there. If they form a runtime-dependent cycle, finite
-specialization detects the repeated staged state. For a directly bound Known
-`bool` condition with a unique visible `bool -> i1` literal implementation,
-the evaluator restores its Function-edit checkpoint, materializes the
-condition, and replays the same source as a Residual loop. Residual carried
-values retain their existing types; Known carried values may use a concrete
-downstream constraint such as the Function return type. Other unresolved cycle
-representations fail explicitly instead of choosing a width or format.
+specialization detects the repeated staged state and adds a backedge to the
+Block representing its first occurrence. Known state is thereby encoded in
+control location; it does not acquire a target width or format. Computed Known
+conditions need no special replay rule.
 
 Repeated-state detection is intentionally structural and conservative. Values
 are equal when they are the same Known payload or SSA value, or when they are
 the same result position of the same `prelude.literal` function with
 pairwise-identical operands. It does not equate arbitrary calls or claim
-general program equivalence.
+general program equivalence. State that continually creates new Residual values
+does not close until a future extension supplies a sound quotient analysis.
 
 ## Extension boundary
 

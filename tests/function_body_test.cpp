@@ -836,23 +836,47 @@ module cyclic_mixed_loop@1.0.0 {
     std::sort(cyclic_integer_literals.begin(),
               cyclic_integer_literals.end());
   }
+  const auto has_backedge = [](const joggle::Function& function) {
+    const auto blocks = function.blocks();
+    for (std::size_t index = 0; index < blocks.size(); ++index) {
+      const auto terminator = blocks[index].terminator();
+      for (std::size_t successor = 0;
+           successor < terminator.successor_count(); ++successor) {
+        const auto target = std::find(blocks.begin(), blocks.end(),
+                                      terminator.successor(successor));
+        if (target != blocks.end() &&
+            static_cast<std::size_t>(std::distance(blocks.begin(), target)) <=
+                index) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
   ok &= expect(cyclic_mixed_loop_function &&
                    cyclic_mixed_loop.verify(*cyclic_mixed_loop_function) &&
-                   cyclic_mixed_loop_function->blocks().size() == 6U &&
-                   cyclic_literals == std::vector<bool>({false, true}) &&
-                   cyclic_integer_literals ==
-                       std::vector<std::int64_t>({0, 1}),
-               "a runtime-dependent Known cycle replays from its staging "
-               "frontier with condition and loop-carried representations "
-               "derived from literal and downstream type constraints");
+                   has_backedge(*cyclic_mixed_loop_function) &&
+                   cyclic_literals.empty() &&
+                   std::find(cyclic_integer_literals.begin(),
+                             cyclic_integer_literals.end(), 0) !=
+                       cyclic_integer_literals.end() &&
+                   std::find(cyclic_integer_literals.begin(),
+                             cyclic_integer_literals.end(), 1) !=
+                       cyclic_integer_literals.end(),
+               "a repeated mixed-stage state closes a CFG cycle without "
+               "materializing its Known control state");
 
-  joggle::Compiler unrepresented_cycle({.steps = 8, .depth = 64});
-  unrepresented_cycle.add(R"(
+  joggle::Compiler computed_cycle({.steps = 8, .depth = 64});
+  computed_cycle.add(R"(
 joggle 1;
-module unrepresented_cycle@1.0.0 {
+module computed_cycle@1.0.0 {
+  fn condition(value: bool) -> bool {
+    return value;
+  }
+
   fn invalid(skip: i1) {
     running = true;
-    while running {
+    while condition(running) {
       if skip {
         continue;
       }
@@ -862,31 +886,22 @@ module unrepresented_cycle@1.0.0 {
   }
 }
 )",
-                          "unrepresented-cycle.joggle");
-  const bool unrepresented_cycle_linked = unrepresented_cycle.link();
-  const auto unrepresented_cycle_function =
-      unrepresented_cycle_linked
-          ? unrepresented_cycle.function("unrepresented_cycle.invalid")
+                     "computed-cycle.joggle");
+  const bool computed_cycle_linked = computed_cycle.link();
+  const auto computed_cycle_function =
+      computed_cycle_linked
+          ? computed_cycle.function("computed_cycle.invalid")
           : std::optional<joggle::Function>{};
-  const bool reports_unrepresented_cycle = std::any_of(
-      unrepresented_cycle.diagnostics().entries().begin(),
-      unrepresented_cycle.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find("no visible literal function") !=
-               std::string::npos;
-      });
-  ok &= expect(unrepresented_cycle_linked &&
-                   !unrepresented_cycle_function &&
-                   reports_unrepresented_cycle,
-               "cycle replay rejects a compiler bool without guessing a "
-               "runtime representation");
+  ok &= expect(computed_cycle_linked && computed_cycle_function &&
+                   computed_cycle.verify(*computed_cycle_function) &&
+                   has_backedge(*computed_cycle_function),
+               "a computed Known condition closes a finite specialized CFG "
+               "cycle without requiring a bool-to-i1 representation");
 
   joggle::Compiler unconstrained_cycle({.steps = 8, .depth = 64});
   unconstrained_cycle.add(R"(
 joggle 1;
 module unconstrained_cycle@1.0.0 {
-  fn logical_literal<T: prelude.logical>(value: bool) -> T : prelude.literal;
-
   fn invalid(skip: i1) {
     running = true;
     token = 0;
@@ -907,18 +922,12 @@ module unconstrained_cycle@1.0.0 {
       unconstrained_cycle_linked
           ? unconstrained_cycle.function("unconstrained_cycle.invalid")
           : std::optional<joggle::Function>{};
-  const bool reports_unconstrained_cycle = std::any_of(
-      unconstrained_cycle.diagnostics().entries().begin(),
-      unconstrained_cycle.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find(
-                   "Known loop-carried value 'token' needs an explicit or "
-                   "downstream program type") != std::string::npos;
-      });
   ok &= expect(unconstrained_cycle_linked &&
-                   !unconstrained_cycle_function &&
-                   reports_unconstrained_cycle,
-               "cycle replay does not assign an implicit width to an "
+                   unconstrained_cycle_function &&
+                   unconstrained_cycle.verify(*unconstrained_cycle_function) &&
+                   has_backedge(*unconstrained_cycle_function) &&
+                   unconstrained_cycle_function->instructions().empty(),
+               "control-state specialization needs no target width for an "
                "unconstrained compiler integer");
 
   joggle::Compiler bounded_loop({.steps = 2, .depth = 64});
