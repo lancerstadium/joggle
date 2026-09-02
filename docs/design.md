@@ -189,7 +189,9 @@ constant operation and no target-specific materializer callback.
 
 Loops use the same mechanism. Known control may execute within the configured
 budget. Residual control creates header, body, and exit Blocks; loop-carried
-values are Block arguments.
+values are Block arguments. `continue` and `break` become ordinary edges to the
+header and exit with those same values. When their path is Known, they are
+handled by the evaluator without creating an edge.
 
 ## Extension boundary
 

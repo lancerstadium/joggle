@@ -562,6 +562,45 @@ module loops@1.0.0 {
     value: word<count> = source();
     return value;
   }
+
+  fn controlled(start: i32, limit: i32, skip: i1, stop: i1) -> i32 {
+    current = start;
+    while less(current, limit) {
+      current = next(current);
+      if skip {
+        continue;
+      }
+      current = next(current);
+      if stop {
+        break;
+      }
+      current = next(current);
+    }
+    return current;
+  }
+
+  fn known_break() -> word<1> {
+    running = true;
+    count = 0;
+    while running {
+      count = count + 1;
+      break;
+    }
+    value: word<count> = source();
+    return value;
+  }
+
+  fn known_continue() -> word<1> {
+    running = true;
+    count = 0;
+    while running {
+      running = false;
+      count = count + 1;
+      continue;
+    }
+    value: word<count> = source();
+    return value;
+  }
 }
 )";
   joggle::Diagnostics loop_parse_diagnostics;
@@ -581,6 +620,10 @@ module loops@1.0.0 {
                    loop_roundtrip_diagnostics.ok() &&
                    joggle::format(*loop_roundtrip) == loop_canonical &&
                    loop_canonical.find("while less(current, limit) {") !=
+                       std::string::npos &&
+                   loop_canonical.find("        continue;\n") !=
+                       std::string::npos &&
+                   loop_canonical.find("        break;\n") !=
                        std::string::npos,
                "structured while syntax round-trips without a Region form");
 
@@ -595,6 +638,15 @@ module loops@1.0.0 {
                               : std::optional<joggle::Function>{};
   const auto count_from_zero =
       loops_linked ? loop_compiler.function("loops.count_from_zero")
+                   : std::optional<joggle::Function>{};
+  const auto controlled =
+      loops_linked ? loop_compiler.function("loops.controlled")
+                   : std::optional<joggle::Function>{};
+  const auto known_break =
+      loops_linked ? loop_compiler.function("loops.known_break")
+                   : std::optional<joggle::Function>{};
+  const auto known_continue =
+      loops_linked ? loop_compiler.function("loops.known_continue")
                    : std::optional<joggle::Function>{};
   ok &= expect(repeat && loop_compiler.verify(*repeat) &&
                    repeat->blocks().size() == 4U &&
@@ -621,6 +673,46 @@ module loops@1.0.0 {
                        specialize->instructions().front().result(0).type(),
                "Known loops execute during specialization without entering "
                "the residual CFG");
+  ok &= expect(controlled && loop_compiler.verify(*controlled) &&
+                   controlled->blocks().size() == 8U &&
+                   controlled->instructions().size() == 4U &&
+                   controlled->blocks()[1].arguments().size() == 1U &&
+                   controlled->predecessors(controlled->blocks()[1]).size() ==
+                       3U &&
+                   controlled->predecessors(controlled->blocks()[3]).size() ==
+                       2U,
+               "Residual break and continue carry current values directly to "
+               "the loop exit and header");
+  ok &= expect(known_break && known_continue &&
+                   loop_compiler.verify(*known_break) &&
+                   loop_compiler.verify(*known_continue) &&
+                   known_break->blocks().size() == 1U &&
+                   known_continue->blocks().size() == 1U &&
+                   known_break->result_types().front().get<std::int64_t>(
+                       "width") == std::optional<std::int64_t>{1} &&
+                   known_continue->result_types().front().get<std::int64_t>(
+                       "width") == std::optional<std::int64_t>{1},
+               "Known break and continue execute as compiler control without "
+               "entering the residual CFG");
+
+  joggle::Diagnostics outside_loop_diagnostics;
+  const auto outside_loop = joggle::parse_module(R"(
+joggle 1;
+module outside_loop@1.0.0 {
+  fn invalid() {
+    break;
+  }
+}
+)", outside_loop_diagnostics, "outside-loop.joggle");
+  const bool reports_outside_loop = std::any_of(
+      outside_loop_diagnostics.entries().begin(),
+      outside_loop_diagnostics.entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("only valid inside a structured loop") !=
+               std::string::npos;
+      });
+  ok &= expect(!outside_loop && reports_outside_loop,
+               "loop control outside a structured loop is rejected");
 
   joggle::Compiler bounded_loop({.steps = 2, .depth = 64});
   bounded_loop.add(R"(

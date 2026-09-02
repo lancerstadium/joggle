@@ -223,9 +223,9 @@ while less(current, limit) {
 A Known condition executes the loop in the compiler within its deterministic
 evaluation budget. A Residual `i1` condition becomes header, body, and exit
 Blocks. Rebound values used after the loop become typed Block arguments; the
-author writes no phi, `yield`, `iter_args`, or Region signature. `break` and
-`continue` are reserved for the same direct-control model but are not yet
-implemented.
+author writes no phi, `yield`, `iter_args`, or Region signature. `continue`
+passes the current inferred loop values to the header; `break` passes them to
+the exit. Under Known control they execute in the compiler and create no IR.
 
 Most authors never write Blocks explicitly. The low-level form exists for
 lossless formatting of arbitrary pass output:
@@ -309,8 +309,8 @@ The implementation uses this single expression grammar for direct Known `if`,
 ordinary straight-line bodies, Residual and nested `if`, structured `while`,
 multi-statement `if`, structured early returns, and explicit typed CFG blocks.
 The public owning IR is Function/Block/Instruction/Value. Multi-statement
-*expression* arms, `break`, `continue`, `for`, and closures remain under
-construction. Nested Region syntax and storage have been removed.
+*expression* arms, `for`, and closures remain under construction. Nested
+Region syntax and storage have been removed.
 
 ## Canonical source
 

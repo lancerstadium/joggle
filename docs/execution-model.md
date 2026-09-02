@@ -184,6 +184,11 @@ control therefore creates no join when both arms return and uses the sole
 fallthrough arm directly when only one returns. A return from a loop body is a
 normal Function exit; the loop's false edge remains the continuation.
 
+`continue` and `break` use the same inferred loop-carried values as the normal
+back edge and false exit. Under Residual loop control they are direct edges to
+the header and exit Blocks. Under Known loop control they are evaluator
+transfers and do not appear in the Function.
+
 ## Nested code without `region`
 
 `region` is not a source-language declaration or a public IR handle. Nested
