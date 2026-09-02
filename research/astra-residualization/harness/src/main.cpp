@@ -1,5 +1,7 @@
 #include "residual/artifact_encoding.h"
 #include "residual/baseline.h"
+#include "residual/branch_oracle.h"
+#include "residual/branch_table.h"
 #include "residual/conditioned.h"
 #include "residual/decision_diagram.h"
 #include "residual/exploration.h"
@@ -15,11 +17,14 @@ int main(const int argc, const char* const* argv) {
     if (!residual::self_test(std::cerr) ||
         !residual::artifact_encoding_self_test(std::cerr) ||
         !residual::baseline_self_test(std::cerr) ||
+        !residual::f2_oracle_self_test(std::cerr) ||
+        !residual::f2_table_self_test(std::cerr) ||
         !residual::conditioned_self_test(std::cerr) ||
         !residual::mtbdd_self_test(std::cerr) ||
         !residual::exploration_self_test(std::cerr) ||
         !residual::materializer_self_test(std::cerr) ||
-        !residual::transition_self_test(std::cerr)) {
+        !residual::transition_self_test(std::cerr) ||
+        !residual::f2_transition_self_test(std::cerr)) {
       return 1;
     }
     std::cout << "F1 oracle self-test passed\n";
@@ -49,10 +54,23 @@ int main(const int argc, const char* const* argv) {
     residual::write_transition_summary(std::cout);
     return 0;
   }
+  if (argc == 2 && std::string_view(argv[1]) == "--f2-oracle") {
+    residual::write_f2_csv(std::cout);
+    return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--f2-table") {
+    residual::write_f2_table_csv(std::cout);
+    return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--f2-transitions") {
+    residual::write_f2_transition_summary(std::cout);
+    return 0;
+  }
   if (argc != 1) {
     std::cerr
         << "usage: residual_oracle [--self-test|--baselines|--conditioned|"
-           "--exploration|--materializer|--mtbdd|--transitions]\n";
+           "--exploration|--f2-oracle|--f2-table|--f2-transitions|"
+           "--materializer|--mtbdd|--transitions]\n";
     return 2;
   }
   residual::write_csv(std::cout);

@@ -26,6 +26,9 @@ materializer:
 ./build/residual_oracle --materializer
 ./build/residual_oracle --mtbdd
 ./build/residual_oracle --transitions
+./build/residual_oracle --f2-oracle
+./build/residual_oracle --f2-table
+./build/residual_oracle --f2-transitions
 ```
 
 Current coverage:
@@ -48,6 +51,11 @@ Current coverage:
 The F1 transition harness also exhausts all 992 non-identity fact transitions,
 checks the minimum staged atom set, injects interruption at every staged write,
 and verifies atomic generation publication.
+
+F2 adds a normal two-branch convolution/projection fixture with typed vector,
+tensor, copy, and event effects. Its oracle exhausts 768 assignment/fact pairs;
+the direct table and transition harness verify all 4,032 non-identity state
+changes and 384 one-fact changes.
 
 Not implemented yet: a separate FCC encoding, AND–OR memo extraction, F2/F3,
 generated D3 scale sweeps, wall-clock instrumentation, or any real-target

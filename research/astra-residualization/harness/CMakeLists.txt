@@ -5,6 +5,8 @@ project(joggle_residual_diagnostics LANGUAGES CXX)
 add_executable(residual_oracle
   src/artifact_encoding.cpp
   src/baseline.cpp
+  src/branch_oracle.cpp
+  src/branch_table.cpp
   src/conditioned.cpp
   src/decision_diagram.cpp
   src/exploration.cpp

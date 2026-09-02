@@ -2,6 +2,7 @@
 #define JOGGLE_RESEARCH_RESIDUAL_TRANSITION_H
 
 #include "residual/oracle.h"
+#include "residual/branch_table.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -38,11 +39,16 @@ inline constexpr std::uint32_t kF1TransitionArenaBound = 21;
 
 [[nodiscard]] TransitionPlan plan_f1_transition(
     const ResidentState& before, const Facts& after_facts);
-[[nodiscard]] TransitionOutcome apply_f1_transition(
+[[nodiscard]] TransitionOutcome apply_transition(
     const TransitionPlan& plan, bool validation_passes,
     std::optional<std::size_t> interrupt_after_writes = std::nullopt);
+[[nodiscard]] TransitionPlan plan_f2_transition(
+    const ResidentState& before, const BranchTableArtifact& artifact,
+    const BranchFacts& after_facts);
 void write_transition_summary(std::ostream& output);
+void write_f2_transition_summary(std::ostream& output);
 [[nodiscard]] bool transition_self_test(std::ostream& errors);
+[[nodiscard]] bool f2_transition_self_test(std::ostream& errors);
 
 }  // namespace residual
 

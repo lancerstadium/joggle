@@ -61,7 +61,7 @@ TransitionPlan plan_f1_transition(const ResidentState& before,
   return plan;
 }
 
-TransitionOutcome apply_f1_transition(
+TransitionOutcome apply_transition(
     const TransitionPlan& plan, const bool validation_passes,
     const std::optional<std::size_t> interrupt_after_writes) {
   TransitionOutcome outcome;
@@ -83,6 +83,27 @@ TransitionOutcome apply_f1_transition(
   outcome.resident.generation = plan.before.generation + 1U;
   outcome.published = true;
   return outcome;
+}
+
+TransitionPlan plan_f2_transition(const ResidentState& before,
+                                  const BranchTableArtifact& artifact,
+                                  const BranchFacts& after_facts) {
+  const MaterializationResult materialized =
+      materialize_f2(artifact, after_facts);
+  const std::vector<std::string> old_atoms = sorted_atoms(before.realization);
+  const std::vector<std::string> new_atoms =
+      sorted_atoms(materialized.realization);
+  TransitionPlan plan;
+  plan.before = before;
+  plan.after = materialized.realization;
+  plan.add = difference(new_atoms, old_atoms);
+  plan.remove = difference(old_atoms, new_atoms);
+  plan.steps = materialized.steps;
+  plan.steps += static_cast<std::uint32_t>(old_atoms.size() + new_atoms.size());
+  plan.steps += 1U + static_cast<std::uint32_t>(plan.add.size()) + 1U;
+  plan.arena_bytes = 17U;
+  plan.write_bound = static_cast<std::uint32_t>(plan.add.size());
+  return plan;
 }
 
 void write_transition_summary(std::ostream& output) {
@@ -159,7 +180,7 @@ bool transition_self_test(std::ostream& errors) {
       }
 
       const TransitionOutcome rejected =
-          apply_f1_transition(plan, false, std::nullopt);
+          apply_transition(plan, false, std::nullopt);
       if (rejected.published || rejected.resident.generation != 7U ||
           rejected.resident.realization.canonical_id() !=
               before.realization.canonical_id()) {
@@ -168,7 +189,7 @@ bool transition_self_test(std::ostream& errors) {
       }
       for (std::size_t writes = 0; writes < plan.add.size(); ++writes) {
         const TransitionOutcome interrupted =
-            apply_f1_transition(plan, true, writes);
+            apply_transition(plan, true, writes);
         if (interrupted.published || interrupted.resident.generation != 7U ||
             interrupted.resident.realization.canonical_id() !=
                 before.realization.canonical_id()) {
@@ -177,11 +198,110 @@ bool transition_self_test(std::ostream& errors) {
         }
       }
       const TransitionOutcome committed =
-          apply_f1_transition(plan, true, std::nullopt);
+          apply_transition(plan, true, std::nullopt);
       if (!committed.published || committed.resident.generation != 8U ||
           committed.resident.realization.canonical_id() !=
               plan.after.canonical_id()) {
         errors << "valid transition did not publish atomically\n";
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+void write_f2_transition_summary(std::ostream& output) {
+  const std::vector<BranchFacts> facts = exhaustive_branch_facts();
+  const BranchTableArtifact artifact = synthesize_f2_table();
+  std::vector<double> ratios;
+  std::vector<double> one_fact_ratios;
+  std::size_t avoid_full = 0;
+  std::size_t one_fact_avoid_full = 0;
+  std::size_t one_fact_transitions = 0;
+  std::size_t transitions = 0;
+  for (const BranchFacts& old_facts : facts) {
+    const ResidentState before{materialize_f2(artifact, old_facts).realization,
+                               11U};
+    for (const BranchFacts& new_facts : facts) {
+      if (old_facts.canonical_id() == new_facts.canonical_id()) {
+        continue;
+      }
+      const TransitionPlan plan =
+          plan_f2_transition(before, artifact, new_facts);
+      const double ratio = static_cast<double>(plan.add.size()) /
+                           static_cast<double>(plan.after.atoms.size());
+      ratios.push_back(ratio);
+      if (plan.add.size() < plan.after.atoms.size()) {
+        ++avoid_full;
+      }
+      if (std::popcount(static_cast<std::uint8_t>(
+              f2_fact_bits(old_facts) ^ f2_fact_bits(new_facts))) == 1) {
+        ++one_fact_transitions;
+        one_fact_ratios.push_back(ratio);
+        if (plan.add.size() < plan.after.atoms.size()) {
+          ++one_fact_avoid_full;
+        }
+      }
+      ++transitions;
+    }
+  }
+  output << "transitions,median_closure,p95_closure,max_closure,"
+            "avoid_full_fraction,one_fact_transitions,one_fact_median,"
+            "one_fact_p95,one_fact_avoid_full_fraction,table_bytes\n";
+  output << transitions << ',' << percentile(ratios, 0.5) << ','
+         << percentile(ratios, 0.95) << ',' << percentile(ratios, 1.0) << ','
+         << static_cast<double>(avoid_full) /
+                static_cast<double>(transitions)
+         << ',' << one_fact_transitions << ','
+         << percentile(one_fact_ratios, 0.5) << ','
+         << percentile(one_fact_ratios, 0.95) << ','
+         << static_cast<double>(one_fact_avoid_full) /
+                static_cast<double>(one_fact_transitions)
+         << ',' << artifact.serialize().size() << '\n';
+}
+
+bool f2_transition_self_test(std::ostream& errors) {
+  const std::vector<BranchFacts> facts = exhaustive_branch_facts();
+  const BranchTableArtifact artifact = synthesize_f2_table();
+  for (const BranchFacts& old_facts : facts) {
+    const ResidentState before{materialize_f2(artifact, old_facts).realization,
+                               11U};
+    for (const BranchFacts& new_facts : facts) {
+      const TransitionPlan plan =
+          plan_f2_transition(before, artifact, new_facts);
+      const BranchOracleResult oracle = solve_f2(new_facts);
+      if (plan.after.canonical_id() != oracle.optimum.canonical_id() ||
+          plan.steps > 16U || plan.arena_bytes > 17U ||
+          plan.write_bound != plan.add.size()) {
+        errors << "F2 transition plan violates target/bounds\n";
+        return false;
+      }
+      const std::vector<std::string> expected = difference(
+          sorted_atoms(plan.after), sorted_atoms(before.realization));
+      if (plan.add != expected) {
+        errors << "F2 transition delta is not minimal\n";
+        return false;
+      }
+      const TransitionOutcome rejected =
+          apply_transition(plan, false, std::nullopt);
+      if (rejected.published || rejected.resident.generation != 11U) {
+        errors << "F2 validation failure changed generation\n";
+        return false;
+      }
+      for (std::size_t writes = 0; writes < plan.add.size(); ++writes) {
+        const TransitionOutcome interrupted =
+            apply_transition(plan, true, writes);
+        if (interrupted.published || interrupted.resident.generation != 11U) {
+          errors << "F2 interrupted staging changed generation\n";
+          return false;
+        }
+      }
+      const TransitionOutcome committed =
+          apply_transition(plan, true, std::nullopt);
+      if (!committed.published || committed.resident.generation != 12U ||
+          committed.resident.realization.canonical_id() !=
+              plan.after.canonical_id()) {
+        errors << "F2 transition failed to publish atomically\n";
         return false;
       }
     }
