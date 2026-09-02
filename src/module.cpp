@@ -110,13 +110,14 @@ using Lexer = detail::Lexer;
 const Module::Expression*
 body_expression(const std::optional<detail::FunctionBody>& body) {
   if (!body || body->blocks.size() != 1U ||
-      !body->blocks.front().instructions.empty() ||
-      body->blocks.front().terminator.kind !=
-          detail::TerminatorSyntax::Kind::Return ||
-      body->blocks.front().terminator.values.size() != 1U) {
+      body->blocks.front().terminator ||
+      body->blocks.front().statements.size() != 1U ||
+      body->blocks.front().statements.front().kind !=
+          detail::StatementSyntax::Kind::Return ||
+      body->blocks.front().statements.front().values.size() != 1U) {
     return nullptr;
   }
-  return &body->blocks.front().terminator.values.front().value;
+  return &body->blocks.front().statements.front().values.front().value;
 }
 
 class Parser {
@@ -2311,13 +2312,14 @@ const Module::Expression* detail::ModuleAccess::returned_expression(
     const Module::FunctionDecl& function) {
   const auto& body = function.storage_->functions[function.index_].body;
   if (!body || body->blocks.size() != 1U ||
-      !body->blocks.front().instructions.empty() ||
-      body->blocks.front().terminator.kind !=
-          detail::TerminatorSyntax::Kind::Return ||
-      body->blocks.front().terminator.values.size() != 1U) {
+      body->blocks.front().terminator ||
+      body->blocks.front().statements.size() != 1U ||
+      body->blocks.front().statements.front().kind !=
+          detail::StatementSyntax::Kind::Return ||
+      body->blocks.front().statements.front().values.size() != 1U) {
     return nullptr;
   }
-  return &body->blocks.front().terminator.values.front().value;
+  return &body->blocks.front().statements.front().values.front().value;
 }
 
 std::string Module::FunctionDecl::signature() const {

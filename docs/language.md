@@ -207,8 +207,9 @@ return safe(input);
 
 A returned arm terminates only that path. If the other arm falls through, it
 continues directly without a synthetic merge Block. If both arms return, no
-continuation Block is created. A Known condition instantiates only its selected
-return path.
+continuation Block or trailing dummy `return` is required. A Known condition
+instantiates only its selected return path. The parser rejects both incomplete
+Function paths and statements written after an unconditional control transfer.
 
 Structured loops use direct syntax:
 

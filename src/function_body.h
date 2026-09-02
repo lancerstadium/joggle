@@ -104,8 +104,10 @@ struct BlockSyntax {
   // function and are referenced only by terminator successors.
   std::string name;
   std::vector<BlockArgumentSyntax> arguments;
-  std::vector<StatementSyntax> instructions;
-  TerminatorSyntax terminator;
+  std::vector<StatementSyntax> statements;
+  // Structured source uses only `statements`, including return statements.
+  // Explicit low-level Blocks carry a terminator.
+  std::optional<TerminatorSyntax> terminator;
   SyntaxRange range;
 };
 

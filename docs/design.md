@@ -147,6 +147,9 @@ An early `return` is a structured control transfer, not a nested terminator
 object. Elaboration terminates the selected sibling Block. A surviving arm is
 the continuation directly; two returned arms need no merge. This rule is
 identical under Known control except that only the selected arm exists in IR.
+The syntax tree stores structured returns as statements; explicit low-level
+Blocks alone carry explicit terminators. Both forms normalize to terminators in
+the owning Function.
 
 ## Residualizing evaluation
 

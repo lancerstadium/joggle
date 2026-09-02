@@ -241,7 +241,6 @@ module cfg@1.0.0 {
     } else {
       return identity(rhs);
     }
-    return lhs;
   }
   fn specialized_return(lhs: word, rhs: word) -> word {
     if true {
@@ -286,7 +285,12 @@ module cfg@1.0.0 {
                    cfg_canonical.find("if condition {\n") !=
                        std::string::npos &&
                    cfg_canonical.find("      return identity(lhs);\n") !=
-                       std::string::npos,
+                       std::string::npos &&
+                   cfg_canonical.find(
+                       "      return identity(rhs);\n"
+                       "    }\n"
+                       "  }\n"
+                       "  fn specialized_return") != std::string::npos,
                "one expression tree round-trips structured and explicit "
                "region-free control flow");
 
@@ -420,6 +424,52 @@ module cfg@1.0.0 {
                        }),
                "structured returns terminate only their selected control "
                "paths without a Region or synthetic merge");
+
+  joggle::Diagnostics incomplete_return_diagnostics;
+  const auto incomplete_return = joggle::parse_module(R"(
+joggle 1;
+module incomplete_return@1.0.0 {
+  type word();
+  fn invalid(condition: i1, input: word) -> word {
+    if condition {
+      return input;
+    }
+  }
+}
+)", incomplete_return_diagnostics, "incomplete-return.joggle");
+  const bool reports_incomplete_return = std::any_of(
+      incomplete_return_diagnostics.entries().begin(),
+      incomplete_return_diagnostics.entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("path that does not return") !=
+               std::string::npos;
+      });
+  ok &= expect(!incomplete_return && reports_incomplete_return,
+               "structured functions reject a fallthrough path");
+
+  joggle::Diagnostics unreachable_statement_diagnostics;
+  const auto unreachable_statement = joggle::parse_module(R"(
+joggle 1;
+module unreachable_statement@1.0.0 {
+  type word();
+  fn invalid(condition: i1, input: word) -> word {
+    if condition {
+      return input;
+      value = input;
+    }
+    return input;
+  }
+}
+)", unreachable_statement_diagnostics, "unreachable-statement.joggle");
+  const bool reports_unreachable_statement = std::any_of(
+      unreachable_statement_diagnostics.entries().begin(),
+      unreachable_statement_diagnostics.entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("unreachable statement") !=
+               std::string::npos;
+      });
+  ok &= expect(!unreachable_statement && reports_unreachable_statement,
+               "statements after a structured control transfer are rejected");
 
   joggle::Compiler missing_literal;
   missing_literal.add(R"(

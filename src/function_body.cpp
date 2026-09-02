@@ -68,14 +68,12 @@ public:
       detail::BlockSyntax entry;
       entry.name = "entry";
       entry.range.begin = current_.begin;
-      while (!is_terminator() && !is(TokenKind::RightBrace) &&
-             !is(TokenKind::End) && ok()) {
-        entry.instructions.push_back(parse_statement());
-      }
-      if (!is_terminator()) {
-        error("a function body must end with 'return'");
-      } else {
-        entry.terminator = parse_terminator();
+      while (!is(TokenKind::RightBrace) && !is(TokenKind::End) && ok()) {
+        if (is_name("jump") || is_name("branch")) {
+          error("jump and branch require explicit Blocks");
+          break;
+        }
+        entry.statements.push_back(parse_statement());
       }
       entry.range.end = previous_end_;
       body.blocks.push_back(std::move(entry));
@@ -270,7 +268,7 @@ private:
     expect(TokenKind::Colon, "':'");
     while (!is_terminator() && !looks_like_block_header() &&
            !is(TokenKind::RightBrace) && !is(TokenKind::End) && ok()) {
-      block.instructions.push_back(parse_statement());
+      block.statements.push_back(parse_statement());
     }
     if (!is_terminator()) {
       error("block '" + block.name + "' has no terminator");
@@ -563,14 +561,17 @@ private:
         body_->blocks.size() == 1U &&
         body_->blocks.front().name == "entry" &&
         body_->blocks.front().arguments.empty() &&
-        body_->blocks.front().terminator.kind ==
-            detail::TerminatorSyntax::Kind::Return;
+        (!body_->blocks.front().terminator ||
+         body_->blocks.front().terminator->kind ==
+             detail::TerminatorSyntax::Kind::Return);
     if (straight_line) {
       const detail::BlockSyntax& entry = body_->blocks.front();
-      for (const auto& instruction : entry.instructions) {
-        write_statement(instruction, indent_ + 1U);
+      for (const auto& statement : entry.statements) {
+        write_statement(statement, indent_ + 1U);
       }
-      write_terminator(entry.terminator, indent_ + 1U);
+      if (entry.terminator) {
+        write_terminator(*entry.terminator, indent_ + 1U);
+      }
     } else {
       for (std::size_t index = 0; index < body_->blocks.size(); ++index) {
         const detail::BlockSyntax& block = body_->blocks[index];
@@ -584,10 +585,12 @@ private:
           write_value(block.arguments[argument].type);
         }
         output_ << "):\n";
-        for (const auto& instruction : block.instructions) {
-          write_statement(instruction, indent_ + 2U);
+        for (const auto& statement : block.statements) {
+          write_statement(statement, indent_ + 2U);
         }
-        write_terminator(block.terminator, indent_ + 2U);
+        if (block.terminator) {
+          write_terminator(*block.terminator, indent_ + 2U);
+        }
         if (index + 1U != body_->blocks.size()) {
           output_ << '\n';
         }
@@ -990,11 +993,12 @@ public:
       }
     };
     for (const detail::BlockSyntax& block : body_.blocks) {
-      if (block.terminator.kind == detail::TerminatorSyntax::Kind::Return &&
-          block.terminator.values.size() == result_types_.size()) {
-        for (std::size_t index = 0; index < block.terminator.values.size();
+      if (block.terminator &&
+          block.terminator->kind == detail::TerminatorSyntax::Kind::Return &&
+          block.terminator->values.size() == result_types_.size()) {
+        for (std::size_t index = 0; index < block.terminator->values.size();
              ++index) {
-          const auto& expression = block.terminator.values[index];
+          const auto& expression = block.terminator->values[index];
           if ((expression.value.kind != Module::Expression::Kind::Reference &&
                expression.value.kind != Module::Expression::Kind::Variable) ||
               !expression.value.arguments.empty()) {
@@ -1008,7 +1012,7 @@ public:
           }
         }
       }
-      constrain_returns(constrain_returns, block.instructions);
+      constrain_returns(constrain_returns, block.statements);
     }
     std::vector<Type> argument_types;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
@@ -1072,16 +1076,20 @@ public:
         continue;
       }
       std::optional<Block> current = ir->second;
-      for (const auto& instruction : block.instructions) {
+      for (const auto& statement : block.statements) {
         if (!current) {
           break;
         }
-        current = instantiate_statement(instruction, *current);
+        current = instantiate_statement(statement, *current);
       }
       if (!current) {
         continue;
       }
-      const detail::TerminatorSyntax& terminator = block.terminator;
+      if (!block.terminator) {
+        report("function path falls through without returning", block.range);
+        continue;
+      }
+      const detail::TerminatorSyntax& terminator = *block.terminator;
       if (terminator.kind == detail::TerminatorSyntax::Kind::Return) {
         instantiate_return(terminator.values, terminator.range, *current);
         continue;
@@ -2538,7 +2546,7 @@ public:
         syntax.arguments.push_back({use(argument), value(argument.type()), {}});
       }
       for (const Instruction& instruction : block.instructions()) {
-        syntax.instructions.push_back(convert(instruction));
+        syntax.statements.push_back(convert(instruction));
       }
       syntax.terminator = convert(block.terminator());
       syntax_.body.blocks.push_back(std::move(syntax));
@@ -2799,17 +2807,44 @@ bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics) {
 
   std::unordered_map<std::string_view, const BlockSyntax*> blocks;
   std::unordered_set<std::string_view> definitions;
+  const auto falls_through = [&](const auto& self,
+                                 const std::vector<StatementSyntax>& statements)
+      -> bool {
+    for (const StatementSyntax& statement : statements) {
+      if (statement.kind == StatementSyntax::Kind::Return) {
+        return false;
+      }
+      if (statement.kind == StatementSyntax::Kind::If && statement.has_else &&
+          !self(self, statement.body) &&
+          !self(self, statement.otherwise)) {
+        return false;
+      }
+    }
+    return true;
+  };
   const auto check_statements = [&](const auto& self,
                                     const std::vector<StatementSyntax>& statements,
                                     std::unordered_set<std::string_view>& names)
       -> void {
+    bool reachable = true;
     for (const StatementSyntax& statement : statements) {
+      if (!reachable) {
+        report("unreachable statement after a control transfer",
+               statement.range);
+      }
       if (statement.kind != StatementSyntax::Kind::Expression) {
         auto nested = names;
         self(self, statement.body, nested);
         if (statement.kind == StatementSyntax::Kind::If) {
           nested = names;
           self(self, statement.otherwise, nested);
+        }
+        if (statement.kind == StatementSyntax::Kind::Return ||
+            (statement.kind == StatementSyntax::Kind::If &&
+             statement.has_else && !falls_through(falls_through,
+                                                   statement.body) &&
+             !falls_through(falls_through, statement.otherwise))) {
+          reachable = false;
         }
         continue;
       }
@@ -2833,7 +2868,15 @@ bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics) {
                argument.range);
       }
     }
-    check_statements(check_statements, block.instructions, definitions);
+    check_statements(check_statements, block.statements, definitions);
+  }
+
+  const bool structured =
+      body.blocks.size() == 1U && !body.blocks.front().terminator;
+  if (structured &&
+      falls_through(falls_through, body.blocks.front().statements)) {
+    report("a function body has a path that does not return",
+           body.blocks.front().range);
   }
 
   const auto check_successor = [&](const SuccessorSyntax& successor) {
@@ -2856,7 +2899,14 @@ bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics) {
   };
 
   for (const BlockSyntax& block : body.blocks) {
-    const TerminatorSyntax& terminator = block.terminator;
+    if (!block.terminator) {
+      if (!structured) {
+        report("explicit block '" + block.name + "' has no terminator",
+               block.range);
+      }
+      continue;
+    }
+    const TerminatorSyntax& terminator = *block.terminator;
     switch (terminator.kind) {
     case TerminatorSyntax::Kind::Return:
       if (terminator.condition || !terminator.successors.empty()) {
@@ -2890,7 +2940,10 @@ bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics) {
       const std::string_view name = pending.back();
       pending.pop_back();
       const BlockSyntax* block = blocks.at(name);
-      for (const SuccessorSyntax& successor : block->terminator.successors) {
+      if (!block->terminator) {
+        continue;
+      }
+      for (const SuccessorSyntax& successor : block->terminator->successors) {
         if (blocks.find(successor.target) != blocks.end() &&
             reachable.insert(successor.target).second) {
           pending.push_back(successor.target);
