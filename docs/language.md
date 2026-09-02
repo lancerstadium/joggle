@@ -285,6 +285,8 @@ statement     := binding "=" expression ";"
                  [ "else" "{" { statement } "}" ]
                | "while" expression "{" { statement } "}"
                | "return" [ expressions ] ";"
+               | "break" ";"
+               | "continue" ";"
                | explicit-block
 binding       := identifier [ ":" expression ]
 
@@ -311,6 +313,11 @@ multi-statement `if`, structured early returns, and explicit typed CFG blocks.
 The public owning IR is Function/Block/Instruction/Value. Multi-statement
 *expression* arms, `for`, and closures remain under construction. Nested
 Region syntax and storage have been removed.
+
+A remaining staging restriction is deliberate and diagnosed: a Residual
+decision cannot yet control `break` or `continue` when the enclosing loop
+condition itself is Known. The evaluator will eventually residualize that
+mixed-stage loop instead of rejecting it.
 
 ## Canonical source
 

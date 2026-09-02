@@ -714,6 +714,39 @@ module outside_loop@1.0.0 {
   ok &= expect(!outside_loop && reports_outside_loop,
                "loop control outside a structured loop is rejected");
 
+  joggle::Compiler mixed_loop_transfer;
+  mixed_loop_transfer.add(R"(
+joggle 1;
+module mixed_loop_transfer@1.0.0 {
+  fn invalid(stop: i1) {
+    running = true;
+    while running {
+      if stop {
+        break;
+      }
+      running = false;
+    }
+    return;
+  }
+}
+)", "mixed-loop-transfer.joggle");
+  const bool mixed_loop_transfer_linked = mixed_loop_transfer.link();
+  const auto invalid_mixed_loop =
+      mixed_loop_transfer_linked
+          ? mixed_loop_transfer.function("mixed_loop_transfer.invalid")
+          : std::optional<joggle::Function>{};
+  const bool reports_mixed_loop_transfer = std::any_of(
+      mixed_loop_transfer.diagnostics().entries().begin(),
+      mixed_loop_transfer.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find(
+                   "requires a Residual loop condition") !=
+               std::string::npos;
+      });
+  ok &= expect(mixed_loop_transfer_linked && !invalid_mixed_loop &&
+                   reports_mixed_loop_transfer,
+               "unsupported mixed-stage loop transfer fails explicitly");
+
   joggle::Compiler bounded_loop({.steps = 2, .depth = 64});
   bounded_loop.add(R"(
 joggle 1;
