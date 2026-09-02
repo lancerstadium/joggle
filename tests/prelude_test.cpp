@@ -69,9 +69,17 @@ module native_test@1.0.0 {
   }
 
   const auto i32 = compiler.make("i32");
+  const auto integer_value_type = compiler.make("int");
+  const auto type_value_type = compiler.make("type");
   const auto u32 = compiler.make("u32");
   const auto f32 = compiler.make("f32");
   const auto embedded_prelude = compiler.module("prelude");
+  const auto list_schema =
+      embedded_prelude ? embedded_prelude->type("list") : std::nullopt;
+  const auto integer_list =
+      list_schema && integer_value_type
+          ? compiler.make(*list_schema, *integer_value_type)
+          : std::nullopt;
   const auto integers = compiler.function("native_test.integers");
   const auto floating = compiler.function("native_test.floating");
   const auto custom = compiler.function("native_test.custom");
@@ -87,7 +95,14 @@ module native_test@1.0.0 {
   ok &= expect(source_prelude && embedded_prelude &&
                    source_prelude->digest() == embedded_prelude->digest(),
                "the installed Prelude source is the embedded authority");
-  ok &= expect(i32 && u32 && f32 &&
+  ok &= expect(i32 && u32 && f32 && integer_value_type && type_value_type &&
+                   integer_list &&
+                   integer_value_type->schema().symbol().qualified_name() ==
+                       "prelude.int" &&
+                   type_value_type->schema().symbol().qualified_name() ==
+                       "prelude.type" &&
+                   integer_list->get<joggle::Type>("element") ==
+                       integer_value_type &&
                    i32->schema().symbol().qualified_name() == "prelude.i32" &&
                    u32->schema().symbol().qualified_name() == "prelude.u32" &&
                    f32->schema().symbol().qualified_name() == "prelude.f32" &&
@@ -95,8 +110,8 @@ module native_test@1.0.0 {
                    i32->schema().derived_parameters().size() == 1U &&
                    i32->schema().derived_parameters().front().name ==
                        "storage_bits",
-               "fixed-width scalars are ordinary derived Prelude "
-               "declarations");
+               "compiler values and fixed-width scalars use ordinary "
+               "reflected Prelude declarations");
   ok &= expect(integers && floating && custom && native_width && custom_width,
                "native and interface-conforming custom types instantiate");
   const auto native_bits =

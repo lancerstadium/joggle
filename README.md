@@ -50,9 +50,10 @@ Reusable IR packages live in [`modules`](modules):
   without a device model or capacity assumptions.
 
 These Modules are ordinary `.joggle` packages rather than C++ built-ins. The
-trusted kernel owns only compile-time domains and checked expression
-evaluation; the automatically linked `prelude` Module owns the native scalar
-declarations and their interfaces. Expression-bodied `fn` declarations and
+trusted kernel owns bootstrap host representations and checked expression
+evaluation; the automatically linked `prelude` Module owns reflected compiler
+value types, native scalar declarations, and their interfaces.
+Expression-bodied `fn` declarations and
 derived type parameters can compute dependent type arguments without host
 callbacks. A call prefixed by `@` is evaluated at compile time; the declaration
 needs no separate `const` function kind. Fixed-width Prelude scalars expose the

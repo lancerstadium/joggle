@@ -1,5 +1,6 @@
 #include "expression_syntax.h"
 
+#include "domain.h"
 #include "prelude.h"
 #include "syntax_lexer.h"
 
@@ -196,7 +197,11 @@ private:
       result.kind = Kind::Variable;
       return result;
     }
-    if (result.text.find('.') == std::string::npos &&
+    const bool kernel_domain_name =
+        result.text.find('.') == std::string::npos &&
+        (result.text == "list" ||
+         kernel_domain(Module::Expression::reference(result.text)).has_value());
+    if (result.text.find('.') == std::string::npos && !kernel_domain_name &&
         is_prelude_type(result.text)) {
       result.text = std::string(prelude_module_name) + "." + result.text;
     }

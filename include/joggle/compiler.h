@@ -312,8 +312,8 @@ public:
     return make(schema, std::span<const detail::ParameterValue>(values));
   }
 
-  // Constructs an instance of an ambient, parameterless Prelude type such as
-  // i32, u32, f32, or index. Callers need no explicit Module lookup or import.
+  // Constructs an ambient, parameterless Prelude type such as int, i32, f32,
+  // or index. Parameterized Prelude types use the declaration overload above.
   std::optional<Type> make(std::string_view prelude_type);
 
   template <typename... Arguments>

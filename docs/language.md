@@ -53,8 +53,10 @@ int  real  bool  string  type  attr  bytes  list<D>
 ```
 
 These names describe values held by the compiler; they are not target scalar
-types. `i32`, `f32`, and similar program types are declarations in the ambient
-Prelude Module. Custom formats implement the same interfaces.
+types. They and `i32`, `f32`, and similar program types have reflected
+declarations in the ambient Prelude Module. The trusted kernel supplies the
+former group with bootstrap host representations; it does not give them a
+second declaration system. Custom formats implement the same interfaces.
 
 Type constructors are ordinary declarations. Parameters of one type may be
 computed from other parameters or interface fields:
