@@ -1,5 +1,7 @@
 #include "residual/baseline.h"
 
+#include "residual/artifact_encoding.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -114,11 +116,13 @@ void choose_subsets(const std::vector<Realization>& universe,
 }  // namespace
 
 std::size_t Portfolio::serialized_bytes() const {
-  std::size_t bytes = 0;
-  for (const Realization& realization : realizations) {
-    bytes += realization.canonical_id().size() + 1U;
+  if (realizations.size() == 1U) {
+    EncodedPaths encoded = encode_f1_paths(realizations, false);
+    append_u8(&encoded.bytes, 0U);  // Static selector tag.
+    append_u8(&encoded.bytes, encoded.index_of(realizations.front()));
+    return encoded.bytes.size();
   }
-  return bytes;
+  return serialize_f1_dynamic_choice(realizations, 0U).size();
 }
 
 Portfolio static_one_best(const std::vector<Facts>& training) {

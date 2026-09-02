@@ -38,6 +38,7 @@ struct OracleResult {
 };
 
 [[nodiscard]] std::vector<Facts> exhaustive_facts();
+[[nodiscard]] std::uint8_t f1_fact_bits(const Facts& facts);
 [[nodiscard]] std::vector<Realization> f1_realization_universe();
 [[nodiscard]] std::optional<Realization> evaluate_f1(
     const Realization& realization, const Facts& facts);

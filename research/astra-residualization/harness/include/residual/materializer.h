@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iosfwd>
+#include <vector>
 
 namespace residual {
 
@@ -20,6 +21,7 @@ inline constexpr std::uint32_t kF1DeclaredStepBound = 26;
 inline constexpr std::uint32_t kF1DeclaredArenaBound = 5;
 
 [[nodiscard]] MaterializationResult materialize_f1(const Facts& facts);
+[[nodiscard]] std::vector<std::uint8_t> serialize_f1_materializer();
 void write_materializer_csv(std::ostream& output);
 [[nodiscard]] bool materializer_self_test(std::ostream& errors);
 

@@ -175,6 +175,26 @@ std::vector<Facts> exhaustive_facts() {
   return result;
 }
 
+std::uint8_t f1_fact_bits(const Facts& facts) {
+  std::uint8_t bits = 0;
+  if (facts.shape == Shape::Large) {
+    bits |= 1U << 0U;
+  }
+  if (facts.tensor) {
+    bits |= 1U << 1U;
+  }
+  if (facts.scratch_limit >= 8U) {
+    bits |= 1U << 2U;
+  }
+  if (facts.objective == Objective::Energy) {
+    bits |= 1U << 3U;
+  }
+  if (facts.resident == Layout::Nhwc) {
+    bits |= 1U << 4U;
+  }
+  return bits;
+}
+
 std::vector<Realization> f1_realization_universe() {
   return {
       {{"stem.nchw", "act.nchw", "skip.nchw", "join.nchw"}, 0},

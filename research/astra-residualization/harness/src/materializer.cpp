@@ -1,5 +1,7 @@
 #include "residual/materializer.h"
 
+#include "residual/artifact_encoding.h"
+
 #include <array>
 #include <limits>
 #include <ostream>
@@ -113,12 +115,17 @@ MaterializationResult materialize_f1(const Facts& facts) {
   return result;
 }
 
+std::vector<std::uint8_t> serialize_f1_materializer() {
+  return serialize_f1_dynamic_choice(f1_realization_universe(), 4U);
+}
+
 void write_materializer_csv(std::ostream& output) {
-  output << "facts,steps,step_bound,arena,arena_bound,trials,cost,"
+  output << "bytes,facts,steps,step_bound,arena,arena_bound,trials,cost,"
             "realization\n";
   for (const Facts& facts : exhaustive_facts()) {
     const MaterializationResult result = materialize_f1(facts);
-    output << facts.canonical_id() << ',' << result.steps << ','
+    output << serialize_f1_materializer().size() << ','
+           << facts.canonical_id() << ',' << result.steps << ','
            << kF1DeclaredStepBound << ',' << result.arena_bytes << ','
            << kF1DeclaredArenaBound << ',' << result.performance_trials << ','
            << result.realization.cost << ','
@@ -127,6 +134,10 @@ void write_materializer_csv(std::ostream& output) {
 }
 
 bool materializer_self_test(std::ostream& errors) {
+  if (serialize_f1_materializer() != serialize_f1_materializer()) {
+    errors << "materializer encoding is non-deterministic\n";
+    return false;
+  }
   for (const Facts& facts : exhaustive_facts()) {
     const OracleResult oracle = solve_f1(facts);
     const MaterializationResult first = materialize_f1(facts);
