@@ -718,34 +718,106 @@ module outside_loop@1.0.0 {
   mixed_loop_transfer.add(R"(
 joggle 1;
 module mixed_loop_transfer@1.0.0 {
-  fn invalid(stop: i1) {
+  fn integer_literal<T: prelude.integer>(value: int) -> T : prelude.literal;
+
+  fn break_on(stop: i1) -> i32 {
     running = true;
+    count = 1;
     while running {
       if stop {
         break;
       }
+      count = 2;
       running = false;
+    }
+    return count;
+  }
+
+  fn continue_on(skip: i1) {
+    running = true;
+    while running {
+      running = false;
+      if skip {
+        continue;
+      }
     }
     return;
   }
 }
 )", "mixed-loop-transfer.joggle");
   const bool mixed_loop_transfer_linked = mixed_loop_transfer.link();
-  const auto invalid_mixed_loop =
+  const auto mixed_break =
       mixed_loop_transfer_linked
-          ? mixed_loop_transfer.function("mixed_loop_transfer.invalid")
+          ? mixed_loop_transfer.function("mixed_loop_transfer.break_on")
           : std::optional<joggle::Function>{};
-  const bool reports_mixed_loop_transfer = std::any_of(
-      mixed_loop_transfer.diagnostics().entries().begin(),
-      mixed_loop_transfer.diagnostics().entries().end(),
+  const auto mixed_continue =
+      mixed_loop_transfer_linked
+          ? mixed_loop_transfer.function("mixed_loop_transfer.continue_on")
+          : std::optional<joggle::Function>{};
+  const auto mixed_control_shape = [](const joggle::Function& function) {
+    const auto blocks = function.blocks();
+    return blocks.size() == 3U &&
+           blocks.front().terminator().kind() ==
+               joggle::Terminator::Kind::Branch &&
+           blocks[1].terminator().kind() ==
+               joggle::Terminator::Kind::Return &&
+           blocks[2].terminator().kind() ==
+               joggle::Terminator::Kind::Return;
+  };
+  std::vector<std::int64_t> mixed_break_literals;
+  if (mixed_break) {
+    for (const auto& instruction : mixed_break->instructions()) {
+      if (const auto value = instruction.get<std::int64_t>("value")) {
+        mixed_break_literals.push_back(*value);
+      }
+    }
+    std::sort(mixed_break_literals.begin(), mixed_break_literals.end());
+  }
+  ok &= expect(mixed_break && mixed_continue &&
+                   mixed_loop_transfer.verify(*mixed_break) &&
+                   mixed_loop_transfer.verify(*mixed_continue) &&
+                   mixed_control_shape(*mixed_break) &&
+                   mixed_control_shape(*mixed_continue) &&
+                   mixed_break_literals ==
+                       std::vector<std::int64_t>({1, 2}),
+               "Residual break and continue inside finite Known loops retain "
+               "separate specialized continuations and materialize Known "
+               "state only when the return type requires it");
+
+  joggle::Compiler cyclic_mixed_loop({.steps = 8, .depth = 64});
+  cyclic_mixed_loop.add(R"(
+joggle 1;
+module cyclic_mixed_loop@1.0.0 {
+  fn invalid(skip: i1) {
+    running = true;
+    while running {
+      if skip {
+        continue;
+      }
+      running = false;
+    }
+    return;
+  }
+}
+)",
+                        "cyclic-mixed-loop.joggle");
+  const bool cyclic_mixed_loop_linked = cyclic_mixed_loop.link();
+  const auto cyclic_mixed_loop_function =
+      cyclic_mixed_loop_linked
+          ? cyclic_mixed_loop.function("cyclic_mixed_loop.invalid")
+          : std::optional<joggle::Function>{};
+  const bool reports_cyclic_mixed_loop = std::any_of(
+      cyclic_mixed_loop.diagnostics().entries().begin(),
+      cyclic_mixed_loop.diagnostics().entries().end(),
       [](const joggle::Diagnostic& diagnostic) {
         return diagnostic.message.find(
-                   "requires a Residual loop condition") !=
-               std::string::npos;
+                   "mixed-stage while does not reach a finite "
+                   "specialization") != std::string::npos;
       });
-  ok &= expect(mixed_loop_transfer_linked && !invalid_mixed_loop &&
-                   reports_mixed_loop_transfer,
-               "unsupported mixed-stage loop transfer fails explicitly");
+  ok &= expect(cyclic_mixed_loop_linked && !cyclic_mixed_loop_function &&
+                   reports_cyclic_mixed_loop,
+               "a runtime-dependent cycle is diagnosed separately from an "
+               "ordinary compile-time loop budget failure");
 
   joggle::Compiler bounded_loop({.steps = 2, .depth = 64});
   bounded_loop.add(R"(

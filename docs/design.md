@@ -193,6 +193,16 @@ values are Block arguments. `continue` and `break` become ordinary edges to the
 header and exit with those same values. When their path is Known, they are
 handled by the evaluator without creating an edge.
 
+Structured elaboration returns a set of typed control outcomes rather than one
+`(kind, block)` pair: fallthrough paths, breaks, and continues. Every path owns
+a snapshot of its lexical bindings and residual-control depth. This permits a
+Residual decision inside a finite Known loop to multi-version the remaining
+continuation without choosing a target representation for Known state. If the
+paths later reach a typed boundary, the ordinary `prelude.literal` resolution
+materializes each value there. If they form a runtime-dependent cycle, finite
+specialization fails explicitly; a later staging-frontier replay will rebuild
+that cycle as a Residual loop when all carried representations are resolvable.
+
 ## Extension boundary
 
 A Module may declare new types, attributes, interfaces, and functions. C++ can

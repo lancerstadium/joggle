@@ -791,18 +791,34 @@ split_reference(std::string_view owner, std::string_view reference) {
 }
 
 class Instantiator {
+  using Scope = std::unordered_map<std::string, std::optional<Value>>;
+  using Scopes = std::vector<Scope>;
+
+  struct Path {
+    Block block;
+    Scopes scopes;
+    std::size_t residual_depth = 0;
+  };
+
   struct Flow {
-    enum class Kind { Next, Break, Continue, Stop };
+    std::vector<Path> next;
+    std::vector<Path> breaks;
+    std::vector<Path> continues;
 
-    Kind kind = Kind::Stop;
-    std::optional<Block> block;
-
-    static Flow next(Block value) { return {Kind::Next, std::move(value)}; }
-    static Flow stop() { return {}; }
-    static Flow transfer(Kind kind, Block value) {
-      return {kind, std::move(value)};
+    void append(Flow&& flow) {
+      next.insert(next.end(),
+                  std::make_move_iterator(flow.next.begin()),
+                  std::make_move_iterator(flow.next.end()));
+      breaks.insert(breaks.end(),
+                    std::make_move_iterator(flow.breaks.begin()),
+                    std::make_move_iterator(flow.breaks.end()));
+      continues.insert(continues.end(),
+                       std::make_move_iterator(flow.continues.begin()),
+                       std::make_move_iterator(flow.continues.end()));
     }
   };
+
+  enum class LoopTransfer { Break, Continue };
 
   struct LoopContext {
     std::optional<Block> continue_target;
@@ -1016,19 +1032,12 @@ public:
       if (ir == blocks_.end()) {
         continue;
       }
-      Flow current = Flow::next(ir->second);
-      for (const auto& statement : block.statements) {
-        if (current.kind != Flow::Kind::Next || !current.block) {
-          break;
-        }
-        current = instantiate_statement(statement, *current.block);
-      }
-      if (current.kind == Flow::Kind::Break ||
-          current.kind == Flow::Kind::Continue) {
+      Flow current = instantiate_sequence(block.statements, ir->second);
+      if (!current.breaks.empty() || !current.continues.empty()) {
         report("loop control escaped its structured loop", block.range);
         continue;
       }
-      if (current.kind == Flow::Kind::Stop || !current.block) {
+      if (current.next.empty()) {
         continue;
       }
       if (!block.terminator) {
@@ -1036,21 +1045,6 @@ public:
         continue;
       }
       const detail::TerminatorSyntax& terminator = *block.terminator;
-      if (terminator.kind == detail::TerminatorSyntax::Kind::Return) {
-        instantiate_return(terminator.values, terminator.range,
-                           *current.block);
-        continue;
-      }
-      std::vector<std::vector<Value>> edge_arguments;
-      for (const detail::SuccessorSyntax& successor : terminator.successors) {
-        std::vector<Value> values;
-        for (const detail::ExpressionSyntax& argument : successor.arguments) {
-          if (auto value = use(argument)) {
-            values.push_back(*value);
-          }
-        }
-        edge_arguments.push_back(std::move(values));
-      }
       const auto target = [&](std::size_t index) -> std::optional<Block> {
         if (index >= terminator.successors.size()) {
           return std::nullopt;
@@ -1064,25 +1058,46 @@ public:
         }
         return found->second;
       };
-      if (terminator.kind == detail::TerminatorSyntax::Kind::Jump) {
-        if (auto destination = target(0)) {
-          edit_->jump(*current.block, *destination,
-                      edge_arguments.empty() ? std::vector<Value>{}
-                                             : std::move(edge_arguments[0]));
-        }
-      } else {
-        auto condition = terminator.condition
-                             ? use(*terminator.condition)
-                             : std::optional<Value>{};
-        auto true_target = target(0);
-        auto false_target = target(1);
-        if (!condition || !true_target || !false_target ||
-            edge_arguments.size() != 2U) {
+      for (const Path& active : current.next) {
+        restore(active);
+        if (terminator.kind == detail::TerminatorSyntax::Kind::Return) {
+          instantiate_return(terminator.values, terminator.range,
+                             active.block);
           continue;
         }
-        edit_->branch(*current.block, *condition, *true_target,
-                      std::move(edge_arguments[0]), *false_target,
-                      std::move(edge_arguments[1]));
+        std::vector<std::vector<Value>> edge_arguments;
+        for (const detail::SuccessorSyntax& successor :
+             terminator.successors) {
+          std::vector<Value> values;
+          for (const detail::ExpressionSyntax& argument :
+               successor.arguments) {
+            if (auto value = use(argument)) {
+              values.push_back(*value);
+            }
+          }
+          edge_arguments.push_back(std::move(values));
+        }
+        if (terminator.kind == detail::TerminatorSyntax::Kind::Jump) {
+          if (auto destination = target(0)) {
+            edit_->jump(active.block, *destination,
+                        edge_arguments.empty()
+                            ? std::vector<Value>{}
+                            : std::move(edge_arguments[0]));
+          }
+        } else {
+          auto condition = terminator.condition
+                               ? use(*terminator.condition)
+                               : std::optional<Value>{};
+          auto true_target = target(0);
+          auto false_target = target(1);
+          if (!condition || !true_target || !false_target ||
+              edge_arguments.size() != 2U) {
+            continue;
+          }
+          edit_->branch(active.block, *condition, *true_target,
+                        std::move(edge_arguments[0]), *false_target,
+                        std::move(edge_arguments[1]));
+        }
       }
     }
     if (!ok() ||
@@ -1094,6 +1109,58 @@ public:
   }
 
 private:
+  Path path(Block block) const {
+    return {std::move(block), scopes_, residual_control_depth_};
+  }
+
+  Flow next(Block block) const {
+    Flow flow;
+    flow.next.push_back(path(std::move(block)));
+    return flow;
+  }
+
+  Flow transfer(bool is_break, Block block) const {
+    Flow flow;
+    auto& paths = is_break ? flow.breaks : flow.continues;
+    paths.push_back(path(std::move(block)));
+    return flow;
+  }
+
+  void restore(const Path& active) {
+    scopes_ = active.scopes;
+    residual_control_depth_ = active.residual_depth;
+  }
+
+  static void trim_scopes(Flow& flow, std::size_t depth) {
+    const auto trim = [&](std::vector<Path>& paths) {
+      for (Path& path : paths) {
+        path.scopes.resize(depth);
+      }
+    };
+    trim(flow.next);
+    trim(flow.breaks);
+    trim(flow.continues);
+  }
+
+  Flow instantiate_sequence(
+      std::span<const detail::StatementSyntax> statements, Block block) {
+    Flow current = next(std::move(block));
+    for (const detail::StatementSyntax& statement : statements) {
+      Flow following;
+      following.breaks = std::move(current.breaks);
+      following.continues = std::move(current.continues);
+      for (const Path& active : current.next) {
+        restore(active);
+        following.append(instantiate_statement(statement, active.block));
+      }
+      current = std::move(following);
+      if (current.next.empty()) {
+        break;
+      }
+    }
+    return current;
+  }
+
   bool ok() const { return diagnostics_.size() == initial_diagnostics_; }
 
   SourceRange source(detail::SyntaxRange range) const {
@@ -1603,10 +1670,14 @@ private:
     statement.expression = syntax;
     statement.range = range;
     Flow flow = instantiate_statement(statement, block);
-    return flow.kind == Flow::Kind::Next && flow.block
-               ? std::pair{*flow.block,
-                           use(detail::LocalUseSyntax{name, range})}
-               : std::pair{block, std::optional<Value>{}};
+    if (flow.next.size() != 1U || !flow.breaks.empty() ||
+        !flow.continues.empty()) {
+      report("expression produced non-local control flow", range);
+      return {block, std::nullopt};
+    }
+    restore(flow.next.front());
+    return {flow.next.front().block,
+            use(detail::LocalUseSyntax{name, range})};
   }
 
   void collect_rebindings(
@@ -1638,18 +1709,13 @@ private:
       if (!selected) {
         report("Known if condition must have type bool",
                statement.expression.range);
-        return Flow::next(block);
+        return next(block);
       }
       const auto& arm = *selected ? statement.body : statement.otherwise;
+      const std::size_t outer_depth = scopes_.size();
       scopes_.emplace_back();
-      Flow flow = Flow::next(block);
-      for (const auto& nested : arm) {
-        if (flow.kind != Flow::Kind::Next || !flow.block) {
-          break;
-        }
-        flow = instantiate_statement(nested, *flow.block);
-      }
-      scopes_.pop_back();
+      Flow flow = instantiate_sequence(arm, block);
+      trim_scopes(flow, outer_depth);
       return flow;
     }
 
@@ -1664,7 +1730,7 @@ private:
     if (!condition || condition->known() || !i1 || condition->type() != *i1) {
       report("Residual if condition must have type i1",
              statement.expression.range);
-      return Flow::next(block);
+      return next(block);
     }
     const Block yes = edit_->block();
     const Block no = edit_->block();
@@ -1675,19 +1741,16 @@ private:
                                Block start) {
       scopes_ = incoming;
       scopes_.emplace_back();
-      Flow flow = Flow::next(start);
-      for (const auto& nested : arm) {
-        if (flow.kind != Flow::Kind::Next || !flow.block) {
-          break;
-        }
-        flow = instantiate_statement(nested, *flow.block);
-      }
-      scopes_.pop_back();
+      Flow flow = instantiate_sequence(arm, start);
       std::vector<std::optional<Value>> values;
       values.reserve(carried_names.size());
-      for (const std::string& name : carried_names) {
-        values.push_back(lookup(name));
+      if (flow.next.size() == 1U) {
+        restore(flow.next.front());
+        for (const std::string& name : carried_names) {
+          values.push_back(lookup(name));
+        }
       }
+      trim_scopes(flow, incoming.size());
       return std::pair{flow, std::move(values)};
     };
 
@@ -1697,21 +1760,20 @@ private:
     --residual_control_depth_;
     scopes_ = incoming;
 
-    if (true_flow.kind == Flow::Kind::Break ||
-        true_flow.kind == Flow::Kind::Continue ||
-        false_flow.kind == Flow::Kind::Break ||
-        false_flow.kind == Flow::Kind::Continue) {
-      report("loop control depending on Residual data requires a Residual "
-             "loop condition",
-             statement.range);
-      return Flow::stop();
+    const bool transfers = !true_flow.breaks.empty() ||
+                           !true_flow.continues.empty() ||
+                           !false_flow.breaks.empty() ||
+                           !false_flow.continues.empty();
+    if (transfers) {
+      Flow result;
+      result.append(std::move(true_flow));
+      result.append(std::move(false_flow));
+      return result;
     }
-    const bool true_continues = true_flow.kind == Flow::Kind::Next &&
-                                true_flow.block.has_value();
-    const bool false_continues = false_flow.kind == Flow::Kind::Next &&
-                                 false_flow.block.has_value();
+    const bool true_continues = true_flow.next.size() == 1U;
+    const bool false_continues = false_flow.next.size() == 1U;
     if (!true_continues && !false_continues) {
-      return Flow::stop();
+      return {};
     }
     if (!true_continues || !false_continues) {
       const auto& values = true_continues ? true_values : false_values;
@@ -1725,7 +1787,7 @@ private:
         bind({carried_names[index], std::nullopt, statement.range, true},
              values[index]);
       }
-      return true_continues ? true_flow : false_flow;
+      return true_continues ? std::move(true_flow) : std::move(false_flow);
     }
 
     std::vector<Type> merge_types;
@@ -1763,9 +1825,11 @@ private:
         continue;
       }
       auto true_value = materialize(*true_values[index], *target,
-                                    *true_flow.block, statement.range);
+                                    true_flow.next.front().block,
+                                    statement.range);
       auto false_value = materialize(*false_values[index], *target,
-                                     *false_flow.block, statement.range);
+                                     false_flow.next.front().block,
+                                     statement.range);
       if (!true_value || !false_value) {
         continue;
       }
@@ -1775,12 +1839,12 @@ private:
       false_arguments.push_back(*false_value);
     }
     if (!ok()) {
-      return Flow::next(block);
+      return next(block);
     }
 
     const Block merge = edit_->block(merge_types);
-    edit_->jump(*true_flow.block, merge, true_arguments);
-    edit_->jump(*false_flow.block, merge, false_arguments);
+    edit_->jump(true_flow.next.front().block, merge, true_arguments);
+    edit_->jump(false_flow.next.front().block, merge, false_arguments);
     const auto arguments = merge.arguments();
     for (std::size_t index = 0; index < carried_names.size(); ++index) {
       const auto value = merged[index]
@@ -1788,51 +1852,55 @@ private:
                              : unchanged[index];
       bind({carried_names[index], std::nullopt, statement.range, true}, value);
     }
-    return Flow::next(merge);
+    return next(merge);
   }
 
   Flow instantiate_while(const detail::StatementSyntax& statement,
                          Block block) {
     if (known_result(statement.expression.value, statement.expression.range)) {
-      while (ok()) {
+      std::vector<Path> pending{path(block)};
+      Flow exits;
+      while (!pending.empty() && ok()) {
+        Path active = std::move(pending.back());
+        pending.pop_back();
+        restore(active);
         auto condition = evaluate_known(statement.expression);
         const auto selected = condition ? condition->get<bool>() : std::nullopt;
         if (!selected) {
           report("Known while condition must have type bool",
                  statement.expression.range);
-          return Flow::next(block);
-        }
-        if (!*selected) {
-          return Flow::next(block);
-        }
-        if (loop_iterations_++ >= compiler_.evaluation_limits().steps) {
-          report("compile-time while iteration limit exceeded",
-                 statement.range);
-          return Flow::next(block);
-        }
-        scopes_.emplace_back();
-        loops_.push_back({});
-        Flow flow = Flow::next(block);
-        for (const auto& nested : statement.body) {
-          if (flow.kind != Flow::Kind::Next || !flow.block) {
-            break;
-          }
-          flow = instantiate_statement(nested, *flow.block);
-        }
-        loops_.pop_back();
-        scopes_.pop_back();
-        if (flow.kind == Flow::Kind::Stop || !flow.block) {
-          return Flow::stop();
-        }
-        block = *flow.block;
-        if (flow.kind == Flow::Kind::Break) {
-          return Flow::next(block);
-        }
-        if (flow.kind == Flow::Kind::Continue) {
           continue;
         }
+        if (!*selected) {
+          exits.next.push_back(path(active.block));
+          continue;
+        }
+        if (loop_iterations_++ >= compiler_.evaluation_limits().steps) {
+          report(active.residual_depth == 0U
+                     ? "compile-time while iteration limit exceeded"
+                     : "mixed-stage while does not reach a finite "
+                       "specialization; make its condition and carried "
+                       "state Residual",
+                 statement.range);
+          continue;
+        }
+        const std::size_t outer_depth = scopes_.size();
+        scopes_.emplace_back();
+        loops_.push_back({});
+        Flow flow = instantiate_sequence(statement.body, active.block);
+        loops_.pop_back();
+        trim_scopes(flow, outer_depth);
+        exits.next.insert(exits.next.end(),
+                          std::make_move_iterator(flow.breaks.begin()),
+                          std::make_move_iterator(flow.breaks.end()));
+        pending.insert(pending.end(),
+                       std::make_move_iterator(flow.next.begin()),
+                       std::make_move_iterator(flow.next.end()));
+        pending.insert(pending.end(),
+                       std::make_move_iterator(flow.continues.begin()),
+                       std::make_move_iterator(flow.continues.end()));
       }
-      return Flow::next(block);
+      return exits;
     }
 
     std::vector<std::string> carried_names;
@@ -1855,7 +1923,7 @@ private:
       }
     }
     if (initial.size() != carried_names.size()) {
-      return Flow::next(block);
+      return next(block);
     }
 
     const Block header = edit_->block(carried_types);
@@ -1873,57 +1941,49 @@ private:
     if (!condition || condition->known() || !i1 || condition->type() != *i1) {
       report("Residual while condition must have type i1",
              statement.expression.range);
-      return Flow::next(block);
+      return next(block);
     }
     edit_->branch(condition_tail, *condition, body, {}, exit,
                   header.arguments());
 
+    const std::size_t outer_scope_depth = scopes_.size();
+    const std::size_t outer_residual_depth = residual_control_depth_;
     ++residual_control_depth_;
     scopes_.emplace_back();
     loops_.push_back({header, exit, carried_names, carried_types});
-    Flow body_flow = Flow::next(body);
-    for (const auto& nested : statement.body) {
-      if (body_flow.kind != Flow::Kind::Next || !body_flow.block) {
-        break;
-      }
-      body_flow = instantiate_statement(nested, *body_flow.block);
-    }
+    Flow body_flow = instantiate_sequence(statement.body, body);
     loops_.pop_back();
-    std::vector<Value> updated;
-    if (body_flow.kind == Flow::Kind::Next && body_flow.block) {
+    for (const Path& active : body_flow.next) {
+      restore(active);
+      std::vector<Value> updated;
       for (std::size_t index = 0; index < carried_names.size(); ++index) {
         const std::string& name = carried_names[index];
         if (auto value = lookup(name)) {
           auto carried = materialize(*value, carried_types[index],
-                                     *body_flow.block, statement.range);
+                                     active.block, statement.range);
           if (carried) {
             updated.push_back(*carried);
           }
         }
       }
+      if (updated.size() != carried_names.size()) {
+        report("while body does not produce every loop-carried value",
+               statement.range);
+        continue;
+      }
+      edit_->jump(active.block, header, std::move(updated));
     }
-    scopes_.pop_back();
-    --residual_control_depth_;
-    if (body_flow.kind == Flow::Kind::Break ||
-        body_flow.kind == Flow::Kind::Continue) {
+    if (!body_flow.breaks.empty() || !body_flow.continues.empty()) {
       report("loop control was not consumed by its Residual loop",
              statement.range);
-      return Flow::next(block);
     }
-    if (body_flow.kind == Flow::Kind::Next && body_flow.block &&
-        updated.size() != carried_names.size()) {
-      report("while body does not produce every loop-carried value",
-             statement.range);
-      return Flow::next(block);
-    }
-    if (body_flow.kind == Flow::Kind::Next && body_flow.block) {
-      edit_->jump(*body_flow.block, header, updated);
-    }
+    scopes_.resize(outer_scope_depth);
+    residual_control_depth_ = outer_residual_depth;
     for (std::size_t index = 0; index < carried_names.size(); ++index) {
       bind({carried_names[index], std::nullopt, statement.range, true},
            exit.arguments()[index]);
     }
-    return Flow::next(exit);
+    return next(exit);
   }
 
   Flow instantiate_return(
@@ -1952,8 +2012,10 @@ private:
           statement.expression = expression;
           statement.range = expression.range;
           Flow flow = instantiate_statement(statement, block);
-          if (flow.kind == Flow::Kind::Next && flow.block) {
-            block = *flow.block;
+          if (flow.next.size() == 1U && flow.breaks.empty() &&
+              flow.continues.empty()) {
+            restore(flow.next.front());
+            block = flow.next.front().block;
             value = use(detail::LocalUseSyntax{name, expression.range});
           }
         }
@@ -1974,21 +2036,21 @@ private:
       }
     }
     edit_->ret(block, std::move(returned));
-    return Flow::stop();
+    return {};
   }
 
-  Flow instantiate_loop_control(Flow::Kind kind,
+  Flow instantiate_loop_control(LoopTransfer kind,
                                 detail::SyntaxRange range, Block block) {
     if (loops_.empty()) {
       report("loop control is outside a structured loop", range);
-      return Flow::stop();
+      return {};
     }
     const LoopContext& loop = loops_.back();
     const std::optional<Block>& target =
-        kind == Flow::Kind::Continue ? loop.continue_target
-                                    : loop.break_target;
+        kind == LoopTransfer::Continue ? loop.continue_target
+                                       : loop.break_target;
     if (!target) {
-      return Flow::transfer(kind, block);
+      return transfer(kind == LoopTransfer::Break, block);
     }
 
     std::vector<Value> carried;
@@ -2007,10 +2069,10 @@ private:
       }
     }
     if (carried.size() != loop.carried_names.size()) {
-      return Flow::stop();
+      return {};
     }
     edit_->jump(block, *target, std::move(carried));
-    return Flow::stop();
+    return {};
   }
 
   Flow instantiate_statement(const detail::StatementSyntax& statement,
@@ -2019,11 +2081,11 @@ private:
       return instantiate_return(statement.values, statement.range, block);
     }
     if (statement.kind == detail::StatementSyntax::Kind::Break) {
-      return instantiate_loop_control(Flow::Kind::Break, statement.range,
+      return instantiate_loop_control(LoopTransfer::Break, statement.range,
                                       block);
     }
     if (statement.kind == detail::StatementSyntax::Kind::Continue) {
-      return instantiate_loop_control(Flow::Kind::Continue, statement.range,
+      return instantiate_loop_control(LoopTransfer::Continue, statement.range,
                                       block);
     }
     if (statement.kind == detail::StatementSyntax::Kind::If) {
@@ -2039,23 +2101,23 @@ private:
       if (statement.bindings.size() != 1U || !expression.arguments.empty()) {
         report("a value reference must bind exactly one value",
                statement.range);
-        return Flow::next(block);
+        return next(block);
       }
       if (auto value = use(statement.expression)) {
         bind(statement.bindings.front(), std::move(*value));
       }
-      return Flow::next(block);
+      return next(block);
     }
     if (expression.kind != Kind::If) {
       instantiate_operation(statement, block);
-      return Flow::next(block);
+      return next(block);
     }
     if (expression.arguments.size() != 3U ||
         statement.bindings.size() != 1U) {
       report("if expression must have one condition, two values, and one "
              "result",
              statement.range);
-      return Flow::next(block);
+      return next(block);
     }
 
     const detail::ExpressionSyntax condition_syntax{
@@ -2066,7 +2128,7 @@ private:
       if (!selected) {
         report("Known if condition must have type bool",
                condition_syntax.range);
-        return Flow::next(block);
+        return next(block);
       }
       detail::StatementSyntax selected_statement = statement;
       selected_statement.expression.value =
@@ -2076,7 +2138,7 @@ private:
 
     auto condition = use(condition_syntax);
     if (!condition) {
-      return Flow::next(block);
+      return next(block);
     }
     const Block yes = edit_->block();
     const Block no = edit_->block();
@@ -2088,7 +2150,7 @@ private:
         expression.arguments[2], statement.expression.range, no);
     --residual_control_depth_;
     if (!true_value || !false_value) {
-      return Flow::next(block);
+      return next(block);
     }
     auto merge_type = expected_type(statement.bindings.front());
     if (true_value->known() && false_value->known() &&
@@ -2097,7 +2159,7 @@ private:
       edit_->jump(true_tail, merge);
       edit_->jump(false_tail, merge);
       bind(statement.bindings.front(), std::move(*true_value));
-      return Flow::next(merge);
+      return next(merge);
     }
     if (!merge_type) {
       if (!true_value->known()) {
@@ -2112,25 +2174,25 @@ private:
       report("Known branch values need an expected program type for "
              "materialization",
              statement.range);
-      return Flow::next(block);
+      return next(block);
     }
     if ((!true_value->known() && true_value->type() != *merge_type) ||
         (!false_value->known() && false_value->type() != *merge_type)) {
       report("if branches produce different types", statement.range);
-      return Flow::next(block);
+      return next(block);
     }
     auto materialized_true =
         materialize(*true_value, *merge_type, true_tail, statement.range);
     auto materialized_false =
         materialize(*false_value, *merge_type, false_tail, statement.range);
     if (!materialized_true || !materialized_false) {
-      return Flow::next(block);
+      return next(block);
     }
     const Block merge = edit_->block({*merge_type});
     edit_->jump(true_tail, merge, {*materialized_true});
     edit_->jump(false_tail, merge, {*materialized_false});
     bind(statement.bindings.front(), merge.arguments().front());
-    return Flow::next(merge);
+    return next(merge);
   }
 
   void instantiate_operation(const detail::StatementSyntax& statement,

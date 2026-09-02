@@ -330,10 +330,12 @@ Function/Block/Instruction/Value. Multi-statement *expression* arms, `for`, and
 closures remain under construction. Nested Region syntax and storage have
 been removed.
 
-A remaining staging restriction is deliberate and diagnosed: a Residual
-decision cannot yet control `break` or `continue` when the enclosing loop
-condition itself is Known. The evaluator will eventually residualize that
-mixed-stage loop instead of rejecting it.
+A Residual decision may control `break` or `continue` inside a finite Known
+loop. Joggle retains separate specialized continuations, so path-specific Known
+state need not acquire an arbitrary program type. A runtime-dependent cycle
+that cannot be finitely specialized is diagnosed as requiring Residual loop
+state. Automatic staging-frontier replay for such cycles remains under
+construction.
 
 ## Canonical source
 

@@ -193,7 +193,23 @@ normal Function exit; the loop's false edge remains the continuation.
 `continue` and `break` use the same inferred loop-carried values as the normal
 back edge and false exit. Under Residual loop control they are direct edges to
 the header and exit Blocks. Under Known loop control they are evaluator
-transfers and do not appear in the Function.
+transfers and do not appear in the Function when their controlling path is
+also Known.
+
+When a Residual branch controls a transfer inside a finite Known loop, the
+evaluator retains separate continuation paths with separate lexical
+environments. It specializes the remaining statements on each path and delays
+joining them until a program type is actually required. This is controlled
+multi-versioning, not a hidden Region: each path is ultimately an ordinary
+Block in the same Function. A Known value is materialized only at a typed use,
+such as an `i32` return, so the compiler never guesses that compiler `int` or
+`bool` means a particular target width.
+
+A runtime-dependent cycle may prevent that path set from reaching a finite
+specialization. It is diagnosed separately and must be expressed with a
+Residual condition and Residual loop-carried values. Reaching the specialization
+budget on such a dynamically guarded path therefore produces a staging-specific
+diagnostic rather than the generic compile-time-loop message.
 
 ## Nested code without `region`
 
@@ -326,10 +342,10 @@ budgets fail with a diagnostic instead of silently residualizing.
 
 Multi-statement expression arms, closures, allocation budgets, and host-object
 serialization remain to be implemented. Statement `break` and `continue` are
-implemented for Known and Residual loops. A Residual branch that chooses a
-transfer inside an otherwise Known loop is currently rejected explicitly; the
-next residualization layer will lift the enclosing continuation instead of
-silently choosing a stage.
+implemented for Known and Residual loops. Residual transfers inside finite
+Known loops preserve multiple specialized continuations. Runtime-dependent
+cycles are diagnosed as requiring Residual loop state; automatically rebuilding
+such a cycle from the last staging frontier remains to be implemented.
 Registered host implementations are conservatively forbidden beneath
 Residual control, so constructing both branches never executes host side
 effects. A future hermetic-call contract may permit safe native evaluation
