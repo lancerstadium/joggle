@@ -1,8 +1,9 @@
 # Build an extension
 
 A Joggle extension starts with one text Module. C++ is needed only for domain
-checks, interface methods, or a pass that cannot be expressed by contraction
-rules.
+checks, runtime interface behavior, or a compiler function that cannot be
+expressed by contraction rules. Compile-time functions and derived type parameters stay in
+the Module and need no C++.
 
 ## 1. Write the Module
 
@@ -10,22 +11,22 @@ rules.
 joggle 1;
 
 module external@1.0.0 {
-  type scalar(bits: i64);
+  type scalar(bits: int);
 
-  op keep<T: type>(input: T) -> T;
-  op lowered<T: type>(input: T) -> T;
+  fn keep<T: type>(input: T) -> T;
+  fn converted<T: type>(input: T) -> T;
 
-  pass lower;
+  fn convert(input: graph) -> graph;
 
-  graph main(%input: scalar<8>) -> scalar<8> {
-    %output = keep(%input);
-    return %output;
+  fn main(input: scalar<8>) -> scalar<8> {
+    output = keep(input);
+    return output;
   }
 }
 ```
 
-Run `joggle check external.joggle` before writing C++. Types, operation
-contracts, pass references, graph SSA, and result inference are checked from
+Run `joggle check external.joggle` before writing C++. Types, function
+contracts, call references, local dataflow, and result inference are checked from
 this file alone. During multi-Module development, add uninstalled dependencies
 with `--with dependency.joggle`; installation is not required for validation.
 
@@ -38,21 +39,21 @@ namespace {
 
 bool bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
-  const auto keep = module.operation("keep");
-  const auto lowered = module.operation("lowered");
-  const auto lower = module.pass("lower");
-  if (!keep || !lowered || !lower) {
+  const auto keep = module.function("keep");
+  const auto converted = module.function("converted");
+  const auto convert = module.function("convert");
+  if (!keep || !converted || !convert) {
     diagnostics.report("behavior does not match external.joggle");
     return false;
   }
 
-  compiler.bind(*lower, [keep = *keep, lowered = *lowered](
+  compiler.bind(*convert, [keep = *keep, converted = *converted](
       joggle::Graph& graph, joggle::Diagnostics& pass_diagnostics) {
     const auto operations = graph.all_operations();
     auto edit = graph.edit();
     for (const auto& operation : operations) {
       if (operation.schema() == keep) {
-        edit.replace(operation, lowered);
+        edit.replace(operation, converted);
       }
     }
     return edit.commit(pass_diagnostics);
@@ -65,7 +66,7 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
 JOGGLE_EXPORT_BEHAVIOR(bind)
 ```
 
-The pass resolves the declarations it compares once, then edits the same
+The compiler function resolves the declarations it compares once, then edits the same
 `Graph` opened from the text member. Type and interface behavior use the same
 binding form when an extension needs them; the complete cases live in
 [C++ behavior bindings](bindings.md).
@@ -103,14 +104,15 @@ Before installation, the same source and behavior can run as a scriptable
 compiler pipeline:
 
 ```bash
-joggle run external.joggle main lower \
+joggle run external.joggle main convert \
   --behavior build/libexternal_behavior.so \
-  -o lowered.joggle
+  -o converted.joggle
 ```
 
-The first positional member is the graph and each following member is a pass,
+The first positional member is the dataflow function and each following member
+is a compiler function,
 executed in order. Local names are relative to the root Module; qualified names
-select a pass from another explicitly loaded Module. `--with target.joggle`
+select a function from another explicitly loaded Module. `--with target.joggle`
 adds such a Module without turning it into a source import, and
 `--load-behavior target=build/libtarget_behavior.so` attaches its optional
 implementation. The output is a complete canonical derived Module: it imports
@@ -134,7 +136,7 @@ if (!compiler.link()) {
 auto module = compiler.module("external");
 compiler.load_behavior("external");
 auto graph = compiler.graph("external.main");
-compiler.run(*graph, "external.lower");
+compiler.run(*graph, "external.convert");
 
 auto inputs = graph->inputs();
 auto outputs = graph->outputs();

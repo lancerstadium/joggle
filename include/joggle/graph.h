@@ -20,7 +20,6 @@ class Compiler;
 class Graph;
 class Value;
 class Operation;
-class Region;
 class Property;
 
 template <typename T>
@@ -75,14 +74,13 @@ private:
 
   friend class Graph;
   friend class Operation;
-  friend class Region;
   friend struct detail::GraphAccess;
 };
 
 class Operation {
 public:
   bool valid() const;
-  Module::OperationDecl schema() const;
+  Module::FunctionDecl schema() const;
   std::vector<Value> operands() const;
   std::vector<Value> results() const;
   Value value() const;
@@ -93,8 +91,6 @@ public:
     return value ? detail::decode_parameter<T>(*value) : std::nullopt;
   }
 
-  std::vector<Region> regions() const;
-  std::optional<Region> parent() const;
   bool operator==(const Operation&) const = default;
 
 private:
@@ -104,26 +100,6 @@ private:
   std::uint64_t id_ = 0;
 
   friend class Value;
-  friend class Region;
-  friend class Graph;
-  friend struct detail::GraphAccess;
-};
-
-class Region {
-public:
-  bool valid() const;
-  std::vector<Value> arguments() const;
-  std::vector<Operation> operations() const;
-  std::optional<Operation> parent() const;
-  std::string_view parameter() const;
-  bool operator==(const Region&) const = default;
-
-private:
-  Region(std::shared_ptr<detail::GraphIdentity> graph, std::uint64_t id);
-  std::shared_ptr<detail::GraphIdentity> graph_;
-  std::uint64_t id_ = 0;
-
-  friend class Operation;
   friend class Graph;
   friend struct detail::GraphAccess;
 };
@@ -139,50 +115,29 @@ public:
     Edit& operator=(const Edit&) = delete;
 
     Value argument(Type type);
-    Operation append(Module::OperationDecl schema,
+    Operation append(Module::FunctionDecl schema,
                      std::vector<Value> operands = {},
                      std::vector<Type> result_types = {});
     template <typename... Rest>
-    Operation append(Module::OperationDecl schema, std::vector<Value> operands,
+    Operation append(Module::FunctionDecl schema, std::vector<Value> operands,
                      Property first, Rest&&... rest) {
       return append_with_properties(
           std::move(schema), std::move(operands), {},
           collect_properties(std::move(first), std::forward<Rest>(rest)...));
     }
     template <typename... Rest>
-    Operation append(Module::OperationDecl schema, std::vector<Value> operands,
+    Operation append(Module::FunctionDecl schema, std::vector<Value> operands,
                      std::vector<Type> result_types, Property first,
                      Rest&&... rest) {
       return append_with_properties(
           std::move(schema), std::move(operands), std::move(result_types),
           collect_properties(std::move(first), std::forward<Rest>(rest)...));
     }
-    Operation append(Region region, Module::OperationDecl schema,
+    Operation insert(Operation before, Module::FunctionDecl schema,
                      std::vector<Value> operands = {},
                      std::vector<Type> result_types = {});
     template <typename... Rest>
-    Operation append(Region region, Module::OperationDecl schema,
-                     std::vector<Value> operands, Property first,
-                     Rest&&... rest) {
-      return append_with_properties(
-          std::move(region), std::move(schema), std::move(operands), {},
-          collect_properties(std::move(first), std::forward<Rest>(rest)...));
-    }
-    template <typename... Rest>
-    Operation append(Region region, Module::OperationDecl schema,
-                     std::vector<Value> operands,
-                     std::vector<Type> result_types, Property first,
-                     Rest&&... rest) {
-      return append_with_properties(
-          std::move(region), std::move(schema), std::move(operands),
-          std::move(result_types),
-          collect_properties(std::move(first), std::forward<Rest>(rest)...));
-    }
-    Operation insert(Operation before, Module::OperationDecl schema,
-                     std::vector<Value> operands = {},
-                     std::vector<Type> result_types = {});
-    template <typename... Rest>
-    Operation insert(Operation before, Module::OperationDecl schema,
+    Operation insert(Operation before, Module::FunctionDecl schema,
                      std::vector<Value> operands, Property first,
                      Rest&&... rest) {
       return insert_with_properties(
@@ -190,7 +145,7 @@ public:
           collect_properties(std::move(first), std::forward<Rest>(rest)...));
     }
     template <typename... Rest>
-    Operation insert(Operation before, Module::OperationDecl schema,
+    Operation insert(Operation before, Module::FunctionDecl schema,
                      std::vector<Value> operands,
                      std::vector<Type> result_types, Property first,
                      Rest&&... rest) {
@@ -205,11 +160,9 @@ public:
                 detail::encode_parameter(std::forward<T>(value)));
     }
 
-    Region region(Operation operation, std::string parameter,
-                  std::vector<Type> arguments = {});
     void output(Value value);
     void replace(Value from, Value to);
-    Operation replace(Operation operation, Module::OperationDecl schema);
+    Operation replace(Operation operation, Module::FunctionDecl schema);
     void erase(Operation operation);
 
     bool commit(Diagnostics& diagnostics);
@@ -225,22 +178,17 @@ public:
       return {std::move(first), std::forward<Rest>(rest)...};
     }
     Operation append_with_properties(
-        Module::OperationDecl schema, std::vector<Value> operands,
+        Module::FunctionDecl schema, std::vector<Value> operands,
         std::vector<Type> result_types,
         std::vector<Property> properties);
-    Operation append_with_properties(
-        Region region, Module::OperationDecl schema,
-        std::vector<Value> operands, std::vector<Type> result_types,
-        std::vector<Property> properties);
     Operation insert_with_properties(
-        Operation before, Module::OperationDecl schema,
+        Operation before, Module::FunctionDecl schema,
         std::vector<Value> operands, std::vector<Type> result_types,
         std::vector<Property> properties);
-    Operation add(Region region, std::optional<Operation> before,
-                  Module::OperationDecl schema, std::vector<Value> operands,
+    Operation add(std::optional<Operation> before,
+                  Module::FunctionDecl schema, std::vector<Value> operands,
                   std::vector<Type> result_types,
                   std::vector<Property> properties);
-    Value add_argument(Region region, Type type);
     void set_value(Operation operation, std::string name,
                    detail::ParameterValue value);
     std::unique_ptr<detail::GraphEditState> state_;
@@ -270,8 +218,6 @@ private:
                           std::uint64_t id);
   static Operation make_operation(std::shared_ptr<detail::GraphIdentity> graph,
                                   std::uint64_t id);
-  static Region make_region(std::shared_ptr<detail::GraphIdentity> graph,
-                            std::uint64_t id);
   std::shared_ptr<detail::GraphIdentity> graph_;
 
   friend class Compiler;

@@ -16,6 +16,7 @@
 #include <joggle/joggle.h>
 
 #include "graph_internal.h"
+#include "module_internal.h"
 #include "module_repository.h"
 #include "type_internal.h"
 
@@ -329,9 +330,12 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
     return false;
   }
   for (const joggle::Module& loaded : compiler.modules()) {
-    for (const joggle::Module::Symbol& member : loaded.members()) {
-      if (member.kind() == joggle::Module::SymbolKind::Graph &&
-          !compiler.graph(member)) {
+    for (const joggle::Module::FunctionDecl& function : loaded.functions()) {
+      if (function.form() == joggle::Module::FunctionDecl::Form::Body &&
+          joggle::detail::ModuleAccess::expression(function) == nullptr &&
+          (!function.value_inputs().empty() ||
+           !function.value_results().empty()) &&
+          !compiler.graph(function.symbol())) {
         return false;
       }
     }
@@ -373,9 +377,6 @@ void collect_modules(const joggle::detail::ParameterValue& value,
   }
 }
 
-void collect_modules(const joggle::Region& region,
-                     std::set<std::string, std::less<>>& modules);
-
 void collect_modules(const joggle::Operation& operation,
                      std::set<std::string, std::less<>>& modules) {
   modules.emplace(operation.schema().symbol().module_name());
@@ -383,24 +384,11 @@ void collect_modules(const joggle::Operation& operation,
     collect_modules(result.type(), modules);
   }
   for (const joggle::Module::ParameterDecl& parameter :
-       operation.schema().inputs()) {
+       operation.schema().static_inputs()) {
     if (const auto property = joggle::detail::GraphAccess::property(
             operation, parameter.name)) {
       collect_modules(*property, modules);
     }
-  }
-  for (const joggle::Region& nested : operation.regions()) {
-    collect_modules(nested, modules);
-  }
-}
-
-void collect_modules(const joggle::Region& region,
-                     std::set<std::string, std::less<>>& modules) {
-  for (const joggle::Value& argument : region.arguments()) {
-    collect_modules(argument.type(), modules);
-  }
-  for (const joggle::Operation& operation : region.operations()) {
-    collect_modules(operation, modules);
   }
 }
 
@@ -586,7 +574,7 @@ int main(int argc, char** argv) {
     const auto root_members = root->members();
     const bool already_derived =
         artifact_name.ends_with("_compiled") && root_members.size() == 1U &&
-        root_members.front().kind() == joggle::Module::SymbolKind::Graph &&
+        root_members.front().kind() == joggle::Module::SymbolKind::Function &&
         root_members.front().local_name() == graph_member &&
         !dependencies.contains(artifact_name);
     if (!already_derived) {

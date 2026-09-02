@@ -1,0 +1,17 @@
+joggle 1;
+
+module arith@1.0.0 {
+  interface elementwise: fn;
+  interface commutative: fn;
+
+  fn constant<T: prelude.scalar>(value: attr) -> T;
+  fn cast<From: prelude.scalar, To: prelude.scalar>(input: From) -> To : elementwise;
+  fn add<T: prelude.scalar>(lhs: T, rhs: T) -> T as + : elementwise, commutative;
+  fn sub<T: prelude.scalar>(lhs: T, rhs: T) -> T as - : elementwise;
+  fn mul<T: prelude.scalar>(lhs: T, rhs: T) -> T as * : elementwise, commutative;
+  fn div<T: prelude.scalar>(lhs: T, rhs: T) -> T as / : elementwise;
+  fn min<T: prelude.scalar>(lhs: T, rhs: T) -> T : elementwise, commutative;
+  fn max<T: prelude.scalar>(lhs: T, rhs: T) -> T : elementwise, commutative;
+  fn compare<T: prelude.scalar>(lhs: T, rhs: T, predicate: string) -> i1 : elementwise;
+  fn select<T: type>(condition: i1, true_value: T, false_value: T) -> T : elementwise;
+}

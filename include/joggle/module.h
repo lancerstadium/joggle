@@ -8,7 +8,7 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <variant>
+#include <utility>
 #include <vector>
 
 #include "joggle/diagnostic.h"
@@ -17,7 +17,7 @@ namespace joggle {
 
 namespace detail {
 struct ModuleAccess;
-struct OperationTypeAccess;
+struct FunctionTypeAccess;
 }  // namespace detail
 
 class Compiler;
@@ -44,34 +44,68 @@ class Module {
   struct Storage;
 
 public:
-  enum class ParameterKind {
-    I64,
-    F64,
-    Boolean,
-    String,
-    Type,
-    Attribute,
-    Value,
-    Region,
+  // Immutable declaration expression. The parser, formatter, linker, and type
+  // solver all use this representation; operation ports do not keep a second
+  // private spelling of their types.
+  struct Expression {
+    enum class Kind {
+      Number,
+      Boolean,
+      String,
+      List,
+      Reference,
+      Variable,
+      Call,
+      If,
+      Evaluate,
+      Prefix,
+      Infix,
+      Postfix,
+    };
+
+    Kind kind = Kind::Number;
+    std::string text;
+    std::vector<Expression> arguments;
+    // Empty entries are positional. A non-empty entry labels the argument at
+    // the same index. Labels belong to calls; other expression kinds leave
+    // this vector empty.
+    std::vector<std::string> labels;
+
+    Expression() = default;
+    Expression(Kind kind, std::string text,
+               std::vector<Expression> arguments,
+               std::vector<std::string> labels = {})
+        : kind(kind), text(std::move(text)),
+          arguments(std::move(arguments)), labels(std::move(labels)) {}
+
+    static Expression reference(std::string name) {
+      return {Kind::Reference, std::move(name), {}};
+    }
+
+    static Expression list_domain(Expression element) {
+      return {Kind::Reference, "list", {std::move(element)}};
+    }
+
+    bool operator==(const Expression&) const = default;
   };
 
-  using Literal = std::variant<std::int64_t, double, bool, std::string>;
-
   struct ParameterDecl {
+    enum class Kind { Static, Value };
+
     std::string name;
-    ParameterKind kind = ParameterKind::I64;
-    bool list = false;
+    Expression domain = Expression::reference("int");
     bool variadic = false;
-    std::optional<Literal> default_value;
+    std::optional<Expression> default_value;
+    Kind kind = Kind::Static;
+
+    bool operator==(const ParameterDecl&) const = default;
   };
 
   enum class SymbolKind {
     Interface,
     Type,
     Attribute,
-    Operation,
-    Pass,
-    Graph,
+    Function,
   };
 
   class Symbol {
@@ -88,20 +122,21 @@ public:
 
   private:
     Symbol(std::string module_name, Version module_version,
-           std::string module_digest, SymbolKind kind, std::string local_name);
+           std::string module_digest, SymbolKind kind, std::string local_name,
+           std::string discriminator = {});
 
     std::string module_name_;
     Version module_version_;
     std::string module_digest_;
     SymbolKind kind_ = SymbolKind::Type;
     std::string local_name_;
+    std::string discriminator_;
 
     friend class Module;
     friend class InterfaceDecl;
     friend class TypeDecl;
     friend class AttributeDecl;
-    friend class OperationDecl;
-    friend class PassDecl;
+    friend class FunctionDecl;
   };
 
   class InterfaceDecl {
@@ -109,9 +144,8 @@ public:
     class MethodDecl {
     public:
       std::string_view name() const;
-      std::span<const ParameterDecl> parameters() const;
-      ParameterKind result_kind() const;
-      bool result_is_list() const;
+      std::span<const ParameterDecl> inputs() const;
+      std::span<const ParameterDecl> results() const;
       InterfaceDecl owner() const;
       std::string qualified_name() const;
       std::string stable_name() const;
@@ -128,6 +162,10 @@ public:
 
     std::string_view name() const;
     SymbolKind subject() const;
+    // Type interfaces expose compile-time fields. Their values are supplied
+    // declaratively by conforming type declarations and participate in type
+    // construction; they are not dynamically dispatched methods.
+    std::span<const ParameterDecl> fields() const;
     std::optional<MethodDecl> method(std::string_view name) const;
     std::vector<MethodDecl> methods() const;
     Symbol symbol() const;
@@ -142,8 +180,16 @@ public:
 
   class TypeDecl {
   public:
+    struct DerivedParameterDecl {
+      std::string name;
+      Expression value;
+
+      bool operator==(const DerivedParameterDecl&) const = default;
+    };
+
     std::string_view name() const;
     std::span<const ParameterDecl> parameters() const;
+    std::span<const DerivedParameterDecl> derived_parameters() const;
     std::span<const std::string> interfaces() const;
     Symbol symbol() const;
     bool operator==(const TypeDecl& other) const;
@@ -170,39 +216,45 @@ public:
     friend class Module;
   };
 
-  class OperationDecl {
+  class FunctionDecl {
   public:
+    // A function is either declared by the environment or defined by one
+    // body. Whether that body evaluates, residualizes, or performs a rewrite
+    // is not a declaration kind.
+    enum class Form { External, Body };
+    enum class Fixity { Prefix, Infix, Postfix };
+
+    struct GenericDecl {
+      std::string name;
+      Expression domain = Expression::reference("type");
+      std::optional<std::string> constraint;
+
+      bool operator==(const GenericDecl&) const = default;
+    };
+
     std::string_view name() const;
+    std::span<const GenericDecl> generics() const;
     std::span<const ParameterDecl> inputs() const;
     std::span<const ParameterDecl> results() const;
+    std::vector<ParameterDecl> static_inputs() const;
+    std::vector<ParameterDecl> value_inputs() const;
+    std::vector<ParameterDecl> static_results() const;
+    std::vector<ParameterDecl> value_results() const;
     std::span<const std::string> interfaces() const;
-    Symbol symbol() const;
-    bool operator==(const OperationDecl& other) const;
-
-  private:
-    OperationDecl(std::shared_ptr<const Storage> storage, std::size_t index);
-    std::shared_ptr<const Storage> storage_;
-    std::size_t index_ = 0;
-    friend class Module;
-    friend struct detail::OperationTypeAccess;
-  };
-
-  class PassDecl {
-  public:
-    enum class Form { External, Rules, Sequence };
-
-    std::string_view name() const;
+    std::optional<std::string_view> operator_symbol() const;
+    std::optional<Fixity> operator_fixity() const;
     Form form() const;
-    std::span<const std::string> steps() const;
+    std::string signature() const;
     Symbol symbol() const;
-    bool operator==(const PassDecl& other) const;
+    bool operator==(const FunctionDecl& other) const;
 
   private:
-    PassDecl(std::shared_ptr<const Storage> storage, std::size_t index);
+    FunctionDecl(std::shared_ptr<const Storage> storage, std::size_t index);
     std::shared_ptr<const Storage> storage_;
     std::size_t index_ = 0;
     friend class Module;
     friend struct detail::ModuleAccess;
+    friend struct detail::FunctionTypeAccess;
   };
 
   struct Import {
@@ -223,15 +275,14 @@ public:
   std::optional<InterfaceDecl> interface(std::string_view name) const;
   std::optional<TypeDecl> type(std::string_view name) const;
   std::optional<AttributeDecl> attribute(std::string_view name) const;
-  std::optional<OperationDecl> operation(std::string_view name) const;
-  std::optional<PassDecl> pass(std::string_view name) const;
+  std::optional<FunctionDecl> function(std::string_view name) const;
+  std::vector<FunctionDecl> overloads(std::string_view name) const;
   std::optional<Symbol> symbol(SymbolKind kind, std::string_view name) const;
   std::vector<Symbol> members() const;
   std::vector<InterfaceDecl> interfaces() const;
   std::vector<TypeDecl> types() const;
   std::vector<AttributeDecl> attributes() const;
-  std::vector<OperationDecl> operations() const;
-  std::vector<PassDecl> passes() const;
+  std::vector<FunctionDecl> functions() const;
   bool operator==(const Module& other) const;
 
 private:

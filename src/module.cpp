@@ -1,5 +1,8 @@
 #include "joggle/module.h"
 
+#include "domain.h"
+#include "expression_syntax.h"
+#include "prelude.h"
 #include "graph_member.h"
 #include "module_internal.h"
 #include "sha256.h"
@@ -8,7 +11,6 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
-#include <iomanip>
 #include <limits>
 #include <locale>
 #include <sstream>
@@ -22,14 +24,14 @@ namespace detail {
 
 struct MethodDefinition {
   std::string name;
-  std::vector<Module::ParameterDecl> parameters;
-  Module::ParameterKind result_kind = Module::ParameterKind::I64;
-  bool result_list = false;
+  std::vector<Module::ParameterDecl> inputs;
+  std::vector<Module::ParameterDecl> results;
 };
 
 struct InterfaceDefinition {
   std::string name;
   Module::SymbolKind subject = Module::SymbolKind::Type;
+  std::vector<Module::ParameterDecl> fields;
   std::vector<MethodDefinition> methods;
   std::optional<SourceRange> source;
 };
@@ -38,6 +40,7 @@ struct TypeDefinition {
   std::string name;
   std::vector<Module::ParameterDecl> parameters;
   std::vector<std::string> interfaces;
+  std::vector<Module::TypeDecl::DerivedParameterDecl> derived_parameters;
   std::optional<SourceRange> source;
 };
 
@@ -48,20 +51,16 @@ struct AttributeDefinition {
   std::optional<SourceRange> source;
 };
 
-struct OperationDefinition {
+struct FunctionDefinition {
   std::string name;
+  std::vector<Module::FunctionDecl::GenericDecl> generics;
   std::vector<Module::ParameterDecl> inputs;
   std::vector<Module::ParameterDecl> results;
-  OperationTypeContract types;
+  FunctionTypeContract types;
   std::vector<std::string> interfaces;
-  std::optional<SourceRange> source;
-};
-
-struct PassDefinition {
-  std::string name;
-  Module::PassDecl::Form form = Module::PassDecl::Form::External;
-  std::vector<RuleDefinition> rules;
-  std::vector<std::string> steps;
+  std::optional<std::string> operator_symbol;
+  std::optional<Module::FunctionDecl::Fixity> operator_fixity;
+  std::optional<FunctionBody> body;
   std::optional<SourceRange> source;
 };
 
@@ -76,27 +75,23 @@ struct Module::Storage {
   std::vector<detail::InterfaceDefinition> interfaces;
   std::vector<detail::TypeDefinition> types;
   std::vector<detail::AttributeDefinition> attributes;
-  std::vector<detail::OperationDefinition> operations;
-  std::vector<detail::PassDefinition> passes;
-  std::vector<detail::GraphSyntax> graphs;
+  std::vector<detail::FunctionDefinition> functions;
 };
 
 namespace {
 
 using Parameter = Module::ParameterDecl;
-using ParameterKind = Module::ParameterKind;
-using Literal = Module::Literal;
+using ValueKind = detail::ValueKind;
 
 struct ParsedModule {
   using InterfaceDefinition = detail::InterfaceDefinition;
   using TypeDefinition = detail::TypeDefinition;
   using AttributeDefinition = detail::AttributeDefinition;
-  using OperationDefinition = detail::OperationDefinition;
+  using FunctionDefinition = detail::FunctionDefinition;
   using TypeExpression = detail::TypeExpression;
   using GenericDefinition = detail::GenericDefinition;
   using TermDefinition = detail::TermDefinition;
   using RuleDefinition = detail::RuleDefinition;
-  using PassDefinition = detail::PassDefinition;
 
   std::string name;
   Version version;
@@ -105,14 +100,24 @@ struct ParsedModule {
   std::vector<InterfaceDefinition> interfaces;
   std::vector<TypeDefinition> types;
   std::vector<AttributeDefinition> attributes;
-  std::vector<OperationDefinition> operations;
-  std::vector<PassDefinition> passes;
-  std::vector<detail::GraphSyntax> graphs;
+  std::vector<FunctionDefinition> functions;
 };
 
 using TokenKind = detail::TokenKind;
 using Token = detail::Token;
 using Lexer = detail::Lexer;
+
+const Module::Expression*
+body_expression(const std::optional<detail::FunctionBody>& body) {
+  if (!body || body->blocks.size() != 1U ||
+      !body->blocks.front().instructions.empty() ||
+      body->blocks.front().terminator.kind !=
+          detail::TerminatorSyntax::Kind::Return ||
+      body->blocks.front().terminator.values.size() != 1U) {
+    return nullptr;
+  }
+  return &body->blocks.front().terminator.values.front().value;
+}
 
 class Parser {
 public:
@@ -151,14 +156,10 @@ public:
         parse_type();
       } else if (match_name("attr")) {
         parse_attribute();
-      } else if (match_name("op")) {
-        parse_operation();
-      } else if (match_name("pass")) {
-        parse_pass();
-      } else if (is_name("graph")) {
-        parse_graph();
+      } else if (is_name("fn")) {
+        parse_function();
       } else {
-        error("expected import, interface, type, attr, op, pass, or graph");
+        error("expected import, interface, type, attr, or fn");
       }
     }
     expect(TokenKind::RightBrace, "'}'");
@@ -168,8 +169,8 @@ public:
     validate();
 
     if (!ok()) {
-      for (Diagnostic& diagnostic : diagnostics_) {
-        output.report(std::move(diagnostic));
+      for (const Diagnostic& diagnostic : diagnostics_.entries()) {
+        output.report(diagnostic);
       }
       return std::nullopt;
     }
@@ -177,7 +178,7 @@ public:
   }
 
 private:
-  bool ok() const { return diagnostics_.empty(); }
+  bool ok() const { return diagnostics_.ok(); }
   bool is(TokenKind kind) const { return current_.kind == kind; }
   bool is_name(std::string_view name) const {
     return is(TokenKind::Name) && current_.text == name;
@@ -238,6 +239,30 @@ private:
       return std::nullopt;
     }
     return *first + "." + *second;
+  }
+
+  std::optional<std::string> operator_symbol() {
+    const auto is_symbol = [this] {
+      return is(TokenKind::Equal) || is(TokenKind::Less) ||
+             is(TokenKind::Greater) || is(TokenKind::Plus) ||
+             is(TokenKind::Minus) || is(TokenKind::Star) ||
+             is(TokenKind::Slash) || is(TokenKind::Caret) ||
+             is(TokenKind::Pipe) || is(TokenKind::Operator);
+    };
+    if (is_symbol()) {
+      std::string result;
+      do {
+        result += current_.text;
+        const SourcePosition end = current_.end;
+        advance();
+        if (current_.begin != end) {
+          break;
+        }
+      } while (is_symbol());
+      return result;
+    }
+    error("expected an operator symbol");
+    return std::nullopt;
   }
 
   std::optional<std::size_t> pass_term(ParsedModule::RuleDefinition& rule) {
@@ -367,38 +392,36 @@ private:
     return value <= std::numeric_limits<std::uint32_t>::max();
   }
 
-  std::optional<ParameterKind> scalar_parameter_kind() {
-    if (match_name("i64")) {
-      return ParameterKind::I64;
+  std::optional<ValueKind> scalar_parameter_kind() {
+    if (match_name("int")) {
+      return ValueKind::Integer;
     }
-    if (match_name("f64")) {
-      return ParameterKind::F64;
+    if (match_name("real")) {
+      return ValueKind::Real;
     }
     if (match_name("bool")) {
-      return ParameterKind::Boolean;
+      return ValueKind::Boolean;
     }
     if (match_name("string")) {
-      return ParameterKind::String;
+      return ValueKind::String;
     }
     if (match_name("type")) {
-      return ParameterKind::Type;
+      return ValueKind::Type;
     }
     if (match_name("attr")) {
-      return ParameterKind::Attribute;
+      return ValueKind::Attribute;
     }
-    if (match_name("region")) {
-      return ParameterKind::Region;
+    if (match_name("graph")) {
+      return ValueKind::Graph;
     }
-    error("expected a parameter kind");
+    if (match_name("bytes")) {
+      return ValueKind::Bytes;
+    }
+    error("expected a parameter domain");
     return std::nullopt;
   }
 
-  struct ParsedParameterKind {
-    ParameterKind kind = ParameterKind::I64;
-    bool list = false;
-  };
-
-  std::optional<ParsedParameterKind> parameter_kind() {
+  std::optional<detail::Domain> parameter_domain() {
     const bool list = match_name("list");
     if (list) {
       expect(TokenKind::Less, "'<'");
@@ -410,45 +433,43 @@ private:
     if (!kind) {
       return std::nullopt;
     }
-    if (list &&
-        (*kind == ParameterKind::Value || *kind == ParameterKind::Region)) {
-      error("list elements cannot be value or region");
-    }
-    return ParsedParameterKind{*kind, list};
+    return detail::Domain{*kind, list};
   }
 
-  std::optional<Literal> literal(ParameterKind kind) {
-    if (kind == ParameterKind::Boolean) {
+  std::optional<ParsedModule::TypeExpression> literal(ValueKind kind) {
+    using Expression = ParsedModule::TypeExpression;
+    if (kind == ValueKind::Boolean) {
       if (match_name("true")) {
-        return Literal{true};
+        return Expression{Expression::Kind::Boolean, "true", {}};
       }
       if (match_name("false")) {
-        return Literal{false};
+        return Expression{Expression::Kind::Boolean, "false", {}};
       }
       error("expected true or false");
       return std::nullopt;
     }
-    if (kind == ParameterKind::String) {
+    if (kind == ValueKind::String) {
       if (!is(TokenKind::String)) {
         error("expected a string literal");
         return std::nullopt;
       }
       std::string value = current_.text;
       advance();
-      return Literal{std::move(value)};
+      return Expression{Expression::Kind::String, std::move(value), {}};
     }
-    if (kind != ParameterKind::I64 && kind != ParameterKind::F64) {
-      error("this parameter kind cannot have a default value");
+    if (kind != ValueKind::Integer && kind != ValueKind::Real) {
+      error("this parameter domain cannot have a default value");
       return std::nullopt;
     }
 
+    const bool negative = match(TokenKind::Minus);
     if (!is(TokenKind::Integer) && !is(TokenKind::Number)) {
       error("expected a numeric literal");
       return std::nullopt;
     }
-    const std::string text = current_.text;
+    const std::string text = negative ? "-" + current_.text : current_.text;
     advance();
-    if (kind == ParameterKind::I64) {
+    if (kind == ValueKind::Integer) {
       std::int64_t value = 0;
       const char* begin = text.data();
       const char* end = begin + text.size();
@@ -457,7 +478,7 @@ private:
         error("integer default is outside int64 range");
         return std::nullopt;
       }
-      return Literal{value};
+      return Expression{Expression::Kind::Number, std::to_string(value), {}};
     }
 
     std::istringstream stream(text);
@@ -468,23 +489,25 @@ private:
       error("invalid floating-point default");
       return std::nullopt;
     }
-    return Literal{value};
-  }
-
-  std::optional<Parameter> parameter(bool allow_graph_kinds,
-                                     bool allow_variadic, bool allow_default) {
-    auto parameter_name = name("a parameter name");
-    expect(TokenKind::Colon, "':'");
-    auto kind = parameter_kind();
-    if (!parameter_name || !kind) {
+    const auto canonical = detail::canonical_real(value);
+    if (!canonical) {
+      error("floating-point default cannot be formatted canonically");
       return std::nullopt;
     }
-    if (!allow_graph_kinds && (kind->kind == ParameterKind::Value ||
-                               kind->kind == ParameterKind::Region)) {
-      error("value and region are only valid in operation signatures");
+    return Expression{Expression::Kind::Number, *canonical, {}};
+  }
+
+  std::optional<Parameter> parameter(bool allow_variadic,
+                                     bool allow_default) {
+    auto parameter_name = name("a parameter name");
+    expect(TokenKind::Colon, "':'");
+    auto domain = parameter_domain();
+    if (!parameter_name || !domain) {
+      return std::nullopt;
     }
-    Parameter result{std::move(*parameter_name), kind->kind, kind->list, false,
-                     std::nullopt};
+    Parameter result{std::move(*parameter_name),
+                     detail::domain_expression(domain->element, domain->list),
+                     false, std::nullopt};
     if (match(TokenKind::Ellipsis)) {
       if (!allow_variadic) {
         error("this parameter cannot be variadic");
@@ -495,24 +518,23 @@ private:
       if (!allow_default || result.variadic) {
         error("this parameter cannot have a default value");
       }
-      if (kind->list) {
+      if (domain->list) {
         error("list parameters cannot have default values");
       } else {
-        result.default_value = literal(kind->kind);
+        result.default_value = literal(domain->element);
       }
     }
     return result;
   }
 
-  std::vector<Parameter> parameters(bool allow_graph_kinds, bool allow_variadic,
-                                    bool allow_default) {
+  std::vector<Parameter> parameters(bool allow_variadic, bool allow_default) {
     std::vector<Parameter> result;
     expect(TokenKind::LeftParen, "'('");
     if (match(TokenKind::RightParen)) {
       return result;
     }
     do {
-      auto item = parameter(allow_graph_kinds, allow_variadic, allow_default);
+      auto item = parameter(allow_variadic, allow_default);
       if (item) {
         result.push_back(std::move(*item));
       }
@@ -530,13 +552,23 @@ private:
       do {
         auto generic_name = name("a type variable name");
         expect(TokenKind::Colon, "':'");
-        auto kind = parameter_kind();
-        if (kind && (kind->kind == ParameterKind::Value ||
-                     kind->kind == ParameterKind::Region)) {
-          error("operation type variables cannot have kind value or region");
+        std::optional<detail::Domain> domain;
+        std::optional<std::string> constraint;
+        const bool is_parameter_domain =
+            is_name("int") || is_name("real") || is_name("bool") ||
+            is_name("string") || is_name("type") || is_name("attr") ||
+            is_name("graph") || is_name("bytes") || is_name("list");
+        if (is_parameter_domain) {
+          domain = parameter_domain();
+        } else {
+          constraint = reference("a generic kind or type interface");
+          domain = detail::Domain{ValueKind::Type, false};
         }
-        if (generic_name && kind) {
-          result.push_back({std::move(*generic_name), kind->kind, kind->list});
+        if (generic_name && domain) {
+          result.push_back(
+              {std::move(*generic_name),
+               detail::domain_expression(domain->element, domain->list),
+               std::move(constraint)});
         }
       } while (match(TokenKind::Comma));
       expect(TokenKind::Greater, "'>'");
@@ -553,123 +585,29 @@ private:
     return found == generics.end() ? nullptr : &*found;
   }
 
-  ParsedModule::TypeExpression
-  type_expression(std::span<const ParsedModule::GenericDefinition> generics) {
-    ParsedModule::TypeExpression result;
-    if (is(TokenKind::Integer) || is(TokenKind::Number)) {
-      result.kind = ParsedModule::TypeExpression::Kind::Number;
-      result.text = current_.text;
-      advance();
-      return result;
+  Parameter::Kind signature_kind(
+      const ParsedModule::TypeExpression& annotation,
+      std::span<const ParsedModule::GenericDefinition> generics) const {
+    if (detail::kernel_domain(annotation)) {
+      return Parameter::Kind::Static;
     }
-    if (is(TokenKind::String)) {
-      result.kind = ParsedModule::TypeExpression::Kind::String;
-      result.text = current_.text;
-      advance();
-      return result;
-    }
-    if (is_name("true") || is_name("false")) {
-      result.kind = ParsedModule::TypeExpression::Kind::Boolean;
-      result.text = current_.text;
-      advance();
-      return result;
-    }
-    if (match(TokenKind::LeftBracket)) {
-      result.kind = ParsedModule::TypeExpression::Kind::List;
-      if (!match(TokenKind::RightBracket)) {
-        do {
-          result.arguments.push_back(type_expression(generics));
-        } while (match(TokenKind::Comma));
-        expect(TokenKind::RightBracket, "']'");
-      }
-      return result;
-    }
-    auto symbol = reference("a type expression");
-    if (!symbol) {
-      return result;
-    }
-    if (symbol->find('.') == std::string::npos &&
-        operation_generic(generics, *symbol) != nullptr &&
-        !is(TokenKind::Less)) {
-      result.kind = ParsedModule::TypeExpression::Kind::Variable;
-      result.text = std::move(*symbol);
-      return result;
-    }
-    result.kind = ParsedModule::TypeExpression::Kind::Reference;
-    result.text = std::move(*symbol);
-    if (match(TokenKind::Less)) {
-      if (!match(TokenKind::Greater)) {
-        do {
-          result.arguments.push_back(type_expression(generics));
-        } while (match(TokenKind::Comma));
-        expect(TokenKind::Greater, "'>'");
+    if (annotation.kind == ParsedModule::TypeExpression::Kind::Variable) {
+      const auto* generic = operation_generic(generics, annotation.text);
+      const auto domain = generic == nullptr
+                              ? std::optional<detail::Domain>{}
+                              : detail::kernel_domain(generic->domain);
+      if (domain && domain->element != ValueKind::Type) {
+        return Parameter::Kind::Static;
       }
     }
-    return result;
+    return Parameter::Kind::Value;
   }
 
-  std::pair<Parameter, std::optional<ParsedModule::TypeExpression>>
-  operation_input(std::span<const ParsedModule::GenericDefinition> generics) {
-    auto parameter_name = name("an operation parameter name");
-    expect(TokenKind::Colon, "':'");
-    Parameter parameter;
-    if (parameter_name) {
-      parameter.name = std::move(*parameter_name);
-    }
-
-    const auto* generic =
-        is(TokenKind::Name) ? operation_generic(generics, current_.text)
-                            : nullptr;
-    const bool generic_property =
-        generic != nullptr && generic->kind != ParameterKind::Type;
-    const bool builtin = is_name("i64") || is_name("f64") || is_name("bool") ||
-                         is_name("string") || is_name("type") ||
-                         is_name("attr") || is_name("region") ||
-                         is_name("list");
-    std::optional<ParsedModule::TypeExpression> value_type;
-    if (generic_property) {
-      parameter.kind = generic->kind;
-      parameter.list = generic->list;
-      value_type = type_expression(generics);
-    } else if (builtin) {
-      auto kind = parameter_kind();
-      if (kind) {
-        parameter.kind = kind->kind;
-        parameter.list = kind->list;
-      }
-    } else {
-      parameter.kind = ParameterKind::Value;
-      value_type = type_expression(generics);
-    }
-
-    if (match(TokenKind::Ellipsis)) {
-      parameter.variadic = true;
-    }
-    if (match(TokenKind::Equal)) {
-      if (parameter.kind == ParameterKind::Value ||
-          parameter.kind == ParameterKind::Region || parameter.variadic ||
-          parameter.list) {
-        error("this operation parameter cannot have a default value");
-      } else {
-        parameter.default_value = literal(parameter.kind);
-      }
-    }
-    return {std::move(parameter), std::move(value_type)};
-  }
-
-  void operation_inputs(
+  ParsedModule::TypeExpression type_expression(
       std::span<const ParsedModule::GenericDefinition> generics,
-      std::vector<Parameter>& parameters,
-      std::vector<std::optional<ParsedModule::TypeExpression>>& types) {
-    expect(TokenKind::LeftParen, "'('");
-    if (!match(TokenKind::RightParen)) {
-      do {
-        auto [parameter, type] = operation_input(generics);
-        parameters.push_back(std::move(parameter));
-        types.push_back(std::move(type));
-      } while (match(TokenKind::Comma));
-      expect(TokenKind::RightParen, "')'");
-    }
+      int minimum_precedence = 0) {
+    return detail::parse_expression(lexer_, current_, diagnostics_, source_,
+                                    generics, minimum_precedence);
   }
 
   std::vector<ParsedModule::TypeExpression>
@@ -730,10 +668,10 @@ private:
       subject = Module::SymbolKind::Type;
     } else if (match_name("attr")) {
       subject = Module::SymbolKind::Attribute;
-    } else if (match_name("op")) {
-      subject = Module::SymbolKind::Operation;
+    } else if (match_name("fn")) {
+      subject = Module::SymbolKind::Function;
     } else {
-      error("expected type, attr, or op after interface ':'");
+      error("expected type, attr, or fn after interface ':'");
     }
 
     ParsedModule::InterfaceDefinition definition;
@@ -753,19 +691,31 @@ private:
 
     expect(TokenKind::LeftBrace, "'{'");
     while (!is(TokenKind::RightBrace) && ok()) {
-      auto method_name = name("a method name");
-      auto method_parameters = parameters(false, false, false);
-      expect(TokenKind::Arrow, "'->'");
-      auto result = parameter_kind();
-      expect(TokenKind::Semicolon, "';'");
-      if (result && (result->kind == ParameterKind::Value ||
-                     result->kind == ParameterKind::Region)) {
-        error("interface methods cannot return value or region");
-      }
-      if (method_name && result) {
-        definition.methods.push_back({std::move(*method_name),
-                                      std::move(method_parameters),
-                                      result->kind, result->list});
+      if (definition.subject == Module::SymbolKind::Type) {
+        auto field_name = name("a field name");
+        expect(TokenKind::Colon, "':'");
+        auto field_domain = parameter_domain();
+        expect(TokenKind::Semicolon, "';'");
+        if (field_name && field_domain) {
+          definition.fields.push_back(
+              {std::move(*field_name),
+               detail::domain_expression(field_domain->element,
+                                         field_domain->list),
+               false, std::nullopt});
+        }
+      } else {
+        auto method_name = name("a method name");
+        auto method_parameters = parameters(false, false);
+        expect(TokenKind::Arrow, "'->'");
+        auto result = parameter_domain();
+        expect(TokenKind::Semicolon, "';'");
+        if (method_name && result) {
+          definition.methods.push_back(
+              {std::move(*method_name), std::move(method_parameters),
+               {{"result",
+                 detail::domain_expression(result->element, result->list),
+                 false, std::nullopt}}});
+        }
       }
     }
     expect(TokenKind::RightBrace, "'}'");
@@ -778,20 +728,41 @@ private:
   void parse_type() {
     const SourcePosition begin = current_.begin;
     auto definition_name = name("a type name");
-    auto definition_parameters = parameters(false, false, true);
+    auto definition_parameters = parameters(false, true);
     auto interfaces = interface_list();
-    expect(TokenKind::Semicolon, "';'");
+    std::vector<Module::TypeDecl::DerivedParameterDecl> derived_parameters;
+    if (!match(TokenKind::Semicolon)) {
+      expect(TokenKind::LeftBrace, "'{'");
+      while (!is(TokenKind::RightBrace) && ok()) {
+        auto field = name("a derived parameter name");
+        expect(TokenKind::Equal, "'='");
+        std::vector<ParsedModule::GenericDefinition> variables;
+        variables.reserve(definition_parameters.size());
+        for (const auto& parameter : definition_parameters) {
+          variables.push_back(
+              {parameter.name, parameter.domain, std::nullopt});
+        }
+        auto body = type_expression(variables);
+        expect(TokenKind::Semicolon, "';'");
+        if (field) {
+          derived_parameters.push_back(
+              {std::move(*field), std::move(body)});
+        }
+      }
+      expect(TokenKind::RightBrace, "'}'");
+    }
     if (definition_name) {
       module_.types.push_back(
           {std::move(*definition_name), std::move(definition_parameters),
-           std::move(interfaces), SourceRange{source_, begin, current_.begin}});
+           std::move(interfaces), std::move(derived_parameters),
+           SourceRange{source_, begin, current_.begin}});
     }
   }
 
   void parse_attribute() {
     const SourcePosition begin = current_.begin;
     auto definition_name = name("an attribute name");
-    auto definition_parameters = parameters(false, false, true);
+    auto definition_parameters = parameters(false, true);
     auto interfaces = interface_list();
     expect(TokenKind::Semicolon, "';'");
     if (definition_name) {
@@ -801,101 +772,197 @@ private:
     }
   }
 
-  void parse_operation() {
+  void parse_function() {
     const SourcePosition begin = current_.begin;
-    auto definition_name = name("an operation name");
+
+    std::optional<std::string> declared_operator;
+    std::optional<Module::FunctionDecl::Fixity> declared_fixity;
+    expect_name("fn");
+    auto function_name = name("a function name");
     auto generics = operation_generics();
     std::vector<Parameter> inputs;
-    std::vector<std::optional<ParsedModule::TypeExpression>> input_types;
-    operation_inputs(generics, inputs, input_types);
+    std::vector<std::optional<ParsedModule::TypeExpression>> input_bindings;
+    expect(TokenKind::LeftParen, "'('");
+    if (!match(TokenKind::RightParen)) {
+      do {
+        auto input_name = name("a parameter name");
+        expect(TokenKind::Colon, "':'");
+        Parameter input;
+        if (input_name) {
+          input.name = std::move(*input_name);
+        }
+        input.domain = type_expression(generics);
+        input.kind = signature_kind(input.domain, generics);
+        std::optional<ParsedModule::TypeExpression> binding;
+        if (input.kind == Parameter::Kind::Static &&
+            !detail::kernel_domain(input.domain)) {
+          const auto* generic =
+              input.domain.kind == ParsedModule::TypeExpression::Kind::Variable
+                  ? operation_generic(generics, input.domain.text)
+                  : nullptr;
+          if (generic == nullptr) {
+            error("a compile-time parameter annotation must name its domain "
+                  "or a compatible generic");
+          } else {
+            binding = input.domain;
+            input.domain = generic->domain;
+          }
+        }
+        if (match(TokenKind::Ellipsis)) {
+          input.variadic = true;
+        }
+        if (match(TokenKind::Equal)) {
+          const auto domain = detail::kernel_domain(input.domain);
+          if (input.kind != Parameter::Kind::Static || !domain ||
+              domain->list || domain->element == ValueKind::Graph ||
+              domain->element == ValueKind::Bytes || input.variadic) {
+            error("this parameter cannot have a default value");
+          } else {
+            input.default_value = literal(domain->element);
+          }
+        }
+        inputs.push_back(std::move(input));
+        input_bindings.push_back(std::move(binding));
+      } while (match(TokenKind::Comma));
+      expect(TokenKind::RightParen, "')'");
+    }
+
     std::vector<ParsedModule::TypeExpression> result_types;
     if (match(TokenKind::Arrow)) {
       result_types = operation_results(generics);
     }
-    std::vector<Parameter> results;
-    results.reserve(result_types.size());
-    for (std::size_t index = 0; index < result_types.size(); ++index) {
-      results.push_back({result_types.size() == 1U
-                             ? "result"
-                             : "result" + std::to_string(index),
-                         ParameterKind::Value, false, false, std::nullopt});
+    if (match_name("as")) {
+      if (match_name("prefix")) {
+        declared_fixity = Module::FunctionDecl::Fixity::Prefix;
+      } else if (match_name("infix")) {
+        declared_fixity = Module::FunctionDecl::Fixity::Infix;
+      } else if (match_name("postfix")) {
+        declared_fixity = Module::FunctionDecl::Fixity::Postfix;
+      }
+      declared_operator = operator_symbol();
     }
+    auto interfaces = interface_list();
 
-    ParsedModule::OperationDefinition definition;
-    if (definition_name) {
-      definition.name = std::move(*definition_name);
+    ParsedModule::FunctionDefinition definition;
+    if (function_name) {
+      definition.name = std::move(*function_name);
     }
-    definition.inputs = std::move(inputs);
-    definition.results = std::move(results);
+    definition.generics = generics;
     definition.types.generics = std::move(generics);
-    definition.types.inputs = std::move(input_types);
-    definition.types.results = std::move(result_types);
-    definition.interfaces = interface_list();
-    expect(TokenKind::Semicolon, "';'");
-    if (!definition.name.empty()) {
-      definition.source = SourceRange{source_, begin, current_.begin};
-      module_.operations.push_back(std::move(definition));
+    definition.inputs = std::move(inputs);
+    definition.types.bindings = std::move(input_bindings);
+    for (std::size_t index = 0; index < result_types.size(); ++index) {
+      const auto kind = signature_kind(result_types[index], generics);
+      definition.results.push_back(
+          {result_types.size() == 1U
+               ? "result"
+               : "result" + std::to_string(index),
+           std::move(result_types[index]), false, std::nullopt, kind});
     }
-  }
+    definition.interfaces = std::move(interfaces);
+    definition.operator_symbol = std::move(declared_operator);
+    definition.operator_fixity = declared_fixity;
+    if (definition.operator_symbol && !definition.operator_fixity) {
+      const auto value_inputs = static_cast<std::size_t>(std::count_if(
+          definition.inputs.begin(), definition.inputs.end(),
+          [](const auto& input) {
+            return input.kind == Parameter::Kind::Value;
+          }));
+      const std::size_t operands =
+          value_inputs == 0U ? definition.inputs.size() : value_inputs;
+      definition.operator_fixity =
+          operands == 1U
+              ? std::optional{Module::FunctionDecl::Fixity::Prefix}
+          : operands == 2U
+              ? std::optional{Module::FunctionDecl::Fixity::Infix}
+              : std::nullopt;
+    }
 
-  void parse_pass() {
-    const SourcePosition begin = current_.begin;
-    auto pass_name = name("a pass name");
-    ParsedModule::PassDefinition definition;
-    if (pass_name) {
-      definition.name = std::move(*pass_name);
+    if (is(TokenKind::LeftBrace)) {
+      Lexer body_lexer = lexer_;
+      const Token first_body_token = body_lexer.take();
+      const bool starts_with_return =
+          first_body_token.kind == TokenKind::Name &&
+          first_body_token.text == "return";
+      const Token second_body_token = body_lexer.take();
+      const bool starts_with_rewrite =
+          starts_with_return && second_body_token.kind == TokenKind::Name &&
+          second_body_token.text == "rewrite";
+      if (!starts_with_rewrite) {
+        std::vector<ParsedModule::GenericDefinition> variables =
+            definition.generics;
+        for (const auto& input : definition.inputs) {
+          variables.push_back({input.name, input.domain, std::nullopt});
+        }
+        Lexer probe_lexer = lexer_;
+        Token probe_current = current_;
+        Diagnostics probe_diagnostics;
+        auto body = detail::parse_function_body(
+            probe_lexer, probe_current, probe_diagnostics, source_, variables);
+        if (body) {
+          lexer_ = probe_lexer;
+          current_ = probe_current;
+          definition.body = std::move(*body);
+          definition.source = SourceRange{source_, begin, current_.begin};
+          module_.functions.push_back(std::move(definition));
+          return;
+        }
+        for (const Diagnostic& diagnostic : probe_diagnostics.entries()) {
+          diagnostics_.report(diagnostic);
+        }
+        return;
+      }
     }
 
     if (match(TokenKind::Semicolon)) {
-      definition.form = Module::PassDecl::Form::External;
-    } else if (match(TokenKind::Equal)) {
-      definition.form = Module::PassDecl::Form::Sequence;
-      do {
-        auto step = reference("a pass name");
-        if (step) {
-          definition.steps.push_back(std::move(*step));
-        }
-      } while (match(TokenKind::Comma));
-      expect(TokenKind::Semicolon, "';'");
-    } else {
-      definition.form = Module::PassDecl::Form::Rules;
-      expect(TokenKind::LeftBrace, "'{'");
-      while (!is(TokenKind::RightBrace) && ok()) {
-        const SourcePosition rule_begin = current_.begin;
-        ParsedModule::RuleDefinition rule;
-        auto match_term = pass_term(rule);
-        expect(TokenKind::FatArrow, "'=>'");
-        auto replacement = pass_term(rule);
-        if (match_term) {
-          rule.match = *match_term;
-        }
-        if (replacement) {
-          rule.replacement = *replacement;
+    } else if (is(TokenKind::LeftBrace)) {
+      Lexer body_lexer = lexer_;
+      const Token first_body_token = body_lexer.take();
+      if (first_body_token.kind == TokenKind::Name &&
+          first_body_token.text == "return") {
+        advance();
+        expect_name("return");
+        if (match_name("rewrite")) {
+          definition.body.emplace();
+          definition.body->source = source_;
+          definition.body->range = {begin, current_.begin};
+          expect(TokenKind::LeftParen, "'('");
+          auto input = name("a graph parameter name");
+          expect(TokenKind::RightParen, "')'");
+          if (input && (definition.inputs.empty() ||
+                        definition.inputs.front().name != *input)) {
+            error("rewrite must name its graph input");
+          }
+          expect(TokenKind::LeftBrace, "'{' after rewrite input");
+          while (!is(TokenKind::RightBrace) && ok()) {
+            const SourcePosition rule_begin = current_.begin;
+            ParsedModule::RuleDefinition rule;
+            auto match_term = pass_term(rule);
+            expect(TokenKind::FatArrow, "'=>'");
+            auto replacement = pass_term(rule);
+            if (match_term) {
+              rule.match = *match_term;
+            }
+            if (replacement) {
+              rule.replacement = *replacement;
+            }
+            expect(TokenKind::Semicolon, "';'");
+            rule.source = SourceRange{source_, rule_begin, current_.begin};
+            definition.body->rules.push_back(std::move(rule));
+          }
+          expect(TokenKind::RightBrace, "'}'");
         }
         expect(TokenKind::Semicolon, "';'");
-        rule.source = SourceRange{source_, rule_begin, current_.begin};
-        definition.rules.push_back(std::move(rule));
+        expect(TokenKind::RightBrace, "'}'");
+      } else {
+        error("a function body must use ordinary statements and control flow");
       }
-      expect(TokenKind::RightBrace, "'}'");
-      if (definition.rules.empty()) {
-        error("a rule pass cannot be empty");
-      }
+    } else {
+      error("expected ';' or a function body");
     }
     if (!definition.name.empty()) {
       definition.source = SourceRange{source_, begin, current_.begin};
-      module_.passes.push_back(std::move(definition));
-    }
-  }
-
-  void parse_graph() {
-    Diagnostics graph_diagnostics;
-    auto graph = detail::parse_graph_syntax(lexer_, current_, graph_diagnostics,
-                                            source_);
-    for (const Diagnostic& diagnostic : graph_diagnostics.entries()) {
-      diagnostics_.push_back(diagnostic);
-    }
-    if (graph) {
-      module_.graphs.push_back(std::move(*graph));
+      module_.functions.push_back(std::move(definition));
     }
   }
 
@@ -923,6 +990,12 @@ private:
       error("duplicate parameter in '" + std::string(owner) + "'", source);
     }
     for (std::size_t index = 0; index < values.size(); ++index) {
+      if (values[index].kind == Parameter::Kind::Static &&
+          !detail::kernel_domain(values[index].domain)) {
+        error("unknown parameter domain on '" + values[index].name +
+                  "' in '" + std::string(owner) + "'",
+              source);
+      }
       if (values[index].variadic && index + 1U != values.size()) {
         error("variadic parameter must be last in '" + std::string(owner) + "'",
               source);
@@ -945,6 +1018,9 @@ private:
       const std::size_t dot = reference.find('.');
       if (dot != std::string::npos) {
         const std::string_view module_name(reference.data(), dot);
+        if (module_name == detail::prelude_module_name) {
+          continue;
+        }
         const bool imported =
             std::any_of(module_.imports.begin(), module_.imports.end(),
                         [&](const Module::Import& import) {
@@ -972,67 +1048,202 @@ private:
     }
   }
 
-  const ParsedModule::GenericDefinition*
-  find_generic(const ParsedModule::OperationDefinition& operation,
-               std::string_view name) const {
-    return operation_generic(operation.types.generics, name);
-  }
-
-  void
-  validate_type_expression(const ParsedModule::OperationDefinition& operation,
-                           const ParsedModule::TypeExpression& expression,
-                           ParameterKind expected, bool expected_list) {
+  void validate_declaration_expression(
+      std::span<const ParsedModule::GenericDefinition> variables,
+      std::string_view owner, std::optional<SourceRange> source,
+      const ParsedModule::TypeExpression& expression,
+      const Module::Expression& expected) {
     const auto report = [&](std::string message) {
-      error(std::move(message), operation.source);
+      error(std::move(message), source);
     };
     using Kind = ParsedModule::TypeExpression::Kind;
+    const auto domain = detail::kernel_domain(expected);
+    if (!domain) {
+      report("unknown parameter domain in " + std::string(owner));
+      return;
+    }
     if (expression.kind == Kind::Variable) {
-      const auto* generic = find_generic(operation, expression.text);
-      if (generic == nullptr || generic->kind != expected ||
-          generic->list != expected_list) {
+      const auto* variable = operation_generic(variables, expression.text);
+      if (variable == nullptr || variable->domain != expected) {
         report("type variable '" + expression.text +
-               "' has the wrong kind in '" + operation.name + "'");
+               "' has the wrong domain in " + std::string(owner));
       }
       return;
     }
-    if (expected_list) {
-      if (expression.kind != Kind::List) {
-        report("expected a list expression in operation '" + operation.name +
-               "'");
+    if (expression.kind == Kind::Evaluate) {
+      if (expression.arguments.size() != 1U) {
+        report("malformed compile-time expression in " + std::string(owner));
         return;
       }
+      validate_declaration_expression(variables, owner, source,
+                                      expression.arguments.front(), expected);
+      return;
+    }
+    if (expression.kind == Kind::If) {
+      if (expression.arguments.size() != 3U) {
+        report("malformed if expression in " + std::string(owner));
+        return;
+      }
+      validate_declaration_expression(
+          variables, owner, source, expression.arguments[0],
+          detail::domain_expression(ValueKind::Boolean));
+      validate_declaration_expression(variables, owner, source,
+                                      expression.arguments[1], expected);
+      validate_declaration_expression(variables, owner, source,
+                                      expression.arguments[2], expected);
+      return;
+    }
+    if (domain->list && expression.kind != Kind::Call &&
+        expression.kind != Kind::Reference) {
+      if (expression.kind != Kind::List) {
+        report("expected a list expression in " + std::string(owner));
+        return;
+      }
+      const auto element_domain =
+          detail::domain_expression(domain->element, false);
       for (const auto& element : expression.arguments) {
-        validate_type_expression(operation, element, expected, false);
+        validate_declaration_expression(variables, owner, source, element,
+                                        element_domain);
       }
       return;
     }
     if (expression.kind == Kind::List) {
-      report("unexpected list expression in operation '" + operation.name +
-             "'");
+      report("unexpected list expression in " + std::string(owner));
+      return;
+    }
+    if (expression.kind == Kind::Reference) {
+      const std::size_t field_dot = expression.text.find('.');
+      if (field_dot != std::string::npos) {
+        const std::string_view receiver(expression.text.data(), field_dot);
+        const auto* generic = operation_generic(variables, receiver);
+        if (generic != nullptr) {
+          if (!generic->constraint) {
+            report("generic '" + std::string(receiver) +
+                   "' has no interface exposing derived parameter '" +
+                   expression.text.substr(field_dot + 1U) + "' in " +
+                   std::string(owner));
+            return;
+          }
+          if (!reference_is_visible(*generic->constraint, "interface",
+                                    source)) {
+            return;
+          }
+          const std::size_t constraint_dot = generic->constraint->find('.');
+          const bool local =
+              constraint_dot == std::string::npos ||
+              generic->constraint->substr(0, constraint_dot) == module_.name;
+          if (!local) {
+            return;
+          }
+          const std::string_view interface_name =
+              constraint_dot == std::string::npos
+                  ? std::string_view(*generic->constraint)
+                  : std::string_view(*generic->constraint)
+                        .substr(constraint_dot + 1U);
+          const auto interface = std::find_if(
+              module_.interfaces.begin(), module_.interfaces.end(),
+              [&](const auto& candidate) {
+                return candidate.name == interface_name;
+              });
+          const std::string_view field_name =
+              std::string_view(expression.text).substr(field_dot + 1U);
+          if (interface == module_.interfaces.end()) {
+            report("unknown interface '" + *generic->constraint +
+                   "' constraining '" + std::string(receiver) + "' in " +
+                   std::string(owner));
+            return;
+          }
+          const auto field = std::find_if(
+              interface->fields.begin(), interface->fields.end(),
+              [&](const auto& candidate) { return candidate.name == field_name; });
+          if (field == interface->fields.end() || field->domain != expected) {
+            report("unknown or ill-typed derived parameter '" +
+                   expression.text + "' in " + std::string(owner));
+          }
+          return;
+        }
+      }
+    }
+    const bool operation = expression.kind == Kind::Prefix ||
+                           expression.kind == Kind::Infix ||
+                           expression.kind == Kind::Postfix;
+    if (operation) {
+      const std::size_t arity = expression.kind == Kind::Infix ? 2U : 1U;
+      if (expression.arguments.size() != arity) {
+        report("malformed operator expression in " + std::string(owner));
+        return;
+      }
+      for (const auto& argument : expression.arguments) {
+        validate_declaration_expression(variables, owner, source, argument,
+                                        expected);
+      }
+      return;
+    }
+    if (expression.kind == Kind::Call) {
+      const bool integer_call = expression.text == "ceildiv" ||
+                                expression.text == "min" ||
+                                expression.text == "max";
+      if (!integer_call || domain->element != ValueKind::Integer ||
+          expression.arguments.size() != 2U) {
+        const std::size_t dot = expression.text.find('.');
+        if (!reference_is_visible(expression.text, "function", source)) {
+          return;
+        }
+        const bool local = dot == std::string::npos ||
+                           expression.text.substr(0, dot) == module_.name;
+        if (!local) {
+          return;
+        }
+        const std::string_view name =
+            dot == std::string::npos
+                ? std::string_view(expression.text)
+                : std::string_view(expression.text).substr(dot + 1U);
+        const auto function = std::find_if(
+            module_.functions.begin(), module_.functions.end(),
+            [&](const auto& candidate) { return candidate.name == name; });
+        if (function == module_.functions.end() ||
+            function->results.front().domain != expected ||
+            function->inputs.size() != expression.arguments.size()) {
+          report("unknown or ill-typed pure call '" + expression.text +
+                 "' in " + std::string(owner));
+          return;
+        }
+        for (std::size_t index = 0; index < expression.arguments.size();
+             ++index) {
+          validate_declaration_expression(variables, owner, source,
+                                          expression.arguments[index],
+                                          function->inputs[index].domain);
+        }
+        return;
+      }
+      const auto integer_domain = detail::domain_expression(ValueKind::Integer);
+      for (const auto& argument : expression.arguments) {
+        validate_declaration_expression(variables, owner, source, argument,
+                                        integer_domain);
+      }
       return;
     }
     if (expression.kind == Kind::Number || expression.kind == Kind::Boolean ||
         expression.kind == Kind::String) {
       const bool matches = (expression.kind == Kind::Number &&
-                            (expected == ParameterKind::I64 ||
-                             expected == ParameterKind::F64)) ||
+                            (domain->element == ValueKind::Integer ||
+                             domain->element == ValueKind::Real)) ||
                            (expression.kind == Kind::Boolean &&
-                            expected == ParameterKind::Boolean) ||
+                            domain->element == ValueKind::Boolean) ||
                            (expression.kind == Kind::String &&
-                            expected == ParameterKind::String);
+                            domain->element == ValueKind::String);
       if (!matches) {
-        report("literal has the wrong kind in operation '" + operation.name +
-               "'");
+        report("literal has the wrong domain in " + std::string(owner));
       }
       return;
     }
-    if (!reference_is_visible(expression.text, "type", operation.source)) {
+    if (!reference_is_visible(expression.text, "type", source)) {
       return;
     }
-    if (expected != ParameterKind::Type &&
-        expected != ParameterKind::Attribute) {
-      report("type expression reference has the wrong kind in operation '" +
-             operation.name + "'");
+    if (domain->element != ValueKind::Type &&
+        domain->element != ValueKind::Attribute) {
+      report("type expression reference has the wrong domain in " +
+             std::string(owner));
       return;
     }
     const std::size_t dot = expression.text.find('.');
@@ -1045,13 +1256,13 @@ private:
         dot == std::string::npos
             ? std::string_view(expression.text)
             : std::string_view(expression.text).substr(dot + 1U);
-    if (expected == ParameterKind::Type) {
+    if (domain->element == ValueKind::Type) {
       const auto declaration = std::find_if(
           module_.types.begin(), module_.types.end(),
           [&](const auto& candidate) { return candidate.name == name; });
       if (declaration == module_.types.end()) {
-        report("unknown type '" + expression.text + "' in operation '" +
-               operation.name + "'");
+        report("unknown type '" + expression.text + "' in " +
+               std::string(owner));
         return;
       }
       if (expression.arguments.size() > declaration->parameters.size()) {
@@ -1060,9 +1271,9 @@ private:
       }
       for (std::size_t index = 0; index < expression.arguments.size();
            ++index) {
-        validate_type_expression(operation, expression.arguments[index],
-                                 declaration->parameters[index].kind,
-                                 declaration->parameters[index].list);
+        validate_declaration_expression(
+            variables, owner, source, expression.arguments[index],
+            declaration->parameters[index].domain);
       }
       for (std::size_t index = expression.arguments.size();
            index < declaration->parameters.size(); ++index) {
@@ -1077,8 +1288,8 @@ private:
         module_.attributes.begin(), module_.attributes.end(),
         [&](const auto& candidate) { return candidate.name == name; });
     if (declaration == module_.attributes.end()) {
-      report("unknown attribute '" + expression.text + "' in operation '" +
-             operation.name + "'");
+      report("unknown attribute '" + expression.text + "' in " +
+             std::string(owner));
     }
   }
 
@@ -1089,6 +1300,9 @@ private:
       return true;
     }
     const std::string_view module_name = reference.substr(0, dot);
+    if (module_name == detail::prelude_module_name) {
+      return true;
+    }
     const bool imported =
         std::any_of(module_.imports.begin(), module_.imports.end(),
                     [&](const Module::Import& import) {
@@ -1131,74 +1345,81 @@ private:
                        });
   }
 
-  void validate_term(const ParsedModule::PassDefinition& pass,
+  void validate_term(const ParsedModule::FunctionDefinition& function,
                      const ParsedModule::RuleDefinition& rule,
                      std::size_t index) {
     const auto report = [&](std::string message) {
-      error(std::move(message), rule.source ? rule.source : pass.source);
+      error(std::move(message),
+            rule.source ? rule.source : function.source);
     };
     const auto& term = rule.terms[index];
     if (term.kind == ParsedModule::TermDefinition::Kind::Variable) {
       return;
     }
-    if (!reference_is_visible(term.name, "operation", rule.source)) {
+    if (!reference_is_visible(term.name, "function", rule.source)) {
       return;
     }
     const std::size_t dot = term.name.find('.');
     const bool local =
         dot == std::string::npos || term.name.substr(0, dot) == module_.name;
-    const std::string_view operation_name =
+    const std::string_view function_name =
         dot == std::string::npos ? std::string_view(term.name)
                                  : std::string_view(term.name).substr(dot + 1U);
     if (local) {
-      const auto operation =
-          std::find_if(module_.operations.begin(), module_.operations.end(),
+      const auto target =
+          std::find_if(module_.functions.begin(), module_.functions.end(),
                        [&](const auto& candidate) {
-                         return candidate.name == operation_name;
+                         return candidate.name == function_name &&
+                                std::any_of(candidate.inputs.begin(),
+                                            candidate.inputs.end(),
+                                            [](const auto& input) {
+                                              return input.kind ==
+                                                     Parameter::Kind::Value;
+                                            });
                        });
-      if (operation == module_.operations.end()) {
-        report("pass '" + pass.name + "' matches unknown operation '" +
+      if (target == module_.functions.end()) {
+        report("rewrite function '" + function.name +
+               "' matches unknown IR function '" +
                term.name + "'");
       } else {
-        const auto count_kind = [](const auto& parameters, ParameterKind kind) {
-          return static_cast<std::size_t>(
-              std::count_if(parameters.begin(), parameters.end(),
-                            [&](const Parameter& parameter) {
-                              return parameter.kind == kind;
-                            }));
-        };
-        if (count_kind(operation->inputs, ParameterKind::Value) !=
-                term.arguments.size() ||
-            count_kind(operation->results, ParameterKind::Value) != 1U) {
-          report("pass '" + pass.name +
-                 "' term arity does not match operation '" + term.name + "'");
-        }
-        if (count_kind(operation->inputs, ParameterKind::Region) != 0U) {
-          report("pass '" + pass.name +
-                 "' cannot contract an operation with regions");
+        const auto value_inputs = static_cast<std::size_t>(std::count_if(
+            target->inputs.begin(), target->inputs.end(), [](const auto& input) {
+              return input.kind == Parameter::Kind::Value;
+            }));
+        const auto value_results = static_cast<std::size_t>(std::count_if(
+            target->results.begin(), target->results.end(),
+            [](const auto& result) {
+              return result.kind == Parameter::Kind::Value;
+            }));
+        if (value_inputs != term.arguments.size() || value_results != 1U) {
+          report("rewrite function '" + function.name +
+                 "' term arity does not match IR function '" + term.name +
+                 "'");
         }
       }
     }
     for (std::size_t argument : term.arguments) {
-      validate_term(pass, rule, argument);
+      validate_term(function, rule, argument);
     }
   }
 
-  void validate_rule(const ParsedModule::PassDefinition& pass,
+  void validate_rule(const ParsedModule::FunctionDefinition& function,
                      const ParsedModule::RuleDefinition& rule) {
     const auto report = [&](std::string message) {
-      error(std::move(message), rule.source ? rule.source : pass.source);
+      error(std::move(message),
+            rule.source ? rule.source : function.source);
     };
     if (rule.terms.empty() ||
         rule.terms[rule.match].kind !=
             ParsedModule::TermDefinition::Kind::Operation) {
-      report("pass '" + pass.name + "' rule must match an operation term");
+      report("rewrite function '" + function.name +
+             "' rule must match a function call");
       return;
     }
-    validate_term(pass, rule, rule.match);
+    validate_term(function, rule, rule.match);
     if (same_term(rule, rule.match, rule.replacement) ||
         !contains_term(rule, rule.match, rule.replacement)) {
-      report("pass '" + pass.name +
+      report("rewrite function '" + function.name +
              "' replacement must be a proper subterm of its match");
     }
   }
@@ -1224,14 +1445,45 @@ private:
     check_unique(module_.interfaces, "interface");
     check_unique(module_.types, "type");
     check_unique(module_.attributes, "attribute");
-    check_unique(module_.operations, "operation");
-    check_unique(module_.passes, "pass");
-    check_unique(module_.graphs, "graph");
+    for (std::size_t left = 0; left < module_.functions.size(); ++left) {
+      const auto& function = module_.functions[left];
+      for (std::size_t right = left + 1U; right < module_.functions.size();
+           ++right) {
+        const auto& candidate = module_.functions[right];
+        if (function.name != candidate.name ||
+            function.generics.size() != candidate.generics.size() ||
+            function.inputs.size() != candidate.inputs.size() ||
+            function.results.size() != candidate.results.size()) {
+          continue;
+        }
+        const bool same_inputs = std::equal(
+            function.inputs.begin(), function.inputs.end(),
+            candidate.inputs.begin(), [](const auto& lhs, const auto& rhs) {
+              return lhs.kind == rhs.kind && lhs.variadic == rhs.variadic &&
+                     lhs.domain == rhs.domain;
+            });
+        const bool same_results = std::equal(
+            function.results.begin(), function.results.end(),
+            candidate.results.begin(), [](const auto& lhs, const auto& rhs) {
+              return lhs.kind == rhs.kind && lhs.domain == rhs.domain;
+            });
+        if (same_inputs && same_results) {
+          error("duplicate function overload '" + function.name + "'",
+                candidate.source);
+        }
+      }
+    }
     for (const auto& interface : module_.interfaces) {
+      validate_parameters(interface.fields, interface.name, interface.source);
+      check_unique(interface.fields,
+                   "field in interface '" + interface.name + "'");
       check_unique(interface.methods,
                    "method in interface '" + interface.name + "'");
       for (const auto& method : interface.methods) {
-        validate_parameters(method.parameters,
+        validate_parameters(method.inputs,
+                            interface.name + "." + method.name,
+                            interface.source);
+        validate_parameters(method.results,
                             interface.name + "." + method.name,
                             interface.source);
       }
@@ -1240,6 +1492,23 @@ private:
       validate_parameters(type.parameters, type.name, type.source);
       validate_interface_uses(type.interfaces, Module::SymbolKind::Type,
                               type.name, type.source);
+      std::unordered_set<std::string> derived_names;
+      for (const auto& derived : type.derived_parameters) {
+        if (!derived_names.insert(derived.name).second) {
+          error("duplicate derived parameter '" + derived.name +
+                    "' on type '" +
+                    type.name + "'",
+                type.source);
+        }
+        const auto shadows = std::find_if(
+            type.parameters.begin(), type.parameters.end(),
+            [&](const auto& parameter) { return parameter.name == derived.name; });
+        if (shadows != type.parameters.end()) {
+          error("derived parameter '" + derived.name + "' on type '" +
+                    type.name + "' shadows a constructor parameter",
+                type.source);
+        }
+      }
     }
     for (const auto& attribute : module_.attributes) {
       validate_parameters(attribute.parameters, attribute.name,
@@ -1248,74 +1517,175 @@ private:
                               Module::SymbolKind::Attribute, attribute.name,
                               attribute.source);
     }
-    for (const auto& operation : module_.operations) {
-      validate_parameters(operation.inputs, operation.name, operation.source);
-      validate_parameters(operation.results, operation.name, operation.source);
+    for (const auto& function : module_.functions) {
+      validate_parameters(function.inputs, function.name, function.source);
+      validate_parameters(function.results, function.name, function.source);
+      std::unordered_set<std::string> input_names;
+      for (std::size_t index = 0; index < function.inputs.size(); ++index) {
+        const auto& input = function.inputs[index];
+        if (!input_names.insert(input.name).second) {
+          error("duplicate function input '" + input.name + "' in '" +
+                    function.name + "'",
+                function.source);
+        }
+        if (input.variadic && index + 1U != function.inputs.size()) {
+          error("variadic input must be last in '" + function.name + "'",
+                function.source);
+        }
+      }
       std::unordered_set<std::string> generics;
-      for (const auto& generic : operation.types.generics) {
+      for (const auto& generic : function.generics) {
         if (!generics.insert(generic.name).second) {
           error("duplicate type variable '" + generic.name + "' in '" +
-                    operation.name + "'",
-                operation.source);
+                    function.name + "'",
+                function.source);
         }
-      }
-      for (std::size_t index = 0; index < operation.inputs.size(); ++index) {
-        if (operation.inputs[index].kind == ParameterKind::Value) {
-          if (index >= operation.types.inputs.size() ||
-              !operation.types.inputs[index]) {
-            error("operation '" + operation.name + "' has an untyped operand",
-                  operation.source);
-          } else {
-            validate_type_expression(operation, *operation.types.inputs[index],
-                                     ParameterKind::Type, false);
+        if (generic.constraint) {
+          if (!detail::is_domain(generic.domain, ValueKind::Type)) {
+            error("interface-constrained generic '" + generic.name +
+                      "' in '" + function.name +
+                      "' must bind one type",
+                  function.source);
+            continue;
           }
-        } else if (index < operation.types.inputs.size() &&
-                   operation.types.inputs[index]) {
-          validate_type_expression(operation, *operation.types.inputs[index],
-                                   operation.inputs[index].kind,
-                                   operation.inputs[index].list);
+          if (!reference_is_visible(*generic.constraint, "interface",
+                                    function.source)) {
+            continue;
+          }
+          const std::size_t dot = generic.constraint->find('.');
+          const bool local = dot == std::string::npos ||
+                             generic.constraint->substr(0, dot) ==
+                                 module_.name;
+          if (local) {
+            const std::string_view local_name =
+                dot == std::string::npos
+                    ? std::string_view(*generic.constraint)
+                    : std::string_view(*generic.constraint).substr(dot + 1U);
+            const auto interface = std::find_if(
+                module_.interfaces.begin(), module_.interfaces.end(),
+                [&](const auto& candidate) {
+                  return candidate.name == local_name;
+                });
+            if (interface == module_.interfaces.end()) {
+              error("unknown type interface '" + *generic.constraint +
+                        "' constraining '" + generic.name + "' in '" +
+                        function.name + "'",
+                    function.source);
+            } else if (interface->subject != Module::SymbolKind::Type) {
+              error("interface '" + *generic.constraint +
+                        "' constraining '" + generic.name + "' in '" +
+                        function.name + "' is not a type interface",
+                    function.source);
+            }
+          }
         }
       }
-      for (const auto& result : operation.types.results) {
-        validate_type_expression(operation, result, ParameterKind::Type, false);
-      }
-      validate_interface_uses(operation.interfaces,
-                              Module::SymbolKind::Operation, operation.name,
-                              operation.source);
-    }
-    for (const auto& pass : module_.passes) {
-      for (const auto& rule : pass.rules) {
-        validate_rule(pass, rule);
-      }
-      for (const std::string& step : pass.steps) {
-        if (!reference_is_visible(step, "pass", pass.source)) {
-          continue;
+      const auto type_domain = detail::domain_expression(ValueKind::Type);
+      const std::string owner = "function '" + function.name + "'";
+      for (const auto& input : function.inputs) {
+        if (input.kind == Parameter::Kind::Value) {
+          validate_declaration_expression(function.generics, owner,
+                                          function.source, input.domain,
+                                          type_domain);
         }
-        const std::size_t dot = step.find('.');
-        const bool local =
-            dot == std::string::npos || step.substr(0, dot) == module_.name;
-        const std::string_view local_name =
-            dot == std::string::npos ? std::string_view(step)
-                                     : std::string_view(step).substr(dot + 1U);
-        if (local && std::none_of(module_.passes.begin(), module_.passes.end(),
-                                  [&](const auto& candidate) {
-                                    return candidate.name == local_name;
-                                  })) {
-          error("pass '" + pass.name + "' contains unknown pass '" + step + "'",
-                pass.source);
+      }
+      if (!function.types.bindings.empty()) {
+        if (function.types.bindings.size() != function.inputs.size()) {
+          error("function '" + function.name +
+                    "' has an invalid static binding contract",
+                function.source);
+        } else {
+          for (std::size_t index = 0; index < function.inputs.size(); ++index) {
+            if (function.types.bindings[index]) {
+              validate_declaration_expression(
+                  function.generics, owner, function.source,
+                  *function.types.bindings[index],
+                  function.inputs[index].domain);
+            }
+          }
+        }
+      }
+      for (const auto& result : function.results) {
+        const auto expected = result.kind == Parameter::Kind::Value
+                                  ? type_domain
+                                  : result.domain;
+        if (result.kind == Parameter::Kind::Value) {
+          validate_declaration_expression(function.generics, owner,
+                                          function.source, result.domain,
+                                          expected);
+        }
+      }
+      if (function.operator_symbol) {
+        const auto program_values = static_cast<std::size_t>(std::count_if(
+            function.inputs.begin(), function.inputs.end(),
+            [](const auto& input) {
+              return input.kind == Parameter::Kind::Value;
+            }));
+        const std::size_t operands =
+            program_values == 0U ? function.inputs.size() : program_values;
+        const std::size_t required =
+            function.operator_fixity == Module::FunctionDecl::Fixity::Infix
+                ? 2U
+                : 1U;
+        const auto expected_result_kind =
+            program_values == 0U ? Parameter::Kind::Static
+                                 : Parameter::Kind::Value;
+        if (!function.operator_fixity || operands != required ||
+            function.results.size() != 1U ||
+            function.results.front().kind != expected_result_kind) {
+          error("operator on function '" + function.name +
+                    "' has an incompatible signature",
+                function.source);
+        }
+      }
+      validate_interface_uses(function.interfaces,
+                              Module::SymbolKind::Function, function.name,
+                              function.source);
+
+      if (const Module::Expression* expression =
+              body_expression(function.body);
+          expression != nullptr && function.results.size() == 1U &&
+          function.results.front().kind == Parameter::Kind::Static &&
+          std::all_of(function.inputs.begin(), function.inputs.end(),
+                      [](const Parameter& input) {
+                        return input.kind == Parameter::Kind::Static;
+                      })) {
+        std::vector<ParsedModule::GenericDefinition> variables =
+            function.generics;
+        for (const auto& input : function.inputs) {
+          if (input.kind == Parameter::Kind::Static) {
+            variables.push_back({input.name, input.domain, std::nullopt});
+          }
+        }
+        validate_declaration_expression(
+            variables, owner, function.source, *expression,
+            function.results.front().domain);
+      }
+      const bool graph_transform =
+          function.inputs.size() == 1U &&
+          detail::is_domain(function.inputs.front().domain, ValueKind::Graph) &&
+          function.results.size() == 1U &&
+          detail::is_domain(function.results.front().domain, ValueKind::Graph);
+      if (function.body && !function.body->rules.empty() && !graph_transform) {
+        error("rewrite function '" + function.name +
+                  "' must have type graph -> graph",
+              function.source);
+      }
+      if (function.body) {
+        for (const auto& rule : function.body->rules) {
+          validate_rule(function, rule);
         }
       }
     }
   }
 
   void error(std::string message) {
-    diagnostics_.push_back({std::move(message),
-                            SourceRange{source_, current_.begin, current_.end},
-                            {}});
+    diagnostics_.report(std::move(message),
+                        SourceRange{source_, current_.begin, current_.end});
   }
 
   void error(std::string message, SourceRange source) {
-    diagnostics_.push_back({std::move(message), std::move(source), {}});
+    diagnostics_.report(std::move(message), std::move(source));
   }
 
   void error(std::string message, std::optional<SourceRange> source) {
@@ -1330,30 +1700,8 @@ private:
   std::string source_;
   Token current_;
   ParsedModule module_;
-  std::vector<Diagnostic> diagnostics_;
+  Diagnostics diagnostics_;
 };
-
-std::string kind_name(Module::ParameterKind kind) {
-  switch (kind) {
-  case Module::ParameterKind::I64:
-    return "i64";
-  case Module::ParameterKind::F64:
-    return "f64";
-  case Module::ParameterKind::Boolean:
-    return "bool";
-  case Module::ParameterKind::String:
-    return "string";
-  case Module::ParameterKind::Type:
-    return "type";
-  case Module::ParameterKind::Attribute:
-    return "attr";
-  case Module::ParameterKind::Value:
-    return "value";
-  case Module::ParameterKind::Region:
-    return "region";
-  }
-  return "invalid";
-}
 
 std::string symbol_kind_name(Module::SymbolKind kind) {
   switch (kind) {
@@ -1363,12 +1711,8 @@ std::string symbol_kind_name(Module::SymbolKind kind) {
     return "type";
   case Module::SymbolKind::Attribute:
     return "attr";
-  case Module::SymbolKind::Operation:
-    return "op";
-  case Module::SymbolKind::Pass:
-    return "pass";
-  case Module::SymbolKind::Graph:
-    return "graph";
+  case Module::SymbolKind::Function:
+    return "fn";
   }
   return "invalid";
 }
@@ -1379,11 +1723,9 @@ std::string subject_kind_name(Module::SymbolKind kind) {
     return "type";
   case Module::SymbolKind::Attribute:
     return "attr";
-  case Module::SymbolKind::Operation:
-    return "op";
+  case Module::SymbolKind::Function:
+    return "fn";
   case Module::SymbolKind::Interface:
-  case Module::SymbolKind::Pass:
-  case Module::SymbolKind::Graph:
     break;
   }
   return "invalid";
@@ -1416,69 +1758,255 @@ std::string escape(std::string_view value) {
   return result + '"';
 }
 
-std::string literal_text(const Literal& literal) {
-  return std::visit(
-      [](const auto& value) -> std::string {
-        using T = std::remove_cvref_t<decltype(value)>;
-        if constexpr (std::is_same_v<T, bool>) {
-          return value ? "true" : "false";
-        } else if constexpr (std::is_same_v<T, std::string>) {
-          return escape(value);
-        } else if constexpr (std::is_same_v<T, double>) {
-          std::ostringstream output;
-          output << std::setprecision(17) << value;
-          return output.str();
-        } else {
-          return std::to_string(value);
-        }
-      },
-      literal);
-}
+std::string type_expression_text(const detail::TypeExpression& expression,
+                                 int parent_precedence = 0,
+                                 bool right_operand = false);
 
 std::string parameter_text(const Parameter& parameter) {
-  std::string type = kind_name(parameter.kind);
-  if (parameter.list) {
-    type = "list<" + type + ">";
-  }
-  std::string result = parameter.name + ": " + type;
+  std::string result =
+      parameter.name + ": " + type_expression_text(parameter.domain);
   if (parameter.variadic) {
     result += "...";
   }
   if (parameter.default_value) {
-    result += " = " + literal_text(*parameter.default_value);
+    result += " = " + type_expression_text(*parameter.default_value);
   }
   return result;
 }
 
-std::string type_expression_text(const detail::TypeExpression& expression) {
+std::string parameter_text(const Parameter& parameter,
+                           const detail::TypeExpression& annotation) {
+  Parameter displayed = parameter;
+  displayed.domain = annotation;
+  return parameter_text(displayed);
+}
+
+int operator_precedence(std::string_view symbol) {
+  if (symbol.empty()) {
+    return 0;
+  }
+  switch (symbol.front()) {
+  case '|': return 10;
+  case '^': return 20;
+  case '&': return 30;
+  case '=':
+  case '!':
+  case '<':
+  case '>': return 40;
+  case '+':
+  case '-': return 50;
+  case '*':
+  case '/':
+  case '%': return 60;
+  default: return 45;
+  }
+}
+
+int type_expression_precedence(const detail::TypeExpression& expression) {
   using Kind = detail::TypeExpression::Kind;
+  switch (expression.kind) {
+  case Kind::If:
+    return 5;
+  case Kind::Infix:
+    return operator_precedence(expression.text);
+  case Kind::Prefix:
+    return 70;
+  case Kind::Postfix:
+    return 80;
+  case Kind::Evaluate:
+    return 90;
+  case Kind::Number:
+  case Kind::Boolean:
+  case Kind::String:
+  case Kind::List:
+  case Kind::Reference:
+  case Kind::Variable:
+  case Kind::Call:
+    return 100;
+  }
+  return 0;
+}
+
+std::string type_expression_text(const detail::TypeExpression& expression,
+                                 int parent_precedence,
+                                 bool right_operand) {
+  using Kind = detail::TypeExpression::Kind;
+  const int precedence = type_expression_precedence(expression);
+  std::string result;
   if (expression.kind == Kind::String) {
-    return escape(expression.text);
-  }
-  if (expression.kind == Kind::Number || expression.kind == Kind::Boolean ||
-      expression.kind == Kind::Variable) {
-    return expression.text;
-  }
-  if (expression.kind == Kind::List) {
-    std::string result = "[";
+    result = escape(expression.text);
+  } else if (expression.kind == Kind::Number ||
+             expression.kind == Kind::Boolean ||
+             expression.kind == Kind::Variable) {
+    result = expression.text;
+  } else if (expression.kind == Kind::List) {
+    result = "[";
     for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
       if (index != 0U) {
         result += ", ";
       }
       result += type_expression_text(expression.arguments[index]);
     }
-    return result + "]";
-  }
-  std::string result = expression.text;
-  if (!expression.arguments.empty()) {
-    result += '<';
+    result += ']';
+  } else if (expression.kind == Kind::Reference) {
+    result = detail::display_type_name(expression.text);
+    if (!expression.arguments.empty()) {
+      result += '<';
+      for (std::size_t index = 0; index < expression.arguments.size();
+           ++index) {
+        if (index != 0U) {
+          result += ", ";
+        }
+        result += type_expression_text(expression.arguments[index]);
+      }
+      result += '>';
+    }
+  } else if (expression.kind == Kind::Call) {
+    result = expression.text + '(';
     for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
       if (index != 0U) {
         result += ", ";
       }
+      if (index < expression.labels.size() &&
+          !expression.labels[index].empty()) {
+        result += expression.labels[index] + ": ";
+      }
       result += type_expression_text(expression.arguments[index]);
     }
-    result += '>';
+    result += ')';
+  } else if (expression.kind == Kind::Evaluate) {
+    result = "@(" + type_expression_text(expression.arguments.front()) + ')';
+  } else if (expression.kind == Kind::If) {
+    result = "if " + type_expression_text(expression.arguments[0]) + " { " +
+             type_expression_text(expression.arguments[1]) + " } else { " +
+             type_expression_text(expression.arguments[2]) + " }";
+  } else if (expression.kind == Kind::Prefix) {
+    result = expression.text +
+             type_expression_text(expression.arguments.front(), precedence,
+                                  true);
+  } else if (expression.kind == Kind::Postfix) {
+    result = type_expression_text(expression.arguments.front(), precedence,
+                                  false) + expression.text;
+  } else {
+    result = type_expression_text(expression.arguments[0], precedence, false) +
+             " " + expression.text + " " +
+             type_expression_text(expression.arguments[1], precedence, true);
+  }
+  if (precedence < parent_precedence ||
+      (right_operand && precedence == parent_precedence && precedence < 100)) {
+    return '(' + result + ')';
+  }
+  return result;
+}
+
+constexpr std::size_t canonical_line_width = 88U;
+
+std::string indentation(std::size_t width) {
+  return std::string(width, ' ');
+}
+
+std::string type_expression_layout(const detail::TypeExpression& expression,
+                                   std::size_t column,
+                                   int parent_precedence = 0,
+                                   bool right_operand = false) {
+  const std::string flat =
+      type_expression_text(expression, parent_precedence, right_operand);
+  if (column + flat.size() <= canonical_line_width) {
+    return flat;
+  }
+
+  using Kind = detail::TypeExpression::Kind;
+  const int precedence = type_expression_precedence(expression);
+  const bool parenthesized =
+      precedence < parent_precedence ||
+      (right_operand && precedence == parent_precedence && precedence < 100);
+  const std::size_t content_column = column + (parenthesized ? 1U : 0U);
+  std::string result = parenthesized ? "(" : "";
+
+  if (expression.kind == Kind::If && expression.arguments.size() == 3U) {
+    result += "if ";
+    result += type_expression_layout(expression.arguments[0],
+                                     content_column + 3U);
+    result += " {\n";
+    result += indentation(content_column + 2U);
+    result += type_expression_layout(expression.arguments[1],
+                                     content_column + 2U);
+    result += "\n" + indentation(content_column) + "} else {\n";
+    result += indentation(content_column + 2U);
+    result += type_expression_layout(expression.arguments[2],
+                                     content_column + 2U);
+    result += "\n" + indentation(content_column) + "}";
+  } else {
+    const bool delimited = expression.kind == Kind::List ||
+                           expression.kind == Kind::Reference ||
+                           expression.kind == Kind::Call ||
+                           expression.kind == Kind::Evaluate;
+    if (delimited && !expression.arguments.empty()) {
+      const std::string opening =
+          expression.kind == Kind::List
+              ? "["
+              : expression.kind == Kind::Evaluate
+                    ? "@("
+              : expression.kind == Kind::Call
+                    ? expression.text + "("
+                    : std::string(detail::display_type_name(expression.text)) +
+                          "<";
+      const char closing = expression.kind == Kind::List
+                               ? ']'
+                               : expression.kind == Kind::Call ||
+                                         expression.kind == Kind::Evaluate
+                                     ? ')'
+                                     : '>';
+      result += opening + '\n';
+      const std::size_t argument_column = content_column + 2U;
+      for (std::size_t index = 0; index < expression.arguments.size();
+           ++index) {
+        result += indentation(argument_column);
+        const bool labeled = expression.kind == Kind::Call &&
+                             index < expression.labels.size() &&
+                             !expression.labels[index].empty();
+        if (labeled) {
+          result += expression.labels[index] + ": ";
+        }
+        result += type_expression_layout(expression.arguments[index],
+                                         argument_column +
+                                             (labeled
+                                                  ? expression.labels[index]
+                                                            .size() +
+                                                        2U
+                                                  : 0U));
+        if (index + 1U != expression.arguments.size()) {
+          result += ',';
+        }
+        result += '\n';
+      }
+      result += indentation(content_column);
+      result.push_back(closing);
+    } else if (expression.kind == Kind::Prefix) {
+      result += expression.text;
+      result += type_expression_layout(expression.arguments.front(),
+                                       content_column + expression.text.size(),
+                                       precedence, true);
+    } else if (expression.kind == Kind::Postfix) {
+      result += type_expression_layout(expression.arguments.front(),
+                                       content_column, precedence, false);
+      result += expression.text;
+    } else if (expression.kind == Kind::Infix) {
+      result += type_expression_layout(expression.arguments[0], content_column,
+                                       precedence, false);
+      result += " " + expression.text;
+      result += '\n';
+      const std::size_t rhs_column = content_column + 2U;
+      result += indentation(rhs_column);
+      result += type_expression_layout(expression.arguments[1], rhs_column,
+                                       precedence, true);
+    } else {
+      return flat;
+    }
+  }
+
+  if (parenthesized) {
+    result += ')';
   }
   return result;
 }
@@ -1536,18 +2064,24 @@ bool VersionRange::contains(Version candidate) const {
 
 Module::Symbol::Symbol(std::string module_name, Version module_version,
                        std::string module_digest, SymbolKind kind,
-                       std::string local_name)
+                       std::string local_name, std::string discriminator)
     : module_name_(std::move(module_name)), module_version_(module_version),
       module_digest_(std::move(module_digest)), kind_(kind),
-      local_name_(std::move(local_name)) {}
+      local_name_(std::move(local_name)),
+      discriminator_(std::move(discriminator)) {}
 
 std::string Module::Symbol::qualified_name() const {
   return module_name_ + "." + local_name_;
 }
 
 std::string Module::Symbol::stable_name() const {
-  return module_name_ + "@" + to_string(module_version_) + "#" +
-         module_digest_ + "/" + symbol_kind_name(kind_) + "/" + local_name_;
+  std::string result = module_name_ + "@" + to_string(module_version_) + "#" +
+                       module_digest_ + "/" + symbol_kind_name(kind_) + "/" +
+                       local_name_;
+  if (!discriminator_.empty()) {
+    result += "/" + discriminator_;
+  }
+  return result;
 }
 
 Module::InterfaceDecl::MethodDecl::MethodDecl(
@@ -1561,22 +2095,13 @@ std::string_view Module::InterfaceDecl::MethodDecl::name() const {
 }
 
 std::span<const Module::ParameterDecl>
-Module::InterfaceDecl::MethodDecl::parameters() const {
-  return storage_->interfaces[interface_index_]
-      .methods[method_index_]
-      .parameters;
+Module::InterfaceDecl::MethodDecl::inputs() const {
+  return storage_->interfaces[interface_index_].methods[method_index_].inputs;
 }
 
-Module::ParameterKind Module::InterfaceDecl::MethodDecl::result_kind() const {
-  return storage_->interfaces[interface_index_]
-      .methods[method_index_]
-      .result_kind;
-}
-
-bool Module::InterfaceDecl::MethodDecl::result_is_list() const {
-  return storage_->interfaces[interface_index_]
-      .methods[method_index_]
-      .result_list;
+std::span<const Module::ParameterDecl>
+Module::InterfaceDecl::MethodDecl::results() const {
+  return storage_->interfaces[interface_index_].methods[method_index_].results;
 }
 
 Module::InterfaceDecl Module::InterfaceDecl::MethodDecl::owner() const {
@@ -1610,6 +2135,10 @@ std::string_view Module::InterfaceDecl::name() const {
 
 Module::SymbolKind Module::InterfaceDecl::subject() const {
   return storage_->interfaces[index_].subject;
+}
+
+std::span<const Module::ParameterDecl> Module::InterfaceDecl::fields() const {
+  return storage_->interfaces[index_].fields;
 }
 
 std::optional<Module::InterfaceDecl::MethodDecl>
@@ -1653,6 +2182,11 @@ std::span<const Parameter> Module::TypeDecl::parameters() const {
   return storage_->types[index_].parameters;
 }
 
+std::span<const Module::TypeDecl::DerivedParameterDecl>
+Module::TypeDecl::derived_parameters() const {
+  return storage_->types[index_].derived_parameters;
+}
+
 std::span<const std::string> Module::TypeDecl::interfaces() const {
   return storage_->types[index_].interfaces;
 }
@@ -1691,63 +2225,149 @@ bool Module::AttributeDecl::operator==(const AttributeDecl& other) const {
   return symbol() == other.symbol();
 }
 
-Module::OperationDecl::OperationDecl(std::shared_ptr<const Storage> storage,
-                                     std::size_t index)
+Module::FunctionDecl::FunctionDecl(std::shared_ptr<const Storage> storage,
+                                   std::size_t index)
     : storage_(std::move(storage)), index_(index) {}
 
-std::string_view Module::OperationDecl::name() const {
-  return storage_->operations[index_].name;
+std::string_view Module::FunctionDecl::name() const {
+  return storage_->functions[index_].name;
 }
 
-std::span<const Parameter> Module::OperationDecl::inputs() const {
-  return storage_->operations[index_].inputs;
+std::span<const Module::FunctionDecl::GenericDecl>
+Module::FunctionDecl::generics() const {
+  return storage_->functions[index_].generics;
 }
 
-std::span<const Parameter> Module::OperationDecl::results() const {
-  return storage_->operations[index_].results;
+std::span<const Module::ParameterDecl> Module::FunctionDecl::inputs() const {
+  return storage_->functions[index_].inputs;
 }
 
-std::span<const std::string> Module::OperationDecl::interfaces() const {
-  return storage_->operations[index_].interfaces;
+std::span<const Module::ParameterDecl> Module::FunctionDecl::results() const {
+  return storage_->functions[index_].results;
 }
 
-Module::Symbol Module::OperationDecl::symbol() const {
+namespace {
+std::vector<Module::ParameterDecl> select_parameters(
+    std::span<const Module::ParameterDecl> parameters,
+    Module::ParameterDecl::Kind kind) {
+  std::vector<Module::ParameterDecl> result;
+  std::copy_if(parameters.begin(), parameters.end(), std::back_inserter(result),
+               [kind](const auto& parameter) {
+                 return parameter.kind == kind;
+               });
+  return result;
+}
+}  // namespace
+
+std::vector<Module::ParameterDecl> Module::FunctionDecl::static_inputs() const {
+  return select_parameters(inputs(), ParameterDecl::Kind::Static);
+}
+
+std::vector<Module::ParameterDecl> Module::FunctionDecl::value_inputs() const {
+  return select_parameters(inputs(), ParameterDecl::Kind::Value);
+}
+
+std::vector<Module::ParameterDecl> Module::FunctionDecl::static_results() const {
+  return select_parameters(results(), ParameterDecl::Kind::Static);
+}
+
+std::vector<Module::ParameterDecl> Module::FunctionDecl::value_results() const {
+  return select_parameters(results(), ParameterDecl::Kind::Value);
+}
+
+std::span<const std::string> Module::FunctionDecl::interfaces() const {
+  return storage_->functions[index_].interfaces;
+}
+
+std::optional<std::string_view> Module::FunctionDecl::operator_symbol() const {
+  const auto& value = storage_->functions[index_].operator_symbol;
+  return value ? std::optional<std::string_view>{*value} : std::nullopt;
+}
+
+std::optional<Module::FunctionDecl::Fixity>
+Module::FunctionDecl::operator_fixity() const {
+  return storage_->functions[index_].operator_fixity;
+}
+
+Module::FunctionDecl::Form Module::FunctionDecl::form() const {
+  return storage_->functions[index_].body ? Form::Body : Form::External;
+}
+
+const Module::Expression* detail::ModuleAccess::expression(
+    const Module::FunctionDecl& function) {
+  if (!function.value_inputs().empty() || !function.value_results().empty()) {
+    return nullptr;
+  }
+  const auto& body = function.storage_->functions[function.index_].body;
+  if (!body || body->blocks.size() != 1U ||
+      !body->blocks.front().instructions.empty() ||
+      body->blocks.front().terminator.kind !=
+          detail::TerminatorSyntax::Kind::Return ||
+      body->blocks.front().terminator.values.size() != 1U) {
+    return nullptr;
+  }
+  return &body->blocks.front().terminator.values.front().value;
+}
+
+std::string Module::FunctionDecl::signature() const {
+  std::string result(name());
+  if (!generics().empty()) {
+    result += '<';
+    for (std::size_t index = 0; index < generics().size(); ++index) {
+      if (index != 0U) {
+        result += ',';
+      }
+      result += type_expression_text(generics()[index].domain);
+      if (generics()[index].constraint) {
+        result += ':' + *generics()[index].constraint;
+      }
+    }
+    result += '>';
+  }
+  result += '(';
+  for (std::size_t index = 0; index < inputs().size(); ++index) {
+    if (index != 0U) {
+      result += ',';
+    }
+    result += inputs()[index].kind == ParameterDecl::Kind::Value
+                  ? "value:"
+                  : "static:";
+    result += type_expression_text(inputs()[index].domain);
+    if (inputs()[index].variadic) {
+      result += "...";
+    }
+  }
+  result += ")->";
+  if (results().size() != 1U) {
+    result += '(';
+  }
+  for (std::size_t index = 0; index < results().size(); ++index) {
+    if (index != 0U) {
+      result += ',';
+    }
+    result += results()[index].kind == ParameterDecl::Kind::Value
+                  ? "value:"
+                  : "static:";
+    result += type_expression_text(results()[index].domain);
+  }
+  if (results().size() != 1U) {
+    result += ')';
+  }
+  return result;
+}
+
+Module::Symbol Module::FunctionDecl::symbol() const {
   return {storage_->name, storage_->version, storage_->digest,
-          SymbolKind::Operation, storage_->operations[index_].name};
+          SymbolKind::Function, storage_->functions[index_].name, signature()};
 }
 
-bool Module::OperationDecl::operator==(const OperationDecl& other) const {
+bool Module::FunctionDecl::operator==(const FunctionDecl& other) const {
   return symbol() == other.symbol();
 }
 
-const detail::OperationTypeContract&
-detail::OperationTypeAccess::get(const Module::OperationDecl& operation) {
-  return operation.storage_->operations[operation.index_].types;
-}
-
-Module::PassDecl::PassDecl(std::shared_ptr<const Storage> storage,
-                           std::size_t index)
-    : storage_(std::move(storage)), index_(index) {}
-
-std::string_view Module::PassDecl::name() const {
-  return storage_->passes[index_].name;
-}
-
-Module::PassDecl::Form Module::PassDecl::form() const {
-  return storage_->passes[index_].form;
-}
-
-std::span<const std::string> Module::PassDecl::steps() const {
-  return storage_->passes[index_].steps;
-}
-
-Module::Symbol Module::PassDecl::symbol() const {
-  return {storage_->name, storage_->version, storage_->digest, SymbolKind::Pass,
-          storage_->passes[index_].name};
-}
-
-bool Module::PassDecl::operator==(const PassDecl& other) const {
-  return symbol() == other.symbol();
+const detail::FunctionTypeContract&
+detail::FunctionTypeAccess::get(const Module::FunctionDecl& function) {
+  return function.storage_->functions[function.index_].types;
 }
 
 Module::Module(std::shared_ptr<const Storage> storage)
@@ -1783,29 +2403,36 @@ Module::attribute(std::string_view name) const {
                : std::nullopt;
 }
 
-std::optional<Module::OperationDecl>
-Module::operation(std::string_view name) const {
-  const auto index = find_definition(storage_->operations, name);
-  return index ? std::optional<OperationDecl>{OperationDecl(storage_, *index)}
-               : std::nullopt;
+std::optional<Module::FunctionDecl>
+Module::function(std::string_view name) const {
+  const auto values = overloads(name);
+  return values.size() == 1U ? std::optional<FunctionDecl>{values.front()}
+                             : std::nullopt;
 }
 
-std::optional<Module::PassDecl> Module::pass(std::string_view name) const {
-  const auto index = find_definition(storage_->passes, name);
-  return index ? std::optional<PassDecl>{PassDecl(storage_, *index)}
-               : std::nullopt;
+std::vector<Module::FunctionDecl>
+Module::overloads(std::string_view name) const {
+  std::vector<FunctionDecl> result;
+  for (std::size_t index = 0; index < storage_->functions.size(); ++index) {
+    if (storage_->functions[index].name == name) {
+      result.push_back(FunctionDecl(storage_, index));
+    }
+  }
+  return result;
 }
 
 std::optional<Module::Symbol> Module::symbol(SymbolKind kind,
                                              std::string_view name) const {
+  if (kind == SymbolKind::Function) {
+    const auto declarations = overloads(name);
+    return declarations.size() == 1U
+               ? std::optional<Symbol>{declarations.front().symbol()}
+               : std::nullopt;
+  }
   const bool exists =
       (kind == SymbolKind::Interface && interface(name).has_value()) ||
       (kind == SymbolKind::Type && type(name).has_value()) ||
-      (kind == SymbolKind::Attribute && attribute(name).has_value()) ||
-      (kind == SymbolKind::Operation && operation(name).has_value()) ||
-      (kind == SymbolKind::Pass && pass(name).has_value()) ||
-      (kind == SymbolKind::Graph &&
-       find_definition(storage_->graphs, name).has_value());
+      (kind == SymbolKind::Attribute && attribute(name).has_value());
   if (!exists) {
     return std::nullopt;
   }
@@ -1816,8 +2443,7 @@ std::optional<Module::Symbol> Module::symbol(SymbolKind kind,
 std::vector<Module::Symbol> Module::members() const {
   std::vector<Symbol> result;
   result.reserve(storage_->interfaces.size() + storage_->types.size() +
-                 storage_->attributes.size() + storage_->operations.size() +
-                 storage_->passes.size() + storage_->graphs.size());
+                 storage_->attributes.size() + storage_->functions.size());
   const auto append = [&](SymbolKind kind, const auto& definitions) {
     for (const auto& definition : definitions) {
       result.push_back(Symbol(std::string(storage_->name), storage_->version,
@@ -1828,9 +2454,9 @@ std::vector<Module::Symbol> Module::members() const {
   append(SymbolKind::Interface, storage_->interfaces);
   append(SymbolKind::Type, storage_->types);
   append(SymbolKind::Attribute, storage_->attributes);
-  append(SymbolKind::Operation, storage_->operations);
-  append(SymbolKind::Pass, storage_->passes);
-  append(SymbolKind::Graph, storage_->graphs);
+  for (std::size_t index = 0; index < storage_->functions.size(); ++index) {
+    result.push_back(FunctionDecl(storage_, index).symbol());
+  }
   return result;
 }
 
@@ -1861,20 +2487,11 @@ std::vector<Module::AttributeDecl> Module::attributes() const {
   return result;
 }
 
-std::vector<Module::OperationDecl> Module::operations() const {
-  std::vector<OperationDecl> result;
-  result.reserve(storage_->operations.size());
-  for (std::size_t index = 0; index < storage_->operations.size(); ++index) {
-    result.push_back(OperationDecl(storage_, index));
-  }
-  return result;
-}
-
-std::vector<Module::PassDecl> Module::passes() const {
-  std::vector<PassDecl> result;
-  result.reserve(storage_->passes.size());
-  for (std::size_t index = 0; index < storage_->passes.size(); ++index) {
-    result.push_back(PassDecl(storage_, index));
+std::vector<Module::FunctionDecl> Module::functions() const {
+  std::vector<FunctionDecl> result;
+  result.reserve(storage_->functions.size());
+  for (std::size_t index = 0; index < storage_->functions.size(); ++index) {
+    result.push_back(FunctionDecl(storage_, index));
   }
   return result;
 }
@@ -1884,14 +2501,19 @@ bool Module::operator==(const Module& other) const {
          digest() == other.digest();
 }
 
-std::shared_ptr<const detail::GraphSyntax>
-detail::ModuleAccess::graph(const Module& module, std::string_view name) {
-  const auto index = find_definition(module.storage_->graphs, name);
-  if (!index) {
+std::shared_ptr<const detail::FunctionBody>
+detail::ModuleAccess::body(const Module& module,
+                            const Module::FunctionDecl& function) {
+  if (function.storage_.get() != module.storage_.get() ||
+      function.index_ >= module.storage_->functions.size()) {
     return nullptr;
   }
-  return std::shared_ptr<const detail::GraphSyntax>(
-      module.storage_, &module.storage_->graphs[*index]);
+  const auto& body = module.storage_->functions[function.index_].body;
+  if (!body) {
+    return nullptr;
+  }
+  return std::shared_ptr<const detail::FunctionBody>(
+      module.storage_, &*body);
 }
 
 std::optional<SourceRange>
@@ -1915,28 +2537,22 @@ std::optional<SourceRange> detail::ModuleAccess::declaration_source(
     return find_source(module.storage_->types);
   case Module::SymbolKind::Attribute:
     return find_source(module.storage_->attributes);
-  case Module::SymbolKind::Operation:
-    return find_source(module.storage_->operations);
-  case Module::SymbolKind::Pass:
-    return find_source(module.storage_->passes);
-  case Module::SymbolKind::Graph:
-    if (const auto index = find_definition(module.storage_->graphs, name)) {
-      const auto& graph = module.storage_->graphs[*index];
-      return SourceRange{graph.source, graph.range.begin, graph.range.end};
-    }
-    return std::nullopt;
+  case Module::SymbolKind::Function:
+    return find_source(module.storage_->functions);
   }
   return std::nullopt;
 }
 
 std::span<const detail::RuleDefinition>
 detail::ModuleAccess::rules(const Module& module,
-                            const Module::PassDecl& pass) {
-  if (pass.storage_.get() != module.storage_.get() ||
-      pass.index_ >= module.storage_->passes.size()) {
+                            const Module::FunctionDecl& function) {
+  if (function.storage_.get() != module.storage_.get() ||
+      function.index_ >= module.storage_->functions.size()) {
     return {};
   }
-  return module.storage_->passes[pass.index_].rules;
+  const auto& body = module.storage_->functions[function.index_].body;
+  return body ? std::span<const detail::RuleDefinition>(body->rules)
+              : std::span<const detail::RuleDefinition>{};
 }
 
 std::optional<Module> parse_module(std::string_view text,
@@ -1954,9 +2570,7 @@ std::optional<Module> parse_module(std::string_view text,
   storage->interfaces = std::move(parsed->interfaces);
   storage->types = std::move(parsed->types);
   storage->attributes = std::move(parsed->attributes);
-  storage->operations = std::move(parsed->operations);
-  storage->passes = std::move(parsed->passes);
-  storage->graphs = std::move(parsed->graphs);
+  storage->functions = std::move(parsed->functions);
   Module module(storage);
   storage->digest = detail::sha256(format(module));
   return module;
@@ -2052,19 +2666,20 @@ std::string format(const Module& module) {
   for (const auto& interface : module.storage_->interfaces) {
     output << "  interface " << interface.name << ": "
            << subject_kind_name(interface.subject);
-    if (interface.methods.empty()) {
+    if (interface.fields.empty() && interface.methods.empty()) {
       output << ";\n";
       continue;
     }
     output << " {\n";
+    for (const auto& field : interface.fields) {
+      output << "    " << field.name << ": "
+             << type_expression_text(field.domain) << ";\n";
+    }
     for (const auto& method : interface.methods) {
       output << "    " << method.name;
-      write_parameters(method.parameters);
-      std::string result = kind_name(method.result_kind);
-      if (method.result_list) {
-        result = "list<" + result + ">";
-      }
-      output << " -> " << result << ";\n";
+      write_parameters(method.inputs);
+      const auto& output_field = method.results.front();
+      output << " -> " << type_expression_text(output_field.domain) << ";\n";
     }
     output << "  }\n";
   }
@@ -2079,7 +2694,35 @@ std::string format(const Module& module) {
       }
       flat += parameter_text(type.parameters[index]);
     }
-    flat += ')' + interfaces_text(type.interfaces) + ";\n";
+    flat += ')' + interfaces_text(type.interfaces);
+    if (!type.derived_parameters.empty()) {
+      if (flat.size() <= canonical_line_width || type.parameters.empty()) {
+        output << flat << " {\n";
+      } else {
+        output << head << "(\n";
+        for (std::size_t index = 0; index < type.parameters.size(); ++index) {
+          output << "    " << parameter_text(type.parameters[index]);
+          if (index + 1U != type.parameters.size()) {
+            output << ',';
+          }
+          output << '\n';
+        }
+        output << "  )" << interfaces_text(type.interfaces) << " {\n";
+      }
+      for (const auto& derived : type.derived_parameters) {
+        const std::string field_head = "    " + derived.name + " = ";
+        const std::string value = type_expression_text(derived.value);
+        if (field_head.size() + value.size() <= canonical_line_width) {
+          output << field_head << value << ";\n";
+        } else {
+          output << field_head << "\n      "
+                 << type_expression_layout(derived.value, 6U) << ";\n";
+        }
+      }
+      output << "  }\n";
+      continue;
+    }
+    flat += ";\n";
     if (flat.size() <= 89U || type.parameters.empty()) {
       output << flat;
       continue;
@@ -2100,73 +2743,92 @@ std::string format(const Module& module) {
     output << interfaces_text(attribute.interfaces);
     output << ";\n";
   }
-  begin_group(!module.storage_->operations.empty());
-  for (const auto& operation : module.storage_->operations) {
-    std::string head = "  op " + operation.name;
-    if (!operation.types.generics.empty()) {
-      head += '<';
-      for (std::size_t index = 0; index < operation.types.generics.size();
+  begin_group(!module.storage_->functions.empty());
+  for (const auto& function : module.storage_->functions) {
+    std::string head = "  fn " + function.name;
+    if (!function.generics.empty()) {
+      std::vector<std::string> generics;
+      generics.reserve(function.generics.size());
+      for (std::size_t index = 0; index < function.generics.size();
            ++index) {
-        if (index != 0U) {
-          head += ", ";
+        const auto& generic = function.generics[index];
+        std::string text = generic.name + ": ";
+        if (generic.constraint) {
+          text += *generic.constraint;
+        } else {
+          text += type_expression_text(generic.domain);
         }
-        const auto& generic = operation.types.generics[index];
-        head += generic.name + ": ";
-        if (generic.list) {
-          head += "list<";
-        }
-        head += kind_name(generic.kind);
-        if (generic.list) {
-          head += '>';
-        }
+        generics.push_back(std::move(text));
       }
-      head += '>';
+      std::string flat_generics = head + '<';
+      for (std::size_t index = 0; index < generics.size(); ++index) {
+        if (index != 0U) {
+          flat_generics += ", ";
+        }
+        flat_generics += generics[index];
+      }
+      flat_generics += '>';
+      if (flat_generics.size() <= canonical_line_width) {
+        head = std::move(flat_generics);
+      } else {
+        head += "<\n";
+        for (std::size_t index = 0; index < generics.size(); ++index) {
+          head += "    " + generics[index];
+          if (index + 1U != generics.size()) {
+            head += ',';
+          }
+          head += '\n';
+        }
+        head += "  >";
+      }
     }
     std::vector<std::string> inputs;
-    inputs.reserve(operation.inputs.size());
-    for (std::size_t index = 0; index < operation.inputs.size(); ++index) {
-      const auto& input = operation.inputs[index];
-      if (operation.types.inputs[index]) {
-        std::string text = input.name + ": " +
-                           type_expression_text(*operation.types.inputs[index]);
-        if (input.variadic) {
-          text += "...";
-        }
-        if (input.default_value) {
-          text += " = " + literal_text(*input.default_value);
-        }
-        inputs.push_back(std::move(text));
+    inputs.reserve(function.inputs.size());
+    for (std::size_t index = 0; index < function.inputs.size(); ++index) {
+      const auto& input = function.inputs[index];
+      if (index < function.types.bindings.size() &&
+          function.types.bindings[index]) {
+        inputs.push_back(
+            parameter_text(input, *function.types.bindings[index]));
       } else {
         inputs.push_back(parameter_text(input));
       }
     }
-    std::string tail = ")";
-    if (!operation.types.results.empty()) {
-      tail += " -> ";
-      if (operation.types.results.size() > 1U) {
-        tail += '(';
+    std::string result_text;
+    if (!function.results.empty()) {
+      result_text = " -> ";
+      if (function.results.size() > 1U) {
+        result_text += '(';
       }
-      for (std::size_t index = 0; index < operation.types.results.size();
-           ++index) {
+      for (std::size_t index = 0; index < function.results.size(); ++index) {
         if (index != 0U) {
-          tail += ", ";
+          result_text += ", ";
         }
-        tail += type_expression_text(operation.types.results[index]);
+        result_text += type_expression_text(function.results[index].domain);
       }
-      if (operation.types.results.size() > 1U) {
-        tail += ')';
+      if (function.results.size() > 1U) {
+        result_text += ')';
       }
     }
-    if (!operation.interfaces.empty()) {
-      tail += " : ";
-      for (std::size_t index = 0; index < operation.interfaces.size();
+    std::string suffix;
+    if (function.operator_symbol) {
+      suffix += " as ";
+      if (function.operator_fixity == Module::FunctionDecl::Fixity::Postfix) {
+        suffix += "postfix ";
+      }
+      suffix += *function.operator_symbol;
+    }
+    if (!function.interfaces.empty()) {
+      suffix += " : ";
+      for (std::size_t index = 0; index < function.interfaces.size();
            ++index) {
         if (index != 0U) {
-          tail += ", ";
+          suffix += ", ";
         }
-        tail += operation.interfaces[index];
+        suffix += function.interfaces[index];
       }
     }
+    const std::string tail = ")" + result_text + suffix;
     std::string flat = head + '(';
     for (std::size_t index = 0; index < inputs.size(); ++index) {
       if (index != 0U) {
@@ -2174,52 +2836,68 @@ std::string format(const Module& module) {
       }
       flat += inputs[index];
     }
-    flat += tail + ";\n";
-    if (flat.size() <= 89U) {
+    flat += tail;
+    const bool multiline = flat.size() > 88U;
+    if (!multiline) {
       output << flat;
-      continue;
-    }
-    output << head << "(\n";
-    for (std::size_t index = 0; index < inputs.size(); ++index) {
-      output << "    " << inputs[index];
-      if (index + 1U != inputs.size()) {
-        output << ',';
-      }
-      output << '\n';
-    }
-    output << "  " << tail << ";\n";
-  }
-  begin_group(!module.storage_->passes.empty());
-  for (const auto& pass : module.storage_->passes) {
-    output << "  pass " << pass.name;
-    if (pass.form == Module::PassDecl::Form::External) {
-      output << ";\n";
-      continue;
-    }
-    if (pass.form == Module::PassDecl::Form::Sequence) {
-      output << " = ";
-      for (std::size_t index = 0; index < pass.steps.size(); ++index) {
-        if (index != 0U) {
-          output << ", ";
+    } else {
+      output << head << "(\n";
+      for (std::size_t index = 0; index < inputs.size(); ++index) {
+        output << "    " << inputs[index];
+        if (index + 1U != inputs.size()) {
+          output << ',';
         }
-        output << pass.steps[index];
+        output << '\n';
       }
-      output << ";\n";
+      if (2U + tail.size() <= canonical_line_width) {
+        output << "  " << tail;
+      } else {
+        output << "  )";
+        if (!function.results.empty()) {
+          output << " ->\n";
+          if (function.results.size() == 1U) {
+            output << "    "
+                   << type_expression_layout(
+                          function.results.front().domain, 4U);
+          } else {
+            output << "    (\n";
+            for (std::size_t index = 0; index < function.results.size();
+                 ++index) {
+              output << "      "
+                     << type_expression_layout(function.results[index].domain,
+                                               6U);
+              if (index + 1U != function.results.size()) {
+                output << ',';
+              }
+              output << '\n';
+            }
+            output << "    )";
+          }
+        }
+        output << suffix;
+      }
+    }
+    if (function.body && function.body->rules.empty()) {
+      output << ' ' << detail::format_function_body(*function.body, 1U);
       continue;
     }
-    output << " {\n";
-    for (const auto& rule : pass.rules) {
-      output << "    ";
-      write_term(write_term, rule, rule.match);
-      output << " => ";
-      write_term(write_term, rule, rule.replacement);
-      output << ";\n";
+    if (function.body && !function.body->rules.empty()) {
+      output << " {\n    return rewrite(";
+      if (!function.inputs.empty()) {
+        output << function.inputs.front().name;
+      }
+      output << ") {\n";
+      for (const auto& rule : function.body->rules) {
+        output << "      ";
+        write_term(write_term, rule, rule.match);
+        output << " => ";
+        write_term(write_term, rule, rule.replacement);
+        output << ";\n";
+      }
+      output << "    };\n  }\n";
+      continue;
     }
-    output << "  }\n";
-  }
-  begin_group(!module.storage_->graphs.empty());
-  for (const auto& graph : module.storage_->graphs) {
-    output << detail::format_graph_syntax(graph, 1U);
+    output << ";\n";
   }
   output << "}\n";
   return output.str();

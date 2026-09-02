@@ -1,249 +1,225 @@
 # Joggle architecture
 
-This document describes Joggle's public objects and how data moves through
-them.
+This document fixes the intended public architecture. When migration notes in
+other documents disagree with it, this document and
+[the execution model](execution-model.md) take precedence.
 
-## Public model
+## Purpose
 
-Joggle exposes three owning concepts:
+Joggle is a lightweight C++ compiler framework for people co-designing AI
+software and hardware. It supplies a small typed language, an editable IR, a
+residualizing evaluator, deterministic verification, and package identity. It
+does not prescribe a tensor stack, device model, lowering direction, scheduler,
+or code generator. Those are installable Modules.
 
-- `Module` is an immutable, versioned package of named members.
-- `Compiler` resolves Module imports, attaches optional C++ behavior, and runs
-  Module passes.
-- `Graph` is a mutable SSA program, opened by its qualified Module member name
-  or assembled through C++.
+The design has four public concepts:
 
-Their relationship is direct: a named `graph` opens as a `Graph`, and every
-pass maps that Graph to another valid state of the same Graph. Operation
-declarations are reusable node contracts, analogous to function signatures.
-References to those declarations resolve through the owning Module's imports.
+- `Module`: a versioned namespace and ownership unit for types and functions;
+- `Function`: a signature plus zero or more Blocks;
+- `Compiler`: Module resolution, host binding, evaluation, and invocation;
+- values: either Known to the compiler or Residual in a Function.
 
-`Diagnostic` is a read-only report. `Type`, `Attribute`, `Operation`, `Value`,
-and `Region` are lightweight handles rather than managers.
-Typed schema declarations use the `*Decl` suffix, so `Module::TypeDecl` cannot
-be confused with a runtime `Type` instance. Graph members open directly as
-`Graph` and have no public declaration wrapper.
+There is one callable declaration, `fn`. Loading, conversion, transformation,
+analysis, scheduling, simulation, and emission are ordinary typed functions.
+There is no `op`/`pass` split and no fixed frontend/backend pipeline.
 
-`Compiler` owns linking and behavior state. `Graph` owns its nested regions,
-SSA values, verification, and edit transactions. Extension authors work with
-these objects directly.
+## Ownership
 
-## Core invariants
-
-Let `C(x) = format(parse(x))` for a valid Module source `x`. Joggle maintains
-the following contracts across the text, C++, package, and pass paths.
-
-1. **Canonical source.** `C(C(x)) = C(x)`. Source paths, comments, and
-   non-canonical whitespace do not occur in `C(x)`, so they cannot affect
-   content identity.
-2. **Content identity.** A Module identity is
-   `I(M) = (name, version, SHA-256(C(M)))`. A member symbol is
-   `(I(M), member kind, local name)`; an interface method additionally contains
-   its owning interface symbol and method name. Human-readable qualified names
-   are never used as persistent binding keys.
-3. **Closed declarations.** Text references resolve only through the declaring
-   Module and its imports. A runtime Graph records the exact linked Module
-   identities accepted by its declarations. Loading an additional target
-   Module can supply an explicitly selected pass, but cannot reinterpret a
-   symbol already present in the Graph.
-4. **Lexical SSA.** Each Value is either a Graph/Region argument or one indexed
-   result of one Operation. A use is valid only when its definition precedes it
-   in the same Region or is visible through an enclosing Region. Values do not
-   escape to a parent or sibling Region. Graph outputs must be visible at the
-   Graph boundary.
-5. **Atomic edits.** `Graph::Edit` starts from a state `S` and mutates a private
-   working state `S'`. Commit publishes `S'` only if structural SSA validation
-   and every text-declared operation contract succeed; failure or abandonment
-   restores `S`. `Compiler::run` adds an outer checkpoint and bound domain
-   verification, so a failed C++ pass or pass sequence also restores its input
-   Graph.
-6. **Pass progress.** A text contraction replaces its matched root only with a
-   proper subterm already present in that match, strictly reducing the number
-   of matched Operations. Pass composition is acyclic. An external pass may
-   construct arbitrary schema-valid Operations, but it runs under the same
-   whole-Graph checkpoint and final verifier.
-7. **Exact behavior.** A behavior library may bind only when its ABI, host
-   target, and embedded `I(M)` agree with the linked Module. Its bindings attach
-   atomically. Installed and locked behavior additionally uses the binary file
-   digest, so Module identity and executable identity are checked separately.
-8. **One program representation.** Parsing a named graph, constructing one in
-   C++, transforming it, and reopening formatted output all produce the same
-   `Graph` abstraction.
-
-The `module`, `graph`, `pass`, `behavior_loader`, `package_cli`, and
-`vertical_cli` tests are executable witnesses for these boundaries. They do
-not replace proofs about extension-specific passes, but they prevent the core
-from silently weakening the contracts above.
-
-## Module
-
-A `.joggle` source is the sole extension definition. Parsing produces an
-immutable `Module` containing types, attributes, operations, interfaces,
-passes, and graphs as peer members; C++ cannot add or replace them. Its
-identity is:
+The complete program hierarchy is:
 
 ```text
-module name + semantic version + SHA-256(canonical source)
+Module
+  Function
+    Block
+      Instruction
+      Terminator
 ```
 
-The canonical digest is independent of source paths and process-local values.
-Human-facing symbols use `module.name`; persistent symbols include the complete
-module identity.
+A Function has exactly one entry Block. A Block owns an ordered instruction
+sequence and exactly one terminator. An Instruction may produce zero or more
+Values. A Value is a Function parameter, Block argument, or Instruction result.
 
-An import alias is lexical sugar inside one Module, not another identity or
-registry entry. Resolution replaces the local prefix with the imported
-Module's real content identity before constructing or comparing declarations.
+Instructions never own Blocks. Consequently the core has no nested `Region`
+container, no region/yield protocol, and no operation-specific dominance rule.
+Nested source code is a closure and normalizes to a Function whose captures are
+explicit parameters.
 
-The on-disk package transports canonical Module source and may include a C++
-behavior library. Runtime-linked declaration handles give C++ code typed access
-to that source.
+Straight-line functions naturally form a def-use graph. Multiple Blocks add a
+control-flow graph. These are relationships over Function-owned objects, not an
+additional `Graph` owner or value domain. Analyses may construct `DataflowView`
+or `CFGView` caches, but a view cannot own or mutate the program.
 
-## Compiler
+## Function IR
 
-A `Compiler` links the Modules participating in one compilation. Module
-`import` controls names that may appear in that Module's source; explicitly
-loaded Modules may also contribute passes and operations to the compilation.
-This lets an application load a model Module and a target Module side by side,
-then explicitly run the target pass without making the model import its target.
+The core instruction contract is deliberately small:
 
-Every constructed Graph records the exact identities in this linked set. Graph
-verification accepts declarations from that set, while text parsing still
-resolves each source reference through its owning Module's imports. The host
-selects a compilation by loading Modules and an optional lock before `link()`.
+```text
+Instruction
+  callee       resolved Function symbol
+  operands     ordered Values
+  arguments    compiler-known named values
+  results      typed Values
 
-## Attached behavior
-
-The Module declares its types, operations, and executable graphs without
-exposing C++ implementation mechanics:
-
-```joggle
-type integer(width: i64);
-pass lower;
+Block
+  arguments    typed Values received on incoming edges
+  instructions ordered Instructions
+  terminator   return | jump | branch
 ```
 
-Optional C++ behavior binds to the exact declaration symbol. For a type,
-attribute, or operation this adds semantic validation; a bodyless pass receives
-its executable implementation. `Compiler::bind(declaration, function)` uses the
-resolved declaration as both the typed subject and stable binding key. An
-interface method adds only its method name or an explicit `MethodDecl`; behavior
-code never reconstructs a `declaration.method` key.
+Core terminators are:
 
-Operation type relations also belong to the Module. Generic type expressions
-are structurally unified against operands, dependent named properties, and
-explicit result expectations; the same solver checks text construction, C++
-construction, and pass output.
-`joggle::property(name, value)` supplies a named property during C++ operation
-creation, so it participates in inference at the same point as `name = value`
-in a text graph.
-C++ behavior is reserved for value-domain semantics that the text contract
-does not express, rather than duplicating operand/result type checks.
+```text
+return values...
+jump target(arguments...)
+branch condition, true_target(arguments...), false_target(arguments...)
+```
 
-An optional behavior shared library exports one `Behavior` descriptor. Its
-declared identity must equal the linked Module's complete content identity, and
-its entry may only call the same direct binding API. `Compiler::load_behavior`
-owns the library lifetime and attaches all bindings atomically.
+Every successor edge carries exactly the number and types required by its
+target Block arguments. Merge values therefore need neither phi instructions
+nor yield operations. The verifier checks at least:
 
-## Passes and implementation queries
+1. one entry Block, appearing first and having no Block arguments;
+2. unique Block and Value names in textual form;
+3. exactly one valid terminator per Block;
+4. existing successor targets and exact edge arity/type;
+5. reachability from entry;
+6. dominance of every operand use;
+7. exact return arity/type against the Function signature;
+8. exact call contracts against the resolved callee.
 
-`pass` is the only public transformation declaration. Its implementation is
-exactly one of an external C++ binding, ordered contraction rules, or a
-sequence of other passes. A contraction's right side is a proper subterm of
-its left side, so text-defined passes only reuse existing SSA values and
-terminate by construction. Matching machinery remains private rather than
-becoming a second public IR.
+Edits are transactional. A commit publishes a new state only after structural,
+type, dominance, and extension verification succeeds. Failed or abandoned
+edits preserve the previous Module state.
 
-Implementation queries are ordinary C++ callables passed to
-`Compiler::query`. Every call checks the Graph and executes the supplied
-callable. Query results remain local to the implementation using them. A caller
-can add an explicit cache when its domain provides a meaningful cache key.
+## Source control flow
 
-## Graph
-
-A `graph` is a named program stored in a Module; its body is SSA:
+Authors normally write structured control flow:
 
 ```joggle
-graph main(%x: tensor<integer<8>, [1, 4]>) -> tensor<integer<8>, [1, 4]> {
-  %y = relu(%x);
-  return %y;
+fn choose<T: type>(condition: i1, lhs: T, rhs: T) -> T {
+  value = if condition {
+    lhs
+  } else {
+    rhs
+  };
+  return value;
 }
 ```
 
-The ordinary user path is `compiler.graph("model.main")`. It resolves the
-member through the Module's imports and opens a mutable `Graph`. Calling
-`compiler.graph()` creates an empty graph for programmatic construction.
-`Graph::inputs()`, `Graph::operations()`, and `Graph::outputs()` expose the
-program boundary and directly owned operation sequence. The implementation's
-root region is not public. Only a structured Operation exposes real nested
-`Region` handles; a top-level Operation has no region parent. Passes that
-deliberately cross those structured boundaries request the explicit preorder
-snapshot from `Graph::all_operations()`.
+The parser elaborates a residual condition to Blocks and typed edges. A
+canonical low-level escape form exists so arbitrary pass output can still
+round-trip without a second file format:
 
-Tools that inspect a Module use `Module::members()`. It returns the same
-content-identified `Symbol` for every member kind; graph inspection does not
-introduce another graph object. `compiler.graph(symbol)` opens a graph Symbol
-directly, while the string overload is only the human-facing lookup path.
+```joggle
+fn choose<T: type>(condition: i1, lhs: T, rhs: T) -> T {
+  entry():
+    branch condition, yes(), no();
 
-Opening a named member resolves its references and returns `Graph`. Text-loaded
-and C++-constructed programs then use the same verifier, edits, passes, and
-formatter.
+  yes():
+    jump merge(lhs);
 
-Loaded, programmatically constructed, and transformed programs share one
-`Graph`. A pass edits it; formatting the result yields an ordinary `graph`
-member that can be loaded, verified, and passed again.
+  no():
+    jump merge(rhs);
 
-Graph construction and transformation share one nested transactional API,
-`Graph::Edit`. An edit either commits a verified change or rolls back. Separate
-construction and replacement machinery stays internal. The same edit can
-append to the Graph or a structured region, or insert before an existing
-operation;
-target passes therefore preserve SSA order without a separate lowering API.
-Region-local SSA bindings use lexical scope: nested bodies can capture enclosing
-values, but values never escape to a parent or sibling body.
-An operation's `region` parameter declares a named opaque body slot, not another
-callable signature. The core owns its binding and SSA invariants; extensions may
-attach domain checks without creating a second region-schema subsystem.
-Omitted C++ result types are inferred by the same Module type-contract solver
-used for text graphs and final pass verification. Commit runs that solver over
-the complete edited Graph, so a schema-invalid transaction is never published;
-optional C++ domain verifiers remain the Compiler's outer verification layer.
+  merge(value: T):
+    return value;
+}
+```
 
-Formatting a committed Graph reconstructs the canonical graph declaration from
-that runtime value, including deterministic SSA names, explicit types,
-properties, structured regions, and region arguments. The `joggle run` command
-therefore executes the same linked passes as the C++ API and publishes their
-actual resulting Graph rather than a separate export IR. Its output is wrapped
-as a derived canonical Module importing the exact compilation closure, so it is
-again ordinary Joggle input rather than a terminal dump format.
-The default derived name is `<source>_<graph>_compiled`. It separates different
-graph members and the source package in one repository; running the resulting
-single-graph Module again preserves that name.
+The formatter prefers structured syntax when a CFG can be represented without
+changing meaning and uses explicit Blocks otherwise. Both forms denote the
+same Function IR; neither introduces a Graph or Region declaration.
+
+## Residualizing evaluation
+
+Type and availability are independent:
+
+```text
+Known(host value)
+Residual(IR Value)
+```
+
+Evaluation of an ordinary `fn` proceeds as follows:
+
+1. A language body is interpreted and specialized with the supplied mixture of
+   Known and Residual arguments.
+2. A host binding runs when its required arguments are Known.
+3. Otherwise a residualizable call becomes an Instruction.
+4. `@(expression)` requires the result to be Known; it does not select another
+   function kind or evaluator.
+
+For a Known `if` condition, both branches are checked but only the selected
+branch executes. For a Residual condition, both branches elaborate into the
+CFG. Equal path-independent Known results remain Known. Different Known values
+are materialized on their edges and merge as Residual. Distinct host-only
+values that cannot be materialized are a staging error.
+
+Pure compile-time calls may be memoized. Observable host effects cannot be
+speculatively executed below Residual control flow: they must residualize or
+produce a staging diagnostic. Evaluation has deterministic limits for steps,
+recursion, and allocation; exhausting a limit is an error, never an implicit
+change of program meaning.
+
+Loops use the same mechanism. Known control may execute within the configured
+budget. Residual control creates header, body, and exit Blocks; loop-carried
+values are Block arguments.
 
 ## Extension boundary
 
-Hardware descriptions, number formats, instruction sets, logic networks, and
-mapping policies are expressed as ordinary Modules. A target extension chooses
-its declarations and interfaces; the core supplies linking, SSA storage and
-verification, atomic edits, and pass execution.
+A Module may declare new types, attributes, interfaces, and functions. C++ can
+attach a host representation to a declared type and a callable to a declared
+Function symbol. The binding is not a second declaration and does not create a
+second overload set.
 
-The examples exercise this boundary end to end. `arith.numeric_format` is the
-shared contract; the independent `arith.integer` and `fixed.q` types implement
-it. `tensor.tensor` accepts any element type and owns constant/reshape
-semantics, while `nn` owns model-level `linear` and `relu` operations. The
-reshape contract binds the result shape from a named list property, while
-optional C++ behavior checks the nonlinear element-count invariant. One `mlp`
-Module stores the model over both formats. The `edgevec` Module owns lane-aware operation
-schemas, a typed operation interface, and one `lower` pass that rewrites either
-graph through `Graph::Edit`. Its interface defines `cycles()`, and an ordinary
-query sums that target-owned meaning.
+One binding serves two cases:
 
-Cross-module contracts use `Module::InterfaceDecl`. An interface is a versioned
-declaration with typed methods. A declaration lists conformance after `:`; the
-Compiler resolves and dispatches the exact declaration/method pair.
+- Known inputs: invoke the callable and obtain a Known result;
+- Residual inputs: keep a call to the same Function when its values have an IR
+  representation.
 
-Typed C++ is implemented by generic codecs over schema handles:
-`Compiler::make`, `Type::get<T>`, `Attribute::get<T>`, typed `Compiler::bind`,
-and typed `Compiler::call`. Joggle checks these uses against the linked schema
-when behavior is attached.
-Declaration-handle equality includes the complete canonical Module identity,
-so behavior code compares resolved declarations rather than string hooks or
-process-local tokens.
+Language-defined bodies support mixed-stage partial evaluation. External
+functions without a binding are still legal when they can remain Residual.
+Host-only values need no stage annotation; they simply cannot cross a residual
+edge unless their Module supplies a materialization representation.
+
+Native scalar formats, tensors, buffers, FPGA bit layouts, custom instructions,
+device descriptions, cost models, cycle simulators, and emitters are ordinary
+Modules. The trusted kernel contains only parsing, identity, types, Functions,
+Blocks, Values, overload resolution, evaluation, verification, diagnostics,
+and binding hooks.
+
+## Module identity
+
+For canonical source `C(M)`, Module identity is:
+
+```text
+(name, semantic version, SHA-256(C(M)))
+```
+
+Imports resolve to that full identity. A Function symbol includes its owning
+Module identity and overload discriminator. Host behavior binds to the exact
+symbol; a string name alone is never a persistent binding key.
+
+Canonical formatting is idempotent:
+
+```text
+format(parse(format(parse(source)))) = format(parse(source))
+```
+
+Comments, paths, host addresses, and registration order do not affect content
+identity.
+
+## Migration state
+
+The nested `Region` API and storage have been deleted. The current C++
+`Graph`/`Operation` names are a flat transitional shell around the transaction,
+def-use, inference, and verifier code being moved to
+Function/Block/Instruction/Value. They are migration sources, not compatibility
+requirements. No new control-flow feature is implemented on the old ownership
+model. The `graph` compiler domain disappears after its callers migrate to
+ordinary Module-declared handle types.
+
+Likewise, the current separate compile-time-expression and dataflow-body parser
+paths are temporary. The final parser produces one function syntax tree, and
+the residualizing evaluator decides which parts execute and which parts become
+IR.

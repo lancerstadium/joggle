@@ -19,7 +19,7 @@ endif()
 set(target_output "${JOGGLE_OUTPUT}.target")
 execute_process(
   COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" graph_cli.main
-          graph_target.lower --with "${JOGGLE_TARGET}" -o "${target_output}"
+          graph_target.convert --with "${JOGGLE_TARGET}" -o "${target_output}"
   RESULT_VARIABLE target_result
   ERROR_VARIABLE target_error
 )
@@ -35,7 +35,7 @@ string(FIND "${target_graph}" "graph_cli.source()" target_source_position)
 if(target_module_position EQUAL -1 OR NOT target_identity_position EQUAL -1 OR
    NOT target_import_position EQUAL -1 OR target_source_position EQUAL -1)
   message(FATAL_ERROR
-    "cross-Module pipeline retained lowered or unused target state:\n${target_graph}")
+    "cross-Module pipeline retained converted or unused target state:\n${target_graph}")
 endif()
 
 set(behavior_output "${JOGGLE_OUTPUT}.behavior")
@@ -73,7 +73,7 @@ if(NOT standard_output STREQUAL "")
 endif()
 
 file(READ "${JOGGLE_OUTPUT}" graph)
-string(FIND "${graph}" "graph main()" graph_position)
+string(FIND "${graph}" "fn main()" graph_position)
 string(FIND "${graph}" "module graph_cli_main_compiled@1.0.0" module_position)
 string(FIND "${graph}" "import graph_cli@1.0.0" import_position)
 string(FIND "${graph}" "graph_cli.source()" source_position)

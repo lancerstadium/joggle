@@ -1,14 +1,12 @@
 joggle 1;
 
 module behavior_plugin@1.0.0 {
-  type positive(value: i64);
+  type positive(value: int);
 
-  op source() -> positive<1>;
-
-  pass noop;
-
-  graph main() -> positive<1> {
-    %value = source();
-    return %value;
+  fn source() -> positive<1>;
+  fn noop(input: graph) -> graph;
+  fn main() -> positive<1> {
+    value = source();
+    return value;
   }
 }

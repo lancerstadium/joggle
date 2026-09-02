@@ -19,20 +19,20 @@ int main(int argc, char** argv) {
     compiler.diagnostics().print(std::cerr);
     return 1;
   }
-  const auto make = module->operation("make");
-  const auto lowered = module->operation("lowered");
-  if (!make || !lowered || !compiler.load_behavior("external")) {
+  const auto make = module->function("make");
+  const auto converted = module->function("converted");
+  if (!make || !converted || !compiler.load_behavior("external")) {
     compiler.diagnostics().print(std::cerr);
     return 1;
   }
 
   auto graph = compiler.graph("external.main");
-  if (!graph || !compiler.run(*graph, "external.lower")) {
+  if (!graph || !compiler.run(*graph, "external.convert")) {
     compiler.diagnostics().print(std::cerr);
     return 1;
   }
   const auto operations = graph->operations();
-  if (operations.size() != 1U || operations.front().schema() != *lowered) {
+  if (operations.size() != 1U || operations.front().schema() != *converted) {
     compiler.diagnostics().print(std::cerr);
     return 1;
   }
@@ -51,11 +51,9 @@ int main(int argc, char** argv) {
     diagnostics.print(std::cerr);
     return 1;
   }
-  const auto output_count = compiler.query(
-      *constructed,
-      [](const joggle::Graph& current) { return current.outputs().size(); });
+  const auto output_count = constructed->outputs().size();
   const auto bits = value.type().get<std::int64_t>("bits");
-  if (!output_count || *output_count != 1U || !bits || *bits != 12) {
+  if (output_count != 1U || !bits || *bits != 12) {
     compiler.diagnostics().print(std::cerr);
     return 1;
   }

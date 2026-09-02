@@ -5,6 +5,15 @@
 
 namespace joggle::detail {
 
+namespace {
+
+bool is_symbol_character(char value) {
+  constexpr std::string_view characters = "+-*/%!=<>~&|^?";
+  return characters.find(value) != std::string_view::npos;
+}
+
+}  // namespace
+
 Lexer::Lexer(std::string_view input, SourcePosition origin)
     : input_(input), line_(origin.line), column_(origin.column) {}
 
@@ -29,13 +38,27 @@ Token Lexer::take() {
     }
     return {TokenKind::Name, std::move(text), begin, {line_, column_}};
   }
-  if (std::isdigit(static_cast<unsigned char>(first)) != 0 ||
-      (first == '-' && offset_ + 1U < input_.size() &&
-       std::isdigit(static_cast<unsigned char>(input_[offset_ + 1U])) != 0)) {
+  if (std::isdigit(static_cast<unsigned char>(first)) != 0) {
     return number(begin);
   }
   if (first == '"') {
     return string(begin);
+  }
+
+  if (is_symbol_character(first)) {
+    if (first == '-' && offset_ + 1U < input_.size() &&
+        input_[offset_ + 1U] == '>') {
+      advance();
+      advance();
+      return token(TokenKind::Arrow, "->", begin);
+    }
+    if (first == '=' && offset_ + 1U < input_.size() &&
+        input_[offset_ + 1U] == '>') {
+      advance();
+      advance();
+      return token(TokenKind::FatArrow, "=>", begin);
+    }
+    return symbol(begin);
   }
 
   advance();
@@ -60,28 +83,8 @@ Token Lexer::take() {
     return token(TokenKind::Comma, ",", begin);
   case '@':
     return token(TokenKind::At, "@", begin);
-  case '<':
-    return token(TokenKind::Less, "<", begin);
-  case '>':
-    return token(TokenKind::Greater, ">", begin);
-  case '^':
-    return token(TokenKind::Caret, "^", begin);
-  case '%':
-    return token(TokenKind::Percent, "%", begin);
   case '$':
     return token(TokenKind::Dollar, "$", begin);
-  case '=':
-    if (offset_ < input_.size() && input_[offset_] == '>') {
-      advance();
-      return token(TokenKind::FatArrow, "=>", begin);
-    }
-    return token(TokenKind::Equal, "=", begin);
-  case '-':
-    if (offset_ < input_.size() && input_[offset_] == '>') {
-      advance();
-      return token(TokenKind::Arrow, "->", begin);
-    }
-    return token(TokenKind::Minus, "-", begin);
   case '.':
     if (offset_ + 1U < input_.size() && input_[offset_] == '.' &&
         input_[offset_ + 1U] == '.') {
@@ -95,14 +98,45 @@ Token Lexer::take() {
   }
 }
 
+Token Lexer::symbol(SourcePosition begin) {
+  // Keep symbol characters atomic. Parsers join adjacent characters only in
+  // an operator position. This lets `as //` denote one operator while `>>`
+  // still closes two nested generic argument lists.
+  std::string text(1U, input_[offset_]);
+  advance();
+  if (text == "+") {
+    return token(TokenKind::Plus, std::move(text), begin);
+  }
+  if (text == "-") {
+    return token(TokenKind::Minus, std::move(text), begin);
+  }
+  if (text == "*") {
+    return token(TokenKind::Star, std::move(text), begin);
+  }
+  if (text == "/") {
+    return token(TokenKind::Slash, std::move(text), begin);
+  }
+  if (text == "=") {
+    return token(TokenKind::Equal, std::move(text), begin);
+  }
+  if (text == "<") {
+    return token(TokenKind::Less, std::move(text), begin);
+  }
+  if (text == ">") {
+    return token(TokenKind::Greater, std::move(text), begin);
+  }
+  if (text == "|") {
+    return token(TokenKind::Pipe, std::move(text), begin);
+  }
+  if (text == "^") {
+    return token(TokenKind::Caret, std::move(text), begin);
+  }
+  return token(TokenKind::Operator, std::move(text), begin);
+}
+
 Token Lexer::number(SourcePosition begin) {
   std::string text;
   bool non_integer = false;
-  if (input_[offset_] == '-') {
-    non_integer = true;
-    text.push_back('-');
-    advance();
-  }
   while (offset_ < input_.size() &&
          std::isdigit(static_cast<unsigned char>(input_[offset_])) != 0) {
     text.push_back(input_[offset_]);
@@ -207,15 +241,6 @@ void Lexer::skip_trivia() {
       continue;
     }
     if (input_[offset_] == '#') {
-      while (offset_ < input_.size() && input_[offset_] != '\n') {
-        advance();
-      }
-      continue;
-    }
-    if (input_[offset_] == '/' && offset_ + 1U < input_.size() &&
-        input_[offset_ + 1U] == '/') {
-      advance();
-      advance();
       while (offset_ < input_.size() && input_[offset_] != '\n') {
         advance();
       }

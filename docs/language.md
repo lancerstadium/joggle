@@ -1,347 +1,253 @@
 # Joggle language
 
-One `.joggle` file defines one versioned Module. A Module is packaging and
-namespace, not a second program IR. Its `graph` members are the programs;
-types, attributes, operations, and passes are reusable declarations those
-programs may reference.
+Joggle is a small declaration and function language for compiler extensions
+and AI programs. One source file contains one versioned Module. The only member
+forms are:
 
-Most model authors need only `import` and `graph`. Authors creating a new
-numeric format, hardware vocabulary, or lowering add `type`, `attr`, `op`, or
-`pass`. `interface` is optional and only expresses a cross-Module contract.
-Names referenced by a graph or pass resolve through the current Module and its
-imports, so the program text itself determines its declaration dependencies.
+```text
+import      another Module
+interface   a reusable contract
+type        a value type
+attr        structured compiler data
+fn          anything callable
+```
 
-## Module header
+There is no `op`, `pass`, `graph`, or `region` declaration. A function's typed
+signature and body determine how it can be evaluated or residualized.
+
+## Module
 
 ```joggle
 joggle 1;
 
-module arith@1.0.0 {
-  import core@^1.2.0 as c;
+module model@1.2.0 {
+  import tensor@^1.0.0;
+  import arithmetic@1.3 as arith;
 }
 ```
 
-`joggle 1;` is the file-language version, independent of the Module's semantic
-version after `@`. A v1 parser rejects every other language version instead of
-guessing compatibility. The canonical formatter currently emits exactly
-`joggle 1;`; a future incompatible surface therefore needs a new parser and
-formatter version rather than silent reinterpretation.
+Imports accept a major range (`1`), minor range (`1.2`), exact version
+(`1.2.3`), or caret range (`^1.2.3`). An alias changes only local spelling.
+Linked identity always contains the imported Module's canonical digest.
 
-The Module version is exact. Import ranges accept `1`, `1.2`, `1.2.3`, and
-`^1.2.3`. They mean a major range, minor range, exact version, and SemVer caret
-range respectively. `import` supplies the dependency name, accepted version,
-and optional local prefix. A lock file records the exact selected versions and
-canonical digests; source imports contain no filesystem paths.
+## Types, attributes, and interfaces
 
-`as` introduces an optional local prefix. It only shortens references such as
-`c.word`; linking and persistent symbols still use the imported Module's real
-name, version, and digest. Two imports cannot share a prefix, and an import
-cannot shadow the current Module name.
+```joggle
+type fixed(width: int, fraction: int, signed: bool = true);
+type tensor(element: type, shape: list<int>);
+attr layout(order: list<int>);
 
-## Canonical surface
+interface scalar: type {
+  storage_bits: int;
+}
 
-The complete extension surface is deliberately small. Ordinary model files use
-only a subset of it; the grammar is shown in full as a reference, not as a
-checklist every author must fill in. Brackets mean optional syntax and braces
-mean zero or more repetitions:
+type packed(width: int) : scalar {
+  storage_bits = width;
+}
+```
+
+The small compiler-value vocabulary is:
 
 ```text
-file          := "joggle" unsigned-integer ";" module
+int  real  bool  string  type  attr  bytes  list<D>
+```
+
+These names describe values held by the compiler; they are not target scalar
+types. `i32`, `f32`, and similar program types are declarations in the ambient
+Prelude Module. Custom formats implement the same interfaces.
+
+Type constructors are ordinary declarations. Parameters of one type may be
+computed from other parameters or interface fields:
+
+```joggle
+type word(bits: int);
+fn encode<T: scalar>(input: T) -> word<T.storage_bits>;
+```
+
+## One function
+
+Every callable member has one form:
+
+```joggle
+fn name<generics>(parameters) -> results body
+```
+
+An external function ends in `;`:
+
+```joggle
+fn add<T: scalar>(lhs: T, rhs: T) -> T as +;
+```
+
+A defined function has an ordinary body:
+
+```joggle
+fn align(value: int, multiple: int) -> int {
+  return ceildiv(value, multiple) * multiple;
+}
+
+fn layer(input: tensor<f32, [1, 64]>, bias: tensor<f32, [64]>)
+    -> tensor<f32, [1, 64]> {
+  shifted = add(input, bias);
+  return relu(shifted);
+}
+```
+
+These are not different function kinds. Availability at a particular call
+decides which expressions execute in the compiler and which become residual
+Instructions. `@(expression)` requires a Known result:
+
+```joggle
+tile = @(choose_tile(device, shape));
+```
+
+`@` does not change overload resolution, select a second body, or change the
+meaning of `=`.
+
+## Bindings and calls
+
+`=` introduces or updates a source binding. The compiler may rename bindings
+to SSA Values internally; authors do not write percent-prefixed names.
+
+```joggle
+sum = lhs + rhs;
+output = relu(sum);
+return output;
+```
+
+Named call arguments use `:` so they cannot be confused with bindings or
+parameter defaults:
+
+```joggle
+output = conv2d(
+  input,
+  weight,
+  stride_h: 2,
+  stride_w: 2
+);
+```
+
+An optional binding annotation constrains an otherwise ambiguous result:
+
+```joggle
+value: word<8> = source();
+```
+
+Calls, prefix operators, infix operators, and postfix operators all resolve
+through the same visible `fn` overload set. `as` associates a spelling with an
+ordinary Function; there is no operator-specific evaluator.
+
+## Control flow
+
+`if` is an expression:
+
+```joggle
+fn choose<T: type>(condition: i1, lhs: T, rhs: T) -> T {
+  value = if condition {
+    lhs
+  } else {
+    rhs
+  };
+  return value;
+}
+```
+
+With a Known condition, the compiler executes only the selected branch. With a
+Residual condition, the same expression becomes Blocks and typed successor
+edges. `@(if ...)` rejects a Residual condition.
+
+Structured loops will use direct `while` and `for` syntax. Known control may
+execute within the evaluation budget; Residual control becomes CFG. Loop-carried
+bindings become Block arguments rather than phi or yield operations.
+
+Most authors never write Blocks explicitly. The low-level form exists for
+lossless formatting of arbitrary pass output:
+
+```joggle
+fn choose<T: type>(condition: i1, lhs: T, rhs: T) -> T {
+  entry():
+    branch condition, yes(), no();
+
+  yes():
+    jump merge(lhs);
+
+  no():
+    jump merge(rhs);
+
+  merge(value: T):
+    return value;
+}
+```
+
+An explicit Block header is `name(arguments...):`. Every Block ends with
+`return`, `jump`, or `branch`. Successor arguments must match the target Block
+arguments exactly.
+
+## Closures
+
+Nested code is a function value, written as a closure:
+
+```joggle
+fn map<T, U>(input: tensor<T>, body: (T) -> U) -> tensor<U>;
+
+fn activate(input: tensor<f32>) -> tensor<f32> {
+  return map(input, { item =>
+    relu(item)
+  });
+}
+```
+
+A closure captures lexical values. Normalization creates an ordinary private
+Function and makes captures explicit parameters. Instructions do not own
+nested Blocks, and the language exposes no Region or yield protocol.
+
+## Compact grammar
+
+```text
+file          := "joggle" integer ";" module
 module        := "module" identifier "@" exact-version
                  "{" { member } "}"
-member        := import | interface | type | attr | op | pass | graph
+member        := import | interface | type | attr | fn
 
-import        := "import" identifier "@" version-range
-                 [ "as" identifier ] ";"
-interface     := "interface" identifier ":" subject
-                 ( ";" | "{" { method } "}" )
-subject       := "type" | "attr" | "op"
-method        := identifier method-parameters "->" data-kind ";"
-method-parameters := "(" [ data-parameter
-                     { "," data-parameter } ] ")"
-data-parameter := identifier ":" data-kind
+fn            := "fn" identifier [ generics ] parameters
+                 [ "->" results ] [ "as" operator ] ( ";" | body )
+body          := "{" { statement } "}"
+statement     := binding "=" expression ";"
+               | expression ";"
+               | "return" [ expressions ] ";"
+               | explicit-block
+binding       := identifier [ ":" expression ]
 
-type          := "type" identifier schema-parameters [ conforms ] ";"
-attr          := "attr" identifier schema-parameters [ conforms ] ";"
-schema-parameters := "(" [ schema-parameter
-                     { "," schema-parameter } ] ")"
-schema-parameter := identifier ":" data-kind [ "=" scalar-literal ]
-data-kind     := scalar-kind | "list" "<" scalar-kind ">"
-scalar-kind   := "i64" | "f64" | "bool" | "string" | "type" | "attr"
+expression    := literal | reference | list | call | operator-expression
+               | if-expression | known-expression | closure
+known-expression := "@" "(" expression ")"
+if-expression := "if" expression "{" expression "}"
+                 "else" "{" expression "}"
+call          := reference "(" [ call-argument { "," call-argument } ] ")"
+call-argument := expression | identifier ":" expression
+closure       := "{" [ identifiers ] "=>" { statement } "}"
 
-op            := "op" identifier [ generics ]
-                 "(" [ op-input { "," op-input } ] ")"
-                 [ "->" result-types ] [ conforms ] ";"
-generics      := "<" [ generic { "," generic } ] ">"
-generic       := identifier ":" data-kind
-op-input      := identifier ":" op-input-spec [ "..." ]
-                 [ "=" scalar-literal ]
-op-input-spec := type-expression | data-kind | "region"
-conforms      := ":" reference { "," reference }
-
-pass          := "pass" identifier ";"
-               | "pass" identifier "=" reference
-                 { "," reference } ";"
-               | "pass" identifier "{" contraction
-                 { contraction } "}"
-contraction   := term "=>" term ";"
-term          := "$" identifier
-               | reference "(" [ term { "," term } ] ")"
-
-graph         := "graph" identifier graph-arguments
-                 [ "->" result-types ]
-                 "{" { operation } "return" [ returns ] ";" "}"
-graph-arguments := "(" [ graph-argument
-                    { "," graph-argument } ] ")"
-graph-argument := ssa-name ":" value
-result-types  := value | "(" [ value { "," value } ] ")"
-returns       := ssa-name { "," ssa-name }
-
-operation     := [ results "=" ] reference
-                 "(" [ argument { "," argument } ] ")"
-                 [ regions ] ";"
-results       := result { "," result }
-result        := ssa-name [ ":" value ]
-argument      := ssa-name | identifier "=" value
-regions       := "{" { region } "}"
-region        := identifier [ graph-arguments ]
-                 "{" { operation } "}"
-
-type-expression := scalar-literal | list | reference-value
-value         := scalar-literal | list | reference-value
-list          := "[" [ value { "," value } ] "]"
-reference-value := reference [ "<" [ value { "," value } ] ">" ]
-reference     := identifier [ "." identifier ]
-scalar-literal := number | string-literal | "true" | "false"
-
-exact-version := unsigned-integer "." unsigned-integer
-                 "." unsigned-integer
-version-range := unsigned-integer
-               | unsigned-integer "." unsigned-integer
-               | exact-version | "^" exact-version
-ssa-name      := "%" ( identifier | unsigned-integer )
-identifier    := ( letter | "_" ) { letter | digit | "_" }
-unsigned-integer := digit { digit }
-number        := [ "-" ] digit { digit }
-                 [ "." digit { digit } ]
-                 [ ( "e" | "E" ) [ "+" | "-" ] digit { digit } ]
+explicit-block := identifier "(" [ block-parameters ] ")" ":"
+                  { statement } terminator
+terminator    := "return" [ expressions ] ";"
+               | "jump" successor ";"
+               | "branch" expression "," successor "," successor ";"
+successor     := identifier "(" [ expressions ] ")"
 ```
 
-`string-literal` uses double quotes and the escapes `\\`, `\"`, `\n`, `\r`,
-and `\t`. Whitespace, `#` line comments, and `//` line comments are trivia.
-Defaults are restricted to scalar `i64`, `f64`, `bool`, and `string`
-parameters. A variadic input must be last; lists and regions cannot be
-variadic or have defaults. A generic used as an operation property has its
-declared data kind, while a `type` generic in operand position is an SSA value
-type. These context rules resolve the deliberate overlap between
-`type-expression` and `data-kind`.
+The implementation is currently migrating to this single grammar. Direct
+Known `if`, ordinary straight-line bodies, and explicit typed CFG blocks are
+implemented. Closure parsing, residual `if`, loop syntax, and the final public
+Function/Block C++ API remain under construction. Nested Region syntax and
+storage have been removed; the remaining flat `Graph` C++ name is only a
+transactional migration shell and is not part of the language model.
 
-Graph arguments, operation results, operands, and returns use `%`; pass terms
-use `$`. A qualified `reference` has exactly one Module prefix and one local
-member name. The formatter removes trivia, emits the fixed language header,
-and groups members as imports, interfaces, types, attributes, operations,
-passes, then graphs while preserving source order inside each member kind.
-`letter` and `digit` are the ASCII identifier classes; semantic-version
-components are unsigned 32-bit values. Formatting valid source twice therefore
-produces the same bytes.
+## Canonical source
 
-## Interfaces and conformance
+For valid source `x`, formatting is idempotent:
 
-The kind follows `interface`, and each signature in its body declares a method.
-
-```joggle
-interface numeric_format: type {
-  storage_bits() -> i64;
-  is_signed() -> bool;
-}
-
-interface elementwise: op;
+```text
+format(parse(format(parse(x)))) = format(parse(x))
 ```
 
-A colon on a concrete declaration lists the interfaces it conforms to:
-
-```joggle
-type integer(width: i64, signed: bool = false) : numeric_format;
-
-op relu<T: type>(input: T) -> T : arith.elementwise;
-```
-
-The linker checks local and imported interface names, subject kinds, versions,
-and canonical digests. Method parameters and results use `i64`, `f64`, `bool`,
-`string`, `type`, `attr`, and homogeneous `list<T>`; `region` is restricted to
-operation signatures.
-
-## Types and attributes
-
-```joggle
-type tensor(element: type, shape: list<i64>);
-
-attr dense(values: list<i64>);
-```
-
-Primitive parameters may have defaults. Parameter counts, kinds, defaults, and
-Module ownership are checked automatically. A C++ package may additionally
-attach semantic validation, but the schema does not advertise implementation
-mechanics.
-
-## Operations
-
-```joggle
-interface commutative: op;
-op add<T: type>(lhs: T, rhs: T) -> T
-  : elementwise, commutative;
-```
-
-SSA operands and results carry type expressions. Repeated type variables impose
-equality, while ordinary primitive kinds describe schema properties. A final
-operand may be variadic, for example `op concat<T: type>(inputs: T...) -> T;`.
-Input names drive verification and diagnostics but do not become process-local
-numeric keys.
-
-Type variables may range over declared types, primitive parameters, or lists:
-
-```joggle
-op dense<E: type, N: i64, K: i64, M: i64>(
-  input: tensor<E, [N, K]>,
-  weight: tensor<E, [M, K]>,
-  bias: tensor<E, [M]>
-) -> tensor<E, [N, M]>;
-```
-
-A non-`type` generic can also be bound by a named operation property. This
-keeps shape, width, layout, and similar compile-time values in the operation
-contract instead of repeating the result type at every call:
-
-```joggle
-op input<N: i64>(width: N) -> word<N>;
-op default_input<N: i64>(width: N = 8) -> word<N>;
-
-graph example() -> word<8> {
-  %value = input(width = 8);
-  return %value;
-}
-```
-
-`N` in `width: N` remains a named property, not an SSA operand. A `type`
-generic in input position remains an SSA operand type. Property values,
-operand types, explicit result annotations, and graph return types all feed the
-same unifier. Defaults participate in inference when the property is omitted.
-
-The compiler unifies operand types, dependent properties, and any explicit
-result annotations against this contract, then instantiates omitted result
-types. Thus `%y = relu(%x);`
-needs no annotation, while an operation whose variables occur only in its
-result is constrained by `%y: tensor<word<8>, [1, 4]> = input(...);` or by the
-result signature when `%y` is returned directly. Text graphs, C++-constructed
-graphs, and lowering results use the same solver.
-
-A marker interface such as `commutative` uses the same versioned conformance
-mechanism as an interface with methods.
-
-## Passes
-
-```joggle
-pass canonicalize {
-  cast($input) => $input;
-}
-
-pass lower;
-pass optimize = canonicalize, lower;
-```
-
-Every transformation is a `pass`. `$name` denotes a pattern variable; `%name`
-is reserved for an SSA value in a `graph`. A pass with a body contains ordered
-contraction rules, a pass ending in `;` receives a C++ implementation, and a
-pass with `=` composes other local or imported passes. See [Passes](passes.md)
-for recursive term syntax, termination, composition, and atomic rollback.
-
-## Graphs
-
-A `graph` member is an executable SSA program. Its signature declares the
-program boundary, and its body creates operations from the current Module and
-its imports. Parentheses are always present, including for a graph with no
-inputs:
-
-```joggle
-graph main(%x: tensor<word<8>, [1, 4]>) -> tensor<word<8>, [1, 4]> {
-  %y = relu(%x);
-  return %y;
-}
-```
-
-The body is ordinary SSA. `%name: Type` declares a value type, `=` defines a
-value, and named operation properties use `name = value` inside the call. Most
-result types are inferred from the operation contract:
-
-```joggle
-graph forward(%input: tensor<integer<8>, [1, 4]>) -> tensor<integer<8>, [1, 3]> {
-  %weight: tensor<integer<8>, [3, 4]> = constant(
-    value = dense<[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]>
-  );
-  %bias: tensor<integer<8>, [3]> = constant(
-    value = dense<[0, 0, 0]>
-  );
-  %output = linear(%input, %weight, %bias);
-  return %output;
-}
-```
-
-An annotation is needed only when an operation's result type cannot be inferred
-from operands or the graph result. A multi-result operation writes
-`%first: T, %second: U = split(%input);`; a multi-result graph uses `-> (T, U)`
-and `return %first, %second;`.
-
-Structured operation regions use braces on the same call rather than a second
-graph syntax:
-
-```joggle
-%y: tensor<word<8>, [2, 4]> = scope(tag = "nested") {
-  body {
-    %sum = add(%x, %x);
-  }
-};
-```
-
-A region is one ordered operation body. Its optional arguments are declared on
-the region name, so every graph construct has a lossless text form:
-
-```joggle
-%y: tensor<word<8>, [2, 4]> = scope(tag = "nested") {
-  body(%item: tensor<word<8>, [2, 4]>) {
-    %sum = add(%item, %item);
-  }
-};
-```
-
-SSA names are lexical to their region. A nested region may capture a value from
-an enclosing region and may shadow an enclosing name. Sibling regions may reuse
-the same local names; a region argument or result is not visible after leaving
-that region. Dominance is checked across the same nesting structure.
-
-`body: region` in an operation signature declares one named nested-body slot.
-It does not introduce a second function or graph signature. Region arguments
-are explicit SSA entry values on each operation instance, and the region has no
-separate return or yield list; the owning operation's results remain those in
-its `op` declaration. The core verifies binding names, cardinality, lexical SSA,
-ownership, and dominance. An optional operation verifier may add a
-domain-specific relationship between the owner, its region arguments, and its
-nested operations.
-
-The surrounding Module supplies imports, versioning, identity, installation,
-and locking. A graph is an ordinary Module member. The graph signature is its
-complete boundary: typed SSA arguments enter on the left and returned SSA
-values leave on the right. Opening a named graph and constructing an empty one
-through C++ produce the same `Graph`; passes edit that object atomically and the
-formatter writes it back as the same `graph` syntax. The C++ operations are
-documented in [Typed C++ API](cpp-api.md).
-
-Imports provide versioned lexical namespaces for external names. Operation
-signatures determine well-formedness, and pass patterns determine
-applicability. The linker and verifier derive every used-member edge from
-actual references; an extension author does not repeat dependency or
-capability lists.
-
-Module identity is `name + version + SHA-256(format(module))`. Comments, source
-paths, and whitespace do not affect it. Persistent symbols include that complete
-identity; `arith.add` is only the human-facing form. Imports are Module-scoped,
-and the lock file pins the selected closure.
+Canonical source is hashed into Module identity. Comments, source paths, host
+addresses, and registration order never affect that identity.

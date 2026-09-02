@@ -34,9 +34,10 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  const auto arith = compiler.module("arith");
+  const auto test_ir = compiler.module("test_ir");
   const auto testing = compiler.module("testing");
-  const auto integer_schema = arith ? arith->type("integer") : std::nullopt;
+  const auto integer_schema =
+      test_ir ? test_ir->type("integer") : std::nullopt;
   const auto label_schema =
       testing ? testing->attribute("label") : std::nullopt;
   if (!integer_schema || !label_schema) {
@@ -66,7 +67,7 @@ int main() {
   nonfinite.add(R"(
     joggle 1;
     module numeric@1.0.0 {
-      attr scale(value: f64);
+      attr scale(value: real);
     }
   )",
                 "numeric.joggle");
@@ -86,8 +87,8 @@ int main() {
   shaped.add(R"(
     joggle 1;
     module shaped@1.0.0 {
-      import arith@1;
-      type tensor(element: type, shape: list<i64>);
+      import test_ir@1;
+      type tensor(element: type, shape: list<int>);
     }
   )",
              "shaped.joggle");

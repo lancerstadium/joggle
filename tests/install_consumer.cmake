@@ -14,7 +14,6 @@ if(JOGGLE_CONFIGURE_STATIC)
             -B "${JOGGLE_BUILD_DIR}"
             -DBUILD_SHARED_LIBS=OFF
             -DJOGGLE_BUILD_TESTS=OFF
-            -DJOGGLE_BUILD_EXAMPLES=OFF
     RESULT_VARIABLE static_configure_result
   )
   if(NOT static_configure_result EQUAL 0)
@@ -134,7 +133,7 @@ set(identity_source "${rebuild_build}/rebuild_behavior_module_identity.cpp")
 file(READ "${identity_source}" first_identity)
 file(READ "${rebuild_source}/module.joggle" changed_module)
 set(original_module "${changed_module}")
-string(REPLACE "  op keep" "  type extra();\n\n  op keep"
+string(REPLACE "  fn keep" "  type extra();\n\n  fn keep"
   changed_module "${changed_module}")
 if(changed_module STREQUAL original_module)
   message(FATAL_ERROR "behavior rebuild fixture did not change its Module")

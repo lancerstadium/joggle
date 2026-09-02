@@ -1,10 +1,12 @@
 #include "joggle/type.h"
 
+#include "domain.h"
 #include "sha256.h"
 #include "type_internal.h"
 
 #include <algorithm>
 #include <bit>
+#include <charconv>
 #include <cmath>
 #include <iomanip>
 #include <sstream>
@@ -28,30 +30,56 @@ std::string encode(std::string_view tag, std::string_view value) {
          std::string(value);
 }
 
-ParameterValue default_value(const Module::Literal& literal) {
-  return std::visit([](const auto& value) { return ParameterValue(value); },
-                    literal);
+std::optional<ParameterValue::Kind> expected_kind(detail::ValueKind kind) {
+  switch (kind) {
+  case detail::ValueKind::Integer:
+    return ParameterValue::Kind::I64;
+  case detail::ValueKind::Real:
+    return ParameterValue::Kind::F64;
+  case detail::ValueKind::Boolean:
+    return ParameterValue::Kind::Boolean;
+  case detail::ValueKind::String:
+    return ParameterValue::Kind::String;
+  case detail::ValueKind::Type:
+    return ParameterValue::Kind::Type;
+  case detail::ValueKind::Attribute:
+    return ParameterValue::Kind::Attribute;
+  case detail::ValueKind::Graph:
+  case detail::ValueKind::Bytes:
+    return std::nullopt;
+  }
+  return std::nullopt;
 }
 
-ParameterValue::Kind expected_kind(Module::ParameterKind kind) {
-  switch (kind) {
-  case Module::ParameterKind::I64:
-    return ParameterValue::Kind::I64;
-  case Module::ParameterKind::F64:
-    return ParameterValue::Kind::F64;
-  case Module::ParameterKind::Boolean:
-    return ParameterValue::Kind::Boolean;
-  case Module::ParameterKind::String:
-    return ParameterValue::Kind::String;
-  case Module::ParameterKind::Type:
-    return ParameterValue::Kind::Type;
-  case Module::ParameterKind::Attribute:
-    return ParameterValue::Kind::Attribute;
-  case Module::ParameterKind::Value:
-  case Module::ParameterKind::Region:
-    break;
+std::optional<ParameterValue>
+literal_value(const Module::Expression& expression, detail::ValueKind kind) {
+  using Kind = Module::Expression::Kind;
+  if (kind == detail::ValueKind::Integer && expression.kind == Kind::Number) {
+    std::int64_t value = 0;
+    const auto result = std::from_chars(expression.text.data(),
+                                        expression.text.data() + expression.text.size(),
+                                        value);
+    if (result.ec == std::errc{} &&
+        result.ptr == expression.text.data() + expression.text.size()) {
+      return ParameterValue(value);
+    }
   }
-  return ParameterValue::Kind::List;
+  if (kind == detail::ValueKind::Real && expression.kind == Kind::Number) {
+    std::istringstream stream(expression.text);
+    stream.imbue(std::locale::classic());
+    double value = 0.0;
+    stream >> value;
+    if (stream && stream.eof() && std::isfinite(value)) {
+      return ParameterValue(value);
+    }
+  }
+  if (kind == detail::ValueKind::Boolean && expression.kind == Kind::Boolean) {
+    return ParameterValue(expression.text == "true");
+  }
+  if (kind == detail::ValueKind::String && expression.kind == Kind::String) {
+    return ParameterValue(expression.text);
+  }
+  return std::nullopt;
 }
 
 std::string instance_name(const Module::Symbol& schema,
@@ -68,20 +96,40 @@ std::string instance_name(const Module::Symbol& schema,
 
 bool detail::matches_parameter(const Module::ParameterDecl& schema,
                                const ParameterValue& value) {
-  const ParameterValue::Kind expected = expected_kind(schema.kind);
-  if (!schema.list) {
-    return value.kind() == expected && (expected != ParameterValue::Kind::F64 ||
-                                        std::isfinite(*value.as_f64()));
+  const auto domain = kernel_domain(schema.domain);
+  if (!domain) {
+    return false;
+  }
+  const auto expected = expected_kind(domain->element);
+  if (!expected) {
+    return false;
+  }
+  if (!domain->list) {
+    return value.kind() == *expected &&
+           (*expected != ParameterValue::Kind::F64 ||
+            std::isfinite(*value.as_f64()));
   }
   if (value.kind() != ParameterValue::Kind::List) {
     return false;
   }
   return std::all_of(value.elements().begin(), value.elements().end(),
                      [&](const ParameterValue& element) {
-                       return element.kind() == expected &&
-                              (expected != ParameterValue::Kind::F64 ||
+                       return element.kind() == *expected &&
+                              (*expected != ParameterValue::Kind::F64 ||
                                std::isfinite(*element.as_f64()));
                      });
+}
+
+std::optional<ParameterValue>
+detail::parameter_default(const Module::ParameterDecl& schema) {
+  if (!schema.default_value) {
+    return std::nullopt;
+  }
+  const auto domain = kernel_domain(schema.domain);
+  if (!domain || domain->list) {
+    return std::nullopt;
+  }
+  return literal_value(*schema.default_value, domain->element);
 }
 
 std::optional<std::vector<ParameterValue>> detail::validate_parameters(
@@ -107,16 +155,25 @@ std::optional<std::vector<ParameterValue>> detail::validate_parameters(
                          "' for '" + std::string(owner) + "'");
       return std::nullopt;
     }
-    values.push_back(default_value(*schema[index].default_value));
+    const auto value = parameter_default(schema[index]);
+    if (!value) {
+      diagnostics.report("default value of parameter '" + schema[index].name +
+                         "' for '" + std::string(owner) +
+                         "' cannot be evaluated");
+      return std::nullopt;
+    }
+    values.push_back(*value);
   }
   return values;
 }
 
 Type detail::TypeAccess::make(Module::TypeDecl schema,
-                              std::vector<ParameterValue> parameters) {
+                              std::vector<ParameterValue> parameters,
+                              std::vector<ParameterValue> derived_parameters) {
   const std::string stable = instance_name(schema.symbol(), parameters);
   return Type(std::make_shared<const TypeStorage>(
-      TypeStorage{std::move(schema), std::move(parameters), stable}));
+      TypeStorage{std::move(schema), std::move(parameters),
+                  std::move(derived_parameters), stable}));
 }
 
 Attribute detail::TypeAccess::make(Module::AttributeDecl schema,
@@ -132,6 +189,11 @@ detail::TypeAccess::parameters(const Type& type) {
 }
 
 std::span<const ParameterValue>
+detail::TypeAccess::derived_parameters(const Type& type) {
+  return type.storage_->derived_parameters;
+}
+
+std::span<const ParameterValue>
 detail::TypeAccess::parameters(const Attribute& attribute) {
   return attribute.parameters();
 }
@@ -143,6 +205,10 @@ Module::TypeDecl Type::schema() const { return storage_->schema; }
 
 std::span<const ParameterValue> Type::parameters() const {
   return storage_->parameters;
+}
+
+std::span<const ParameterValue> Type::derived_parameters() const {
+  return storage_->derived_parameters;
 }
 
 std::string_view Type::stable_name() const { return storage_->stable_name; }

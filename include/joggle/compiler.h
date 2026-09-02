@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -12,6 +13,7 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "joggle/diagnostic.h"
@@ -21,9 +23,85 @@
 
 namespace joggle {
 
+using Bytes = std::vector<std::byte>;
+class Compiler;
+
 namespace detail {
 
 struct CompilerAccess;
+
+using PassValue =
+    std::variant<std::monostate, std::int64_t, double, bool, std::string, Type,
+                 Attribute, Bytes, std::shared_ptr<Graph>>;
+
+template <typename T> struct PassDomain;
+template <> struct PassDomain<std::int64_t> {
+  static constexpr std::string_view value = "int";
+};
+template <> struct PassDomain<double> {
+  static constexpr std::string_view value = "real";
+};
+template <> struct PassDomain<bool> {
+  static constexpr std::string_view value = "bool";
+};
+template <> struct PassDomain<std::string> {
+  static constexpr std::string_view value = "string";
+};
+template <> struct PassDomain<Type> {
+  static constexpr std::string_view value = "type";
+};
+template <> struct PassDomain<Attribute> {
+  static constexpr std::string_view value = "attr";
+};
+template <> struct PassDomain<Graph> {
+  static constexpr std::string_view value = "graph";
+};
+template <> struct PassDomain<Bytes> {
+  static constexpr std::string_view value = "bytes";
+};
+
+template <typename T>
+inline constexpr std::string_view pass_domain =
+    PassDomain<std::remove_cvref_t<T>>::value;
+
+inline bool has_domain(const Module::ParameterDecl& field,
+                       std::string_view domain) {
+  return field.domain.kind == Module::Expression::Kind::Reference &&
+         field.domain.text == domain && field.domain.arguments.empty();
+}
+
+template <typename T> PassValue store_pass_value(T&& value) {
+  using Value = std::remove_cvref_t<T>;
+  if constexpr (std::is_same_v<Value, Graph>) {
+    return {std::make_shared<Graph>(std::forward<T>(value))};
+  } else {
+    return {Value(std::forward<T>(value))};
+  }
+}
+
+template <typename T> PassValue store_pass_input(T&& value) {
+  using Value = std::remove_cvref_t<T>;
+  if constexpr (std::is_same_v<Value, Graph>) {
+    static_assert(std::is_lvalue_reference_v<T>,
+                  "a Graph pass input must be an lvalue");
+    static_assert(!std::is_const_v<std::remove_reference_t<T>>,
+                  "pass invocation requires a non-const Graph handle");
+    return {std::shared_ptr<Graph>(std::addressof(value), [](Graph*) {})};
+  } else {
+    return {Value(std::forward<T>(value))};
+  }
+}
+
+template <typename T> decltype(auto) pass_argument(PassValue& value) {
+  using Value = std::remove_cvref_t<T>;
+  if constexpr (std::is_same_v<Value, Graph>) {
+    auto& graph = *std::get<std::shared_ptr<Graph>>(value);
+    return static_cast<T>(graph);
+  } else {
+    auto& stored = std::get<Value>(value);
+    return static_cast<T>(stored);
+  }
+}
 
 template <typename> struct OptionalValue {
   static constexpr bool value = false;
@@ -33,16 +111,6 @@ template <typename> struct OptionalValue {
 template <typename T> struct OptionalValue<std::optional<T>> {
   static constexpr bool value = true;
   using type = T;
-};
-
-template <bool WithDiagnostics, typename Callable> struct QueryResult;
-
-template <typename Callable> struct QueryResult<true, Callable> {
-  using type = std::invoke_result_t<Callable&, const Graph&, Diagnostics&>;
-};
-
-template <typename Callable> struct QueryResult<false, Callable> {
-  using type = std::invoke_result_t<Callable&, const Graph&>;
 };
 
 template <typename T>
@@ -75,6 +143,63 @@ template <typename Owner, typename Result, typename... Arguments>
 struct CallableTraits<Result (Owner::*)(Arguments...) const noexcept>
     : CallableTraits<Result(Arguments...)> {};
 
+template <typename Function, typename Arguments, std::size_t Offset,
+          bool WithCompiler, bool WithDiagnostics, std::size_t... Indices>
+std::optional<PassValue>
+invoke_typed_pass(Function& function, Compiler& compiler,
+                  std::span<PassValue> arguments, Diagnostics& diagnostics,
+                  bool graph_transform, std::index_sequence<Indices...>) {
+  using Traits = CallableTraits<Function>;
+  using Produced = typename Traits::result;
+  const auto invoke = [&]() -> Produced {
+    if constexpr (WithCompiler && WithDiagnostics) {
+      return std::invoke(
+          function, compiler,
+          pass_argument<std::tuple_element_t<Offset + Indices, Arguments>>(
+              arguments[Indices])...,
+          diagnostics);
+    } else if constexpr (WithCompiler) {
+      return std::invoke(
+          function, compiler,
+          pass_argument<std::tuple_element_t<Offset + Indices, Arguments>>(
+              arguments[Indices])...);
+    } else if constexpr (WithDiagnostics) {
+      return std::invoke(
+          function,
+          pass_argument<std::tuple_element_t<Offset + Indices, Arguments>>(
+              arguments[Indices])...,
+          diagnostics);
+    } else {
+      return std::invoke(
+          function,
+          pass_argument<std::tuple_element_t<Offset + Indices, Arguments>>(
+              arguments[Indices])...);
+    }
+  };
+
+  if constexpr (std::is_void_v<Produced>) {
+    invoke();
+    return PassValue{};
+  } else {
+    auto produced = invoke();
+    if constexpr (std::is_same_v<std::remove_cvref_t<Produced>, bool>) {
+      if (graph_transform) {
+        return produced ? std::optional<PassValue>{arguments.front()}
+                        : std::nullopt;
+      }
+    }
+    using Value = std::remove_cvref_t<Produced>;
+    if constexpr (OptionalValue<Value>::value) {
+      if (!produced) {
+        return std::nullopt;
+      }
+      return store_pass_value(std::move(*produced));
+    } else {
+      return store_pass_value(std::move(produced));
+    }
+  }
+}
+
 template <typename Result, typename... Arguments, typename Function,
           typename Subject, std::size_t... Indices>
 std::optional<ParameterValue>
@@ -93,7 +218,7 @@ invoke_typed_method(Function& function, const Subject& subject,
       decoded);
   if (!valid) {
     diagnostics.report(
-        "typed interface binding disagrees with the declared argument kinds");
+        "typed interface binding disagrees with the declared argument domains");
     return std::nullopt;
   }
   const auto encode_result = []<typename Produced>(Produced&& produced) {
@@ -147,7 +272,8 @@ private:
       const Subject&, std::span<const detail::ParameterValue>, Diagnostics&)>;
   template <typename Subject>
   using VerifierFunction = std::function<bool(const Subject&, Diagnostics&)>;
-  using PassFunction = std::function<bool(Compiler&, Graph&, Diagnostics&)>;
+  using PassFunction = std::function<std::optional<detail::PassValue>(
+      Compiler&, std::span<detail::PassValue>, Diagnostics&)>;
 
 public:
   Compiler();
@@ -186,6 +312,10 @@ public:
     return make(schema, std::span<const detail::ParameterValue>(values));
   }
 
+  // Constructs an instance of an ambient, parameterless Prelude type such as
+  // i32, u32, f32, or index. Callers need no explicit Module lookup or import.
+  std::optional<Type> make(std::string_view prelude_type);
+
   template <typename... Arguments>
   std::optional<Attribute> make(const Module::AttributeDecl& schema,
                                 Arguments&&... arguments) {
@@ -204,16 +334,8 @@ public:
                 const Module::InterfaceDecl& interface) const;
   bool conforms(const Module::AttributeDecl& declaration,
                 const Module::InterfaceDecl& interface) const;
-  bool conforms(const Module::OperationDecl& declaration,
+  bool conforms(const Module::FunctionDecl& declaration,
                 const Module::InterfaceDecl& interface) const;
-
-  template <typename Result, typename... Arguments, typename Function>
-  void bind(Module::TypeDecl declaration,
-            Module::InterfaceDecl::MethodDecl method, Function&& function) {
-    bind_typed_method<Type, Result, Arguments...>(
-        std::move(declaration), std::move(method),
-        std::forward<Function>(function));
-  }
 
   template <typename Result, typename... Arguments, typename Function>
   void bind(Module::AttributeDecl declaration,
@@ -224,18 +346,11 @@ public:
   }
 
   template <typename Result, typename... Arguments, typename Function>
-  void bind(Module::OperationDecl declaration,
+  void bind(Module::FunctionDecl declaration,
             Module::InterfaceDecl::MethodDecl method, Function&& function) {
     bind_typed_method<Operation, Result, Arguments...>(
         std::move(declaration), std::move(method),
         std::forward<Function>(function));
-  }
-
-  template <typename Function>
-  void bind(Module::TypeDecl declaration,
-            Module::InterfaceDecl::MethodDecl method, Function&& function) {
-    bind_inferred<Type>(std::move(declaration), std::move(method),
-                        std::forward<Function>(function));
   }
 
   template <typename Function>
@@ -246,20 +361,10 @@ public:
   }
 
   template <typename Function>
-  void bind(Module::OperationDecl declaration,
+  void bind(Module::FunctionDecl declaration,
             Module::InterfaceDecl::MethodDecl method, Function&& function) {
     bind_inferred<Operation>(std::move(declaration), std::move(method),
                              std::forward<Function>(function));
-  }
-
-  template <typename Function>
-  void bind(Module::TypeDecl declaration, std::string_view method,
-            Function&& function) {
-    const auto member = lookup_method(declaration, method);
-    if (member) {
-      bind(std::move(declaration), *member,
-           std::forward<Function>(function));
-    }
   }
 
   template <typename Function>
@@ -273,7 +378,7 @@ public:
   }
 
   template <typename Function>
-  void bind(Module::OperationDecl declaration, std::string_view method,
+  void bind(Module::FunctionDecl declaration, std::string_view method,
             Function&& function) {
     const auto member = lookup_method(declaration, method);
     if (member) {
@@ -303,11 +408,10 @@ public:
   template <typename Result, typename Subject, typename... Arguments>
   std::optional<Result> call(const Subject& subject, std::string_view method,
                              Arguments&&... arguments) {
-    static_assert(std::is_same_v<Subject, Type> ||
-                      std::is_same_v<Subject, Attribute> ||
+    static_assert(std::is_same_v<Subject, Attribute> ||
                       std::is_same_v<Subject, Operation>,
-                  "an interface call subject must be a Type, Attribute, or "
-                  "Operation");
+                  "an interface call subject must be an Attribute or "
+                  "Operation; Type fields use Type::get");
     const auto declaration = lookup_method(subject, method);
     return declaration ? call<Result>(subject, *declaration,
                                       std::forward<Arguments>(arguments)...)
@@ -327,86 +431,157 @@ public:
   }
 
   template <typename Function>
-  void bind(Module::OperationDecl schema, Function&& function) {
-    bind_typed_verifier<Operation>(std::move(schema),
-                                   std::forward<Function>(function));
-  }
-
-  template <typename Function>
-  void bind(Module::PassDecl schema, Function&& function) {
+  void bind(Module::FunctionDecl schema, Function&& function) {
     using Callable = std::decay_t<Function>;
-    PassFunction pass = [callable = Callable(std::forward<Function>(function))](
-                            Compiler& compiler, Graph& graph,
-                            Diagnostics& diagnostics) mutable {
-      if constexpr (std::is_invocable_r_v<bool, Callable&, Compiler&, Graph&,
-                                          Diagnostics&>) {
-        return std::invoke(callable, compiler, graph, diagnostics);
-      } else if constexpr (std::is_invocable_r_v<bool, Callable&, Compiler&,
-                                                 Graph&>) {
-        return std::invoke(callable, compiler, graph);
-      } else if constexpr (std::is_invocable_r_v<bool, Callable&, Graph&,
-                                                 Diagnostics&>) {
-        return std::invoke(callable, graph, diagnostics);
-      } else if constexpr (
-          std::is_invocable_r_v<bool, Callable&, Graph&>) {
-        return std::invoke(callable, graph);
-      } else {
-        static_assert(
-            std::is_invocable_r_v<bool, Callable&, Graph&>,
-            "a pass binding must accept Graph&, optionally preceded by "
-            "Compiler& or followed by Diagnostics&, and return bool");
+    using Traits = detail::CallableTraits<Callable>;
+    using Arguments = typename Traits::arguments;
+    constexpr std::size_t arity = Traits::arity;
+    constexpr bool operation_verifier = [] {
+      if constexpr (arity == 0U) {
         return false;
-      }
-    };
-    bind_pass(std::move(schema), std::move(pass));
-  }
-
-  template <typename Function>
-  auto query(const Graph& graph, Function&& function) {
-    using Callable = std::decay_t<Function>;
-    constexpr bool with_diagnostics =
-        std::is_invocable_v<Callable&, const Graph&, Diagnostics&>;
-    static_assert(with_diagnostics ||
-                      std::is_invocable_v<Callable&, const Graph&>,
-                  "a query must accept const Graph&, with an optional "
-                  "Diagnostics& last");
-    using Produced =
-        typename detail::QueryResult<with_diagnostics, Callable>::type;
-    using Result = std::conditional_t<
-        detail::OptionalValue<std::remove_cvref_t<Produced>>::value,
-        typename detail::OptionalValue<std::remove_cvref_t<Produced>>::type,
-        std::remove_cvref_t<Produced>>;
-    if (!prepare_query(graph)) {
-      return std::optional<Result>{};
-    }
-    Diagnostics& diagnostics = query_diagnostics();
-    const std::size_t before = diagnostics.size();
-    Callable callable(std::forward<Function>(function));
-    const auto invoke_query = [&]() -> Produced {
-      if constexpr (with_diagnostics) {
-        return std::invoke(callable, graph, diagnostics);
       } else {
-        return std::invoke(callable, graph);
+        return std::is_same_v<
+            std::remove_cvref_t<std::tuple_element_t<0, Arguments>>,
+            Operation>;
       }
-    };
-    if constexpr (detail::OptionalValue<std::remove_cvref_t<Produced>>::value) {
-      auto result = invoke_query();
-      if (!result && diagnostics.size() == before) {
-        diagnostics.report("query did not produce a result");
-      }
-      return diagnostics.size() == before ? std::move(result)
-                                          : std::optional<Result>{};
+    }();
+    if constexpr (operation_verifier) {
+      bind_typed_verifier<Operation>(std::move(schema),
+                                     std::forward<Function>(function));
     } else {
-      Result result = invoke_query();
-      return diagnostics.size() == before
-                 ? std::optional<Result>{std::move(result)}
-                 : std::optional<Result>{};
+    constexpr bool with_compiler = [] {
+      if constexpr (arity == 0U) {
+        return false;
+      } else {
+        return std::is_same_v<std::tuple_element_t<0, Arguments>, Compiler&>;
+      }
+    }();
+    constexpr bool with_diagnostics = [] {
+      if constexpr (arity == 0U) {
+        return false;
+      } else {
+        return std::is_same_v<std::tuple_element_t<arity - 1U, Arguments>,
+                              Diagnostics&>;
+      }
+    }();
+    constexpr std::size_t argument_count =
+        arity - static_cast<std::size_t>(with_compiler) -
+        static_cast<std::size_t>(with_diagnostics);
+    constexpr std::size_t offset = with_compiler ? 1U : 0U;
+    const auto argument_domains = []<std::size_t... Indices>(
+                                    std::index_sequence<Indices...>) {
+      static_assert(
+          ((!std::is_same_v<
+                std::remove_cvref_t<
+                    std::tuple_element_t<offset + Indices, Arguments>>,
+                Graph> ||
+            std::is_reference_v<
+                std::tuple_element_t<offset + Indices, Arguments>>) &&
+           ...),
+          "a Graph pass input must be Graph& or const Graph&");
+      return std::array<std::string_view, sizeof...(Indices)>{
+          detail::pass_domain<
+              std::tuple_element_t<offset + Indices, Arguments>>...};
+    }(std::make_index_sequence<argument_count>{});
+    const bool graph_transform =
+        schema.inputs().size() == 1U &&
+        detail::has_domain(schema.inputs().front(), "graph") &&
+        schema.results().size() == 1U &&
+        detail::has_domain(schema.results().front(), "graph");
+    using Produced = std::remove_cvref_t<typename Traits::result>;
+    std::optional<std::string_view> result_domain;
+    if constexpr (!std::is_void_v<Produced>) {
+      using Value = std::conditional_t<detail::OptionalValue<Produced>::value,
+                                       typename detail::OptionalValue<Produced>::type,
+                                       Produced>;
+      if constexpr (std::is_same_v<Produced, bool>) {
+        result_domain = graph_transform ? std::string_view{"graph"}
+                                        : std::string_view{"bool"};
+      } else {
+        result_domain = detail::pass_domain<Value>;
+      }
+    }
+    if (!check_pass_signature(schema, argument_domains, result_domain)) {
+      return;
+    }
+    PassFunction pass =
+        [callable = Callable(std::forward<Function>(function)),
+         graph_transform](Compiler& compiler,
+                          std::span<detail::PassValue> arguments,
+                          Diagnostics& diagnostics) mutable {
+          if (arguments.size() != argument_count) {
+            diagnostics.report("pass binding received the wrong argument count");
+            return std::optional<detail::PassValue>{};
+          }
+          return detail::invoke_typed_pass<Callable, Arguments, offset,
+                                           with_compiler, with_diagnostics>(
+              callable, compiler, arguments, diagnostics, graph_transform,
+              std::make_index_sequence<argument_count>{});
+        };
+    bind_pass(std::move(schema), std::move(pass));
     }
   }
 
   bool verify(const Graph& graph);
-  bool run(Graph& graph, Module::PassDecl pass);
+  bool run(Graph& graph, Module::FunctionDecl pass);
   bool run(Graph& graph, std::string_view pass);
+
+  template <typename... Arguments>
+  bool run(Module::FunctionDecl pass, Arguments&&... arguments) {
+    const std::array<std::string_view, sizeof...(Arguments)> domains{
+        detail::pass_domain<Arguments>...};
+    if (!check_run_signature(pass, domains, std::nullopt)) {
+      return false;
+    }
+    std::vector<detail::PassValue> values;
+    values.reserve(sizeof...(Arguments));
+    (values.push_back(
+         detail::store_pass_input<Arguments>(std::forward<Arguments>(arguments))),
+     ...);
+    return run_pass(std::move(pass), std::move(values)).has_value();
+  }
+
+  template <typename... Arguments>
+  bool run(std::string_view pass, Arguments&&... arguments) {
+    const auto declaration = find_pass(pass);
+    return declaration &&
+           run(*declaration, std::forward<Arguments>(arguments)...);
+  }
+
+  template <typename Result, typename... Arguments>
+  std::optional<Result> run(Module::FunctionDecl pass, Arguments&&... arguments) {
+    const std::array<std::string_view, sizeof...(Arguments)> domains{
+        detail::pass_domain<Arguments>...};
+    if (!check_run_signature(pass, domains, detail::pass_domain<Result>)) {
+      return std::nullopt;
+    }
+    std::vector<detail::PassValue> values;
+    values.reserve(sizeof...(Arguments));
+    (values.push_back(
+         detail::store_pass_input<Arguments>(std::forward<Arguments>(arguments))),
+     ...);
+    auto value = run_pass(std::move(pass), std::move(values));
+    if (!value) {
+      return std::nullopt;
+    }
+    if constexpr (std::is_same_v<Result, Graph>) {
+      auto graph =
+          std::get<std::shared_ptr<Graph>>(std::move(*value));
+      return graph ? std::optional<Graph>{std::move(*graph)} : std::nullopt;
+    } else {
+      return std::get<Result>(std::move(*value));
+    }
+  }
+
+  template <typename Result, typename... Arguments>
+  std::optional<Result> run(std::string_view pass,
+                            Arguments&&... arguments) {
+    const auto declaration = find_pass(pass);
+    return declaration
+               ? run<Result>(*declaration,
+                             std::forward<Arguments>(arguments)...)
+               : std::optional<Result>{};
+  }
   const Diagnostics& diagnostics() const;
 
 private:
@@ -415,24 +590,33 @@ private:
   std::optional<Attribute>
   make(const Module::AttributeDecl& schema,
        std::span<const detail::ParameterValue> parameters);
-  void bind_method(Module::TypeDecl declaration,
-                   Module::InterfaceDecl::MethodDecl method,
-                   MethodFunction<Type> function);
   void bind_method(Module::AttributeDecl declaration,
                    Module::InterfaceDecl::MethodDecl method,
                    MethodFunction<Attribute> function);
-  void bind_method(Module::OperationDecl declaration,
+  void bind_method(Module::FunctionDecl declaration,
                    Module::InterfaceDecl::MethodDecl method,
                    MethodFunction<Operation> function);
   void bind_verifier(Module::TypeDecl schema, VerifierFunction<Type> verifier);
   void bind_verifier(Module::AttributeDecl schema,
                      VerifierFunction<Attribute> verifier);
-  void bind_verifier(Module::OperationDecl schema,
+  void bind_verifier(Module::FunctionDecl schema,
                      VerifierFunction<Operation> verifier);
-  void bind_pass(Module::PassDecl schema, PassFunction function);
+  void bind_pass(Module::FunctionDecl schema, PassFunction function);
+  bool check_pass_signature(
+      const Module::FunctionDecl& schema,
+      std::span<const std::string_view> inputs,
+      std::optional<std::string_view> result);
+  bool check_run_signature(
+      const Module::FunctionDecl& schema,
+      std::span<const std::string_view> inputs,
+      std::optional<std::string_view> result);
+  std::optional<detail::PassValue>
+  run_pass(Module::FunctionDecl pass,
+           std::vector<detail::PassValue> arguments);
   std::optional<detail::ParameterValue>
-  call(const Type& subject, Module::InterfaceDecl::MethodDecl method,
-       std::span<const detail::ParameterValue> parameters);
+  evaluate_binding(Module::FunctionDecl function,
+                   std::span<const detail::ParameterValue> arguments);
+  std::optional<Module::FunctionDecl> find_pass(std::string_view pass);
   std::optional<detail::ParameterValue>
   call(const Attribute& subject, Module::InterfaceDecl::MethodDecl method,
        std::span<const detail::ParameterValue> parameters);
@@ -535,15 +719,11 @@ private:
   bool check_method_signature(Module::InterfaceDecl::MethodDecl method,
                               std::span<const Module::ParameterDecl> parameters,
                               const Module::ParameterDecl& result);
-  bool prepare_query(const Graph& graph);
-  Diagnostics& query_diagnostics();
   std::optional<Module> lookup_module(const Module& module);
-  std::optional<Module::InterfaceDecl::MethodDecl>
-  lookup_method(Module::TypeDecl declaration, std::string_view reference);
   std::optional<Module::InterfaceDecl::MethodDecl>
   lookup_method(Module::AttributeDecl declaration, std::string_view reference);
   std::optional<Module::InterfaceDecl::MethodDecl>
-  lookup_method(Module::OperationDecl declaration, std::string_view reference);
+  lookup_method(Module::FunctionDecl declaration, std::string_view reference);
   std::optional<Module::InterfaceDecl::MethodDecl>
   lookup_method(const Module& module, std::string_view reference,
                 Module::SymbolKind subject);
@@ -551,8 +731,6 @@ private:
   lookup_method(const Module& module, std::string_view declaration,
                 std::span<const std::string> interfaces,
                 std::string_view reference, Module::SymbolKind subject);
-  std::optional<Module::InterfaceDecl::MethodDecl>
-  lookup_method(const Type& subject, std::string_view reference);
   std::optional<Module::InterfaceDecl::MethodDecl>
   lookup_method(const Attribute& subject, std::string_view reference);
   std::optional<Module::InterfaceDecl::MethodDecl>

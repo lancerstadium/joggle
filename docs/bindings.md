@@ -30,11 +30,11 @@ The declaration is resolved from the Module once. Its stable symbol is the
 binding key; the binding table never stores a lookup string.
 
 The callable's first parameter selects `type`, `attr`, `op`, or `pass`, so the
-same form covers every declaration kind. Interface methods add one reference:
+same form covers every declaration kind. Attribute and operation interface
+methods add one reference:
 
 ```cpp
-compiler.bind(integer, "storage_bits", method);
-compiler.bind(q, "storage_bits", method);
+compiler.bind(instruction, "latency", method);
 ```
 
 The method name is resolved across the interfaces that the declaration already
@@ -45,6 +45,11 @@ arguments and result inferred and checked against the text signature. They
 accept `Diagnostics&` last only when they need to report a domain error.
 Generic or overloaded callables can resolve declaration handles and use the
 explicit typed `bind<Result, Arguments...>` API.
+
+Type interfaces contain fields rather than methods. A body such as
+`storage_bits = width;` is canonical Module content and may feed dependent type
+parameters through `T.storage_bits`. It is queried with `Type::get` and cannot
+be replaced by a C++ callback.
 
 All behavior callbacks follow one success rule: a returned value or `true` is
 accepted only when the callback emits no diagnostic. A diagnostic suppresses a
@@ -126,40 +131,35 @@ Behavior functions use the Joggle C++ API and therefore share its major
 version, C++ standard library, and toolchain ABI. Loading remains explicit
 because executing an installed shared library is a trust decision.
 
-The shipped Arith, Tensor, Fixed, and EdgeVec behavior sources are complete
-examples. Arith binds numeric-format methods and integer legality; Tensor
-checks dense constants and nonlinear reshape invariants; Fixed implements an
-imported numeric-format interface; EdgeVec implements a target-owned lowering
-pass and typed lane query. The `nn` Module needs no C++ behavior because its
-linear and activation contracts are fully structural. None of these sources
-duplicates declarations from its text Module.
+Compiler-only behavior fixtures live under `tests/`; reusable Modules are not
+coupled to those fixtures. A production Module adds behavior only when its
+semantics cannot be expressed by the text schema. Behavior never duplicates or
+mutates declarations from its Module source.
 
-## Implementation queries
+## Typed analysis passes
 
 ```cpp
-auto count_nodes = [](const joggle::Graph& graph) {
-  return graph.all_operations().size();
-};
+// Module: pass count_nodes: graph -> int;
+compiler.bind(count_nodes, [](const joggle::Graph& graph) -> std::int64_t {
+  return static_cast<std::int64_t>(graph.all_operations().size());
+});
 
-auto result = compiler.query(graph, count_nodes);
+auto result = compiler.run<std::int64_t>(count_nodes, graph);
 ```
 
-The result type is inferred from the callable. A query accepts
-`Diagnostics&` last only when it needs to report a domain error. Each call
-executes only after the current Graph passes structure, Module type contracts,
-and bound domain verification. Applications may memoize the result explicitly
-using a domain-specific key.
+The callable type is checked against the pass declaration when it is bound.
+Invocation verifies the Graph before execution. Returning `std::optional<T>`
+allows an implementation to fail without inventing a public result wrapper;
+`Diagnostics&` may be the last callable argument when a domain error needs to
+be reported.
 
 ## Passes
 
 ```cpp
 compiler.bind(simplify,
-  [&count_nodes](joggle::Compiler& compiler, joggle::Graph& graph,
+  [&count_nodes](joggle::Graph& graph,
                joggle::Diagnostics& diagnostics) {
-    auto count = compiler.query(graph, count_nodes);
-    if (!count) {
-      return false;
-    }
+    const auto count = count_nodes(graph);
 
     auto edit = graph.edit();
     // mutate through the same Graph::Edit API
@@ -167,18 +167,16 @@ compiler.bind(simplify,
 });
 ```
 
-Whole-graph passes can iterate `graph.all_operations()` directly. It returns a
-preorder snapshot across nested regions, so a pass may inspect it before opening
-an edit. `graph.operations()` returns only the Graph's directly owned, top-level
-operations. For a same-result-shape lowering, `edit.replace(operation, target)`
+Transitional whole-function passes can iterate `graph.operations()` directly;
+`all_operations()` is currently the same flat ordered snapshot. For a
+same-result-shape conversion, `edit.replace(operation, target)`
 inserts the target with the source operands and result types, redirects every
 result use including graph outputs, and erases the source as one edit action.
 Target properties begin with the target declaration's defaults and can then be
 set through `edit.set` before commit.
 
 `Compiler::run` verifies the input, takes a whole-Graph checkpoint, invokes the
-binding, and verifies the result. Queries are requested where the implementation
-actually needs them. A false return, new diagnostic, exception, or failed
+binding, and verifies the result. A false return, new diagnostic, exception, or failed
 verification restores the checkpoint—even if the pass committed one or more
 inner Edits before failing.
 
@@ -187,7 +185,7 @@ The Compiler coordinates direct declaration-bound methods and Graph edits.
 A pass that does not call back into the Compiler can omit that parameter:
 
 ```cpp
-compiler.bind(lower,
+compiler.bind(convert,
   [](joggle::Graph& graph, joggle::Diagnostics& diagnostics) {
     auto edit = graph.edit();
     // mutate through the same Graph::Edit API

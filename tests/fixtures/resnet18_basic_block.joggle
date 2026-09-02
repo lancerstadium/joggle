@@ -1,0 +1,43 @@
+joggle 1;
+
+module resnet18_basic_block@1.0.0 {
+  import nn@1.0.0;
+  import tensor@1.0.0;
+
+  fn main(
+    input: tensor.ranked<f32, [1, 64, 56, 56]>,
+    conv1_weight: tensor.ranked<f32, [64, 64, 3, 3]>,
+    bn1_scale: tensor.ranked<f32, [64]>,
+    bn1_bias: tensor.ranked<f32, [64]>,
+    bn1_mean: tensor.ranked<f32, [64]>,
+    bn1_variance: tensor.ranked<f32, [64]>,
+    conv2_weight: tensor.ranked<f32, [64, 64, 3, 3]>,
+    bn2_scale: tensor.ranked<f32, [64]>,
+    bn2_bias: tensor.ranked<f32, [64]>,
+    bn2_mean: tensor.ranked<f32, [64]>,
+    bn2_variance: tensor.ranked<f32, [64]>
+  ) -> tensor.ranked<f32, [1, 64, 56, 56]> {
+    conv1 = nn.conv2d_nchw(
+      input,
+      conv1_weight,
+      pad_top: 1,
+      pad_left: 1,
+      pad_bottom: 1,
+      pad_right: 1
+    );
+    norm1 = nn.batch_norm_nchw(conv1, bn1_scale, bn1_bias, bn1_mean, bn1_variance);
+    relu1 = nn.relu(norm1);
+    conv2 = nn.conv2d_nchw(
+      relu1,
+      conv2_weight,
+      pad_top: 1,
+      pad_left: 1,
+      pad_bottom: 1,
+      pad_right: 1
+    );
+    norm2 = nn.batch_norm_nchw(conv2, bn2_scale, bn2_bias, bn2_mean, bn2_variance);
+    residual = norm2 + input;
+    output = nn.relu(residual);
+    return output;
+  }
+}

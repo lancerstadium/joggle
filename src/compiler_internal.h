@@ -19,6 +19,12 @@ struct CompilerAccess {
        std::span<const ParameterValue> parameters) {
     return compiler.make(schema, parameters);
   }
+
+  static std::optional<ParameterValue>
+  evaluate(Compiler& compiler, Module::FunctionDecl function,
+           std::span<const ParameterValue> arguments) {
+    return compiler.evaluate_binding(std::move(function), arguments);
+  }
 };
 
 }  // namespace joggle::detail

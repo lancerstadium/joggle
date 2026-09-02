@@ -30,12 +30,16 @@ enum class TokenKind {
   Equal,
   Less,
   Greater,
+  Plus,
   Minus,
+  Star,
+  Slash,
   Arrow,
   FatArrow,
   Caret,
-  Percent,
   Dollar,
+  Pipe,
+  Operator,
 };
 
 struct Token {
@@ -55,6 +59,7 @@ public:
 private:
   Token number(SourcePosition begin);
   Token string(SourcePosition begin);
+  Token symbol(SourcePosition begin);
   Token token(TokenKind kind, std::string text, SourcePosition begin) const;
   Token invalid(std::string text, SourcePosition begin) const;
   void advance();

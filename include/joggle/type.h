@@ -38,6 +38,7 @@ public:
 
 private:
   std::span<const detail::ParameterValue> parameters() const;
+  std::span<const detail::ParameterValue> derived_parameters() const;
   explicit Type(std::shared_ptr<const detail::TypeStorage> storage);
   std::shared_ptr<const detail::TypeStorage> storage_;
 
@@ -170,20 +171,22 @@ std::optional<T> decode_parameter(const ParameterValue& value) {
 
 template <typename T> Module::ParameterDecl cpp_parameter() {
   if constexpr (std::is_same_v<T, std::int64_t>) {
-    return {"", Module::ParameterKind::I64, false, false, std::nullopt};
+    return {"", Module::Expression::reference("int"), false, std::nullopt};
   } else if constexpr (std::is_same_v<T, double>) {
-    return {"", Module::ParameterKind::F64, false, false, std::nullopt};
+    return {"", Module::Expression::reference("real"), false, std::nullopt};
   } else if constexpr (std::is_same_v<T, bool>) {
-    return {"", Module::ParameterKind::Boolean, false, false, std::nullopt};
+    return {"", Module::Expression::reference("bool"), false, std::nullopt};
   } else if constexpr (std::is_same_v<T, std::string>) {
-    return {"", Module::ParameterKind::String, false, false, std::nullopt};
+    return {"", Module::Expression::reference("string"), false,
+            std::nullopt};
   } else if constexpr (std::is_same_v<T, Type>) {
-    return {"", Module::ParameterKind::Type, false, false, std::nullopt};
+    return {"", Module::Expression::reference("type"), false, std::nullopt};
   } else if constexpr (std::is_same_v<T, Attribute>) {
-    return {"", Module::ParameterKind::Attribute, false, false, std::nullopt};
+    return {"", Module::Expression::reference("attr"), false, std::nullopt};
   } else if constexpr (is_vector<T>) {
     auto result = cpp_parameter<typename VectorElement<T>::type>();
-    result.list = true;
+    result.domain =
+        Module::Expression::list_domain(std::move(result.domain));
     return result;
   } else {
     static_assert(always_false<T>, "unsupported Joggle method type");
@@ -226,6 +229,16 @@ std::optional<T> get_parameter(const Value& value, std::string_view name) {
     if (schema[index].name == name) {
       return index < parameters.size() ? decode_parameter<T>(parameters[index])
                                        : std::nullopt;
+    }
+  }
+  if constexpr (std::is_same_v<Value, Type>) {
+    const auto derived_schema = value.schema().derived_parameters();
+    const auto derived = value.derived_parameters();
+    for (std::size_t index = 0; index < derived_schema.size(); ++index) {
+      if (derived_schema[index].name == name) {
+        return index < derived.size() ? decode_parameter<T>(derived[index])
+                                      : std::nullopt;
+      }
     }
   }
   return std::nullopt;

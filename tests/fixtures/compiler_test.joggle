@@ -1,0 +1,26 @@
+joggle 1;
+
+module test_ir@1.0.0 {
+  interface numeric_format: type {
+    storage_bits: int;
+    is_signed: bool;
+  }
+  interface elementwise: fn;
+  interface commutative: fn;
+
+  type integer(width: int, signed: bool = false) : numeric_format {
+    storage_bits = width;
+    is_signed = signed;
+  }
+
+  fn align(value: int, multiple: int) -> int {
+    return @(ceildiv(value, multiple)) * multiple;
+  }
+  fn cast<T: type>(input: T) -> T : elementwise;
+  fn add<T: type>(lhs: T, rhs: T) -> T as + : elementwise, commutative;
+  fn canonicalize(input: graph) -> graph {
+    return rewrite(input) {
+      cast($input) => $input;
+    };
+  }
+}

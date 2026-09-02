@@ -7,7 +7,7 @@ namespace {
 bool bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
   const auto positive = module.type("positive");
-  const auto noop = module.pass("noop");
+  const auto noop = module.function("noop");
   if (!positive || !noop) {
     diagnostics.report("test behavior does not match its linked schema");
     return false;

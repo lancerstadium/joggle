@@ -14,37 +14,28 @@
 namespace joggle::detail {
 
 struct ValueData {
-  enum class Origin { RegionArgument, OperationResult };
+  enum class Origin { FunctionArgument, OperationResult };
 
   Type type;
-  Origin origin = Origin::RegionArgument;
+  Origin origin = Origin::FunctionArgument;
   std::uint64_t owner = 0;
   std::size_t index = 0;
 };
 
 struct OperationData {
-  Module::OperationDecl schema;
-  std::uint64_t parent = 0;
+  Module::FunctionDecl schema;
   std::vector<std::uint64_t> operands;
   std::vector<std::uint64_t> results;
   std::map<std::string, ParameterValue, std::less<>> properties;
-  std::vector<std::pair<std::string, std::uint64_t>> regions;
   std::optional<SourceRange> location;
-};
-
-struct RegionData {
-  std::optional<std::uint64_t> parent;
-  std::string parameter;
-  std::vector<std::uint64_t> arguments;
-  std::vector<std::uint64_t> operations;
 };
 
 struct GraphState {
   std::map<std::string, Module, std::less<>> modules;
   std::unordered_map<std::uint64_t, ValueData> values;
   std::unordered_map<std::uint64_t, OperationData> operations;
-  std::unordered_map<std::uint64_t, RegionData> regions;
-  std::uint64_t root_region = 0;
+  std::vector<std::uint64_t> inputs;
+  std::vector<std::uint64_t> operation_order;
   std::vector<std::uint64_t> outputs;
 };
 
@@ -69,20 +60,10 @@ GraphAccess::graph(const Operation& operation) {
   return operation.graph_;
 }
 
-const std::shared_ptr<GraphIdentity>& GraphAccess::graph(const Region& region) {
-  return region.graph_;
-}
-
 std::uint64_t GraphAccess::id(const Value& value) { return value.id_; }
 std::uint64_t GraphAccess::id(const Operation& operation) {
   return operation.id_;
 }
-std::uint64_t GraphAccess::id(const Region& region) { return region.id_; }
-
-Region GraphAccess::root(const Graph& graph) {
-  return Graph::make_region(graph.graph_, graph.graph_->state->root_region);
-}
-
 std::string PropertyAccess::take_name(Property& property) {
   return std::move(property.name_);
 }
@@ -121,13 +102,7 @@ using detail::GraphIdentity;
 using detail::GraphState;
 using detail::OperationData;
 using detail::ParameterValue;
-using detail::RegionData;
 using detail::ValueData;
-
-ParameterValue from_literal(const Module::Literal& literal) {
-  return std::visit([](const auto& value) { return ParameterValue(value); },
-                    literal);
-}
 
 template <typename Map> bool contains(const Map& map, std::uint64_t id) {
   return map.find(id) != map.end();
@@ -175,47 +150,16 @@ bool owns(const GraphState& graph, const ParameterValue& value) {
   return true;
 }
 
-ParameterValue::Kind parameter_kind(Module::ParameterKind kind) {
-  switch (kind) {
-  case Module::ParameterKind::I64:
-    return ParameterValue::Kind::I64;
-  case Module::ParameterKind::F64:
-    return ParameterValue::Kind::F64;
-  case Module::ParameterKind::Boolean:
-    return ParameterValue::Kind::Boolean;
-  case Module::ParameterKind::String:
-    return ParameterValue::Kind::String;
-  case Module::ParameterKind::Type:
-    return ParameterValue::Kind::Type;
-  case Module::ParameterKind::Attribute:
-    return ParameterValue::Kind::Attribute;
-  case Module::ParameterKind::Value:
-  case Module::ParameterKind::Region:
-    break;
-  }
-  return ParameterValue::Kind::List;
-}
-
 bool matches(const Module::ParameterDecl& schema, const ParameterValue& value) {
-  const auto expected = parameter_kind(schema.kind);
-  if (!schema.list) {
-    return value.kind() == expected;
-  }
-  return value.kind() == ParameterValue::Kind::List &&
-         std::all_of(value.elements().begin(), value.elements().end(),
-                     [&](const ParameterValue& element) {
-                       return element.kind() == expected;
-                     });
+  return detail::matches_parameter(schema, value);
 }
 
-bool accepts_count(std::span<const Module::ParameterDecl> parameters,
-                   Module::ParameterKind kind, std::size_t count) {
+bool accepts_count(
+    std::span<const Module::ParameterDecl> parameters,
+    std::size_t count) {
   std::size_t minimum = 0;
   bool variadic = false;
-  for (const Module::ParameterDecl& parameter : parameters) {
-    if (parameter.kind != kind) {
-      continue;
-    }
+  for (const auto& parameter : parameters) {
     if (parameter.variadic) {
       variadic = true;
     } else {
@@ -226,55 +170,28 @@ bool accepts_count(std::span<const Module::ParameterDecl> parameters,
 }
 
 std::optional<std::size_t> operation_position(const GraphState& graph,
-                                              std::uint64_t region,
                                               std::uint64_t operation) {
-  const auto owner = graph.regions.find(region);
-  if (owner == graph.regions.end()) {
-    return std::nullopt;
-  }
-  const auto found = std::find(owner->second.operations.begin(),
-                               owner->second.operations.end(), operation);
-  if (found == owner->second.operations.end()) {
+  const auto found = std::find(graph.operation_order.begin(),
+                               graph.operation_order.end(), operation);
+  if (found == graph.operation_order.end()) {
     return std::nullopt;
   }
   return static_cast<std::size_t>(
-      std::distance(owner->second.operations.begin(), found));
+      std::distance(graph.operation_order.begin(), found));
 }
 
 bool dominates(const GraphState& graph, const ValueData& definition,
-               const OperationData& user, std::uint64_t user_id) {
-  std::uint64_t anchor = user_id;
-  std::uint64_t region = user.parent;
-  while (true) {
-    if (definition.origin == ValueData::Origin::RegionArgument &&
-        definition.owner == region) {
-      return true;
-    }
-    if (definition.origin == ValueData::Origin::OperationResult) {
-      const auto producer = graph.operations.find(definition.owner);
-      if (producer == graph.operations.end()) {
-        return false;
-      }
-      if (producer->second.parent == region) {
-        const auto producer_position =
-            operation_position(graph, region, definition.owner);
-        const auto user_position = operation_position(graph, region, anchor);
-        return producer_position && user_position &&
-               *producer_position < *user_position;
-      }
-    }
-
-    const auto current = graph.regions.find(region);
-    if (current == graph.regions.end() || !current->second.parent) {
-      return false;
-    }
-    anchor = *current->second.parent;
-    const auto parent_operation = graph.operations.find(anchor);
-    if (parent_operation == graph.operations.end()) {
-      return false;
-    }
-    region = parent_operation->second.parent;
+               const OperationData&, std::uint64_t user_id) {
+  if (definition.origin == ValueData::Origin::FunctionArgument) {
+    return definition.owner == 0 && definition.index < graph.inputs.size();
   }
+  if (!contains(graph.operations, definition.owner)) {
+    return false;
+  }
+  const auto producer_position = operation_position(graph, definition.owner);
+  const auto user_position = operation_position(graph, user_id);
+  return producer_position && user_position &&
+         *producer_position < *user_position;
 }
 
 bool verify_operation(const GraphState& graph, std::uint64_t id,
@@ -287,34 +204,19 @@ bool verify_operation(const GraphState& graph, std::uint64_t id,
                        "' is outside the graph's module closure");
     valid = false;
   }
-  if (!contains(graph.regions, operation.parent)) {
-    diagnostics.report("operation '" + name + "' has no parent region");
-    valid = false;
-  }
-  if (!accepts_count(operation.schema.inputs(), Module::ParameterKind::Value,
-                     operation.operands.size())) {
+  if (!accepts_count(operation.schema.value_inputs(), operation.operands.size())) {
     diagnostics.report("operation '" + name +
                        "' has the wrong number of operands");
     valid = false;
   }
-  if (!accepts_count(operation.schema.results(), Module::ParameterKind::Value,
-                     operation.results.size())) {
+  if (!accepts_count(operation.schema.value_results(), operation.results.size())) {
     diagnostics.report("operation '" + name +
                        "' has the wrong number of results");
     valid = false;
   }
-  if (!accepts_count(operation.schema.inputs(), Module::ParameterKind::Region,
-                     operation.regions.size())) {
-    diagnostics.report("operation '" + name +
-                       "' has the wrong number of regions");
-    valid = false;
-  }
 
-  for (const Module::ParameterDecl& parameter : operation.schema.inputs()) {
-    if (parameter.kind == Module::ParameterKind::Value ||
-        parameter.kind == Module::ParameterKind::Region) {
-      continue;
-    }
+  for (const Module::ParameterDecl& parameter :
+       operation.schema.static_inputs()) {
     const auto property = operation.properties.find(parameter.name);
     if (property == operation.properties.end()) {
       if (!parameter.default_value) {
@@ -328,15 +230,14 @@ bool verify_operation(const GraphState& graph, std::uint64_t id,
       valid = false;
     }
   }
+  const auto static_inputs = operation.schema.static_inputs();
   for (const auto& [property_name, value] : operation.properties) {
     const auto parameter = std::find_if(
-        operation.schema.inputs().begin(), operation.schema.inputs().end(),
+        static_inputs.begin(), static_inputs.end(),
         [&](const Module::ParameterDecl& item) {
-          return item.name == property_name &&
-                 item.kind != Module::ParameterKind::Value &&
-                 item.kind != Module::ParameterKind::Region;
+          return item.name == property_name;
         });
-    if (parameter == operation.schema.inputs().end()) {
+    if (parameter == static_inputs.end()) {
       diagnostics.report("operation '" + name + "' has unknown property '" +
                          property_name + "'");
       valid = false;
@@ -346,36 +247,6 @@ bool verify_operation(const GraphState& graph, std::uint64_t id,
                          name +
                          "' references a value outside the module "
                          "closure");
-      valid = false;
-    }
-  }
-  for (const auto& [parameter, region] : operation.regions) {
-    const auto schema = std::find_if(
-        operation.schema.inputs().begin(), operation.schema.inputs().end(),
-        [&](const Module::ParameterDecl& item) {
-          return item.name == parameter &&
-                 item.kind == Module::ParameterKind::Region;
-        });
-    const auto body = graph.regions.find(region);
-    if (schema == operation.schema.inputs().end() ||
-        body == graph.regions.end() || body->second.parent != id) {
-      diagnostics.report("operation '" + name +
-                         "' has an invalid region binding");
-      valid = false;
-    }
-  }
-  for (const Module::ParameterDecl& parameter : operation.schema.inputs()) {
-    if (parameter.kind != Module::ParameterKind::Region) {
-      continue;
-    }
-    const auto count = static_cast<std::size_t>(std::count_if(
-        operation.regions.begin(), operation.regions.end(),
-        [&](const auto& binding) { return binding.first == parameter.name; }));
-    if (!parameter.variadic && count != 1U) {
-      diagnostics.report("operation '" + name +
-                         "' has an invalid binding for "
-                         "region '" +
-                         parameter.name + "'");
       valid = false;
     }
   }
@@ -405,48 +276,28 @@ bool verify_operation(const GraphState& graph, std::uint64_t id,
 
 bool verify_graph(const GraphState& graph, Diagnostics& diagnostics) {
   bool valid = true;
-  if (!contains(graph.regions, graph.root_region)) {
-    diagnostics.report("graph root is missing");
-    return false;
-  }
-  for (const auto& [id, region] : graph.regions) {
-    if (id == graph.root_region) {
-      if (region.parent) {
-        diagnostics.report("graph root region has a parent operation");
-        valid = false;
-      }
-    } else if (!region.parent) {
-      diagnostics.report("nested region has no parent operation");
+  std::unordered_set<std::uint64_t> listed_operations;
+  for (std::size_t index = 0; index < graph.inputs.size(); ++index) {
+    const auto value = graph.values.find(graph.inputs[index]);
+    if (value == graph.values.end() ||
+        value->second.origin != ValueData::Origin::FunctionArgument ||
+        value->second.owner != 0 || value->second.index != index ||
+        !owns(graph, value->second.type)) {
+      diagnostics.report("function has an invalid argument");
       valid = false;
-    } else {
-      const auto operation = graph.operations.find(*region.parent);
-      if (operation == graph.operations.end() ||
-          std::none_of(
-              operation->second.regions.begin(),
-              operation->second.regions.end(),
-              [&](const auto& binding) { return binding.second == id; })) {
-        diagnostics.report("region has an invalid parent operation");
-        valid = false;
-      }
     }
-    for (std::uint64_t argument : region.arguments) {
-      const auto value = graph.values.find(argument);
-      if (value == graph.values.end() ||
-          value->second.origin != ValueData::Origin::RegionArgument ||
-          value->second.owner != id || !owns(graph, value->second.type)) {
-        diagnostics.report("region has an invalid argument");
-        valid = false;
-      }
-    }
-    for (std::uint64_t operation : region.operations) {
-      const auto item = graph.operations.find(operation);
-      if (item == graph.operations.end() || item->second.parent != id) {
-        diagnostics.report("region has an invalid operation");
-        valid = false;
-      }
+  }
+  for (const std::uint64_t id : graph.operation_order) {
+    if (!contains(graph.operations, id) || !listed_operations.insert(id).second) {
+      diagnostics.report("function has an invalid operation order");
+      valid = false;
     }
   }
   for (const auto& [id, operation] : graph.operations) {
+    if (!listed_operations.contains(id)) {
+      diagnostics.report("function contains an unordered operation");
+      valid = false;
+    }
     valid = verify_operation(graph, id, operation, diagnostics) && valid;
   }
   for (std::uint64_t output : graph.outputs) {
@@ -457,11 +308,10 @@ bool verify_graph(const GraphState& graph, Diagnostics& diagnostics) {
       continue;
     }
     const bool available =
-        (value->second.origin == ValueData::Origin::RegionArgument &&
-         value->second.owner == graph.root_region) ||
+        (value->second.origin == ValueData::Origin::FunctionArgument &&
+         value->second.owner == 0) ||
         (value->second.origin == ValueData::Origin::OperationResult &&
-         contains(graph.operations, value->second.owner) &&
-         graph.operations.at(value->second.owner).parent == graph.root_region);
+         contains(graph.operations, value->second.owner));
     if (!available) {
       diagnostics.report("graph output is not defined in the graph body");
       valid = false;
@@ -470,22 +320,14 @@ bool verify_graph(const GraphState& graph, Diagnostics& diagnostics) {
   return valid;
 }
 
+template <typename Resolve>
 bool verify_operation_contracts(const GraphState& graph,
-                                Diagnostics& diagnostics) {
-  std::vector<Module> modules;
-  modules.reserve(graph.modules.size());
-  for (const auto& [name, module] : graph.modules) {
-    static_cast<void>(name);
-    modules.push_back(module);
-  }
-
+                                Diagnostics& diagnostics,
+                                Resolve&& resolve) {
   bool valid = true;
-  const auto verify_region = [&](const auto& self,
-                                 const std::uint64_t region_id) -> void {
-    const RegionData& region = graph.regions.at(region_id);
-    for (const std::uint64_t operation_id : region.operations) {
+  for (const std::uint64_t operation_id : graph.operation_order) {
       const OperationData& operation = graph.operations.at(operation_id);
-      const Module::OperationDecl schema = operation.schema;
+      const Module::FunctionDecl schema = operation.schema;
 
       std::vector<Type> operands;
       operands.reserve(operation.operands.size());
@@ -500,31 +342,53 @@ bool verify_operation_contracts(const GraphState& graph,
       }
 
       std::vector<std::optional<ParameterValue>> properties;
-      properties.reserve(schema.inputs().size());
-      for (const Module::ParameterDecl& input : schema.inputs()) {
-        if (input.kind == Module::ParameterKind::Value ||
-            input.kind == Module::ParameterKind::Region) {
-          properties.emplace_back();
-          continue;
-        }
+      properties.reserve(schema.static_inputs().size());
+      for (const Module::ParameterDecl& input : schema.static_inputs()) {
         const auto value = operation.properties.find(input.name);
         properties.push_back(value == operation.properties.end()
                                  ? std::optional<ParameterValue>{}
                                  : value->second);
       }
 
-      if (!infer_operation_types(modules, schema, operands, properties, results,
-                                 diagnostics, operation.location)) {
+      auto resolved = resolve(schema, operands, properties, results,
+                              diagnostics, operation.location);
+      if (!resolved) {
         valid = false;
       }
-      for (const auto& [parameter, nested] : operation.regions) {
-        static_cast<void>(parameter);
-        self(self, nested);
-      }
-    }
-  };
-  verify_region(verify_region, graph.root_region);
+  }
   return valid;
+}
+
+bool verify_operation_contracts(const GraphState& graph,
+                                Diagnostics& diagnostics) {
+  std::vector<Module> modules;
+  modules.reserve(graph.modules.size());
+  for (const auto& [name, module] : graph.modules) {
+    static_cast<void>(name);
+    modules.push_back(module);
+  }
+  return verify_operation_contracts(
+      graph, diagnostics,
+      [&](const Module::FunctionDecl& schema, std::span<const Type> operands,
+          std::span<const std::optional<ParameterValue>> properties,
+          std::span<const std::optional<Type>> results,
+          Diagnostics& reported, std::optional<SourceRange> location) {
+        return resolve_operation_types(modules, schema, operands, properties,
+                                       results, reported, std::move(location));
+      });
+}
+
+bool verify_operation_contracts(const GraphState& graph, Compiler& compiler,
+                                Diagnostics& diagnostics) {
+  return verify_operation_contracts(
+      graph, diagnostics,
+      [&](const Module::FunctionDecl& schema, std::span<const Type> operands,
+          std::span<const std::optional<ParameterValue>> properties,
+          std::span<const std::optional<Type>> results,
+          Diagnostics& reported, std::optional<SourceRange> location) {
+        return resolve_operation_types(compiler, schema, operands, properties,
+                                       results, reported, std::move(location));
+      });
 }
 
 template <typename Handle>
@@ -548,6 +412,32 @@ bool detail::GraphAccess::verify_contracts(const Graph& graph,
   return verify_operation_contracts(*graph.graph_->state, diagnostics);
 }
 
+bool detail::GraphAccess::verify_contracts(const Graph& graph,
+                                           Compiler& compiler,
+                                           Diagnostics& diagnostics) {
+  return verify_operation_contracts(*graph.graph_->state, compiler,
+                                    diagnostics);
+}
+
+bool detail::GraphAccess::commit(Graph::Edit& edit, Compiler& compiler,
+                                 Diagnostics& diagnostics) {
+  if (!edit.state_ || !edit.state_->active) {
+    throw std::logic_error("graph edit is no longer active");
+  }
+  if (!verify_graph(*edit.state_->graph->state, diagnostics) ||
+      !verify_operation_contracts(*edit.state_->graph->state, compiler,
+                                  diagnostics)) {
+    edit.state_->graph->state = std::move(edit.state_->backup);
+    edit.state_->graph->editing = false;
+    edit.state_->active = false;
+    return false;
+  }
+  edit.state_->active = false;
+  edit.state_->backup.reset();
+  edit.state_->graph->editing = false;
+  return true;
+}
+
 Value::Value(std::shared_ptr<GraphIdentity> graph, std::uint64_t id)
     : graph_(std::move(graph)), id_(id) {}
 
@@ -566,7 +456,7 @@ Type Value::type() const {
 bool Value::is_argument() const {
   const auto found = graph_->state->values.find(id_);
   return found != graph_->state->values.end() &&
-         found->second.origin == ValueData::Origin::RegionArgument;
+         found->second.origin == ValueData::Origin::FunctionArgument;
 }
 
 std::optional<Operation> Value::defining_operation() const {
@@ -585,7 +475,7 @@ bool Operation::valid() const {
   return graph_ && contains(graph_->state->operations, id_);
 }
 
-Module::OperationDecl Operation::schema() const {
+Module::FunctionDecl Operation::schema() const {
   const auto found = graph_->state->operations.find(id_);
   if (found == graph_->state->operations.end()) {
     throw std::logic_error("operation is no longer valid");
@@ -656,83 +546,6 @@ detail::GraphAccess::property(const Operation& operation,
   return operation.property(name);
 }
 
-std::vector<Region> Operation::regions() const {
-  const auto found = graph_->state->operations.find(id_);
-  if (found == graph_->state->operations.end()) {
-    throw std::logic_error("operation is no longer valid");
-  }
-  std::vector<Region> regions;
-  regions.reserve(found->second.regions.size());
-  for (const auto& [parameter, region] : found->second.regions) {
-    static_cast<void>(parameter);
-    regions.push_back(Region(graph_, region));
-  }
-  return regions;
-}
-
-std::optional<Region> Operation::parent() const {
-  const auto found = graph_->state->operations.find(id_);
-  if (found == graph_->state->operations.end()) {
-    throw std::logic_error("operation is no longer valid");
-  }
-  const auto region = graph_->state->regions.find(found->second.parent);
-  if (region == graph_->state->regions.end()) {
-    throw std::logic_error("operation parent is no longer valid");
-  }
-  return region->second.parent
-             ? std::optional<Region>{Region(graph_, found->second.parent)}
-             : std::nullopt;
-}
-
-Region::Region(std::shared_ptr<GraphIdentity> graph, std::uint64_t id)
-    : graph_(std::move(graph)), id_(id) {}
-
-bool Region::valid() const {
-  return graph_ && contains(graph_->state->regions, id_);
-}
-
-std::vector<Value> Region::arguments() const {
-  const auto found = graph_->state->regions.find(id_);
-  if (found == graph_->state->regions.end()) {
-    throw std::logic_error("region is no longer valid");
-  }
-  std::vector<Value> values;
-  values.reserve(found->second.arguments.size());
-  for (std::uint64_t value : found->second.arguments) {
-    values.push_back(Value(graph_, value));
-  }
-  return values;
-}
-
-std::vector<Operation> Region::operations() const {
-  const auto found = graph_->state->regions.find(id_);
-  if (found == graph_->state->regions.end()) {
-    throw std::logic_error("region is no longer valid");
-  }
-  std::vector<Operation> operations;
-  operations.reserve(found->second.operations.size());
-  for (std::uint64_t operation : found->second.operations) {
-    operations.push_back(Operation(graph_, operation));
-  }
-  return operations;
-}
-
-std::optional<Operation> Region::parent() const {
-  const auto found = graph_->state->regions.find(id_);
-  if (found == graph_->state->regions.end() || !found->second.parent) {
-    return std::nullopt;
-  }
-  return Operation(graph_, *found->second.parent);
-}
-
-std::string_view Region::parameter() const {
-  const auto found = graph_->state->regions.find(id_);
-  if (found == graph_->state->regions.end()) {
-    throw std::logic_error("region is no longer valid");
-  }
-  return found->second.parameter;
-}
-
 Graph::Edit::Edit(std::shared_ptr<GraphIdentity> graph)
     : state_(std::make_unique<detail::GraphEditState>()) {
   if (graph->editing) {
@@ -766,25 +579,16 @@ Graph::Edit& Graph::Edit::operator=(Edit&& other) noexcept {
 }
 
 Value Graph::Edit::argument(Type type) {
-  return add_argument(
-      Graph::make_region(state_->graph, state_->graph->state->root_region),
-      std::move(type));
-}
-
-Value Graph::Edit::add_argument(Region region, Type type) {
-  check_same_graph(state_->graph, region, "region");
   const std::uint64_t id = state_->graph->next_id++;
-  const std::uint64_t region_id = detail::GraphAccess::id(region);
-  auto& data = state_->graph->state->regions.at(region_id);
-  const std::size_t index = data.arguments.size();
+  const std::size_t index = state_->graph->state->inputs.size();
   state_->graph->state->values.emplace(
-      id, ValueData{std::move(type), ValueData::Origin::RegionArgument,
-                    region_id, index});
-  data.arguments.push_back(id);
+      id, ValueData{std::move(type), ValueData::Origin::FunctionArgument,
+                    0, index});
+  state_->graph->state->inputs.push_back(id);
   return Graph::make_value(state_->graph, id);
 }
 
-Operation Graph::Edit::append(Module::OperationDecl schema,
+Operation Graph::Edit::append(Module::FunctionDecl schema,
                               std::vector<Value> operands,
                               std::vector<Type> result_types) {
   return append_with_properties(std::move(schema), std::move(operands),
@@ -792,30 +596,14 @@ Operation Graph::Edit::append(Module::OperationDecl schema,
 }
 
 Operation Graph::Edit::append_with_properties(
-    Module::OperationDecl schema, std::vector<Value> operands,
+    Module::FunctionDecl schema, std::vector<Value> operands,
     std::vector<Type> result_types, std::vector<Property> properties) {
-  return append_with_properties(
-      Graph::make_region(state_->graph, state_->graph->state->root_region),
-      std::move(schema), std::move(operands), std::move(result_types),
-      std::move(properties));
-}
-
-Operation Graph::Edit::append(Region region, Module::OperationDecl schema,
-                              std::vector<Value> operands,
-                              std::vector<Type> result_types) {
-  return append_with_properties(std::move(region), std::move(schema),
-                                std::move(operands), std::move(result_types), {});
-}
-
-Operation Graph::Edit::append_with_properties(
-    Region region, Module::OperationDecl schema, std::vector<Value> operands,
-    std::vector<Type> result_types, std::vector<Property> properties) {
-  return add(std::move(region), std::nullopt, std::move(schema),
-             std::move(operands), std::move(result_types),
+  return add(std::nullopt, std::move(schema), std::move(operands),
+             std::move(result_types),
              std::move(properties));
 }
 
-Operation Graph::Edit::insert(Operation before, Module::OperationDecl schema,
+Operation Graph::Edit::insert(Operation before, Module::FunctionDecl schema,
                               std::vector<Value> operands,
                               std::vector<Type> result_types) {
   return insert_with_properties(std::move(before), std::move(schema),
@@ -823,26 +611,18 @@ Operation Graph::Edit::insert(Operation before, Module::OperationDecl schema,
 }
 
 Operation Graph::Edit::insert_with_properties(
-    Operation before, Module::OperationDecl schema, std::vector<Value> operands,
+    Operation before, Module::FunctionDecl schema, std::vector<Value> operands,
     std::vector<Type> result_types, std::vector<Property> properties) {
   check_same_graph(state_->graph, before, "insertion point");
-  const auto operation =
-      state_->graph->state->operations.find(detail::GraphAccess::id(before));
-  if (operation == state_->graph->state->operations.end()) {
-    throw std::invalid_argument("insertion point is no longer valid");
-  }
-  return add(Graph::make_region(state_->graph, operation->second.parent),
-             before, std::move(schema), std::move(operands),
+  return add(before, std::move(schema), std::move(operands),
              std::move(result_types), std::move(properties));
 }
 
-Operation Graph::Edit::add(Region region, std::optional<Operation> before,
-                           Module::OperationDecl schema,
+Operation Graph::Edit::add(std::optional<Operation> before,
+                           Module::FunctionDecl schema,
                            std::vector<Value> operands,
                            std::vector<Type> result_types,
                            std::vector<Property> arguments) {
-  check_same_graph(state_->graph, region, "region");
-  const std::uint64_t region_id = detail::GraphAccess::id(region);
   const auto location = before ? state_->graph->state->operations
                                      .at(detail::GraphAccess::id(*before))
                                      .location
@@ -855,25 +635,24 @@ Operation Graph::Edit::add(Region region, std::optional<Operation> before,
   }
 
   std::map<std::string, ParameterValue, std::less<>> properties;
-  for (const Module::ParameterDecl& parameter : schema.inputs()) {
-    if (parameter.kind != Module::ParameterKind::Value &&
-        parameter.kind != Module::ParameterKind::Region &&
-        parameter.default_value) {
-      properties.emplace(parameter.name, from_literal(*parameter.default_value));
+  for (const Module::ParameterDecl& parameter : schema.static_inputs()) {
+    if (parameter.default_value) {
+      if (const auto value = detail::parameter_default(parameter)) {
+        properties.emplace(parameter.name, *value);
+      }
     }
   }
   std::unordered_set<std::string> explicit_properties;
+  const auto static_inputs = schema.static_inputs();
   for (Property& argument : arguments) {
     std::string name = detail::PropertyAccess::take_name(argument);
     ParameterValue value = detail::PropertyAccess::take_value(argument);
     const auto parameter = std::find_if(
-        schema.inputs().begin(), schema.inputs().end(),
+        static_inputs.begin(), static_inputs.end(),
         [&](const Module::ParameterDecl& input) {
-          return input.name == name &&
-                 input.kind != Module::ParameterKind::Value &&
-                 input.kind != Module::ParameterKind::Region;
+          return input.name == name;
         });
-    if (parameter == schema.inputs().end()) {
+    if (parameter == static_inputs.end()) {
       throw std::invalid_argument("operation '" +
                                   schema.symbol().qualified_name() +
                                   "' has no property named '" + name +
@@ -894,16 +673,16 @@ Operation Graph::Edit::add(Region region, std::optional<Operation> before,
     properties.insert_or_assign(std::move(name), std::move(value));
   }
 
-  if (result_types.empty() && !schema.results().empty()) {
+  if (result_types.empty() && !schema.value_results().empty()) {
     std::vector<Type> operand_types;
     operand_types.reserve(operands.size());
     for (const Value& operand : operands) {
       operand_types.push_back(operand.type());
     }
-    std::vector<std::optional<Type>> expected(schema.results().size());
+    std::vector<std::optional<Type>> expected(schema.value_results().size());
     std::vector<std::optional<ParameterValue>> inference_properties;
-    inference_properties.reserve(schema.inputs().size());
-    for (const Module::ParameterDecl& parameter : schema.inputs()) {
+    inference_properties.reserve(schema.static_inputs().size());
+    for (const Module::ParameterDecl& parameter : schema.static_inputs()) {
       const auto property_value = properties.find(parameter.name);
       inference_properties.push_back(property_value == properties.end()
                                          ? std::optional<ParameterValue>{}
@@ -941,25 +720,21 @@ Operation Graph::Edit::add(Region region, std::optional<Operation> before,
   }
   state_->graph->state->operations.emplace(id,
                                            OperationData{std::move(schema),
-                                                         region_id,
                                                          std::move(operand_ids),
                                                          std::move(results),
                                                          std::move(properties),
-                                                         {},
                                                          location});
-  auto& region_operations =
-      state_->graph->state->regions.at(region_id).operations;
+  auto& operation_order = state_->graph->state->operation_order;
   if (before) {
     const std::uint64_t before_id = detail::GraphAccess::id(*before);
-    const auto position = std::find(region_operations.begin(),
-                                    region_operations.end(), before_id);
-    if (position == region_operations.end()) {
-      throw std::invalid_argument(
-          "insertion point is not in its parent region");
+    const auto position = std::find(operation_order.begin(),
+                                    operation_order.end(), before_id);
+    if (position == operation_order.end()) {
+      throw std::invalid_argument("insertion point is not in this function");
     }
-    region_operations.insert(position, id);
+    operation_order.insert(position, id);
   } else {
-    region_operations.push_back(id);
+    operation_order.push_back(id);
   }
   return Graph::make_operation(state_->graph, id);
 }
@@ -969,22 +744,6 @@ void Graph::Edit::set_value(Operation operation, std::string name,
   check_same_graph(state_->graph, operation, "operation");
   state_->graph->state->operations.at(detail::GraphAccess::id(operation))
       .properties.insert_or_assign(std::move(name), std::move(value));
-}
-
-Region Graph::Edit::region(Operation operation, std::string parameter,
-                           std::vector<Type> arguments) {
-  check_same_graph(state_->graph, operation, "operation");
-  const std::uint64_t operation_id = detail::GraphAccess::id(operation);
-  const std::uint64_t region_id = state_->graph->next_id++;
-  state_->graph->state->regions.emplace(
-      region_id, RegionData{operation_id, parameter, {}, {}});
-  state_->graph->state->operations.at(operation_id)
-      .regions.emplace_back(std::move(parameter), region_id);
-  Region region = Graph::make_region(state_->graph, region_id);
-  for (Type& type : arguments) {
-    add_argument(region, std::move(type));
-  }
-  return region;
 }
 
 void Graph::Edit::output(Value value) {
@@ -1010,7 +769,7 @@ void Graph::Edit::replace(Value from, Value to) {
 }
 
 Operation Graph::Edit::replace(Operation operation,
-                               Module::OperationDecl schema) {
+                               Module::FunctionDecl schema) {
   check_same_graph(state_->graph, operation, "operation");
   std::vector<Type> result_types;
   result_types.reserve(operation.results().size());
@@ -1031,60 +790,33 @@ void Graph::Edit::erase(Operation operation) {
   auto& state = *state_->graph->state;
   const std::uint64_t operation_id = detail::GraphAccess::id(operation);
   const auto found = state.operations.find(operation_id);
-  std::unordered_set<std::uint64_t> operation_ids;
-  std::unordered_set<std::uint64_t> regions;
   std::unordered_set<std::uint64_t> values;
-  const auto collect_region = [&](const auto& self,
-                                  std::uint64_t region_id) -> void {
-    regions.insert(region_id);
-    const auto& region = state.regions.at(region_id);
-    values.insert(region.arguments.begin(), region.arguments.end());
-    for (const std::uint64_t nested_id : region.operations) {
-      operation_ids.insert(nested_id);
-      const auto& nested = state.operations.at(nested_id);
-      values.insert(nested.results.begin(), nested.results.end());
-      for (const auto& [parameter, child_region] : nested.regions) {
-        static_cast<void>(parameter);
-        self(self, child_region);
-      }
-    }
-  };
-  operation_ids.insert(operation_id);
   values.insert(found->second.results.begin(), found->second.results.end());
-  for (const auto& [parameter, region] : found->second.regions) {
-    static_cast<void>(parameter);
-    collect_region(collect_region, region);
-  }
   if (std::any_of(
           state.outputs.begin(), state.outputs.end(),
           [&](std::uint64_t output) { return values.contains(output); })) {
     throw std::invalid_argument(
-        "cannot erase an operation subtree with a graph output");
+        "cannot erase an operation that defines a function output");
   }
   for (const auto& [id, user] : state.operations) {
-    if (operation_ids.contains(id)) {
+    if (id == operation_id) {
       continue;
     }
     if (std::any_of(
             user.operands.begin(), user.operands.end(),
             [&](std::uint64_t operand) { return values.contains(operand); })) {
       throw std::invalid_argument(
-          "operation subtree still has live result uses");
+          "operation still has live result uses");
     }
   }
-  auto& parent_operations = state.regions.at(found->second.parent).operations;
-  parent_operations.erase(std::remove(parent_operations.begin(),
-                                      parent_operations.end(), operation_id),
-                          parent_operations.end());
+  state.operation_order.erase(
+      std::remove(state.operation_order.begin(), state.operation_order.end(),
+                  operation_id),
+      state.operation_order.end());
   for (const std::uint64_t value : values) {
     state.values.erase(value);
   }
-  for (const std::uint64_t nested : operation_ids) {
-    state.operations.erase(nested);
-  }
-  for (const std::uint64_t region : regions) {
-    state.regions.erase(region);
-  }
+  state.operations.erase(operation_id);
 }
 
 bool Graph::Edit::commit(Diagnostics& diagnostics) {
@@ -1111,10 +843,6 @@ Graph::Graph(std::vector<Module> modules)
     graph_->state->modules.emplace(std::string(module.name()),
                                    std::move(module));
   }
-  graph_->state->root_region = graph_->next_id++;
-  graph_->state->regions.emplace(
-      graph_->state->root_region,
-      RegionData{std::nullopt, std::string{}, {}, {}});
 }
 
 Graph::~Graph() = default;
@@ -1122,28 +850,25 @@ Graph::Graph(Graph&&) noexcept = default;
 Graph& Graph::operator=(Graph&&) noexcept = default;
 
 std::vector<Value> Graph::inputs() const {
-  return detail::GraphAccess::root(*this).arguments();
+  std::vector<Value> result;
+  result.reserve(graph_->state->inputs.size());
+  for (const std::uint64_t value : graph_->state->inputs) {
+    result.push_back(make_value(graph_, value));
+  }
+  return result;
 }
 
 std::vector<Operation> Graph::operations() const {
-  return detail::GraphAccess::root(*this).operations();
+  std::vector<Operation> result;
+  result.reserve(graph_->state->operation_order.size());
+  for (const std::uint64_t operation : graph_->state->operation_order) {
+    result.push_back(make_operation(graph_, operation));
+  }
+  return result;
 }
 
 std::vector<Operation> Graph::all_operations() const {
-  std::vector<Operation> result;
-  const auto visit = [&](const auto& self, std::uint64_t region_id) -> void {
-    const auto& region = graph_->state->regions.at(region_id);
-    for (std::uint64_t operation_id : region.operations) {
-      result.push_back(make_operation(graph_, operation_id));
-      const auto& operation = graph_->state->operations.at(operation_id);
-      for (const auto& [parameter, nested_region] : operation.regions) {
-        static_cast<void>(parameter);
-        self(self, nested_region);
-      }
-    }
-  };
-  visit(visit, graph_->state->root_region);
-  return result;
+  return operations();
 }
 
 std::vector<Value> Graph::outputs() const {
@@ -1181,11 +906,6 @@ Value Graph::make_value(std::shared_ptr<GraphIdentity> graph,
 Operation Graph::make_operation(std::shared_ptr<GraphIdentity> graph,
                                 std::uint64_t id) {
   return Operation(std::move(graph), id);
-}
-
-Region Graph::make_region(std::shared_ptr<GraphIdentity> graph,
-                          std::uint64_t id) {
-  return Region(std::move(graph), id);
 }
 
 }  // namespace joggle

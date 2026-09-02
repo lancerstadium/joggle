@@ -1,16 +1,14 @@
 joggle 1;
 
 module external@1.0.0 {
-  type scalar(bits: i64);
+  type scalar(bits: int);
 
-  op make<N: i64>(bits: N) -> scalar<N>;
-  op keep<T: type>(input: T) -> T;
-  op lowered<T: type>(input: T) -> T;
-
-  pass lower;
-
-  graph main(%input: scalar<8>) -> scalar<8> {
-    %output = keep(%input);
-    return %output;
+  fn make<N: int>(bits: N) -> scalar<N>;
+  fn keep<T: type>(input: T) -> T;
+  fn converted<T: type>(input: T) -> T;
+  fn convert(input: graph) -> graph;
+  fn main(input: scalar<8>) -> scalar<8> {
+    output = keep(input);
+    return output;
   }
 }

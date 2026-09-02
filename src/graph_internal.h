@@ -16,12 +16,9 @@ struct GraphAccess {
   static const std::shared_ptr<GraphIdentity>& graph(const Value& value);
   static const std::shared_ptr<GraphIdentity>&
   graph(const Operation& operation);
-  static const std::shared_ptr<GraphIdentity>& graph(const Region& region);
 
   static std::uint64_t id(const Value& value);
   static std::uint64_t id(const Operation& operation);
-  static std::uint64_t id(const Region& region);
-  static Region root(const Graph& graph);
 
   static void locate(Graph::Edit& edit, const Operation& operation,
                      SourceRange source);
@@ -30,6 +27,10 @@ struct GraphAccess {
                                                 std::string_view name);
   static bool verify_structure(const Graph& graph, Diagnostics& diagnostics);
   static bool verify_contracts(const Graph& graph, Diagnostics& diagnostics);
+  static bool verify_contracts(const Graph& graph, Compiler& compiler,
+                               Diagnostics& diagnostics);
+  static bool commit(Graph::Edit& edit, Compiler& compiler,
+                     Diagnostics& diagnostics);
 };
 
 struct PropertyAccess {

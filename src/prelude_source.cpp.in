@@ -1,0 +1,10 @@
+#include <string_view>
+
+namespace joggle::detail {
+
+std::string_view prelude_module_source() {
+  static constexpr char source[] = R"JOGGLE(@JOGGLE_PRELUDE_SOURCE@)JOGGLE";
+  return source;
+}
+
+}  // namespace joggle::detail

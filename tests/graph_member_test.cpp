@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -15,59 +16,33 @@ constexpr std::string_view source = R"(
 joggle 1;
 
 module logic@1.0.0 {
-  type word(width: i64);
-  type tensor(element: type, shape: list<i64>);
-  attr payload(scale: f64, labels: list<string>, element: type);
+  type word(width: int);
+  type tensor(element: type, shape: list<int>);
+  attr payload(scale: real, labels: list<string>, element: type);
 
-  op source<T: type>(name: string, meta: attr) -> T;
-  op identity<T: type>(input: T) -> T;
-  op add<T: type>(lhs: T, rhs: T) -> T;
-  op scope<T: type>(body: region, tag: string) -> T;
-  op branch<T: type>(left: region, right: region) -> T;
-
-  pass simplify {
-    identity($input) => $input;
+  fn source<T: type>(name: string, meta: attr) -> T;
+  fn identity<T: type>(input: T) -> T;
+  fn add<T: type>(lhs: T, rhs: T) -> T;
+  fn simplify(input: graph) -> graph {
+    return rewrite(input) {
+      identity($input) => $input;
+    };
   }
 
-  graph main(%lhs: tensor<word<8>, [2, 4]>) -> tensor<word<8>, [2, 4]> {
-    %input: tensor<word<8>, [2, 4]> = source(
+  fn main(lhs: tensor<word<8>, [2, 4]>) -> tensor<word<8>, [2, 4]> {
+    input: tensor<word<8>, [2, 4]> = source(
       name = "input } // still a string",
       meta = payload<1.5, ["alpha", "beta"], word<8>>
     );
-    %sum = add(%lhs, %input);
-    return %sum;
+    sum = add(lhs, input);
+    return sum;
   }
 
-  graph structured(%x: tensor<word<8>, [2, 4]>) -> tensor<word<8>, [2, 4]> {
-    %scoped: tensor<word<8>, [2, 4]> = scope(tag = "nested") {
-      body(%nested: tensor<word<8>, [2, 4]>) {
-        %sum = add(%nested, %nested);
-      }
-    };
-    return %scoped;
+  fn configured(scale: int, input: word<8>) -> word<8> {
+    result = identity(input);
+    return result;
   }
 
-  graph lexical(%item: word<8>, %outer: word<8>) -> word<8> {
-    %result: word<8> = branch() {
-      left(%item: word<8>) {
-        %local = add(%item, %outer);
-      }
-      right(%item: word<8>) {
-        %local = add(%item, %outer);
-      }
-    };
-    return %result;
-  }
-
-  graph nested_pass(%outer: word<8>) -> word<8> {
-    %result: word<8> = scope(tag = "pass") {
-      body {
-        %first = identity(%outer);
-        %second = identity(%first);
-      }
-    };
-    return %result;
-  }
 }
 )";
 
@@ -101,8 +76,18 @@ int main() {
   const auto operations = graph->operations();
   bool ok = true;
   ok &= expect(module.has_value(), "the graph owner remains available");
+  const auto configured_decl =
+      module ? module->function("configured") : std::nullopt;
+  const auto configured = compiler.graph("logic.configured");
+  ok &= expect(configured_decl && configured &&
+                   configured_decl->static_inputs().size() == 1U &&
+                   configured_decl->static_inputs().front().name == "scale" &&
+                   configured_decl->value_inputs().size() == 1U &&
+                   configured->inputs().size() == 1U,
+               "a function signature is parsed once and retains availability "
+               "while its residual body receives only residual inputs");
   const auto main_symbol =
-      module ? module->symbol(joggle::Module::SymbolKind::Graph, "main")
+      module ? module->symbol(joggle::Module::SymbolKind::Function, "main")
              : std::nullopt;
   const auto reflected_graph =
       main_symbol ? compiler.graph(*main_symbol) : std::nullopt;
@@ -118,74 +103,8 @@ int main() {
                    "input } // still a string",
                "graph boundaries are parsed by the real string grammar");
 
-  const auto structured = compiler.graph("logic.structured");
-  ok &= expect(structured && structured->operations().size() == 1U &&
-                   structured->all_operations().size() == 2U &&
-                   structured->outputs().size() == 1U &&
-                   structured->operations().front().regions().size() ==
-                       1U &&
-                   structured->operations()
-                           .front()
-                           .regions()
-                           .front()
-                           .arguments()
-                           .size() == 1U,
-               "structured region arguments share the text and C++ model");
-
-  const auto lexical = compiler.graph("logic.lexical");
-  const auto lexical_root =
-      lexical ? lexical->operations() : std::vector<joggle::Operation>{};
-  const auto lexical_regions =
-      lexical_root.empty() ? std::vector<joggle::Region>{}
-                           : lexical_root.front().regions();
-  ok &= expect(lexical && lexical->inputs().size() == 2U &&
-                   lexical->all_operations().size() == 3U &&
-                   lexical_regions.size() == 2U &&
-                   lexical_regions[0].arguments().size() == 1U &&
-                   lexical_regions[1].arguments().size() == 1U &&
-                   lexical_regions[0].operations().size() == 1U &&
-                   lexical_regions[1].operations().size() == 1U &&
-                   lexical_regions[0].operations().front().operands()[1] ==
-                       lexical->inputs()[1] &&
-                   lexical_regions[1].operations().front().operands()[1] ==
-                       lexical->inputs()[1],
-               "sibling regions reuse local SSA names, shadow an outer name, "
-               "and capture an outer value");
-
-  auto nested_pass = compiler.graph("logic.nested_pass");
-  const bool nested_simplified =
-      nested_pass && compiler.run(*nested_pass, "logic.simplify");
-  const auto nested_root = nested_pass ? nested_pass->operations()
-                                       : std::vector<joggle::Operation>{};
-  const auto nested_regions =
-      nested_root.empty() ? std::vector<joggle::Region>{}
-                          : nested_root.front().regions();
-  ok &= expect(nested_simplified && nested_root.size() == 1U &&
-                   nested_regions.size() == 1U &&
-                   nested_regions.front().operations().empty(),
-               "a text pass contracts operations inside a nested region");
-
-  const std::string nested_emitted =
-      nested_pass ? joggle::format(*nested_pass, "nested_compiled")
-                  : std::string{};
-  joggle::Compiler nested_compiler;
-  nested_compiler.add(source, "logic.joggle");
-  nested_compiler.add("joggle 1;\nmodule nested_artifact@1.0.0 {\n"
-                      "  import logic@1;\n" +
-                          nested_emitted + "}\n",
-                      "nested-artifact.joggle");
-  const bool nested_linked = nested_compiler.link();
-  const auto nested_reloaded =
-      nested_linked
-          ? nested_compiler.graph("nested_artifact.nested_compiled")
-          : std::optional<joggle::Graph>{};
-  ok &= expect(nested_reloaded &&
-                   joggle::format(*nested_reloaded, "nested_compiled") ==
-                       nested_emitted,
-               "a transformed nested region formats and reloads canonically");
-
   const std::string emitted =
-      structured ? joggle::format(*structured, "compiled") : std::string{};
+      joggle::format(*graph, "compiled");
   joggle::Compiler emitted_compiler;
   emitted_compiler.add(source, "logic.joggle");
   emitted_compiler.add("joggle 1;\nmodule artifact@1.0.0 {\n"
@@ -201,7 +120,7 @@ int main() {
                "a committed Graph formats to round-trippable canonical DSL");
   bool rejected_graph_name = false;
   try {
-    static_cast<void>(joggle::format(*structured, "not.a.name"));
+    static_cast<void>(joggle::format(*graph, "not.a.name"));
   } catch (const std::invalid_argument&) {
     rejected_graph_name = true;
   }
@@ -215,14 +134,88 @@ int main() {
   ok &= expect(roundtrip && joggle::format(*roundtrip) == canonical,
                "one module formatter owns schema and graph syntax");
 
+  constexpr std::string_view cfg_source = R"(
+joggle 1;
+module cfg@1.0.0 {
+  type word();
+  fn choose(condition: i1, lhs: word, rhs: word) -> word {
+    entry():
+      branch condition, left(), right();
+
+    left():
+      jump merge(lhs);
+
+    right():
+      jump merge(rhs);
+
+    merge(value: word):
+      return value;
+  }
+  fn structured(condition: i1, lhs: word, rhs: word) -> word {
+    return if condition { lhs } else { rhs };
+  }
+}
+)";
+  joggle::Diagnostics cfg_diagnostics;
+  const auto cfg = joggle::parse_module(cfg_source, cfg_diagnostics,
+                                        "cfg.joggle");
+  const std::string cfg_canonical = cfg ? joggle::format(*cfg) : std::string{};
+  joggle::Diagnostics cfg_roundtrip_diagnostics;
+  const auto cfg_roundtrip =
+      cfg ? joggle::parse_module(cfg_canonical, cfg_roundtrip_diagnostics,
+                                 "cfg-canonical.joggle")
+          : std::nullopt;
+  ok &= expect(cfg && cfg_roundtrip && cfg_diagnostics.ok() &&
+                   cfg_roundtrip_diagnostics.ok() &&
+                   joggle::format(*cfg_roundtrip) == cfg_canonical &&
+                   cfg_canonical.find("branch condition, left(), right();") !=
+                       std::string::npos &&
+                   cfg_canonical.find("merge(value: word):") !=
+                       std::string::npos &&
+                   cfg_canonical.find(
+                       "return if condition { lhs } else { rhs };") !=
+                       std::string::npos,
+               "one expression tree round-trips structured and explicit "
+               "region-free control flow");
+
+  joggle::Diagnostics invalid_cfg_diagnostics;
+  const auto invalid_cfg = joggle::parse_module(R"(
+joggle 1;
+module invalid_cfg@1.0.0 {
+  type word();
+  fn choose(condition: i1, value: word) -> word {
+    entry():
+      jump merge();
+    merge(result: word):
+      return result;
+  }
+}
+)", invalid_cfg_diagnostics, "invalid-cfg.joggle");
+  ok &= expect(!invalid_cfg && !invalid_cfg_diagnostics.ok() &&
+                   std::any_of(invalid_cfg_diagnostics.entries().begin(),
+                               invalid_cfg_diagnostics.entries().end(),
+                               [](const joggle::Diagnostic& diagnostic) {
+                                 return diagnostic.message.find(
+                                            "edge provides 0") !=
+                                        std::string::npos;
+                               }),
+               "CFG verification rejects a block-edge arity mismatch");
+
+  joggle::Diagnostics legacy_diagnostics;
+  const auto legacy = joggle::parse_module(
+      "joggle 1; module legacy@1.0.0 { op old(body: region); }",
+      legacy_diagnostics, "legacy.joggle");
+  ok &= expect(!legacy && !legacy_diagnostics.ok(),
+               "the former body-as-parameter syntax is rejected");
+
   constexpr std::string_view undefined = R"(
 joggle 1;
 module logic@1.0.0 {
-  type word(width: i64);
-  op add<T: type>(lhs: T, rhs: T) -> T;
-  graph main() -> word<8> {
-    %sum: word<8> = add(%missing, %missing);
-    return %sum;
+  type word(width: int);
+  fn add<T: type>(lhs: T, rhs: T) -> T;
+  fn main() -> word<8> {
+    sum: word<8> = add(missing, missing);
+    return sum;
   }
 }
 )";
@@ -235,35 +228,6 @@ module logic@1.0.0 {
                  invalid_diagnostics.front().source->source == "logic.joggle" &&
                  invalid_diagnostics.front().source->begin.line == 7U,
              "undefined SSA diagnostics point into the graph");
-
-  constexpr std::string_view leaked = R"(
-joggle 1;
-module leaked@1.0.0 {
-  type word();
-  op source<T: type>() -> T;
-  op identity<T: type>(input: T) -> T;
-  op scope<T: type>(body: region) -> T;
-  graph main() -> word {
-    %scoped: word = scope() {
-      body {
-        %local: word = source();
-      }
-    };
-    %result = identity(%local);
-    return %result;
-  }
-}
-)";
-  joggle::Compiler leaked_compiler;
-  leaked_compiler.add(leaked, "leaked.joggle");
-  const bool leaked_linked = leaked_compiler.link();
-  const auto leaked_graph =
-      leaked_linked ? leaked_compiler.graph("leaked.main") : std::nullopt;
-  const auto leaked_diagnostics = leaked_compiler.diagnostics().entries();
-  ok &= expect(!leaked_graph && !leaked_diagnostics.empty() &&
-                   leaked_diagnostics.back().message.find(
-                       "undefined SSA value '%local'") != std::string::npos,
-               "a region-local SSA value is not visible after the region");
 
   joggle::Compiler unknown;
   unknown.add(R"(
@@ -298,10 +262,10 @@ joggle 1;
 module mismatch@1.0.0 {
   type a();
   type b();
-  op same<T: type>(lhs: T, rhs: T) -> T;
-  graph main(%lhs: a, %rhs: b) -> a {
-    %result = same(%lhs, %rhs);
-    return %result;
+  fn same<T: type>(lhs: T, rhs: T) -> T;
+  fn main(lhs: a, rhs: b) -> a {
+    result = same(lhs, rhs);
+    return result;
   }
 }
 )",
@@ -317,10 +281,10 @@ module mismatch@1.0.0 {
 joggle 1;
 module return_inferred@1.0.0 {
   type a();
-  op source<T: type>() -> T;
-  graph main() -> a {
-    %result = source();
-    return %result;
+  fn source<T: type>() -> T;
+  fn main() -> a {
+    result = source();
+    return result;
   }
 }
 )",
@@ -338,9 +302,9 @@ module return_inferred@1.0.0 {
 joggle 1;
 module unbound@1.0.0 {
   type a();
-  op source<T: type>() -> T;
-  graph main() {
-    %result = source();
+  fn source<T: type>() -> T;
+  fn main() {
+    result = source();
     return;
   }
 }
@@ -356,12 +320,12 @@ module unbound@1.0.0 {
   constexpr std::string_view dependent_source = R"(
 joggle 1;
 module dependent@1.0.0 {
-  type word(width: i64);
-  op input<N: i64>(width: N) -> word<N>;
-  op default_input<N: i64>(width: N = 8) -> word<N>;
+  type word(width: int);
+  fn input<N: int>(width: N) -> word<N>;
+  fn default_input<N: int>(width: N = 8) -> word<N>;
 
-  graph inferred() {
-    %value = input(width = 8);
+  fn inferred() {
+    value = input(width = 8);
     return;
   }
 }
@@ -383,10 +347,10 @@ module dependent@1.0.0 {
   ok &= expect(dependent_module && dependent_graph && dependent_width &&
                    *dependent_width == 8 &&
                    joggle::format(*dependent_module).find(
-                       "op input<N: i64>(width: N) -> word<N>;") !=
+                       "fn input<N: int>(width: N) -> word<N>;") !=
                        std::string::npos &&
                    joggle::format(*dependent_module).find(
-                       "op default_input<N: i64>(width: N = 8) -> word<N>;") !=
+                       "fn default_input<N: int>(width: N = 8) -> word<N>;") !=
                        std::string::npos,
                "a named property binds a generic and infers a text graph "
                "result without another annotation");
@@ -398,10 +362,10 @@ module dependent@1.0.0 {
   const auto inconsistent_word =
       inconsistent_module ? inconsistent_module->type("word") : std::nullopt;
   const auto inconsistent_input =
-      inconsistent_module ? inconsistent_module->operation("input")
+      inconsistent_module ? inconsistent_module->function("input")
                           : std::nullopt;
   const auto default_input =
-      inconsistent_module ? inconsistent_module->operation("default_input")
+      inconsistent_module ? inconsistent_module->function("default_input")
                           : std::nullopt;
   const auto word8 = inconsistent_word
                          ? inconsistent.make(*inconsistent_word, std::int64_t{8})
@@ -430,10 +394,10 @@ module dependent@1.0.0 {
   const bool defaulted_linked = defaulted.link();
   const auto defaulted_module = defaulted.module("dependent");
   const auto defaulted_input =
-      defaulted_module ? defaulted_module->operation("default_input")
+      defaulted_module ? defaulted_module->function("default_input")
                        : std::nullopt;
   const auto named_input =
-      defaulted_module ? defaulted_module->operation("input") : std::nullopt;
+      defaulted_module ? defaulted_module->function("input") : std::nullopt;
   auto defaulted_graph = defaulted.graph();
   if (!defaulted_linked || !defaulted_input || !named_input ||
       !defaulted_graph) {
@@ -520,6 +484,457 @@ module dependent@1.0.0 {
   }
   ok &= expect(wrong_property_kind_rejected,
                "a wrong-kind named C++ property is rejected immediately");
+
+  constexpr std::string_view computed_source = R"(
+joggle 1;
+module computed@1.0.0 {
+  type word(width: int);
+
+  fn align(value: int, multiple: int) -> int {
+    return ceildiv(value, multiple) * multiple;
+  }
+
+  fn combine(lhs: int, rhs: int) -> int as // {
+    return lhs + rhs;
+  }
+  fn guarded(value: int) -> int {
+    return if true { value } else { 1 / 0 };
+  }
+
+  fn extend<W: int>(input: word<W>) -> word<W + 1>;
+  fn packed<M: int, N: int>(rows: M, columns: N)
+    -> word<ceildiv(M * N, 8)>;
+  fn aligned<W: int>(input: word<W>) -> word<align(W, 8)>;
+  fn add<W: int>(lhs: word<W>, rhs: word<W>) -> word<W> as +;
+  fn floor_word<W: int>(lhs: word<W>, rhs: word<W>) -> word<W> as //;
+  fn host_double(value: int) -> int as postfix !;
+  fn combined<W: int>(input: word<W>) -> word<@(W // 2)>;
+  fn selected<W: int>(input: word<W>) -> word<@(guarded(W + 2))>;
+  fn hosted<W: int>(input: word<W>) -> word<@(W!)>;
+
+  fn main(input: word<7>) -> word<8> {
+    result = extend(input);
+    return result;
+  }
+
+  fn pack() -> word<15> {
+    result = packed(rows = 10, columns = 12);
+    return result;
+  }
+
+  fn align_width(input: word<10>) -> word<16> {
+    result = aligned(input);
+    return result;
+  }
+
+  fn sum(lhs: word<8>, rhs: word<8>) -> word<8> {
+    result = lhs + rhs;
+    return result;
+  }
+
+  fn quotient(lhs: word<8>, rhs: word<8>) -> word<8> {
+    result = lhs // rhs;
+    return result;
+  }
+
+  fn compile_time_operator(input: word<6>) -> word<8> {
+    result = combined(input);
+    return result;
+  }
+
+  fn compile_time_branch(input: word<6>) -> word<8> {
+    result = selected(input);
+    return result;
+  }
+
+  fn compile_time_host(input: word<7>) -> word<14> {
+    result = hosted(input);
+    return result;
+  }
+}
+)";
+  joggle::Compiler computed;
+  computed.add(computed_source, "computed.joggle");
+  const bool computed_linked = computed.link();
+  const auto computed_module = computed.module("computed");
+  const auto host_double =
+      computed_module ? computed_module->function("host_double") : std::nullopt;
+  if (computed_linked && host_double) {
+    computed.bind(*host_double,
+                  [](std::int64_t value) { return value * 2; });
+  }
+  const auto computed_graph =
+      computed_linked ? computed.graph("computed.main") : std::nullopt;
+  const auto packed_graph =
+      computed_linked ? computed.graph("computed.pack") : std::nullopt;
+  const auto aligned_graph =
+      computed_linked ? computed.graph("computed.align_width") : std::nullopt;
+  const auto sum_graph =
+      computed_linked ? computed.graph("computed.sum") : std::nullopt;
+  const auto quotient_graph =
+      computed_linked ? computed.graph("computed.quotient") : std::nullopt;
+  const auto compile_time_operator_graph =
+      computed_linked ? computed.graph("computed.compile_time_operator")
+                      : std::nullopt;
+  const auto compile_time_branch_graph =
+      computed_linked ? computed.graph("computed.compile_time_branch")
+                      : std::nullopt;
+  const auto compile_time_host_graph =
+      computed_linked ? computed.graph("computed.compile_time_host")
+                      : std::nullopt;
+  const auto main_width =
+      computed_graph && !computed_graph->outputs().empty()
+          ? computed_graph->outputs().front().type().get<std::int64_t>("width")
+          : std::optional<std::int64_t>{};
+  const auto packed_width =
+      packed_graph && !packed_graph->outputs().empty()
+          ? packed_graph->outputs().front().type().get<std::int64_t>("width")
+          : std::optional<std::int64_t>{};
+  const auto aligned_width =
+      aligned_graph && !aligned_graph->outputs().empty()
+          ? aligned_graph->outputs().front().type().get<std::int64_t>("width")
+          : std::optional<std::int64_t>{};
+  const std::string computed_text =
+      computed_module ? joggle::format(*computed_module) : std::string{};
+  const auto compile_time_operator_width =
+      compile_time_operator_graph &&
+              !compile_time_operator_graph->outputs().empty()
+          ? compile_time_operator_graph->outputs().front().type().get<std::int64_t>(
+                "width")
+          : std::optional<std::int64_t>{};
+  const auto compile_time_branch_width =
+      compile_time_branch_graph && !compile_time_branch_graph->outputs().empty()
+          ? compile_time_branch_graph->outputs().front().type().get<std::int64_t>(
+                "width")
+          : std::optional<std::int64_t>{};
+  const auto compile_time_host_width =
+      compile_time_host_graph && !compile_time_host_graph->outputs().empty()
+          ? compile_time_host_graph->outputs().front().type().get<std::int64_t>(
+                "width")
+          : std::optional<std::int64_t>{};
+  if (!computed_graph || !packed_graph || !aligned_graph || !sum_graph ||
+      !quotient_graph || !compile_time_operator_graph ||
+      !compile_time_branch_graph || !compile_time_host_graph || !host_double ||
+      !main_width || !packed_width ||
+      !aligned_width || !compile_time_operator_width ||
+      !compile_time_branch_width || !compile_time_host_width) {
+    computed.diagnostics().print(std::cerr);
+  }
+  ok &= expect(computed_graph && packed_graph && aligned_graph && sum_graph &&
+                   quotient_graph && compile_time_operator_graph && main_width &&
+                   compile_time_branch_graph && compile_time_host_graph &&
+                   host_double && packed_width && aligned_width &&
+                   compile_time_operator_width && compile_time_branch_width &&
+                   compile_time_host_width &&
+                   *main_width == 8 && *packed_width == 15 &&
+                   *aligned_width == 16 && *compile_time_operator_width == 8 &&
+                   *compile_time_branch_width == 8 &&
+                   *compile_time_host_width == 14 &&
+                   sum_graph->operations().size() == 1U &&
+                   sum_graph->operations().front().schema().name() == "add" &&
+                   quotient_graph->operations().size() == 1U &&
+                   quotient_graph->operations().front().schema().name() ==
+                       "floor_word" &&
+                   computed_text.find("word<W + 1>") != std::string::npos &&
+                   computed_text.find("word<ceildiv(M * N, 8)>") !=
+                       std::string::npos &&
+                   computed_text.find("word<align(W, 8)>") !=
+                       std::string::npos &&
+                   computed_text.find("word<@(W // 2)>") !=
+                       std::string::npos &&
+                   computed_text.find(
+                       "return if true { value } else { 1 / 0 };") !=
+                       std::string::npos &&
+                   computed_text.find("word<@(W!)>") != std::string::npos &&
+                   computed_text.find("result = lhs + rhs;") !=
+                       std::string::npos &&
+                   computed_text.find("result = lhs // rhs;") !=
+                       std::string::npos,
+               "checked symbolic arithmetic derives result widths and "
+               "typed operator notation round-trip canonically");
+
+  joggle::Compiler projected;
+  projected.add(R"(
+joggle 1;
+module formats@1.0.0 {
+  interface numeric_format: type {
+    storage_bits: int;
+    is_signed: bool;
+  }
+
+  type packed(width: int, signed: bool = false) : numeric_format {
+    storage_bits = width;
+    is_signed = signed;
+  }
+
+  fn align(value: int, multiple: int) -> int {
+    return ceildiv(value, multiple) * multiple;
+  }
+}
+)",
+                "formats.joggle");
+  projected.add(R"(
+joggle 1;
+module projected@1.0.0 {
+  import formats@1.0.0 as fmt;
+
+  type word(width: int, signed: bool);
+  fn encode<T: fmt.numeric_format>(input: T)
+    -> word<T.storage_bits, T.is_signed>;
+  fn align<T: fmt.numeric_format>(input: T)
+    -> word<fmt.align(T.storage_bits, 8), T.is_signed>;
+
+  fn encode13(input: fmt.packed<13, true>) -> word<13, true> {
+    result = encode(input);
+    return result;
+  }
+
+  fn align13(input: fmt.packed<13, true>) -> word<16, true> {
+    result = align(input);
+    return result;
+  }
+}
+)",
+                "projected.joggle");
+  const bool projected_linked = projected.link();
+  const auto encode13 = projected_linked
+                            ? projected.graph("projected.encode13")
+                            : std::nullopt;
+  const auto align13 = projected_linked
+                           ? projected.graph("projected.align13")
+                           : std::nullopt;
+  const auto format_module = projected.module("formats");
+  const std::string format_text =
+      format_module ? joggle::format(*format_module) : std::string{};
+  if (!encode13 || !align13) {
+    projected.diagnostics().print(std::cerr);
+  }
+  ok &= expect(
+      encode13 && align13 &&
+          encode13->outputs().front().type().get<std::int64_t>("width") ==
+              std::optional<std::int64_t>{13} &&
+          encode13->outputs().front().type().get<bool>("signed") ==
+              std::optional<bool>{true} &&
+          align13->outputs().front().type().get<std::int64_t>("width") ==
+              std::optional<std::int64_t>{16} &&
+          align13->outputs().front().type().get<bool>("signed") ==
+              std::optional<bool>{true} &&
+          format_text.find("storage_bits = width;") != std::string::npos &&
+          format_text.find("fn align") != std::string::npos,
+      "a type-derived parameter deterministically feeds imported "
+      "generic result parameters");
+
+  joggle::Compiler missing_field;
+  missing_field.add(R"(
+joggle 1;
+module missing_field@1.0.0 {
+  interface format: type {
+    storage_bits: int;
+  }
+  type opaque() : format;
+  type word(width: int);
+  fn encode<T: format>(input: T) -> word<T.storage_bits>;
+  fn main(input: opaque) -> word<8> {
+    result = encode(input);
+    return result;
+  }
+}
+)",
+                    "missing-field.joggle");
+  const bool missing_field_linked = missing_field.link();
+  const bool reports_missing_field = std::any_of(
+      missing_field.diagnostics().entries().begin(),
+      missing_field.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("does not define required parameter") !=
+               std::string::npos;
+      });
+  ok &= expect(!missing_field_linked && reports_missing_field,
+               "type interface fields are required during linking");
+
+  joggle::Compiler ill_typed_field;
+  ill_typed_field.add(R"(
+joggle 1;
+module ill_typed_field@1.0.0 {
+  interface format: type {
+    storage_bits: int;
+  }
+  type malformed() : format {
+    storage_bits = "wide";
+  }
+}
+)",
+                      "ill-typed-field.joggle");
+  ok &= expect(!ill_typed_field.link() &&
+                   !ill_typed_field.diagnostics().ok(),
+               "derived parameters are checked against interface field "
+               "domains during linking");
+
+  joggle::Compiler recursive_function;
+  recursive_function.add(R"(
+joggle 1;
+module recursive_function@1.0.0 {
+  fn first(value: int) -> int {
+    return second(value);
+  }
+  fn second(value: int) -> int {
+    return first(value);
+  }
+}
+)",
+                         "recursive-function.joggle");
+  const bool recursive_linked = recursive_function.link();
+  const bool reports_function_cycle = std::any_of(
+      recursive_function.diagnostics().entries().begin(),
+      recursive_function.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("pure function cycle") !=
+               std::string::npos;
+      });
+  ok &= expect(!recursive_linked && reports_function_cycle,
+               "pure function recursion is rejected during linking");
+
+  joggle::Compiler imported_function;
+  imported_function.add(R"(
+joggle 1;
+module integer_math@1.0.0 {
+  fn align(value: int, multiple: int) -> int {
+    return ceildiv(value, multiple) * multiple;
+  }
+}
+)",
+                        "integer-math.joggle");
+  imported_function.add(R"(
+joggle 1;
+module imported_function@1.0.0 {
+  import integer_math@1.0.0 as math;
+
+  type word(width: int);
+
+  fn aligned<W: int>(input: word<W>) -> word<math.align(W, 8)>;
+
+  fn main(input: word<9>) -> word<16> {
+    result = aligned(input);
+    return result;
+  }
+}
+)",
+                        "imported-function.joggle");
+  const bool imported_function_linked = imported_function.link();
+  const auto imported_function_graph =
+      imported_function_linked
+          ? imported_function.graph("imported_function.main")
+          : std::nullopt;
+  const auto imported_width =
+      imported_function_graph && !imported_function_graph->outputs().empty()
+          ? imported_function_graph->outputs()
+                .front()
+                .type()
+                .get<std::int64_t>("width")
+          : std::optional<std::int64_t>{};
+  if (!imported_function_graph || !imported_width) {
+    imported_function.diagnostics().print(std::cerr);
+  }
+  ok &= expect(imported_function_graph && imported_width &&
+                   *imported_width == 16,
+               "imported pure functions resolve in their declaring module");
+
+  joggle::Compiler imported_operator;
+  imported_operator.add(R"(
+joggle 1;
+module native_arith@1.0.0 {
+  fn add<T: prelude.scalar>(lhs: T, rhs: T) -> T as +;
+}
+)",
+                        "native-arith.joggle");
+  imported_operator.add(R"(
+joggle 1;
+module imported_operator@1.0.0 {
+  import native_arith@1.0.0;
+
+  fn main(lhs: i32, rhs: i32) -> i32 {
+    result = lhs + rhs;
+    return result;
+  }
+}
+)",
+                        "imported-operator.joggle");
+  const bool imported_operator_linked = imported_operator.link();
+  const auto imported_operator_graph =
+      imported_operator_linked
+          ? imported_operator.graph("imported_operator.main")
+          : std::nullopt;
+  if (!imported_operator_graph) {
+    imported_operator.diagnostics().print(std::cerr);
+  }
+  ok &= expect(imported_operator_graph &&
+                   imported_operator_graph->operations().size() == 1U &&
+                   imported_operator_graph->operations()
+                           .front()
+                           .schema()
+                           .symbol()
+                           .qualified_name() == "native_arith.add",
+               "imported operator notation resolves for native SSA types");
+
+  joggle::Compiler ambiguous_operator;
+  ambiguous_operator.add(R"(
+joggle 1;
+module ambiguous_operator@1.0.0 {
+  type word(width: int);
+
+  fn first<W: int>(lhs: word<W>, rhs: word<W>) -> word<W> as +;
+  fn second<W: int>(lhs: word<W>, rhs: word<W>) -> word<W> as +;
+
+  fn main(lhs: word<8>, rhs: word<8>) -> word<8> {
+    result = lhs + rhs;
+    return result;
+  }
+}
+)",
+                         "ambiguous-operator.joggle");
+  const bool ambiguous_operator_linked = ambiguous_operator.link();
+  const auto ambiguous_operator_graph =
+      ambiguous_operator_linked
+          ? ambiguous_operator.graph("ambiguous_operator.main")
+          : std::nullopt;
+  const bool reports_operator_ambiguity = std::any_of(
+      ambiguous_operator.diagnostics().entries().begin(),
+      ambiguous_operator.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("operator '+' is ambiguous") !=
+               std::string::npos;
+      });
+  ok &= expect(ambiguous_operator_linked && !ambiguous_operator_graph &&
+                   reports_operator_ambiguity,
+               "operator resolution rejects ambiguity without priority order");
+
+  joggle::Compiler unsafe_expression;
+  unsafe_expression.add(R"(
+joggle 1;
+module unsafe_expression@1.0.0 {
+  type word(width: int);
+  fn invalid<W: int>(input: word<W>) -> word<W / 0>;
+  fn main(input: word<8>) {
+    result = invalid(input);
+    return;
+  }
+}
+)",
+                        "unsafe-expression.joggle");
+  const bool unsafe_linked = unsafe_expression.link();
+  const auto unsafe_graph =
+      unsafe_linked ? unsafe_expression.graph("unsafe_expression.main")
+                    : std::nullopt;
+  const bool reports_division_by_zero =
+      std::any_of(unsafe_expression.diagnostics().entries().begin(),
+                  unsafe_expression.diagnostics().entries().end(),
+                  [](const joggle::Diagnostic& diagnostic) {
+                    return diagnostic.message.find("division by zero") !=
+                           std::string::npos;
+                  });
+  ok &= expect(unsafe_linked && !unsafe_graph && reports_division_by_zero,
+               "non-total compile-time arithmetic is rejected when its "
+               "bindings become concrete");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

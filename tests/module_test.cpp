@@ -31,7 +31,7 @@ int main() {
   }
 
   bool ok = true;
-  ok &= expect(module->name() == "arith", "module name");
+  ok &= expect(module->name() == "test_ir", "module name");
   ok &= expect(module->digest().size() == 64U, "SHA-256 digest width");
 
   const auto rejects_language_version = [](std::uint32_t version) {
@@ -50,46 +50,90 @@ int main() {
                    rejects_language_version(2U),
                "unknown language versions are rejected before Module use");
 
+  joggle::Diagnostics legacy_graph_diagnostics;
+  const auto legacy_graph = joggle::parse_module(
+      "joggle 1; module legacy@1.0.0 { graph main() { return; } }",
+      legacy_graph_diagnostics, "legacy-graph.joggle");
+  ok &= expect(!legacy_graph && !legacy_graph_diagnostics.ok(),
+               "graph is not a source-level member declaration");
+
+  joggle::Diagnostics legacy_op_diagnostics;
+  const auto legacy_op = joggle::parse_module(
+      "joggle 1; module legacy@1.0.0 { op add(lhs: i32) -> i32; }",
+      legacy_op_diagnostics, "legacy-op.joggle");
+  ok &= expect(!legacy_op && !legacy_op_diagnostics.ok(),
+               "op is not a source-level member declaration");
+
+  joggle::Diagnostics legacy_pass_diagnostics;
+  const auto legacy_pass = joggle::parse_module(
+      "joggle 1; module legacy@1.0.0 { pass optimize; }",
+      legacy_pass_diagnostics, "legacy-pass.joggle");
+  ok &= expect(!legacy_pass && !legacy_pass_diagnostics.ok(),
+               "pass is not a source-level member declaration");
+
   const auto integer = module->type("integer");
   const auto numeric_format = module->interface("numeric_format");
   const auto elementwise = module->interface("elementwise");
-  const auto add = module->operation("add");
-  const auto canonicalize = module->pass("canonicalize");
+  const auto align = module->function("align");
+  const auto add = module->function("add");
+  const auto canonicalize = module->function("canonicalize");
   ok &= expect(integer && integer->parameters().size() == 2U &&
-                   integer->interfaces().size() == 1U,
+                   integer->interfaces().size() == 1U &&
+                   integer->derived_parameters().size() == 2U &&
+                   integer->derived_parameters().front().name ==
+                       "storage_bits" &&
+                   integer->derived_parameters().front().value.kind ==
+                       joggle::Module::Expression::Kind::Variable &&
+                   integer->derived_parameters().front().value.text == "width",
                "integer schema");
-  const auto storage_bits =
-      numeric_format ? numeric_format->method("storage_bits") : std::nullopt;
   ok &= expect(
       numeric_format &&
           numeric_format->subject() == joggle::Module::SymbolKind::Type &&
-          numeric_format->methods().size() == 2U && storage_bits &&
-          storage_bits->result_kind() == joggle::Module::ParameterKind::I64 &&
-          storage_bits->stable_name().ends_with(
-              "/interface/numeric_format/method/storage_bits"),
-      "interface method reflection");
+          numeric_format->fields().size() == 2U &&
+          numeric_format->fields().front().name == "storage_bits" &&
+          numeric_format->fields().front().domain ==
+              joggle::Module::Expression::reference("int"),
+      "interface field reflection");
   ok &= expect(elementwise && elementwise->methods().empty(),
                "marker interface reflection");
-  ok &=
-      expect(add && add->inputs().size() == 2U && add->results().size() == 1U &&
-                 add->interfaces().size() == 2U,
-             "add signature");
+  ok &= expect(align && align->inputs().size() == 2U &&
+                   align->results().size() == 1U &&
+                   align->results().front().domain ==
+                       joggle::Module::Expression::reference("int") &&
+                   align->form() ==
+                       joggle::Module::FunctionDecl::Form::Body &&
+                   align->symbol().kind() ==
+                       joggle::Module::SymbolKind::Function,
+               "pure function reflection");
+  ok &= expect(add && add->value_inputs().size() == 2U &&
+                   add->static_inputs().empty() &&
+                   add->value_results().size() == 1U &&
+                   add->value_inputs().front().domain.kind ==
+                       joggle::Module::Expression::Kind::Variable &&
+                   add->value_inputs().front().domain.text == "T" &&
+                   add->value_results().front().domain ==
+                       add->value_inputs().front().domain &&
+                   add->operator_symbol() == std::string_view("+") &&
+                   add->operator_fixity() ==
+                       joggle::Module::FunctionDecl::Fixity::Infix &&
+                   add->interfaces().size() == 2U,
+               "add signature");
   ok &= expect(canonicalize && canonicalize->form() ==
-                                   joggle::Module::PassDecl::Form::Rules,
-               "rule pass declaration");
+                                   joggle::Module::FunctionDecl::Form::Body,
+               "a rewrite is an ordinary function body");
   if (!ok || !integer) {
     return EXIT_FAILURE;
   }
 
   const auto symbol = integer->symbol();
-  ok &= expect(symbol.qualified_name() == "arith.integer", "qualified symbol");
-  ok &= expect(symbol.stable_name().starts_with("arith@1.0.0#") &&
+  ok &= expect(symbol.qualified_name() == "test_ir.integer", "qualified symbol");
+  ok &= expect(symbol.stable_name().starts_with("test_ir@1.0.0#") &&
                    symbol.stable_name().ends_with("/type/integer"),
                "persistent symbol identity");
 
   const std::string canonical = joggle::format(*module);
   ok &= expect(canonical == text.str(),
-               "the shipped arith module is canonical source");
+               "the compiler fixture is canonical source");
   joggle::Diagnostics canonical_diagnostics;
   auto reparsed = joggle::parse_module(canonical, canonical_diagnostics,
                                        "canonical.joggle");
@@ -103,22 +147,27 @@ int main() {
   const auto surface = joggle::parse_module(R"(
     joggle 1;
     module surface@2.3.4 {
-      graph empty() {
+      fn empty() {
         return;
       }
-      pass pipeline = external;
-      pass external;
-      op collect<T: type>(items: T...) -> T : marker;
-      attr meta(values: list<i64>, element: type);
+      fn pipeline(input: graph) -> graph {
+        return @(external(input));
+      }
+      fn external(input: graph) -> graph;
+      fn collect<T: type>(items: T...) -> T : marker;
+      fn identity(value: int) -> int {
+        return value;
+      }
+      attr meta(values: list<int>, element: type);
       type scalar(
-        bits: i64 = 8,
-        scale: f64 = -1.5e2,
+        bits: int = 8,
+        scale: real = -1.5e2,
         signed: bool = true,
         label: string = "line\n\"quoted\""
       ) : metric;
-      interface marker: op;
+      interface marker: fn;
       interface metric: type {
-        shape(axis: i64) -> list<i64>;
+        shape: list<int>;
       }
       import dependency@^1.2.3 as dep;
     }
@@ -133,9 +182,10 @@ int main() {
   const auto interface_position = position("interface marker");
   const auto type_position = position("type scalar");
   const auto attribute_position = position("attr meta");
-  const auto operation_position = position("op collect");
-  const auto pass_position = position("pass pipeline");
-  const auto graph_position = position("graph empty");
+  const auto graph_position = position("fn empty");
+  const auto pass_position = position("fn pipeline");
+  const auto operation_position = position("fn collect");
+  const auto function_position = position("fn identity");
   joggle::Diagnostics surface_roundtrip_diagnostics;
   const auto surface_roundtrip = joggle::parse_module(
       surface_text, surface_roundtrip_diagnostics, "surface-canonical.joggle");
@@ -143,19 +193,20 @@ int main() {
       surface && import_position < interface_position &&
           interface_position < type_position &&
           type_position < attribute_position &&
-          attribute_position < operation_position &&
-          operation_position < pass_position &&
-          pass_position < graph_position && surface_roundtrip &&
+          attribute_position < graph_position &&
+          graph_position < pass_position &&
+          pass_position < operation_position &&
+          operation_position < function_position && surface_roundtrip &&
           joggle::format(*surface_roundtrip) == surface_text &&
           surface_roundtrip->digest() == surface->digest(),
       "the complete DSL surface has one canonical member order and digest");
 
   joggle::Diagnostics trivia_diagnostics;
   const std::string with_trivia =
-      "\n// source location and comments are not identity\n" + text.str() +
+      "\n# source location and comments are not identity\n" + text.str() +
       "\n# trailing package note\n";
   const auto trivia_module = joggle::parse_module(
-      with_trivia, trivia_diagnostics, "another/path/arith.joggle");
+      with_trivia, trivia_diagnostics, "another/path/compiler_test.joggle");
   const auto trivia_integer =
       trivia_module ? trivia_module->type("integer") : std::nullopt;
   ok &= expect(trivia_module && trivia_integer &&
@@ -169,8 +220,8 @@ int main() {
   const auto conflicting_identity = joggle::parse_module(
       R"(
     joggle 1;
-    module arith@1.0.0 {
-      type integer(width: i64);
+    module test_ir@1.0.0 {
+      type integer(width: int);
     }
   )",
       conflicting_identity_diagnostics, "conflicting-identity.joggle");
@@ -185,9 +236,9 @@ int main() {
     joggle 1;
     module graph_identity@1.0.0 {
       type value();
-      op identity<T: type>(input: T) -> T;
-      graph main(%input: value) -> value {
-        return %input;
+      fn identity<T: type>(input: T) -> T;
+      fn main(input: value) -> value {
+        return input;
       }
     }
   )",
@@ -198,10 +249,10 @@ int main() {
     joggle 1;
     module graph_identity@1.0.0 {
       type value();
-      op identity<T: type>(input: T) -> T;
-      graph main(%input: value) -> value {
-        %output = identity(%input);
-        return %output;
+      fn identity<T: type>(input: T) -> T;
+      fn main(input: value) -> value {
+        output = identity(input);
+        return output;
       }
     }
   )",
@@ -209,12 +260,12 @@ int main() {
                                                          "second-graph.joggle");
   const auto first_graph_symbol =
       first_graph_module
-          ? first_graph_module->symbol(joggle::Module::SymbolKind::Graph,
+          ? first_graph_module->symbol(joggle::Module::SymbolKind::Function,
                                        "main")
           : std::nullopt;
   const auto second_graph_symbol =
       second_graph_module
-          ? second_graph_module->symbol(joggle::Module::SymbolKind::Graph,
+          ? second_graph_module->symbol(joggle::Module::SymbolKind::Function,
                                         "main")
           : std::nullopt;
   ok &= expect(first_graph_module && second_graph_module && first_graph_symbol &&
@@ -227,13 +278,15 @@ int main() {
   auto list_module = joggle::parse_module(R"(
     joggle 1;
     module shaped@1.0.0 {
-      type tensor(element: type, shape: list<i64>);
+      type tensor(element: type, shape: list<int>);
     }
   )",
                                           list_diagnostics, "shaped.joggle");
   const auto tensor = list_module ? list_module->type("tensor") : std::nullopt;
   ok &= expect(tensor && tensor->parameters().size() == 2U &&
-                   tensor->parameters()[1].list,
+                   tensor->parameters()[1].domain ==
+                       joggle::Module::Expression::list_domain(
+                           joggle::Module::Expression::reference("int")),
                "list-valued schema parameter");
 
   joggle::Diagnostics numeric_diagnostics;
@@ -241,7 +294,7 @@ int main() {
       joggle::parse_module(R"(
     joggle 1;
     module numeric@1.2.3 {
-      attr scale(value: f64 = -1.5e2);
+      attr scale(value: real = -1.5e2);
     }
   )",
                            numeric_diagnostics, "numeric.joggle");
@@ -249,18 +302,21 @@ int main() {
       numeric_module ? numeric_module->attribute("scale") : std::nullopt;
   ok &= expect(scale && scale->parameters().size() == 1U &&
                    scale->parameters().front().default_value &&
-                   std::get<double>(
-                       *scale->parameters().front().default_value) == -150.0,
+                   scale->parameters().front().default_value->kind ==
+                       joggle::Module::Expression::Kind::Number &&
+                   scale->parameters().front().default_value->text == "-150",
                "semantic versions and numeric literals share one lexer");
 
   joggle::Compiler compiler;
-  compiler.add(canonical, "arith.joggle");
+  compiler.add(canonical, "compiler_test.joggle");
   compiler.add(R"(
     joggle 1;
     module client@1.0.0 {
-      import arith@1 as math;
-      op inference<T: type>(input: T) -> T : math.elementwise;
-      pass pipeline = math.canonicalize;
+      import test_ir@1 as math;
+      fn inference<T: type>(input: T) -> T : math.elementwise;
+      fn pipeline(input: graph) -> graph {
+        return math.canonicalize(input);
+      }
     }
   )",
                "client.joggle");
@@ -269,11 +325,11 @@ int main() {
                "linked module lookup");
   const auto linked_client = compiler.module("client");
   ok &= expect(linked_client && linked_client->imports().size() == 1U &&
-                   linked_client->imports().front().name == "arith" &&
+                   linked_client->imports().front().name == "test_ir" &&
                    linked_client->imports().front().prefix() == "math",
                "an import alias is a local prefix for one module identity");
   const auto inference =
-      linked_client ? linked_client->operation("inference") : std::nullopt;
+      linked_client ? linked_client->function("inference") : std::nullopt;
   ok &= expect(inference && elementwise &&
                    compiler.conforms(*inference, *elementwise),
                "aliased cross-module interface implementation");
@@ -334,9 +390,11 @@ int main() {
     joggle 1;
     module broken_rule@1.0.0 {
       type integer();
-      op identity<T: type>(input: T) -> T;
-      pass incomplete {
-        identity($input) => $missing;
+      fn identity<T: type>(input: T) -> T;
+      fn incomplete(input: graph) -> graph {
+        return rewrite(input) {
+          identity($input) => $missing;
+        };
       }
     }
   )",
@@ -345,17 +403,18 @@ int main() {
                    rule_diagnostics.entries().back().source &&
                    rule_diagnostics.entries().back().source->source ==
                        "broken-rule.joggle" &&
-                   rule_diagnostics.entries().back().source->begin.line == 7U,
+                   rule_diagnostics.entries().back().source->begin.line == 8U,
                "a replacement outside the matched term is rejected");
 
   const auto rejects_rule = [&](std::string_view rule) {
     joggle::Diagnostics diagnostics;
     const std::string source = "joggle 1; module invalid_rule@1.0.0 { "
                                "type value(); "
-                               "op first<T: type>(input: T) -> T; "
-                               "op second<T: type>(input: T) -> T; "
-                               "pass invalid { " +
-                               std::string(rule) + " } }";
+                               "fn first<T: type>(input: T) -> T; "
+                               "fn second<T: type>(input: T) -> T; "
+                               "fn invalid(input: graph) -> graph { "
+                               "return rewrite(input) { " +
+                               std::string(rule) + " }; } }";
     return !joggle::parse_module(source, diagnostics, "invalid-rule.joggle") &&
            !diagnostics.ok();
   };
@@ -365,7 +424,7 @@ int main() {
                "an identity contraction cannot make no progress");
   ok &= expect(rejects_rule("$x => $x;"),
                "a contraction must match an operation root");
-  ok &= expect(rejects_rule("first(%x) => %x;"),
+  ok &= expect(rejects_rule("first(x) => x;"),
                "an SSA name is not accepted as a pass pattern variable");
 
   joggle::Diagnostics removed_analysis_diagnostics;
@@ -398,7 +457,7 @@ int main() {
     joggle 1;
     module value_name@1.0.0 {
       type value();
-      op identity(input: value) -> value;
+      fn identity(input: value) -> value;
     }
   )",
                            value_name_diagnostics, "value-name.joggle");
@@ -421,7 +480,7 @@ int main() {
   const auto wrong_interface = joggle::parse_module(R"(
     joggle 1;
     module wrong_interface@1.0.0 {
-      interface elementwise: op;
+      interface elementwise: fn;
       type scalar() : elementwise;
     }
   )",
@@ -434,8 +493,12 @@ int main() {
   pass_cycle.add(R"(
     joggle 1;
     module pass_cycle@1.0.0 {
-      pass first = second;
-      pass second = first;
+      fn first(input: graph) -> graph {
+        return second(input);
+      }
+      fn second(input: graph) -> graph {
+        return first(input);
+      }
     }
   )",
                  "pass-cycle.joggle");
@@ -445,7 +508,7 @@ int main() {
                    pass_cycle_diagnostics.back().source &&
                    pass_cycle_diagnostics.back().source->source ==
                        "pass-cycle.joggle" &&
-                   pass_cycle_diagnostics.back().source->begin.line == 5U,
+                   pass_cycle_diagnostics.back().source->begin.line == 7U,
                "pass composition cycle is rejected");
 
   joggle::Compiler missing;
@@ -471,7 +534,7 @@ int main() {
     joggle 1;
     module invalid_contract@1.0.0 {
       import base@1 as b;
-      op broken(input: b.missing) -> b.scalar;
+      fn broken(input: b.missing) -> b.scalar;
     }
   )",
                        "invalid-contract.joggle");
