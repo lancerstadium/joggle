@@ -17,9 +17,9 @@ value must remain in the generated program. A target `i32` constant can be
 Known; a symbolic `int` parameter can be Residual. Therefore a type name does
 not select a compilation stage.
 
-`ParameterDecl` has no static/value kind. The current implementation still
-records privately which parameters its legacy IR bridge can represent as SSA
-values; staged call arguments replace that temporary storage distinction.
+`ParameterDecl` has no static/value kind. Declaration checking resolves whether
+an annotation denotes a compiler domain or a program type, while every
+instantiated call carries one ordered sequence of `Value` arguments.
 
 ## One function and one overload set
 
@@ -266,3 +266,17 @@ The trusted implementation contains only:
 
 Device models, tensor vocabularies, FPGA formats, custom instructions, IR
 modules, analyses, and emitters live in installable Modules.
+
+## Implementation status
+
+The Function-body evaluator now uses the same ordered `Value` arguments for
+Known and Residual calls. It evaluates compiler-domain literals, arithmetic,
+lists, type and attribute constructors, text-defined pure functions, and
+registered external functions. Evaluation happens automatically when a call is
+fully Known; `@(expression)` adds the explicit Known requirement.
+
+Known `if` conditions select one arm without creating IR. A Residual `i1`
+condition with value-reference arms becomes sibling then/else/merge Blocks and
+typed successor arguments. General statement sequences inside arms, loops,
+closures, effect capabilities, materialization, and configurable evaluation
+budgets remain to be implemented.

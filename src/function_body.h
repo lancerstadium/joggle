@@ -82,7 +82,7 @@ struct SuccessorSyntax {
 };
 
 struct TerminatorSyntax {
-  enum class Kind { Return, Branch, CondBranch };
+  enum class Kind { Return, Jump, Branch };
 
   Kind kind = Kind::Return;
   std::optional<ExpressionSyntax> condition;

@@ -18,7 +18,7 @@
 namespace joggle::detail {
 namespace {
 
-using Bindings = std::unordered_map<std::string, ParameterValue>;
+using Bindings = KnownBindings;
 
 std::optional<std::int64_t> checked_add(std::int64_t left,
                                         std::int64_t right) {
@@ -218,6 +218,18 @@ public:
       : environment_(std::move(environment)), diagnostics_(diagnostics),
         scope_(schema.symbol().module_name()) {}
 
+  Solver(Environment environment, std::string scope, Diagnostics& diagnostics,
+         std::optional<SourceRange> source)
+      : environment_(std::move(environment)), diagnostics_(diagnostics),
+        source_(std::move(source)), scope_(std::move(scope)) {}
+
+  std::optional<ParameterValue>
+  evaluate_known(const Module::Expression& expression,
+                 const Module::ParameterDecl& expected,
+                 const Bindings& bindings) {
+    return evaluate(expression, expected, bindings);
+  }
+
   std::optional<OperationTypes>
   infer(std::span<const Type> arguments,
         std::span<const std::optional<ParameterValue>> known_arguments,
@@ -226,10 +238,10 @@ public:
       report("operation solver has no operation schema");
       return std::nullopt;
     }
-    const auto static_inputs = parameter_inputs(*schema_);
+    const auto known_inputs = parameter_inputs(*schema_);
     const auto value_inputs = ir_inputs(*schema_);
     const auto value_results = ir_results(*schema_);
-    if (known_arguments.size() != static_inputs.size()) {
+    if (known_arguments.size() != known_inputs.size()) {
       report("operation known argument map does not match its schema");
       return std::nullopt;
     }
@@ -603,17 +615,17 @@ private:
     }
     for (const Module& module : visible) {
       for (const auto& candidate : module.functions()) {
-        const auto static_inputs = parameter_inputs(candidate);
-        const auto static_results = parameter_results(candidate);
+        const auto known_inputs = parameter_inputs(candidate);
+        const auto known_results = parameter_results(candidate);
         if (candidate.operator_symbol() != symbol ||
             candidate.operator_fixity() != fixity ||
             !ir_inputs(candidate).empty() || !ir_results(candidate).empty() ||
-            static_inputs.size() != arity || static_results.size() != 1U ||
-            static_results.front().domain != expected.domain) {
+            known_inputs.size() != arity || known_results.size() != 1U ||
+            known_results.front().domain != expected.domain) {
           continue;
         }
         const bool inputs_match = std::all_of(
-            static_inputs.begin(), static_inputs.end(),
+            known_inputs.begin(), known_inputs.end(),
             [&](const auto& input) { return input.domain == expected.domain; });
         if (inputs_match) {
           result.push_back(candidate);
@@ -1200,6 +1212,16 @@ private:
 };
 
 }  // namespace
+
+std::optional<ParameterValue> evaluate_known_expression(
+    Compiler& compiler, std::string_view scope,
+    const Module::Expression& expression,
+    const Module::ParameterDecl& expected, const KnownBindings& bindings,
+    Diagnostics& diagnostics, std::optional<SourceRange> source) {
+  return Solver(environment(compiler), std::string(scope), diagnostics,
+                std::move(source))
+      .evaluate_known(expression, expected, bindings);
+}
 
 std::optional<std::vector<Type>>
 infer_operation_types(Compiler& compiler, const Module::FunctionDecl& schema,

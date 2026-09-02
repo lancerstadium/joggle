@@ -2,15 +2,27 @@
 
 #include <optional>
 #include <span>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "joggle/compiler.h"
 
 namespace joggle::detail {
 
+using KnownBindings = std::unordered_map<std::string, ParameterValue>;
+
 struct OperationTypes {
   std::vector<Type> results;
 };
+
+std::optional<ParameterValue> evaluate_known_expression(
+    Compiler& compiler, std::string_view scope,
+    const Module::Expression& expression,
+    const Module::ParameterDecl& expected, const KnownBindings& bindings,
+    Diagnostics& diagnostics,
+    std::optional<SourceRange> source = std::nullopt);
 
 std::optional<std::vector<ParameterValue>> resolve_derived_parameters(
     Compiler& compiler, const Module::TypeDecl& schema,

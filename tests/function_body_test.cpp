@@ -84,7 +84,7 @@ int main() {
                    configured_decl->inputs().front().name == "scale" &&
                    configured->arguments().size() == 1U,
                "a function signature has one public parameter sequence while "
-               "the current IR bridge receives its representable inputs");
+               "the residual Function boundary receives program inputs");
   const auto main_symbol =
       module ? module->symbol(joggle::Module::SymbolKind::Function, "main")
              : std::nullopt;
@@ -161,6 +161,9 @@ module cfg@1.0.0 {
   fn structured(condition: i1, lhs: word, rhs: word) -> word {
     return if condition { lhs } else { rhs };
   }
+  fn specialized(lhs: word, rhs: word) -> word {
+    return if true { lhs } else { rhs };
+  }
 }
 )";
   joggle::Diagnostics cfg_diagnostics;
@@ -190,11 +193,24 @@ module cfg@1.0.0 {
   const bool cfg_linked = cfg_compiler.link();
   const auto cfg_function =
       cfg_linked ? cfg_compiler.function("cfg.choose") : std::nullopt;
+  const auto cfg_structured =
+      cfg_linked ? cfg_compiler.function("cfg.structured") : std::nullopt;
+  const auto cfg_specialized =
+      cfg_linked ? cfg_compiler.function("cfg.specialized") : std::nullopt;
   const std::string cfg_ir =
       cfg_function ? joggle::format(*cfg_function, "choose") : std::string{};
-  ok &= expect(cfg_function && cfg_compiler.verify(*cfg_function) &&
+  ok &= expect(cfg_function && cfg_structured && cfg_specialized &&
+                   cfg_compiler.verify(*cfg_function) &&
+                   cfg_compiler.verify(*cfg_structured) &&
+                   cfg_compiler.verify(*cfg_specialized) &&
                    cfg_function->blocks().size() == 4U &&
+                   cfg_structured->blocks().size() == 4U &&
+                   cfg_specialized->blocks().size() == 1U &&
+                   cfg_specialized->entry().terminator().returned().front() ==
+                       cfg_specialized->arguments().front() &&
                    cfg_function->entry().terminator().kind() ==
+                       joggle::Terminator::Kind::Branch &&
+                   cfg_structured->entry().terminator().kind() ==
                        joggle::Terminator::Kind::Branch &&
                    cfg_function->blocks().back().arguments().size() == 1U &&
                    cfg_function->blocks().back().terminator().returned().front() ==
@@ -352,9 +368,15 @@ module dependent@1.0.0 {
   type word(width: int);
   fn input<N: int>(width: N) -> word<N>;
   fn default_input<N: int>(width: N = 8) -> word<N>;
+  fn align(value: int, multiple: int) -> int {
+    return ceildiv(value, multiple) * multiple;
+  }
+  fn double(value: int) -> int;
 
   fn inferred() {
-    value = input(width = 8);
+    aligned = align(3, 4);
+    width = @(if true { double(aligned) } else { 1 / 0 });
+    value = input(width: width);
     return;
   }
 }
@@ -363,8 +385,17 @@ module dependent@1.0.0 {
   dependent.add(dependent_source, "dependent.joggle");
   const bool dependent_linked = dependent.link();
   const auto dependent_module = dependent.module("dependent");
+  const auto dependent_double =
+      dependent_module ? dependent_module->function("double") : std::nullopt;
+  if (dependent_double) {
+    dependent.bind(*dependent_double, [](std::int64_t value) {
+      return value * 2;
+    });
+  }
   auto dependent_graph =
-      dependent_linked ? dependent.function("dependent.inferred") : std::nullopt;
+      dependent_linked && dependent_double
+          ? dependent.function("dependent.inferred")
+          : std::nullopt;
   const auto dependent_operations =
       dependent_graph ? dependent_graph->instructions()
                       : std::vector<joggle::Instruction>{};
@@ -381,8 +412,8 @@ module dependent@1.0.0 {
                    joggle::format(*dependent_module).find(
                        "fn default_input<N: int>(width: N = 8) -> word<N>;") !=
                        std::string::npos,
-               "a named known argument binds a generic and infers a text function "
-               "result without another annotation");
+               "a computed Known argument binds a generic and infers a text "
+               "function result without another annotation");
 
   joggle::Compiler inconsistent;
   inconsistent.add(dependent_source, "dependent.joggle");
@@ -959,6 +990,32 @@ module unsafe_expression@1.0.0 {
   ok &= expect(unsafe_linked && !unsafe_graph && reports_division_by_zero,
                "non-total compile-time arithmetic is rejected when its "
                "bindings become concrete");
+
+  joggle::Compiler dynamic_at;
+  dynamic_at.add(R"(
+joggle 1;
+module dynamic_at@1.0.0 {
+  fn invalid(input: i32) -> i32 {
+    forced = @(input);
+    return input;
+  }
+}
+)",
+                 "dynamic-at.joggle");
+  const bool dynamic_at_linked = dynamic_at.link();
+  const auto dynamic_at_function =
+      dynamic_at_linked ? dynamic_at.function("dynamic_at.invalid")
+                        : std::nullopt;
+  const bool reports_dynamic_at = std::any_of(
+      dynamic_at.diagnostics().entries().begin(),
+      dynamic_at.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("compile-time evaluation") !=
+               std::string::npos;
+      });
+  ok &= expect(dynamic_at_linked && !dynamic_at_function &&
+                   reports_dynamic_at,
+               "@ rejects a Residual value instead of changing its stage");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

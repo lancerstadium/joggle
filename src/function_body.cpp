@@ -220,10 +220,10 @@ private:
         } while (match(TokenKind::Comma));
       }
     } else if (match_name("jump")) {
-      terminator.kind = detail::TerminatorSyntax::Kind::Branch;
+      terminator.kind = detail::TerminatorSyntax::Kind::Jump;
       terminator.successors.push_back(parse_successor());
     } else if (match_name("branch")) {
-      terminator.kind = detail::TerminatorSyntax::Kind::CondBranch;
+      terminator.kind = detail::TerminatorSyntax::Kind::Branch;
       terminator.condition = expression();
       expect(TokenKind::Comma, "','");
       terminator.successors.push_back(parse_successor());
@@ -548,13 +548,13 @@ private:
                 << detail::format_expression(terminator.values[index].value);
       }
       break;
-    case detail::TerminatorSyntax::Kind::Branch:
+    case detail::TerminatorSyntax::Kind::Jump:
       output_ << "jump ";
       if (!terminator.successors.empty()) {
         write_successor(terminator.successors.front());
       }
       break;
-    case detail::TerminatorSyntax::Kind::CondBranch:
+    case detail::TerminatorSyntax::Kind::Branch:
       output_ << "branch ";
       if (terminator.condition) {
         output_ << detail::format_expression(terminator.condition->value);
@@ -759,25 +759,6 @@ std::optional<detail::ValueSyntax> value_syntax(
   return result;
 }
 
-// Adapter used only while the old Function bridge is being removed. The source
-// AST above keeps one Expression; this shape exists solely to feed the legacy
-// operation constructor without making Call a second syntax node again.
-struct NamedKnownArgumentSyntax {
-  std::string name;
-  detail::ValueSyntax value;
-  detail::SyntaxRange range;
-};
-
-struct ResidualCallSyntax {
-  std::vector<std::string> results;
-  std::vector<std::optional<detail::ValueSyntax>> result_types;
-  std::string operation;
-  std::optional<Module::FunctionDecl::Fixity> operator_fixity;
-  std::vector<detail::LocalUseSyntax> arguments;
-  std::vector<NamedKnownArgumentSyntax> named_arguments;
-  detail::SyntaxRange range;
-};
-
 class Instantiator {
 public:
   Instantiator(Compiler& compiler, Module::FunctionDecl function,
@@ -884,8 +865,9 @@ public:
       if (ir == blocks_.end()) {
         continue;
       }
+      Block current = ir->second;
       for (const auto& instruction : block.instructions) {
-        instantiate_operation(instruction, ir->second);
+        current = instantiate_statement(instruction, current);
       }
       const detail::TerminatorSyntax& terminator = block.terminator;
       if (terminator.kind == detail::TerminatorSyntax::Kind::Return) {
@@ -895,7 +877,24 @@ public:
                  terminator.range);
         } else if (result_types.size() == results.size()) {
           for (std::size_t index = 0; index < terminator.values.size(); ++index) {
-            auto value = use(terminator.values[index]);
+            std::optional<Value> value;
+            const auto& expression = terminator.values[index];
+            const bool reference =
+                (expression.value.kind == Module::Expression::Kind::Reference ||
+                 expression.value.kind == Module::Expression::Kind::Variable) &&
+                expression.value.arguments.empty();
+            if (reference) {
+              value = use(expression);
+            } else {
+              const std::string name = "$return" + std::to_string(index);
+              detail::StatementSyntax statement;
+              statement.bindings.push_back(
+                  {name, std::nullopt, expression.range});
+              statement.expression = expression;
+              statement.range = expression.range;
+              current = instantiate_statement(statement, current);
+              value = use(detail::LocalUseSyntax{name, expression.range});
+            }
             if (!value) {
               continue;
             }
@@ -908,7 +907,7 @@ public:
             returned.push_back(*value);
           }
         }
-        edit_->ret(ir->second, std::move(returned));
+        edit_->ret(current, std::move(returned));
         continue;
       }
       std::vector<std::vector<Value>> edge_arguments;
@@ -934,9 +933,9 @@ public:
         }
         return found->second;
       };
-      if (terminator.kind == detail::TerminatorSyntax::Kind::Branch) {
+      if (terminator.kind == detail::TerminatorSyntax::Kind::Jump) {
         if (auto destination = target(0)) {
-          edit_->jump(ir->second, *destination,
+          edit_->jump(current, *destination,
                       edge_arguments.empty() ? std::vector<Value>{}
                                              : std::move(edge_arguments[0]));
         }
@@ -950,7 +949,7 @@ public:
             edge_arguments.size() != 2U) {
           continue;
         }
-        edit_->branch(ir->second, *condition, *true_target,
+        edit_->branch(current, *condition, *true_target,
                       std::move(edge_arguments[0]), *false_target,
                       std::move(edge_arguments[1]));
       }
@@ -964,66 +963,6 @@ public:
   }
 
 private:
-  std::optional<ResidualCallSyntax>
-  residual_call(const detail::StatementSyntax& statement) {
-    ResidualCallSyntax result;
-    result.range = statement.range;
-    for (const detail::BindingSyntax& binding : statement.bindings) {
-      result.results.push_back(binding.name);
-      result.result_types.push_back(binding.type);
-    }
-
-    const Module::Expression& expression = statement.expression.value;
-    using Kind = Module::Expression::Kind;
-    if (expression.kind == Kind::Call) {
-      result.operation = expression.text;
-    } else if (expression.kind == Kind::Prefix) {
-      result.operation = expression.text;
-      result.operator_fixity = Module::FunctionDecl::Fixity::Prefix;
-    } else if (expression.kind == Kind::Infix) {
-      result.operation = expression.text;
-      result.operator_fixity = Module::FunctionDecl::Fixity::Infix;
-    } else if (expression.kind == Kind::Postfix) {
-      result.operation = expression.text;
-      result.operator_fixity = Module::FunctionDecl::Fixity::Postfix;
-    } else {
-      report("residual expression evaluation is not yet available in the "
-             "Function bridge",
-             statement.expression.range);
-      return std::nullopt;
-    }
-
-    for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
-      const Module::Expression& argument = expression.arguments[index];
-      const std::string_view label =
-          index < expression.labels.size() ? expression.labels[index]
-                                           : std::string_view{};
-      if (!label.empty()) {
-        auto converted = value_syntax(argument, statement.expression.range);
-        if (!converted) {
-          report("named argument '" + std::string(label) +
-                     "' is not known in the Function bridge",
-                 statement.expression.range);
-          return std::nullopt;
-        }
-        result.named_arguments.push_back(
-            {std::string(label), std::move(*converted),
-             statement.expression.range});
-        continue;
-      }
-      if ((argument.kind != Kind::Reference &&
-           argument.kind != Kind::Variable) ||
-          !argument.arguments.empty()) {
-        report("a residual call argument is not a local value",
-               statement.expression.range);
-        return std::nullopt;
-      }
-      result.arguments.push_back(
-          {argument.text, statement.expression.range});
-    }
-    return result;
-  }
-
   bool ok() const { return diagnostics_.size() == initial_diagnostics_; }
 
   SourceRange source(detail::SyntaxRange range) const {
@@ -1103,6 +1042,29 @@ private:
              range);
     }
     return result;
+  }
+
+  std::optional<Module::SymbolKind>
+  declaration_kind(std::string_view reference) const {
+    const bool prelude_type = detail::is_prelude_type(reference);
+    const std::string qualified =
+        prelude_type ? std::string(detail::prelude_module_name) + "." +
+                           std::string(reference)
+                     : std::string(reference);
+    const auto [prefix, local] = split_reference(owner_, qualified);
+    const auto module_name = resolve_prefix(owner_, prefix);
+    const auto module = module_name ? compiler_.module(*module_name)
+                                    : std::optional<Module>{};
+    if (!module) {
+      return std::nullopt;
+    }
+    if (module->type(local)) {
+      return Module::SymbolKind::Type;
+    }
+    if (module->attribute(local)) {
+      return Module::SymbolKind::Attribute;
+    }
+    return std::nullopt;
   }
 
   std::optional<ParameterValue>
@@ -1207,6 +1169,166 @@ private:
                            : std::optional<Type>{};
   }
 
+  std::optional<Module::Expression> domain(const Type& type) const {
+    const Module::Symbol symbol = type.schema().symbol();
+    if (symbol.module_name() != detail::prelude_module_name) {
+      return std::nullopt;
+    }
+    if (symbol.local_name() == "list") {
+      const auto parameters = detail::TypeAccess::parameters(type);
+      const Type* element = parameters.size() == 1U
+                                ? parameters.front().as_type()
+                                : nullptr;
+      auto element_domain = element ? domain(*element) : std::nullopt;
+      return element_domain
+                 ? std::optional<Module::Expression>{
+                       Module::Expression::list_domain(
+                           std::move(*element_domain))}
+                 : std::nullopt;
+    }
+    return detail::kernel_domain(
+               Module::Expression::reference(
+                   std::string(symbol.local_name())))
+               ? std::optional<Module::Expression>{
+                     Module::Expression::reference(
+                         std::string(symbol.local_name()))}
+               : std::nullopt;
+  }
+
+  std::optional<Module::ParameterDecl>
+  known_result(const Module::Expression& expression,
+               detail::SyntaxRange range) {
+    using Kind = Module::Expression::Kind;
+    if (expression.kind == Kind::Evaluate) {
+      return expression.arguments.size() == 1U
+                 ? known_result(expression.arguments.front(), range)
+                 : std::nullopt;
+    }
+    if (expression.kind == Kind::Variable ||
+        expression.kind == Kind::Reference) {
+      if (!expression.arguments.empty()) {
+        const auto kind = declaration_kind(expression.text);
+        if (kind == Module::SymbolKind::Type ||
+            kind == Module::SymbolKind::Attribute) {
+          return Module::ParameterDecl{
+              "result",
+              detail::domain_expression(
+                  kind == Module::SymbolKind::Type
+                      ? detail::ValueKind::Type
+                      : detail::ValueKind::Attribute),
+              false, std::nullopt};
+        }
+      }
+      auto value = use(detail::LocalUseSyntax{expression.text, range});
+      auto value_domain = value ? domain(value->type()) : std::nullopt;
+      return value_domain
+                 ? std::optional<Module::ParameterDecl>{
+                       {"result", std::move(*value_domain), false,
+                        std::nullopt}}
+                 : std::nullopt;
+    }
+    if (expression.kind == Kind::Number) {
+      const bool real = expression.text.find_first_of(".eE") !=
+                        std::string::npos;
+      return Module::ParameterDecl{
+          "result",
+          detail::domain_expression(real ? detail::ValueKind::Real
+                                         : detail::ValueKind::Integer),
+          false, std::nullopt};
+    }
+    if (expression.kind == Kind::Boolean) {
+      return Module::ParameterDecl{
+          "result", detail::domain_expression(detail::ValueKind::Boolean),
+          false, std::nullopt};
+    }
+    if (expression.kind == Kind::String) {
+      return Module::ParameterDecl{
+          "result", detail::domain_expression(detail::ValueKind::String),
+          false, std::nullopt};
+    }
+    if (expression.kind == Kind::List && !expression.arguments.empty()) {
+      auto element = known_result(expression.arguments.front(), range);
+      return element
+                 ? std::optional<Module::ParameterDecl>{
+                       {"result",
+                        Module::Expression::list_domain(element->domain),
+                        false, std::nullopt}}
+                 : std::nullopt;
+    }
+    if (expression.kind == Kind::If && expression.arguments.size() == 3U) {
+      return known_result(expression.arguments[1], range);
+    }
+    if (expression.kind == Kind::Call) {
+      if (expression.text == "ceildiv" || expression.text == "min" ||
+          expression.text == "max") {
+        return Module::ParameterDecl{
+            "result", detail::domain_expression(detail::ValueKind::Integer),
+            false, std::nullopt};
+      }
+      auto function = declaration<Module::FunctionDecl>(expression.text, range);
+      const auto results = function ? detail::parameter_results(*function)
+                                    : std::vector<Module::ParameterDecl>{};
+      return results.size() == 1U
+                 ? std::optional<Module::ParameterDecl>{results.front()}
+                 : std::nullopt;
+    }
+    if ((expression.kind == Kind::Prefix ||
+         expression.kind == Kind::Infix ||
+         expression.kind == Kind::Postfix) &&
+        !expression.arguments.empty()) {
+      return known_result(expression.arguments.front(), range);
+    }
+    return std::nullopt;
+  }
+
+  detail::KnownBindings known_bindings() const {
+    detail::KnownBindings bindings;
+    for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
+      for (const auto& [name, value] : *scope) {
+        if (bindings.contains(name) || !value || !value->known()) {
+          continue;
+        }
+        if (const auto payload =
+                detail::FunctionAccess::known_value(*value)) {
+          bindings.emplace(name, *payload);
+        }
+      }
+    }
+    return bindings;
+  }
+
+  std::optional<Value> evaluate_known(const detail::ExpressionSyntax& syntax) {
+    auto expected = known_result(syntax.value, syntax.range);
+    if (!expected) {
+      report("cannot determine the type required by compile-time evaluation",
+             syntax.range);
+      return std::nullopt;
+    }
+    std::optional<ParameterValue> payload;
+    if (syntax.value.kind == Module::Expression::Kind::Reference &&
+        !syntax.value.arguments.empty()) {
+      auto value = value_syntax(syntax.value, syntax.range);
+      const auto kind = declaration_kind(syntax.value.text);
+      if (value && kind == Module::SymbolKind::Type) {
+        if (auto result = type(*value)) {
+          payload = ParameterValue(*result);
+        }
+      } else if (value && kind == Module::SymbolKind::Attribute) {
+        if (auto result = attribute(*value)) {
+          payload = ParameterValue(*result);
+        }
+      }
+    } else {
+      payload = detail::evaluate_known_expression(
+          compiler_, owner_, syntax.value, *expected, known_bindings(),
+          diagnostics_, source(syntax.range));
+    }
+    auto type = payload ? reflected_type(expected->domain) : std::nullopt;
+    return payload && type
+               ? compiler_.known(std::move(*type), std::move(*payload))
+               : std::optional<Value>{};
+  }
+
   template <typename Declaration, typename Construct>
   auto construct(const detail::ValueSyntax& syntax, Construct create)
       -> decltype(create(std::declval<Declaration>(),
@@ -1275,9 +1397,7 @@ private:
     if ((expression.value.kind != Module::Expression::Kind::Reference &&
          expression.value.kind != Module::Expression::Kind::Variable) ||
         !expression.value.arguments.empty()) {
-      report("residual expression evaluation is not yet available in the "
-             "Function bridge",
-             expression.range);
+      report("expected a local value reference", expression.range);
       return std::nullopt;
     }
     return use(detail::LocalUseSyntax{expression.value.text, expression.range});
@@ -1358,57 +1478,261 @@ private:
     return matches.front();
   }
 
+  Block instantiate_statement(const detail::StatementSyntax& statement,
+                              Block block) {
+    using Kind = Module::Expression::Kind;
+    const Module::Expression& expression = statement.expression.value;
+    if (expression.kind == Kind::Variable ||
+        expression.kind == Kind::Reference) {
+      if (statement.bindings.size() != 1U || !expression.arguments.empty()) {
+        report("a value reference must bind exactly one value",
+               statement.range);
+        return block;
+      }
+      if (auto value = use(statement.expression)) {
+        define(statement.bindings.front().name, std::move(*value),
+               statement.bindings.front().range);
+      }
+      return block;
+    }
+    if (expression.kind != Kind::If) {
+      instantiate_operation(statement, block);
+      return block;
+    }
+    if (expression.arguments.size() != 3U ||
+        statement.bindings.size() != 1U) {
+      report("if expression must have one condition, two values, and one "
+             "result",
+             statement.range);
+      return block;
+    }
+
+    const detail::ExpressionSyntax condition_syntax{
+        expression.arguments[0], statement.expression.range};
+    if (known_result(condition_syntax.value, condition_syntax.range)) {
+      auto condition = evaluate_known(condition_syntax);
+      const auto selected = condition ? condition->get<bool>() : std::nullopt;
+      if (!selected) {
+        report("Known if condition must have type bool",
+               condition_syntax.range);
+        return block;
+      }
+      detail::StatementSyntax selected_statement = statement;
+      selected_statement.expression.value =
+          expression.arguments[*selected ? 1U : 2U];
+      return instantiate_statement(selected_statement, block);
+    }
+
+    auto condition = use(condition_syntax);
+    const detail::ExpressionSyntax true_syntax{
+        expression.arguments[1], statement.expression.range};
+    const detail::ExpressionSyntax false_syntax{
+        expression.arguments[2], statement.expression.range};
+    auto true_value = use(true_syntax);
+    auto false_value = use(false_syntax);
+    if (!condition || !true_value || !false_value) {
+      return block;
+    }
+    if (true_value->known() || false_value->known()) {
+      if (*true_value == *false_value) {
+        define(statement.bindings.front().name, std::move(*true_value),
+               statement.bindings.front().range);
+      } else {
+        report("unequal Known branch values need a registered materializer",
+               statement.range);
+      }
+      return block;
+    }
+    if (true_value->type() != false_value->type()) {
+      report("if branches produce different types", statement.range);
+      return block;
+    }
+    const Block yes = edit_->block();
+    const Block no = edit_->block();
+    const Block merge = edit_->block({true_value->type()});
+    edit_->branch(block, *condition, yes, {}, no, {});
+    edit_->jump(yes, merge, {*true_value});
+    edit_->jump(no, merge, {*false_value});
+    define(statement.bindings.front().name, merge.arguments().front(),
+           statement.bindings.front().range);
+    return merge;
+  }
+
   void instantiate_operation(const detail::StatementSyntax& statement,
                              Block block) {
-    auto lowered = residual_call(statement);
-    if (!lowered) {
-      std::vector<std::string> results;
-      results.reserve(statement.bindings.size());
-      for (const auto& binding : statement.bindings) {
-        results.push_back(binding.name);
+    const bool require_known = statement.expression.value.kind ==
+                               Module::Expression::Kind::Evaluate;
+    const bool can_evaluate = statement.bindings.size() == 1U &&
+                              known_result(statement.expression.value,
+                                           statement.expression.range)
+                                  .has_value();
+    if (require_known || can_evaluate) {
+      if (statement.bindings.size() != 1U) {
+        report("compile-time evaluation must bind exactly one value",
+               statement.range);
+        return;
       }
-      invalidate(results, statement.range);
+      auto value = evaluate_known(statement.expression);
+      if (value) {
+        define(statement.bindings.front().name, std::move(*value),
+               statement.bindings.front().range);
+      } else {
+        const std::vector<std::string> names{
+            statement.bindings.front().name};
+        invalidate(names, statement.range);
+      }
       return;
     }
-    const ResidualCallSyntax& syntax = *lowered;
-    auto schema = syntax.operator_fixity
-                      ? std::optional<Module::FunctionDecl>{}
-                      : declaration<Module::FunctionDecl>(syntax.operation,
-                                                           syntax.range);
+    const auto invalidate_results = [&] {
+      std::vector<std::string> names;
+      names.reserve(statement.bindings.size());
+      for (const auto& binding : statement.bindings) {
+        names.push_back(binding.name);
+      }
+      invalidate(names, statement.range);
+    };
+    const Module::Expression& expression = statement.expression.value;
+    using Kind = Module::Expression::Kind;
+    std::optional<Module::FunctionDecl::Fixity> fixity;
+    if (expression.kind == Kind::Prefix) {
+      fixity = Module::FunctionDecl::Fixity::Prefix;
+    } else if (expression.kind == Kind::Infix) {
+      fixity = Module::FunctionDecl::Fixity::Infix;
+    } else if (expression.kind == Kind::Postfix) {
+      fixity = Module::FunctionDecl::Fixity::Postfix;
+    } else if (expression.kind != Kind::Call) {
+      report("expression cannot be residualized as a call", statement.range);
+      invalidate_results();
+      return;
+    }
+
     std::vector<Value> arguments;
-    bool invalid_call_argument = false;
-    for (const auto& argument_syntax : syntax.arguments) {
-      auto argument = use(argument_syntax);
+    arguments.reserve(expression.arguments.size());
+    for (const Module::Expression& argument_expression : expression.arguments) {
+      detail::ExpressionSyntax argument_syntax{
+          argument_expression, statement.expression.range};
+      std::optional<Value> argument;
+      if ((argument_expression.kind == Kind::Reference ||
+           argument_expression.kind == Kind::Variable) &&
+          argument_expression.arguments.empty()) {
+        argument = use(argument_syntax);
+      } else {
+        argument = evaluate_known(argument_syntax);
+      }
       if (argument) {
         arguments.push_back(*argument);
       } else {
-        invalid_call_argument = true;
+        invalidate_results();
+        return;
       }
     }
-    if (invalid_call_argument) {
-      invalidate(syntax.results, syntax.range);
-      return;
-    }
-    if (syntax.operator_fixity) {
+
+    std::optional<Module::FunctionDecl> schema;
+    if (fixity) {
       std::vector<Type> types;
       types.reserve(arguments.size());
       for (const Value& argument : arguments) {
         types.push_back(argument.type());
       }
-      schema = operator_declaration(syntax.operation, *syntax.operator_fixity,
-                                    types, syntax.range);
+      schema = operator_declaration(expression.text, *fixity, types,
+                                    statement.expression.range);
+    } else {
+      schema = declaration<Module::FunctionDecl>(
+          expression.text, statement.expression.range);
     }
     if (!schema) {
-      invalidate(syntax.results, syntax.range);
+      invalidate_results();
       return;
     }
+
+    const auto parameters = schema->inputs();
+    std::vector<std::vector<Value>> bound(parameters.size());
+    std::size_t positional = 0;
+    bool invalid_argument = false;
+    for (std::size_t index = 0; index < arguments.size(); ++index) {
+      const std::string_view label =
+          index < expression.labels.size() ? expression.labels[index]
+                                           : std::string_view{};
+      std::size_t target = parameters.size();
+      if (!label.empty()) {
+        const auto found = std::find_if(
+            parameters.begin(), parameters.end(),
+            [&](const Module::ParameterDecl& parameter) {
+              return parameter.name == label;
+            });
+        if (found != parameters.end()) {
+          target = static_cast<std::size_t>(
+              std::distance(parameters.begin(), found));
+        }
+      } else if (positional < parameters.size()) {
+        target = positional;
+        if (!parameters[target].variadic) {
+          ++positional;
+        }
+      }
+      if (target == parameters.size()) {
+        report(label.empty() ? "call has too many positional arguments"
+                             : "call has no argument named '" +
+                                   std::string(label) + "'",
+               statement.expression.range);
+        invalid_argument = true;
+        continue;
+      }
+      if (!parameters[target].variadic && !bound[target].empty()) {
+        report("call provides argument '" + parameters[target].name +
+                   "' more than once",
+               statement.expression.range);
+        invalid_argument = true;
+        continue;
+      }
+      bound[target].push_back(arguments[index]);
+    }
+
+    const auto& contract = detail::FunctionTypeAccess::get(*schema);
+    for (std::size_t index = 0; index < parameters.size(); ++index) {
+      if (bound[index].empty() && parameters[index].default_value) {
+        auto payload = detail::parameter_default(parameters[index]);
+        auto type = reflected_type(parameters[index].domain);
+        auto value = payload && type
+                         ? compiler_.known(std::move(*type),
+                                           std::move(*payload))
+                         : std::optional<Value>{};
+        if (value) {
+          bound[index].push_back(std::move(*value));
+        }
+      }
+      if (bound[index].empty() && !parameters[index].variadic) {
+        report("call is missing argument '" + parameters[index].name + "'",
+               statement.expression.range);
+        invalid_argument = true;
+      }
+      if (!contract.ir_inputs[index]) {
+        for (const Value& value : bound[index]) {
+          const auto payload = value.known()
+                                   ? detail::FunctionAccess::known_value(value)
+                                   : std::nullopt;
+          if (!payload ||
+              !detail::matches_parameter(parameters[index], *payload)) {
+            report("argument '" + parameters[index].name +
+                       "' must be Known and compatible",
+                   statement.expression.range);
+            invalid_argument = true;
+          }
+        }
+      }
+    }
+    if (invalid_argument) {
+      invalidate_results();
+      return;
+    }
+
     std::vector<std::optional<Type>> expected_types;
     bool invalid_expected_type = false;
-    for (const auto& result_type : syntax.result_types) {
-      if (!result_type) {
-        const std::size_t index = expected_types.size();
+    for (std::size_t index = 0; index < statement.bindings.size(); ++index) {
+      const auto& binding = statement.bindings[index];
+      if (!binding.type) {
         const auto expected = scopes_.size() == 1U
-                                  ? expected_values_.find(syntax.results[index])
+                                  ? expected_values_.find(binding.name)
                                   : expected_values_.end();
         expected_types.push_back(
             expected == expected_values_.end()
@@ -1416,105 +1740,60 @@ private:
                 : std::optional<Type>{expected->second});
         continue;
       }
-      auto resolved = type(*result_type);
+      auto resolved = type(*binding.type);
       invalid_expected_type = !resolved || invalid_expected_type;
       expected_types.push_back(std::move(resolved));
     }
-    if (syntax.results.size() != expected_types.size() ||
-        invalid_expected_type) {
+    if (invalid_expected_type) {
       report("operation result names and types have different counts",
-             syntax.range);
-      invalidate(syntax.results, syntax.range);
+             statement.range);
+      invalidate_results();
       return;
     }
+
     std::vector<Type> argument_types;
-    argument_types.reserve(arguments.size());
-    for (const Value& argument : arguments) {
-      argument_types.push_back(argument.type());
-    }
     std::vector<std::optional<ParameterValue>> known_values(
         detail::parameter_inputs(*schema).size());
-    const auto static_inputs = detail::parameter_inputs(*schema);
-    bool invalid_known_argument = false;
-    for (const auto& named : syntax.named_arguments) {
-      const auto input = std::find_if(
-          static_inputs.begin(), static_inputs.end(),
-          [&](const Module::ParameterDecl& parameter) {
-            return parameter.name == named.name;
-          });
-      if (input == static_inputs.end()) {
-        report("unknown named '" + named.name + "' on operation '" +
-                   syntax.operation + "'",
-               named.range);
-        invalid_known_argument = true;
-        continue;
+    std::size_t known_index = 0;
+    for (std::size_t index = 0; index < parameters.size(); ++index) {
+      if (contract.ir_inputs[index]) {
+        for (const Value& value : bound[index]) {
+          argument_types.push_back(value.type());
+        }
+      } else {
+        if (!bound[index].empty()) {
+          known_values[known_index] =
+              detail::FunctionAccess::known_value(bound[index].front());
+        }
+        ++known_index;
       }
-      auto value = parameter(named.value, *input);
-      invalid_known_argument = !value || invalid_known_argument;
-      if (value) {
-        const std::size_t index = static_cast<std::size_t>(
-            std::distance(static_inputs.begin(), input));
-        known_values[index] = std::move(*value);
-      }
-    }
-    if (invalid_known_argument) {
-      invalidate(syntax.results, syntax.range);
-      return;
     }
     auto resolved = detail::resolve_operation_types(
         compiler_, *schema, argument_types, known_values, expected_types,
-        diagnostics_,
-        source(syntax.range));
+        diagnostics_, source(statement.expression.range));
     if (!resolved) {
-      invalidate(syntax.results, syntax.range);
+      invalidate_results();
       return;
     }
+
     std::vector<Value> call_arguments;
-    call_arguments.reserve(schema->inputs().size());
-    const auto& contract = detail::FunctionTypeAccess::get(*schema);
-    std::size_t residual = 0;
-    std::size_t known = 0;
-    bool invalid_argument = false;
-    for (std::size_t index = 0; index < schema->inputs().size(); ++index) {
-      const Module::ParameterDecl& input = schema->inputs()[index];
-      if (contract.ir_inputs[index]) {
-        const std::size_t count =
-            input.variadic ? arguments.size() - residual : 1U;
-        if (residual + count > arguments.size()) {
-          report("call has too few value arguments", syntax.range);
-          invalid_argument = true;
-          break;
-        }
-        for (std::size_t item = 0; item < count; ++item) {
-          call_arguments.push_back(arguments[residual++]);
-        }
-        continue;
+    for (const auto& values : bound) {
+      for (const Value& value : values) {
+        call_arguments.push_back(value);
       }
-      std::optional<ParameterValue> payload = known_values[known++];
-      if (!payload && input.default_value) {
-        payload = detail::parameter_default(input);
-      }
-      auto type = reflected_type(input.domain);
-      auto value = payload && type
-                       ? compiler_.known(std::move(*type), std::move(*payload))
-                       : std::optional<Value>{};
-      if (!value) {
-        report("call is missing known argument '" + input.name + "'",
-               syntax.range);
-        invalid_argument = true;
-        break;
-      }
-      call_arguments.push_back(std::move(*value));
-    }
-    if (invalid_argument || residual != arguments.size()) {
-      invalidate(syntax.results, syntax.range);
-      return;
     }
     Instruction operation = edit_->append(
         std::move(block), *schema, std::move(call_arguments), resolved->results);
-    detail::FunctionAccess::locate(*edit_, operation, source(syntax.range));
-    for (std::size_t index = 0; index < syntax.results.size(); ++index) {
-      define(syntax.results[index], operation.result(index), syntax.range);
+    detail::FunctionAccess::locate(
+        *edit_, operation, source(statement.expression.range));
+    if (statement.bindings.size() != operation.results().size()) {
+      report("call result count does not match its bindings", statement.range);
+      invalidate_results();
+      return;
+    }
+    for (std::size_t index = 0; index < statement.bindings.size(); ++index) {
+      define(statement.bindings[index].name, operation.result(index),
+             statement.bindings[index].range);
     }
   }
 
@@ -1764,8 +2043,8 @@ private:
       return result;
     }
     result.kind = terminator.kind() == Terminator::Kind::Jump
-                      ? detail::TerminatorSyntax::Kind::Branch
-                      : detail::TerminatorSyntax::Kind::CondBranch;
+                      ? detail::TerminatorSyntax::Kind::Jump
+                      : detail::TerminatorSyntax::Kind::Branch;
     if (const auto condition = terminator.condition()) {
       result.condition = detail::ExpressionSyntax{
           Module::Expression::reference(use(*condition)), {}};
@@ -1874,13 +2153,13 @@ bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics) {
         report("return cannot have a condition or successor", terminator.range);
       }
       break;
-    case TerminatorSyntax::Kind::Branch:
+    case TerminatorSyntax::Kind::Jump:
       if (terminator.condition || !terminator.values.empty() ||
           terminator.successors.size() != 1U) {
         report("jump must have exactly one successor", terminator.range);
       }
       break;
-    case TerminatorSyntax::Kind::CondBranch:
+    case TerminatorSyntax::Kind::Branch:
       if (!terminator.condition || !terminator.values.empty() ||
           terminator.successors.size() != 2U) {
         report("branch must have one condition and two successors",
