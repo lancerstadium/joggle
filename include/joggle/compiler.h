@@ -36,9 +36,18 @@ struct HostValue {
   std::optional<Type> concrete_type;
 };
 
+using IntegerList = std::vector<std::int64_t>;
+using RealList = std::vector<double>;
+using BooleanList = std::vector<bool>;
+using StringList = std::vector<std::string>;
+using TypeList = std::vector<Type>;
+using AttributeList = std::vector<Attribute>;
+
 using PassValue =
     std::variant<std::monostate, std::int64_t, double, bool, std::string, Type,
-                 Attribute, Bytes, std::shared_ptr<Function>, HostValue>;
+                 Attribute, Bytes, std::shared_ptr<Function>, IntegerList,
+                 RealList, BooleanList, StringList, TypeList, AttributeList,
+                 HostValue>;
 
 template <typename T>
 inline constexpr bool is_builtin_host_value =
@@ -48,7 +57,13 @@ inline constexpr bool is_builtin_host_value =
     std::is_same_v<std::remove_cvref_t<T>, std::string> ||
     std::is_same_v<std::remove_cvref_t<T>, Type> ||
     std::is_same_v<std::remove_cvref_t<T>, Attribute> ||
-    std::is_same_v<std::remove_cvref_t<T>, Bytes>;
+    std::is_same_v<std::remove_cvref_t<T>, Bytes> ||
+    std::is_same_v<std::remove_cvref_t<T>, IntegerList> ||
+    std::is_same_v<std::remove_cvref_t<T>, RealList> ||
+    std::is_same_v<std::remove_cvref_t<T>, BooleanList> ||
+    std::is_same_v<std::remove_cvref_t<T>, StringList> ||
+    std::is_same_v<std::remove_cvref_t<T>, TypeList> ||
+    std::is_same_v<std::remove_cvref_t<T>, AttributeList>;
 
 template <typename T> std::string_view host_type_name() {
   return typeid(std::remove_cvref_t<T>).name();
@@ -614,35 +629,25 @@ public:
   bool run(Function& function, Module::FunctionDecl pass);
   bool run(Function& function, std::string_view pass);
 
-  template <typename... Arguments>
-  bool run(Module::FunctionDecl pass, Arguments&&... arguments) {
+  template <typename Result = void, typename... Arguments>
+  std::conditional_t<std::is_void_v<Result>, bool, std::optional<Result>>
+  run(Module::FunctionDecl pass, Arguments&&... arguments) {
     const std::array<std::string_view, sizeof...(Arguments)> types{
         detail::host_type_name<Arguments>()...};
-    if (!check_run_signature(pass, types, std::nullopt)) {
-      return false;
-    }
-    std::vector<detail::PassValue> values;
-    values.reserve(sizeof...(Arguments));
-    (values.push_back(
-         detail::store_pass_input<Arguments>(std::forward<Arguments>(arguments))),
-     ...);
-    return run_pass(std::move(pass), std::move(values)).has_value();
-  }
-
-  template <typename... Arguments>
-  bool run(std::string_view pass, Arguments&&... arguments) {
-    const auto declaration = find_pass(pass);
-    return declaration &&
-           run(*declaration, std::forward<Arguments>(arguments)...);
-  }
-
-  template <typename Result, typename... Arguments>
-  std::optional<Result> run(Module::FunctionDecl pass, Arguments&&... arguments) {
-    const std::array<std::string_view, sizeof...(Arguments)> types{
-        detail::host_type_name<Arguments>()...};
-    if (!check_run_signature(pass, types,
-                             detail::host_type_name<Result>())) {
-      return std::nullopt;
+    const std::optional<std::string_view> result_type = [] {
+      if constexpr (std::is_void_v<Result>) {
+        return std::optional<std::string_view>{};
+      } else {
+        return std::optional<std::string_view>{
+            detail::host_type_name<Result>()};
+      }
+    }();
+    if (!check_run_signature(pass, types, result_type)) {
+      if constexpr (std::is_void_v<Result>) {
+        return false;
+      } else {
+        return std::nullopt;
+      }
     }
     std::vector<detail::PassValue> values;
     values.reserve(sizeof...(Arguments));
@@ -650,20 +655,27 @@ public:
          detail::store_pass_input<Arguments>(std::forward<Arguments>(arguments))),
      ...);
     auto value = run_pass(std::move(pass), std::move(values));
-    if (!value) {
-      return std::nullopt;
+    if constexpr (std::is_void_v<Result>) {
+      return value.has_value();
+    } else {
+      return value ? detail::take_pass_value<Result>(std::move(*value))
+                   : std::optional<Result>{};
     }
-    return detail::take_pass_value<Result>(std::move(*value));
   }
 
-  template <typename Result, typename... Arguments>
-  std::optional<Result> run(std::string_view pass,
-                            Arguments&&... arguments) {
+  template <typename Result = void, typename... Arguments>
+  std::conditional_t<std::is_void_v<Result>, bool, std::optional<Result>>
+  run(std::string_view pass, Arguments&&... arguments) {
     const auto declaration = find_pass(pass);
-    return declaration
-               ? run<Result>(*declaration,
-                             std::forward<Arguments>(arguments)...)
-               : std::optional<Result>{};
+    if (!declaration) {
+      if constexpr (std::is_void_v<Result>) {
+        return false;
+      } else {
+        return std::nullopt;
+      }
+    }
+    return run<Result>(*declaration,
+                       std::forward<Arguments>(arguments)...);
   }
   const Diagnostics& diagnostics() const;
 

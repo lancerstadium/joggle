@@ -1613,6 +1613,63 @@ module guarded_host@1.0.0 {
                    reports_guarded_host,
                "Residual branches never speculatively execute host code");
 
+  joggle::Compiler list_evaluation;
+  list_evaluation.add(R"(
+joggle 1;
+module list_evaluation@1.0.0 {
+  type word(width: int);
+
+  fn sum(values: list<int>) -> int;
+  fn populated_source() -> word<@(sum([1, 2, 3]))>;
+  fn empty_source() -> word<@(sum([]))>;
+
+  fn populated() -> word<6> {
+    return populated_source();
+  }
+
+  fn empty() -> word<0> {
+    return empty_source();
+  }
+}
+)",
+                      "list-evaluation.joggle");
+  const bool list_evaluation_linked = list_evaluation.link();
+  const auto list_evaluation_module =
+      list_evaluation.module("list_evaluation");
+  const auto list_sum = list_evaluation_module
+                            ? list_evaluation_module->function("sum")
+                            : std::nullopt;
+  if (list_sum) {
+    list_evaluation.bind(
+        *list_sum, [](const std::vector<std::int64_t>& values) {
+          std::int64_t result = 0;
+          for (const std::int64_t value : values) {
+            result += value;
+          }
+          return result;
+        });
+  }
+  const auto populated = list_evaluation_linked && list_sum
+                             ? list_evaluation.function(
+                                   "list_evaluation.populated")
+                             : std::nullopt;
+  const auto empty = list_evaluation_linked && list_sum
+                         ? list_evaluation.function("list_evaluation.empty")
+                         : std::nullopt;
+  if (!populated || !empty) {
+    list_evaluation.diagnostics().print(std::cerr);
+  }
+  const auto populated_width =
+      populated ? populated->result_types().front().get<std::int64_t>("width")
+                : std::nullopt;
+  const auto empty_width =
+      empty ? empty->result_types().front().get<std::int64_t>("width")
+            : std::nullopt;
+  ok &= expect(populated_width == std::optional<std::int64_t>{6} &&
+                   empty_width == std::optional<std::int64_t>{0},
+               "list-valued host functions participate in dependent type "
+               "evaluation, including schema-typed empty lists");
+
   const joggle::Compiler::EvaluationLimits limits{2, 64};
   joggle::Compiler bounded(limits);
   bounded.add(R"(

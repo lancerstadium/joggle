@@ -124,6 +124,12 @@ Known arguments is diagnosed as a non-progressing cycle. Non-termination,
 integer overflow, forbidden effects, and budget exhaustion are errors rather
 than reasons to silently change program meaning.
 
+Scalar and list compiler domains follow the same rule. A registered evaluator
+receives `list<int>`, `list<real>`, `list<bool>`, `list<string>`, `list<type>`,
+and `list<attr>` as ordinary typed vectors. The resolved function signature
+supplies the element domain, including for an empty list; staging never depends
+on inspecting the first element of a payload.
+
 ## Branches
 
 `if` is an expression and its blocks return their final expression:
@@ -318,8 +324,12 @@ types; Residual loops become header/body/exit Blocks with inferred loop-carried
 arguments. Configurable expression-step, loop-iteration, and nesting-depth
 budgets fail with a diagnostic instead of silently residualizing.
 
-Multi-statement expression arms, `break`, `continue`, closures, allocation
-budgets, and host-object serialization remain to be implemented.
+Multi-statement expression arms, closures, allocation budgets, and host-object
+serialization remain to be implemented. Statement `break` and `continue` are
+implemented for Known and Residual loops. A Residual branch that chooses a
+transfer inside an otherwise Known loop is currently rejected explicitly; the
+next residualization layer will lift the enclosing continuation instead of
+silently choosing a stage.
 Registered host implementations are conservatively forbidden beneath
 Residual control, so constructing both branches never executes host side
 effects. A future hermetic-call contract may permit safe native evaluation

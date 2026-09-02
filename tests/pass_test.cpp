@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <vector>
 
 #include <joggle/joggle.h>
 
@@ -558,6 +559,44 @@ module parameterized_host@1.0.0 {
   ok &= expect(!rejected_result,
                "a native compiler function cannot return the wrong "
                "parameterized type instance");
+
+  joggle::Compiler lists;
+  lists.add(R"(
+joggle 1;
+module lists@1.0.0 {
+  fn reverse(values: list<int>) -> list<int>;
+  fn sum(values: list<int>) -> int;
+}
+)", "lists.joggle");
+  const bool lists_linked = lists.link();
+  const auto lists_module = lists.module("lists");
+  const auto reverse =
+      lists_module ? lists_module->function("reverse") : std::nullopt;
+  const auto sum = lists_module ? lists_module->function("sum") : std::nullopt;
+  if (!lists_linked || !reverse || !sum) {
+    lists.diagnostics().print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  lists.bind(*reverse, [](std::vector<std::int64_t> values) {
+    std::reverse(values.begin(), values.end());
+    return values;
+  });
+  lists.bind(*sum, [](const std::vector<std::int64_t>& values) {
+    std::int64_t result = 0;
+    for (const std::int64_t value : values) {
+      result += value;
+    }
+    return result;
+  });
+  const auto reversed = lists.run<std::vector<std::int64_t>>(
+      *reverse, std::vector<std::int64_t>{1, 2, 3});
+  const auto empty_sum =
+      lists.run<std::int64_t>(*sum, std::vector<std::int64_t>{});
+  ok &= expect(reversed &&
+                   *reversed == std::vector<std::int64_t>({3, 2, 1}) &&
+                   empty_sum == std::optional<std::int64_t>{0},
+               "list domains bind to ordinary std::vector values, including "
+               "empty lists");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

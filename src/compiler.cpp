@@ -205,64 +205,103 @@ qualified_member(std::string_view name) {
 }
 
 std::string_view pass_value_type(const detail::PassValue& value) {
-  switch (value.index()) {
-  case 1:
+  if (std::holds_alternative<std::int64_t>(value)) {
     return typeid(std::int64_t).name();
-  case 2:
-    return typeid(double).name();
-  case 3:
-    return typeid(bool).name();
-  case 4:
-    return typeid(std::string).name();
-  case 5:
-    return typeid(Type).name();
-  case 6:
-    return typeid(Attribute).name();
-  case 7:
-    return typeid(Bytes).name();
-  case 8:
-    return typeid(Function).name();
-  case 9:
-    return std::get<detail::HostValue>(value).cpp_type;
-  default:
-    return typeid(void).name();
   }
+  if (std::holds_alternative<double>(value)) {
+    return typeid(double).name();
+  }
+  if (std::holds_alternative<bool>(value)) {
+    return typeid(bool).name();
+  }
+  if (std::holds_alternative<std::string>(value)) {
+    return typeid(std::string).name();
+  }
+  if (std::holds_alternative<Type>(value)) {
+    return typeid(Type).name();
+  }
+  if (std::holds_alternative<Attribute>(value)) {
+    return typeid(Attribute).name();
+  }
+  if (std::holds_alternative<Bytes>(value)) {
+    return typeid(Bytes).name();
+  }
+  if (std::holds_alternative<std::shared_ptr<Function>>(value)) {
+    return typeid(Function).name();
+  }
+  if (std::holds_alternative<detail::IntegerList>(value)) {
+    return typeid(detail::IntegerList).name();
+  }
+  if (std::holds_alternative<detail::RealList>(value)) {
+    return typeid(detail::RealList).name();
+  }
+  if (std::holds_alternative<detail::BooleanList>(value)) {
+    return typeid(detail::BooleanList).name();
+  }
+  if (std::holds_alternative<detail::StringList>(value)) {
+    return typeid(detail::StringList).name();
+  }
+  if (std::holds_alternative<detail::TypeList>(value)) {
+    return typeid(detail::TypeList).name();
+  }
+  if (std::holds_alternative<detail::AttributeList>(value)) {
+    return typeid(detail::AttributeList).name();
+  }
+  if (std::holds_alternative<detail::HostValue>(value)) {
+    return std::get<detail::HostValue>(value).cpp_type;
+  }
+  return typeid(void).name();
 }
 
-std::optional<detail::ValueKind> cpp_value_domain(std::string_view type) {
+std::optional<detail::Domain> cpp_value_domain(std::string_view type) {
   if (type == typeid(std::int64_t).name()) {
-    return detail::ValueKind::Integer;
+    return detail::Domain{detail::ValueKind::Integer, false};
   }
   if (type == typeid(double).name()) {
-    return detail::ValueKind::Real;
+    return detail::Domain{detail::ValueKind::Real, false};
   }
   if (type == typeid(bool).name()) {
-    return detail::ValueKind::Boolean;
+    return detail::Domain{detail::ValueKind::Boolean, false};
   }
   if (type == typeid(std::string).name()) {
-    return detail::ValueKind::String;
+    return detail::Domain{detail::ValueKind::String, false};
   }
   if (type == typeid(Type).name()) {
-    return detail::ValueKind::Type;
+    return detail::Domain{detail::ValueKind::Type, false};
   }
   if (type == typeid(Attribute).name()) {
-    return detail::ValueKind::Attribute;
+    return detail::Domain{detail::ValueKind::Attribute, false};
   }
   if (type == typeid(Bytes).name()) {
-    return detail::ValueKind::Bytes;
+    return detail::Domain{detail::ValueKind::Bytes, false};
   }
   if (type == typeid(Function).name()) {
-    return detail::ValueKind::Function;
+    return detail::Domain{detail::ValueKind::Function, false};
+  }
+  if (type == typeid(detail::IntegerList).name()) {
+    return detail::Domain{detail::ValueKind::Integer, true};
+  }
+  if (type == typeid(detail::RealList).name()) {
+    return detail::Domain{detail::ValueKind::Real, true};
+  }
+  if (type == typeid(detail::BooleanList).name()) {
+    return detail::Domain{detail::ValueKind::Boolean, true};
+  }
+  if (type == typeid(detail::StringList).name()) {
+    return detail::Domain{detail::ValueKind::String, true};
+  }
+  if (type == typeid(detail::TypeList).name()) {
+    return detail::Domain{detail::ValueKind::Type, true};
+  }
+  if (type == typeid(detail::AttributeList).name()) {
+    return detail::Domain{detail::ValueKind::Attribute, true};
   }
   return std::nullopt;
 }
 
-std::optional<detail::ValueKind>
+std::optional<detail::Domain>
 pass_field_domain(const Module::ParameterDecl& field) {
-  const auto domain = detail::kernel_domain(field.domain);
-  return domain && !domain->list
-             ? std::optional<detail::ValueKind>{domain->element}
-             : std::nullopt;
+  return detail::kernel_domain(field.domain);
 }
 
 std::string_view resolve_prefix(const Module& module, std::string_view prefix);
@@ -293,7 +332,36 @@ std::optional<Module::TypeDecl> field_type_declaration(
   return module == modules.end() ? std::nullopt : module->second.type(local);
 }
 
-std::optional<detail::PassValue> pass_value(const ParameterValue& value) {
+template <typename T>
+std::optional<detail::PassValue> list_pass_value(const ParameterValue& value) {
+  auto decoded = detail::decode_parameter<std::vector<T>>(value);
+  return decoded ? std::optional<detail::PassValue>{std::move(*decoded)}
+                 : std::nullopt;
+}
+
+std::optional<detail::PassValue>
+pass_value(const ParameterValue& value,
+           const Module::ParameterDecl& parameter) {
+  const auto domain = detail::kernel_domain(parameter.domain);
+  if (domain && domain->list) {
+    switch (domain->element) {
+    case detail::ValueKind::Integer:
+      return list_pass_value<std::int64_t>(value);
+    case detail::ValueKind::Real:
+      return list_pass_value<double>(value);
+    case detail::ValueKind::Boolean:
+      return list_pass_value<bool>(value);
+    case detail::ValueKind::String:
+      return list_pass_value<std::string>(value);
+    case detail::ValueKind::Type:
+      return list_pass_value<Type>(value);
+    case detail::ValueKind::Attribute:
+      return list_pass_value<Attribute>(value);
+    case detail::ValueKind::Function:
+    case detail::ValueKind::Bytes:
+      return std::nullopt;
+    }
+  }
   switch (value.kind()) {
   case ParameterValue::Kind::I64:
     return detail::PassValue{*value.as_i64()};
@@ -313,24 +381,64 @@ std::optional<detail::PassValue> pass_value(const ParameterValue& value) {
   return std::nullopt;
 }
 
+template <typename T>
+ParameterValue list_parameter_value(const std::vector<T>& values) {
+  std::vector<ParameterValue> elements;
+  elements.reserve(values.size());
+  for (const T& value : values) {
+    elements.emplace_back(value);
+  }
+  return ParameterValue::list(std::move(elements));
+}
+
+ParameterValue list_parameter_value(const std::vector<bool>& values) {
+  std::vector<ParameterValue> elements;
+  elements.reserve(values.size());
+  for (const bool value : values) {
+    elements.emplace_back(value);
+  }
+  return ParameterValue::list(std::move(elements));
+}
+
 std::optional<ParameterValue>
 parameter_value(const detail::PassValue& value) {
-  switch (value.index()) {
-  case 1:
-    return ParameterValue(std::get<std::int64_t>(value));
-  case 2:
-    return ParameterValue(std::get<double>(value));
-  case 3:
-    return ParameterValue(std::get<bool>(value));
-  case 4:
-    return ParameterValue(std::get<std::string>(value));
-  case 5:
-    return ParameterValue(std::get<Type>(value));
-  case 6:
-    return ParameterValue(std::get<Attribute>(value));
-  default:
-    return std::nullopt;
+  if (const auto* stored = std::get_if<std::int64_t>(&value)) {
+    return ParameterValue(*stored);
   }
+  if (const auto* stored = std::get_if<double>(&value)) {
+    return ParameterValue(*stored);
+  }
+  if (const auto* stored = std::get_if<bool>(&value)) {
+    return ParameterValue(*stored);
+  }
+  if (const auto* stored = std::get_if<std::string>(&value)) {
+    return ParameterValue(*stored);
+  }
+  if (const auto* stored = std::get_if<Type>(&value)) {
+    return ParameterValue(*stored);
+  }
+  if (const auto* stored = std::get_if<Attribute>(&value)) {
+    return ParameterValue(*stored);
+  }
+  if (const auto* stored = std::get_if<detail::IntegerList>(&value)) {
+    return list_parameter_value(*stored);
+  }
+  if (const auto* stored = std::get_if<detail::RealList>(&value)) {
+    return list_parameter_value(*stored);
+  }
+  if (const auto* stored = std::get_if<detail::BooleanList>(&value)) {
+    return list_parameter_value(*stored);
+  }
+  if (const auto* stored = std::get_if<detail::StringList>(&value)) {
+    return list_parameter_value(*stored);
+  }
+  if (const auto* stored = std::get_if<detail::TypeList>(&value)) {
+    return list_parameter_value(*stored);
+  }
+  if (const auto* stored = std::get_if<detail::AttributeList>(&value)) {
+    return list_parameter_value(*stored);
+  }
+  return std::nullopt;
 }
 
 std::optional<Version> parse_exact_version(std::string_view text) {
@@ -2968,11 +3076,13 @@ std::optional<detail::ParameterValue> Compiler::evaluate_binding(
   }
   std::vector<detail::PassValue> values;
   values.reserve(arguments.size());
-  for (const auto& argument : arguments) {
-    auto converted = pass_value(argument);
+  const auto parameters = detail::parameter_inputs(function);
+  for (std::size_t index = 0; index < arguments.size(); ++index) {
+    auto converted = pass_value(arguments[index], parameters[index]);
     if (!converted) {
       state_->diagnostics.report(
-          "host evaluation does not yet support list-valued arguments");
+          "registered evaluator cannot represent argument '" +
+          parameters[index].name + "'");
       state_->evaluating_functions.erase(identity);
       return std::nullopt;
     }
@@ -3513,9 +3623,11 @@ bool Compiler::run(Function& function, Module::FunctionDecl pass) {
   const Module::Symbol symbol = pass.symbol();
   const bool function_transform =
       pass.inputs().size() == 1U &&
-      pass_field_domain(pass.inputs().front()) == detail::ValueKind::Function &&
+      pass_field_domain(pass.inputs().front()) ==
+          detail::Domain{detail::ValueKind::Function, false} &&
       pass.results().size() == 1U &&
-      pass_field_domain(pass.results().front()) == detail::ValueKind::Function;
+      pass_field_domain(pass.results().front()) ==
+          detail::Domain{detail::ValueKind::Function, false};
   if (!function_transform) {
     state_->diagnostics.report("compiler function '" +
                                symbol.qualified_name() +

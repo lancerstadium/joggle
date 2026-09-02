@@ -145,6 +145,27 @@ With Known arguments the binding produces a Known value. A function returning
 program values residualizes as an Instruction when needed. `@(...)` merely
 requires the ordinary evaluation to succeed as Known.
 
+Compiler-domain lists use ordinary C++ vectors. The declaration remains the
+schema authority, so no wrapper or generated type is required:
+
+```joggle
+fn volume(shape: list<int>) -> int;
+```
+
+```cpp
+compiler.bind(volume, [](const std::vector<std::int64_t>& shape) {
+  return std::accumulate(shape.begin(), shape.end(), std::int64_t{1},
+                         std::multiplies<>{});
+});
+```
+
+The built-in mappings are `list<int>`, `list<real>`, `list<bool>`,
+`list<string>`, `list<type>`, and `list<attr>` to the corresponding
+`std::vector<T>`. Decoding is guided by the resolved function parameter, not by
+guessing from payload elements. An empty list therefore retains its declared
+element domain during native evaluation and can safely participate in type,
+shape, layout, or schedule computation.
+
 Host callbacks are not speculatively executed below Residual control. Known
 evaluation also obeys configured expression-step and nesting-depth limits.
 

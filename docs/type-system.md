@@ -47,6 +47,12 @@ The kernel is deliberately small and fixed by the Joggle language version.
 Integer arithmetic is checked for overflow and division by zero. Real
 arithmetic must remain finite.
 
+`list<D>` is a homogeneous compiler value whose element domain comes from its
+expected declaration. This matters for `[]`: an empty list passed to a
+`list<int>` parameter is still an integer list and is represented in C++ as
+`std::vector<std::int64_t>`. Lists are values in the same evaluator as scalars;
+they are not a separate AST-only literal facility.
+
 ## Prelude and user types
 
 Native scalar names are declarations in the ambient `prelude` Module:
