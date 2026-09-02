@@ -196,6 +196,20 @@ Residual control carries the value from each arm into a merge Block argument.
 An omitted `else` carries the incoming value along the false edge. Authors do
 not declare merge variables or write `yield`.
 
+`return` may appear directly inside a structured arm or loop body:
+
+```joggle
+if ready(input) {
+  return fast(input);
+}
+return safe(input);
+```
+
+A returned arm terminates only that path. If the other arm falls through, it
+continues directly without a synthetic merge Block. If both arms return, no
+continuation Block is created. A Known condition instantiates only its selected
+return path.
+
 Structured loops use direct syntax:
 
 ```joggle
@@ -292,10 +306,10 @@ successor     := identifier "(" [ expressions ] ")"
 
 The implementation uses this single expression grammar for direct Known `if`,
 ordinary straight-line bodies, Residual and nested `if`, structured `while`,
-multi-statement `if`, and explicit typed CFG blocks. The public owning IR is
-Function/Block/Instruction/Value. Multi-statement *expression* arms,
-`break`, `continue`, `for`, and closures remain under construction. Nested
-Region syntax and storage have been removed.
+multi-statement `if`, structured early returns, and explicit typed CFG blocks.
+The public owning IR is Function/Block/Instruction/Value. Multi-statement
+*expression* arms, `break`, `continue`, `for`, and closures remain under
+construction. Nested Region syntax and storage have been removed.
 
 ## Canonical source
 

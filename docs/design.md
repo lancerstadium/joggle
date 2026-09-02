@@ -143,6 +143,11 @@ live-out rebindings become Block arguments automatically. A missing `else`
 uses the incoming binding on its edge. The IR remains SSA even though source
 authors use ordinary assignment syntax.
 
+An early `return` is a structured control transfer, not a nested terminator
+object. Elaboration terminates the selected sibling Block. A surviving arm is
+the continuation directly; two returned arms need no merge. This rule is
+identical under Known control except that only the selected arm exists in IR.
+
 ## Residualizing evaluation
 
 Type and availability are independent:

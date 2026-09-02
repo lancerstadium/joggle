@@ -357,6 +357,17 @@ private:
   detail::StatementSyntax parse_statement() {
     detail::StatementSyntax statement;
     const SourcePosition begin = current_.begin;
+    if (match_name("return")) {
+      statement.kind = detail::StatementSyntax::Kind::Return;
+      if (!is(TokenKind::Semicolon)) {
+        do {
+          statement.values.push_back(expression());
+        } while (match(TokenKind::Comma));
+      }
+      expect(TokenKind::Semicolon, "';'");
+      statement.range = {begin, previous_end_};
+      return statement;
+    }
     if (match_name("if")) {
       statement.kind = detail::StatementSyntax::Kind::If;
       statement.expression = expression();
@@ -366,9 +377,8 @@ private:
                                  std::string_view role) {
         expect(TokenKind::LeftBrace, "'{' after " + std::string(role));
         while (!is(TokenKind::RightBrace) && !is(TokenKind::End) && ok()) {
-          if (is_terminator()) {
-            error("return, jump, and branch are not allowed inside a "
-                  "structured if arm");
+          if (is_name("jump") || is_name("branch")) {
+            error("jump and branch are only available in explicit Blocks");
             break;
           }
           arm.push_back(parse_statement());
@@ -394,9 +404,8 @@ private:
       const auto outer_variables = variables_;
       const auto outer_locals = locals_;
       while (!is(TokenKind::RightBrace) && !is(TokenKind::End) && ok()) {
-        if (is_terminator()) {
-          error("return, jump, and branch are not allowed inside a structured "
-                "while body");
+        if (is_name("jump") || is_name("branch")) {
+          error("jump and branch are only available in explicit Blocks");
           break;
         }
         statement.body.push_back(parse_statement());
@@ -715,6 +724,15 @@ private:
 
   void write_statement(const detail::StatementSyntax& statement,
                        std::size_t level) {
+    if (statement.kind == detail::StatementSyntax::Kind::Return) {
+      output_ << spaces(level) << "return";
+      for (std::size_t index = 0; index < statement.values.size(); ++index) {
+        output_ << (index == 0U ? " " : ", ")
+                << detail::format_expression(statement.values[index].value);
+      }
+      output_ << ";\n";
+      return;
+    }
     if (statement.kind == detail::StatementSyntax::Kind::If) {
       output_ << spaces(level) << "if "
               << detail::format_expression(statement.expression.value)
@@ -937,16 +955,43 @@ public:
       return *type;
     };
 
-    std::vector<Type> result_types;
+    result_types_.clear();
     const auto results = detail::ir_results(declaration_);
     for (const auto& result : results) {
       if (auto result_type = resolve_type(result.domain, "result")) {
-        result_types.push_back(*result_type);
+        result_types_.push_back(*result_type);
       }
     }
+    const auto constrain_returns = [&](const auto& self,
+                                       const auto& statements) -> void {
+      for (const detail::StatementSyntax& statement : statements) {
+        if (statement.kind == detail::StatementSyntax::Kind::Return &&
+            statement.values.size() == result_types_.size()) {
+          for (std::size_t index = 0; index < statement.values.size();
+               ++index) {
+            const auto& expression = statement.values[index];
+            if ((expression.value.kind !=
+                     Module::Expression::Kind::Reference &&
+                 expression.value.kind !=
+                     Module::Expression::Kind::Variable) ||
+                !expression.value.arguments.empty()) {
+              continue;
+            }
+            const auto [found, inserted] = expected_values_.emplace(
+                expression.value.text, result_types_[index]);
+            if (!inserted && found->second != result_types_[index]) {
+              report("one returned value is constrained to different types",
+                     expression.range);
+            }
+          }
+        }
+        self(self, statement.body);
+        self(self, statement.otherwise);
+      }
+    };
     for (const detail::BlockSyntax& block : body_.blocks) {
       if (block.terminator.kind == detail::TerminatorSyntax::Kind::Return &&
-          block.terminator.values.size() == result_types.size()) {
+          block.terminator.values.size() == result_types_.size()) {
         for (std::size_t index = 0; index < block.terminator.values.size();
              ++index) {
           const auto& expression = block.terminator.values[index];
@@ -956,13 +1001,14 @@ public:
             continue;
           }
           const auto [found, inserted] = expected_values_.emplace(
-              expression.value.text, result_types[index]);
-          if (!inserted && found->second != result_types[index]) {
+              expression.value.text, result_types_[index]);
+          if (!inserted && found->second != result_types_[index]) {
             report("one returned value is constrained to different types",
                    expression.range);
           }
         }
       }
+      constrain_returns(constrain_returns, block.instructions);
     }
     std::vector<Type> argument_types;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
@@ -974,12 +1020,12 @@ public:
       }
     }
     if (argument_types.size() != detail::ir_inputs(declaration_).size() ||
-        result_types.size() != results.size()) {
+        result_types_.size() != results.size()) {
       return std::nullopt;
     }
 
     detail::FunctionAccess::declare(*function_, declaration_, argument_types,
-                                    result_types);
+                                    result_types_);
     edit_.emplace(function_->edit());
     scopes_.emplace_back();
     std::size_t residual = 0;
@@ -1025,50 +1071,19 @@ public:
       if (ir == blocks_.end()) {
         continue;
       }
-      Block current = ir->second;
+      std::optional<Block> current = ir->second;
       for (const auto& instruction : block.instructions) {
-        current = instantiate_statement(instruction, current);
+        if (!current) {
+          break;
+        }
+        current = instantiate_statement(instruction, *current);
+      }
+      if (!current) {
+        continue;
       }
       const detail::TerminatorSyntax& terminator = block.terminator;
       if (terminator.kind == detail::TerminatorSyntax::Kind::Return) {
-        std::vector<Value> returned;
-        if (terminator.values.size() != results.size()) {
-          report("function return count does not match its result signature",
-                 terminator.range);
-        } else if (result_types.size() == results.size()) {
-          for (std::size_t index = 0; index < terminator.values.size(); ++index) {
-            std::optional<Value> value;
-            const auto& expression = terminator.values[index];
-            const bool reference =
-                (expression.value.kind == Module::Expression::Kind::Reference ||
-                 expression.value.kind == Module::Expression::Kind::Variable) &&
-                expression.value.arguments.empty();
-            if (reference) {
-              value = use(expression);
-            } else {
-              const std::string name = "$return" + std::to_string(index);
-              expected_values_.insert_or_assign(name, result_types[index]);
-              detail::StatementSyntax statement;
-              statement.bindings.push_back(
-                  {name, std::nullopt, expression.range});
-              statement.expression = expression;
-              statement.range = expression.range;
-              current = instantiate_statement(statement, current);
-              value = use(detail::LocalUseSyntax{name, expression.range});
-            }
-            if (!value) {
-              continue;
-            }
-            if (value->type() != result_types[index]) {
-              report("returned value type does not match function result " +
-                         std::to_string(index),
-                     terminator.values[index].range);
-              continue;
-            }
-            returned.push_back(*value);
-          }
-        }
-        edit_->ret(current, std::move(returned));
+        instantiate_return(terminator.values, terminator.range, *current);
         continue;
       }
       std::vector<std::vector<Value>> edge_arguments;
@@ -1096,7 +1111,7 @@ public:
       };
       if (terminator.kind == detail::TerminatorSyntax::Kind::Jump) {
         if (auto destination = target(0)) {
-          edit_->jump(current, *destination,
+          edit_->jump(*current, *destination,
                       edge_arguments.empty() ? std::vector<Value>{}
                                              : std::move(edge_arguments[0]));
         }
@@ -1110,7 +1125,7 @@ public:
             edge_arguments.size() != 2U) {
           continue;
         }
-        edit_->branch(current, *condition, *true_target,
+        edit_->branch(*current, *condition, *true_target,
                       std::move(edge_arguments[0]), *false_target,
                       std::move(edge_arguments[1]));
       }
@@ -1779,8 +1794,9 @@ private:
     statement.bindings.push_back({name, std::nullopt, range});
     statement.expression = syntax;
     statement.range = range;
-    Block tail = instantiate_statement(statement, block);
-    return {tail, use(detail::LocalUseSyntax{name, range})};
+    auto tail = instantiate_statement(statement, block);
+    return tail ? std::pair{*tail, use(detail::LocalUseSyntax{name, range})}
+                : std::pair{block, std::optional<Value>{}};
   }
 
   void collect_rebindings(
@@ -1804,8 +1820,9 @@ private:
     }
   }
 
-  Block instantiate_if_statement(const detail::StatementSyntax& statement,
-                                 Block block) {
+  std::optional<Block>
+  instantiate_if_statement(const detail::StatementSyntax& statement,
+                           Block block) {
     if (known_result(statement.expression.value, statement.expression.range)) {
       auto condition = evaluate_known(statement.expression);
       const auto selected = condition ? condition->get<bool>() : std::nullopt;
@@ -1816,11 +1833,15 @@ private:
       }
       const auto& arm = *selected ? statement.body : statement.otherwise;
       scopes_.emplace_back();
+      std::optional<Block> tail = block;
       for (const auto& nested : arm) {
-        block = instantiate_statement(nested, block);
+        if (!tail) {
+          break;
+        }
+        tail = instantiate_statement(nested, *tail);
       }
       scopes_.pop_back();
-      return block;
+      return tail;
     }
 
     std::vector<std::string> carried_names;
@@ -1845,9 +1866,12 @@ private:
                                Block start) {
       scopes_ = incoming;
       scopes_.emplace_back();
-      Block tail = start;
+      std::optional<Block> tail = start;
       for (const auto& nested : arm) {
-        tail = instantiate_statement(nested, tail);
+        if (!tail) {
+          break;
+        }
+        tail = instantiate_statement(nested, *tail);
       }
       scopes_.pop_back();
       std::vector<std::optional<Value>> values;
@@ -1863,6 +1887,24 @@ private:
     auto [false_tail, false_values] = elaborate(statement.otherwise, no);
     --residual_control_depth_;
     scopes_ = incoming;
+
+    if (!true_tail && !false_tail) {
+      return std::nullopt;
+    }
+    if (!true_tail || !false_tail) {
+      const auto& values = true_tail ? true_values : false_values;
+      for (std::size_t index = 0; index < carried_names.size(); ++index) {
+        if (!values[index]) {
+          report("surviving if arm does not produce outer binding '" +
+                     carried_names[index] + "'",
+                 statement.range);
+          continue;
+        }
+        bind({carried_names[index], std::nullopt, statement.range, true},
+             values[index]);
+      }
+      return true_tail ? true_tail : false_tail;
+    }
 
     std::vector<Type> merge_types;
     std::vector<Value> true_arguments;
@@ -1898,9 +1940,9 @@ private:
                statement.range);
         continue;
       }
-      auto true_value = materialize(*true_values[index], *target, true_tail,
+      auto true_value = materialize(*true_values[index], *target, *true_tail,
                                     statement.range);
-      auto false_value = materialize(*false_values[index], *target, false_tail,
+      auto false_value = materialize(*false_values[index], *target, *false_tail,
                                      statement.range);
       if (!true_value || !false_value) {
         continue;
@@ -1915,8 +1957,8 @@ private:
     }
 
     const Block merge = edit_->block(merge_types);
-    edit_->jump(true_tail, merge, true_arguments);
-    edit_->jump(false_tail, merge, false_arguments);
+    edit_->jump(*true_tail, merge, true_arguments);
+    edit_->jump(*false_tail, merge, false_arguments);
     const auto arguments = merge.arguments();
     for (std::size_t index = 0; index < carried_names.size(); ++index) {
       const auto value = merged[index]
@@ -1927,8 +1969,8 @@ private:
     return merge;
   }
 
-  Block instantiate_while(const detail::StatementSyntax& statement,
-                          Block block) {
+  std::optional<Block>
+  instantiate_while(const detail::StatementSyntax& statement, Block block) {
     if (known_result(statement.expression.value, statement.expression.range)) {
       while (ok()) {
         auto condition = evaluate_known(statement.expression);
@@ -1947,10 +1989,18 @@ private:
           return block;
         }
         scopes_.emplace_back();
+        std::optional<Block> tail = block;
         for (const auto& nested : statement.body) {
-          block = instantiate_statement(nested, block);
+          if (!tail) {
+            break;
+          }
+          tail = instantiate_statement(nested, *tail);
         }
         scopes_.pop_back();
+        if (!tail) {
+          return std::nullopt;
+        }
+        block = *tail;
       }
       return block;
     }
@@ -2000,29 +2050,36 @@ private:
 
     ++residual_control_depth_;
     scopes_.emplace_back();
-    Block body_tail = body;
+    std::optional<Block> body_tail = body;
     for (const auto& nested : statement.body) {
-      body_tail = instantiate_statement(nested, body_tail);
+      if (!body_tail) {
+        break;
+      }
+      body_tail = instantiate_statement(nested, *body_tail);
     }
     std::vector<Value> updated;
-    for (std::size_t index = 0; index < carried_names.size(); ++index) {
-      const std::string& name = carried_names[index];
-      if (auto value = lookup(name)) {
-        auto carried = materialize(*value, carried_types[index], body_tail,
-                                   statement.range);
-        if (carried) {
-          updated.push_back(*carried);
+    if (body_tail) {
+      for (std::size_t index = 0; index < carried_names.size(); ++index) {
+        const std::string& name = carried_names[index];
+        if (auto value = lookup(name)) {
+          auto carried = materialize(*value, carried_types[index], *body_tail,
+                                     statement.range);
+          if (carried) {
+            updated.push_back(*carried);
+          }
         }
       }
     }
     scopes_.pop_back();
     --residual_control_depth_;
-    if (updated.size() != carried_names.size()) {
+    if (body_tail && updated.size() != carried_names.size()) {
       report("while body does not produce every loop-carried value",
              statement.range);
       return block;
     }
-    edit_->jump(body_tail, header, updated);
+    if (body_tail) {
+      edit_->jump(*body_tail, header, updated);
+    }
     for (std::size_t index = 0; index < carried_names.size(); ++index) {
       bind({carried_names[index], std::nullopt, statement.range, true},
            exit.arguments()[index]);
@@ -2030,8 +2087,63 @@ private:
     return exit;
   }
 
-  Block instantiate_statement(const detail::StatementSyntax& statement,
-                              Block block) {
+  std::optional<Block>
+  instantiate_return(std::span<const detail::ExpressionSyntax> expressions,
+                     detail::SyntaxRange range, Block block) {
+    std::vector<Value> returned;
+    if (expressions.size() != result_types_.size()) {
+      report("function return count does not match its result signature",
+             range);
+    } else {
+      for (std::size_t index = 0; index < expressions.size(); ++index) {
+        std::optional<Value> value;
+        const auto& expression = expressions[index];
+        const bool reference =
+            (expression.value.kind == Module::Expression::Kind::Reference ||
+             expression.value.kind == Module::Expression::Kind::Variable) &&
+            expression.value.arguments.empty();
+        if (reference) {
+          value = use(expression);
+        } else {
+          const std::string name =
+              "$return" + std::to_string(next_temporary_++);
+          expected_values_.insert_or_assign(name, result_types_[index]);
+          detail::StatementSyntax statement;
+          statement.bindings.push_back({name, std::nullopt, expression.range});
+          statement.expression = expression;
+          statement.range = expression.range;
+          auto tail = instantiate_statement(statement, block);
+          if (tail) {
+            block = *tail;
+            value = use(detail::LocalUseSyntax{name, expression.range});
+          }
+        }
+        if (!value) {
+          continue;
+        }
+        if (value->known() && value->type() != result_types_[index]) {
+          value = materialize(*value, result_types_[index], block,
+                              expression.range);
+        }
+        if (!value || value->type() != result_types_[index]) {
+          report("returned value type does not match function result " +
+                     std::to_string(index),
+                 expression.range);
+          continue;
+        }
+        returned.push_back(*value);
+      }
+    }
+    edit_->ret(block, std::move(returned));
+    return std::nullopt;
+  }
+
+  std::optional<Block>
+  instantiate_statement(const detail::StatementSyntax& statement,
+                        Block block) {
+    if (statement.kind == detail::StatementSyntax::Kind::Return) {
+      return instantiate_return(statement.values, statement.range, block);
+    }
     if (statement.kind == detail::StatementSyntax::Kind::If) {
       return instantiate_if_statement(statement, block);
     }
@@ -2387,6 +2499,7 @@ private:
       std::unordered_map<std::string, std::optional<Value>>>
       scopes_;
   std::unordered_map<std::string, Type> expected_values_;
+  std::vector<Type> result_types_;
   std::unordered_map<std::string, Block> blocks_;
   std::size_t next_temporary_ = 0;
   std::size_t residual_control_depth_ = 0;

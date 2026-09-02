@@ -179,6 +179,11 @@ header, body, and exit Blocks. Lexical names rebound by the body are converted
 to loop-carried Block arguments automatically. The source never exposes an
 internal region, phi, iteration-argument, or yield protocol.
 
+Returns inside structured control terminate only the current path. Residual
+control therefore creates no join when both arms return and uses the sole
+fallthrough arm directly when only one returns. A return from a loop body is a
+normal Function exit; the loop's false edge remains the continuation.
+
 ## Nested code without `region`
 
 `region` is not a source-language declaration or a public IR handle. Nested

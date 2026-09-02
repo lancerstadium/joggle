@@ -229,6 +229,38 @@ module cfg@1.0.0 {
     }
     return value;
   }
+  fn early_return(condition: i1, lhs: word, rhs: word) -> word {
+    if condition {
+      return identity(lhs);
+    }
+    return identity(rhs);
+  }
+  fn early_return_both(condition: i1, lhs: word, rhs: word) -> word {
+    if condition {
+      return identity(lhs);
+    } else {
+      return identity(rhs);
+    }
+    return lhs;
+  }
+  fn specialized_return(lhs: word, rhs: word) -> word {
+    if true {
+      return identity(lhs);
+    }
+    return identity(rhs);
+  }
+  fn loop_return(condition: i1, lhs: word, rhs: word) -> word {
+    while condition {
+      return identity(lhs);
+    }
+    return identity(rhs);
+  }
+  fn early_literal(condition: i1) -> i32 {
+    if condition {
+      return 1;
+    }
+    return 2;
+  }
 }
 )";
   joggle::Diagnostics cfg_diagnostics;
@@ -252,6 +284,8 @@ module cfg@1.0.0 {
                        "identity(rhs) };") !=
                        std::string::npos &&
                    cfg_canonical.find("if condition {\n") !=
+                       std::string::npos &&
+                   cfg_canonical.find("      return identity(lhs);\n") !=
                        std::string::npos,
                "one expression tree round-trips structured and explicit "
                "region-free control flow");
@@ -278,11 +312,26 @@ module cfg@1.0.0 {
   const auto cfg_statement_without_else =
       cfg_linked ? cfg_compiler.function("cfg.statement_without_else")
                  : std::nullopt;
+  const auto cfg_early_return =
+      cfg_linked ? cfg_compiler.function("cfg.early_return") : std::nullopt;
+  const auto cfg_early_return_both =
+      cfg_linked ? cfg_compiler.function("cfg.early_return_both")
+                 : std::nullopt;
+  const auto cfg_specialized_return =
+      cfg_linked ? cfg_compiler.function("cfg.specialized_return")
+                 : std::nullopt;
+  const auto cfg_loop_return =
+      cfg_linked ? cfg_compiler.function("cfg.loop_return") : std::nullopt;
+  const auto cfg_early_literal =
+      cfg_linked ? cfg_compiler.function("cfg.early_literal") : std::nullopt;
   const std::string cfg_ir =
       cfg_function ? joggle::format(*cfg_function, "choose") : std::string{};
   const auto materialized_operations =
       cfg_materialized ? cfg_materialized->instructions()
                        : std::vector<joggle::Instruction>{};
+  const auto early_literal_operations =
+      cfg_early_literal ? cfg_early_literal->instructions()
+                        : std::vector<joggle::Instruction>{};
   ok &= expect(cfg_function && cfg_structured && cfg_specialized &&
                    cfg_nested && cfg_materialized &&
                    cfg_compiler.verify(*cfg_function) &&
@@ -344,6 +393,33 @@ module cfg@1.0.0 {
                            .size() == 1U,
                "statement if specializes Known control and automatically "
                "merges outer rebindings under Residual control");
+  ok &= expect(cfg_early_return && cfg_early_return_both &&
+                   cfg_specialized_return && cfg_loop_return &&
+                   cfg_early_literal &&
+                   cfg_compiler.verify(*cfg_early_return) &&
+                   cfg_compiler.verify(*cfg_early_return_both) &&
+                   cfg_compiler.verify(*cfg_specialized_return) &&
+                   cfg_compiler.verify(*cfg_loop_return) &&
+                   cfg_compiler.verify(*cfg_early_literal) &&
+                   cfg_early_return->blocks().size() == 3U &&
+                   cfg_early_return->instructions().size() == 2U &&
+                   cfg_early_return_both->blocks().size() == 3U &&
+                   cfg_early_return_both->instructions().size() == 2U &&
+                   cfg_specialized_return->blocks().size() == 1U &&
+                   cfg_specialized_return->instructions().size() == 1U &&
+                   cfg_loop_return->blocks().size() == 4U &&
+                   cfg_loop_return->instructions().size() == 2U &&
+                   cfg_early_literal->blocks().size() == 3U &&
+                   cfg_early_literal->instructions().size() == 2U &&
+                   std::all_of(
+                       early_literal_operations.begin(),
+                       early_literal_operations.end(),
+                       [](const joggle::Instruction& instruction) {
+                         return instruction.callee().name() ==
+                                "integer_literal";
+                       }),
+               "structured returns terminate only their selected control "
+               "paths without a Region or synthetic merge");
 
   joggle::Compiler missing_literal;
   missing_literal.add(R"(
