@@ -333,9 +333,11 @@ been removed.
 A Residual decision may control `break` or `continue` inside a finite Known
 loop. Joggle retains separate specialized continuations, so path-specific Known
 state need not acquire an arbitrary program type. A runtime-dependent cycle
-that cannot be finitely specialized is diagnosed as requiring Residual loop
-state. Automatic staging-frontier replay for such cycles remains under
-construction.
+whose condition is a directly bound Known `bool` is replayed as a Residual loop
+when one visible `prelude.literal` function maps that value to `i1`. The replay
+starts from an internal Function-edit checkpoint, not a source Region. Missing
+or ambiguous representations are diagnostics. Replay of arbitrary computed
+conditions and multiple compiler-domain loop states remains under construction.
 
 ## Canonical source
 

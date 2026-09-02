@@ -206,10 +206,13 @@ such as an `i32` return, so the compiler never guesses that compiler `int` or
 `bool` means a particular target width.
 
 A runtime-dependent cycle may prevent that path set from reaching a finite
-specialization. It is diagnosed separately and must be expressed with a
-Residual condition and Residual loop-carried values. Reaching the specialization
-budget on such a dynamically guarded path therefore produces a staging-specific
-diagnostic rather than the generic compile-time-loop message.
+specialization. The evaluator detects a repeated staged loop state before
+blindly exhausting its budget. If the source condition is a directly bound
+Known `bool` and exactly one visible literal function can materialize it as
+`i1`, the evaluator restores the Function-edit checkpoint taken at the loop
+frontier and replays the same source as a Residual CFG loop. The speculative
+Blocks and Instructions disappear with the checkpoint. Without that explicit
+representation, replay fails rather than guessing a target type.
 
 ## Nested code without `region`
 
@@ -344,8 +347,10 @@ Multi-statement expression arms, closures, allocation budgets, and host-object
 serialization remain to be implemented. Statement `break` and `continue` are
 implemented for Known and Residual loops. Residual transfers inside finite
 Known loops preserve multiple specialized continuations. Runtime-dependent
-cycles are diagnosed as requiring Residual loop state; automatically rebuilding
-such a cycle from the last staging frontier remains to be implemented.
+cycles whose condition has an unambiguous `bool -> i1` representation are
+rebuilt from the last staging frontier as Residual loops. General replay for
+computed conditions and multiple carried compiler-domain values remains to be
+implemented.
 Registered host implementations are conservatively forbidden beneath
 Residual control, so constructing both branches never executes host side
 effects. A future hermetic-call contract may permit safe native evaluation

@@ -788,7 +788,9 @@ module mixed_loop_transfer@1.0.0 {
   cyclic_mixed_loop.add(R"(
 joggle 1;
 module cyclic_mixed_loop@1.0.0 {
-  fn invalid(skip: i1) {
+  fn logical_literal<T: prelude.logical>(value: bool) -> T : prelude.literal;
+
+  fn rebuild(skip: i1) {
     running = true;
     while running {
       if skip {
@@ -804,20 +806,60 @@ module cyclic_mixed_loop@1.0.0 {
   const bool cyclic_mixed_loop_linked = cyclic_mixed_loop.link();
   const auto cyclic_mixed_loop_function =
       cyclic_mixed_loop_linked
-          ? cyclic_mixed_loop.function("cyclic_mixed_loop.invalid")
+          ? cyclic_mixed_loop.function("cyclic_mixed_loop.rebuild")
           : std::optional<joggle::Function>{};
-  const bool reports_cyclic_mixed_loop = std::any_of(
-      cyclic_mixed_loop.diagnostics().entries().begin(),
-      cyclic_mixed_loop.diagnostics().entries().end(),
+  std::vector<bool> cyclic_literals;
+  if (cyclic_mixed_loop_function) {
+    for (const auto& instruction :
+         cyclic_mixed_loop_function->instructions()) {
+      if (const auto value = instruction.get<bool>("value")) {
+        cyclic_literals.push_back(*value);
+      }
+    }
+    std::sort(cyclic_literals.begin(), cyclic_literals.end());
+  }
+  ok &= expect(cyclic_mixed_loop_function &&
+                   cyclic_mixed_loop.verify(*cyclic_mixed_loop_function) &&
+                   cyclic_mixed_loop_function->blocks().size() == 6U &&
+                   cyclic_literals == std::vector<bool>({false, true}),
+               "a runtime-dependent Known cycle replays from its staging "
+               "frontier as a Residual CFG loop when bool has an explicit "
+               "i1 literal representation");
+
+  joggle::Compiler unrepresented_cycle({.steps = 8, .depth = 64});
+  unrepresented_cycle.add(R"(
+joggle 1;
+module unrepresented_cycle@1.0.0 {
+  fn invalid(skip: i1) {
+    running = true;
+    while running {
+      if skip {
+        continue;
+      }
+      running = false;
+    }
+    return;
+  }
+}
+)",
+                          "unrepresented-cycle.joggle");
+  const bool unrepresented_cycle_linked = unrepresented_cycle.link();
+  const auto unrepresented_cycle_function =
+      unrepresented_cycle_linked
+          ? unrepresented_cycle.function("unrepresented_cycle.invalid")
+          : std::optional<joggle::Function>{};
+  const bool reports_unrepresented_cycle = std::any_of(
+      unrepresented_cycle.diagnostics().entries().begin(),
+      unrepresented_cycle.diagnostics().entries().end(),
       [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find(
-                   "mixed-stage while does not reach a finite "
-                   "specialization") != std::string::npos;
+        return diagnostic.message.find("no visible literal function") !=
+               std::string::npos;
       });
-  ok &= expect(cyclic_mixed_loop_linked && !cyclic_mixed_loop_function &&
-                   reports_cyclic_mixed_loop,
-               "a runtime-dependent cycle is diagnosed separately from an "
-               "ordinary compile-time loop budget failure");
+  ok &= expect(unrepresented_cycle_linked &&
+                   !unrepresented_cycle_function &&
+                   reports_unrepresented_cycle,
+               "cycle replay rejects a compiler bool without guessing a "
+               "runtime representation");
 
   joggle::Compiler bounded_loop({.steps = 2, .depth = 64});
   bounded_loop.add(R"(

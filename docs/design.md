@@ -200,8 +200,11 @@ Residual decision inside a finite Known loop to multi-version the remaining
 continuation without choosing a target representation for Known state. If the
 paths later reach a typed boundary, the ordinary `prelude.literal` resolution
 materializes each value there. If they form a runtime-dependent cycle, finite
-specialization fails explicitly; a later staging-frontier replay will rebuild
-that cycle as a Residual loop when all carried representations are resolvable.
+specialization detects the repeated staged state. For a directly bound Known
+`bool` condition with a unique visible `bool -> i1` literal implementation,
+the evaluator restores its Function-edit checkpoint, materializes the
+condition, and replays the same source as a Residual loop. Other unresolved
+cycle representations fail explicitly instead of choosing a width or format.
 
 ## Extension boundary
 

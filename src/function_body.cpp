@@ -1857,7 +1857,17 @@ private:
 
   Flow instantiate_while(const detail::StatementSyntax& statement,
                          Block block) {
+    std::vector<std::string> carried_names;
+    std::unordered_set<std::string> seen;
+    collect_rebindings(statement.body, carried_names, seen);
+
     if (known_result(statement.expression.value, statement.expression.range)) {
+      auto checkpoint = detail::FunctionAccess::checkpoint(*edit_);
+      const Scopes frontier_scopes = scopes_;
+      const std::size_t frontier_residual_depth = residual_control_depth_;
+      const std::size_t frontier_temporary = next_temporary_;
+      const std::size_t frontier_iterations = loop_iterations_;
+      std::vector<std::vector<Value>> visited;
       std::vector<Path> pending{path(block)};
       Flow exits;
       while (!pending.empty() && ok()) {
@@ -1874,6 +1884,52 @@ private:
         if (!*selected) {
           exits.next.push_back(path(active.block));
           continue;
+        }
+        std::vector<Value> state;
+        state.reserve(carried_names.size());
+        for (const std::string& name : carried_names) {
+          if (auto value = lookup(name)) {
+            state.push_back(*value);
+          }
+        }
+        const bool repeated = state.size() == carried_names.size() &&
+                              std::find(visited.begin(), visited.end(), state) !=
+                                  visited.end();
+        if (repeated && active.residual_depth != 0U) {
+          detail::FunctionAccess::restore(*edit_, std::move(checkpoint));
+          scopes_ = frontier_scopes;
+          residual_control_depth_ = frontier_residual_depth;
+          next_temporary_ = frontier_temporary;
+          loop_iterations_ = frontier_iterations;
+
+          const Module::Expression& expression = statement.expression.value;
+          const bool reference =
+              (expression.kind == Module::Expression::Kind::Reference ||
+               expression.kind == Module::Expression::Kind::Variable) &&
+              expression.arguments.empty();
+          auto source_condition = reference
+                                      ? lookup(expression.text)
+                                      : std::optional<Value>{};
+          const auto i1 = compiler_.make("i1");
+          auto residual = source_condition && i1
+                              ? materialize(*source_condition, *i1, block,
+                                            statement.expression.range)
+                              : std::optional<Value>{};
+          if (!reference || !source_condition || !residual) {
+            if (ok()) {
+              report("mixed-stage cycle requires a directly bound bool "
+                     "condition with a unique i1 literal representation",
+                     statement.expression.range);
+            }
+            return {};
+          }
+          bind({expression.text, std::nullopt, statement.expression.range,
+                true},
+               *residual);
+          return instantiate_while(statement, block);
+        }
+        if (state.size() == carried_names.size()) {
+          visited.push_back(std::move(state));
         }
         if (loop_iterations_++ >= compiler_.evaluation_limits().steps) {
           report(active.residual_depth == 0U
@@ -1902,10 +1958,6 @@ private:
       }
       return exits;
     }
-
-    std::vector<std::string> carried_names;
-    std::unordered_set<std::string> seen;
-    collect_rebindings(statement.body, carried_names, seen);
 
     std::vector<Value> initial;
     std::vector<Type> carried_types;
