@@ -160,6 +160,12 @@ produce a staging diagnostic. Evaluation has deterministic limits for steps,
 recursion, and allocation; exhausting a limit is an error, never an implicit
 change of program meaning.
 
+Known values cross a Residual boundary through an ordinary visible function
+implementing `prelude.literal`. Selection uses the same overload constraints
+and expected-result type solver as every other call. The resulting Instruction
+therefore remains visible to rewrites and emitters; the core has no privileged
+constant operation and no target-specific materializer callback.
+
 Loops use the same mechanism. Known control may execute within the configured
 budget. Residual control creates header, body, and exit Blocks; loop-carried
 values are Block arguments.
@@ -180,7 +186,7 @@ One binding serves two cases:
 Language-defined bodies support mixed-stage partial evaluation. External
 functions without a binding are still legal when they can remain Residual.
 Host-only values need no stage annotation; they simply cannot cross a residual
-edge unless their Module supplies a materialization representation.
+edge unless a visible Module supplies a matching `prelude.literal` function.
 
 Native scalar formats, tensors, buffers, FPGA bit layouts, custom instructions,
 device descriptions, cost models, cycle simulators, and emitters are ordinary

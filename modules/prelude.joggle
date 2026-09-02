@@ -1,16 +1,6 @@
 joggle 1;
 
 module prelude@1.0.0 {
-  type type();
-  type int();
-  type real();
-  type bool();
-  type string();
-  type attr();
-  type bytes();
-  type function();
-  type list(element: type);
-
   interface scalar: type {
     storage_bits: int;
   }
@@ -20,7 +10,17 @@ module prelude@1.0.0 {
   interface floating_point: type;
   interface logical: type;
   interface index_type: type;
+  interface literal: fn;
 
+  type type();
+  type int();
+  type real();
+  type bool();
+  type string();
+  type attr();
+  type bytes();
+  type function();
+  type list(element: type);
   type i1() : scalar, logical {
     storage_bits = 1;
   }

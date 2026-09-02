@@ -14,6 +14,7 @@
 #include "type_internal.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <cstdint>
@@ -998,6 +999,7 @@ public:
               value = use(expression);
             } else {
               const std::string name = "$return" + std::to_string(index);
+              expected_values_.insert_or_assign(name, result_types[index]);
               detail::StatementSyntax statement;
               statement.bindings.push_back(
                   {name, std::nullopt, expression.range});
@@ -1565,6 +1567,97 @@ private:
     }
   }
 
+  std::optional<Type>
+  expected_type(const detail::BindingSyntax& binding) {
+    if (binding.type) {
+      return type(*binding.type);
+    }
+    const auto expected = expected_values_.find(binding.name);
+    return expected == expected_values_.end()
+               ? std::optional<Type>{}
+               : std::optional<Type>{expected->second};
+  }
+
+  std::optional<Value> materialize(Value value, Type target, Block block,
+                                   detail::SyntaxRange range) {
+    if (!value.known()) {
+      if (value.type() != target) {
+        report("Residual value has the wrong materialized type", range);
+        return std::nullopt;
+      }
+      return value;
+    }
+    const auto payload = detail::FunctionAccess::known_value(value);
+    const auto prelude = compiler_.module(detail::prelude_module_name);
+    const auto literal = prelude
+                             ? prelude->interface("literal")
+                             : std::optional<Module::InterfaceDecl>{};
+    if (!payload || !literal) {
+      report("no literal function is available for this Known value", range);
+      return std::nullopt;
+    }
+
+    std::vector<Module> visible;
+    std::unordered_set<std::string> seen_modules;
+    const auto add_module = [&](std::string_view name) {
+      if (!seen_modules.insert(std::string(name)).second) {
+        return;
+      }
+      if (auto module = compiler_.module(name)) {
+        visible.push_back(std::move(*module));
+      }
+    };
+    add_module(owner_);
+    const auto owner = compiler_.module(owner_);
+    if (owner) {
+      for (const auto& import : owner->imports()) {
+        add_module(import.name);
+      }
+    }
+    add_module(detail::prelude_module_name);
+
+    std::vector<Module::FunctionDecl> matches;
+    for (const Module& module : visible) {
+      for (const auto& candidate : module.functions()) {
+        if (!compiler_.conforms(candidate, *literal) ||
+            detail::parameter_inputs(candidate).size() != 1U ||
+            !detail::ir_inputs(candidate).empty() ||
+            !detail::parameter_results(candidate).empty() ||
+            detail::ir_results(candidate).size() != 1U) {
+          continue;
+        }
+        Diagnostics candidate_diagnostics;
+        const std::array<std::optional<ParameterValue>, 1> known{payload};
+        const std::array<std::optional<Type>, 1> expected{target};
+        if (detail::resolve_operation_types(
+                compiler_, candidate, {}, known, expected,
+                candidate_diagnostics)) {
+          matches.push_back(candidate);
+        }
+      }
+    }
+    if (matches.empty()) {
+      report("no visible literal function can materialize Known value as '" +
+                 std::string(target.schema().name()) + "'",
+             range);
+      return std::nullopt;
+    }
+    if (matches.size() != 1U) {
+      std::string message =
+          "more than one visible literal function can materialize this value:";
+      for (const auto& candidate : matches) {
+        message += " '" + candidate.symbol().qualified_name() + "'";
+      }
+      report(std::move(message), range);
+      return std::nullopt;
+    }
+
+    Instruction operation =
+        edit_->append(block, matches.front(), {value}, {target});
+    detail::FunctionAccess::locate(*edit_, operation, source(range));
+    return operation.result(0);
+  }
+
   std::optional<Module::FunctionDecl>
   operator_declaration(std::string_view notation,
                        Module::FunctionDecl::Fixity fixity,
@@ -1699,13 +1792,11 @@ private:
                statement.range);
         continue;
       }
-      if (value->known()) {
-        report("a Known loop-carried value needs a registered materializer",
-               statement.range);
-        continue;
-      }
-      initial.push_back(*value);
       carried_types.push_back(value->type());
+      auto carried = materialize(*value, value->type(), block, statement.range);
+      if (carried) {
+        initial.push_back(*carried);
+      }
     }
     if (initial.size() != carried_names.size()) {
       return block;
@@ -1738,14 +1829,14 @@ private:
       body_tail = instantiate_statement(nested, body_tail);
     }
     std::vector<Value> updated;
-    for (const std::string& name : carried_names) {
+    for (std::size_t index = 0; index < carried_names.size(); ++index) {
+      const std::string& name = carried_names[index];
       if (auto value = lookup(name)) {
-        if (value->known()) {
-          report("a Known loop-carried value needs a registered materializer",
-                 statement.range);
-          continue;
+        auto carried = materialize(*value, carried_types[index], body_tail,
+                                   statement.range);
+        if (carried) {
+          updated.push_back(*carried);
         }
-        updated.push_back(*value);
       }
     }
     scopes_.pop_back();
@@ -1826,25 +1917,45 @@ private:
     if (!true_value || !false_value) {
       return block;
     }
-    if (true_value->known() || false_value->known()) {
-      if (*true_value != *false_value) {
-        report("unequal Known branch values need a registered materializer",
-               statement.range);
-        return block;
-      }
+    auto merge_type = expected_type(statement.bindings.front());
+    if (true_value->known() && false_value->known() &&
+        *true_value == *false_value && !merge_type) {
       const Block merge = edit_->block();
       edit_->jump(true_tail, merge);
       edit_->jump(false_tail, merge);
       bind(statement.bindings.front(), std::move(*true_value));
       return merge;
     }
-    if (true_value->type() != false_value->type()) {
+    if (!merge_type) {
+      if (!true_value->known()) {
+        merge_type = true_value->type();
+      } else if (!false_value->known()) {
+        merge_type = false_value->type();
+      } else if (true_value->type() == false_value->type()) {
+        merge_type = true_value->type();
+      }
+    }
+    if (!merge_type) {
+      report("Known branch values need an expected program type for "
+             "materialization",
+             statement.range);
+      return block;
+    }
+    if ((!true_value->known() && true_value->type() != *merge_type) ||
+        (!false_value->known() && false_value->type() != *merge_type)) {
       report("if branches produce different types", statement.range);
       return block;
     }
-    const Block merge = edit_->block({true_value->type()});
-    edit_->jump(true_tail, merge, {*true_value});
-    edit_->jump(false_tail, merge, {*false_value});
+    auto materialized_true =
+        materialize(*true_value, *merge_type, true_tail, statement.range);
+    auto materialized_false =
+        materialize(*false_value, *merge_type, false_tail, statement.range);
+    if (!materialized_true || !materialized_false) {
+      return block;
+    }
+    const Block merge = edit_->block({*merge_type});
+    edit_->jump(true_tail, merge, {*materialized_true});
+    edit_->jump(false_tail, merge, {*materialized_false});
     bind(statement.bindings.front(), merge.arguments().front());
     return merge;
   }
@@ -1865,7 +1976,15 @@ private:
       }
       auto value = evaluate_known(statement.expression);
       if (value) {
-        bind(statement.bindings.front(), std::move(*value));
+        auto expected = expected_type(statement.bindings.front());
+        if (expected && value->type() != *expected) {
+          value = materialize(*value, *expected, block, statement.range);
+        }
+        if (value) {
+          bind(statement.bindings.front(), std::move(*value));
+        } else {
+          invalidate(statement.bindings);
+        }
       } else {
         invalidate(statement.bindings);
       }

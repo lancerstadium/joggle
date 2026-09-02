@@ -68,6 +68,12 @@ A function argument or instruction result is normally Residual. One
 instruction argument sequence may contain both kinds. The sequence follows the
 callee declaration order; there is no separate property map or setter.
 
+When a Known payload must become a program value, the source Module provides a
+normal function implementing `prelude.literal`. The evaluator emits that
+function as an Instruction; C++ does not register a separate materializer
+object. This keeps custom fixed-point, packed, FPGA, or target-specific
+constants visible to the same transformation API as every other operation.
+
 Known inputs specialize a named Function before its residual boundary is
 created:
 

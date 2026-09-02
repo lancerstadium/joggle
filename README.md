@@ -62,6 +62,11 @@ kind. Fixed-width Prelude scalars expose the `storage_bits` field through this
 same mechanism; custom formats implement the identical interface from their
 own parameters.
 
+Known compiler values enter Residual programs through visible ordinary
+functions implementing `prelude.literal`. The standard `arith` Module provides
+integer, real, logical, and attribute literal functions; custom formats may
+provide their own without adding a core constant operation.
+
 Build and test with standard CMake:
 
 ```bash

@@ -173,6 +173,7 @@ joggle 1;
 module cfg@1.0.0 {
   type word();
   fn identity(input: word) -> word;
+  fn integer_literal<T: prelude.integer>(value: int) -> T : prelude.literal;
   fn choose(condition: i1, lhs: word, rhs: word) -> word {
     entry():
       branch condition, left(), right();
@@ -199,6 +200,9 @@ module cfg@1.0.0 {
     } else {
       identity(rhs)
     };
+  }
+  fn materialized(condition: i1) -> i32 {
+    return if condition { 1 } else { 2 };
   }
 }
 )";
@@ -236,14 +240,20 @@ module cfg@1.0.0 {
       cfg_linked ? cfg_compiler.function("cfg.specialized") : std::nullopt;
   const auto cfg_nested =
       cfg_linked ? cfg_compiler.function("cfg.nested") : std::nullopt;
+  const auto cfg_materialized =
+      cfg_linked ? cfg_compiler.function("cfg.materialized") : std::nullopt;
   const std::string cfg_ir =
       cfg_function ? joggle::format(*cfg_function, "choose") : std::string{};
+  const auto materialized_operations =
+      cfg_materialized ? cfg_materialized->instructions()
+                       : std::vector<joggle::Instruction>{};
   ok &= expect(cfg_function && cfg_structured && cfg_specialized &&
-                   cfg_nested &&
+                   cfg_nested && cfg_materialized &&
                    cfg_compiler.verify(*cfg_function) &&
                    cfg_compiler.verify(*cfg_structured) &&
                    cfg_compiler.verify(*cfg_specialized) &&
                    cfg_compiler.verify(*cfg_nested) &&
+                   cfg_compiler.verify(*cfg_materialized) &&
                    cfg_function->blocks().size() == 4U &&
                    cfg_structured->blocks().size() == 4U &&
                    cfg_specialized->blocks().size() == 1U &&
@@ -266,17 +276,96 @@ module cfg@1.0.0 {
                        std::string::npos,
                "explicit source blocks instantiate as Function-owned CFG and "
                "format without a nested ownership container");
+  ok &= expect(cfg_materialized &&
+                   cfg_materialized->blocks().size() == 4U &&
+                   cfg_materialized->instructions().size() == 2U &&
+                   std::all_of(
+                       materialized_operations.begin(),
+                       materialized_operations.end(),
+                       [](const joggle::Instruction& instruction) {
+                         return instruction.callee().name() ==
+                                "integer_literal";
+                       }) &&
+                   cfg_materialized->result_types().front() ==
+                       cfg_materialized->blocks().back().arguments().front().type(),
+               "unequal Known branch values use a visible literal function "
+               "before crossing Residual edges");
+
+  joggle::Compiler missing_literal;
+  missing_literal.add(R"(
+joggle 1;
+module missing_literal@1.0.0 {
+  fn choose(condition: i1) -> i32 {
+    return if condition { 1 } else { 2 };
+  }
+}
+)",
+                      "missing-literal.joggle");
+  const bool missing_literal_linked = missing_literal.link();
+  const auto missing_literal_function =
+      missing_literal_linked
+          ? missing_literal.function("missing_literal.choose")
+          : std::optional<joggle::Function>{};
+  const bool reports_missing_literal = std::any_of(
+      missing_literal.diagnostics().entries().begin(),
+      missing_literal.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("no visible literal function") !=
+               std::string::npos;
+      });
+  ok &= expect(missing_literal_linked && !missing_literal_function &&
+                   reports_missing_literal,
+               "Known values cannot cross dynamic control without an "
+               "explicitly visible literal contract");
+
+  joggle::Compiler ambiguous_literal;
+  ambiguous_literal.add(R"(
+joggle 1;
+module ambiguous_literal@1.0.0 {
+  fn first<T: prelude.integer>(value: int) -> T : prelude.literal;
+  fn second<T: prelude.integer>(value: int) -> T : prelude.literal;
+  fn choose(condition: i1) -> i32 {
+    return if condition { 1 } else { 2 };
+  }
+}
+)",
+                        "ambiguous-literal.joggle");
+  const bool ambiguous_literal_linked = ambiguous_literal.link();
+  const auto ambiguous_literal_function =
+      ambiguous_literal_linked
+          ? ambiguous_literal.function("ambiguous_literal.choose")
+          : std::optional<joggle::Function>{};
+  const bool reports_ambiguous_literal = std::any_of(
+      ambiguous_literal.diagnostics().entries().begin(),
+      ambiguous_literal.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find(
+                   "more than one visible literal function") !=
+               std::string::npos;
+      });
+  ok &= expect(ambiguous_literal_linked && !ambiguous_literal_function &&
+                   reports_ambiguous_literal,
+               "ambiguous literal contracts fail deterministically");
 
   constexpr std::string_view loop_source = R"(
 joggle 1;
 module loops@1.0.0 {
   type word(width: int);
   fn source<T: type>() -> T;
+  fn integer_literal<T: prelude.integer>(value: int) -> T : prelude.literal;
   fn less(lhs: i32, rhs: i32) -> i1;
   fn next(input: i32) -> i32;
 
   fn repeat(start: i32, limit: i32) -> i32 {
     current = start;
+    while less(current, limit) {
+      current = next(current);
+    }
+    return current;
+  }
+
+  fn count_from_zero(limit: i32) -> i32 {
+    current: i32 = 0;
     while less(current, limit) {
       current = next(current);
     }
@@ -324,6 +413,9 @@ module loops@1.0.0 {
   const auto specialize = loops_linked
                               ? loop_compiler.function("loops.specialize")
                               : std::optional<joggle::Function>{};
+  const auto count_from_zero =
+      loops_linked ? loop_compiler.function("loops.count_from_zero")
+                   : std::optional<joggle::Function>{};
   ok &= expect(repeat && loop_compiler.verify(*repeat) &&
                    repeat->blocks().size() == 4U &&
                    repeat->instructions().size() == 2U &&
@@ -335,6 +427,13 @@ module loops@1.0.0 {
                    repeat->blocks()[3].arguments().size() == 1U,
                "Residual loops carry rebinding through typed Block "
                "arguments");
+  ok &= expect(count_from_zero && loop_compiler.verify(*count_from_zero) &&
+                   count_from_zero->blocks().size() == 4U &&
+                   count_from_zero->instructions().size() == 3U &&
+                   count_from_zero->instructions().front().callee().name() ==
+                       "integer_literal",
+               "a typed Known initializer materializes before becoming a "
+               "Residual loop-carried value");
   ok &= expect(specialize && loop_compiler.verify(*specialize) &&
                    specialize->blocks().size() == 1U &&
                    specialize->instructions().size() == 1U &&

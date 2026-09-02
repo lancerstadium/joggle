@@ -100,12 +100,18 @@ concrete Joggle `Type`, carries it with the erased payload, and applies the
 ordinary dependent-type solver before and after native execution. Schema-only
 registration remains rejected because it would lose type arguments.
 
-Equality, canonical serialization, and materialization are optional
-capabilities of a host representation. Equality can preserve a Known value
-across a control-flow join. Serialization enables deterministic caches and
-artifacts. Materialization turns a Known value into a residual constant when
-it must cross a dynamic edge. A compile-time-only object needs no materializer;
-it becomes an error only if the program tries to place it in residual code.
+Equality and canonical serialization are optional capabilities of a future
+host representation contract. Equality can preserve a Known value across a
+control-flow join, while serialization enables deterministic caches and
+artifacts.
+
+Materialization itself remains in the language's single function system. The
+Prelude declares `literal: fn`; visible Modules implement it with an ordinary
+function from one compiler-domain payload to one program value. When a Known
+value must cross a dynamic edge, overload and dependent-type resolution select
+exactly one such function and emit its ordinary call. A compile-time-only
+object needs no literal function; it becomes an error only if the program tries
+to place it in residual code.
 
 This makes constant folding, specialization, compile-time execution, and IR
 construction one operation rather than four unrelated passes. It also gives
@@ -205,10 +211,11 @@ For a Residual condition, elaboration snapshots the lexical environment and
 insertion point, evaluates each arm into a sibling Block, and joins each result
 position independently:
 
-1. equal Known values remain one Known value and need no Block argument;
-2. a Residual value, or unequal materializable Known values, is carried on the
-   two successor edges and becomes a merge Block argument;
-3. unequal host-only Known values are a staging diagnostic.
+1. equal path-independent Known values may remain one Known value;
+2. a Residual value, or a Known value with a unique visible `literal`
+   implementation, is carried on the successor edge and becomes a merge Block
+   argument;
+3. missing or ambiguous literal implementations are staging diagnostics.
 
 The branch itself is a terminator. It neither contains its arms nor owns a
 hidden container. Host bindings carry an effect capability: an effectful host
@@ -295,7 +302,7 @@ arguments. Configurable expression-step, loop-iteration, and nesting-depth
 budgets fail with a diagnostic instead of silently residualizing.
 
 General statement sequences inside `if` arms, `break`, `continue`, closures,
-allocation budgets, and Known-value materialization remain to be implemented.
+allocation budgets, and host-object serialization remain to be implemented.
 Registered host implementations are conservatively forbidden beneath
 Residual control, so constructing both branches never executes host side
 effects. A future hermetic-call contract may permit safe native evaluation

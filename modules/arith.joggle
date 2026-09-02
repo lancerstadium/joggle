@@ -4,7 +4,11 @@ module arith@1.0.0 {
   interface elementwise: fn;
   interface commutative: fn;
 
-  fn constant<T: prelude.scalar>(value: attr) -> T;
+  fn constant<T: prelude.scalar>(value: attr) -> T : prelude.literal;
+  fn integer_literal<T: prelude.integer>(value: int) -> T : prelude.literal;
+  fn real_literal<T: prelude.floating_point>(value: real) -> T : prelude.literal;
+  fn real_integer_literal<T: prelude.floating_point>(value: int) -> T : prelude.literal;
+  fn logical_literal<T: prelude.logical>(value: bool) -> T : prelude.literal;
   fn cast<From: prelude.scalar, To: prelude.scalar>(input: From) -> To : elementwise;
   fn add<T: prelude.scalar>(lhs: T, rhs: T) -> T as + : elementwise, commutative;
   fn sub<T: prelude.scalar>(lhs: T, rhs: T) -> T as - : elementwise;

@@ -105,6 +105,26 @@ tile = @(choose_tile(device, shape));
 `@` does not change overload resolution, select a second body, or change the
 meaning of `=`.
 
+## Known values entering the program
+
+A Known compiler value sometimes has to become a Residual program value, for
+example when different integer literals leave a dynamic branch. The Prelude
+defines the marker interface `literal`; a visible Module supplies ordinary
+functions implementing it:
+
+```joggle
+fn integer_literal<T: prelude.integer>(value: int) -> T
+    : prelude.literal;
+```
+
+The compiler selects exactly one visible `literal` function whose compiler
+input accepts the Known payload and whose result resolves to the required
+concrete program type. It emits an ordinary call to that function before the
+dynamic edge. There is no built-in constant instruction or materializer
+callback. Missing and ambiguous matches are diagnostics. Visibility is the
+current Module plus its direct imports, so adding an unrelated installed
+Module cannot change a program.
+
 ## Bindings and calls
 
 `=` introduces or updates a source binding. The compiler may rename bindings
