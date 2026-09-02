@@ -191,6 +191,13 @@ public:
   Block entry() const;
   std::vector<Block> blocks() const;
   std::vector<Instruction> instructions() const;
+  // Reverse relations over this Function's existing IR. These queries do not
+  // create or own a second graph representation.
+  std::vector<Block> predecessors(Block block) const;
+  std::vector<Instruction> users(Value value) const;
+  bool has_uses(Value value) const;
+  bool dominates(Block dominator, Block block) const;
+  bool dominates(Value definition, Instruction instruction) const;
   Edit edit();
 
 private:

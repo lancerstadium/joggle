@@ -146,6 +146,27 @@ branch condition type, edge arity and types, and consistent Function returns.
 The source language normally creates this shape from an ordinary `if`.
 Low-level Block construction exists for transformations and lossless formatting.
 
+Passes inspect the same objects they edit. Reverse relations are direct
+`Function` queries rather than handles into a second graph:
+
+```cpp
+auto incoming = function->predecessors(merge);
+auto consumers = function->users(value);
+
+if (function->has_uses(value) &&
+    function->dominates(definition, consumer)) {
+  // The rewrite is structurally safe.
+}
+```
+
+`users` returns consuming Instructions once each, in Function order. `has_uses`
+also sees branch conditions, successor arguments, and returns, which are owned
+by terminators rather than represented as fake Instructions. Block dominance
+is available through `dominates(block, block)`; value-to-Instruction dominance
+also respects Function arguments, Block arguments, and instruction order.
+These are snapshot queries over the current committed Function. Libraries may
+cache richer analyses, but those results never own program objects.
+
 ## Registered behavior
 
 External `fn` declarations may bind to typed C++ callables. A binding is keyed by

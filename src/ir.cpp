@@ -353,10 +353,11 @@ dominators(const FunctionState& function) {
   return result;
 }
 
-bool dominates(const FunctionState& function, const ValueData& definition,
-               std::uint64_t user_block,
-               std::optional<std::uint64_t> user_instruction,
-               const std::unordered_map<std::uint64_t, BlockSet>& dom) {
+bool definition_dominates(
+    const FunctionState& function, const ValueData& definition,
+    std::uint64_t user_block,
+    std::optional<std::uint64_t> user_instruction,
+    const std::unordered_map<std::uint64_t, BlockSet>& dom) {
   if (definition.origin == ValueData::Origin::FunctionArgument) {
     return definition.owner == 0 &&
            definition.index < function.arguments.size();
@@ -452,7 +453,8 @@ bool verify_instruction(
       diagnostics.report("instruction '" + name + "' has an invalid argument");
       valid = false;
     } else if (contains(function.blocks, instruction.parent) &&
-               !dominates(function, value->second, instruction.parent, id, dom)) {
+               !definition_dominates(function, value->second,
+                                     instruction.parent, id, dom)) {
       diagnostics.report("argument " + std::to_string(index) +
                          " of instruction '" + name +
                          "' is not dominated by its definition");
@@ -591,7 +593,8 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
     const auto verify_use = [&](std::uint64_t id) {
       const auto value = function.values.find(id);
       if (value == function.values.end() ||
-          !dominates(function, value->second, block_id, std::nullopt, dom)) {
+          !definition_dominates(function, value->second, block_id,
+                                std::nullopt, dom)) {
         diagnostics.report("terminator uses a value that does not dominate it");
         valid = false;
       }
@@ -1669,6 +1672,114 @@ std::vector<Instruction> Function::instructions() const {
     }
   }
   return result;
+}
+
+std::vector<Block> Function::predecessors(Block block) const {
+  if (block.function_ != function_ || !block.valid()) {
+    throw std::invalid_argument("predecessor query block is outside function");
+  }
+  std::vector<Block> result;
+  for (const std::uint64_t candidate : function_->state->block_order) {
+    const auto& data = function_->state->blocks.at(candidate);
+    if (!data.terminator) {
+      continue;
+    }
+    const bool reaches = std::any_of(
+        data.terminator->successors.begin(),
+        data.terminator->successors.end(), [&](const detail::EdgeData& edge) {
+          return edge.target == block.id_;
+        });
+    if (reaches) {
+      result.push_back(make_block(function_, candidate));
+    }
+  }
+  return result;
+}
+
+std::vector<Instruction> Function::users(Value value) const {
+  if (!value.valid() ||
+      (!value.known() && value.function_ != function_) ||
+      (value.known() &&
+       (!owns(*function_->state, ParameterValue(value.type())) ||
+        !owns(*function_->state, *value.known_value())))) {
+    throw std::invalid_argument("use query value is outside function");
+  }
+  std::vector<Instruction> result;
+  for (const std::uint64_t block : function_->state->block_order) {
+    for (const std::uint64_t instruction_id :
+         function_->state->blocks.at(block).instructions) {
+      const auto& instruction =
+          function_->state->instructions.at(instruction_id);
+      const bool consumes = std::any_of(
+          instruction.arguments.begin(), instruction.arguments.end(),
+          [&](const detail::StoredArgument& argument) {
+            return detail::FunctionAccess::restore(
+                       function_, argument.value.id, argument.value.known) ==
+                   value;
+          });
+      if (consumes) {
+        result.push_back(make_instruction(function_, instruction_id));
+      }
+    }
+  }
+  return result;
+}
+
+bool Function::has_uses(Value value) const {
+  if (!users(value).empty()) {
+    return true;
+  }
+  if (value.known()) {
+    return false;
+  }
+  for (const std::uint64_t block : function_->state->block_order) {
+    const auto& terminator = function_->state->blocks.at(block).terminator;
+    if (!terminator) {
+      continue;
+    }
+    if ((terminator->condition && *terminator->condition == value.id_) ||
+        std::find(terminator->returned.begin(), terminator->returned.end(),
+                  value.id_) != terminator->returned.end()) {
+      return true;
+    }
+    for (const auto& edge : terminator->successors) {
+      if (std::find(edge.arguments.begin(), edge.arguments.end(), value.id_) !=
+          edge.arguments.end()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool Function::dominates(Block dominator, Block block) const {
+  if (dominator.function_ != function_ || block.function_ != function_ ||
+      !dominator.valid() || !block.valid()) {
+    throw std::invalid_argument("dominance query block is outside function");
+  }
+  const auto relation = joggle::dominators(*function_->state);
+  return relation.at(block.id_).contains(dominator.id_);
+}
+
+bool Function::dominates(Value definition, Instruction instruction) const {
+  if (!definition.valid() || !instruction.valid() ||
+      instruction.function_ != function_ ||
+      (!definition.known() && definition.function_ != function_)) {
+    throw std::invalid_argument("dominance query value is outside function");
+  }
+  if (definition.known()) {
+    return owns(*function_->state, ParameterValue(definition.type())) &&
+           owns(*function_->state, *definition.known_value());
+  }
+  const auto found = function_->state->values.find(definition.id_);
+  const auto user = function_->state->instructions.find(instruction.id_);
+  if (found == function_->state->values.end() ||
+      user == function_->state->instructions.end()) {
+    return false;
+  }
+  const auto relation = joggle::dominators(*function_->state);
+  return definition_dominates(*function_->state, found->second,
+                              user->second.parent, instruction.id_, relation);
 }
 
 Function::Edit Function::edit() { return Edit(function_); }

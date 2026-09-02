@@ -50,6 +50,13 @@ additional `Graph` owner or value domain. Algorithms consume the same Function;
 cached predecessors, uses, dominance, liveness, or traversal order are analysis
 results rather than alternative graph APIs.
 
+The C++ surface exposes the irreducible reverse questions directly on a
+Function: predecessors of a Block, Instruction users of a Value, whether a
+Value is used by either an Instruction or terminator, and dominance. Query
+answers are ordinary Block/Instruction handles into that Function. More
+expensive or domain-specific facts remain library analyses and may be cached
+against a Function snapshot.
+
 ## Function IR
 
 The core instruction contract is deliberately small:
@@ -226,7 +233,9 @@ identity.
 The owning C++ IR is Function/Block/Instruction/Value. The nested `Region` API
 and storage, the owning `Graph` type, and their source declarations have been
 removed. Blocks have typed arguments and terminators; structural verification
-checks reachability, dominance, successor edges, and all function exits.
+checks reachability, dominance, successor edges, and all function exits. The
+public Function now provides predecessor, use, and dominance queries without
+constructing an alternative graph object.
 
 The `function` kernel domain remains the bootstrap representation for direct
 `joggle::Function` callbacks. Parameterless Module-declared types can now

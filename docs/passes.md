@@ -76,3 +76,16 @@ diagnostics, exceptions, or failed verification restore the input checkpoint.
 Analyses consume an immutable `Function` and return ordinary Module-declared
 results. CFG and def-use are relations already present in that Function, not
 separate handles or owners.
+
+The minimal structural relations are queried directly:
+
+```cpp
+function.predecessors(block);
+function.users(value);
+function.has_uses(value);
+function.dominates(a, b);
+```
+
+This is sufficient for local rewriting and for building cached liveness,
+loops, scheduling, or cost analyses. Such a cache indexes a committed Function
+state; it is not a mutable mirror of the IR and becomes stale after an edit.

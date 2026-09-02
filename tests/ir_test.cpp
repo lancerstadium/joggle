@@ -187,6 +187,46 @@ int main() {
                    function->entry().terminator().returned().front() == add->result(0),
                "replace rewires instruction and boundary uses before erase");
 
+  auto queried = compiler.function();
+  std::optional<joggle::Value> queried_input;
+  std::optional<joggle::Instruction> queried_first;
+  std::optional<joggle::Instruction> queried_second;
+  if (!queried) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = queried->edit();
+    queried_input = edit.argument(*i32);
+    queried_first =
+        edit.append(*add_i32_schema, {*queried_input, *queried_input});
+    queried_second = edit.append(
+        *add_i32_schema, {queried_first->result(0), *queried_input});
+    edit.ret(queried->entry(), {queried_second->result(0)});
+    joggle::Diagnostics diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  const auto input_users = queried->users(*queried_input);
+  const auto first_users = queried->users(queried_first->result(0));
+  ok &= expect(input_users.size() == 2U &&
+                   input_users[0] == *queried_first &&
+                   input_users[1] == *queried_second &&
+                   first_users.size() == 1U &&
+                   first_users.front() == *queried_second,
+               "use queries return each consuming instruction once in function order");
+  ok &= expect(queried->has_uses(queried_second->result(0)) &&
+                   queried->users(queried_second->result(0)).empty(),
+               "boundary uses count without pretending terminators are "
+               "instructions");
+  ok &= expect(queried->dominates(*queried_input, *queried_first) &&
+                   queried->dominates(queried_first->result(0),
+                                      *queried_second) &&
+                   !queried->dominates(queried_second->result(0),
+                                       *queried_first),
+               "value dominance follows arguments, blocks, and instruction order");
+
   auto inconsistent_returns = compiler.function();
   if (!inconsistent_returns) {
     return EXIT_FAILURE;
@@ -226,18 +266,23 @@ int main() {
   if (!branched) {
     return EXIT_FAILURE;
   }
+  std::optional<joggle::Value> branch_condition;
+  std::optional<joggle::Value> branch_lhs;
+  std::optional<joggle::Value> branch_rhs;
+  std::optional<joggle::Block> left;
+  std::optional<joggle::Block> right;
   std::optional<joggle::Block> merge;
   {
     auto edit = branched->edit();
-    const auto condition = edit.argument(*boolean);
-    const auto lhs = edit.argument(*integer);
-    const auto rhs = edit.argument(*integer);
-    const auto left = edit.block();
-    const auto right = edit.block();
+    branch_condition = edit.argument(*boolean);
+    branch_lhs = edit.argument(*integer);
+    branch_rhs = edit.argument(*integer);
+    left = edit.block();
+    right = edit.block();
     merge = edit.block({*integer});
-    edit.branch(branched->entry(), condition, left, {}, right, {});
-    edit.jump(left, *merge, {lhs});
-    edit.jump(right, *merge, {rhs});
+    edit.branch(branched->entry(), *branch_condition, *left, {}, *right, {});
+    edit.jump(*left, *merge, {*branch_lhs});
+    edit.jump(*right, *merge, {*branch_rhs});
     edit.ret(*merge, {merge->arguments().front()});
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -254,6 +299,25 @@ int main() {
                    merge->terminator().returned().front() ==
                        merge->arguments().front(),
                "branches use sibling blocks and typed successor arguments");
+  const auto left_predecessors = branched->predecessors(*left);
+  const auto merge_predecessors = branched->predecessors(*merge);
+  ok &= expect(branched->predecessors(branched->entry()).empty() &&
+                   left_predecessors.size() == 1U &&
+                   left_predecessors.front() == branched->entry() &&
+                   merge_predecessors.size() == 2U &&
+                   merge_predecessors[0] == *left &&
+                   merge_predecessors[1] == *right,
+               "predecessors expose control edges in function order");
+  ok &= expect(branched->dominates(branched->entry(), *merge) &&
+                   branched->dominates(*left, *left) &&
+                   !branched->dominates(*left, *merge),
+               "block dominance is queried directly from a Function");
+  ok &= expect(branched->has_uses(*branch_condition) &&
+                   branched->users(*branch_condition).empty() &&
+                   branched->has_uses(*branch_lhs) &&
+                   branched->users(*branch_lhs).empty() &&
+                   branched->has_uses(merge->arguments().front()),
+               "branch, edge, and return operands are visible as boundary uses");
 
   auto invalid_edge = compiler.function();
   if (!invalid_edge) {
