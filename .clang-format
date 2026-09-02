@@ -1,0 +1,8 @@
+BasedOnStyle: LLVM
+ColumnLimit: 80
+DerivePointerAlignment: false
+PointerAlignment: Left
+ReferenceAlignment: Pointer
+FixNamespaceComments: true
+SpacesBeforeTrailingComments: 2
+SortIncludes: Never

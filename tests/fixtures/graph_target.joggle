@@ -1,0 +1,9 @@
+joggle 1;
+
+module graph_target@1.0.0 {
+  import graph_cli@1;
+
+  pass lower {
+    graph_cli.identity($input) => $input;
+  }
+}

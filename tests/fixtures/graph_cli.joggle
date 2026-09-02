@@ -1,0 +1,18 @@
+joggle 1;
+
+module graph_cli@1.0.0 {
+  type word();
+
+  op source<T: type>() -> T;
+  op identity<T: type>(input: T) -> T;
+
+  pass simplify {
+    identity($input) => $input;
+  }
+
+  graph main() -> word {
+    %value: word = source();
+    %result = identity(%value);
+    return %result;
+  }
+}

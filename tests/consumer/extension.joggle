@@ -1,0 +1,16 @@
+joggle 1;
+
+module external@1.0.0 {
+  type scalar(bits: i64);
+
+  op make<N: i64>(bits: N) -> scalar<N>;
+  op keep<T: type>(input: T) -> T;
+  op lowered<T: type>(input: T) -> T;
+
+  pass lower;
+
+  graph main(%input: scalar<8>) -> scalar<8> {
+    %output = keep(%input);
+    return %output;
+  }
+}

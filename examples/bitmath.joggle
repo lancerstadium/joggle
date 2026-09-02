@@ -1,0 +1,19 @@
+joggle 1;
+
+module bitmath@1.0.0 {
+  interface numeric_format: type {
+    storage_bits() -> i64;
+    is_signed() -> bool;
+  }
+  interface elementwise: op;
+  interface commutative: op;
+
+  type word(width: i64, signed: bool = false) : numeric_format;
+
+  op identity<T: type>(input: T) -> T : elementwise;
+  op add<T: type>(lhs: T, rhs: T) -> T : elementwise, commutative;
+
+  pass canonicalize {
+    identity($input) => $input;
+  }
+}

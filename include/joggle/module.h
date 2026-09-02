@@ -1,0 +1,255 @@
+#pragma once
+
+#include <compare>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <variant>
+#include <vector>
+
+#include "joggle/diagnostic.h"
+
+namespace joggle {
+
+namespace detail {
+struct ModuleAccess;
+struct OperationTypeAccess;
+}  // namespace detail
+
+class Compiler;
+
+struct Version {
+  std::uint32_t major = 0;
+  std::uint32_t minor = 0;
+  std::uint32_t patch = 0;
+
+  auto operator<=>(const Version&) const = default;
+};
+
+enum class VersionRangeKind { Exact, Major, Minor, Caret };
+
+struct VersionRange {
+  VersionRangeKind kind = VersionRangeKind::Exact;
+  Version base;
+
+  bool contains(Version candidate) const;
+  auto operator<=>(const VersionRange&) const = default;
+};
+
+class Module {
+  struct Storage;
+
+public:
+  enum class ParameterKind {
+    I64,
+    F64,
+    Boolean,
+    String,
+    Type,
+    Attribute,
+    Value,
+    Region,
+  };
+
+  using Literal = std::variant<std::int64_t, double, bool, std::string>;
+
+  struct ParameterDecl {
+    std::string name;
+    ParameterKind kind = ParameterKind::I64;
+    bool list = false;
+    bool variadic = false;
+    std::optional<Literal> default_value;
+  };
+
+  enum class SymbolKind {
+    Interface,
+    Type,
+    Attribute,
+    Operation,
+    Pass,
+    Graph,
+  };
+
+  class Symbol {
+  public:
+    std::string_view module_name() const { return module_name_; }
+    Version module_version() const { return module_version_; }
+    std::string_view module_digest() const { return module_digest_; }
+    SymbolKind kind() const { return kind_; }
+    std::string_view local_name() const { return local_name_; }
+
+    std::string qualified_name() const;
+    std::string stable_name() const;
+    bool operator==(const Symbol&) const = default;
+
+  private:
+    Symbol(std::string module_name, Version module_version,
+           std::string module_digest, SymbolKind kind, std::string local_name);
+
+    std::string module_name_;
+    Version module_version_;
+    std::string module_digest_;
+    SymbolKind kind_ = SymbolKind::Type;
+    std::string local_name_;
+
+    friend class Module;
+    friend class InterfaceDecl;
+    friend class TypeDecl;
+    friend class AttributeDecl;
+    friend class OperationDecl;
+    friend class PassDecl;
+  };
+
+  class InterfaceDecl {
+  public:
+    class MethodDecl {
+    public:
+      std::string_view name() const;
+      std::span<const ParameterDecl> parameters() const;
+      ParameterKind result_kind() const;
+      bool result_is_list() const;
+      InterfaceDecl owner() const;
+      std::string qualified_name() const;
+      std::string stable_name() const;
+      bool operator==(const MethodDecl& other) const;
+
+    private:
+      MethodDecl(std::shared_ptr<const Storage> storage,
+                 std::size_t interface_index, std::size_t method_index);
+      std::shared_ptr<const Storage> storage_;
+      std::size_t interface_index_ = 0;
+      std::size_t method_index_ = 0;
+      friend class InterfaceDecl;
+    };
+
+    std::string_view name() const;
+    SymbolKind subject() const;
+    std::optional<MethodDecl> method(std::string_view name) const;
+    std::vector<MethodDecl> methods() const;
+    Symbol symbol() const;
+    bool operator==(const InterfaceDecl& other) const;
+
+  private:
+    InterfaceDecl(std::shared_ptr<const Storage> storage, std::size_t index);
+    std::shared_ptr<const Storage> storage_;
+    std::size_t index_ = 0;
+    friend class Module;
+  };
+
+  class TypeDecl {
+  public:
+    std::string_view name() const;
+    std::span<const ParameterDecl> parameters() const;
+    std::span<const std::string> interfaces() const;
+    Symbol symbol() const;
+    bool operator==(const TypeDecl& other) const;
+
+  private:
+    TypeDecl(std::shared_ptr<const Storage> storage, std::size_t index);
+    std::shared_ptr<const Storage> storage_;
+    std::size_t index_ = 0;
+    friend class Module;
+  };
+
+  class AttributeDecl {
+  public:
+    std::string_view name() const;
+    std::span<const ParameterDecl> parameters() const;
+    std::span<const std::string> interfaces() const;
+    Symbol symbol() const;
+    bool operator==(const AttributeDecl& other) const;
+
+  private:
+    AttributeDecl(std::shared_ptr<const Storage> storage, std::size_t index);
+    std::shared_ptr<const Storage> storage_;
+    std::size_t index_ = 0;
+    friend class Module;
+  };
+
+  class OperationDecl {
+  public:
+    std::string_view name() const;
+    std::span<const ParameterDecl> inputs() const;
+    std::span<const ParameterDecl> results() const;
+    std::span<const std::string> interfaces() const;
+    Symbol symbol() const;
+    bool operator==(const OperationDecl& other) const;
+
+  private:
+    OperationDecl(std::shared_ptr<const Storage> storage, std::size_t index);
+    std::shared_ptr<const Storage> storage_;
+    std::size_t index_ = 0;
+    friend class Module;
+    friend struct detail::OperationTypeAccess;
+  };
+
+  class PassDecl {
+  public:
+    enum class Form { External, Rules, Sequence };
+
+    std::string_view name() const;
+    Form form() const;
+    std::span<const std::string> steps() const;
+    Symbol symbol() const;
+    bool operator==(const PassDecl& other) const;
+
+  private:
+    PassDecl(std::shared_ptr<const Storage> storage, std::size_t index);
+    std::shared_ptr<const Storage> storage_;
+    std::size_t index_ = 0;
+    friend class Module;
+    friend struct detail::ModuleAccess;
+  };
+
+  struct Import {
+    std::string name;
+    VersionRange version;
+    std::string alias;
+
+    std::string_view prefix() const {
+      return alias.empty() ? std::string_view(name) : std::string_view(alias);
+    }
+  };
+
+  std::string_view name() const;
+  Version version() const;
+  std::string_view digest() const;
+  std::span<const Import> imports() const;
+
+  std::optional<InterfaceDecl> interface(std::string_view name) const;
+  std::optional<TypeDecl> type(std::string_view name) const;
+  std::optional<AttributeDecl> attribute(std::string_view name) const;
+  std::optional<OperationDecl> operation(std::string_view name) const;
+  std::optional<PassDecl> pass(std::string_view name) const;
+  std::optional<Symbol> symbol(SymbolKind kind, std::string_view name) const;
+  std::vector<Symbol> members() const;
+  std::vector<InterfaceDecl> interfaces() const;
+  std::vector<TypeDecl> types() const;
+  std::vector<AttributeDecl> attributes() const;
+  std::vector<OperationDecl> operations() const;
+  std::vector<PassDecl> passes() const;
+  bool operator==(const Module& other) const;
+
+private:
+  explicit Module(std::shared_ptr<const Storage> storage);
+  std::shared_ptr<const Storage> storage_;
+
+  friend class Compiler;
+  friend struct detail::ModuleAccess;
+  friend std::optional<Module> parse_module(std::string_view, Diagnostics&,
+                                            std::string);
+  friend std::string format(const Module&);
+};
+
+std::optional<Module> parse_module(std::string_view text,
+                                   Diagnostics& diagnostics,
+                                   std::string source = "<memory>");
+std::string format(const Module& module);
+std::string to_string(Version version);
+std::string to_string(VersionRange range);
+
+}  // namespace joggle
