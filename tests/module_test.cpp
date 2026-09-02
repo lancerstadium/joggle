@@ -31,7 +31,7 @@ int main() {
   }
 
   bool ok = true;
-  ok &= expect(module->name() == "bitmath", "module name");
+  ok &= expect(module->name() == "arith", "module name");
   ok &= expect(module->digest().size() == 64U, "SHA-256 digest width");
 
   const auto rejects_language_version = [](std::uint32_t version) {
@@ -50,14 +50,14 @@ int main() {
                    rejects_language_version(2U),
                "unknown language versions are rejected before Module use");
 
-  const auto word = module->type("word");
+  const auto integer = module->type("integer");
   const auto numeric_format = module->interface("numeric_format");
   const auto elementwise = module->interface("elementwise");
   const auto add = module->operation("add");
   const auto canonicalize = module->pass("canonicalize");
-  ok &= expect(word && word->parameters().size() == 2U &&
-                   word->interfaces().size() == 1U,
-               "word schema");
+  ok &= expect(integer && integer->parameters().size() == 2U &&
+                   integer->interfaces().size() == 1U,
+               "integer schema");
   const auto storage_bits =
       numeric_format ? numeric_format->method("storage_bits") : std::nullopt;
   ok &= expect(
@@ -77,19 +77,19 @@ int main() {
   ok &= expect(canonicalize && canonicalize->form() ==
                                    joggle::Module::PassDecl::Form::Rules,
                "rule pass declaration");
-  if (!ok || !word) {
+  if (!ok || !integer) {
     return EXIT_FAILURE;
   }
 
-  const auto symbol = word->symbol();
-  ok &= expect(symbol.qualified_name() == "bitmath.word", "qualified symbol");
-  ok &= expect(symbol.stable_name().starts_with("bitmath@1.0.0#") &&
-                   symbol.stable_name().ends_with("/type/word"),
+  const auto symbol = integer->symbol();
+  ok &= expect(symbol.qualified_name() == "arith.integer", "qualified symbol");
+  ok &= expect(symbol.stable_name().starts_with("arith@1.0.0#") &&
+                   symbol.stable_name().ends_with("/type/integer"),
                "persistent symbol identity");
 
   const std::string canonical = joggle::format(*module);
   ok &= expect(canonical == text.str(),
-               "the shipped Bitmath module is canonical source");
+               "the shipped arith module is canonical source");
   joggle::Diagnostics canonical_diagnostics;
   auto reparsed = joggle::parse_module(canonical, canonical_diagnostics,
                                        "canonical.joggle");
@@ -97,7 +97,7 @@ int main() {
                "idempotent formatting");
   ok &= expect(reparsed && reparsed->digest() == module->digest(),
                "canonical digest stability");
-  const auto reparsed_word = reparsed ? reparsed->type("word") : std::nullopt;
+  const auto reparsed_integer = reparsed ? reparsed->type("integer") : std::nullopt;
 
   joggle::Diagnostics surface_diagnostics;
   const auto surface = joggle::parse_module(R"(
@@ -155,13 +155,13 @@ int main() {
       "\n// source location and comments are not identity\n" + text.str() +
       "\n# trailing package note\n";
   const auto trivia_module = joggle::parse_module(
-      with_trivia, trivia_diagnostics, "another/path/bitmath.joggle");
-  const auto trivia_word =
-      trivia_module ? trivia_module->type("word") : std::nullopt;
-  ok &= expect(trivia_module && trivia_word &&
+      with_trivia, trivia_diagnostics, "another/path/arith.joggle");
+  const auto trivia_integer =
+      trivia_module ? trivia_module->type("integer") : std::nullopt;
+  ok &= expect(trivia_module && trivia_integer &&
                    trivia_module->digest() == module->digest() &&
                    joggle::format(*trivia_module) == canonical &&
-                   trivia_word->symbol() == word->symbol(),
+                   trivia_integer->symbol() == integer->symbol(),
                "whitespace, comments, and source paths do not affect "
                "canonical identity");
 
@@ -169,15 +169,15 @@ int main() {
   const auto conflicting_identity = joggle::parse_module(
       R"(
     joggle 1;
-    module bitmath@1.0.0 {
-      type word(width: i64);
+    module arith@1.0.0 {
+      type integer(width: i64);
     }
   )",
       conflicting_identity_diagnostics, "conflicting-identity.joggle");
-  const auto conflicting_word =
-      conflicting_identity ? conflicting_identity->type("word") : std::nullopt;
-  ok &= expect(reparsed_word && conflicting_word && *reparsed_word == *word &&
-                   *conflicting_word != *word,
+  const auto conflicting_integer =
+      conflicting_identity ? conflicting_identity->type("integer") : std::nullopt;
+  ok &= expect(reparsed_integer && conflicting_integer && *reparsed_integer == *integer &&
+                   *conflicting_integer != *integer,
                "declaration equality includes the canonical module digest");
 
   joggle::Diagnostics first_graph_diagnostics;
@@ -254,26 +254,26 @@ int main() {
                "semantic versions and numeric literals share one lexer");
 
   joggle::Compiler compiler;
-  compiler.add(canonical, "bitmath.joggle");
+  compiler.add(canonical, "arith.joggle");
   compiler.add(R"(
     joggle 1;
-    module miniai@1.0.0 {
-      import bitmath@1 as math;
+    module client@1.0.0 {
+      import arith@1 as math;
       op inference<T: type>(input: T) -> T : math.elementwise;
       pass pipeline = math.canonicalize;
     }
   )",
-               "miniai.joggle");
+               "client.joggle");
   ok &= expect(compiler.link(), "module closure links");
-  ok &= expect(compiler.linked() && compiler.module("miniai").has_value(),
+  ok &= expect(compiler.linked() && compiler.module("client").has_value(),
                "linked module lookup");
-  const auto linked_miniai = compiler.module("miniai");
-  ok &= expect(linked_miniai && linked_miniai->imports().size() == 1U &&
-                   linked_miniai->imports().front().name == "bitmath" &&
-                   linked_miniai->imports().front().prefix() == "math",
+  const auto linked_client = compiler.module("client");
+  ok &= expect(linked_client && linked_client->imports().size() == 1U &&
+                   linked_client->imports().front().name == "arith" &&
+                   linked_client->imports().front().prefix() == "math",
                "an import alias is a local prefix for one module identity");
   const auto inference =
-      linked_miniai ? linked_miniai->operation("inference") : std::nullopt;
+      linked_client ? linked_client->operation("inference") : std::nullopt;
   ok &= expect(inference && elementwise &&
                    compiler.conforms(*inference, *elementwise),
                "aliased cross-module interface implementation");
@@ -316,7 +316,7 @@ int main() {
       joggle::parse_module(R"(
     joggle 1;
     module broken_interface@1.0.0 {
-      type word() : missing;
+      type integer() : missing;
     }
   )",
                            interface_diagnostics, "broken-interface.joggle");
@@ -333,7 +333,7 @@ int main() {
       joggle::parse_module(R"(
     joggle 1;
     module broken_rule@1.0.0 {
-      type word();
+      type integer();
       op identity<T: type>(input: T) -> T;
       pass incomplete {
         identity($input) => $missing;
@@ -385,7 +385,7 @@ int main() {
       R"(
     joggle 1;
     module removed_require@1.0.0 {
-      require bitmath;
+      require arith;
     }
   )",
       removed_require_diagnostics, "removed-require.joggle");

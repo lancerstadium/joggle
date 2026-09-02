@@ -1,0 +1,12 @@
+joggle 1;
+
+module tensor@1.0.0 {
+  type tensor(element: type, shape: list<i64>);
+  attr dense(values: list<i64>);
+
+  op constant<E: type, S: list<i64>>(value: attr) -> tensor<E, S>;
+  op reshape<E: type, From: list<i64>, To: list<i64>>(
+    input: tensor<E, From>,
+    shape: To
+  ) -> tensor<E, To>;
+}

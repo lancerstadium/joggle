@@ -19,12 +19,12 @@ bool expect(bool condition, std::string_view message) {
 
 int main() {
   joggle::Compiler compiler;
-  compiler.load(JOGGLE_BITMATH_MODULE);
+  compiler.load(JOGGLE_ARITH_MODULE);
   compiler.add(R"(
 joggle 1;
 module pipeline@1.0.0 {
-  import bitmath@1;
-  pass clean = bitmath.canonicalize;
+  import arith@1;
+  pass clean = arith.canonicalize;
 }
 )",
                "pipeline.joggle");
@@ -32,37 +32,37 @@ module pipeline@1.0.0 {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
-  const auto bitmath = compiler.module("bitmath");
+  const auto arith = compiler.module("arith");
   const auto pipeline = compiler.module("pipeline");
-  if (!bitmath || !compiler.load_behavior("bitmath", JOGGLE_BITMATH_BEHAVIOR)) {
+  if (!arith || !compiler.load_behavior("arith", JOGGLE_ARITH_BEHAVIOR)) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
-  const auto word_decl = bitmath ? bitmath->type("word") : std::nullopt;
-  const auto identity_decl =
-      bitmath ? bitmath->operation("identity") : std::nullopt;
+  const auto integer_decl = arith ? arith->type("integer") : std::nullopt;
+  const auto arith_cast_decl =
+      arith ? arith->operation("cast") : std::nullopt;
   const auto format_decl =
-      bitmath ? bitmath->interface("numeric_format") : std::nullopt;
+      arith ? arith->interface("numeric_format") : std::nullopt;
   const auto storage_bits =
       format_decl ? format_decl->method("storage_bits") : std::nullopt;
   const auto canonicalize =
-      bitmath ? bitmath->pass("canonicalize") : std::nullopt;
+      arith ? arith->pass("canonicalize") : std::nullopt;
   const auto clean = pipeline ? pipeline->pass("clean") : std::nullopt;
-  if (!word_decl || !identity_decl || !storage_bits || !canonicalize ||
+  if (!integer_decl || !arith_cast_decl || !storage_bits || !canonicalize ||
       !clean) {
     return EXIT_FAILURE;
   }
-  const auto word = compiler.make(*word_decl, std::int64_t{8});
+  const auto integer = compiler.make(*integer_decl, std::int64_t{8});
   auto graph = compiler.graph();
-  if (!word || !graph) {
+  if (!integer || !graph) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
   auto edit = graph->edit();
-  const auto input = edit.argument(*word);
-  const auto first = edit.append(*identity_decl, {input});
-  const auto second = edit.append(*identity_decl, {first.result(0)});
-  edit.append(*identity_decl, {second.result(0)});
+  const auto input = edit.argument(*integer);
+  const auto first = edit.append(*arith_cast_decl, {input});
+  const auto second = edit.append(*arith_cast_decl, {first.result(0)});
+  edit.append(*arith_cast_decl, {second.result(0)});
   joggle::Diagnostics edit_diagnostics;
   if (!edit.commit(edit_diagnostics)) {
     edit_diagnostics.print(std::cerr);
@@ -70,15 +70,15 @@ module pipeline@1.0.0 {
   }
 
   bool ok = true;
-  const auto bits = compiler.call<std::int64_t>(*word, *storage_bits);
+  const auto bits = compiler.call<std::int64_t>(*integer, *storage_bits);
   ok &= expect(bits && *bits == 8,
-               "the Bitmath behavior supplies interface methods");
+               "the arith behavior supplies interface methods");
   ok &= expect(canonicalize->form() == joggle::Module::PassDecl::Form::Rules,
                "the Module exposes one pass handle without a pattern API");
   ok &= expect(compiler.run(*graph, *clean),
                "an imported rule pass composes without a C++ binding");
   ok &= expect(graph->operations().empty(),
-               "greedy contraction removes the complete identity chain");
+               "greedy contraction removes redundant same-type casts");
 
   constexpr std::string_view repeated_source = R"(
 joggle 1;

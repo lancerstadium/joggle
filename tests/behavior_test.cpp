@@ -38,9 +38,10 @@ int main() {
   compiler.add(R"(
     joggle 1;
     module testing@1.0.0 {
-      import bitmath@1;
+      import arith@1;
+      op marker<T: type>(input: T) -> T;
       pass cleanup;
-      pass optimize = bitmath.canonicalize, cleanup;
+      pass optimize = arith.canonicalize, cleanup;
       pass abort;
     }
   )",
@@ -50,27 +51,28 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  const auto bitmath = compiler.module("bitmath");
+  const auto arith = compiler.module("arith");
   const auto testing = compiler.module("testing");
-  if (!bitmath || !testing) {
+  if (!arith || !testing) {
     return EXIT_FAILURE;
   }
-  const auto word_schema = bitmath->type("word");
-  const auto add_schema = bitmath->operation("add");
-  const auto identity_schema = bitmath->operation("identity");
+  const auto integer_schema = arith->type("integer");
+  const auto add_schema = arith->operation("add");
+  const auto cast_schema = arith->operation("cast");
+  const auto marker_schema = testing->operation("marker");
   const auto cleanup_schema = testing->pass("cleanup");
   const auto optimize_schema = testing->pass("optimize");
   const auto abort_schema = testing->pass("abort");
-  if (!word_schema || !add_schema || !identity_schema || !cleanup_schema ||
-      !optimize_schema || !abort_schema) {
+  if (!integer_schema || !add_schema || !cast_schema ||
+      !marker_schema || !cleanup_schema || !optimize_schema || !abort_schema) {
     return EXIT_FAILURE;
   }
 
-  compiler.bind(*word_schema,
+  compiler.bind(*integer_schema,
                 [](const joggle::Type& type, joggle::Diagnostics& diagnostics) {
                   const auto width = type.get<std::int64_t>("width");
                   if (!width || *width <= 0) {
-                    diagnostics.report("word width must be positive");
+                    diagnostics.report("integer width must be positive");
                     return false;
                   }
                   return true;
@@ -83,13 +85,14 @@ int main() {
         std::any_of(operands.begin(), operands.end(), [&](const auto& value) {
           return value.type() != results[0].type();
         })) {
-      diagnostics.report("word operation types must agree");
+      diagnostics.report("integer operation types must agree");
       return false;
     }
     return true;
   };
   compiler.bind(*add_schema, same_type);
-  compiler.bind(*identity_schema, same_type);
+  compiler.bind(*cast_schema, same_type);
+  compiler.bind(*marker_schema, same_type);
 
   std::size_t query_runs = 0;
   const auto compute_nodes = [&](const joggle::Graph& graph) {
@@ -106,17 +109,17 @@ int main() {
           return false;
         }
         const auto operations = graph.all_operations();
-        const bool has_identity =
+        const bool has_marker =
             std::any_of(operations.begin(), operations.end(),
                         [](const joggle::Operation& operation) {
-                          return operation.schema().name() == "identity";
+                          return operation.schema().name() == "marker";
                         });
-        if (!has_identity) {
+        if (!has_marker) {
           return true;
         }
         auto edit = graph.edit();
         for (const joggle::Operation& operation : operations) {
-          if (operation.schema().name() != "identity") {
+          if (operation.schema().name() != "marker") {
             continue;
           }
           edit.replace(operation.result(0), operation.operands()[0]);
@@ -125,18 +128,19 @@ int main() {
         return edit.commit(diagnostics);
       });
 
-  const auto word = compiler.make(*word_schema, 8);
+  const auto integer = compiler.make(*integer_schema, 8);
   auto graph = compiler.graph();
-  if (!word || !graph) {
+  if (!integer || !graph) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
   {
     auto edit = graph->edit();
-    const auto lhs = edit.argument(*word);
-    const auto rhs = edit.argument(*word);
+    const auto lhs = edit.argument(*integer);
+    const auto rhs = edit.argument(*integer);
     const auto add = edit.append(*add_schema, {lhs, rhs});
-    edit.append(*identity_schema, {add.result(0)});
+    const auto cast = edit.append(*cast_schema, {add.result(0)});
+    edit.append(*marker_schema, {cast.result(0)});
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
@@ -148,7 +152,7 @@ int main() {
   ok &= expect(compiler.verify(*graph), "native operation verification");
   const auto first = compiler.query(*graph, compute_nodes);
   const auto second = compiler.query(*graph, compute_nodes);
-  ok &= expect(first && second && first->value == 2U && query_runs == 2U,
+  ok &= expect(first && second && first->value == 3U && query_runs == 2U,
                "query callables execute without hidden cache state");
   std::size_t isolated_runs = 0;
   ScaledCount double_count{2U, &isolated_runs};
@@ -156,8 +160,8 @@ int main() {
   const auto doubled = compiler.query(*graph, double_count);
   const auto tripled = compiler.query(*graph, triple_count);
   const auto doubled_again = compiler.query(*graph, double_count);
-  ok &= expect(doubled && tripled && doubled_again && doubled->value == 4U &&
-                   tripled->value == 6U && isolated_runs == 3U,
+  ok &= expect(doubled && tripled && doubled_again && doubled->value == 6U &&
+                   tripled->value == 9U && isolated_runs == 3U,
                "stateful query objects always observe their current state");
   std::size_t temporary_runs = 0;
   const auto temporary_first =
@@ -174,12 +178,12 @@ int main() {
   ok &= expect(after && after->value == 1U && query_runs == 4U,
                "a query observes the graph after a committed pass");
 
-  compiler.bind(*abort_schema, [identity_schema,
-                                word](joggle::Compiler&, joggle::Graph& current,
+  compiler.bind(*abort_schema, [marker_schema,
+                                integer](joggle::Compiler&, joggle::Graph& current,
                                       joggle::Diagnostics& diagnostics) {
     const auto producer = current.operations().front();
     auto edit = current.edit();
-    edit.append(*identity_schema, {producer.result(0)});
+    edit.append(*marker_schema, {producer.result(0)});
     if (!edit.commit(diagnostics)) {
       return false;
     }
@@ -203,18 +207,18 @@ int main() {
   if (!invalid.link()) {
     return EXIT_FAILURE;
   }
-  const auto invalid_module = invalid.module("bitmath");
-  const auto invalid_word =
-      invalid_module ? invalid_module->type("word") : std::nullopt;
-  if (!invalid_word) {
+  const auto invalid_module = invalid.module("arith");
+  const auto invalid_integer =
+      invalid_module ? invalid_module->type("integer") : std::nullopt;
+  if (!invalid_integer) {
     return EXIT_FAILURE;
   }
-  invalid.bind(*invalid_word,
+  invalid.bind(*invalid_integer,
                [](const joggle::Type& type, joggle::Diagnostics&) {
                  const auto width = type.get<std::int64_t>("width");
                  return width && *width > 0;
                });
-  ok &= expect(!invalid.make(*invalid_word, 0) && !invalid.ok(),
+  ok &= expect(!invalid.make(*invalid_integer, 0) && !invalid.ok(),
                "type verifier rejection is diagnosed");
 
   joggle::Compiler reported;
@@ -222,19 +226,19 @@ int main() {
   if (!reported.link()) {
     return EXIT_FAILURE;
   }
-  const auto reported_module = reported.module("bitmath");
-  const auto reported_word =
-      reported_module ? reported_module->type("word") : std::nullopt;
-  if (!reported_word) {
+  const auto reported_module = reported.module("arith");
+  const auto reported_integer =
+      reported_module ? reported_module->type("integer") : std::nullopt;
+  if (!reported_integer) {
     return EXIT_FAILURE;
   }
-  reported.bind(*reported_word,
+  reported.bind(*reported_integer,
                 [](const joggle::Type&, joggle::Diagnostics& diagnostics) {
                   diagnostics.report("reported verifier failure");
                   return true;
                 });
   ok &= expect(
-      !reported.make(*reported_word, 8, false) && !reported.ok(),
+      !reported.make(*reported_integer, 8, false) && !reported.ok(),
       "a verifier diagnostic rejects construction even if it returns true");
 
   joggle::Compiler guarded_query;

@@ -1,7 +1,8 @@
 joggle 1;
 
 module edgevec@1.0.0 {
-  import miniai@1 as nn;
+  import tensor@1;
+  import nn@1;
 
   interface lane_op: op {
     lanes() -> i64;
@@ -9,15 +10,15 @@ module edgevec@1.0.0 {
   }
 
   op dot<E: type, N: i64, K: i64, M: i64>(
-    input: nn.tensor<E, [N, K]>,
-    weight: nn.tensor<E, [M, K]>,
-    bias: nn.tensor<E, [M]>,
+    input: tensor.tensor<E, [N, K]>,
+    weight: tensor.tensor<E, [M, K]>,
+    bias: tensor.tensor<E, [M]>,
     lanes: i64 = 4
-  ) -> nn.tensor<E, [N, M]> : lane_op;
+  ) -> tensor.tensor<E, [N, M]> : lane_op;
   op clamp<E: type, S: list<i64>>(
-    input: nn.tensor<E, S>,
+    input: tensor.tensor<E, S>,
     lanes: i64 = 4
-  ) -> nn.tensor<E, S> : lane_op;
+  ) -> tensor.tensor<E, S> : lane_op;
 
   pass lower;
 }

@@ -21,16 +21,16 @@ bool expect(bool condition, std::string_view message) {
 
 int main() {
   joggle::Compiler compiler;
-  compiler.load(JOGGLE_BITMATH_MODULE);
+  compiler.load(JOGGLE_ARITH_MODULE);
   compiler.load(JOGGLE_FIXED_MODULE);
   if (!compiler.link()) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
-  const auto bitmath = compiler.module("bitmath");
+  const auto arith = compiler.module("arith");
   const auto fixed = compiler.module("fixed");
-  if (!bitmath || !fixed ||
-      !compiler.load_behavior("bitmath", JOGGLE_BITMATH_BEHAVIOR) ||
+  if (!arith || !fixed ||
+      !compiler.load_behavior("arith", JOGGLE_ARITH_BEHAVIOR) ||
       !compiler.load_behavior("fixed", JOGGLE_FIXED_BEHAVIOR)) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -38,7 +38,7 @@ int main() {
 
   const auto q = fixed->type("q");
   const auto codec = fixed->interface("codec");
-  const auto numeric_format = bitmath->interface("numeric_format");
+  const auto numeric_format = arith->interface("numeric_format");
   const auto encode = codec ? codec->method("encode") : std::nullopt;
   const auto decode = codec ? codec->method("decode") : std::nullopt;
   const auto storage_bits =
@@ -81,7 +81,7 @@ int main() {
                "invalid format parameters fail at construction");
 
   joggle::Compiler invalid_source;
-  invalid_source.load(JOGGLE_BITMATH_MODULE);
+  invalid_source.load(JOGGLE_ARITH_MODULE);
   invalid_source.load(JOGGLE_FIXED_MODULE);
   invalid_source.add(R"(
 joggle 1;
@@ -98,7 +98,7 @@ module invalid_fixed@1.0.0 {
   const bool source_linked = invalid_source.link();
   const bool source_behaviors =
       source_linked &&
-      invalid_source.load_behavior("bitmath", JOGGLE_BITMATH_BEHAVIOR) &&
+      invalid_source.load_behavior("arith", JOGGLE_ARITH_BEHAVIOR) &&
       invalid_source.load_behavior("fixed", JOGGLE_FIXED_BEHAVIOR);
   const auto invalid_module = invalid_source.module("invalid_fixed");
   const auto invalid_graph =

@@ -34,18 +34,18 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  const auto bitmath = compiler.module("bitmath");
+  const auto arith = compiler.module("arith");
   const auto testing = compiler.module("testing");
-  const auto word_schema = bitmath ? bitmath->type("word") : std::nullopt;
+  const auto integer_schema = arith ? arith->type("integer") : std::nullopt;
   const auto label_schema =
       testing ? testing->attribute("label") : std::nullopt;
-  if (!word_schema || !label_schema) {
+  if (!integer_schema || !label_schema) {
     return EXIT_FAILURE;
   }
-  compiler.bind(*word_schema, [](const joggle::Type&) { return true; });
+  compiler.bind(*integer_schema, [](const joggle::Type&) { return true; });
 
-  const auto first = compiler.make(*word_schema, 8);
-  const auto second = compiler.make(*word_schema, std::int64_t{8});
+  const auto first = compiler.make(*integer_schema, 8);
+  const auto second = compiler.make(*integer_schema, std::int64_t{8});
   const auto label = compiler.make(*label_schema, "cpu");
 
   bool ok = true;
@@ -53,7 +53,7 @@ int main() {
                "ordinary C++ values construct one stable type identity");
   ok &= expect(first && first->get<bool>("signed") == false,
                "schema defaults are materialized");
-  ok &= expect(first && first->stable_name().find("/type/word/instance/") !=
+  ok &= expect(first && first->stable_name().find("/type/integer/instance/") !=
                             std::string_view::npos,
                "type identity derives from the stable schema symbol");
   ok &= expect(label.has_value(), "attribute construction");
@@ -86,7 +86,7 @@ int main() {
   shaped.add(R"(
     joggle 1;
     module shaped@1.0.0 {
-      import bitmath@1;
+      import arith@1;
       type tensor(element: type, shape: list<i64>);
     }
   )",

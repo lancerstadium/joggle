@@ -1,8 +1,8 @@
-foreach(required JOGGLE_CLI JOGGLE_BITMATH JOGGLE_MINIAI JOGGLE_EDGEVEC JOGGLE_FIXED
+foreach(required JOGGLE_CLI JOGGLE_ARITH JOGGLE_TENSOR JOGGLE_NN JOGGLE_EDGEVEC JOGGLE_FIXED
                  JOGGLE_PACKAGE_TEST_DIR JOGGLE_LOCK_CONSUMER JOGGLE_BEHAVIOR_MODULE
                  JOGGLE_BEHAVIOR_LIBRARY JOGGLE_BEHAVIOR_FAILURE
-                 JOGGLE_BEHAVIOR_LOADER JOGGLE_BITMATH_BEHAVIOR
-                 JOGGLE_MINIAI_BEHAVIOR JOGGLE_EDGEVEC_BEHAVIOR
+                 JOGGLE_BEHAVIOR_LOADER JOGGLE_ARITH_BEHAVIOR
+                 JOGGLE_TENSOR_BEHAVIOR JOGGLE_EDGEVEC_BEHAVIOR
                  JOGGLE_FIXED_BEHAVIOR)
   if(NOT DEFINED ${required})
     message(FATAL_ERROR "${required} was not provided")
@@ -183,8 +183,8 @@ if(EXISTS "${root}/missing_import")
 endif()
 
 expect_success("check local source closure"
-  "${JOGGLE_CLI}" check "${JOGGLE_MINIAI}"
-  --with "${JOGGLE_BITMATH}" --root "${root}")
+  "${JOGGLE_CLI}" check "${JOGGLE_NN}"
+  --with "${JOGGLE_ARITH}" --with "${JOGGLE_TENSOR}" --root "${root}")
 
 set(invalid_graph "${JOGGLE_PACKAGE_TEST_DIR}/invalid-graph.joggle")
 file(WRITE "${invalid_graph}" [=[joggle 1;
@@ -220,20 +220,22 @@ if(NOT invalid_lock_text STREQUAL "preserve previous lock\n")
   message(FATAL_ERROR "failed lock generation replaced its previous output")
 endif()
 
-expect_success("install bitmath"
-  "${JOGGLE_CLI}" install "${JOGGLE_BITMATH}"
-  --behavior "${JOGGLE_BITMATH_BEHAVIOR}" --root "${root}")
-string(STRIP "${command_output}" installed_bitmath_module)
-get_filename_component(installed_bitmath_identity
-  "${installed_bitmath_module}" DIRECTORY)
+expect_success("install arith"
+  "${JOGGLE_CLI}" install "${JOGGLE_ARITH}"
+  --behavior "${JOGGLE_ARITH_BEHAVIOR}" --root "${root}")
+string(STRIP "${command_output}" installed_arith_module)
+get_filename_component(installed_arith_identity
+  "${installed_arith_module}" DIRECTORY)
 expect_success("check behavior identity"
-  "${JOGGLE_CLI}" check "${JOGGLE_BITMATH}"
-  --behavior "${JOGGLE_BITMATH_BEHAVIOR}" --root "${root}")
+  "${JOGGLE_CLI}" check "${JOGGLE_ARITH}"
+  --behavior "${JOGGLE_ARITH_BEHAVIOR}" --root "${root}")
 expect_success("check resolved closure"
-  "${JOGGLE_CLI}" check "${JOGGLE_MINIAI}" --root "${root}")
-expect_success("install miniai"
-  "${JOGGLE_CLI}" install "${JOGGLE_MINIAI}"
-  --behavior "${JOGGLE_MINIAI_BEHAVIOR}" --root "${root}")
+  "${JOGGLE_CLI}" check "${JOGGLE_TENSOR}" --root "${root}")
+expect_success("install tensor"
+  "${JOGGLE_CLI}" install "${JOGGLE_TENSOR}"
+  --behavior "${JOGGLE_TENSOR_BEHAVIOR}" --root "${root}")
+expect_success("install nn"
+  "${JOGGLE_CLI}" install "${JOGGLE_NN}" --root "${root}")
 expect_success("install edgevec"
   "${JOGGLE_CLI}" install "${JOGGLE_EDGEVEC}"
   --behavior "${JOGGLE_EDGEVEC_BEHAVIOR}" --root "${root}")
@@ -241,25 +243,25 @@ expect_success("install fixed"
   "${JOGGLE_CLI}" install "${JOGGLE_FIXED}"
   --behavior "${JOGGLE_FIXED_BEHAVIOR}" --root "${root}")
 expect_success("idempotent install"
-  "${JOGGLE_CLI}" install "${JOGGLE_BITMATH}"
-  --behavior "${JOGGLE_BITMATH_BEHAVIOR}" --root "${root}")
+  "${JOGGLE_CLI}" install "${JOGGLE_ARITH}"
+  --behavior "${JOGGLE_ARITH_BEHAVIOR}" --root "${root}")
 
-file(GLOB_RECURSE installed_bitmath_behaviors
-  "${installed_bitmath_identity}/behavior/*/*/behavior.so"
-  "${installed_bitmath_identity}/behavior/*/*/behavior.dylib"
-  "${installed_bitmath_identity}/behavior/*/*/behavior.dll")
-list(LENGTH installed_bitmath_behaviors bitmath_behavior_count)
-if(NOT bitmath_behavior_count EQUAL 1)
-  message(FATAL_ERROR "expected one installed Bitmath behavior")
+file(GLOB_RECURSE installed_arith_behaviors
+  "${installed_arith_identity}/behavior/*/*/behavior.so"
+  "${installed_arith_identity}/behavior/*/*/behavior.dylib"
+  "${installed_arith_identity}/behavior/*/*/behavior.dll")
+list(LENGTH installed_arith_behaviors arith_behavior_count)
+if(NOT arith_behavior_count EQUAL 1)
+  message(FATAL_ERROR "expected one installed arith behavior")
 endif()
-list(GET installed_bitmath_behaviors 0 installed_bitmath_behavior)
-get_filename_component(bitmath_behavior_filename
-  "${installed_bitmath_behavior}" NAME)
-file(COPY_FILE "${installed_bitmath_behavior}"
-  "${installed_bitmath_identity}/${bitmath_behavior_filename}")
+list(GET installed_arith_behaviors 0 installed_arith_behavior)
+get_filename_component(arith_behavior_filename
+  "${installed_arith_behavior}" NAME)
+file(COPY_FILE "${installed_arith_behavior}"
+  "${installed_arith_identity}/${arith_behavior_filename}")
 expect_failure("reject ambiguous behavior lock"
-  "${JOGGLE_CLI}" lock "${JOGGLE_BITMATH}" --root "${root}")
-file(REMOVE "${installed_bitmath_identity}/${bitmath_behavior_filename}")
+  "${JOGGLE_CLI}" lock "${JOGGLE_ARITH}" --root "${root}")
+file(REMOVE "${installed_arith_identity}/${arith_behavior_filename}")
 
 expect_success("install behavior package"
   "${JOGGLE_CLI}" install "${JOGGLE_BEHAVIOR_MODULE}"
@@ -322,12 +324,13 @@ if(missing_behavior_result EQUAL 0)
 endif()
 
 expect_success("list modules" "${JOGGLE_CLI}" list --root "${root}")
-string(FIND "${command_output}" "bitmath@1.0.0#" bitmath_position)
-string(FIND "${command_output}" "miniai@1.0.0#" miniai_position)
+string(FIND "${command_output}" "arith@1.0.0#" arith_position)
+string(FIND "${command_output}" "tensor@1.0.0#" tensor_position)
+string(FIND "${command_output}" "nn@1.0.0#" nn_position)
 string(FIND "${command_output}" "edgevec@1.0.0#" edgevec_position)
 string(FIND "${command_output}" "fixed@1.0.0#" fixed_position)
 string(FIND "${command_output}" "behavior_plugin@1.0.0#" behavior_position)
-if(bitmath_position EQUAL -1 OR miniai_position EQUAL -1 OR
+if(arith_position EQUAL -1 OR tensor_position EQUAL -1 OR nn_position EQUAL -1 OR
    edgevec_position EQUAL -1 OR fixed_position EQUAL -1 OR
    behavior_position EQUAL -1)
   message(FATAL_ERROR "module list is incomplete:\n${command_output}")
@@ -338,17 +341,19 @@ expect_success("lock closure"
   "${JOGGLE_CLI}" lock "${JOGGLE_EDGEVEC}" --root "${root}" -o "${lock}")
 file(READ "${lock}" lock_text)
 string(FIND "${lock_text}" "root edgevec@1.0.0#" root_position)
-string(FIND "${lock_text}" "module bitmath@1.0.0#" bitmath_dependency_position)
-string(FIND "${lock_text}" "module miniai@1.0.0#" miniai_dependency_position)
-string(FIND "${lock_text}" "behavior bitmath@1.0.0#"
-  bitmath_behavior_position)
-string(FIND "${lock_text}" "behavior miniai@1.0.0#"
-  miniai_behavior_position)
+string(FIND "${lock_text}" "module arith@1.0.0#" arith_dependency_position)
+string(FIND "${lock_text}" "module tensor@1.0.0#" tensor_dependency_position)
+string(FIND "${lock_text}" "module nn@1.0.0#" nn_dependency_position)
+string(FIND "${lock_text}" "behavior arith@1.0.0#"
+  arith_behavior_position)
+string(FIND "${lock_text}" "behavior tensor@1.0.0#"
+  tensor_behavior_position)
 string(FIND "${lock_text}" "behavior edgevec@1.0.0#"
   edgevec_behavior_position)
-if(root_position EQUAL -1 OR bitmath_dependency_position EQUAL -1 OR
-   miniai_dependency_position EQUAL -1 OR bitmath_behavior_position EQUAL -1 OR
-   miniai_behavior_position EQUAL -1 OR edgevec_behavior_position EQUAL -1)
+if(root_position EQUAL -1 OR arith_dependency_position EQUAL -1 OR
+   tensor_dependency_position EQUAL -1 OR nn_dependency_position EQUAL -1 OR
+   arith_behavior_position EQUAL -1 OR
+   tensor_behavior_position EQUAL -1 OR edgevec_behavior_position EQUAL -1)
   message(FATAL_ERROR "lock file is incomplete:\n${lock_text}")
 endif()
 file(GLOB pending_lock_writes
@@ -358,13 +363,13 @@ if(pending_lock_writes)
 endif()
 
 expect_success("consume locked closure"
-  "${JOGGLE_LOCK_CONSUMER}" "${root}" "${lock}" "${JOGGLE_EDGEVEC}" 3)
+  "${JOGGLE_LOCK_CONSUMER}" "${root}" "${lock}" "${JOGGLE_EDGEVEC}" 4)
 
 expect_success("lock fixed closure"
   "${JOGGLE_CLI}" lock "${JOGGLE_FIXED}" --root "${root}" -o "${fixed_lock}")
 file(READ "${fixed_lock}" fixed_lock_text)
 string(FIND "${fixed_lock_text}" "root fixed@1.0.0#" fixed_root_position)
-string(FIND "${fixed_lock_text}" "module bitmath@1.0.0#"
+string(FIND "${fixed_lock_text}" "module arith@1.0.0#"
   fixed_dependency_position)
 string(FIND "${fixed_lock_text}" "behavior fixed@1.0.0#"
   fixed_behavior_position)
@@ -377,7 +382,7 @@ expect_success("consume locked fixed closure"
 
 set(conflict "${JOGGLE_PACKAGE_TEST_DIR}/conflict.joggle")
 file(WRITE "${conflict}" [=[joggle 1;
-module bitmath@1.0.0 {
+module arith@1.0.0 {
   type conflicting();
 }
 ]=])
@@ -392,7 +397,7 @@ if(conflict_result EQUAL 0)
 endif()
 
 expect_success("uninstall module"
-  "${JOGGLE_CLI}" uninstall bitmath@1.0.0 --root "${root}")
+  "${JOGGLE_CLI}" uninstall arith@1.0.0 --root "${root}")
 execute_process(
   COMMAND "${JOGGLE_CLI}" lock "${JOGGLE_EDGEVEC}" --root "${root}"
   RESULT_VARIABLE missing_result
@@ -404,7 +409,7 @@ if(missing_result EQUAL 0)
 endif()
 
 execute_process(
-  COMMAND "${JOGGLE_LOCK_CONSUMER}" "${root}" "${lock}" "${JOGGLE_EDGEVEC}" 3
+  COMMAND "${JOGGLE_LOCK_CONSUMER}" "${root}" "${lock}" "${JOGGLE_EDGEVEC}" 4
   RESULT_VARIABLE missing_locked_result
   OUTPUT_QUIET
   ERROR_QUIET

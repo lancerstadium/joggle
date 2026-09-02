@@ -24,7 +24,7 @@ int main() {
   compiler.add(R"(
     joggle 1;
     module control@1.0.0 {
-      import bitmath@1;
+      import arith@1;
       type other();
       op source<T: type>() -> T;
       op scope(body: region);
@@ -38,12 +38,12 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  const auto bitmath = compiler.module("bitmath");
+  const auto arith = compiler.module("arith");
   const auto control = compiler.module("control");
-  const auto word_schema = bitmath ? bitmath->type("word") : std::nullopt;
-  const auto add_schema = bitmath ? bitmath->operation("add") : std::nullopt;
-  const auto identity_schema =
-      bitmath ? bitmath->operation("identity") : std::nullopt;
+  const auto integer_schema = arith ? arith->type("integer") : std::nullopt;
+  const auto add_schema = arith ? arith->operation("add") : std::nullopt;
+  const auto cast_schema =
+      arith ? arith->operation("cast") : std::nullopt;
   const auto scope_schema =
       control ? control->operation("scope") : std::nullopt;
   const auto scope_value_schema =
@@ -53,30 +53,30 @@ int main() {
   const auto source_schema =
       control ? control->operation("source") : std::nullopt;
   const auto other_schema = control ? control->type("other") : std::nullopt;
-  if (!word_schema || !add_schema || !identity_schema || !scope_schema ||
+  if (!integer_schema || !add_schema || !cast_schema || !scope_schema ||
       !scope_value_schema || !branches_schema || !source_schema ||
       !other_schema) {
     return EXIT_FAILURE;
   }
-  compiler.bind(*word_schema,
+  compiler.bind(*integer_schema,
                 [](const joggle::Type&, joggle::Diagnostics&) { return true; });
-  const auto word = compiler.make(*word_schema, std::int64_t{8});
+  const auto integer = compiler.make(*integer_schema, std::int64_t{8});
   const auto other = compiler.make(*other_schema);
   auto graph = compiler.graph();
-  if (!word || !other || !graph) {
+  if (!integer || !other || !graph) {
     return EXIT_FAILURE;
   }
 
   std::optional<joggle::Operation> add;
   {
     auto edit = graph->edit();
-    const auto lhs = edit.argument(*word);
-    const auto rhs = edit.argument(*word);
+    const auto lhs = edit.argument(*integer);
+    const auto rhs = edit.argument(*integer);
     add = edit.append(*add_schema, {lhs, rhs});
 
     const auto scope = edit.append(*scope_schema);
     const auto body = edit.region(scope, "body");
-    edit.append(body, *identity_schema, {add->result(0)});
+    edit.append(body, *cast_schema, {add->result(0)});
 
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -96,9 +96,9 @@ int main() {
   ok &= expect(graph->all_operations().size() == 3U &&
                    graph->all_operations()[0].schema() == *add_schema &&
                    graph->all_operations()[1].schema() == *scope_schema &&
-                   graph->all_operations()[2].schema() == *identity_schema,
+                   graph->all_operations()[2].schema() == *cast_schema,
                "whole-graph traversal is preorder across nested regions");
-  ok &= expect(add && add->value().type() == *word,
+  ok &= expect(add && add->value().type() == *integer,
                "a single-result operation exposes its value directly");
   bool valueless_rejected = false;
   try {
@@ -128,7 +128,7 @@ int main() {
   {
     auto edit = graph->edit();
     inserted =
-        edit.insert(*add, *identity_schema, {graph->inputs()[0]});
+        edit.insert(*add, *cast_schema, {graph->inputs()[0]});
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
@@ -137,7 +137,7 @@ int main() {
   }
   ok &= expect(inserted &&
                    graph->operations().front().schema().name() ==
-                       "identity" &&
+                       "cast" &&
                    graph->operations()[1].schema().name() == "add",
                "a pass can insert a producer at an existing operation");
 
@@ -163,7 +163,7 @@ int main() {
   {
     auto edit = graph->edit();
     rolled_back =
-        edit.append(*add_schema, {graph->inputs()[0]}, {*word});
+        edit.append(*add_schema, {graph->inputs()[0]}, {*integer});
     joggle::Diagnostics diagnostics;
     ok &= expect(!edit.commit(diagnostics) && !diagnostics.ok() && rolled_back &&
                      !rolled_back->valid(),
@@ -174,14 +174,14 @@ int main() {
   ok &= expect(graph->operations().size() == 3U,
                "rollback restores the prior graph");
 
-  std::optional<joggle::Operation> first_identity;
-  std::optional<joggle::Operation> second_identity;
+  std::optional<joggle::Operation> first_cast;
+  std::optional<joggle::Operation> second_cast;
   {
     auto edit = graph->edit();
-    first_identity = edit.append(*identity_schema, {add->result(0)});
-    second_identity =
-        edit.append(*identity_schema, {first_identity->result(0)});
-    edit.output(first_identity->result(0));
+    first_cast = edit.append(*cast_schema, {add->result(0)});
+    second_cast =
+        edit.append(*cast_schema, {first_cast->result(0)});
+    edit.output(first_cast->result(0));
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
@@ -190,19 +190,19 @@ int main() {
   }
   {
     auto edit = graph->edit();
-    edit.replace(first_identity->result(0), add->result(0));
-    edit.erase(*first_identity);
+    edit.replace(first_cast->result(0), add->result(0));
+    edit.erase(*first_cast);
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
     }
   }
-  ok &= expect(first_identity && !first_identity->valid() && second_identity &&
+  ok &= expect(first_cast && !first_cast->valid() && second_cast &&
                    graph->outputs().size() == 1U &&
                    graph->outputs().front() == add->result(0) &&
-                   second_identity->operands()[0].defining_operation() &&
-                   second_identity->operands()[0]
+                   second_cast->operands()[0].defining_operation() &&
+                   second_cast->operands()[0]
                            .defining_operation()
                            ->schema()
                            .name() == "add",
@@ -210,7 +210,7 @@ int main() {
 
   auto structured = compiler.graph();
   std::optional<joggle::Operation> structured_scope;
-  std::optional<joggle::Operation> structured_identity;
+  std::optional<joggle::Operation> structured_cast;
   std::optional<joggle::Region> structured_region;
   std::optional<joggle::Value> structured_argument;
   if (!structured) {
@@ -219,9 +219,9 @@ int main() {
   {
     auto edit = structured->edit();
     structured_scope = edit.append(*scope_schema);
-    structured_region = edit.region(*structured_scope, "body", {*word});
+    structured_region = edit.region(*structured_scope, "body", {*integer});
     structured_argument = structured_region->arguments().front();
-    structured_identity = edit.append(*structured_region, *identity_schema,
+    structured_cast = edit.append(*structured_region, *cast_schema,
                                       {*structured_argument});
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -229,9 +229,9 @@ int main() {
       return EXIT_FAILURE;
     }
   }
-  ok &= expect(structured_region && structured_identity &&
+  ok &= expect(structured_region && structured_cast &&
                    structured_argument && structured_argument->is_argument() &&
-                   structured_identity->parent() == structured_region,
+                   structured_cast->parent() == structured_region,
                "a structured region directly owns arguments and operations");
 
   auto invalid_region = compiler.graph();
@@ -261,8 +261,8 @@ int main() {
     }
   }
   ok &= expect(structured->operations().empty() && structured_scope &&
-                   !structured_scope->valid() && structured_identity &&
-                   !structured_identity->valid() && structured_region &&
+                   !structured_scope->valid() && structured_cast &&
+                   !structured_cast->valid() && structured_region &&
                    !structured_region->valid() && structured_argument &&
                    !structured_argument->valid(),
                "erasing a structured operation removes its complete subtree");
@@ -276,11 +276,11 @@ int main() {
   }
   {
     auto edit = live_subtree->edit();
-    live_scope = edit.append(*scope_value_schema, {}, {*word});
-    const auto body = edit.region(*live_scope, "body", {*word});
+    live_scope = edit.append(*scope_value_schema, {}, {*integer});
+    const auto body = edit.region(*live_scope, "body", {*integer});
     const auto argument = body.arguments().front();
-    live_nested = edit.append(body, *identity_schema, {argument});
-    live_user = edit.append(*identity_schema, {live_scope->result(0)});
+    live_nested = edit.append(body, *cast_schema, {argument});
+    live_user = edit.append(*cast_schema, {live_scope->result(0)});
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
@@ -311,11 +311,11 @@ int main() {
   {
     auto edit = sibling_use->edit();
     const auto branches = edit.append(*branches_schema);
-    const auto left = edit.region(branches, "left", {*word});
-    const auto right = edit.region(branches, "right", {*word});
+    const auto left = edit.region(branches, "left", {*integer});
+    const auto right = edit.region(branches, "right", {*integer});
     const auto produced =
-        edit.append(left, *identity_schema, {left.arguments().front()});
-    edit.append(right, *identity_schema, {produced.result(0)});
+        edit.append(left, *cast_schema, {left.arguments().front()});
+    edit.append(right, *cast_schema, {produced.result(0)});
     joggle::Diagnostics diagnostics;
     sibling_use_rejected = !edit.commit(diagnostics) && !diagnostics.ok();
   }
@@ -331,11 +331,11 @@ int main() {
   std::optional<joggle::Operation> inserted_tail;
   {
     auto edit = nested_insert->edit();
-    const auto input = edit.argument(*word);
+    const auto input = edit.argument(*integer);
     const auto scope = edit.append(*scope_schema);
     inserted_region = edit.region(scope, "body");
-    inserted_tail = edit.append(*inserted_region, *identity_schema, {input});
-    inserted_head = edit.insert(*inserted_tail, *identity_schema, {input});
+    inserted_tail = edit.append(*inserted_region, *cast_schema, {input});
+    inserted_head = edit.insert(*inserted_tail, *cast_schema, {input});
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
@@ -384,9 +384,9 @@ int main() {
   bool invalid_rejected = false;
   {
     auto edit = invalid->edit();
-    const auto lhs = edit.argument(*word);
+    const auto lhs = edit.argument(*integer);
     const auto rhs = edit.argument(*other);
-    edit.append(*add_schema, {lhs, rhs}, {*word});
+    edit.append(*add_schema, {lhs, rhs}, {*integer});
     joggle::Diagnostics diagnostics;
     invalid_rejected = !edit.commit(diagnostics) && !diagnostics.ok();
   }

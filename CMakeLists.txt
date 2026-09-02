@@ -51,19 +51,19 @@ target_link_libraries(joggle PRIVATE ${CMAKE_DL_LIBS})
 include(cmake/JoggleBehavior.cmake)
 
 if(JOGGLE_BUILD_EXAMPLES OR JOGGLE_BUILD_TESTS)
-  joggle_add_behavior(joggle_bitmath_behavior
-    MODULE examples/bitmath.joggle
-    SOURCES examples/bitmath_behavior.cpp)
-  set_target_properties(joggle_bitmath_behavior PROPERTIES
+  joggle_add_behavior(joggle_arith_behavior
+    MODULE examples/arith.joggle
+    SOURCES examples/arith_behavior.cpp)
+  set_target_properties(joggle_arith_behavior PROPERTIES
     PREFIX ""
-    OUTPUT_NAME "bitmath_behavior"
+    OUTPUT_NAME "arith_behavior"
   )
-  joggle_add_behavior(joggle_miniai_behavior
-    MODULE examples/miniai.joggle
-    SOURCES examples/miniai_behavior.cpp)
-  set_target_properties(joggle_miniai_behavior PROPERTIES
+  joggle_add_behavior(joggle_tensor_behavior
+    MODULE examples/tensor.joggle
+    SOURCES examples/tensor_behavior.cpp)
+  set_target_properties(joggle_tensor_behavior PROPERTIES
     PREFIX ""
-    OUTPUT_NAME "miniai_behavior"
+    OUTPUT_NAME "tensor_behavior"
   )
   joggle_add_behavior(joggle_edgevec_behavior
     MODULE examples/edgevec.joggle
@@ -130,21 +130,21 @@ if(JOGGLE_BUILD_TESTS)
   add_executable(joggle_module_test tests/module_test.cpp)
   target_link_libraries(joggle_module_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_module_test PRIVATE
-    JOGGLE_TEST_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/bitmath.joggle"
+    JOGGLE_TEST_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/arith.joggle"
   )
   add_test(NAME module COMMAND joggle_module_test)
 
   add_executable(joggle_type_test tests/type_test.cpp)
   target_link_libraries(joggle_type_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_type_test PRIVATE
-    JOGGLE_TEST_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/bitmath.joggle"
+    JOGGLE_TEST_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/arith.joggle"
   )
   add_test(NAME type COMMAND joggle_type_test)
 
   add_executable(joggle_graph_test tests/graph_test.cpp)
   target_link_libraries(joggle_graph_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_graph_test PRIVATE
-    JOGGLE_TEST_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/bitmath.joggle"
+    JOGGLE_TEST_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/arith.joggle"
   )
   add_test(NAME graph COMMAND joggle_graph_test)
 
@@ -169,7 +169,7 @@ if(JOGGLE_BUILD_TESTS)
   add_executable(joggle_behavior_test tests/behavior_test.cpp)
   target_link_libraries(joggle_behavior_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_behavior_test PRIVATE
-    JOGGLE_TEST_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/bitmath.joggle"
+    JOGGLE_TEST_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/arith.joggle"
   )
   add_test(NAME behavior COMMAND joggle_behavior_test)
 
@@ -206,33 +206,35 @@ if(JOGGLE_BUILD_TESTS)
   add_executable(joggle_pass_test tests/pass_test.cpp)
   target_link_libraries(joggle_pass_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_pass_test PRIVATE
-    JOGGLE_BITMATH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/bitmath.joggle"
-    JOGGLE_BITMATH_BEHAVIOR="$<TARGET_FILE:joggle_bitmath_behavior>"
+    JOGGLE_ARITH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/arith.joggle"
+    JOGGLE_ARITH_BEHAVIOR="$<TARGET_FILE:joggle_arith_behavior>"
   )
   add_test(NAME pass COMMAND joggle_pass_test)
 
-  add_executable(joggle_miniai_test tests/miniai_test.cpp)
-  target_link_libraries(joggle_miniai_test PRIVATE joggle::joggle)
-  target_compile_definitions(joggle_miniai_test PRIVATE
-    JOGGLE_BITMATH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/bitmath.joggle"
-    JOGGLE_MINIAI_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/miniai.joggle"
-    JOGGLE_FEEDFORWARD_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/feedforward.joggle"
+  add_executable(joggle_tensor_nn_test tests/tensor_nn_test.cpp)
+  target_link_libraries(joggle_tensor_nn_test PRIVATE joggle::joggle)
+  target_compile_definitions(joggle_tensor_nn_test PRIVATE
+    JOGGLE_ARITH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/arith.joggle"
+    JOGGLE_TENSOR_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/tensor.joggle"
+    JOGGLE_NN_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/nn.joggle"
+    JOGGLE_MLP_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/mlp.joggle"
     JOGGLE_FIXED_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/fixed.joggle"
-    JOGGLE_BITMATH_BEHAVIOR="$<TARGET_FILE:joggle_bitmath_behavior>"
-    JOGGLE_MINIAI_BEHAVIOR="$<TARGET_FILE:joggle_miniai_behavior>"
+    JOGGLE_ARITH_BEHAVIOR="$<TARGET_FILE:joggle_arith_behavior>"
+    JOGGLE_TENSOR_BEHAVIOR="$<TARGET_FILE:joggle_tensor_behavior>"
   )
-  add_test(NAME miniai COMMAND joggle_miniai_test)
+  add_test(NAME tensor_nn COMMAND joggle_tensor_nn_test)
 
   add_executable(joggle_edgevec_test tests/edgevec_test.cpp)
   target_link_libraries(joggle_edgevec_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_edgevec_test PRIVATE
-    JOGGLE_BITMATH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/bitmath.joggle"
-    JOGGLE_MINIAI_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/miniai.joggle"
-    JOGGLE_FEEDFORWARD_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/feedforward.joggle"
+    JOGGLE_ARITH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/arith.joggle"
+    JOGGLE_TENSOR_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/tensor.joggle"
+    JOGGLE_NN_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/nn.joggle"
+    JOGGLE_MLP_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/mlp.joggle"
     JOGGLE_FIXED_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/fixed.joggle"
     JOGGLE_EDGEVEC_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/edgevec.joggle"
-    JOGGLE_BITMATH_BEHAVIOR="$<TARGET_FILE:joggle_bitmath_behavior>"
-    JOGGLE_MINIAI_BEHAVIOR="$<TARGET_FILE:joggle_miniai_behavior>"
+    JOGGLE_ARITH_BEHAVIOR="$<TARGET_FILE:joggle_arith_behavior>"
+    JOGGLE_TENSOR_BEHAVIOR="$<TARGET_FILE:joggle_tensor_behavior>"
     JOGGLE_FIXED_BEHAVIOR="$<TARGET_FILE:joggle_fixed_behavior>"
     JOGGLE_EDGEVEC_BEHAVIOR="$<TARGET_FILE:joggle_edgevec_behavior>"
   )
@@ -241,9 +243,9 @@ if(JOGGLE_BUILD_TESTS)
   add_executable(joggle_fixed_test tests/fixed_test.cpp)
   target_link_libraries(joggle_fixed_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_fixed_test PRIVATE
-    JOGGLE_BITMATH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/bitmath.joggle"
+    JOGGLE_ARITH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/arith.joggle"
     JOGGLE_FIXED_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/fixed.joggle"
-    JOGGLE_BITMATH_BEHAVIOR="$<TARGET_FILE:joggle_bitmath_behavior>"
+    JOGGLE_ARITH_BEHAVIOR="$<TARGET_FILE:joggle_arith_behavior>"
     JOGGLE_FIXED_BEHAVIOR="$<TARGET_FILE:joggle_fixed_behavior>"
   )
   add_test(NAME fixed COMMAND joggle_fixed_test)
@@ -280,8 +282,9 @@ if(JOGGLE_BUILD_TESTS)
   add_test(NAME package_cli
     COMMAND ${CMAKE_COMMAND}
       -DJOGGLE_CLI=$<TARGET_FILE:joggle_cli>
-      -DJOGGLE_BITMATH=${CMAKE_CURRENT_SOURCE_DIR}/examples/bitmath.joggle
-      -DJOGGLE_MINIAI=${CMAKE_CURRENT_SOURCE_DIR}/examples/miniai.joggle
+      -DJOGGLE_ARITH=${CMAKE_CURRENT_SOURCE_DIR}/examples/arith.joggle
+      -DJOGGLE_TENSOR=${CMAKE_CURRENT_SOURCE_DIR}/examples/tensor.joggle
+      -DJOGGLE_NN=${CMAKE_CURRENT_SOURCE_DIR}/examples/nn.joggle
       -DJOGGLE_EDGEVEC=${CMAKE_CURRENT_SOURCE_DIR}/examples/edgevec.joggle
       -DJOGGLE_FIXED=${CMAKE_CURRENT_SOURCE_DIR}/examples/fixed.joggle
       -DJOGGLE_PACKAGE_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/test-packages
@@ -290,8 +293,8 @@ if(JOGGLE_BUILD_TESTS)
       -DJOGGLE_BEHAVIOR_LIBRARY=$<TARGET_FILE:joggle_test_behavior>
       -DJOGGLE_BEHAVIOR_FAILURE=$<TARGET_FILE:joggle_test_behavior_failure>
       -DJOGGLE_BEHAVIOR_LOADER=$<TARGET_FILE:joggle_behavior_loader_test>
-      -DJOGGLE_BITMATH_BEHAVIOR=$<TARGET_FILE:joggle_bitmath_behavior>
-      -DJOGGLE_MINIAI_BEHAVIOR=$<TARGET_FILE:joggle_miniai_behavior>
+      -DJOGGLE_ARITH_BEHAVIOR=$<TARGET_FILE:joggle_arith_behavior>
+      -DJOGGLE_TENSOR_BEHAVIOR=$<TARGET_FILE:joggle_tensor_behavior>
       -DJOGGLE_EDGEVEC_BEHAVIOR=$<TARGET_FILE:joggle_edgevec_behavior>
       -DJOGGLE_FIXED_BEHAVIOR=$<TARGET_FILE:joggle_fixed_behavior>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/package_cli.cmake
@@ -300,14 +303,15 @@ if(JOGGLE_BUILD_TESTS)
   add_test(NAME vertical_cli
     COMMAND ${CMAKE_COMMAND}
       -DJOGGLE_CLI=$<TARGET_FILE:joggle_cli>
-      -DJOGGLE_BITMATH=${CMAKE_CURRENT_SOURCE_DIR}/examples/bitmath.joggle
+      -DJOGGLE_ARITH=${CMAKE_CURRENT_SOURCE_DIR}/examples/arith.joggle
       -DJOGGLE_FIXED=${CMAKE_CURRENT_SOURCE_DIR}/examples/fixed.joggle
-      -DJOGGLE_MINIAI=${CMAKE_CURRENT_SOURCE_DIR}/examples/miniai.joggle
-      -DJOGGLE_FEEDFORWARD=${CMAKE_CURRENT_SOURCE_DIR}/examples/feedforward.joggle
+      -DJOGGLE_TENSOR=${CMAKE_CURRENT_SOURCE_DIR}/examples/tensor.joggle
+      -DJOGGLE_NN=${CMAKE_CURRENT_SOURCE_DIR}/examples/nn.joggle
+      -DJOGGLE_MLP=${CMAKE_CURRENT_SOURCE_DIR}/examples/mlp.joggle
       -DJOGGLE_EDGEVEC=${CMAKE_CURRENT_SOURCE_DIR}/examples/edgevec.joggle
-      -DJOGGLE_BITMATH_BEHAVIOR=$<TARGET_FILE:joggle_bitmath_behavior>
+      -DJOGGLE_ARITH_BEHAVIOR=$<TARGET_FILE:joggle_arith_behavior>
       -DJOGGLE_FIXED_BEHAVIOR=$<TARGET_FILE:joggle_fixed_behavior>
-      -DJOGGLE_MINIAI_BEHAVIOR=$<TARGET_FILE:joggle_miniai_behavior>
+      -DJOGGLE_TENSOR_BEHAVIOR=$<TARGET_FILE:joggle_tensor_behavior>
       -DJOGGLE_EDGEVEC_BEHAVIOR=$<TARGET_FILE:joggle_edgevec_behavior>
       -DJOGGLE_VERTICAL_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/test-vertical
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/vertical_cli.cmake

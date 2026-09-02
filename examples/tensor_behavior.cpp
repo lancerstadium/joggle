@@ -2,7 +2,6 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
-#include <string>
 #include <vector>
 
 #include <joggle/joggle.h>
@@ -36,72 +35,52 @@ std::optional<std::size_t> elements(const joggle::Type& type,
 
 bool bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
-  const auto bitmath = compiler.module("bitmath");
-  const auto format =
-      bitmath ? bitmath->interface("numeric_format") : std::nullopt;
   const auto tensor_type = module.type("tensor");
-  const auto tensor_data = module.attribute("tensor_data");
-  const auto input = module.operation("input");
-  const auto parameter = module.operation("parameter");
+  const auto dense = module.attribute("dense");
+  const auto constant = module.operation("constant");
   const auto reshape = module.operation("reshape");
-  if (!format || !tensor_type || !tensor_data || !input || !parameter ||
-      !reshape) {
-    diagnostics.report("miniai behavior does not match its linked schema");
+  if (!tensor_type || !dense || !constant || !reshape) {
+    diagnostics.report("tensor behavior does not match its linked schema");
     return false;
   }
 
   compiler.bind(
       *tensor_type,
-      [&compiler, format = *format, tensor_schema = *tensor_type](
+      [tensor_schema = *tensor_type](
           const joggle::Type& type, joggle::Diagnostics& type_diagnostics) {
-        const auto element = type.get<joggle::Type>("element");
         const auto dimensions = shape(type, tensor_schema);
-        if (!element || !dimensions || dimensions->empty() ||
+        if (!dimensions || dimensions->empty() ||
             !std::all_of(
                 dimensions->begin(), dimensions->end(),
-                [](std::int64_t dimension) { return dimension > 0; }) ||
-            !compiler.conforms(element->schema(), format)) {
+                [](std::int64_t dimension) { return dimension > 0; })) {
           type_diagnostics.report(
-              "miniai.tensor needs a numeric element format and "
-              "positive dimensions");
+              "tensor.tensor needs positive dimensions");
           return false;
         }
         return true;
       });
-  compiler.bind(*tensor_data,
+  compiler.bind(*dense,
                 [](const joggle::Attribute& data,
                    joggle::Diagnostics& attribute_diagnostics) {
                   const auto values =
                       data.get<std::vector<std::int64_t>>("values");
                   if (!values || values->empty()) {
                     attribute_diagnostics.report(
-                        "miniai.tensor_data needs at least one value");
-                    return false;
-                  }
-                  return true;
-                });
-  compiler.bind(*input,
-                [](const joggle::Operation& operation,
-                   joggle::Diagnostics& operation_diagnostics) {
-                  const auto name = operation.get<std::string>("name");
-                  if (!name || name->empty()) {
-                    operation_diagnostics.report(
-                        "miniai.input needs a non-empty name");
+                        "tensor.dense needs at least one value");
                     return false;
                   }
                   return true;
                 });
   compiler.bind(
-      *parameter,
+      *constant,
       [tensor_schema = *tensor_type,
-       data_schema = *tensor_data](const joggle::Operation& operation,
-                                   joggle::Diagnostics& operation_diagnostics) {
-        const auto name = operation.get<std::string>("name");
-        const auto data = operation.get<joggle::Attribute>("data");
-        if (!name || name->empty() || !data || data->schema() != data_schema ||
+       data_schema = *dense](const joggle::Operation& operation,
+                            joggle::Diagnostics& operation_diagnostics) {
+        const auto data = operation.get<joggle::Attribute>("value");
+        if (!data || data->schema() != data_schema ||
             operation.results().size() != 1U) {
           operation_diagnostics.report(
-              "miniai.parameter needs a name, tensor_data, and one result");
+              "tensor.constant needs dense data and one result");
           return false;
         }
         const auto expected =
@@ -109,7 +88,7 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
         const auto values = data->get<std::vector<std::int64_t>>("values");
         if (!expected || !values || values->size() != *expected) {
           operation_diagnostics.report(
-              "miniai.parameter data size does not match its result tensor");
+              "tensor.constant data size does not match its result tensor");
           return false;
         }
         return true;
@@ -122,7 +101,7 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
         if (operation.operands().size() != 1U ||
             operation.results().size() != 1U) {
           operation_diagnostics.report(
-              "miniai.reshape needs one input and one result");
+              "tensor.reshape needs one input and one result");
           return false;
         }
         const auto input_elements =
@@ -132,7 +111,7 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
         if (!input_elements || !output_elements ||
             *input_elements != *output_elements) {
           operation_diagnostics.report(
-              "miniai.reshape must preserve the element count");
+              "tensor.reshape must preserve the element count");
           return false;
         }
         return true;

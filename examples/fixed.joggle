@@ -1,12 +1,12 @@
 joggle 1;
 
 module fixed@1.0.0 {
-  import bitmath@1 as math;
+  import arith@1;
 
   interface codec: type {
     encode(value: f64) -> i64;
     decode(bits: i64) -> f64;
   }
 
-  type q(width: i64, fraction: i64, signed: bool = true) : math.numeric_format, codec;
+  type q(width: i64, fraction: i64, signed: bool = true) : arith.numeric_format, codec;
 }

@@ -21,11 +21,11 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
   const auto dot = module.operation("dot");
   const auto clamp = module.operation("clamp");
-  const auto miniai = compiler.module("miniai");
-  const auto dense = miniai ? miniai->operation("dense") : std::nullopt;
-  const auto relu = miniai ? miniai->operation("relu") : std::nullopt;
+  const auto nn = compiler.module("nn");
+  const auto linear = nn ? nn->operation("linear") : std::nullopt;
+  const auto relu = nn ? nn->operation("relu") : std::nullopt;
   const auto lower = module.pass("lower");
-  if (!dot || !clamp || !dense || !relu || !lower) {
+  if (!dot || !clamp || !linear || !relu || !lower) {
     diagnostics.report("edgevec behavior does not match its linked schema");
     return false;
   }
@@ -53,12 +53,12 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
 
   compiler.bind(
       *lower,
-      [dot = *dot, clamp = *clamp, dense = *dense, relu = *relu](
+      [dot = *dot, clamp = *clamp, linear = *linear, relu = *relu](
           joggle::Graph& graph, joggle::Diagnostics& pass_diagnostics) {
         const auto operations = graph.all_operations();
         const bool needed = std::any_of(
             operations.begin(), operations.end(), [&](const auto& operation) {
-              return operation.schema() == dense || operation.schema() == relu;
+              return operation.schema() == linear || operation.schema() == relu;
             });
         if (!needed) {
           return true;
@@ -67,7 +67,7 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
         auto edit = graph.edit();
         for (const joggle::Operation& operation : operations) {
           const joggle::Module::OperationDecl* target = nullptr;
-          if (operation.schema() == dense) {
+          if (operation.schema() == linear) {
             target = &dot;
           } else if (operation.schema() == relu) {
             target = &clamp;

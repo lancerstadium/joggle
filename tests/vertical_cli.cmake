@@ -1,7 +1,7 @@
 foreach(argument IN ITEMS
-    JOGGLE_CLI JOGGLE_BITMATH JOGGLE_FIXED JOGGLE_MINIAI JOGGLE_FEEDFORWARD
-    JOGGLE_EDGEVEC JOGGLE_BITMATH_BEHAVIOR JOGGLE_FIXED_BEHAVIOR
-    JOGGLE_MINIAI_BEHAVIOR JOGGLE_EDGEVEC_BEHAVIOR JOGGLE_VERTICAL_TEST_DIR)
+    JOGGLE_CLI JOGGLE_ARITH JOGGLE_FIXED JOGGLE_TENSOR JOGGLE_NN JOGGLE_MLP
+    JOGGLE_EDGEVEC JOGGLE_ARITH_BEHAVIOR JOGGLE_FIXED_BEHAVIOR
+    JOGGLE_TENSOR_BEHAVIOR JOGGLE_EDGEVEC_BEHAVIOR JOGGLE_VERTICAL_TEST_DIR)
   if(NOT DEFINED ${argument})
     message(FATAL_ERROR "vertical CLI test is missing ${argument}")
   endif()
@@ -27,8 +27,8 @@ function(expect_canonical source)
 endfunction()
 
 foreach(source IN ITEMS
-    "${JOGGLE_BITMATH}" "${JOGGLE_FIXED}" "${JOGGLE_MINIAI}"
-    "${JOGGLE_FEEDFORWARD}" "${JOGGLE_EDGEVEC}")
+    "${JOGGLE_ARITH}" "${JOGGLE_FIXED}" "${JOGGLE_TENSOR}" "${JOGGLE_NN}"
+    "${JOGGLE_MLP}" "${JOGGLE_EDGEVEC}")
   expect_canonical("${source}")
 endforeach()
 
@@ -47,14 +47,15 @@ function(install_module source)
   endif()
 endfunction()
 
-install_module("${JOGGLE_BITMATH}" "${JOGGLE_BITMATH_BEHAVIOR}")
+install_module("${JOGGLE_ARITH}" "${JOGGLE_ARITH_BEHAVIOR}")
 install_module("${JOGGLE_FIXED}" "${JOGGLE_FIXED_BEHAVIOR}")
-install_module("${JOGGLE_MINIAI}" "${JOGGLE_MINIAI_BEHAVIOR}")
-install_module("${JOGGLE_FEEDFORWARD}")
+install_module("${JOGGLE_TENSOR}" "${JOGGLE_TENSOR_BEHAVIOR}")
+install_module("${JOGGLE_NN}")
+install_module("${JOGGLE_MLP}")
 install_module("${JOGGLE_EDGEVEC}" "${JOGGLE_EDGEVEC_BEHAVIOR}")
 
 execute_process(
-  COMMAND "${JOGGLE_CLI}" check "${JOGGLE_FEEDFORWARD}"
+  COMMAND "${JOGGLE_CLI}" check "${JOGGLE_MLP}"
           --root "${JOGGLE_VERTICAL_TEST_DIR}"
   RESULT_VARIABLE check_result
   ERROR_VARIABLE check_error
@@ -64,9 +65,9 @@ if(NOT check_result EQUAL 0)
 endif()
 
 execute_process(
-  COMMAND "${JOGGLE_CLI}" lock "${JOGGLE_FEEDFORWARD}"
+  COMMAND "${JOGGLE_CLI}" lock "${JOGGLE_MLP}"
           --root "${JOGGLE_VERTICAL_TEST_DIR}"
-          -o "${JOGGLE_VERTICAL_TEST_DIR}/feedforward.lock"
+          -o "${JOGGLE_VERTICAL_TEST_DIR}/mlp.lock"
   RESULT_VARIABLE lock_result
   ERROR_VARIABLE lock_error
 )
@@ -76,38 +77,39 @@ endif()
 
 function(lower_graph graph expected_format output)
   execute_process(
-    COMMAND "${JOGGLE_CLI}" run "${JOGGLE_FEEDFORWARD}" "${graph}"
+    COMMAND "${JOGGLE_CLI}" run "${JOGGLE_MLP}" "${graph}"
             edgevec.lower --with "${JOGGLE_EDGEVEC}"
             --root "${JOGGLE_VERTICAL_TEST_DIR}"
-            --load-behavior "bitmath=${JOGGLE_BITMATH_BEHAVIOR}"
+            --load-behavior "arith=${JOGGLE_ARITH_BEHAVIOR}"
             --load-behavior "fixed=${JOGGLE_FIXED_BEHAVIOR}"
-            --load-behavior "miniai=${JOGGLE_MINIAI_BEHAVIOR}"
+            --load-behavior "tensor=${JOGGLE_TENSOR_BEHAVIOR}"
             --load-behavior "edgevec=${JOGGLE_EDGEVEC_BEHAVIOR}"
             -o "${output}"
     RESULT_VARIABLE result
     ERROR_VARIABLE error
   )
   if(NOT result EQUAL 0)
-    message(FATAL_ERROR "cannot lower feedforward.${graph}:\n${error}")
+    message(FATAL_ERROR "cannot lower mlp.${graph}:\n${error}")
   endif()
 
   file(READ "${output}" lowered)
   string(FIND "${lowered}"
-    "module feedforward_${graph}_compiled@1.0.0" module_position)
-  string(FIND "${lowered}" "graph ${graph}()" graph_position)
-  string(FIND "${lowered}" "miniai.reshape(" reshape_position)
-  string(FIND "${lowered}" "miniai.dense(" dense_position)
-  string(FIND "${lowered}" "miniai.relu(" relu_position)
+    "module mlp_${graph}_compiled@1.0.0" module_position)
+  string(FIND "${lowered}" "graph ${graph}(" graph_position)
+  string(FIND "${lowered}" "tensor.constant(" constant_position)
+  string(FIND "${lowered}" "tensor.reshape(" reshape_position)
+  string(FIND "${lowered}" "nn.linear(" linear_position)
+  string(FIND "${lowered}" "nn.relu(" relu_position)
   string(FIND "${lowered}" "edgevec.dot(" dot_position)
   string(FIND "${lowered}" "edgevec.clamp(" clamp_position)
   string(FIND "${lowered}" "${expected_format}" format_position)
   if(module_position EQUAL -1 OR graph_position EQUAL -1 OR
-     reshape_position EQUAL -1 OR
+     constant_position EQUAL -1 OR reshape_position EQUAL -1 OR
      dot_position EQUAL -1 OR
      clamp_position EQUAL -1 OR format_position EQUAL -1 OR
-     NOT dense_position EQUAL -1 OR NOT relu_position EQUAL -1)
+     NOT linear_position EQUAL -1 OR NOT relu_position EQUAL -1)
     message(FATAL_ERROR
-      "lowered feedforward.${graph} is not one ordinary graph:\n${lowered}")
+      "lowered mlp.${graph} is not one ordinary graph:\n${lowered}")
   endif()
 
   execute_process(
@@ -118,7 +120,7 @@ function(lower_graph graph expected_format output)
   )
   if(NOT check_output_result EQUAL 0)
     message(FATAL_ERROR
-      "lowered feedforward.${graph} cannot be loaded again:\n${check_output_error}")
+      "lowered mlp.${graph} cannot be loaded again:\n${check_output_error}")
   endif()
 
   execute_process(
@@ -129,7 +131,7 @@ function(lower_graph graph expected_format output)
   )
   if(NOT install_output_result EQUAL 0)
     message(FATAL_ERROR
-      "lowered feedforward.${graph} cannot coexist with its source Module:\n"
+      "lowered mlp.${graph} cannot coexist with its source Module:\n"
       "${install_output_error}")
   endif()
 
@@ -142,17 +144,17 @@ function(lower_graph graph expected_format output)
   )
   if(NOT replay_result EQUAL 0)
     message(FATAL_ERROR
-      "lowered feedforward.${graph} cannot run again:\n${replay_error}")
+      "lowered mlp.${graph} cannot run again:\n${replay_error}")
   endif()
   file(READ "${replayed}" replayed_text)
   if(NOT replayed_text STREQUAL lowered)
     message(FATAL_ERROR
-      "replaying feedforward.${graph} changed its derived Module identity:\n"
+      "replaying mlp.${graph} changed its derived Module identity:\n"
       "${replayed_text}")
   endif()
 endfunction()
 
-lower_graph(main "bitmath.word<8>"
-  "${JOGGLE_VERTICAL_TEST_DIR}/word.joggle")
+lower_graph(main "arith.integer<8>"
+  "${JOGGLE_VERTICAL_TEST_DIR}/integer.joggle")
 lower_graph(fixed "fixed.q<8, 4>"
   "${JOGGLE_VERTICAL_TEST_DIR}/fixed.joggle")

@@ -19,9 +19,10 @@ bool expect(bool condition, std::string_view message) {
 
 int main() {
   joggle::Compiler compiler;
-  compiler.load(JOGGLE_BITMATH_MODULE);
-  compiler.load(JOGGLE_MINIAI_MODULE);
-  compiler.load(JOGGLE_FEEDFORWARD_MODULE);
+  compiler.load(JOGGLE_ARITH_MODULE);
+  compiler.load(JOGGLE_TENSOR_MODULE);
+  compiler.load(JOGGLE_NN_MODULE);
+  compiler.load(JOGGLE_MLP_MODULE);
   compiler.load(JOGGLE_FIXED_MODULE);
   compiler.load(JOGGLE_EDGEVEC_MODULE);
   if (!compiler.link()) {
@@ -30,15 +31,15 @@ int main() {
   }
 
   const auto edgevec = compiler.module("edgevec");
-  if (!edgevec || !compiler.load_behavior("bitmath", JOGGLE_BITMATH_BEHAVIOR) ||
-      !compiler.load_behavior("miniai", JOGGLE_MINIAI_BEHAVIOR) ||
+  if (!edgevec || !compiler.load_behavior("arith", JOGGLE_ARITH_BEHAVIOR) ||
+      !compiler.load_behavior("tensor", JOGGLE_TENSOR_BEHAVIOR) ||
       !compiler.load_behavior("fixed", JOGGLE_FIXED_BEHAVIOR) ||
       !compiler.load_behavior("edgevec", JOGGLE_EDGEVEC_BEHAVIOR)) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
 
-  auto graph = compiler.graph("feedforward.main");
+  auto graph = compiler.graph("mlp.main");
   const auto dot = edgevec->operation("dot");
   const auto clamp = edgevec->operation("clamp");
   const auto lane_op = edgevec->interface("lane_op");
@@ -51,15 +52,15 @@ int main() {
 
   bool ok = true;
   ok &= expect(compiler.run(*graph, "edgevec.lower"),
-               "a target Module lowers an imported MiniAI graph");
+               "a target Module lowers imported NN operations");
   const auto operations = graph->operations();
-  ok &= expect(operations.size() == 6U && operations[4].schema() == *dot &&
-                   operations[5].schema() == *clamp &&
+  ok &= expect(operations.size() == 5U && operations[3].schema() == *dot &&
+                   operations[4].schema() == *clamp &&
                    graph->outputs().size() == 1U &&
-                   graph->outputs().front() == operations[5].result(0),
+                   graph->outputs().front() == operations[4].result(0),
                "lowering preserves order while replacing target operations");
-  const auto dot_lanes = compiler.call<std::int64_t>(operations[4], *lanes);
-  const auto clamp_lanes = compiler.call<std::int64_t>(operations[5], *lanes);
+  const auto dot_lanes = compiler.call<std::int64_t>(operations[3], *lanes);
+  const auto clamp_lanes = compiler.call<std::int64_t>(operations[4], *lanes);
   ok &= expect(dot_lanes && clamp_lanes && *dot_lanes == 4 && *clamp_lanes == 4,
                "target metadata is exposed through its versioned interface");
   const auto estimate_cycles =
@@ -82,16 +83,16 @@ int main() {
                "a generic query consumes target-defined cycle semantics");
   ok &= expect(compiler.verify(*graph), "the lowered graph verifies");
 
-  auto fixed_graph = compiler.graph("feedforward.fixed");
+  auto fixed_graph = compiler.graph("mlp.fixed");
   ok &=
       expect(fixed_graph && compiler.run(*fixed_graph, "edgevec.lower") &&
                  compiler.verify(*fixed_graph) &&
-                 fixed_graph->operations()[4].schema() == *dot &&
-                 fixed_graph->operations()[5].schema() == *clamp,
+                 fixed_graph->operations()[3].schema() == *dot &&
+                 fixed_graph->operations()[4].schema() == *clamp,
              "the same target pass lowers a graph using a third-party format");
 
   auto invalid_edit = graph->edit();
-  invalid_edit.set(operations[4], "lanes", std::int64_t{0});
+  invalid_edit.set(operations[3], "lanes", std::int64_t{0});
   joggle::Diagnostics invalid_diagnostics;
   const bool invalid_committed = invalid_edit.commit(invalid_diagnostics);
   const bool invalid_verified = invalid_committed && compiler.verify(*graph);
@@ -101,8 +102,8 @@ int main() {
                        "lane count must be positive") != std::string::npos &&
                    lane_diagnostics.back().source &&
                    lane_diagnostics.back().source->source.find(
-                       "feedforward.joggle") != std::string::npos &&
-                   lane_diagnostics.back().source->begin.line == 19U,
+                       "mlp.joggle") != std::string::npos &&
+                   lane_diagnostics.back().source->begin.line == 13U,
                "lowered operations preserve source diagnostics");
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }
