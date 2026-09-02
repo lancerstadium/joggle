@@ -276,7 +276,13 @@ private:
       Compiler&, std::span<detail::PassValue>, Diagnostics&)>;
 
 public:
+  struct EvaluationLimits {
+    std::size_t steps = 100000;
+    std::size_t depth = 256;
+  };
+
   Compiler();
+  explicit Compiler(EvaluationLimits limits);
   ~Compiler();
   Compiler(Compiler&&) noexcept;
   Compiler& operator=(Compiler&&) noexcept;
@@ -294,6 +300,7 @@ public:
   bool link();
   bool ok() const;
   bool linked() const;
+  EvaluationLimits evaluation_limits() const;
 
   std::optional<Module> module(std::string_view name) const;
   std::vector<Module> modules() const;

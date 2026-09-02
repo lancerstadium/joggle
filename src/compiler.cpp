@@ -681,10 +681,14 @@ struct Compiler::State {
   std::map<std::string, PassFunction, std::less<>> passes;
   std::set<std::string, std::less<>> constructing_types;
   std::set<std::string, std::less<>> evaluating_functions;
+  EvaluationLimits evaluation_limits;
   bool linked = false;
 };
 
-Compiler::Compiler() : state_(std::make_unique<State>()) {
+Compiler::Compiler() : Compiler(EvaluationLimits{}) {}
+
+Compiler::Compiler(EvaluationLimits limits) : state_(std::make_unique<State>()) {
+  state_->evaluation_limits = limits;
   auto prelude = parse_module(detail::prelude_module_source(),
                               state_->diagnostics, "<prelude>");
   if (prelude) {
@@ -1998,6 +2002,10 @@ bool Compiler::link() {
 bool Compiler::ok() const { return state_->diagnostics.ok(); }
 
 bool Compiler::linked() const { return state_->linked; }
+
+Compiler::EvaluationLimits Compiler::evaluation_limits() const {
+  return state_->evaluation_limits;
+}
 
 std::optional<Module> Compiler::module(std::string_view name) const {
   const auto found = state_->modules.find(name);

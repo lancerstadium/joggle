@@ -8,6 +8,10 @@
 namespace joggle::detail {
 
 struct CompilerAccess {
+  static Compiler::EvaluationLimits limits(const Compiler& compiler) {
+    return compiler.evaluation_limits();
+  }
+
   static std::optional<Type> make(Compiler& compiler,
                                   const Module::TypeDecl& schema,
                                   std::span<const ParameterValue> parameters) {

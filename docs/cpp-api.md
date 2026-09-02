@@ -38,6 +38,18 @@ auto value_type = compiler.make(*tensor, *i32,
 `Compiler::make`, `Type::get<T>`, and `Attribute::get<T>` support integers,
 reals, Booleans, strings, types, attributes, and homogeneous lists.
 
+Compile-time evaluation is bounded so malformed or adversarial Modules cannot
+make specialization unbounded. Applications may choose deterministic limits
+when constructing the compiler:
+
+```cpp
+joggle::Compiler compiler({.steps = 100'000, .depth = 256});
+```
+
+The step count covers expression evaluation and the depth bound covers nested
+expressions and text-defined calls. Exhaustion is a diagnostic; it never
+silently changes a Known expression into a Residual one.
+
 ## Known and Residual Values
 
 A `Value` always has a `Type`. Availability is an independent property:
@@ -129,10 +141,12 @@ Low-level Block construction exists for transformations and lossless formatting.
 
 ## Registered behavior
 
-External `fn` declarations may bind to typed C++ callables. A binding is keyed
-by the full Module symbol identity, not a textual name. The same declaration is
+External `fn` declarations may bind to typed C++ callables. A binding is keyed by
+the full Module symbol identity, not a textual name. The same declaration is
 used for Known evaluation and Residual calls; Joggle does not maintain separate
-operator, compile-time-function, operation, or pass namespaces.
+operator, compile-time-function, operation, or pass namespaces. `=` only binds
+a source name. `@(...)` adds a Known-result requirement to the ordinary
+expression evaluator; it does not select another callable or assignment rule.
 
 Compiler-oriented functions currently use `Compiler::bind` and
 `Compiler::run`. The registration surface is being generalized from the

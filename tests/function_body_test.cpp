@@ -1102,5 +1102,34 @@ module guarded_host@1.0.0 {
                    reports_guarded_host,
                "Residual branches never speculatively execute host code");
 
+  const joggle::Compiler::EvaluationLimits limits{2, 64};
+  joggle::Compiler bounded(limits);
+  bounded.add(R"(
+joggle 1;
+module bounded@1.0.0 {
+  type word(width: int);
+  fn source() -> word<1 + 2>;
+  fn main() -> word<3> {
+    return source();
+  }
+}
+)",
+              "bounded.joggle");
+  const bool bounded_linked = bounded.link();
+  const auto bounded_function =
+      bounded_linked ? bounded.function("bounded.main") : std::nullopt;
+  const bool reports_step_limit = std::any_of(
+      bounded.diagnostics().entries().begin(),
+      bounded.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find(
+                   "compile-time evaluation step limit exceeded") !=
+               std::string::npos;
+      });
+  ok &= expect(bounded.evaluation_limits().steps == limits.steps &&
+                   bounded.evaluation_limits().depth == limits.depth &&
+                   bounded_linked && !bounded_function && reports_step_limit,
+               "compile-time evaluation obeys deterministic resource limits");
+
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

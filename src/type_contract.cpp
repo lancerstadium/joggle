@@ -111,6 +111,7 @@ struct Environment {
       conforms;
   Evaluator evaluate;
   bool host_evaluation_forbidden = false;
+  Compiler::EvaluationLimits limits;
 };
 
 Environment environment(Compiler& compiler, bool allow_host_evaluation = true) {
@@ -137,7 +138,7 @@ Environment environment(Compiler& compiler, bool allow_host_evaluation = true) {
                           compiler, std::move(function), arguments);
                     }}
               : Environment::Evaluator{},
-          !allow_host_evaluation};
+          !allow_host_evaluation, CompilerAccess::limits(compiler)};
 }
 
 Environment environment(std::span<const Module> modules,
@@ -206,27 +207,29 @@ Environment environment(std::span<const Module> modules,
                           : std::nullopt;
           },
           conforms,
-          {}, false};
+          {}, false, {}};
 }
 
 class Solver {
 public:
   Solver(Environment environment, const Module::FunctionDecl& schema,
          Diagnostics& diagnostics, std::optional<SourceRange> source)
-      : environment_(std::move(environment)), schema_(&schema),
+      : limits_(environment.limits), environment_(std::move(environment)),
+        schema_(&schema),
         diagnostics_(diagnostics), source_(std::move(source)),
         contract_(&FunctionTypeAccess::get(schema)),
         scope_(schema.symbol().module_name()) {}
 
   Solver(Environment environment, const Module::TypeDecl& schema,
          Diagnostics& diagnostics)
-      : environment_(std::move(environment)), diagnostics_(diagnostics),
-        scope_(schema.symbol().module_name()) {}
+      : limits_(environment.limits), environment_(std::move(environment)),
+        diagnostics_(diagnostics), scope_(schema.symbol().module_name()) {}
 
   Solver(Environment environment, std::string scope, Diagnostics& diagnostics,
          std::optional<SourceRange> source)
-      : environment_(std::move(environment)), diagnostics_(diagnostics),
-        source_(std::move(source)), scope_(std::move(scope)) {}
+      : limits_(environment.limits), environment_(std::move(environment)),
+        diagnostics_(diagnostics), source_(std::move(source)),
+        scope_(std::move(scope)) {}
 
   std::optional<ParameterValue>
   evaluate_known(const Module::Expression& expression,
@@ -643,6 +646,26 @@ private:
   std::optional<ParameterValue> evaluate(const TypeExpression& expression,
                                          const Module::ParameterDecl& expected,
                                          const Bindings& bindings) {
+    if (steps_ >= limits_.steps) {
+      if (!budget_reported_) {
+        report("compile-time evaluation step limit exceeded");
+        budget_reported_ = true;
+      }
+      return std::nullopt;
+    }
+    ++steps_;
+    if (depth_ >= limits_.depth) {
+      if (!budget_reported_) {
+        report("compile-time evaluation depth limit exceeded");
+        budget_reported_ = true;
+      }
+      return std::nullopt;
+    }
+    ++depth_;
+    struct DepthGuard {
+      std::size_t& depth;
+      ~DepthGuard() { --depth; }
+    } guard{depth_};
     using Kind = TypeExpression::Kind;
     const auto domain = kernel_domain(expected.domain);
     if (!domain) {
@@ -1210,7 +1233,11 @@ private:
     return false;
   }
 
+  Compiler::EvaluationLimits limits_;
   Environment environment_;
+  std::size_t steps_ = 0;
+  std::size_t depth_ = 0;
+  bool budget_reported_ = false;
   const Module::FunctionDecl* schema_ = nullptr;
   Diagnostics& diagnostics_;
   std::optional<SourceRange> source_;

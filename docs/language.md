@@ -236,11 +236,11 @@ terminator    := "return" [ expressions ] ";"
 successor     := identifier "(" [ expressions ] ")"
 ```
 
-The implementation is currently migrating to this single grammar. Direct
-Known `if`, ordinary straight-line bodies, and explicit typed CFG blocks are
-implemented. The public owning IR is Function/Block/Instruction/Value.
-Closure parsing, residual `if`, loop syntax, and the unified staged evaluator
-remain under construction. Nested Region syntax and storage have been removed.
+The implementation uses this single expression grammar for direct Known `if`,
+ordinary straight-line bodies, Residual and nested `if`, and explicit typed CFG
+blocks. The public owning IR is Function/Block/Instruction/Value. Closure and
+loop syntax remain under construction. Nested Region syntax and storage have
+been removed.
 
 ## Canonical source
 
