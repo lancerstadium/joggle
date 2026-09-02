@@ -117,7 +117,7 @@ The Module declares its types, operations, and executable graphs without
 exposing C++ implementation mechanics:
 
 ```joggle
-type word(width: i64);
+type integer(width: i64);
 pass lower;
 ```
 
@@ -162,7 +162,7 @@ can add an explicit cache when its domain provides a meaningful cache key.
 A `graph` is a named program stored in a Module; its body is SSA:
 
 ```joggle
-graph main(%x: tensor<word<8>, [1, 4]>) -> tensor<word<8>, [1, 4]> {
+graph main(%x: tensor<integer<8>, [1, 4]>) -> tensor<integer<8>, [1, 4]> {
   %y = relu(%x);
   return %y;
 }
@@ -225,12 +225,13 @@ mapping policies are expressed as ordinary Modules. A target extension chooses
 its declarations and interfaces; the core supplies linking, SSA storage and
 verification, atomic edits, and pass execution.
 
-The examples exercise this boundary end to end. `bitmath.numeric_format` is the
-shared contract; the independent `word` and `fixed.q` types implement it;
-MiniAI tensors remain format-independent. Its `reshape` contract binds the
-result shape from a named list property, while optional C++ behavior checks the
-nonlinear element-count invariant. One `feedforward` Module stores the model
-over both formats. The `edgevec` Module then owns lane-aware operation
+The examples exercise this boundary end to end. `arith.numeric_format` is the
+shared contract; the independent `arith.integer` and `fixed.q` types implement
+it. `tensor.tensor` accepts any element type and owns constant/reshape
+semantics, while `nn` owns model-level `linear` and `relu` operations. The
+reshape contract binds the result shape from a named list property, while
+optional C++ behavior checks the nonlinear element-count invariant. One `mlp`
+Module stores the model over both formats. The `edgevec` Module owns lane-aware operation
 schemas, a typed operation interface, and one `lower` pass that rewrites either
 graph through `Graph::Edit`. Its interface defines `cycles()`, and an ordinary
 query sums that target-owned meaning.

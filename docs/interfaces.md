@@ -10,14 +10,14 @@ interface numeric_format: type {
   is_signed() -> bool;
 }
 
-type word(width: i64, signed: bool = false) : numeric_format;
+type integer(width: i64, signed: bool = false) : numeric_format;
 ```
 
 Marker interfaces omit the body. Imported interfaces use a qualified name:
 
 ```joggle
-import bitmath@1;
-op relu<T: type>(input: T) -> T : bitmath.elementwise;
+import arith@1;
+op relu<T: type>(input: T) -> T : arith.elementwise;
 ```
 
 The linker checks every conformance against the complete Module closure and the
@@ -30,15 +30,15 @@ not imply compatibility.
 The C++ API uses reflected declarations plus generic codecs:
 
 ```cpp
-auto bitmath = compiler.module("bitmath");
-auto word = bitmath->type("word");
+auto arith = compiler.module("arith");
+auto integer = arith->type("integer");
 
-compiler.bind(*word, "storage_bits",
+compiler.bind(*integer, "storage_bits",
   [](const joggle::Type& type) {
     return type.get<std::int64_t>("width");
   });
 
-auto i8 = compiler.make(*word, 8, false);
+auto i8 = compiler.make(*integer, 8, false);
 auto bits = compiler.call<std::int64_t>(*i8, "storage_bits");
 ```
 

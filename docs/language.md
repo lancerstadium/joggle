@@ -16,7 +16,7 @@ imports, so the program text itself determines its declaration dependencies.
 ```joggle
 joggle 1;
 
-module bitmath@1.0.0 {
+module arith@1.0.0 {
   import core@^1.2.0 as c;
 }
 ```
@@ -161,9 +161,9 @@ interface elementwise: op;
 A colon on a concrete declaration lists the interfaces it conforms to:
 
 ```joggle
-type word(width: i64, signed: bool = false) : numeric_format;
+type integer(width: i64, signed: bool = false) : numeric_format;
 
-op relu<T: type>(input: T) -> T : bitmath.elementwise;
+op relu<T: type>(input: T) -> T : arith.elementwise;
 ```
 
 The linker checks local and imported interface names, subject kinds, versions,
@@ -176,7 +176,7 @@ operation signatures.
 ```joggle
 type tensor(element: type, shape: list<i64>);
 
-attr tensor_data(values: list<i64>);
+attr dense(values: list<i64>);
 ```
 
 Primitive parameters may have defaults. Parameter counts, kinds, defaults, and
@@ -242,7 +242,7 @@ mechanism as an interface with methods.
 
 ```joggle
 pass canonicalize {
-  identity($input) => $input;
+  cast($input) => $input;
 }
 
 pass lower;
@@ -274,17 +274,14 @@ value, and named operation properties use `name = value` inside the call. Most
 result types are inferred from the operation contract:
 
 ```joggle
-graph forward() -> tensor<word<8>, [1, 3]> {
-  %input: tensor<word<8>, [1, 4]> = input(name = "input");
-  %weight: tensor<word<8>, [3, 4]> = parameter(
-    name = "weight",
-    data = tensor_data<[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]>
+graph forward(%input: tensor<integer<8>, [1, 4]>) -> tensor<integer<8>, [1, 3]> {
+  %weight: tensor<integer<8>, [3, 4]> = constant(
+    value = dense<[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]>
   );
-  %bias: tensor<word<8>, [3]> = parameter(
-    name = "bias",
-    data = tensor_data<[0, 0, 0]>
+  %bias: tensor<integer<8>, [3]> = constant(
+    value = dense<[0, 0, 0]>
   );
-  %output = dense(%input, %weight, %bias);
+  %output = linear(%input, %weight, %bias);
   return %output;
 }
 ```
@@ -346,5 +343,5 @@ capability lists.
 
 Module identity is `name + version + SHA-256(format(module))`. Comments, source
 paths, and whitespace do not affect it. Persistent symbols include that complete
-identity; `bitmath.add` is only the human-facing form. Imports are Module-scoped,
+identity; `arith.add` is only the human-facing form. Imports are Module-scoped,
 and the lock file pins the selected closure.

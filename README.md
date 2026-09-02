@@ -30,22 +30,22 @@ library.
 joggle 1;
 
 module model@1.0.0 {
-  import bitmath@1 as math;
+  import arith@1;
 
-  graph example(%lhs: math.word<8>, %rhs: math.word<8>) -> math.word<8> {
-    %sum = math.add(%lhs, %rhs);
+  graph example(%lhs: arith.integer<8>, %rhs: arith.integer<8>) -> arith.integer<8> {
+    %sum = arith.add(%lhs, %rhs);
     return %sum;
   }
 }
 ```
 
-The imported `bitmath` Module declares `word` and `add` once. The graph uses
+The imported `arith` Module declares `integer` and `add` once. The graph uses
 those names directly. Authors defining a new hardware or numeric extension use
 the same Module surface to add declarations and passes.
 
 ```cpp
 joggle::Compiler compiler;
-compiler.load("bitmath.joggle");
+compiler.load("arith.joggle");
 compiler.load("model.joggle");
 
 if (!compiler.link()) {
@@ -53,9 +53,9 @@ if (!compiler.link()) {
   return 1;
 }
 
-auto bitmath = compiler.module("bitmath");
-auto word = bitmath->type("word");
-auto i8 = compiler.make(*word, 8);
+auto arith = compiler.module("arith");
+auto integer = arith->type("integer");
+auto i8 = compiler.make(*integer, 8);
 auto width = i8->get<std::int64_t>("width");
 
 auto graph = compiler.graph("model.example");
@@ -63,30 +63,31 @@ auto graph = compiler.graph("model.example");
 
 ```bash
 joggle fmt module.joggle --write
-joggle check examples/feedforward.joggle \
-  --with examples/bitmath.joggle --with examples/fixed.joggle \
-  --with examples/miniai.joggle
+joggle check examples/mlp.joggle \
+  --with examples/arith.joggle --with examples/fixed.joggle \
+  --with examples/tensor.joggle --with examples/nn.joggle
 joggle run module.joggle main optimize -o optimized.joggle
-joggle install examples/bitmath.joggle
+joggle install examples/arith.joggle
 joggle install examples/fixed.joggle
-joggle install examples/miniai.joggle
-joggle install examples/feedforward.joggle
+joggle install examples/tensor.joggle
+joggle install examples/nn.joggle
+joggle install examples/mlp.joggle
 joggle install examples/edgevec.joggle
 joggle install module.joggle --behavior build/behavior.dylib
-joggle uninstall bitmath@1.0.0
-joggle lock examples/feedforward.joggle -o joggle.lock
+joggle uninstall arith@1.0.0
+joggle lock examples/mlp.joggle -o joggle.lock
 ```
 
 The shipped examples form one vertical extension rather than unrelated demos.
-`bitmath` defines the numeric-format contract, `fixed` implements a third-party
-format, and `miniai` defines format-independent tensor operations. The
-`feedforward` Module contains the same model over `word<8>` and `q<8,4>`; its
-reshape result is inferred directly from `shape = [1, 4]`, without repeating a
-result annotation.
-Finally, `edgevec` lowers either graph to lane-aware operations and exposes its
-cycle meaning through its own interface. Optional C++ files attach only domain
-checks, interface methods, and the lowering implementation. Target and numeric
-format policy remain ordinary extension Modules rather than core configuration.
+`arith` defines scalar formats and basic arithmetic, `tensor` defines ranked
+tensors, dense constants, and shape transforms, and `nn` defines model-level
+operators. `fixed` independently implements the scalar-format interface. The
+`mlp` Module stores the same graph over `arith.integer<8>` and `fixed.q<8,4>`.
+Finally, `edgevec` lowers only `nn.linear` and `nn.relu` to target operations;
+the tensor constants and reshape remain ordinary operations in the same Graph.
+Optional C++ files attach nonlinear validation, interface methods, and the
+lowering implementation. Target and numeric-format policy remain installable
+Modules rather than core configuration.
 
 Start with [Build an extension](docs/getting-started.md). See
 [the architecture](docs/design.md), [the language reference](docs/language.md),
@@ -94,4 +95,6 @@ and the [typed C++ API](docs/cpp-api.md). C++ implementation rules live in
 [C++ behavior bindings](docs/bindings.md). Installation, exact lock replay, and
 the on-disk layout are specified in [Module packages and locks](docs/packages.md).
 Cross-module contracts are described in [Interfaces](docs/interfaces.md), and
-the unified pass model in [Passes](docs/passes.md).
+the unified pass model in [Passes](docs/passes.md). The shipped IR boundaries
+and their relationship to MLIR/TVM terminology are documented in
+[IR modules](docs/ir-modules.md).

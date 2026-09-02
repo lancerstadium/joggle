@@ -9,7 +9,7 @@ A rule pass contracts a value expression to one of its proper subexpressions:
 
 ```joggle
 pass canonicalize {
-  identity($input) => $input;
+  cast($input) => $input;
 }
 ```
 

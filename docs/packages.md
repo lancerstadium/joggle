@@ -7,16 +7,16 @@ search paths.
 ## Commands
 
 ```bash
-joggle check bitmath.joggle
-joggle check bitmath.joggle --behavior build/bitmath_behavior.dylib
-joggle fmt bitmath.joggle --write
+joggle check arith.joggle
+joggle check arith.joggle --behavior build/arith_behavior.dylib
+joggle fmt arith.joggle --write
 
-joggle install bitmath.joggle
-joggle install bitmath.joggle --behavior build/behavior.dylib
+joggle install arith.joggle
+joggle install arith.joggle --behavior build/behavior.dylib
 joggle list
-joggle uninstall bitmath@1.0.0
+joggle uninstall arith@1.0.0
 
-joggle lock miniai.joggle -o joggle.lock
+joggle lock nn.joggle -o joggle.lock
 ```
 
 `check` parses the source and links its complete import closure. Use `--root`
@@ -84,7 +84,7 @@ reports what it removed.
 ```cpp
 joggle::Compiler compiler;
 compiler.search(module_root);
-compiler.load("miniai.joggle");
+compiler.load("nn.joggle");
 
 if (!compiler.link()) {
   compiler.diagnostics().print(std::cerr);
@@ -116,9 +116,11 @@ A generated lock records the exact root and dependency identities:
 
 ```text
 joggle-lock 1;
-root miniai@1.0.0#<digest>;
-module bitmath@1.0.0#<digest>;
-behavior bitmath@1.0.0#<module-digest> macos-arm64#<binary-digest>;
+root nn@1.0.0#<digest>;
+module arith@1.0.0#<digest>;
+module tensor@1.0.0#<digest>;
+behavior arith@1.0.0#<module-digest> macos-arm64#<binary-digest>;
+behavior tensor@1.0.0#<module-digest> macos-arm64#<binary-digest>;
 ```
 
 It is consumed explicitly:
@@ -127,7 +129,7 @@ It is consumed explicitly:
 joggle::Compiler compiler;
 compiler.search(module_root);
 compiler.lock("joggle.lock");
-compiler.load("miniai.joggle");
+compiler.load("nn.joggle");
 compiler.link();
 ```
 

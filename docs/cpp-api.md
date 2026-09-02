@@ -5,15 +5,15 @@ declaration handles, and uses generic typed conversion.
 
 ```cpp
 joggle::Compiler compiler;
-compiler.load("bitmath.joggle");
+compiler.load("arith.joggle");
 if (!compiler.link()) {
   compiler.diagnostics().print(std::cerr);
   return 1;
 }
 
-auto module = compiler.module("bitmath");
-auto word = module->type("word");
-auto i8 = compiler.make(*word, 8, false);
+auto module = compiler.module("arith");
+auto integer = module->type("integer");
+auto i8 = compiler.make(*integer, 8, false);
 auto width = i8->get<std::int64_t>("width");
 ```
 
@@ -21,9 +21,10 @@ auto width = i8->get<std::int64_t>("width");
 iterable homogeneous lists.
 
 ```cpp
-auto tensor_decl = miniai->type("tensor");
-auto tensor = compiler.make(*tensor_decl, *i8,
-                            std::vector<std::int64_t>{1, 4});
+auto tensor_module = compiler.module("tensor");
+auto tensor_decl = tensor_module->type("tensor");
+auto activation = compiler.make(*tensor_decl, *i8,
+                                std::vector<std::int64_t>{1, 4});
 ```
 
 `Type::get<T>` and `Attribute::get<T>` resolve parameters by schema name. They
@@ -32,7 +33,7 @@ invalid list element.
 
 Declaration handles compare by kind, local name, Module version, and canonical
 Module digest. A behavior pass resolves its dependencies once and can compare
-`operation.schema() == dense` directly; it does not dispatch through operation
+`operation.schema() == linear` directly; it does not dispatch through operation
 name strings or process-local numeric tokens.
 
 Interface method bindings infer their C++ result and argument types from an

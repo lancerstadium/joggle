@@ -6,11 +6,11 @@ its exact, content-addressed declarations.
 ## Verifiers
 
 ```cpp
-compiler.bind(word,
+compiler.bind(integer,
   [](const joggle::Type& type, joggle::Diagnostics& diagnostics) {
     const auto width = type.get<std::int64_t>("width");
     if (!width || *width <= 0) {
-      diagnostics.report("word width must be positive");
+      diagnostics.report("integer width must be positive");
       return false;
     }
     return true;
@@ -33,7 +33,7 @@ The callable's first parameter selects `type`, `attr`, `op`, or `pass`, so the
 same form covers every declaration kind. Interface methods add one reference:
 
 ```cpp
-compiler.bind(word, "storage_bits", method);
+compiler.bind(integer, "storage_bits", method);
 compiler.bind(q, "storage_bits", method);
 ```
 
@@ -63,12 +63,12 @@ namespace {
 
 bool bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
-  const auto word = module.type("word");
-  if (!word) {
+  const auto integer = module.type("integer");
+  if (!integer) {
     diagnostics.report("behavior does not match its Module");
     return false;
   }
-  compiler.bind(*word,
+  compiler.bind(*integer,
     [](const joggle::Type& type, joggle::Diagnostics&) {
       auto width = type.get<std::int64_t>("width");
       return width && *width > 0;
@@ -89,9 +89,9 @@ The build attaches the exact canonical Module identity without generating or
 including a header:
 
 ```cmake
-joggle_add_behavior(bitmath_behavior
-  MODULE bitmath.joggle
-  SOURCES bitmath_behavior.cpp
+joggle_add_behavior(arith_behavior
+  MODULE arith.joggle
+  SOURCES arith_behavior.cpp
 )
 ```
 
@@ -101,7 +101,7 @@ links it into the plugin. Handwritten C++ continues to use the generic API.
 After linking the schema closure, the host loads the library explicitly:
 
 ```cpp
-if (!compiler.load_behavior("bitmath", "libbitmath_behavior.so")) {
+if (!compiler.load_behavior("arith", "libarith_behavior.so")) {
   compiler.diagnostics().print(std::cerr);
 }
 ```
@@ -110,7 +110,7 @@ For a content-addressed installed package, the shorter overload locates the
 single behavior for the current target and verifies its file digest:
 
 ```cpp
-compiler.load_behavior("bitmath");
+compiler.load_behavior("arith");
 ```
 
 If a lock is active, both overloads require a matching `behavior` lock entry
@@ -126,11 +126,13 @@ Behavior functions use the Joggle C++ API and therefore share its major
 version, C++ standard library, and toolchain ABI. Loading remains explicit
 because executing an installed shared library is a trust decision.
 
-The shipped Bitmath, MiniAI, and EdgeVec behavior sources are complete
-examples. Bitmath binds numeric-format methods and word legality; MiniAI
-verifies tensor formats and dense-layer shape equations through the imported
-Bitmath interface; EdgeVec implements a target-owned lowering pass and typed
-lane query. None of these sources duplicates declarations from its text Module.
+The shipped Arith, Tensor, Fixed, and EdgeVec behavior sources are complete
+examples. Arith binds numeric-format methods and integer legality; Tensor
+checks dense constants and nonlinear reshape invariants; Fixed implements an
+imported numeric-format interface; EdgeVec implements a target-owned lowering
+pass and typed lane query. The `nn` Module needs no C++ behavior because its
+linear and activation contracts are fully structural. None of these sources
+duplicates declarations from its text Module.
 
 ## Implementation queries
 
