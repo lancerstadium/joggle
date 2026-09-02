@@ -336,8 +336,10 @@ state need not acquire an arbitrary program type. A runtime-dependent cycle
 whose condition is a directly bound Known `bool` is replayed as a Residual loop
 when one visible `prelude.literal` function maps that value to `i1`. The replay
 starts from an internal Function-edit checkpoint, not a source Region. Missing
-or ambiguous representations are diagnostics. Replay of arbitrary computed
-conditions and multiple compiler-domain loop states remains under construction.
+or ambiguous representations are diagnostics. Other carried values preserve an
+existing program type or use a concrete downstream result constraint; no
+unconstrained compiler-domain value acquires an implicit width. Replay of
+arbitrary computed conditions remains under construction.
 
 ## Canonical source
 

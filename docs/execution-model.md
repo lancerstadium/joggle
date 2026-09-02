@@ -214,6 +214,14 @@ frontier and replays the same source as a Residual CFG loop. The speculative
 Blocks and Instructions disappear with the checkpoint. Without that explicit
 representation, replay fails rather than guessing a target type.
 
+Other loop-carried values follow the same evidence rule. An existing Residual
+value keeps its type. A Known value may use a concrete downstream constraint,
+such as the Function result type imposed by `return state`; the corresponding
+visible literal function performs materialization at the replay frontier.
+Semantically identical repeated literal constructions are recognized by
+function symbol, result position, type, and operands rather than transient SSA
+identity.
+
 ## Nested code without `region`
 
 `region` is not a source-language declaration or a public IR handle. Nested
@@ -348,9 +356,10 @@ serialization remain to be implemented. Statement `break` and `continue` are
 implemented for Known and Residual loops. Residual transfers inside finite
 Known loops preserve multiple specialized continuations. Runtime-dependent
 cycles whose condition has an unambiguous `bool -> i1` representation are
-rebuilt from the last staging frontier as Residual loops. General replay for
-computed conditions and multiple carried compiler-domain values remains to be
-implemented.
+rebuilt from the last staging frontier as Residual loops. Multiple carried
+values are supported when they already have a program type or receive a
+concrete downstream result constraint. General replay for computed conditions
+and unconstrained compiler-domain state remains to be implemented.
 Registered host implementations are conservatively forbidden beneath
 Residual control, so constructing both branches never executes host side
 effects. A future hermetic-call contract may permit safe native evaluation

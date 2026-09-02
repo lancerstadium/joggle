@@ -1142,6 +1142,54 @@ private:
     trim(flow.continues);
   }
 
+  bool same_staged_value(const Value& lhs, const Value& rhs) const {
+    if (lhs == rhs) {
+      return true;
+    }
+    if (lhs.known() || rhs.known() || lhs.type() != rhs.type()) {
+      return false;
+    }
+    const auto left = lhs.defining_instruction();
+    const auto right = rhs.defining_instruction();
+    if (!left || !right ||
+        left->callee().symbol() != right->callee().symbol()) {
+      return false;
+    }
+    const auto prelude = compiler_.module(detail::prelude_module_name);
+    const auto literal = prelude
+                             ? prelude->interface("literal")
+                             : std::optional<Module::InterfaceDecl>{};
+    if (!literal || !compiler_.conforms(left->callee(), *literal)) {
+      return false;
+    }
+    const auto left_results = left->results();
+    const auto right_results = right->results();
+    const auto left_result = std::find(left_results.begin(),
+                                       left_results.end(), lhs);
+    const auto right_result = std::find(right_results.begin(),
+                                        right_results.end(), rhs);
+    if (left_result == left_results.end() ||
+        right_result == right_results.end() ||
+        std::distance(left_results.begin(), left_result) !=
+            std::distance(right_results.begin(), right_result)) {
+      return false;
+    }
+    const auto left_arguments = left->arguments();
+    const auto right_arguments = right->arguments();
+    return left_arguments.size() == right_arguments.size() &&
+           std::equal(left_arguments.begin(), left_arguments.end(),
+                      right_arguments.begin());
+  }
+
+  bool same_staged_state(std::span<const Value> lhs,
+                         std::span<const Value> rhs) const {
+    return lhs.size() == rhs.size() &&
+           std::equal(lhs.begin(), lhs.end(), rhs.begin(),
+                      [&](const Value& left, const Value& right) {
+                        return same_staged_value(left, right);
+                      });
+  }
+
   Flow instantiate_sequence(
       std::span<const detail::StatementSyntax> statements, Block block) {
     Flow current = next(std::move(block));
@@ -1892,9 +1940,12 @@ private:
             state.push_back(*value);
           }
         }
-        const bool repeated = state.size() == carried_names.size() &&
-                              std::find(visited.begin(), visited.end(), state) !=
-                                  visited.end();
+        const bool repeated =
+            state.size() == carried_names.size() &&
+            std::any_of(visited.begin(), visited.end(),
+                        [&](const std::vector<Value>& previous) {
+                          return same_staged_state(previous, state);
+                        });
         if (repeated && active.residual_depth != 0U) {
           detail::FunctionAccess::restore(*edit_, std::move(checkpoint));
           scopes_ = frontier_scopes;
@@ -1968,8 +2019,21 @@ private:
                statement.range);
         continue;
       }
-      carried_types.push_back(value->type());
-      auto carried = materialize(*value, value->type(), block, statement.range);
+      std::optional<Type> target;
+      if (!value->known()) {
+        target = value->type();
+      } else if (const auto expected = expected_values_.find(name);
+                 expected != expected_values_.end()) {
+        target = expected->second;
+      }
+      if (!target) {
+        report("Known loop-carried value '" + name +
+                   "' needs an explicit or downstream program type",
+               statement.range);
+        continue;
+      }
+      carried_types.push_back(*target);
+      auto carried = materialize(*value, *target, block, statement.range);
       if (carried) {
         initial.push_back(*carried);
       }

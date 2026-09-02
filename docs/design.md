@@ -203,8 +203,16 @@ materializes each value there. If they form a runtime-dependent cycle, finite
 specialization detects the repeated staged state. For a directly bound Known
 `bool` condition with a unique visible `bool -> i1` literal implementation,
 the evaluator restores its Function-edit checkpoint, materializes the
-condition, and replays the same source as a Residual loop. Other unresolved
-cycle representations fail explicitly instead of choosing a width or format.
+condition, and replays the same source as a Residual loop. Residual carried
+values retain their existing types; Known carried values may use a concrete
+downstream constraint such as the Function return type. Other unresolved cycle
+representations fail explicitly instead of choosing a width or format.
+
+Repeated-state detection is intentionally structural and conservative. Values
+are equal when they are the same Known payload or SSA value, or when they are
+the same result position of the same `prelude.literal` function with
+pairwise-identical operands. It does not equate arbitrary calls or claim
+general program equivalence.
 
 ## Extension boundary
 
