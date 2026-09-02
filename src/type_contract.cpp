@@ -220,7 +220,7 @@ public:
 
   std::optional<OperationTypes>
   infer(std::span<const Type> arguments,
-        std::span<const std::optional<ParameterValue>> properties,
+        std::span<const std::optional<ParameterValue>> known_arguments,
         std::span<const std::optional<Type>> expected) {
     if (schema_ == nullptr || contract_ == nullptr) {
       report("operation solver has no operation schema");
@@ -229,8 +229,8 @@ public:
     const auto static_inputs = parameter_inputs(*schema_);
     const auto value_inputs = ir_inputs(*schema_);
     const auto value_results = ir_results(*schema_);
-    if (properties.size() != static_inputs.size()) {
-      report("operation property map does not match its schema");
+    if (known_arguments.size() != static_inputs.size()) {
+      report("operation known argument map does not match its schema");
       return std::nullopt;
     }
     Bindings bindings;
@@ -251,27 +251,27 @@ public:
       report("operation has too many arguments");
       return std::nullopt;
     }
-    std::size_t property = 0;
+    std::size_t known_index = 0;
     for (std::size_t input_index = 0; input_index < schema_->inputs().size();
          ++input_index) {
       const auto& input = schema_->inputs()[input_index];
       if (contract_->ir_inputs[input_index]) {
         continue;
       }
-      std::optional<ParameterValue> actual = properties[property++];
+      std::optional<ParameterValue> actual = known_arguments[known_index++];
       if (!actual && input.default_value) {
         actual = parameter_default(input);
       }
       if (!actual) {
         if (!contract_->bindings.empty() &&
             contract_->bindings[input_index]) {
-          report("operation is missing property '" + input.name + "'");
+          report("operation is missing known argument '" + input.name + "'");
           return std::nullopt;
         }
         continue;
       }
       if (!matches_parameter(input, *actual)) {
-        report("operation property '" + input.name + "' has the wrong kind");
+        report("operation known argument '" + input.name + "' has the wrong kind");
         return std::nullopt;
       }
       if (!contract_->bindings.empty() && contract_->bindings[input_index] &&
@@ -1204,12 +1204,12 @@ private:
 std::optional<std::vector<Type>>
 infer_operation_types(Compiler& compiler, const Module::FunctionDecl& schema,
                       std::span<const Type> arguments,
-                      std::span<const std::optional<ParameterValue>> properties,
+                      std::span<const std::optional<ParameterValue>> known_arguments,
                       std::span<const std::optional<Type>> expected_results,
                       Diagnostics& diagnostics,
                       std::optional<SourceRange> source) {
   auto resolved = resolve_operation_types(compiler, schema, arguments,
-                                          properties, expected_results,
+                                          known_arguments, expected_results,
                                           diagnostics, std::move(source));
   return resolved ? std::optional<std::vector<Type>>{
                         std::move(resolved->results)}
@@ -1219,11 +1219,11 @@ infer_operation_types(Compiler& compiler, const Module::FunctionDecl& schema,
 std::optional<std::vector<Type>> infer_operation_types(
     std::span<const Module> modules, const Module::FunctionDecl& schema,
     std::span<const Type> arguments,
-    std::span<const std::optional<ParameterValue>> properties,
+    std::span<const std::optional<ParameterValue>> known_arguments,
     std::span<const std::optional<Type>> expected_results,
     Diagnostics& diagnostics, std::optional<SourceRange> source) {
   auto resolved = resolve_operation_types(modules, schema, arguments,
-                                          properties, expected_results,
+                                          known_arguments, expected_results,
                                           diagnostics, std::move(source));
   return resolved ? std::optional<std::vector<Type>>{
                         std::move(resolved->results)}
@@ -1234,23 +1234,23 @@ std::optional<OperationTypes>
 resolve_operation_types(Compiler& compiler,
                         const Module::FunctionDecl& schema,
                         std::span<const Type> arguments,
-                        std::span<const std::optional<ParameterValue>> properties,
+                        std::span<const std::optional<ParameterValue>> known_arguments,
                         std::span<const std::optional<Type>> expected_results,
                         Diagnostics& diagnostics,
                         std::optional<SourceRange> source) {
   return Solver(environment(compiler), schema, diagnostics, std::move(source))
-      .infer(arguments, properties, expected_results);
+      .infer(arguments, known_arguments, expected_results);
 }
 
 std::optional<OperationTypes> resolve_operation_types(
     std::span<const Module> modules, const Module::FunctionDecl& schema,
     std::span<const Type> arguments,
-    std::span<const std::optional<ParameterValue>> properties,
+    std::span<const std::optional<ParameterValue>> known_arguments,
     std::span<const std::optional<Type>> expected_results,
     Diagnostics& diagnostics, std::optional<SourceRange> source) {
   return Solver(environment(modules, diagnostics), schema, diagnostics,
                 std::move(source))
-      .infer(arguments, properties, expected_results);
+      .infer(arguments, known_arguments, expected_results);
 }
 
 std::optional<std::vector<ParameterValue>> resolve_derived_parameters(

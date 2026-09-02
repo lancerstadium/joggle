@@ -762,7 +762,7 @@ std::optional<detail::ValueSyntax> value_syntax(
 // Adapter used only while the old Function bridge is being removed. The source
 // AST above keeps one Expression; this shape exists solely to feed the legacy
 // operation constructor without making Call a second syntax node again.
-struct ResidualPropertySyntax {
+struct NamedKnownArgumentSyntax {
   std::string name;
   detail::ValueSyntax value;
   detail::SyntaxRange range;
@@ -774,7 +774,7 @@ struct ResidualCallSyntax {
   std::string operation;
   std::optional<Module::FunctionDecl::Fixity> operator_fixity;
   std::vector<detail::LocalUseSyntax> arguments;
-  std::vector<ResidualPropertySyntax> properties;
+  std::vector<NamedKnownArgumentSyntax> named_arguments;
   detail::SyntaxRange range;
 };
 
@@ -1006,7 +1006,7 @@ private:
                  statement.expression.range);
           return std::nullopt;
         }
-        result.properties.push_back(
+        result.named_arguments.push_back(
             {std::string(label), std::move(*converted),
              statement.expression.range});
         continue;
@@ -1188,6 +1188,25 @@ private:
     return std::nullopt;
   }
 
+  std::optional<Type> reflected_type(const Module::Expression& expression) {
+    const auto domain = detail::kernel_domain(expression);
+    if (!domain) {
+      return std::nullopt;
+    }
+    if (!domain->list) {
+      return compiler_.make(detail::domain_name(domain->element));
+    }
+    if (expression.arguments.size() != 1U) {
+      return std::nullopt;
+    }
+    auto element = reflected_type(expression.arguments.front());
+    const auto prelude = compiler_.module(detail::prelude_module_name);
+    const auto list = prelude ? prelude->type("list")
+                              : std::optional<Module::TypeDecl>{};
+    return element && list ? compiler_.make(*list, *element)
+                           : std::optional<Type>{};
+  }
+
   template <typename Declaration, typename Construct>
   auto construct(const detail::ValueSyntax& syntax, Construct create)
       -> decltype(create(std::declval<Declaration>(),
@@ -1307,13 +1326,13 @@ private:
             candidate.operator_fixity() != fixity) {
           continue;
         }
-        std::vector<std::optional<ParameterValue>> properties(
+        std::vector<std::optional<ParameterValue>> named_arguments(
             detail::parameter_inputs(candidate).size());
         std::vector<std::optional<Type>> expected(
             detail::ir_results(candidate).size());
         Diagnostics attempt;
         if (detail::resolve_operation_types(
-                compiler_, candidate, argument_types, properties, expected,
+                compiler_, candidate, argument_types, named_arguments, expected,
                 attempt)) {
           matches.push_back(candidate);
         }
@@ -1413,54 +1432,87 @@ private:
     for (const Value& argument : arguments) {
       argument_types.push_back(argument.type());
     }
-    std::vector<std::optional<ParameterValue>> property_values(
+    std::vector<std::optional<ParameterValue>> known_values(
         detail::parameter_inputs(*schema).size());
     const auto static_inputs = detail::parameter_inputs(*schema);
-    bool invalid_property = false;
-    for (const auto& property : syntax.properties) {
+    bool invalid_known_argument = false;
+    for (const auto& named : syntax.named_arguments) {
       const auto input = std::find_if(
           static_inputs.begin(), static_inputs.end(),
           [&](const Module::ParameterDecl& parameter) {
-            return parameter.name == property.name;
+            return parameter.name == named.name;
           });
       if (input == static_inputs.end()) {
-        report("unknown property '" + property.name + "' on operation '" +
+        report("unknown named '" + named.name + "' on operation '" +
                    syntax.operation + "'",
-               property.range);
-        invalid_property = true;
+               named.range);
+        invalid_known_argument = true;
         continue;
       }
-      auto value = parameter(property.value, *input);
-      invalid_property = !value || invalid_property;
+      auto value = parameter(named.value, *input);
+      invalid_known_argument = !value || invalid_known_argument;
       if (value) {
         const std::size_t index = static_cast<std::size_t>(
             std::distance(static_inputs.begin(), input));
-        property_values[index] = std::move(*value);
+        known_values[index] = std::move(*value);
       }
     }
-    if (invalid_property) {
+    if (invalid_known_argument) {
       invalidate(syntax.results, syntax.range);
       return;
     }
     auto resolved = detail::resolve_operation_types(
-        compiler_, *schema, argument_types, property_values, expected_types,
+        compiler_, *schema, argument_types, known_values, expected_types,
         diagnostics_,
         source(syntax.range));
     if (!resolved) {
       invalidate(syntax.results, syntax.range);
       return;
     }
-    Instruction operation =
-        edit_->append(std::move(block), *schema, std::move(arguments),
-                      resolved->results);
-    detail::FunctionAccess::locate(*edit_, operation, source(syntax.range));
-
-    for (std::size_t index = 0; index < property_values.size(); ++index) {
-      if (property_values[index]) {
-        edit_->set(operation, static_inputs[index].name,
-                   std::move(*property_values[index]));
+    std::vector<Value> call_arguments;
+    call_arguments.reserve(schema->inputs().size());
+    const auto& contract = detail::FunctionTypeAccess::get(*schema);
+    std::size_t residual = 0;
+    std::size_t known = 0;
+    bool invalid_argument = false;
+    for (std::size_t index = 0; index < schema->inputs().size(); ++index) {
+      const Module::ParameterDecl& input = schema->inputs()[index];
+      if (contract.ir_inputs[index]) {
+        const std::size_t count =
+            input.variadic ? arguments.size() - residual : 1U;
+        if (residual + count > arguments.size()) {
+          report("call has too few value arguments", syntax.range);
+          invalid_argument = true;
+          break;
+        }
+        for (std::size_t item = 0; item < count; ++item) {
+          call_arguments.push_back(arguments[residual++]);
+        }
+        continue;
       }
+      std::optional<ParameterValue> payload = known_values[known++];
+      if (!payload && input.default_value) {
+        payload = detail::parameter_default(input);
+      }
+      auto type = reflected_type(input.domain);
+      auto value = payload && type
+                       ? compiler_.known(std::move(*type), std::move(*payload))
+                       : std::optional<Value>{};
+      if (!value) {
+        report("call is missing known argument '" + input.name + "'",
+               syntax.range);
+        invalid_argument = true;
+        break;
+      }
+      call_arguments.push_back(std::move(*value));
     }
+    if (invalid_argument || residual != arguments.size()) {
+      invalidate(syntax.results, syntax.range);
+      return;
+    }
+    Instruction operation = edit_->append(
+        std::move(block), *schema, std::move(call_arguments), resolved->results);
+    detail::FunctionAccess::locate(*edit_, operation, source(syntax.range));
     for (std::size_t index = 0; index < syntax.results.size(); ++index) {
       define(syntax.results[index], operation.result(index), syntax.range);
     }
@@ -1658,18 +1710,25 @@ private:
       result.bindings.push_back(
           {bind(output, "v"), value(output.type()), {}});
     }
-    for (const Value& argument : operation.arguments()) {
-      result.expression.value.arguments.push_back(
-          Module::Expression::reference(use(argument)));
-      result.expression.value.labels.emplace_back();
-    }
-    for (const Module::ParameterDecl& parameter :
-         detail::parameter_inputs(operation.callee())) {
-      if (const auto property =
-              detail::FunctionAccess::property(operation, parameter.name)) {
+    const auto arguments = operation.arguments();
+    const auto parameters = operation.callee().inputs();
+    for (std::size_t index = 0; index < arguments.size(); ++index) {
+      const Value& argument = arguments[index];
+      const std::size_t parameter_index =
+          detail::FunctionAccess::argument_parameter(operation, index);
+      if (argument.known()) {
+        const auto payload = detail::FunctionAccess::known_value(argument);
+        if (!payload || parameter_index >= parameters.size()) {
+          throw std::logic_error("instruction has an invalid Known argument");
+        }
         result.expression.value.arguments.push_back(
-            expression(value(*property)));
-        result.expression.value.labels.push_back(parameter.name);
+            expression(value(*payload)));
+        result.expression.value.labels.push_back(
+            parameters[parameter_index].name);
+      } else {
+        result.expression.value.arguments.push_back(
+            Module::Expression::reference(use(argument)));
+        result.expression.value.labels.emplace_back();
       }
     }
     const auto notation = operation.callee().operator_symbol();

@@ -8,7 +8,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -24,45 +23,13 @@ class Block;
 class Value;
 class Instruction;
 class Terminator;
-class Property;
-
-template <typename T>
-Property property(std::string name, T&& value);
 
 namespace detail {
 struct FunctionIdentity;
 struct FunctionEditState;
 struct KnownValueStorage;
 struct FunctionAccess;
-struct PropertyAccess;
 }  // namespace detail
-
-class Property {
-public:
-  Property(const Property&) = default;
-  Property(Property&&) noexcept = default;
-  Property& operator=(const Property&) = default;
-  Property& operator=(Property&&) noexcept = default;
-
-  std::string_view name() const { return name_; }
-
-private:
-  Property(std::string name, detail::ParameterValue value)
-      : name_(std::move(name)), value_(std::move(value)) {}
-
-  std::string name_;
-  detail::ParameterValue value_;
-
-  template <typename T>
-  friend Property property(std::string name, T&& value);
-  friend struct detail::PropertyAccess;
-};
-
-template <typename T>
-Property property(std::string name, T&& value) {
-  return Property(std::move(name),
-                  detail::encode_parameter(std::forward<T>(value)));
-}
 
 class Value {
 public:
@@ -105,14 +72,14 @@ public:
   Value result(std::size_t index) const;
 
   template <typename T> std::optional<T> get(std::string_view name) const {
-    const auto value = property(name);
-    return value ? detail::decode_parameter<T>(*value) : std::nullopt;
+    const auto value = argument(name);
+    return value ? value->get<T>() : std::nullopt;
   }
 
   bool operator==(const Instruction&) const = default;
 
 private:
-  std::optional<detail::ParameterValue> property(std::string_view name) const;
+  std::optional<Value> argument(std::string_view name) const;
   Instruction(std::shared_ptr<detail::FunctionIdentity> function, std::uint64_t id);
   std::shared_ptr<detail::FunctionIdentity> function_;
   std::uint64_t id_ = 0;
@@ -183,70 +150,12 @@ public:
     Instruction append(Module::FunctionDecl schema,
                        std::vector<Value> arguments = {},
                        std::vector<Type> result_types = {});
-    template <typename... Rest>
-    Instruction append(Module::FunctionDecl schema,
-                       std::vector<Value> arguments, Property first,
-                       Rest&&... rest) {
-      return append_with_properties(
-          std::move(schema), std::move(arguments), {},
-          collect_properties(std::move(first), std::forward<Rest>(rest)...));
-    }
-    template <typename... Rest>
-    Instruction append(Module::FunctionDecl schema,
-                       std::vector<Value> arguments,
-                       std::vector<Type> result_types, Property first,
-                       Rest&&... rest) {
-      return append_with_properties(
-          std::move(schema), std::move(arguments), std::move(result_types),
-          collect_properties(std::move(first), std::forward<Rest>(rest)...));
-    }
     Instruction append(Block block, Module::FunctionDecl schema,
                      std::vector<Value> arguments = {},
                      std::vector<Type> result_types = {});
-    template <typename... Rest>
-    Instruction append(Block block, Module::FunctionDecl schema,
-                       std::vector<Value> arguments, Property first,
-                       Rest&&... rest) {
-      return append_with_properties(
-          std::move(block), std::move(schema), std::move(arguments), {},
-          collect_properties(std::move(first), std::forward<Rest>(rest)...));
-    }
-    template <typename... Rest>
-    Instruction append(Block block, Module::FunctionDecl schema,
-                       std::vector<Value> arguments,
-                       std::vector<Type> result_types, Property first,
-                       Rest&&... rest) {
-      return append_with_properties(
-          std::move(block), std::move(schema), std::move(arguments),
-          std::move(result_types),
-          collect_properties(std::move(first), std::forward<Rest>(rest)...));
-    }
     Instruction insert(Instruction before, Module::FunctionDecl schema,
                      std::vector<Value> arguments = {},
                      std::vector<Type> result_types = {});
-    template <typename... Rest>
-    Instruction insert(Instruction before, Module::FunctionDecl schema,
-                     std::vector<Value> arguments, Property first,
-                     Rest&&... rest) {
-      return insert_with_properties(
-          std::move(before), std::move(schema), std::move(arguments), {},
-          collect_properties(std::move(first), std::forward<Rest>(rest)...));
-    }
-    template <typename... Rest>
-    Instruction insert(Instruction before, Module::FunctionDecl schema,
-                     std::vector<Value> arguments,
-                     std::vector<Type> result_types, Property first,
-                     Rest&&... rest) {
-      return insert_with_properties(
-          std::move(before), std::move(schema), std::move(arguments),
-          std::move(result_types),
-          collect_properties(std::move(first), std::forward<Rest>(rest)...));
-    }
-    template <typename T>
-    void set(Instruction instruction, std::string name, T&& value) {
-      set_value(instruction, std::move(name),
-                detail::encode_parameter(std::forward<T>(value)));
-    }
 
     void ret(Block block, std::vector<Value> values = {});
     void jump(Block block, Block target, std::vector<Value> arguments = {});
@@ -261,31 +170,10 @@ public:
 
   private:
     explicit Edit(std::shared_ptr<detail::FunctionIdentity> function);
-    template <typename... Rest>
-    static std::vector<Property> collect_properties(Property first,
-                                                     Rest&&... rest) {
-      static_assert(
-          (std::is_same_v<std::remove_cvref_t<Rest>, Property> && ...),
-          "instruction construction accepts only values made by property()");
-      return {std::move(first), std::forward<Rest>(rest)...};
-    }
-    Instruction append_with_properties(
-        Module::FunctionDecl schema, std::vector<Value> arguments,
-        std::vector<Type> result_types, std::vector<Property> properties);
-    Instruction append_with_properties(
-        Block block, Module::FunctionDecl schema, std::vector<Value> arguments,
-        std::vector<Type> result_types,
-        std::vector<Property> properties);
-    Instruction insert_with_properties(
-        Instruction before, Module::FunctionDecl schema,
-        std::vector<Value> arguments, std::vector<Type> result_types,
-        std::vector<Property> properties);
     Instruction add(Block block, std::optional<Instruction> before,
-                  Module::FunctionDecl schema, std::vector<Value> arguments,
-                  std::vector<Type> result_types,
-                  std::vector<Property> properties);
-    void set_value(Instruction instruction, std::string name,
-                   detail::ParameterValue value);
+                    Module::FunctionDecl schema,
+                    std::vector<Value> arguments,
+                    std::vector<Type> result_types);
     std::unique_ptr<detail::FunctionEditState> state_;
     friend class Function;
     friend struct detail::FunctionAccess;

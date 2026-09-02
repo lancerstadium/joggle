@@ -147,17 +147,17 @@ int main() {
   ok &= expect(add && !original_add.valid() && add->arguments().size() == 2U,
                "replacement preserves arguments and invalidates the old handle");
 
-  std::optional<joggle::Instruction> rolled_back;
-  {
+  bool missing_argument_rejected = false;
+  try {
     auto edit = function->edit();
-    rolled_back =
-        edit.append(*add_schema, {function->arguments()[0]}, {*integer});
-    joggle::Diagnostics diagnostics;
-    ok &= expect(!edit.commit(diagnostics) && !diagnostics.ok(),
-                 "a schema-invalid transaction is rejected");
+    edit.append(*add_schema, {function->arguments()[0]}, {*integer});
+  } catch (const std::invalid_argument& error) {
+    missing_argument_rejected =
+        std::string_view(error.what()).find("missing argument 'rhs'") !=
+        std::string_view::npos;
   }
-  ok &= expect(rolled_back && !rolled_back->valid(),
-               "rollback invalidates handles created by the failed edit");
+  ok &= expect(missing_argument_rejected,
+               "a missing call argument is rejected immediately");
 
   std::optional<joggle::Instruction> first_cast;
   std::optional<joggle::Instruction> second_cast;

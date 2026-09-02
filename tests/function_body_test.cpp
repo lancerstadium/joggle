@@ -381,7 +381,7 @@ module dependent@1.0.0 {
                    joggle::format(*dependent_module).find(
                        "fn default_input<N: int>(width: N = 8) -> word<N>;") !=
                        std::string::npos,
-               "a named property binds a generic and infers a text function "
+               "a named known argument binds a generic and infers a text function "
                "result without another annotation");
 
   joggle::Compiler inconsistent;
@@ -399,16 +399,19 @@ module dependent@1.0.0 {
   const auto word8 = inconsistent_word
                          ? inconsistent.make(*inconsistent_word, std::int64_t{8})
                          : std::nullopt;
+  const auto int_type = inconsistent.make("int");
+  const auto width7 = int_type
+                          ? inconsistent.known(*int_type, std::int64_t{7})
+                          : std::nullopt;
   auto inconsistent_graph = inconsistent.function();
   if (!inconsistent_linked || !inconsistent_input || !default_input || !word8 ||
-      !inconsistent_graph) {
+      !width7 || !inconsistent_graph) {
     return EXIT_FAILURE;
   }
   bool inconsistent_rejected = false;
   {
     auto edit = inconsistent_graph->edit();
-    const auto value = edit.append(*inconsistent_input, {}, {*word8});
-    edit.set(value, "width", std::int64_t{7});
+    const auto value = edit.append(*inconsistent_input, {*width7}, {*word8});
     edit.ret(inconsistent_graph->entry(), {value.result(0)});
     joggle::Diagnostics diagnostics;
     inconsistent_rejected = !edit.commit(diagnostics) && !diagnostics.ok();
@@ -416,7 +419,7 @@ module dependent@1.0.0 {
   ok &= expect(inconsistent_rejected && inconsistent_graph->arguments().empty() &&
                    inconsistent_graph->instructions().empty(),
                "commit validates an explicit result against its dependent "
-               "property and rolls back on mismatch");
+               "known argument and rolls back on mismatch");
 
   joggle::Compiler defaulted;
   defaulted.add(dependent_source, "dependent.joggle");
@@ -427,9 +430,10 @@ module dependent@1.0.0 {
                        : std::nullopt;
   const auto named_input =
       defaulted_module ? defaulted_module->function("input") : std::nullopt;
+  const auto defaulted_int = defaulted.make("int");
   auto defaulted_graph = defaulted.function();
   if (!defaulted_linked || !defaulted_input || !named_input ||
-      !defaulted_graph) {
+      !defaulted_int || !defaulted_graph) {
     return EXIT_FAILURE;
   }
   {
@@ -445,7 +449,7 @@ module dependent@1.0.0 {
       defaulted_graph->entry().terminator().returned().front().type().get<std::int64_t>("width");
   ok &= expect(defaulted_width && *defaulted_width == 8 &&
                    defaulted.verify(*defaulted_graph),
-               "C++ append infers a result from a schema-owned property "
+               "C++ append infers a result from a schema-owned default "
                "default without repeating the type");
 
   auto named_graph = defaulted.function();
@@ -454,14 +458,11 @@ module dependent@1.0.0 {
   }
   {
     auto edit = named_graph->edit();
-    auto width_property =
-        joggle::property("width", std::int64_t{12});
-    ok &= expect(width_property.name() == "width",
-                 "a C++ property retains its schema name");
-    const auto value = edit
-                           .append(*named_input, {},
-                                   std::move(width_property))
-                           .value();
+    auto width = defaulted.known(*defaulted_int, std::int64_t{12});
+    if (!width) {
+      return EXIT_FAILURE;
+    }
+    const auto value = edit.append(*named_input, {*width}).value();
     edit.ret(named_graph->entry(), {value});
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -472,47 +473,41 @@ module dependent@1.0.0 {
       named_graph->entry().terminator().returned().front().type().get<std::int64_t>("width");
   ok &= expect(named_width && *named_width == 12 &&
                    defaulted.verify(*named_graph),
-               "a named C++ property participates in result inference at "
+               "a Known C++ argument participates in result inference at "
                "operation creation");
 
-  bool unknown_property_rejected = false;
+  bool extra_argument_rejected = false;
   try {
     auto edit = named_graph->edit();
-    edit.append(*named_input, {},
-                joggle::property("unknown", std::int64_t{1}));
+    auto one = defaulted.known(*defaulted_int, std::int64_t{1});
+    auto two = defaulted.known(*defaulted_int, std::int64_t{2});
+    edit.append(*named_input, {*one, *two});
   } catch (const std::invalid_argument& error) {
-    unknown_property_rejected =
-        std::string_view(error.what()).find("has no property named 'unknown'") !=
+    extra_argument_rejected =
+        std::string_view(error.what()).find("too many arguments") !=
         std::string_view::npos;
   }
-  ok &= expect(unknown_property_rejected,
-               "a misspelled named C++ property is rejected immediately");
+  ok &= expect(extra_argument_rejected,
+               "an extra C++ argument is rejected immediately");
 
-  bool duplicate_property_rejected = false;
+  bool wrong_known_kind_rejected = false;
   try {
     auto edit = named_graph->edit();
-    edit.append(*named_input, {},
-                joggle::property("width", std::int64_t{1}),
-                joggle::property("width", std::int64_t{2}));
+    const auto string_type = defaulted.make("string");
+    const auto wide = string_type
+                          ? defaulted.known(*string_type, "wide")
+                          : std::nullopt;
+    if (!wide) {
+      return EXIT_FAILURE;
+    }
+    edit.append(*named_input, {*wide});
   } catch (const std::invalid_argument& error) {
-    duplicate_property_rejected =
-        std::string_view(error.what()).find("provided more than once") !=
+    wrong_known_kind_rejected =
+        std::string_view(error.what()).find("compatible Known value") !=
         std::string_view::npos;
   }
-  ok &= expect(duplicate_property_rejected,
-               "a duplicate named C++ property is rejected immediately");
-
-  bool wrong_property_kind_rejected = false;
-  try {
-    auto edit = named_graph->edit();
-    edit.append(*named_input, {}, joggle::property("width", "wide"));
-  } catch (const std::invalid_argument& error) {
-    wrong_property_kind_rejected =
-        std::string_view(error.what()).find("has the wrong kind") !=
-        std::string_view::npos;
-  }
-  ok &= expect(wrong_property_kind_rejected,
-               "a wrong-kind named C++ property is rejected immediately");
+  ok &= expect(wrong_known_kind_rejected,
+               "a wrong-kind Known C++ argument is rejected immediately");
 
   constexpr std::string_view computed_source = R"(
 joggle 1;

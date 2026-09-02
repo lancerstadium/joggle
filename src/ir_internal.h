@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -30,8 +31,9 @@ struct FunctionAccess {
   static void locate(Function::Edit& edit, const Instruction& instruction,
                      SourceRange source);
   static std::optional<SourceRange> location(const Instruction& instruction);
-  static std::optional<ParameterValue> property(const Instruction& instruction,
-                                                std::string_view name);
+  static std::optional<ParameterValue> known_value(const Value& value);
+  static std::size_t argument_parameter(const Instruction& instruction,
+                                        std::size_t argument);
   static bool verify_structure(const Function& function, Diagnostics& diagnostics);
   static bool verify_contracts(const Function& function, Diagnostics& diagnostics);
   static bool verify_contracts(const Function& function, Compiler& compiler,
@@ -41,11 +43,6 @@ struct FunctionAccess {
                       std::vector<Type> result_types);
   static bool commit(Function::Edit& edit, Compiler& compiler,
                      Diagnostics& diagnostics);
-};
-
-struct PropertyAccess {
-  static std::string take_name(Property& property);
-  static ParameterValue take_value(Property& property);
 };
 
 }  // namespace joggle::detail

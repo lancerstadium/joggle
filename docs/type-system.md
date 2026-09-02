@@ -34,14 +34,14 @@ depend on runtime data.
 The language kernel defines:
 
 ```text
-int  real  bool  string  type  attr  graph  bytes  list<D>
+int  real  bool  string  type  attr  function  bytes  list<D>
 ```
 
 These are domains used by the compiler, not target-specific types. `int`
 describes values such as a bit width; `i32` is an ordinary type declaration
-from `prelude`. `graph` and `bytes` let ordinary functions express
-decoding, transformation, analysis, and emission without adding pass or backend
-keywords to the language.
+from `prelude`. `function` is the current bootstrap host handle used by
+whole-Function compiler callbacks; it is not an owning Graph abstraction.
+`bytes` represents opaque encoded artifacts.
 
 The kernel is deliberately small and fixed by the Joggle language version.
 Integer arithmetic is checked for overflow and division by zero. Real
@@ -179,16 +179,14 @@ For a dataflow call, positional local names bind program inputs and named
 arguments bind compiler-known inputs:
 
 ```joggle
-output = conv2d(input, weight, stride_h = 2);
+output = conv2d(input, weight, stride_h: 2);
 ```
 
 The same type-contract solver checks calls parsed from source, calls built
 through C++, and results produced by transformations.
 
-Local variables in a dataflow body are single-assignment and lexically scoped.
-That invariant makes dependency order and nested-region capture unambiguous,
-but it remains an internal graph property rather than a sigil-based user
-language.
+Local bindings are lexically scoped. The compiler may normalize them to unique
+Values, but this is an implementation invariant rather than source syntax.
 
 ## Bootstrap boundary
 

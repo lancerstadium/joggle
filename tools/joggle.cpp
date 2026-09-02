@@ -383,11 +383,11 @@ void collect_modules(const joggle::Instruction& operation,
   for (const joggle::Value& result : operation.results()) {
     collect_modules(result.type(), modules);
   }
-  for (const joggle::Module::ParameterDecl& parameter :
-       joggle::detail::parameter_inputs(operation.callee())) {
-    if (const auto property = joggle::detail::FunctionAccess::property(
-            operation, parameter.name)) {
-      collect_modules(*property, modules);
+  for (const joggle::Value& argument : operation.arguments()) {
+    collect_modules(argument.type(), modules);
+    if (const auto value =
+            joggle::detail::FunctionAccess::known_value(argument)) {
+      collect_modules(*value, modules);
     }
   }
 }

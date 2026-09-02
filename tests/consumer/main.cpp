@@ -38,13 +38,14 @@ int main(int argc, char** argv) {
   }
 
   auto constructed = compiler.function();
-  if (!constructed) {
+  const auto int_type = compiler.make("int");
+  const auto bits12 =
+      int_type ? compiler.known(*int_type, std::int64_t{12}) : std::nullopt;
+  if (!constructed || !bits12) {
     return 1;
   }
   auto edit = constructed->edit();
-  auto value =
-      edit.append(*make, {}, joggle::property("bits", std::int64_t{12}))
-          .value();
+  auto value = edit.append(*make, {*bits12}).value();
   edit.ret(constructed->entry(), {value});
   joggle::Diagnostics diagnostics;
   if (!edit.commit(diagnostics)) {
