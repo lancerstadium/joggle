@@ -1,11 +1,9 @@
 # Build an extension
 
-A Joggle extension starts with one text Module. C++ is needed only for domain
-checks, runtime interface behavior, or a compiler function that cannot be
-expressed by contraction rules. Compile-time functions and derived type parameters stay in
-the Module and need no C++.
+A Joggle extension is a text Module plus optional C++ behavior. The text file
+is the schema authority; no declaration header is generated.
 
-## 1. Write the Module
+## 1. Declare a Module
 
 ```joggle
 joggle 1;
@@ -13,10 +11,10 @@ joggle 1;
 module external@1.0.0 {
   type scalar(bits: int);
 
+  fn make<N: int>(bits: N) -> scalar<N>;
   fn keep<T: type>(input: T) -> T;
   fn converted<T: type>(input: T) -> T;
-
-  fn convert(input: graph) -> graph;
+  fn convert(input: function) -> function;
 
   fn main(input: scalar<8>) -> scalar<8> {
     output = keep(input);
@@ -25,12 +23,20 @@ module external@1.0.0 {
 }
 ```
 
-Run `joggle check external.joggle` before writing C++. Types, function
-contracts, call references, local dataflow, and result inference are checked from
-this file alone. During multi-Module development, add uninstalled dependencies
-with `--with dependency.joggle`; installation is not required for validation.
+`fn` is the only callable declaration. `main` describes residual program IR;
+`convert` is used as compiler work because it accepts a Function value. This
+does not create separate operation and pass namespaces.
 
-## 2. Attach optional behavior
+Validate it before writing C++:
+
+```bash
+joggle check external.joggle
+```
+
+During multi-Module development, repeat `--with dependency.joggle` for local
+dependencies that have not been installed.
+
+## 2. Attach optional C++ behavior
 
 ```cpp
 #include <joggle/joggle.h>
@@ -47,17 +53,19 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
     return false;
   }
 
-  compiler.bind(*convert, [keep = *keep, converted = *converted](
-      joggle::Graph& graph, joggle::Diagnostics& pass_diagnostics) {
-    const auto operations = graph.all_operations();
-    auto edit = graph.edit();
-    for (const auto& operation : operations) {
-      if (operation.schema() == keep) {
-        edit.replace(operation, converted);
+  compiler.bind(*convert,
+    [keep = *keep, converted = *converted](
+        joggle::Function& function,
+        joggle::Diagnostics& pass_diagnostics) {
+      const auto instructions = function.instructions();
+      auto edit = function.edit();
+      for (const auto& instruction : instructions) {
+        if (instruction.callee() == keep) {
+          edit.replace(instruction, converted);
+        }
       }
-    }
-    return edit.commit(pass_diagnostics);
-  });
+      return edit.commit(pass_diagnostics);
+    });
   return true;
 }
 
@@ -66,12 +74,10 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
 JOGGLE_EXPORT_BEHAVIOR(bind)
 ```
 
-The compiler function resolves the declarations it compares once, then edits the same
-`Graph` opened from the text member. Type and interface behavior use the same
-binding form when an extension needs them; the complete cases live in
-[C++ behavior bindings](bindings.md).
+The callback edits the ordinary `Function`. There is no `Graph`, `Region`,
+generated declaration class, or pass subclass.
 
-## 3. Build it
+## 3. Build the behavior
 
 ```cmake
 cmake_minimum_required(VERSION 3.20)
@@ -85,65 +91,56 @@ joggle_add_behavior(external_behavior
 )
 ```
 
-`joggle_add_behavior` ties the library to the exact Module source. Handwritten
-C++ includes only Joggle's generic API.
+`joggle_add_behavior` embeds the exact canonical Module identity in one hidden
+translation unit. Handwritten code includes only the generic Joggle API.
 
-## 4. Check and install it
+## 4. Check and install
 
 ```bash
-joggle check external.joggle --behavior build/libexternal_behavior.so
+joggle check external.joggle --behavior build/external_behavior.dylib
 joggle install external.joggle \
-  --behavior build/libexternal_behavior.so
+  --behavior build/external_behavior.dylib
 ```
 
-Installation atomically publishes canonical Module text and the target-specific
-behavior binary under their SHA-256 identities. The exact filename suffix is
-platform-specific.
+The platform-specific suffix may be `.so`, `.dylib`, or `.dll`. Installation
+publishes canonical Module text and optional behavior by content identity.
 
-Before installation, the same source and behavior can run as a scriptable
-compiler pipeline:
+For a local transformation:
 
 ```bash
 joggle run external.joggle main convert \
-  --behavior build/libexternal_behavior.so \
-  -o converted.joggle
+  --behavior build/external_behavior.dylib \
+  -o transformed.joggle
 ```
 
-The first positional member is the dataflow function and each following member
-is a compiler function,
-executed in order. Local names are relative to the root Module; qualified names
-select a function from another explicitly loaded Module. `--with target.joggle`
-adds such a Module without turning it into a source import, and
-`--load-behavior target=build/libtarget_behavior.so` attaches its optional
-implementation. The output is a complete canonical derived Module: it imports
-the exact linked versions and contains the transformed graph. Here its Module
-name is `external_main_compiled`, so it can coexist with `external` and with
-artifacts from other graph members. It can be checked, installed, or used as the
-input to another `joggle run`; `-o` publishes it atomically and replay preserves
-the derived name.
+`main` is instantiated as a Function. Each following name is an ordinary
+compiler function applied in order. The output is another canonical Module
+containing the resulting Function and exact imports.
 
-## 5. Load and use it
+## 5. Consume it from C++
 
 ```cpp
 joggle::Compiler compiler;
 compiler.search(module_root);
-compiler.load(installed_module);
-if (!compiler.link()) {
+compiler.load(module_path);
+if (!compiler.link() || !compiler.load_behavior("external")) {
   compiler.diagnostics().print(std::cerr);
   return 1;
 }
 
-auto module = compiler.module("external");
-compiler.load_behavior("external");
-auto graph = compiler.graph("external.main");
-compiler.run(*graph, "external.convert");
+auto function = compiler.function("external.main");
+if (!function || !compiler.run(*function, "external.convert")) {
+  compiler.diagnostics().print(std::cerr);
+  return 1;
+}
 
-auto inputs = graph->inputs();
-auto outputs = graph->outputs();
+for (const auto& block : function->blocks()) {
+  for (const auto& instruction : block.instructions()) {
+    // Inspect the transformed Function.
+  }
+}
 ```
 
-The executable fixture in
-[`tests/consumer`](../tests/consumer) performs this complete workflow against a
-fresh installed Joggle package on every test run. It is the authoritative
-copyable project; this guide explains the same files rather than defining a
-second example architecture.
+The executable project in [`tests/consumer`](../tests/consumer) is the
+authoritative copyable example and is rebuilt against an installed Joggle in
+the end-to-end test suite.

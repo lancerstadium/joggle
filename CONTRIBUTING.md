@@ -1,8 +1,10 @@
 # Contributing to Joggle
 
 Joggle is intentionally small. Changes should preserve one canonical text
-Module model and one runtime `Graph`; new domain concepts normally belong in an
-installable Module rather than the core.
+Module model and the Function/Block/Instruction/Value ownership hierarchy. A
+def-use graph or CFG is a non-owning relation over a Function, not another IR
+container. New domain concepts normally belong in an installable Module rather
+than the core.
 
 ## Build and test
 

@@ -1,7 +1,8 @@
 # C++ behavior bindings
 
-The `.joggle` Module defines the schema. C++ attaches executable behavior to
-its exact, content-addressed declarations.
+The `.joggle` Module is the schema authority. C++ attaches behavior to exact,
+content-addressed declarations; it never recreates the schema in classes or a
+generated header.
 
 ## Verifiers
 
@@ -17,51 +18,98 @@ compiler.bind(integer,
   });
 ```
 
-Type and attribute verifiers run when structural instances are constructed.
-Operation verifiers run through `Compiler::verify` and after every Compiler-run
-pass. They are optional refinements: basic arity, kind, ownership, SSA, and
-dominance checks are always active; attaching a verifier adds domain-specific
-rules for that exact declaration. No verifier marker appears in the Module.
-For a graph loaded from text, diagnostics emitted without an explicit source
-are automatically attached to the operation's `.joggle` source range. Target
-operations inserted in place of a source operation inherit that provenance.
+A callable beginning with `Type`, `Attribute`, or `Instruction` binds a
+verifier for that declaration. Structural arity, ownership, type, CFG, SSA,
+and dominance verification always runs; bindings add domain-specific checks.
 
-The declaration is resolved from the Module once. Its stable symbol is the
-binding key; the binding table never stores a lookup string.
+A callback result is accepted only when the callback reports no diagnostic.
+Diagnostics emitted while checking an Instruction inherit its source location.
 
-The callable's first parameter selects `type`, `attr`, `op`, or `pass`, so the
-same form covers every declaration kind. Attribute and operation interface
-methods add one reference:
+## Interface behavior
+
+Attribute and Instruction interfaces may declare callable methods. Bind one by
+its resolved method declaration or by an unambiguous name:
 
 ```cpp
-compiler.bind(instruction, "latency", method);
+compiler.bind(instruction, "latency",
+  [](const joggle::Instruction& value, std::int64_t lanes) {
+    return estimate_latency(value, lanes);
+  });
 ```
 
-The method name is resolved across the interfaces that the declaration already
-conforms to, including imported interfaces. If two such interfaces declare the
-same method name, Joggle diagnoses the ambiguity and accepts an explicit
-`interface.method` selector. Ordinary callables have their method
-arguments and result inferred and checked against the text signature. They
-accept `Diagnostics&` last only when they need to report a domain error.
-Generic or overloaded callables can resolve declaration handles and use the
-explicit typed `bind<Result, Arguments...>` API.
+The adapter infers ordinary C++ argument and result types and checks them
+against the Module signature. A final `Diagnostics&` is optional. Generic or
+overloaded C++ callables can use the explicit
+`bind<Result, Arguments...>` overload.
 
-Type interfaces contain fields rather than methods. A body such as
-`storage_bits = width;` is canonical Module content and may feed dependent type
-parameters through `T.storage_bits`. It is queried with `Type::get` and cannot
-be replaced by a C++ callback.
+Type-interface fields such as `storage_bits` are declarative Module content.
+They are queried with `Type::get<T>` and can participate in dependent types;
+they are not replaced by callbacks.
 
-All behavior callbacks follow one success rule: a returned value or `true` is
-accepted only when the callback emits no diagnostic. A diagnostic suppresses a
-type, attribute, interface-method, or query result; for a pass it triggers
-the graph checkpoint rollback. This prevents a callback from simultaneously
-reporting failure and publishing a usable-looking value.
+## Compiler functions
 
-## Optional behavior libraries
+The current bootstrap representation maps Prelude `function` to
+`joggle::Function`:
 
-A Module may keep all behavior in the host application, or place the same
-bindings in a shared library. The library exports one versioned entry and a
-small descriptor:
+```joggle
+fn canonicalize(input: function) -> function;
+fn count(input: function) -> int;
+```
+
+```cpp
+compiler.bind(canonicalize,
+  [](joggle::Function& function, joggle::Diagnostics& diagnostics) {
+    auto edit = function.edit();
+    // Transform Blocks, Instructions, and Values.
+    return edit.commit(diagnostics);
+  });
+
+compiler.bind(count,
+  [](const joggle::Function& function) -> std::int64_t {
+    return static_cast<std::int64_t>(function.instructions().size());
+  });
+```
+
+Invocation uses the declaration or its qualified name:
+
+```cpp
+compiler.run(function, canonicalize);
+auto nodes = compiler.run<std::int64_t>(count, function);
+```
+
+`Compiler::run` verifies inputs, checkpoints mutable Function arguments,
+invokes the callable, and verifies the result. A false result, diagnostic,
+exception, or failed verification restores the Function checkpoint.
+
+This bootstrap path is implemented today. General Module-declared host
+representations are the next extension boundary: they will let Modules map
+types such as `device.target`, `cost.report`, or `ir.module` to ordinary C++
+types without adding another callable namespace.
+
+## Known evaluation
+
+A bodyless compiler-domain function can use the same typed `bind` form:
+
+```joggle
+fn choose_width(elements: int) -> int;
+```
+
+```cpp
+compiler.bind(choose_width,
+  [](std::int64_t elements) { return elements < 128 ? 8 : 16; });
+```
+
+With Known arguments the binding produces a Known value. A function returning
+program values residualizes as an Instruction when needed. `@(...)` merely
+requires the ordinary evaluation to succeed as Known.
+
+Host callbacks are not speculatively executed below Residual control. Known
+evaluation also obeys configured expression-step and nesting-depth limits.
+
+## Behavior libraries
+
+A Module may keep bindings in its host application or package them in a shared
+library:
 
 ```cpp
 namespace {
@@ -73,11 +121,10 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
     diagnostics.report("behavior does not match its Module");
     return false;
   }
-  compiler.bind(*integer,
-    [](const joggle::Type& type, joggle::Diagnostics&) {
-      auto width = type.get<std::int64_t>("width");
-      return width && *width > 0;
-    });
+  compiler.bind(*integer, [](const joggle::Type& value) {
+    const auto width = value.get<std::int64_t>("width");
+    return width && *width > 0;
+  });
   return true;
 }
 
@@ -86,12 +133,7 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
 JOGGLE_EXPORT_BEHAVIOR(bind)
 ```
 
-`JOGGLE_EXPORT_BEHAVIOR` emits the one versioned entry point and descriptor;
-the author supplies only the ordinary binding function. It is a generic ABI
-macro from `joggle/behavior.h`, not generated Module code.
-
-The build attaches the exact canonical Module identity without generating or
-including a header:
+Build it without a generated public header:
 
 ```cmake
 joggle_add_behavior(arith_behavior
@@ -100,100 +142,15 @@ joggle_add_behavior(arith_behavior
 )
 ```
 
-This creates one hidden translation unit containing the canonical identity and
-links it into the plugin. Handwritten C++ continues to use the generic API.
-
-After linking the schema closure, the host loads the library explicitly:
+Then load it after linking:
 
 ```cpp
-if (!compiler.load_behavior("arith", "libarith_behavior.so")) {
-  compiler.diagnostics().print(std::cerr);
-}
-```
-
-For a content-addressed installed package, the shorter overload locates the
-single behavior for the current target and verifies its file digest:
-
-```cpp
+compiler.load_behavior("arith", library_path);
+// Or discover the locked, installed behavior for this host:
 compiler.load_behavior("arith");
 ```
 
-If a lock is active, both overloads require a matching `behavior` lock entry
-and verify the selected binary SHA-256 before opening the library.
-
-The loader checks the ABI version, descriptor size, target, exact Module
-identity, and entry pointers before calling the plugin. Loading the same exact
-behavior is idempotent. A false return, exception, or new diagnostic rolls back
-every binding made by that load. Library handles outlive captured verifier,
-method, and pass functions.
-
-Behavior functions use the Joggle C++ API and therefore share its major
-version, C++ standard library, and toolchain ABI. Loading remains explicit
-because executing an installed shared library is a trust decision.
-
-Compiler-only behavior fixtures live under `tests/`; reusable Modules are not
-coupled to those fixtures. A production Module adds behavior only when its
-semantics cannot be expressed by the text schema. Behavior never duplicates or
-mutates declarations from its Module source.
-
-## Typed analysis passes
-
-```cpp
-// Module: pass count_nodes: graph -> int;
-compiler.bind(count_nodes, [](const joggle::Graph& graph) -> std::int64_t {
-  return static_cast<std::int64_t>(graph.all_operations().size());
-});
-
-auto result = compiler.run<std::int64_t>(count_nodes, graph);
-```
-
-The callable type is checked against the pass declaration when it is bound.
-Invocation verifies the Graph before execution. Returning `std::optional<T>`
-allows an implementation to fail without inventing a public result wrapper;
-`Diagnostics&` may be the last callable argument when a domain error needs to
-be reported.
-
-## Passes
-
-```cpp
-compiler.bind(simplify,
-  [&count_nodes](joggle::Graph& graph,
-               joggle::Diagnostics& diagnostics) {
-    const auto count = count_nodes(graph);
-
-    auto edit = graph.edit();
-    // mutate through the same Graph::Edit API
-    return edit.commit(diagnostics);
-});
-```
-
-Transitional whole-function passes can iterate `graph.operations()` directly;
-`all_operations()` is currently the same flat ordered snapshot. For a
-same-result-shape conversion, `edit.replace(operation, target)`
-inserts the target with the source arguments and result types, redirects every
-result use including graph outputs, and erases the source as one edit action.
-Target properties begin with the target declaration's defaults and can then be
-set through `edit.set` before commit.
-
-`Compiler::run` verifies the input, takes a whole-Graph checkpoint, invokes the
-binding, and verifies the result. A false return, new diagnostic, exception, or failed
-verification restores the checkpoint—even if the pass committed one or more
-inner Edits before failing.
-
-The Compiler coordinates direct declaration-bound methods and Graph edits.
-
-A pass that does not call back into the Compiler can omit that parameter:
-
-```cpp
-compiler.bind(convert,
-  [](joggle::Graph& graph, joggle::Diagnostics& diagnostics) {
-    auto edit = graph.edit();
-    // mutate through the same Graph::Edit API
-    return edit.commit(diagnostics);
-  });
-```
-
-Passes with `{ operation(...) => ...; }` bodies execute their rules directly.
-Passes with `= first, second;` bodies compose other passes. Neither accepts a
-C++ binding. All three forms share one whole-Graph checkpoint and final
-verification boundary.
+The loader checks ABI version, target, exact Module identity, entry points, and
+when applicable the locked binary digest. A failed load rolls back every
+binding made by that library. Loading executable behavior remains explicit
+because it is a trust decision.

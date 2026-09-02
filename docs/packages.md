@@ -22,13 +22,13 @@ joggle lock nn.joggle -o joggle.lock
 `check` parses the source and links its complete import closure. Use `--root`
 to check an extension against an isolated installed Module set; unresolved
 imports, interface mismatches, operation type contracts, and pass-reference
-errors make the command fail. It also instantiates every named graph in the
-resolved closure through the ordinary Compiler path, catching unknown
+errors make the command fail. It also instantiates every defined Function in
+the resolved closure through the ordinary Compiler path, catching unknown
 declarations, SSA errors, and type-inference failures. `--behavior`
 additionally checks an explicitly chosen
 behavior library against the canonical Module identity and applies its domain
-verifiers while constructing those graphs. `fmt` only needs the source file.
-Parse, import-resolution, conformance, operation-contract, pass, graph, and
+verifiers while constructing those Functions. `fmt` only needs the source file.
+Parse, import-resolution, conformance, call-contract, Function, and
 behavior diagnostics retain their originating `.joggle` source range.
 
 `fmt --write`, `fmt -o`, and `lock -o` stage their complete output beside the
@@ -65,7 +65,7 @@ descriptor before binding it.
 Installing the same identity is idempotent. Installing another digest under the
 same name and version is rejected rather than silently replacing content.
 Before publication, `install` links the complete import closure and instantiates
-every named graph through the same validation path as `check`; a syntactically
+every defined Function through the same validation path as `check`; a syntactically
 valid but unresolved or ill-typed Module is never published.
 Module text and an optional behavior are first assembled in a hidden directory
 on the same filesystem and become visible together through one atomic rename.
@@ -100,9 +100,9 @@ Import aliases are local source spelling only. Lock entries always record the
 real Module name, version, and digest, so a local prefix never becomes a second
 package identity.
 
-`joggle run` writes one derived Module named `<source>_<graph>_compiled`; its
-imports use the exact linked versions. Distinct graph members and their source
-therefore have distinct package names, and replaying a derived single-graph
+`joggle run` writes one derived Module named `<source>_<function>_compiled`; its
+imports use the exact linked versions. Distinct Function members and their source
+therefore have distinct package names, and replaying a derived single-Function
 Module preserves its name. A valid repository admits only one digest for a given
 name and exact version, and a Compiler rejects explicitly loaded Modules with
 conflicting identities. The derived text is reusable without embedding a digest
@@ -141,7 +141,7 @@ from its locked digest. Loading behavior while a lock is active requires a
 matching entry. The lock therefore selects executable content rather than
 merely repeating version ranges.
 
-`joggle lock` first performs the same closure and named-graph validation as
+`joggle lock` first performs the same closure and defined-Function validation as
 `check`, then records installed behavior for the machine on which the lock is
 generated. That makes an executable lock target-specific; a different target
 needs its own behavior entry rather than silently substituting another binary.

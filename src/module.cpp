@@ -929,11 +929,11 @@ private:
           definition.body->source = source_;
           definition.body->range = {begin, current_.begin};
           expect(TokenKind::LeftParen, "'('");
-          auto input = name("a graph parameter name");
+          auto input = name("a Function parameter name");
           expect(TokenKind::RightParen, "')'");
           if (input && (definition.inputs.empty() ||
                         definition.inputs.front().name != *input)) {
-            error("rewrite must name its graph input");
+            error("rewrite must name its Function input");
           }
           expect(TokenKind::LeftBrace, "'{' after rewrite input");
           while (!is(TokenKind::RightBrace) && ok()) {

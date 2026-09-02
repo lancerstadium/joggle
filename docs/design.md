@@ -56,8 +56,7 @@ The core instruction contract is deliberately small:
 ```text
 Instruction
   callee       resolved Function symbol
-  arguments     ordered Values
-  arguments    compiler-known named values
+  arguments    one declaration-ordered sequence of Known/Residual Values
   results      typed Values
 
 Block

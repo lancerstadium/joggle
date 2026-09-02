@@ -53,12 +53,13 @@ These Modules are ordinary `.joggle` packages rather than C++ built-ins. The
 trusted kernel owns bootstrap host representations and checked expression
 evaluation; the automatically linked `prelude` Module owns reflected compiler
 value types, native scalar declarations, and their interfaces.
-Expression-bodied `fn` declarations and
-derived type parameters can compute dependent type arguments without host
-callbacks. A call prefixed by `@` is evaluated at compile time; the declaration
-needs no separate `const` function kind. Fixed-width Prelude scalars expose the
-`storage_bits` field through this same mechanism; custom formats implement the
-identical interface from their own parameters.
+Expression-bodied `fn` declarations and derived type parameters can compute
+dependent type arguments without host callbacks. Calls evaluate automatically
+when their inputs are Known and residualize otherwise; `@(expression)` only
+requires a Known result. The declaration needs no separate `const` function
+kind. Fixed-width Prelude scalars expose the `storage_bits` field through this
+same mechanism; custom formats implement the identical interface from their
+own parameters.
 
 Build and test with standard CMake:
 
