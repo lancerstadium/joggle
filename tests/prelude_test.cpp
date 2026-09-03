@@ -158,6 +158,10 @@ module native_test@1.0.0 {
   primitives.add(R"(
 joggle 1;
 module primitive_test@1.0.0 {
+  type word(width: int);
+
+  fn identity<T: type>(input: T) -> T;
+
   fn fold<S: list<int>>(values: S) -> int {
     total = 0;
     for value in S {
@@ -174,6 +178,26 @@ module primitive_test@1.0.0 {
 
   fn real_math(lhs: real, rhs: real) -> real {
     return min(lhs + rhs, max(lhs, rhs)) // 1.0;
+  }
+
+  fn ascending(stop: int) -> list<int> {
+    return range(stop);
+  }
+
+  fn descending() -> list<int> {
+    return range(5, -1, -2);
+  }
+
+  fn empty_range() -> list<int> {
+    return range(4, 0);
+  }
+
+  fn unroll<N: int>(count: N, input: word<8>) -> word<8> {
+    current = input;
+    for index in range(N) {
+      current = identity(current);
+    }
+    return current;
   }
 }
 )",
@@ -194,11 +218,43 @@ module primitive_test@1.0.0 {
       primitives_linked
           ? primitives.run<double>("primitive_test.real_math", 2.5, 4.0)
           : std::nullopt;
+  const auto ascending =
+      primitives_linked
+          ? primitives.run<std::vector<std::int64_t>>(
+                "primitive_test.ascending", std::int64_t{4})
+          : std::nullopt;
+  const auto descending =
+      primitives_linked
+          ? primitives.run<std::vector<std::int64_t>>(
+                "primitive_test.descending")
+          : std::nullopt;
+  const auto empty_range =
+      primitives_linked
+          ? primitives.run<std::vector<std::int64_t>>(
+                "primitive_test.empty_range")
+          : std::nullopt;
+  const auto primitive_module = primitives.module("primitive_test");
+  const auto unroll_decl =
+      primitive_module ? primitive_module->function("unroll") : std::nullopt;
+  const auto integer_type = primitives.make("int");
+  const auto count =
+      integer_type ? primitives.known(*integer_type, std::int64_t{3})
+                   : std::nullopt;
+  const auto unrolled = unroll_decl && count
+                            ? primitives.function(*unroll_decl, {*count})
+                            : std::nullopt;
   ok &= expect(primitives_linked && folded == std::optional<std::int64_t>{7} &&
                    predicate == std::optional<bool>{true} &&
-                   real_math == std::optional<double>{4.0},
+                   real_math == std::optional<double>{4.0} && ascending &&
+                   *ascending ==
+                       std::vector<std::int64_t>({0, 1, 2, 3}) &&
+                   descending &&
+                   *descending ==
+                       std::vector<std::int64_t>({5, 3, 1}) &&
+                   empty_range && empty_range->empty() && unrolled &&
+                   unrolled->instructions().size() == 3U,
                "Prelude fn primitives drive generic for, compile-time "
-               "control, arithmetic, comparisons, and logic");
+               "range, control, arithmetic, comparisons, and logic");
 
   joggle::Compiler shadowing;
   shadowing.add(R"(
@@ -295,6 +351,62 @@ module overflowing@1.0.0 {
       });
   ok &= expect(overflowing_linked && !overflowing_result && reports_overflow,
                "Prelude integer primitives reject overflow deterministically");
+
+  joggle::Compiler invalid_range;
+  invalid_range.add(R"(
+joggle 1;
+module invalid_range@1.0.0 {
+  fn zero_step() -> list<int> {
+    return range(0, 4, 0);
+  }
+}
+)",
+                    "invalid-range.joggle");
+  const bool invalid_range_linked = invalid_range.link();
+  const auto invalid_range_result =
+      invalid_range_linked
+          ? invalid_range.run<std::vector<std::int64_t>>(
+                "invalid_range.zero_step")
+          : std::nullopt;
+  const bool reports_zero_step = std::any_of(
+      invalid_range.diagnostics().entries().begin(),
+      invalid_range.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("range step cannot be zero") !=
+               std::string::npos;
+      });
+  ok &= expect(invalid_range_linked && !invalid_range_result &&
+                   reports_zero_step,
+               "range rejects a zero step deterministically");
+
+  joggle::Compiler bounded_range({4, 64});
+  bounded_range.add(R"(
+joggle 1;
+module bounded_range@1.0.0 {
+  fn expand() -> list<int> {
+    return range(8);
+  }
+}
+)",
+                    "bounded-range.joggle");
+  const bool bounded_range_linked = bounded_range.link();
+  const auto bounded_range_result =
+      bounded_range_linked
+          ? bounded_range.run<std::vector<std::int64_t>>(
+                "bounded_range.expand")
+          : std::nullopt;
+  const bool reports_range_limit = std::any_of(
+      bounded_range.diagnostics().entries().begin(),
+      bounded_range.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find(
+                   "range exceeds the compiler evaluation step limit") !=
+               std::string::npos;
+      });
+  ok &= expect(bounded_range_linked && !bounded_range_result &&
+                   reports_range_limit,
+               "range allocation is bounded by the compiler evaluation "
+               "budget");
 
   const auto unknown = compiler.make("i33");
   ok &= expect(!unknown, "unknown Prelude type spellings are rejected");

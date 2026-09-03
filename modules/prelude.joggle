@@ -1,6 +1,6 @@
 joggle 1;
 
-module prelude@1.1.0 {
+module prelude@1.2.0 {
   interface scalar: type {
     storage_bits: int;
   }
@@ -102,4 +102,7 @@ module prelude@1.1.0 {
   fn min(lhs: real, rhs: real) -> real;
   fn max(lhs: int, rhs: int) -> int;
   fn max(lhs: real, rhs: real) -> real;
+  fn range(stop: int) -> list<int>;
+  fn range(start: int, stop: int) -> list<int>;
+  fn range(start: int, stop: int, step: int) -> list<int>;
 }

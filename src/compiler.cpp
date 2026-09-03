@@ -210,7 +210,7 @@ qualified_member(std::string_view name) {
 }
 
 std::optional<detail::Domain>
-pass_field_domain(const Module::ParameterDecl& field) {
+parameter_domain(const Module::ParameterDecl& field) {
   return detail::kernel_domain(field.domain);
 }
 
@@ -2007,7 +2007,7 @@ bool Compiler::accepts_host_type(const Module::FunctionDecl& function,
                                  const Module::ParameterDecl& field,
                                  std::string_view type) const {
   if (const auto domain = detail::cpp_value_domain(type)) {
-    return pass_field_domain(field) == domain;
+    return parameter_domain(field) == domain;
   }
   const auto declaration =
       field_type_declaration(state_->modules, function, field);
@@ -2176,7 +2176,8 @@ void Compiler::bind_prelude_primitives() {
       continue;
     }
     NativeFunction implementation =
-        [function](Compiler&, std::span<detail::ExecutionValue> arguments,
+        [function](Compiler& compiler,
+                   std::span<detail::ExecutionValue> arguments,
                    Diagnostics& diagnostics)
         -> std::optional<detail::ExecutionValues> {
       std::vector<detail::ParameterValue> values;
@@ -2192,7 +2193,7 @@ void Compiler::bind_prelude_primitives() {
         values.push_back(std::move(*value));
       }
       auto result = detail::evaluate_prelude_primitive(
-          function, values, diagnostics);
+          function, values, diagnostics, compiler.evaluation_limits().steps);
       if (!result || function.results().size() != 1U) {
         return std::nullopt;
       }
@@ -2832,10 +2833,10 @@ bool Compiler::run(ir::Function& function,
   const Module::Symbol symbol = transform.symbol();
   const bool function_transform =
       transform.inputs().size() == 1U &&
-      pass_field_domain(transform.inputs().front()) ==
+      parameter_domain(transform.inputs().front()) ==
           detail::Domain{detail::ValueKind::Function, false} &&
       transform.results().size() == 1U &&
-      pass_field_domain(transform.results().front()) ==
+      parameter_domain(transform.results().front()) ==
           detail::Domain{detail::ValueKind::Function, false};
   if (!function_transform) {
     state_->diagnostics.report("compiler function '" +

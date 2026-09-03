@@ -82,6 +82,11 @@ Generic values bound by compiler inputs are ordinary Known locals. They can
 drive control flow and dependent type expressions without being wrapped in
 temporary IR Values.
 
+Integer-count loops use the same rule rather than a second loop form. The
+ordinary Hermetic Prelude overloads of `range` construct a Known `list<int>`,
+so `for i in range(N)` works when generic `N` is Known. Range construction and
+loop expansion are both bounded by the Compiler evaluation budget.
+
 Execution preserves the declared result sequence: zero results are empty, one
 result is one value, and multiple results remain positional values. The C++
 boundary maps those cases to `void`, `T`, and `std::tuple<Ts...>`; the IR and

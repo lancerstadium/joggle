@@ -208,8 +208,9 @@ Environment environment(std::span<const Module> modules,
           },
           [&diagnostics](Module::FunctionDecl function,
                          std::span<const ParameterValue> arguments) {
+            const Compiler::EvaluationLimits limits;
             return evaluate_prelude_primitive(function, arguments,
-                                              diagnostics);
+                                              diagnostics, limits.steps);
           },
           false, {}};
 }

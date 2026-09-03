@@ -131,6 +131,7 @@ fn add(lhs: int, rhs: int) -> int as +;
 fn less(lhs: int, rhs: int) -> bool as <;
 fn logical_and(lhs: bool, rhs: bool) -> bool as &&;
 fn ceildiv(lhs: int, rhs: int) -> int;
+fn range(stop: int) -> list<int>;
 ```
 
 The compiler provides deterministic Hermetic implementations for the exact
@@ -140,10 +141,10 @@ that interprets an undeclared symbol or recognizes a call merely by its text.
 
 The shipped surface covers unary `+` and `-`; integer and real `+`, `-`, `*`,
 `/`, and `//`; integer `%`; numeric comparisons; equality for `int`, `real`,
-`bool`, and `string`; boolean `!`, `&&`, and `||`; and `ceildiv`, `min`, and
-`max`. Integer arithmetic is checked for signed 64-bit overflow. Division by
-zero and non-finite real results are errors. `ceildiv` accepts a non-negative
-dividend and a positive divisor.
+`bool`, and `string`; boolean `!`, `&&`, and `||`; `ceildiv`, `min`, and `max`;
+and integer `range`. Integer arithmetic is checked for signed 64-bit overflow.
+Division by zero and non-finite real results are errors. `ceildiv` accepts a
+non-negative dividend and a positive divisor.
 
 Prelude operators are defaults, not privileged syntax. A Module can replace
 one signature with its own ordinary function:
@@ -271,6 +272,23 @@ may generate Residual Instructions or branches. `continue`, `break`, and
 `return` have their usual nearest-loop meaning. The evaluation budget bounds
 the expansion. A runtime collection is not silently unrolled; use `while` and
 Residual function calls to express a runtime loop.
+
+Integer generics use the same list rule through ordinary Prelude functions:
+
+```joggle
+fn repeat<N: int>(count: N, input: word<8>) -> word<8> {
+  current = input;
+  for index in range(N) {
+    current = identity(current);
+  }
+  return current;
+}
+```
+
+`range(stop)`, `range(start, stop)`, and `range(start, stop, step)` produce
+half-open integer lists. The default start is zero, the default step is one,
+negative steps count downward, and a zero step is an error. Range size is
+bounded by the same evaluation step limit as staged control flow.
 
 This makes a binding such as `S: list<int>` useful in all three places:
 

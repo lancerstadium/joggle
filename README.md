@@ -27,20 +27,19 @@ module example@1.0.0 {
 
   fn identity<T: type>(input: T) -> T;
 
-  fn pipeline(input: word<8>) -> word<8> {
+  fn pipeline<N: int>(count: N, input: word<8>) -> word<8> {
     current = input;
-    for enabled in [true, false, true] {
-      if enabled {
-        current = identity(current);
-      }
+    for stage in range(N) {
+      current = identity(current);
     }
     return current;
   }
 }
 ```
 
-Here the list is Known. `for` expands deterministically at compile time, while
-each `identity` call may remain as a normal Residual Instruction.
+Here `count: N` binds integer generic `N`, and the ordinary Prelude function
+`range(N)` produces a Known list. `for` expands deterministically at compile
+time, while each `identity` call may remain as a normal Residual Instruction.
 The same body can therefore express compiler decisions and the program they
 produce without a second metaprogramming language.
 

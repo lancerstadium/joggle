@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace joggle::detail {
 
@@ -145,6 +147,7 @@ bool primitive_name(std::string_view name) {
       std::string_view{"logical_not"},   std::string_view{"logical_and"},
       std::string_view{"logical_or"},    std::string_view{"ceildiv"},
       std::string_view{"min"},           std::string_view{"max"},
+      std::string_view{"range"},
   };
   return std::find(names.begin(), names.end(), name) != names.end();
 }
@@ -165,6 +168,7 @@ bool is_prelude_primitive(const Module::FunctionDecl& function) {
 std::optional<ParameterValue> evaluate_prelude_primitive(
     const Module::FunctionDecl& function,
     std::span<const ParameterValue> arguments, Diagnostics& diagnostics,
+    std::size_t element_limit,
     std::optional<SourceRange> source) {
   const auto fail = [&](std::string message) -> std::optional<ParameterValue> {
     diagnostics.report(std::move(message), source);
@@ -176,6 +180,39 @@ std::optional<ParameterValue> evaluate_prelude_primitive(
   }
 
   const std::string_view name = function.name();
+  if (name == "range") {
+    if (arguments.empty() || arguments.size() > 3U) {
+      return fail("Prelude range expects one, two, or three ints");
+    }
+    std::array<std::int64_t, 3> values{0, 0, 1};
+    for (std::size_t index = 0; index < arguments.size(); ++index) {
+      const auto* value = arguments[index].as_i64();
+      if (value == nullptr) {
+        return fail("Prelude range expects only int arguments");
+      }
+      values[index] = *value;
+    }
+    const std::int64_t start = arguments.size() == 1U ? 0 : values[0];
+    const std::int64_t stop = arguments.size() == 1U ? values[0] : values[1];
+    const std::int64_t step = arguments.size() == 3U ? values[2] : 1;
+    if (step == 0) {
+      return fail("range step cannot be zero");
+    }
+    std::vector<ParameterValue> result;
+    std::int64_t current = start;
+    while (step > 0 ? current < stop : current > stop) {
+      if (result.size() >= element_limit) {
+        return fail("range exceeds the compiler evaluation step limit");
+      }
+      result.emplace_back(current);
+      const auto next = checked_add(current, step);
+      if (!next) {
+        break;
+      }
+      current = *next;
+    }
+    return ParameterValue::list(std::move(result));
+  }
   if (name == "logical_not") {
     const bool* value = arguments.size() == 1U ? arguments[0].as_bool()
                                                : nullptr;
