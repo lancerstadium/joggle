@@ -18,6 +18,8 @@ of the project; none is a migration log.
   resolution, and lock files.
 - [ONNX extension](../extensions/onnx/README.md) documents the optional typed
   importer and its deliberately bounded semantic profile.
+- [Precision extension](../extensions/precision/README.md) documents the first
+  resource-aware representation-changing transformation.
 
 The checked-in declarations in [`modules`](../modules) and executable examples
 in [`examples`](../examples) are part of the reference. If prose and behavior

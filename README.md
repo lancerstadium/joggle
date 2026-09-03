@@ -101,6 +101,11 @@ to the extension and is not a dependency of the core library. The first exact
 profile targets the official opset-18 ResNet-18 model; unsupported ONNX
 semantics are rejected rather than approximated.
 
+[`extensions/precision`](extensions/precision) provides a resource-aware
+f32-to-f16 transformation. It transactionally rebuilds the typed Module and
+content-addressed resources together, demonstrating the same function model
+for representation-changing compiler work.
+
 ## Documentation
 
 Start at the [documentation index](docs/README.md). The

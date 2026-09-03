@@ -5,6 +5,7 @@ project(Joggle VERSION 0.1.0 LANGUAGES CXX)
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 option(JOGGLE_BUILD_TESTS "Build Joggle tests" ON)
 option(JOGGLE_BUILD_ONNX "Build the optional ONNX import Module" OFF)
+option(JOGGLE_BUILD_PRECISION "Build numeric precision transformations" OFF)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -319,4 +320,8 @@ endif()
 
 if(JOGGLE_BUILD_ONNX)
   add_subdirectory(extensions/onnx)
+endif()
+
+if(JOGGLE_BUILD_PRECISION)
+  add_subdirectory(extensions/precision)
 endif()

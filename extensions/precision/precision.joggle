@@ -1,0 +1,10 @@
+joggle 1;
+
+module precision@1.0.0 {
+  import resource@1.0.0;
+
+  fn f32_to_f16(
+    input: module,
+    resources: resource.set
+  ) -> (module, resource.set);
+}
