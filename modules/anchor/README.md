@@ -73,8 +73,8 @@ validated 10,946,464-byte static scratch arena.
 
 `config<...>` is an ordinary Module-defined type conforming to `machine`. Its
 fields state parallel lanes, MACs per lane, local and external byte rates,
-scratch capacity, and launch latency. `cycles(input, target)` validates the
-storage plan and then evaluates every supported call with the explicit model
+scratch capacity, and launch latency. `simulate(input, target)` validates the
+storage plan and creates one ordered event per executable call with the model
 
 ```text
 launch + max(compute work / throughput,
@@ -82,11 +82,15 @@ launch + max(compute work / throughput,
              external bytes / external rate)
 ```
 
-before summing the calls in the materialized Functions. Compute and transfers
-are therefore assumed to overlap within a call, while calls execute in source
-order. The result is a deterministic analytical estimate under those declared
-assumptions, not measured device latency. A target whose scratch capacity is
-smaller than the validated plan is rejected.
+Compute and transfers are therefore assumed to overlap within a call, while
+calls execute in source order. Each event records its Function and Op index,
+start and end cycle, compute demand, local and external transfer demand, and
+launch cost. The Module-owned `timeline` is an ordinary typed value;
+`cycles(input, target)` is defined in Joggle as
+`duration(simulate(input, target))`, while `trace(input, target)` serializes
+the same timeline. This is a deterministic analytical simulation under the
+declared assumptions, not measured device latency. A target whose scratch
+capacity is smaller than the validated plan is rejected.
 
 `emit(input, target)` returns a portable byte manifest containing the Module
 digest, target parameters, required scratch, estimated cycles, and the
@@ -100,6 +104,14 @@ fn deploy(input: bytes, target: type) -> bytes {
   mapped = anchor.map(model, 8, 8);
   planned = anchor.plan_storage(mapped);
   return anchor.emit(planned, target);
+}
+
+fn inspect(input: bytes, target: type) -> bytes {
+  source = onnx.read(input);
+  model = onnx.to_nn(source);
+  mapped = anchor.map(model, 8, 8);
+  planned = anchor.plan_storage(mapped);
+  return anchor.trace(planned, target);
 }
 ```
 

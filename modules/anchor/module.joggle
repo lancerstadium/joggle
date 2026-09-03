@@ -32,6 +32,8 @@ module anchor@1.0.0 {
     launch_cycles: int
   ) : machine;
 
+  type timeline();
+
   type ref(
     element: type,
     shape: list<int>,
@@ -695,6 +697,14 @@ module anchor@1.0.0 {
   fn local_bytes_upper_bound(input: module) -> int;
   fn plan_storage(input: module) -> module;
   fn scratch_bytes(input: module) -> int;
-  fn cycles(input: module, target: type) -> int;
+  fn simulate(input: module, target: type) -> timeline;
+  fn duration(input: timeline) -> int;
+  fn trace(input: timeline) -> bytes;
+  fn trace(input: module, target: type) -> bytes {
+    return trace(simulate(input, target));
+  }
+  fn cycles(input: module, target: type) -> int {
+    return duration(simulate(input, target));
+  }
   fn emit(input: module, target: type) -> bytes;
 }

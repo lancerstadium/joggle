@@ -121,12 +121,12 @@ and Module data together.
 values to explicit target references, calls, and static scratch placement. Its
 layout, storage spaces, deterministic slot reuse, and validated resource
 analysis are ordinary Module-owned semantics rather than compiler-core device
-classes. The same Module declares an explicit machine type, a deterministic
-analytical cycle model, and a portable manifest emitter, so a source-defined
-pipeline can run from ONNX bytes to an inspectable deployment artifact without
-a parallel pass or backend API. Its elementwise kernels are ordinary Joggle
-function bodies over residual target primitives, showing the same `fn`
-mechanism on both the compiler and executable sides.
+classes. The same Module declares an explicit machine type, a first-class
+deterministic simulation timeline, and a portable manifest emitter, so a
+source-defined pipeline can run from ONNX bytes to inspectable timing and
+deployment artifacts without a parallel pass or backend API. Its kernels are
+ordinary Joggle function bodies over residual target primitives, showing the
+same `fn` mechanism on both the compiler and executable sides.
 
 ## Documentation
 

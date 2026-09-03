@@ -198,6 +198,7 @@ module anchor_kernel@1.0.0 {
   const auto io = target ? target->type("io") : std::nullopt;
   const auto local = target ? target->type("local") : std::nullopt;
   const auto config = target ? target->type("config") : std::nullopt;
+  const auto timeline = target ? target->type("timeline") : std::nullopt;
   const auto load = target ? target->function("load") : std::nullopt;
   const auto store = target ? target->function("store") : std::nullopt;
   const auto relu = target ? target->function("relu") : std::nullopt;
@@ -248,10 +249,10 @@ module anchor_kernel@1.0.0 {
   const auto write = memory ? memory->interface("write") : std::nullopt;
   if (!source || !map || !analyze || !plan || !scratch || !cycles || !emit ||
       !reference || !ref || !linear || !tiled || !io || !local || !config ||
-      !load || !store || !relu || !add || !linear_function || !linear_call ||
-      !linear_body || !padded_conv_body || !strided_conv_body || !read ||
-      !biased_conv_body || !nested_conv_body || !write || !padded_pool_body ||
-      !strided_pool_body ||
+      !timeline || !load || !store || !relu || !add || !linear_function ||
+      !linear_call || !linear_body || !padded_conv_body ||
+      !strided_conv_body || !read || !biased_conv_body || !nested_conv_body ||
+      !write || !padded_pool_body || !strided_pool_body ||
       !global_average_body || !batch_norm_body || !flatten_body) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -300,13 +301,21 @@ module anchor_kernel@1.0.0 {
                                  ? compiler.run<joggle::Bytes>(*emit, *planned,
                                                               *machine)
                                  : std::optional<joggle::Bytes>{};
+  const auto trace = planned && machine
+                         ? compiler.run<joggle::Bytes>("anchor.trace", *planned,
+                                                       *machine)
+                         : std::optional<joggle::Bytes>{};
+  const auto trace_again =
+      planned && machine
+          ? compiler.run<joggle::Bytes>("anchor.trace", *planned, *machine)
+          : std::optional<joggle::Bytes>{};
   const joggle::Function* planned_body =
       planned && !planned->functions().empty()
           ? planned->functions().front().body()
           : nullptr;
   if (!mapped || !mapped_again || body == nullptr || !bytes || !planned ||
       !planned_again || planned_body == nullptr || !scratch_size ||
-      !cycle_count || !emitted || !emitted_again) {
+      !cycle_count || !emitted || !emitted_again || !trace || !trace_again) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -446,6 +455,7 @@ module anchor_kernel@1.0.0 {
   ok &= expect(*scratch_size == 1605632,
                "two alternating activation slots replace seven allocations");
   const std::string manifest = decode(*emitted);
+  const std::string timeline_text = decode(*trace);
   ok &= expect(*cycle_count > 0 && *emitted == *emitted_again &&
                    manifest.starts_with("anchor 1\nmodule basic_block#") &&
                    manifest.find("\nscratch-bytes 1605632\n") !=
@@ -455,6 +465,17 @@ module anchor_kernel@1.0.0 {
                        std::string::npos &&
                    manifest.ends_with(joggle::format(*planned)),
                "cycle analysis and manifest emission consume the same plan");
+  ok &= expect(*trace == *trace_again &&
+                   timeline_text.starts_with(
+                       "anchor timeline 1\nmodule basic_block#") &&
+                   timeline_text.find("\nscratch-bytes 1605632\n") !=
+                       std::string::npos &&
+                   timeline_text.find("\ncycles " +
+                                      std::to_string(*cycle_count) + "\n") !=
+                       std::string::npos &&
+                   timeline_text.find("\nevents 7\n") != std::string::npos,
+               "simulation produces a deterministic seven-event timeline "
+               "whose duration agrees with cycle analysis");
   ok &= expect(joggle::format(*mapped) == joggle::format(*mapped_again),
                "the target mapping is deterministic");
   ok &= expect(joggle::format(*planned) == joggle::format(*planned_again),

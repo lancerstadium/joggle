@@ -65,6 +65,11 @@ module anchor_pipeline@1.0.0 {
     planned = compile(input);
     return anchor.emit(planned, target);
   }
+
+  fn trace(input: bytes, target: type) -> bytes {
+    planned = compile(input);
+    return anchor.trace(planned, target);
+  }
 }
 )",
                "anchor-pipeline.joggle");
@@ -120,7 +125,16 @@ module anchor_pipeline@1.0.0 {
                             ? compiler.run<joggle::Bytes>(
                                   "anchor_pipeline.deploy", *source, *machine)
                             : std::optional<joggle::Bytes>{};
+  const auto trace = source && machine
+                         ? compiler.run<joggle::Bytes>(
+                               "anchor_pipeline.trace", *source, *machine)
+                         : std::optional<joggle::Bytes>{};
+  const auto trace_again = first && machine
+                               ? compiler.run<joggle::Bytes>("anchor.trace",
+                                                             *first, *machine)
+                               : std::optional<joggle::Bytes>{};
   const std::string emitted = manifest ? decode(*manifest) : std::string{};
+  const std::string timeline = trace ? decode(*trace) : std::string{};
   bool valid = body != nullptr && scratch && *scratch > 0 && cycles &&
                *cycles == 29453374 && manifest && manifest_again &&
                deployed && *manifest == *manifest_again &&
@@ -130,6 +144,13 @@ module anchor_pipeline@1.0.0 {
                    std::string::npos &&
                emitted.find("\ncycles 29453374\n") != std::string::npos &&
                emitted.ends_with(joggle::format(*first)) &&
+               trace && trace_again && *trace == *trace_again &&
+               timeline.starts_with(
+                   "anchor timeline 1\nmodule main_graph#") &&
+               timeline.find("\nscratch-bytes 10946464\n") !=
+                   std::string::npos &&
+               timeline.find("\ncycles 29453374\n") != std::string::npos &&
+               timeline.find("\nevents ") != std::string::npos &&
                body->ops().size() == 140U && first->data().size() == 42U &&
                first->digest() == second->digest() &&
                first->data() == second->data();

@@ -19,6 +19,7 @@ struct Schema {
   joggle::Module::TypeDecl io;
   joggle::Module::TypeDecl read_only;
   joggle::Module::TypeDecl local;
+  joggle::Module::TypeDecl timeline;
   joggle::Module::InterfaceDecl ranked_tensor;
   joggle::Module::InterfaceDecl memory_reference;
   joggle::Module::InterfaceDecl immutable_data;
@@ -623,6 +624,27 @@ struct Machine {
   std::uint64_t launch_cycles = 0;
 };
 
+struct Event {
+  std::string function;
+  std::size_t op_index = 0;
+  std::string operation;
+  std::uint64_t start = 0;
+  std::uint64_t end = 0;
+  std::uint64_t compute = 0;
+  std::uint64_t local = 0;
+  std::uint64_t external = 0;
+  std::uint64_t launch = 0;
+};
+
+struct Timeline {
+  std::string module;
+  std::string digest;
+  Machine machine;
+  std::uint64_t scratch = 0;
+  std::uint64_t cycles = 0;
+  std::vector<Event> events;
+};
+
 std::optional<Machine> machine(joggle::Compiler& compiler,
                                const joggle::Type& type,
                                const Schema& schema,
@@ -808,10 +830,10 @@ std::uint64_t ceil_div(std::uint64_t value, std::uint64_t divisor) {
   return value / divisor + (value % divisor == 0U ? 0U : 1U);
 }
 
-std::optional<std::int64_t>
-cycle_count(joggle::Compiler& compiler, const joggle::Module& input,
-            const joggle::Type& target, const Schema& schema,
-            joggle::Diagnostics& diagnostics) {
+std::optional<Timeline>
+simulate(joggle::Compiler& compiler, const joggle::Module& input,
+         const joggle::Type& target, const Schema& schema,
+         joggle::Diagnostics& diagnostics) {
   const auto config = machine(compiler, target, schema, diagnostics);
   const auto required = scratch_bytes(compiler, input, schema, diagnostics);
   if (!config || !required) {
@@ -827,21 +849,26 @@ cycle_count(joggle::Compiler& compiler, const joggle::Module& input,
     return std::nullopt;
   }
 
-  std::uint64_t cycles = 0;
+  Timeline result{.module = std::string(input.name()),
+                  .digest = std::string(input.digest()),
+                  .machine = *config,
+                  .scratch = static_cast<std::uint64_t>(*required)};
   for (const auto& member : input.functions()) {
     const joggle::Function* function_body = member.body();
     if (function_body == nullptr) {
-      diagnostics.report("anchor cycle model requires materialized Functions");
+      diagnostics.report("anchor simulation requires materialized Functions");
       return std::nullopt;
     }
+    std::size_t op_index = 0;
     for (const auto& op : function_body->ops()) {
       const std::string_view name = op.callee().name();
       if (compiler.conforms(op.callee(), schema.placement) ||
           name == "constant") {
+        ++op_index;
         continue;
       }
       if (op.callee().symbol().module_name() != schema.target.name()) {
-        diagnostics.report("anchor cycle model encountered a foreign call");
+        diagnostics.report("anchor simulation encountered a foreign call");
         return std::nullopt;
       }
       const auto operation_work = work(op, diagnostics);
@@ -856,36 +883,110 @@ cycle_count(joggle::Compiler& compiler, const joggle::Module& input,
           ceil_div(operation_traffic->local, config->local_bytes_per_cycle);
       const std::uint64_t external = ceil_div(
           operation_traffic->external, config->external_bytes_per_cycle);
-      std::uint64_t operation_cycles = compute;
-      if (local > operation_cycles) {
-        operation_cycles = local;
+      std::uint64_t active = compute;
+      if (local > active) {
+        active = local;
       }
-      if (external > operation_cycles) {
-        operation_cycles = external;
+      if (external > active) {
+        active = external;
       }
+      std::uint64_t operation_cycles = active;
       if (!add(operation_cycles, config->launch_cycles, diagnostics,
                "operation cycle count") ||
-          !add(cycles, operation_cycles, diagnostics, "module cycle count")) {
+          !add(result.cycles, operation_cycles, diagnostics,
+               "module cycle count")) {
         return std::nullopt;
       }
+      result.events.push_back(
+          Event{.function = std::string(member.name()),
+                .op_index = op_index,
+                .operation = op.callee().symbol().qualified_name(),
+                .start = result.cycles - operation_cycles,
+                .end = result.cycles,
+                .compute = compute,
+                .local = local,
+                .external = external,
+                .launch = config->launch_cycles});
+      ++op_index;
     }
   }
-  if (cycles > static_cast<std::uint64_t>(
-                   std::numeric_limits<std::int64_t>::max())) {
+  if (result.cycles > static_cast<std::uint64_t>(
+                          std::numeric_limits<std::int64_t>::max())) {
     diagnostics.report("module cycle count does not fit in int");
     return std::nullopt;
   }
-  return static_cast<std::int64_t>(cycles);
+  return result;
+}
+
+std::int64_t duration(const Timeline& input) {
+  return static_cast<std::int64_t>(input.cycles);
+}
+
+joggle::Bytes encode(std::string_view input) {
+  joggle::Bytes result;
+  result.reserve(input.size());
+  for (const char value : input) {
+    result.push_back(
+        static_cast<std::byte>(static_cast<unsigned char>(value)));
+  }
+  return result;
+}
+
+joggle::Bytes trace(const Timeline& input) {
+  std::string output = "anchor timeline 1\nmodule ";
+  output += input.module;
+  output += '#';
+  output += input.digest;
+  output += "\nscratch-bytes ";
+  output += std::to_string(input.scratch);
+  output += "\nlanes ";
+  output += std::to_string(input.machine.lanes);
+  output += "\nmacs-per-lane ";
+  output += std::to_string(input.machine.macs_per_lane);
+  output += "\nlocal-bytes-per-cycle ";
+  output += std::to_string(input.machine.local_bytes_per_cycle);
+  output += "\nexternal-bytes-per-cycle ";
+  output += std::to_string(input.machine.external_bytes_per_cycle);
+  output += "\nscratch-capacity ";
+  output += std::to_string(input.machine.scratch_capacity);
+  output += "\nlaunch-cycles ";
+  output += std::to_string(input.machine.launch_cycles);
+  output += "\ncycles ";
+  output += std::to_string(input.cycles);
+  output += "\nevents ";
+  output += std::to_string(input.events.size());
+  output += "\ncolumns function op-index operation start end compute-cycles "
+            "local-cycles external-cycles launch-cycles\n";
+  for (const Event& event : input.events) {
+    output += "event ";
+    output += event.function;
+    output += ' ';
+    output += std::to_string(event.op_index);
+    output += ' ';
+    output += event.operation;
+    output += ' ';
+    output += std::to_string(event.start);
+    output += ' ';
+    output += std::to_string(event.end);
+    output += ' ';
+    output += std::to_string(event.compute);
+    output += ' ';
+    output += std::to_string(event.local);
+    output += ' ';
+    output += std::to_string(event.external);
+    output += ' ';
+    output += std::to_string(event.launch);
+    output += '\n';
+  }
+  return encode(output);
 }
 
 std::optional<joggle::Bytes>
 emit(joggle::Compiler& compiler, const joggle::Module& input,
      const joggle::Type& target, const Schema& schema,
      joggle::Diagnostics& diagnostics) {
-  const auto config = machine(compiler, target, schema, diagnostics);
-  const auto required = scratch_bytes(compiler, input, schema, diagnostics);
-  const auto cycles = cycle_count(compiler, input, target, schema, diagnostics);
-  if (!config || !required || !cycles) {
+  const auto timeline = simulate(compiler, input, target, schema, diagnostics);
+  if (!timeline) {
     return std::nullopt;
   }
   std::string output = "anchor 1\nmodule ";
@@ -893,22 +994,16 @@ emit(joggle::Compiler& compiler, const joggle::Module& input,
   output += '#';
   output += input.digest();
   output += "\nlanes ";
-  output += std::to_string(config->lanes);
+  output += std::to_string(timeline->machine.lanes);
   output += "\nmacs-per-lane ";
-  output += std::to_string(config->macs_per_lane);
+  output += std::to_string(timeline->machine.macs_per_lane);
   output += "\nscratch-bytes ";
-  output += std::to_string(*required);
+  output += std::to_string(timeline->scratch);
   output += "\ncycles ";
-  output += std::to_string(*cycles);
+  output += std::to_string(timeline->cycles);
   output += "\n---\n";
   output += joggle::format(input);
-  joggle::Bytes bytes;
-  bytes.reserve(output.size());
-  for (const char value : output) {
-    bytes.push_back(
-        static_cast<std::byte>(static_cast<unsigned char>(value)));
-  }
-  return bytes;
+  return encode(output);
 }
 
 std::optional<Schema> schema(joggle::Compiler& compiler,
@@ -926,6 +1021,7 @@ std::optional<Schema> schema(joggle::Compiler& compiler,
   const auto io = target->type("io");
   const auto read_only = target->type("read_only");
   const auto local = target->type("local");
+  const auto timeline = target->type("timeline");
   const auto ranked_tensor = tensor->interface("ranked_tensor");
   const auto memory_reference = memory->interface("reference");
   const auto immutable_data = tensor->interface("immutable_data");
@@ -933,22 +1029,25 @@ std::optional<Schema> schema(joggle::Compiler& compiler,
   const auto machine_interface = target->interface("machine");
   const auto place = target->function("place");
   if (!reference || !linear || !tiled || !io || !read_only || !local ||
-      !ranked_tensor || !memory_reference || !immutable_data || !placement ||
-      !machine_interface || !place) {
+      !timeline || !ranked_tensor || !memory_reference || !immutable_data ||
+      !placement || !machine_interface || !place) {
     diagnostics.report("anchor behavior does not match its schema");
     return std::nullopt;
   }
-  return Schema{*target,         *reference,      *linear,
-                *tiled,         *io,             *read_only,
-                *local,         *ranked_tensor,  *memory_reference,
-                *immutable_data, *placement,     *machine_interface,
-                *place};
+  return Schema{*target,           *reference,       *linear,
+                *tiled,           *io,              *read_only,
+                *local,           *timeline,        *ranked_tensor,
+                *memory_reference, *immutable_data, *placement,
+                *machine_interface, *place};
 }
 
 void bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
   const auto resolved = schema(compiler, diagnostics);
   if (!resolved) {
+    return;
+  }
+  if (!compiler.represent<Timeline>(resolved->timeline)) {
     return;
   }
   compiler.bind(
@@ -978,12 +1077,14 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
         return scratch_bytes(bound, input, *resolved, reported);
       });
   compiler.bind(
-      module, "cycles",
+      module, "simulate",
       [resolved](joggle::Compiler& bound, const joggle::Module& input,
                  const joggle::Type& target,
                  joggle::Diagnostics& reported) {
-        return cycle_count(bound, input, target, *resolved, reported);
+        return simulate(bound, input, target, *resolved, reported);
       });
+  compiler.bind(module, "duration", duration);
+  compiler.bind(module, "trace", trace);
   compiler.bind(
       module, "emit",
       [resolved](joggle::Compiler& bound, const joggle::Module& input,
