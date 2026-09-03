@@ -333,6 +333,41 @@ std::optional<bool> known_boolean(const StagedValue& value) {
   return boolean ? std::optional<bool>{*boolean} : std::nullopt;
 }
 
+bool same_staged_value(const StagedValue& lhs, const StagedValue& rhs) {
+  if (lhs.type() != rhs.type() || lhs.known() != rhs.known()) {
+    return false;
+  }
+  if (!lhs.known()) {
+    const Value* left = lhs.residual_value();
+    const Value* right = rhs.residual_value();
+    return left != nullptr && right != nullptr && *left == *right;
+  }
+  const ExecutionValue* left = lhs.known_value();
+  const ExecutionValue* right = rhs.known_value();
+  if (left == nullptr || right == nullptr || left->index() != right->index()) {
+    return false;
+  }
+  const auto left_parameter = parameter_value(*left);
+  const auto right_parameter = parameter_value(*right);
+  if (left_parameter || right_parameter) {
+    return left_parameter && right_parameter &&
+           *left_parameter == *right_parameter;
+  }
+  if (const auto* bytes = std::get_if<Bytes>(left)) {
+    return *bytes == std::get<Bytes>(*right);
+  }
+  if (const auto* function = std::get_if<std::shared_ptr<Function>>(left)) {
+    return *function == std::get<std::shared_ptr<Function>>(*right);
+  }
+  if (const auto* host = std::get_if<HostValue>(left)) {
+    const auto& other = std::get<HostValue>(*right);
+    return host->cpp_type == other.cpp_type &&
+           host->storage == other.storage &&
+           host->concrete_type == other.concrete_type;
+  }
+  return std::holds_alternative<std::monostate>(*left);
+}
+
 std::optional<ExecutionValue>
 execution_value(const ParameterValue& value,
                 const Module::ParameterDecl& parameter) {

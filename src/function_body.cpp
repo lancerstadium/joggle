@@ -1153,15 +1153,21 @@ private:
     trim(flow.continues);
   }
 
-  bool same_staged_value(const Value& lhs, const Value& rhs) const {
-    if (lhs == rhs) {
+  bool equivalent_staged_value(const detail::StagedValue& lhs,
+                               const detail::StagedValue& rhs) const {
+    if (detail::same_staged_value(lhs, rhs)) {
       return true;
     }
-    if (lhs.known() || rhs.known() || lhs.type() != rhs.type()) {
+    if (lhs.known() || rhs.known()) {
       return false;
     }
-    const auto left = lhs.defining_instruction();
-    const auto right = rhs.defining_instruction();
+    const Value* left_value = lhs.residual_value();
+    const Value* right_value = rhs.residual_value();
+    if (left_value == nullptr || right_value == nullptr) {
+      return false;
+    }
+    const auto left = left_value->defining_instruction();
+    const auto right = right_value->defining_instruction();
     if (!left || !right ||
         left->callee().symbol() != right->callee().symbol()) {
       return false;
@@ -1176,9 +1182,9 @@ private:
     const auto left_results = left->results();
     const auto right_results = right->results();
     const auto left_result = std::find(left_results.begin(),
-                                       left_results.end(), lhs);
+                                       left_results.end(), *left_value);
     const auto right_result = std::find(right_results.begin(),
-                                        right_results.end(), rhs);
+                                        right_results.end(), *right_value);
     if (left_result == left_results.end() ||
         right_result == right_results.end() ||
         std::distance(left_results.begin(), left_result) !=
@@ -1192,12 +1198,13 @@ private:
                       right_arguments.begin());
   }
 
-  bool same_staged_state(std::span<const Value> lhs,
-                         std::span<const Value> rhs) const {
+  bool same_staged_state(std::span<const detail::StagedValue> lhs,
+                         std::span<const detail::StagedValue> rhs) const {
     return lhs.size() == rhs.size() &&
            std::equal(lhs.begin(), lhs.end(), rhs.begin(),
-                      [&](const Value& left, const Value& right) {
-                        return same_staged_value(left, right);
+                      [&](const detail::StagedValue& left,
+                          const detail::StagedValue& right) {
+                        return equivalent_staged_value(left, right);
                       });
   }
 
@@ -1966,12 +1973,12 @@ private:
       locals_ = incoming;
       locals_.push();
       Flow flow = instantiate_sequence(arm, start);
-      std::vector<std::optional<Value>> values;
+      std::vector<std::optional<detail::StagedValue>> values;
       values.reserve(carried_names.size());
       if (flow.next.size() == 1U) {
         restore(flow.next.front());
         for (const std::string& name : carried_names) {
-          values.push_back(lookup(name));
+          values.push_back(lookup_staged(name));
         }
       }
       trim_scopes(flow, incoming.depth());
@@ -2008,8 +2015,9 @@ private:
                  statement.range);
           continue;
         }
-        bind({carried_names[index], std::nullopt, statement.range, true},
-             values[index]);
+        bind_staged(
+            {carried_names[index], std::nullopt, statement.range, true},
+            values[index]);
       }
       return true_continues ? std::move(true_flow) : std::move(false_flow);
     }
@@ -2017,7 +2025,8 @@ private:
     std::vector<Type> merge_types;
     std::vector<Value> true_arguments;
     std::vector<Value> false_arguments;
-    std::vector<std::optional<Value>> unchanged(carried_names.size());
+    std::vector<std::optional<detail::StagedValue>> unchanged(
+        carried_names.size());
     std::vector<std::optional<std::size_t>> merged(carried_names.size());
     for (std::size_t index = 0; index < carried_names.size(); ++index) {
       if (!true_values[index] || !false_values[index]) {
@@ -2026,7 +2035,8 @@ private:
                statement.range);
         continue;
       }
-      if (*true_values[index] == *false_values[index]) {
+      if (detail::same_staged_value(*true_values[index],
+                                    *false_values[index])) {
         unchanged[index] = *true_values[index];
         continue;
       }
@@ -2048,12 +2058,17 @@ private:
                statement.range);
         continue;
       }
-      auto true_value = materialize(*true_values[index], *target,
-                                    true_flow.next.front().block,
-                                    statement.range);
-      auto false_value = materialize(*false_values[index], *target,
-                                     false_flow.next.front().block,
-                                     statement.range);
+      auto true_ir = detail::ir_value(compiler_, *true_values[index]);
+      auto false_ir = detail::ir_value(compiler_, *false_values[index]);
+      auto true_value =
+          true_ir ? materialize(*true_ir, *target,
+                                true_flow.next.front().block, statement.range)
+                  : std::optional<Value>{};
+      auto false_value =
+          false_ir ? materialize(*false_ir, *target,
+                                 false_flow.next.front().block,
+                                 statement.range)
+                   : std::optional<Value>{};
       if (!true_value || !false_value) {
         continue;
       }
@@ -2071,10 +2086,13 @@ private:
     edit_->jump(false_flow.next.front().block, merge, false_arguments);
     const auto arguments = merge.arguments();
     for (std::size_t index = 0; index < carried_names.size(); ++index) {
-      const auto value = merged[index]
-                             ? std::optional<Value>{arguments[*merged[index]]}
-                             : unchanged[index];
-      bind({carried_names[index], std::nullopt, statement.range, true}, value);
+      const detail::BindingSyntax binding{
+          carried_names[index], std::nullopt, statement.range, true};
+      if (merged[index]) {
+        bind(binding, arguments[*merged[index]]);
+      } else {
+        bind_staged(binding, unchanged[index]);
+      }
     }
     return next(merge);
   }
@@ -2087,7 +2105,7 @@ private:
 
     if (known_result(statement.expression.value, statement.expression.range)) {
       struct StagedState {
-        std::vector<Value> values;
+        std::vector<detail::StagedValue> values;
         Block block;
       };
       std::vector<StagedState> visited;
@@ -2109,11 +2127,11 @@ private:
           exits.next.push_back(path(active.block));
           continue;
         }
-        std::vector<Value> state;
+        std::vector<detail::StagedValue> state;
         state.reserve(carried_names.size());
         for (const std::string& name : carried_names) {
-          if (auto value = lookup(name)) {
-            state.push_back(*value);
+          if (auto value = lookup_staged(name)) {
+            state.push_back(std::move(*value));
           }
         }
         const auto repeated =
