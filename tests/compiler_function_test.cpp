@@ -679,16 +679,27 @@ module source_model@1.0.0 {
       materialized_model ? materialized_model->function("main") : std::nullopt;
   const auto materialized_count =
       materialized_model ? materialized_model->function("count") : std::nullopt;
+  const auto materialized_keep =
+      materialized_model ? materialized_model->function("keep") : std::nullopt;
+  const auto materialized_calls =
+      materialized_main && materialized_main->body()
+          ? materialized_main->body()->instructions()
+          : std::vector<joggle::Instruction>{};
   ok &=
       expect(source_model_linked && source_model_main &&
                  source_model_main->body() == nullptr && materialized_main &&
                  materialized_main->body() != nullptr &&
                  materialized_main->body()->instructions().size() == 1U &&
+                 materialized_keep && materialized_calls.size() == 1U &&
+                 materialized_calls.front().callee() == *materialized_keep &&
+                 materialized_model->interface_digest() ==
+                     source_model->interface_digest() &&
+                 materialized_model->digest() != source_model->digest() &&
                  materialized_count && materialized_count->body() == nullptr &&
                  source_model_main->body() == nullptr,
              "a linked source Module materializes into an isolated "
-             "whole-Module IR value without forcing compiler results into "
-             "SSA");
+             "whole-Module IR value with stable self references and without "
+             "forcing compiler results into SSA");
 
   constexpr std::string_view guarded_source = R"(
     joggle 1;

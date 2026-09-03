@@ -1,13 +1,13 @@
 #include "prelude.h"
 
 #include "prelude_runtime.h"
-#include "sha256.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -150,8 +150,16 @@ bool primitive_name(std::string_view name) {
   return std::find(names.begin(), names.end(), name) != names.end();
 }
 
-const std::string& prelude_digest() {
-  static const std::string value = sha256(prelude_module_source());
+const std::string& prelude_interface_digest() {
+  static const std::string value = [] {
+    Diagnostics diagnostics;
+    auto module = parse_module(prelude_module_source(), diagnostics,
+                               "<embedded-prelude>");
+    if (!module) {
+      throw std::logic_error("embedded Prelude is not a valid Module");
+    }
+    return std::string(module->interface_digest());
+  }();
   return value;
 }
 
@@ -159,7 +167,7 @@ const std::string& prelude_digest() {
 
 bool is_prelude_primitive(const Module::FunctionDecl& function) {
   return function.symbol().module_name() == prelude_module_name &&
-         function.symbol().module_digest() == prelude_digest() &&
+         function.symbol().interface_digest() == prelude_interface_digest() &&
          primitive_name(function.name());
 }
 

@@ -119,7 +119,7 @@ public:
   public:
     std::string_view module_name() const { return module_name_; }
     Version module_version() const { return module_version_; }
-    std::string_view module_digest() const { return module_digest_; }
+    std::string_view interface_digest() const { return interface_digest_; }
     SymbolKind kind() const { return kind_; }
     std::string_view local_name() const { return local_name_; }
 
@@ -129,12 +129,12 @@ public:
 
   private:
     Symbol(std::string module_name, Version module_version,
-           std::string module_digest, SymbolKind kind, std::string local_name,
-           std::string discriminator = {});
+           std::string interface_digest, SymbolKind kind,
+           std::string local_name, std::string discriminator = {});
 
     std::string module_name_;
     Version module_version_;
-    std::string module_digest_;
+    std::string interface_digest_;
     SymbolKind kind_ = SymbolKind::Type;
     std::string local_name_;
     std::string discriminator_;
@@ -281,9 +281,12 @@ public:
   std::string_view name() const;
   Version version() const;
   // SHA-256 of the current canonical Module. Committed edits to a materialized
-  // body change this identity; declarations obtained from that same Module
-  // use the same refreshed digest when producing Symbols.
+  // body change this artifact identity.
   std::string_view digest() const;
+  // SHA-256 of imports and declarations with Function bodies erased. Symbols
+  // use this stable interface identity, so body-only transformations do not
+  // change type or callable contracts.
+  std::string_view interface_digest() const;
   std::span<const Import> imports() const;
 
   std::optional<InterfaceDecl> interface(std::string_view name) const;
@@ -312,6 +315,8 @@ private:
   explicit Module(std::shared_ptr<const Storage> storage);
   static std::string_view
   current_digest(const std::shared_ptr<const Storage>& storage);
+  static std::string
+  compute_interface_digest(const std::shared_ptr<const Storage>& storage);
   std::shared_ptr<const Storage> storage_;
 
   friend class Compiler;

@@ -1753,10 +1753,10 @@ bool VersionRange::contains(Version candidate) const {
 }
 
 Module::Symbol::Symbol(std::string module_name, Version module_version,
-                       std::string module_digest, SymbolKind kind,
+                       std::string interface_digest, SymbolKind kind,
                        std::string local_name, std::string discriminator)
     : module_name_(std::move(module_name)), module_version_(module_version),
-      module_digest_(std::move(module_digest)), kind_(kind),
+      interface_digest_(std::move(interface_digest)), kind_(kind),
       local_name_(std::move(local_name)),
       discriminator_(std::move(discriminator)) {}
 
@@ -1766,8 +1766,8 @@ std::string Module::Symbol::qualified_name() const {
 
 std::string Module::Symbol::stable_name() const {
   std::string result = module_name_ + "@" + to_string(module_version_) + "#" +
-                       module_digest_ + "/" + symbol_kind_name(kind_) + "/" +
-                       local_name_;
+                       interface_digest_ + "/" + symbol_kind_name(kind_) +
+                       "/" + local_name_;
   if (!discriminator_.empty()) {
     result += "/" + discriminator_;
   }
@@ -1805,7 +1805,7 @@ std::string Module::InterfaceDecl::MethodDecl::qualified_name() const {
 
 std::string Module::InterfaceDecl::MethodDecl::stable_name() const {
   return storage_->name + "@" + to_string(storage_->version) + "#" +
-         std::string(Module::current_digest(storage_)) + "/interface/" +
+         storage_->interface_digest + "/interface/" +
          storage_->interfaces[interface_index_].name + "/method/" +
          std::string(name());
 }
@@ -1852,8 +1852,7 @@ Module::InterfaceDecl::methods() const {
 }
 
 Module::Symbol Module::InterfaceDecl::symbol() const {
-  return {storage_->name, storage_->version,
-          std::string(Module::current_digest(storage_)),
+  return {storage_->name, storage_->version, storage_->interface_digest,
           SymbolKind::Interface, storage_->interfaces[index_].name};
 }
 
@@ -1883,8 +1882,8 @@ std::span<const std::string> Module::TypeDecl::interfaces() const {
 }
 
 Module::Symbol Module::TypeDecl::symbol() const {
-  return {storage_->name, storage_->version,
-          std::string(Module::current_digest(storage_)), SymbolKind::Type,
+  return {storage_->name, storage_->version, storage_->interface_digest,
+          SymbolKind::Type,
           storage_->types[index_].name};
 }
 
@@ -1909,8 +1908,7 @@ std::span<const std::string> Module::AttributeDecl::interfaces() const {
 }
 
 Module::Symbol Module::AttributeDecl::symbol() const {
-  return {storage_->name, storage_->version,
-          std::string(Module::current_digest(storage_)),
+  return {storage_->name, storage_->version, storage_->interface_digest,
           SymbolKind::Attribute, storage_->attributes[index_].name};
 }
 
@@ -2091,7 +2089,7 @@ std::string Module::FunctionDecl::signature() const {
 Module::Symbol Module::FunctionDecl::symbol() const {
   return {storage_->name,
           storage_->version,
-          std::string(Module::current_digest(storage_)),
+          storage_->interface_digest,
           SymbolKind::Function,
           storage_->functions[index_].name,
           signature()};
@@ -2124,6 +2122,7 @@ Module::Module(std::string name, Version version) {
   storage->version = version;
   storage_ = storage;
   storage->digest = detail::sha256(format(*this));
+  storage->interface_digest = compute_interface_digest(storage);
 }
 
 Module::Module(const Module& other) : storage_(other.storage_) {
@@ -2175,8 +2174,60 @@ Module::current_digest(const std::shared_ptr<const Storage>& storage) {
   return storage->digest;
 }
 
+std::string
+Module::compute_interface_digest(const std::shared_ptr<const Storage>& storage) {
+  auto interface = std::make_shared<Storage>(*storage);
+  const Module source(storage);
+  for (const Dependency& dependency : source.dependencies()) {
+    if (dependency.name == detail::prelude_module_name ||
+        dependency.name == source.name()) {
+      continue;
+    }
+    const auto found = std::find_if(
+        interface->imports.begin(), interface->imports.end(),
+        [&](const Import& import) { return import.name == dependency.name; });
+    if (found == interface->imports.end()) {
+      interface->imports.push_back(
+          {dependency.name,
+           {VersionRangeKind::Exact, dependency.version},
+           {}});
+    } else if (found->alias.empty()) {
+      found->version = {VersionRangeKind::Exact, dependency.version};
+    }
+  }
+  for (detail::FunctionMember& member : interface->functions) {
+    if (member.declaration) {
+      member.declaration->body.reset();
+    }
+    member.ir.reset();
+  }
+  std::vector<std::size_t> order(interface->functions.size());
+  for (std::size_t index = 0; index < order.size(); ++index) {
+    order[index] = index;
+  }
+  std::sort(order.begin(), order.end(), [&](std::size_t left,
+                                            std::size_t right) {
+    return FunctionDecl(interface, left).signature() <
+           FunctionDecl(interface, right).signature();
+  });
+  std::vector<detail::FunctionMember> functions;
+  functions.reserve(order.size());
+  for (const std::size_t index : order) {
+    functions.push_back(std::move(interface->functions[index]));
+  }
+  interface->functions = std::move(functions);
+  interface->digest.clear();
+  interface->interface_digest.clear();
+  interface->digest_revisions.clear();
+  return detail::sha256(format(Module(interface)));
+}
+
 std::string_view Module::digest() const {
   return current_digest(storage_);
+}
+
+std::string_view Module::interface_digest() const {
+  return storage_->interface_digest;
 }
 
 std::span<const Module::Import> Module::imports() const {
@@ -2238,8 +2289,7 @@ std::optional<Module::Symbol> Module::symbol(SymbolKind kind,
     return std::nullopt;
   }
   return Symbol(std::string(storage_->name), storage_->version,
-                std::string(current_digest(storage_)), kind,
-                std::string(name));
+                storage_->interface_digest, kind, std::string(name));
 }
 
 std::vector<Module::Symbol> Module::members() const {
@@ -2249,7 +2299,7 @@ std::vector<Module::Symbol> Module::members() const {
   const auto append = [&](SymbolKind kind, const auto& definitions) {
     for (const auto& definition : definitions) {
       result.push_back(Symbol(std::string(storage_->name), storage_->version,
-                              std::string(current_digest(storage_)), kind,
+                              storage_->interface_digest, kind,
                               std::string(definition.name)));
     }
   };
@@ -2384,6 +2434,7 @@ std::optional<Module> parse_module(std::string_view text,
   }
   Module module(storage);
   storage->digest = detail::sha256(format(module));
+  storage->interface_digest = Module::compute_interface_digest(storage);
   return module;
 }
 

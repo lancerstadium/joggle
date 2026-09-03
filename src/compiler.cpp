@@ -126,7 +126,7 @@ bool belongs_to(const Modules& modules, const ParameterValue& value) {
     const auto owner = modules.find(symbol.module_name());
     return owner != modules.end() &&
            owner->second.version() == symbol.module_version() &&
-           owner->second.digest() == symbol.module_digest();
+           owner->second.interface_digest() == symbol.interface_digest();
   };
   if (const Type* type = value.as_type()) {
     return contains(type->schema().symbol());
@@ -325,10 +325,12 @@ bool conforms_to_interface(const Modules& modules,
   const auto interface_module = modules.find(interface_symbol.module_name());
   if (declaration_module == modules.end() ||
       declaration_module->second.version() != declaration.module_version() ||
-      declaration_module->second.digest() != declaration.module_digest() ||
+      declaration_module->second.interface_digest() !=
+          declaration.interface_digest() ||
       interface_module == modules.end() ||
       interface_module->second.version() != interface_symbol.module_version() ||
-      interface_module->second.digest() != interface_symbol.module_digest() ||
+      interface_module->second.interface_digest() !=
+          interface_symbol.interface_digest() ||
       interface.subject() != subject) {
     return false;
   }
@@ -1494,7 +1496,7 @@ std::optional<Type> Compiler::make(const Module::TypeDecl& schema,
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.digest() != symbol.module_digest()) {
+      owner->second.interface_digest() != symbol.interface_digest()) {
     state_->diagnostics.report("type schema '" + symbol.qualified_name() +
                                "' is not part of this compiler");
     return std::nullopt;
@@ -1601,7 +1603,7 @@ Compiler::make(const Module::AttributeDecl& schema,
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.digest() != symbol.module_digest()) {
+      owner->second.interface_digest() != symbol.interface_digest()) {
     state_->diagnostics.report("attribute schema '" + symbol.qualified_name() +
                                "' is not part of this compiler");
     return std::nullopt;
@@ -1737,7 +1739,7 @@ Compiler::materialize(Module::Symbol symbol,
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.digest() != symbol.module_digest()) {
+      owner->second.interface_digest() != symbol.interface_digest()) {
     state_->diagnostics.report("function '" + symbol.qualified_name() +
                                "' is not in this compilation");
     return std::nullopt;
@@ -1884,7 +1886,7 @@ void Compiler::bind_verifier(Module::TypeDecl schema,
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.digest() != symbol.module_digest()) {
+      owner->second.interface_digest() != symbol.interface_digest()) {
     state_->diagnostics.report("cannot bind type '" + symbol.qualified_name() +
                                "' outside this compiler");
     return;
@@ -1906,7 +1908,7 @@ void Compiler::bind_verifier(Module::AttributeDecl schema,
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.digest() != symbol.module_digest()) {
+      owner->second.interface_digest() != symbol.interface_digest()) {
     state_->diagnostics.report("cannot bind attribute '" +
                                symbol.qualified_name() +
                                "' outside this compiler");
@@ -1930,7 +1932,7 @@ void Compiler::bind_verifier(Module::FunctionDecl schema,
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.digest() != symbol.module_digest()) {
+      owner->second.interface_digest() != symbol.interface_digest()) {
     state_->diagnostics.report(
         "cannot bind an Instruction verifier for function '" +
         symbol.qualified_name() + "' outside this compiler");
@@ -1975,7 +1977,7 @@ bool Compiler::bind_representation(Module::TypeDecl schema,
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.digest() != symbol.module_digest()) {
+      owner->second.interface_digest() != symbol.interface_digest()) {
     state_->diagnostics.report("cannot represent type '" +
                                symbol.qualified_name() +
                                "' outside this compiler");
@@ -2184,7 +2186,7 @@ void Compiler::bind_native(Module::FunctionDecl schema, NativeFunction function,
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.digest() != symbol.module_digest()) {
+      owner->second.interface_digest() != symbol.interface_digest()) {
     state_->diagnostics.report("cannot bind compiler function '" +
                                symbol.qualified_name() +
                                "' outside this compiler");
@@ -2500,7 +2502,7 @@ Compiler::lookup_method(Module::AttributeDecl declaration,
   const auto owner = state_->modules.find(symbol.module_name());
   if (!state_->linked || owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.digest() != symbol.module_digest()) {
+      owner->second.interface_digest() != symbol.interface_digest()) {
     state_->diagnostics.report("attribute '" + symbol.qualified_name() +
                                "' is not in this compilation");
     return std::nullopt;
@@ -2517,7 +2519,7 @@ Compiler::lookup_method(Module::FunctionDecl declaration,
   const auto owner = state_->modules.find(symbol.module_name());
   if (!state_->linked || owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.digest() != symbol.module_digest()) {
+      owner->second.interface_digest() != symbol.interface_digest()) {
     state_->diagnostics.report("function '" + symbol.qualified_name() +
                                "' is not in this compilation");
     return std::nullopt;
@@ -2630,7 +2632,7 @@ bool Compiler::matches_run_signature(
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.digest() != symbol.module_digest()) {
+      owner->second.interface_digest() != symbol.interface_digest()) {
     return false;
   }
   const bool input_match =

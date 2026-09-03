@@ -234,6 +234,7 @@ bool Module::insert(std::string name, Function function,
   }
   Module candidate(next);
   next->digest = detail::sha256(format(candidate));
+  next->interface_digest = Module::compute_interface_digest(next);
   next->digest_revisions.clear();
   next->digest_revisions.reserve(next->functions.size());
   for (const detail::FunctionMember& member : next->functions) {

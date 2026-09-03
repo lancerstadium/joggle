@@ -16,8 +16,10 @@ module schedule@1.2.0 {
 
 The first integer is the source-language version. A Module version has three
 components. Imports accept `1`, `1.2`, `1.2.3`, or a caret range such as
-`^1.2.3`. An alias changes local spelling only; linked identity uses the real
-Module name, version, and canonical digest.
+`^1.2.3`. An alias changes local spelling only. The full canonical digest
+identifies a reproducible Module artifact. Member Symbols additionally use an
+interface digest computed after Function bodies are erased; body-only compiler
+transformations therefore preserve type and callable identities.
 
 Unqualified declaration names resolve in the current Module. A direct import
 is addressed through its Module name or alias. Operator notation considers
@@ -401,5 +403,7 @@ Formatting is idempotent:
 format(parse(format(parse(source)))) = format(parse(source))
 ```
 
-Canonical source determines Module identity. Comments, file paths, host
-addresses, and behavior registration order do not affect the digest.
+Canonical source determines the complete Module artifact identity. Comments,
+file paths, host addresses, and behavior registration order do not affect its
+digest. The interface digest is derived from the same canonical form after
+Function bodies are erased; imports and declarations remain significant.

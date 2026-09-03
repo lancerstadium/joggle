@@ -262,12 +262,12 @@ overloads. `joggle::format(module)` emits that same Module as canonical source
 and derives exact dependencies from its current IR, so a transformation cannot
 leave a stale import list behind.
 
-`module.digest()` and symbols produced by declarations from that Module observe
-the same canonical revision. Calling `function.symbol()` immediately after a
-committed whole-Module transformation therefore cannot expose the digest of the
-pre-transformation body. A declaration retained across a copy-on-write edit is
-an intentional handle to the older Module snapshot; reacquire the declaration
-from the edited Module to address its new identity.
+`module.digest()` hashes the complete canonical artifact. It changes after a
+committed body transformation and is the identity used by repositories, locks,
+and behavior libraries. `module.interface_digest()` hashes imports and member
+declarations with Function bodies erased. `Module::Symbol` uses this interface
+digest, so types, call targets, and verifier registrations survive body-only
+transformations while a signature or schema change creates a new identity.
 
 The embedded Prelude type `module` is automatically represented by
 `joggle::Module`; `function` is represented by a materialized

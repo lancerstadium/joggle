@@ -69,6 +69,7 @@ struct joggle::Module::Storage {
   std::string name;
   Version version;
   mutable std::string digest;
+  std::string interface_digest;
   std::vector<Import> imports;
   std::vector<SourceRange> import_sources;
   std::vector<detail::InterfaceDefinition> interfaces;

@@ -221,6 +221,7 @@ module mapping@1.0.0 {
   const auto original_first_revision = original_first->revision();
   const auto original_second_revision = original_second->revision();
   const std::string original_digest(module.digest());
+  const std::string original_interface_digest(module.interface_digest());
 
   joggle::Module fixedpoint_module = module;
   joggle::Diagnostics fixedpoint_module_diagnostics;
@@ -284,19 +285,20 @@ module mapping@1.0.0 {
   const auto mapped_declaration = module.function("first");
   const std::string mapped_symbol_digest =
       mapped_declaration
-          ? std::string(mapped_declaration->symbol().module_digest())
+          ? std::string(mapped_declaration->symbol().interface_digest())
           : std::string{};
   ok &=
       expect(module_success && *module_success == 1U &&
                  module_success_diagnostics.ok() && mapped_first != nullptr &&
                  module.digest() != original_digest &&
-                 mapped_symbol_digest == module.digest() &&
+                 module.interface_digest() == original_interface_digest &&
+                 mapped_symbol_digest == module.interface_digest() &&
                  mapped_first->revision() != original_first_revision &&
                  mapped_first->instructions().front().callee() == *converted &&
                  preserved_second != nullptr &&
                  preserved_second->revision() == original_second_revision,
-             "whole-Module replacement advances only changed revisions and "
-             "publishes one current Module identity");
+             "whole-Module replacement advances only changed revisions while "
+             "preserving declaration identity");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

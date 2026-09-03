@@ -5,6 +5,12 @@ semantic version, and one SHA-256 content identity. Release metadata belongs
 to the repository; it is not another language object or IR owner. The CLI
 manages installed releases and `Compiler` resolves ordinary search paths.
 
+This repository identity is `Module::digest()`, which covers Function bodies.
+It is intentionally stricter than `Module::interface_digest()`: two artifacts
+with identical declarations but different implementations cannot occupy the
+same installed release, even though their member Symbols are interface-
+compatible.
+
 ## Commands
 
 ```bash

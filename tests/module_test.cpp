@@ -294,8 +294,11 @@ int main() {
       first_function_module && second_function_module &&
           first_function_symbol && second_function_symbol &&
           first_function_module->digest() != second_function_module->digest() &&
-          *first_function_symbol != *second_function_symbol,
-      "function body changes alter the Module and function symbol identity");
+          first_function_module->interface_digest() ==
+              second_function_module->interface_digest() &&
+          *first_function_symbol == *second_function_symbol,
+      "function body changes alter artifact identity without changing the "
+      "declared interface");
 
   joggle::Diagnostics list_diagnostics;
   auto list_module = joggle::parse_module(R"(

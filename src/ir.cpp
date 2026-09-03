@@ -195,7 +195,7 @@ bool owns(const FunctionState& function, const Module::Symbol& symbol) {
   const auto module = function.modules.find(symbol.module_name());
   return module != function.modules.end() &&
          module->second.version() == symbol.module_version() &&
-         module->second.digest() == symbol.module_digest();
+         module->second.interface_digest() == symbol.interface_digest();
 }
 
 bool owns(const FunctionState& function, const ParameterValue& value);

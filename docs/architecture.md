@@ -40,11 +40,14 @@ specializes a source definition into a `Function`, while
 `Compiler::create_function()` constructs an empty one. Generic specialization
 therefore creates a body, not another Module representation.
 
-Canonical content is also the Module's symbol identity. A committed body edit
-changes the Module digest, and every declaration obtained from that Module
-derives its `Symbol` from the same current digest. Copy-on-write Modules keep
-older declaration handles as snapshots instead of silently rebinding them to a
-new revision.
+Module identity has two deliberately different hashes. `digest()` covers the
+complete canonical artifact and therefore changes when a body changes; release
+locks and native behavior use it. `interface_digest()` erases Function bodies
+and covers imports plus declarations; member Symbols use it. An optimizer can
+therefore change executable content without changing the identity of an
+unchanged tensor type or call signature. Changing an import, type, attribute,
+interface, or Function signature changes both the interface and every Symbol
+derived from it.
 
 The other public concepts are small:
 
