@@ -1,5 +1,6 @@
 #include "joggle/compiler.h"
 
+#include "call_resolution.h"
 #include "prelude.h"
 #include "domain.h"
 #include "execution.h"
@@ -1082,25 +1083,17 @@ bool Compiler::link() {
             : expression.kind == Kind::Postfix
                 ? Module::FunctionDecl::Fixity::Postfix
                 : Module::FunctionDecl::Fixity::Infix;
-        std::vector<Module::FunctionDecl> operators;
-        const auto append_operators = [&](const Module& visible) {
-          for (const auto& candidate : visible.functions()) {
-            if (candidate.operator_symbol() == expression.text &&
-                candidate.operator_fixity() == fixity &&
-                candidate.inputs().size() == arity &&
-                candidate.results().size() == 1U &&
-                candidate.results().front().domain == expected) {
-              operators.push_back(candidate);
-            }
-          }
-        };
-        append_operators(module);
-        for (const auto& import : module.imports()) {
-          const auto imported = state_->modules.find(import.name);
-          if (imported != state_->modules.end()) {
-            append_operators(imported->second);
-          }
-        }
+        auto operators = detail::visible_operators(
+            *this, name, expression.text, fixity);
+        operators.erase(
+            std::remove_if(
+                operators.begin(), operators.end(),
+                [&](const Module::FunctionDecl& candidate) {
+                  return candidate.inputs().size() != arity ||
+                         candidate.results().size() != 1U ||
+                         candidate.results().front().domain != expected;
+                }),
+            operators.end());
         const auto argument_domain = [&](const Module::Expression& argument)
             -> std::optional<Module::Expression> {
           if (argument.kind == Kind::Variable) {
