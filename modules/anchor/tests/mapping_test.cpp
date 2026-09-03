@@ -119,6 +119,24 @@ module anchor_kernel@1.0.0 {
     );
   }
 
+  fn conv_relu_f32(
+    input: anchor.ref<f32, [1, 2, 7, 7], anchor.linear, anchor.io>,
+    weight: anchor.ref<f32, [3, 2, 3, 3], anchor.linear, anchor.read_only>,
+    bias: anchor.ref<f32, [3], anchor.linear, anchor.read_only>
+  ) -> anchor.ref<f32, [1, 3, 4, 4], anchor.tiled<2, 2>, anchor.local> {
+    return anchor.conv_relu_nchw(
+      input,
+      weight,
+      bias,
+      stride_h = 2,
+      stride_w = 2,
+      pad_top = 1,
+      pad_left = 1,
+      pad_bottom = 1,
+      pad_right = 1
+    );
+  }
+
   fn max_pool_padded_f32(
     input: anchor.ref<f32, [1, 1, 3, 3], anchor.linear, anchor.io>
   ) -> anchor.ref<f32, [1, 1, 4, 4], anchor.tiled<2, 2>, anchor.local> {
@@ -165,6 +183,22 @@ module anchor_kernel@1.0.0 {
     return anchor.batch_norm_nchw(input, scale, bias, mean, variance);
   }
 
+  fn batch_norm_relu_f32(
+    input: anchor.ref<f32, [1, 2, 3, 4], anchor.linear, anchor.io>,
+    scale: anchor.ref<f32, [2], anchor.linear, anchor.read_only>,
+    bias: anchor.ref<f32, [2], anchor.linear, anchor.read_only>,
+    mean: anchor.ref<f32, [2], anchor.linear, anchor.read_only>,
+    variance: anchor.ref<f32, [2], anchor.linear, anchor.read_only>
+  ) -> anchor.ref<f32, [1, 2, 3, 4], anchor.tiled<2, 2>, anchor.local> {
+    return anchor.batch_norm_relu_nchw(
+      input,
+      scale,
+      bias,
+      mean,
+      variance
+    );
+  }
+
   fn flatten_f32(
     input: anchor.ref<f32, [1, 2, 3, 4], anchor.linear, anchor.io>
   ) -> anchor.ref<f32, [1, 24], anchor.linear, anchor.local> {
@@ -185,6 +219,8 @@ module anchor_kernel@1.0.0 {
   const auto map = target ? target->function("map") : std::nullopt;
   const auto analyze =
       target ? target->function("local_bytes_upper_bound") : std::nullopt;
+  const auto fuse =
+      target ? target->function("fuse_relu") : std::nullopt;
   const auto plan =
       target ? target->function("plan_storage") : std::nullopt;
   const auto scratch =
@@ -235,6 +271,20 @@ module anchor_kernel@1.0.0 {
       nested_conv != biased_conv_ops.end()
           ? compiler.materialize(*nested_conv)
           : std::optional<joggle::Function>{};
+  const auto fused_conv_body =
+      materialize_call_body("anchor_kernel.conv_relu_f32");
+  const auto fused_conv_ops =
+      fused_conv_body ? fused_conv_body->ops() : std::vector<joggle::Op>{};
+  const auto nested_fused_conv = std::find_if(
+      fused_conv_ops.begin(), fused_conv_ops.end(),
+      [](const joggle::Op& op) {
+        return op.callee().symbol().qualified_name() ==
+               "anchor.conv2d_nchw";
+      });
+  const auto nested_fused_conv_body =
+      nested_fused_conv != fused_conv_ops.end()
+          ? compiler.materialize(*nested_fused_conv)
+          : std::optional<joggle::Function>{};
   const auto padded_pool_body =
       materialize_call_body("anchor_kernel.max_pool_padded_f32");
   const auto strided_pool_body =
@@ -243,17 +293,33 @@ module anchor_kernel@1.0.0 {
       materialize_call_body("anchor_kernel.global_average_f32");
   const auto batch_norm_body =
       materialize_call_body("anchor_kernel.batch_norm_f32");
+  const auto fused_norm_body =
+      materialize_call_body("anchor_kernel.batch_norm_relu_f32");
+  const auto fused_norm_ops =
+      fused_norm_body ? fused_norm_body->ops() : std::vector<joggle::Op>{};
+  const auto nested_norm = std::find_if(
+      fused_norm_ops.begin(), fused_norm_ops.end(),
+      [](const joggle::Op& op) {
+        return op.callee().symbol().qualified_name() ==
+               "anchor.batch_norm_nchw";
+      });
+  const auto nested_norm_body =
+      nested_norm != fused_norm_ops.end()
+          ? compiler.materialize(*nested_norm)
+          : std::optional<joggle::Function>{};
   const auto flatten_body =
       materialize_call_body("anchor_kernel.flatten_f32");
   const auto read = memory ? memory->interface("read") : std::nullopt;
   const auto write = memory ? memory->interface("write") : std::nullopt;
-  if (!source || !map || !analyze || !plan || !scratch || !cycles || !emit ||
-      !reference || !ref || !linear || !tiled || !io || !local || !config ||
-      !timeline || !load || !store || !relu || !add || !linear_function ||
-      !linear_call || !linear_body || !padded_conv_body ||
+  if (!source || !map || !analyze || !fuse || !plan || !scratch || !cycles ||
+      !emit || !reference || !ref || !linear || !tiled || !io || !local ||
+      !config || !timeline || !load || !store || !relu || !add ||
+      !linear_function || !linear_call || !linear_body || !padded_conv_body ||
       !strided_conv_body || !read || !biased_conv_body || !nested_conv_body ||
-      !write || !padded_pool_body || !strided_pool_body ||
-      !global_average_body || !batch_norm_body || !flatten_body) {
+      !fused_conv_body || !nested_fused_conv_body || !write ||
+      !padded_pool_body || !strided_pool_body ||
+      !global_average_body || !batch_norm_body || !fused_norm_body ||
+      !nested_norm_body || !flatten_body) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -269,9 +335,22 @@ module anchor_kernel@1.0.0 {
       *map, model, std::int64_t{8}, std::int64_t{8});
   const auto mapped_again = compiler.run<joggle::Module>(
       *map, model, std::int64_t{8}, std::int64_t{8});
+  const auto fused_mapped =
+      mapped ? compiler.run<joggle::Module>(*fuse, *mapped)
+             : std::optional<joggle::Module>{};
+  const auto fused_mapped_again =
+      mapped ? compiler.run<joggle::Module>(*fuse, *mapped)
+             : std::optional<joggle::Module>{};
+  const auto fused_fixed_point =
+      fused_mapped ? compiler.run<joggle::Module>(*fuse, *fused_mapped)
+                   : std::optional<joggle::Module>{};
   const joggle::Function* body =
       mapped && !mapped->functions().empty()
           ? mapped->functions().front().body()
+          : nullptr;
+  const joggle::Function* fused_body =
+      fused_mapped && !fused_mapped->functions().empty()
+          ? fused_mapped->functions().front().body()
           : nullptr;
   const auto bytes = mapped
                          ? compiler.run<std::int64_t>(*analyze, *mapped)
@@ -313,8 +392,10 @@ module anchor_kernel@1.0.0 {
       planned && !planned->functions().empty()
           ? planned->functions().front().body()
           : nullptr;
-  if (!mapped || !mapped_again || body == nullptr || !bytes || !planned ||
-      !planned_again || planned_body == nullptr || !scratch_size ||
+  if (!mapped || !mapped_again || !fused_mapped || !fused_mapped_again ||
+      !fused_fixed_point || body == nullptr || fused_body == nullptr ||
+      !bytes || !planned || !planned_again || planned_body == nullptr ||
+      !scratch_size ||
       !cycle_count || !emitted || !emitted_again || !trace || !trace_again) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -380,6 +461,21 @@ module anchor_kernel@1.0.0 {
                                "anchor.conv2d_nchw") == 0U,
                "biased Conv2D composes the verified convolution body with a "
                "fixed-size in-place bias epilogue instead of duplicating it");
+  ok &= expect(compiler.verify(*fused_conv_body) &&
+                   fused_conv_body->blocks().size() == 5U &&
+                   calls_named(*fused_conv_body, "mem.alloc") == 0U &&
+                   calls_named(*fused_conv_body, "anchor.load") == 1U &&
+                   calls_named(*fused_conv_body, "anchor.store") == 1U &&
+                   calls_named(*fused_conv_body, "arith.max") == 1U &&
+                   calls_named(*fused_conv_body,
+                               "anchor.conv2d_nchw") == 1U &&
+                   calls_named(*fused_conv_body,
+                               "anchor.conv_relu_nchw") == 0U &&
+                   compiler.verify(*nested_fused_conv_body) &&
+                   nested_fused_conv_body->blocks().size() ==
+                       biased_conv_body->blocks().size(),
+               "fused Conv-ReLU composes biased convolution with one "
+               "fixed-size in-place activation epilogue");
   ok &= expect(compiler.verify(*padded_pool_body) &&
                    compiler.verify(*strided_pool_body) &&
                    padded_pool_body->blocks().size() > 25U &&
@@ -417,9 +513,32 @@ module anchor_kernel@1.0.0 {
                                "anchor.batch_norm_nchw") == 0U,
                "BatchNorm materializes a fixed-size four-loop NCHW body "
                "with the standard floating-point inference equation");
+  ok &= expect(compiler.verify(*fused_norm_body) &&
+                   fused_norm_body->blocks().size() == 5U &&
+                   calls_named(*fused_norm_body, "mem.alloc") == 0U &&
+                   calls_named(*fused_norm_body, "anchor.load") == 1U &&
+                   calls_named(*fused_norm_body, "anchor.store") == 1U &&
+                   calls_named(*fused_norm_body, "arith.max") == 1U &&
+                   calls_named(*fused_norm_body,
+                               "anchor.batch_norm_nchw") == 1U &&
+                   calls_named(*fused_norm_body,
+                               "anchor.batch_norm_relu_nchw") == 0U &&
+                   compiler.verify(*nested_norm_body) &&
+                   nested_norm_body->blocks().size() ==
+                       batch_norm_body->blocks().size(),
+               "fused BatchNorm-ReLU composes the verified normalization "
+               "body with one in-place residual epilogue");
   ok &= expect(calls(*source, "nn") == 7U && calls(*body, "nn") == 0U &&
                    calls(*body, "anchor") == 7U,
                "mapping replaces the complete basic-block NN vocabulary");
+  ok &= expect(fused_body->ops().size() == 6U &&
+                   calls_named(*fused_body,
+                               "anchor.batch_norm_relu_nchw") == 1U &&
+                   calls_named(*fused_body, "anchor.batch_norm_nchw") == 1U &&
+                   calls_named(*fused_body, "anchor.relu") == 1U &&
+                   body->ops().size() == 7U,
+               "target fusion replaces only the single-use BatchNorm-ReLU "
+               "pair and leaves unrelated normalization and activation calls");
   ok &= expect(arguments.size() == 11U &&
                    std::all_of(arguments.begin(), arguments.end(),
                                [&](const joggle::Value& value) {
@@ -478,6 +597,11 @@ module anchor_kernel@1.0.0 {
                "whose duration agrees with cycle analysis");
   ok &= expect(joggle::format(*mapped) == joggle::format(*mapped_again),
                "the target mapping is deterministic");
+  ok &= expect(joggle::format(*fused_mapped) ==
+                       joggle::format(*fused_mapped_again) &&
+                   joggle::format(*fused_mapped) ==
+                       joggle::format(*fused_fixed_point),
+               "target epilogue fusion is deterministic and idempotent");
   ok &= expect(joggle::format(*planned) == joggle::format(*planned_again),
                "the storage plan is deterministic and serializable");
   ok &= expect(calls(*source, "nn") == 7U,

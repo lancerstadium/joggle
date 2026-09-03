@@ -176,6 +176,60 @@ map_module(joggle::Compiler& compiler, joggle::Module input,
                                  : std::nullopt;
 }
 
+std::optional<joggle::Module>
+fuse_relu(joggle::Module input, const Schema& schema,
+          joggle::Diagnostics& diagnostics) {
+  const auto normalization =
+      function(schema.target, "batch_norm_nchw", 6U);
+  const auto activation = function(schema.target, "relu", 1U);
+  const auto fused_normalization =
+      function(schema.target, "batch_norm_relu_nchw", 6U);
+  const auto convolution = function(schema.target, "conv2d_nchw", 11U);
+  const auto fused_convolution =
+      function(schema.target, "conv_relu_nchw", 11U);
+  if (!normalization || !activation || !fused_normalization ||
+      !convolution || !fused_convolution) {
+    diagnostics.report("anchor fusion does not match its Module schema");
+    return std::nullopt;
+  }
+
+  const auto changed = joggle::rewrite(
+      input,
+      [&](const joggle::Op& op, joggle::Function::Edit& edit,
+          joggle::Diagnostics&) {
+        if (op.callee() != *activation) {
+          return false;
+        }
+        const auto operands = op.operands();
+        const auto producer =
+            operands.size() == 1U ? operands.front().defining_op()
+                                  : std::optional<joggle::Op>{};
+        if (!producer || producer->results().size() != 1U ||
+            producer->parent() != op.parent() ||
+            producer->value().users() != std::vector<joggle::Op>{op}) {
+          return false;
+        }
+        const auto replacement_callee =
+            producer->callee() == *normalization
+                ? fused_normalization
+                : producer->callee() == *convolution
+                      ? fused_convolution
+                      : std::optional<joggle::Module::FunctionDecl>{};
+        if (!replacement_callee) {
+          return false;
+        }
+        const auto replacement = edit.insert(
+            op, *replacement_callee, producer->arguments(),
+            {op.value().type()});
+        edit.replace(op, replacement.results());
+        edit.erase(*producer);
+        return true;
+      },
+      diagnostics);
+  return changed ? std::optional<joggle::Module>{std::move(input)}
+                 : std::nullopt;
+}
+
 std::optional<std::uint64_t>
 reference_bytes(joggle::Compiler& compiler, const joggle::Type& type,
                 const Schema& schema, joggle::Diagnostics& diagnostics) {
@@ -714,19 +768,23 @@ bool add(std::uint64_t& value, std::uint64_t amount,
   return true;
 }
 
-std::optional<std::pair<std::uint64_t, bool>>
+struct Work {
+  std::uint64_t macs = 0;
+  std::uint64_t lanes = 0;
+};
+
+std::optional<Work>
 work(const joggle::Op& op, joggle::Diagnostics& diagnostics) {
   const std::string_view name = op.callee().name();
   if (name == "flatten_nchw") {
-    return std::pair<std::uint64_t, bool>{0, false};
+    return Work{};
   }
   const auto output = elements(op.value().type(), diagnostics);
   if (!output) {
     return std::nullopt;
   }
   std::uint64_t amount = *output;
-  bool mac = false;
-  if (name == "conv2d_nchw") {
+  if (name == "conv2d_nchw" || name == "conv_relu_nchw") {
     const auto weight = op.operand("weight");
     const auto shape = weight
                            ? weight->type().get<std::vector<std::int64_t>>(
@@ -743,7 +801,8 @@ work(const joggle::Op& op, joggle::Diagnostics& diagnostics) {
         return std::nullopt;
       }
     }
-    mac = true;
+    return Work{.macs = amount,
+                .lanes = name == "conv_relu_nchw" ? *output : 0U};
   } else if (name == "linear") {
     const auto weight = op.operand("weight");
     const auto shape = weight
@@ -756,9 +815,14 @@ work(const joggle::Op& op, joggle::Diagnostics& diagnostics) {
       diagnostics.report("anchor linear operation has an invalid weight");
       return std::nullopt;
     }
-    mac = true;
+    return Work{.macs = amount};
   } else if (name == "batch_norm_nchw") {
     if (!multiply(amount, 5U, diagnostics, "batch normalization work")) {
+      return std::nullopt;
+    }
+  } else if (name == "batch_norm_relu_nchw") {
+    if (!multiply(amount, 6U, diagnostics,
+                  "fused batch normalization and ReLU work")) {
       return std::nullopt;
     }
   } else if (name == "max_pool2d_nchw") {
@@ -787,7 +851,7 @@ work(const joggle::Op& op, joggle::Diagnostics& diagnostics) {
                        "'");
     return std::nullopt;
   }
-  return std::pair<std::uint64_t, bool>{amount, mac};
+  return Work{.lanes = amount};
 }
 
 struct Traffic {
@@ -876,9 +940,12 @@ simulate(joggle::Compiler& compiler, const joggle::Module& input,
       if (!operation_work || !operation_traffic) {
         return std::nullopt;
       }
-      const std::uint64_t compute =
-          ceil_div(operation_work->first,
-                   operation_work->second ? macs_per_cycle : config->lanes);
+      std::uint64_t compute =
+          ceil_div(operation_work->macs, macs_per_cycle);
+      if (!add(compute, ceil_div(operation_work->lanes, config->lanes),
+               diagnostics, "operation compute cycle count")) {
+        return std::nullopt;
+      }
       const std::uint64_t local =
           ceil_div(operation_traffic->local, config->local_bytes_per_cycle);
       const std::uint64_t external = ceil_div(
@@ -1063,6 +1130,11 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
       [resolved](joggle::Compiler& bound, const joggle::Module& input,
                  joggle::Diagnostics& reported) {
         return local_bytes_upper_bound(bound, input, *resolved, reported);
+      });
+  compiler.bind(
+      module, "fuse_relu",
+      [resolved](joggle::Module input, joggle::Diagnostics& reported) {
+        return fuse_relu(std::move(input), *resolved, reported);
       });
   compiler.bind(
       module, "plan_storage",

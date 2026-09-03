@@ -126,7 +126,10 @@ deterministic simulation timeline, and a portable manifest emitter, so a
 source-defined pipeline can run from ONNX bytes to inspectable timing and
 deployment artifacts without a parallel pass or backend API. Its kernels are
 ordinary Joggle function bodies over residual target primitives, showing the
-same `fn` mechanism on both the compiler and executable sides.
+same `fn` mechanism on both the compiler and executable sides. A target-owned
+`fuse_relu(module) -> module` function uses the same IR transaction API to
+remove single-use biased-Conv/BatchNorm epilogues before placement and
+simulation.
 
 ## Documentation
 

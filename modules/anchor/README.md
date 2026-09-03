@@ -48,6 +48,13 @@ deterministic `N -> C -> H -> W` order. Square root remains an ordinary typed
 `arith.sqrt` call, so a target can lower or replace it through the same Module
 and function mechanisms as other arithmetic.
 
+The biased `conv_relu_nchw` and `batch_norm_relu_nchw` compose their existing
+operator bodies with an in-place ReLU epilogue. `fuse_relu(input)` rewrites only a
+same-Block producer whose result has that ReLU as its sole user; it therefore
+cannot discard a value observed by another call. The transform replaces the
+pair with the matching fused typed call and remains a normal `module -> module`
+function rather than a target-specific pass class.
+
 `map(input, tile_rows, tile_columns)` converts ranked `tensor` values and the
 supported `nn` calls to `anchor.ref` values and target calls while
 preserving CFG, SSA edges, named properties, Function signatures, and immutable
@@ -131,7 +138,10 @@ max pooling, global average pooling, flatten, and linear. Unsupported tensor
 calls fail transactionally instead of leaking a mixed tensor/reference graph.
 When `onnx` and the official `JOGGLE_ONNX_MODEL` are enabled, the
 `module.anchor.onnx` integration test exercises the complete
-`onnx.read -> onnx.to_nn -> anchor.map -> anchor.plan_storage -> anchor.emit`
-composition. With `config<16, 4, 32, 16, 16777216, 4>`, the checked result is
-10,946,464 scratch bytes and 29,453,374 analytical cycles. Repeated compilation
-produces the same Module digest and byte-identical manifest.
+`onnx.read -> onnx.to_nn -> anchor.map -> [anchor.fuse_relu] ->
+anchor.plan_storage -> anchor.simulate/emit` composition. With
+`config<16, 4, 32, 16, 16777216, 4>`, the unfused reference has 140 planned
+Ops, 49 simulated events, 10,946,464 scratch bytes, and 29,453,374 analytical
+cycles. Nine Conv-ReLU fusions reduce these to 122 Ops, 40 events, 7,735,200
+scratch bytes, and 29,161,690 cycles. Repeated compilation and simulation
+produce the same Module digest and byte-identical artifacts.

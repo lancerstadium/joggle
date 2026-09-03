@@ -368,6 +368,89 @@ module anchor@1.0.0 {
     return output;
   }
 
+  fn conv_relu_nchw<
+    E: prelude.numeric,
+    N: int,
+    C: int,
+    H: int,
+    W: int,
+    O: int,
+    KH: int,
+    KW: int,
+    SH: int,
+    SW: int,
+    DH: int,
+    DW: int,
+    PT: int,
+    PL: int,
+    PB: int,
+    PR: int,
+    LI: mem.layout,
+    PI: mem.space,
+    LW: mem.layout,
+    PW: mem.space,
+    LB: mem.layout,
+    PBIAS: mem.space,
+    LO: mem.layout,
+    PO: mem.space
+  >(
+    input: ref<E, [N, C, H, W], LI, PI>,
+    weight: ref<E, [O, C, KH, KW], LW, PW>,
+    bias: ref<E, [O], LB, PBIAS>,
+    stride_h: SH = 1,
+    stride_w: SW = 1,
+    dilation_h: DH = 1,
+    dilation_w: DW = 1,
+    pad_top: PT = 0,
+    pad_left: PL = 0,
+    pad_bottom: PB = 0,
+    pad_right: PR = 0
+  ) -> ref<
+    E,
+    [
+      N,
+      O,
+      @nn.conv_extent(H, KH, SH, DH, PT, PB),
+      @nn.conv_extent(W, KW, SW, DW, PL, PR)
+    ],
+    LO,
+    PO
+  > : nn.activation {
+    output: ref<
+      E,
+      [
+        N,
+        O,
+        @nn.conv_extent(H, KH, SH, DH, PT, PB),
+        @nn.conv_extent(W, KW, SW, DW, PL, PR)
+      ],
+      LO,
+      PO
+    > = conv2d_nchw(
+      input,
+      weight,
+      bias,
+      stride_h = stride_h,
+      stride_w = stride_w,
+      dilation_h = dilation_h,
+      dilation_w = dilation_w,
+      pad_top = pad_top,
+      pad_left = pad_left,
+      pad_bottom = pad_bottom,
+      pad_right = pad_right
+    );
+    for offset: index in range(
+      N * O *
+      @nn.conv_extent(H, KH, SH, DH, PT, PB) *
+      @nn.conv_extent(W, KW, SW, DW, PL, PR)
+    ) {
+      value: E = load(output, offset);
+      zero: E = 0;
+      store(output, offset, arith.max(value, zero));
+    }
+    return output;
+  }
+
   fn batch_norm_nchw<
     E: prelude.floating_point,
     N: int,
@@ -435,6 +518,48 @@ module anchor@1.0.0 {
           }
         }
       }
+    }
+    return output;
+  }
+
+  fn batch_norm_relu_nchw<
+    E: prelude.floating_point,
+    N: int,
+    C: int,
+    H: int,
+    W: int,
+    LI: mem.layout,
+    PI: mem.space,
+    LS: mem.layout,
+    PS: mem.space,
+    LB: mem.layout,
+    PB: mem.space,
+    LM: mem.layout,
+    PM: mem.space,
+    LV: mem.layout,
+    PV: mem.space,
+    LO: mem.layout,
+    PO: mem.space
+  >(
+    input: ref<E, [N, C, H, W], LI, PI>,
+    scale: ref<E, [C], LS, PS>,
+    bias: ref<E, [C], LB, PB>,
+    mean: ref<E, [C], LM, PM>,
+    variance: ref<E, [C], LV, PV>,
+    epsilon: real = 1e-05
+  ) -> ref<E, [N, C, H, W], LO, PO> : nn.normalization, nn.activation {
+    output: ref<E, [N, C, H, W], LO, PO> = batch_norm_nchw(
+      input,
+      scale,
+      bias,
+      mean,
+      variance,
+      epsilon = epsilon
+    );
+    for offset: index in range(N * C * H * W) {
+      value: E = load(output, offset);
+      zero: E = 0;
+      store(output, offset, arith.max(value, zero));
     }
     return output;
   }
@@ -695,6 +820,7 @@ module anchor@1.0.0 {
   fn place<R: mem.reference>(input: R, slot: int) -> R : placement, mem.alias;
   fn map(input: module, tile_rows: int = 8, tile_columns: int = 8) -> module;
   fn local_bytes_upper_bound(input: module) -> int;
+  fn fuse_relu(input: module) -> module;
   fn plan_storage(input: module) -> module;
   fn scratch_bytes(input: module) -> int;
   fn simulate(input: module, target: type) -> timeline;
