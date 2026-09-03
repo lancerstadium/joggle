@@ -93,6 +93,27 @@ if(NOT configure_result EQUAL 0)
   message(FATAL_ERROR "installed Joggle consumer configuration failed")
 endif()
 
+file(READ "${consumer_build}/module-dir.txt" installed_module_dir)
+string(STRIP "${installed_module_dir}" installed_module_dir)
+set(expected_module_dir "${install_dir}/share/joggle/modules")
+if(NOT installed_module_dir STREQUAL expected_module_dir)
+  message(FATAL_ERROR
+    "installed Joggle package exported '${installed_module_dir}' as its "
+    "Module directory, expected '${expected_module_dir}'")
+endif()
+execute_process(
+  COMMAND "${installed_cli}" check "${installed_module_dir}/nn.joggle"
+          --with "${installed_module_dir}/arith.joggle"
+          --with "${installed_module_dir}/tensor.joggle"
+          --with "${installed_module_dir}/buffer.joggle"
+  RESULT_VARIABLE standard_modules_result
+  ERROR_VARIABLE standard_modules_error
+)
+if(NOT standard_modules_result EQUAL 0)
+  message(FATAL_ERROR
+    "installed standard Modules failed to link:\n${standard_modules_error}")
+endif()
+
 execute_process(
   COMMAND "${CMAKE_COMMAND}" --build "${consumer_build}"
   RESULT_VARIABLE build_result

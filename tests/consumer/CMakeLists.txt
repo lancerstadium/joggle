@@ -4,6 +4,9 @@ project(JoggleConsumer LANGUAGES CXX)
 
 find_package(Joggle CONFIG REQUIRED)
 
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/module-dir.txt"
+  CONTENT "${Joggle_MODULE_DIR}\n")
+
 joggle_add_behavior(joggle_consumer_behavior
   MODULE extension.joggle
   SOURCES behavior.cpp

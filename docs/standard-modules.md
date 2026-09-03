@@ -105,6 +105,12 @@ Standard dependencies are ordinary imports: `tensor` imports `arith`, while
 transitive dependencies; an installed Module release is resolved through normal
 search paths and lock files.
 
+The installed CMake package exports `Joggle_MODULE_DIR`, which names the
+directory containing these ordinary `.joggle` files. Consumers may load files
+from that directory explicitly or install selected releases into their Module
+repository. Joggle does not make the standard Modules ambient or search them
+implicitly; only Prelude has language-wide visibility.
+
 An extension should add a Module when it introduces a serializable vocabulary
 or artifact contract. It should add a behavior library when declarations need
 native algorithms or external I/O. It should not add a core class, keyword, or
