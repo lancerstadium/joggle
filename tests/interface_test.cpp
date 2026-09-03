@@ -1,7 +1,9 @@
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include <joggle/joggle.h>
@@ -126,6 +128,58 @@ module recursive@1.0.0 {
   const auto cycle = cycle_decl ? recursive.make(*cycle_decl) : std::nullopt;
   ok &= expect(recursive_linked && !cycle && !recursive.ok(),
                "recursive derived type construction is diagnosed");
+
+  joggle::Compiler generic_fields;
+  generic_fields.add(R"(
+joggle 1;
+module field_contracts@1.0.0 {
+  interface measured: type { units: int; }
+}
+)",
+                     "field-contracts.joggle");
+  generic_fields.add(R"(
+joggle 1;
+module field_queries@1.0.0 {
+  import field_contracts@1 as fields;
+  fn units<T: fields.measured>() -> int {
+    return T.units;
+  }
+}
+)",
+                     "field-queries.joggle");
+  ok &= expect(generic_fields.link(),
+               "a compiler function can read a field promised by an "
+               "imported type interface");
+
+  joggle::Compiler invalid_constraint;
+  invalid_constraint.add(R"(
+joggle 1;
+module behavior_contracts@1.0.0 {
+  interface executable: fn;
+}
+)",
+                         "behavior-contracts.joggle");
+  invalid_constraint.add(R"(
+joggle 1;
+module invalid_query@1.0.0 {
+  import behavior_contracts@1 as behavior;
+  fn invalid<T: behavior.executable>() -> int {
+    return 0;
+  }
+}
+)",
+                         "invalid-query.joggle");
+  const bool invalid_linked = invalid_constraint.link();
+  const bool reports_non_type_constraint = std::any_of(
+      invalid_constraint.diagnostics().entries().begin(),
+      invalid_constraint.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("non-type interface") !=
+               std::string::npos;
+      });
+  ok &= expect(!invalid_linked && reports_non_type_constraint,
+               "an imported generic constraint is checked even when the "
+               "function has no program values");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

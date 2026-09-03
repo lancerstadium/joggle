@@ -22,6 +22,7 @@ configure_file(src/prelude_source.cpp.in
 
 add_library(joggle
   src/call_resolution.cpp
+  src/declaration_check.cpp
   src/prelude.cpp
   "${CMAKE_CURRENT_BINARY_DIR}/generated/prelude_source.cpp"
   src/compiler.cpp

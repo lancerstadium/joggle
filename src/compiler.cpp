@@ -1,18 +1,19 @@
 #include "joggle/compiler.h"
 
 #include "call_resolution.h"
-#include "prelude.h"
-#include "prelude_runtime.h"
+#include "declaration_check.h"
 #include "domain.h"
 #include "execution.h"
 #include "expression_syntax.h"
-#include "ir_internal.h"
 #include "function_body.h"
+#include "ir_internal.h"
 #include "joggle/behavior.h"
 #include "module_internal.h"
 #include "module_repository.h"
-#include "type_internal.h"
+#include "prelude.h"
+#include "prelude_runtime.h"
 #include "type_contract.h"
+#include "type_internal.h"
 
 #include <algorithm>
 #include <array>
@@ -40,35 +41,6 @@ namespace joggle {
 namespace {
 
 using detail::ParameterValue;
-
-template <typename Variables>
-std::optional<Module::Expression>
-immediate_domain(const Module::Expression& expression,
-                 const Variables& variables) {
-  using Kind = Module::Expression::Kind;
-  if (expression.kind == Kind::Variable) {
-    const auto variable =
-        std::find_if(variables.begin(), variables.end(), [&](const auto& value) {
-          return value.name == expression.text;
-        });
-    return variable == variables.end()
-               ? std::optional<Module::Expression>{}
-               : std::optional<Module::Expression>{variable->domain};
-  }
-  if (expression.kind == Kind::Number) {
-    return detail::domain_expression(
-        expression.text.find_first_of(".eE") == std::string::npos
-            ? detail::ValueKind::Integer
-            : detail::ValueKind::Real);
-  }
-  if (expression.kind == Kind::Boolean) {
-    return detail::domain_expression(detail::ValueKind::Boolean);
-  }
-  if (expression.kind == Kind::String) {
-    return detail::domain_expression(detail::ValueKind::String);
-  }
-  return std::nullopt;
-}
 
 class DynamicLibrary {
 public:
@@ -1012,265 +984,6 @@ bool Compiler::link() {
               module, Module::SymbolKind::Attribute, declaration.name()));
     }
 
-    const auto validate_compile_time_expression =
-        [&](const auto& self, const Module::Expression& expression,
-            const Module::Expression& expected,
-            std::span<const Module::ParameterDecl> variables,
-            std::string_view declaration,
-            std::optional<SourceRange> location) -> void {
-      using Kind = Module::Expression::Kind;
-      const auto report = [&](std::string message) {
-        state_->diagnostics.report(std::move(message), location);
-      };
-      const auto domain = detail::kernel_domain(expected);
-      if (!domain) {
-        report("unknown result domain in compile-time definition '" +
-               std::string(declaration) + "'");
-        return;
-      }
-      if (expression.kind == Kind::FunctionType) {
-        const auto signature = detail::callable_type(expression);
-        if (domain->list || domain->element != detail::ValueKind::Type ||
-            !signature) {
-          report("malformed function type in compile-time definition '" +
-                 std::string(declaration) + "'");
-          return;
-        }
-        const auto type_domain =
-            detail::domain_expression(detail::ValueKind::Type);
-        for (const auto side : {signature->inputs, signature->results}) {
-          for (const auto& element : side) {
-            self(self, element, type_domain, variables, declaration,
-                 location);
-          }
-        }
-        return;
-      }
-      if (expression.kind == Kind::Variable) {
-        const auto variable = std::find_if(
-            variables.begin(), variables.end(), [&](const auto& candidate) {
-              return candidate.name == expression.text;
-            });
-        if (variable == variables.end() || variable->domain != expected) {
-          report("variable '" + expression.text +
-                 "' has the wrong domain in compile-time definition '" +
-                 std::string(declaration) + "'");
-        }
-        return;
-      }
-      if (expression.kind == Kind::Evaluate) {
-        if (expression.arguments.size() != 1U) {
-          report("malformed compile-time evaluation in definition '" +
-                 std::string(declaration) + "'");
-          return;
-        }
-        self(self, expression.arguments.front(), expected, variables,
-             declaration, location);
-        return;
-      }
-      if (expression.kind == Kind::If) {
-        if (expression.arguments.size() != 3U) {
-          report("malformed if expression in definition '" +
-                 std::string(declaration) + "'");
-          return;
-        }
-        self(self, expression.arguments[0],
-             detail::domain_expression(detail::ValueKind::Boolean), variables,
-             declaration, location);
-        self(self, expression.arguments[1], expected, variables, declaration,
-             location);
-        self(self, expression.arguments[2], expected, variables, declaration,
-             location);
-        return;
-      }
-      if (domain->list && expression.kind != Kind::Call) {
-        if (expression.kind != Kind::List) {
-          report("expected a list expression in compile-time definition '" +
-                 std::string(declaration) + "'");
-          return;
-        }
-        for (const auto& element : expression.arguments) {
-          self(self, element, detail::domain_expression(domain->element),
-               variables, declaration, location);
-        }
-        return;
-      }
-      if (expression.kind == Kind::List) {
-        report("unexpected list expression in compile-time definition '" +
-               std::string(declaration) + "'");
-        return;
-      }
-      const bool operation = expression.kind == Kind::Prefix ||
-                             expression.kind == Kind::Infix ||
-                             expression.kind == Kind::Postfix;
-      if (operation) {
-        const std::size_t arity = expression.kind == Kind::Infix ? 2U : 1U;
-        if (expression.arguments.size() != arity) {
-          report("malformed operator expression in compile-time definition '" +
-                 std::string(declaration) + "'");
-          return;
-        }
-        const auto fixity =
-            expression.kind == Kind::Prefix
-                ? Module::FunctionDecl::Fixity::Prefix
-            : expression.kind == Kind::Postfix
-                ? Module::FunctionDecl::Fixity::Postfix
-                : Module::FunctionDecl::Fixity::Infix;
-        auto operators = detail::operator_candidates(
-            *this, name, expression.text, fixity, arity, expected);
-        operators.erase(
-            std::remove_if(
-                operators.begin(), operators.end(),
-                [&](const Module::FunctionDecl& candidate) {
-                  for (std::size_t index = 0; index < arity; ++index) {
-                    const auto actual =
-                        immediate_domain(expression.arguments[index], variables);
-                    if (actual && candidate.inputs()[index].domain != *actual) {
-                      return true;
-                    }
-                  }
-                  return false;
-                }),
-            operators.end());
-        if (operators.size() == 1U) {
-          for (std::size_t index = 0; index < arity; ++index) {
-            self(self, expression.arguments[index],
-                 operators.front().inputs()[index].domain, variables,
-                 declaration, location);
-          }
-          return;
-        }
-        if (!operators.empty()) {
-          report("ambiguous operator '" + expression.text +
-                 "' in compile-time definition '" +
-                 std::string(declaration) + "'");
-          return;
-        }
-        report("operator '" + expression.text +
-               "' has no matching declaration in compile-time definition '" +
-               std::string(declaration) + "'");
-        return;
-      }
-      if (expression.kind == Kind::Call) {
-        std::vector<detail::CallCandidate> candidates;
-        for (const auto& function :
-             detail::visible_functions(*this, name, expression.text)) {
-          auto candidate = detail::call_candidate(function, expression);
-          if (!candidate || function.results().size() != 1U ||
-              function.results().front().domain != expected) {
-            continue;
-          }
-          bool accepts = true;
-          for (std::size_t index = 0; index < expression.arguments.size();
-               ++index) {
-            const auto actual =
-                immediate_domain(expression.arguments[index], variables);
-            if (actual &&
-                function.inputs()[candidate->parameters[index]].domain !=
-                    *actual) {
-              accepts = false;
-              break;
-            }
-          }
-          if (accepts) {
-            candidates.push_back(std::move(*candidate));
-          }
-        }
-        if (candidates.size() != 1U) {
-          report("unknown or ill-typed pure call '" + expression.text +
-                 "' in compile-time definition '" +
-                 std::string(declaration) + "'");
-          return;
-        }
-        const detail::CallCandidate& candidate = candidates.front();
-        for (std::size_t index = 0; index < expression.arguments.size();
-             ++index) {
-          self(self, expression.arguments[index],
-               candidate.function.inputs()[candidate.parameters[index]].domain,
-               variables, declaration, location);
-        }
-        return;
-      }
-      if (expression.kind == Kind::Number ||
-          expression.kind == Kind::Boolean ||
-          expression.kind == Kind::String) {
-        const bool matches =
-            (expression.kind == Kind::Number &&
-             (domain->element == detail::ValueKind::Integer ||
-              domain->element == detail::ValueKind::Real)) ||
-            (expression.kind == Kind::Boolean &&
-             domain->element == detail::ValueKind::Boolean) ||
-            (expression.kind == Kind::String &&
-             domain->element == detail::ValueKind::String);
-        if (!matches) {
-          report("literal has the wrong domain in compile-time definition '" +
-                 std::string(declaration) + "'");
-        }
-        return;
-      }
-      if (domain->element != detail::ValueKind::Type &&
-          domain->element != detail::ValueKind::Attribute) {
-        report("reference has the wrong domain in compile-time definition '" +
-               std::string(declaration) + "'");
-        return;
-      }
-      const std::size_t dot = expression.text.find('.');
-      const std::string owner =
-          dot == std::string::npos
-              ? name
-              : std::string(resolve_prefix(
-                    module,
-                    std::string_view(expression.text).substr(0, dot)));
-      const std::string local =
-          dot == std::string::npos ? expression.text
-                                   : expression.text.substr(dot + 1U);
-      const auto source = state_->modules.find(owner);
-      if (source == state_->modules.end()) {
-        report("reference uses missing module '" + owner +
-               "' in compile-time definition '" +
-               std::string(declaration) + "'");
-        return;
-      }
-      std::span<const Module::ParameterDecl> parameters;
-      if (domain->element == detail::ValueKind::Type) {
-        const auto target = source->second.type(local);
-        if (!target) {
-          report("unknown type '" + expression.text +
-                 "' in compile-time definition '" +
-                 std::string(declaration) + "'");
-          return;
-        }
-        parameters = target->parameters();
-      } else {
-        const auto target = source->second.attribute(local);
-        if (!target) {
-          report("unknown attribute '" + expression.text +
-                 "' in compile-time definition '" +
-                 std::string(declaration) + "'");
-          return;
-        }
-        parameters = target->parameters();
-      }
-      if (expression.arguments.size() > parameters.size()) {
-        report("too many arguments for '" + expression.text +
-               "' in compile-time definition '" +
-               std::string(declaration) + "'");
-        return;
-      }
-      for (std::size_t index = 0; index < expression.arguments.size();
-           ++index) {
-        self(self, expression.arguments[index], parameters[index].domain,
-             variables, declaration, location);
-      }
-      for (std::size_t index = expression.arguments.size();
-           index < parameters.size(); ++index) {
-        if (!parameters[index].default_value) {
-          report("missing argument '" + parameters[index].name + "' for '" +
-                 expression.text + "' in compile-time definition '" +
-                 std::string(declaration) + "'");
-        }
-      }
-    };
 
     for (const Module::TypeDecl& type : module.types()) {
       const auto location = detail::ModuleAccess::declaration_source(
@@ -1354,16 +1067,22 @@ bool Compiler::link() {
               location);
           continue;
         }
-        std::vector<Module::ParameterDecl> variables(type.parameters().begin(),
-                                                     type.parameters().end());
-        validate_compile_time_expression(
-            validate_compile_time_expression, derived.value,
-            fields.front().domain, variables,
-            std::string(type.name()) + "." + derived.name, location);
+        detail::check_declaration_expression(
+            *this, module, derived.value, fields.front().domain, {},
+            type.parameters(), state_->diagnostics, location,
+            "derived field '" + name + "." + std::string(type.name()) + "." +
+                derived.name + "'");
       }
     }
 
     for (const Module::FunctionDecl& function : module.functions()) {
+      const auto location = detail::ModuleAccess::declaration_source(
+          module, Module::SymbolKind::Function, function.name());
+      validate_interfaces(function.interfaces(), Module::SymbolKind::Function,
+                          function.name(), location);
+      detail::check_generic_constraints(
+          *this, module, function.generics(), state_->diagnostics, location,
+          "function '" + name + "." + std::string(function.name()) + "'");
       const auto body = detail::ModuleAccess::body(module, function);
       if (body) {
         detail::verify_body_calls(*this, function, *body,
@@ -1382,11 +1101,12 @@ bool Compiler::link() {
           module, Module::SymbolKind::Function, function.name());
       const auto inputs = detail::parameter_inputs(function);
       const auto results = detail::parameter_results(function);
-      validate_compile_time_expression(
-          validate_compile_time_expression,
+      detail::check_declaration_expression(
+          *this, module,
           *detail::ModuleAccess::expression(function),
-          results.front().domain, inputs,
-          function.name(), location);
+          results.front().domain, function.generics(), inputs,
+          state_->diagnostics, location,
+          "function '" + name + "." + std::string(function.name()) + "'");
     }
     for (const Module::FunctionDecl& declaration : module.functions()) {
       if (detail::ir_inputs(declaration).empty() &&
@@ -1398,376 +1118,35 @@ bool Compiler::link() {
       const auto report_operation = [&](std::string message) {
         state_->diagnostics.report(std::move(message), operation_source);
       };
-      validate_interfaces(declaration.interfaces(),
-                          Module::SymbolKind::Function, declaration.name(),
-                          operation_source);
       const auto& contract = detail::FunctionTypeAccess::get(declaration);
-      for (const auto& generic : contract.generics) {
-        if (!generic.constraint) {
-          continue;
-        }
-        const std::size_t dot = generic.constraint->find('.');
-        const std::string owner =
-            dot == std::string::npos
-                ? name
-                : std::string(resolve_prefix(
-                      module,
-                      std::string_view(*generic.constraint).substr(0, dot)));
-        const std::string local =
-            dot == std::string::npos
-                ? *generic.constraint
-                : generic.constraint->substr(dot + 1U);
-        const auto source_module = state_->modules.find(owner);
-        const auto interface =
-            source_module == state_->modules.end()
-                ? std::optional<Module::InterfaceDecl>{}
-                : source_module->second.interface(local);
-        if (!interface) {
-          report_operation("generic '" + generic.name + "' in operation '" +
-                           name + "." + std::string(declaration.name()) +
-                           "' references unknown interface '" +
-                           *generic.constraint + "'");
-        } else if (interface->subject() != Module::SymbolKind::Type) {
-          report_operation("generic '" + generic.name + "' in operation '" +
-                           name + "." + std::string(declaration.name()) +
-                           "' is constrained by a non-type interface '" +
-                           *generic.constraint + "'");
-        }
-      }
-      const auto validate_expression =
-          [&](const auto& self, const detail::TypeExpression& expression,
-              const Module::Expression& expected) -> void {
-        using Kind = detail::TypeExpression::Kind;
-        const auto domain = detail::kernel_domain(expected);
-        if (!domain) {
-          report_operation("unknown parameter domain in operation '" + name +
-                           "." + std::string(declaration.name()) + "'");
-          return;
-        }
-        if (expression.kind == Kind::FunctionType) {
-          const auto signature = detail::callable_type(expression);
-          if (domain->list || domain->element != detail::ValueKind::Type ||
-              !signature) {
-            report_operation("operation '" + name + "." +
-                             std::string(declaration.name()) +
-                             "' contains a malformed function type");
-            return;
-          }
-          const auto type_domain =
-              detail::domain_expression(detail::ValueKind::Type);
-          for (const auto side : {signature->inputs, signature->results}) {
-            for (const auto& element : side) {
-              self(self, element, type_domain);
-            }
-          }
-          return;
-        }
-        if (expression.kind == Kind::Variable) {
-          const auto variable =
-              std::find_if(contract.generics.begin(), contract.generics.end(),
-                           [&](const auto& generic) {
-                             return generic.name == expression.text;
-                           });
-          if (variable == contract.generics.end() ||
-              variable->domain != expected) {
-            report_operation("type variable '" + expression.text +
-                             "' in operation '" + name + "." +
-                             std::string(declaration.name()) +
-                             "' has the wrong kind");
-          }
-          return;
-        }
-        if (expression.kind == Kind::Evaluate) {
-          if (expression.arguments.size() != 1U) {
-            report_operation("operation '" + name + "." +
-                             std::string(declaration.name()) +
-                             "' contains malformed compile-time evaluation");
-            return;
-          }
-          self(self, expression.arguments.front(), expected);
-          return;
-        }
-        if (expression.kind == Kind::If) {
-          if (expression.arguments.size() != 3U) {
-            report_operation("operation '" + name + "." +
-                             std::string(declaration.name()) +
-                             "' contains malformed if expression");
-            return;
-          }
-          self(self, expression.arguments[0],
-               detail::domain_expression(detail::ValueKind::Boolean));
-          self(self, expression.arguments[1], expected);
-          self(self, expression.arguments[2], expected);
-          return;
-        }
-        if (domain->list && expression.kind != Kind::Call &&
-            expression.kind != Kind::Reference) {
-          if (expression.kind != Kind::List) {
-            report_operation("operation '" + name + "." +
-                             std::string(declaration.name()) +
-                             "' expects a list-valued type expression");
-            return;
-          }
-          for (const auto& element : expression.arguments) {
-            self(self, element, detail::domain_expression(domain->element));
-          }
-          return;
-        }
-        if (expression.kind == Kind::List) {
-          report_operation("operation '" + name + "." +
-                           std::string(declaration.name()) +
-                           "' contains an unexpected list type expression");
-          return;
-        }
-        const bool operation = expression.kind == Kind::Prefix ||
-                               expression.kind == Kind::Infix ||
-                               expression.kind == Kind::Postfix;
-        if (operation) {
-          const std::size_t arity = expression.kind == Kind::Infix ? 2U : 1U;
-          if (expression.arguments.size() != arity) {
-            report_operation("operation '" + name + "." +
-                             std::string(declaration.name()) +
-                             "' contains malformed operator expression");
-            return;
-          }
-          const auto fixity =
-              expression.kind == Kind::Prefix
-                  ? Module::FunctionDecl::Fixity::Prefix
-              : expression.kind == Kind::Postfix
-                  ? Module::FunctionDecl::Fixity::Postfix
-                  : Module::FunctionDecl::Fixity::Infix;
-          auto operators = detail::operator_candidates(
-              *this, name, expression.text, fixity, arity, expected);
-          operators.erase(
-              std::remove_if(
-                  operators.begin(), operators.end(),
-                  [&](const Module::FunctionDecl& candidate) {
-                    for (std::size_t index = 0; index < arity; ++index) {
-                      const auto actual = immediate_domain(
-                          expression.arguments[index], contract.generics);
-                      if (actual &&
-                          candidate.inputs()[index].domain != *actual) {
-                        return true;
-                      }
-                    }
-                    return false;
-                  }),
-              operators.end());
-          if (operators.size() == 1U) {
-            for (std::size_t index = 0; index < arity; ++index) {
-              self(self, expression.arguments[index],
-                   operators.front().inputs()[index].domain);
-            }
-            return;
-          }
-          if (!operators.empty()) {
-            report_operation("operator '" + expression.text +
-                             "' is ambiguous in operation '" + name + "." +
-                             std::string(declaration.name()) + "'");
-            return;
-          }
-          report_operation("operator '" + expression.text +
-                           "' has no matching declaration in operation '" +
-                           name + "." + std::string(declaration.name()) +
-                           "'");
-          return;
-        }
-        if (expression.kind == Kind::Reference) {
-          const std::size_t field_dot = expression.text.find('.');
-          if (field_dot != std::string::npos) {
-            const std::string_view receiver(expression.text.data(), field_dot);
-            const auto generic = std::find_if(
-                contract.generics.begin(), contract.generics.end(),
-                [&](const auto& candidate) { return candidate.name == receiver; });
-            if (generic != contract.generics.end()) {
-              if (!generic->constraint) {
-                report_operation("generic '" + std::string(receiver) +
-                                 "' has no interface exposing derived parameter '" +
-                                 expression.text.substr(field_dot + 1U) +
-                                 "' in operation '" + name + "." +
-                                 std::string(declaration.name()) + "'");
-                return;
-              }
-              const std::size_t constraint_dot = generic->constraint->find('.');
-              const std::string interface_owner =
-                  constraint_dot == std::string::npos
-                      ? name
-                      : std::string(resolve_prefix(
-                            module, std::string_view(*generic->constraint)
-                                        .substr(0, constraint_dot)));
-              const std::string interface_name =
-                  constraint_dot == std::string::npos
-                      ? *generic->constraint
-                      : generic->constraint->substr(constraint_dot + 1U);
-              const auto source = state_->modules.find(interface_owner);
-              const auto interface =
-                  source == state_->modules.end()
-                      ? std::optional<Module::InterfaceDecl>{}
-                      : source->second.interface(interface_name);
-              const std::string_view field_name =
-                  std::string_view(expression.text).substr(field_dot + 1U);
-              const auto field =
-                  interface
-                      ? std::find_if(interface->fields().begin(),
-                                     interface->fields().end(),
-                                     [&](const auto& candidate) {
-                                       return candidate.name == field_name;
-                                     })
-                      : std::span<const Module::ParameterDecl>::iterator{};
-              if (!interface || field == interface->fields().end() ||
-                  field->domain != expected) {
-                report_operation("unknown or ill-typed derived parameter '" +
-                                 expression.text + "' in operation '" + name +
-                                 "." + std::string(declaration.name()) + "'");
-              }
-              return;
-            }
-          }
-        }
-        if (expression.kind == Kind::Call) {
-          std::vector<detail::CallCandidate> candidates;
-          for (const auto& function :
-               detail::visible_functions(*this, name, expression.text)) {
-            auto candidate = detail::call_candidate(function, expression);
-            if (!candidate || function.results().size() != 1U ||
-                function.results().front().domain != expected) {
-              continue;
-            }
-            bool accepts = true;
-            for (std::size_t index = 0; index < expression.arguments.size();
-                 ++index) {
-              const auto actual =
-                  immediate_domain(expression.arguments[index],
-                                   contract.generics);
-              if (actual &&
-                  function.inputs()[candidate->parameters[index]].domain !=
-                      *actual) {
-                accepts = false;
-                break;
-              }
-            }
-            if (accepts) {
-              candidates.push_back(std::move(*candidate));
-            }
-          }
-          if (candidates.size() != 1U) {
-            report_operation("unknown or ill-typed pure call '" +
-                             expression.text + "' in operation '" + name +
-                             "." + std::string(declaration.name()) + "'");
-            return;
-          }
-          const detail::CallCandidate& candidate = candidates.front();
-          for (std::size_t index = 0; index < expression.arguments.size();
-               ++index) {
-            self(self, expression.arguments[index],
-                 candidate.function.inputs()[candidate.parameters[index]]
-                     .domain);
-          }
-          return;
-        }
-        if (expression.kind == Kind::Number ||
-            expression.kind == Kind::Boolean ||
-            expression.kind == Kind::String) {
-          const bool matches = (expression.kind == Kind::Number &&
-                                (domain->element == detail::ValueKind::Integer ||
-                                 domain->element == detail::ValueKind::Real)) ||
-                               (expression.kind == Kind::Boolean &&
-                                domain->element == detail::ValueKind::Boolean) ||
-                               (expression.kind == Kind::String &&
-                                domain->element == detail::ValueKind::String);
-          if (!matches) {
-            report_operation("literal in operation '" + name + "." +
-                             std::string(declaration.name()) +
-                             "' has the wrong kind");
-          }
-          return;
-        }
-        if (domain->element != detail::ValueKind::Type &&
-            domain->element != detail::ValueKind::Attribute) {
-          report_operation("type expression '" + expression.text +
-                           "' has the wrong kind in operation '" + name + "." +
-                           std::string(declaration.name()) + "'");
-          return;
-        }
-        const std::size_t dot = expression.text.find('.');
-        const std::string owner =
-            dot == std::string::npos
-                ? name
-                : std::string(resolve_prefix(
-                      module,
-                      std::string_view(expression.text).substr(0, dot)));
-        const std::string local = dot == std::string::npos
-                                      ? expression.text
-                                      : expression.text.substr(dot + 1U);
-        const auto source = state_->modules.find(owner);
-        if (source == state_->modules.end()) {
-          report_operation("operation '" + name + "." +
-                           std::string(declaration.name()) +
-                           "' references missing module '" + owner + "'");
-          return;
-        }
-        std::span<const Module::ParameterDecl> parameters;
-        if (domain->element == detail::ValueKind::Type) {
-          const auto target = source->second.type(local);
-          if (!target) {
-            report_operation(
-                "operation '" + name + "." + std::string(declaration.name()) +
-                "' references unknown type '" + expression.text + "'");
-            return;
-          }
-          parameters = target->parameters();
-        } else {
-          const auto target = source->second.attribute(local);
-          if (!target) {
-            report_operation(
-                "operation '" + name + "." + std::string(declaration.name()) +
-                "' references unknown attribute '" + expression.text + "'");
-            return;
-          }
-          parameters = target->parameters();
-        }
-        if (expression.arguments.size() > parameters.size()) {
-          report_operation("type expression '" + expression.text +
-                           "' has too many arguments in operation '" + name +
-                           "." + std::string(declaration.name()) + "'");
-          return;
-        }
-        for (std::size_t index = 0; index < expression.arguments.size();
-             ++index) {
-          self(self, expression.arguments[index], parameters[index].domain);
-        }
-        for (std::size_t index = expression.arguments.size();
-             index < parameters.size(); ++index) {
-          if (!parameters[index].default_value) {
-            report_operation("type expression '" + expression.text +
-                             "' omits argument '" +
-                             parameters[index].name + "' in operation '" +
-                             name + "." + std::string(declaration.name()) +
-                             "'");
-          }
-        }
-      };
       if (!contract.bindings.empty() &&
           contract.bindings.size() != declaration.inputs().size()) {
-        report_operation("operation '" + name + "." +
+        report_operation("function '" + name + "." +
                          std::string(declaration.name()) +
                          "' has an invalid type contract");
         continue;
       }
+      const auto type_domain =
+          detail::domain_expression(detail::ValueKind::Type);
+      const std::string subject =
+          "function '" + name + "." + std::string(declaration.name()) + "'";
       for (const auto& input : detail::ir_inputs(declaration)) {
-        validate_expression(validate_expression, input.domain,
-                            detail::domain_expression(detail::ValueKind::Type));
+        detail::check_declaration_expression(
+            *this, module, input.domain, type_domain, contract.generics, {},
+            state_->diagnostics, operation_source, subject);
       }
       for (std::size_t index = 0; index < declaration.inputs().size(); ++index) {
         if (!contract.bindings.empty() && contract.bindings[index]) {
-          validate_expression(validate_expression,
-                              *contract.bindings[index],
-                              declaration.inputs()[index].domain);
+          detail::check_declaration_expression(
+              *this, module, *contract.bindings[index],
+              declaration.inputs()[index].domain, contract.generics, {},
+              state_->diagnostics, operation_source, subject);
         }
       }
       for (const auto& result : detail::ir_results(declaration)) {
-        validate_expression(validate_expression, result.domain,
-                            detail::domain_expression(detail::ValueKind::Type));
+        detail::check_declaration_expression(
+            *this, module, result.domain, type_domain, contract.generics, {},
+            state_->diagnostics, operation_source, subject);
       }
     }
 
