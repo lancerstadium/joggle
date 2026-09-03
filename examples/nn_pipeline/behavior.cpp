@@ -23,13 +23,13 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
 
   compiler.bind(
       *map_relu,
-      [nn_relu, accelerator_relu](joggle::ir::Module input,
+      [nn_relu, accelerator_relu](joggle::ir::Program input,
                                  joggle::Diagnostics& reported)
-          -> std::optional<joggle::ir::Module> {
+          -> std::optional<joggle::ir::Program> {
         for (const std::string& name : input.function_names()) {
           joggle::ir::Function* function = input.function(name);
           if (function == nullptr) {
-            reported.report("IR Module lost function '" + name + "'");
+            reported.report("Program lost function '" + name + "'");
             return std::nullopt;
           }
           auto edit = function->edit();
@@ -48,7 +48,7 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
 
   compiler.bind(
       *emit_joggle,
-      [](const joggle::ir::Module& input,
+      [](const joggle::ir::Program& input,
          joggle::Diagnostics& reported) -> std::optional<joggle::Bytes> {
         try {
           const std::string source =

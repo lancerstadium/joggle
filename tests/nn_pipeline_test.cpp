@@ -27,10 +27,10 @@ std::string decode(const joggle::Bytes& bytes) {
   return result;
 }
 
-std::size_t calls(const joggle::ir::Module& module, std::string_view symbol) {
+std::size_t calls(const joggle::ir::Program& program, std::string_view symbol) {
   std::size_t count = 0;
-  for (const std::string& name : module.function_names()) {
-    const joggle::ir::Function* function = module.function(name);
+  for (const std::string& name : program.function_names()) {
+    const joggle::ir::Function* function = program.function(name);
     if (function == nullptr) {
       continue;
     }
@@ -71,7 +71,7 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  joggle::ir::Module model;
+  joggle::ir::Program model;
   joggle::Diagnostics diagnostics;
   joggle::ir::Function second = block->clone();
   if (!model.insert("stage1_block0", std::move(*block), diagnostics) ||
@@ -81,9 +81,9 @@ int main() {
   }
 
   const auto unchanged =
-      compiler.run<joggle::ir::Module>(*prepare_function, model, false);
+      compiler.run<joggle::ir::Program>(*prepare_function, model, false);
   const auto mapped =
-      compiler.run<joggle::ir::Module>(*prepare_function, model, true);
+      compiler.run<joggle::ir::Program>(*prepare_function, model, true);
   const auto emitted =
       compiler.run<joggle::Bytes>(*compile_function, model, true);
   if (!unchanged || !mapped || !emitted) {

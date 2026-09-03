@@ -63,7 +63,7 @@ module pipeline@1.0.0 {
   fn logical_or(lhs: bool, rhs: bool) -> bool as || {
     return if lhs { true } else { rhs };
   }
-  fn module_identity(input: program) -> program;
+  fn program_identity(input: program) -> program;
   fn convert_word(input: test_ir.integer<8>) -> test_ir.integer<8>;
   fn convert_word(input: test_ir.integer<16>) -> test_ir.integer<16>;
   fn configured_copy(input: test_ir.integer<8>, tag: int = 7)
@@ -224,8 +224,8 @@ module pipeline@1.0.0 {
   const auto inspect = pipeline ? pipeline->function("inspect") : std::nullopt;
   const auto compile = pipeline ? pipeline->function("compile") : std::nullopt;
   const auto consume = pipeline ? pipeline->function("consume") : std::nullopt;
-  const auto module_identity =
-      pipeline ? pipeline->function("module_identity") : std::nullopt;
+  const auto program_identity =
+      pipeline ? pipeline->function("program_identity") : std::nullopt;
   const auto convert_words =
       pipeline ? pipeline->overloads("convert_word")
                : std::vector<joggle::Module::FunctionDecl>{};
@@ -306,7 +306,7 @@ module pipeline@1.0.0 {
       pipeline ? pipeline->function("relay_fork") : std::nullopt;
   if (!integer_decl || !arith_cast_decl || !format_decl || !canonicalize ||
       !clean || !read || !emit || !inspect || !compile || !consume ||
-      !module_identity || convert_words.size() != 2U || !configured_copy ||
+      !program_identity || convert_words.size() != 2U || !configured_copy ||
       !compute_width || !width_copy ||
       !residual_overload || !residual_arguments || !residual_variadic ||
       !residual_dependent || !append || !nonzero || !select ||
@@ -437,10 +437,10 @@ module pipeline@1.0.0 {
       },
       joggle::HostEvaluation::Hermetic);
   ok &= expect(
-      compiler.invocable<joggle::ir::Module, joggle::ir::Module>(
-          *module_identity) &&
+      compiler.invocable<joggle::ir::Program, joggle::ir::Program>(
+          *program_identity) &&
           compiler.invocable<joggle::ir::Function, joggle::ir::Function&>(*clean) &&
-          !compiler.invocable<joggle::ir::Module, joggle::ir::Function&>(*clean) &&
+          !compiler.invocable<joggle::ir::Program, joggle::ir::Function&>(*clean) &&
           compiler.invocable<std::tuple<std::int64_t, bool>, std::int64_t>(
               *divide) &&
           !compiler.invocable<std::int64_t, std::int64_t>(*divide) &&
@@ -448,8 +448,8 @@ module pipeline@1.0.0 {
       "typed invocability distinguishes whole-Module and single-Function "
       "transforms and checks complete result sequences");
   compiler.bind(
-      *module_identity,
-      [](joggle::ir::Module input) { return input; });
+      *program_identity,
+      [](joggle::ir::Program input) { return input; });
   const joggle::Bytes encoded{std::byte{0x42}};
   auto decoded = compiler.run<joggle::ir::Function>(*read, encoded);
   auto count = decoded
@@ -638,14 +638,14 @@ module pipeline@1.0.0 {
   ok &= expect(function->instructions().empty(),
                "the native transformation removes redundant casts");
 
-  joggle::ir::Module program;
+  joggle::ir::Program program;
   auto program_main = compiler.function();
   joggle::Diagnostics program_diagnostics;
   if (!program_main ||
       !program.insert("main", std::move(*program_main), program_diagnostics)) {
     return EXIT_FAILURE;
   }
-  auto copied_program = compiler.run<joggle::ir::Module>(*module_identity,
+  auto copied_program = compiler.run<joggle::ir::Program>(*program_identity,
                                                          program);
   const auto i32 = compiler.make("i32");
   if (!copied_program || !i32 || !copied_program->function("main")) {

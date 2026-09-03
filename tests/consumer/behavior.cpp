@@ -14,15 +14,15 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
 
   compiler.bind(*convert, [keep = *keep, converted = *converted](
                             joggle::ir::Function& function,
-                            joggle::Diagnostics& pass_diagnostics) {
-    const auto operations = function.instructions();
+                            joggle::Diagnostics& diagnostics) {
+    const auto instructions = function.instructions();
     auto edit = function.edit();
-    for (const joggle::ir::Instruction& instruction : operations) {
+    for (const joggle::ir::Instruction& instruction : instructions) {
       if (instruction.callee() == keep) {
         edit.replace(instruction, converted);
       }
     }
-    return edit.commit(pass_diagnostics);
+    return edit.commit(diagnostics);
   });
   return true;
 }

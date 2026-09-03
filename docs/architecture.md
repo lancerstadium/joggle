@@ -7,17 +7,18 @@ ladder or target model would become the constraint.
 
 ## Public model
 
-Two objects named Module serve different, explicit roles:
+The source and C++ names correspond directly:
 
-| C++ type | Meaning |
-| --- | --- |
-| `joggle::Module` | Immutable, versioned schema package: declarations and contracts |
-| `joggle::ir::Module` | Mutable executable artifact: a named set of IR Functions |
+| Source concept | C++ type | Meaning |
+| --- | --- | --- |
+| `module name@version { ... }` | `joggle::Module` | Immutable declaration package and contracts |
+| `function` | `joggle::ir::Function` | One executable CFG and def-use graph |
+| `program` | `joggle::ir::Program` | Named collection of executable Functions |
 
 All executable IR ownership types share one namespace and one hierarchy:
 
 ```text
-joggle::ir::Module
+joggle::ir::Program
   └─ joggle::ir::Function
        └─ joggle::ir::Block
             ├─ joggle::ir::Instruction
@@ -25,8 +26,9 @@ joggle::ir::Module
             └─ joggle::ir::Terminator
 ```
 
-There are no root aliases for these IR types. `joggle::Module` is not an IR
-container, and `joggle::ir::Module` is not a declaration package.
+There are no root aliases for IR types and no second object called Module.
+`module` always denotes a declaration/package boundary; `program` always
+denotes a transformable whole-program artifact.
 
 The other public concepts are small:
 
@@ -122,7 +124,7 @@ format, schedule, simulator, or emitter belongs in installable Modules and
 optional behavior libraries. This boundary keeps the core small while leaving
 experiments inspectable and serializable.
 
-Prelude's `program` is represented by `joggle::ir::Module`; `function` is
+Prelude's `program` is represented by `joggle::ir::Program`; `function` is
 represented by `joggle::ir::Function`. These are the only core-owned host
 artifact mappings. Extension-owned schedules, estimates, traces, object files,
 or target descriptions use ordinary declared types and `Compiler::represent`.

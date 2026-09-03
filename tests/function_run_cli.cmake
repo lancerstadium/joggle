@@ -1,7 +1,8 @@
 if(NOT DEFINED JOGGLE_CLI OR NOT DEFINED JOGGLE_SOURCE OR
    NOT DEFINED JOGGLE_OUTPUT OR NOT DEFINED JOGGLE_BEHAVIOR_SOURCE OR
    NOT DEFINED JOGGLE_BEHAVIOR OR NOT DEFINED JOGGLE_TARGET OR
-   NOT DEFINED JOGGLE_IR_TRANSFORM OR NOT DEFINED JOGGLE_IR_TRANSFORM_BEHAVIOR)
+   NOT DEFINED JOGGLE_PROGRAM_TRANSFORM OR
+   NOT DEFINED JOGGLE_PROGRAM_TRANSFORM_BEHAVIOR)
   message(FATAL_ERROR "function run test arguments are incomplete")
 endif()
 
@@ -39,31 +40,31 @@ if(target_module_position EQUAL -1 OR target_identity_position EQUAL -1 OR
     "cross-Module pipeline retained converted or unused target state:\n${target_function}")
 endif()
 
-set(module_output "${JOGGLE_OUTPUT}.module")
+set(program_output "${JOGGLE_OUTPUT}.program")
 execute_process(
   COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" main
-          ir_transform.add_helper
-          --with "${JOGGLE_IR_TRANSFORM}"
+          program_transform.add_helper
+          --with "${JOGGLE_PROGRAM_TRANSFORM}"
           --load-behavior
-          "ir_transform=${JOGGLE_IR_TRANSFORM_BEHAVIOR}"
-          -o "${module_output}"
-  RESULT_VARIABLE module_result
-  ERROR_VARIABLE module_error
+          "program_transform=${JOGGLE_PROGRAM_TRANSFORM_BEHAVIOR}"
+          -o "${program_output}"
+  RESULT_VARIABLE program_result
+  ERROR_VARIABLE program_error
 )
-if(NOT module_result EQUAL 0)
-  message(FATAL_ERROR "program pipeline failed:\n${module_error}")
+if(NOT program_result EQUAL 0)
+  message(FATAL_ERROR "program pipeline failed:\n${program_error}")
 endif()
-file(READ "${module_output}" module_program)
-string(FIND "${module_program}" "fn helper()" module_helper_position)
-string(FIND "${module_program}" "fn main()" module_main_position)
-string(FIND "${module_program}" "import function_cli@1.0.0"
-  module_import_position)
-if(module_helper_position EQUAL -1 OR module_main_position EQUAL -1 OR
-   module_import_position EQUAL -1 OR
-   NOT module_helper_position LESS module_main_position)
+file(READ "${program_output}" program_source)
+string(FIND "${program_source}" "fn helper()" program_helper_position)
+string(FIND "${program_source}" "fn main()" program_main_position)
+string(FIND "${program_source}" "import function_cli@1.0.0"
+  program_import_position)
+if(program_helper_position EQUAL -1 OR program_main_position EQUAL -1 OR
+   program_import_position EQUAL -1 OR
+   NOT program_helper_position LESS program_main_position)
   message(FATAL_ERROR
     "program transform did not publish a canonical multi-function artifact:\n"
-    "${module_program}")
+    "${program_source}")
 endif()
 
 set(behavior_output "${JOGGLE_OUTPUT}.behavior")

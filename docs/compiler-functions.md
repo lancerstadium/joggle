@@ -32,7 +32,7 @@ analysis values as normal typed arguments.
 The core owns two executable artifacts:
 
 - `function` / `joggle::ir::Function` for one CFG and def-use graph;
-- `program` / `joggle::ir::Module` for a named collection of Functions.
+- `program` / `joggle::ir::Program` for a named collection of Functions.
 
 `program` values use copy-on-write Function storage. A native
 `program -> program` function receives an isolated value and publishes it only

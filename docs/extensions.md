@@ -49,7 +49,7 @@ can branch on Known configuration and use `for` over Known lists. Calls that
 depend on Residual program values remain in the executable IR.
 
 Prelude declares `program`. The compiler automatically represents it as
-`joggle::ir::Module`, which carries multiple named Functions through a
+`joggle::ir::Program`, which carries multiple named Functions through a
 pipeline. No package import or manual representation registration is required.
 This is a whole-program value, not a second IR hierarchy.
 
@@ -74,7 +74,7 @@ if (volume) {
 Supported compiler-domain mappings are `std::int64_t`, `double`, `bool`,
 `std::string`, `joggle::Type`, `joggle::Attribute`, `joggle::Bytes`, and
 homogeneous `std::vector<T>` forms. Whole-IR functions use
-`joggle::ir::Function` or `joggle::ir::Module`.
+`joggle::ir::Function` or `joggle::ir::Program`.
 
 A no-result declaration binds to C++ `void`; one result binds to `T`; multiple
 results bind positionally to `std::tuple<Ts...>`. Returning

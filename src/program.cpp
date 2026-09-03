@@ -1,4 +1,4 @@
-#include "joggle/ir_module.h"
+#include "joggle/program.h"
 
 #include "ir_internal.h"
 #include "type_internal.h"
@@ -12,7 +12,7 @@
 
 namespace joggle::ir {
 
-struct Module::Storage {
+struct Program::Storage {
   std::map<std::string, std::shared_ptr<Function>, std::less<>> functions;
 };
 
@@ -38,7 +38,7 @@ void collect(DependencyMap& dependencies,
   const auto [found, inserted] =
       dependencies.emplace(name, symbol.module_version());
   if (!inserted && found->second != symbol.module_version()) {
-    throw std::invalid_argument("IR Module references multiple versions of '" +
+    throw std::invalid_argument("Program references multiple versions of '" +
                                 name + "'");
   }
 }
@@ -140,31 +140,31 @@ void write_indented(std::ostringstream& output, std::string_view source) {
 
 }  // namespace
 
-Module::Module() : storage_(std::make_unique<Storage>()) {}
+Program::Program() : storage_(std::make_unique<Storage>()) {}
 
-Module::Module(const Module& other)
+Program::Program(const Program& other)
     : storage_(std::make_unique<Storage>(*other.storage_)) {}
 
-Module& Module::operator=(const Module& other) {
+Program& Program::operator=(const Program& other) {
   if (this != &other) {
-    Module copy(other);
+    Program copy(other);
     storage_.swap(copy.storage_);
   }
   return *this;
 }
 
-Module::Module(Module&&) noexcept = default;
-Module& Module::operator=(Module&&) noexcept = default;
-Module::~Module() = default;
+Program::Program(Program&&) noexcept = default;
+Program& Program::operator=(Program&&) noexcept = default;
+Program::~Program() = default;
 
-bool Module::insert(std::string name, Function function,
-                    Diagnostics& diagnostics) {
+bool Program::insert(std::string name, Function function,
+                     Diagnostics& diagnostics) {
   if (!valid_name(name)) {
-    diagnostics.report("IR Module function name '" + name + "' is invalid");
+    diagnostics.report("Program function name '" + name + "' is invalid");
     return false;
   }
   if (storage_->functions.contains(name)) {
-    diagnostics.report("IR Module already contains function '" + name + "'");
+    diagnostics.report("Program already contains function '" + name + "'");
     return false;
   }
   storage_->functions.emplace(
@@ -172,7 +172,7 @@ bool Module::insert(std::string name, Function function,
   return true;
 }
 
-Function* Module::function(std::string_view name) {
+Function* Program::function(std::string_view name) {
   const auto found = storage_->functions.find(name);
   if (found == storage_->functions.end()) {
     return nullptr;
@@ -183,12 +183,12 @@ Function* Module::function(std::string_view name) {
   return found->second.get();
 }
 
-const Function* Module::function(std::string_view name) const {
+const Function* Program::function(std::string_view name) const {
   const auto found = storage_->functions.find(name);
   return found == storage_->functions.end() ? nullptr : found->second.get();
 }
 
-std::vector<std::string> Module::function_names() const {
+std::vector<std::string> Program::function_names() const {
   std::vector<std::string> result;
   result.reserve(storage_->functions.size());
   for (const auto& [name, unused] : storage_->functions) {
@@ -198,15 +198,15 @@ std::vector<std::string> Module::function_names() const {
   return result;
 }
 
-std::size_t Module::size() const { return storage_->functions.size(); }
+std::size_t Program::size() const { return storage_->functions.size(); }
 
-bool Module::empty() const { return storage_->functions.empty(); }
+bool Program::empty() const { return storage_->functions.empty(); }
 
-std::vector<Dependency> dependencies(const Module& module) {
+std::vector<Dependency> dependencies(const Program& program) {
   DependencyMap found;
-  for (const std::string& name : module.function_names()) {
+  for (const std::string& name : program.function_names()) {
     const Function* function =
-        static_cast<const Module&>(module).function(name);
+        static_cast<const Program&>(program).function(name);
     if (function != nullptr) {
       collect(found, *function);
     }
@@ -219,13 +219,13 @@ std::vector<Dependency> dependencies(const Module& module) {
   return result;
 }
 
-static std::string format_source(const Module& module, std::string_view name,
+static std::string format_source(const Program& program, std::string_view name,
                                  Version version) {
   if (!valid_name(name)) {
     throw std::invalid_argument(
-        "a formatted IR Module needs a valid package name");
+        "a formatted Program needs a valid Module name");
   }
-  const auto referenced = dependencies(module);
+  const auto referenced = dependencies(program);
   std::ostringstream output;
   output << "joggle 1;\n\nmodule " << name << '@' << to_string(version)
          << " {\n";
@@ -238,12 +238,12 @@ static std::string format_source(const Module& module, std::string_view name,
            << to_string(dependency.version) << ";\n";
     imported = true;
   }
-  if (imported && !module.empty()) {
+  if (imported && !program.empty()) {
     output << '\n';
   }
-  for (const std::string& function_name : module.function_names()) {
+  for (const std::string& function_name : program.function_names()) {
     const Function* function =
-        static_cast<const Module&>(module).function(function_name);
+        static_cast<const Program&>(program).function(function_name);
     if (function != nullptr) {
       write_indented(output, joggle::format(*function, function_name));
     }
@@ -256,9 +256,9 @@ static std::string format_source(const Module& module, std::string_view name,
 
 namespace joggle {
 
-std::string format(const ir::Module& module, std::string_view name,
+std::string format(const ir::Program& program, std::string_view name,
                    Version version) {
-  return ir::format_source(module, name, version);
+  return ir::format_source(program, name, version);
 }
 
 }  // namespace joggle

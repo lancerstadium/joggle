@@ -85,7 +85,7 @@ It is ambient and cannot be replaced by package search.
 
 These Modules are not an ordered lowering stack. Extensions may import and
 bridge them in either direction. Prelude's `program` type carries an entire
-`joggle::ir::Module` through ordinary compiler functions; it is not another
+`joggle::ir::Program` through ordinary compiler functions; it is not another
 installable vocabulary.
 
 ## Documentation

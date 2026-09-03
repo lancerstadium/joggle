@@ -74,7 +74,7 @@ module program_defs@1.0.0 {
     }
   }
 
-  joggle::ir::Module program;
+  joggle::ir::Program program;
   joggle::Diagnostics diagnostics;
   if (!program.insert("main", std::move(*main), diagnostics) ||
       !program.insert("choose", std::move(*choose), diagnostics) ||
@@ -102,7 +102,7 @@ module program_defs@1.0.0 {
                                               {"program_defs", {1, 0, 0}}},
       "an executable Module reports exact schema dependencies");
   ok &= expect(parsed && reparsed == text,
-               "a multi-Function IR Module serializes as canonical source");
+               "a multi-Function Program serializes as canonical source");
   ok &= expect(text.find("import program_defs@1.0.0;") != std::string::npos &&
                    text.find("import prelude") == std::string::npos &&
                    text.find("fn choose") < text.find("fn main"),

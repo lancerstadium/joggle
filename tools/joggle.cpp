@@ -370,7 +370,7 @@ transform(joggle::Compiler& compiler, std::string_view qualified,
         function.results().size() != 1U) {
       continue;
     }
-    if (compiler.invocable<joggle::ir::Module, joggle::ir::Module>(
+    if (compiler.invocable<joggle::ir::Program, joggle::ir::Program>(
             function)) {
       matches.push_back({function, TransformKind::Module});
     } else if (compiler.invocable<joggle::ir::Function, joggle::ir::Function&>(
@@ -544,7 +544,7 @@ int main(int argc, char** argv) {
     }
     const std::size_t separator = function_name.find('.');
     const std::string function_body = function_name.substr(separator + 1U);
-    joggle::ir::Module program;
+    joggle::ir::Program program;
     if (!program.insert(function_body, std::move(*function), diagnostics)) {
       return fail(diagnostics);
     }
@@ -555,7 +555,7 @@ int main(int argc, char** argv) {
         return fail(diagnostics);
       }
       if (selected->kind == TransformKind::Module) {
-        auto transformed = compiler.run<joggle::ir::Module>(
+        auto transformed = compiler.run<joggle::ir::Program>(
             selected->declaration, std::move(program));
         if (!transformed) {
           return fail(compiler.diagnostics());

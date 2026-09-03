@@ -16,7 +16,7 @@ are explicit transactions.
 | `joggle::Compiler` | Linked environment, behavior, execution, diagnostics |
 | `joggle::Module` | Immutable versioned declaration package |
 | `joggle::Type`, `joggle::Attribute` | Immutable schema instances |
-| `joggle::ir::Module` | Named executable Function set |
+| `joggle::ir::Program` | Named executable Function set |
 | `joggle::ir::Function` | Executable IR owner |
 | `joggle::ir::Block` | CFG node owned by a Function |
 | `joggle::ir::Instruction` | Declared call owned by a Block |
@@ -180,10 +180,10 @@ auto callback = edit.reference(*callback_decl, *callable);
 `Value::referenced_function()` recovers the exact declaration. Commit verifies
 the callable signature and Module dependency.
 
-## Executable Modules
+## Programs
 
 ```cpp
-joggle::ir::Module program;
+joggle::ir::Program program;
 joggle::Diagnostics diagnostics;
 program.insert("main", std::move(*function), diagnostics);
 
@@ -196,7 +196,7 @@ detaches the selected Function. `joggle::format(program, name, version)` emits
 one canonical source Module with exact declaration dependencies.
 
 The embedded Prelude type `program` is automatically represented by
-`joggle::ir::Module`; `function` is represented by `joggle::ir::Function`.
+`joggle::ir::Program`; `function` is represented by `joggle::ir::Function`.
 Compiler-function signatures using either type need no generated wrapper or
 manual `Compiler::represent` call.
 

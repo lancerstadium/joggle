@@ -4,6 +4,6 @@
 #include "joggle/compiler.h"
 #include "joggle/diagnostic.h"
 #include "joggle/ir.h"
-#include "joggle/ir_module.h"
 #include "joggle/module.h"
+#include "joggle/program.h"
 #include "joggle/type.h"

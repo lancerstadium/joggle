@@ -8,7 +8,7 @@
 #include "function_body.h"
 #include "ir_internal.h"
 #include "joggle/behavior.h"
-#include "joggle/ir_module.h"
+#include "joggle/program.h"
 #include "module_internal.h"
 #include "module_repository.h"
 #include "prelude.h"
@@ -2177,7 +2177,7 @@ void Compiler::bind_prelude_program() {
     state_->diagnostics.report("Prelude does not declare type 'program'");
     return;
   }
-  const std::string cpp_type(detail::host_type_name<ir::Module>());
+  const std::string cpp_type(detail::host_type_name<ir::Program>());
   const auto projector = [](Compiler& compiler,
                             const Module::TypeDecl& declaration,
                             const void*) {

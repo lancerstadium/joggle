@@ -15,14 +15,14 @@ namespace joggle::ir {
 // remain in joggle::Module; this value is the transformable IR artifact that
 // flows through Prelude's builtin `program` type. Copies share immutable
 // Functions and detach a Function on first mutable access.
-class Module {
+class Program {
 public:
-  Module();
-  Module(const Module& other);
-  Module& operator=(const Module& other);
-  Module(Module&&) noexcept;
-  Module& operator=(Module&&) noexcept;
-  ~Module();
+  Program();
+  Program(const Program& other);
+  Program& operator=(const Program& other);
+  Program(Program&&) noexcept;
+  Program& operator=(Program&&) noexcept;
+  ~Program();
 
   bool insert(std::string name, Function function, Diagnostics& diagnostics);
   Function* function(std::string_view name);
@@ -43,18 +43,17 @@ struct Dependency {
   bool operator==(const Dependency&) const = default;
 };
 
-// Exact schema packages referenced by every Function in the executable
-// Module. Prelude is included here even though canonical source links it
-// implicitly.
-std::vector<Dependency> dependencies(const Module& module);
+// Exact schema packages referenced by every Function in the Program. Prelude
+// is included here even though canonical source links it implicitly.
+std::vector<Dependency> dependencies(const Program& program);
 
 }  // namespace joggle::ir
 
 namespace joggle {
 
-// Serializes an executable Module as one ordinary, canonical `.joggle`
-// package. No second artifact syntax or Graph declaration is introduced.
-std::string format(const ir::Module& module, std::string_view name,
+// Serializes a Program as one ordinary, canonical `.joggle` package. No
+// second artifact syntax or Graph declaration is introduced.
+std::string format(const ir::Program& program, std::string_view name,
                    Version version);
 
 }  // namespace joggle

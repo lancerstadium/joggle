@@ -21,7 +21,7 @@ Prelude owns only concepts that every extension must agree on:
 - deterministic compiler-domain arithmetic, comparison, logic, and `range`.
 
 `function` maps to one `joggle::ir::Function`. `program` maps to one
-`joggle::ir::Module`. Both mappings are supplied by the core because staged
+`joggle::ir::Program`. Both mappings are supplied by the core because staged
 execution and whole-program composition require a common host representation.
 No other artifact type is privileged.
 
