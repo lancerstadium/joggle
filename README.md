@@ -83,7 +83,8 @@ It is ambient and cannot be replaced by repository lookup.
   materialization;
 - `tensor`: ranked tensor values and structural operations;
 - `nn`: common inference operators and checked shape relations;
-- `buffer`: explicit storage values and token-ordered effects;
+- `mem`: extensible reference, layout, address-space, alias, and effect
+  contracts for storage planning;
 
 These Modules are not an ordered lowering stack. Modules may import and
 bridge them in either direction. Prelude's `module` type carries an entire

@@ -32,31 +32,39 @@ int main() {
   joggle::Compiler compiler;
   compiler.load(JOGGLE_ARITH_MODULE);
   compiler.load(JOGGLE_TENSOR_MODULE);
-  compiler.load(JOGGLE_BUFFER_MODULE);
+  compiler.load(JOGGLE_MEM_MODULE);
   compiler.load(JOGGLE_NN_MODULE);
   compiler.load(JOGGLE_RESNET_BLOCK);
   compiler.add(R"(
 joggle 1;
 module projected_schema@1.0.0 {
   import tensor@2.0.0;
-  import buffer@1.0.0;
+  import mem@1.0.0;
 
-  type descriptor(element: type, shape: list<int>, space: string);
+  type sram() : mem.space;
+  type blocked(tile: int) : mem.layout;
+  type scratch(element: type, shape: list<int>, layout: type, space: type)
+    : mem.reference {
+    element_type = element;
+    layout_type = layout;
+    space_type = space;
+  }
+  type descriptor(element: type, shape: list<int>, layout: type, space: type);
 
   fn describe_tensor<T: tensor.ranked_tensor>(input: T)
-    -> descriptor<T.element_type, T.shape, "value">;
-  fn describe_buffer<T: buffer.storage>(input: T)
-    -> descriptor<T.element_type, T.shape, T.address_space>;
+    -> descriptor<T.element_type, T.shape, mem.linear, mem.generic>;
+  fn describe_reference<T: mem.reference>(input: T)
+    -> descriptor<T.element_type, T.shape, T.layout_type, T.space_type>;
 
   fn tensor_value(input: tensor.ranked<f32, [2, 3]>)
-    -> descriptor<f32, [2, 3], "value"> {
+    -> descriptor<f32, [2, 3], mem.linear, mem.generic> {
     result = describe_tensor(input);
     return result;
   }
 
-  fn storage_value(input: buffer.buffer<f32, [2, 3], "sram">)
-    -> descriptor<f32, [2, 3], "sram"> {
-    result = describe_buffer(input);
+  fn storage_value(input: scratch<f32, [2, 3], blocked<2>, sram>)
+    -> descriptor<f32, [2, 3], blocked<2>, sram> {
+    result = describe_reference(input);
     return result;
   }
 
@@ -72,14 +80,23 @@ module projected_schema@1.0.0 {
     return value;
   }
 
-  fn dynamic_read(
-    input: buffer.buffer<f32, [2, 3], "sram">,
+  fn dynamic_load(
+    input: scratch<f32, [2, 3], blocked<2>, sram>,
     row: index,
     column: index
   ) -> f32 {
-    chain = buffer.start();
-    value, chain = buffer.read(chain, input, row, column);
+    value = mem.load(input, row, column);
     return value;
+  }
+
+  fn slice(input: scratch<f32, [2, 3], blocked<2>, sram>)
+    -> scratch<f32, [1, 3], blocked<1>, sram> {
+    output: scratch<f32, [1, 3], blocked<1>, sram> = mem.view(
+      input,
+      offsets: [1, 0],
+      strides: [1, 1]
+    );
+    return output;
   }
 }
 )",
@@ -90,6 +107,7 @@ module projected_schema@1.0.0 {
   }
 
   const auto nn = compiler.module("nn");
+  const auto mem = compiler.module("mem");
   const auto model = compiler.module("resnet18_basic_block");
   const auto function = compiler.materialize("resnet18_basic_block.main");
   const auto tensor_value =
@@ -100,10 +118,11 @@ module projected_schema@1.0.0 {
       compiler.materialize("projected_schema.transpose_value");
   const auto constant_value =
       compiler.materialize("projected_schema.constant_value");
-  const auto dynamic_read =
-      compiler.materialize("projected_schema.dynamic_read");
-  if (!nn || !model || !function || !tensor_value || !storage_value ||
-      !transpose_value || !constant_value || !dynamic_read) {
+  const auto dynamic_load =
+      compiler.materialize("projected_schema.dynamic_load");
+  const auto slice = compiler.materialize("projected_schema.slice");
+  if (!nn || !mem || !model || !function || !tensor_value || !storage_value ||
+      !transpose_value || !constant_value || !dynamic_load || !slice) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -137,11 +156,13 @@ module projected_schema@1.0.0 {
   const auto tensor_element = tensor_descriptor.get<joggle::Type>("element");
   const auto tensor_shape =
       tensor_descriptor.get<std::vector<std::int64_t>>("shape");
-  const auto storage_space = storage_descriptor.get<std::string>("space");
+  const auto storage_layout = storage_descriptor.get<joggle::Type>("layout");
+  const auto storage_space = storage_descriptor.get<joggle::Type>("space");
   const auto derived_element = tensor_input.get<joggle::Type>("element_type");
   const auto identity_shape =
       tensor_input.get<std::vector<std::int64_t>>("shape");
-  const auto derived_space = storage_input.get<std::string>("address_space");
+  const auto derived_layout = storage_input.get<joggle::Type>("layout_type");
+  const auto derived_space = storage_input.get<joggle::Type>("space_type");
   const auto transposed_shape = transpose_value->entry()
                                     .terminator()
                                     .returned()
@@ -155,12 +176,15 @@ module projected_schema@1.0.0 {
       tensor_element &&
           tensor_element->schema().symbol().qualified_name() == "prelude.f32" &&
           tensor_shape == std::optional<std::vector<std::int64_t>>{{2, 3}} &&
-          storage_space == std::optional<std::string>{"sram"} &&
+          storage_layout && storage_layout->get<std::int64_t>("tile") == 2 &&
+          storage_space &&
+          storage_space->schema().symbol().qualified_name() ==
+              "projected_schema.sram" &&
           derived_element &&
           derived_element->schema().symbol().qualified_name() ==
               "prelude.f32" &&
           identity_shape == std::optional<std::vector<std::int64_t>>{{2, 3}} &&
-          derived_space == std::optional<std::string>{"sram"} &&
+          derived_layout == storage_layout && derived_space == storage_space &&
           transposed_shape ==
               std::optional<std::vector<std::int64_t>>{{4, 2, 3}},
       "type, list, and string fields flow through one parameter system");
@@ -184,13 +208,29 @@ module projected_schema@1.0.0 {
               std::string::npos,
       "a stable tensor resource reference is a typed, serializable IR "
       "op");
-  const auto memory_ops = dynamic_read->ops();
+  const auto memory_ops = dynamic_load->ops();
+  const auto load = mem->function("load");
+  const auto read_effect = mem->interface("read");
+  const auto alias_effect = mem->interface("alias");
   ok &= expect(
-      memory_ops.size() == 2U &&
-          memory_ops.back().callee().symbol().qualified_name() ==
-              "buffer.read" &&
-          memory_ops.back().arguments().size() == 4U,
-      "buffer accesses accept dynamic variadic index values");
+      memory_ops.size() == 1U &&
+          memory_ops.front().callee().symbol().qualified_name() == "mem.load" &&
+          memory_ops.front().operands().size() == 3U &&
+          memory_ops.front().properties().empty() && load && read_effect &&
+          compiler.conforms(*load, *read_effect),
+      "custom references use generic dynamic access and declared effects");
+  const auto view_ops = slice->ops();
+  ok &= expect(
+      view_ops.size() == 1U &&
+          view_ops.front().callee().symbol().qualified_name() == "mem.view" &&
+          view_ops.front().operands().size() == 1U &&
+          view_ops.front().property<std::vector<std::int64_t>>("offsets") ==
+              std::optional<std::vector<std::int64_t>>{{1, 0}} &&
+          view_ops.front().property<std::vector<std::int64_t>>("strides") ==
+              std::optional<std::vector<std::int64_t>>{{1, 1}} &&
+          alias_effect && compiler.conforms(view_ops.front().callee(),
+                                            *alias_effect),
+      "views preserve alias edges and named static layout properties");
   ok &= expect(joggle::format(*nn) == read(JOGGLE_NN_MODULE) &&
                    joggle::format(*model) == read(JOGGLE_RESNET_BLOCK),
                "the NN vocabulary and model fixture are canonical, "

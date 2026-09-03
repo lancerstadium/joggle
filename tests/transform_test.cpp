@@ -3,6 +3,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <joggle/joggle.h>
 
@@ -24,11 +25,13 @@ joggle 1;
 
 module mapping@1.0.0 {
   type word();
+  type alternate();
 
   fn keep(input: word) -> word;
   fn converted(input: word) -> word;
   fn other(input: word) -> word;
   fn binary(lhs: word, rhs: word) -> word;
+  fn identity<T: type>(input: T) -> T;
 
   fn first(input: word) -> word {
     return keep(input);
@@ -54,14 +57,22 @@ module mapping@1.0.0 {
   const auto converted = schema ? schema->function("converted") : std::nullopt;
   const auto other = schema ? schema->function("other") : std::nullopt;
   const auto binary = schema ? schema->function("binary") : std::nullopt;
+  const auto identity = schema ? schema->function("identity") : std::nullopt;
+  const auto word_type = schema ? schema->type("word") : std::nullopt;
+  const auto alternate_type = schema ? schema->type("alternate") : std::nullopt;
+  const auto word = word_type ? compiler.make(*word_type) : std::nullopt;
+  const auto alternate =
+      alternate_type ? compiler.make(*alternate_type) : std::nullopt;
+  const auto i1 = compiler.make("i1");
   auto first = compiler.materialize("mapping.first");
   auto second = compiler.materialize("mapping.second");
   auto expanded = compiler.materialize("mapping.expanded");
   auto convertible = compiler.materialize("mapping.first");
   auto fixedpoint = compiler.materialize("mapping.expanded");
   auto oscillating = compiler.materialize("mapping.expanded");
-  if (!keep || !converted || !other || !binary || !first || !second ||
-      !expanded || !convertible || !fixedpoint || !oscillating) {
+  if (!keep || !converted || !other || !binary || !identity || !word ||
+      !alternate || !i1 || !first || !second || !expanded || !convertible ||
+      !fixedpoint || !oscillating) {
     return EXIT_FAILURE;
   }
 
@@ -299,6 +310,46 @@ module mapping@1.0.0 {
                  preserved_second->revision() == original_second_revision,
              "whole-Module replacement advances only changed revisions while "
              "preserving declaration identity");
+
+  auto cfg = compiler.create_function();
+  if (!cfg) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = cfg->edit();
+    const auto condition = edit.argument(*i1);
+    const auto input = edit.argument(*word);
+    const auto yes = edit.block();
+    const auto no = edit.block();
+    const auto merge = edit.block({*word});
+    const auto converted_value = edit.append(yes, *identity, {input});
+    edit.branch(cfg->entry(), condition, yes, {}, no, {});
+    edit.jump(yes, merge, {converted_value.value()});
+    edit.jump(no, merge, {input});
+    edit.ret(merge, {merge.arguments().front()});
+    joggle::Diagnostics diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  joggle::Diagnostics clone_diagnostics;
+  const auto cloned = joggle::clone(
+      compiler, *cfg,
+      [&](const joggle::Type& type) -> std::optional<joggle::Type> {
+        return type == *word ? std::optional<joggle::Type>{*alternate}
+                             : std::optional<joggle::Type>{type};
+      },
+      clone_diagnostics);
+  ok &= expect(
+      cloned && clone_diagnostics.ok() && cloned->blocks().size() == 4U &&
+          cloned->arguments().size() == 2U &&
+          cloned->arguments()[1].type() == *alternate &&
+          cloned->ops().size() == 1U &&
+          cloned->ops().front().callee() == *identity &&
+          cloned->ops().front().value().type() == *alternate &&
+          cloned->result_types() == std::vector<joggle::Type>{*alternate},
+      "clone preserves arbitrary CFG while mapping types and generic Ops");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

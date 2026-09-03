@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <exception>
 #include <limits>
+#include <map>
 #include <optional>
 #include <set>
 #include <span>
@@ -121,145 +122,113 @@ convert_function(joggle::Compiler& compiler, const joggle::Function& input,
                  const joggle::Module::InterfaceDecl& immutable_data,
                  const joggle::Module& source, joggle::Module& destination,
                  joggle::Diagnostics& diagnostics) {
-  const auto blocks = input.blocks();
-  if (blocks.size() != 1U ||
-      blocks.front().terminator().kind() != joggle::Terminator::Kind::Return) {
-    diagnostics.report("f32_to_f16 currently requires straight-line Functions");
-    return std::nullopt;
-  }
-  auto output = compiler.create_function();
-  if (!output) {
-    return std::nullopt;
-  }
-  auto edit = output->edit();
-  std::vector<std::pair<joggle::Value, joggle::Value>> values;
-  for (const auto& argument : input.arguments()) {
-    const auto type =
-        convert_type(compiler, argument.type(), ranked, f32, f16, diagnostics);
-    if (!type) {
+  std::map<std::string, std::string, std::less<>> resource_names;
+  for (const auto& op : input.ops()) {
+    if (!compiler.conforms(op.callee(), immutable_data)) {
+      continue;
+    }
+    const auto resource = op.property<std::string>("resource");
+    const auto payload = resource ? source.data(*resource) : std::nullopt;
+    if (!resource || !payload) {
+      diagnostics.report("constant references missing Module data");
       return std::nullopt;
     }
-    values.emplace_back(argument, edit.argument(*type));
-  }
-  const auto mapped = [&](const joggle::Value& value)
-      -> std::optional<joggle::Value> {
-    if (value.known()) {
-      return value;
-    }
-    const auto found = std::find_if(
-        values.begin(), values.end(),
-        [&](const auto& item) { return item.first == value; });
-    return found == values.end() ? std::nullopt
-                                 : std::optional<joggle::Value>{found->second};
-  };
-
-  for (const auto& op : input.ops()) {
-    std::vector<joggle::Value> arguments;
-    arguments.reserve(op.arguments().size());
-    for (const auto& argument : op.arguments()) {
-      const auto value = mapped(argument);
-      if (!value) {
-        diagnostics.report("f32_to_f16 encountered an unmapped operand");
-        return std::nullopt;
-      }
-      arguments.push_back(*value);
-    }
-    std::vector<joggle::Type> result_types;
-    result_types.reserve(op.results().size());
-    for (const auto& result : op.results()) {
-      const auto type =
-          convert_type(compiler, result.type(), ranked, f32, f16, diagnostics);
-      if (!type) {
-        return std::nullopt;
-      }
-      result_types.push_back(*type);
-    }
-
-    const bool constant = compiler.conforms(op.callee(), immutable_data);
-    if (constant && op.results().size() == 1U &&
-        is_f32_tensor(op.value().type(), ranked, f32)) {
-      const auto resource = op.property<std::string>("resource");
-      const auto payload = resource ? source.data(*resource) : std::nullopt;
-      if (!resource || !payload) {
-        diagnostics.report("f32 tensor constant references a missing resource");
-        return std::nullopt;
-      }
-      const auto shape = op.value().type().get<
-          std::vector<std::int64_t>>("shape");
-      std::size_t expected = 4U;
-      if (!shape) {
-        diagnostics.report("f32 tensor constant has no ranked shape");
-        return std::nullopt;
-      }
-      for (const std::int64_t dimension : *shape) {
-        if (dimension <= 0 ||
-            static_cast<std::uint64_t>(dimension) >
-                std::numeric_limits<std::size_t>::max() / expected) {
-          diagnostics.report("f32 tensor constant has an invalid byte size");
-          return std::nullopt;
-        }
-        expected *= static_cast<std::size_t>(dimension);
-      }
-      if (payload->size() != expected) {
-        diagnostics.report("f32 tensor constant resource size disagrees with "
-                           "its type");
-        return std::nullopt;
-      }
-      const joggle::Bytes source_bytes(payload->begin(), payload->end());
-      const auto converted = convert_payload(source_bytes, *resource, diagnostics);
-      if (!converted) {
-        return std::nullopt;
-      }
-      const std::string name = destination.store(*converted);
-      const auto known = compiler.make("string");
-      const auto resource_value = known ? compiler.known(*known, name) : std::nullopt;
-      if (!resource_value) {
-        return std::nullopt;
-      }
-      arguments = {*resource_value};
-    } else if (constant) {
-      const auto resource = op.property<std::string>("resource");
-      const auto payload = resource ? source.data(*resource) : std::nullopt;
-      if (!resource || !payload) {
-        diagnostics.report("tensor constant references missing Module data");
-        return std::nullopt;
-      }
+    if (op.results().size() != 1U ||
+        !is_f32_tensor(op.value().type(), ranked, f32)) {
       const std::string copied =
           destination.store(joggle::Bytes(payload->begin(), payload->end()));
       if (copied != *resource) {
         diagnostics.report("content-addressed Module data changed while copying");
         return std::nullopt;
       }
+      resource_names.insert_or_assign(*resource, copied);
+      continue;
     }
-
-    std::optional<joggle::Op> created;
-    try {
-      created = edit.append(op.callee(), std::move(arguments),
-                            std::move(result_types));
-    } catch (const std::exception& error) {
-      diagnostics.report("f32_to_f16 cannot rebuild call '" +
-                         std::string(op.callee().symbol().qualified_name()) +
-                         "': " + error.what());
+    const auto shape =
+        op.value().type().get<std::vector<std::int64_t>>("shape");
+    std::size_t expected = 4U;
+    if (!shape) {
+      diagnostics.report("f32 tensor constant has no ranked shape");
       return std::nullopt;
     }
-    const auto old_results = op.results();
-    const auto new_results = created->results();
-    for (std::size_t index = 0; index < old_results.size(); ++index) {
-      values.emplace_back(old_results[index], new_results[index]);
+    const joggle::Bytes source_bytes(payload->begin(), payload->end());
+    const auto converted =
+        convert_payload(source_bytes, *resource, diagnostics);
+    if (!converted) {
+      return std::nullopt;
+    }
+    resource_names.insert_or_assign(*resource,
+                                    destination.store(*converted));
+    for (const std::int64_t dimension : *shape) {
+      if (dimension <= 0 ||
+          static_cast<std::uint64_t>(dimension) >
+              std::numeric_limits<std::size_t>::max() / expected) {
+        diagnostics.report("f32 tensor constant has an invalid byte size");
+        return std::nullopt;
+      }
+      expected *= static_cast<std::size_t>(dimension);
+    }
+    if (payload->size() != expected) {
+      diagnostics.report(
+          "f32 tensor constant data size disagrees with its type");
+      return std::nullopt;
     }
   }
 
-  std::vector<joggle::Value> returned;
-  for (const auto& value : blocks.front().terminator().returned()) {
-    const auto result = mapped(value);
-    if (!result) {
-      diagnostics.report("f32_to_f16 encountered an unmapped return value");
-      return std::nullopt;
-    }
-    returned.push_back(*result);
+  auto output = joggle::clone(
+      compiler, input,
+      [&](const joggle::Type& type) {
+        return convert_type(compiler, type, ranked, f32, f16, diagnostics);
+      },
+      diagnostics);
+  if (!output) {
+    return std::nullopt;
   }
-  edit.ret(output->entry(), std::move(returned));
-  return edit.commit(diagnostics) ? std::move(output) : std::nullopt;
+
+  const auto string_type = compiler.make("string");
+  if (!string_type) {
+    return std::nullopt;
+  }
+  const auto changed = joggle::rewrite(
+      *output,
+      [&](const joggle::Op& op, joggle::Function::Edit& edit,
+          joggle::Diagnostics& reported) {
+        if (!compiler.conforms(op.callee(), immutable_data) ||
+            op.results().size() != 1U) {
+          return false;
+        }
+        const auto old_name = op.property<std::string>("resource");
+        const auto mapped_name = old_name ? resource_names.find(*old_name)
+                                          : resource_names.end();
+        if (!old_name || mapped_name == resource_names.end()) {
+          reported.report("constant has no converted Module data");
+          return false;
+        }
+        if (mapped_name->second == *old_name) {
+          return false;
+        }
+        const auto name = compiler.known(*string_type, mapped_name->second);
+        if (!name) {
+          return false;
+        }
+        std::vector<joggle::Value> arguments = op.arguments();
+        const auto inputs = op.callee().inputs();
+        const auto resource = std::find_if(
+            inputs.begin(), inputs.end(),
+            [](const auto& input) { return input.name == "resource"; });
+        if (resource == inputs.end()) {
+          reported.report("immutable data function has no resource property");
+          return false;
+        }
+        arguments[static_cast<std::size_t>(resource - inputs.begin())] = *name;
+        const auto replacement =
+            edit.insert(op, op.callee(), std::move(arguments),
+                        {op.value().type()});
+        edit.replace(op, replacement.results());
+        return true;
+      },
+      diagnostics);
+  return changed ? output : std::nullopt;
 }
 
 std::optional<joggle::Module>

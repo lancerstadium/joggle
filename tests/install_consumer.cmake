@@ -105,7 +105,7 @@ execute_process(
   COMMAND "${installed_cli}" check "${installed_module_dir}/nn.joggle"
           --with "${installed_module_dir}/arith.joggle"
           --with "${installed_module_dir}/tensor.joggle"
-          --with "${installed_module_dir}/buffer.joggle"
+          --with "${installed_module_dir}/mem.joggle"
   RESULT_VARIABLE standard_modules_result
   ERROR_VARIABLE standard_modules_error
 )

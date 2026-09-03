@@ -5,6 +5,7 @@
 #include <functional>
 #include <limits>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -15,6 +16,22 @@
 #include "joggle/module.h"
 
 namespace joggle {
+
+// Clones an arbitrary CFG while mapping every IR type. The optional callee
+// mapper supports one-to-one vocabulary conversion during the same verified
+// construction. Known properties are preserved; the returned Function is a
+// standalone value and can be inserted into a destination Module.
+std::optional<Function> clone(
+    Compiler& compiler, const Function& source,
+    const std::function<std::optional<Type>(const Type&)>& map_type,
+    const std::function<std::optional<Module::FunctionDecl>(const Op&)>&
+        map_callee,
+    Diagnostics& diagnostics);
+
+std::optional<Function> clone(
+    Compiler& compiler, const Function& source,
+    const std::function<std::optional<Type>(const Type&)>& map_type,
+    Diagnostics& diagnostics);
 
 namespace transform_detail {
 

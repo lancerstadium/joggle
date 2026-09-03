@@ -56,6 +56,12 @@ verify the complete result, and publish it only on success. `convert` adds a
 caller-defined legality check, so a conversion can be partial internally but
 cannot leak a mixed representation accidentally.
 
+`clone` reconstructs an arbitrary CFG while mapping types and, optionally,
+callees. It preserves Known properties, Blocks, edges, block arguments,
+function references, and result positions, then verifies the complete cloned
+Function once. Representation-changing passes therefore do not need a private
+straight-line graph copier.
+
 Joggle does not number IR levels. Vocabularies are Modules and conversions are
 explicit edges. The shipped ONNX path demonstrates this rule:
 
@@ -65,7 +71,7 @@ bytes ──onnx.read──> onnx.* IR ──onnx.to_nn──> nn.* IR
 
 Source-level fusion may run on `onnx.*`; portable inference fusion may run on
 `nn.*`; a project-specific tensor-to-storage conversion may produce its own
-buffer or hardware vocabulary. These are all the same IR ownership model, so
+memory or hardware vocabulary. These are all the same IR ownership model, so
 analyses and rewrite infrastructure remain reusable.
 
 ## Data and storage
@@ -80,16 +86,15 @@ Tensor storage planning is intentionally a distinct representation problem:
 `tensor.ranked` describes values, while a storage Module describes allocation,
 layout, address space, and accesses. A storage pass consumes one Module and
 returns another; device capacity or scheduling policy belongs in explicit
-Module-declared inputs, not in the core IR. The current `buffer` vocabulary is
-the minimal shipped starting point, not a claim that one memory model fits all
-accelerators.
+Module-declared inputs, not in the core IR. The `mem` vocabulary supplies open
+reference, layout, space, alias, and effect contracts rather than claiming that
+one memory model fits all accelerators.
 
 ## Current boundary
 
-The core already supports multi-Block SSA, dominance, reverse-use queries,
-transactional edits, conversion legality, and Module-owned data. The shipped
-precision transformation currently handles straight-line Functions and does
-not preserve calls between functions; that is a limitation of that Module's
-implementation, not a second or missing IR. General CFG cloning, symbol-aware
-interprocedural rewriting, effect interfaces, and a portable on-disk bundle
-for Module data remain explicit implementation milestones.
+The core supports multi-Block SSA, dominance, reverse-use queries,
+transactional edits, conversion legality, CFG-preserving clone, and
+Module-owned data. The shipped precision transformation now uses the same clone
+facility, but does not yet preserve calls between transformed Functions.
+Symbol-aware interprocedural rewriting and a portable on-disk bundle for Module
+data remain explicit implementation milestones.

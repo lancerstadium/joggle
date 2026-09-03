@@ -23,9 +23,9 @@ in `language/prelude.joggle`; Prelude is not an installable Module.
 - `nn` defines common inference functions over `tensor.ranked`, including
   explicit NCHW convolution and pooling shape contracts. It does not define an
   import format, device, schedule, or storage mapping.
-- `buffer` defines explicit storage values and token-ordered memory effects. It
-  names an address space but does not prescribe devices, capacities, banks, or
-  schedules.
+- `mem` defines extensible reference, layout, address-space, alias, and effect
+  contracts. User-defined reference types participate without inheriting a C++
+  class or adopting a fixed device model.
 - `onnx` preserves a bounded ONNX source vocabulary and provides the explicit
   `onnx.to_nn` conversion. Its native behavior is optional.
 - `precision` supplies a representation-changing compiler function over the
@@ -50,8 +50,8 @@ subsystem hierarchies.
 Prelude types implement it in `language/prelude.joggle`; a custom scalar
 derives the same field from its own parameters. Target-sized `index`
 intentionally does not implement this fixed-width interface, but it is numeric.
-Likewise, `tensor.ranked_tensor` and `buffer.storage` expose element, shape, and
-address-space facts without making either concrete type part of compiler core.
+Likewise, `tensor.ranked_tensor` and `mem.reference` expose semantic facts
+without making either concrete type part of compiler core.
 
 The complete stability and ownership rules are specified in
 [`docs/standard-modules.md`](../docs/standard-modules.md).

@@ -95,17 +95,25 @@ The Module does not prescribe an importer, quantization policy, target,
 schedule, bufferization scheme, or hardware cost. Those belong to separate
 Modules that call or convert the NN vocabulary.
 
-## `buffer`: explicit effects without a device model
+## `mem`: extensible storage semantics
 
-`buffer.buffer<E, S, Space>` describes storage by element type, logical shape,
-and an open string address-space name. It does not declare capacities, banks,
-latencies, or a global machine.
+`mem.reference` is a type interface exposing `element_type`, logical `shape`,
+`layout_type`, and `space_type`. `mem.ref` is one generic implementation, but a
+Module may define a packed, tiled, banked, remote, or device-specific reference
+type and implement the same interface. Layout and address space are themselves
+open type interfaces; they are not strings interpreted by the core.
 
-Memory functions thread `buffer.token` explicitly. Their `index...` operands
-are module values, so dynamic access is representable; shape and address space
-remain Known type parameters. `reads`, `writes`, and `allocates` are function
-contracts for effect-aware transforms. Buffers may contain any module type,
-not only Prelude scalars.
+`alloc`, `view`, `load`, `store`, `copy`, and `dealloc` operate on the interface
+rather than one concrete reference type. Dynamic indices remain ordinary
+`index` operands. Static view offsets and strides are named compiler-domain
+properties, while the result type carries its logical shape and layout.
+
+The `read`, `write`, `allocate`, `release`, and `alias` function interfaces
+describe effects for analysis and legal reordering. Memory Ops remain ordered
+inside their Block, so no artificial token is required merely to preserve
+program order. A target Module can add dependencies or scheduling constructs
+when it needs concurrency semantics. Capacities, banks, latency, and device
+instances are intentionally absent from `mem`.
 
 ## Dependency and Module rules
 

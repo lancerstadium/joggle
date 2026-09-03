@@ -28,13 +28,12 @@ round-to-nearest-even IEEE binary16. It recognizes constants through the
 New payloads receive `sha256:<digest>` names and replaced f32 payloads are
 removed.
 
-The exact initial profile accepts fully materialized, straight-line Functions
-without calls between members of the input Module. It rejects missing
-data, payload/type size disagreements, unsupported calls, internal calls,
-and control flow rather than publishing a partial conversion. Other element
-types pass through unchanged. This bounded profile matches the current ONNX
-importer; CFG- and internal-call-preserving reconstruction is future work, not
-implied by the function name.
+The transformation preserves arbitrary committed CFGs through the shared
+`joggle::clone` facility. It rejects missing data, payload/type size
+disagreements, unsupported calls, and calls between members of the input
+Module rather than publishing a partial conversion. Other element types pass
+through unchanged. Symbol-aware interprocedural reconstruction remains future
+work.
 
 Build and test independently with:
 

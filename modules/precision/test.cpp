@@ -57,6 +57,15 @@ module precision_model@1.0.0 {
     );
     return nn.add(input, weight);
   }
+
+  fn select(condition: i1, input: tensor.ranked<f32, [1, 12]>)
+    -> tensor.ranked<f32, [1, 12]> {
+    if condition {
+      return nn.relu(input);
+    } else {
+      return input;
+    }
+  }
 }
 )",
                "precision-model.joggle");
@@ -78,9 +87,11 @@ module precision_pipeline@1.0.0 {
   }
 
   auto main = compiler.materialize("precision_model.main");
+  auto select = compiler.materialize("precision_model.select");
   joggle::Module model("precision_model", {1, 0, 0});
   joggle::Diagnostics diagnostics;
-  if (!main || !model.insert("main", std::move(*main), diagnostics)) {
+  if (!main || !select || !model.insert("main", std::move(*main), diagnostics) ||
+      !model.insert("select", std::move(*select), diagnostics)) {
     diagnostics.print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -99,6 +110,9 @@ module precision_pipeline@1.0.0 {
 
   const auto& converted = *first;
   const auto declaration = converted.function("main");
+  const auto select_declaration = converted.function("select");
+  const auto* select_body =
+      select_declaration ? select_declaration->body() : nullptr;
   const auto* body = declaration ? declaration->body() : nullptr;
   const auto ops = body ? body->ops()
                                  : std::vector<joggle::Op>{};
@@ -136,6 +150,13 @@ module precision_pipeline@1.0.0 {
   ok &= expect(converted.digest() == second->digest() &&
                    converted.data() == second->data(),
                "precision conversion is deterministic");
+  ok &= expect(
+      select_body && select_body->blocks().size() == 3U &&
+          select_body->arguments()[1].type().get<joggle::Type>("element") ==
+              element &&
+          select_body->result_types().front().get<joggle::Type>("element") ==
+              element,
+      "precision conversion preserves residual CFG while mapping tensor types");
   auto missing_main = compiler.materialize("precision_model.main");
   joggle::Module missing("missing", {1, 0, 0});
   joggle::Diagnostics missing_diagnostics;
@@ -148,7 +169,7 @@ module precision_pipeline@1.0.0 {
       compiler.diagnostics().entries().begin(),
       compiler.diagnostics().entries().end(),
       [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find("missing resource") !=
+        return diagnostic.message.find("missing Module data") !=
                std::string::npos;
       });
   ok &= expect(!rejected && reports_missing,

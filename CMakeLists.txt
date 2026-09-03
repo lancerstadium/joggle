@@ -42,6 +42,7 @@ add_library(joggle
   src/syntax_lexer.cpp
   src/type.cpp
   src/type_contract.cpp
+  src/transform.cpp
 )
 add_library(joggle::joggle ALIAS joggle)
 set_target_properties(joggle PROPERTIES
@@ -85,7 +86,7 @@ install(TARGETS joggle_cli
 install(DIRECTORY include/joggle DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES modules/README.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules)
-foreach(joggle_standard_module arith buffer nn tensor)
+foreach(joggle_standard_module arith mem nn tensor)
   install(FILES modules/${joggle_standard_module}/module.joggle
     DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules
     RENAME ${joggle_standard_module}.joggle)
@@ -182,7 +183,7 @@ if(JOGGLE_BUILD_TESTS)
   target_compile_definitions(joggle_nn_test PRIVATE
     JOGGLE_ARITH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/arith/module.joggle"
     JOGGLE_TENSOR_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/tensor/module.joggle"
-    JOGGLE_BUFFER_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/buffer/module.joggle"
+    JOGGLE_MEM_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/mem/module.joggle"
     JOGGLE_NN_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/nn/module.joggle"
     JOGGLE_RESNET_BLOCK="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/resnet18_basic_block.joggle"
   )
