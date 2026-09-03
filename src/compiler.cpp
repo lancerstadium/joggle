@@ -1173,77 +1173,42 @@ bool Compiler::link() {
           }
           return;
         }
-        const std::size_t dot = expression.text.find('.');
-        const std::string owner =
-            dot == std::string::npos
-                ? name
-                : std::string(resolve_prefix(
-                      module,
-                      std::string_view(expression.text).substr(0, dot)));
-        const std::string local =
-            dot == std::string::npos ? expression.text
-                                     : expression.text.substr(dot + 1U);
-        const auto source = state_->modules.find(owner);
-        std::vector<Module::FunctionDecl> candidates =
-            source == state_->modules.end()
-                ? std::vector<Module::FunctionDecl>{}
-                : source->second.overloads(local);
-        candidates.erase(
-            std::remove_if(
-                candidates.begin(), candidates.end(),
-                [&](const Module::FunctionDecl& candidate) {
-                  if (candidate.results().size() != 1U ||
-                      candidate.results().front().domain != expected ||
-                      candidate.inputs().size() !=
-                          expression.arguments.size()) {
-                    return true;
-                  }
-                  for (std::size_t index = 0;
-                       index < expression.arguments.size(); ++index) {
-                    const auto& argument = expression.arguments[index];
-                    std::optional<Module::Expression> actual;
-                    if (argument.kind == Kind::Variable) {
-                      const auto variable = std::find_if(
-                          variables.begin(), variables.end(),
-                          [&](const Module::ParameterDecl& parameter) {
-                            return parameter.name == argument.text;
-                          });
-                      if (variable != variables.end()) {
-                        actual = variable->domain;
-                      }
-                    } else if (argument.kind == Kind::Number) {
-                      actual = detail::domain_expression(
-                          argument.text.find_first_of(".eE") ==
-                                  std::string::npos
-                              ? detail::ValueKind::Integer
-                              : detail::ValueKind::Real);
-                    } else if (argument.kind == Kind::Boolean) {
-                      actual = detail::domain_expression(
-                          detail::ValueKind::Boolean);
-                    } else if (argument.kind == Kind::String) {
-                      actual = detail::domain_expression(
-                          detail::ValueKind::String);
-                    }
-                    if (actual &&
-                        candidate.inputs()[index].domain != *actual) {
-                      return true;
-                    }
-                  }
-                  return false;
-                }),
-            candidates.end());
+        std::vector<detail::CallCandidate> candidates;
+        for (const auto& function :
+             detail::visible_functions(*this, name, expression.text)) {
+          auto candidate = detail::call_candidate(function, expression);
+          if (!candidate || function.results().size() != 1U ||
+              function.results().front().domain != expected) {
+            continue;
+          }
+          bool accepts = true;
+          for (std::size_t index = 0; index < expression.arguments.size();
+               ++index) {
+            const auto actual =
+                immediate_domain(expression.arguments[index], variables);
+            if (actual &&
+                function.inputs()[candidate->parameters[index]].domain !=
+                    *actual) {
+              accepts = false;
+              break;
+            }
+          }
+          if (accepts) {
+            candidates.push_back(std::move(*candidate));
+          }
+        }
         if (candidates.size() != 1U) {
           report("unknown or ill-typed pure call '" + expression.text +
                  "' in compile-time definition '" +
                  std::string(declaration) + "'");
           return;
         }
-        const Module::FunctionDecl& function = candidates.front();
+        const detail::CallCandidate& candidate = candidates.front();
         for (std::size_t index = 0; index < expression.arguments.size();
              ++index) {
           self(self, expression.arguments[index],
-               function.inputs()[index].domain, variables, declaration,
-               location);
+               candidate.function.inputs()[candidate.parameters[index]].domain,
+               variables, declaration, location);
         }
         return;
       }
@@ -1706,33 +1671,43 @@ bool Compiler::link() {
             return;
           }
 
-          const std::size_t dot = expression.text.find('.');
-          const std::string owner =
-              dot == std::string::npos
-                  ? name
-                  : std::string(resolve_prefix(
-                        module,
-                        std::string_view(expression.text).substr(0, dot)));
-          const std::string local =
-              dot == std::string::npos
-                  ? expression.text
-                  : expression.text.substr(dot + 1U);
-          const auto source = state_->modules.find(owner);
-          const auto function =
-              source == state_->modules.end()
-                  ? std::optional<Module::FunctionDecl>{}
-                  : source->second.function(local);
-          if (!function || function->results().front().domain != expected ||
-              function->inputs().size() != expression.arguments.size()) {
+          std::vector<detail::CallCandidate> candidates;
+          for (const auto& function :
+               detail::visible_functions(*this, name, expression.text)) {
+            auto candidate = detail::call_candidate(function, expression);
+            if (!candidate || function.results().size() != 1U ||
+                function.results().front().domain != expected) {
+              continue;
+            }
+            bool accepts = true;
+            for (std::size_t index = 0; index < expression.arguments.size();
+                 ++index) {
+              const auto actual =
+                  immediate_domain(expression.arguments[index],
+                                   contract.generics);
+              if (actual &&
+                  function.inputs()[candidate->parameters[index]].domain !=
+                      *actual) {
+                accepts = false;
+                break;
+              }
+            }
+            if (accepts) {
+              candidates.push_back(std::move(*candidate));
+            }
+          }
+          if (candidates.size() != 1U) {
             report_operation("unknown or ill-typed pure call '" +
                              expression.text + "' in operation '" + name +
                              "." + std::string(declaration.name()) + "'");
             return;
           }
+          const detail::CallCandidate& candidate = candidates.front();
           for (std::size_t index = 0; index < expression.arguments.size();
                ++index) {
             self(self, expression.arguments[index],
-                 function->inputs()[index].domain);
+                 candidate.function.inputs()[candidate.parameters[index]]
+                     .domain);
           }
           return;
         }

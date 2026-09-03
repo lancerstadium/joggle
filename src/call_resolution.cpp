@@ -7,6 +7,34 @@ namespace joggle::detail {
 namespace {
 
 template <typename Lookup>
+std::vector<Module::FunctionDecl> find_visible_functions(
+    Lookup&& lookup, std::string_view owner, std::string_view reference) {
+  const std::size_t dot = reference.find('.');
+  std::string module_name(owner);
+  std::string_view local = reference;
+  if (dot != std::string_view::npos) {
+    const std::string_view prefix = reference.substr(0U, dot);
+    local = reference.substr(dot + 1U);
+    if (prefix != owner) {
+      const auto scope = lookup(owner);
+      const auto imported =
+          scope ? std::find_if(scope->imports().begin(), scope->imports().end(),
+                               [&](const Module::Import& import) {
+                                 return import.prefix() == prefix;
+                               })
+                : std::span<const Module::Import>::iterator{};
+      if (!scope || imported == scope->imports().end()) {
+        return {};
+      }
+      module_name = imported->name;
+    }
+  }
+  const auto module = lookup(module_name);
+  return module ? module->overloads(local)
+                : std::vector<Module::FunctionDecl>{};
+}
+
+template <typename Lookup>
 std::vector<Module::FunctionDecl> find_visible_operators(
     Lookup&& lookup, std::string_view owner, std::string_view symbol,
     Module::FunctionDecl::Fixity fixity) {
@@ -37,29 +65,24 @@ std::vector<Module::FunctionDecl> find_visible_operators(
 std::vector<Module::FunctionDecl>
 visible_functions(const Compiler& compiler, std::string_view owner,
                   std::string_view reference) {
-  const std::size_t dot = reference.find('.');
-  std::string module_name(owner);
-  std::string_view local = reference;
-  if (dot != std::string_view::npos) {
-    const std::string_view prefix = reference.substr(0U, dot);
-    local = reference.substr(dot + 1U);
-    if (prefix != owner) {
-      const auto scope = compiler.module(owner);
-      const auto imported =
-          scope ? std::find_if(scope->imports().begin(), scope->imports().end(),
-                               [&](const Module::Import& import) {
-                                 return import.prefix() == prefix;
-                               })
-                : std::span<const Module::Import>::iterator{};
-      if (!scope || imported == scope->imports().end()) {
-        return {};
-      }
-      module_name = imported->name;
-    }
-  }
-  const auto module = compiler.module(module_name);
-  return module ? module->overloads(local)
-                : std::vector<Module::FunctionDecl>{};
+  return find_visible_functions(
+      [&](std::string_view name) { return compiler.module(name); }, owner,
+      reference);
+}
+
+std::vector<Module::FunctionDecl>
+visible_functions(std::span<const Module> modules, std::string_view owner,
+                  std::string_view reference) {
+  return find_visible_functions(
+      [&](std::string_view name) -> std::optional<Module> {
+        const auto found =
+            std::find_if(modules.begin(), modules.end(), [&](const auto& item) {
+              return item.name() == name;
+            });
+        return found == modules.end() ? std::optional<Module>{}
+                                      : std::optional<Module>{*found};
+      },
+      owner, reference);
 }
 
 std::vector<Module::FunctionDecl>

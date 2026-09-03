@@ -1176,35 +1176,12 @@ private:
                                 expression.text == "max";
       if (!integer_call || domain->element != ValueKind::Integer ||
           expression.arguments.size() != 2U) {
-        const std::size_t dot = expression.text.find('.');
         if (!reference_is_visible(expression.text, "function", source)) {
           return;
         }
-        const bool local = dot == std::string::npos ||
-                           expression.text.substr(0, dot) == module_.name;
-        if (!local) {
-          return;
-        }
-        const std::string_view name =
-            dot == std::string::npos
-                ? std::string_view(expression.text)
-                : std::string_view(expression.text).substr(dot + 1U);
-        const auto function = std::find_if(
-            module_.functions.begin(), module_.functions.end(),
-            [&](const auto& candidate) { return candidate.name == name; });
-        if (function == module_.functions.end() ||
-            function->results.front().domain != expected ||
-            function->inputs.size() != expression.arguments.size()) {
-          report("unknown or ill-typed pure call '" + expression.text +
-                 "' in " + std::string(owner));
-          return;
-        }
-        for (std::size_t index = 0; index < expression.arguments.size();
-             ++index) {
-          validate_declaration_expression(variables, owner, source,
-                                          expression.arguments[index],
-                                          function->inputs[index].domain);
-        }
+        // Calls need the complete import closure, overload set, labels, and
+        // defaults. Compiler::link performs that semantic check once Modules
+        // have immutable declarations; parsing only checks visibility here.
         return;
       }
       const auto integer_domain = detail::domain_expression(ValueKind::Integer);

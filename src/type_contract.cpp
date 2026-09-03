@@ -144,6 +144,8 @@ checked_integer_binary(std::string_view symbol, std::int64_t left,
 struct Environment {
   using Evaluator = std::function<std::optional<ParameterValue>(
       Module::FunctionDecl, std::span<const ParameterValue>)>;
+  using FunctionLookup = std::function<std::vector<Module::FunctionDecl>(
+      std::string_view, std::string_view)>;
   using OperatorLookup = std::function<std::vector<Module::FunctionDecl>(
       std::string_view, std::string_view, Module::FunctionDecl::Fixity)>;
   std::function<std::optional<Module>(std::string_view)> module;
@@ -156,6 +158,7 @@ struct Environment {
   std::function<bool(const Module::TypeDecl&,
                      const Module::InterfaceDecl&)>
       conforms;
+  FunctionLookup functions;
   OperatorLookup operators;
   Evaluator evaluate;
   bool require_hermetic_host_evaluation = false;
@@ -177,6 +180,9 @@ Environment environment(Compiler& compiler, bool allow_host_evaluation = true) {
           [&](const Module::TypeDecl& declaration,
               const Module::InterfaceDecl& interface) {
             return compiler.conforms(declaration, interface);
+          },
+          [&](std::string_view owner, std::string_view reference) {
+            return visible_functions(compiler, owner, reference);
           },
           [&](std::string_view owner, std::string_view symbol,
               Module::FunctionDecl::Fixity fixity) {
@@ -259,6 +265,9 @@ Environment environment(std::span<const Module> modules,
                           : std::nullopt;
           },
           conforms,
+          [modules](std::string_view owner, std::string_view reference) {
+            return visible_functions(modules, owner, reference);
+          },
           [modules](std::string_view owner, std::string_view symbol,
                     Module::FunctionDecl::Fixity fixity) {
             return visible_operators(modules, owner, symbol, fixity);
@@ -1023,46 +1032,127 @@ private:
                               (*left_integer % *right_integer != 0 ? 1 : 0));
       }
 
-      auto function = declaration<Module::FunctionDecl>(expression.text);
-      if (!function || !ir_inputs(*function).empty() ||
-          !ir_results(*function).empty() ||
-          parameter_results(*function).size() != 1U ||
-          parameter_results(*function).front().domain != expected.domain ||
-          parameter_inputs(*function).size() != expression.arguments.size()) {
-        if (function) {
-          report("ill-typed const call '" + expression.text + "'");
+      std::vector<CallCandidate> candidates;
+      for (const auto& function :
+           environment_.functions(scope_, expression.text)) {
+        auto candidate = call_candidate(function, expression);
+        const auto results = parameter_results(function);
+        if (!candidate || !ir_inputs(function).empty() ||
+            !ir_results(function).empty() || results.size() != 1U ||
+            results.front().domain != expected.domain) {
+          continue;
         }
+        bool accepts_known_domains = true;
+        for (std::size_t index = 0; index < expression.arguments.size();
+             ++index) {
+          const auto actual =
+              known_domain(expression.arguments[index], bindings);
+          if (actual &&
+              function.inputs()[candidate->parameters[index]].domain !=
+                  *actual) {
+            accepts_known_domains = false;
+            break;
+          }
+        }
+        if (accepts_known_domains) {
+          candidates.push_back(std::move(*candidate));
+        }
+      }
+      if (candidates.empty()) {
+        report("no compile-time overload of '" + expression.text +
+               "' accepts this call");
         return std::nullopt;
       }
-      const auto inputs = parameter_inputs(*function);
-      Bindings arguments;
-      std::vector<ParameterValue> values;
-      values.reserve(expression.arguments.size());
+
+      std::vector<ParameterValue> supplied;
+      supplied.reserve(expression.arguments.size());
       for (std::size_t index = 0; index < expression.arguments.size();
            ++index) {
-        auto value = evaluate(expression.arguments[index],
-                              inputs[index], bindings);
+        const auto& first = candidates.front();
+        const auto& first_parameter =
+            first.function.inputs()[first.parameters[index]];
+        const bool common = std::all_of(
+            candidates.begin() + 1, candidates.end(),
+            [&](const CallCandidate& current) {
+              return current.function.inputs()[current.parameters[index]]
+                         .domain == first_parameter.domain;
+            });
+        if (!common) {
+          report("compile-time call to '" + expression.text +
+                 "' is ambiguous before argument evaluation");
+          return std::nullopt;
+        }
+        auto value =
+            evaluate(expression.arguments[index], first_parameter, bindings);
         if (!value) {
           return std::nullopt;
         }
-        values.push_back(*value);
-        arguments.emplace(inputs[index].name, std::move(*value));
+        supplied.push_back(std::move(*value));
       }
-      const std::string identity = function->symbol().stable_name();
+
+      candidates.erase(
+          std::remove_if(
+              candidates.begin(), candidates.end(),
+              [&](const CallCandidate& candidate) {
+                for (std::size_t index = 0; index < supplied.size(); ++index) {
+                  const auto& parameter = candidate.function.inputs()
+                      [candidate.parameters[index]];
+                  if (!matches_parameter(parameter, supplied[index])) {
+                    return true;
+                  }
+                }
+                return false;
+              }),
+          candidates.end());
+      if (candidates.empty()) {
+        report("no compile-time overload of '" + expression.text +
+               "' accepts the evaluated arguments");
+        return std::nullopt;
+      }
+      if (candidates.size() != 1U) {
+        report("compile-time call to '" + expression.text +
+               "' is ambiguous");
+        return std::nullopt;
+      }
+
+      const auto& selected = candidates.front();
+      const auto inputs = selected.function.inputs();
+      std::vector<std::optional<ParameterValue>> bound(inputs.size());
+      for (std::size_t index = 0; index < supplied.size(); ++index) {
+        bound[selected.parameters[index]] = std::move(supplied[index]);
+      }
+      Bindings arguments;
+      std::vector<ParameterValue> values;
+      values.reserve(inputs.size());
+      for (std::size_t index = 0; index < inputs.size(); ++index) {
+        if (!bound[index] && inputs[index].default_value) {
+          bound[index] = parameter_default(inputs[index]);
+        }
+        if (!bound[index]) {
+          report("compile-time call is missing argument '" +
+                 inputs[index].name + "'");
+          return std::nullopt;
+        }
+        values.push_back(*bound[index]);
+        arguments.emplace(inputs[index].name, std::move(*bound[index]));
+      }
+
+      const Module::FunctionDecl& function = selected.function;
+      const std::string identity = function.symbol().stable_name();
       if (std::find(calls_.begin(), calls_.end(), identity) != calls_.end()) {
         report("recursive pure function call '" + expression.text + "'");
         return std::nullopt;
       }
       calls_.push_back(identity);
       std::optional<ParameterValue> value;
-      if (ModuleAccess::expression(*function) != nullptr) {
+      if (ModuleAccess::expression(function) != nullptr) {
         const std::string caller_scope = scope_;
-        scope_ = std::string(function->symbol().module_name());
-        value = evaluate(*ModuleAccess::expression(*function),
-                         parameter_results(*function).front(), arguments);
+        scope_ = std::string(function.symbol().module_name());
+        value = evaluate(*ModuleAccess::expression(function),
+                         parameter_results(function).front(), arguments);
         scope_ = caller_scope;
       } else if (environment_.evaluate) {
-        value = environment_.evaluate(*function, values);
+        value = environment_.evaluate(function, values);
       } else if (environment_.require_hermetic_host_evaluation) {
         report("host evaluation under Residual control requires a Hermetic "
                "binding");

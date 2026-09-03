@@ -105,6 +105,22 @@ tile = @choose_tile(device, shape);
 `@` does not change overload resolution, select a second body, or change the
 meaning of `=`.
 
+Knownness belongs to a particular invocation, not to a declaration. The same
+`fn` may execute completely during compilation for one call and leave a typed
+Instruction for another. Evaluation follows one rule:
+
+| Inputs and effects | Result |
+| --- | --- |
+| all required values are Known and the body/binding is admissible | execute now |
+| a required value is Residual | preserve the remaining call or control flow |
+| either case under `@` fails to produce a Known value | staging diagnostic |
+
+This is ordinary partial evaluation with a Known-result assertion. It avoids a
+second `const fn` namespace and lets Modules extend compile-time computation by
+defining or binding the same typed functions used elsewhere. Host bindings run
+under the configured determinism and evaluation limits; a non-Hermetic binding
+is not speculated below Residual control.
+
 Type annotations use the same expression grammar as signatures and ordinary
 function bodies. Computed local types do not fall back to a restricted
 constructor-only syntax:
@@ -185,6 +201,13 @@ unambiguous without lexer modes. Adjacent nested closings such as
 `tensor<word<8>>` remain ordinary delimiters.
 
 ## Control flow
+
+A Function owns Blocks, Instructions, and Values. Structured source syntax is
+the authoring view; a control-flow graph is the relation among those Blocks,
+and a data-flow graph is the def-use relation among the same Values. They are
+analysis views of one Function, not additional owning objects. Consequently a
+neural network is still graph-shaped without requiring a `graph` declaration
+or a conversion between Graph IR and control-flow IR.
 
 `if` is an expression:
 

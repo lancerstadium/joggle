@@ -1441,11 +1441,37 @@ private:
             "result", detail::domain_expression(detail::ValueKind::Integer),
             false, std::nullopt};
       }
-      auto function = declaration<Module::FunctionDecl>(expression.text, range);
-      const auto results = function ? detail::parameter_results(*function)
-                                    : std::vector<Module::ParameterDecl>{};
-      return results.size() == 1U
-                 ? std::optional<Module::ParameterDecl>{results.front()}
+      std::vector<Module::ParameterDecl> matches;
+      for (const auto& function : visible_functions(expression.text)) {
+        auto candidate = detail::call_candidate(function, expression);
+        const auto results = detail::parameter_results(function);
+        if (!candidate || !detail::ir_inputs(function).empty() ||
+            !detail::ir_results(function).empty() || results.size() != 1U) {
+          continue;
+        }
+        bool accepts = true;
+        for (std::size_t index = 0; index < expression.arguments.size();
+             ++index) {
+          const auto actual = known_result(expression.arguments[index], range);
+          if (actual &&
+              function.inputs()[candidate->parameters[index]].domain !=
+                  actual->domain) {
+            accepts = false;
+            break;
+          }
+        }
+        if (accepts) {
+          matches.push_back(results.front());
+        }
+      }
+      if (matches.empty()) {
+        return std::nullopt;
+      }
+      return std::all_of(matches.begin() + 1, matches.end(),
+                         [&](const Module::ParameterDecl& result) {
+                           return result.domain == matches.front().domain;
+                         })
+                 ? std::optional<Module::ParameterDecl>{matches.front()}
                  : std::nullopt;
     }
     if ((expression.kind == Kind::Prefix ||

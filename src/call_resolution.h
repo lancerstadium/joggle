@@ -18,6 +18,9 @@ std::vector<Module::FunctionDecl>
 visible_functions(const Compiler& compiler, std::string_view owner,
                   std::string_view reference);
 std::vector<Module::FunctionDecl>
+visible_functions(std::span<const Module> modules, std::string_view owner,
+                  std::string_view reference);
+std::vector<Module::FunctionDecl>
 visible_operators(const Compiler& compiler, std::string_view owner,
                   std::string_view symbol,
                   Module::FunctionDecl::Fixity fixity);

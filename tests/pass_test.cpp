@@ -47,6 +47,9 @@ module pipeline@1.0.0 {
   fn nonzero(input: int) -> bool;
   fn twice(input: int) -> int;
   fn twice(input: string) -> string;
+  fn choose_amount(value: int, amount: int = 2) -> int {
+    return amount;
+  }
   fn add_offset(lhs: int, rhs: int) -> int as +;
   fn less(lhs: int, rhs: int) -> bool as <;
   fn text_less(lhs: string, rhs: string) -> bool as <;
@@ -143,6 +146,16 @@ module pipeline@1.0.0 {
   fn text_relation_typed(input: flag<("a" < "b")>) -> flag<true> {
     return input;
   }
+  fn overload_typed(input: word<@twice(4)>) -> word<8> {
+    return input;
+  }
+  fn default_typed(input: word<@choose_amount(value: 3)>) -> word<2> {
+    return input;
+  }
+  fn staged_overload(input: test_ir.integer<8>) -> test_ir.integer<8> {
+    doubled = @twice(4);
+    return input;
+  }
 }
 )",
                "pipeline.joggle");
@@ -215,6 +228,12 @@ module pipeline@1.0.0 {
       pipeline ? pipeline->function("relation_typed") : std::nullopt;
   const auto text_relation_typed =
       pipeline ? pipeline->function("text_relation_typed") : std::nullopt;
+  const auto overload_typed =
+      pipeline ? pipeline->function("overload_typed") : std::nullopt;
+  const auto default_typed =
+      pipeline ? pipeline->function("default_typed") : std::nullopt;
+  const auto staged_overload =
+      pipeline ? pipeline->function("staged_overload") : std::nullopt;
   const auto use_twice =
       pipeline ? pipeline->function("use_twice") : std::nullopt;
   const auto use_operator =
@@ -229,7 +248,8 @@ module pipeline@1.0.0 {
       !add_offset || !less || !text_less || !less_equal || !greater ||
       !greater_equal || !equal || !not_equal || !logical_not || !earlier ||
       !invert || !ordered_typed || !unequal_order || !relation_typed ||
-      !text_relation_typed || !use_twice || !use_operator ||
+      !text_relation_typed || !overload_typed || !default_typed ||
+      !staged_overload || !use_twice || !use_operator ||
       !ir_module_schema) {
     return EXIT_FAILURE;
   }
@@ -409,6 +429,9 @@ module pipeline@1.0.0 {
   const auto relation_typed_function = compiler.function(*relation_typed);
   const auto text_relation_typed_function =
       compiler.function(*text_relation_typed);
+  const auto overload_typed_function = compiler.function(*overload_typed);
+  const auto default_typed_function = compiler.function(*default_typed);
+  const auto staged_overload_function = compiler.function(*staged_overload);
   ok &= expect(typed_function && typed_function->arguments().size() == 1U &&
                    typed_function->result_types().size() == 1U &&
                    typed_function->arguments().front().type() ==
@@ -427,9 +450,21 @@ module pipeline@1.0.0 {
                    text_relation_typed_function->arguments().size() == 1U &&
                    text_relation_typed_function->result_types().size() == 1U &&
                    text_relation_typed_function->arguments().front().type() ==
-                       text_relation_typed_function->result_types().front(),
+                       text_relation_typed_function->result_types().front() &&
+                   overload_typed_function &&
+                   overload_typed_function->arguments().size() == 1U &&
+                   overload_typed_function->arguments().front().type() ==
+                       overload_typed_function->result_types().front() &&
+                   default_typed_function &&
+                   default_typed_function->arguments().size() == 1U &&
+                   default_typed_function->arguments().front().type() ==
+                       default_typed_function->result_types().front() &&
+                   staged_overload_function &&
+                   staged_overload_function->arguments().size() == 1U &&
+                   staged_overload_function->arguments().front().type() ==
+                       staged_overload_function->result_types().front(),
                "structured compiler functions participate in dependent type "
-               "evaluation through the same execution entry");
+               "evaluation with overloads, named arguments, and defaults");
   joggle::Diagnostics signature_diagnostics;
   const std::string signature_text = joggle::format(*pipeline);
   const auto signature_roundtrip = joggle::parse_module(
