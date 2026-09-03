@@ -202,7 +202,7 @@ joggle::Diagnostics diagnostics;
 module.insert("main", std::move(*function), diagnostics);
 
 for (const auto function : module.functions()) {
-  if (const auto* body = module.body(function.name())) {
+  if (const auto* body = function.body()) {
     // Inspect or transform the materialized CFG.
   }
 }

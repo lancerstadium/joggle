@@ -269,15 +269,6 @@ ir::Function* Module::body(std::string_view name) {
   return result;
 }
 
-const ir::Function* Module::body(std::string_view name) const {
-  const auto found = std::find_if(
-      storage_->functions.begin(), storage_->functions.end(),
-      [&](const detail::FunctionMember& function) {
-        return function.name == name && function.ir != nullptr;
-      });
-  return found == storage_->functions.end() ? nullptr : found->ir.get();
-}
-
 std::vector<Module::Dependency> Module::dependencies() const {
   DependencyMap found;
   for (const detail::FunctionMember& function : storage_->functions) {

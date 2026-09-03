@@ -16,8 +16,10 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
       *add_helper,
       [](joggle::Module input,
          joggle::Diagnostics& reported) -> std::optional<joggle::Module> {
+        const auto main_member =
+            static_cast<const joggle::Module&>(input).function("main");
         const joggle::ir::Function* main =
-            static_cast<const joggle::Module&>(input).body("main");
+            main_member ? main_member->body() : nullptr;
         if (main == nullptr ||
             !input.insert("helper", main->clone(), reported)) {
           return std::nullopt;

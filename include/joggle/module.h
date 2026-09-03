@@ -249,6 +249,7 @@ public:
     std::optional<std::string_view> operator_symbol() const;
     std::optional<Fixity> operator_fixity() const;
     Form form() const;
+    const ir::Function* body() const;
     std::string signature() const;
     Symbol symbol() const;
     bool operator==(const Function& other) const;
@@ -303,7 +304,6 @@ public:
   bool insert(std::string name, ir::Function function,
               Diagnostics& diagnostics);
   ir::Function* body(std::string_view name);
-  const ir::Function* body(std::string_view name) const;
   std::vector<Dependency> dependencies() const;
   bool operator==(const Module& other) const;
 

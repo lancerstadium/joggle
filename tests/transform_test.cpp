@@ -102,10 +102,13 @@ module mapping@1.0.0 {
     return EXIT_FAILURE;
   }
 
-  const auto* original_first =
-      static_cast<const joggle::Module&>(module).body("first");
-  const auto* original_second =
-      static_cast<const joggle::Module&>(module).body("second");
+  const auto read_body = [&](std::string_view name) {
+    const auto function =
+        static_cast<const joggle::Module&>(module).function(name);
+    return function ? function->body() : nullptr;
+  };
+  const auto* original_first = read_body("first");
+  const auto* original_second = read_body("second");
   const auto original_first_revision = original_first->revision();
   const auto original_second_revision = original_second->revision();
   const std::string original_digest(module.digest());
@@ -120,10 +123,8 @@ module mapping@1.0.0 {
   ok &= expect(
       module_no_op && *module_no_op == 0U && module_no_op_diagnostics.ok() &&
           module.digest() == original_digest &&
-          static_cast<const joggle::Module&>(module).body("first") ==
-              original_first &&
-          static_cast<const joggle::Module&>(module).body("second") ==
-              original_second,
+          read_body("first") == original_first &&
+          read_body("second") == original_second,
       "a no-op Module mapping preserves shared Function storage");
 
   joggle::Diagnostics module_failure_diagnostics;
@@ -140,10 +141,8 @@ module mapping@1.0.0 {
         return std::nullopt;
       },
       module_failure_diagnostics);
-  const auto* unchanged_first =
-      static_cast<const joggle::Module&>(module).body("first");
-  const auto* unchanged_second =
-      static_cast<const joggle::Module&>(module).body("second");
+  const auto* unchanged_first = read_body("first");
+  const auto* unchanged_second = read_body("second");
   ok &= expect(
       !module_failure && !module_failure_diagnostics.ok() &&
           module.digest() == original_digest && unchanged_first != nullptr &&
@@ -155,10 +154,8 @@ module mapping@1.0.0 {
   joggle::Diagnostics module_success_diagnostics;
   const auto module_success = joggle::ir::replace_calls(
       module, *keep, *converted, module_success_diagnostics);
-  const auto* mapped_first =
-      static_cast<const joggle::Module&>(module).body("first");
-  const auto* preserved_second =
-      static_cast<const joggle::Module&>(module).body("second");
+  const auto* mapped_first = read_body("first");
+  const auto* preserved_second = read_body("second");
   ok &=
       expect(module_success && *module_success == 1U &&
                  module_success_diagnostics.ok() && mapped_first != nullptr &&

@@ -2013,6 +2013,10 @@ Module::Function::Form Module::Function::form() const {
                                                     : Form::External;
 }
 
+const ir::Function* Module::Function::body() const {
+  return storage_->functions[index_].ir.get();
+}
+
 const Module::Expression*
 detail::ModuleAccess::expression(const Module::Function& function) {
   if (!FunctionTypeAccess::ir_inputs(function).empty() ||

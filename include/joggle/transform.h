@@ -97,7 +97,7 @@ std::optional<ModuleCallPlan> plan_calls(const Module& module, Mapper& mapper,
   ModuleCallPlan plan;
   for (const joggle::Module::Function& member : module.functions()) {
     const std::string name(member.name());
-    const Function* function = module.body(name);
+    const Function* function = member.body();
     if (function == nullptr) {
       continue;
     }
