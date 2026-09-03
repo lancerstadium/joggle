@@ -242,13 +242,17 @@ for (const auto function : module.functions()) {
     // Inspect or transform the materialized CFG.
   }
 }
-auto* main = module.body("main");
+const auto main_decl = module.function("main");
+auto* main = main_decl ? module.body(*main_decl) : nullptr;
 ```
 
 Copies use Function-granular copy-on-write. Const lookup shares; mutable lookup
-detaches the selected Function state. `joggle::format(module)` emits that same
-Module as canonical source and derives exact dependencies from its current IR,
-so a transformation cannot leave a stale import list behind.
+detaches the state selected by its complete `FunctionDecl`. `insert` accepts
+same-name Functions when their signatures differ and rejects only an exact
+signature duplicate; consequently, mutable access never guesses among
+overloads. `joggle::format(module)` emits that same Module as canonical source
+and derives exact dependencies from its current IR, so a transformation cannot
+leave a stale import list behind.
 
 The embedded Prelude type `module` is automatically represented by
 `joggle::Module`; `function` is represented by a materialized

@@ -90,7 +90,7 @@ std::optional<std::size_t> rewrite(Module& module, Rule&& rule,
       return std::nullopt;
     }
     if (*count != 0U) {
-      Function* target = candidate.body(member.name());
+      Function* target = candidate.body(member);
       if (target == nullptr) {
         diagnostics.report("Module lost function '" +
                            std::string(member.name()) + "'");

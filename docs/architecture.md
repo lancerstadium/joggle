@@ -34,11 +34,11 @@ no language object or IR layer.
 
 Declarations and materialized bodies are two states inside the same Module,
 not separate owners. `Module::function(name)` reflects the unique function
-member and its signature; `Module::body(name)` accesses its concrete editable
-CFG when one has been inserted. `Compiler::materialize(...)` specializes a
-source definition into an `ir::Function`, while `Compiler::body()` constructs
-an empty one. Generic specialization therefore creates a body, not another
-Module representation.
+member and its signature; `Module::body(declaration)` accesses its concrete
+editable CFG without guessing among overloads. `Compiler::materialize(...)`
+specializes a source definition into an `ir::Function`, while
+`Compiler::body()` constructs an empty one. Generic specialization therefore
+creates a body, not another Module representation.
 
 The other public concepts are small:
 

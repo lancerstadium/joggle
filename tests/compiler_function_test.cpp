@@ -628,21 +628,30 @@ module pipeline@1.0.0 {
   }
   auto copied_module = compiler.run<joggle::Module>(*module_identity, module);
   const auto i32 = compiler.make("i32");
-  if (!copied_module || !i32 || !copied_module->function("main")) {
+  const auto source_main = module.function("main");
+  auto copied_main =
+      copied_module ? copied_module->function("main") : std::nullopt;
+  if (!copied_module || !i32 || !source_main || !copied_main) {
     return EXIT_FAILURE;
   }
   {
-    auto edit = copied_module->body("main")->edit();
+    auto* copied_body = copied_module->body(*copied_main);
+    if (copied_body == nullptr) {
+      return EXIT_FAILURE;
+    }
+    auto edit = copied_body->edit();
     edit.argument(*i32);
     if (!edit.commit(module_diagnostics)) {
       return EXIT_FAILURE;
     }
   }
+  copied_main = copied_module->function("main");
   ok &= expect(module.functions().size() == 1U &&
                    copied_module->functions().size() == 1U &&
-                   module.body("main") != nullptr &&
-                   module.body("main")->arguments().empty() &&
-                   copied_module->body("main")->arguments().size() == 1U,
+                   source_main->body() != nullptr &&
+                   source_main->body()->arguments().empty() && copied_main &&
+                   copied_main->body() != nullptr &&
+                   copied_main->body()->arguments().size() == 1U,
                "the builtin module value flows through an ordinary fn "
                "with deep-copy isolation");
 

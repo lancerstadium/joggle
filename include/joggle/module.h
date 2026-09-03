@@ -300,10 +300,11 @@ public:
   // A FunctionDecl always occupies one Module member and has one canonical
   // signature. insert() adds a declaration whose body is already materialized
   // as editable IR; body() is absent for external and not-yet-materialized
-  // declarations. Mutable body lookup detaches only that body.
+  // declarations. Mutable body lookup uses the complete declaration rather
+  // than an overload-ambiguous name and detaches only that body.
   bool insert(std::string name, ir::Function function,
               Diagnostics& diagnostics);
-  ir::Function* body(std::string_view name);
+  ir::Function* body(FunctionDecl declaration);
   std::vector<Dependency> dependencies() const;
   bool operator==(const Module& other) const;
 

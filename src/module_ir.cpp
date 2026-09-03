@@ -182,14 +182,6 @@ bool Module::insert(std::string name, ir::Function function,
     diagnostics.report("Module function name '" + name + "' is invalid");
     return false;
   }
-  if (std::any_of(storage_->functions.begin(), storage_->functions.end(),
-                  [&](const detail::FunctionMember& function) {
-                    return function.name == name;
-                  })) {
-    diagnostics.report("Module already contains function '" + name + "'");
-    return false;
-  }
-
   std::vector<Dependency> referenced;
   try {
     referenced = function_dependencies(function);
@@ -232,6 +224,17 @@ bool Module::insert(std::string name, ir::Function function,
   next->functions.push_back(
       {std::move(name), std::move(declaration),
        std::make_shared<ir::Function>(std::move(function))});
+  const std::size_t inserted_index = next->functions.size() - 1U;
+  const FunctionDecl inserted(next, inserted_index);
+  for (std::size_t index = 0; index < inserted_index; ++index) {
+    if (next->functions[index].declaration &&
+        next->functions[index].name == inserted.name() &&
+        FunctionDecl(next, index).signature() == inserted.signature()) {
+      diagnostics.report("Module already contains function '" +
+                         inserted.signature() + "'");
+      return false;
+    }
+  }
   Module candidate(next);
   next->digest = detail::sha256(format(candidate));
   next->digest_revisions.clear();
@@ -245,12 +248,29 @@ bool Module::insert(std::string name, ir::Function function,
   return true;
 }
 
-ir::Function* Module::body(std::string_view name) {
-  const auto found = std::find_if(
-      storage_->functions.begin(), storage_->functions.end(),
-      [&](const detail::FunctionMember& function) {
-        return function.name == name && function.ir != nullptr;
-      });
+ir::Function* Module::body(FunctionDecl declaration) {
+  if (declaration.storage_->name != storage_->name ||
+      declaration.storage_->version != storage_->version) {
+    return nullptr;
+  }
+  const auto matches = [&](const detail::FunctionMember& function,
+                           std::size_t index) {
+    if (!function.declaration || !function.ir ||
+        function.name != declaration.name()) {
+      return false;
+    }
+    return FunctionDecl(storage_, index).signature() == declaration.signature();
+  };
+  auto found = storage_->functions.end();
+  for (auto current = storage_->functions.begin();
+       current != storage_->functions.end(); ++current) {
+    const auto index =
+        static_cast<std::size_t>(current - storage_->functions.begin());
+    if (matches(*current, index)) {
+      found = current;
+      break;
+    }
+  }
   if (found == storage_->functions.end()) {
     return nullptr;
   }
@@ -258,11 +278,9 @@ ir::Function* Module::body(std::string_view name) {
     return found->ir.get();
   }
   auto next = std::make_shared<Storage>(*storage_);
-  auto selected = std::find_if(
-      next->functions.begin(), next->functions.end(),
-      [&](const detail::FunctionMember& function) {
-        return function.name == name && function.ir != nullptr;
-      });
+  const auto index =
+      static_cast<std::size_t>(found - storage_->functions.begin());
+  auto selected = next->functions.begin() + static_cast<std::ptrdiff_t>(index);
   selected->ir = std::make_shared<ir::Function>(*selected->ir);
   ir::Function* result = selected->ir.get();
   storage_ = std::move(next);

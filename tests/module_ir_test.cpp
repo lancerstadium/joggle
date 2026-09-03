@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <optional>
@@ -163,10 +164,52 @@ module module_defs@1.0.0 {
                "one Module member table carries source declarations and "
                "materialized IR without a self-import or second container");
 
+  auto overloaded_main = compiler.materialize("module_defs.main");
+  auto overloaded_choose = compiler.materialize("module_defs.choose");
+  joggle::Module overloaded("overloaded", {1, 0, 0});
+  joggle::Diagnostics overloaded_diagnostics;
+  if (!overloaded_main || !overloaded_choose ||
+      !overloaded.insert("run", std::move(*overloaded_main),
+                         overloaded_diagnostics) ||
+      !overloaded.insert("run", std::move(*overloaded_choose),
+                         overloaded_diagnostics)) {
+    overloaded_diagnostics.print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  const auto run_overloads = overloaded.overloads("run");
+  const auto no_argument =
+      std::find_if(run_overloads.begin(), run_overloads.end(),
+                   [](const joggle::Module::FunctionDecl& function) {
+                     return function.inputs().empty();
+                   });
+  const auto branched =
+      std::find_if(run_overloads.begin(), run_overloads.end(),
+                   [](const joggle::Module::FunctionDecl& function) {
+                     return function.inputs().size() == 3U;
+                   });
+  const auto* no_argument_body = no_argument != run_overloads.end()
+                                     ? overloaded.body(*no_argument)
+                                     : nullptr;
+  const auto* branched_body =
+      branched != run_overloads.end() ? overloaded.body(*branched) : nullptr;
+  const std::string overloaded_text = joggle::format(overloaded);
+  joggle::Diagnostics overloaded_parse_diagnostics;
+  const auto overloaded_reparsed = joggle::parse_module(
+      overloaded_text, overloaded_parse_diagnostics, "overloaded.joggle");
+  ok &= expect(
+      run_overloads.size() == 2U && !overloaded.function("run") &&
+          no_argument != run_overloads.end() &&
+          branched != run_overloads.end() && no_argument_body != nullptr &&
+          no_argument_body->arguments().empty() && branched_body != nullptr &&
+          branched_body->arguments().size() == 3U && overloaded_reparsed &&
+          overloaded_reparsed->overloads("run").size() == 2U,
+      "programmatic Modules preserve overloads and select mutable "
+      "bodies by complete declaration across serialization");
+
   auto duplicate = compiler.materialize("module_defs.main");
   ok &= expect(duplicate &&
                    !module.insert("main", std::move(*duplicate), diagnostics) &&
                    !diagnostics.ok(),
-               "an executable Module rejects duplicate Function names");
+               "an executable Module rejects duplicate Function signatures");
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }
