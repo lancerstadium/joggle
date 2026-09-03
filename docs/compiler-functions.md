@@ -154,12 +154,18 @@ first illegal residual call is diagnosed with its Function context.
 
 ## Command-line boundary
 
-`joggle run module.joggle pipeline input -o output` invokes one reflected
-function with the exact signature `bytes -> bytes`. Bytes are the portable
-file boundary, not the pipeline's internal artifact type. A Module can compose
-`bytes -> model`, `model -> schedule`, `schedule -> estimate`, and
-`schedule -> bytes` functions without teaching the CLI any of those roles or
-registering another pass hierarchy.
+`joggle run module.joggle function input -o output` invokes one reflected
+function with one of four portable signatures: `bytes -> bytes`,
+`bytes -> module`, `module -> module`, or `module -> bytes`. A Module input is
+parsed into the same compilation, linked with its dependencies, and copied
+with every default-specializable source Function materialized. A Module output
+is canonical Joggle source. Bytes remain the opaque boundary for other file
+formats.
+
+This makes individual loaders, whole-Module transformations, and emitters
+directly runnable while preserving ordinary typed composition. Extension-owned
+`model`, `schedule`, or `estimate` values still compose in source or through
+the C++ API; the CLI does not classify them or register a pass hierarchy.
 
 ## Analysis values and reuse
 

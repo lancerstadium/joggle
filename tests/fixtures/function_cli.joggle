@@ -6,7 +6,15 @@ module function_cli@1.0.0 {
   fn pipeline(input: bytes) -> bytes {
     return behavior_plugin.reverse(input);
   }
-
+  fn read_model(input: bytes) -> module {
+    return behavior_plugin.read_model(input);
+  }
+  fn optimize_model(input: module) -> module {
+    return input;
+  }
+  fn emit_model(input: module) -> bytes {
+    return behavior_plugin.emit_model(input);
+  }
   fn wrong_boundary(input: bytes) -> int {
     return 1;
   }

@@ -7,6 +7,20 @@ endforeach()
 
 set(input "${JOGGLE_OUTPUT}.input")
 file(WRITE "${input}" "edge-ai")
+set(model_input "${JOGGLE_OUTPUT}.model.joggle")
+set(model_output "${JOGGLE_OUTPUT}.optimized.joggle")
+set(model_emitted "${JOGGLE_OUTPUT}.emitted.joggle")
+set(loaded_output "${JOGGLE_OUTPUT}.loaded.joggle")
+file(WRITE "${model_input}" [=[joggle 1;
+
+module cli_model@1.0.0 {
+  type word();
+  fn keep(input: word) -> word;
+  fn main(input: word) -> word {
+    return keep(input);
+  }
+}
+]=])
 
 execute_process(
   COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" pipeline "${input}"
@@ -38,11 +52,67 @@ execute_process(
   RESULT_VARIABLE boundary_result
   ERROR_VARIABLE boundary_error
 )
-string(FIND "${boundary_error}" "must have signature bytes -> bytes"
+string(FIND "${boundary_error}"
+  "must have signature bytes -> bytes, bytes -> module"
   boundary_position)
 if(boundary_result EQUAL 0 OR boundary_position EQUAL -1)
   message(FATAL_ERROR
-    "run accepted a non-byte pipeline boundary:\n${boundary_error}")
+    "run accepted an unsupported pipeline boundary:\n${boundary_error}")
+endif()
+
+execute_process(
+  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" read_model "${input}"
+          --with "${JOGGLE_DEPENDENCY}"
+          --load-behavior "behavior_plugin=${JOGGLE_BEHAVIOR}"
+          -o "${loaded_output}"
+  RESULT_VARIABLE load_result
+  ERROR_VARIABLE load_error
+)
+if(NOT load_result EQUAL 0)
+  message(FATAL_ERROR "typed bytes -> module loader failed:\n${load_error}")
+endif()
+file(READ "${loaded_output}" loaded_source)
+string(FIND "${loaded_source}" "module loaded_model@1.0.0" loaded_module)
+string(FIND "${loaded_source}" "fn main()" loaded_main)
+if(loaded_module EQUAL -1 OR loaded_main EQUAL -1)
+  message(FATAL_ERROR
+    "typed loader did not emit its Module result:\n${loaded_source}")
+endif()
+
+execute_process(
+  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" optimize_model
+          "${model_input}" --with "${JOGGLE_DEPENDENCY}"
+          -o "${model_output}"
+  RESULT_VARIABLE optimize_result
+  ERROR_VARIABLE optimize_error
+)
+if(NOT optimize_result EQUAL 0)
+  message(FATAL_ERROR
+    "typed module -> module transform failed:\n${optimize_error}")
+endif()
+file(READ "${model_output}" optimized_source)
+string(FIND "${optimized_source}"
+  "v1: cli_model.word = cli_model.keep(arg0);" materialized_entry)
+if(materialized_entry EQUAL -1)
+  message(FATAL_ERROR
+    "Module input was not materialized before transformation:\n${optimized_source}")
+endif()
+
+execute_process(
+  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" emit_model
+          "${model_output}" --with "${JOGGLE_DEPENDENCY}"
+          --load-behavior "behavior_plugin=${JOGGLE_BEHAVIOR}"
+          -o "${model_emitted}"
+  RESULT_VARIABLE emit_result
+  ERROR_VARIABLE emit_error
+)
+if(NOT emit_result EQUAL 0)
+  message(FATAL_ERROR "typed module -> bytes emitter failed:\n${emit_error}")
+endif()
+file(READ "${model_emitted}" emitted_source)
+if(NOT emitted_source STREQUAL optimized_source)
+  message(FATAL_ERROR
+    "typed emitter changed the canonical Module representation")
 endif()
 
 execute_process(

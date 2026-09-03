@@ -64,6 +64,7 @@ joggle check model.joggle --with dependency.joggle
 joggle install model.joggle --behavior build/model_behavior.dylib
 joggle lock model.joggle -o joggle.lock
 joggle run pipeline.joggle compile model.onnx -o model.bin
+joggle run pipeline.joggle optimize model.joggle -o optimized.joggle
 ```
 
 Run `joggle --help` for the complete command forms.

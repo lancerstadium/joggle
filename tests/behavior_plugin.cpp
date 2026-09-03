@@ -1,9 +1,21 @@
 #include <algorithm>
 #include <cstdint>
+#include <optional>
+#include <string>
+#include <string_view>
 
 #include <joggle/joggle.h>
 
 namespace {
+
+joggle::Bytes bytes(std::string_view text) {
+  joggle::Bytes result;
+  result.reserve(text.size());
+  for (const char value : text) {
+    result.push_back(static_cast<std::byte>(static_cast<unsigned char>(value)));
+  }
+  return result;
+}
 
 void bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
@@ -23,6 +35,21 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
   compiler.bind(module, "reverse", [](joggle::Bytes input) {
     std::reverse(input.begin(), input.end());
     return input;
+  });
+  compiler.bind(module, "read_model",
+                [](joggle::Compiler& current, const joggle::Bytes&,
+                   joggle::Diagnostics& model_diagnostics)
+                    -> std::optional<joggle::Module> {
+                  joggle::Module model("loaded_model", {1, 0, 0});
+                  auto main = current.create_function();
+                  if (!main || !model.insert("main", std::move(*main),
+                                             model_diagnostics)) {
+                    return std::nullopt;
+                  }
+                  return model;
+                });
+  compiler.bind(module, "emit_model", [](const joggle::Module& model) {
+    return bytes(joggle::format(model));
   });
 #if defined(JOGGLE_TEST_BEHAVIOR_FAIL)
   diagnostics.report("test behavior requested failure");

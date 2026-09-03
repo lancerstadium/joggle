@@ -159,10 +159,12 @@ joggle run driver.joggle compile model.onnx \
   --behavior build/driver_behavior.dylib -o model.bin
 ```
 
-The selected function must have signature `bytes -> bytes`. `read`,
-`optimize`, and `emit` retain their real internal types; the CLI does not
-classify them or prescribe a pass order. The output is written byte-for-byte
-to `-o`, or to standard output when `-o` is absent.
+This wrapper uses `bytes -> bytes`. The CLI also accepts `bytes -> module`,
+`module -> module`, and `module -> bytes`, so `read`, `optimize`, and `emit`
+can be run individually without acquiring special declaration kinds. Module
+files are linked and materialized at input and written as canonical source at
+output. Byte results are written byte-for-byte to `-o`, or to standard output
+when `-o` is absent.
 
 For installed discovery, call `compiler.search(root)` and the one-argument
 `load_behavior("example")`. See the

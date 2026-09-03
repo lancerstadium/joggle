@@ -11,6 +11,7 @@
 #include "joggle/module.h"
 #include "module_internal.h"
 #include "module_repository.h"
+#include "module_storage.h"
 #include "prelude.h"
 #include "prelude_runtime.h"
 #include "type_contract.h"
@@ -1652,6 +1653,43 @@ std::optional<Function> Compiler::create_function() {
     modules.push_back(module);
   }
   return Function(std::move(modules));
+}
+
+std::optional<Module> Compiler::materialize(const Module& module) {
+  if (!state_->linked) {
+    state_->diagnostics.report(
+        "cannot materialize a Module before the compiler is linked");
+    return std::nullopt;
+  }
+  const auto owner = state_->modules.find(module.name());
+  if (owner == state_->modules.end() ||
+      owner->second.version() != module.version() ||
+      owner->second.digest() != module.digest()) {
+    state_->diagnostics.report("Module '" + std::string(module.name()) +
+                               "' is not in this compilation");
+    return std::nullopt;
+  }
+
+  const Module& linked = owner->second;
+  auto storage = std::make_shared<Module::Storage>(*linked.storage_);
+  const auto functions = linked.functions();
+  for (std::size_t index = 0; index < functions.size(); ++index) {
+    const Module::FunctionDecl& declaration = functions[index];
+    if (declaration.body() != nullptr ||
+        !detail::ModuleAccess::body(linked, declaration) ||
+        !detail::compiler_results(declaration).empty() ||
+        !detail::has_default_specialization(declaration)) {
+      continue;
+    }
+    auto function = materialize(declaration);
+    if (!function) {
+      return std::nullopt;
+    }
+    storage->functions[index].ir =
+        std::make_shared<Function>(std::move(*function));
+  }
+  storage->digest_revisions.clear();
+  return Module(std::move(storage));
 }
 
 std::optional<Function>

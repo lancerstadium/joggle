@@ -66,11 +66,12 @@ core has no `frontend`, `lower`, `analysis`, `pass`, or `backend` registry.
 Teams may use those words as project roles without making them language
 keywords.
 
-The CLI preserves the same rule. `joggle run` invokes one reflected
-`bytes -> bytes` function; it does not accept an external list of specially
-classified passes. A pipeline exposes a byte boundary for files and composes
-its loaders, transformations, analyses, and emitters as ordinary typed calls
-inside the Module. In-process users retain the full C++ type surface.
+The CLI preserves the same rule. `joggle run` invokes one reflected function
+with a `bytes -> bytes`, `bytes -> module`, `module -> module`, or
+`module -> bytes` boundary; it does not accept an external list of specially
+classified passes. Module inputs are linked and materialized before the call,
+and Module outputs use canonical source. In-process users retain the full C++
+type surface, including extension-owned artifacts.
 
 This is also why Joggle does not prescribe tiles, streams, FPGA resources,
 RISC-V instructions, devices, schedules, or cost models. An extension defines

@@ -537,6 +537,12 @@ public:
   // Creates an empty executable body in this linked compilation.
   std::optional<Function> create_function();
 
+  // Materializes every source-defined Function whose results are
+  // IR-representable and whose compiler inputs and generics have a complete
+  // default specialization. Other declarations stay declarations in the
+  // returned copy; the linked Module is unchanged.
+  std::optional<Module> materialize(const Module& module);
+
   // Specializes a source-defined Function and materializes its residual body.
   // The declaration, symbol, or qualified name selects the same Module member;
   // known_arguments bind compile-time parameters before residualization.

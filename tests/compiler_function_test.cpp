@@ -653,6 +653,43 @@ module pipeline@1.0.0 {
                "the builtin module value flows through an ordinary fn "
                "with deep-copy isolation");
 
+  joggle::Compiler module_materialization;
+  module_materialization.add(R"(
+joggle 1;
+module source_model@1.0.0 {
+  type word();
+  fn keep(input: word) -> word;
+  fn main(input: word) -> word {
+    return keep(input);
+  }
+  fn count(input: word) -> int {
+    return 1;
+  }
+}
+)",
+                             "source-model.joggle");
+  const bool source_model_linked = module_materialization.link();
+  const auto source_model = module_materialization.module("source_model");
+  const auto source_model_main =
+      source_model ? source_model->function("main") : std::nullopt;
+  const auto materialized_model =
+      source_model ? module_materialization.materialize(*source_model)
+                   : std::nullopt;
+  const auto materialized_main =
+      materialized_model ? materialized_model->function("main") : std::nullopt;
+  const auto materialized_count =
+      materialized_model ? materialized_model->function("count") : std::nullopt;
+  ok &=
+      expect(source_model_linked && source_model_main &&
+                 source_model_main->body() == nullptr && materialized_main &&
+                 materialized_main->body() != nullptr &&
+                 materialized_main->body()->instructions().size() == 1U &&
+                 materialized_count && materialized_count->body() == nullptr &&
+                 source_model_main->body() == nullptr,
+             "a linked source Module materializes into an isolated "
+             "whole-Module IR value without forcing compiler results into "
+             "SSA");
+
   constexpr std::string_view guarded_source = R"(
     joggle 1;
     module guarded@1.0.0 {

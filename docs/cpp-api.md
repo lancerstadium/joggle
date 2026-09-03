@@ -115,6 +115,13 @@ is built. Use `joggle::format(*function, "kernel")` for canonical source.
 programmatic construction. It does not perform declaration lookup or
 source-body specialization.
 
+`Compiler::materialize(module)` copies a linked Module and materializes every
+source Function whose results are IR-representable and whose compiler inputs
+and generics have a complete default specialization. External declarations,
+compiler-result functions, and specializations that still need Known arguments
+remain declarations. The linked source Module is unchanged; the returned value
+is suitable for `module -> module` compiler functions.
+
 ## Edit a Function
 
 ```cpp

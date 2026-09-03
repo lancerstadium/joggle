@@ -383,8 +383,8 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
     for (const joggle::Module::FunctionDecl& function : loaded.functions()) {
       if (function.form() == joggle::Module::FunctionDecl::Form::Body &&
           joggle::detail::ModuleAccess::expression(function) == nullptr &&
-          (!joggle::detail::value_inputs(function).empty() ||
-           !joggle::detail::value_results(function).empty()) &&
+          !joggle::detail::value_results(function).empty() &&
+          joggle::detail::compiler_results(function).empty() &&
           joggle::detail::has_default_specialization(function) &&
           !compiler.materialize(function.symbol())) {
         return false;
@@ -506,19 +506,82 @@ int main(int argc, char** argv) {
       return fail(diagnostics);
     }
 
-    joggle::Compiler compiler;
-    compiler.search(parsed.root);
-    compiler.add(*root_source, root_path.string());
-    for (const std::filesystem::path& path : parsed.with) {
-      auto source = read(path, diagnostics);
-      if (!source) {
-        return fail(diagnostics);
+    const auto link = [&](joggle::Compiler& target,
+                          const std::string* input_source = nullptr,
+                          const std::filesystem::path* input_path = nullptr) {
+      target.search(parsed.root);
+      target.add(*root_source, root_path.string());
+      for (const std::filesystem::path& path : parsed.with) {
+        target.load(path);
       }
-      compiler.add(*source, path.string());
-    }
-    if (!compiler.link()) {
+      if (input_source != nullptr && input_path != nullptr) {
+        target.add(*input_source, input_path->string());
+      }
+      return target.link();
+    };
+
+    joggle::Compiler compiler;
+    if (!link(compiler)) {
       return fail(compiler.diagnostics());
     }
+
+    const std::string function_name =
+        parsed.positional[1].find('.') == std::string::npos
+            ? std::string(root->name()) + "." + parsed.positional[1]
+            : parsed.positional[1];
+    auto function = compiler.lookup(function_name);
+    if (!function) {
+      return fail(compiler.diagnostics());
+    }
+
+    const bool bytes_to_bytes =
+        compiler.invocable<joggle::Bytes, joggle::Bytes>(*function);
+    const bool bytes_to_module =
+        compiler.invocable<joggle::Module, joggle::Bytes>(*function);
+    const bool module_to_bytes =
+        compiler.invocable<joggle::Bytes, joggle::Module>(*function);
+    const bool module_to_module =
+        compiler.invocable<joggle::Module, joggle::Module>(*function);
+    if (!bytes_to_bytes && !bytes_to_module && !module_to_bytes &&
+        !module_to_module) {
+      diagnostics.report("CLI function '" + function_name +
+                         "' must have signature bytes -> bytes, bytes -> "
+                         "module, module -> module, or module -> bytes");
+      return fail(diagnostics);
+    }
+
+    std::optional<joggle::Module> module_input;
+    std::optional<joggle::Bytes> byte_input;
+    const std::filesystem::path input_path = parsed.positional[2];
+    if (module_to_bytes || module_to_module) {
+      auto input_source = read(input_path, diagnostics);
+      if (!input_source) {
+        return fail(diagnostics);
+      }
+      auto parsed_input =
+          joggle::parse_module(*input_source, diagnostics, input_path.string());
+      if (!parsed_input) {
+        return fail(diagnostics);
+      }
+      joggle::Compiler with_input;
+      if (!link(with_input, &*input_source, &input_path)) {
+        return fail(with_input.diagnostics());
+      }
+      compiler = std::move(with_input);
+      function = compiler.lookup(function_name);
+      const auto linked_input = compiler.module(parsed_input->name());
+      module_input = linked_input ? compiler.materialize(*linked_input)
+                                  : std::optional<joggle::Module>{};
+      if (!function || !module_input) {
+        return fail(compiler.diagnostics());
+      }
+    } else {
+      byte_input = read_bytes(input_path, diagnostics);
+      if (!byte_input) {
+        return fail(diagnostics);
+      }
+    }
+
     if (parsed.behavior &&
         !compiler.load_behavior(root->name(), *parsed.behavior)) {
       return fail(compiler.diagnostics());
@@ -538,35 +601,41 @@ int main(int argc, char** argv) {
       }
     }
 
-    const std::string function_name =
-        parsed.positional[1].find('.') == std::string::npos
-            ? std::string(root->name()) + "." + parsed.positional[1]
-            : parsed.positional[1];
-    const auto function = compiler.lookup(function_name);
-    if (!function) {
-      return fail(compiler.diagnostics());
+    if (bytes_to_bytes || module_to_bytes) {
+      auto output =
+          bytes_to_bytes
+              ? compiler.run<joggle::Bytes>(*function, std::move(*byte_input))
+              : compiler.run<joggle::Bytes>(*function,
+                                            std::move(*module_input));
+      if (!output) {
+        return fail(compiler.diagnostics());
+      }
+      if (parsed.output) {
+        if (!write(*parsed.output, std::span<const std::byte>(*output),
+                   diagnostics)) {
+          return fail(diagnostics);
+        }
+      } else if (!write_stdout(std::span<const std::byte>(*output),
+                               diagnostics)) {
+        return fail(diagnostics);
+      }
+      return EXIT_SUCCESS;
     }
-    if (!compiler.invocable<joggle::Bytes, joggle::Bytes>(*function)) {
-      diagnostics.report("CLI function '" + function_name +
-                         "' must have signature bytes -> bytes");
-      return fail(diagnostics);
-    }
-    auto input = read_bytes(parsed.positional[2], diagnostics);
-    if (!input) {
-      return fail(diagnostics);
-    }
-    auto output = compiler.run<joggle::Bytes>(*function, std::move(*input));
+
+    auto output =
+        bytes_to_module
+            ? compiler.run<joggle::Module>(*function, std::move(*byte_input))
+            : compiler.run<joggle::Module>(*function, std::move(*module_input));
     if (!output) {
       return fail(compiler.diagnostics());
     }
+    const std::string source = joggle::format(*output);
     if (parsed.output) {
-      if (!write(*parsed.output, std::span<const std::byte>(*output),
-                 diagnostics)) {
+      if (!write(*parsed.output, source, diagnostics)) {
         return fail(diagnostics);
       }
-    } else if (!write_stdout(std::span<const std::byte>(*output),
-                             diagnostics)) {
-      return fail(diagnostics);
+    } else {
+      std::cout << source;
     }
     return EXIT_SUCCESS;
   }
