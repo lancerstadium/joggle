@@ -34,6 +34,7 @@ public:
         steps_(steps), under_residual_control_(under_residual_control),
         diagnostics_(diagnostics), execute_(execute) {
     locals_.push();
+    const auto& contract = FunctionTypeAccess::get(function_);
     for (std::size_t index = 0; index < function_.inputs().size(); ++index) {
       auto value = stage(compiler_, arguments[index]);
       if (!value) {
@@ -41,7 +42,24 @@ public:
                body_.range);
         continue;
       }
-      locals_.define(function_.inputs()[index].name, std::move(*value));
+      const auto& parameter = function_.inputs()[index];
+      locals_.define(parameter.name, *value);
+      if (index < contract.bindings.size() && contract.bindings[index] &&
+          contract.bindings[index]->kind ==
+              Module::Expression::Kind::Variable) {
+        const std::string& generic = contract.bindings[index]->text;
+        if (generic != parameter.name) {
+          if (const auto* existing = locals_.find(generic)) {
+            if (!same_staged_value(*existing, *value)) {
+              report("generic '" + generic +
+                         "' is bound to different compiler values",
+                     body_.range);
+            }
+          } else {
+            locals_.define(generic, *value);
+          }
+        }
+      }
     }
   }
 
@@ -553,6 +571,46 @@ private:
         }
         continue;
       }
+      if (statement.kind == StatementSyntax::Kind::For) {
+        auto iterable = evaluate(statement.expression.value,
+                                 statement.expression.range, nullptr);
+        const ExecutionValue* payload =
+            iterable ? iterable->known_value() : nullptr;
+        auto elements =
+            payload ? list_elements(*payload)
+                    : std::optional<std::vector<ExecutionValue>>{};
+        if (!elements) {
+          report("compiler for iterable must be a Known list",
+                 statement.expression.range);
+          return {Control::Error, std::nullopt};
+        }
+        for (ExecutionValue& element : *elements) {
+          if (!step(statement.range)) {
+            return {Control::Error, std::nullopt};
+          }
+          auto value = known(std::move(element), statement.expression.range);
+          if (!value) {
+            return {Control::Error, std::nullopt};
+          }
+          locals_.push();
+          if (!statement.iterator ||
+              !locals_.define(statement.iterator->name, std::move(*value))) {
+            report("cannot define compiler for iterator", statement.range);
+            locals_.pop();
+            return {Control::Error, std::nullopt};
+          }
+          Flow flow = sequence(statement.body);
+          locals_.pop();
+          if (flow.control == Control::Return ||
+              flow.control == Control::Error) {
+            return flow;
+          }
+          if (flow.control == Control::Break) {
+            break;
+          }
+        }
+        continue;
+      }
       if (statement.bindings.size() > 1U) {
         report("compiler execution currently supports one call result",
                statement.range);
@@ -675,7 +733,8 @@ bool verify_body_calls(Compiler& compiler,
     for (const StatementSyntax& statement : code) {
       if (statement.kind == StatementSyntax::Kind::Expression ||
           statement.kind == StatementSyntax::Kind::If ||
-          statement.kind == StatementSyntax::Kind::While) {
+          statement.kind == StatementSyntax::Kind::While ||
+          statement.kind == StatementSyntax::Kind::For) {
         verify_expression(verify_expression, statement.expression);
       }
       for (const auto& value : statement.values) {

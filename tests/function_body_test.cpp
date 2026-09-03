@@ -2101,6 +2101,158 @@ module list_evaluation@1.0.0 {
                "grammar, including list-valued host functions and empty "
                "lists");
 
+  constexpr std::string_view staged_control_source = R"(
+joggle 1;
+module staged_control@1.0.0 {
+  type word(width: int);
+
+  fn identity<T: type>(input: T) -> T;
+  fn integer_add(lhs: int, rhs: int) -> int as +;
+  fn integer_less(lhs: int, rhs: int) -> bool as <;
+  fn integer_greater(lhs: int, rhs: int) -> bool as >;
+
+  fn sum_shape<S: list<int>>(shape: S) -> int {
+    total = 0;
+    for dimension in S {
+      if dimension > 1 {
+        total = total + dimension;
+      } else {
+        continue;
+      }
+      if total > 10 {
+        break;
+      }
+    }
+    return total;
+  }
+
+  fn count<N: int>(limit: N) -> int {
+    current = 0;
+    while current < N {
+      current = current + 1;
+    }
+    return current;
+  }
+
+  fn specialize<N: int>(width: N, input: word<N>) -> word<N> {
+    if N > 4 {
+      output = identity(input);
+      return output;
+    }
+    return input;
+  }
+
+  fn pipeline<S: list<int>>(stages: S, input: word<8>) -> word<8> {
+    current = input;
+    for stage in S {
+      if stage > 0 {
+        current = identity(current);
+      }
+    }
+    return current;
+  }
+}
+)";
+  joggle::Diagnostics staged_control_parse_diagnostics;
+  const auto staged_control_module =
+      joggle::parse_module(staged_control_source,
+                           staged_control_parse_diagnostics,
+                           "staged-control.joggle");
+  const std::string staged_control_text =
+      staged_control_module ? joggle::format(*staged_control_module)
+                            : std::string{};
+  joggle::Diagnostics staged_control_roundtrip_diagnostics;
+  const auto staged_control_roundtrip =
+      staged_control_module
+          ? joggle::parse_module(staged_control_text,
+                                 staged_control_roundtrip_diagnostics,
+                                 "staged-control-roundtrip.joggle")
+          : std::nullopt;
+
+  joggle::Compiler staged_control;
+  staged_control.add(staged_control_source, "staged-control.joggle");
+  const bool staged_control_linked = staged_control.link();
+  const auto staged_module = staged_control.module("staged_control");
+  const auto integer_add =
+      staged_module ? staged_module->function("integer_add") : std::nullopt;
+  const auto integer_less =
+      staged_module ? staged_module->function("integer_less") : std::nullopt;
+  const auto integer_greater =
+      staged_module ? staged_module->function("integer_greater") : std::nullopt;
+  if (integer_add) {
+    staged_control.bind(*integer_add,
+                        [](std::int64_t lhs, std::int64_t rhs) {
+                          return lhs + rhs;
+                        });
+  }
+  if (integer_less) {
+    staged_control.bind(*integer_less,
+                        [](std::int64_t lhs, std::int64_t rhs) {
+                          return lhs < rhs;
+                        });
+  }
+  if (integer_greater) {
+    staged_control.bind(*integer_greater,
+                        [](std::int64_t lhs, std::int64_t rhs) {
+                          return lhs > rhs;
+                        });
+  }
+  const auto sum_shape = staged_control_linked
+                             ? staged_control.run<std::int64_t>(
+                                   "staged_control.sum_shape",
+                                   std::vector<std::int64_t>{1, 2, 4, 8})
+                             : std::nullopt;
+  const auto count = staged_control_linked
+                         ? staged_control.run<std::int64_t>(
+                               "staged_control.count", std::int64_t{3})
+                         : std::nullopt;
+  const auto specialize_decl =
+      staged_module ? staged_module->function("specialize") : std::nullopt;
+  const auto pipeline_decl =
+      staged_module ? staged_module->function("pipeline") : std::nullopt;
+  const auto integer_type = staged_control.make("int");
+  const auto prelude_module = staged_control.module("prelude");
+  const auto list_decl =
+      prelude_module ? prelude_module->type("list") : std::nullopt;
+  const auto integer_list_type =
+      list_decl && integer_type
+          ? staged_control.make(*list_decl, *integer_type)
+          : std::nullopt;
+  const auto width = integer_type
+                         ? staged_control.known(*integer_type, std::int64_t{8})
+                         : std::nullopt;
+  const auto stages =
+      integer_list_type
+          ? staged_control.known(*integer_list_type,
+                                 std::vector<std::int64_t>{1, 0, 2})
+          : std::nullopt;
+  const auto specialized = specialize_decl && width
+                               ? staged_control.function(*specialize_decl,
+                                                         {*width})
+                               : std::nullopt;
+  const auto pipeline = pipeline_decl && stages
+                            ? staged_control.function(*pipeline_decl,
+                                                      {*stages})
+                            : std::nullopt;
+  if (!staged_control_linked || !specialized || !pipeline) {
+    staged_control.diagnostics().print(std::cerr);
+  }
+  ok &= expect(
+      staged_control_module && staged_control_roundtrip &&
+          staged_control_parse_diagnostics.ok() &&
+          staged_control_roundtrip_diagnostics.ok() &&
+          joggle::format(*staged_control_roundtrip) == staged_control_text &&
+          staged_control_text.find("for dimension in S {") !=
+              std::string::npos &&
+          sum_shape == std::optional<std::int64_t>{14} &&
+          count == std::optional<std::int64_t>{3} && specialized && pipeline &&
+          specialized->arguments().front().type().get<std::int64_t>("width") ==
+              std::optional<std::int64_t>{8} &&
+          specialized->instructions().size() == 1U &&
+          pipeline->instructions().size() == 2U,
+      "generic bindings are ordinary Known locals that drive if, while, for, "
+      "dependent types, and deterministic residual expansion");
+
   const joggle::Compiler::EvaluationLimits limits{2, 64};
   joggle::Compiler bounded(limits);
   bounded.add(R"(

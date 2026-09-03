@@ -68,6 +68,8 @@ std::optional<StagedValue> stage(ir::Value value);
 std::optional<ir::Value> ir_value(Compiler& compiler,
                                   const StagedValue& value);
 std::optional<bool> known_boolean(const StagedValue& value);
+std::optional<std::vector<ExecutionValue>>
+list_elements(const ExecutionValue& value);
 bool same_staged_value(const StagedValue& lhs, const StagedValue& rhs);
 
 std::optional<ExecutionValue>

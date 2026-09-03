@@ -193,6 +193,31 @@ std::string_view execution_value_type(const ExecutionValue& value) {
   return typeid(void).name();
 }
 
+std::optional<std::vector<ExecutionValue>>
+list_elements(const ExecutionValue& value) {
+  return std::visit(
+      []<typename T>(const T& stored)
+          -> std::optional<std::vector<ExecutionValue>> {
+        using Value = std::remove_cvref_t<T>;
+        if constexpr (std::is_same_v<Value, IntegerList> ||
+                      std::is_same_v<Value, RealList> ||
+                      std::is_same_v<Value, BooleanList> ||
+                      std::is_same_v<Value, StringList> ||
+                      std::is_same_v<Value, TypeList> ||
+                      std::is_same_v<Value, AttributeList>) {
+          std::vector<ExecutionValue> result;
+          result.reserve(stored.size());
+          for (const auto& element : stored) {
+            result.emplace_back(element);
+          }
+          return result;
+        } else {
+          return std::nullopt;
+        }
+      },
+      value);
+}
+
 std::optional<Domain> cpp_value_domain(std::string_view type) {
   if (type == typeid(std::int64_t).name()) {
     return Domain{ValueKind::Integer, false};

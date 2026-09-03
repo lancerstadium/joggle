@@ -373,6 +373,40 @@ private:
       statement.range = {begin, previous_end_};
       return statement;
     }
+    if (match_name("for")) {
+      statement.kind = detail::StatementSyntax::Kind::For;
+      const SourcePosition iterator_begin = current_.begin;
+      if (auto iterator = local_name()) {
+        statement.iterator = detail::BindingSyntax{
+            std::move(*iterator), std::nullopt,
+            {iterator_begin, previous_end_}, false};
+      }
+      expect_name("in");
+      statement.expression = expression();
+      expect(TokenKind::LeftBrace, "'{' after for iterable");
+      const auto outer_variables = variables_;
+      const auto outer_locals = locals_;
+      if (statement.iterator) {
+        locals_.insert(statement.iterator->name);
+        variables_.push_back(
+            {statement.iterator->name, Module::Expression::reference("type"),
+             std::nullopt});
+      }
+      ++loop_depth_;
+      while (!is(TokenKind::RightBrace) && !is(TokenKind::End) && ok()) {
+        if (is_name("jump") || is_name("branch")) {
+          error("jump and branch are only available in explicit Blocks");
+          break;
+        }
+        statement.body.push_back(parse_statement());
+      }
+      --loop_depth_;
+      expect(TokenKind::RightBrace, "'}' after for body");
+      variables_ = outer_variables;
+      locals_ = outer_locals;
+      statement.range = {begin, previous_end_};
+      return statement;
+    }
     if (starts_binding()) {
       auto add_binding = [&](std::string name, SourcePosition binding_begin) {
         detail::BindingSyntax binding;
@@ -733,6 +767,16 @@ private:
       output_ << spaces(level) << "}\n";
       return;
     }
+    if (statement.kind == detail::StatementSyntax::Kind::For) {
+      output_ << spaces(level) << "for " << statement.iterator->name << " in "
+              << detail::format_expression(statement.expression.value)
+              << " {\n";
+      for (const auto& nested : statement.body) {
+        write_statement(nested, level + 1U);
+      }
+      output_ << spaces(level) << "}\n";
+      return;
+    }
     std::size_t prefix_width = 0U;
     output_ << spaces(level);
     for (std::size_t index = 0; index < statement.bindings.size(); ++index) {
@@ -1018,6 +1062,24 @@ public:
         define_staged(parameters[index].name, *known_parameters[index],
                       body_.range);
       }
+    }
+    for (const auto& generic : declaration_.generics()) {
+      const auto found = bindings.find(generic.name);
+      if (found == bindings.end() || locals_.contains(generic.name)) {
+        continue;
+      }
+      const Module::ParameterDecl parameter{
+          generic.name, generic.domain, false, std::nullopt};
+      auto value = detail::execution_value(found->second, parameter);
+      auto staged = value ? detail::stage(compiler_, std::move(*value))
+                          : std::optional<detail::StagedValue>{};
+      if (!staged) {
+        report("generic '" + generic.name +
+                   "' cannot enter staged evaluation",
+               body_.range);
+        continue;
+      }
+      define_staged(generic.name, std::move(*staged), body_.range);
     }
 
     blocks_.emplace("entry", function_->entry());
@@ -1454,6 +1516,42 @@ private:
          expression.kind == Kind::Infix ||
          expression.kind == Kind::Postfix) &&
         !expression.arguments.empty()) {
+      const auto fixity =
+          expression.kind == Kind::Prefix
+              ? Module::FunctionDecl::Fixity::Prefix
+          : expression.kind == Kind::Postfix
+              ? Module::FunctionDecl::Fixity::Postfix
+              : Module::FunctionDecl::Fixity::Infix;
+      std::vector<Module::ParameterDecl> matches;
+      for (const auto& function : detail::visible_operators(
+               compiler_, owner_, expression.text, fixity)) {
+        const auto inputs = detail::parameter_inputs(function);
+        const auto results = detail::parameter_results(function);
+        if (!detail::ir_inputs(function).empty() ||
+            !detail::ir_results(function).empty() ||
+            inputs.size() != expression.arguments.size() ||
+            results.size() != 1U) {
+          continue;
+        }
+        bool accepts = true;
+        for (std::size_t index = 0; index < inputs.size(); ++index) {
+          const auto actual = known_result(expression.arguments[index], range);
+          if (!actual || inputs[index].domain != actual->domain) {
+            accepts = false;
+            break;
+          }
+        }
+        if (accepts) {
+          matches.push_back(results.front());
+        }
+      }
+      if (!matches.empty() &&
+          std::all_of(matches.begin() + 1, matches.end(),
+                      [&](const Module::ParameterDecl& result) {
+                        return result.domain == matches.front().domain;
+                      })) {
+        return matches.front();
+      }
       return known_result(expression.arguments.front(), range);
     }
     return std::nullopt;
@@ -2284,6 +2382,68 @@ private:
     return next(exit);
   }
 
+  Flow instantiate_for(const detail::StatementSyntax& statement,
+                       Block block) {
+    if (!statement.iterator) {
+      report("for statement has no iterator", statement.range);
+      return next(block);
+    }
+    auto iterable = evaluate_known(statement.expression);
+    const detail::ExecutionValue* payload =
+        iterable && iterable->known() ? iterable->known_value() : nullptr;
+    auto elements =
+        payload ? detail::list_elements(*payload)
+                : std::optional<std::vector<detail::ExecutionValue>>{};
+    if (!elements) {
+      report("for iterable must be a Known list", statement.expression.range);
+      return next(block);
+    }
+
+    std::vector<Path> active{path(block)};
+    Flow exits;
+    for (detail::ExecutionValue& element : *elements) {
+      if (loop_iterations_++ >= compiler_.evaluation_limits().steps) {
+        report("compile-time for iteration limit exceeded", statement.range);
+        break;
+      }
+      std::vector<Path> following;
+      for (const Path& path : active) {
+        restore(path);
+        auto iterator = detail::stage(compiler_, element);
+        if (!iterator) {
+          report("for iterator cannot enter staged evaluation",
+                 statement.iterator->range);
+          continue;
+        }
+        const std::size_t outer_depth = locals_.depth();
+        locals_.push();
+        define_staged(statement.iterator->name, std::move(*iterator),
+                      statement.iterator->range);
+        loops_.push_back({});
+        Flow flow = instantiate_sequence(statement.body, path.block);
+        loops_.pop_back();
+        trim_scopes(flow, outer_depth);
+        exits.next.insert(exits.next.end(),
+                          std::make_move_iterator(flow.breaks.begin()),
+                          std::make_move_iterator(flow.breaks.end()));
+        following.insert(following.end(),
+                         std::make_move_iterator(flow.next.begin()),
+                         std::make_move_iterator(flow.next.end()));
+        following.insert(following.end(),
+                         std::make_move_iterator(flow.continues.begin()),
+                         std::make_move_iterator(flow.continues.end()));
+      }
+      active = std::move(following);
+      if (active.empty()) {
+        break;
+      }
+    }
+    exits.next.insert(exits.next.end(),
+                      std::make_move_iterator(active.begin()),
+                      std::make_move_iterator(active.end()));
+    return exits;
+  }
+
   Flow instantiate_return(
       std::span<const detail::ExpressionSyntax> expressions,
       detail::SyntaxRange range, Block block) {
@@ -2391,6 +2551,9 @@ private:
     }
     if (statement.kind == detail::StatementSyntax::Kind::While) {
       return instantiate_while(statement, block);
+    }
+    if (statement.kind == detail::StatementSyntax::Kind::For) {
+      return instantiate_for(statement, block);
     }
     using Kind = Module::Expression::Kind;
     const Module::Expression& expression = statement.expression.value;
@@ -3095,6 +3258,13 @@ bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics) {
       }
       if (statement.kind != StatementSyntax::Kind::Expression) {
         auto nested = names;
+        if (statement.kind == StatementSyntax::Kind::For) {
+          if (!statement.iterator) {
+            report("for statement has no iterator", statement.range);
+          } else {
+            nested.insert(statement.iterator->name);
+          }
+        }
         self(self, statement.body, nested);
         if (statement.kind == StatementSyntax::Kind::If) {
           nested = names;
