@@ -47,7 +47,7 @@ public:
   }
   bool is_function_argument() const;
   bool is_block_argument() const;
-  std::optional<Module::FunctionDecl> referenced_function() const;
+  std::optional<Module::Function> referenced_function() const;
   std::optional<Instruction> defining_instruction() const;
   bool operator==(const Value&) const;
 
@@ -70,7 +70,7 @@ private:
 class Instruction {
 public:
   bool valid() const;
-  Module::FunctionDecl callee() const;
+  Module::Function callee() const;
   Block parent() const;
   std::vector<Value> arguments() const;
   std::vector<Value> results() const;
@@ -164,16 +164,16 @@ public:
     Edit& operator=(const Edit&) = delete;
 
     Value argument(Type type);
-    Value reference(Module::FunctionDecl function, Type type);
+    Value reference(Module::Function function, Type type);
     Block block(std::vector<Type> argument_types = {});
     // Straight-line convenience: append to the entry Block.
-    Instruction append(Module::FunctionDecl schema,
+    Instruction append(Module::Function schema,
                        std::vector<Value> arguments = {},
                        std::vector<Type> result_types = {});
-    Instruction append(Block block, Module::FunctionDecl schema,
+    Instruction append(Block block, Module::Function schema,
                        std::vector<Value> arguments = {},
                        std::vector<Type> result_types = {});
-    Instruction insert(Instruction before, Module::FunctionDecl schema,
+    Instruction insert(Instruction before, Module::Function schema,
                        std::vector<Value> arguments = {},
                        std::vector<Type> result_types = {});
 
@@ -183,7 +183,7 @@ public:
                 std::vector<Value> true_arguments, Block false_target,
                 std::vector<Value> false_arguments);
     void replace(Value from, Value to);
-    Instruction replace(Instruction instruction, Module::FunctionDecl schema);
+    Instruction replace(Instruction instruction, Module::Function schema);
     void erase(Instruction instruction);
 
     bool commit(Diagnostics& diagnostics);
@@ -191,7 +191,7 @@ public:
   private:
     explicit Edit(std::shared_ptr<detail::FunctionIdentity> function);
     Instruction add(Block block, std::optional<Instruction> before,
-                    Module::FunctionDecl schema, std::vector<Value> arguments,
+                    Module::Function schema, std::vector<Value> arguments,
                     std::vector<Type> result_types);
     std::unique_ptr<detail::FunctionEditState> state_;
     friend class Function;
@@ -205,7 +205,7 @@ public:
   Function& operator=(const Function&) = delete;
 
   std::vector<Value> arguments() const;
-  std::optional<Module::FunctionDecl> declaration() const;
+  std::optional<Module::Function> declaration() const;
   std::vector<Type> result_types() const;
   Block entry() const;
   std::vector<Block> blocks() const;

@@ -219,7 +219,7 @@ std::string_view resolve_prefix(const Module& module, std::string_view prefix);
 template <typename Modules>
 std::optional<Module::TypeDecl>
 field_type_declaration(const Modules& modules,
-                       const Module::FunctionDecl& function,
+                       const Module::Function& function,
                        const Module::ParameterDecl& field) {
   if (field.domain.kind != Module::Expression::Kind::Reference ||
       detail::kernel_domain(field.domain)) {
@@ -1076,7 +1076,7 @@ bool Compiler::link() {
       }
     }
 
-    for (const Module::FunctionDecl& function : module.functions()) {
+    for (const Module::Function& function : module.functions()) {
       const auto location = detail::ModuleAccess::declaration_source(
           module, Module::SymbolKind::Function, function.name());
       validate_interfaces(function.interfaces(), Module::SymbolKind::Function,
@@ -1090,7 +1090,7 @@ bool Compiler::link() {
       }
     }
 
-    for (const Module::FunctionDecl& function : module.functions()) {
+    for (const Module::Function& function : module.functions()) {
       if (detail::ModuleAccess::expression(function) == nullptr ||
           !detail::ir_inputs(function).empty() ||
           !detail::ir_results(function).empty() ||
@@ -1107,7 +1107,7 @@ bool Compiler::link() {
           state_->diagnostics, location,
           "function '" + name + "." + std::string(function.name()) + "'");
     }
-    for (const Module::FunctionDecl& declaration : module.functions()) {
+    for (const Module::Function& declaration : module.functions()) {
       if (detail::ir_inputs(declaration).empty() &&
           detail::ir_results(declaration).empty()) {
         continue;
@@ -1203,7 +1203,7 @@ bool Compiler::link() {
   visits.clear();
   stack.clear();
   const auto visit_function = [&](const auto& self,
-                                  const Module::FunctionDecl& function,
+                                  const Module::Function& function,
                                   std::optional<SourceRange> incoming) -> bool {
     const std::string identity(function.symbol().qualified_name());
     Visit& state = visits[identity];
@@ -1234,7 +1234,7 @@ bool Compiler::link() {
     bool valid = true;
     const auto walk = [&](const auto& walk_self,
                           const Module::Expression& expression) -> void {
-      std::vector<Module::FunctionDecl> targets;
+      std::vector<Module::Function> targets;
       if (expression.kind == Module::Expression::Kind::Call &&
           owner != state_->modules.end()) {
         targets = detail::visible_functions(*this, owner->second.name(),
@@ -1245,15 +1245,15 @@ bool Compiler::link() {
                   expression.kind == Module::Expression::Kind::Postfix)) {
         const auto fixity =
             expression.kind == Module::Expression::Kind::Prefix
-                ? Module::FunctionDecl::Fixity::Prefix
+                ? Module::Function::Fixity::Prefix
             : expression.kind == Module::Expression::Kind::Postfix
-                ? Module::FunctionDecl::Fixity::Postfix
-                : Module::FunctionDecl::Fixity::Infix;
+                ? Module::Function::Fixity::Postfix
+                : Module::Function::Fixity::Infix;
         targets = detail::visible_operators(*this, owner->second.name(),
                                             expression.text, fixity);
       }
       if (targets.size() == 1U &&
-          targets.front().form() == Module::FunctionDecl::Form::Body &&
+          targets.front().form() == Module::Function::Form::Body &&
           !self(self, targets.front(), location)) {
         valid = false;
       }
@@ -1271,7 +1271,7 @@ bool Compiler::link() {
 
   for (const auto& [name, module] : state_->modules) {
     static_cast<void>(name);
-    for (const Module::FunctionDecl& function : module.functions()) {
+    for (const Module::Function& function : module.functions()) {
       if (!visit_function(visit_function, function, std::nullopt)) {
         return false;
       }
@@ -1660,12 +1660,12 @@ std::optional<ir::Function> Compiler::function() {
 }
 
 std::optional<ir::Function>
-Compiler::function(Module::FunctionDecl declaration) {
+Compiler::function(Module::Function declaration) {
   return function(std::move(declaration), {});
 }
 
 std::optional<ir::Function>
-Compiler::function(Module::FunctionDecl declaration,
+Compiler::function(Module::Function declaration,
                    std::vector<ir::Value> known_arguments) {
   return function(declaration.symbol(), std::move(known_arguments));
 }
@@ -1732,9 +1732,9 @@ Compiler::function(Module::Symbol symbol,
   const auto overloads = owner->second.overloads(symbol.local_name());
   const auto function = std::find_if(
       overloads.begin(), overloads.end(),
-      [&](const Module::FunctionDecl& candidate) {
+      [&](const Module::Function& candidate) {
         return candidate.symbol() == symbol &&
-               candidate.form() == Module::FunctionDecl::Form::Body;
+               candidate.form() == Module::Function::Form::Body;
       });
   const auto definition =
       function == overloads.end()
@@ -1770,7 +1770,7 @@ bool Compiler::conforms(const Module::AttributeDecl& declaration,
                                Module::SymbolKind::Attribute);
 }
 
-bool Compiler::conforms(const Module::FunctionDecl& declaration,
+bool Compiler::conforms(const Module::Function& declaration,
                         const Module::InterfaceDecl& interface) const {
   return state_->linked &&
          conforms_to_interface(state_->modules, declaration.symbol(),
@@ -1827,7 +1827,7 @@ void Compiler::bind_method(Module::AttributeDecl declaration,
       "attribute");
 }
 
-void Compiler::bind_method(Module::FunctionDecl declaration,
+void Compiler::bind_method(Module::Function declaration,
                            Module::InterfaceDecl::MethodDecl method,
                            MethodFunction<ir::Instruction> function) {
   bind_interface_method(
@@ -1911,7 +1911,7 @@ void Compiler::bind_verifier(Module::AttributeDecl schema,
   }
 }
 
-void Compiler::bind_verifier(Module::FunctionDecl schema,
+void Compiler::bind_verifier(Module::Function schema,
                              VerifierFunction<ir::Instruction> verifier) {
   const Module::Symbol symbol = schema.symbol();
   const auto owner = state_->modules.find(symbol.module_name());
@@ -2000,7 +2000,7 @@ bool Compiler::bind_representation(Module::TypeDecl schema,
   return true;
 }
 
-bool Compiler::accepts_host_type(const Module::FunctionDecl& function,
+bool Compiler::accepts_host_type(const Module::Function& function,
                                  const Module::ParameterDecl& field,
                                  std::string_view type) const {
   if (const auto domain = detail::cpp_value_domain(type)) {
@@ -2052,7 +2052,7 @@ bool Compiler::project_host_value(detail::ExecutionValue& value) {
 }
 
 bool Compiler::check_host_values(
-    const Module::FunctionDecl& function,
+    const Module::Function& function,
     std::span<const detail::ExecutionValue> arguments,
     std::span<const detail::ExecutionValue> results) {
   const bool has_host_input =
@@ -2106,7 +2106,7 @@ bool Compiler::check_host_values(
 }
 
 bool Compiler::check_binding_signature(
-    const Module::FunctionDecl& schema,
+    const Module::Function& schema,
     std::span<const std::string_view> inputs,
     std::span<const std::string_view> results) {
   const bool input_match =
@@ -2130,7 +2130,7 @@ bool Compiler::check_binding_signature(
   return true;
 }
 
-void Compiler::bind_native(Module::FunctionDecl schema, NativeFunction function,
+void Compiler::bind_native(Module::Function schema, NativeFunction function,
                            HostEvaluation evaluation) {
   const Module::Symbol symbol = schema.symbol();
   const auto owner = state_->modules.find(symbol.module_name());
@@ -2142,7 +2142,7 @@ void Compiler::bind_native(Module::FunctionDecl schema, NativeFunction function,
                                "' outside this compiler");
     return;
   }
-  if (schema.form() != Module::FunctionDecl::Form::External) {
+  if (schema.form() != Module::Function::Form::External) {
     state_->diagnostics.report("text-defined compiler function '" +
                                symbol.qualified_name() +
                                "' cannot receive a C++ binding");
@@ -2185,7 +2185,7 @@ void Compiler::bind_prelude_primitives() {
   if (found == state_->modules.end()) {
     return;
   }
-  for (const Module::FunctionDecl& function : found->second.functions()) {
+  for (const Module::Function& function : found->second.functions()) {
     if (!detail::is_prelude_primitive(function)) {
       continue;
     }
@@ -2227,9 +2227,9 @@ void Compiler::bind_prelude_primitives() {
   }
 }
 
-bool Compiler::can_evaluate_binding(const Module::FunctionDecl& function,
+bool Compiler::can_evaluate_binding(const Module::Function& function,
                                     bool under_residual_control) const {
-  if (function.form() == Module::FunctionDecl::Form::Body) {
+  if (function.form() == Module::Function::Form::Body) {
     return true;
   }
   const auto binding = state_->bindings.find(function.symbol().stable_name());
@@ -2239,7 +2239,7 @@ bool Compiler::can_evaluate_binding(const Module::FunctionDecl& function,
 }
 
 std::optional<detail::ParameterValue>
-Compiler::evaluate_binding(Module::FunctionDecl function,
+Compiler::evaluate_binding(Module::Function function,
                            std::span<const detail::ParameterValue> arguments,
                            bool under_residual_control) {
   if (!detail::ir_inputs(function).empty() ||
@@ -2252,7 +2252,7 @@ Compiler::evaluate_binding(Module::FunctionDecl function,
     return std::nullopt;
   }
   std::optional<std::string> cache_key;
-  if (function.form() == Module::FunctionDecl::Form::External) {
+  if (function.form() == Module::Function::Form::External) {
     const auto binding = state_->bindings.find(function.symbol().stable_name());
     if (binding != state_->bindings.end() &&
         binding->second.evaluation == HostEvaluation::Hermetic) {
@@ -2463,7 +2463,7 @@ Compiler::lookup_method(Module::AttributeDecl declaration,
 }
 
 std::optional<Module::InterfaceDecl::MethodDecl>
-Compiler::lookup_method(Module::FunctionDecl declaration,
+Compiler::lookup_method(Module::Function declaration,
                         std::string_view reference) {
   const auto symbol = declaration.symbol();
   const auto owner = state_->modules.find(symbol.module_name());
@@ -2503,7 +2503,7 @@ bool Compiler::verify(const ir::Function& function) {
   bool valid = detail::FunctionAccess::verify_contracts(function, *this,
                                                         state_->diagnostics);
   for (const ir::Instruction& instruction : function.instructions()) {
-    const Module::FunctionDecl schema = instruction.callee();
+    const Module::Function schema = instruction.callee();
     const Module::Symbol symbol = schema.symbol();
     const auto location = detail::FunctionAccess::location(instruction);
     const auto verifier =
@@ -2530,7 +2530,7 @@ bool Compiler::verify(const ir::Function& function) {
   return valid;
 }
 
-bool Compiler::check_run_signature(const Module::FunctionDecl& schema,
+bool Compiler::check_run_signature(const Module::Function& schema,
                                    std::span<const std::string_view> inputs,
                                    std::span<const std::string_view> results) {
   if (matches_run_signature(schema, inputs, results)) {
@@ -2543,7 +2543,7 @@ bool Compiler::check_run_signature(const Module::FunctionDecl& schema,
 }
 
 bool Compiler::matches_run_signature(
-    const Module::FunctionDecl& schema,
+    const Module::Function& schema,
     std::span<const std::string_view> inputs,
     std::span<const std::string_view> results) const {
   if (!state_->linked) {
@@ -2571,7 +2571,7 @@ bool Compiler::matches_run_signature(
   return input_match && result_match;
 }
 
-std::optional<Module::FunctionDecl>
+std::optional<Module::Function>
 Compiler::find_function(std::string_view name) {
   if (!state_->linked) {
     state_->diagnostics.report(
@@ -2599,7 +2599,7 @@ Compiler::find_function(std::string_view name) {
 }
 
 std::optional<detail::ExecutionValues>
-Compiler::execute(Module::FunctionDecl declaration,
+Compiler::execute(Module::Function declaration,
                   std::vector<detail::ExecutionValue> arguments,
                   bool under_residual_control) {
   if (!state_->linked) {
@@ -2647,7 +2647,7 @@ Compiler::execute(Module::FunctionDecl declaration,
   std::size_t steps = 0;
   std::size_t depth = 0;
   const auto execute = [&](const auto& self,
-                           const Module::FunctionDecl& current,
+                           const Module::Function& current,
                            std::vector<detail::ExecutionValue> values)
       -> std::optional<detail::ExecutionValues> {
     if (depth >= state_->evaluation_limits.depth) {
@@ -2696,7 +2696,7 @@ Compiler::execute(Module::FunctionDecl declaration,
       return std::nullopt;
     }
     switch (current.form()) {
-    case Module::FunctionDecl::Form::External: {
+    case Module::Function::Form::External: {
       const auto binding =
           state_->bindings.find(current.symbol().stable_name());
       if (binding == state_->bindings.end()) {
@@ -2764,7 +2764,7 @@ Compiler::execute(Module::FunctionDecl declaration,
       }
       return execution;
     }
-    case Module::FunctionDecl::Form::Body: {
+    case Module::Function::Form::Body: {
       const auto owner = state_->modules.find(current.symbol().module_name());
       const auto body =
           owner == state_->modules.end()
@@ -2777,7 +2777,7 @@ Compiler::execute(Module::FunctionDecl declaration,
         return std::nullopt;
       }
       const detail::ExecuteFunction invoke =
-          [&](Module::FunctionDecl function,
+          [&](Module::Function function,
               std::vector<detail::ExecutionValue> arguments) {
             return self(self, function, std::move(arguments));
           };
@@ -2840,7 +2840,7 @@ Compiler::execute(Module::FunctionDecl declaration,
   return result;
 }
 
-bool Compiler::run(ir::Function& function, Module::FunctionDecl transform) {
+bool Compiler::run(ir::Function& function, Module::Function transform) {
   const Module::Symbol symbol = transform.symbol();
   const bool function_transform =
       transform.inputs().size() == 1U &&

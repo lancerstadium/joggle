@@ -503,8 +503,8 @@ public:
     return make(schema, std::span<const detail::ParameterValue>(values));
   }
   std::optional<ir::Function> function();
-  std::optional<ir::Function> function(Module::FunctionDecl declaration);
-  std::optional<ir::Function> function(Module::FunctionDecl declaration,
+  std::optional<ir::Function> function(Module::Function declaration);
+  std::optional<ir::Function> function(Module::Function declaration,
                                        std::vector<ir::Value> known_arguments);
   std::optional<ir::Function> function(Module::Symbol symbol);
   std::optional<ir::Function> function(Module::Symbol symbol,
@@ -517,7 +517,7 @@ public:
                 const Module::InterfaceDecl& interface) const;
   bool conforms(const Module::AttributeDecl& declaration,
                 const Module::InterfaceDecl& interface) const;
-  bool conforms(const Module::FunctionDecl& declaration,
+  bool conforms(const Module::Function& declaration,
                 const Module::InterfaceDecl& interface) const;
 
   template <typename Result, typename... Arguments, typename Function>
@@ -529,7 +529,7 @@ public:
   }
 
   template <typename Result, typename... Arguments, typename Function>
-  void bind(Module::FunctionDecl declaration,
+  void bind(Module::Function declaration,
             Module::InterfaceDecl::MethodDecl method, Function&& function) {
     bind_typed_method<ir::Instruction, Result, Arguments...>(
         std::move(declaration), std::move(method),
@@ -544,7 +544,7 @@ public:
   }
 
   template <typename Function>
-  void bind(Module::FunctionDecl declaration,
+  void bind(Module::Function declaration,
             Module::InterfaceDecl::MethodDecl method, Function&& function) {
     bind_inferred<ir::Instruction>(std::move(declaration), std::move(method),
                                    std::forward<Function>(function));
@@ -560,7 +560,7 @@ public:
   }
 
   template <typename Function>
-  void bind(Module::FunctionDecl declaration, std::string_view method,
+  void bind(Module::Function declaration, std::string_view method,
             Function&& function) {
     const auto member = lookup_method(declaration, method);
     if (member) {
@@ -612,7 +612,7 @@ public:
   }
 
   template <typename Function>
-  void bind(Module::FunctionDecl schema, Function&& function,
+  void bind(Module::Function schema, Function&& function,
             HostEvaluation evaluation = HostEvaluation::Guarded) {
     using Callable = std::decay_t<Function>;
     using Traits = detail::CallableTraits<Callable>;
@@ -710,11 +710,11 @@ public:
   }
 
   bool verify(const ir::Function& function);
-  bool run(ir::Function& function, Module::FunctionDecl transform);
+  bool run(ir::Function& function, Module::Function transform);
   bool run(ir::Function& function, std::string_view transform);
 
   template <typename Result = void, typename... Arguments>
-  bool invocable(const Module::FunctionDecl& function) const {
+  bool invocable(const Module::Function& function) const {
     const std::array<std::string_view, sizeof...(Arguments)> inputs{
         detail::host_type_name<Arguments>()...};
     return matches_run_signature(function, inputs,
@@ -723,7 +723,7 @@ public:
 
   template <typename Result = void, typename... Arguments>
   std::conditional_t<std::is_void_v<Result>, bool, std::optional<Result>>
-  run(Module::FunctionDecl function, Arguments&&... arguments) {
+  run(Module::Function function, Arguments&&... arguments) {
     const std::array<std::string_view, sizeof...(Arguments)> types{
         detail::host_type_name<Arguments>()...};
     const auto result_types = detail::execution_result_types<Result>();
@@ -774,48 +774,48 @@ private:
   void bind_method(Module::AttributeDecl declaration,
                    Module::InterfaceDecl::MethodDecl method,
                    MethodFunction<Attribute> function);
-  void bind_method(Module::FunctionDecl declaration,
+  void bind_method(Module::Function declaration,
                    Module::InterfaceDecl::MethodDecl method,
                    MethodFunction<ir::Instruction> function);
   void bind_verifier(Module::TypeDecl schema, VerifierFunction<Type> verifier);
   void bind_verifier(Module::AttributeDecl schema,
                      VerifierFunction<Attribute> verifier);
-  void bind_verifier(Module::FunctionDecl schema,
+  void bind_verifier(Module::Function schema,
                      VerifierFunction<ir::Instruction> verifier);
   bool bind_representation(Module::TypeDecl schema, std::string_view type);
   bool bind_representation(Module::TypeDecl schema, std::string_view type,
                            RepresentationProjector projector);
   bool project_host_value(detail::ExecutionValue& value);
-  bool check_host_values(const Module::FunctionDecl& function,
+  bool check_host_values(const Module::Function& function,
                          std::span<const detail::ExecutionValue> arguments,
                          std::span<const detail::ExecutionValue> results = {});
-  bool accepts_host_type(const Module::FunctionDecl& function,
+  bool accepts_host_type(const Module::Function& function,
                          const Module::ParameterDecl& field,
                          std::string_view type) const;
-  void bind_native(Module::FunctionDecl schema, NativeFunction function,
+  void bind_native(Module::Function schema, NativeFunction function,
                    HostEvaluation evaluation);
   void bind_prelude_module();
   void bind_prelude_primitives();
-  bool check_binding_signature(const Module::FunctionDecl& schema,
+  bool check_binding_signature(const Module::Function& schema,
                                std::span<const std::string_view> inputs,
                                std::span<const std::string_view> results);
-  bool check_run_signature(const Module::FunctionDecl& schema,
+  bool check_run_signature(const Module::Function& schema,
                            std::span<const std::string_view> inputs,
                            std::span<const std::string_view> results);
-  bool matches_run_signature(const Module::FunctionDecl& schema,
+  bool matches_run_signature(const Module::Function& schema,
                              std::span<const std::string_view> inputs,
                              std::span<const std::string_view> results) const;
   std::optional<detail::ExecutionValues>
-  execute(Module::FunctionDecl declaration,
+  execute(Module::Function declaration,
           std::vector<detail::ExecutionValue> arguments,
           bool under_residual_control = false);
   std::optional<detail::ParameterValue>
-  evaluate_binding(Module::FunctionDecl function,
+  evaluate_binding(Module::Function function,
                    std::span<const detail::ParameterValue> arguments,
                    bool under_residual_control);
-  bool can_evaluate_binding(const Module::FunctionDecl& function,
+  bool can_evaluate_binding(const Module::Function& function,
                             bool under_residual_control) const;
-  std::optional<Module::FunctionDecl> find_function(std::string_view name);
+  std::optional<Module::Function> find_function(std::string_view name);
   std::optional<detail::ParameterValue>
   call(const Attribute& subject, Module::InterfaceDecl::MethodDecl method,
        std::span<const detail::ParameterValue> parameters);
@@ -922,7 +922,7 @@ private:
   std::optional<Module::InterfaceDecl::MethodDecl>
   lookup_method(Module::AttributeDecl declaration, std::string_view reference);
   std::optional<Module::InterfaceDecl::MethodDecl>
-  lookup_method(Module::FunctionDecl declaration, std::string_view reference);
+  lookup_method(Module::Function declaration, std::string_view reference);
   std::optional<Module::InterfaceDecl::MethodDecl>
   lookup_method(const Module& module, std::string_view reference,
                 Module::SymbolKind subject);

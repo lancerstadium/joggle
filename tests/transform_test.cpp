@@ -62,7 +62,7 @@ module mapping@1.0.0 {
   const auto no_op = joggle::ir::map_calls(
       *first,
       [](const joggle::ir::Instruction&)
-          -> std::optional<joggle::Module::FunctionDecl> {
+          -> std::optional<joggle::Module::Function> {
         return std::nullopt;
       },
       no_op_diagnostics);
@@ -113,7 +113,7 @@ module mapping@1.0.0 {
   const auto module_no_op = joggle::ir::map_calls(
       module,
       [](const joggle::ir::Instruction&)
-          -> std::optional<joggle::Module::FunctionDecl> {
+          -> std::optional<joggle::Module::Function> {
         return std::nullopt;
       },
       module_no_op_diagnostics);
@@ -130,7 +130,7 @@ module mapping@1.0.0 {
   const auto module_failure = joggle::ir::map_calls(
       module,
       [&](const joggle::ir::Instruction& instruction)
-          -> std::optional<joggle::Module::FunctionDecl> {
+          -> std::optional<joggle::Module::Function> {
         if (instruction.callee() == *keep) {
           return *converted;
         }

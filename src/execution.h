@@ -79,17 +79,17 @@ std::optional<ParameterValue>
 parameter_value(const ExecutionValue& value);
 
 using ExecuteFunction = std::function<std::optional<ExecutionValues>(
-    Module::FunctionDecl, std::vector<ExecutionValue>)>;
+    Module::Function, std::vector<ExecutionValue>)>;
 
 std::optional<ExecutionValues> execute_body(
-    Compiler& compiler, const Module::FunctionDecl& function,
+    Compiler& compiler, const Module::Function& function,
     const FunctionBody& body, std::span<const ExecutionValue> arguments,
     Compiler::EvaluationLimits limits, std::size_t& steps,
     bool under_residual_control, Diagnostics& diagnostics,
     const ExecuteFunction& execute);
 
 bool verify_body_calls(Compiler& compiler,
-                       const Module::FunctionDecl& function,
+                       const Module::Function& function,
                        const FunctionBody& body, Diagnostics& diagnostics);
 
 }  // namespace joggle::detail

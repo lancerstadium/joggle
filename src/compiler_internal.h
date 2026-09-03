@@ -25,7 +25,7 @@ struct CompilerAccess {
   }
 
   static std::optional<ParameterValue>
-  evaluate(Compiler& compiler, Module::FunctionDecl function,
+  evaluate(Compiler& compiler, Module::Function function,
            std::span<const ParameterValue> arguments,
            bool under_residual_control) {
     return compiler.evaluate_binding(std::move(function), arguments,
@@ -33,13 +33,13 @@ struct CompilerAccess {
   }
 
   static bool can_evaluate(const Compiler& compiler,
-                           const Module::FunctionDecl& function,
+                           const Module::Function& function,
                            bool under_residual_control) {
     return compiler.can_evaluate_binding(function, under_residual_control);
   }
 
   static bool accepts(Compiler& compiler,
-                      const Module::FunctionDecl& function,
+                      const Module::Function& function,
                       const Module::ParameterDecl& parameter,
                       std::string_view cpp_type) {
     return compiler.accepts_host_type(function, parameter, cpp_type);

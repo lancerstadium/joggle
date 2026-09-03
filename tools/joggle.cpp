@@ -327,8 +327,8 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
     return false;
   }
   for (const joggle::Module& loaded : compiler.modules()) {
-    for (const joggle::Module::FunctionDecl& function : loaded.functions()) {
-      if (function.form() == joggle::Module::FunctionDecl::Form::Body &&
+    for (const joggle::Module::Function& function : loaded.functions()) {
+      if (function.form() == joggle::Module::Function::Form::Body &&
           joggle::detail::ModuleAccess::expression(function) == nullptr &&
           (!joggle::detail::ir_inputs(function).empty() ||
            !joggle::detail::ir_results(function).empty()) &&
@@ -344,7 +344,7 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
 enum class TransformKind { Function, Module };
 
 struct Transform {
-  joggle::Module::FunctionDecl declaration;
+  joggle::Module::Function declaration;
   TransformKind kind;
 };
 
@@ -365,7 +365,7 @@ std::optional<Transform> transform(joggle::Compiler& compiler,
     return std::nullopt;
   }
   std::vector<Transform> matches;
-  for (const joggle::Module::FunctionDecl& function : module->functions()) {
+  for (const joggle::Module::Function& function : module->functions()) {
     if (function.name() != function_name || function.inputs().size() != 1U ||
         function.results().size() != 1U) {
       continue;

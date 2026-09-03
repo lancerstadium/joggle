@@ -17,7 +17,7 @@ namespace joggle::ir {
 
 namespace transform_detail {
 
-using CallReplacement = std::pair<std::size_t, joggle::Module::FunctionDecl>;
+using CallReplacement = std::pair<std::size_t, joggle::Module::Function>;
 
 struct FunctionCallPlan {
   std::string name;
@@ -37,7 +37,7 @@ plan_calls(const Function& function, Mapper& mapper, Diagnostics& diagnostics) {
     const auto instructions = function.instructions();
     for (std::size_t index = 0; index < instructions.size(); ++index) {
       const Instruction& instruction = instructions[index];
-      std::optional<joggle::Module::FunctionDecl> replacement =
+      std::optional<joggle::Module::Function> replacement =
           std::invoke(mapper, instruction);
       if (replacement && *replacement != instruction.callee()) {
         replacements.emplace_back(index, std::move(*replacement));
@@ -95,7 +95,7 @@ template <typename Mapper>
 std::optional<ModuleCallPlan> plan_calls(const Module& module, Mapper& mapper,
                                          Diagnostics& diagnostics) {
   ModuleCallPlan plan;
-  for (const joggle::Module::FunctionDecl& member : module.functions()) {
+  for (const joggle::Module::Function& member : module.functions()) {
     const std::string name(member.name());
     const Function* function = module.body(name);
     if (function == nullptr) {
@@ -140,9 +140,9 @@ std::optional<std::size_t> map_calls(Function& function, Mapper&& mapper,
   using Mapped = std::invoke_result_t<Mapper&, const Instruction&>;
   static_assert(
       std::is_convertible_v<Mapped,
-                            std::optional<joggle::Module::FunctionDecl>>,
+                            std::optional<joggle::Module::Function>>,
       "a call mapper must return "
-      "std::optional<joggle::Module::FunctionDecl>");
+      "std::optional<joggle::Module::Function>");
 
   auto replacements =
       transform_detail::plan_calls(function, mapper, diagnostics);
@@ -161,9 +161,9 @@ std::optional<std::size_t> map_calls(Module& module, Mapper&& mapper,
   using Mapped = std::invoke_result_t<Mapper&, const Instruction&>;
   static_assert(
       std::is_convertible_v<Mapped,
-                            std::optional<joggle::Module::FunctionDecl>>,
+                            std::optional<joggle::Module::Function>>,
       "a call mapper must return "
-      "std::optional<joggle::Module::FunctionDecl>");
+      "std::optional<joggle::Module::Function>");
 
   auto plan = transform_detail::plan_calls(static_cast<const Module&>(module),
                                            mapper, diagnostics);
@@ -183,30 +183,30 @@ std::optional<std::size_t> map_calls(Module& module, Mapper&& mapper,
 }
 
 inline std::optional<std::size_t>
-replace_calls(Function& function, const joggle::Module::FunctionDecl& from,
-              const joggle::Module::FunctionDecl& to,
+replace_calls(Function& function, const joggle::Module::Function& from,
+              const joggle::Module::Function& to,
               Diagnostics& diagnostics) {
   return map_calls(
       function,
       [&](const Instruction& instruction)
-          -> std::optional<joggle::Module::FunctionDecl> {
+          -> std::optional<joggle::Module::Function> {
         return instruction.callee() == from
-                   ? std::optional<joggle::Module::FunctionDecl>{to}
+                   ? std::optional<joggle::Module::Function>{to}
                    : std::nullopt;
       },
       diagnostics);
 }
 
 inline std::optional<std::size_t>
-replace_calls(Module& module, const joggle::Module::FunctionDecl& from,
-              const joggle::Module::FunctionDecl& to,
+replace_calls(Module& module, const joggle::Module::Function& from,
+              const joggle::Module::Function& to,
               Diagnostics& diagnostics) {
   return map_calls(
       module,
       [&](const Instruction& instruction)
-          -> std::optional<joggle::Module::FunctionDecl> {
+          -> std::optional<joggle::Module::Function> {
         return instruction.callee() == from
-                   ? std::optional<joggle::Module::FunctionDecl>{to}
+                   ? std::optional<joggle::Module::Function>{to}
                    : std::nullopt;
       },
       diagnostics);

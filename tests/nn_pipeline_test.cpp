@@ -29,7 +29,7 @@ std::string decode(const joggle::Bytes& bytes) {
 
 std::size_t calls(const joggle::Module& module, std::string_view symbol) {
   std::size_t count = 0;
-  for (const joggle::Module::FunctionDecl& member : module.functions()) {
+  for (const joggle::Module::Function& member : module.functions()) {
     const joggle::ir::Function* function = module.body(member.name());
     if (function == nullptr) {
       continue;

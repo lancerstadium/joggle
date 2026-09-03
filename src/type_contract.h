@@ -32,7 +32,7 @@ std::optional<std::vector<ParameterValue>> resolve_derived_parameters(
     std::span<const ParameterValue> parameters, Diagnostics& diagnostics);
 
 std::optional<CallTypes> resolve_call_types(
-    Compiler& compiler, const Module::FunctionDecl& schema,
+    Compiler& compiler, const Module::Function& schema,
     std::span<const Type> arguments,
     std::span<const std::optional<ParameterValue>> known_arguments,
     std::span<const std::optional<Type>> expected_results,
@@ -40,7 +40,7 @@ std::optional<CallTypes> resolve_call_types(
     std::optional<SourceRange> source = std::nullopt);
 
 std::optional<CallTypes> resolve_partial_call_types(
-    Compiler& compiler, const Module::FunctionDecl& schema,
+    Compiler& compiler, const Module::Function& schema,
     std::span<const std::optional<Type>> arguments,
     std::span<const std::optional<ParameterValue>> known_arguments,
     std::span<const std::optional<Type>> expected_results,
@@ -49,7 +49,7 @@ std::optional<CallTypes> resolve_partial_call_types(
     bool allow_host_evaluation = true);
 
 std::optional<CallTypes> resolve_call_types(
-    std::span<const Module> modules, const Module::FunctionDecl& schema,
+    std::span<const Module> modules, const Module::Function& schema,
     std::span<const Type> arguments,
     std::span<const std::optional<ParameterValue>> known_arguments,
     std::span<const std::optional<Type>> expected_results,
@@ -57,7 +57,7 @@ std::optional<CallTypes> resolve_call_types(
     std::optional<SourceRange> source = std::nullopt);
 
 std::optional<std::vector<Type>>
-infer_call_types(Compiler& compiler, const Module::FunctionDecl& schema,
+infer_call_types(Compiler& compiler, const Module::Function& schema,
                  std::span<const Type> arguments,
                  std::span<const std::optional<ParameterValue>> known_arguments,
                  std::span<const std::optional<Type>> expected_results,
@@ -65,7 +65,7 @@ infer_call_types(Compiler& compiler, const Module::FunctionDecl& schema,
                  std::optional<SourceRange> source = std::nullopt);
 
 std::optional<std::vector<Type>> infer_call_types(
-    std::span<const Module> modules, const Module::FunctionDecl& schema,
+    std::span<const Module> modules, const Module::Function& schema,
     std::span<const Type> arguments,
     std::span<const std::optional<ParameterValue>> known_arguments,
     std::span<const std::optional<Type>> expected_results,

@@ -27,7 +27,7 @@ callable_type(const Module::Expression& expression);
 Module::Expression parse_expression(
     Lexer& lexer, Token& current, Diagnostics& diagnostics,
     std::string_view source,
-    std::span<const Module::FunctionDecl::GenericDecl> variables = {},
+    std::span<const Module::Function::GenericDecl> variables = {},
     int minimum_precedence = 0);
 
 std::string format_expression(const Module::Expression& expression,

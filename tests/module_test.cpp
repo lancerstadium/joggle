@@ -98,7 +98,7 @@ int main() {
       align && align->inputs().size() == 2U && align->results().size() == 1U &&
           align->results().front().domain ==
               joggle::Module::Expression::reference("int") &&
-          align->form() == joggle::Module::FunctionDecl::Form::Body &&
+          align->form() == joggle::Module::Function::Form::Body &&
           align->symbol().kind() == joggle::Module::SymbolKind::Function,
       "pure function reflection");
   ok &= expect(
@@ -111,11 +111,11 @@ int main() {
           add->signature().find("value:") == std::string::npos &&
           add->operator_symbol() == std::string_view("+") &&
           add->operator_fixity() ==
-              joggle::Module::FunctionDecl::Fixity::Infix &&
+              joggle::Module::Function::Fixity::Infix &&
           add->interfaces().size() == 2U,
       "add signature");
   ok &= expect(canonicalize && canonicalize->form() ==
-                                   joggle::Module::FunctionDecl::Form::External,
+                                   joggle::Module::Function::Form::External,
                "external compiler functions use ordinary declarations");
   if (!ok || !integer) {
     return EXIT_FAILURE;

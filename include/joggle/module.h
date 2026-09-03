@@ -145,7 +145,7 @@ public:
     friend class InterfaceDecl;
     friend class TypeDecl;
     friend class AttributeDecl;
-    friend class FunctionDecl;
+    friend class Function;
   };
 
   class InterfaceDecl {
@@ -225,7 +225,7 @@ public:
     friend class Module;
   };
 
-  class FunctionDecl {
+  class Function {
   public:
     // A function is either declared by the environment or defined by one
     // body. Known evaluation and residualization are execution outcomes, not
@@ -251,10 +251,10 @@ public:
     Form form() const;
     std::string signature() const;
     Symbol symbol() const;
-    bool operator==(const FunctionDecl& other) const;
+    bool operator==(const Function& other) const;
 
   private:
-    FunctionDecl(std::shared_ptr<const Storage> storage, std::size_t index);
+    Function(std::shared_ptr<const Storage> storage, std::size_t index);
     std::shared_ptr<const Storage> storage_;
     std::size_t index_ = 0;
     friend class Module;
@@ -287,14 +287,14 @@ public:
   std::optional<InterfaceDecl> interface(std::string_view name) const;
   std::optional<TypeDecl> type(std::string_view name) const;
   std::optional<AttributeDecl> attribute(std::string_view name) const;
-  std::optional<FunctionDecl> function(std::string_view name) const;
-  std::vector<FunctionDecl> overloads(std::string_view name) const;
+  std::optional<Function> function(std::string_view name) const;
+  std::vector<Function> overloads(std::string_view name) const;
   std::optional<Symbol> symbol(SymbolKind kind, std::string_view name) const;
   std::vector<Symbol> members() const;
   std::vector<InterfaceDecl> interfaces() const;
   std::vector<TypeDecl> types() const;
   std::vector<AttributeDecl> attributes() const;
-  std::vector<FunctionDecl> functions() const;
+  std::vector<Function> functions() const;
 
   // A Function always occupies one Module member and has one canonical
   // signature. insert() adds a member whose body is already materialized as

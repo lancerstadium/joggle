@@ -95,7 +95,7 @@ module module_defs@1.0.0 {
   bool ok = true;
   ok &= expect(materialized_main &&
                    materialized_main->form() ==
-                       joggle::Module::FunctionDecl::Form::Body &&
+                       joggle::Module::Function::Form::Body &&
                    materialized_main->inputs().empty() &&
                    materialized_main->results().size() == 1U &&
                    module.functions().size() == 3U,

@@ -121,7 +121,7 @@ struct FunctionSyntax {
 std::optional<FunctionBody> parse_function_body(Lexer& lexer, Token& current,
                                                 Diagnostics& diagnostics,
                                                 std::string source,
-    std::span<const Module::FunctionDecl::GenericDecl> variables = {});
+    std::span<const Module::Function::GenericDecl> variables = {});
 bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics);
 std::string format_function_body(const FunctionBody& body,
                                  std::size_t indent = 0);
@@ -130,7 +130,7 @@ std::string format_function_syntax(const FunctionSyntax& function,
 FunctionSyntax materialized_function_syntax(const ir::Function& function,
                                             std::string_view name);
 std::optional<ir::Function>
-instantiate_function(Compiler& compiler, Module::FunctionDecl function,
+instantiate_function(Compiler& compiler, Module::Function function,
                      const FunctionBody& body, Diagnostics& diagnostics,
                      std::vector<ir::Value> known_arguments = {});
 

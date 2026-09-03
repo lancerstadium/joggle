@@ -29,7 +29,7 @@ std::string resolve_prefix(const Module& scope, std::string_view prefix) {
 
 std::optional<Module::Expression> immediate_domain(
     const Module::Expression& expression,
-    std::span<const Module::FunctionDecl::GenericDecl> generics,
+    std::span<const Module::Function::GenericDecl> generics,
     std::span<const Module::ParameterDecl> locals) {
   using Kind = Module::Expression::Kind;
   if (expression.kind == Kind::Variable) {
@@ -67,7 +67,7 @@ class ExpressionCheck {
 public:
   ExpressionCheck(
       const Compiler& compiler, const Module& scope,
-      std::span<const Module::FunctionDecl::GenericDecl> generics,
+      std::span<const Module::Function::GenericDecl> generics,
       std::span<const Module::ParameterDecl> locals, Diagnostics& diagnostics,
       std::optional<SourceRange> source, std::string_view subject)
       : compiler_(compiler), scope_(scope), generics_(generics), locals_(locals),
@@ -86,7 +86,7 @@ private:
     diagnostics_.report("in " + subject_ + ": " + std::move(message), source_);
   }
 
-  const Module::FunctionDecl::GenericDecl*
+  const Module::Function::GenericDecl*
   generic(std::string_view name) const {
     const auto found = std::find_if(
         generics_.begin(), generics_.end(),
@@ -262,10 +262,10 @@ private:
     }
     const auto fixity =
         expression.kind == Kind::Prefix
-            ? Module::FunctionDecl::Fixity::Prefix
+            ? Module::Function::Fixity::Prefix
         : expression.kind == Kind::Postfix
-            ? Module::FunctionDecl::Fixity::Postfix
-            : Module::FunctionDecl::Fixity::Infix;
+            ? Module::Function::Fixity::Postfix
+            : Module::Function::Fixity::Infix;
     auto candidates = operator_candidates(compiler_, scope_.name(),
                                           expression.text, fixity, arity,
                                           expected);
@@ -392,7 +392,7 @@ private:
 
   const Compiler& compiler_;
   const Module& scope_;
-  std::span<const Module::FunctionDecl::GenericDecl> generics_;
+  std::span<const Module::Function::GenericDecl> generics_;
   std::span<const Module::ParameterDecl> locals_;
   Diagnostics& diagnostics_;
   std::optional<SourceRange> source_;
@@ -403,7 +403,7 @@ private:
 
 bool check_generic_constraints(
     const Compiler& compiler, const Module& scope,
-    std::span<const Module::FunctionDecl::GenericDecl> generics,
+    std::span<const Module::Function::GenericDecl> generics,
     Diagnostics& diagnostics, std::optional<SourceRange> source,
     std::string_view subject) {
   const std::size_t before = diagnostics.size();
@@ -443,7 +443,7 @@ bool check_generic_constraints(
 bool check_declaration_expression(
     const Compiler& compiler, const Module& scope,
     const Module::Expression& expression, const Module::Expression& expected,
-    std::span<const Module::FunctionDecl::GenericDecl> generics,
+    std::span<const Module::Function::GenericDecl> generics,
     std::span<const Module::ParameterDecl> locals, Diagnostics& diagnostics,
     std::optional<SourceRange> source, std::string_view subject) {
   return ExpressionCheck(compiler, scope, generics, locals, diagnostics,

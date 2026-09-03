@@ -20,7 +20,7 @@ public:
   ExpressionParser(
       Lexer& lexer, Token& current, Diagnostics& diagnostics,
       std::string_view source,
-      std::span<const Module::FunctionDecl::GenericDecl> variables)
+      std::span<const Module::Function::GenericDecl> variables)
       : lexer_(lexer), current_(current), diagnostics_(diagnostics),
         source_(source), variables_(variables) {}
 
@@ -360,7 +360,7 @@ private:
   Token& current_;
   Diagnostics& diagnostics_;
   std::string_view source_;
-  std::span<const Module::FunctionDecl::GenericDecl> variables_;
+  std::span<const Module::Function::GenericDecl> variables_;
 };
 
 }  // namespace
@@ -368,7 +368,7 @@ private:
 Module::Expression parse_expression(
     Lexer& lexer, Token& current, Diagnostics& diagnostics,
     std::string_view source,
-    std::span<const Module::FunctionDecl::GenericDecl> variables,
+    std::span<const Module::Function::GenericDecl> variables,
     int minimum_precedence) {
   return ExpressionParser(lexer, current, diagnostics, source, variables)
       .parse(minimum_precedence);

@@ -45,7 +45,7 @@ struct FunctionAccess {
   static bool verify_contracts(const Function& function, Diagnostics& diagnostics);
   static bool verify_contracts(const Function& function, Compiler& compiler,
                                Diagnostics& diagnostics);
-  static void declare(Function& function, Module::FunctionDecl declaration,
+  static void declare(Function& function, Module::Function declaration,
                       std::vector<Type> argument_types,
                       std::vector<Type> result_types);
   static bool commit(Function::Edit& edit, Compiler& compiler,

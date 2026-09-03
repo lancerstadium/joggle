@@ -24,7 +24,7 @@ class BodyEvaluator {
   };
 
 public:
-  BodyEvaluator(Compiler& compiler, const Module::FunctionDecl& function,
+  BodyEvaluator(Compiler& compiler, const Module::Function& function,
                 const FunctionBody& body,
                 std::span<const ExecutionValue> arguments,
                 Compiler::EvaluationLimits limits, std::size_t& steps,
@@ -263,7 +263,7 @@ private:
       const Module::Expression& expression, SyntaxRange range,
       std::size_t result_count,
       std::span<const Module::ParameterDecl> expected_results = {},
-      std::vector<Module::FunctionDecl> declarations = {}) {
+      std::vector<Module::Function> declarations = {}) {
     if (declarations.empty()) {
       declarations = visible_functions(
           compiler_, function_.symbol().module_name(), expression.text);
@@ -392,7 +392,7 @@ private:
   std::optional<StagedValue> call(
       const Module::Expression& expression, SyntaxRange range,
       const Module::ParameterDecl* expected,
-      std::vector<Module::FunctionDecl> declarations = {}) {
+      std::vector<Module::Function> declarations = {}) {
     const std::span<const Module::ParameterDecl> expected_results =
         expected == nullptr
             ? std::span<const Module::ParameterDecl>{}
@@ -484,10 +484,10 @@ private:
     if (operator_expression) {
       const auto fixity =
           expression.kind == Kind::Prefix
-              ? Module::FunctionDecl::Fixity::Prefix
+              ? Module::Function::Fixity::Prefix
           : expression.kind == Kind::Postfix
-              ? Module::FunctionDecl::Fixity::Postfix
-              : Module::FunctionDecl::Fixity::Infix;
+              ? Module::Function::Fixity::Postfix
+              : Module::Function::Fixity::Infix;
       auto inferred = expected == nullptr ? infer_operator_result(expression)
                                           : std::nullopt;
       if (expected == nullptr && inferred) {
@@ -500,7 +500,7 @@ private:
         declarations.erase(
             std::remove_if(
                 declarations.begin(), declarations.end(),
-                [&](const Module::FunctionDecl& declaration) {
+                [&](const Module::Function& declaration) {
                   const auto results = parameter_results(declaration);
                   return !ir_inputs(declaration).empty() ||
                          !ir_results(declaration).empty() ||
@@ -708,7 +708,7 @@ private:
   }
 
   Compiler& compiler_;
-  Module::FunctionDecl function_;
+  Module::Function function_;
   const FunctionBody& body_;
   Compiler::EvaluationLimits limits_;
   std::size_t& steps_;
@@ -721,7 +721,7 @@ private:
 }  // namespace
 
 std::optional<ExecutionValues> execute_body(
-    Compiler& compiler, const Module::FunctionDecl& function,
+    Compiler& compiler, const Module::Function& function,
     const FunctionBody& body, std::span<const ExecutionValue> arguments,
     Compiler::EvaluationLimits limits, std::size_t& steps,
     bool under_residual_control, Diagnostics& diagnostics,
@@ -739,7 +739,7 @@ std::optional<ExecutionValues> execute_body(
 }
 
 bool verify_body_calls(Compiler& compiler,
-                       const Module::FunctionDecl& function,
+                       const Module::Function& function,
                        const FunctionBody& body, Diagnostics& diagnostics) {
   const std::size_t before = diagnostics.size();
   const auto report = [&](std::string message, SyntaxRange range) {
@@ -768,10 +768,10 @@ bool verify_body_calls(Compiler& compiler,
                expression.kind == Kind::Postfix) {
       const auto fixity =
           expression.kind == Kind::Prefix
-              ? Module::FunctionDecl::Fixity::Prefix
+              ? Module::Function::Fixity::Prefix
           : expression.kind == Kind::Postfix
-              ? Module::FunctionDecl::Fixity::Postfix
-              : Module::FunctionDecl::Fixity::Infix;
+              ? Module::Function::Fixity::Postfix
+              : Module::Function::Fixity::Infix;
       const auto declarations = visible_operators(
           compiler, function.symbol().module_name(), expression.text, fixity);
       const bool shaped = std::any_of(

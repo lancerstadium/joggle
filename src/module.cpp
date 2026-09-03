@@ -708,7 +708,7 @@ private:
     const SourcePosition begin = current_.begin;
 
     std::optional<std::string> declared_operator;
-    std::optional<Module::FunctionDecl::Fixity> declared_fixity;
+    std::optional<Module::Function::Fixity> declared_fixity;
     expect_name("fn");
     auto function_name = name("a function name");
     auto generics = function_generics();
@@ -770,11 +770,11 @@ private:
     }
     if (match_name("as")) {
       if (match_name("prefix")) {
-        declared_fixity = Module::FunctionDecl::Fixity::Prefix;
+        declared_fixity = Module::Function::Fixity::Prefix;
       } else if (match_name("infix")) {
-        declared_fixity = Module::FunctionDecl::Fixity::Infix;
+        declared_fixity = Module::Function::Fixity::Infix;
       } else if (match_name("postfix")) {
-        declared_fixity = Module::FunctionDecl::Fixity::Postfix;
+        declared_fixity = Module::Function::Fixity::Postfix;
       }
       declared_operator = operator_symbol();
     }
@@ -808,8 +808,8 @@ private:
       const std::size_t operands =
           value_inputs == 0U ? definition.inputs.size() : value_inputs;
       definition.operator_fixity =
-          operands == 1U   ? std::optional{Module::FunctionDecl::Fixity::Prefix}
-          : operands == 2U ? std::optional{Module::FunctionDecl::Fixity::Infix}
+          operands == 1U   ? std::optional{Module::Function::Fixity::Prefix}
+          : operands == 2U ? std::optional{Module::Function::Fixity::Infix}
                            : std::nullopt;
     }
 
@@ -1061,10 +1061,10 @@ private:
         return;
       }
       const auto fixity = expression.kind == Kind::Prefix
-                              ? Module::FunctionDecl::Fixity::Prefix
+                              ? Module::Function::Fixity::Prefix
                           : expression.kind == Kind::Postfix
-                              ? Module::FunctionDecl::Fixity::Postfix
-                              : Module::FunctionDecl::Fixity::Infix;
+                              ? Module::Function::Fixity::Postfix
+                              : Module::Function::Fixity::Infix;
       std::vector<const ParsedModule::FunctionDefinition*> candidates;
       for (const auto& candidate : module_.functions) {
         if (candidate.operator_symbol == expression.text &&
@@ -1407,7 +1407,7 @@ private:
         const std::size_t operands =
             module_values == 0U ? function.inputs.size() : module_values;
         const std::size_t required =
-            function.operator_fixity == Module::FunctionDecl::Fixity::Infix
+            function.operator_fixity == Module::Function::Fixity::Infix
                 ? 2U
                 : 1U;
         const bool expected_ir_result = module_values != 0U;
@@ -1913,24 +1913,24 @@ bool Module::AttributeDecl::operator==(const AttributeDecl& other) const {
   return symbol() == other.symbol();
 }
 
-Module::FunctionDecl::FunctionDecl(std::shared_ptr<const Storage> storage,
+Module::Function::Function(std::shared_ptr<const Storage> storage,
                                    std::size_t index)
     : storage_(std::move(storage)), index_(index) {}
 
-std::string_view Module::FunctionDecl::name() const {
+std::string_view Module::Function::name() const {
   return storage_->functions[index_].name;
 }
 
-std::span<const Module::FunctionDecl::GenericDecl>
-Module::FunctionDecl::generics() const {
+std::span<const Module::Function::GenericDecl>
+Module::Function::generics() const {
   return storage_->functions[index_].declaration->generics;
 }
 
-std::span<const Module::ParameterDecl> Module::FunctionDecl::inputs() const {
+std::span<const Module::ParameterDecl> Module::Function::inputs() const {
   return storage_->functions[index_].declaration->inputs;
 }
 
-std::span<const Module::ParameterDecl> Module::FunctionDecl::results() const {
+std::span<const Module::ParameterDecl> Module::Function::results() const {
   return storage_->functions[index_].declaration->results;
 }
 
@@ -1950,27 +1950,27 @@ select_parameters(std::span<const Module::ParameterDecl> parameters,
 }  // namespace
 
 std::vector<Module::ParameterDecl> detail::FunctionTypeAccess::parameter_inputs(
-    const Module::FunctionDecl& function) {
+    const Module::Function& function) {
   return select_parameters(function.inputs(), get(function).ir_inputs, false);
 }
 
 std::vector<Module::ParameterDecl>
-detail::FunctionTypeAccess::ir_inputs(const Module::FunctionDecl& function) {
+detail::FunctionTypeAccess::ir_inputs(const Module::Function& function) {
   return select_parameters(function.inputs(), get(function).ir_inputs, true);
 }
 
 std::vector<Module::ParameterDecl>
 detail::FunctionTypeAccess::parameter_results(
-    const Module::FunctionDecl& function) {
+    const Module::Function& function) {
   return select_parameters(function.results(), get(function).ir_results, false);
 }
 
 std::vector<Module::ParameterDecl>
-detail::FunctionTypeAccess::ir_results(const Module::FunctionDecl& function) {
+detail::FunctionTypeAccess::ir_results(const Module::Function& function) {
   return select_parameters(function.results(), get(function).ir_results, true);
 }
 
-bool detail::has_default_specialization(const Module::FunctionDecl& function) {
+bool detail::has_default_specialization(const Module::Function& function) {
   const auto& contract = FunctionTypeAccess::get(function);
   std::vector<std::string_view> bound_generics;
   for (std::size_t index = 0; index < function.inputs().size(); ++index) {
@@ -1993,28 +1993,28 @@ bool detail::has_default_specialization(const Module::FunctionDecl& function) {
                      });
 }
 
-std::span<const std::string> Module::FunctionDecl::interfaces() const {
+std::span<const std::string> Module::Function::interfaces() const {
   return storage_->functions[index_].declaration->interfaces;
 }
 
-std::optional<std::string_view> Module::FunctionDecl::operator_symbol() const {
+std::optional<std::string_view> Module::Function::operator_symbol() const {
   const auto& value = storage_->functions[index_].declaration->operator_symbol;
   return value ? std::optional<std::string_view>{*value} : std::nullopt;
 }
 
-std::optional<Module::FunctionDecl::Fixity>
-Module::FunctionDecl::operator_fixity() const {
+std::optional<Module::Function::Fixity>
+Module::Function::operator_fixity() const {
   return storage_->functions[index_].declaration->operator_fixity;
 }
 
-Module::FunctionDecl::Form Module::FunctionDecl::form() const {
+Module::Function::Form Module::Function::form() const {
   const detail::FunctionMember& function = storage_->functions[index_];
   return function.ir || function.declaration->body ? Form::Body
                                                     : Form::External;
 }
 
 const Module::Expression*
-detail::ModuleAccess::expression(const Module::FunctionDecl& function) {
+detail::ModuleAccess::expression(const Module::Function& function) {
   if (!FunctionTypeAccess::ir_inputs(function).empty() ||
       !FunctionTypeAccess::ir_results(function).empty()) {
     return nullptr;
@@ -2023,7 +2023,7 @@ detail::ModuleAccess::expression(const Module::FunctionDecl& function) {
 }
 
 const Module::Expression* detail::ModuleAccess::returned_expression(
-    const Module::FunctionDecl& function) {
+    const Module::Function& function) {
   const auto& body =
       function.storage_->functions[function.index_].declaration->body;
   if (!body || body->blocks.size() != 1U || body->blocks.front().terminator ||
@@ -2036,7 +2036,7 @@ const Module::Expression* detail::ModuleAccess::returned_expression(
   return &body->blocks.front().statements.front().values.front().value;
 }
 
-std::string Module::FunctionDecl::signature() const {
+std::string Module::Function::signature() const {
   std::string result(name());
   if (!generics().empty()) {
     result += '<';
@@ -2077,7 +2077,7 @@ std::string Module::FunctionDecl::signature() const {
   return result;
 }
 
-Module::Symbol Module::FunctionDecl::symbol() const {
+Module::Symbol Module::Function::symbol() const {
   return {storage_->name,
           storage_->version,
           storage_->digest,
@@ -2086,12 +2086,12 @@ Module::Symbol Module::FunctionDecl::symbol() const {
           signature()};
 }
 
-bool Module::FunctionDecl::operator==(const FunctionDecl& other) const {
+bool Module::Function::operator==(const Function& other) const {
   return symbol() == other.symbol();
 }
 
 const detail::FunctionTypeContract&
-detail::FunctionTypeAccess::get(const Module::FunctionDecl& function) {
+detail::FunctionTypeAccess::get(const Module::Function& function) {
   return function.storage_->functions[function.index_].declaration->types;
 }
 
@@ -2187,20 +2187,20 @@ Module::attribute(std::string_view name) const {
                : std::nullopt;
 }
 
-std::optional<Module::FunctionDecl>
+std::optional<Module::Function>
 Module::function(std::string_view name) const {
   const auto values = overloads(name);
-  return values.size() == 1U ? std::optional<FunctionDecl>{values.front()}
+  return values.size() == 1U ? std::optional<Function>{values.front()}
                              : std::nullopt;
 }
 
-std::vector<Module::FunctionDecl>
+std::vector<Module::Function>
 Module::overloads(std::string_view name) const {
-  std::vector<FunctionDecl> result;
+  std::vector<Function> result;
   for (std::size_t index = 0; index < storage_->functions.size(); ++index) {
     if (storage_->functions[index].declaration &&
         storage_->functions[index].name == name) {
-      result.push_back(FunctionDecl(storage_, index));
+      result.push_back(Function(storage_, index));
     }
   }
   return result;
@@ -2241,7 +2241,7 @@ std::vector<Module::Symbol> Module::members() const {
   append(SymbolKind::Attribute, storage_->attributes);
   for (std::size_t index = 0; index < storage_->functions.size(); ++index) {
     if (storage_->functions[index].declaration) {
-      result.push_back(FunctionDecl(storage_, index).symbol());
+      result.push_back(Function(storage_, index).symbol());
     }
   }
   return result;
@@ -2274,12 +2274,12 @@ std::vector<Module::AttributeDecl> Module::attributes() const {
   return result;
 }
 
-std::vector<Module::FunctionDecl> Module::functions() const {
-  std::vector<FunctionDecl> result;
+std::vector<Module::Function> Module::functions() const {
+  std::vector<Function> result;
   result.reserve(storage_->functions.size());
   for (std::size_t index = 0; index < storage_->functions.size(); ++index) {
     if (storage_->functions[index].declaration) {
-      result.push_back(FunctionDecl(storage_, index));
+      result.push_back(Function(storage_, index));
     }
   }
   return result;
@@ -2292,7 +2292,7 @@ bool Module::operator==(const Module& other) const {
 
 std::shared_ptr<const detail::FunctionBody>
 detail::ModuleAccess::body(const Module& module,
-                           const Module::FunctionDecl& function) {
+                           const Module::Function& function) {
   if (function.storage_.get() != module.storage_.get() ||
       function.index_ >= module.storage_->functions.size()) {
     return nullptr;
@@ -2619,7 +2619,7 @@ std::string format(const Module& module) {
     std::string suffix;
     if (function.operator_symbol) {
       suffix += " as ";
-      if (function.operator_fixity == Module::FunctionDecl::Fixity::Postfix) {
+      if (function.operator_fixity == Module::Function::Fixity::Postfix) {
         suffix += "postfix ";
       }
       suffix += *function.operator_symbol;

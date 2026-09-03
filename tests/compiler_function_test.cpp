@@ -229,7 +229,7 @@ module pipeline@1.0.0 {
       pipeline ? pipeline->function("module_identity") : std::nullopt;
   const auto convert_words = pipeline
                                  ? pipeline->overloads("convert_word")
-                                 : std::vector<joggle::Module::FunctionDecl>{};
+                                 : std::vector<joggle::Module::Function>{};
   const auto configured_copy =
       pipeline ? pipeline->function("configured_copy") : std::nullopt;
   const auto compute_width =
@@ -254,7 +254,7 @@ module pipeline@1.0.0 {
   const auto last = pipeline ? pipeline->function("last") : std::nullopt;
   const auto typed = pipeline ? pipeline->function("typed") : std::nullopt;
   const auto twice = pipeline ? pipeline->overloads("twice")
-                              : std::vector<joggle::Module::FunctionDecl>{};
+                              : std::vector<joggle::Module::Function>{};
   const auto add_offset =
       pipeline ? pipeline->function("add_offset") : std::nullopt;
   const auto less = pipeline ? pipeline->function("less") : std::nullopt;
@@ -601,7 +601,7 @@ module pipeline@1.0.0 {
   ok &= expect(bits && *bits == 8,
                "derived parameters share the ordinary Type query path");
   ok &= expect(canonicalize->form() ==
-                   joggle::Module::FunctionDecl::Form::External,
+                   joggle::Module::Function::Form::External,
                "a native transformation uses an ordinary function declaration");
   ok &= expect(compiler.run(*function, *clean),
                "an imported transformation composes through an ordinary fn");

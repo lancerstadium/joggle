@@ -7,8 +7,8 @@
 namespace joggle::detail {
 namespace {
 
-bool same_signature(const Module::FunctionDecl& left,
-                    const Module::FunctionDecl& right) {
+bool same_signature(const Module::Function& left,
+                    const Module::Function& right) {
   if (left.generics().size() != right.generics().size() ||
       left.inputs().size() != right.inputs().size() ||
       left.results().size() != right.results().size()) {
@@ -27,8 +27,8 @@ bool same_signature(const Module::FunctionDecl& left,
   return same_inputs && same_results;
 }
 
-void append_unshadowed(std::vector<Module::FunctionDecl>& destination,
-                       std::span<const Module::FunctionDecl> candidates) {
+void append_unshadowed(std::vector<Module::Function>& destination,
+                       std::span<const Module::Function> candidates) {
   for (const auto& candidate : candidates) {
     const bool shadowed = std::any_of(
         destination.begin(), destination.end(), [&](const auto& visible) {
@@ -41,7 +41,7 @@ void append_unshadowed(std::vector<Module::FunctionDecl>& destination,
 }
 
 template <typename Lookup>
-std::vector<Module::FunctionDecl>
+std::vector<Module::Function>
 find_visible_functions(Lookup&& lookup, std::string_view owner,
                        std::string_view reference) {
   const std::size_t dot = reference.find('.');
@@ -68,8 +68,8 @@ find_visible_functions(Lookup&& lookup, std::string_view owner,
     }
   }
   const auto module = lookup(module_name);
-  std::vector<Module::FunctionDecl> result =
-      module ? module->overloads(local) : std::vector<Module::FunctionDecl>{};
+  std::vector<Module::Function> result =
+      module ? module->overloads(local) : std::vector<Module::Function>{};
   if (dot == std::string_view::npos && module_name != prelude_module_name &&
       result.empty()) {
     if (const auto prelude = lookup(prelude_module_name)) {
@@ -80,11 +80,11 @@ find_visible_functions(Lookup&& lookup, std::string_view owner,
 }
 
 template <typename Lookup>
-std::vector<Module::FunctionDecl>
+std::vector<Module::Function>
 find_visible_operators(Lookup&& lookup, std::string_view owner,
                        std::string_view symbol,
-                       Module::FunctionDecl::Fixity fixity) {
-  std::vector<Module::FunctionDecl> result;
+                       Module::Function::Fixity fixity) {
+  std::vector<Module::Function> result;
   const auto scope = lookup(owner);
   if (!scope) {
     return result;
@@ -105,7 +105,7 @@ find_visible_operators(Lookup&& lookup, std::string_view owner,
   }
   if (scope->name() != prelude_module_name) {
     if (const auto prelude = lookup(prelude_module_name)) {
-      std::vector<Module::FunctionDecl> ambient;
+      std::vector<Module::Function> ambient;
       for (const auto& function : prelude->functions()) {
         if (function.operator_symbol() == symbol &&
             function.operator_fixity() == fixity) {
@@ -120,7 +120,7 @@ find_visible_operators(Lookup&& lookup, std::string_view owner,
 
 }  // namespace
 
-std::vector<Module::FunctionDecl>
+std::vector<Module::Function>
 visible_functions(const Compiler& compiler, std::string_view owner,
                   std::string_view reference) {
   return find_visible_functions(
@@ -128,7 +128,7 @@ visible_functions(const Compiler& compiler, std::string_view owner,
       reference);
 }
 
-std::vector<Module::FunctionDecl>
+std::vector<Module::Function>
 visible_functions(std::span<const Module> modules, std::string_view owner,
                   std::string_view reference) {
   return find_visible_functions(
@@ -142,19 +142,19 @@ visible_functions(std::span<const Module> modules, std::string_view owner,
       owner, reference);
 }
 
-std::vector<Module::FunctionDecl>
+std::vector<Module::Function>
 visible_operators(const Compiler& compiler, std::string_view owner,
                   std::string_view symbol,
-                  Module::FunctionDecl::Fixity fixity) {
+                  Module::Function::Fixity fixity) {
   return find_visible_operators(
       [&](std::string_view name) { return compiler.module(name); }, owner,
       symbol, fixity);
 }
 
-std::vector<Module::FunctionDecl>
+std::vector<Module::Function>
 visible_operators(std::span<const Module> modules, std::string_view owner,
                   std::string_view symbol,
-                  Module::FunctionDecl::Fixity fixity) {
+                  Module::Function::Fixity fixity) {
   return find_visible_operators(
       [&](std::string_view name) -> std::optional<Module> {
         const auto found =
@@ -166,10 +166,10 @@ visible_operators(std::span<const Module> modules, std::string_view owner,
       owner, symbol, fixity);
 }
 
-std::vector<Module::FunctionDecl>
+std::vector<Module::Function>
 operator_candidates(const Compiler& compiler, std::string_view owner,
                     std::string_view symbol,
-                    Module::FunctionDecl::Fixity fixity, std::size_t arity,
+                    Module::Function::Fixity fixity, std::size_t arity,
                     const Module::Expression& result_domain) {
   auto result = visible_operators(compiler, owner, symbol, fixity);
   result.erase(std::remove_if(result.begin(), result.end(),
@@ -184,7 +184,7 @@ operator_candidates(const Compiler& compiler, std::string_view owner,
 }
 
 std::optional<CallCandidate>
-call_candidate(const Module::FunctionDecl& function,
+call_candidate(const Module::Function& function,
                const Module::Expression& expression) {
   const auto parameters = function.inputs();
   CallCandidate result{function, {}};

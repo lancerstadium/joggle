@@ -74,7 +74,7 @@ auto changed = joggle::ir::replace_calls(
 auto selected = joggle::ir::map_calls(
     module,
     [&](const joggle::ir::Instruction& instruction)
-        -> std::optional<joggle::Module::FunctionDecl> {
+        -> std::optional<joggle::Module::Function> {
       return compiler.conforms(instruction.callee(), elementwise)
                  ? choose_replacement(instruction)
                  : std::nullopt;

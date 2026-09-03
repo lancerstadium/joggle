@@ -173,7 +173,7 @@ int main() {
                                      : std::vector<joggle::ir::Value>{};
   const auto referenced = applied_arguments.size() == 2U
                               ? applied_arguments[1].referenced_function()
-                              : std::optional<joggle::Module::FunctionDecl>{};
+                              : std::optional<joggle::Module::Function>{};
   ok &=
       expect(callback_value && callback_operations.size() == 1U && referenced &&
                  referenced->symbol().qualified_name() == "logic.callback" &&
@@ -211,11 +211,11 @@ int main() {
   const auto generic_reference =
       generic_arguments.size() == 2U
           ? generic_arguments[1].referenced_function()
-          : std::optional<joggle::Module::FunctionDecl>{};
+          : std::optional<joggle::Module::Function>{};
   const auto overloaded_reference =
       overloaded_arguments.size() == 2U
           ? overloaded_arguments[1].referenced_function()
-          : std::optional<joggle::Module::FunctionDecl>{};
+          : std::optional<joggle::Module::Function>{};
   ok &= expect(generic_reference &&
                    generic_reference->name() == "generic_callback" &&
                    overloaded_reference &&
