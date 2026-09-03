@@ -36,7 +36,10 @@ The compiler domains are:
 int  real  bool  string  type  attr  bytes  function  list<D>
 ```
 
-They describe values held by the compiler. `i1`, `i8`, `i16`, `i32`, `i64`,
+They describe values held by the compiler. `function` carries one executable
+IR Function. Prelude additionally declares the ordinary type `program`, whose
+core host representation carries a named set of executable IR Functions.
+`i1`, `i8`, `i16`, `i32`, `i64`,
 `u8`, `u16`, `u32`, `u64`, `f16`, `bf16`, `f32`, `f64`, and `index` are
 program types declared by the Prelude. Custom program types use the same
 declaration mechanism:
@@ -55,7 +58,7 @@ interface scalar: type {
   storage_bits: int;
 }
 
-type packed(width: int, lanes: int) : scalar {
+type packed(width: int, lanes: int) : scalar, numeric {
   storage_bits = width * lanes;
 }
 ```
@@ -63,6 +66,11 @@ type packed(width: int, lanes: int) : scalar {
 An interface on `type` declares compile-time fields. Interfaces on `attr` or
 `fn` declare methods or callable contracts. Conformance is declared after `:`;
 the linker checks required fields and signatures.
+
+Prelude's `scalar` and `numeric` contracts are deliberately independent.
+`scalar` exposes a fixed `storage_bits`; `numeric` permits use by generic
+numeric vocabularies such as `arith`. Thus `i1` is scalar but not numeric,
+while target-sized `index` is numeric but has no fixed-width promise.
 
 ## Functions
 

@@ -18,9 +18,8 @@ Conversions belong to bridge Modules:
 module tensor_to_accel@1.0.0 {
   import tensor@1.0.0;
   import accel@1.0.0;
-  import ir@1.0.0;
 
-  fn convert(input: ir.module, target: accel.target) -> ir.module;
+  fn convert(input: program, target: accel.target) -> program;
 }
 ```
 
@@ -34,10 +33,10 @@ The language has no separate pass declaration. A function becomes compiler
 work because its inputs and results have compiler representations:
 
 ```joggle
-fn load(path: string) -> ir.module;
-fn canonicalize(input: ir.module) -> ir.module;
-fn cost(input: ir.module, target: target) -> estimate;
-fn emit(input: ir.module) -> bytes;
+fn load(path: string) -> program;
+fn canonicalize(input: program) -> program;
+fn cost(input: program, target: target) -> estimate;
+fn emit(input: program) -> bytes;
 
 fn compile(path: string, target: target) -> bytes {
   program = canonicalize(load(path));
@@ -49,9 +48,10 @@ The same call rules compose program operations and compiler functions. A body
 can branch on Known configuration and use `for` over Known lists. Calls that
 depend on Residual program values remain in the executable IR.
 
-`modules/ir.joggle` declares `ir.module`. Its standard C++ representation is
-`joggle::ir::Module`, which can carry multiple named Functions through a
-pipeline. This is a transport type, not a second IR hierarchy.
+Prelude declares `program`. The compiler automatically represents it as
+`joggle::ir::Module`, which carries multiple named Functions through a
+pipeline. No package import or manual representation registration is required.
+This is a whole-program value, not a second IR hierarchy.
 
 ## Bind a function
 
@@ -112,9 +112,9 @@ The projection order is the declaration's parameter order. The Module remains
 the type authority; registration only supplies storage and projection for host
 invocation.
 
-The standard `ir.module` representation is registered through this same
-mechanism. Extension-defined artifacts, cost estimates, schedules, and device
-descriptions require no core class.
+The core registers the Prelude `program` representation before linking.
+Extension-defined artifacts, cost estimates, schedules, and device descriptions
+use the public registration mechanism and require no core class.
 
 ## Verifiers and interface behavior
 

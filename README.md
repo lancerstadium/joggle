@@ -67,29 +67,36 @@ joggle run model.joggle main canonicalize legalize -o output.joggle
 
 Run `joggle --help` for the complete command forms.
 
-## Shipped Modules
+## Language and standard Modules
 
-[`modules`](modules) contains ordinary installable declarations:
+The language ABI is declared once in the embedded
+[`language/prelude.joggle`](language/prelude.joggle). It contains compiler
+domains, native scalar types, callable types, core interfaces, and the
+deterministic functions needed by dependent types and compile-time control.
+It is ambient and cannot be replaced by package search.
 
-- `prelude`: compiler domains, native scalar types, callable types, core
-  interfaces, and ordinary `fn` declarations for deterministic compiler
-  arithmetic and control predicates;
-- `arith`: generic scalar operations and literal materialization;
+[`modules`](modules) contains optional, ordinary installable declarations:
+
+- `arith`: Residual numeric operations, comparisons, selection, and literal
+  materialization;
 - `tensor`: ranked tensor values and structural operations;
 - `nn`: common inference operators and checked shape relations;
-- `buffer`: explicit storage values and token-ordered effects;
-- `ir`: the declared `ir.module` type represented in C++ by
-  `joggle::ir::Module`.
+- `buffer`: explicit storage values and token-ordered effects.
 
 These Modules are not an ordered lowering stack. Extensions may import and
-bridge them in either direction.
+bridge them in either direction. Prelude's `program` type carries an entire
+`joggle::ir::Module` through ordinary compiler functions; it is not another
+installable vocabulary.
 
 ## Documentation
 
 Start at the [documentation index](docs/README.md). The
 [getting-started guide](docs/getting-started.md) builds one extension, the
 [language reference](docs/language.md) defines source semantics, and the
-[architecture](docs/architecture.md) explains the project boundary.
+[architecture](docs/architecture.md) explains the project boundary. The
+[standard Modules](docs/standard-modules.md) and
+[compiler-function design](docs/compiler-functions.md) specify the extension
+foundation used by optimization, analysis, conversion, and emission.
 
 The [`examples/nn_pipeline`](examples/nn_pipeline) project demonstrates a
 source-defined compiler branch, multi-Function transformation, and emitter.

@@ -195,6 +195,11 @@ Copies use Function-granular copy-on-write. Const lookup shares; mutable lookup
 detaches the selected Function. `joggle::format(program, name, version)` emits
 one canonical source Module with exact declaration dependencies.
 
+The embedded Prelude type `program` is automatically represented by
+`joggle::ir::Module`; `function` is represented by `joggle::ir::Function`.
+Compiler-function signatures using either type need no generated wrapper or
+manual `Compiler::represent` call.
+
 ## Bind and run compiler functions
 
 The Compiler installs Hermetic bindings for the exact arithmetic, comparison,

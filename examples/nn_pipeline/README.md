@@ -4,7 +4,7 @@ This example keeps target vocabulary, cross-vocabulary transformation, and
 compiler orchestration in separate Modules:
 
 - `example_accel.joggle` declares only the program operation it owns;
-- `nn_pipeline.joggle` declares ordinary functions over `ir.module`;
+- `nn_pipeline.joggle` declares ordinary functions over Prelude `program`;
 - `behavior.cpp` binds the structural rewrite and canonical source emitter.
 
 `prepare` is written in Joggle itself. Its `bool` is Known during compiler

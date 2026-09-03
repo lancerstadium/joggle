@@ -1,0 +1,104 @@
+# Compiler functions
+
+Loading, conversion, optimization, analysis, simulation, and emission all use
+ordinary typed `fn` declarations. The role is described by the signature and
+the owning Module, not by a second declaration hierarchy.
+
+```joggle
+module deployment@1.0.0 {
+  import target@1.0.0;
+
+  type estimate(cycles: int, bytes: int);
+
+  fn read(path: string) -> program;
+  fn optimize(input: program, target: target.config) -> program;
+  fn analyze(input: program, target: target.config) -> estimate;
+  fn emit(input: program, target: target.config) -> bytes;
+
+  fn compile(path: string, target: target.config) -> bytes {
+    optimized = optimize(read(path), target);
+    return emit(optimized, target);
+  }
+}
+```
+
+This shape supports bidirectional conversion and alternative analyses without
+inventing `frontend`, `backend`, `lower`, or `pass` categories. A bridge Module
+may publish several conversions, and an optimizer may consume configuration or
+analysis values as normal typed arguments.
+
+## Artifact ownership
+
+The core owns two executable artifacts:
+
+- `function` / `joggle::ir::Function` for one CFG and def-use graph;
+- `program` / `joggle::ir::Module` for a named collection of Functions.
+
+`program` values use copy-on-write Function storage. A native
+`program -> program` function receives an isolated value and publishes it only
+when invocation succeeds. A native Function transform edits through
+`Function::Edit`; `commit` verifies the candidate and rolls back failure.
+
+Analyses and emitted artifacts remain extension-owned. For example, a Module
+declares `estimate`, `schedule`, or `object`, and its behavior registers the
+corresponding C++ representation with `Compiler::represent<T>`. `bytes` is the
+portable boundary for file emission, but an extension can retain a structured
+artifact between stages.
+
+## What the core guarantees now
+
+The existing kernel provides the invariants every compiler function needs:
+
+- canonical declarations, package identity, dependency locking, and behavior
+  identity checks;
+- type/interface checking, overload resolution, dependent result types, and
+  Known/Residual staging;
+- explicit Blocks, typed edges, SSA values, def-use and dominance queries;
+- structural and semantic verification on transactional edits;
+- deterministic evaluation budgets and guarded host effects;
+- canonical serialization of Functions and whole programs.
+
+These guarantees are target-neutral. They are sufficient to write a correct
+transform without a target or device model in the kernel.
+
+## Reusable facilities still required
+
+The next implementation layer is a C++ utility library over the public IR, not
+new source syntax. Its components should be independently usable:
+
+1. **Matching and rewriting.** Typed instruction predicates, captured operands,
+   replacement helpers, greedy/fixed-point drivers, and explicit convergence
+   limits. Matching must use declaration identity and interfaces rather than
+   function-name strings.
+2. **Conversion contracts.** A caller-supplied legality predicate, declared
+   conversion functions, partial/full conversion modes, and diagnostics that
+   identify the first illegal residual construct. There is no global target
+   registry and no assumed lowering direction.
+3. **Analysis storage.** Results keyed by immutable Function snapshots, with
+   explicit preservation after a committed edit. The cache owns no alternate
+   graph representation and never changes observable compilation semantics.
+4. **Program transactions.** Helpers that transform selected named Functions
+   on a private `program` value and publish only after all Functions verify.
+5. **Invocation I/O.** A typed CLI boundary for non-unary functions and
+   extension-owned artifact codecs. The CLI should discover callable
+   declarations; it should not maintain separate command registries for
+   converters, optimizers, analyses, or emitters.
+
+The order matters. Matching, conversion legality, and analysis invalidation
+must stabilize before shipping optimizer collections. Otherwise each example
+would create an incompatible private framework.
+
+## What remains outside the core
+
+The following stay in Modules and behavior libraries:
+
+- ONNX or other format import;
+- quantization, layout, tiling, scheduling, and bufferization policy;
+- FPGA, custom-instruction, or ISA vocabularies;
+- device/resource descriptions and simulators;
+- cost, latency, energy, WCET, or accuracy models;
+- target code generation and SystemVerilog or assembly emission.
+
+They can share the utility layer while retaining their own types and
+contracts. This keeps Joggle useful for co-design without turning one research
+prototype's assumptions into universal compiler semantics.

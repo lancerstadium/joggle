@@ -7,6 +7,10 @@ of the project; none is a migration log.
 - [Architecture](architecture.md) defines the compiler's scope and public
   concepts.
 - [Language](language.md) is the source-language reference.
+- [Standard Modules](standard-modules.md) specifies Prelude and the shipped
+  `arith`, `tensor`, `nn`, and `buffer` vocabularies.
+- [Compiler functions](compiler-functions.md) defines composition and the
+  reusable facilities required by transforms, analyses, and emitters.
 - [Extensions](extensions.md) covers Modules, C++ behavior, and compiler
   functions.
 - [C++ API](cpp-api.md) documents the in-process library surface.

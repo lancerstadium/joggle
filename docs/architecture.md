@@ -42,10 +42,10 @@ Loading, transforming, analysing, simulating, and emitting are roles of typed
 functions, not compiler subsystems or declaration kinds. For example:
 
 ```joggle
-fn read_onnx(path: string) -> ir.module;
-fn legalize(input: ir.module, target: target) -> ir.module;
-fn estimate(input: ir.module, target: target) -> estimate;
-fn emit(input: ir.module, target: target) -> bytes;
+fn read_onnx(path: string) -> program;
+fn legalize(input: program, target: target) -> program;
+fn estimate(input: program, target: target) -> estimate;
+fn emit(input: program, target: target) -> bytes;
 ```
 
 The signatures state what composes. A Module may define a body in Joggle, bind
@@ -110,7 +110,9 @@ The kernel implements parsing, canonical formatting, module identity, package
 resolution, typed values, overload and dependent-type solving, staged
 execution, IR ownership, transactions, and verification. The ambient Prelude
 declares compiler domains, native scalar types, callable types, interfaces,
-and compiler-domain primitive functions. Those primitives use the same `fn`
+the whole-program `program` type, and compiler-domain primitive functions. Its
+source is embedded from `language/prelude.joggle`, so source tooling and the
+runtime share one authority. Those primitives use the same `fn`
 resolution and execution path as extension functions; the kernel contributes
 only their deterministic Hermetic implementations. It never evaluates an
 undeclared operator token or a magic function name.
@@ -119,6 +121,11 @@ Everything specific to an AI framework, model format, hardware target, numeric
 format, schedule, simulator, or emitter belongs in installable Modules and
 optional behavior libraries. This boundary keeps the core small while leaving
 experiments inspectable and serializable.
+
+Prelude's `program` is represented by `joggle::ir::Module`; `function` is
+represented by `joggle::ir::Function`. These are the only core-owned host
+artifact mappings. Extension-owned schedules, estimates, traces, object files,
+or target descriptions use ordinary declared types and `Compiler::represent`.
 
 ## Deliberate non-goals
 
