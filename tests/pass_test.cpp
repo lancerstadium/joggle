@@ -150,6 +150,13 @@ module pipeline@1.0.0 {
   if (!compiler.represent<joggle::ir::Module>(*ir_module_schema)) {
     return EXIT_FAILURE;
   }
+  ok &= expect(
+      compiler.invocable<joggle::ir::Module, joggle::ir::Module>(
+          *module_identity) &&
+          compiler.invocable<joggle::Function, joggle::Function&>(*clean) &&
+          !compiler.invocable<joggle::ir::Module, joggle::Function&>(*clean),
+      "typed invocability distinguishes whole-Module and single-Function "
+      "transforms");
   compiler.bind(
       *module_identity,
       [](joggle::ir::Module input) { return input; });

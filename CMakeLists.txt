@@ -182,6 +182,9 @@ if(JOGGLE_BUILD_TESTS)
       -DJOGGLE_BEHAVIOR_SOURCE=${CMAKE_CURRENT_BINARY_DIR}/behavior_plugin.joggle
       -DJOGGLE_BEHAVIOR=$<TARGET_FILE:joggle_test_behavior>
       -DJOGGLE_TARGET=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/function_target.joggle
+      -DJOGGLE_IR_MODULE=${CMAKE_CURRENT_SOURCE_DIR}/modules/ir.joggle
+      -DJOGGLE_IR_TRANSFORM=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/ir_transform.joggle
+      -DJOGGLE_IR_TRANSFORM_BEHAVIOR=$<TARGET_FILE:joggle_ir_transform_behavior>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/function_run_cli.cmake
   )
 
@@ -209,6 +212,13 @@ if(JOGGLE_BUILD_TESTS)
   set_target_properties(joggle_test_behavior_failure PROPERTIES
     PREFIX ""
     OUTPUT_NAME "behavior_failure"
+  )
+  joggle_add_behavior(joggle_ir_transform_behavior
+    MODULE tests/fixtures/ir_transform.joggle
+    SOURCES tests/ir_transform_behavior.cpp)
+  set_target_properties(joggle_ir_transform_behavior PROPERTIES
+    PREFIX ""
+    OUTPUT_NAME "ir_transform"
   )
   add_executable(joggle_behavior_loader_test tests/behavior_loader_test.cpp)
   target_link_libraries(joggle_behavior_loader_test PRIVATE joggle::joggle)

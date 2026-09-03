@@ -49,6 +49,8 @@ Reusable IR packages live in [`modules`](modules):
 - `nn` provides common inference contracts and checked NCHW shape relations;
 - `buffer` owns explicit storage values and token-ordered memory effects,
   without a device model or capacity assumptions.
+- `ir` declares the copy-on-write multi-Function artifact used by loaders,
+  transforms, analyses, emitters, and the CLI.
 
 These Modules are ordinary `.joggle` packages rather than C++ built-ins. The
 trusted kernel owns bootstrap host representations and checked expression

@@ -199,6 +199,20 @@ than only the entry return. The CLI uses this same path when publishing
 transformed Functions, so library and command-line artifacts cannot drift into
 different formats.
 
+Typed tools can inspect a declaration without reproducing Joggle name
+resolution:
+
+```cpp
+if (compiler.invocable<joggle::ir::Module, joggle::ir::Module>(pass)) {
+  // A whole-program transform.
+}
+```
+
+`invocable<Result, Args...>` uses the same linked type and host-representation
+rules as `run`, but emits no diagnostic. It is intended for overload
+selection and capability discovery; an actual invocation still performs full
+argument, result, and IR verification.
+
 ## Registered behavior
 
 External `fn` declarations may bind to typed C++ callables. A binding is keyed by

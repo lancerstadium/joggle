@@ -3229,6 +3229,29 @@ bool Compiler::check_run_signature(
     const Module::FunctionDecl& schema,
     std::span<const std::string_view> inputs,
     std::optional<std::string_view> result) {
+  if (matches_run_signature(schema, inputs, result)) {
+    return true;
+  }
+  state_->diagnostics.report("invocation of function '" +
+                             schema.symbol().qualified_name() +
+                             "' does not match its declared type");
+  return false;
+}
+
+bool Compiler::matches_run_signature(
+    const Module::FunctionDecl& schema,
+    std::span<const std::string_view> inputs,
+    std::optional<std::string_view> result) const {
+  if (!state_->linked) {
+    return false;
+  }
+  const Module::Symbol symbol = schema.symbol();
+  const auto owner = state_->modules.find(symbol.module_name());
+  if (owner == state_->modules.end() ||
+      owner->second.version() != symbol.module_version() ||
+      owner->second.digest() != symbol.module_digest()) {
+    return false;
+  }
   const bool input_match = schema.inputs().size() == inputs.size() &&
                            std::equal(schema.inputs().begin(),
                                       schema.inputs().end(), inputs.begin(),
@@ -3243,13 +3266,7 @@ bool Compiler::check_run_signature(
                                                 schema,
                                                 schema.results().front(),
                                                 *result));
-  if (!input_match || !result_match) {
-    state_->diagnostics.report("invocation of function '" +
-                               schema.symbol().qualified_name() +
-                               "' does not match its declared type");
-    return false;
-  }
-  return true;
+  return input_match && result_match;
 }
 
 std::optional<Module::FunctionDecl> Compiler::find_pass(std::string_view pass) {

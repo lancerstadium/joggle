@@ -100,15 +100,16 @@ Import aliases are local source spelling only. Lock entries always record the
 real Module name, version, and digest, so a local prefix never becomes a second
 package identity.
 
-`joggle run` writes one derived Module named `<source>_<function>_compiled`; its
-imports use the exact linked versions. Distinct Function members and their source
+`joggle run` writes one derived Module named `<source>_<function>_compiled`;
+its imports use the exact linked versions. A whole-program transform may add
+sibling Functions to that artifact. Distinct entry members and their source
 therefore have distinct package names, and replaying a derived single-Function
-Module preserves its name. A valid repository admits only one digest for a given
-name and exact version, and a Compiler rejects explicitly loaded Modules with
-conflicting identities. The derived text is reusable without embedding a digest
-in ordinary import syntax. For transport to another repository or for an
-executable behavior closure, generate and replay a lock; the lock carries the
-module and binary digests.
+Module preserves its name. A valid repository admits only one digest for a
+given name and exact version, and a Compiler rejects explicitly loaded Modules
+with conflicting identities. The derived text is reusable without embedding a
+digest in ordinary import syntax. For transport to another repository or for
+an executable behavior closure, generate and replay a lock; the lock carries
+the module and binary digests.
 
 ## Lock replay
 

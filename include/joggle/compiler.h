@@ -636,6 +636,21 @@ public:
   bool run(Function& function, std::string_view pass);
 
   template <typename Result = void, typename... Arguments>
+  bool invocable(const Module::FunctionDecl& function) const {
+    const std::array<std::string_view, sizeof...(Arguments)> inputs{
+        detail::host_type_name<Arguments>()...};
+    const std::optional<std::string_view> result = [] {
+      if constexpr (std::is_void_v<Result>) {
+        return std::optional<std::string_view>{};
+      } else {
+        return std::optional<std::string_view>{
+            detail::host_type_name<Result>()};
+      }
+    }();
+    return matches_run_signature(function, inputs, result);
+  }
+
+  template <typename Result = void, typename... Arguments>
   std::conditional_t<std::is_void_v<Result>, bool, std::optional<Result>>
   run(Module::FunctionDecl pass, Arguments&&... arguments) {
     const std::array<std::string_view, sizeof...(Arguments)> types{
@@ -724,6 +739,10 @@ private:
       const Module::FunctionDecl& schema,
       std::span<const std::string_view> inputs,
       std::optional<std::string_view> result);
+  bool matches_run_signature(
+      const Module::FunctionDecl& schema,
+      std::span<const std::string_view> inputs,
+      std::optional<std::string_view> result) const;
   std::optional<detail::PassValue>
   run_pass(Module::FunctionDecl pass,
            std::vector<detail::PassValue> arguments);

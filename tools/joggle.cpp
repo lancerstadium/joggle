@@ -340,6 +340,54 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
   return true;
 }
 
+enum class TransformKind { Function, Module };
+
+struct Transform {
+  joggle::Module::FunctionDecl declaration;
+  TransformKind kind;
+};
+
+std::optional<Transform>
+transform(joggle::Compiler& compiler, std::string_view qualified,
+          joggle::Diagnostics& diagnostics) {
+  const std::size_t separator = qualified.find('.');
+  if (separator == std::string_view::npos) {
+    diagnostics.report("a transform name must use module.member");
+    return std::nullopt;
+  }
+  const std::string_view module_name = qualified.substr(0U, separator);
+  const std::string_view function_name = qualified.substr(separator + 1U);
+  const auto module = compiler.module(module_name);
+  if (!module) {
+    diagnostics.report("transform references unknown module '" +
+                       std::string(module_name) + "'");
+    return std::nullopt;
+  }
+  std::vector<Transform> matches;
+  for (const joggle::Module::FunctionDecl& function : module->functions()) {
+    if (function.name() != function_name || function.inputs().size() != 1U ||
+        function.results().size() != 1U) {
+      continue;
+    }
+    if (compiler.invocable<joggle::ir::Module, joggle::ir::Module>(
+            function)) {
+      matches.push_back({function, TransformKind::Module});
+    } else if (compiler.invocable<joggle::Function, joggle::Function&>(
+                   function)) {
+      matches.push_back({function, TransformKind::Function});
+    }
+  }
+  if (matches.size() != 1U) {
+    diagnostics.report(matches.empty()
+                           ? "no unary Function or ir.module transform named '" +
+                                 std::string(qualified) + "'"
+                           : "transform name '" + std::string(qualified) +
+                                 "' is ambiguous");
+    return std::nullopt;
+  }
+  return matches.front();
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -464,6 +512,13 @@ int main(int argc, char** argv) {
     if (!compiler.link()) {
       return fail(compiler.diagnostics());
     }
+    if (const auto ir = compiler.module("ir")) {
+      const auto module_type = ir->type("module");
+      if (!module_type ||
+          !compiler.represent<joggle::ir::Module>(*module_type)) {
+        return fail(compiler.diagnostics());
+      }
+    }
     if (parsed.behavior &&
         !compiler.load_behavior(root->name(), *parsed.behavior)) {
       return fail(compiler.diagnostics());
@@ -493,16 +548,36 @@ int main(int argc, char** argv) {
     if (!function) {
       return fail(compiler.diagnostics());
     }
-    for (std::size_t index = 2U; index < parsed.positional.size(); ++index) {
-      if (!compiler.run(*function, qualified(parsed.positional[index]))) {
-        return fail(compiler.diagnostics());
-      }
-    }
     const std::size_t separator = function_name.find('.');
     const std::string function_body = function_name.substr(separator + 1U);
     joggle::ir::Module program;
     if (!program.insert(function_body, std::move(*function), diagnostics)) {
       return fail(diagnostics);
+    }
+    for (std::size_t index = 2U; index < parsed.positional.size(); ++index) {
+      const std::string name = qualified(parsed.positional[index]);
+      auto selected = transform(compiler, name, diagnostics);
+      if (!selected) {
+        return fail(diagnostics);
+      }
+      if (selected->kind == TransformKind::Module) {
+        auto transformed = compiler.run<joggle::ir::Module>(
+            selected->declaration, std::move(program));
+        if (!transformed) {
+          return fail(compiler.diagnostics());
+        }
+        program = std::move(*transformed);
+        continue;
+      }
+      joggle::Function* entry = program.function(function_body);
+      if (entry == nullptr) {
+        diagnostics.report("Function transform '" + name +
+                           "' needs missing entry '" + function_body + "'");
+        return fail(diagnostics);
+      }
+      if (!compiler.run(*entry, selected->declaration)) {
+        return fail(compiler.diagnostics());
+      }
     }
     const auto dependencies = joggle::ir::dependencies(program);
     const auto references = [&](std::string_view name) {
@@ -515,7 +590,8 @@ int main(int argc, char** argv) {
     std::string artifact_name(root->name());
     const auto root_members = root->members();
     const bool already_derived =
-        artifact_name.ends_with("_compiled") && root_members.size() == 1U &&
+        program.size() == 1U && artifact_name.ends_with("_compiled") &&
+        root_members.size() == 1U &&
         root_members.front().kind() == joggle::Module::SymbolKind::Function &&
         root_members.front().local_name() == function_body &&
         !references(artifact_name);

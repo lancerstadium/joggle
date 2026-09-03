@@ -113,9 +113,11 @@ joggle run external.joggle main convert \
   -o transformed.joggle
 ```
 
-`main` is instantiated as a Function. Each following name is an ordinary
-compiler function applied in order. The output is another canonical Module
-containing the resulting Function and exact imports.
+`main` is instantiated and placed in an executable `ir.module`. Each
+following name is an ordinary compiler function applied in order. A
+`function -> function` transform edits `main`; an
+`ir.module -> ir.module` transform may also add helper Functions. The output
+is one canonical Module containing every resulting Function and exact imports.
 
 ## 5. Consume it from C++
 

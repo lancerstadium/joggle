@@ -61,6 +61,23 @@ The current invocation convenience is `Compiler::run`. It resolves a
 The unified staged evaluator will make an ordinary function call the only
 semantic invocation path.
 
+The CLI accepts either unary transform signature in one pipeline:
+
+```joggle
+fn local(input: function) -> function;
+fn whole_program(input: ir.module) -> ir.module;
+```
+
+It first places the requested entry Function in an `ir.module`. A
+`function -> function` transform edits that named entry, while an
+`ir.module -> ir.module` transform may inspect or add sibling Functions.
+When the `ir` package is linked, the CLI registers its standard
+`joggle::ir::Module` representation before loading behavior libraries.
+Overloads are selected by this typed signature, not by pass naming
+conventions. The selection uses `Compiler::invocable`, the same linked
+host-representation rules used by `Compiler::run`; the CLI does not parse
+type spellings or import aliases itself.
+
 ## Composition
 
 Composition uses an ordinary function body:

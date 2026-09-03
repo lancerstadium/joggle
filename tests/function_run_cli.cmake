@@ -1,6 +1,8 @@
 if(NOT DEFINED JOGGLE_CLI OR NOT DEFINED JOGGLE_SOURCE OR
    NOT DEFINED JOGGLE_OUTPUT OR NOT DEFINED JOGGLE_BEHAVIOR_SOURCE OR
-   NOT DEFINED JOGGLE_BEHAVIOR OR NOT DEFINED JOGGLE_TARGET)
+   NOT DEFINED JOGGLE_BEHAVIOR OR NOT DEFINED JOGGLE_TARGET OR
+   NOT DEFINED JOGGLE_IR_MODULE OR NOT DEFINED JOGGLE_IR_TRANSFORM OR
+   NOT DEFINED JOGGLE_IR_TRANSFORM_BEHAVIOR)
   message(FATAL_ERROR "function run test arguments are incomplete")
 endif()
 
@@ -36,6 +38,34 @@ if(target_module_position EQUAL -1 OR target_identity_position EQUAL -1 OR
    NOT target_import_position EQUAL -1 OR target_source_position EQUAL -1)
   message(FATAL_ERROR
     "cross-Module pipeline retained converted or unused target state:\n${target_function}")
+endif()
+
+set(module_output "${JOGGLE_OUTPUT}.module")
+execute_process(
+  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" main
+          ir_transform.add_helper
+          --with "${JOGGLE_IR_MODULE}"
+          --with "${JOGGLE_IR_TRANSFORM}"
+          --load-behavior
+          "ir_transform=${JOGGLE_IR_TRANSFORM_BEHAVIOR}"
+          -o "${module_output}"
+  RESULT_VARIABLE module_result
+  ERROR_VARIABLE module_error
+)
+if(NOT module_result EQUAL 0)
+  message(FATAL_ERROR "ir.module pipeline failed:\n${module_error}")
+endif()
+file(READ "${module_output}" module_program)
+string(FIND "${module_program}" "fn helper()" module_helper_position)
+string(FIND "${module_program}" "fn main()" module_main_position)
+string(FIND "${module_program}" "import function_cli@1.0.0"
+  module_import_position)
+if(module_helper_position EQUAL -1 OR module_main_position EQUAL -1 OR
+   module_import_position EQUAL -1 OR
+   NOT module_helper_position LESS module_main_position)
+  message(FATAL_ERROR
+    "ir.module transform did not publish a canonical multi-function artifact:\n"
+    "${module_program}")
 endif()
 
 set(behavior_output "${JOGGLE_OUTPUT}.behavior")
