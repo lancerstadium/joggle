@@ -40,6 +40,30 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
                     const auto value = type.get<std::int64_t>("value");
                     return value && *value > 0;
                   });
+#if defined(JOGGLE_TEST_BEHAVIOR_FAIL)
+  compiler.bind(
+      module, "cached", [](std::int64_t value) { return value + 100; },
+      joggle::HostEvaluation::Hermetic);
+  const auto integer = compiler.make("int");
+  const auto one = integer
+                       ? compiler.known(*integer, std::int64_t{1})
+                       : std::optional<joggle::Value>{};
+  const auto probe = one ? compiler.materialize("behavior_plugin.cache_probe",
+                                                {*one})
+                         : std::optional<joggle::Function>{};
+  const auto cached = probe && !probe->arguments().empty()
+                          ? probe->arguments().front().type().get<std::int64_t>(
+                                "value")
+                          : std::optional<std::int64_t>{};
+  if (cached != std::optional<std::int64_t>{101}) {
+    diagnostics.report("failed behavior could not prime its evaluation cache");
+    return;
+  }
+#else
+  compiler.bind(
+      module, "cached", [](std::int64_t value) { return value + 1; },
+      joggle::HostEvaluation::Hermetic);
+#endif
   compiler.bind(module, "noop",
                 [](joggle::Compiler&, joggle::Function function,
                    joggle::Diagnostics&) { return function; });

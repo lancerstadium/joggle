@@ -78,8 +78,24 @@ int main(int argc, char** argv) {
   const auto negative = rollback_type
                             ? rollback.make(*rollback_type, std::int64_t{-1})
                             : std::optional<joggle::Type>{};
-  ok &= expect(linked && rejected && negative.has_value(),
-               "a failed behavior load rolls back every partial binding");
+  const bool recovered =
+      rejected && rollback.load_behavior("behavior_plugin", argv[2]);
+  const auto integer = recovered ? rollback.make("int")
+                                 : std::optional<joggle::Type>{};
+  const auto one = integer
+                       ? rollback.known(*integer, std::int64_t{1})
+                       : std::optional<joggle::Value>{};
+  const auto probe = one ? rollback.materialize("behavior_plugin.cache_probe",
+                                                {*one})
+                         : std::optional<joggle::Function>{};
+  const auto cached = probe && !probe->arguments().empty()
+                          ? probe->arguments().front().type().get<std::int64_t>(
+                                "value")
+                          : std::optional<std::int64_t>{};
+  ok &= expect(linked && rejected && negative.has_value() && recovered &&
+                   cached == std::optional<std::int64_t>{2},
+               "a failed behavior load rolls back bindings, verifiers, and "
+               "Hermetic evaluation cache entries");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

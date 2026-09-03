@@ -1433,6 +1433,7 @@ bool Compiler::load_behavior(const Module& module,
   auto attribute_methods = state_->attribute_methods;
   auto instruction_methods = state_->instruction_methods;
   auto bindings = state_->bindings;
+  auto hermetic_evaluations = state_->hermetic_evaluations;
   auto host_types = state_->host_types;
   auto host_representations = state_->host_representations;
   const std::size_t before = state_->diagnostics.size();
@@ -1452,6 +1453,7 @@ bool Compiler::load_behavior(const Module& module,
     state_->attribute_methods = std::move(attribute_methods);
     state_->instruction_methods = std::move(instruction_methods);
     state_->bindings = std::move(bindings);
+    state_->hermetic_evaluations = std::move(hermetic_evaluations);
     state_->host_types = std::move(host_types);
     state_->host_representations = std::move(host_representations);
     return false;

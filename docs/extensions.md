@@ -173,7 +173,8 @@ joggle_add_behavior(my_behavior
 The descriptor records ABI, host target, and exact canonical Module identity.
 Loading rejects the wrong ABI, target, or Module digest before callbacks run.
 Binding is transactional: reporting any diagnostic rolls back every callback
-installed by the library, so there is no second success-result convention.
+installed by the library and every Hermetic evaluation memoized while binding,
+so there is no second success-result convention.
 Behavior libraries contain implementations only; they cannot introduce hidden
 declarations.
 

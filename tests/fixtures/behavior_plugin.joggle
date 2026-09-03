@@ -4,6 +4,11 @@ module behavior_plugin@1.0.0 {
   type positive(value: int);
 
   fn source() -> positive<1>;
+  fn cached(value: int) -> int;
+  fn cache_probe<N: int>(seed: N, input: positive<@cached(N)>)
+      -> positive<@cached(N)> {
+    return input;
+  }
   fn noop(input: function) -> function;
   fn reverse(input: bytes) -> bytes;
   fn read_model(input: bytes) -> module;
