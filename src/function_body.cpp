@@ -854,7 +854,8 @@ public:
     }
     const auto& contract = detail::FunctionTypeAccess::get(declaration_);
     const auto parameters = declaration_.inputs();
-    std::vector<std::optional<Value>> known_parameters(parameters.size());
+    std::vector<std::optional<detail::StagedValue>> known_parameters(
+        parameters.size());
     detail::KnownBindings bindings;
     std::size_t supplied = 0;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
@@ -871,19 +872,22 @@ public:
       const bool use_default = parameter.default_value &&
                                supplied_known_.size() - supplied ==
                                    required_after;
-      std::optional<Value> value;
+      std::optional<detail::StagedValue> value;
       if (!use_default && supplied < supplied_known_.size()) {
-        value = supplied_known_[supplied++];
+        value = detail::stage(supplied_known_[supplied++]);
       } else if (parameter.default_value) {
         auto payload = detail::parameter_default(parameter);
-        auto type = detail::domain_type(compiler_, parameter.domain);
-        value = payload && type
-                    ? compiler_.known(std::move(*type), std::move(*payload))
-                    : std::optional<Value>{};
+        auto execution = payload
+                             ? detail::execution_value(*payload, parameter)
+                             : std::optional<detail::ExecutionValue>{};
+        value = execution
+                    ? detail::stage(compiler_, std::move(*execution))
+                    : std::optional<detail::StagedValue>{};
       }
-      const auto payload = value && value->known()
-                               ? detail::FunctionAccess::known_value(*value)
-                               : std::nullopt;
+      const detail::ExecutionValue* known =
+          value && value->known() ? value->known_value() : nullptr;
+      const auto payload = known ? detail::parameter_value(*known)
+                                 : std::optional<ParameterValue>{};
       if (!value || !payload ||
           !detail::matches_parameter(parameter, *payload)) {
         report("function specialization needs a compatible Known argument '" +
@@ -1006,7 +1010,8 @@ public:
         define(parameters[index].name,
                edit_->argument(argument_types[residual++]), body_.range);
       } else if (known_parameters[index]) {
-        define(parameters[index].name, *known_parameters[index], body_.range);
+        define_staged(parameters[index].name, *known_parameters[index],
+                      body_.range);
       }
     }
 
@@ -1750,7 +1755,12 @@ private:
       report("a local value cannot enter staged evaluation", range);
       return;
     }
-    if (!locals_.define(std::move(name), std::move(staged))) {
+    define_staged(std::move(name), std::move(*staged), range);
+  }
+
+  void define_staged(std::string name, detail::StagedValue value,
+                     detail::SyntaxRange range) {
+    if (!locals_.define(std::move(name), std::move(value))) {
       report("a local value may only be defined once", range);
     }
   }
