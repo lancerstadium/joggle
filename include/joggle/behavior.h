@@ -13,8 +13,8 @@ namespace detail {
 extern const char behavior_module_identity[];
 }
 
-inline constexpr std::uint32_t behavior_abi = 1;
-inline constexpr const char* behavior_entry = "joggle_behavior_v1";
+inline constexpr std::uint32_t behavior_abi = 2;
+inline constexpr const char* behavior_entry = "joggle_behavior_v2";
 
 #if defined(_WIN32) && defined(_M_X64)
 inline constexpr const char* behavior_target = "windows-x86_64";
@@ -59,7 +59,7 @@ using BehaviorEntry = const Behavior* (*)();
 
 #define JOGGLE_EXPORT_BEHAVIOR(bind_function)                               \
   extern "C" JOGGLE_BEHAVIOR_EXPORT const ::joggle::Behavior*              \
-  joggle_behavior_v1() {                                                   \
+  joggle_behavior_v2() {                                                   \
     static const ::joggle::Behavior descriptor{bind_function};             \
     return &descriptor;                                                    \
   }
