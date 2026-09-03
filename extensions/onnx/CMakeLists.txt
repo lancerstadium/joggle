@@ -75,6 +75,7 @@ if(JOGGLE_BUILD_TESTS)
   endif()
   target_compile_definitions(joggle_onnx_test PRIVATE
     JOGGLE_ARITH_MODULE="${PROJECT_SOURCE_DIR}/modules/arith.joggle"
+    JOGGLE_RESOURCE_MODULE="${PROJECT_SOURCE_DIR}/modules/resource.joggle"
     JOGGLE_TENSOR_MODULE="${PROJECT_SOURCE_DIR}/modules/tensor.joggle"
     JOGGLE_NN_MODULE="${PROJECT_SOURCE_DIR}/modules/nn.joggle"
     JOGGLE_ONNX_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/onnx.joggle"
@@ -93,8 +94,6 @@ endif()
 
 install(FILES onnx.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules)
-install(DIRECTORY include/joggle
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(TARGETS joggle_onnx_behavior
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/joggle/behaviors
   RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/joggle/behaviors)

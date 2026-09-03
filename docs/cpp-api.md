@@ -14,6 +14,8 @@ edits are explicit transactions.
 length-aware byte string. Module and repository identities use the same public
 primitive, so extensions can create compatible content-addressed resource
 names without importing a private header or selecting another hash library.
+`joggle::ResourceSet` is the format-neutral C++ representation of the standard
+`resource.set` Module type; it is a plain value, not a manager or singleton.
 
 ## Namespaces and ownership
 

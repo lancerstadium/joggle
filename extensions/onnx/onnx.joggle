@@ -1,11 +1,9 @@
 joggle 1;
 
-module onnx@1.0.0 {
+module onnx@2.0.0 {
   import nn@2.0.0;
+  import resource@1.0.0;
   import tensor@2.0.0;
 
-  type resources();
-
-  fn read(input: bytes) -> (module, resources);
-  fn lookup(input: resources, resource: string) -> bytes;
+  fn read(input: bytes) -> (module, resource.set);
 }

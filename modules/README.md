@@ -26,6 +26,9 @@ in `language/prelude.joggle`; Prelude is not an installable Module.
 - `buffer` defines explicit storage values and token-ordered memory effects. It
   names an address space but does not prescribe devices, capacities, banks, or
   schedules.
+- `resource` defines the format-neutral detached payload set shared across
+  importer, transformation, simulator, and emitter Modules. It introduces no
+  singleton or ambient resource manager.
 
 The list is not an abstraction ladder. A function body may call declarations
 from any installed Modules. Joggle has no built-in `lower` direction. A

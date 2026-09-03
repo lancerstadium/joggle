@@ -4,14 +4,18 @@ This optional extension implements ONNX import as an ordinary typed Joggle
 function:
 
 ```joggle
-fn read(input: bytes) -> (module, resources);
+fn read(input: bytes) -> (module, resource.set);
 ```
 
 The returned Module contains `tensor.constant` instructions keyed by
-`sha256:<digest>`. Their bytes remain in the explicit `onnx.resources` value;
+`sha256:<digest>`. Their bytes remain in the explicit `resource.set` value;
 there is no global resource store and large weights are not expanded into the
 textual IR. Calling `read` twice with identical bytes produces identical Module
 and resource identities.
+
+`resource.set` is format-neutral: quantizers, simulators, and emitters can
+consume it without importing ONNX. The importer owns decoding and produces the
+set, but it does not own the resource abstraction.
 
 Build with:
 

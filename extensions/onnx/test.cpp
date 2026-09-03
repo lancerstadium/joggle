@@ -14,7 +14,6 @@
 #include <tuple>
 
 #include <joggle/joggle.h>
-#include <joggle/onnx/onnx.h>
 
 #include "onnx.proto3.pb.h"
 
@@ -108,16 +107,30 @@ int main(int argc, char** argv) {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   joggle::Compiler compiler;
   compiler.load(JOGGLE_ARITH_MODULE);
+  compiler.load(JOGGLE_RESOURCE_MODULE);
   compiler.load(JOGGLE_TENSOR_MODULE);
   compiler.load(JOGGLE_NN_MODULE);
   compiler.load(JOGGLE_ONNX_MODULE);
+  compiler.add(R"(
+joggle 1;
+module onnx_composition@1.0.0 {
+  import onnx@2.0.0;
+  import resource@1.0.0;
+
+  fn read(input: bytes) -> (module, resource.set) {
+    model, resources = onnx.read(input);
+    return model, resources;
+  }
+}
+)",
+               "onnx-composition.joggle");
   if (!compiler.link() ||
       !compiler.load_behavior("onnx", JOGGLE_ONNX_BEHAVIOR)) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
 
-  using Imported = std::tuple<joggle::Module, joggle::onnx::Resources>;
+  using Imported = std::tuple<joggle::Module, joggle::ResourceSet>;
   if (argc == 2) {
     const auto source = read_file(argv[1]);
     ::onnx::ModelProto reference;
@@ -128,10 +141,12 @@ int main(int argc, char** argv) {
         reference.ParseFromArray(source->data(),
                                  static_cast<int>(source->size()));
     const auto imported = source
-                              ? compiler.run<Imported>("onnx.read", *source)
+                              ? compiler.run<Imported>("onnx_composition.read",
+                                                       *source)
                               : std::optional<Imported>{};
     const auto repeated = source
-                              ? compiler.run<Imported>("onnx.read", *source)
+                              ? compiler.run<Imported>("onnx_composition.read",
+                                                       *source)
                               : std::optional<Imported>{};
     if (!reference_valid || !imported || !repeated) {
       if (!source) {
@@ -200,8 +215,10 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
   const joggle::Bytes source = encode(model());
-  const auto first = compiler.run<Imported>("onnx.read", source);
-  const auto second = compiler.run<Imported>("onnx.read", source);
+  const auto first =
+      compiler.run<Imported>("onnx_composition.read", source);
+  const auto second =
+      compiler.run<Imported>("onnx_composition.read", source);
   if (!first || !second) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -215,10 +232,7 @@ int main(int argc, char** argv) {
                                  : std::vector<joggle::Instruction>{};
   const std::string resource = resources.empty() ? std::string{}
                                                   : resources.begin()->first;
-  const auto payload = resource.empty()
-                           ? std::optional<joggle::Bytes>{}
-                           : compiler.run<joggle::Bytes>(
-                                 "onnx.lookup", resources, resource);
+  const auto found = resources.find(resource);
 
   bool ok = true;
   ok &= expect(
@@ -229,7 +243,8 @@ int main(int argc, char** argv) {
           instructions[2].callee().symbol().qualified_name() == "nn.relu",
       "ONNX dataflow becomes ordinary typed Joggle instructions");
   ok &= expect(resources.size() == 1U && resource.starts_with("sha256:") &&
-                   resource.size() == 71U && payload && payload->size() == 8U,
+                   resource.size() == 71U && found != resources.end() &&
+                   found->second.size() == 8U,
                "initializer bytes are detached behind a content digest");
   ok &= expect(module.digest() == repeated_module.digest() &&
                    resources == repeated_resources &&
@@ -241,14 +256,14 @@ int main(int argc, char** argv) {
       ->mutable_initializer(0)
       ->set_raw_data(floats({0x40400000U, 0x40000000U}));
   const auto changed =
-      compiler.run<Imported>("onnx.read", encode(changed_model));
+      compiler.run<Imported>("onnx_composition.read", encode(changed_model));
   ok &= expect(changed && std::get<0>(*changed).digest() != module.digest() &&
                    std::get<1>(*changed) != resources,
                "changing initializer bytes changes resource and Module "
                "identity");
 
   const auto rejected =
-      compiler.run<Imported>("onnx.read", encode(model("Sigmoid")));
+      compiler.run<Imported>("onnx_composition.read", encode(model("Sigmoid")));
   const bool precise_rejection = std::any_of(
       compiler.diagnostics().entries().begin(),
       compiler.diagnostics().entries().end(),

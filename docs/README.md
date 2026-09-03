@@ -8,7 +8,7 @@ of the project; none is a migration log.
   concepts.
 - [Language](language.md) is the source-language reference.
 - [Standard Modules](standard-modules.md) specifies Prelude and the shipped
-  `arith`, `tensor`, `nn`, and `buffer` vocabularies.
+  `arith`, `tensor`, `nn`, `buffer`, and `resource` vocabularies.
 - [Compiler functions](compiler-functions.md) defines composition and the
   reusable facilities required by transforms, analyses, and emitters.
 - [Extensions](extensions.md) covers Modules, C++ behavior, and compiler

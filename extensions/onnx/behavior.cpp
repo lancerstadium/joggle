@@ -14,13 +14,10 @@
 #include <vector>
 
 #include <joggle/joggle.h>
-#include <joggle/onnx/onnx.h>
 
 #include "onnx.proto3.pb.h"
 
 namespace {
-
-using Resources = joggle::onnx::Resources;
 
 std::string module_name(std::string_view source) {
   std::string result(source.empty() ? "onnx_model" : source);
@@ -307,7 +304,7 @@ bool explicit_padding(const ::onnx::NodeProto& node, std::size_t node_index,
   return true;
 }
 
-std::optional<std::tuple<joggle::Module, Resources>>
+std::optional<std::tuple<joggle::Module, joggle::ResourceSet>>
 read(joggle::Compiler& compiler, joggle::Bytes input,
      joggle::Diagnostics& diagnostics) {
   if (input.size() >
@@ -376,7 +373,7 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
   auto edit = function->edit();
   std::map<std::string, joggle::Value, std::less<>> values;
   std::set<std::string, std::less<>> initializer_names;
-  Resources resources;
+  joggle::ResourceSet resources;
 
   for (const auto& initializer : model.graph().initializer()) {
     if (initializer.name().empty() ||
@@ -703,24 +700,13 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
 
 void bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
-  const auto resource_type = module.type("resources");
-  if (!resource_type ||
-      !compiler.represent<Resources>(*resource_type)) {
-    diagnostics.report("ONNX behavior does not match its resources type");
+  const auto resources = compiler.module("resource");
+  const auto resource_type = resources ? resources->type("set") : std::nullopt;
+  if (!resource_type || !compiler.represent<joggle::ResourceSet>(*resource_type)) {
+    diagnostics.report("ONNX behavior requires resource@1");
     return;
   }
   compiler.bind(module, "read", read);
-  compiler.bind(
-      module, "lookup",
-      [](const Resources& resources, std::string resource,
-         joggle::Diagnostics& reported) -> std::optional<joggle::Bytes> {
-        const auto found = resources.find(resource);
-        if (found == resources.end()) {
-          reported.report("ONNX resource '" + resource + "' is unavailable");
-          return std::nullopt;
-        }
-        return found->second;
-      });
 }
 
 }  // namespace

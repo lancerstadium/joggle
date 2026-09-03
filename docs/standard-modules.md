@@ -62,6 +62,19 @@ module value, and those declarations otherwise have the same input domain.
 The literal-selection mechanism uses the interface and result constraint, not
 the function name.
 
+## `resource`: explicit detached payloads
+
+`resource.set` is the shared typed value for detached payloads carried beside
+a Module. It is deliberately not a global manager and has no implicit compiler
+lifetime. Importers produce it; transformations may return a replacement;
+simulators and emitters consume it explicitly. Resource names belong to the
+producer's contract, with `sha256:<digest>` as the convention for
+content-addressed payloads.
+
+The C++ representation is the transparent `joggle::ResourceSet` map. Keeping
+the declared type format-neutral prevents a target or quantizer from depending
+on the model format that happened to produce the Module.
+
 ## `tensor`: value shape, not storage
 
 `tensor.ranked<E, S>` represents a tensor value with compiler-known element
@@ -78,8 +91,8 @@ core.
 `tensor.constant(resource)` introduces an immutable tensor through a stable
 resource identifier. Element type and shape are inferred from the expected
 `tensor.ranked` result. The function deliberately stores no payload in the IR:
-an importer returns the Module together with an extension-owned, typed resource
-value, and an emitter or simulator receives both explicitly. This keeps large
+an importer returns the Module together with a typed `resource.set`, and an
+emitter or simulator receives both explicitly. This keeps large
 model parameters out of textual IR without adding an ambient resource manager
 or a second artifact container to the core. Resource extensions may impose a
 stronger convention, such as a validated `sha256:<digest>` identifier.

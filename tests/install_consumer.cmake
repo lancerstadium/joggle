@@ -113,6 +113,16 @@ if(NOT standard_modules_result EQUAL 0)
   message(FATAL_ERROR
     "installed standard Modules failed to link:\n${standard_modules_error}")
 endif()
+execute_process(
+  COMMAND "${installed_cli}" check
+          "${installed_module_dir}/resource.joggle"
+  RESULT_VARIABLE resource_module_result
+  ERROR_VARIABLE resource_module_error
+)
+if(NOT resource_module_result EQUAL 0)
+  message(FATAL_ERROR
+    "installed resource Module failed to link:\n${resource_module_error}")
+endif()
 
 execute_process(
   COMMAND "${CMAKE_COMMAND}" --build "${consumer_build}"
