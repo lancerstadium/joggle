@@ -4,14 +4,11 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
-#include "joggle/compiler.h"
+#include "execution.h"
 
 namespace joggle::detail {
-
-using KnownBindings = std::unordered_map<std::string, ParameterValue>;
 
 struct OperationTypes {
   std::vector<Type> arguments;

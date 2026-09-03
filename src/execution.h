@@ -15,6 +15,9 @@ namespace joggle::detail {
 
 struct FunctionBody;
 
+enum class Control { Next, Return, Break, Continue, Error };
+using KnownBindings = std::unordered_map<std::string, ParameterValue>;
+
 // The evaluator's one internal value domain. Known values retain their C++
 // payload; Residual values retain their Function-owned SSA handle. Both carry
 // one resolved Joggle Type, so staging never changes typing semantics.
@@ -47,7 +50,7 @@ public:
   bool contains(std::string_view name) const;
   StagedValue* find(std::string_view name);
   const StagedValue* find(std::string_view name) const;
-  const std::vector<Scope>& scopes() const;
+  KnownBindings known_bindings() const;
 
 private:
   std::vector<Scope> scopes_;

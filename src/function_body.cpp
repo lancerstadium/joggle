@@ -817,8 +817,6 @@ class Instantiator {
     }
   };
 
-  enum class LoopTransfer { Break, Continue };
-
   struct LoopContext {
     std::optional<Block> continue_target;
     std::optional<Block> break_target;
@@ -1444,24 +1442,6 @@ private:
     return std::nullopt;
   }
 
-  detail::KnownBindings known_bindings() const {
-    detail::KnownBindings bindings;
-    for (const auto& scope : locals_.scopes()) {
-      for (const auto& [name, value] : scope) {
-        if (bindings.contains(name) || !value || !value->known()) {
-          continue;
-        }
-        const detail::ExecutionValue* known = value->known_value();
-        if (known != nullptr) {
-          if (auto payload = detail::parameter_value(*known)) {
-            bindings.emplace(name, std::move(*payload));
-          }
-        }
-      }
-    }
-    return bindings;
-  }
-
   std::optional<Value> evaluate_known(const detail::ExpressionSyntax& syntax) {
     auto expected = known_result(syntax.value, syntax.range);
     if (!expected) {
@@ -1470,7 +1450,7 @@ private:
       return std::nullopt;
     }
     auto payload = detail::evaluate_known_expression(
-        compiler_, owner_, syntax.value, *expected, known_bindings(),
+        compiler_, owner_, syntax.value, *expected, locals_.known_bindings(),
         diagnostics_, source(syntax.range), residual_control_depth_ == 0U);
     auto type = payload ? detail::domain_type(compiler_, expected->domain)
                         : std::nullopt;
@@ -1485,7 +1465,7 @@ private:
         std::nullopt};
     const std::size_t before = diagnostics_.size();
     auto value = detail::evaluate_known_expression(
-        compiler_, owner_, syntax.value, expected, known_bindings(),
+        compiler_, owner_, syntax.value, expected, locals_.known_bindings(),
         diagnostics_, source(syntax.range), residual_control_depth_ == 0U);
     const Type* resolved = value ? value->as_type() : nullptr;
     if (resolved == nullptr && diagnostics_.size() == before) {
@@ -2305,7 +2285,7 @@ private:
     return {};
   }
 
-  Flow instantiate_loop_control(LoopTransfer kind,
+  Flow instantiate_loop_control(detail::Control kind,
                                 detail::SyntaxRange range, Block block) {
     if (loops_.empty()) {
       report("loop control is outside a structured loop", range);
@@ -2313,10 +2293,10 @@ private:
     }
     const LoopContext& loop = loops_.back();
     const std::optional<Block>& target =
-        kind == LoopTransfer::Continue ? loop.continue_target
-                                       : loop.break_target;
+        kind == detail::Control::Continue ? loop.continue_target
+                                          : loop.break_target;
     if (!target) {
-      return transfer(kind == LoopTransfer::Break, block);
+      return transfer(kind == detail::Control::Break, block);
     }
 
     std::vector<Value> carried;
@@ -2347,12 +2327,12 @@ private:
       return instantiate_return(statement.values, statement.range, block);
     }
     if (statement.kind == detail::StatementSyntax::Kind::Break) {
-      return instantiate_loop_control(LoopTransfer::Break, statement.range,
+      return instantiate_loop_control(detail::Control::Break, statement.range,
                                       block);
     }
     if (statement.kind == detail::StatementSyntax::Kind::Continue) {
-      return instantiate_loop_control(LoopTransfer::Continue, statement.range,
-                                      block);
+      return instantiate_loop_control(detail::Control::Continue,
+                                      statement.range, block);
     }
     if (statement.kind == detail::StatementSyntax::Kind::If) {
       return instantiate_if_statement(statement, block);

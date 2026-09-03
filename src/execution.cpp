@@ -18,8 +18,6 @@ namespace joggle::detail {
 namespace {
 
 class BodyEvaluator {
-  enum class Control { Next, Return, Break, Continue, Error };
-
   struct Flow {
     Control control = Control::Next;
     std::optional<StagedValue> value;
@@ -200,20 +198,9 @@ private:
   std::optional<StagedValue>
   known_expression(const Module::Expression& expression, SyntaxRange range,
                    const Module::ParameterDecl& expected) {
-    KnownBindings bindings;
-    for (const auto& scope : locals_.scopes()) {
-      for (const auto& [name, stored] : scope) {
-        const ExecutionValue* known = stored ? stored->known_value() : nullptr;
-        if (known != nullptr) {
-          if (auto value = parameter_value(*known)) {
-            bindings.insert_or_assign(name, std::move(*value));
-          }
-        }
-      }
-    }
     auto value = evaluate_known_expression(
         compiler_, function_.symbol().module_name(), expression, expected,
-        bindings, diagnostics_,
+        locals_.known_bindings(), diagnostics_,
         SourceRange{body_.source, range.begin, range.end},
         !under_residual_control_);
     auto result = value ? execution_value(*value, expected)

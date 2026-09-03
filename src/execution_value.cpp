@@ -126,7 +126,23 @@ const StagedValue* Locals::find(std::string_view name) const {
   return nullptr;
 }
 
-const std::vector<Locals::Scope>& Locals::scopes() const { return scopes_; }
+KnownBindings Locals::known_bindings() const {
+  KnownBindings bindings;
+  for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
+    for (const auto& [name, value] : *scope) {
+      if (bindings.contains(name) || !value || !value->known()) {
+        continue;
+      }
+      const ExecutionValue* known = value->known_value();
+      if (known != nullptr) {
+        if (auto payload = parameter_value(*known)) {
+          bindings.emplace(name, std::move(*payload));
+        }
+      }
+    }
+  }
+  return bindings;
+}
 
 std::string_view execution_value_type(const ExecutionValue& value) {
   if (std::holds_alternative<std::int64_t>(value)) {
