@@ -2725,14 +2725,15 @@ bool Compiler::project_host_value(detail::ExecutionValue& value) {
 bool Compiler::check_host_values(
     const Module::FunctionDecl& function,
     std::span<const detail::ExecutionValue> arguments,
-    const detail::ExecutionValue* result) {
+    std::span<const detail::ExecutionValue> results) {
   const bool has_host_input =
       std::any_of(arguments.begin(), arguments.end(), [](const auto& value) {
         return std::holds_alternative<detail::HostValue>(value);
       });
   const bool has_host_result =
-      result != nullptr &&
-      std::holds_alternative<detail::HostValue>(*result);
+      std::any_of(results.begin(), results.end(), [](const auto& value) {
+        return std::holds_alternative<detail::HostValue>(value);
+      });
   if (!has_host_input && !has_host_result) {
     return true;
   }
@@ -2763,9 +2764,9 @@ bool Compiler::check_host_values(
     if (!contract.ir_results[index]) {
       continue;
     }
-    const auto* host = result == nullptr
+    const auto* host = results.empty()
                            ? nullptr
-                           : std::get_if<detail::HostValue>(result);
+                           : std::get_if<detail::HostValue>(&results[index]);
     expected_results.push_back(host == nullptr ? std::optional<Type>{}
                                                : host->concrete_type);
   }
@@ -2778,7 +2779,7 @@ bool Compiler::check_host_values(
 bool Compiler::check_binding_signature(
     const Module::FunctionDecl& schema,
     std::span<const std::string_view> inputs,
-    std::optional<std::string_view> result) {
+    std::span<const std::string_view> results) {
   const bool input_match = schema.inputs().size() == inputs.size() &&
                            std::equal(schema.inputs().begin(),
                                       schema.inputs().end(), inputs.begin(),
@@ -2787,12 +2788,11 @@ bool Compiler::check_binding_signature(
                                                                  type);
                                       });
   const bool result_match =
-      schema.results().size() <= 1U &&
-      (schema.results().empty() ? !result
-                                : result && accepts_host_type(
-                                                schema,
-                                                schema.results().front(),
-                                                *result));
+      schema.results().size() == results.size() &&
+      std::equal(schema.results().begin(), schema.results().end(),
+                 results.begin(), [&](const auto& field, auto type) {
+                   return accepts_host_type(schema, field, type);
+                 });
   if (!input_match || !result_match) {
     state_->diagnostics.report("C++ binding for function '" +
                                schema.symbol().qualified_name() +
@@ -2889,10 +2889,10 @@ std::optional<detail::ParameterValue> Compiler::evaluate_binding(
     values.push_back(std::move(*converted));
   }
   auto produced = execute(function, std::move(values), under_residual_control);
-  if (!produced) {
+  if (!produced || produced->size() != 1U) {
     return std::nullopt;
   }
-  auto result = detail::parameter_value(*produced);
+  auto result = detail::parameter_value(produced->front());
   if (!result ||
       !detail::matches_parameter(detail::parameter_results(function).front(),
                                  *result)) {
@@ -3140,8 +3140,8 @@ bool Compiler::verify(const ir::Function& function) {
 bool Compiler::check_run_signature(
     const Module::FunctionDecl& schema,
     std::span<const std::string_view> inputs,
-    std::optional<std::string_view> result) {
-  if (matches_run_signature(schema, inputs, result)) {
+    std::span<const std::string_view> results) {
+  if (matches_run_signature(schema, inputs, results)) {
     return true;
   }
   state_->diagnostics.report("invocation of function '" +
@@ -3153,7 +3153,7 @@ bool Compiler::check_run_signature(
 bool Compiler::matches_run_signature(
     const Module::FunctionDecl& schema,
     std::span<const std::string_view> inputs,
-    std::optional<std::string_view> result) const {
+    std::span<const std::string_view> results) const {
   if (!state_->linked) {
     return false;
   }
@@ -3172,12 +3172,11 @@ bool Compiler::matches_run_signature(
                                                                  type);
                                       });
   const bool result_match =
-      schema.results().size() <= 1U &&
-      (schema.results().empty() ? !result
-                                : result && accepts_host_type(
-                                                schema,
-                                                schema.results().front(),
-                                                *result));
+      schema.results().size() == results.size() &&
+      std::equal(schema.results().begin(), schema.results().end(),
+                 results.begin(), [&](const auto& field, auto type) {
+                   return accepts_host_type(schema, field, type);
+                 });
   return input_match && result_match;
 }
 
@@ -3208,7 +3207,7 @@ Compiler::find_function(std::string_view name) {
   return declaration;
 }
 
-std::optional<detail::ExecutionValue>
+std::optional<detail::ExecutionValues>
 Compiler::execute(Module::FunctionDecl declaration,
                   std::vector<detail::ExecutionValue> arguments,
                   bool under_residual_control) {
@@ -3259,7 +3258,7 @@ Compiler::execute(Module::FunctionDecl declaration,
   std::size_t depth = 0;
   const auto execute = [&](const auto& self, const Module::FunctionDecl& current,
                            std::vector<detail::ExecutionValue> values)
-      -> std::optional<detail::ExecutionValue> {
+      -> std::optional<detail::ExecutionValues> {
     if (depth >= state_->evaluation_limits.depth) {
       state_->diagnostics.report(
           "compiler execution nesting limit exceeded in '" +
@@ -3322,7 +3321,7 @@ Compiler::execute(Module::FunctionDecl declaration,
             "' is guarded and cannot execute under Residual control");
         return std::nullopt;
       }
-      std::optional<detail::ExecutionValue> execution;
+      std::optional<detail::ExecutionValues> execution;
       try {
         execution =
             binding->second.callable(*this, values, state_->diagnostics);
@@ -3353,20 +3352,24 @@ Compiler::execute(Module::FunctionDecl declaration,
         }
         return std::nullopt;
       }
-      if (!project_host_value(*execution)) {
+      if (execution->size() != current.results().size()) {
+        state_->diagnostics.report("compiler function '" +
+                                   current.symbol().qualified_name() +
+                                   "' produced the wrong number of values");
         return std::nullopt;
       }
-      if (!current.results().empty()) {
-        if (current.results().size() != 1U ||
-            !accepts_host_type(current, current.results().front(),
-                               detail::execution_value_type(*execution))) {
+      for (std::size_t index = 0; index < execution->size(); ++index) {
+        if (!project_host_value((*execution)[index]) ||
+            !accepts_host_type(current, current.results()[index],
+                               detail::execution_value_type(
+                                   (*execution)[index]))) {
           state_->diagnostics.report("compiler function '" +
                                      current.symbol().qualified_name() +
                                      "' produced a value with the wrong type");
           return std::nullopt;
         }
       }
-      if (!check_host_values(current, values, &*execution)) {
+      if (!check_host_values(current, values, *execution)) {
         return std::nullopt;
       }
       return execution;
@@ -3394,21 +3397,24 @@ Compiler::execute(Module::FunctionDecl declaration,
       if (!evaluated) {
         return std::nullopt;
       }
-      const bool result_matches =
-          current.results().empty()
-              ? std::holds_alternative<std::monostate>(*evaluated)
-              : current.results().size() == 1U &&
-                    accepts_host_type(
-                        current, current.results().front(),
-                        detail::execution_value_type(*evaluated));
-      if (!result_matches) {
+      if (evaluated->size() != current.results().size()) {
         state_->diagnostics.report(
             "compiler function '" + current.symbol().qualified_name() +
-            "' returned a value with the wrong type");
+            "' returned the wrong number of values");
         return std::nullopt;
       }
-      if (!project_host_value(*evaluated) ||
-          !check_host_values(current, values, &*evaluated)) {
+      for (std::size_t index = 0; index < evaluated->size(); ++index) {
+        if (!project_host_value((*evaluated)[index]) ||
+            !accepts_host_type(current, current.results()[index],
+                               detail::execution_value_type(
+                                   (*evaluated)[index]))) {
+          state_->diagnostics.report(
+              "compiler function '" + current.symbol().qualified_name() +
+              "' returned a value with the wrong type");
+          return std::nullopt;
+        }
+      }
+      if (!check_host_values(current, values, *evaluated)) {
         return std::nullopt;
       }
       return evaluated;
@@ -3417,7 +3423,7 @@ Compiler::execute(Module::FunctionDecl declaration,
     return std::nullopt;
   };
 
-  std::optional<detail::ExecutionValue> result;
+  std::optional<detail::ExecutionValues> result;
   try {
     result = execute(execute, declaration, std::move(arguments));
   } catch (...) {
@@ -3427,9 +3433,12 @@ Compiler::execute(Module::FunctionDecl declaration,
     throw;
   }
   bool valid = result.has_value() && state_->diagnostics.size() == before;
-  if (valid && detail::execution_value_type(*result) ==
-                   typeid(ir::Function).name()) {
-    valid = verify(*std::get<std::shared_ptr<ir::Function>>(*result)) && valid;
+  if (valid) {
+    for (const auto& value : *result) {
+      if (detail::execution_value_type(value) == typeid(ir::Function).name()) {
+        valid = verify(*std::get<std::shared_ptr<ir::Function>>(value)) && valid;
+      }
+    }
   }
   if (!valid) {
     for (auto& [function, snapshot] : checkpoints) {

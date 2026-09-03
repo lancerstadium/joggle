@@ -181,6 +181,23 @@ module pipeline@1.0.0 {
     doubled = @twice(4);
     return input;
   }
+  fn divide(input: int) -> (int, bool);
+  fn divide_exact(input: int) -> (int, bool) {
+    quotient, exact = divide(input);
+    return quotient, exact;
+  }
+  fn observe(input: int);
+  fn observe_once(input: int) {
+    observe(input);
+    return;
+  }
+  fn fork(input: test_ir.integer<8>)
+      -> (test_ir.integer<8>, test_ir.integer<8>);
+  fn relay_fork(input: test_ir.integer<8>)
+      -> (test_ir.integer<8>, test_ir.integer<8>) {
+    lhs, rhs = fork(input);
+    return lhs, rhs;
+  }
 }
 )",
                "pipeline.joggle");
@@ -280,6 +297,15 @@ module pipeline@1.0.0 {
       pipeline ? pipeline->function("use_twice") : std::nullopt;
   const auto use_operator =
       pipeline ? pipeline->function("use_operator") : std::nullopt;
+  const auto divide = pipeline ? pipeline->function("divide") : std::nullopt;
+  const auto divide_exact =
+      pipeline ? pipeline->function("divide_exact") : std::nullopt;
+  const auto observe = pipeline ? pipeline->function("observe") : std::nullopt;
+  const auto observe_once =
+      pipeline ? pipeline->function("observe_once") : std::nullopt;
+  const auto fork = pipeline ? pipeline->function("fork") : std::nullopt;
+  const auto relay_fork =
+      pipeline ? pipeline->function("relay_fork") : std::nullopt;
   const auto ir_module = compiler.module("ir");
   const auto ir_module_schema =
       ir_module ? ir_module->type("module") : std::nullopt;
@@ -295,7 +321,8 @@ module pipeline@1.0.0 {
       !invert || !ordered_typed || !unequal_order || !relation_typed ||
       !text_relation_typed || !overload_typed || !default_typed ||
       !staged_overload || !use_twice || !use_operator ||
-      !ir_module_schema) {
+      !divide || !divide_exact || !observe || !observe_once ||
+      !fork || !relay_fork || !ir_module_schema) {
     return EXIT_FAILURE;
   }
   const auto integer = compiler.make(*integer_decl, std::int64_t{8});
@@ -400,6 +427,12 @@ module pipeline@1.0.0 {
     return lhs != rhs;
   });
   compiler.bind(*logical_not, [](bool input) { return !input; });
+  compiler.bind(*divide, [](std::int64_t input) {
+    return std::tuple{input / 2, input % 2 == 0};
+  });
+  std::optional<std::int64_t> observed;
+  compiler.bind(*observe,
+                [&](std::int64_t input) { observed = input; });
   std::size_t width_evaluations = 0;
   compiler.bind(
       *compute_width,
@@ -415,9 +448,13 @@ module pipeline@1.0.0 {
       compiler.invocable<joggle::ir::Module, joggle::ir::Module>(
           *module_identity) &&
           compiler.invocable<joggle::ir::Function, joggle::ir::Function&>(*clean) &&
-          !compiler.invocable<joggle::ir::Module, joggle::ir::Function&>(*clean),
+          !compiler.invocable<joggle::ir::Module, joggle::ir::Function&>(*clean) &&
+          compiler.invocable<std::tuple<std::int64_t, bool>, std::int64_t>(
+              *divide) &&
+          !compiler.invocable<std::int64_t, std::int64_t>(*divide) &&
+          compiler.invocable<void, std::int64_t>(*observe),
       "typed invocability distinguishes whole-Module and single-Function "
-      "transforms");
+      "transforms and checks complete result sequences");
   compiler.bind(
       *module_identity,
       [](joggle::ir::Module input) { return input; });
@@ -457,6 +494,10 @@ module pipeline@1.0.0 {
       *unequal_order, std::int64_t{9}, std::int64_t{7});
   const auto equal_order = compiler.run<bool>(
       *unequal_order, std::int64_t{7}, std::int64_t{7});
+  const auto divided = compiler.run<std::tuple<std::int64_t, bool>>(
+      *divide_exact, std::int64_t{8});
+  const bool observed_once =
+      compiler.run(*observe_once, std::int64_t{13});
   ok &= expect(decoded && count && *count == 0 && direct_encoded &&
                    reencoded && consume_ok && consumed &&
                    reencoded->size() == 1U &&
@@ -474,9 +515,12 @@ module pipeline@1.0.0 {
                    inverted == std::optional<bool>{false} &&
                    ascending == std::optional<bool>{true} &&
                    descending == std::optional<bool>{true} &&
-                   equal_order == std::optional<bool>{false},
+                   equal_order == std::optional<bool>{false} && divided &&
+                   *divided == std::tuple<std::int64_t, bool>{4, true} &&
+                   observed_once && observed == std::optional<std::int64_t>{13},
                "structured compiler functions execute selected branches, "
-               "loops, overloads, typed operators, and if expressions");
+               "loops, overloads, typed operators, zero-result calls, and "
+               "multi-result calls");
   const auto typed_function = compiler.function(*typed);
   const auto ordered_typed_function = compiler.function(*ordered_typed);
   const auto relation_typed_function = compiler.function(*relation_typed);
@@ -493,6 +537,7 @@ module pipeline@1.0.0 {
       compiler.function(*residual_variadic);
   const auto residual_dependent_function =
       compiler.function(*residual_dependent);
+  const auto relay_fork_function = compiler.function(*relay_fork);
   const auto convert_word_8 = std::find_if(
       convert_words.begin(), convert_words.end(), [](const auto& function) {
         const auto& domain = function.inputs().front().domain;
@@ -559,10 +604,21 @@ module pipeline@1.0.0 {
                            .front()
                            .callee() ==
                        *width_copy &&
+                   relay_fork_function &&
+                   relay_fork_function->result_types().size() == 2U &&
+                   relay_fork_function->instructions().size() == 1U &&
+                   relay_fork_function->instructions().front().callee() ==
+                       *fork &&
+                   relay_fork_function->instructions()
+                           .front()
+                           .results()
+                           .size() ==
+                       2U &&
                    width_evaluations == 1U,
                "structured compiler functions participate in dependent type "
                "evaluation and residual calls share overloads, named "
-               "arguments, defaults, variadics, and single evaluation");
+               "arguments, defaults, variadics, multi-results, and single "
+               "evaluation");
   joggle::Diagnostics signature_diagnostics;
   const std::string signature_text = joggle::format(*pipeline);
   const auto signature_roundtrip = joggle::parse_module(

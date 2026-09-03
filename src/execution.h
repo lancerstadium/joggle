@@ -78,10 +78,10 @@ execution_value(const ParameterValue& value,
 std::optional<ParameterValue>
 parameter_value(const ExecutionValue& value);
 
-using ExecuteFunction = std::function<std::optional<ExecutionValue>(
+using ExecuteFunction = std::function<std::optional<ExecutionValues>(
     Module::FunctionDecl, std::vector<ExecutionValue>)>;
 
-std::optional<ExecutionValue> execute_body(
+std::optional<ExecutionValues> execute_body(
     Compiler& compiler, const Module::FunctionDecl& function,
     const FunctionBody& body, std::span<const ExecutionValue> arguments,
     Compiler::EvaluationLimits limits, std::size_t& steps,

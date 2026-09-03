@@ -49,10 +49,10 @@ using TypeList = std::vector<Type>;
 using AttributeList = std::vector<Attribute>;
 
 using ExecutionValue =
-    std::variant<std::monostate, std::int64_t, double, bool, std::string, Type,
-                 Attribute, Bytes, std::shared_ptr<ir::Function>, IntegerList,
-                 RealList, BooleanList, StringList, TypeList, AttributeList,
-                 HostValue>;
+    std::variant<std::int64_t, double, bool, std::string, Type, Attribute, Bytes,
+                 std::shared_ptr<ir::Function>, IntegerList, RealList,
+                 BooleanList, StringList, TypeList, AttributeList, HostValue>;
+using ExecutionValues = std::vector<ExecutionValue>;
 
 template <typename T>
 inline constexpr bool is_builtin_host_value =
@@ -145,6 +145,78 @@ std::optional<T> take_execution_value(ExecutionValue value) {
   }
 }
 
+template <typename> struct IsTuple : std::false_type {};
+
+template <typename... Values>
+struct IsTuple<std::tuple<Values...>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool is_tuple = IsTuple<std::remove_cvref_t<T>>::value;
+
+template <typename T>
+std::vector<std::string_view> execution_result_types() {
+  using Value = std::remove_cvref_t<T>;
+  if constexpr (std::is_void_v<Value>) {
+    return {};
+  } else if constexpr (is_tuple<Value>) {
+    return []<std::size_t... Indices>(std::index_sequence<Indices...>) {
+      return std::vector<std::string_view>{
+          host_type_name<std::tuple_element_t<Indices, Value>>()...};
+    }(std::make_index_sequence<std::tuple_size_v<Value>>{});
+  } else {
+    return {host_type_name<Value>()};
+  }
+}
+
+template <typename T> ExecutionValues store_execution_values(T&& value) {
+  using Value = std::remove_cvref_t<T>;
+  if constexpr (is_tuple<Value>) {
+    ExecutionValues result;
+    result.reserve(std::tuple_size_v<Value>);
+    std::apply(
+        [&](auto&&... elements) {
+          (result.push_back(store_execution_value(
+               std::forward<decltype(elements)>(elements))),
+           ...);
+        },
+        std::forward<T>(value));
+    return result;
+  } else {
+    ExecutionValues result;
+    result.push_back(store_execution_value(std::forward<T>(value)));
+    return result;
+  }
+}
+
+template <typename Tuple, std::size_t... Indices>
+std::optional<Tuple> take_execution_tuple(
+    ExecutionValues values, std::index_sequence<Indices...>) {
+  if (values.size() != sizeof...(Indices)) {
+    return std::nullopt;
+  }
+  std::tuple<std::optional<std::tuple_element_t<Indices, Tuple>>...> decoded{
+      take_execution_value<std::tuple_element_t<Indices, Tuple>>(
+          std::move(values[Indices]))...};
+  if (!(std::get<Indices>(decoded).has_value() && ...)) {
+    return std::nullopt;
+  }
+  return Tuple{std::move(*std::get<Indices>(decoded))...};
+}
+
+template <typename T>
+std::optional<T> take_execution_values(ExecutionValues values) {
+  using Value = std::remove_cvref_t<T>;
+  if constexpr (is_tuple<Value>) {
+    return take_execution_tuple<Value>(
+        std::move(values),
+        std::make_index_sequence<std::tuple_size_v<Value>>{});
+  } else {
+    return values.size() == 1U
+               ? take_execution_value<T>(std::move(values.front()))
+               : std::nullopt;
+  }
+}
+
 template <typename> struct OptionalValue {
   static constexpr bool value = false;
   using type = void;
@@ -187,7 +259,7 @@ struct CallableTraits<Result (Owner::*)(Arguments...) const noexcept>
 
 template <typename Function, typename Arguments, std::size_t Offset,
           bool WithCompiler, bool WithDiagnostics, std::size_t... Indices>
-std::optional<ExecutionValue>
+std::optional<ExecutionValues>
 invoke_typed_function(Function& function, Compiler& compiler,
                       std::span<ExecutionValue> arguments,
                       Diagnostics& diagnostics, bool function_transform,
@@ -222,13 +294,15 @@ invoke_typed_function(Function& function, Compiler& compiler,
 
   if constexpr (std::is_void_v<Produced>) {
     invoke();
-    return ExecutionValue{};
+    return ExecutionValues{};
   } else {
     auto produced = invoke();
     if constexpr (std::is_same_v<std::remove_cvref_t<Produced>, bool>) {
       if (function_transform) {
-        return produced ? std::optional<ExecutionValue>{arguments.front()}
-                        : std::nullopt;
+        return produced
+                   ? std::optional<ExecutionValues>{
+                         ExecutionValues{arguments.front()}}
+                   : std::nullopt;
       }
     }
     using Value = std::remove_cvref_t<Produced>;
@@ -236,9 +310,9 @@ invoke_typed_function(Function& function, Compiler& compiler,
       if (!produced) {
         return std::nullopt;
       }
-      return store_execution_value(std::move(*produced));
+      return store_execution_values(std::move(*produced));
     } else {
-      return store_execution_value(std::move(produced));
+      return store_execution_values(std::move(produced));
     }
   }
 }
@@ -315,7 +389,7 @@ private:
       const Subject&, std::span<const detail::ParameterValue>, Diagnostics&)>;
   template <typename Subject>
   using VerifierFunction = std::function<bool(const Subject&, Diagnostics&)>;
-  using NativeFunction = std::function<std::optional<detail::ExecutionValue>(
+  using NativeFunction = std::function<std::optional<detail::ExecutionValues>(
       Compiler&, std::span<detail::ExecutionValue>, Diagnostics&)>;
   using RepresentationProjector = std::function<std::optional<Type>(
       Compiler&, const Module::TypeDecl&, const void*)>;
@@ -600,21 +674,23 @@ public:
           schema.results().size() == 1U &&
           detail::has_domain(schema.results().front(), "function");
       using Produced = std::remove_cvref_t<typename Traits::result>;
-      std::optional<std::string_view> result_type;
+      std::vector<std::string_view> result_types;
       if constexpr (!std::is_void_v<Produced>) {
         using Value =
             std::conditional_t<detail::OptionalValue<Produced>::value,
                                typename detail::OptionalValue<Produced>::type,
                                Produced>;
         if constexpr (std::is_same_v<Produced, bool>) {
-          result_type = function_transform
-                            ? detail::host_type_name<joggle::ir::Function>()
-                            : detail::host_type_name<bool>();
+          result_types =
+              function_transform
+                  ? std::vector<std::string_view>{
+                        detail::host_type_name<joggle::ir::Function>()}
+                  : detail::execution_result_types<Value>();
         } else {
-          result_type = detail::host_type_name<Value>();
+          result_types = detail::execution_result_types<Value>();
         }
       }
-      if (!check_binding_signature(schema, argument_types, result_type)) {
+      if (!check_binding_signature(schema, argument_types, result_types)) {
         return;
       }
       NativeFunction binding =
@@ -625,7 +701,7 @@ public:
             if (arguments.size() != argument_count) {
               diagnostics.report(
                   "compiler-function binding received the wrong argument count");
-              return std::optional<detail::ExecutionValue>{};
+              return std::optional<detail::ExecutionValues>{};
             }
             return detail::invoke_typed_function<Callable, Arguments, offset,
                                                  with_compiler,
@@ -645,15 +721,8 @@ public:
   bool invocable(const Module::FunctionDecl& function) const {
     const std::array<std::string_view, sizeof...(Arguments)> inputs{
         detail::host_type_name<Arguments>()...};
-    const std::optional<std::string_view> result = [] {
-      if constexpr (std::is_void_v<Result>) {
-        return std::optional<std::string_view>{};
-      } else {
-        return std::optional<std::string_view>{
-            detail::host_type_name<Result>()};
-      }
-    }();
-    return matches_run_signature(function, inputs, result);
+    return matches_run_signature(
+        function, inputs, detail::execution_result_types<Result>());
   }
 
   template <typename Result = void, typename... Arguments>
@@ -661,15 +730,8 @@ public:
   run(Module::FunctionDecl function, Arguments&&... arguments) {
     const std::array<std::string_view, sizeof...(Arguments)> types{
         detail::host_type_name<Arguments>()...};
-    const std::optional<std::string_view> result_type = [] {
-      if constexpr (std::is_void_v<Result>) {
-        return std::optional<std::string_view>{};
-      } else {
-        return std::optional<std::string_view>{
-            detail::host_type_name<Result>()};
-      }
-    }();
-    if (!check_run_signature(function, types, result_type)) {
+    const auto result_types = detail::execution_result_types<Result>();
+    if (!check_run_signature(function, types, result_types)) {
       if constexpr (std::is_void_v<Result>) {
         return false;
       } else {
@@ -681,12 +743,13 @@ public:
     (values.push_back(detail::store_execution_input<Arguments>(
          std::forward<Arguments>(arguments))),
      ...);
-    auto value = execute(std::move(function), std::move(values));
+    auto results = execute(std::move(function), std::move(values));
     if constexpr (std::is_void_v<Result>) {
-      return value.has_value();
+      return results.has_value();
     } else {
-      return value ? detail::take_execution_value<Result>(std::move(*value))
-                   : std::optional<Result>{};
+      return results
+                 ? detail::take_execution_values<Result>(std::move(*results))
+                 : std::optional<Result>{};
     }
   }
 
@@ -731,7 +794,7 @@ private:
   bool project_host_value(detail::ExecutionValue& value);
   bool check_host_values(const Module::FunctionDecl& function,
                          std::span<const detail::ExecutionValue> arguments,
-                         const detail::ExecutionValue* result = nullptr);
+                         std::span<const detail::ExecutionValue> results = {});
   bool accepts_host_type(const Module::FunctionDecl& function,
                          const Module::ParameterDecl& field,
                          std::string_view type) const;
@@ -740,16 +803,16 @@ private:
   bool check_binding_signature(
       const Module::FunctionDecl& schema,
       std::span<const std::string_view> inputs,
-      std::optional<std::string_view> result);
+      std::span<const std::string_view> results);
   bool check_run_signature(
       const Module::FunctionDecl& schema,
       std::span<const std::string_view> inputs,
-      std::optional<std::string_view> result);
+      std::span<const std::string_view> results);
   bool matches_run_signature(
       const Module::FunctionDecl& schema,
       std::span<const std::string_view> inputs,
-      std::optional<std::string_view> result) const;
-  std::optional<detail::ExecutionValue>
+      std::span<const std::string_view> results) const;
+  std::optional<detail::ExecutionValues>
   execute(Module::FunctionDecl declaration,
           std::vector<detail::ExecutionValue> arguments,
           bool under_residual_control = false);

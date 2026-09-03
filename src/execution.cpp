@@ -20,7 +20,7 @@ namespace {
 class BodyEvaluator {
   struct Flow {
     Control control = Control::Next;
-    std::optional<StagedValue> value;
+    std::vector<StagedValue> values;
   };
 
 public:
@@ -63,25 +63,27 @@ public:
     }
   }
 
-  std::optional<ExecutionValue> run() {
+  std::optional<ExecutionValues> run() {
     Flow flow = sequence(body_.blocks.front().statements);
     if (flow.control != Control::Return ||
-        (!flow.value && !function_.results().empty())) {
+        flow.values.size() != function_.results().size()) {
       if (flow.control != Control::Error) {
         report("compiler function path falls through without returning",
                body_.range);
       }
       return std::nullopt;
     }
-    if (!flow.value) {
-      return ExecutionValue{};
+    ExecutionValues results;
+    results.reserve(flow.values.size());
+    for (const StagedValue& staged : flow.values) {
+      const ExecutionValue* value = staged.known_value();
+      if (value == nullptr) {
+        report("compiler function returned a Residual value", body_.range);
+        return std::nullopt;
+      }
+      results.push_back(*value);
     }
-    const ExecutionValue* value = flow.value->known_value();
-    if (value == nullptr) {
-      report("compiler function returned a Residual value", body_.range);
-      return std::nullopt;
-    }
-    return *value;
+    return results;
   }
 
 private:
@@ -257,9 +259,10 @@ private:
                : std::nullopt;
   }
 
-  std::optional<StagedValue> call(
+  std::optional<std::vector<StagedValue>> call_values(
       const Module::Expression& expression, SyntaxRange range,
-      const Module::ParameterDecl* expected,
+      std::size_t result_count,
+      std::span<const Module::ParameterDecl> expected_results = {},
       std::vector<Module::FunctionDecl> declarations = {}) {
     if (declarations.empty()) {
       declarations = visible_functions(
@@ -268,10 +271,16 @@ private:
     std::vector<CallCandidate> candidates;
     for (const auto& declaration : declarations) {
       auto shaped = call_candidate(declaration, expression);
-      if (!shaped || declaration.results().size() > 1U ||
-          (expected != nullptr &&
-           (declaration.results().size() != 1U ||
-            declaration.results().front().domain != expected->domain))) {
+      const bool expected_match =
+          expected_results.empty() ||
+          (expected_results.size() == declaration.results().size() &&
+           std::equal(expected_results.begin(), expected_results.end(),
+                      declaration.results().begin(),
+                      [](const auto& expected, const auto& declared) {
+                        return expected.domain == declared.domain;
+                      }));
+      if (!shaped || declaration.results().size() != result_count ||
+          !expected_match) {
         continue;
       }
       candidates.push_back(std::move(*shaped));
@@ -361,9 +370,37 @@ private:
       }
       arguments.push_back(std::move(*bound[index]));
     }
-    auto result = execute_(selected.function, std::move(arguments));
-    return result ? known(std::move(*result), range)
-                  : std::optional<StagedValue>{};
+    auto results = execute_(selected.function, std::move(arguments));
+    if (!results || results->size() != result_count) {
+      if (results) {
+        report("compiler call returned the wrong number of values", range);
+      }
+      return std::nullopt;
+    }
+    std::vector<StagedValue> staged;
+    staged.reserve(results->size());
+    for (auto& result : *results) {
+      auto value = known(std::move(result), range);
+      if (!value) {
+        return std::nullopt;
+      }
+      staged.push_back(std::move(*value));
+    }
+    return staged;
+  }
+
+  std::optional<StagedValue> call(
+      const Module::Expression& expression, SyntaxRange range,
+      const Module::ParameterDecl* expected,
+      std::vector<Module::FunctionDecl> declarations = {}) {
+    const std::span<const Module::ParameterDecl> expected_results =
+        expected == nullptr
+            ? std::span<const Module::ParameterDecl>{}
+            : std::span<const Module::ParameterDecl>{expected, 1U};
+    auto values = call_values(expression, range, 1U, expected_results,
+                              std::move(declarations));
+    return values ? std::optional<StagedValue>{std::move(values->front())}
+                  : std::nullopt;
   }
 
   std::optional<StagedValue>
@@ -499,29 +536,32 @@ private:
   Flow sequence(std::span<const StatementSyntax> code) {
     for (const StatementSyntax& statement : code) {
       if (!step(statement.range)) {
-        return {Control::Error, std::nullopt};
+        return {Control::Error, {}};
       }
       if (statement.kind == StatementSyntax::Kind::Return) {
-        if (statement.values.size() != function_.results().size() ||
-            statement.values.size() > 1U) {
+        if (statement.values.size() != function_.results().size()) {
           report("compiler return does not match its function signature",
                  statement.range);
-          return {Control::Error, std::nullopt};
+          return {Control::Error, {}};
         }
-        if (statement.values.empty()) {
-          return {Control::Return, std::nullopt};
+        std::vector<StagedValue> values;
+        values.reserve(statement.values.size());
+        for (std::size_t index = 0; index < statement.values.size(); ++index) {
+          auto value = evaluate(statement.values[index].value,
+                                statement.values[index].range,
+                                &function_.results()[index]);
+          if (!value) {
+            return {Control::Error, {}};
+          }
+          values.push_back(std::move(*value));
         }
-        auto value = evaluate(statement.values.front().value,
-                              statement.values.front().range,
-                              &function_.results().front());
-        return value ? Flow{Control::Return, std::move(value)}
-                     : Flow{Control::Error, std::nullopt};
+        return {Control::Return, std::move(values)};
       }
       if (statement.kind == StatementSyntax::Kind::Break) {
-        return {Control::Break, std::nullopt};
+        return {Control::Break, {}};
       }
       if (statement.kind == StatementSyntax::Kind::Continue) {
-        return {Control::Continue, std::nullopt};
+        return {Control::Continue, {}};
       }
       if (statement.kind == StatementSyntax::Kind::If) {
         const Module::ParameterDecl condition{
@@ -532,7 +572,7 @@ private:
         const auto selected = value ? known_boolean(*value) : std::nullopt;
         if (!selected) {
           report("compiler if condition must be bool", statement.range);
-          return {Control::Error, std::nullopt};
+          return {Control::Error, {}};
         }
         locals_.push();
         Flow flow = sequence(*selected ? std::span(statement.body)
@@ -553,7 +593,7 @@ private:
           const auto selected = value ? known_boolean(*value) : std::nullopt;
           if (!selected) {
             report("compiler while condition must be bool", statement.range);
-            return {Control::Error, std::nullopt};
+            return {Control::Error, {}};
           }
           if (!*selected) {
             break;
@@ -582,22 +622,22 @@ private:
         if (!elements) {
           report("compiler for iterable must be a Known list",
                  statement.expression.range);
-          return {Control::Error, std::nullopt};
+          return {Control::Error, {}};
         }
         for (ExecutionValue& element : *elements) {
           if (!step(statement.range)) {
-            return {Control::Error, std::nullopt};
+            return {Control::Error, {}};
           }
           auto value = known(std::move(element), statement.expression.range);
           if (!value) {
-            return {Control::Error, std::nullopt};
+            return {Control::Error, {}};
           }
           locals_.push();
           if (!statement.iterator ||
               !locals_.define(statement.iterator->name, std::move(*value))) {
             report("cannot define compiler for iterator", statement.range);
             locals_.pop();
-            return {Control::Error, std::nullopt};
+            return {Control::Error, {}};
           }
           Flow flow = sequence(statement.body);
           locals_.pop();
@@ -611,15 +651,40 @@ private:
         }
         continue;
       }
-      if (statement.bindings.size() > 1U) {
-        report("compiler execution currently supports one call result",
-               statement.range);
-        return {Control::Error, std::nullopt};
+      using Kind = Module::Expression::Kind;
+      const Kind kind = statement.expression.value.kind;
+      const bool call_expression = kind == Kind::Call || kind == Kind::Prefix ||
+                                   kind == Kind::Infix ||
+                                   kind == Kind::Postfix;
+      if (call_expression && statement.bindings.size() != 1U) {
+        auto values = call_values(statement.expression.value,
+                                  statement.expression.range,
+                                  statement.bindings.size());
+        if (!values) {
+          return {Control::Error, {}};
+        }
+        for (std::size_t index = 0; index < statement.bindings.size(); ++index) {
+          const BindingSyntax& binding = statement.bindings[index];
+          const bool bound =
+              binding.rebind
+                  ? locals_.assign(binding.name, std::move((*values)[index]))
+                  : locals_.define(binding.name, std::move((*values)[index]));
+          if (!bound) {
+            report(binding.rebind
+                       ? "cannot rebind unknown compiler value '" +
+                             binding.name + "'"
+                       : "compiler value '" + binding.name +
+                             "' is already defined in this scope",
+                   binding.range);
+            return {Control::Error, {}};
+          }
+        }
+        continue;
       }
       auto value = evaluate(statement.expression.value,
                             statement.expression.range, nullptr);
       if (!value) {
-        return {Control::Error, std::nullopt};
+        return {Control::Error, {}};
       }
       if (statement.bindings.empty()) {
         continue;
@@ -630,13 +695,13 @@ private:
           report("cannot rebind unknown compiler value '" + binding.name +
                      "'",
                  binding.range);
-          return {Control::Error, std::nullopt};
+          return {Control::Error, {}};
         }
       } else if (!locals_.define(binding.name, std::move(*value))) {
         report("compiler value '" + binding.name +
                    "' is already defined in this scope",
                binding.range);
-        return {Control::Error, std::nullopt};
+        return {Control::Error, {}};
       }
     }
     return {};
@@ -655,7 +720,7 @@ private:
 
 }  // namespace
 
-std::optional<ExecutionValue> execute_body(
+std::optional<ExecutionValues> execute_body(
     Compiler& compiler, const Module::FunctionDecl& function,
     const FunctionBody& body, std::span<const ExecutionValue> arguments,
     Compiler::EvaluationLimits limits, std::size_t& steps,

@@ -390,7 +390,7 @@ bool same_staged_value(const StagedValue& lhs, const StagedValue& rhs) {
            host->storage == other.storage &&
            host->concrete_type == other.concrete_type;
   }
-  return std::holds_alternative<std::monostate>(*left);
+  return false;
 }
 
 std::optional<ExecutionValue>
