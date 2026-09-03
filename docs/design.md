@@ -396,3 +396,9 @@ boundary losslessly; arbitrary registered host objects remain Known until an
 extension provides an ordinary materialization function. This representation
 is not exposed in the DSL, public C++ headers, or serialized IR. Control-flow
 traversal is still duplicated and remains scheduled for removal.
+
+The two paths also share one lexical `Locals` implementation for definition,
+lookup, rebinding, scope depth, and path snapshots. This keeps source shadowing
+and loop/branch state independent of whether a value happens to be Known or
+Residual. `Locals` is evaluator storage, not a Context, symbol table API, or
+language-visible environment.

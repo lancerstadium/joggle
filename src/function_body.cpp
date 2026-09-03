@@ -793,13 +793,9 @@ split_reference(std::string_view owner, std::string_view reference) {
 }
 
 class Instantiator {
-  using Scope =
-      std::unordered_map<std::string, std::optional<detail::StagedValue>>;
-  using Scopes = std::vector<Scope>;
-
   struct Path {
     Block block;
-    Scopes scopes;
+    detail::Locals locals;
     std::size_t residual_depth = 0;
   };
 
@@ -1005,7 +1001,7 @@ public:
     detail::FunctionAccess::declare(*function_, declaration_, argument_types,
                                     result_types_);
     edit_.emplace(function_->edit());
-    scopes_.emplace_back();
+    locals_.push();
     std::size_t residual = 0;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
       if (contract.ir_inputs[index]) {
@@ -1127,7 +1123,7 @@ public:
 
 private:
   Path path(Block block) const {
-    return {std::move(block), scopes_, residual_control_depth_};
+    return {std::move(block), locals_, residual_control_depth_};
   }
 
   Flow next(Block block) const {
@@ -1144,14 +1140,14 @@ private:
   }
 
   void restore(const Path& active) {
-    scopes_ = active.scopes;
+    locals_ = active.locals;
     residual_control_depth_ = active.residual_depth;
   }
 
   static void trim_scopes(Flow& flow, std::size_t depth) {
     const auto trim = [&](std::vector<Path>& paths) {
       for (Path& path : paths) {
-        path.scopes.resize(depth);
+        path.locals.resize(depth);
       }
     };
     trim(flow.next);
@@ -1450,8 +1446,8 @@ private:
 
   detail::KnownBindings known_bindings() const {
     detail::KnownBindings bindings;
-    for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
-      for (const auto& [name, value] : *scope) {
+    for (const auto& scope : locals_.scopes()) {
+      for (const auto& [name, value] : scope) {
         if (bindings.contains(name) || !value || !value->known()) {
           continue;
         }
@@ -1500,21 +1496,13 @@ private:
   }
 
   std::optional<Value> lookup(std::string_view name) const {
-    for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
-      const auto found = scope->find(std::string(name));
-      if (found != scope->end()) {
-        return found->second
-                   ? detail::ir_value(compiler_, *found->second)
-                   : std::optional<Value>{};
-      }
-    }
-    return std::nullopt;
+    const detail::StagedValue* value = locals_.find(name);
+    return value ? detail::ir_value(compiler_, *value)
+                 : std::optional<Value>{};
   }
 
   bool declared_local(std::string_view name) const {
-    return std::any_of(scopes_.rbegin(), scopes_.rend(), [&](const auto& scope) {
-      return scope.contains(std::string(name));
-    });
+    return locals_.contains(name);
   }
 
   std::vector<Module::FunctionDecl>
@@ -1763,7 +1751,7 @@ private:
       report("a local value cannot enter staged evaluation", range);
       return;
     }
-    if (!scopes_.back().emplace(std::move(name), std::move(staged)).second) {
+    if (!locals_.define(std::move(name), std::move(staged))) {
       report("a local value may only be defined once", range);
     }
   }
@@ -1779,17 +1767,13 @@ private:
       }
     }
     if (!binding.rebind) {
-      if (!scopes_.back().emplace(binding.name, std::move(staged)).second) {
+      if (!locals_.define(binding.name, std::move(staged))) {
         report("a local value may only be defined once", binding.range);
       }
       return;
     }
-    for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
-      const auto found = scope->find(binding.name);
-      if (found != scope->end()) {
-        found->second = std::move(staged);
-        return;
-      }
+    if (locals_.assign(binding.name, std::move(staged))) {
+      return;
     }
     report("cannot rebind undefined local value '" + binding.name + "'",
            binding.range);
@@ -1954,8 +1938,8 @@ private:
         return next(block);
       }
       const auto& arm = *selected ? statement.body : statement.otherwise;
-      const std::size_t outer_depth = scopes_.size();
-      scopes_.emplace_back();
+      const std::size_t outer_depth = locals_.depth();
+      locals_.push();
       Flow flow = instantiate_sequence(arm, block);
       trim_scopes(flow, outer_depth);
       return flow;
@@ -1978,11 +1962,11 @@ private:
     const Block no = edit_->block();
     edit_->branch(condition_tail, *condition, yes, {}, no, {});
 
-    const auto incoming = scopes_;
+    const detail::Locals incoming = locals_;
     const auto elaborate = [&](const std::vector<detail::StatementSyntax>& arm,
                                Block start) {
-      scopes_ = incoming;
-      scopes_.emplace_back();
+      locals_ = incoming;
+      locals_.push();
       Flow flow = instantiate_sequence(arm, start);
       std::vector<std::optional<Value>> values;
       values.reserve(carried_names.size());
@@ -1992,7 +1976,7 @@ private:
           values.push_back(lookup(name));
         }
       }
-      trim_scopes(flow, incoming.size());
+      trim_scopes(flow, incoming.depth());
       return std::pair{flow, std::move(values)};
     };
 
@@ -2000,7 +1984,7 @@ private:
     auto [true_flow, true_values] = elaborate(statement.body, yes);
     auto [false_flow, false_values] = elaborate(statement.otherwise, no);
     --residual_control_depth_;
-    scopes_ = incoming;
+    locals_ = incoming;
 
     const bool transfers = !true_flow.breaks.empty() ||
                            !true_flow.continues.empty() ||
@@ -2157,8 +2141,8 @@ private:
                  statement.range);
           continue;
         }
-        const std::size_t outer_depth = scopes_.size();
-        scopes_.emplace_back();
+        const std::size_t outer_depth = locals_.depth();
+        locals_.push();
         loops_.push_back({});
         Flow flow = instantiate_sequence(statement.body, active.block);
         loops_.pop_back();
@@ -2228,10 +2212,10 @@ private:
     edit_->branch(condition_tail, *condition, body, {}, exit,
                   header.arguments());
 
-    const std::size_t outer_scope_depth = scopes_.size();
+    const std::size_t outer_scope_depth = locals_.depth();
     const std::size_t outer_residual_depth = residual_control_depth_;
     ++residual_control_depth_;
-    scopes_.emplace_back();
+    locals_.push();
     loops_.push_back({header, exit, carried_names, carried_types});
     Flow body_flow = instantiate_sequence(statement.body, body);
     loops_.pop_back();
@@ -2259,7 +2243,7 @@ private:
       report("loop control was not consumed by its Residual loop",
              statement.range);
     }
-    scopes_.resize(outer_scope_depth);
+    locals_.resize(outer_scope_depth);
     residual_control_depth_ = outer_residual_depth;
     for (std::size_t index = 0; index < carried_names.size(); ++index) {
       bind({carried_names[index], std::nullopt, statement.range, true},
@@ -2559,7 +2543,7 @@ private:
     for (std::size_t index = 0; index < statement.bindings.size(); ++index) {
       const auto& binding = statement.bindings[index];
       if (!binding.type) {
-        const auto expected = scopes_.size() == 1U
+        const auto expected = locals_.depth() == 1U
                                   ? expected_values_.find(binding.name)
                                   : expected_values_.end();
         expected_types.push_back(
@@ -2675,10 +2659,7 @@ private:
   std::size_t initial_diagnostics_ = 0;
   std::optional<Function> function_;
   std::optional<Function::Edit> edit_;
-  std::vector<
-      std::unordered_map<std::string,
-                         std::optional<detail::StagedValue>>>
-      scopes_;
+  detail::Locals locals_;
   std::unordered_map<std::string, Type> expected_values_;
   std::vector<Type> result_types_;
   std::unordered_map<std::string, Block> blocks_;

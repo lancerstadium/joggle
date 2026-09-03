@@ -4,6 +4,7 @@
 #include "prelude.h"
 #include "type_internal.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <typeinfo>
 #include <utility>
@@ -68,6 +69,64 @@ ExecutionValue* StagedValue::known_value() {
 const Value* StagedValue::residual_value() const {
   return std::get_if<Value>(&value_);
 }
+
+void Locals::push() { scopes_.emplace_back(); }
+
+void Locals::pop() {
+  if (!scopes_.empty()) {
+    scopes_.pop_back();
+  }
+}
+
+void Locals::resize(std::size_t depth) { scopes_.resize(depth); }
+
+std::size_t Locals::depth() const { return scopes_.size(); }
+
+bool Locals::define(std::string name, std::optional<StagedValue> value) {
+  return !scopes_.empty() &&
+         scopes_.back().emplace(std::move(name), std::move(value)).second;
+}
+
+bool Locals::assign(std::string_view name,
+                    std::optional<StagedValue> value) {
+  for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
+    const auto found = scope->find(std::string(name));
+    if (found != scope->end()) {
+      found->second = std::move(value);
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Locals::contains(std::string_view name) const {
+  return std::any_of(scopes_.rbegin(), scopes_.rend(),
+                     [&](const Scope& scope) {
+                       return scope.contains(std::string(name));
+                     });
+}
+
+StagedValue* Locals::find(std::string_view name) {
+  for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
+    const auto found = scope->find(std::string(name));
+    if (found != scope->end()) {
+      return found->second ? &*found->second : nullptr;
+    }
+  }
+  return nullptr;
+}
+
+const StagedValue* Locals::find(std::string_view name) const {
+  for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
+    const auto found = scope->find(std::string(name));
+    if (found != scope->end()) {
+      return found->second ? &*found->second : nullptr;
+    }
+  }
+  return nullptr;
+}
+
+const std::vector<Locals::Scope>& Locals::scopes() const { return scopes_; }
 
 std::string_view execution_value_type(const ExecutionValue& value) {
   if (std::holds_alternative<std::int64_t>(value)) {

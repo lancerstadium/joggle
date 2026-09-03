@@ -3,7 +3,9 @@
 #include <functional>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "domain.h"
@@ -30,6 +32,25 @@ public:
 private:
   Type type_;
   std::variant<ExecutionValue, Value> value_;
+};
+
+class Locals {
+public:
+  using Scope = std::unordered_map<std::string, std::optional<StagedValue>>;
+
+  void push();
+  void pop();
+  void resize(std::size_t depth);
+  std::size_t depth() const;
+  bool define(std::string name, std::optional<StagedValue> value);
+  bool assign(std::string_view name, std::optional<StagedValue> value);
+  bool contains(std::string_view name) const;
+  StagedValue* find(std::string_view name);
+  const StagedValue* find(std::string_view name) const;
+  const std::vector<Scope>& scopes() const;
+
+private:
+  std::vector<Scope> scopes_;
 };
 
 std::string_view execution_value_type(const ExecutionValue& value);

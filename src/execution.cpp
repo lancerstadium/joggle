@@ -12,7 +12,6 @@
 #include <locale>
 #include <sstream>
 #include <typeinfo>
-#include <unordered_map>
 #include <utility>
 
 namespace joggle::detail {
@@ -26,9 +25,6 @@ class BodyEvaluator {
     std::optional<StagedValue> value;
   };
 
-  using Scope = std::unordered_map<std::string, StagedValue>;
-  using Scopes = std::vector<Scope>;
-
 public:
   BodyEvaluator(Compiler& compiler, const Module::FunctionDecl& function,
                 const FunctionBody& body,
@@ -38,7 +34,8 @@ public:
                 const ExecuteFunction& execute)
       : compiler_(compiler), function_(function), body_(body), limits_(limits),
         steps_(steps), under_residual_control_(under_residual_control),
-        diagnostics_(diagnostics), execute_(execute), scopes_(1U) {
+        diagnostics_(diagnostics), execute_(execute) {
+    locals_.push();
     for (std::size_t index = 0; index < function_.inputs().size(); ++index) {
       auto value = stage(compiler_, arguments[index]);
       if (!value) {
@@ -46,8 +43,7 @@ public:
                body_.range);
         continue;
       }
-      scopes_.front().emplace(function_.inputs()[index].name,
-                              std::move(*value));
+      locals_.define(function_.inputs()[index].name, std::move(*value));
     }
   }
 
@@ -88,13 +84,7 @@ private:
   }
 
   StagedValue* local(std::string_view name) {
-    for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
-      const auto found = scope->find(std::string(name));
-      if (found != scope->end()) {
-        return &found->second;
-      }
-    }
-    return nullptr;
+    return locals_.find(name);
   }
 
   std::optional<StagedValue> known(ExecutionValue value, SyntaxRange range) {
@@ -211,9 +201,9 @@ private:
   known_expression(const Module::Expression& expression, SyntaxRange range,
                    const Module::ParameterDecl& expected) {
     KnownBindings bindings;
-    for (const auto& scope : scopes_) {
+    for (const auto& scope : locals_.scopes()) {
       for (const auto& [name, stored] : scope) {
-        const ExecutionValue* known = stored.known_value();
+        const ExecutionValue* known = stored ? stored->known_value() : nullptr;
         if (known != nullptr) {
           if (auto value = parameter_value(*known)) {
             bindings.insert_or_assign(name, std::move(*value));
@@ -541,10 +531,10 @@ private:
           report("compiler if condition must be bool", statement.range);
           return {Control::Error, std::nullopt};
         }
-        scopes_.emplace_back();
+        locals_.push();
         Flow flow = sequence(*selected ? std::span(statement.body)
                                       : std::span(statement.otherwise));
-        scopes_.pop_back();
+        locals_.pop();
         if (flow.control != Control::Next) {
           return flow;
         }
@@ -566,9 +556,9 @@ private:
           if (!*selected) {
             break;
           }
-          scopes_.emplace_back();
+          locals_.push();
           Flow flow = sequence(statement.body);
-          scopes_.pop_back();
+          locals_.pop();
           if (flow.control == Control::Return ||
               flow.control == Control::Error) {
             return flow;
@@ -594,17 +584,13 @@ private:
       }
       const BindingSyntax& binding = statement.bindings.front();
       if (binding.rebind) {
-        auto* target = local(binding.name);
-        if (target == nullptr) {
+        if (!locals_.assign(binding.name, std::move(*value))) {
           report("cannot rebind unknown compiler value '" + binding.name +
                      "'",
                  binding.range);
           return {Control::Error, std::nullopt};
         }
-        *target = std::move(*value);
-      } else if (!scopes_.back()
-                      .emplace(binding.name, std::move(*value))
-                      .second) {
+      } else if (!locals_.define(binding.name, std::move(*value))) {
         report("compiler value '" + binding.name +
                    "' is already defined in this scope",
                binding.range);
@@ -622,7 +608,7 @@ private:
   bool under_residual_control_ = false;
   Diagnostics& diagnostics_;
   const ExecuteFunction& execute_;
-  Scopes scopes_;
+  Locals locals_;
 };
 
 }  // namespace
