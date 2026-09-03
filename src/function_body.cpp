@@ -940,11 +940,14 @@ public:
         continue;
       }
       known_parameters[index] = *value;
-      bindings.insert_or_assign(parameter.name, *payload);
+      bindings.insert_or_assign(
+          parameter.name, detail::KnownBinding{*payload, parameter.domain});
       if (index < contract.bindings.size() && contract.bindings[index] &&
           contract.bindings[index]->kind ==
               Module::Expression::Kind::Variable) {
-        bindings.insert_or_assign(contract.bindings[index]->text, *payload);
+        bindings.insert_or_assign(
+            contract.bindings[index]->text,
+            detail::KnownBinding{*payload, parameter.domain});
       }
     }
     if (supplied != supplied_known_.size()) {
@@ -1064,7 +1067,7 @@ public:
       }
       const Module::ParameterDecl parameter{generic.name, generic.domain, false,
                                             std::nullopt};
-      auto value = detail::execution_value(found->second, parameter);
+      auto value = detail::execution_value(found->second.value, parameter);
       auto staged = value ? detail::stage(compiler_, std::move(*value))
                           : std::optional<detail::StagedValue>{};
       if (!staged) {

@@ -203,6 +203,18 @@ module primitive_test@1.0.0 {
     return result;
   }
 
+  fn reverse_types(values: list<type>) -> list<type> {
+    result: list<type> = [];
+    for index in range(length(values)) {
+      result = append(result, at(values, length(values) - index - 1));
+    }
+    return result;
+  }
+
+  fn append_name(values: list<string>, name: string) -> list<string> {
+    return append(values, name);
+  }
+
   fn unroll<N: int>(count: N, input: word<8>) -> word<8> {
     current = input;
     for index in range(N) {
@@ -245,6 +257,18 @@ module primitive_test@1.0.0 {
                 "primitive_test.reverse", std::vector<std::int64_t>{2, 4, 6})
           : std::nullopt;
   const auto primitive_module = primitives.module("primitive_test");
+  const auto i8 = primitives.make("i8");
+  const auto f16 = primitives.make("f16");
+  const auto reversed_types = primitives_linked && i8 && f16
+                                  ? primitives.run<std::vector<joggle::Type>>(
+                                        "primitive_test.reverse_types",
+                                        std::vector<joggle::Type>{*i8, *f16})
+                                  : std::nullopt;
+  const auto names =
+      primitives_linked ? primitives.run<std::vector<std::string>>(
+                              "primitive_test.append_name",
+                              std::vector<std::string>{}, std::string{"weight"})
+                        : std::nullopt;
   const auto unroll_decl =
       primitive_module ? primitive_module->function("unroll") : std::nullopt;
   const auto integer_type = primitives.make("int");
@@ -254,17 +278,19 @@ module primitive_test@1.0.0 {
   const auto unrolled = unroll_decl && count
                             ? primitives.materialize(*unroll_decl, {*count})
                             : std::nullopt;
-  ok &= expect(primitives_linked && folded == std::optional<std::int64_t>{7} &&
-                   predicate == std::optional<bool>{true} &&
-                   real_math == std::optional<double>{4.0} && ascending &&
-                   *ascending == std::vector<std::int64_t>({0, 1, 2, 3}) &&
-                   descending &&
-                   *descending == std::vector<std::int64_t>({5, 3, 1}) &&
-                   empty_range && empty_range->empty() && reversed &&
-                   *reversed == std::vector<std::int64_t>({6, 4, 2}) &&
-                   unrolled && unrolled->instructions().size() == 3U,
-               "Prelude fn primitives drive generic for, compile-time lists, "
-               "control, arithmetic, comparisons, and logic");
+  ok &= expect(
+      primitives_linked && folded == std::optional<std::int64_t>{7} &&
+          predicate == std::optional<bool>{true} &&
+          real_math == std::optional<double>{4.0} && ascending &&
+          *ascending == std::vector<std::int64_t>({0, 1, 2, 3}) && descending &&
+          *descending == std::vector<std::int64_t>({5, 3, 1}) && empty_range &&
+          empty_range->empty() && reversed &&
+          *reversed == std::vector<std::int64_t>({6, 4, 2}) && reversed_types &&
+          *reversed_types == std::vector<joggle::Type>({*f16, *i8}) &&
+          names == std::optional<std::vector<std::string>>{{"weight"}} &&
+          unrolled && unrolled->instructions().size() == 3U,
+      "Prelude fn primitives drive generic for, typed compile-time "
+      "lists, control, arithmetic, comparisons, and logic");
 
   joggle::Compiler shadowing;
   shadowing.add(R"(

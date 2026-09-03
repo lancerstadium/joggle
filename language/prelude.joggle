@@ -1,6 +1,6 @@
 joggle 1;
 
-module prelude@2.0.0 {
+module prelude@3.0.0 {
   interface scalar: type {
     storage_bits: int;
   }
@@ -108,6 +108,21 @@ module prelude@2.0.0 {
   fn range(start: int, stop: int) -> list<int>;
   fn range(start: int, stop: int, step: int) -> list<int>;
   fn length(values: list<int>) -> int;
+  fn length(values: list<real>) -> int;
+  fn length(values: list<bool>) -> int;
+  fn length(values: list<string>) -> int;
+  fn length(values: list<type>) -> int;
+  fn length(values: list<attr>) -> int;
   fn at(values: list<int>, index: int) -> int;
+  fn at(values: list<real>, index: int) -> real;
+  fn at(values: list<bool>, index: int) -> bool;
+  fn at(values: list<string>, index: int) -> string;
+  fn at(values: list<type>, index: int) -> type;
+  fn at(values: list<attr>, index: int) -> attr;
   fn append(values: list<int>, value: int) -> list<int>;
+  fn append(values: list<real>, value: real) -> list<real>;
+  fn append(values: list<bool>, value: bool) -> list<bool>;
+  fn append(values: list<string>, value: string) -> list<string>;
+  fn append(values: list<type>, value: type) -> list<type>;
+  fn append(values: list<attr>, value: attr) -> list<attr>;
 }

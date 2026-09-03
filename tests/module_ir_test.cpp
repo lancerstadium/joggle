@@ -105,7 +105,7 @@ module module_defs@1.0.0 {
                "signature instead of living in a second function table");
   ok &= expect(dependencies ==
                    std::vector<joggle::Module::Dependency>{
-                       {"module_defs", {1, 0, 0}}, {"prelude", {2, 0, 0}}},
+                       {"module_defs", {1, 0, 0}}, {"prelude", {3, 0, 0}}},
                "an executable Module reports exact schema dependencies");
   ok &= expect(parsed && reparsed == text,
                "a multi-Function Module serializes as canonical source");

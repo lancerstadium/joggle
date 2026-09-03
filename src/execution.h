@@ -16,7 +16,13 @@ namespace joggle::detail {
 struct FunctionBody;
 
 enum class Control { Next, Return, Break, Continue, Error };
-using KnownBindings = std::unordered_map<std::string, ParameterValue>;
+
+struct KnownBinding {
+  ParameterValue value;
+  std::optional<Module::Expression> domain;
+};
+
+using KnownBindings = std::unordered_map<std::string, KnownBinding>;
 
 // The evaluator's one internal value domain. Known values retain their C++
 // payload; Residual values retain their Function-owned SSA handle. Both carry

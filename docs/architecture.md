@@ -85,6 +85,11 @@ orthogonal to type:
 - a Known value has a compiler payload;
 - a Residual value is represented by a `joggle::ir::Value`.
 
+Known locals retain both their declared domain and payload. In particular, an
+empty `list<string>` remains distinct from an empty `list<type>`, so ordinary
+overload resolution does not need payload tags, special list operations, or a
+second compile-time language.
+
 A body executes as far as its Known inputs permit. Remaining calls and control
 flow become IR. Prefix `@` asserts that an expression must finish as Known; it
 does not invoke another evaluator or another function kind.

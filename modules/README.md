@@ -8,10 +8,10 @@ in `language/prelude.joggle`; Prelude is not an installable Module.
 - Native `i1/i8/i16/i32/i64`, `u8/u16/u32/u64`,
   `f16/bf16/f32/f64`, and `index` types are declarations in the automatically
   linked `prelude` Module. They need no explicit import.
-- Compiler arithmetic, comparisons, logic, `ceildiv`, `min`, `max`, and
-  integer `range` are ordinary Prelude `fn` declarations with deterministic
-  Hermetic core implementations. Local declarations can shadow them through
-  the normal name and operator rules.
+- Compiler arithmetic, comparisons, logic, `ceildiv`, `min`, `max`, integer
+  `range`, and generic list access are ordinary Prelude `fn` declarations with
+  deterministic Hermetic core implementations. Local declarations can shadow
+  them through the normal name and operator rules.
 - `arith` defines Residual arithmetic, comparison, bitwise, shift, and logical
   functions over Prelude types and compatible custom types. `prelude.scalar`
   means fixed-width scalar representation; `prelude.numeric` means arithmetic

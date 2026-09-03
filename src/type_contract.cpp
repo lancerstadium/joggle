@@ -23,6 +23,40 @@ namespace {
 
 using Bindings = KnownBindings;
 
+std::optional<Module::Expression> value_domain(const ParameterValue& value) {
+  switch (value.kind()) {
+  case ParameterValue::Kind::I64:
+    return domain_expression(ValueKind::Integer);
+  case ParameterValue::Kind::F64:
+    return domain_expression(ValueKind::Real);
+  case ParameterValue::Kind::Boolean:
+    return domain_expression(ValueKind::Boolean);
+  case ParameterValue::Kind::String:
+    return domain_expression(ValueKind::String);
+  case ParameterValue::Kind::Type:
+    return domain_expression(ValueKind::Type);
+  case ParameterValue::Kind::Attribute:
+    return domain_expression(ValueKind::Attribute);
+  case ParameterValue::Kind::List: {
+    const auto elements = value.elements();
+    if (elements.empty()) {
+      return std::nullopt;
+    }
+    auto element = value_domain(elements.front());
+    if (!element) {
+      return std::nullopt;
+    }
+    for (std::size_t index = 1U; index < elements.size(); ++index) {
+      if (value_domain(elements[index]) != element) {
+        return std::nullopt;
+      }
+    }
+    return Module::Expression::list_domain(std::move(*element));
+  }
+  }
+  return std::nullopt;
+}
+
 std::optional<Module::Expression>
 known_domain(const Module::Expression& expression, const Bindings& bindings) {
   using Kind = Module::Expression::Kind;
@@ -32,22 +66,10 @@ known_domain(const Module::Expression& expression, const Bindings& bindings) {
     if (value == bindings.end()) {
       return std::nullopt;
     }
-    switch (value->second.kind()) {
-    case ParameterValue::Kind::I64:
-      return domain_expression(ValueKind::Integer);
-    case ParameterValue::Kind::F64:
-      return domain_expression(ValueKind::Real);
-    case ParameterValue::Kind::Boolean:
-      return domain_expression(ValueKind::Boolean);
-    case ParameterValue::Kind::String:
-      return domain_expression(ValueKind::String);
-    case ParameterValue::Kind::Type:
-      return domain_expression(ValueKind::Type);
-    case ParameterValue::Kind::Attribute:
-      return domain_expression(ValueKind::Attribute);
-    case ParameterValue::Kind::List:
-      return std::nullopt;
+    if (value->second.domain) {
+      return value->second.domain;
     }
+    return value_domain(value->second.value);
   }
   if (expression.kind == Kind::Number) {
     return domain_expression(expression.text.find_first_of(".eE") ==
@@ -60,6 +82,19 @@ known_domain(const Module::Expression& expression, const Bindings& bindings) {
   }
   if (expression.kind == Kind::String) {
     return domain_expression(ValueKind::String);
+  }
+  if (expression.kind == Kind::List && !expression.arguments.empty()) {
+    auto element = known_domain(expression.arguments.front(), bindings);
+    const auto domain = element ? kernel_domain(*element) : std::nullopt;
+    if (!domain || domain->list) {
+      return std::nullopt;
+    }
+    for (std::size_t index = 1U; index < expression.arguments.size(); ++index) {
+      if (known_domain(expression.arguments[index], bindings) != element) {
+        return std::nullopt;
+      }
+    }
+    return Module::Expression::list_domain(std::move(*element));
   }
   return std::nullopt;
 }
@@ -370,7 +405,9 @@ public:
     }
     Bindings bindings;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
-      bindings.emplace(schema.parameters()[index].name, parameters[index]);
+      bindings.emplace(
+          schema.parameters()[index].name,
+          KnownBinding{parameters[index], schema.parameters()[index].domain});
     }
     std::vector<ParameterValue> values;
     values.reserve(schema.derived_parameters().size());
@@ -555,7 +592,7 @@ private:
     }
     const auto bound = bindings.find(generic.name);
     const Type* type =
-        bound == bindings.end() ? nullptr : bound->second.as_type();
+        bound == bindings.end() ? nullptr : bound->second.value.as_type();
     if (type == nullptr) {
       report("cannot evaluate derived parameter '" + generic.name + "." +
              std::string(field_name) +
@@ -613,8 +650,10 @@ private:
       return std::nullopt;
     }
     for (std::size_t index = 0; index < parameters.size(); ++index) {
-      arguments.emplace(type->schema().parameters()[index].name,
-                        parameters[index]);
+      arguments.emplace(
+          type->schema().parameters()[index].name,
+          KnownBinding{parameters[index],
+                       type->schema().parameters()[index].domain});
     }
     const std::string identity = std::string(type->stable_name()) +
                                  "/derived/" + std::string(field_name);
@@ -758,7 +797,7 @@ private:
         report("cannot infer type variable '" + expression.text + "'");
         return std::nullopt;
       }
-      return found->second;
+      return found->second.value;
     }
     if (expression.kind == Kind::Evaluate) {
       if (expression.arguments.size() != 1U) {
@@ -866,7 +905,9 @@ private:
             return std::nullopt;
           }
           values.push_back(*value);
-          arguments.emplace(inputs[index].name, std::move(*value));
+          arguments.emplace(
+              inputs[index].name,
+              KnownBinding{std::move(*value), inputs[index].domain});
         }
         return evaluate_function(function, values, arguments);
       }
@@ -975,7 +1016,9 @@ private:
           return std::nullopt;
         }
         values.push_back(*bound[index]);
-        arguments.emplace(inputs[index].name, std::move(*bound[index]));
+        arguments.emplace(
+            inputs[index].name,
+            KnownBinding{std::move(*bound[index]), inputs[index].domain});
       }
 
       return evaluate_function(selected.function, values, arguments);
@@ -1044,8 +1087,9 @@ private:
       if (!satisfies_constraint(expression.text, actual)) {
         return false;
       }
-      const auto [found, inserted] = bindings.emplace(expression.text, actual);
-      if (!inserted && found->second != actual) {
+      const auto [found, inserted] = bindings.emplace(
+          expression.text, KnownBinding{actual, value_domain(actual)});
+      if (!inserted && found->second.value != actual) {
         report("type variable '" + expression.text +
                "' is bound inconsistently");
         return false;

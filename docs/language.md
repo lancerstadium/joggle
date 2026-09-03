@@ -151,8 +151,9 @@ that interprets an undeclared symbol or recognizes a call merely by its text.
 The shipped surface covers unary `+` and `-`; integer and real `+`, `-`, `*`,
 `/`, and `//`; integer `%`; numeric comparisons; equality for `int`, `real`,
 `bool`, and `string`; boolean `!`, `&&`, and `||`; `ceildiv`, `min`, and `max`;
-integer `range`; and `length`, `at`, and `append` for shape-oriented
-`list<int>` values. Integer arithmetic is checked for signed 64-bit overflow.
+integer `range`; and overloaded `length`, `at`, and `append` for every
+representable homogeneous compiler list. Integer arithmetic is checked for
+signed 64-bit overflow.
 Division by zero, an invalid list index, and non-finite real results are
 errors. `ceildiv` accepts a non-negative dividend and a positive divisor.
 

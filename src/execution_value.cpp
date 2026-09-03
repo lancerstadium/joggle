@@ -13,8 +13,8 @@ namespace joggle::detail {
 namespace {
 
 template <typename T>
-std::optional<ExecutionValue> list_execution_value(
-    const ParameterValue& value) {
+std::optional<ExecutionValue>
+list_execution_value(const ParameterValue& value) {
   auto decoded = decode_parameter<std::vector<T>>(value);
   return decoded ? std::optional<ExecutionValue>{std::move(*decoded)}
                  : std::nullopt;
@@ -87,8 +87,7 @@ bool Locals::define(std::string name, std::optional<StagedValue> value) {
          scopes_.back().emplace(std::move(name), std::move(value)).second;
 }
 
-bool Locals::assign(std::string_view name,
-                    std::optional<StagedValue> value) {
+bool Locals::assign(std::string_view name, std::optional<StagedValue> value) {
   for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
     const auto found = scope->find(std::string(name));
     if (found != scope->end()) {
@@ -100,10 +99,9 @@ bool Locals::assign(std::string_view name,
 }
 
 bool Locals::contains(std::string_view name) const {
-  return std::any_of(scopes_.rbegin(), scopes_.rend(),
-                     [&](const Scope& scope) {
-                       return scope.contains(std::string(name));
-                     });
+  return std::any_of(scopes_.rbegin(), scopes_.rend(), [&](const Scope& scope) {
+    return scope.contains(std::string(name));
+  });
 }
 
 StagedValue* Locals::find(std::string_view name) {
@@ -136,7 +134,8 @@ KnownBindings Locals::known_bindings() const {
       const ExecutionValue* known = value->known_value();
       if (known != nullptr) {
         if (auto payload = parameter_value(*known)) {
-          bindings.emplace(name, std::move(*payload));
+          bindings.emplace(name, KnownBinding{std::move(*payload),
+                                              type_domain(value->type())});
         }
       }
     }
@@ -196,8 +195,8 @@ std::string_view execution_value_type(const ExecutionValue& value) {
 std::optional<std::vector<ExecutionValue>>
 list_elements(const ExecutionValue& value) {
   return std::visit(
-      []<typename T>(const T& stored)
-          -> std::optional<std::vector<ExecutionValue>> {
+      []<typename T>(
+          const T& stored) -> std::optional<std::vector<ExecutionValue>> {
         using Value = std::remove_cvref_t<T>;
         if constexpr (std::is_same_v<Value, IntegerList> ||
                       std::is_same_v<Value, RealList> ||
@@ -278,8 +277,8 @@ std::optional<Type> domain_type(Compiler& compiler,
   }
   auto element = domain_type(compiler, expression.arguments.front());
   const auto prelude = compiler.module(prelude_module_name);
-  const auto list = prelude ? prelude->type("list")
-                            : std::optional<Module::TypeDecl>{};
+  const auto list =
+      prelude ? prelude->type("list") : std::optional<Module::TypeDecl>{};
   return element && list ? compiler.make(*list, *element)
                          : std::optional<Type>{};
 }
@@ -290,20 +289,20 @@ std::optional<Module::Expression> type_domain(const Type& type) {
     return std::nullopt;
   }
   if (symbol.local_name() != "list") {
-    const auto expression = Module::Expression::reference(
-        std::string(symbol.local_name()));
+    const auto expression =
+        Module::Expression::reference(std::string(symbol.local_name()));
     return kernel_domain(expression)
                ? std::optional<Module::Expression>{expression}
                : std::nullopt;
   }
   const auto parameters = TypeAccess::parameters(type);
-  const Type* element = parameters.size() == 1U
-                            ? parameters.front().as_type()
-                            : nullptr;
-  auto domain = element ? type_domain(*element)
-                        : std::optional<Module::Expression>{};
-  return domain ? std::optional<Module::Expression>{
-                      Module::Expression::list_domain(std::move(*domain))}
+  const Type* element =
+      parameters.size() == 1U ? parameters.front().as_type() : nullptr;
+  auto domain =
+      element ? type_domain(*element) : std::optional<Module::Expression>{};
+  return domain ? std::optional<
+                      Module::Expression>{Module::Expression::list_domain(
+                      std::move(*domain))}
                 : std::nullopt;
 }
 
@@ -313,16 +312,15 @@ std::optional<Type> execution_type(Compiler& compiler,
     return host->concrete_type;
   }
   const auto domain = cpp_value_domain(execution_value_type(value));
-  return domain ? domain_type(
-                      compiler,
-                      domain_expression(domain->element, domain->list))
+  return domain ? domain_type(compiler,
+                              domain_expression(domain->element, domain->list))
                 : std::optional<Type>{};
 }
 
 std::optional<StagedValue> stage(Compiler& compiler, ExecutionValue value) {
   auto type = execution_type(compiler, value);
-  return type ? std::optional<StagedValue>{
-                    std::in_place, std::move(*type), std::move(value)}
+  return type ? std::optional<StagedValue>{std::in_place, std::move(*type),
+                                           std::move(value)}
               : std::nullopt;
 }
 
@@ -336,8 +334,8 @@ std::optional<StagedValue> stage(Value value) {
       "value", domain ? *domain : Module::Expression{}, false, std::nullopt};
   auto known = domain && payload ? execution_value(*payload, parameter)
                                  : std::optional<ExecutionValue>{};
-  return known ? std::optional<StagedValue>{
-                     std::in_place, value.type(), std::move(*known)}
+  return known ? std::optional<StagedValue>{std::in_place, value.type(),
+                                            std::move(*known)}
                : std::nullopt;
 }
 
@@ -346,8 +344,8 @@ std::optional<Value> ir_value(Compiler& compiler, const StagedValue& value) {
     return *residual;
   }
   const ExecutionValue* known = value.known_value();
-  auto payload = known ? parameter_value(*known)
-                       : std::optional<ParameterValue>{};
+  auto payload =
+      known ? parameter_value(*known) : std::optional<ParameterValue>{};
   return payload ? compiler.known(value.type(), std::move(*payload))
                  : std::optional<Value>{};
 }
@@ -386,8 +384,7 @@ bool same_staged_value(const StagedValue& lhs, const StagedValue& rhs) {
   }
   if (const auto* host = std::get_if<HostValue>(left)) {
     const auto& other = std::get<HostValue>(*right);
-    return host->cpp_type == other.cpp_type &&
-           host->storage == other.storage &&
+    return host->cpp_type == other.cpp_type && host->storage == other.storage &&
            host->concrete_type == other.concrete_type;
   }
   return false;
