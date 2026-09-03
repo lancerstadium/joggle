@@ -1066,14 +1066,19 @@ module parameterized_host@1.0.0 {
   const auto wrong = parameterized_module
                          ? parameterized_module->function("wrong")
                          : std::nullopt;
+  std::size_t target_projections = 0;
+  std::size_t estimate_projections = 0;
   if (!parameterized_linked || !parameterized_target ||
       !parameterized_estimate || !parameterized_measure ||
       !parameterized_analyze || !fixed || !wrong ||
       !parameterized_host.represent<Target>(
-          *parameterized_target,
-          [](const Target& target) { return std::tuple{target.lanes}; }) ||
+          *parameterized_target, [&](const Target& target) {
+            ++target_projections;
+            return std::tuple{target.lanes};
+          }) ||
       !parameterized_host.represent<Estimate>(
-          *parameterized_estimate, [](const Estimate& estimate) {
+          *parameterized_estimate, [&](const Estimate& estimate) {
+            ++estimate_projections;
             return std::tuple{estimate.cycles};
           })) {
     parameterized_host.diagnostics().print(std::cerr);
@@ -1091,19 +1096,22 @@ module parameterized_host@1.0.0 {
                           [](const Target&) { return Estimate{.cycles = 64}; });
   const auto parameterized_result =
       parameterized_host.run<Estimate>(*parameterized_analyze, Target{32});
-  ok &= expect(parameterized_result && parameterized_result->cycles == 32,
+  ok &= expect(parameterized_result && parameterized_result->cycles == 32 &&
+                   target_projections == 1 && estimate_projections == 1,
                "a host projection preserves concrete type parameters through "
-               "a composed generic compiler function");
+               "a composed generic compiler function without repeating it");
   const auto rejected_input =
       parameterized_host.run<Estimate>(*fixed, Target{16});
-  ok &= expect(!rejected_input && fixed_invocations == 0,
+  ok &= expect(!rejected_input && fixed_invocations == 0 &&
+                   target_projections == 2 && estimate_projections == 1,
                "concrete projected input types are checked before native "
                "compiler code executes");
   const auto rejected_result =
       parameterized_host.run<Estimate>(*wrong, Target{32});
-  ok &= expect(!rejected_result,
+  ok &= expect(!rejected_result && target_projections == 3 &&
+                   estimate_projections == 2,
                "a native compiler function cannot return the wrong "
-               "parameterized type instance");
+               "parameterized type instance or repeat a projection");
 
   joggle::Compiler lists;
   lists.add(R"(

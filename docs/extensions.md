@@ -124,7 +124,10 @@ compiler.represent<Target>(
 
 The projection order is the declaration's parameter order. The Module remains
 the type authority; registration only supplies storage and projection for host
-invocation.
+invocation. A host value is projected once when it first enters typed
+execution. Its concrete Joggle Type then travels with the value through nested
+source `fn` calls; the compiler does not repeat a project callback at every
+call edge.
 
 The core registers the Prelude `module` representation before linking.
 Extension-defined artifacts, cost estimates, schedules, and device descriptions
