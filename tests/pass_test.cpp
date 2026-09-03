@@ -413,12 +413,12 @@ module pipeline@1.0.0 {
       guarded ? guarded->function("identity") : std::nullopt;
   const auto guarded_a =
       guarded_a_decl ? guarded_compiler.make(*guarded_a_decl) : std::nullopt;
-  auto guarded_graph = guarded_compiler.function();
-  if (!guarded || !guarded_identity || !guarded_a || !guarded_graph) {
+  auto guarded_function = guarded_compiler.function();
+  if (!guarded || !guarded_identity || !guarded_a || !guarded_function) {
     return EXIT_FAILURE;
   }
   {
-    auto edit = guarded_graph->edit();
+    auto edit = guarded_function->edit();
     const auto input = edit.argument(*guarded_a);
     edit.append(*guarded_identity, {input});
     joggle::Diagnostics diagnostics;
@@ -443,7 +443,7 @@ module pipeline@1.0.0 {
         pass_called = true;
         return true;
       });
-  ok &= expect(!guarded_compiler.run(*guarded_graph, "guarded.touch") &&
+  ok &= expect(!guarded_compiler.run(*guarded_function, "guarded.touch") &&
                    !pass_called && !guarded_compiler.ok(),
                "a pass does not execute on a Function rejected by bound domain "
                "semantics");
@@ -454,7 +454,7 @@ module pipeline@1.0.0 {
                      "named.joggle");
   const bool named_linked = named_compiler.link();
   const auto named_module = named_compiler.module("named");
-  auto named_graph = named_compiler.function();
+  auto named_function = named_compiler.function();
   bool named_called = false;
   if (named_module) {
     const auto noop = named_module->function("noop");
@@ -468,7 +468,7 @@ module pipeline@1.0.0 {
     });
   }
   const bool unqualified_run =
-      named_linked && named_graph && named_compiler.run(*named_graph, "noop");
+      named_linked && named_function && named_compiler.run(*named_function, "noop");
   const auto named_diagnostics = named_compiler.diagnostics().entries();
   ok &=
       expect(!unqualified_run && !named_called && !named_diagnostics.empty() &&
@@ -518,9 +518,9 @@ module transactional@1.0.0 {
   const auto transaction = transactional_module
                                ? transactional_module->function("pipeline")
                                : std::nullopt;
-  auto transactional_graph = transactional.function();
+  auto transactional_function = transactional.function();
   if (!transactional_linked || !token || !mutate || !reject || !transaction ||
-      !transactional_graph) {
+      !transactional_function) {
     return EXIT_FAILURE;
   }
   transactional.bind(
@@ -536,8 +536,8 @@ module transactional@1.0.0 {
         return std::nullopt;
       });
   const auto rejected =
-      transactional.run<joggle::Bytes>(*transaction, *transactional_graph);
-  ok &= expect(!rejected && transactional_graph->instructions().empty(),
+      transactional.run<joggle::Bytes>(*transaction, *transactional_function);
+  ok &= expect(!rejected && transactional_function->instructions().empty(),
                "typed sequence failure restores its existing Function input");
 
   joggle::Compiler binding_mismatch;

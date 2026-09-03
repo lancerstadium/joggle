@@ -183,10 +183,10 @@ int main() {
   const auto interface_position = position("interface marker");
   const auto type_position = position("type scalar");
   const auto attribute_position = position("attr meta");
-  const auto graph_position = position("fn empty");
-  const auto pass_position = position("fn pipeline");
-  const auto operation_position = position("fn collect");
-  const auto function_position = position("fn identity");
+  const auto empty_position = position("fn empty");
+  const auto pipeline_position = position("fn pipeline");
+  const auto collect_position = position("fn collect");
+  const auto identity_position = position("fn identity");
   joggle::Diagnostics surface_roundtrip_diagnostics;
   const auto surface_roundtrip = joggle::parse_module(
       surface_text, surface_roundtrip_diagnostics, "surface-canonical.joggle");
@@ -194,10 +194,10 @@ int main() {
       surface && import_position < interface_position &&
           interface_position < type_position &&
           type_position < attribute_position &&
-          attribute_position < graph_position &&
-          graph_position < pass_position &&
-          pass_position < operation_position &&
-          operation_position < function_position && surface_roundtrip &&
+          attribute_position < empty_position &&
+          empty_position < pipeline_position &&
+          pipeline_position < collect_position &&
+          collect_position < identity_position && surface_roundtrip &&
           joggle::format(*surface_roundtrip) == surface_text &&
           surface_roundtrip->digest() == surface->digest(),
       "the complete DSL surface has one canonical member order and digest");
@@ -232,10 +232,10 @@ int main() {
                    *conflicting_integer != *integer,
                "declaration equality includes the canonical module digest");
 
-  joggle::Diagnostics first_graph_diagnostics;
-  const auto first_graph_module = joggle::parse_module(R"(
+  joggle::Diagnostics first_function_diagnostics;
+  const auto first_function_module = joggle::parse_module(R"(
     joggle 1;
-    module graph_identity@1.0.0 {
+    module function_identity@1.0.0 {
       type value();
       fn identity<T: type>(input: T) -> T;
       fn main(input: value) -> value {
@@ -243,12 +243,12 @@ int main() {
       }
     }
   )",
-                                                        first_graph_diagnostics,
-                                                        "first-graph.joggle");
-  joggle::Diagnostics second_graph_diagnostics;
-  const auto second_graph_module = joggle::parse_module(R"(
+                                                        first_function_diagnostics,
+                                                        "first-function.joggle");
+  joggle::Diagnostics second_function_diagnostics;
+  const auto second_function_module = joggle::parse_module(R"(
     joggle 1;
-    module graph_identity@1.0.0 {
+    module function_identity@1.0.0 {
       type value();
       fn identity<T: type>(input: T) -> T;
       fn main(input: value) -> value {
@@ -257,23 +257,23 @@ int main() {
       }
     }
   )",
-                                                         second_graph_diagnostics,
-                                                         "second-graph.joggle");
-  const auto first_graph_symbol =
-      first_graph_module
-          ? first_graph_module->symbol(joggle::Module::SymbolKind::Function,
+                                                         second_function_diagnostics,
+                                                         "second-function.joggle");
+  const auto first_function_symbol =
+      first_function_module
+          ? first_function_module->symbol(joggle::Module::SymbolKind::Function,
                                        "main")
           : std::nullopt;
-  const auto second_graph_symbol =
-      second_graph_module
-          ? second_graph_module->symbol(joggle::Module::SymbolKind::Function,
+  const auto second_function_symbol =
+      second_function_module
+          ? second_function_module->symbol(joggle::Module::SymbolKind::Function,
                                         "main")
           : std::nullopt;
-  ok &= expect(first_graph_module && second_graph_module && first_graph_symbol &&
-                   second_graph_symbol &&
-                   first_graph_module->digest() != second_graph_module->digest() &&
-                   *first_graph_symbol != *second_graph_symbol,
-               "graph body changes alter the Module and graph symbol identity");
+  ok &= expect(first_function_module && second_function_module && first_function_symbol &&
+                   second_function_symbol &&
+                   first_function_module->digest() != second_function_module->digest() &&
+                   *first_function_symbol != *second_function_symbol,
+               "function body changes alter the Module and function symbol identity");
 
   joggle::Diagnostics list_diagnostics;
   auto list_module = joggle::parse_module(R"(

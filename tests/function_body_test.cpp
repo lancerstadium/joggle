@@ -1224,11 +1224,11 @@ module logic@1.0.0 {
   joggle::Compiler unqualified;
   unqualified.add(source, "logic.joggle");
   const bool unqualified_linked = unqualified.link();
-  const auto unqualified_graph = unqualified_linked
+  const auto unqualified_function = unqualified_linked
                                      ? unqualified.function("main")
                                      : std::optional<joggle::Function>{};
   const auto unqualified_diagnostics = unqualified.diagnostics().entries();
-  ok &= expect(!unqualified_graph && !unqualified_diagnostics.empty() &&
+  ok &= expect(!unqualified_function && !unqualified_diagnostics.empty() &&
                    unqualified_diagnostics.back().message.find(
                        "module.member") != std::string::npos,
                "function lookup requires one unambiguous qualified member name");
@@ -1248,9 +1248,9 @@ module mismatch@1.0.0 {
 )",
                "mismatch.joggle");
   const bool mismatch_linked = mismatch.link();
-  const auto mismatch_graph = mismatch_linked ? mismatch.function("mismatch.main")
+  const auto mismatch_function = mismatch_linked ? mismatch.function("mismatch.main")
                                               : std::optional<joggle::Function>{};
-  ok &= expect(!mismatch_graph && !mismatch.ok(),
+  ok &= expect(!mismatch_function && !mismatch.ok(),
                "one type variable rejects operands with different types");
 
   joggle::Compiler return_inferred;
@@ -1267,11 +1267,11 @@ module return_inferred@1.0.0 {
 )",
                       "return-inferred.joggle");
   const bool return_inferred_linked = return_inferred.link();
-  const auto return_inferred_graph =
+  const auto return_inferred_function =
       return_inferred_linked ? return_inferred.function("return_inferred.main")
                              : std::optional<joggle::Function>{};
-  ok &= expect(return_inferred_graph &&
-                   return_inferred_graph->entry().terminator().returned().size() == 1U,
+  ok &= expect(return_inferred_function &&
+                   return_inferred_function->entry().terminator().returned().size() == 1U,
                "a function result constrains an output-only type variable");
 
   joggle::Compiler unbound;
@@ -1288,10 +1288,10 @@ module unbound@1.0.0 {
 )",
               "unbound.joggle");
   const bool unbound_linked = unbound.link();
-  const auto unbound_graph = unbound_linked ? unbound.function("unbound.main")
+  const auto unbound_function = unbound_linked ? unbound.function("unbound.main")
                                             : std::optional<joggle::Function>{};
   ok &=
-      expect(!unbound_graph && !unbound.ok(),
+      expect(!unbound_function && !unbound.ok(),
              "an unconstrained output-only type variable needs an annotation");
 
   constexpr std::string_view dependent_source = R"(
@@ -1324,19 +1324,19 @@ module dependent@1.0.0 {
       return value * 2;
     });
   }
-  auto dependent_graph =
+  auto dependent_function =
       dependent_linked && dependent_double
           ? dependent.function("dependent.inferred")
           : std::nullopt;
   const auto dependent_operations =
-      dependent_graph ? dependent_graph->instructions()
+      dependent_function ? dependent_function->instructions()
                       : std::vector<joggle::Instruction>{};
   const auto dependent_width =
       dependent_operations.empty()
           ? std::optional<std::int64_t>{}
           : dependent_operations.front().result(0).type().get<std::int64_t>(
                 "width");
-  ok &= expect(dependent_module && dependent_graph && dependent_width &&
+  ok &= expect(dependent_module && dependent_function && dependent_width &&
                    *dependent_width == 8 &&
                    joggle::format(*dependent_module).find(
                        "fn input<N: int>(width: N) -> word<N>;") !=
@@ -1366,21 +1366,21 @@ module dependent@1.0.0 {
   const auto width7 = int_type
                           ? inconsistent.known(*int_type, std::int64_t{7})
                           : std::nullopt;
-  auto inconsistent_graph = inconsistent.function();
+  auto inconsistent_function = inconsistent.function();
   if (!inconsistent_linked || !inconsistent_input || !default_input || !word8 ||
-      !width7 || !inconsistent_graph) {
+      !width7 || !inconsistent_function) {
     return EXIT_FAILURE;
   }
   bool inconsistent_rejected = false;
   {
-    auto edit = inconsistent_graph->edit();
+    auto edit = inconsistent_function->edit();
     const auto value = edit.append(*inconsistent_input, {*width7}, {*word8});
-    edit.ret(inconsistent_graph->entry(), {value.result(0)});
+    edit.ret(inconsistent_function->entry(), {value.result(0)});
     joggle::Diagnostics diagnostics;
     inconsistent_rejected = !edit.commit(diagnostics) && !diagnostics.ok();
   }
-  ok &= expect(inconsistent_rejected && inconsistent_graph->arguments().empty() &&
-                   inconsistent_graph->instructions().empty(),
+  ok &= expect(inconsistent_rejected && inconsistent_function->arguments().empty() &&
+                   inconsistent_function->instructions().empty(),
                "commit validates an explicit result against its dependent "
                "known argument and rolls back on mismatch");
 
@@ -1394,54 +1394,54 @@ module dependent@1.0.0 {
   const auto named_input =
       defaulted_module ? defaulted_module->function("input") : std::nullopt;
   const auto defaulted_int = defaulted.make("int");
-  auto defaulted_graph = defaulted.function();
+  auto defaulted_function = defaulted.function();
   if (!defaulted_linked || !defaulted_input || !named_input ||
-      !defaulted_int || !defaulted_graph) {
+      !defaulted_int || !defaulted_function) {
     return EXIT_FAILURE;
   }
   {
-    auto edit = defaulted_graph->edit();
+    auto edit = defaulted_function->edit();
     const auto value = edit.append(*defaulted_input);
-    edit.ret(defaulted_graph->entry(), {value.result(0)});
+    edit.ret(defaulted_function->entry(), {value.result(0)});
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
       return EXIT_FAILURE;
     }
   }
   const auto defaulted_width =
-      defaulted_graph->entry().terminator().returned().front().type().get<std::int64_t>("width");
+      defaulted_function->entry().terminator().returned().front().type().get<std::int64_t>("width");
   ok &= expect(defaulted_width && *defaulted_width == 8 &&
-                   defaulted.verify(*defaulted_graph),
+                   defaulted.verify(*defaulted_function),
                "C++ append infers a result from a schema-owned default "
                "default without repeating the type");
 
-  auto named_graph = defaulted.function();
-  if (!named_graph) {
+  auto named_function = defaulted.function();
+  if (!named_function) {
     return EXIT_FAILURE;
   }
   {
-    auto edit = named_graph->edit();
+    auto edit = named_function->edit();
     auto width = defaulted.known(*defaulted_int, std::int64_t{12});
     if (!width) {
       return EXIT_FAILURE;
     }
     const auto value = edit.append(*named_input, {*width}).value();
-    edit.ret(named_graph->entry(), {value});
+    edit.ret(named_function->entry(), {value});
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
       return EXIT_FAILURE;
     }
   }
   const auto named_width =
-      named_graph->entry().terminator().returned().front().type().get<std::int64_t>("width");
+      named_function->entry().terminator().returned().front().type().get<std::int64_t>("width");
   ok &= expect(named_width && *named_width == 12 &&
-                   defaulted.verify(*named_graph),
+                   defaulted.verify(*named_function),
                "a Known C++ argument participates in result inference at "
                "operation creation");
 
   bool extra_argument_rejected = false;
   try {
-    auto edit = named_graph->edit();
+    auto edit = named_function->edit();
     auto one = defaulted.known(*defaulted_int, std::int64_t{1});
     auto two = defaulted.known(*defaulted_int, std::int64_t{2});
     edit.append(*named_input, {*one, *two});
@@ -1455,7 +1455,7 @@ module dependent@1.0.0 {
 
   bool wrong_known_kind_rejected = false;
   try {
-    auto edit = named_graph->edit();
+    auto edit = named_function->edit();
     const auto string_type = defaulted.make("string");
     const auto wide = string_type
                           ? defaulted.known(*string_type, "wide")
@@ -1550,66 +1550,66 @@ module computed@1.0.0 {
     computed.bind(*host_double,
                   [](std::int64_t value) { return value * 2; });
   }
-  const auto computed_graph =
+  const auto computed_function =
       computed_linked ? computed.function("computed.main") : std::nullopt;
-  const auto packed_graph =
+  const auto packed_function =
       computed_linked ? computed.function("computed.pack") : std::nullopt;
-  const auto aligned_graph =
+  const auto aligned_function =
       computed_linked ? computed.function("computed.align_width") : std::nullopt;
-  const auto sum_graph =
+  const auto sum_function =
       computed_linked ? computed.function("computed.sum") : std::nullopt;
-  const auto quotient_graph =
+  const auto quotient_function =
       computed_linked ? computed.function("computed.quotient") : std::nullopt;
-  const auto compile_time_operator_graph =
+  const auto compile_time_operator_function =
       computed_linked ? computed.function("computed.compile_time_operator")
                       : std::nullopt;
-  const auto compile_time_branch_graph =
+  const auto compile_time_branch_function =
       computed_linked ? computed.function("computed.compile_time_branch")
                       : std::nullopt;
-  const auto compile_time_host_graph =
+  const auto compile_time_host_function =
       computed_linked ? computed.function("computed.compile_time_host")
                       : std::nullopt;
   const auto main_width =
-      computed_graph && !computed_graph->entry().terminator().returned().empty()
-          ? computed_graph->entry().terminator().returned().front().type().get<std::int64_t>("width")
+      computed_function && !computed_function->entry().terminator().returned().empty()
+          ? computed_function->entry().terminator().returned().front().type().get<std::int64_t>("width")
           : std::optional<std::int64_t>{};
   const auto packed_width =
-      packed_graph && !packed_graph->entry().terminator().returned().empty()
-          ? packed_graph->entry().terminator().returned().front().type().get<std::int64_t>("width")
+      packed_function && !packed_function->entry().terminator().returned().empty()
+          ? packed_function->entry().terminator().returned().front().type().get<std::int64_t>("width")
           : std::optional<std::int64_t>{};
   const auto aligned_width =
-      aligned_graph && !aligned_graph->entry().terminator().returned().empty()
-          ? aligned_graph->entry().terminator().returned().front().type().get<std::int64_t>("width")
+      aligned_function && !aligned_function->entry().terminator().returned().empty()
+          ? aligned_function->entry().terminator().returned().front().type().get<std::int64_t>("width")
           : std::optional<std::int64_t>{};
   const std::string computed_text =
       computed_module ? joggle::format(*computed_module) : std::string{};
   const auto compile_time_operator_width =
-      compile_time_operator_graph &&
-              !compile_time_operator_graph->entry().terminator().returned().empty()
-          ? compile_time_operator_graph->entry().terminator().returned().front().type().get<std::int64_t>(
+      compile_time_operator_function &&
+              !compile_time_operator_function->entry().terminator().returned().empty()
+          ? compile_time_operator_function->entry().terminator().returned().front().type().get<std::int64_t>(
                 "width")
           : std::optional<std::int64_t>{};
   const auto compile_time_branch_width =
-      compile_time_branch_graph && !compile_time_branch_graph->entry().terminator().returned().empty()
-          ? compile_time_branch_graph->entry().terminator().returned().front().type().get<std::int64_t>(
+      compile_time_branch_function && !compile_time_branch_function->entry().terminator().returned().empty()
+          ? compile_time_branch_function->entry().terminator().returned().front().type().get<std::int64_t>(
                 "width")
           : std::optional<std::int64_t>{};
   const auto compile_time_host_width =
-      compile_time_host_graph && !compile_time_host_graph->entry().terminator().returned().empty()
-          ? compile_time_host_graph->entry().terminator().returned().front().type().get<std::int64_t>(
+      compile_time_host_function && !compile_time_host_function->entry().terminator().returned().empty()
+          ? compile_time_host_function->entry().terminator().returned().front().type().get<std::int64_t>(
                 "width")
           : std::optional<std::int64_t>{};
-  if (!computed_graph || !packed_graph || !aligned_graph || !sum_graph ||
-      !quotient_graph || !compile_time_operator_graph ||
-      !compile_time_branch_graph || !compile_time_host_graph || !host_double ||
+  if (!computed_function || !packed_function || !aligned_function || !sum_function ||
+      !quotient_function || !compile_time_operator_function ||
+      !compile_time_branch_function || !compile_time_host_function || !host_double ||
       !main_width || !packed_width ||
       !aligned_width || !compile_time_operator_width ||
       !compile_time_branch_width || !compile_time_host_width) {
     computed.diagnostics().print(std::cerr);
   }
-  ok &= expect(computed_graph && packed_graph && aligned_graph && sum_graph &&
-                   quotient_graph && compile_time_operator_graph && main_width &&
-                   compile_time_branch_graph && compile_time_host_graph &&
+  ok &= expect(computed_function && packed_function && aligned_function && sum_function &&
+                   quotient_function && compile_time_operator_function && main_width &&
+                   compile_time_branch_function && compile_time_host_function &&
                    host_double && packed_width && aligned_width &&
                    compile_time_operator_width && compile_time_branch_width &&
                    compile_time_host_width &&
@@ -1617,10 +1617,10 @@ module computed@1.0.0 {
                    *aligned_width == 16 && *compile_time_operator_width == 8 &&
                    *compile_time_branch_width == 8 &&
                    *compile_time_host_width == 14 &&
-                   sum_graph->instructions().size() == 1U &&
-                   sum_graph->instructions().front().callee().name() == "add" &&
-                   quotient_graph->instructions().size() == 1U &&
-                   quotient_graph->instructions().front().callee().name() ==
+                   sum_function->instructions().size() == 1U &&
+                   sum_function->instructions().front().callee().name() == "add" &&
+                   quotient_function->instructions().size() == 1U &&
+                   quotient_function->instructions().front().callee().name() ==
                        "floor_word" &&
                    computed_text.find("word<W + 1>") != std::string::npos &&
                    computed_text.find("word<ceildiv(M * N, 8)>") !=
@@ -1808,21 +1808,21 @@ module imported_function@1.0.0 {
 )",
                         "imported-function.joggle");
   const bool imported_function_linked = imported_function.link();
-  const auto imported_function_graph =
+  const auto imported_function_function =
       imported_function_linked
           ? imported_function.function("imported_function.main")
           : std::nullopt;
   const auto imported_width =
-      imported_function_graph && !imported_function_graph->entry().terminator().returned().empty()
-          ? imported_function_graph->entry().terminator().returned()
+      imported_function_function && !imported_function_function->entry().terminator().returned().empty()
+          ? imported_function_function->entry().terminator().returned()
                 .front()
                 .type()
                 .get<std::int64_t>("width")
           : std::optional<std::int64_t>{};
-  if (!imported_function_graph || !imported_width) {
+  if (!imported_function_function || !imported_width) {
     imported_function.diagnostics().print(std::cerr);
   }
-  ok &= expect(imported_function_graph && imported_width &&
+  ok &= expect(imported_function_function && imported_width &&
                    *imported_width == 16,
                "imported pure functions resolve in their declaring module");
 
@@ -1847,16 +1847,16 @@ module imported_operator@1.0.0 {
 )",
                         "imported-operator.joggle");
   const bool imported_operator_linked = imported_operator.link();
-  const auto imported_operator_graph =
+  const auto imported_operator_function =
       imported_operator_linked
           ? imported_operator.function("imported_operator.main")
           : std::nullopt;
-  if (!imported_operator_graph) {
+  if (!imported_operator_function) {
     imported_operator.diagnostics().print(std::cerr);
   }
-  ok &= expect(imported_operator_graph &&
-                   imported_operator_graph->instructions().size() == 1U &&
-                   imported_operator_graph->instructions()
+  ok &= expect(imported_operator_function &&
+                   imported_operator_function->instructions().size() == 1U &&
+                   imported_operator_function->instructions()
                            .front()
                            .callee()
                            .symbol()
@@ -1880,7 +1880,7 @@ module ambiguous_operator@1.0.0 {
 )",
                          "ambiguous-operator.joggle");
   const bool ambiguous_operator_linked = ambiguous_operator.link();
-  const auto ambiguous_operator_graph =
+  const auto ambiguous_operator_function =
       ambiguous_operator_linked
           ? ambiguous_operator.function("ambiguous_operator.main")
           : std::nullopt;
@@ -1891,7 +1891,7 @@ module ambiguous_operator@1.0.0 {
         return diagnostic.message.find("operator '+' is ambiguous") !=
                std::string::npos;
       });
-  ok &= expect(ambiguous_operator_linked && !ambiguous_operator_graph &&
+  ok &= expect(ambiguous_operator_linked && !ambiguous_operator_function &&
                    reports_operator_ambiguity,
                "operator resolution rejects ambiguity without priority order");
 
@@ -1909,7 +1909,7 @@ module unsafe_expression@1.0.0 {
 )",
                         "unsafe-expression.joggle");
   const bool unsafe_linked = unsafe_expression.link();
-  const auto unsafe_graph =
+  const auto unsafe_function =
       unsafe_linked ? unsafe_expression.function("unsafe_expression.main")
                     : std::nullopt;
   const bool reports_division_by_zero =
@@ -1919,7 +1919,7 @@ module unsafe_expression@1.0.0 {
                     return diagnostic.message.find("division by zero") !=
                            std::string::npos;
                   });
-  ok &= expect(unsafe_linked && !unsafe_graph && reports_division_by_zero,
+  ok &= expect(unsafe_linked && !unsafe_function && reports_division_by_zero,
                "non-total compile-time arithmetic is rejected when its "
                "bindings become concrete");
 
