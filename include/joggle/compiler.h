@@ -748,7 +748,8 @@ private:
       std::optional<std::string_view> result) const;
   std::optional<detail::ExecutionValue>
   execute(Module::FunctionDecl declaration,
-           std::vector<detail::ExecutionValue> arguments);
+          std::vector<detail::ExecutionValue> arguments,
+          bool under_residual_control = false);
   std::optional<detail::ParameterValue>
   evaluate_binding(Module::FunctionDecl function,
                    std::span<const detail::ParameterValue> arguments,

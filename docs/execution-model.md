@@ -374,12 +374,15 @@ types; Residual loops become header/body/exit Blocks with inferred loop-carried
 arguments. Configurable expression-step, loop-iteration, and nesting-depth
 budgets fail with a diagnostic instead of silently residualizing.
 
-Top-level invocation of functions over registered C++ representations still
-executes only external bindings and expression-bodied composition. Extending
-that path with an independent statement interpreter was rejected because it
-would duplicate call, operator, and control-flow semantics. The active
-milestone is to route structured host execution through the same evaluator
-used by specialization.
+Top-level invocation of functions over registered C++ representations now
+executes structured bodies through `Compiler::execute`. The same entry invokes
+native bindings and is used by type-level calls, so multi-statement `if` and
+`while` computations can select dependent types. The remaining consolidation
+work is to share the complete call/operator resolver and structured traversal
+with residual specialization and apply that resolver to every structured arm
+during linking, including arms not selected by a particular invocation.
+Explicit low-level CFG bodies remain residual artifacts rather than compiler
+scripts.
 
 Multi-statement expression arms, anonymous closures, allocation budgets, and
 host-object serialization remain to be implemented. Named Functions are

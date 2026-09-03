@@ -119,10 +119,11 @@ The syntax does not change for a program function. A Residual `i1` condition
 instead becomes Block successors in the current Function. This is one staged
 control-flow rule, not separate `compile_if`, `region`, or pass-pipeline syntax.
 
-The current invocation path executes external bindings and expression-bodied
-function composition. Structured host-body execution is being moved into the
-shared staged evaluator before the example above is enabled; it will not be
-implemented by extending a second pass-only interpreter.
+The invocation path executes external bindings and structured text-defined
+functions through the same `Compiler::execute` entry. This includes selected
+`if` arms, `while`, `break`, `continue`, early returns, contextual lists, and
+dependent-type calls. Explicit low-level CFG bodies are residual artifacts and
+are not interpreted as compiler scripts.
 
 ## Rewrites and analyses
 

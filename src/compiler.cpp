@@ -17,12 +17,15 @@
 #include <cctype>
 #include <cstring>
 #include <fstream>
+#include <functional>
+#include <locale>
 #include <map>
 #include <limits>
 #include <sstream>
 #include <set>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -729,7 +732,6 @@ struct Compiler::State {
   std::map<std::string, HostRepresentation, std::less<>> host_types;
   std::map<std::string, std::string, std::less<>> host_representations;
   std::set<std::string, std::less<>> constructing_types;
-  std::set<std::string, std::less<>> evaluating_functions;
   EvaluationLimits evaluation_limits;
   bool linked = false;
 };
@@ -2929,22 +2931,6 @@ std::optional<detail::ParameterValue> Compiler::evaluate_binding(
     Module::FunctionDecl function,
     std::span<const detail::ParameterValue> arguments,
     bool under_residual_control) {
-  const std::string identity = function.symbol().stable_name();
-  const auto binding = state_->bindings.find(identity);
-  if (binding == state_->bindings.end()) {
-    state_->diagnostics.report("function '" +
-                               function.symbol().qualified_name() +
-                               "' has no registered evaluator");
-    return std::nullopt;
-  }
-  if (under_residual_control &&
-      binding->second.evaluation != HostEvaluation::Hermetic) {
-    state_->diagnostics.report(
-        "host implementation of function '" +
-        function.symbol().qualified_name() +
-        "' is guarded and cannot execute under Residual control");
-    return std::nullopt;
-  }
   if (!detail::ir_inputs(function).empty() ||
       !detail::ir_results(function).empty() ||
       detail::parameter_inputs(function).size() != arguments.size() ||
@@ -2954,11 +2940,6 @@ std::optional<detail::ParameterValue> Compiler::evaluate_binding(
                                "' cannot be evaluated from Known values");
     return std::nullopt;
   }
-  if (!state_->evaluating_functions.insert(identity).second) {
-    state_->diagnostics.report("recursive host evaluation of function '" +
-                               function.symbol().qualified_name() + "'");
-    return std::nullopt;
-  }
   std::vector<detail::ExecutionValue> values;
   values.reserve(arguments.size());
   const auto parameters = detail::parameter_inputs(function);
@@ -2966,22 +2947,13 @@ std::optional<detail::ParameterValue> Compiler::evaluate_binding(
     auto converted = execution_value(arguments[index], parameters[index]);
     if (!converted) {
       state_->diagnostics.report(
-          "registered evaluator cannot represent argument '" +
+          "compiler execution cannot represent argument '" +
           parameters[index].name + "'");
-      state_->evaluating_functions.erase(identity);
       return std::nullopt;
     }
     values.push_back(std::move(*converted));
   }
-  std::optional<detail::ExecutionValue> produced;
-  try {
-    produced =
-        binding->second.callable(*this, values, state_->diagnostics);
-  } catch (...) {
-    state_->evaluating_functions.erase(identity);
-    throw;
-  }
-  state_->evaluating_functions.erase(identity);
+  auto produced = execute(function, std::move(values), under_residual_control);
   if (!produced) {
     return std::nullopt;
   }
@@ -2989,7 +2961,7 @@ std::optional<detail::ParameterValue> Compiler::evaluate_binding(
   if (!result ||
       !detail::matches_parameter(detail::parameter_results(function).front(),
                                  *result)) {
-    state_->diagnostics.report("registered evaluator for function '" +
+    state_->diagnostics.report("compiler execution of function '" +
                                function.symbol().qualified_name() +
                                "' produced a value with the wrong type");
     return std::nullopt;
@@ -3299,7 +3271,8 @@ Compiler::find_function(std::string_view name) {
 
 std::optional<detail::ExecutionValue>
 Compiler::execute(Module::FunctionDecl declaration,
-                   std::vector<detail::ExecutionValue> arguments) {
+                  std::vector<detail::ExecutionValue> arguments,
+                  bool under_residual_control) {
   if (!state_->linked) {
     state_->diagnostics.report(
         "cannot run a compiler function before the compiler is linked");
@@ -3342,9 +3315,22 @@ Compiler::execute(Module::FunctionDecl declaration,
     }
   }
   const std::size_t before = state_->diagnostics.size();
+  std::size_t steps = 0;
+  std::size_t depth = 0;
   const auto execute = [&](const auto& self, const Module::FunctionDecl& current,
                            std::vector<detail::ExecutionValue> values)
       -> std::optional<detail::ExecutionValue> {
+    if (depth >= state_->evaluation_limits.depth) {
+      state_->diagnostics.report(
+          "compiler execution nesting limit exceeded in '" +
+          current.symbol().qualified_name() + "'");
+      return std::nullopt;
+    }
+    ++depth;
+    struct DepthGuard {
+      std::size_t& value;
+      ~DepthGuard() { --value; }
+    } depth_guard{depth};
     if (values.size() != current.inputs().size()) {
       state_->diagnostics.report("compiler function '" +
                                  current.symbol().qualified_name() +
@@ -3387,6 +3373,14 @@ Compiler::execute(Module::FunctionDecl declaration,
                                    "' has no C++ binding");
         return std::nullopt;
       }
+      if (under_residual_control &&
+          binding->second.evaluation != HostEvaluation::Hermetic) {
+        state_->diagnostics.report(
+            "host implementation of function '" +
+            current.symbol().qualified_name() +
+            "' is guarded and cannot execute under Residual control");
+        return std::nullopt;
+      }
       std::optional<detail::ExecutionValue> execution;
       try {
         execution =
@@ -3396,6 +3390,18 @@ Compiler::execute(Module::FunctionDecl declaration,
             "C++ binding for compiler function '" +
             current.symbol().qualified_name() +
             "' disagrees with its registered host representation");
+        return std::nullopt;
+      } catch (const std::exception& exception) {
+        state_->diagnostics.report(
+            "C++ binding for compiler function '" +
+            current.symbol().qualified_name() + "' threw: " +
+            exception.what());
+        return std::nullopt;
+      } catch (...) {
+        state_->diagnostics.report(
+            "C++ binding for compiler function '" +
+            current.symbol().qualified_name() +
+            "' threw an unknown exception");
         return std::nullopt;
       }
       if (!execution) {
@@ -3425,63 +3431,484 @@ Compiler::execute(Module::FunctionDecl declaration,
       return execution;
     }
     case Module::FunctionDecl::Form::Body: {
-      if (detail::ModuleAccess::returned_expression(current) == nullptr) {
+      const auto owner = state_->modules.find(current.symbol().module_name());
+      const auto body = owner == state_->modules.end()
+                            ? std::shared_ptr<const detail::FunctionBody>{}
+                            : detail::ModuleAccess::body(owner->second,
+                                                         current);
+      if (!body || body->blocks.size() != 1U ||
+          body->blocks.front().terminator) {
         state_->diagnostics.report(
-            "residual function '" + current.symbol().qualified_name() +
-            "' cannot be executed as a compiler function");
+            "compiler execution of function '" +
+            current.symbol().qualified_name() +
+            "' requires a structured body rather than explicit CFG blocks");
         return std::nullopt;
       }
-      const auto evaluate = [&](const auto& evaluate_self,
-                                const Module::Expression& expression)
+
+      enum class Control { Next, Return, Break, Continue, Error };
+      struct Flow {
+        Control control = Control::Next;
+        std::optional<detail::ExecutionValue> value;
+      };
+      using Scope =
+          std::unordered_map<std::string, detail::ExecutionValue>;
+      using Scopes = std::vector<Scope>;
+
+      Scopes scopes(1U);
+      for (std::size_t index = 0; index < current.inputs().size(); ++index) {
+        scopes.front().emplace(current.inputs()[index].name, values[index]);
+      }
+      const auto report = [&](std::string message,
+                              detail::SyntaxRange range) {
+        state_->diagnostics.report(
+            std::move(message),
+            SourceRange{body->source, range.begin, range.end});
+      };
+      const auto step = [&](detail::SyntaxRange range) {
+        if (steps++ < state_->evaluation_limits.steps) {
+          return true;
+        }
+        report("compiler execution step limit exceeded", range);
+        return false;
+      };
+      const auto find_local = [](Scopes& environment,
+                                 std::string_view name)
+          -> detail::ExecutionValue* {
+        for (auto scope = environment.rbegin(); scope != environment.rend();
+             ++scope) {
+          const auto found = scope->find(std::string(name));
+          if (found != scope->end()) {
+            return &found->second;
+          }
+        }
+        return nullptr;
+      };
+
+      std::function<std::optional<detail::ExecutionValue>(
+          const Module::Expression&, detail::SyntaxRange, Scopes&,
+          const Module::ParameterDecl*)>
+          evaluate;
+      evaluate = [&](const Module::Expression& expression,
+                     detail::SyntaxRange range, Scopes& environment,
+                     const Module::ParameterDecl* expected)
           -> std::optional<detail::ExecutionValue> {
-        if (expression.kind == Module::Expression::Kind::Variable) {
-          const auto input = std::find_if(
-              current.inputs().begin(), current.inputs().end(),
-              [&](const auto& candidate) {
-                return candidate.name == expression.text;
-              });
-          if (input == current.inputs().end()) {
-            state_->diagnostics.report(
-                "function '" + current.symbol().qualified_name() +
-                "' references unknown input '" + expression.text + "'");
+        if (!step(range)) {
+          return std::nullopt;
+        }
+        using Kind = Module::Expression::Kind;
+        if ((expression.kind == Kind::Variable ||
+             expression.kind == Kind::Reference) &&
+            expression.arguments.empty()) {
+          if (auto* value = find_local(environment, expression.text)) {
+            return *value;
+          }
+          if (expression.kind == Kind::Variable) {
+            report("compiler function '" +
+                       current.symbol().qualified_name() +
+                       "' references unknown value '" + expression.text +
+                       "'",
+                   range);
             return std::nullopt;
           }
-          return values[static_cast<std::size_t>(
-              std::distance(current.inputs().begin(), input))];
         }
-        if (expression.kind != Module::Expression::Kind::Call) {
-          state_->diagnostics.report(
-              "compiler function '" + current.symbol().qualified_name() +
-              "' contains an unsupported expression");
+
+        if (expression.kind == Kind::Number) {
+          if (expression.text.find_first_of(".eE") == std::string::npos) {
+            std::int64_t integer = 0;
+            const auto parsed = std::from_chars(
+                expression.text.data(),
+                expression.text.data() + expression.text.size(), integer);
+            if (parsed.ec == std::errc{} &&
+                parsed.ptr ==
+                    expression.text.data() + expression.text.size()) {
+              return detail::ExecutionValue{integer};
+            }
+          } else {
+            double real = 0.0;
+            std::istringstream input(expression.text);
+            input.imbue(std::locale::classic());
+            input >> real;
+            if (input && input.peek() == std::char_traits<char>::eof()) {
+              return detail::ExecutionValue{real};
+            }
+          }
+          report("invalid compiler numeric literal", range);
+          return std::nullopt;
+        }
+        if (expression.kind == Kind::Boolean) {
+          return detail::ExecutionValue{expression.text == "true"};
+        }
+        if (expression.kind == Kind::String) {
+          return detail::ExecutionValue{expression.text};
+        }
+        if (expression.kind == Kind::Evaluate) {
+          if (expression.arguments.size() != 1U) {
+            report("malformed compiler evaluation expression", range);
+            return std::nullopt;
+          }
+          return evaluate(expression.arguments.front(), range, environment,
+                          expected);
+        }
+        if (expression.kind == Kind::If) {
+          if (expression.arguments.size() != 3U) {
+            report("malformed compiler if expression", range);
+            return std::nullopt;
+          }
+          const Module::ParameterDecl condition{
+              "condition",
+              detail::domain_expression(detail::ValueKind::Boolean), false,
+              std::nullopt};
+          auto value = evaluate(expression.arguments[0], range, environment,
+                                &condition);
+          const bool* selected = value ? std::get_if<bool>(&*value) : nullptr;
+          if (selected == nullptr) {
+            report("compiler if condition must be bool", range);
+            return std::nullopt;
+          }
+          return evaluate(expression.arguments[*selected ? 1U : 2U], range,
+                          environment, expected);
+        }
+        if (expression.kind == Kind::List) {
+          std::vector<detail::ExecutionValue> elements;
+          elements.reserve(expression.arguments.size());
+          for (const auto& element : expression.arguments) {
+            auto value = evaluate(element, range, environment, nullptr);
+            if (!value) {
+              return std::nullopt;
+            }
+            elements.push_back(std::move(*value));
+          }
+          const auto domain =
+              expected ? detail::kernel_domain(expected->domain)
+                       : std::optional<detail::Domain>{};
+          const auto element_type = [&]() -> std::string_view {
+            if (!elements.empty()) {
+              return execution_value_type(elements.front());
+            }
+            if (!domain || !domain->list) {
+              return {};
+            }
+            switch (domain->element) {
+            case detail::ValueKind::Integer:
+              return typeid(std::int64_t).name();
+            case detail::ValueKind::Real:
+              return typeid(double).name();
+            case detail::ValueKind::Boolean:
+              return typeid(bool).name();
+            case detail::ValueKind::String:
+              return typeid(std::string).name();
+            case detail::ValueKind::Type:
+              return typeid(Type).name();
+            case detail::ValueKind::Attribute:
+              return typeid(Attribute).name();
+            case detail::ValueKind::Bytes:
+            case detail::ValueKind::Function:
+              return {};
+            }
+            return {};
+          }();
+          if (element_type.empty() ||
+              !std::all_of(elements.begin(), elements.end(),
+                           [&](const detail::ExecutionValue& element) {
+                             return execution_value_type(element) ==
+                                    element_type;
+                           })) {
+            report(elements.empty()
+                       ? "an empty compiler list needs a contextual element type"
+                       : "compiler list elements have different types",
+                   range);
+            return std::nullopt;
+          }
+          if (element_type == typeid(std::int64_t).name()) {
+            detail::IntegerList result;
+            for (auto& element : elements) {
+              result.push_back(std::get<std::int64_t>(element));
+            }
+            return detail::ExecutionValue{std::move(result)};
+          }
+          if (element_type == typeid(double).name()) {
+            detail::RealList result;
+            for (auto& element : elements) {
+              result.push_back(std::get<double>(element));
+            }
+            return detail::ExecutionValue{std::move(result)};
+          }
+          if (element_type == typeid(bool).name()) {
+            detail::BooleanList result;
+            for (auto& element : elements) {
+              result.push_back(std::get<bool>(element));
+            }
+            return detail::ExecutionValue{std::move(result)};
+          }
+          if (element_type == typeid(std::string).name()) {
+            detail::StringList result;
+            for (auto& element : elements) {
+              result.push_back(std::get<std::string>(std::move(element)));
+            }
+            return detail::ExecutionValue{std::move(result)};
+          }
+          if (element_type == typeid(Type).name()) {
+            detail::TypeList result;
+            for (auto& element : elements) {
+              result.push_back(std::get<Type>(std::move(element)));
+            }
+            return detail::ExecutionValue{std::move(result)};
+          }
+          if (element_type == typeid(Attribute).name()) {
+            detail::AttributeList result;
+            for (auto& element : elements) {
+              result.push_back(std::get<Attribute>(std::move(element)));
+            }
+            return detail::ExecutionValue{std::move(result)};
+          }
+          report("compiler list element type is not representable", range);
+          return std::nullopt;
+        }
+
+        if (expression.kind == Kind::Prefix ||
+            expression.kind == Kind::Infix ||
+            expression.kind == Kind::Postfix ||
+            expression.kind == Kind::FunctionType ||
+            (expression.kind == Kind::Reference && expected != nullptr)) {
+          if (expected == nullptr) {
+            report("compiler operator needs a contextual result type", range);
+            return std::nullopt;
+          }
+          detail::KnownBindings bindings;
+          for (const auto& scope : environment) {
+            for (const auto& [name, stored] : scope) {
+              if (auto value = parameter_value(stored)) {
+                bindings.insert_or_assign(name, std::move(*value));
+              }
+            }
+          }
+          auto value = detail::evaluate_known_expression(
+              *this, current.symbol().module_name(), expression, *expected,
+              bindings, state_->diagnostics,
+              SourceRange{body->source, range.begin, range.end},
+              !under_residual_control);
+          return value ? execution_value(*value, *expected)
+                       : std::optional<detail::ExecutionValue>{};
+        }
+
+        if (expression.kind != Kind::Call) {
+          report("compiler function '" +
+                     current.symbol().qualified_name() +
+                     "' contains an unsupported expression",
+                 range);
           return std::nullopt;
         }
         const auto next = resolve_function(state_->modules,
                                            current.symbol().module_name(),
                                            expression.text);
         if (!next) {
-          state_->diagnostics.report(
-              "function '" + current.symbol().qualified_name() +
-              "' cannot resolve callee '" + expression.text + "'");
+          report("function '" + current.symbol().qualified_name() +
+                     "' cannot resolve one callee named '" + expression.text +
+                     "'",
+                 range);
           return std::nullopt;
         }
-        std::vector<detail::ExecutionValue> arguments;
-        arguments.reserve(expression.arguments.size());
-        for (const auto& argument : expression.arguments) {
-          auto value = evaluate_self(evaluate_self, argument);
+        const auto parameters = next->inputs();
+        std::vector<std::optional<detail::ExecutionValue>> bound(
+            parameters.size());
+        std::size_t positional = 0;
+        for (std::size_t index = 0; index < expression.arguments.size();
+             ++index) {
+          const std::string_view label =
+              index < expression.labels.size() ? expression.labels[index]
+                                               : std::string_view{};
+          std::size_t target = parameters.size();
+          if (!label.empty()) {
+            const auto found = std::find_if(
+                parameters.begin(), parameters.end(),
+                [&](const Module::ParameterDecl& parameter) {
+                  return parameter.name == label;
+                });
+            if (found != parameters.end()) {
+              target = static_cast<std::size_t>(
+                  std::distance(parameters.begin(), found));
+            }
+          } else if (positional < parameters.size()) {
+            target = positional++;
+          }
+          if (target == parameters.size() || bound[target]) {
+            report("compiler call has invalid argument placement", range);
+            return std::nullopt;
+          }
+          auto value = evaluate(expression.arguments[index], range,
+                                environment, &parameters[target]);
           if (!value) {
             return std::nullopt;
           }
-          arguments.push_back(std::move(*value));
+          bound[target] = std::move(*value);
         }
-        return self(self, *next, std::move(arguments));
+        std::vector<detail::ExecutionValue> call_arguments;
+        call_arguments.reserve(parameters.size());
+        for (std::size_t index = 0; index < parameters.size(); ++index) {
+          if (!bound[index] && parameters[index].default_value) {
+            const auto value = detail::parameter_default(parameters[index]);
+            bound[index] = value ? execution_value(*value, parameters[index])
+                                 : std::nullopt;
+          }
+          if (!bound[index]) {
+            report("compiler call is missing argument '" +
+                       parameters[index].name + "'",
+                   range);
+            return std::nullopt;
+          }
+          call_arguments.push_back(std::move(*bound[index]));
+        }
+        return self(self, *next, std::move(call_arguments));
       };
-      auto evaluated = evaluate(
-          evaluate, *detail::ModuleAccess::returned_expression(current));
-      if (!evaluated || !project_host_value(*evaluated) ||
-          !check_host_values(current, values, &*evaluated)) {
+
+      std::function<Flow(std::span<const detail::StatementSyntax>, Scopes&)>
+          execute_statements;
+      execute_statements = [&](std::span<const detail::StatementSyntax> code,
+                               Scopes& environment) -> Flow {
+        for (const detail::StatementSyntax& statement : code) {
+          if (!step(statement.range)) {
+            return {Control::Error, std::nullopt};
+          }
+          if (statement.kind == detail::StatementSyntax::Kind::Return) {
+            if (statement.values.size() != current.results().size() ||
+                statement.values.size() > 1U) {
+              report("compiler return does not match its function signature",
+                     statement.range);
+              return {Control::Error, std::nullopt};
+            }
+            if (statement.values.empty()) {
+              return {Control::Return, detail::ExecutionValue{}};
+            }
+            auto value = evaluate(statement.values.front().value,
+                                  statement.values.front().range, environment,
+                                  &current.results().front());
+            return value ? Flow{Control::Return, std::move(value)}
+                         : Flow{Control::Error, std::nullopt};
+          }
+          if (statement.kind == detail::StatementSyntax::Kind::Break) {
+            return {Control::Break, std::nullopt};
+          }
+          if (statement.kind == detail::StatementSyntax::Kind::Continue) {
+            return {Control::Continue, std::nullopt};
+          }
+          if (statement.kind == detail::StatementSyntax::Kind::If) {
+            const Module::ParameterDecl condition{
+                "condition",
+                detail::domain_expression(detail::ValueKind::Boolean), false,
+                std::nullopt};
+            auto value = evaluate(statement.expression.value,
+                                  statement.expression.range, environment,
+                                  &condition);
+            const bool* selected = value ? std::get_if<bool>(&*value) : nullptr;
+            if (selected == nullptr) {
+              report("compiler if condition must be bool", statement.range);
+              return {Control::Error, std::nullopt};
+            }
+            environment.emplace_back();
+            Flow flow = execute_statements(
+                *selected ? std::span(statement.body)
+                          : std::span(statement.otherwise),
+                environment);
+            environment.pop_back();
+            if (flow.control != Control::Next) {
+              return flow;
+            }
+            continue;
+          }
+          if (statement.kind == detail::StatementSyntax::Kind::While) {
+            while (true) {
+              const Module::ParameterDecl condition{
+                  "condition",
+                  detail::domain_expression(detail::ValueKind::Boolean), false,
+                  std::nullopt};
+              auto value = evaluate(statement.expression.value,
+                                    statement.expression.range, environment,
+                                    &condition);
+              const bool* selected =
+                  value ? std::get_if<bool>(&*value) : nullptr;
+              if (selected == nullptr) {
+                report("compiler while condition must be bool",
+                       statement.range);
+                return {Control::Error, std::nullopt};
+              }
+              if (!*selected) {
+                break;
+              }
+              environment.emplace_back();
+              Flow flow = execute_statements(statement.body, environment);
+              environment.pop_back();
+              if (flow.control == Control::Return ||
+                  flow.control == Control::Error) {
+                return flow;
+              }
+              if (flow.control == Control::Break) {
+                break;
+              }
+            }
+            continue;
+          }
+
+          const Module::ParameterDecl* expected = nullptr;
+          if (statement.bindings.size() > 1U) {
+            report("compiler execution currently supports one call result",
+                   statement.range);
+            return {Control::Error, std::nullopt};
+          }
+          auto value = evaluate(statement.expression.value,
+                                statement.expression.range, environment,
+                                expected);
+          if (!value) {
+            return {Control::Error, std::nullopt};
+          }
+          if (statement.bindings.empty()) {
+            continue;
+          }
+          const detail::BindingSyntax& binding = statement.bindings.front();
+          if (binding.rebind) {
+            auto* target = find_local(environment, binding.name);
+            if (target == nullptr) {
+              report("cannot rebind unknown compiler value '" +
+                         binding.name + "'",
+                     binding.range);
+              return {Control::Error, std::nullopt};
+            }
+            *target = std::move(*value);
+          } else if (!environment.back()
+                          .emplace(binding.name, std::move(*value))
+                          .second) {
+            report("compiler value '" + binding.name +
+                       "' is already defined in this scope",
+                   binding.range);
+            return {Control::Error, std::nullopt};
+          }
+        }
+        return {};
+      };
+
+      Flow flow = execute_statements(body->blocks.front().statements, scopes);
+      if (flow.control != Control::Return || !flow.value) {
+        if (flow.control != Control::Error) {
+          report("compiler function path falls through without returning",
+                 body->range);
+        }
         return std::nullopt;
       }
-      return evaluated;
+      const bool result_matches =
+          current.results().empty()
+              ? std::holds_alternative<std::monostate>(*flow.value)
+              : current.results().size() == 1U &&
+                    accepts_host_type(current, current.results().front(),
+                                      execution_value_type(*flow.value));
+      if (!result_matches) {
+        report("compiler function returned a value with the wrong type",
+               body->range);
+        return std::nullopt;
+      }
+      if (!project_host_value(*flow.value) ||
+          !check_host_values(current, values, &*flow.value)) {
+        return std::nullopt;
+      }
+      return flow.value;
     }
     }
     return std::nullopt;

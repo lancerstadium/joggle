@@ -31,7 +31,7 @@ computation and generated programs. A Known `bool` executes `if`/`while` in the
 compiler; a Residual `i1` creates typed Block edges in the Function. Extensions
 bind ordinary functions over registered C++ representations and never
 implement a Region or a second pass evaluator. Structured host-body execution
-is the current implementation milestone.
+supports direct branches, loops, early exits, and dependent-type calls.
 
 The language directly supports `i1/i8/i16/i32/i64`, `u8/u16/u32/u64`,
 `f16/bf16/f32/f64`, and `index` as program value types. They require no import.

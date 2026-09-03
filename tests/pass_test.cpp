@@ -37,16 +37,66 @@ joggle 1;
 module pipeline@1.0.0 {
   import test_ir@1;
   import ir@1;
+  type word(width: int);
   fn read(input: bytes) -> function;
   fn inspect(input: function) -> int;
   fn emit(input: function) -> bytes;
   fn consume(input: bytes);
+  fn append(input: bytes) -> bytes;
+  fn nonzero(input: int) -> bool;
+  fn decrement(input: int) -> int;
   fn module_identity(input: ir.module) -> ir.module;
   fn clean(input: function) -> function {
     return test_ir.canonicalize(input);
   }
   fn compile(input: bytes) -> bytes {
     return emit(clean(read(input)));
+  }
+  fn select(condition: bool, input: bytes) -> bytes {
+    result = input;
+    if condition {
+      result = append(result);
+    } else {
+      result = append(append(result));
+    }
+    return result;
+  }
+  fn repeat(count: int, input: bytes) -> bytes {
+    result = input;
+    while nonzero(count) {
+      result = append(result);
+      count = decrement(count);
+    }
+    return result;
+  }
+  fn choose(condition: bool, lhs: bytes, rhs: bytes) -> bytes {
+    return if condition { lhs } else { rhs };
+  }
+  fn once(input: bytes) -> bytes {
+    while true {
+      input = append(input);
+      break;
+    }
+    return input;
+  }
+  fn last(count: int, input: bytes) -> bytes {
+    while nonzero(count) {
+      count = decrement(count);
+      if nonzero(count) {
+        continue;
+      }
+      input = append(input);
+    }
+    return input;
+  }
+  fn choose_width(condition: bool) -> int {
+    if condition {
+      return 7;
+    }
+    return 9;
+  }
+  fn typed(input: word<choose_width(true)>) -> word<7> {
+    return input;
   }
 }
 )",
@@ -78,12 +128,28 @@ module pipeline@1.0.0 {
   const auto consume = pipeline ? pipeline->function("consume") : std::nullopt;
   const auto module_identity =
       pipeline ? pipeline->function("module_identity") : std::nullopt;
+  const auto append =
+      pipeline ? pipeline->function("append") : std::nullopt;
+  const auto nonzero =
+      pipeline ? pipeline->function("nonzero") : std::nullopt;
+  const auto decrement =
+      pipeline ? pipeline->function("decrement") : std::nullopt;
+  const auto select =
+      pipeline ? pipeline->function("select") : std::nullopt;
+  const auto repeat =
+      pipeline ? pipeline->function("repeat") : std::nullopt;
+  const auto choose =
+      pipeline ? pipeline->function("choose") : std::nullopt;
+  const auto once = pipeline ? pipeline->function("once") : std::nullopt;
+  const auto last = pipeline ? pipeline->function("last") : std::nullopt;
+  const auto typed = pipeline ? pipeline->function("typed") : std::nullopt;
   const auto ir_module = compiler.module("ir");
   const auto ir_module_schema =
       ir_module ? ir_module->type("module") : std::nullopt;
   if (!integer_decl || !arith_cast_decl || !format_decl || !canonicalize ||
       !clean || !read || !emit || !inspect || !compile || !consume ||
-      !module_identity || !ir_module_schema) {
+      !module_identity || !append || !nonzero || !decrement || !select ||
+      !repeat || !choose || !once || !last || !typed || !ir_module_schema) {
     return EXIT_FAILURE;
   }
   const auto integer = compiler.make(*integer_decl, std::int64_t{8});
@@ -147,6 +213,16 @@ module pipeline@1.0.0 {
       });
   bool consumed = false;
   compiler.bind(*consume, [&](const joggle::Bytes&) { consumed = true; });
+  std::size_t append_calls = 0;
+  compiler.bind(*append, [&](joggle::Bytes input) {
+    ++append_calls;
+    input.push_back(std::byte{0x2a});
+    return input;
+  });
+  compiler.bind(*nonzero,
+                [](std::int64_t input) { return input != 0; });
+  compiler.bind(*decrement,
+                [](std::int64_t input) { return input - 1; });
   if (!compiler.represent<joggle::ir::Module>(*ir_module_schema)) {
     return EXIT_FAILURE;
   }
@@ -170,11 +246,39 @@ module pipeline@1.0.0 {
                             : std::optional<joggle::Bytes>{};
   auto reencoded = compiler.run<joggle::Bytes>(*compile, encoded);
   const bool consume_ok = compiler.run(*consume, encoded);
+  const auto selected_once =
+      compiler.run<joggle::Bytes>(*select, true, joggle::Bytes{});
+  const auto selected_twice =
+      compiler.run<joggle::Bytes>(*select, false, joggle::Bytes{});
+  const auto repeated = compiler.run<joggle::Bytes>(
+      *repeat, std::int64_t{3}, joggle::Bytes{});
+  const auto chosen = compiler.run<joggle::Bytes>(
+      *choose, false, joggle::Bytes{std::byte{0x01}},
+      joggle::Bytes{std::byte{0x02}});
+  const auto broken =
+      compiler.run<joggle::Bytes>(*once, joggle::Bytes{});
+  const auto continued = compiler.run<joggle::Bytes>(
+      *last, std::int64_t{3}, joggle::Bytes{});
   ok &= expect(decoded && count && *count == 0 && direct_encoded &&
                    reencoded && consume_ok && consumed &&
                    reencoded->size() == 1U &&
                    reencoded->front() == std::byte{0},
                "read, analysis, transformation, and emission share typed run");
+  ok &= expect(selected_once && selected_once->size() == 1U &&
+                   selected_twice && selected_twice->size() == 2U && repeated &&
+                   repeated->size() == 3U && chosen && chosen->size() == 1U &&
+                   chosen->front() == std::byte{0x02} && broken &&
+                   broken->size() == 1U && continued &&
+                   continued->size() == 1U && append_calls == 8U,
+               "structured compiler functions execute selected branches, "
+               "loops, break, continue, and if expressions");
+  const auto typed_function = compiler.function(*typed);
+  ok &= expect(typed_function && typed_function->arguments().size() == 1U &&
+                   typed_function->result_types().size() == 1U &&
+                   typed_function->arguments().front().type() ==
+                       typed_function->result_types().front(),
+               "structured compiler functions participate in dependent type "
+               "evaluation through the same execution entry");
   joggle::Diagnostics signature_diagnostics;
   const std::string signature_text = joggle::format(*pipeline);
   const auto signature_roundtrip = joggle::parse_module(
@@ -569,6 +673,33 @@ module lists@1.0.0 {
                    empty_sum == std::optional<std::int64_t>{0},
                "list domains bind to ordinary std::vector values, including "
                "empty lists");
+
+  joggle::Compiler bounded({16U, 8U});
+  bounded.add(R"(
+joggle 1;
+module bounded@1.0.0 {
+  fn spin(input: bytes) -> bytes {
+    while true {
+    }
+    return input;
+  }
+}
+)", "bounded.joggle");
+  const bool bounded_linked = bounded.link();
+  const auto bounded_module = bounded.module("bounded");
+  const auto spin =
+      bounded_module ? bounded_module->function("spin") : std::nullopt;
+  const auto spinning = bounded_linked && spin
+                            ? bounded.run<joggle::Bytes>(*spin, joggle::Bytes{})
+                            : std::optional<joggle::Bytes>{};
+  const bool reports_budget = std::any_of(
+      bounded.diagnostics().entries().begin(),
+      bounded.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("step limit") != std::string::npos;
+      });
+  ok &= expect(!spinning && reports_budget,
+               "structured compiler execution is bounded deterministically");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }
