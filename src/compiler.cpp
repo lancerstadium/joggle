@@ -2,6 +2,7 @@
 
 #include "prelude.h"
 #include "domain.h"
+#include "execution.h"
 #include "expression_syntax.h"
 #include "ir_internal.h"
 #include "function_body.h"
@@ -17,15 +18,12 @@
 #include <cctype>
 #include <cstring>
 #include <fstream>
-#include <functional>
-#include <locale>
 #include <map>
 #include <limits>
 #include <sstream>
 #include <set>
 #include <tuple>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -208,101 +206,6 @@ qualified_member(std::string_view name) {
   return std::pair{name.substr(0U, separator), name.substr(separator + 1U)};
 }
 
-std::string_view execution_value_type(const detail::ExecutionValue& value) {
-  if (std::holds_alternative<std::int64_t>(value)) {
-    return typeid(std::int64_t).name();
-  }
-  if (std::holds_alternative<double>(value)) {
-    return typeid(double).name();
-  }
-  if (std::holds_alternative<bool>(value)) {
-    return typeid(bool).name();
-  }
-  if (std::holds_alternative<std::string>(value)) {
-    return typeid(std::string).name();
-  }
-  if (std::holds_alternative<Type>(value)) {
-    return typeid(Type).name();
-  }
-  if (std::holds_alternative<Attribute>(value)) {
-    return typeid(Attribute).name();
-  }
-  if (std::holds_alternative<Bytes>(value)) {
-    return typeid(Bytes).name();
-  }
-  if (std::holds_alternative<std::shared_ptr<Function>>(value)) {
-    return typeid(Function).name();
-  }
-  if (std::holds_alternative<detail::IntegerList>(value)) {
-    return typeid(detail::IntegerList).name();
-  }
-  if (std::holds_alternative<detail::RealList>(value)) {
-    return typeid(detail::RealList).name();
-  }
-  if (std::holds_alternative<detail::BooleanList>(value)) {
-    return typeid(detail::BooleanList).name();
-  }
-  if (std::holds_alternative<detail::StringList>(value)) {
-    return typeid(detail::StringList).name();
-  }
-  if (std::holds_alternative<detail::TypeList>(value)) {
-    return typeid(detail::TypeList).name();
-  }
-  if (std::holds_alternative<detail::AttributeList>(value)) {
-    return typeid(detail::AttributeList).name();
-  }
-  if (std::holds_alternative<detail::HostValue>(value)) {
-    return std::get<detail::HostValue>(value).cpp_type;
-  }
-  return typeid(void).name();
-}
-
-std::optional<detail::Domain> cpp_value_domain(std::string_view type) {
-  if (type == typeid(std::int64_t).name()) {
-    return detail::Domain{detail::ValueKind::Integer, false};
-  }
-  if (type == typeid(double).name()) {
-    return detail::Domain{detail::ValueKind::Real, false};
-  }
-  if (type == typeid(bool).name()) {
-    return detail::Domain{detail::ValueKind::Boolean, false};
-  }
-  if (type == typeid(std::string).name()) {
-    return detail::Domain{detail::ValueKind::String, false};
-  }
-  if (type == typeid(Type).name()) {
-    return detail::Domain{detail::ValueKind::Type, false};
-  }
-  if (type == typeid(Attribute).name()) {
-    return detail::Domain{detail::ValueKind::Attribute, false};
-  }
-  if (type == typeid(Bytes).name()) {
-    return detail::Domain{detail::ValueKind::Bytes, false};
-  }
-  if (type == typeid(Function).name()) {
-    return detail::Domain{detail::ValueKind::Function, false};
-  }
-  if (type == typeid(detail::IntegerList).name()) {
-    return detail::Domain{detail::ValueKind::Integer, true};
-  }
-  if (type == typeid(detail::RealList).name()) {
-    return detail::Domain{detail::ValueKind::Real, true};
-  }
-  if (type == typeid(detail::BooleanList).name()) {
-    return detail::Domain{detail::ValueKind::Boolean, true};
-  }
-  if (type == typeid(detail::StringList).name()) {
-    return detail::Domain{detail::ValueKind::String, true};
-  }
-  if (type == typeid(detail::TypeList).name()) {
-    return detail::Domain{detail::ValueKind::Type, true};
-  }
-  if (type == typeid(detail::AttributeList).name()) {
-    return detail::Domain{detail::ValueKind::Attribute, true};
-  }
-  return std::nullopt;
-}
-
 std::optional<detail::Domain>
 pass_field_domain(const Module::ParameterDecl& field) {
   return detail::kernel_domain(field.domain);
@@ -334,116 +237,6 @@ std::optional<Module::TypeDecl> field_type_declaration(
           : std::string_view(field.domain.text).substr(dot + 1U);
   const auto module = modules.find(module_name);
   return module == modules.end() ? std::nullopt : module->second.type(local);
-}
-
-template <typename T>
-std::optional<detail::ExecutionValue>
-list_execution_value(const ParameterValue& value) {
-  auto decoded = detail::decode_parameter<std::vector<T>>(value);
-  return decoded ? std::optional<detail::ExecutionValue>{std::move(*decoded)}
-                 : std::nullopt;
-}
-
-std::optional<detail::ExecutionValue>
-execution_value(const ParameterValue& value,
-                const Module::ParameterDecl& parameter) {
-  const auto domain = detail::kernel_domain(parameter.domain);
-  if (domain && domain->list) {
-    switch (domain->element) {
-    case detail::ValueKind::Integer:
-      return list_execution_value<std::int64_t>(value);
-    case detail::ValueKind::Real:
-      return list_execution_value<double>(value);
-    case detail::ValueKind::Boolean:
-      return list_execution_value<bool>(value);
-    case detail::ValueKind::String:
-      return list_execution_value<std::string>(value);
-    case detail::ValueKind::Type:
-      return list_execution_value<Type>(value);
-    case detail::ValueKind::Attribute:
-      return list_execution_value<Attribute>(value);
-    case detail::ValueKind::Function:
-    case detail::ValueKind::Bytes:
-      return std::nullopt;
-    }
-  }
-  switch (value.kind()) {
-  case ParameterValue::Kind::I64:
-    return detail::ExecutionValue{*value.as_i64()};
-  case ParameterValue::Kind::F64:
-    return detail::ExecutionValue{*value.as_f64()};
-  case ParameterValue::Kind::Boolean:
-    return detail::ExecutionValue{*value.as_bool()};
-  case ParameterValue::Kind::String:
-    return detail::ExecutionValue{*value.as_string()};
-  case ParameterValue::Kind::Type:
-    return detail::ExecutionValue{*value.as_type()};
-  case ParameterValue::Kind::Attribute:
-    return detail::ExecutionValue{*value.as_attribute()};
-  case ParameterValue::Kind::List:
-    return std::nullopt;
-  }
-  return std::nullopt;
-}
-
-template <typename T>
-ParameterValue list_parameter_value(const std::vector<T>& values) {
-  std::vector<ParameterValue> elements;
-  elements.reserve(values.size());
-  for (const T& value : values) {
-    elements.emplace_back(value);
-  }
-  return ParameterValue::list(std::move(elements));
-}
-
-ParameterValue list_parameter_value(const std::vector<bool>& values) {
-  std::vector<ParameterValue> elements;
-  elements.reserve(values.size());
-  for (const bool value : values) {
-    elements.emplace_back(value);
-  }
-  return ParameterValue::list(std::move(elements));
-}
-
-std::optional<ParameterValue>
-parameter_value(const detail::ExecutionValue& value) {
-  if (const auto* stored = std::get_if<std::int64_t>(&value)) {
-    return ParameterValue(*stored);
-  }
-  if (const auto* stored = std::get_if<double>(&value)) {
-    return ParameterValue(*stored);
-  }
-  if (const auto* stored = std::get_if<bool>(&value)) {
-    return ParameterValue(*stored);
-  }
-  if (const auto* stored = std::get_if<std::string>(&value)) {
-    return ParameterValue(*stored);
-  }
-  if (const auto* stored = std::get_if<Type>(&value)) {
-    return ParameterValue(*stored);
-  }
-  if (const auto* stored = std::get_if<Attribute>(&value)) {
-    return ParameterValue(*stored);
-  }
-  if (const auto* stored = std::get_if<detail::IntegerList>(&value)) {
-    return list_parameter_value(*stored);
-  }
-  if (const auto* stored = std::get_if<detail::RealList>(&value)) {
-    return list_parameter_value(*stored);
-  }
-  if (const auto* stored = std::get_if<detail::BooleanList>(&value)) {
-    return list_parameter_value(*stored);
-  }
-  if (const auto* stored = std::get_if<detail::StringList>(&value)) {
-    return list_parameter_value(*stored);
-  }
-  if (const auto* stored = std::get_if<detail::TypeList>(&value)) {
-    return list_parameter_value(*stored);
-  }
-  if (const auto* stored = std::get_if<detail::AttributeList>(&value)) {
-    return list_parameter_value(*stored);
-  }
-  return std::nullopt;
 }
 
 std::optional<Version> parse_exact_version(std::string_view text) {
@@ -666,25 +459,6 @@ evaluate_interface_method(bool linked, const Subject& subject,
     return std::nullopt;
   }
   return result;
-}
-
-template <typename Modules>
-std::optional<Module::FunctionDecl> resolve_function(const Modules& modules,
-                                                     std::string_view owner,
-                                                     std::string_view reference) {
-  const std::size_t dot = reference.find('.');
-  std::string_view module_name = owner;
-  if (dot != std::string_view::npos) {
-    const auto source = modules.find(owner);
-    module_name =
-        source == modules.end()
-            ? reference.substr(0, dot)
-            : resolve_prefix(source->second, reference.substr(0, dot));
-  }
-  const std::string_view local =
-      dot == std::string_view::npos ? reference : reference.substr(dot + 1U);
-  const auto module = modules.find(module_name);
-  return module == modules.end() ? std::nullopt : module->second.function(local);
 }
 
 }  // namespace
@@ -2732,7 +2506,7 @@ bool Compiler::bind_representation(Module::TypeDecl schema,
                                "' outside this compiler");
     return false;
   }
-  if (cpp_value_domain(type)) {
+  if (detail::cpp_value_domain(type)) {
     state_->diagnostics.report(
         "built-in C++ representations belong to Prelude and cannot be "
         "registered again");
@@ -2767,7 +2541,7 @@ bool Compiler::bind_representation(Module::TypeDecl schema,
 bool Compiler::accepts_host_type(const Module::FunctionDecl& function,
                                  const Module::ParameterDecl& field,
                                  std::string_view type) const {
-  if (const auto domain = cpp_value_domain(type)) {
+  if (const auto domain = detail::cpp_value_domain(type)) {
     return pass_field_domain(field) == domain;
   }
   const auto declaration =
@@ -2847,7 +2621,7 @@ bool Compiler::check_host_values(
       value_arguments.push_back(*host->concrete_type);
       continue;
     }
-    known_arguments.push_back(parameter_value(arguments[index]));
+    known_arguments.push_back(detail::parameter_value(arguments[index]));
   }
 
   std::vector<std::optional<Type>> expected_results;
@@ -2944,7 +2718,7 @@ std::optional<detail::ParameterValue> Compiler::evaluate_binding(
   values.reserve(arguments.size());
   const auto parameters = detail::parameter_inputs(function);
   for (std::size_t index = 0; index < arguments.size(); ++index) {
-    auto converted = execution_value(arguments[index], parameters[index]);
+    auto converted = detail::execution_value(arguments[index], parameters[index]);
     if (!converted) {
       state_->diagnostics.report(
           "compiler execution cannot represent argument '" +
@@ -2957,7 +2731,7 @@ std::optional<detail::ParameterValue> Compiler::evaluate_binding(
   if (!produced) {
     return std::nullopt;
   }
-  auto result = parameter_value(*produced);
+  auto result = detail::parameter_value(*produced);
   if (!result ||
       !detail::matches_parameter(detail::parameter_results(function).front(),
                                  *result)) {
@@ -3291,7 +3065,7 @@ Compiler::execute(Module::FunctionDecl declaration,
   }
   for (std::size_t index = 0; index < arguments.size(); ++index) {
     if (!accepts_host_type(declaration, declaration.inputs()[index],
-                           execution_value_type(arguments[index]))) {
+                           detail::execution_value_type(arguments[index]))) {
       state_->diagnostics.report("compiler function '" +
                                  declaration.symbol().qualified_name() +
                                  "' received an argument with the wrong type");
@@ -3306,7 +3080,7 @@ Compiler::execute(Module::FunctionDecl declaration,
                         std::shared_ptr<const Function::Snapshot>>>
       checkpoints;
   for (detail::ExecutionValue& argument : arguments) {
-    if (execution_value_type(argument) == typeid(Function).name()) {
+    if (detail::execution_value_type(argument) == typeid(Function).name()) {
       auto function = std::get<std::shared_ptr<Function>>(argument);
       if (!verify(*function)) {
         return std::nullopt;
@@ -3344,13 +3118,13 @@ Compiler::execute(Module::FunctionDecl declaration,
     }
     for (std::size_t index = 0; index < values.size(); ++index) {
       if (!accepts_host_type(current, current.inputs()[index],
-                             execution_value_type(values[index]))) {
+                             detail::execution_value_type(values[index]))) {
         state_->diagnostics.report("compiler function '" +
                                    current.symbol().qualified_name() +
                                    "' received an argument with the wrong type");
         return std::nullopt;
       }
-      if (execution_value_type(values[index]) == typeid(Function).name()) {
+      if (detail::execution_value_type(values[index]) == typeid(Function).name()) {
         const auto function =
             std::get<std::shared_ptr<Function>>(values[index]);
         if (!function->accepts(current.symbol())) {
@@ -3418,7 +3192,7 @@ Compiler::execute(Module::FunctionDecl declaration,
       if (!current.results().empty()) {
         if (current.results().size() != 1U ||
             !accepts_host_type(current, current.results().front(),
-                               execution_value_type(*execution))) {
+                               detail::execution_value_type(*execution))) {
           state_->diagnostics.report("compiler function '" +
                                      current.symbol().qualified_name() +
                                      "' produced a value with the wrong type");
@@ -3436,508 +3210,41 @@ Compiler::execute(Module::FunctionDecl declaration,
                             ? std::shared_ptr<const detail::FunctionBody>{}
                             : detail::ModuleAccess::body(owner->second,
                                                          current);
-      if (!body || body->blocks.size() != 1U ||
-          body->blocks.front().terminator) {
+      if (!body) {
         state_->diagnostics.report(
-            "compiler execution of function '" +
-            current.symbol().qualified_name() +
-            "' requires a structured body rather than explicit CFG blocks");
+            "compiler function '" + current.symbol().qualified_name() +
+            "' has no executable body");
         return std::nullopt;
       }
-
-      enum class Control { Next, Return, Break, Continue, Error };
-      struct Flow {
-        Control control = Control::Next;
-        std::optional<detail::ExecutionValue> value;
-      };
-      using Scope =
-          std::unordered_map<std::string, detail::ExecutionValue>;
-      using Scopes = std::vector<Scope>;
-
-      Scopes scopes(1U);
-      for (std::size_t index = 0; index < current.inputs().size(); ++index) {
-        scopes.front().emplace(current.inputs()[index].name, values[index]);
-      }
-      const auto report = [&](std::string message,
-                              detail::SyntaxRange range) {
-        state_->diagnostics.report(
-            std::move(message),
-            SourceRange{body->source, range.begin, range.end});
-      };
-      const auto step = [&](detail::SyntaxRange range) {
-        if (steps++ < state_->evaluation_limits.steps) {
-          return true;
-        }
-        report("compiler execution step limit exceeded", range);
-        return false;
-      };
-      const auto find_local = [](Scopes& environment,
-                                 std::string_view name)
-          -> detail::ExecutionValue* {
-        for (auto scope = environment.rbegin(); scope != environment.rend();
-             ++scope) {
-          const auto found = scope->find(std::string(name));
-          if (found != scope->end()) {
-            return &found->second;
-          }
-        }
-        return nullptr;
-      };
-
-      std::function<std::optional<detail::ExecutionValue>(
-          const Module::Expression&, detail::SyntaxRange, Scopes&,
-          const Module::ParameterDecl*)>
-          evaluate;
-      evaluate = [&](const Module::Expression& expression,
-                     detail::SyntaxRange range, Scopes& environment,
-                     const Module::ParameterDecl* expected)
-          -> std::optional<detail::ExecutionValue> {
-        if (!step(range)) {
-          return std::nullopt;
-        }
-        using Kind = Module::Expression::Kind;
-        if ((expression.kind == Kind::Variable ||
-             expression.kind == Kind::Reference) &&
-            expression.arguments.empty()) {
-          if (auto* value = find_local(environment, expression.text)) {
-            return *value;
-          }
-          if (expression.kind == Kind::Variable) {
-            report("compiler function '" +
-                       current.symbol().qualified_name() +
-                       "' references unknown value '" + expression.text +
-                       "'",
-                   range);
-            return std::nullopt;
-          }
-        }
-
-        if (expression.kind == Kind::Number) {
-          if (expression.text.find_first_of(".eE") == std::string::npos) {
-            std::int64_t integer = 0;
-            const auto parsed = std::from_chars(
-                expression.text.data(),
-                expression.text.data() + expression.text.size(), integer);
-            if (parsed.ec == std::errc{} &&
-                parsed.ptr ==
-                    expression.text.data() + expression.text.size()) {
-              return detail::ExecutionValue{integer};
-            }
-          } else {
-            double real = 0.0;
-            std::istringstream input(expression.text);
-            input.imbue(std::locale::classic());
-            input >> real;
-            if (input && input.peek() == std::char_traits<char>::eof()) {
-              return detail::ExecutionValue{real};
-            }
-          }
-          report("invalid compiler numeric literal", range);
-          return std::nullopt;
-        }
-        if (expression.kind == Kind::Boolean) {
-          return detail::ExecutionValue{expression.text == "true"};
-        }
-        if (expression.kind == Kind::String) {
-          return detail::ExecutionValue{expression.text};
-        }
-        if (expression.kind == Kind::Evaluate) {
-          if (expression.arguments.size() != 1U) {
-            report("malformed compiler evaluation expression", range);
-            return std::nullopt;
-          }
-          return evaluate(expression.arguments.front(), range, environment,
-                          expected);
-        }
-        if (expression.kind == Kind::If) {
-          if (expression.arguments.size() != 3U) {
-            report("malformed compiler if expression", range);
-            return std::nullopt;
-          }
-          const Module::ParameterDecl condition{
-              "condition",
-              detail::domain_expression(detail::ValueKind::Boolean), false,
-              std::nullopt};
-          auto value = evaluate(expression.arguments[0], range, environment,
-                                &condition);
-          const bool* selected = value ? std::get_if<bool>(&*value) : nullptr;
-          if (selected == nullptr) {
-            report("compiler if condition must be bool", range);
-            return std::nullopt;
-          }
-          return evaluate(expression.arguments[*selected ? 1U : 2U], range,
-                          environment, expected);
-        }
-        if (expression.kind == Kind::List) {
-          std::vector<detail::ExecutionValue> elements;
-          elements.reserve(expression.arguments.size());
-          for (const auto& element : expression.arguments) {
-            auto value = evaluate(element, range, environment, nullptr);
-            if (!value) {
-              return std::nullopt;
-            }
-            elements.push_back(std::move(*value));
-          }
-          const auto domain =
-              expected ? detail::kernel_domain(expected->domain)
-                       : std::optional<detail::Domain>{};
-          const auto element_type = [&]() -> std::string_view {
-            if (!elements.empty()) {
-              return execution_value_type(elements.front());
-            }
-            if (!domain || !domain->list) {
-              return {};
-            }
-            switch (domain->element) {
-            case detail::ValueKind::Integer:
-              return typeid(std::int64_t).name();
-            case detail::ValueKind::Real:
-              return typeid(double).name();
-            case detail::ValueKind::Boolean:
-              return typeid(bool).name();
-            case detail::ValueKind::String:
-              return typeid(std::string).name();
-            case detail::ValueKind::Type:
-              return typeid(Type).name();
-            case detail::ValueKind::Attribute:
-              return typeid(Attribute).name();
-            case detail::ValueKind::Bytes:
-            case detail::ValueKind::Function:
-              return {};
-            }
-            return {};
-          }();
-          if (element_type.empty() ||
-              !std::all_of(elements.begin(), elements.end(),
-                           [&](const detail::ExecutionValue& element) {
-                             return execution_value_type(element) ==
-                                    element_type;
-                           })) {
-            report(elements.empty()
-                       ? "an empty compiler list needs a contextual element type"
-                       : "compiler list elements have different types",
-                   range);
-            return std::nullopt;
-          }
-          if (element_type == typeid(std::int64_t).name()) {
-            detail::IntegerList result;
-            for (auto& element : elements) {
-              result.push_back(std::get<std::int64_t>(element));
-            }
-            return detail::ExecutionValue{std::move(result)};
-          }
-          if (element_type == typeid(double).name()) {
-            detail::RealList result;
-            for (auto& element : elements) {
-              result.push_back(std::get<double>(element));
-            }
-            return detail::ExecutionValue{std::move(result)};
-          }
-          if (element_type == typeid(bool).name()) {
-            detail::BooleanList result;
-            for (auto& element : elements) {
-              result.push_back(std::get<bool>(element));
-            }
-            return detail::ExecutionValue{std::move(result)};
-          }
-          if (element_type == typeid(std::string).name()) {
-            detail::StringList result;
-            for (auto& element : elements) {
-              result.push_back(std::get<std::string>(std::move(element)));
-            }
-            return detail::ExecutionValue{std::move(result)};
-          }
-          if (element_type == typeid(Type).name()) {
-            detail::TypeList result;
-            for (auto& element : elements) {
-              result.push_back(std::get<Type>(std::move(element)));
-            }
-            return detail::ExecutionValue{std::move(result)};
-          }
-          if (element_type == typeid(Attribute).name()) {
-            detail::AttributeList result;
-            for (auto& element : elements) {
-              result.push_back(std::get<Attribute>(std::move(element)));
-            }
-            return detail::ExecutionValue{std::move(result)};
-          }
-          report("compiler list element type is not representable", range);
-          return std::nullopt;
-        }
-
-        if (expression.kind == Kind::Prefix ||
-            expression.kind == Kind::Infix ||
-            expression.kind == Kind::Postfix ||
-            expression.kind == Kind::FunctionType ||
-            (expression.kind == Kind::Reference && expected != nullptr)) {
-          std::optional<Module::ParameterDecl> inferred;
-          if (expected == nullptr &&
-              (expression.kind == Kind::Prefix ||
-               expression.kind == Kind::Infix ||
-               expression.kind == Kind::Postfix) &&
-              !expression.arguments.empty()) {
-            const Module::Expression& operand = expression.arguments.front();
-            std::optional<detail::Domain> domain;
-            if ((operand.kind == Kind::Variable ||
-                 operand.kind == Kind::Reference) &&
-                operand.arguments.empty()) {
-              if (const auto* value = find_local(environment, operand.text)) {
-                domain = cpp_value_domain(execution_value_type(*value));
-              }
-            } else if (operand.kind == Kind::Number) {
-              domain = detail::Domain{
-                  operand.text.find_first_of(".eE") == std::string::npos
-                      ? detail::ValueKind::Integer
-                      : detail::ValueKind::Real,
-                  false};
-            }
-            if (domain && !domain->list) {
-              inferred = Module::ParameterDecl{
-                  "operator result",
-                  detail::domain_expression(domain->element), false,
-                  std::nullopt};
-              expected = &*inferred;
-            }
-          }
-          if (expected == nullptr) {
-            report("compiler operator needs a contextual result type", range);
-            return std::nullopt;
-          }
-          detail::KnownBindings bindings;
-          for (const auto& scope : environment) {
-            for (const auto& [name, stored] : scope) {
-              if (auto value = parameter_value(stored)) {
-                bindings.insert_or_assign(name, std::move(*value));
-              }
-            }
-          }
-          auto value = detail::evaluate_known_expression(
-              *this, current.symbol().module_name(), expression, *expected,
-              bindings, state_->diagnostics,
-              SourceRange{body->source, range.begin, range.end},
-              !under_residual_control);
-          return value ? execution_value(*value, *expected)
-                       : std::optional<detail::ExecutionValue>{};
-        }
-
-        if (expression.kind != Kind::Call) {
-          report("compiler function '" +
-                     current.symbol().qualified_name() +
-                     "' contains an unsupported expression",
-                 range);
-          return std::nullopt;
-        }
-        const auto next = resolve_function(state_->modules,
-                                           current.symbol().module_name(),
-                                           expression.text);
-        if (!next) {
-          report("function '" + current.symbol().qualified_name() +
-                     "' cannot resolve one callee named '" + expression.text +
-                     "'",
-                 range);
-          return std::nullopt;
-        }
-        const auto parameters = next->inputs();
-        std::vector<std::optional<detail::ExecutionValue>> bound(
-            parameters.size());
-        std::size_t positional = 0;
-        for (std::size_t index = 0; index < expression.arguments.size();
-             ++index) {
-          const std::string_view label =
-              index < expression.labels.size() ? expression.labels[index]
-                                               : std::string_view{};
-          std::size_t target = parameters.size();
-          if (!label.empty()) {
-            const auto found = std::find_if(
-                parameters.begin(), parameters.end(),
-                [&](const Module::ParameterDecl& parameter) {
-                  return parameter.name == label;
-                });
-            if (found != parameters.end()) {
-              target = static_cast<std::size_t>(
-                  std::distance(parameters.begin(), found));
-            }
-          } else if (positional < parameters.size()) {
-            target = positional++;
-          }
-          if (target == parameters.size() || bound[target]) {
-            report("compiler call has invalid argument placement", range);
-            return std::nullopt;
-          }
-          auto value = evaluate(expression.arguments[index], range,
-                                environment, &parameters[target]);
-          if (!value) {
-            return std::nullopt;
-          }
-          bound[target] = std::move(*value);
-        }
-        std::vector<detail::ExecutionValue> call_arguments;
-        call_arguments.reserve(parameters.size());
-        for (std::size_t index = 0; index < parameters.size(); ++index) {
-          if (!bound[index] && parameters[index].default_value) {
-            const auto value = detail::parameter_default(parameters[index]);
-            bound[index] = value ? execution_value(*value, parameters[index])
-                                 : std::nullopt;
-          }
-          if (!bound[index]) {
-            report("compiler call is missing argument '" +
-                       parameters[index].name + "'",
-                   range);
-            return std::nullopt;
-          }
-          call_arguments.push_back(std::move(*bound[index]));
-        }
-        return self(self, *next, std::move(call_arguments));
-      };
-
-      std::function<Flow(std::span<const detail::StatementSyntax>, Scopes&)>
-          execute_statements;
-      execute_statements = [&](std::span<const detail::StatementSyntax> code,
-                               Scopes& environment) -> Flow {
-        for (const detail::StatementSyntax& statement : code) {
-          if (!step(statement.range)) {
-            return {Control::Error, std::nullopt};
-          }
-          if (statement.kind == detail::StatementSyntax::Kind::Return) {
-            if (statement.values.size() != current.results().size() ||
-                statement.values.size() > 1U) {
-              report("compiler return does not match its function signature",
-                     statement.range);
-              return {Control::Error, std::nullopt};
-            }
-            if (statement.values.empty()) {
-              return {Control::Return, detail::ExecutionValue{}};
-            }
-            auto value = evaluate(statement.values.front().value,
-                                  statement.values.front().range, environment,
-                                  &current.results().front());
-            return value ? Flow{Control::Return, std::move(value)}
-                         : Flow{Control::Error, std::nullopt};
-          }
-          if (statement.kind == detail::StatementSyntax::Kind::Break) {
-            return {Control::Break, std::nullopt};
-          }
-          if (statement.kind == detail::StatementSyntax::Kind::Continue) {
-            return {Control::Continue, std::nullopt};
-          }
-          if (statement.kind == detail::StatementSyntax::Kind::If) {
-            const Module::ParameterDecl condition{
-                "condition",
-                detail::domain_expression(detail::ValueKind::Boolean), false,
-                std::nullopt};
-            auto value = evaluate(statement.expression.value,
-                                  statement.expression.range, environment,
-                                  &condition);
-            const bool* selected = value ? std::get_if<bool>(&*value) : nullptr;
-            if (selected == nullptr) {
-              report("compiler if condition must be bool", statement.range);
-              return {Control::Error, std::nullopt};
-            }
-            environment.emplace_back();
-            Flow flow = execute_statements(
-                *selected ? std::span(statement.body)
-                          : std::span(statement.otherwise),
-                environment);
-            environment.pop_back();
-            if (flow.control != Control::Next) {
-              return flow;
-            }
-            continue;
-          }
-          if (statement.kind == detail::StatementSyntax::Kind::While) {
-            while (true) {
-              const Module::ParameterDecl condition{
-                  "condition",
-                  detail::domain_expression(detail::ValueKind::Boolean), false,
-                  std::nullopt};
-              auto value = evaluate(statement.expression.value,
-                                    statement.expression.range, environment,
-                                    &condition);
-              const bool* selected =
-                  value ? std::get_if<bool>(&*value) : nullptr;
-              if (selected == nullptr) {
-                report("compiler while condition must be bool",
-                       statement.range);
-                return {Control::Error, std::nullopt};
-              }
-              if (!*selected) {
-                break;
-              }
-              environment.emplace_back();
-              Flow flow = execute_statements(statement.body, environment);
-              environment.pop_back();
-              if (flow.control == Control::Return ||
-                  flow.control == Control::Error) {
-                return flow;
-              }
-              if (flow.control == Control::Break) {
-                break;
-              }
-            }
-            continue;
-          }
-
-          const Module::ParameterDecl* expected = nullptr;
-          if (statement.bindings.size() > 1U) {
-            report("compiler execution currently supports one call result",
-                   statement.range);
-            return {Control::Error, std::nullopt};
-          }
-          auto value = evaluate(statement.expression.value,
-                                statement.expression.range, environment,
-                                expected);
-          if (!value) {
-            return {Control::Error, std::nullopt};
-          }
-          if (statement.bindings.empty()) {
-            continue;
-          }
-          const detail::BindingSyntax& binding = statement.bindings.front();
-          if (binding.rebind) {
-            auto* target = find_local(environment, binding.name);
-            if (target == nullptr) {
-              report("cannot rebind unknown compiler value '" +
-                         binding.name + "'",
-                     binding.range);
-              return {Control::Error, std::nullopt};
-            }
-            *target = std::move(*value);
-          } else if (!environment.back()
-                          .emplace(binding.name, std::move(*value))
-                          .second) {
-            report("compiler value '" + binding.name +
-                       "' is already defined in this scope",
-                   binding.range);
-            return {Control::Error, std::nullopt};
-          }
-        }
-        return {};
-      };
-
-      Flow flow = execute_statements(body->blocks.front().statements, scopes);
-      if (flow.control != Control::Return || !flow.value) {
-        if (flow.control != Control::Error) {
-          report("compiler function path falls through without returning",
-                 body->range);
-        }
+      const detail::ExecuteFunction invoke =
+          [&](Module::FunctionDecl function,
+              std::vector<detail::ExecutionValue> arguments) {
+            return self(self, function, std::move(arguments));
+          };
+      auto evaluated = detail::execute_body(
+          *this, current, *body, values, state_->evaluation_limits, steps,
+          under_residual_control, state_->diagnostics, invoke);
+      if (!evaluated) {
         return std::nullopt;
       }
       const bool result_matches =
           current.results().empty()
-              ? std::holds_alternative<std::monostate>(*flow.value)
+              ? std::holds_alternative<std::monostate>(*evaluated)
               : current.results().size() == 1U &&
-                    accepts_host_type(current, current.results().front(),
-                                      execution_value_type(*flow.value));
+                    accepts_host_type(
+                        current, current.results().front(),
+                        detail::execution_value_type(*evaluated));
       if (!result_matches) {
-        report("compiler function returned a value with the wrong type",
-               body->range);
+        state_->diagnostics.report(
+            "compiler function '" + current.symbol().qualified_name() +
+            "' returned a value with the wrong type");
         return std::nullopt;
       }
-      if (!project_host_value(*flow.value) ||
-          !check_host_values(current, values, &*flow.value)) {
+      if (!project_host_value(*evaluated) ||
+          !check_host_values(current, values, &*evaluated)) {
         return std::nullopt;
       }
-      return flow.value;
+      return evaluated;
     }
     }
     return std::nullopt;
@@ -3953,7 +3260,7 @@ Compiler::execute(Module::FunctionDecl declaration,
     throw;
   }
   bool valid = result.has_value() && state_->diagnostics.size() == before;
-  if (valid && execution_value_type(*result) == typeid(Function).name()) {
+  if (valid && detail::execution_value_type(*result) == typeid(Function).name()) {
     valid = verify(*std::get<std::shared_ptr<Function>>(*result)) && valid;
   }
   if (!valid) {

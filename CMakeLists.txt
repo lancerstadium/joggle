@@ -26,6 +26,7 @@ add_library(joggle
   src/compiler.cpp
   src/diagnostic.cpp
   src/domain.cpp
+  src/execution.cpp
   src/expression_syntax.cpp
   src/ir.cpp
   src/ir_module.cpp
