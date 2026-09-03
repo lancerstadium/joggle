@@ -66,9 +66,9 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
   compiler.bind(
       module, "rewrite",
       [keep = *keep, replacement = *replacement](
-          joggle::ir::Function function,
+          joggle::Function function,
           joggle::Diagnostics& edit_diagnostics)
-          -> std::optional<joggle::ir::Function> {
+          -> std::optional<joggle::Function> {
         const auto instructions = function.instructions();
         auto edit = function.edit();
         for (const auto& instruction : instructions) {
@@ -136,7 +136,7 @@ if (!compiler.link() ||
 }
 
 auto function = compiler.materialize("example.main");
-auto rewritten = function ? compiler.run<joggle::ir::Function>(
+auto rewritten = function ? compiler.run<joggle::Function>(
                                 "example.rewrite", *function)
                           : std::nullopt;
 if (!rewritten) {

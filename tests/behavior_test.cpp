@@ -65,7 +65,7 @@ int main() {
     }
     return true;
   });
-  const auto same_type = [](const joggle::ir::Instruction& instruction,
+  const auto same_type = [](const joggle::Instruction& instruction,
                             joggle::Diagnostics& diagnostics) {
     const auto arguments = instruction.arguments();
     const auto results = instruction.results();
@@ -81,49 +81,47 @@ int main() {
   compiler.verify(*add_schema, same_type);
   compiler.verify(*cast_schema, same_type);
   compiler.verify(*marker_schema, same_type);
-  compiler.bind(*canonicalize_schema,
-                [cast_schema](joggle::ir::Function function,
-                              joggle::Diagnostics& diagnostics)
-                    -> std::optional<joggle::ir::Function> {
-                  auto edit = function.edit();
-                  for (const joggle::ir::Instruction& instruction :
-                       function.instructions()) {
-                    if (instruction.callee() != *cast_schema) {
-                      continue;
-                    }
-                    edit.replace(instruction.result(0),
-                                 instruction.arguments().front());
-                    edit.erase(instruction);
-                  }
-                  if (!edit.commit(diagnostics)) {
-                    return std::nullopt;
-                  }
-                  return function;
-                });
+  compiler.bind(
+      *canonicalize_schema,
+      [cast_schema](joggle::Function function, joggle::Diagnostics& diagnostics)
+          -> std::optional<joggle::Function> {
+        auto edit = function.edit();
+        for (const joggle::Instruction& instruction : function.instructions()) {
+          if (instruction.callee() != *cast_schema) {
+            continue;
+          }
+          edit.replace(instruction.result(0), instruction.arguments().front());
+          edit.erase(instruction);
+        }
+        if (!edit.commit(diagnostics)) {
+          return std::nullopt;
+        }
+        return function;
+      });
 
   std::size_t query_runs = 0;
-  const auto compute_nodes = [&](const joggle::ir::Function& function) {
+  const auto compute_nodes = [&](const joggle::Function& function) {
     ++query_runs;
     return function.instructions().size();
   };
 
   compiler.bind(
       *cleanup_schema,
-      [&compute_nodes](joggle::ir::Function function,
-                       joggle::Diagnostics& diagnostics)
-          -> std::optional<joggle::ir::Function> {
+      [&compute_nodes](
+          joggle::Function function,
+          joggle::Diagnostics& diagnostics) -> std::optional<joggle::Function> {
         static_cast<void>(compute_nodes(function));
         const auto operations = function.instructions();
         const bool has_marker =
             std::any_of(operations.begin(), operations.end(),
-                        [](const joggle::ir::Instruction& instruction) {
+                        [](const joggle::Instruction& instruction) {
                           return instruction.callee().name() == "marker";
                         });
         if (!has_marker) {
           return function;
         }
         auto edit = function.edit();
-        for (const joggle::ir::Instruction& instruction : operations) {
+        for (const joggle::Instruction& instruction : operations) {
           if (instruction.callee().name() != "marker") {
             continue;
           }
@@ -158,8 +156,7 @@ int main() {
 
   bool ok = true;
   ok &= expect(compiler.verify(*function), "native Instruction verification");
-  auto optimized =
-      compiler.run<joggle::ir::Function>(*optimize_schema, *function);
+  auto optimized = compiler.run<joggle::Function>(*optimize_schema, *function);
   ok &= expect(optimized.has_value(), "composed native transformations run");
   if (optimized) {
     function = std::move(optimized);
@@ -171,9 +168,9 @@ int main() {
              "function-local analysis executes explicitly without a side API");
 
   compiler.bind(*abort_schema,
-                [marker_schema](joggle::Compiler&, joggle::ir::Function current,
+                [marker_schema](joggle::Compiler&, joggle::Function current,
                                 joggle::Diagnostics& diagnostics)
-                    -> std::optional<joggle::ir::Function> {
+                    -> std::optional<joggle::Function> {
                   const auto producer = current.instructions().front();
                   auto edit = current.edit();
                   edit.append(*marker_schema, {producer.result(0)});
@@ -182,8 +179,7 @@ int main() {
                   }
                   return std::nullopt;
                 });
-  const auto aborted =
-      compiler.run<joggle::ir::Function>(*abort_schema, *function);
+  const auto aborted = compiler.run<joggle::Function>(*abort_schema, *function);
   ok &= expect(!aborted, "a failing compiler function reports failure");
   ok &= expect(function->instructions().size() == 1U,
                "function-level checkpoint restores committed inner edits");

@@ -18,7 +18,7 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
                     return value && *value > 0;
                   });
   compiler.bind(module, "noop",
-                [](joggle::Compiler&, joggle::ir::Function function,
+                [](joggle::Compiler&, joggle::Function function,
                    joggle::Diagnostics&) { return function; });
   compiler.bind(module, "reverse", [](joggle::Bytes input) {
     std::reverse(input.begin(), input.end());

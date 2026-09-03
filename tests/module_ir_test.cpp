@@ -136,7 +136,7 @@ module module_defs@1.0.0 {
                "instantiate again");
   const auto replay_returned =
       replay_callback ? replay_callback->entry().terminator().returned()
-                      : std::vector<joggle::ir::Value>{};
+                      : std::vector<joggle::Value>{};
   ok &= expect(replay_returned.size() == 1U &&
                    replay_returned.front().referenced_function() &&
                    replay_returned.front()

@@ -30,14 +30,14 @@ std::string decode(const joggle::Bytes& bytes) {
 std::size_t calls(const joggle::Module& module, std::string_view symbol) {
   std::size_t count = 0;
   for (const joggle::Module::FunctionDecl& member : module.functions()) {
-    const joggle::ir::Function* function = member.body();
+    const joggle::Function* function = member.body();
     if (function == nullptr) {
       continue;
     }
     const auto instructions = function->instructions();
     count += static_cast<std::size_t>(std::count_if(
         instructions.begin(), instructions.end(),
-        [symbol](const joggle::ir::Instruction& instruction) {
+        [symbol](const joggle::Instruction& instruction) {
           return instruction.callee().symbol().qualified_name() == symbol;
         }));
   }
@@ -75,7 +75,7 @@ int main() {
 
   joggle::Module model("resnet18_pipeline", {1, 0, 0});
   joggle::Diagnostics diagnostics;
-  joggle::ir::Function second = *block;
+  joggle::Function second = *block;
   if (!model.insert("stage1_block0", std::move(*block), diagnostics) ||
       !model.insert("stage1_block1", std::move(second), diagnostics)) {
     diagnostics.print(std::cerr);

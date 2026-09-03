@@ -51,7 +51,7 @@ using AttributeList = std::vector<Attribute>;
 
 using ExecutionValue =
     std::variant<std::int64_t, double, bool, std::string, Type, Attribute,
-                 Bytes, std::shared_ptr<ir::Function>, IntegerList, RealList,
+                 Bytes, std::shared_ptr<Function>, IntegerList, RealList,
                  BooleanList, StringList, TypeList, AttributeList, HostValue>;
 using ExecutionValues = std::vector<ExecutionValue>;
 
@@ -83,8 +83,8 @@ inline bool has_domain(const Module::ParameterDecl& field,
 
 template <typename T> ExecutionValue store_execution_value(T&& value) {
   using Value = std::remove_cvref_t<T>;
-  if constexpr (std::is_same_v<Value, ir::Function>) {
-    return {std::make_shared<ir::Function>(std::forward<T>(value))};
+  if constexpr (std::is_same_v<Value, Function>) {
+    return {std::make_shared<Function>(std::forward<T>(value))};
   } else if constexpr (is_builtin_host_value<Value>) {
     return {Value(std::forward<T>(value))};
   } else {
@@ -95,8 +95,8 @@ template <typename T> ExecutionValue store_execution_value(T&& value) {
 
 template <typename T> decltype(auto) execution_argument(ExecutionValue& value) {
   using Value = std::remove_cvref_t<T>;
-  if constexpr (std::is_same_v<Value, ir::Function>) {
-    auto& function = *std::get<std::shared_ptr<ir::Function>>(value);
+  if constexpr (std::is_same_v<Value, Function>) {
+    auto& function = *std::get<std::shared_ptr<Function>>(value);
     if constexpr (std::is_reference_v<T>) {
       return static_cast<T>(function);
     } else {
@@ -118,8 +118,8 @@ template <typename T> decltype(auto) execution_argument(ExecutionValue& value) {
 template <typename T>
 std::optional<T> take_execution_value(ExecutionValue value) {
   using Value = std::remove_cvref_t<T>;
-  if constexpr (std::is_same_v<Value, ir::Function>) {
-    auto function = std::get<std::shared_ptr<ir::Function>>(std::move(value));
+  if constexpr (std::is_same_v<Value, Function>) {
+    auto function = std::get<std::shared_ptr<Function>>(std::move(value));
     return function ? std::optional<T>{std::move(*function)} : std::nullopt;
   } else if constexpr (is_builtin_host_value<Value>) {
     return std::get<Value>(std::move(value));
@@ -519,7 +519,7 @@ public:
   // or index. Parameterized Prelude types use the declaration overload above.
   std::optional<Type> make(std::string_view prelude_type);
 
-  template <typename T> std::optional<ir::Value> known(Type type, T&& value) {
+  template <typename T> std::optional<Value> known(Type type, T&& value) {
     return make_known(std::move(type),
                       detail::encode_parameter(std::forward<T>(value)));
   }
@@ -535,21 +535,20 @@ public:
     return make(schema, std::span<const detail::ParameterValue>(values));
   }
   // Creates an empty executable body in this linked compilation.
-  std::optional<ir::Function> create_function();
+  std::optional<Function> create_function();
 
   // Specializes a source-defined Function and materializes its residual body.
   // The declaration, symbol, or qualified name selects the same Module member;
   // known_arguments bind compile-time parameters before residualization.
-  std::optional<ir::Function> materialize(Module::FunctionDecl declaration);
-  std::optional<ir::Function>
-  materialize(Module::FunctionDecl declaration,
-              std::vector<ir::Value> known_arguments);
-  std::optional<ir::Function> materialize(Module::Symbol symbol);
-  std::optional<ir::Function>
-  materialize(Module::Symbol symbol, std::vector<ir::Value> known_arguments);
-  std::optional<ir::Function> materialize(std::string_view name);
-  std::optional<ir::Function>
-  materialize(std::string_view name, std::vector<ir::Value> known_arguments);
+  std::optional<Function> materialize(Module::FunctionDecl declaration);
+  std::optional<Function> materialize(Module::FunctionDecl declaration,
+                                      std::vector<Value> known_arguments);
+  std::optional<Function> materialize(Module::Symbol symbol);
+  std::optional<Function> materialize(Module::Symbol symbol,
+                                      std::vector<Value> known_arguments);
+  std::optional<Function> materialize(std::string_view name);
+  std::optional<Function> materialize(std::string_view name,
+                                      std::vector<Value> known_arguments);
 
   bool conforms(const Module::TypeDecl& declaration,
                 const Module::InterfaceDecl& interface) const;
@@ -569,7 +568,7 @@ public:
   template <typename Result, typename... Arguments, typename Function>
   void bind(Module::FunctionDecl declaration,
             Module::InterfaceDecl::MethodDecl method, Function&& function) {
-    bind_typed_method<ir::Instruction, Result, Arguments...>(
+    bind_typed_method<Instruction, Result, Arguments...>(
         std::move(declaration), std::move(method),
         std::forward<Function>(function));
   }
@@ -584,8 +583,8 @@ public:
   template <typename Function>
   void bind(Module::FunctionDecl declaration,
             Module::InterfaceDecl::MethodDecl method, Function&& function) {
-    bind_inferred<ir::Instruction>(std::move(declaration), std::move(method),
-                                   std::forward<Function>(function));
+    bind_inferred<Instruction>(std::move(declaration), std::move(method),
+                               std::forward<Function>(function));
   }
 
   template <typename Function>
@@ -628,7 +627,7 @@ public:
   std::optional<Result> call(const Subject& subject, std::string_view method,
                              Arguments&&... arguments) {
     static_assert(std::is_same_v<Subject, Attribute> ||
-                      std::is_same_v<Subject, ir::Instruction>,
+                      std::is_same_v<Subject, Instruction>,
                   "an interface call subject must be an Attribute or "
                   "Instruction; Type fields use Type::get");
     const auto declaration = lookup_method(subject, method);
@@ -651,8 +650,8 @@ public:
 
   template <typename Function>
   void verify(Module::FunctionDecl schema, Function&& function) {
-    bind_typed_verifier<ir::Instruction>(std::move(schema),
-                                         std::forward<Function>(function));
+    bind_typed_verifier<Instruction>(std::move(schema),
+                                     std::forward<Function>(function));
   }
 
   // Binds an implementation whose C++ input and result types match the
@@ -705,7 +704,7 @@ public:
     bind_native(std::move(schema), std::move(binding), evaluation);
   }
 
-  bool verify(const ir::Function& function);
+  bool verify(const Function& function);
   bool verify(const Module& module);
 
   template <typename Result = void, typename... Arguments>
@@ -760,7 +759,7 @@ public:
   const Diagnostics& diagnostics() const;
 
 private:
-  std::optional<ir::Value> make_known(Type type, detail::ParameterValue value);
+  std::optional<Value> make_known(Type type, detail::ParameterValue value);
   std::optional<Type> make(const Module::TypeDecl& schema,
                            std::span<const detail::ParameterValue> parameters);
   std::optional<Attribute>
@@ -771,12 +770,12 @@ private:
                    MethodFunction<Attribute> function);
   void bind_method(Module::FunctionDecl declaration,
                    Module::InterfaceDecl::MethodDecl method,
-                   MethodFunction<ir::Instruction> function);
+                   MethodFunction<Instruction> function);
   void bind_verifier(Module::TypeDecl schema, VerifierFunction<Type> verifier);
   void bind_verifier(Module::AttributeDecl schema,
                      VerifierFunction<Attribute> verifier);
   void bind_verifier(Module::FunctionDecl schema,
-                     VerifierFunction<ir::Instruction> verifier);
+                     VerifierFunction<Instruction> verifier);
   bool bind_representation(Module::TypeDecl schema, std::string_view type);
   bool bind_representation(Module::TypeDecl schema, std::string_view type,
                            RepresentationProjector projector);
@@ -818,7 +817,7 @@ private:
   call(const Attribute& subject, Module::InterfaceDecl::MethodDecl method,
        std::span<const detail::ParameterValue> parameters);
   std::optional<detail::ParameterValue>
-  call(const ir::Instruction& subject, Module::InterfaceDecl::MethodDecl method,
+  call(const Instruction& subject, Module::InterfaceDecl::MethodDecl method,
        std::span<const detail::ParameterValue> parameters);
 
   template <typename Subject, typename Result, typename... Arguments,
@@ -931,7 +930,7 @@ private:
   std::optional<Module::InterfaceDecl::MethodDecl>
   lookup_method(const Attribute& subject, std::string_view reference);
   std::optional<Module::InterfaceDecl::MethodDecl>
-  lookup_method(const ir::Instruction& subject, std::string_view reference);
+  lookup_method(const Instruction& subject, std::string_view reference);
   bool load_behavior(const Module& module,
                      const std::filesystem::path& library);
   bool load_behavior(const Module& module);

@@ -177,7 +177,7 @@ std::size_t FunctionAccess::argument_parameter(const Instruction& instruction,
 
 }  // namespace joggle::detail
 
-namespace joggle::ir {
+namespace joggle {
 
 namespace {
 
@@ -862,29 +862,28 @@ void check_same_function(const std::shared_ptr<FunctionIdentity>& function,
 
 }  // namespace
 
-}  // namespace joggle::ir
+}  // namespace joggle
 
 namespace joggle::detail {
 
-bool FunctionAccess::verify_structure(const ir::Function& function,
+bool FunctionAccess::verify_structure(const Function& function,
                                       Diagnostics& diagnostics) {
-  return ir::verify_function(*function.function_->state, diagnostics);
+  return verify_function(*function.function_->state, diagnostics);
 }
 
-bool FunctionAccess::verify_contracts(const ir::Function& function,
+bool FunctionAccess::verify_contracts(const Function& function,
                                       Diagnostics& diagnostics) {
-  return ir::verify_instruction_contracts(*function.function_->state,
-                                          diagnostics);
+  return verify_instruction_contracts(*function.function_->state, diagnostics);
 }
 
-bool FunctionAccess::verify_contracts(const ir::Function& function,
+bool FunctionAccess::verify_contracts(const Function& function,
                                       Compiler& compiler,
                                       Diagnostics& diagnostics) {
-  return ir::verify_instruction_contracts(*function.function_->state, compiler,
-                                          diagnostics);
+  return verify_instruction_contracts(*function.function_->state, compiler,
+                                      diagnostics);
 }
 
-void FunctionAccess::declare(ir::Function& function,
+void FunctionAccess::declare(Function& function,
                              Module::FunctionDecl declaration,
                              std::vector<Type> argument_types,
                              std::vector<Type> result_types) {
@@ -897,7 +896,7 @@ void FunctionAccess::declare(ir::Function& function,
       !state.instructions.empty()) {
     throw std::logic_error("function signature must be fixed before its body");
   }
-  if (!ir::owns(state, declaration.symbol()) ||
+  if (!owns(state, declaration.symbol()) ||
       ir_inputs(declaration).size() != argument_types.size() ||
       ir_results(declaration).size() != result_types.size()) {
     throw std::invalid_argument(
@@ -905,10 +904,10 @@ void FunctionAccess::declare(ir::Function& function,
   }
   const bool owned_arguments =
       std::all_of(argument_types.begin(), argument_types.end(),
-                  [&](const Type& type) { return ir::owns(state, type); });
+                  [&](const Type& type) { return owns(state, type); });
   const bool owned_results =
       std::all_of(result_types.begin(), result_types.end(),
-                  [&](const Type& type) { return ir::owns(state, type); });
+                  [&](const Type& type) { return owns(state, type); });
   if (!owned_arguments || !owned_results) {
     throw std::invalid_argument(
         "function signature references a type outside its module closure");
@@ -918,14 +917,14 @@ void FunctionAccess::declare(ir::Function& function,
                                              std::move(result_types)};
 }
 
-bool FunctionAccess::commit(ir::Function::Edit& edit, Compiler& compiler,
+bool FunctionAccess::commit(Function::Edit& edit, Compiler& compiler,
                             Diagnostics& diagnostics) {
   if (!edit.state_ || !edit.state_->active) {
     throw std::logic_error("function edit is no longer active");
   }
-  if (!ir::verify_function(*edit.state_->function->state, diagnostics) ||
-      !ir::verify_instruction_contracts(*edit.state_->function->state, compiler,
-                                        diagnostics)) {
+  if (!verify_function(*edit.state_->function->state, diagnostics) ||
+      !verify_instruction_contracts(*edit.state_->function->state, compiler,
+                                    diagnostics)) {
     edit.state_->function->state = std::move(edit.state_->backup);
     edit.state_->function->editing = false;
     edit.state_->active = false;
@@ -939,7 +938,7 @@ bool FunctionAccess::commit(ir::Function::Edit& edit, Compiler& compiler,
 
 }  // namespace joggle::detail
 
-namespace joggle::ir {
+namespace joggle {
 
 Function::Revision::Revision(std::shared_ptr<const FunctionState> state)
     : state_(std::move(state)) {}
@@ -1968,4 +1967,4 @@ Block Function::make_block(std::shared_ptr<FunctionIdentity> function,
   return Block(std::move(function), id);
 }
 
-}  // namespace joggle::ir
+}  // namespace joggle

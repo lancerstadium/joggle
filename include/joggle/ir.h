@@ -1,7 +1,7 @@
 #pragma once
 
-// Executable intermediate representation. Module declarations remain in
-// `joggle`; all executable ownership and handle types live in `joggle::ir`.
+// Executable intermediate representation. Module declarations, materialized
+// Functions, and their handles share the single public `joggle` namespace.
 
 #include <cstddef>
 #include <cstdint>
@@ -27,8 +27,6 @@ struct FunctionEditState;
 struct KnownValueStorage;
 struct FunctionAccess;
 }  // namespace detail
-
-namespace ir {
 
 class Function;
 class Block;
@@ -242,9 +240,6 @@ private:
   friend struct joggle::detail::FunctionAccess;
 };
 
-}  // namespace ir
-
-std::string format(const ir::Function& function,
-                   std::string_view name = "main");
+std::string format(const Function& function, std::string_view name = "main");
 
 }  // namespace joggle

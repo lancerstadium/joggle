@@ -14,7 +14,7 @@
 #include "joggle/ir.h"
 #include "joggle/module.h"
 
-namespace joggle::ir {
+namespace joggle {
 
 namespace transform_detail {
 
@@ -336,4 +336,4 @@ replace_calls(Module& module, const joggle::Module::FunctionDecl& from,
       diagnostics);
 }
 
-}  // namespace joggle::ir
+}  // namespace joggle

@@ -41,9 +41,10 @@ int main(int argc, char** argv) {
   const auto value = positive ? compiler.make(*positive, std::int64_t{7})
                               : std::optional<joggle::Type>{};
   auto function = compiler.create_function();
-  const auto transformed = function ? compiler.run<joggle::ir::Function>(
-                                          "behavior_plugin.noop", *function)
-                                    : std::nullopt;
+  const auto transformed =
+      function
+          ? compiler.run<joggle::Function>("behavior_plugin.noop", *function)
+          : std::nullopt;
   bool ok = true;
   ok &= expect(value.has_value(),
                "the loaded behavior refines type construction");

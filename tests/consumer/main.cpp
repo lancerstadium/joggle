@@ -30,9 +30,8 @@ int main(int argc, char** argv) {
 
   auto function = compiler.materialize("external.main");
   auto transformed =
-      function
-          ? compiler.run<joggle::ir::Function>("external.convert", *function)
-          : std::nullopt;
+      function ? compiler.run<joggle::Function>("external.convert", *function)
+               : std::nullopt;
   if (!transformed) {
     compiler.diagnostics().print(std::cerr);
     return 1;

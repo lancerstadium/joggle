@@ -60,7 +60,7 @@ struct FunctionDefinition {
 struct FunctionMember {
   std::string name;
   std::optional<FunctionDefinition> declaration;
-  std::shared_ptr<ir::Function> ir;
+  std::shared_ptr<Function> ir;
 };
 
 }  // namespace joggle::detail
@@ -75,6 +75,6 @@ struct joggle::Module::Storage {
   std::vector<detail::TypeDefinition> types;
   std::vector<detail::AttributeDefinition> attributes;
   std::vector<detail::FunctionMember> functions;
-  mutable std::vector<std::pair<std::string, ir::Function::Revision>>
+  mutable std::vector<std::pair<std::string, Function::Revision>>
       digest_revisions;
 };

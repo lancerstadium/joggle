@@ -7,7 +7,7 @@ Include the complete public surface with:
 ```
 
 Joggle is a C++20 library. A Module is the sole top-level IR owner.
-`Module::FunctionDecl` handles are immutable; materialized `ir::Function` body
+`Module::FunctionDecl` handles are immutable; materialized `Function` body
 edits are explicit transactions.
 
 ## Namespaces and ownership
@@ -18,13 +18,14 @@ edits are explicit transactions.
 | `joggle::Module` | Versioned symbol scope and multi-Function IR owner |
 | `joggle::Module::FunctionDecl` | Named callable member and canonical signature |
 | `joggle::Type`, `joggle::Attribute` | Immutable schema instances |
-| `joggle::ir::Function` | Copy-on-write materialized CFG value of a Module Function |
-| `joggle::ir::Block` | CFG node owned by a Function |
-| `joggle::ir::Instruction` | Declared call owned by a Block |
-| `joggle::ir::Value` | Typed Known or Residual value handle |
-| `joggle::ir::Terminator` | Return, jump, or branch owned by a Block |
+| `joggle::Function` | Copy-on-write materialized CFG value of a Module Function |
+| `joggle::Block` | CFG node owned by a Function |
+| `joggle::Instruction` | Declared call owned by a Block |
+| `joggle::Value` | Typed Known or Residual value handle |
+| `joggle::Terminator` | Return, jump, or branch owned by a Block |
 
-There are no `joggle::Function` or `joggle::Value` aliases.
+These are concrete public types in one namespace. There is no parallel
+`joggle::ir` namespace and no compatibility alias layer.
 
 ## Parse, load, and link
 
@@ -87,7 +88,7 @@ Read declared or derived parameters by name:
 auto shape = shaped->get<std::vector<std::int64_t>>("shape");
 ```
 
-`Compiler::known(type, payload)` creates a typed Known `ir::Value`. Supported
+`Compiler::known(type, payload)` creates a typed Known `Value`. Supported
 payloads are compiler scalars, Types, Attributes, and homogeneous ranges:
 
 ```cpp
@@ -106,11 +107,11 @@ auto function = declaration && width
                     : std::nullopt;
 ```
 
-The resulting `ir::Function` contains only its Residual boundary. Source
+The resulting `Function` contains only its Residual boundary. Source
 bodies, generic values, defaults, and `@` expressions are evaluated while it
 is built. Use `joggle::format(*function, "kernel")` for canonical source.
 
-`Compiler::create_function()` creates an unnamed empty `ir::Function` for
+`Compiler::create_function()` creates an unnamed empty `Function` for
 programmatic construction. It does not perform declaration lookup or
 source-body specialization.
 
@@ -136,7 +137,7 @@ types are inferred from declaration contracts when possible. Explicit result
 types constrain result-only generics. Dropping an uncommitted edit, or failing
 commit, restores the prior Function.
 
-`ir::Function` copies share an immutable revision until one copy starts an
+`Function` copies share an immutable revision until one copy starts an
 edit. This makes read-only analysis handoff constant-time while preserving
 value semantics for `function -> function` transformations. `Compiler::run`
 creates that COW value boundary once; it does not eagerly deep-copy a second
@@ -185,7 +186,7 @@ Function snapshot.
 
 ## Rewrite transactionally
 
-`joggle::ir::rewrite` accepts a lambda over each committed Instruction and a
+`joggle::rewrite` accepts a lambda over each committed Instruction and a
 single `Function::Edit`. The lambda may insert calls, replace one call with a
 positional result list, redirect uses, or erase an unused Instruction. It
 returns `true` only when it changed the IR. The Function overload commits one
@@ -195,19 +196,19 @@ Function verifies.
 No-op sweeps preserve the Function revision and Module storage. Failure returns
 `std::nullopt` and preserves the complete input value.
 
-`joggle::ir::rewrite_to_fixpoint` repeats those sweeps with a required maximum
+`joggle::rewrite_to_fixpoint` repeats those sweeps with a required maximum
 iteration count. It publishes only after a zero-change sweep proves
 convergence; reaching the limit rolls back every intermediate sweep.
 
-`joggle::ir::convert` takes the same rewrite lambda followed by a legality
+`joggle::convert` takes the same rewrite lambda followed by a legality
 predicate over the resulting Instructions. It commits only if the complete
 Function or Module is legal. Legality is caller-defined, so the utility does
 not introduce a target registry or assume that conversions move downward.
 
 ## Map calls transactionally
 
-`joggle::ir::replace_calls` replaces one exact declaration with another in a
-Function or Module. `joggle::ir::map_calls` accepts a callable returning an
+`joggle::replace_calls` replaces one exact declaration with another in a
+Function or Module. `joggle::map_calls` accepts a callable returning an
 optional replacement declaration for each Instruction. Both return an optional
 change count: zero means a successful no-op and absence means failure.
 
@@ -256,7 +257,7 @@ leave a stale import list behind.
 
 The embedded Prelude type `module` is automatically represented by
 `joggle::Module`; `function` is represented by a materialized
-`joggle::ir::Function` body. Compiler-function signatures using either type
+`joggle::Function` body. Compiler-function signatures using either type
 need no generated wrapper or manual `Compiler::represent` call.
 
 ## Bind and run compiler functions
@@ -271,7 +272,7 @@ const auto estimate_decl =
     analysis_module ? analysis_module->function("estimate") : std::nullopt;
 
 compiler.bind(*analysis_module, "estimate",
-              [](const joggle::ir::Function& function) -> std::int64_t {
+              [](const joggle::Function& function) -> std::int64_t {
                 return static_cast<std::int64_t>(
                     function.instructions().size());
               });

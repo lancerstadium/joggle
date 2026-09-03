@@ -69,7 +69,7 @@ void collect(DependencyMap& dependencies, const detail::ParameterValue& value) {
   }
 }
 
-void collect(DependencyMap& dependencies, const ir::Value& value) {
+void collect(DependencyMap& dependencies, const Value& value) {
   collect(dependencies, value.type());
   if (const auto function = value.referenced_function()) {
     collect(dependencies, function->symbol());
@@ -79,35 +79,35 @@ void collect(DependencyMap& dependencies, const ir::Value& value) {
   }
 }
 
-void collect(DependencyMap& dependencies, const ir::Function& function) {
-  for (const ir::Value& argument : function.arguments()) {
+void collect(DependencyMap& dependencies, const Function& function) {
+  for (const Value& argument : function.arguments()) {
     collect(dependencies, argument);
   }
   for (const Type& result : function.result_types()) {
     collect(dependencies, result);
   }
-  for (const ir::Block& block : function.blocks()) {
-    for (const ir::Value& argument : block.arguments()) {
+  for (const Block& block : function.blocks()) {
+    for (const Value& argument : block.arguments()) {
       collect(dependencies, argument);
     }
-    for (const ir::Instruction& instruction : block.instructions()) {
+    for (const Instruction& instruction : block.instructions()) {
       collect(dependencies, instruction.callee().symbol());
-      for (const ir::Value& argument : instruction.arguments()) {
+      for (const Value& argument : instruction.arguments()) {
         collect(dependencies, argument);
       }
-      for (const ir::Value& result : instruction.results()) {
+      for (const Value& result : instruction.results()) {
         collect(dependencies, result);
       }
     }
-    const ir::Terminator terminator = block.terminator();
+    const Terminator terminator = block.terminator();
     if (const auto condition = terminator.condition()) {
       collect(dependencies, *condition);
     }
-    for (const ir::Value& returned : terminator.returned()) {
+    for (const Value& returned : terminator.returned()) {
       collect(dependencies, returned);
     }
     for (std::size_t index = 0; index < terminator.successor_count(); ++index) {
-      for (const ir::Value& argument : terminator.arguments(index)) {
+      for (const Value& argument : terminator.arguments(index)) {
         collect(dependencies, argument);
       }
     }
@@ -115,7 +115,7 @@ void collect(DependencyMap& dependencies, const ir::Function& function) {
 }
 
 std::vector<Module::Dependency>
-function_dependencies(const ir::Function& function) {
+function_dependencies(const Function& function) {
   DependencyMap found;
   collect(found, function);
   std::vector<Module::Dependency> result;
@@ -153,7 +153,7 @@ Module::Expression expression(const detail::ValueSyntax& value) {
   return result;
 }
 
-detail::FunctionDefinition definition(const ir::Function& function,
+detail::FunctionDefinition definition(const Function& function,
                                       std::string_view name) {
   const detail::FunctionSyntax syntax =
       detail::materialized_function_syntax(function, name);
@@ -176,7 +176,7 @@ detail::FunctionDefinition definition(const ir::Function& function,
 
 }  // namespace
 
-bool Module::insert(std::string name, ir::Function function,
+bool Module::insert(std::string name, Function function,
                     Diagnostics& diagnostics) {
   if (!valid_name(name)) {
     diagnostics.report("Module function name '" + name + "' is invalid");
@@ -221,9 +221,8 @@ bool Module::insert(std::string name, ir::Function function,
     diagnostics.report(error.what());
     return false;
   }
-  next->functions.push_back(
-      {std::move(name), std::move(declaration),
-       std::make_shared<ir::Function>(std::move(function))});
+  next->functions.push_back({std::move(name), std::move(declaration),
+                             std::make_shared<Function>(std::move(function))});
   const std::size_t inserted_index = next->functions.size() - 1U;
   const FunctionDecl inserted(next, inserted_index);
   for (std::size_t index = 0; index < inserted_index; ++index) {
@@ -248,7 +247,7 @@ bool Module::insert(std::string name, ir::Function function,
   return true;
 }
 
-ir::Function* Module::body(FunctionDecl declaration) {
+Function* Module::body(FunctionDecl declaration) {
   if (declaration.storage_->name != storage_->name ||
       declaration.storage_->version != storage_->version) {
     return nullptr;
@@ -281,8 +280,8 @@ ir::Function* Module::body(FunctionDecl declaration) {
   const auto index =
       static_cast<std::size_t>(found - storage_->functions.begin());
   auto selected = next->functions.begin() + static_cast<std::ptrdiff_t>(index);
-  selected->ir = std::make_shared<ir::Function>(*selected->ir);
-  ir::Function* result = selected->ir.get();
+  selected->ir = std::make_shared<Function>(*selected->ir);
+  Function* result = selected->ir.get();
   storage_ = std::move(next);
   return result;
 }

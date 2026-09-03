@@ -30,17 +30,17 @@ using KnownBindings = std::unordered_map<std::string, KnownBinding>;
 class StagedValue {
 public:
   StagedValue(Type type, ExecutionValue value);
-  explicit StagedValue(ir::Value value);
+  explicit StagedValue(Value value);
 
   bool known() const;
   const Type& type() const;
   const ExecutionValue* known_value() const;
   ExecutionValue* known_value();
-  const ir::Value* residual_value() const;
+  const Value* residual_value() const;
 
 private:
   Type type_;
-  std::variant<ExecutionValue, ir::Value> value_;
+  std::variant<ExecutionValue, Value> value_;
 };
 
 class Locals {
@@ -70,8 +70,8 @@ std::optional<Module::Expression> type_domain(const Type& type);
 std::optional<Type> execution_type(Compiler& compiler,
                                    const ExecutionValue& value);
 std::optional<StagedValue> stage(Compiler& compiler, ExecutionValue value);
-std::optional<StagedValue> stage(ir::Value value);
-std::optional<ir::Value> ir_value(Compiler& compiler, const StagedValue& value);
+std::optional<StagedValue> stage(Value value);
+std::optional<Value> ir_value(Compiler& compiler, const StagedValue& value);
 std::optional<bool> known_boolean(const StagedValue& value);
 std::optional<std::vector<ExecutionValue>>
 list_elements(const ExecutionValue& value);

@@ -36,13 +36,13 @@ materialized bodies:
   boundary;
 - `fn` / `joggle::Module::FunctionDecl` is one named callable member with its
   signature;
-- a materialized member body is `joggle::ir::Function`, an editable CFG inside
+- a materialized member body is `joggle::Function`, an editable CFG inside
   that Module.
 
 `module` and `function` values use copy-on-write storage. A native transform
 receives an isolated value and returns the declared result; an empty
 `std::optional` reports failure. A Function transform edits its value through
-`joggle::ir::Function::Edit`, whose `commit` verifies the candidate. The caller
+`joggle::Function::Edit`, whose `commit` verifies the candidate. The caller
 publishes the returned value only after the complete invocation succeeds.
 Every typed call validates materialized Function bodies at both its input and
 output boundary; repeated references to the same immutable revision are checked
@@ -76,10 +76,10 @@ General structural rewrites are one lambda and one transaction. There is no
 pattern base class, rewrite registry, or second IR container:
 
 ```cpp
-auto changed = joggle::ir::rewrite(
+auto changed = joggle::rewrite(
     module,
-    [&](const joggle::ir::Instruction& instruction,
-        joggle::ir::Function::Edit& edit,
+    [&](const joggle::Instruction& instruction,
+        joggle::Function::Edit& edit,
         joggle::Diagnostics&) {
       if (instruction.callee() != source_call) {
         return false;
@@ -102,7 +102,7 @@ multi-Instruction expansion without inventing a replacement object.
 When inserted calls must be reconsidered, the bounded driver is explicit:
 
 ```cpp
-auto changed = joggle::ir::rewrite_to_fixpoint(
+auto changed = joggle::rewrite_to_fixpoint(
     module, rewrite_rule, 8, diagnostics);
 ```
 
@@ -114,12 +114,12 @@ hidden default iteration budget.
 Exact call mapping remains as a pair of smaller convenience functions:
 
 ```cpp
-auto changed = joggle::ir::replace_calls(
+auto changed = joggle::replace_calls(
     module, source_call, target_call, diagnostics);
 
-auto selected = joggle::ir::map_calls(
+auto selected = joggle::map_calls(
     module,
-    [&](const joggle::ir::Instruction& instruction)
+    [&](const joggle::Instruction& instruction)
         -> std::optional<joggle::Module::FunctionDecl> {
       return compiler.conforms(instruction.callee(), elementwise)
                  ? choose_replacement(instruction)
@@ -136,12 +136,12 @@ function name.
 
 ## Conversion completion
 
-`ir::convert` combines the same rewrite lambda with a final legality predicate:
+`convert` combines the same rewrite lambda with a final legality predicate:
 
 ```cpp
-auto changed = joggle::ir::convert(
+auto changed = joggle::convert(
     module, rewrite_rule,
-    [&](const joggle::ir::Instruction& instruction) {
+    [&](const joggle::Instruction& instruction) {
       return target_accepts(instruction.callee());
     },
     diagnostics);
@@ -165,7 +165,7 @@ registering another pass hierarchy.
 
 An analysis is an ordinary typed function: its result is a Module-declared type
 with a registered C++ representation. Read-only implementations accept
-`const ir::Function&` or `const Module&`; no analysis declaration or manager is
+`const Function&` or `const Module&`; no analysis declaration or manager is
 needed.
 
 Algorithms that cache a Function-local result retain its `Function::Revision`

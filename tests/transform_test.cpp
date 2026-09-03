@@ -68,9 +68,9 @@ module mapping@1.0.0 {
   bool ok = true;
   const auto first_revision = first->revision();
   joggle::Diagnostics no_op_diagnostics;
-  const auto no_op = joggle::ir::map_calls(
+  const auto no_op = joggle::map_calls(
       *first,
-      [](const joggle::ir::Instruction&)
+      [](const joggle::Instruction&)
           -> std::optional<joggle::Module::FunctionDecl> {
         return std::nullopt;
       },
@@ -81,9 +81,9 @@ module mapping@1.0.0 {
                "a no-op mapping preserves the Function revision");
 
   joggle::Diagnostics no_op_rewrite_diagnostics;
-  const auto no_op_rewrite = joggle::ir::rewrite(
+  const auto no_op_rewrite = joggle::rewrite(
       *first,
-      [](const joggle::ir::Instruction&, joggle::ir::Function::Edit&,
+      [](const joggle::Instruction&, joggle::Function::Edit&,
          joggle::Diagnostics&) { return false; },
       no_op_rewrite_diagnostics);
   ok &= expect(no_op_rewrite && *no_op_rewrite == 0U &&
@@ -93,7 +93,7 @@ module mapping@1.0.0 {
 
   joggle::Diagnostics replace_diagnostics;
   const auto replaced =
-      joggle::ir::replace_calls(*first, *keep, *converted, replace_diagnostics);
+      joggle::replace_calls(*first, *keep, *converted, replace_diagnostics);
   ok &= expect(replaced && *replaced == 1U && replace_diagnostics.ok() &&
                    first->revision() != first_revision &&
                    first->instructions().front().callee() == *converted,
@@ -101,10 +101,10 @@ module mapping@1.0.0 {
 
   const auto expanded_revision = expanded->revision();
   joggle::Diagnostics rewrite_diagnostics;
-  const auto rewritten = joggle::ir::rewrite(
+  const auto rewritten = joggle::rewrite(
       *expanded,
-      [&](const joggle::ir::Instruction& instruction,
-          joggle::ir::Function::Edit& edit, joggle::Diagnostics&) {
+      [&](const joggle::Instruction& instruction, joggle::Function::Edit& edit,
+          joggle::Diagnostics&) {
         if (instruction.callee() != *keep) {
           return false;
         }
@@ -129,17 +129,17 @@ module mapping@1.0.0 {
 
   const auto convertible_revision = convertible->revision();
   joggle::Diagnostics conversion_diagnostics;
-  const auto conversion = joggle::ir::convert(
+  const auto conversion = joggle::convert(
       *convertible,
-      [&](const joggle::ir::Instruction& instruction,
-          joggle::ir::Function::Edit& edit, joggle::Diagnostics&) {
+      [&](const joggle::Instruction& instruction, joggle::Function::Edit& edit,
+          joggle::Diagnostics&) {
         if (instruction.callee() != *keep) {
           return false;
         }
         edit.replace(instruction, *converted);
         return true;
       },
-      [&](const joggle::ir::Instruction& instruction) {
+      [&](const joggle::Instruction& instruction) {
         return instruction.callee() != *keep;
       },
       conversion_diagnostics);
@@ -148,8 +148,8 @@ module mapping@1.0.0 {
                    convertible->instructions().front().callee() == *converted,
                "conversion publishes a rewritten legal Function");
 
-  const auto staged_rewrite = [&](const joggle::ir::Instruction& instruction,
-                                  joggle::ir::Function::Edit& edit,
+  const auto staged_rewrite = [&](const joggle::Instruction& instruction,
+                                  joggle::Function::Edit& edit,
                                   joggle::Diagnostics&) {
     if (instruction.callee() == *keep) {
       edit.replace(instruction, *converted);
@@ -162,7 +162,7 @@ module mapping@1.0.0 {
     return false;
   };
   joggle::Diagnostics fixedpoint_diagnostics;
-  const auto fixedpoint_changes = joggle::ir::rewrite_to_fixpoint(
+  const auto fixedpoint_changes = joggle::rewrite_to_fixpoint(
       *fixedpoint, staged_rewrite, 3U, fixedpoint_diagnostics);
   ok &= expect(fixedpoint_changes && *fixedpoint_changes == 2U &&
                    fixedpoint_diagnostics.ok() &&
@@ -171,10 +171,10 @@ module mapping@1.0.0 {
 
   const auto oscillating_revision = oscillating->revision();
   joggle::Diagnostics oscillating_diagnostics;
-  const auto oscillating_result = joggle::ir::rewrite_to_fixpoint(
+  const auto oscillating_result = joggle::rewrite_to_fixpoint(
       *oscillating,
-      [&](const joggle::ir::Instruction& instruction,
-          joggle::ir::Function::Edit& edit, joggle::Diagnostics&) {
+      [&](const joggle::Instruction& instruction, joggle::Function::Edit& edit,
+          joggle::Diagnostics&) {
         if (instruction.callee() == *keep) {
           edit.replace(instruction, *converted);
         } else {
@@ -192,7 +192,7 @@ module mapping@1.0.0 {
   const auto before_invalid_revision = second->revision();
   joggle::Diagnostics invalid_diagnostics;
   const auto invalid =
-      joggle::ir::replace_calls(*second, *other, *binary, invalid_diagnostics);
+      joggle::replace_calls(*second, *other, *binary, invalid_diagnostics);
   ok &= expect(!invalid && !invalid_diagnostics.ok() &&
                    second->revision() == before_invalid_revision &&
                    joggle::format(*second, "second") == before_invalid,
@@ -224,7 +224,7 @@ module mapping@1.0.0 {
 
   joggle::Module fixedpoint_module = module;
   joggle::Diagnostics fixedpoint_module_diagnostics;
-  const auto fixedpoint_module_changes = joggle::ir::rewrite_to_fixpoint(
+  const auto fixedpoint_module_changes = joggle::rewrite_to_fixpoint(
       fixedpoint_module, staged_rewrite, 3U, fixedpoint_module_diagnostics);
   const auto fixedpoint_first = fixedpoint_module.function("first");
   ok &= expect(fixedpoint_module_changes && *fixedpoint_module_changes == 2U &&
@@ -236,9 +236,9 @@ module mapping@1.0.0 {
                "fixed-point Module rewriting publishes one final value");
 
   joggle::Diagnostics module_no_op_diagnostics;
-  const auto module_no_op = joggle::ir::map_calls(
+  const auto module_no_op = joggle::map_calls(
       module,
-      [](const joggle::ir::Instruction&)
+      [](const joggle::Instruction&)
           -> std::optional<joggle::Module::FunctionDecl> {
         return std::nullopt;
       },
@@ -251,17 +251,17 @@ module mapping@1.0.0 {
                "a no-op Module mapping preserves shared Function storage");
 
   joggle::Diagnostics module_failure_diagnostics;
-  const auto module_failure = joggle::ir::convert(
+  const auto module_failure = joggle::convert(
       module,
-      [&](const joggle::ir::Instruction& instruction,
-          joggle::ir::Function::Edit& edit, joggle::Diagnostics&) {
+      [&](const joggle::Instruction& instruction, joggle::Function::Edit& edit,
+          joggle::Diagnostics&) {
         if (instruction.callee() == *keep) {
           edit.replace(instruction, *converted);
           return true;
         }
         return false;
       },
-      [&](const joggle::ir::Instruction& instruction) {
+      [&](const joggle::Instruction& instruction) {
         return instruction.callee() != *other;
       },
       module_failure_diagnostics);
@@ -277,8 +277,8 @@ module mapping@1.0.0 {
                "an illegal whole-Module conversion publishes no partial edits");
 
   joggle::Diagnostics module_success_diagnostics;
-  const auto module_success = joggle::ir::replace_calls(
-      module, *keep, *converted, module_success_diagnostics);
+  const auto module_success = joggle::replace_calls(module, *keep, *converted,
+                                                    module_success_diagnostics);
   const auto* mapped_first = read_body("first");
   const auto* preserved_second = read_body("second");
   ok &=

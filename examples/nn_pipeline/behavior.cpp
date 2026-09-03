@@ -21,30 +21,29 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
     return;
   }
 
-  compiler.bind(
-      module, "convert_relu",
-      [nn_relu, accelerator_relu](
-          joggle::Module input,
-          joggle::Diagnostics& reported) -> std::optional<joggle::Module> {
-        const auto converted = joggle::ir::convert(
-            input,
-            [&](const joggle::ir::Instruction& instruction,
-                joggle::ir::Function::Edit& edit, joggle::Diagnostics&) {
-              if (instruction.callee() != *nn_relu) {
-                return false;
-              }
-              edit.replace(instruction, *accelerator_relu);
-              return true;
-            },
-            [&](const joggle::ir::Instruction& instruction) {
-              return instruction.callee() != *nn_relu;
-            },
-            reported);
-        if (!converted) {
-          return std::nullopt;
-        }
-        return input;
-      });
+  compiler.bind(module, "convert_relu",
+                [nn_relu, accelerator_relu](joggle::Module input,
+                                            joggle::Diagnostics& reported)
+                    -> std::optional<joggle::Module> {
+                  const auto converted = joggle::convert(
+                      input,
+                      [&](const joggle::Instruction& instruction,
+                          joggle::Function::Edit& edit, joggle::Diagnostics&) {
+                        if (instruction.callee() != *nn_relu) {
+                          return false;
+                        }
+                        edit.replace(instruction, *accelerator_relu);
+                        return true;
+                      },
+                      [&](const joggle::Instruction& instruction) {
+                        return instruction.callee() != *nn_relu;
+                      },
+                      reported);
+                  if (!converted) {
+                    return std::nullopt;
+                  }
+                  return input;
+                });
 
   compiler.bind(
       module, "count_instructions",
@@ -52,7 +51,7 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
          joggle::Diagnostics& reported) -> std::optional<std::int64_t> {
         std::size_t count = 0;
         for (const joggle::Module::FunctionDecl& member : input.functions()) {
-          const joggle::ir::Function* function = member.body();
+          const joggle::Function* function = member.body();
           if (function == nullptr) {
             continue;
           }

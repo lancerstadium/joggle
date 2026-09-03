@@ -2013,7 +2013,7 @@ Module::FunctionDecl::Form Module::FunctionDecl::form() const {
                                                    : Form::External;
 }
 
-const ir::Function* Module::FunctionDecl::body() const {
+const Function* Module::FunctionDecl::body() const {
   return storage_->functions[index_].ir.get();
 }
 
@@ -2129,7 +2129,7 @@ Module::Module(const Module& other) : storage_(other.storage_) {
   auto storage = std::make_shared<Storage>(*storage_);
   for (detail::FunctionMember& function : storage->functions) {
     if (function.ir) {
-      function.ir = std::make_shared<ir::Function>(*function.ir);
+      function.ir = std::make_shared<Function>(*function.ir);
     }
   }
   storage_ = std::move(storage);
@@ -2152,7 +2152,7 @@ std::string_view Module::digest() const {
                   [](const detail::FunctionMember& function) {
                     return function.ir != nullptr;
                   })) {
-    std::vector<std::pair<std::string, ir::Function::Revision>> revisions;
+    std::vector<std::pair<std::string, Function::Revision>> revisions;
     revisions.reserve(storage_->functions.size());
     for (const detail::FunctionMember& function : storage_->functions) {
       if (function.ir) {

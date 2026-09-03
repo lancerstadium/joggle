@@ -13,18 +13,18 @@ The source and C++ names correspond directly:
 | --- | --- | --- |
 | `module name@version { ... }` / `module` | `joggle::Module` | The single identity, symbol, import, and multi-Function IR owner |
 | `fn` / `function` | `joggle::Module::FunctionDecl` | One named callable member with a canonical signature |
-| materialized function body | `joggle::ir::Function` | Optional executable CFG and def-use graph owned by that member |
+| materialized function body | `joggle::Function` | Optional executable CFG and def-use graph owned by that member |
 
 All executable IR ownership types share one namespace and one hierarchy:
 
 ```text
 joggle::Module
   └─ joggle::Module::FunctionDecl
-       └─ optional joggle::ir::Function body
-            └─ joggle::ir::Block
-                 ├─ joggle::ir::Instruction
-                 ├─ joggle::ir::Value
-                 └─ joggle::ir::Terminator
+       └─ optional joggle::Function body
+            └─ joggle::Block
+                 ├─ joggle::Instruction
+                 ├─ joggle::Value
+                 └─ joggle::Terminator
 ```
 
 There is no second whole-IR or graph container. Parsing returns a `Module`;
@@ -36,7 +36,7 @@ Declarations and materialized bodies are two states inside the same Module,
 not separate owners. `Module::function(name)` reflects the unique function
 member and its signature; `Module::body(declaration)` accesses its concrete
 editable CFG without guessing among overloads. `Compiler::materialize(...)`
-specializes a source definition into an `ir::Function`, while
+specializes a source definition into a `Function`, while
 `Compiler::create_function()` constructs an empty one. Generic specialization
 therefore creates a body, not another Module representation.
 
@@ -83,7 +83,7 @@ Every function invocation carries one typed value environment. Availability is
 orthogonal to type:
 
 - a Known value has a compiler payload;
-- a Residual value is represented by a `joggle::ir::Value`.
+- a Residual value is represented by a `joggle::Value`.
 
 Known locals retain both their declared domain and payload. In particular, an
 empty `list<string>` remains distinct from an empty `list<type>`, so ordinary
@@ -146,7 +146,7 @@ optional behavior libraries. This boundary keeps the core small while leaving
 experiments inspectable and serializable.
 
 Prelude's `module` is represented by `joggle::Module`; its `function` value is
-the materialized `joggle::ir::Function` body of a `Module::FunctionDecl`. These
+the materialized `joggle::Function` body of a `Module::FunctionDecl`. These
 are the only core-owned host artifact mappings. Extension-owned schedules,
 estimates, traces, object files, or target descriptions use ordinary declared
 types and `Compiler::represent`.

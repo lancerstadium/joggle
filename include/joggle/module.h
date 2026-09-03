@@ -20,9 +20,7 @@ struct ModuleAccess;
 struct FunctionTypeAccess;
 }  // namespace detail
 
-namespace ir {
 class Function;
-}
 
 class Compiler;
 
@@ -249,7 +247,7 @@ public:
     std::optional<std::string_view> operator_symbol() const;
     std::optional<Fixity> operator_fixity() const;
     Form form() const;
-    const ir::Function* body() const;
+    const Function* body() const;
     std::string signature() const;
     Symbol symbol() const;
     bool operator==(const FunctionDecl& other) const;
@@ -302,9 +300,8 @@ public:
   // as editable IR; body() is absent for external and not-yet-materialized
   // declarations. Mutable body lookup uses the complete declaration rather
   // than an overload-ambiguous name and detaches only that body.
-  bool insert(std::string name, ir::Function function,
-              Diagnostics& diagnostics);
-  ir::Function* body(FunctionDecl declaration);
+  bool insert(std::string name, Function function, Diagnostics& diagnostics);
+  Function* body(FunctionDecl declaration);
   std::vector<Dependency> dependencies() const;
   bool operator==(const Module& other) const;
 

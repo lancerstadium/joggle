@@ -126,12 +126,12 @@ std::string format_function_body(const FunctionBody& body,
                                  std::size_t indent = 0);
 std::string format_function_syntax(const FunctionSyntax& function,
                                    std::size_t indent = 0);
-FunctionSyntax materialized_function_syntax(const ir::Function& function,
+FunctionSyntax materialized_function_syntax(const Function& function,
                                             std::string_view name);
-std::optional<ir::Function>
+std::optional<Function>
 instantiate_function(Compiler& compiler, Module::FunctionDecl function,
                      const FunctionBody& body, Diagnostics& diagnostics,
-                     std::vector<ir::Value> known_arguments = {});
+                     std::vector<Value> known_arguments = {});
 
 }  // namespace detail
 }  // namespace joggle

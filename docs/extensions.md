@@ -80,7 +80,7 @@ implementation also needs the declaration as an IR rewrite target.
 Supported compiler-domain mappings are `std::int64_t`, `double`, `bool`,
 `std::string`, `joggle::Type`, `joggle::Attribute`, `joggle::Bytes`, and
 homogeneous `std::vector<T>` forms. Whole-IR functions use
-`joggle::ir::Function` or `joggle::Module`.
+`joggle::Function` or `joggle::Module`.
 
 A no-result declaration binds to C++ `void`; one result binds to `T`; multiple
 results bind positionally to `std::tuple<Ts...>`. Returning
@@ -88,7 +88,7 @@ results bind positionally to `std::tuple<Ts...>`. Returning
 execution failure when empty. No result-wrapper class is generated.
 
 A binding may optionally receive `joggle::Compiler&` first and
-`joggle::Diagnostics&` last. `ir::Function` and `Module` are copy-on-write
+`joggle::Diagnostics&` last. `Function` and `Module` are copy-on-write
 values: a transformation accepts and returns them by value, while a read-only
 analysis may accept `const&`. Ordinary `fn` inputs cannot bind to mutable
 lvalue references because that would introduce an undeclared in-place result.
@@ -135,7 +135,7 @@ use the public registration mechanism and require no core class.
 `compiler.verify(declaration, callback)` attaches semantic checks to a Type,
 Attribute, or residual Instruction declaration. The callback receives
 `const joggle::Type&`, `const joggle::Attribute&`, or
-`const joggle::ir::Instruction&`; it returns `bool` and may accept Diagnostics
+`const joggle::Instruction&`; it returns `bool` and may accept Diagnostics
 last. This explicit API keeps `bind` reserved for implementations whose C++
 inputs and outputs match a declared `fn`. There is no verifier declaration kind
 or trait class. Core verification always checks ownership, arity, types, CFG

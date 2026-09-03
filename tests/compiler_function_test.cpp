@@ -352,36 +352,33 @@ module pipeline@1.0.0 {
   compiler.bind(
       *read,
       [](joggle::Compiler& current,
-         const joggle::Bytes& bytes) -> std::optional<joggle::ir::Function> {
+         const joggle::Bytes& bytes) -> std::optional<joggle::Function> {
         return bytes.empty() ? std::nullopt : current.create_function();
       });
+  compiler.bind(*inspect, [](const joggle::Function& current) -> std::int64_t {
+    return static_cast<std::int64_t>(current.instructions().size());
+  });
+  compiler.bind(*emit, [](const joggle::Function& current) -> joggle::Bytes {
+    return {static_cast<std::byte>(current.instructions().size())};
+  });
   compiler.bind(
-      *inspect, [](const joggle::ir::Function& current) -> std::int64_t {
-        return static_cast<std::int64_t>(current.instructions().size());
+      *canonicalize,
+      [arith_cast_decl](
+          joggle::Function current,
+          joggle::Diagnostics& diagnostics) -> std::optional<joggle::Function> {
+        auto edit = current.edit();
+        for (const joggle::Instruction& instruction : current.instructions()) {
+          if (instruction.callee() != *arith_cast_decl) {
+            continue;
+          }
+          edit.replace(instruction.result(0), instruction.arguments().front());
+          edit.erase(instruction);
+        }
+        if (!edit.commit(diagnostics)) {
+          return std::nullopt;
+        }
+        return current;
       });
-  compiler.bind(
-      *emit, [](const joggle::ir::Function& current) -> joggle::Bytes {
-        return {static_cast<std::byte>(current.instructions().size())};
-      });
-  compiler.bind(*canonicalize,
-                [arith_cast_decl](joggle::ir::Function current,
-                                  joggle::Diagnostics& diagnostics)
-                    -> std::optional<joggle::ir::Function> {
-                  auto edit = current.edit();
-                  for (const joggle::ir::Instruction& instruction :
-                       current.instructions()) {
-                    if (instruction.callee() != *arith_cast_decl) {
-                      continue;
-                    }
-                    edit.replace(instruction.result(0),
-                                 instruction.arguments().front());
-                    edit.erase(instruction);
-                  }
-                  if (!edit.commit(diagnostics)) {
-                    return std::nullopt;
-                  }
-                  return current;
-                });
   bool consumed = false;
   compiler.bind(*consume, [&](const joggle::Bytes&) { consumed = true; });
   std::size_t append_calls = 0;
@@ -428,9 +425,8 @@ module pipeline@1.0.0 {
       joggle::HostEvaluation::Hermetic);
   ok &= expect(
       compiler.invocable<joggle::Module, joggle::Module>(*module_identity) &&
-          compiler.invocable<joggle::ir::Function, joggle::ir::Function>(
-              *clean) &&
-          !compiler.invocable<joggle::Module, joggle::ir::Function>(*clean) &&
+          compiler.invocable<joggle::Function, joggle::Function>(*clean) &&
+          !compiler.invocable<joggle::Module, joggle::Function>(*clean) &&
           compiler.invocable<std::tuple<std::int64_t, bool>, std::int64_t>(
               *divide) &&
           !compiler.invocable<std::int64_t, std::int64_t>(*divide) &&
@@ -439,7 +435,7 @@ module pipeline@1.0.0 {
       "transforms and checks complete result sequences");
   compiler.bind(*module_identity, [](joggle::Module input) { return input; });
   const joggle::Bytes encoded{std::byte{0x42}};
-  auto decoded = compiler.run<joggle::ir::Function>(*read, encoded);
+  auto decoded = compiler.run<joggle::Function>(*read, encoded);
   auto count = decoded ? compiler.run<std::int64_t>(*inspect, *decoded)
                        : std::optional<std::int64_t>{};
   auto direct_encoded = decoded ? compiler.run<joggle::Bytes>(*emit, *decoded)
@@ -607,12 +603,12 @@ module pipeline@1.0.0 {
                    joggle::Module::FunctionDecl::Form::External,
                "a native transformation uses an ordinary function declaration");
   const auto input_revision = function->revision();
-  auto cleaned = compiler.run<joggle::ir::Function>(*clean, *function);
+  auto cleaned = compiler.run<joggle::Function>(*clean, *function);
   ok &= expect(cleaned && cleaned->instructions().empty() &&
                    function->revision() == input_revision &&
                    !function->instructions().empty(),
                "a typed Function transform returns an isolated COW value");
-  auto recomposed = compiler.run<joggle::ir::Function>(*clean, *function);
+  auto recomposed = compiler.run<joggle::Function>(*clean, *function);
   ok &= expect(recomposed.has_value(),
                "an imported transformation composes through an ordinary fn");
   if (recomposed) {
@@ -691,7 +687,7 @@ module pipeline@1.0.0 {
   }
   guarded_compiler.verify(
       *guarded_identity,
-      [](const joggle::ir::Instruction&, joggle::Diagnostics& diagnostics) {
+      [](const joggle::Instruction&, joggle::Diagnostics& diagnostics) {
         diagnostics.report("guarded compiler-function input rejected");
         return false;
       });
@@ -700,13 +696,13 @@ module pipeline@1.0.0 {
   if (!guarded_touch) {
     return EXIT_FAILURE;
   }
-  guarded_compiler.bind(*guarded_touch,
-                        [&](joggle::Compiler&, joggle::ir::Function function,
-                            joggle::Diagnostics&) {
-                          transform_called = true;
-                          return function;
-                        });
-  const auto guarded_result = guarded_compiler.run<joggle::ir::Function>(
+  guarded_compiler.bind(
+      *guarded_touch,
+      [&](joggle::Compiler&, joggle::Function function, joggle::Diagnostics&) {
+        transform_called = true;
+        return function;
+      });
+  const auto guarded_result = guarded_compiler.run<joggle::Function>(
       "guarded.touch", *guarded_function);
   ok &= expect(!guarded_result && !transform_called && !guarded_compiler.ok(),
                "a compiler function does not execute on a Function rejected "
@@ -725,17 +721,16 @@ module pipeline@1.0.0 {
     if (!noop) {
       return EXIT_FAILURE;
     }
-    named_compiler.bind(*noop,
-                        [&](joggle::Compiler&, joggle::ir::Function function,
-                            joggle::Diagnostics&) {
-                          named_called = true;
-                          return function;
-                        });
+    named_compiler.bind(*noop, [&](joggle::Compiler&, joggle::Function function,
+                                   joggle::Diagnostics&) {
+      named_called = true;
+      return function;
+    });
   }
   const auto unqualified_result =
       named_linked && named_function
-          ? named_compiler.run<joggle::ir::Function>("noop", *named_function)
-          : std::optional<joggle::ir::Function>{};
+          ? named_compiler.run<joggle::Function>("noop", *named_function)
+          : std::optional<joggle::Function>{};
   const auto named_diagnostics = named_compiler.diagnostics().entries();
   ok &= expect(!unqualified_result && !named_called &&
                    !named_diagnostics.empty() &&
@@ -792,9 +787,9 @@ module transactional@1.0.0 {
     return EXIT_FAILURE;
   }
   transactional.bind(*mutate,
-                     [token = *token](joggle::ir::Function current,
+                     [token = *token](joggle::Function current,
                                       joggle::Diagnostics& diagnostics)
-                         -> std::optional<joggle::ir::Function> {
+                         -> std::optional<joggle::Function> {
                        auto edit = current.edit();
                        edit.append(token);
                        if (!edit.commit(diagnostics)) {
@@ -803,7 +798,7 @@ module transactional@1.0.0 {
                        return current;
                      });
   transactional.bind(
-      *reject, [](const joggle::ir::Function&) -> std::optional<joggle::Bytes> {
+      *reject, [](const joggle::Function&) -> std::optional<joggle::Bytes> {
         return std::nullopt;
       });
   const auto rejected =
@@ -822,7 +817,7 @@ module transactional@1.0.0 {
   if (!mismatch_linked || !count_function) {
     return EXIT_FAILURE;
   }
-  binding_mismatch.bind(*count_function, [](const joggle::ir::Function&) {
+  binding_mismatch.bind(*count_function, [](const joggle::Function&) {
     return std::string{"bad"};
   });
   ok &= expect(!binding_mismatch.ok(),
@@ -841,7 +836,7 @@ module transactional@1.0.0 {
     return EXIT_FAILURE;
   }
   legacy_transform.bind(*legacy_rewrite,
-                        [](const joggle::ir::Function&) { return true; });
+                        [](const joggle::Function&) { return true; });
   ok &= expect(!legacy_transform.ok(),
                "a bool-returning callback cannot impersonate a declared "
                "function -> function result");
@@ -1077,7 +1072,7 @@ module module_validation@1.0.0 {
     invalid_body_diagnostics.print(std::cerr);
     return EXIT_FAILURE;
   }
-  module_validation.verify(*forbidden, [](const joggle::ir::Instruction&,
+  module_validation.verify(*forbidden, [](const joggle::Instruction&,
                                           joggle::Diagnostics& diagnostics) {
     diagnostics.report("forbidden call reached a Module boundary");
     return false;
