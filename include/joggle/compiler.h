@@ -12,6 +12,7 @@
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <typeinfo>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -159,6 +160,8 @@ std::vector<std::string_view> execution_result_types() {
   if constexpr (std::is_void_v<Value>) {
     return {};
   } else if constexpr (is_tuple<Value>) {
+    static_assert(std::tuple_size_v<Value> >= 2U,
+                  "use T for one function result and void for no results");
     return []<std::size_t... Indices>(std::index_sequence<Indices...>) {
       return std::vector<std::string_view>{
           host_type_name<std::tuple_element_t<Indices, Value>>()...};
