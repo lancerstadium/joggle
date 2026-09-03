@@ -40,9 +40,8 @@ std::optional<std::size_t> rewrite_function(Function& function, Rule& rule,
     if (changed == 0U) {
       return 0U;
     }
-    return edit.commit(diagnostics)
-               ? std::optional<std::size_t>{changed}
-               : std::nullopt;
+    return edit.commit(diagnostics) ? std::optional<std::size_t>{changed}
+                                    : std::nullopt;
   } catch (const std::exception& error) {
     diagnostics.report("rewrite failed: " + std::string(error.what()));
   } catch (...) {
@@ -79,7 +78,7 @@ std::optional<std::size_t> rewrite(Module& module, Rule&& rule,
 
   Module candidate = module;
   std::size_t changed = 0;
-  for (const joggle::Module::Function& member : module.functions()) {
+  for (const joggle::Module::FunctionDecl& member : module.functions()) {
     const Function* source = member.body();
     if (source == nullptr) {
       continue;
@@ -110,9 +109,9 @@ std::optional<std::size_t> rewrite(Module& module, Rule&& rule,
 namespace transform_detail {
 
 template <typename Subject, typename Rule>
-std::optional<std::size_t>
-rewrite_to_fixpoint(Subject& subject, Rule& rule, std::size_t max_iterations,
-                    Diagnostics& diagnostics) {
+std::optional<std::size_t> rewrite_to_fixpoint(Subject& subject, Rule& rule,
+                                               std::size_t max_iterations,
+                                               Diagnostics& diagnostics) {
   if (max_iterations == 0U) {
     diagnostics.report("a fixed-point rewrite needs at least one iteration");
     return std::nullopt;
@@ -146,34 +145,34 @@ rewrite_to_fixpoint(Subject& subject, Rule& rule, std::size_t max_iterations,
 // Repeats transactional sweeps until one makes no changes. All intermediate
 // sweeps stay private; exhausting the explicit limit publishes nothing.
 template <typename Rule>
-std::optional<std::size_t>
-rewrite_to_fixpoint(Function& function, Rule&& rule,
-                    std::size_t max_iterations, Diagnostics& diagnostics) {
+std::optional<std::size_t> rewrite_to_fixpoint(Function& function, Rule&& rule,
+                                               std::size_t max_iterations,
+                                               Diagnostics& diagnostics) {
   using Changed = std::invoke_result_t<Rule&, const Instruction&,
                                        Function::Edit&, Diagnostics&>;
   static_assert(std::is_convertible_v<Changed, bool>,
                 "a rewrite lambda must return bool");
-  return transform_detail::rewrite_to_fixpoint(
-      function, rule, max_iterations, diagnostics);
+  return transform_detail::rewrite_to_fixpoint(function, rule, max_iterations,
+                                               diagnostics);
 }
 
 template <typename Rule>
-std::optional<std::size_t>
-rewrite_to_fixpoint(Module& module, Rule&& rule, std::size_t max_iterations,
-                    Diagnostics& diagnostics) {
+std::optional<std::size_t> rewrite_to_fixpoint(Module& module, Rule&& rule,
+                                               std::size_t max_iterations,
+                                               Diagnostics& diagnostics) {
   using Changed = std::invoke_result_t<Rule&, const Instruction&,
                                        Function::Edit&, Diagnostics&>;
   static_assert(std::is_convertible_v<Changed, bool>,
                 "a rewrite lambda must return bool");
-  return transform_detail::rewrite_to_fixpoint(
-      module, rule, max_iterations, diagnostics);
+  return transform_detail::rewrite_to_fixpoint(module, rule, max_iterations,
+                                               diagnostics);
 }
 
 namespace transform_detail {
 
 template <typename Legal>
-bool legal(const Function& function, Legal& predicate,
-           Diagnostics& diagnostics, std::string_view member = {}) {
+bool legal(const Function& function, Legal& predicate, Diagnostics& diagnostics,
+           std::string_view member = {}) {
   try {
     for (const Instruction& instruction : function.instructions()) {
       if (std::invoke(predicate, instruction)) {
@@ -202,7 +201,7 @@ bool legal(const Function& function, Legal& predicate,
 
 template <typename Legal>
 bool legal(const Module& module, Legal& predicate, Diagnostics& diagnostics) {
-  for (const joggle::Module::Function& member : module.functions()) {
+  for (const joggle::Module::FunctionDecl& member : module.functions()) {
     const Function* function = member.body();
     if (function != nullptr &&
         !legal(*function, predicate, diagnostics, member.name())) {
@@ -225,8 +224,7 @@ std::optional<std::size_t> convert(Function& function, Rule&& rule,
 
   Function candidate = function;
   auto changed = rewrite(candidate, rule, diagnostics);
-  if (!changed ||
-      !transform_detail::legal(candidate, legal, diagnostics)) {
+  if (!changed || !transform_detail::legal(candidate, legal, diagnostics)) {
     return std::nullopt;
   }
   if (*changed != 0U) {
@@ -265,15 +263,14 @@ std::optional<std::size_t> map_calls(Function& function, Mapper&& mapper,
   using Mapped = std::invoke_result_t<Mapper&, const Instruction&>;
   static_assert(
       std::is_convertible_v<Mapped,
-                            std::optional<joggle::Module::Function>>,
+                            std::optional<joggle::Module::FunctionDecl>>,
       "a call mapper must return "
-      "std::optional<joggle::Module::Function>");
+      "std::optional<joggle::Module::FunctionDecl>");
 
   return rewrite(
       function,
-      [&](const Instruction& instruction, Function::Edit& edit,
-          Diagnostics&) {
-        std::optional<joggle::Module::Function> replacement =
+      [&](const Instruction& instruction, Function::Edit& edit, Diagnostics&) {
+        std::optional<joggle::Module::FunctionDecl> replacement =
             std::invoke(mapper, instruction);
         if (!replacement || *replacement == instruction.callee()) {
           return false;
@@ -291,15 +288,14 @@ std::optional<std::size_t> map_calls(Module& module, Mapper&& mapper,
   using Mapped = std::invoke_result_t<Mapper&, const Instruction&>;
   static_assert(
       std::is_convertible_v<Mapped,
-                            std::optional<joggle::Module::Function>>,
+                            std::optional<joggle::Module::FunctionDecl>>,
       "a call mapper must return "
-      "std::optional<joggle::Module::Function>");
+      "std::optional<joggle::Module::FunctionDecl>");
 
   return rewrite(
       module,
-      [&](const Instruction& instruction, Function::Edit& edit,
-          Diagnostics&) {
-        std::optional<joggle::Module::Function> replacement =
+      [&](const Instruction& instruction, Function::Edit& edit, Diagnostics&) {
+        std::optional<joggle::Module::FunctionDecl> replacement =
             std::invoke(mapper, instruction);
         if (!replacement || *replacement == instruction.callee()) {
           return false;
@@ -311,30 +307,30 @@ std::optional<std::size_t> map_calls(Module& module, Mapper&& mapper,
 }
 
 inline std::optional<std::size_t>
-replace_calls(Function& function, const joggle::Module::Function& from,
-              const joggle::Module::Function& to,
+replace_calls(Function& function, const joggle::Module::FunctionDecl& from,
+              const joggle::Module::FunctionDecl& to,
               Diagnostics& diagnostics) {
   return map_calls(
       function,
       [&](const Instruction& instruction)
-          -> std::optional<joggle::Module::Function> {
+          -> std::optional<joggle::Module::FunctionDecl> {
         return instruction.callee() == from
-                   ? std::optional<joggle::Module::Function>{to}
+                   ? std::optional<joggle::Module::FunctionDecl>{to}
                    : std::nullopt;
       },
       diagnostics);
 }
 
 inline std::optional<std::size_t>
-replace_calls(Module& module, const joggle::Module::Function& from,
-              const joggle::Module::Function& to,
+replace_calls(Module& module, const joggle::Module::FunctionDecl& from,
+              const joggle::Module::FunctionDecl& to,
               Diagnostics& diagnostics) {
   return map_calls(
       module,
       [&](const Instruction& instruction)
-          -> std::optional<joggle::Module::Function> {
+          -> std::optional<joggle::Module::FunctionDecl> {
         return instruction.callee() == from
-                   ? std::optional<joggle::Module::Function>{to}
+                   ? std::optional<joggle::Module::FunctionDecl>{to}
                    : std::nullopt;
       },
       diagnostics);

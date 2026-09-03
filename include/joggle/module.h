@@ -145,7 +145,7 @@ public:
     friend class InterfaceDecl;
     friend class TypeDecl;
     friend class AttributeDecl;
-    friend class Function;
+    friend class FunctionDecl;
   };
 
   class InterfaceDecl {
@@ -225,7 +225,7 @@ public:
     friend class Module;
   };
 
-  class Function {
+  class FunctionDecl {
   public:
     // A function is either declared by the environment or defined by one
     // body. Known evaluation and residualization are execution outcomes, not
@@ -252,10 +252,10 @@ public:
     const ir::Function* body() const;
     std::string signature() const;
     Symbol symbol() const;
-    bool operator==(const Function& other) const;
+    bool operator==(const FunctionDecl& other) const;
 
   private:
-    Function(std::shared_ptr<const Storage> storage, std::size_t index);
+    FunctionDecl(std::shared_ptr<const Storage> storage, std::size_t index);
     std::shared_ptr<const Storage> storage_;
     std::size_t index_ = 0;
     friend class Module;
@@ -288,19 +288,19 @@ public:
   std::optional<InterfaceDecl> interface(std::string_view name) const;
   std::optional<TypeDecl> type(std::string_view name) const;
   std::optional<AttributeDecl> attribute(std::string_view name) const;
-  std::optional<Function> function(std::string_view name) const;
-  std::vector<Function> overloads(std::string_view name) const;
+  std::optional<FunctionDecl> function(std::string_view name) const;
+  std::vector<FunctionDecl> overloads(std::string_view name) const;
   std::optional<Symbol> symbol(SymbolKind kind, std::string_view name) const;
   std::vector<Symbol> members() const;
   std::vector<InterfaceDecl> interfaces() const;
   std::vector<TypeDecl> types() const;
   std::vector<AttributeDecl> attributes() const;
-  std::vector<Function> functions() const;
+  std::vector<FunctionDecl> functions() const;
 
-  // A Function always occupies one Module member and has one canonical
-  // signature. insert() adds a member whose body is already materialized as
-  // editable IR; body() is absent for external and not-yet-materialized
-  // members. Mutable body lookup detaches only that body.
+  // A FunctionDecl always occupies one Module member and has one canonical
+  // signature. insert() adds a declaration whose body is already materialized
+  // as editable IR; body() is absent for external and not-yet-materialized
+  // declarations. Mutable body lookup detaches only that body.
   bool insert(std::string name, ir::Function function,
               Diagnostics& diagnostics);
   ir::Function* body(std::string_view name);

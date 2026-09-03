@@ -10,12 +10,12 @@
 
 namespace joggle::detail {
 
-bool is_prelude_primitive(const Module::Function& function);
+bool is_prelude_primitive(const Module::FunctionDecl& function);
 
-std::optional<ParameterValue> evaluate_prelude_primitive(
-    const Module::Function& function,
-    std::span<const ParameterValue> arguments, Diagnostics& diagnostics,
-    std::size_t element_limit,
-    std::optional<SourceRange> source = std::nullopt);
+std::optional<ParameterValue>
+evaluate_prelude_primitive(const Module::FunctionDecl& function,
+                           std::span<const ParameterValue> arguments,
+                           Diagnostics& diagnostics, std::size_t element_limit,
+                           std::optional<SourceRange> source = std::nullopt);
 
 }  // namespace joggle::detail

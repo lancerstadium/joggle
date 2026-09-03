@@ -29,7 +29,7 @@ std::string decode(const joggle::Bytes& bytes) {
 
 std::size_t calls(const joggle::Module& module, std::string_view symbol) {
   std::size_t count = 0;
-  for (const joggle::Module::Function& member : module.functions()) {
+  for (const joggle::Module::FunctionDecl& member : module.functions()) {
     const joggle::ir::Function* function = member.body();
     if (function == nullptr) {
       continue;
@@ -64,8 +64,10 @@ int main() {
       prepare ? prepare->function("prepare") : std::nullopt;
   const auto compile_function =
       prepare ? prepare->function("compile") : std::nullopt;
+  const auto count_function =
+      prepare ? prepare->function("count_instructions") : std::nullopt;
   auto block = compiler.materialize("resnet18_basic_block.main");
-  if (!prepare_function || !compile_function || !block ||
+  if (!prepare_function || !compile_function || !count_function || !block ||
       !compiler.load_behavior("nn_pipeline", JOGGLE_NN_PIPELINE_BEHAVIOR)) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -86,7 +88,13 @@ int main() {
       compiler.run<joggle::Module>(*prepare_function, model, true);
   const auto emitted =
       compiler.run<joggle::Bytes>(*compile_function, model, true);
-  if (!unchanged || !mapped || !emitted) {
+  const auto source_instruction_count =
+      compiler.run<std::int64_t>(*count_function, model);
+  const auto mapped_instruction_count =
+      mapped ? compiler.run<std::int64_t>(*count_function, *mapped)
+             : std::optional<std::int64_t>{};
+  if (!unchanged || !mapped || !emitted || !source_instruction_count ||
+      !mapped_instruction_count) {
     compiler.diagnostics().print(std::cerr);
   }
 
@@ -103,8 +111,12 @@ int main() {
                "a Known false compiler branch returns the original module");
   ok &= expect(mapped && calls(*mapped, "nn.relu") == 0U &&
                    calls(*mapped, "example_accel.relu") == 4U,
-               "a Known true compiler branch invokes an ordinary Module "
-               "transform");
+               "a Known true compiler branch invokes a legalizing Module "
+               "conversion");
+  ok &= expect(source_instruction_count == std::optional<std::int64_t>{14} &&
+                   mapped_instruction_count == source_instruction_count,
+               "an ordinary typed analysis observes source and converted "
+               "Modules through the same invocation mechanism");
   ok &= expect(parsed &&
                    source.find("import example_accel@1.0.0;") !=
                        std::string::npos &&

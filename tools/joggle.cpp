@@ -310,9 +310,8 @@ bool write(const std::filesystem::path& requested, std::string_view text,
                diagnostics);
 }
 
-std::optional<joggle::Bytes>
-read_bytes(const std::filesystem::path& path,
-           joggle::Diagnostics& diagnostics) {
+std::optional<joggle::Bytes> read_bytes(const std::filesystem::path& path,
+                                        joggle::Diagnostics& diagnostics) {
   auto content = read(path, diagnostics);
   if (!content) {
     return std::nullopt;
@@ -320,8 +319,7 @@ read_bytes(const std::filesystem::path& path,
   joggle::Bytes bytes;
   bytes.reserve(content->size());
   for (const char value : *content) {
-    bytes.push_back(
-        static_cast<std::byte>(static_cast<unsigned char>(value)));
+    bytes.push_back(static_cast<std::byte>(static_cast<unsigned char>(value)));
   }
   return bytes;
 }
@@ -382,8 +380,8 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
     return false;
   }
   for (const joggle::Module& loaded : compiler.modules()) {
-    for (const joggle::Module::Function& function : loaded.functions()) {
-      if (function.form() == joggle::Module::Function::Form::Body &&
+    for (const joggle::Module::FunctionDecl& function : loaded.functions()) {
+      if (function.form() == joggle::Module::FunctionDecl::Form::Body &&
           joggle::detail::ModuleAccess::expression(function) == nullptr &&
           (!joggle::detail::ir_inputs(function).empty() ||
            !joggle::detail::ir_results(function).empty()) &&
@@ -566,7 +564,8 @@ int main(int argc, char** argv) {
                  diagnostics)) {
         return fail(diagnostics);
       }
-    } else if (!write_stdout(std::span<const std::byte>(*output), diagnostics)) {
+    } else if (!write_stdout(std::span<const std::byte>(*output),
+                             diagnostics)) {
       return fail(diagnostics);
     }
     return EXIT_SUCCESS;

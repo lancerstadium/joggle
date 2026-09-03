@@ -66,12 +66,12 @@ known_domain(const Module::Expression& expression, const Bindings& bindings) {
 
 struct Environment {
   using Evaluator = std::function<std::optional<ParameterValue>(
-      Module::Function, std::span<const ParameterValue>)>;
-  using EvaluationCheck = std::function<bool(const Module::Function&)>;
-  using FunctionLookup = std::function<std::vector<Module::Function>(
+      Module::FunctionDecl, std::span<const ParameterValue>)>;
+  using EvaluationCheck = std::function<bool(const Module::FunctionDecl&)>;
+  using FunctionLookup = std::function<std::vector<Module::FunctionDecl>(
       std::string_view, std::string_view)>;
-  using OperatorLookup = std::function<std::vector<Module::Function>(
-      std::string_view, std::string_view, Module::Function::Fixity)>;
+  using OperatorLookup = std::function<std::vector<Module::FunctionDecl>(
+      std::string_view, std::string_view, Module::FunctionDecl::Fixity)>;
   std::function<std::optional<Module>(std::string_view)> module;
   std::function<std::optional<Type>(const Module::TypeDecl&,
                                     std::span<const ParameterValue>)>
@@ -109,17 +109,17 @@ Environment environment(Compiler& compiler, bool allow_host_evaluation = true) {
             return visible_functions(compiler, owner, reference);
           },
           [&](std::string_view owner, std::string_view symbol,
-              Module::Function::Fixity fixity) {
+              Module::FunctionDecl::Fixity fixity) {
             return visible_operators(compiler, owner, symbol, fixity);
           },
           [&, under_residual_control = !allow_host_evaluation](
-              const Module::Function& function) {
+              const Module::FunctionDecl& function) {
             return CompilerAccess::can_evaluate(compiler, function,
                                                 under_residual_control);
           },
           Environment::Evaluator{
               [&, under_residual_control = !allow_host_evaluation](
-                  Module::Function function,
+                  Module::FunctionDecl function,
                   std::span<const ParameterValue> arguments) {
                 return CompilerAccess::evaluate(compiler, std::move(function),
                                                 arguments,
@@ -198,13 +198,13 @@ Environment environment(std::span<const Module> modules,
         return visible_functions(modules, owner, reference);
       },
       [modules](std::string_view owner, std::string_view symbol,
-                Module::Function::Fixity fixity) {
+                Module::FunctionDecl::Fixity fixity) {
         return visible_operators(modules, owner, symbol, fixity);
       },
-      [](const Module::Function& function) {
+      [](const Module::FunctionDecl& function) {
         return is_prelude_primitive(function);
       },
-      [&diagnostics](Module::Function function,
+      [&diagnostics](Module::FunctionDecl function,
                      std::span<const ParameterValue> arguments) {
         const Compiler::EvaluationLimits limits;
         return evaluate_prelude_primitive(function, arguments, diagnostics,
@@ -216,7 +216,7 @@ Environment environment(std::span<const Module> modules,
 
 class Solver {
 public:
-  Solver(Environment environment, const Module::Function& schema,
+  Solver(Environment environment, const Module::FunctionDecl& schema,
          Diagnostics& diagnostics, std::optional<SourceRange> source)
       : limits_(environment.limits), environment_(std::move(environment)),
         schema_(&schema), diagnostics_(diagnostics), source_(std::move(source)),
@@ -440,7 +440,7 @@ private:
     std::optional<Declaration> result;
     if constexpr (std::is_same_v<Declaration, Module::TypeDecl>) {
       result = module->type(local);
-    } else if constexpr (std::is_same_v<Declaration, Module::Function>) {
+    } else if constexpr (std::is_same_v<Declaration, Module::FunctionDecl>) {
       result = module->function(local);
     } else {
       result = module->attribute(local);
@@ -632,10 +632,10 @@ private:
     return value;
   }
 
-  std::vector<Module::Function> operator_declarations(
-      std::string_view symbol, Module::Function::Fixity fixity,
+  std::vector<Module::FunctionDecl> operator_declarations(
+      std::string_view symbol, Module::FunctionDecl::Fixity fixity,
       const Module::ParameterDecl& expected, std::size_t arity) {
-    std::vector<Module::Function> result;
+    std::vector<Module::FunctionDecl> result;
     for (const auto& candidate :
          environment_.operators(scope_, symbol, fixity)) {
       const auto known_inputs = parameter_inputs(candidate);
@@ -651,7 +651,7 @@ private:
   }
 
   std::optional<ParameterValue>
-  evaluate_function(const Module::Function& function,
+  evaluate_function(const Module::FunctionDecl& function,
                     std::span<const ParameterValue> values,
                     const Bindings& arguments) {
     const std::string identity = function.symbol().stable_name();
@@ -829,15 +829,15 @@ private:
         return std::nullopt;
       }
       const auto fixity = expression.kind == Kind::Prefix
-                              ? Module::Function::Fixity::Prefix
+                              ? Module::FunctionDecl::Fixity::Prefix
                           : expression.kind == Kind::Postfix
-                              ? Module::Function::Fixity::Postfix
-                              : Module::Function::Fixity::Infix;
+                              ? Module::FunctionDecl::Fixity::Postfix
+                              : Module::FunctionDecl::Fixity::Infix;
       auto overloads =
           operator_declarations(expression.text, fixity, expected, arity);
       overloads.erase(
           std::remove_if(overloads.begin(), overloads.end(),
-                         [&](const Module::Function& candidate) {
+                         [&](const Module::FunctionDecl& candidate) {
                            const auto inputs = parameter_inputs(candidate);
                            for (std::size_t index = 0; index < arity; ++index) {
                              const auto actual = known_domain(
@@ -1305,7 +1305,7 @@ private:
   std::size_t steps_ = 0;
   std::size_t depth_ = 0;
   bool budget_reported_ = false;
-  const Module::Function* schema_ = nullptr;
+  const Module::FunctionDecl* schema_ = nullptr;
   Diagnostics& diagnostics_;
   std::optional<SourceRange> source_;
   const FunctionTypeContract* contract_ = nullptr;
@@ -1327,7 +1327,7 @@ std::optional<ParameterValue> evaluate_known_expression(
 }
 
 std::optional<std::vector<Type>>
-infer_call_types(Compiler& compiler, const Module::Function& schema,
+infer_call_types(Compiler& compiler, const Module::FunctionDecl& schema,
                  std::span<const Type> arguments,
                  std::span<const std::optional<ParameterValue>> known_arguments,
                  std::span<const std::optional<Type>> expected_results,
@@ -1342,7 +1342,7 @@ infer_call_types(Compiler& compiler, const Module::Function& schema,
 
 std::optional<std::vector<Type>>
 infer_call_types(std::span<const Module> modules,
-                 const Module::Function& schema,
+                 const Module::FunctionDecl& schema,
                  std::span<const Type> arguments,
                  std::span<const std::optional<ParameterValue>> known_arguments,
                  std::span<const std::optional<Type>> expected_results,
@@ -1356,7 +1356,7 @@ infer_call_types(std::span<const Module> modules,
 }
 
 std::optional<CallTypes> resolve_call_types(
-    Compiler& compiler, const Module::Function& schema,
+    Compiler& compiler, const Module::FunctionDecl& schema,
     std::span<const Type> arguments,
     std::span<const std::optional<ParameterValue>> known_arguments,
     std::span<const std::optional<Type>> expected_results,
@@ -1366,7 +1366,7 @@ std::optional<CallTypes> resolve_call_types(
 }
 
 std::optional<CallTypes> resolve_partial_call_types(
-    Compiler& compiler, const Module::Function& schema,
+    Compiler& compiler, const Module::FunctionDecl& schema,
     std::span<const std::optional<Type>> arguments,
     std::span<const std::optional<ParameterValue>> known_arguments,
     std::span<const std::optional<Type>> expected_results,
@@ -1378,7 +1378,7 @@ std::optional<CallTypes> resolve_partial_call_types(
 }
 
 std::optional<CallTypes> resolve_call_types(
-    std::span<const Module> modules, const Module::Function& schema,
+    std::span<const Module> modules, const Module::FunctionDecl& schema,
     std::span<const Type> arguments,
     std::span<const std::optional<ParameterValue>> known_arguments,
     std::span<const std::optional<Type>> expected_results,

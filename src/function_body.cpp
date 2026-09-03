@@ -50,7 +50,7 @@ class SyntaxParser {
 public:
   SyntaxParser(Lexer& lexer, Token& current, Diagnostics& diagnostics,
                std::string source,
-               std::span<const Module::Function::GenericDecl> variables)
+               std::span<const Module::FunctionDecl::GenericDecl> variables)
       : lexer_(lexer), diagnostics_(diagnostics), source_(std::move(source)),
         initial_diagnostics_(diagnostics.size()), current_(current),
         variables_(variables.begin(), variables.end()) {
@@ -457,7 +457,7 @@ private:
   std::size_t initial_diagnostics_ = 0;
   Token& current_;
   SourcePosition previous_end_;
-  std::vector<Module::Function::GenericDecl> variables_;
+  std::vector<Module::FunctionDecl::GenericDecl> variables_;
   std::unordered_set<std::string> locals_;
   std::size_t loop_depth_ = 0;
 };
@@ -878,14 +878,14 @@ class Instantiator {
   };
 
   struct PendingCall {
-    Module::Function function;
+    Module::FunctionDecl function;
     std::vector<std::vector<PendingArgument>> arguments;
     detail::CallTypes partial_types;
     std::vector<std::optional<ParameterValue>> known_arguments;
   };
 
 public:
-  Instantiator(Compiler& compiler, Module::Function function,
+  Instantiator(Compiler& compiler, Module::FunctionDecl function,
                const detail::FunctionBody& body, Diagnostics& diagnostics,
                std::vector<Value> known_arguments)
       : compiler_(compiler), declaration_(std::move(function)), body_(body),
@@ -1498,10 +1498,10 @@ private:
          expression.kind == Kind::Postfix) &&
         !expression.arguments.empty()) {
       const auto fixity = expression.kind == Kind::Prefix
-                              ? Module::Function::Fixity::Prefix
+                              ? Module::FunctionDecl::Fixity::Prefix
                           : expression.kind == Kind::Postfix
-                              ? Module::Function::Fixity::Postfix
-                              : Module::Function::Fixity::Infix;
+                              ? Module::FunctionDecl::Fixity::Postfix
+                              : Module::FunctionDecl::Fixity::Infix;
       std::vector<Module::ParameterDecl> matches;
       for (const auto& function : detail::visible_operators(
                compiler_, owner_, expression.text, fixity)) {
@@ -1584,13 +1584,13 @@ private:
     return locals_.contains(name);
   }
 
-  std::vector<Module::Function>
+  std::vector<Module::FunctionDecl>
   visible_functions(std::string_view reference) const {
     return detail::visible_functions(compiler_, owner_, reference);
   }
 
   std::optional<PendingCall>
-  plan_call(const Module::Function& function,
+  plan_call(const Module::FunctionDecl& function,
             const Module::Expression& expression,
             std::span<const PendingArgument> supplied,
             std::span<const std::optional<Type>> expected,
@@ -1678,7 +1678,7 @@ private:
     return result;
   }
 
-  bool matches_function_value(const Module::Function& function,
+  bool matches_function_value(const Module::FunctionDecl& function,
                               const Type& callable, detail::SyntaxRange range) {
     const Module::Symbol schema = callable.schema().symbol();
     const auto inputs = callable.get<std::vector<Type>>("inputs");
@@ -1708,7 +1708,7 @@ private:
       return std::nullopt;
     }
     if (expected_type) {
-      std::vector<Module::Function> matches;
+      std::vector<Module::FunctionDecl> matches;
       for (const auto& overload : overloads) {
         if (matches_function_value(overload, *expected_type, range)) {
           matches.push_back(overload);
@@ -1734,7 +1734,7 @@ private:
              range);
       return std::nullopt;
     }
-    const Module::Function declaration = overloads.front();
+    const Module::FunctionDecl declaration = overloads.front();
     if (!declaration.generics().empty()) {
       report("generic function '" + std::string(reference) +
                  "' needs a contextual callable type",
@@ -1921,7 +1921,7 @@ private:
     }
     add_module(detail::prelude_module_name);
 
-    std::vector<Module::Function> matches;
+    std::vector<Module::FunctionDecl> matches;
     for (const Module& module : visible) {
       for (const auto& candidate : module.functions()) {
         if (!compiler_.conforms(candidate, *literal) ||
@@ -2655,13 +2655,13 @@ private:
     const auto invalidate_results = [&] { invalidate(statement.bindings); };
     const Module::Expression& expression = statement.expression.value;
     using Kind = Module::Expression::Kind;
-    std::optional<Module::Function::Fixity> fixity;
+    std::optional<Module::FunctionDecl::Fixity> fixity;
     if (expression.kind == Kind::Prefix) {
-      fixity = Module::Function::Fixity::Prefix;
+      fixity = Module::FunctionDecl::Fixity::Prefix;
     } else if (expression.kind == Kind::Infix) {
-      fixity = Module::Function::Fixity::Infix;
+      fixity = Module::FunctionDecl::Fixity::Infix;
     } else if (expression.kind == Kind::Postfix) {
-      fixity = Module::Function::Fixity::Postfix;
+      fixity = Module::FunctionDecl::Fixity::Postfix;
     } else if (expression.kind != Kind::Call) {
       report("expression cannot be residualized as a call", statement.range);
       invalidate_results();
@@ -2724,7 +2724,7 @@ private:
       return;
     }
 
-    std::vector<Module::Function> declarations =
+    std::vector<Module::FunctionDecl> declarations =
         fixity ? detail::visible_operators(compiler_, owner_, expression.text,
                                            *fixity)
                : visible_functions(expression.text);
@@ -2820,7 +2820,7 @@ private:
   }
 
   Compiler& compiler_;
-  Module::Function declaration_;
+  Module::FunctionDecl declaration_;
   const detail::FunctionBody& body_;
   std::string owner_;
   Diagnostics& diagnostics_;
@@ -3108,16 +3108,16 @@ private:
     const auto notation = instruction.callee().operator_symbol();
     const auto fixity = instruction.callee().operator_fixity();
     const bool valid_arity =
-        fixity && ((*fixity == Module::Function::Fixity::Infix &&
+        fixity && ((*fixity == Module::FunctionDecl::Fixity::Infix &&
                     instruction.arguments().size() == 2U) ||
-                   (*fixity != Module::Function::Fixity::Infix &&
+                   (*fixity != Module::FunctionDecl::Fixity::Infix &&
                     instruction.arguments().size() == 1U));
     if (notation && valid_arity && result.bindings.size() == 1U &&
         detail::parameter_inputs(instruction.callee()).empty()) {
       result.expression.value.text = std::string(*notation);
-      if (*fixity == Module::Function::Fixity::Prefix) {
+      if (*fixity == Module::FunctionDecl::Fixity::Prefix) {
         result.expression.value.kind = Module::Expression::Kind::Prefix;
-      } else if (*fixity == Module::Function::Fixity::Infix) {
+      } else if (*fixity == Module::FunctionDecl::Fixity::Infix) {
         result.expression.value.kind = Module::Expression::Kind::Infix;
       } else {
         result.expression.value.kind = Module::Expression::Kind::Postfix;
@@ -3358,7 +3358,7 @@ bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics) {
 
 std::optional<FunctionBody> parse_function_body(
     Lexer& lexer, Token& current, Diagnostics& diagnostics, std::string source,
-    std::span<const Module::Function::GenericDecl> variables) {
+    std::span<const Module::FunctionDecl::GenericDecl> variables) {
   return SyntaxParser(lexer, current, diagnostics, std::move(source), variables)
       .parse();
 }
@@ -3378,7 +3378,7 @@ FunctionSyntax materialized_function_syntax(const ir::Function& function,
 }
 
 std::optional<ir::Function>
-instantiate_function(Compiler& compiler, Module::Function function,
+instantiate_function(Compiler& compiler, Module::FunctionDecl function,
                      const FunctionBody& body, Diagnostics& diagnostics,
                      std::vector<ir::Value> known_arguments) {
   return Instantiator(compiler, std::move(function), body, diagnostics,

@@ -173,7 +173,7 @@ int main() {
                                      : std::vector<joggle::ir::Value>{};
   const auto referenced = applied_arguments.size() == 2U
                               ? applied_arguments[1].referenced_function()
-                              : std::optional<joggle::Module::Function>{};
+                              : std::optional<joggle::Module::FunctionDecl>{};
   ok &=
       expect(callback_value && callback_operations.size() == 1U && referenced &&
                  referenced->symbol().qualified_name() == "logic.callback" &&
@@ -211,11 +211,11 @@ int main() {
   const auto generic_reference =
       generic_arguments.size() == 2U
           ? generic_arguments[1].referenced_function()
-          : std::optional<joggle::Module::Function>{};
+          : std::optional<joggle::Module::FunctionDecl>{};
   const auto overloaded_reference =
       overloaded_arguments.size() == 2U
           ? overloaded_arguments[1].referenced_function()
-          : std::optional<joggle::Module::Function>{};
+          : std::optional<joggle::Module::FunctionDecl>{};
   ok &= expect(generic_reference &&
                    generic_reference->name() == "generic_callback" &&
                    overloaded_reference &&
@@ -243,9 +243,9 @@ int main() {
           ? contextual_compiler.materialize("contextual_artifact.generic_value")
           : std::optional<joggle::ir::Function>{};
   const auto replayed_overloaded =
-      contextual_linked
-          ? contextual_compiler.materialize("contextual_artifact.overloaded_value")
-          : std::optional<joggle::ir::Function>{};
+      contextual_linked ? contextual_compiler.materialize(
+                              "contextual_artifact.overloaded_value")
+                        : std::optional<joggle::ir::Function>{};
   ok &= expect(replayed_generic && replayed_overloaded &&
                    joggle::format(*replayed_generic, "generic_value") ==
                        generic_text &&
@@ -485,7 +485,8 @@ module cfg@1.0.0 {
   const auto cfg_materialized =
       cfg_linked ? cfg_compiler.materialize("cfg.materialized") : std::nullopt;
   const auto cfg_statement_branch =
-      cfg_linked ? cfg_compiler.materialize("cfg.statement_branch") : std::nullopt;
+      cfg_linked ? cfg_compiler.materialize("cfg.statement_branch")
+                 : std::nullopt;
   const auto cfg_statement_specialized =
       cfg_linked ? cfg_compiler.materialize("cfg.statement_specialized")
                  : std::nullopt;
@@ -979,9 +980,8 @@ module cyclic_mixed_loop@1.0.0 {
   const auto cyclic_mixed_loop_module =
       cyclic_mixed_loop.module("cyclic_mixed_loop");
   const auto cyclic_mixed_loop_declaration =
-      cyclic_mixed_loop_module
-          ? cyclic_mixed_loop_module->function("rebuild")
-          : std::nullopt;
+      cyclic_mixed_loop_module ? cyclic_mixed_loop_module->function("rebuild")
+                               : std::nullopt;
   const auto compiler_integer = cyclic_mixed_loop.make("int");
   const auto initial_phase =
       compiler_integer
@@ -990,7 +990,7 @@ module cyclic_mixed_loop@1.0.0 {
   const auto cyclic_mixed_loop_function =
       cyclic_mixed_loop_linked && cyclic_mixed_loop_declaration && initial_phase
           ? cyclic_mixed_loop.materialize(*cyclic_mixed_loop_declaration,
-                                       {*initial_phase})
+                                          {*initial_phase})
           : std::optional<joggle::ir::Function>{};
   if (!cyclic_mixed_loop_function) {
     cyclic_mixed_loop.diagnostics().print(std::cerr);
@@ -1061,8 +1061,9 @@ module computed_cycle@1.0.0 {
                      "computed-cycle.joggle");
   const bool computed_cycle_linked = computed_cycle.link();
   const auto computed_cycle_function =
-      computed_cycle_linked ? computed_cycle.materialize("computed_cycle.invalid")
-                            : std::optional<joggle::ir::Function>{};
+      computed_cycle_linked
+          ? computed_cycle.materialize("computed_cycle.invalid")
+          : std::optional<joggle::ir::Function>{};
   ok &= expect(computed_cycle_linked && computed_cycle_function &&
                    computed_cycle.verify(*computed_cycle_function) &&
                    has_backedge(*computed_cycle_function),
@@ -1116,8 +1117,9 @@ module bounded_loop@1.0.0 {
                    "bounded-loop.joggle");
   const bool bounded_loop_linked = bounded_loop.link();
   const auto never_finishes =
-      bounded_loop_linked ? bounded_loop.materialize("bounded_loop.never_finishes")
-                          : std::optional<joggle::ir::Function>{};
+      bounded_loop_linked
+          ? bounded_loop.materialize("bounded_loop.never_finishes")
+          : std::optional<joggle::ir::Function>{};
   const bool reports_loop_limit =
       std::any_of(bounded_loop.diagnostics().entries().begin(),
                   bounded_loop.diagnostics().entries().end(),
@@ -1247,8 +1249,9 @@ module return_inferred@1.0.0 {
                       "return-inferred.joggle");
   const bool return_inferred_linked = return_inferred.link();
   const auto return_inferred_function =
-      return_inferred_linked ? return_inferred.materialize("return_inferred.main")
-                             : std::optional<joggle::ir::Function>{};
+      return_inferred_linked
+          ? return_inferred.materialize("return_inferred.main")
+          : std::optional<joggle::ir::Function>{};
   ok &= expect(
       return_inferred_function &&
           return_inferred_function->entry().terminator().returned().size() ==
@@ -1334,9 +1337,9 @@ module dependent@1.0.0 {
   const auto inconsistent_module = inconsistent.module("dependent");
   const auto inconsistent_word =
       inconsistent_module ? inconsistent_module->type("word") : std::nullopt;
-  const auto inconsistent_input =
-      inconsistent_module ? inconsistent_module->function("input")
-                          : std::nullopt;
+  const auto inconsistent_input = inconsistent_module
+                                      ? inconsistent_module->function("input")
+                                      : std::nullopt;
   const auto default_input =
       inconsistent_module ? inconsistent_module->function("default_input")
                           : std::nullopt;
@@ -1369,9 +1372,9 @@ module dependent@1.0.0 {
   defaulted.add(dependent_source, "dependent.joggle");
   const bool defaulted_linked = defaulted.link();
   const auto defaulted_module = defaulted.module("dependent");
-  const auto defaulted_input =
-      defaulted_module ? defaulted_module->function("default_input")
-                       : std::nullopt;
+  const auto defaulted_input = defaulted_module
+                                   ? defaulted_module->function("default_input")
+                                   : std::nullopt;
   const auto named_input =
       defaulted_module ? defaulted_module->function("input") : std::nullopt;
   const auto defaulted_int = defaulted.make("int");
@@ -1532,9 +1535,8 @@ module computed@1.0.0 {
   computed.add(computed_source, "computed.joggle");
   const bool computed_linked = computed.link();
   const auto computed_module = computed.module("computed");
-  const auto host_double = computed_module
-                               ? computed_module->function("host_double")
-                               : std::nullopt;
+  const auto host_double =
+      computed_module ? computed_module->function("host_double") : std::nullopt;
   if (computed_linked && host_double) {
     computed.bind(*host_double, [](std::int64_t value) { return value * 2; });
   }
@@ -1542,13 +1544,14 @@ module computed@1.0.0 {
       computed_linked ? computed.materialize("computed.main") : std::nullopt;
   const auto packed_function =
       computed_linked ? computed.materialize("computed.pack") : std::nullopt;
-  const auto aligned_function = computed_linked
-                                    ? computed.materialize("computed.align_width")
-                                    : std::nullopt;
+  const auto aligned_function =
+      computed_linked ? computed.materialize("computed.align_width")
+                      : std::nullopt;
   const auto sum_function =
       computed_linked ? computed.materialize("computed.sum") : std::nullopt;
-  const auto quotient_function =
-      computed_linked ? computed.materialize("computed.quotient") : std::nullopt;
+  const auto quotient_function = computed_linked
+                                     ? computed.materialize("computed.quotient")
+                                     : std::nullopt;
   const auto compile_time_operator_function =
       computed_linked ? computed.materialize("computed.compile_time_operator")
                       : std::nullopt;
@@ -1708,8 +1711,9 @@ module projected@1.0.0 {
   const auto encode13 = projected_linked
                             ? projected.materialize("projected.encode13")
                             : std::nullopt;
-  const auto align13 =
-      projected_linked ? projected.materialize("projected.align13") : std::nullopt;
+  const auto align13 = projected_linked
+                           ? projected.materialize("projected.align13")
+                           : std::nullopt;
   const auto format_module = projected.module("formats");
   const std::string format_text =
       format_module ? joggle::format(*format_module) : std::string{};
@@ -2205,8 +2209,7 @@ module staged_control@1.0.0 {
   const auto integer_less =
       staged_module ? staged_module->function("integer_less") : std::nullopt;
   const auto integer_greater =
-      staged_module ? staged_module->function("integer_greater")
-                    : std::nullopt;
+      staged_module ? staged_module->function("integer_greater") : std::nullopt;
   if (integer_add) {
     staged_control.bind(*integer_add, [](std::int64_t lhs, std::int64_t rhs) {
       return lhs + rhs;
@@ -2254,9 +2257,10 @@ module staged_control@1.0.0 {
       specialize_decl && width
           ? staged_control.materialize(*specialize_decl, {*width})
           : std::nullopt;
-  const auto pipeline = pipeline_decl && stages
-                            ? staged_control.materialize(*pipeline_decl, {*stages})
-                            : std::nullopt;
+  const auto pipeline =
+      pipeline_decl && stages
+          ? staged_control.materialize(*pipeline_decl, {*stages})
+          : std::nullopt;
   if (!staged_control_linked || !specialized || !pipeline) {
     staged_control.diagnostics().print(std::cerr);
   }

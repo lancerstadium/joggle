@@ -42,13 +42,13 @@ struct AttributeDefinition {
 
 struct FunctionDefinition {
   std::string name;
-  std::vector<Module::Function::GenericDecl> generics;
+  std::vector<Module::FunctionDecl::GenericDecl> generics;
   std::vector<Module::ParameterDecl> inputs;
   std::vector<Module::ParameterDecl> results;
   FunctionTypeContract types;
   std::vector<std::string> interfaces;
   std::optional<std::string> operator_symbol;
-  std::optional<Module::Function::Fixity> operator_fixity;
+  std::optional<Module::FunctionDecl::Fixity> operator_fixity;
   std::optional<FunctionBody> body;
   std::optional<SourceRange> source;
 };

@@ -156,14 +156,14 @@ const std::string& prelude_digest() {
 
 }  // namespace
 
-bool is_prelude_primitive(const Module::Function& function) {
+bool is_prelude_primitive(const Module::FunctionDecl& function) {
   return function.symbol().module_name() == prelude_module_name &&
          function.symbol().module_digest() == prelude_digest() &&
          primitive_name(function.name());
 }
 
 std::optional<ParameterValue>
-evaluate_prelude_primitive(const Module::Function& function,
+evaluate_prelude_primitive(const Module::FunctionDecl& function,
                            std::span<const ParameterValue> arguments,
                            Diagnostics& diagnostics, std::size_t element_limit,
                            std::optional<SourceRange> source) {

@@ -18,23 +18,21 @@ std::string resolve_prefix(const Module& scope, std::string_view prefix) {
   if (prefix == scope.name() || prefix == prelude_module_name) {
     return std::string(prefix);
   }
-  const auto imported =
-      std::find_if(scope.imports().begin(), scope.imports().end(),
-                   [&](const Module::Import& value) {
-                     return value.prefix() == prefix;
-                   });
+  const auto imported = std::find_if(
+      scope.imports().begin(), scope.imports().end(),
+      [&](const Module::Import& value) { return value.prefix() == prefix; });
   return imported == scope.imports().end() ? std::string(prefix)
                                            : imported->name;
 }
 
-std::optional<Module::Expression> immediate_domain(
-    const Module::Expression& expression,
-    std::span<const Module::Function::GenericDecl> generics,
-    std::span<const Module::ParameterDecl> locals) {
+std::optional<Module::Expression>
+immediate_domain(const Module::Expression& expression,
+                 std::span<const Module::FunctionDecl::GenericDecl> generics,
+                 std::span<const Module::ParameterDecl> locals) {
   using Kind = Module::Expression::Kind;
   if (expression.kind == Kind::Variable) {
-    const auto local = std::find_if(
-        locals.begin(), locals.end(), [&](const auto& candidate) {
+    const auto local =
+        std::find_if(locals.begin(), locals.end(), [&](const auto& candidate) {
           return candidate.name == expression.text;
         });
     if (local != locals.end()) {
@@ -65,13 +63,13 @@ std::optional<Module::Expression> immediate_domain(
 
 class ExpressionCheck {
 public:
-  ExpressionCheck(
-      const Compiler& compiler, const Module& scope,
-      std::span<const Module::Function::GenericDecl> generics,
-      std::span<const Module::ParameterDecl> locals, Diagnostics& diagnostics,
-      std::optional<SourceRange> source, std::string_view subject)
-      : compiler_(compiler), scope_(scope), generics_(generics), locals_(locals),
-        diagnostics_(diagnostics), source_(std::move(source)),
+  ExpressionCheck(const Compiler& compiler, const Module& scope,
+                  std::span<const Module::FunctionDecl::GenericDecl> generics,
+                  std::span<const Module::ParameterDecl> locals,
+                  Diagnostics& diagnostics, std::optional<SourceRange> source,
+                  std::string_view subject)
+      : compiler_(compiler), scope_(scope), generics_(generics),
+        locals_(locals), diagnostics_(diagnostics), source_(std::move(source)),
         subject_(subject) {}
 
   bool run(const Module::Expression& expression,
@@ -86,7 +84,7 @@ private:
     diagnostics_.report("in " + subject_ + ": " + std::move(message), source_);
   }
 
-  const Module::Function::GenericDecl*
+  const Module::FunctionDecl::GenericDecl*
   generic(std::string_view name) const {
     const auto found = std::find_if(
         generics_.begin(), generics_.end(),
@@ -144,11 +142,9 @@ private:
              "' constraining generic '" + std::string(receiver) + "'");
       return true;
     }
-    const auto field =
-        std::find_if(contract->fields().begin(), contract->fields().end(),
-                     [&](const auto& candidate) {
-                       return candidate.name == field_name;
-                     });
+    const auto field = std::find_if(
+        contract->fields().begin(), contract->fields().end(),
+        [&](const auto& candidate) { return candidate.name == field_name; });
     if (field == contract->fields().end() || field->domain != expected) {
       report("unknown or ill-typed derived field '" + expression.text + "'");
     }
@@ -180,10 +176,9 @@ private:
     if (expression.kind == Kind::Variable) {
       const auto* variable = local(expression.text);
       const auto* parameter = generic(expression.text);
-      const auto* actual = variable != nullptr
-                               ? &variable->domain
-                               : parameter != nullptr ? &parameter->domain
-                                                      : nullptr;
+      const auto* actual = variable != nullptr    ? &variable->domain
+                           : parameter != nullptr ? &parameter->domain
+                                                  : nullptr;
       if (actual == nullptr || *actual != expected) {
         report("variable '" + expression.text + "' has the wrong domain");
       }
@@ -233,14 +228,13 @@ private:
     }
     if (expression.kind == Kind::Number || expression.kind == Kind::Boolean ||
         expression.kind == Kind::String) {
-      const bool matches =
-          (expression.kind == Kind::Number &&
-           (domain->element == ValueKind::Integer ||
-            domain->element == ValueKind::Real)) ||
-          (expression.kind == Kind::Boolean &&
-           domain->element == ValueKind::Boolean) ||
-          (expression.kind == Kind::String &&
-           domain->element == ValueKind::String);
+      const bool matches = (expression.kind == Kind::Number &&
+                            (domain->element == ValueKind::Integer ||
+                             domain->element == ValueKind::Real)) ||
+                           (expression.kind == Kind::Boolean &&
+                            domain->element == ValueKind::Boolean) ||
+                           (expression.kind == Kind::String &&
+                            domain->element == ValueKind::String);
       if (!matches) {
         report("literal has the wrong domain");
       }
@@ -260,27 +254,26 @@ private:
       report("malformed operator expression");
       return;
     }
-    const auto fixity =
-        expression.kind == Kind::Prefix
-            ? Module::Function::Fixity::Prefix
-        : expression.kind == Kind::Postfix
-            ? Module::Function::Fixity::Postfix
-            : Module::Function::Fixity::Infix;
-    auto candidates = operator_candidates(compiler_, scope_.name(),
-                                          expression.text, fixity, arity,
-                                          expected);
+    const auto fixity = expression.kind == Kind::Prefix
+                            ? Module::FunctionDecl::Fixity::Prefix
+                        : expression.kind == Kind::Postfix
+                            ? Module::FunctionDecl::Fixity::Postfix
+                            : Module::FunctionDecl::Fixity::Infix;
+    auto candidates = operator_candidates(
+        compiler_, scope_.name(), expression.text, fixity, arity, expected);
     candidates.erase(
-        std::remove_if(
-            candidates.begin(), candidates.end(), [&](const auto& candidate) {
-              for (std::size_t index = 0; index < arity; ++index) {
-                const auto actual = immediate_domain(
-                    expression.arguments[index], generics_, locals_);
-                if (actual && candidate.inputs()[index].domain != *actual) {
-                  return true;
-                }
-              }
-              return false;
-            }),
+        std::remove_if(candidates.begin(), candidates.end(),
+                       [&](const auto& candidate) {
+                         for (std::size_t index = 0; index < arity; ++index) {
+                           const auto actual = immediate_domain(
+                               expression.arguments[index], generics_, locals_);
+                           if (actual &&
+                               candidate.inputs()[index].domain != *actual) {
+                             return true;
+                           }
+                         }
+                         return false;
+                       }),
         candidates.end());
     if (candidates.size() != 1U) {
       report(candidates.empty()
@@ -310,8 +303,8 @@ private:
       bool accepts = true;
       for (std::size_t index = 0; index < expression.arguments.size();
            ++index) {
-        const auto actual = immediate_domain(expression.arguments[index],
-                                             generics_, locals_);
+        const auto actual =
+            immediate_domain(expression.arguments[index], generics_, locals_);
         if (actual &&
             function.inputs()[candidate->parameters[index]].domain != *actual) {
           accepts = false;
@@ -392,7 +385,7 @@ private:
 
   const Compiler& compiler_;
   const Module& scope_;
-  std::span<const Module::Function::GenericDecl> generics_;
+  std::span<const Module::FunctionDecl::GenericDecl> generics_;
   std::span<const Module::ParameterDecl> locals_;
   Diagnostics& diagnostics_;
   std::optional<SourceRange> source_;
@@ -403,7 +396,7 @@ private:
 
 bool check_generic_constraints(
     const Compiler& compiler, const Module& scope,
-    std::span<const Module::Function::GenericDecl> generics,
+    std::span<const Module::FunctionDecl::GenericDecl> generics,
     Diagnostics& diagnostics, std::optional<SourceRange> source,
     std::string_view subject) {
   const std::size_t before = diagnostics.size();
@@ -415,9 +408,8 @@ bool check_generic_constraints(
     const std::string owner =
         dot == std::string::npos
             ? std::string(scope.name())
-            : resolve_prefix(scope,
-                             std::string_view(*generic.constraint).substr(0,
-                                                                          dot));
+            : resolve_prefix(
+                  scope, std::string_view(*generic.constraint).substr(0, dot));
     const std::string_view name =
         dot == std::string::npos
             ? std::string_view(*generic.constraint)
@@ -425,8 +417,8 @@ bool check_generic_constraints(
     const auto module = compiler.module(owner);
     const auto interface = module ? module->interface(name)
                                   : std::optional<Module::InterfaceDecl>{};
-    const std::string prefix = "in " + std::string(subject) + ": generic '" +
-                               generic.name + "' ";
+    const std::string prefix =
+        "in " + std::string(subject) + ": generic '" + generic.name + "' ";
     if (!interface) {
       diagnostics.report(prefix + "references unknown interface '" +
                              *generic.constraint + "'",
@@ -443,7 +435,7 @@ bool check_generic_constraints(
 bool check_declaration_expression(
     const Compiler& compiler, const Module& scope,
     const Module::Expression& expression, const Module::Expression& expected,
-    std::span<const Module::Function::GenericDecl> generics,
+    std::span<const Module::FunctionDecl::GenericDecl> generics,
     std::span<const Module::ParameterDecl> locals, Diagnostics& diagnostics,
     std::optional<SourceRange> source, std::string_view subject) {
   return ExpressionCheck(compiler, scope, generics, locals, diagnostics,

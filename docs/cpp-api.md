@@ -7,7 +7,7 @@ Include the complete public surface with:
 ```
 
 Joggle is a C++20 library. A Module is the sole top-level IR owner.
-`Module::Function` handles are immutable; materialized `ir::Function` body
+`Module::FunctionDecl` handles are immutable; materialized `ir::Function` body
 edits are explicit transactions.
 
 ## Namespaces and ownership
@@ -16,7 +16,7 @@ edits are explicit transactions.
 | --- | --- |
 | `joggle::Compiler` | Linked environment, behavior, execution, diagnostics |
 | `joggle::Module` | Versioned symbol scope and multi-Function IR owner |
-| `joggle::Module::Function` | Named callable member and canonical signature |
+| `joggle::Module::FunctionDecl` | Named callable member and canonical signature |
 | `joggle::Type`, `joggle::Attribute` | Immutable schema instances |
 | `joggle::ir::Function` | Copy-on-write materialized CFG value of a Module Function |
 | `joggle::ir::Block` | CFG node owned by a Function |

@@ -24,7 +24,7 @@ class BodyEvaluator {
   };
 
 public:
-  BodyEvaluator(Compiler& compiler, const Module::Function& function,
+  BodyEvaluator(Compiler& compiler, const Module::FunctionDecl& function,
                 const FunctionBody& body,
                 std::span<const ExecutionValue> arguments,
                 Compiler::EvaluationLimits limits, std::size_t& steps,
@@ -88,9 +88,8 @@ public:
 
 private:
   void report(std::string message, SyntaxRange range) {
-    diagnostics_.report(
-        std::move(message),
-        SourceRange{body_.source, range.begin, range.end});
+    diagnostics_.report(std::move(message),
+                        SourceRange{body_.source, range.begin, range.end});
   }
 
   bool step(SyntaxRange range) {
@@ -101,9 +100,7 @@ private:
     return false;
   }
 
-  StagedValue* local(std::string_view name) {
-    return locals_.find(name);
-  }
+  StagedValue* local(std::string_view name) { return locals_.find(name); }
 
   std::optional<StagedValue> known(ExecutionValue value, SyntaxRange range) {
     auto result = stage(compiler_, std::move(value));
@@ -113,9 +110,9 @@ private:
     return result;
   }
 
-  std::optional<StagedValue>
-  list(const Module::Expression& expression, SyntaxRange range,
-       const Module::ParameterDecl* expected) {
+  std::optional<StagedValue> list(const Module::Expression& expression,
+                                  SyntaxRange range,
+                                  const Module::ParameterDecl* expected) {
     std::vector<ExecutionValue> elements;
     elements.reserve(expression.arguments.size());
     for (const auto& element : expression.arguments) {
@@ -130,8 +127,8 @@ private:
       }
       elements.push_back(*known);
     }
-    const auto domain = expected ? kernel_domain(expected->domain)
-                                 : std::optional<Domain>{};
+    const auto domain =
+        expected ? kernel_domain(expected->domain) : std::optional<Domain>{};
     const std::string_view element_type = [&]() -> std::string_view {
       if (!elements.empty()) {
         return execution_value_type(elements.front());
@@ -246,24 +243,24 @@ private:
         }
       }
     } else if (operand.kind == Module::Expression::Kind::Number) {
-      domain = Domain{
-          operand.text.find_first_of(".eE") == std::string::npos
-              ? ValueKind::Integer
-              : ValueKind::Real,
-          false};
+      domain = Domain{operand.text.find_first_of(".eE") == std::string::npos
+                          ? ValueKind::Integer
+                          : ValueKind::Real,
+                      false};
     }
     return domain && !domain->list
-               ? std::optional<Module::ParameterDecl>{
-                     {"operator result", domain_expression(domain->element),
-                      false, std::nullopt}}
+               ? std::optional<Module::ParameterDecl>{{"operator result",
+                                                       domain_expression(
+                                                           domain->element),
+                                                       false, std::nullopt}}
                : std::nullopt;
   }
 
-  std::optional<std::vector<StagedValue>> call_values(
-      const Module::Expression& expression, SyntaxRange range,
-      std::size_t result_count,
-      std::span<const Module::ParameterDecl> expected_results = {},
-      std::vector<Module::Function> declarations = {}) {
+  std::optional<std::vector<StagedValue>>
+  call_values(const Module::Expression& expression, SyntaxRange range,
+              std::size_t result_count,
+              std::span<const Module::ParameterDecl> expected_results = {},
+              std::vector<Module::FunctionDecl> declarations = {}) {
     if (declarations.empty()) {
       declarations = visible_functions(
           compiler_, function_.symbol().module_name(), expression.text);
@@ -286,8 +283,7 @@ private:
       candidates.push_back(std::move(*shaped));
     }
     if (candidates.empty()) {
-      report("no overload of '" + expression.text +
-                 "' accepts this call shape",
+      report("no overload of '" + expression.text + "' accepts this call shape",
              range);
       return std::nullopt;
     }
@@ -301,8 +297,8 @@ private:
       const bool common = std::all_of(
           candidates.begin() + 1, candidates.end(),
           [&](const CallCandidate& current) {
-            return current.function.inputs()[current.parameters[index]].domain ==
-                   first_parameter.domain;
+            return current.function.inputs()[current.parameters[index]]
+                       .domain == first_parameter.domain;
           });
       auto value = evaluate(expression.arguments[index], range,
                             common ? &first_parameter : nullptr);
@@ -339,8 +335,8 @@ private:
       return std::nullopt;
     }
     if (candidates.size() != 1U) {
-      std::string message = "call to '" + expression.text +
-                            "' is ambiguous between";
+      std::string message =
+          "call to '" + expression.text + "' is ambiguous between";
       for (const auto& current : candidates) {
         message += " '" + current.function.symbol().qualified_name() + "'";
       }
@@ -359,12 +355,12 @@ private:
     for (std::size_t index = 0; index < parameters.size(); ++index) {
       if (!bound[index] && parameters[index].default_value) {
         const auto value = parameter_default(parameters[index]);
-        bound[index] = value ? execution_value(*value, parameters[index])
-                             : std::nullopt;
+        bound[index] =
+            value ? execution_value(*value, parameters[index]) : std::nullopt;
       }
       if (!bound[index]) {
-        report("compiler call is missing argument '" +
-                   parameters[index].name + "'",
+        report("compiler call is missing argument '" + parameters[index].name +
+                   "'",
                range);
         return std::nullopt;
       }
@@ -389,10 +385,10 @@ private:
     return staged;
   }
 
-  std::optional<StagedValue> call(
-      const Module::Expression& expression, SyntaxRange range,
-      const Module::ParameterDecl* expected,
-      std::vector<Module::Function> declarations = {}) {
+  std::optional<StagedValue>
+  call(const Module::Expression& expression, SyntaxRange range,
+       const Module::ParameterDecl* expected,
+       std::vector<Module::FunctionDecl> declarations = {}) {
     const std::span<const Module::ParameterDecl> expected_results =
         expected == nullptr
             ? std::span<const Module::ParameterDecl>{}
@@ -403,9 +399,9 @@ private:
                   : std::nullopt;
   }
 
-  std::optional<StagedValue>
-  evaluate(const Module::Expression& expression, SyntaxRange range,
-           const Module::ParameterDecl* expected) {
+  std::optional<StagedValue> evaluate(const Module::Expression& expression,
+                                      SyntaxRange range,
+                                      const Module::ParameterDecl* expected) {
     if (!step(range)) {
       return std::nullopt;
     }
@@ -482,31 +478,29 @@ private:
                                      expression.kind == Kind::Infix ||
                                      expression.kind == Kind::Postfix;
     if (operator_expression) {
-      const auto fixity =
-          expression.kind == Kind::Prefix
-              ? Module::Function::Fixity::Prefix
-          : expression.kind == Kind::Postfix
-              ? Module::Function::Fixity::Postfix
-              : Module::Function::Fixity::Infix;
+      const auto fixity = expression.kind == Kind::Prefix
+                              ? Module::FunctionDecl::Fixity::Prefix
+                          : expression.kind == Kind::Postfix
+                              ? Module::FunctionDecl::Fixity::Postfix
+                              : Module::FunctionDecl::Fixity::Infix;
       auto inferred = expected == nullptr ? infer_operator_result(expression)
                                           : std::nullopt;
       if (expected == nullptr && inferred) {
         expected = &*inferred;
       }
       auto declarations = visible_operators(
-          compiler_, function_.symbol().module_name(), expression.text,
-          fixity);
+          compiler_, function_.symbol().module_name(), expression.text, fixity);
       if (expected != nullptr && kernel_domain(expected->domain)) {
         declarations.erase(
-            std::remove_if(
-                declarations.begin(), declarations.end(),
-                [&](const Module::Function& declaration) {
-                  const auto results = parameter_results(declaration);
-                  return !ir_inputs(declaration).empty() ||
-                         !ir_results(declaration).empty() ||
-                         results.size() != 1U ||
-                         results.front().domain != expected->domain;
-                }),
+            std::remove_if(declarations.begin(), declarations.end(),
+                           [&](const Module::FunctionDecl& declaration) {
+                             const auto results =
+                                 parameter_results(declaration);
+                             return !ir_inputs(declaration).empty() ||
+                                    !ir_results(declaration).empty() ||
+                                    results.size() != 1U ||
+                                    results.front().domain != expected->domain;
+                           }),
             declarations.end());
       }
       if (!declarations.empty()) {
@@ -576,7 +570,7 @@ private:
         }
         locals_.push();
         Flow flow = sequence(*selected ? std::span(statement.body)
-                                      : std::span(statement.otherwise));
+                                       : std::span(statement.otherwise));
         locals_.pop();
         if (flow.control != Control::Next) {
           return flow;
@@ -616,9 +610,8 @@ private:
                                  statement.expression.range, nullptr);
         const ExecutionValue* payload =
             iterable ? iterable->known_value() : nullptr;
-        auto elements =
-            payload ? list_elements(*payload)
-                    : std::optional<std::vector<ExecutionValue>>{};
+        auto elements = payload ? list_elements(*payload)
+                                : std::optional<std::vector<ExecutionValue>>{};
         if (!elements) {
           report("compiler for iterable must be a Known list",
                  statement.expression.range);
@@ -654,27 +647,26 @@ private:
       using Kind = Module::Expression::Kind;
       const Kind kind = statement.expression.value.kind;
       const bool call_expression = kind == Kind::Call || kind == Kind::Prefix ||
-                                   kind == Kind::Infix ||
-                                   kind == Kind::Postfix;
+                                   kind == Kind::Infix || kind == Kind::Postfix;
       if (call_expression && statement.bindings.size() != 1U) {
-        auto values = call_values(statement.expression.value,
-                                  statement.expression.range,
-                                  statement.bindings.size());
+        auto values =
+            call_values(statement.expression.value, statement.expression.range,
+                        statement.bindings.size());
         if (!values) {
           return {Control::Error, {}};
         }
-        for (std::size_t index = 0; index < statement.bindings.size(); ++index) {
+        for (std::size_t index = 0; index < statement.bindings.size();
+             ++index) {
           const BindingSyntax& binding = statement.bindings[index];
           const bool bound =
               binding.rebind
                   ? locals_.assign(binding.name, std::move((*values)[index]))
                   : locals_.define(binding.name, std::move((*values)[index]));
           if (!bound) {
-            report(binding.rebind
-                       ? "cannot rebind unknown compiler value '" +
-                             binding.name + "'"
-                       : "compiler value '" + binding.name +
-                             "' is already defined in this scope",
+            report(binding.rebind ? "cannot rebind unknown compiler value '" +
+                                        binding.name + "'"
+                                  : "compiler value '" + binding.name +
+                                        "' is already defined in this scope",
                    binding.range);
             return {Control::Error, {}};
           }
@@ -692,8 +684,7 @@ private:
       const BindingSyntax& binding = statement.bindings.front();
       if (binding.rebind) {
         if (!locals_.assign(binding.name, std::move(*value))) {
-          report("cannot rebind unknown compiler value '" + binding.name +
-                     "'",
+          report("cannot rebind unknown compiler value '" + binding.name + "'",
                  binding.range);
           return {Control::Error, {}};
         }
@@ -708,7 +699,7 @@ private:
   }
 
   Compiler& compiler_;
-  Module::Function function_;
+  Module::FunctionDecl function_;
   const FunctionBody& body_;
   Compiler::EvaluationLimits limits_;
   std::size_t& steps_;
@@ -720,12 +711,13 @@ private:
 
 }  // namespace
 
-std::optional<ExecutionValues> execute_body(
-    Compiler& compiler, const Module::Function& function,
-    const FunctionBody& body, std::span<const ExecutionValue> arguments,
-    Compiler::EvaluationLimits limits, std::size_t& steps,
-    bool under_residual_control, Diagnostics& diagnostics,
-    const ExecuteFunction& execute) {
+std::optional<ExecutionValues>
+execute_body(Compiler& compiler, const Module::FunctionDecl& function,
+             const FunctionBody& body,
+             std::span<const ExecutionValue> arguments,
+             Compiler::EvaluationLimits limits, std::size_t& steps,
+             bool under_residual_control, Diagnostics& diagnostics,
+             const ExecuteFunction& execute) {
   if (body.blocks.size() != 1U || body.blocks.front().terminator) {
     diagnostics.report(
         "compiler execution of function '" +
@@ -738,14 +730,12 @@ std::optional<ExecutionValues> execute_body(
       .run();
 }
 
-bool verify_body_calls(Compiler& compiler,
-                       const Module::Function& function,
+bool verify_body_calls(Compiler& compiler, const Module::FunctionDecl& function,
                        const FunctionBody& body, Diagnostics& diagnostics) {
   const std::size_t before = diagnostics.size();
   const auto report = [&](std::string message, SyntaxRange range) {
-    diagnostics.report(
-        std::move(message),
-        SourceRange{body.source, range.begin, range.end});
+    diagnostics.report(std::move(message),
+                       SourceRange{body.source, range.begin, range.end});
   };
   const auto verify_expression = [&](const auto& self,
                                      const ExpressionSyntax& syntax) -> void {
@@ -766,12 +756,11 @@ bool verify_body_calls(Compiler& compiler,
     } else if (expression.kind == Kind::Prefix ||
                expression.kind == Kind::Infix ||
                expression.kind == Kind::Postfix) {
-      const auto fixity =
-          expression.kind == Kind::Prefix
-              ? Module::Function::Fixity::Prefix
-          : expression.kind == Kind::Postfix
-              ? Module::Function::Fixity::Postfix
-              : Module::Function::Fixity::Infix;
+      const auto fixity = expression.kind == Kind::Prefix
+                              ? Module::FunctionDecl::Fixity::Prefix
+                          : expression.kind == Kind::Postfix
+                              ? Module::FunctionDecl::Fixity::Postfix
+                              : Module::FunctionDecl::Fixity::Infix;
       const auto declarations = visible_operators(
           compiler, function.symbol().module_name(), expression.text, fixity);
       const bool shaped = std::any_of(
@@ -788,9 +777,8 @@ bool verify_body_calls(Compiler& compiler,
       self(self, ExpressionSyntax{argument, syntax.range});
     }
   };
-  const auto verify_statements = [&](const auto& self,
-                                     std::span<const StatementSyntax> code)
-      -> void {
+  const auto verify_statements =
+      [&](const auto& self, std::span<const StatementSyntax> code) -> void {
     for (const StatementSyntax& statement : code) {
       if (statement.kind == StatementSyntax::Kind::Expression ||
           statement.kind == StatementSyntax::Kind::If ||

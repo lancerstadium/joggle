@@ -29,7 +29,7 @@ struct ValueData {
   Origin origin = Origin::FunctionArgument;
   std::uint64_t owner = 0;
   std::size_t index = 0;
-  std::optional<Module::Function> reference;
+  std::optional<Module::FunctionDecl> reference;
 };
 
 struct KnownValueStorage {
@@ -48,7 +48,7 @@ struct StoredArgument {
 };
 
 struct InstructionData {
-  Module::Function schema;
+  Module::FunctionDecl schema;
   std::uint64_t parent = 0;
   std::vector<StoredArgument> arguments;
   std::vector<std::uint64_t> results;
@@ -75,7 +75,7 @@ struct BlockData {
 
 struct FunctionState {
   struct Signature {
-    Module::Function declaration;
+    Module::FunctionDecl declaration;
     std::vector<Type> arguments;
     std::vector<Type> results;
   };
@@ -747,7 +747,7 @@ bool verify_instruction_contracts(const FunctionState& function,
          function.blocks.at(block_id).instructions) {
       const InstructionData& instruction =
           function.instructions.at(instruction_id);
-      const Module::Function schema = instruction.schema;
+      const Module::FunctionDecl schema = instruction.schema;
 
       const auto& contract = detail::FunctionTypeAccess::get(schema);
       std::vector<Type> arguments;
@@ -811,7 +811,7 @@ bool verify_instruction_contracts(const FunctionState& function,
   }
   return verify_instruction_contracts(
       function, diagnostics,
-      [&](const Module::Function& schema, std::span<const Type> arguments,
+      [&](const Module::FunctionDecl& schema, std::span<const Type> arguments,
           std::span<const std::optional<ParameterValue>> known_arguments,
           std::span<const std::optional<Type>> results, Diagnostics& reported,
           std::optional<SourceRange> location) {
@@ -825,7 +825,7 @@ bool verify_instruction_contracts(const FunctionState& function,
                                   Diagnostics& diagnostics) {
   return verify_instruction_contracts(
       function, diagnostics,
-      [&](const Module::Function& schema, std::span<const Type> arguments,
+      [&](const Module::FunctionDecl& schema, std::span<const Type> arguments,
           std::span<const std::optional<ParameterValue>> known_arguments,
           std::span<const std::optional<Type>> results, Diagnostics& reported,
           std::optional<SourceRange> location) {
@@ -885,7 +885,7 @@ bool FunctionAccess::verify_contracts(const ir::Function& function,
 }
 
 void FunctionAccess::declare(ir::Function& function,
-                             Module::Function declaration,
+                             Module::FunctionDecl declaration,
                              std::vector<Type> argument_types,
                              std::vector<Type> result_types) {
   auto& identity = function.function_;
@@ -1010,7 +1010,7 @@ std::optional<Instruction> Value::defining_instruction() const {
   return Instruction(function_, found->second.owner);
 }
 
-std::optional<Module::Function> Value::referenced_function() const {
+std::optional<Module::FunctionDecl> Value::referenced_function() const {
   if (!function_) {
     return std::nullopt;
   }
@@ -1029,7 +1029,7 @@ bool Instruction::valid() const {
   return function_ && contains(function_->state->instructions, id_);
 }
 
-Module::Function Instruction::callee() const {
+Module::FunctionDecl Instruction::callee() const {
   const auto found = function_->state->instructions.find(id_);
   if (found == function_->state->instructions.end()) {
     throw std::logic_error("instruction is no longer valid");
@@ -1285,7 +1285,7 @@ Value Function::Edit::argument(Type type) {
   return Function::make_value(state_->function, id);
 }
 
-Value Function::Edit::reference(Module::Function function, Type type) {
+Value Function::Edit::reference(Module::FunctionDecl function, Type type) {
   if (!state_ || !state_->active) {
     throw std::logic_error("cannot edit an inactive function");
   }
@@ -1323,7 +1323,7 @@ Block Function::Edit::block(std::vector<Type> argument_types) {
   return Function::make_block(state_->function, block_id);
 }
 
-Instruction Function::Edit::append(Module::Function schema,
+Instruction Function::Edit::append(Module::FunctionDecl schema,
                                    std::vector<Value> arguments,
                                    std::vector<Type> result_types) {
   return add(
@@ -1332,7 +1332,7 @@ Instruction Function::Edit::append(Module::Function schema,
       std::move(result_types));
 }
 
-Instruction Function::Edit::append(Block block, Module::Function schema,
+Instruction Function::Edit::append(Block block, Module::FunctionDecl schema,
                                    std::vector<Value> arguments,
                                    std::vector<Type> result_types) {
   return add(std::move(block), std::nullopt, std::move(schema),
@@ -1340,7 +1340,7 @@ Instruction Function::Edit::append(Block block, Module::Function schema,
 }
 
 Instruction Function::Edit::insert(Instruction before,
-                                   Module::Function schema,
+                                   Module::FunctionDecl schema,
                                    std::vector<Value> arguments,
                                    std::vector<Type> result_types) {
   check_same_function(state_->function, before, "insertion point");
@@ -1349,7 +1349,7 @@ Instruction Function::Edit::insert(Instruction before,
 }
 
 Instruction Function::Edit::add(Block block, std::optional<Instruction> before,
-                                Module::Function schema,
+                                Module::FunctionDecl schema,
                                 std::vector<Value> arguments,
                                 std::vector<Type> result_types) {
   check_same_function(state_->function, block, "block");
@@ -1621,7 +1621,7 @@ void Function::Edit::replace(Value from, Value to) {
 }
 
 Instruction Function::Edit::replace(Instruction instruction,
-                                    Module::Function schema) {
+                                    Module::FunctionDecl schema) {
   check_same_function(state_->function, instruction, "instruction");
   std::vector<Type> result_types;
   result_types.reserve(instruction.results().size());
@@ -1785,9 +1785,9 @@ std::vector<Value> Function::arguments() const {
   return result;
 }
 
-std::optional<Module::Function> Function::declaration() const {
+std::optional<Module::FunctionDecl> Function::declaration() const {
   return function_->state->signature
-             ? std::optional<Module::Function>{function_->state->signature
+             ? std::optional<Module::FunctionDecl>{function_->state->signature
                                                        ->declaration}
              : std::nullopt;
 }

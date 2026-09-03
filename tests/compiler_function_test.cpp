@@ -220,17 +220,14 @@ module pipeline@1.0.0 {
   const auto read = pipeline ? pipeline->function("read") : std::nullopt;
   const auto resolved_read = compiler.lookup("pipeline.read");
   const auto emit = pipeline ? pipeline->function("emit") : std::nullopt;
-  const auto inspect =
-      pipeline ? pipeline->function("inspect") : std::nullopt;
-  const auto compile =
-      pipeline ? pipeline->function("compile") : std::nullopt;
-  const auto consume =
-      pipeline ? pipeline->function("consume") : std::nullopt;
+  const auto inspect = pipeline ? pipeline->function("inspect") : std::nullopt;
+  const auto compile = pipeline ? pipeline->function("compile") : std::nullopt;
+  const auto consume = pipeline ? pipeline->function("consume") : std::nullopt;
   const auto module_identity =
       pipeline ? pipeline->function("module_identity") : std::nullopt;
   const auto convert_words = pipeline
                                  ? pipeline->overloads("convert_word")
-                                 : std::vector<joggle::Module::Function>{};
+                                 : std::vector<joggle::Module::FunctionDecl>{};
   const auto configured_copy =
       pipeline ? pipeline->function("configured_copy") : std::nullopt;
   const auto compute_width =
@@ -246,8 +243,7 @@ module pipeline@1.0.0 {
   const auto residual_dependent =
       pipeline ? pipeline->function("residual_dependent") : std::nullopt;
   const auto append = pipeline ? pipeline->function("append") : std::nullopt;
-  const auto nonzero =
-      pipeline ? pipeline->function("nonzero") : std::nullopt;
+  const auto nonzero = pipeline ? pipeline->function("nonzero") : std::nullopt;
   const auto select = pipeline ? pipeline->function("select") : std::nullopt;
   const auto repeat = pipeline ? pipeline->function("repeat") : std::nullopt;
   const auto choose = pipeline ? pipeline->function("choose") : std::nullopt;
@@ -255,7 +251,7 @@ module pipeline@1.0.0 {
   const auto last = pipeline ? pipeline->function("last") : std::nullopt;
   const auto typed = pipeline ? pipeline->function("typed") : std::nullopt;
   const auto twice = pipeline ? pipeline->overloads("twice")
-                              : std::vector<joggle::Module::Function>{};
+                              : std::vector<joggle::Module::FunctionDecl>{};
   const auto add_offset =
       pipeline ? pipeline->function("add_offset") : std::nullopt;
   const auto less = pipeline ? pipeline->function("less") : std::nullopt;
@@ -263,8 +259,7 @@ module pipeline@1.0.0 {
       pipeline ? pipeline->function("text_less") : std::nullopt;
   const auto less_equal =
       pipeline ? pipeline->function("less_equal") : std::nullopt;
-  const auto greater =
-      pipeline ? pipeline->function("greater") : std::nullopt;
+  const auto greater = pipeline ? pipeline->function("greater") : std::nullopt;
   const auto greater_equal =
       pipeline ? pipeline->function("greater_equal") : std::nullopt;
   const auto equal = pipeline ? pipeline->function("equal") : std::nullopt;
@@ -272,8 +267,7 @@ module pipeline@1.0.0 {
       pipeline ? pipeline->function("not_equal") : std::nullopt;
   const auto logical_not =
       pipeline ? pipeline->function("logical_not") : std::nullopt;
-  const auto earlier =
-      pipeline ? pipeline->function("earlier") : std::nullopt;
+  const auto earlier = pipeline ? pipeline->function("earlier") : std::nullopt;
   const auto invert = pipeline ? pipeline->function("invert") : std::nullopt;
   const auto ordered_typed =
       pipeline ? pipeline->function("ordered_typed") : std::nullopt;
@@ -296,17 +290,16 @@ module pipeline@1.0.0 {
   const auto divide = pipeline ? pipeline->function("divide") : std::nullopt;
   const auto divide_exact =
       pipeline ? pipeline->function("divide_exact") : std::nullopt;
-  const auto observe =
-      pipeline ? pipeline->function("observe") : std::nullopt;
+  const auto observe = pipeline ? pipeline->function("observe") : std::nullopt;
   const auto observe_once =
       pipeline ? pipeline->function("observe_once") : std::nullopt;
   const auto fork = pipeline ? pipeline->function("fork") : std::nullopt;
   const auto relay_fork =
       pipeline ? pipeline->function("relay_fork") : std::nullopt;
   if (!integer_decl || !arith_cast_decl || !format_decl || !canonicalize ||
-      !clean || !read || !resolved_read || !emit || !inspect || !compile || !consume ||
-      !module_identity || convert_words.size() != 2U || !configured_copy ||
-      !compute_width || !width_copy || !residual_overload ||
+      !clean || !read || !resolved_read || !emit || !inspect || !compile ||
+      !consume || !module_identity || convert_words.size() != 2U ||
+      !configured_copy || !compute_width || !width_copy || !residual_overload ||
       !residual_arguments || !residual_variadic || !residual_dependent ||
       !append || !nonzero || !select || !repeat || !choose || !once || !last ||
       !typed || twice.size() != 2U || !add_offset || !less || !text_less ||
@@ -368,23 +361,25 @@ module pipeline@1.0.0 {
       *emit, [](const joggle::ir::Function& current) -> joggle::Bytes {
         return {static_cast<std::byte>(current.instructions().size())};
       });
-  compiler.bind(*canonicalize, [arith_cast_decl](
-                                   joggle::ir::Function current,
-                                   joggle::Diagnostics& diagnostics)
-                                   -> std::optional<joggle::ir::Function> {
-    auto edit = current.edit();
-    for (const joggle::ir::Instruction& instruction : current.instructions()) {
-      if (instruction.callee() != *arith_cast_decl) {
-        continue;
-      }
-      edit.replace(instruction.result(0), instruction.arguments().front());
-      edit.erase(instruction);
-    }
-    if (!edit.commit(diagnostics)) {
-      return std::nullopt;
-    }
-    return current;
-  });
+  compiler.bind(*canonicalize,
+                [arith_cast_decl](joggle::ir::Function current,
+                                  joggle::Diagnostics& diagnostics)
+                    -> std::optional<joggle::ir::Function> {
+                  auto edit = current.edit();
+                  for (const joggle::ir::Instruction& instruction :
+                       current.instructions()) {
+                    if (instruction.callee() != *arith_cast_decl) {
+                      continue;
+                    }
+                    edit.replace(instruction.result(0),
+                                 instruction.arguments().front());
+                    edit.erase(instruction);
+                  }
+                  if (!edit.commit(diagnostics)) {
+                    return std::nullopt;
+                  }
+                  return current;
+                });
   bool consumed = false;
   compiler.bind(*consume, [&](const joggle::Bytes&) { consumed = true; });
   std::size_t append_calls = 0;
@@ -511,10 +506,12 @@ module pipeline@1.0.0 {
   const auto overload_typed_function = compiler.materialize(*overload_typed);
   const auto default_typed_function = compiler.materialize(*default_typed);
   const auto staged_overload_function = compiler.materialize(*staged_overload);
-  const auto residual_overload_function = compiler.materialize(*residual_overload);
+  const auto residual_overload_function =
+      compiler.materialize(*residual_overload);
   const auto residual_arguments_function =
       compiler.materialize(*residual_arguments);
-  const auto residual_variadic_function = compiler.materialize(*residual_variadic);
+  const auto residual_variadic_function =
+      compiler.materialize(*residual_variadic);
   const auto residual_dependent_function =
       compiler.materialize(*residual_dependent);
   const auto relay_fork_function = compiler.materialize(*relay_fork);
@@ -609,7 +606,7 @@ module pipeline@1.0.0 {
   ok &= expect(bits && *bits == 8,
                "derived parameters share the ordinary Type query path");
   ok &= expect(canonicalize->form() ==
-                   joggle::Module::Function::Form::External,
+                   joggle::Module::FunctionDecl::Form::External,
                "a native transformation uses an ordinary function declaration");
   const auto input_revision = function->revision();
   auto cleaned = compiler.run<joggle::ir::Function>(*clean, *function);
@@ -692,13 +689,12 @@ module pipeline@1.0.0 {
   if (!guarded_touch) {
     return EXIT_FAILURE;
   }
-  guarded_compiler.bind(
-      *guarded_touch,
-      [&](joggle::Compiler&, joggle::ir::Function function,
-          joggle::Diagnostics&) {
-        transform_called = true;
-        return function;
-      });
+  guarded_compiler.bind(*guarded_touch,
+                        [&](joggle::Compiler&, joggle::ir::Function function,
+                            joggle::Diagnostics&) {
+                          transform_called = true;
+                          return function;
+                        });
   ok &= expect(!guarded_compiler.run(*guarded_function, "guarded.touch") &&
                    !transform_called && !guarded_compiler.ok(),
                "a compiler function does not execute on a Function rejected "
@@ -717,12 +713,12 @@ module pipeline@1.0.0 {
     if (!noop) {
       return EXIT_FAILURE;
     }
-    named_compiler.bind(*noop, [&](joggle::Compiler&,
-                                   joggle::ir::Function function,
-                                   joggle::Diagnostics&) {
-      named_called = true;
-      return function;
-    });
+    named_compiler.bind(*noop,
+                        [&](joggle::Compiler&, joggle::ir::Function function,
+                            joggle::Diagnostics&) {
+                          named_called = true;
+                          return function;
+                        });
   }
   const bool unqualified_run = named_linked && named_function &&
                                named_compiler.run(*named_function, "noop");
@@ -992,8 +988,7 @@ module lists@1.0.0 {
   const auto lists_module = lists.module("lists");
   const auto reverse =
       lists_module ? lists_module->function("reverse") : std::nullopt;
-  const auto sum =
-      lists_module ? lists_module->function("sum") : std::nullopt;
+  const auto sum = lists_module ? lists_module->function("sum") : std::nullopt;
   if (!lists_linked || !reverse || !sum) {
     lists.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -1039,9 +1034,8 @@ module module_validation@1.0.0 {
   const auto validation_identity = validation_module
                                        ? validation_module->function("identity")
                                        : std::nullopt;
-  const auto module_produce = validation_module
-                                  ? validation_module->function("produce")
-                                  : std::nullopt;
+  const auto module_produce =
+      validation_module ? validation_module->function("produce") : std::nullopt;
   auto invalid_body = module_validation.body();
   if (!module_validation_linked || !validation_word || !forbidden ||
       !validation_identity || !module_produce || !invalid_body) {
@@ -1069,12 +1063,11 @@ module module_validation@1.0.0 {
     invalid_body_diagnostics.print(std::cerr);
     return EXIT_FAILURE;
   }
-  module_validation.verify(
-      *forbidden,
-      [](const joggle::ir::Instruction&, joggle::Diagnostics& diagnostics) {
-        diagnostics.report("forbidden call reached a Module boundary");
-        return false;
-      });
+  module_validation.verify(*forbidden, [](const joggle::ir::Instruction&,
+                                          joggle::Diagnostics& diagnostics) {
+    diagnostics.report("forbidden call reached a Module boundary");
+    return false;
+  });
   const bool public_module_valid = module_validation.verify(invalid_module);
   bool identity_called = false;
   module_validation.bind(*validation_identity, [&](joggle::Module input) {

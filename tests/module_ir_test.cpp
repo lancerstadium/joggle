@@ -42,7 +42,8 @@ module module_defs@1.0.0 {
   compiler.add(source, "module-defs.joggle");
   const bool linked = compiler.link();
   auto main = linked ? compiler.materialize("module_defs.main") : std::nullopt;
-  auto choose = linked ? compiler.materialize("module_defs.choose") : std::nullopt;
+  auto choose =
+      linked ? compiler.materialize("module_defs.choose") : std::nullopt;
   const auto definitions = compiler.module("module_defs");
   const auto prelude = compiler.module("prelude");
   const auto callback_decl =
@@ -95,7 +96,7 @@ module module_defs@1.0.0 {
   bool ok = true;
   ok &= expect(materialized_main &&
                    materialized_main->form() ==
-                       joggle::Module::Function::Form::Body &&
+                       joggle::Module::FunctionDecl::Form::Body &&
                    materialized_main->inputs().empty() &&
                    materialized_main->results().size() == 1U &&
                    module.functions().size() == 3U,
@@ -119,8 +120,9 @@ module module_defs@1.0.0 {
   const bool replay_linked = replay.link();
   const auto replay_main =
       replay_linked ? replay.materialize("compiled_module.main") : std::nullopt;
-  const auto replay_choose =
-      replay_linked ? replay.materialize("compiled_module.choose") : std::nullopt;
+  const auto replay_choose = replay_linked
+                                 ? replay.materialize("compiled_module.choose")
+                                 : std::nullopt;
   const auto replay_callback =
       replay_linked ? replay.materialize("compiled_module.callback_value")
                     : std::nullopt;
@@ -146,15 +148,14 @@ module module_defs@1.0.0 {
   joggle::Module mixed = *definitions;
   joggle::Diagnostics mixed_diagnostics;
   const bool mixed_inserted =
-      mixed_main && mixed.insert("compiled_main", std::move(*mixed_main),
-                                 mixed_diagnostics);
+      mixed_main &&
+      mixed.insert("compiled_main", std::move(*mixed_main), mixed_diagnostics);
   const std::string mixed_text = mixed_inserted ? joggle::format(mixed) : "";
   joggle::Diagnostics mixed_parse_diagnostics;
   const auto mixed_reparsed =
-      mixed_inserted
-          ? joggle::parse_module(mixed_text, mixed_parse_diagnostics,
-                                 "mixed-module.joggle")
-          : std::nullopt;
+      mixed_inserted ? joggle::parse_module(mixed_text, mixed_parse_diagnostics,
+                                            "mixed-module.joggle")
+                     : std::nullopt;
   ok &= expect(mixed_inserted && mixed_diagnostics.ok() && mixed_reparsed &&
                    mixed_reparsed->function("source") &&
                    mixed_reparsed->function("compiled_main") &&

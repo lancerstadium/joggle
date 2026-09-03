@@ -12,14 +12,14 @@ The source and C++ names correspond directly:
 | Source concept | C++ type | Meaning |
 | --- | --- | --- |
 | `module name@version { ... }` / `module` | `joggle::Module` | The single identity, symbol, import, and multi-Function IR owner |
-| `fn` / `function` | `joggle::Module::Function` | One named callable member with a canonical signature |
+| `fn` / `function` | `joggle::Module::FunctionDecl` | One named callable member with a canonical signature |
 | materialized function body | `joggle::ir::Function` | Optional executable CFG and def-use graph owned by that member |
 
 All executable IR ownership types share one namespace and one hierarchy:
 
 ```text
 joggle::Module
-  └─ joggle::Module::Function
+  └─ joggle::Module::FunctionDecl
        └─ optional joggle::ir::Function body
             └─ joggle::ir::Block
                  ├─ joggle::ir::Instruction
@@ -141,7 +141,7 @@ optional behavior libraries. This boundary keeps the core small while leaving
 experiments inspectable and serializable.
 
 Prelude's `module` is represented by `joggle::Module`; its `function` value is
-the materialized `joggle::ir::Function` body of a `Module::Function`. These
+the materialized `joggle::ir::Function` body of a `Module::FunctionDecl`. These
 are the only core-owned host artifact mappings. Extension-owned schedules,
 estimates, traces, object files, or target descriptions use ordinary declared
 types and `Compiler::represent`.

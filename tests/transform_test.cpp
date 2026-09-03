@@ -51,8 +51,7 @@ module mapping@1.0.0 {
 
   const auto schema = compiler.module("mapping");
   const auto keep = schema ? schema->function("keep") : std::nullopt;
-  const auto converted =
-      schema ? schema->function("converted") : std::nullopt;
+  const auto converted = schema ? schema->function("converted") : std::nullopt;
   const auto other = schema ? schema->function("other") : std::nullopt;
   const auto binary = schema ? schema->function("binary") : std::nullopt;
   auto first = compiler.materialize("mapping.first");
@@ -72,7 +71,7 @@ module mapping@1.0.0 {
   const auto no_op = joggle::ir::map_calls(
       *first,
       [](const joggle::ir::Instruction&)
-          -> std::optional<joggle::Module::Function> {
+          -> std::optional<joggle::Module::FunctionDecl> {
         return std::nullopt;
       },
       no_op_diagnostics);
@@ -144,25 +143,24 @@ module mapping@1.0.0 {
         return instruction.callee() != *keep;
       },
       conversion_diagnostics);
-  ok &= expect(conversion && *conversion == 1U &&
-                   conversion_diagnostics.ok() &&
+  ok &= expect(conversion && *conversion == 1U && conversion_diagnostics.ok() &&
                    convertible->revision() != convertible_revision &&
                    convertible->instructions().front().callee() == *converted,
                "conversion publishes a rewritten legal Function");
 
-  const auto staged_rewrite =
-      [&](const joggle::ir::Instruction& instruction,
-          joggle::ir::Function::Edit& edit, joggle::Diagnostics&) {
-        if (instruction.callee() == *keep) {
-          edit.replace(instruction, *converted);
-          return true;
-        }
-        if (instruction.callee() == *converted) {
-          edit.replace(instruction, *other);
-          return true;
-        }
-        return false;
-      };
+  const auto staged_rewrite = [&](const joggle::ir::Instruction& instruction,
+                                  joggle::ir::Function::Edit& edit,
+                                  joggle::Diagnostics&) {
+    if (instruction.callee() == *keep) {
+      edit.replace(instruction, *converted);
+      return true;
+    }
+    if (instruction.callee() == *converted) {
+      edit.replace(instruction, *other);
+      return true;
+    }
+    return false;
+  };
   joggle::Diagnostics fixedpoint_diagnostics;
   const auto fixedpoint_changes = joggle::ir::rewrite_to_fixpoint(
       *fixedpoint, staged_rewrite, 3U, fixedpoint_diagnostics);
@@ -229,8 +227,7 @@ module mapping@1.0.0 {
   const auto fixedpoint_module_changes = joggle::ir::rewrite_to_fixpoint(
       fixedpoint_module, staged_rewrite, 3U, fixedpoint_module_diagnostics);
   const auto fixedpoint_first = fixedpoint_module.function("first");
-  ok &= expect(fixedpoint_module_changes &&
-                   *fixedpoint_module_changes == 2U &&
+  ok &= expect(fixedpoint_module_changes && *fixedpoint_module_changes == 2U &&
                    fixedpoint_module_diagnostics.ok() && fixedpoint_first &&
                    fixedpoint_first->body() != nullptr &&
                    fixedpoint_first->body()->instructions().front().callee() ==
@@ -242,23 +239,22 @@ module mapping@1.0.0 {
   const auto module_no_op = joggle::ir::map_calls(
       module,
       [](const joggle::ir::Instruction&)
-          -> std::optional<joggle::Module::Function> {
+          -> std::optional<joggle::Module::FunctionDecl> {
         return std::nullopt;
       },
       module_no_op_diagnostics);
-  ok &= expect(
-      module_no_op && *module_no_op == 0U && module_no_op_diagnostics.ok() &&
-          module.digest() == original_digest &&
-          read_body("first") == original_first &&
-          read_body("second") == original_second,
-      "a no-op Module mapping preserves shared Function storage");
+  ok &= expect(module_no_op && *module_no_op == 0U &&
+                   module_no_op_diagnostics.ok() &&
+                   module.digest() == original_digest &&
+                   read_body("first") == original_first &&
+                   read_body("second") == original_second,
+               "a no-op Module mapping preserves shared Function storage");
 
   joggle::Diagnostics module_failure_diagnostics;
   const auto module_failure = joggle::ir::convert(
       module,
       [&](const joggle::ir::Instruction& instruction,
-          joggle::ir::Function::Edit& edit,
-          joggle::Diagnostics&) {
+          joggle::ir::Function::Edit& edit, joggle::Diagnostics&) {
         if (instruction.callee() == *keep) {
           edit.replace(instruction, *converted);
           return true;
@@ -271,15 +267,14 @@ module mapping@1.0.0 {
       module_failure_diagnostics);
   const auto* unchanged_first = read_body("first");
   const auto* unchanged_second = read_body("second");
-  ok &= expect(
-      !module_failure && !module_failure_diagnostics.ok() &&
-          module_failure_diagnostics.entries().front().message.find(
-              "function 'second'") != std::string::npos &&
-          module.digest() == original_digest && unchanged_first != nullptr &&
-          unchanged_second != nullptr &&
-          unchanged_first->instructions().front().callee() == *keep &&
-          unchanged_second->instructions().front().callee() == *other,
-      "an illegal whole-Module conversion publishes no partial edits");
+  ok &= expect(!module_failure && !module_failure_diagnostics.ok() &&
+                   module_failure_diagnostics.entries().front().message.find(
+                       "function 'second'") != std::string::npos &&
+                   module.digest() == original_digest &&
+                   unchanged_first != nullptr && unchanged_second != nullptr &&
+                   unchanged_first->instructions().front().callee() == *keep &&
+                   unchanged_second->instructions().front().callee() == *other,
+               "an illegal whole-Module conversion publishes no partial edits");
 
   joggle::Diagnostics module_success_diagnostics;
   const auto module_success = joggle::ir::replace_calls(

@@ -34,7 +34,7 @@ materialized bodies:
 
 - `module` / `joggle::Module` is the identity, symbol, import, and ownership
   boundary;
-- `fn` / `joggle::Module::Function` is one named callable member with its
+- `fn` / `joggle::Module::FunctionDecl` is one named callable member with its
   signature;
 - a materialized member body is `joggle::ir::Function`, an editable CFG inside
   that Module.
@@ -120,7 +120,7 @@ auto changed = joggle::ir::replace_calls(
 auto selected = joggle::ir::map_calls(
     module,
     [&](const joggle::ir::Instruction& instruction)
-        -> std::optional<joggle::Module::Function> {
+        -> std::optional<joggle::Module::FunctionDecl> {
       return compiler.conforms(instruction.callee(), elementwise)
                  ? choose_replacement(instruction)
                  : std::nullopt;

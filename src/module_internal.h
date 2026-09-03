@@ -16,7 +16,7 @@ struct FunctionBody;
 
 using TypeExpression = Module::Expression;
 
-using GenericDefinition = Module::Function::GenericDecl;
+using GenericDefinition = Module::FunctionDecl::GenericDecl;
 
 struct FunctionTypeContract {
   std::vector<GenericDefinition> generics;
@@ -31,49 +31,49 @@ struct FunctionTypeContract {
 };
 
 struct FunctionTypeAccess {
-  static const FunctionTypeContract& get(const Module::Function&);
+  static const FunctionTypeContract& get(const Module::FunctionDecl&);
   static std::vector<Module::ParameterDecl>
-  parameter_inputs(const Module::Function&);
+  parameter_inputs(const Module::FunctionDecl&);
   static std::vector<Module::ParameterDecl>
-  ir_inputs(const Module::Function&);
+  ir_inputs(const Module::FunctionDecl&);
   static std::vector<Module::ParameterDecl>
-  parameter_results(const Module::Function&);
+  parameter_results(const Module::FunctionDecl&);
   static std::vector<Module::ParameterDecl>
-  ir_results(const Module::Function&);
+  ir_results(const Module::FunctionDecl&);
 };
 
 inline std::vector<Module::ParameterDecl>
-parameter_inputs(const Module::Function& function) {
+parameter_inputs(const Module::FunctionDecl& function) {
   return FunctionTypeAccess::parameter_inputs(function);
 }
 
 inline std::vector<Module::ParameterDecl>
-ir_inputs(const Module::Function& function) {
+ir_inputs(const Module::FunctionDecl& function) {
   return FunctionTypeAccess::ir_inputs(function);
 }
 
 inline std::vector<Module::ParameterDecl>
-parameter_results(const Module::Function& function) {
+parameter_results(const Module::FunctionDecl& function) {
   return FunctionTypeAccess::parameter_results(function);
 }
 
 inline std::vector<Module::ParameterDecl>
-ir_results(const Module::Function& function) {
+ir_results(const Module::FunctionDecl& function) {
   return FunctionTypeAccess::ir_results(function);
 }
 
 // True when a body can be instantiated without caller-supplied Known values
 // or module-type context. Module validation uses this concrete default
 // specialization in addition to declaration-level generic checking.
-bool has_default_specialization(const Module::Function& function);
+bool has_default_specialization(const Module::FunctionDecl& function);
 
 struct ModuleAccess {
   static std::shared_ptr<const FunctionBody> body(const Module& module,
-                                                  const Module::Function&);
+                                                  const Module::FunctionDecl&);
   static const Module::Expression*
-  expression(const Module::Function& function);
+  expression(const Module::FunctionDecl& function);
   static const Module::Expression*
-  returned_expression(const Module::Function& function);
+  returned_expression(const Module::FunctionDecl& function);
   static std::optional<SourceRange> import_source(const Module& module,
                                                   std::size_t index);
   static std::optional<SourceRange> declaration_source(const Module& module,

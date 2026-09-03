@@ -17,10 +17,9 @@ constexpr int generic_argument_precedence = 41;
 
 class ExpressionParser {
 public:
-  ExpressionParser(
-      Lexer& lexer, Token& current, Diagnostics& diagnostics,
-      std::string_view source,
-      std::span<const Module::Function::GenericDecl> variables)
+  ExpressionParser(Lexer& lexer, Token& current, Diagnostics& diagnostics,
+                   std::string_view source,
+                   std::span<const Module::FunctionDecl::GenericDecl> variables)
       : lexer_(lexer), current_(current), diagnostics_(diagnostics),
         source_(source), variables_(variables) {}
 
@@ -40,8 +39,7 @@ public:
       const TokenKind first = current_.kind;
       const std::string symbol = take_operator();
       const int precedence = operator_precedence(symbol);
-      if (first == TokenKind::Greater &&
-          precedence < minimum_precedence) {
+      if (first == TokenKind::Greater && precedence < minimum_precedence) {
         lexer_ = lookahead_lexer;
         current_ = lookahead_current;
         break;
@@ -140,10 +138,9 @@ private:
   }
 
   bool variable(std::string_view name) const {
-    return std::any_of(variables_.begin(), variables_.end(),
-                       [&](const auto& candidate) {
-                         return candidate.name == name;
-                       });
+    return std::any_of(
+        variables_.begin(), variables_.end(),
+        [&](const auto& candidate) { return candidate.name == name; });
   }
 
   Module::Expression primary() {
@@ -235,8 +232,8 @@ private:
     }
 
     result.text = reference("an expression");
-    if (result.text.find('.') == std::string::npos &&
-        variable(result.text) && !is(TokenKind::LeftParen)) {
+    if (result.text.find('.') == std::string::npos && variable(result.text) &&
+        !is(TokenKind::LeftParen)) {
       result.kind = Kind::Variable;
       return result;
     }
@@ -334,19 +331,26 @@ private:
       return 0;
     }
     switch (symbol.front()) {
-    case '|': return 10;
-    case '^': return 20;
-    case '&': return 30;
+    case '|':
+      return 10;
+    case '^':
+      return 20;
+    case '&':
+      return 30;
     case '=':
     case '!':
     case '<':
-    case '>': return 40;
+    case '>':
+      return 40;
     case '+':
-    case '-': return 50;
+    case '-':
+      return 50;
     case '*':
     case '/':
-    case '%': return 60;
-    default: return 45;
+    case '%':
+      return 60;
+    default:
+      return 45;
     }
   }
 
@@ -360,16 +364,16 @@ private:
   Token& current_;
   Diagnostics& diagnostics_;
   std::string_view source_;
-  std::span<const Module::Function::GenericDecl> variables_;
+  std::span<const Module::FunctionDecl::GenericDecl> variables_;
 };
 
 }  // namespace
 
-Module::Expression parse_expression(
-    Lexer& lexer, Token& current, Diagnostics& diagnostics,
-    std::string_view source,
-    std::span<const Module::Function::GenericDecl> variables,
-    int minimum_precedence) {
+Module::Expression
+parse_expression(Lexer& lexer, Token& current, Diagnostics& diagnostics,
+                 std::string_view source,
+                 std::span<const Module::FunctionDecl::GenericDecl> variables,
+                 int minimum_precedence) {
   return ExpressionParser(lexer, current, diagnostics, source, variables)
       .parse(minimum_precedence);
 }
@@ -393,12 +397,24 @@ std::string escape_string(std::string_view value) {
   std::string result = "\"";
   for (const char character : value) {
     switch (character) {
-    case '\\': result += "\\\\"; break;
-    case '"': result += "\\\""; break;
-    case '\n': result += "\\n"; break;
-    case '\r': result += "\\r"; break;
-    case '\t': result += "\\t"; break;
-    default: result.push_back(character); break;
+    case '\\':
+      result += "\\\\";
+      break;
+    case '"':
+      result += "\\\"";
+      break;
+    case '\n':
+      result += "\\n";
+      break;
+    case '\r':
+      result += "\\r";
+      break;
+    case '\t':
+      result += "\\t";
+      break;
+    default:
+      result.push_back(character);
+      break;
     }
   }
   return result + '"';
@@ -409,19 +425,26 @@ int formatted_operator_precedence(std::string_view symbol) {
     return 0;
   }
   switch (symbol.front()) {
-  case '|': return 10;
-  case '^': return 20;
-  case '&': return 30;
+  case '|':
+    return 10;
+  case '^':
+    return 20;
+  case '&':
+    return 30;
   case '=':
   case '!':
   case '<':
-  case '>': return 40;
+  case '>':
+    return 40;
   case '+':
-  case '-': return 50;
+  case '-':
+    return 50;
   case '*':
   case '/':
-  case '%': return 60;
-  default: return 45;
+  case '%':
+    return 60;
+  default:
+    return 45;
   }
 }
 
@@ -528,11 +551,11 @@ std::string format_expression(const Module::Expression& expression,
              format_expression(expression.arguments[2]) + " }";
   } else if (expression.kind == Kind::Prefix) {
     result = expression.text +
-             format_expression(expression.arguments.front(), precedence,
-                               true);
+             format_expression(expression.arguments.front(), precedence, true);
   } else if (expression.kind == Kind::Postfix) {
-    result = format_expression(expression.arguments.front(), precedence,
-                               false) + expression.text;
+    result =
+        format_expression(expression.arguments.front(), precedence, false) +
+        expression.text;
   } else {
     result = format_expression(expression.arguments[0], precedence, false) +
              " " + expression.text + " " +
