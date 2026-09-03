@@ -4,6 +4,35 @@
 #include <array>
 
 namespace joggle::detail {
+namespace {
+
+template <typename Lookup>
+std::vector<Module::FunctionDecl> find_visible_operators(
+    Lookup&& lookup, std::string_view owner, std::string_view symbol,
+    Module::FunctionDecl::Fixity fixity) {
+  std::vector<Module::FunctionDecl> result;
+  const auto scope = lookup(owner);
+  if (!scope) {
+    return result;
+  }
+  const auto append = [&](const Module& module) {
+    for (const auto& function : module.functions()) {
+      if (function.operator_symbol() == symbol &&
+          function.operator_fixity() == fixity) {
+        result.push_back(function);
+      }
+    }
+  };
+  append(*scope);
+  for (const auto& import : scope->imports()) {
+    if (const auto module = lookup(import.name)) {
+      append(*module);
+    }
+  }
+  return result;
+}
+
+}  // namespace
 
 std::vector<Module::FunctionDecl>
 visible_functions(const Compiler& compiler, std::string_view owner,
@@ -37,26 +66,25 @@ std::vector<Module::FunctionDecl>
 visible_operators(const Compiler& compiler, std::string_view owner,
                   std::string_view symbol,
                   Module::FunctionDecl::Fixity fixity) {
-  std::vector<Module::FunctionDecl> result;
-  const auto scope = compiler.module(owner);
-  if (!scope) {
-    return result;
-  }
-  const auto append = [&](const Module& module) {
-    for (const auto& function : module.functions()) {
-      if (function.operator_symbol() == symbol &&
-          function.operator_fixity() == fixity) {
-        result.push_back(function);
-      }
-    }
-  };
-  append(*scope);
-  for (const auto& import : scope->imports()) {
-    if (const auto module = compiler.module(import.name)) {
-      append(*module);
-    }
-  }
-  return result;
+  return find_visible_operators(
+      [&](std::string_view name) { return compiler.module(name); }, owner,
+      symbol, fixity);
+}
+
+std::vector<Module::FunctionDecl>
+visible_operators(std::span<const Module> modules, std::string_view owner,
+                  std::string_view symbol,
+                  Module::FunctionDecl::Fixity fixity) {
+  return find_visible_operators(
+      [&](std::string_view name) -> std::optional<Module> {
+        const auto found =
+            std::find_if(modules.begin(), modules.end(), [&](const auto& item) {
+              return item.name() == name;
+            });
+        return found == modules.end() ? std::optional<Module>{}
+                                      : std::optional<Module>{*found};
+      },
+      owner, symbol, fixity);
 }
 
 std::vector<Module::FunctionDecl> operator_candidates(

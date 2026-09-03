@@ -49,6 +49,7 @@ module pipeline@1.0.0 {
   fn twice(input: string) -> string;
   fn add_offset(lhs: int, rhs: int) -> int as +;
   fn less(lhs: int, rhs: int) -> bool as <;
+  fn text_less(lhs: string, rhs: string) -> bool as <;
   fn less_equal(lhs: int, rhs: int) -> bool as <=;
   fn greater(lhs: int, rhs: int) -> bool as >;
   fn greater_equal(lhs: int, rhs: int) -> bool as >=;
@@ -139,6 +140,9 @@ module pipeline@1.0.0 {
   fn relation_typed(input: flag<(9 > 7)>) -> flag<true> {
     return input;
   }
+  fn text_relation_typed(input: flag<("a" < "b")>) -> flag<true> {
+    return input;
+  }
 }
 )",
                "pipeline.joggle");
@@ -187,6 +191,8 @@ module pipeline@1.0.0 {
   const auto add_offset =
       pipeline ? pipeline->function("add_offset") : std::nullopt;
   const auto less = pipeline ? pipeline->function("less") : std::nullopt;
+  const auto text_less =
+      pipeline ? pipeline->function("text_less") : std::nullopt;
   const auto less_equal =
       pipeline ? pipeline->function("less_equal") : std::nullopt;
   const auto greater =
@@ -207,6 +213,8 @@ module pipeline@1.0.0 {
       pipeline ? pipeline->function("unequal_order") : std::nullopt;
   const auto relation_typed =
       pipeline ? pipeline->function("relation_typed") : std::nullopt;
+  const auto text_relation_typed =
+      pipeline ? pipeline->function("text_relation_typed") : std::nullopt;
   const auto use_twice =
       pipeline ? pipeline->function("use_twice") : std::nullopt;
   const auto use_operator =
@@ -218,10 +226,11 @@ module pipeline@1.0.0 {
       !clean || !read || !emit || !inspect || !compile || !consume ||
       !module_identity || !append || !nonzero || !select ||
       !repeat || !choose || !once || !last || !typed || twice.size() != 2U ||
-      !add_offset || !less || !less_equal || !greater || !greater_equal ||
-      !equal || !not_equal || !logical_not || !earlier || !invert ||
-      !ordered_typed || !unequal_order || !relation_typed || !use_twice ||
-      !use_operator || !ir_module_schema) {
+      !add_offset || !less || !text_less || !less_equal || !greater ||
+      !greater_equal || !equal || !not_equal || !logical_not || !earlier ||
+      !invert || !ordered_typed || !unequal_order || !relation_typed ||
+      !text_relation_typed || !use_twice || !use_operator ||
+      !ir_module_schema) {
     return EXIT_FAILURE;
   }
   const auto integer = compiler.make(*integer_decl, std::int64_t{8});
@@ -308,6 +317,8 @@ module pipeline@1.0.0 {
   compiler.bind(*less, [](std::int64_t lhs, std::int64_t rhs) {
     return lhs < rhs;
   });
+  compiler.bind(*text_less,
+                [](std::string lhs, std::string rhs) { return lhs < rhs; });
   compiler.bind(*less_equal, [](std::int64_t lhs, std::int64_t rhs) {
     return lhs <= rhs;
   });
@@ -396,6 +407,8 @@ module pipeline@1.0.0 {
   const auto typed_function = compiler.function(*typed);
   const auto ordered_typed_function = compiler.function(*ordered_typed);
   const auto relation_typed_function = compiler.function(*relation_typed);
+  const auto text_relation_typed_function =
+      compiler.function(*text_relation_typed);
   ok &= expect(typed_function && typed_function->arguments().size() == 1U &&
                    typed_function->result_types().size() == 1U &&
                    typed_function->arguments().front().type() ==
@@ -409,7 +422,12 @@ module pipeline@1.0.0 {
                    relation_typed_function->arguments().size() == 1U &&
                    relation_typed_function->result_types().size() == 1U &&
                    relation_typed_function->arguments().front().type() ==
-                       relation_typed_function->result_types().front(),
+                       relation_typed_function->result_types().front() &&
+                   text_relation_typed_function &&
+                   text_relation_typed_function->arguments().size() == 1U &&
+                   text_relation_typed_function->result_types().size() == 1U &&
+                   text_relation_typed_function->arguments().front().type() ==
+                       text_relation_typed_function->result_types().front(),
                "structured compiler functions participate in dependent type "
                "evaluation through the same execution entry");
   joggle::Diagnostics signature_diagnostics;

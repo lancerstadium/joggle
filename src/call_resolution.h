@@ -21,6 +21,10 @@ std::vector<Module::FunctionDecl>
 visible_operators(const Compiler& compiler, std::string_view owner,
                   std::string_view symbol,
                   Module::FunctionDecl::Fixity fixity);
+std::vector<Module::FunctionDecl>
+visible_operators(std::span<const Module> modules, std::string_view owner,
+                  std::string_view symbol,
+                  Module::FunctionDecl::Fixity fixity);
 std::vector<Module::FunctionDecl> operator_candidates(
     const Compiler& compiler, std::string_view owner, std::string_view symbol,
     Module::FunctionDecl::Fixity fixity, std::size_t arity,

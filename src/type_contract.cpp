@@ -1,5 +1,6 @@
 #include "type_contract.h"
 
+#include "call_resolution.h"
 #include "compiler_internal.h"
 #include "domain.h"
 #include "expression_syntax.h"
@@ -22,6 +23,47 @@ namespace joggle::detail {
 namespace {
 
 using Bindings = KnownBindings;
+
+std::optional<Module::Expression>
+known_domain(const Module::Expression& expression, const Bindings& bindings) {
+  using Kind = Module::Expression::Kind;
+  if (expression.kind == Kind::Variable ||
+      (expression.kind == Kind::Reference && expression.arguments.empty())) {
+    const auto value = bindings.find(expression.text);
+    if (value == bindings.end()) {
+      return std::nullopt;
+    }
+    switch (value->second.kind()) {
+    case ParameterValue::Kind::I64:
+      return domain_expression(ValueKind::Integer);
+    case ParameterValue::Kind::F64:
+      return domain_expression(ValueKind::Real);
+    case ParameterValue::Kind::Boolean:
+      return domain_expression(ValueKind::Boolean);
+    case ParameterValue::Kind::String:
+      return domain_expression(ValueKind::String);
+    case ParameterValue::Kind::Type:
+      return domain_expression(ValueKind::Type);
+    case ParameterValue::Kind::Attribute:
+      return domain_expression(ValueKind::Attribute);
+    case ParameterValue::Kind::List:
+      return std::nullopt;
+    }
+  }
+  if (expression.kind == Kind::Number) {
+    return domain_expression(expression.text.find_first_of(".eE") ==
+                                     std::string::npos
+                                 ? ValueKind::Integer
+                                 : ValueKind::Real);
+  }
+  if (expression.kind == Kind::Boolean) {
+    return domain_expression(ValueKind::Boolean);
+  }
+  if (expression.kind == Kind::String) {
+    return domain_expression(ValueKind::String);
+  }
+  return std::nullopt;
+}
 
 std::optional<std::int64_t> checked_add(std::int64_t left,
                                         std::int64_t right) {
@@ -102,6 +144,8 @@ checked_integer_binary(std::string_view symbol, std::int64_t left,
 struct Environment {
   using Evaluator = std::function<std::optional<ParameterValue>(
       Module::FunctionDecl, std::span<const ParameterValue>)>;
+  using OperatorLookup = std::function<std::vector<Module::FunctionDecl>(
+      std::string_view, std::string_view, Module::FunctionDecl::Fixity)>;
   std::function<std::optional<Module>(std::string_view)> module;
   std::function<std::optional<Type>(const Module::TypeDecl&,
                                     std::span<const ParameterValue>)>
@@ -112,6 +156,7 @@ struct Environment {
   std::function<bool(const Module::TypeDecl&,
                      const Module::InterfaceDecl&)>
       conforms;
+  OperatorLookup operators;
   Evaluator evaluate;
   bool require_hermetic_host_evaluation = false;
   Compiler::EvaluationLimits limits;
@@ -132,6 +177,10 @@ Environment environment(Compiler& compiler, bool allow_host_evaluation = true) {
           [&](const Module::TypeDecl& declaration,
               const Module::InterfaceDecl& interface) {
             return compiler.conforms(declaration, interface);
+          },
+          [&](std::string_view owner, std::string_view symbol,
+              Module::FunctionDecl::Fixity fixity) {
+            return visible_operators(compiler, owner, symbol, fixity);
           },
           Environment::Evaluator{
               [&, under_residual_control = !allow_host_evaluation](
@@ -210,6 +259,10 @@ Environment environment(std::span<const Module> modules,
                           : std::nullopt;
           },
           conforms,
+          [modules](std::string_view owner, std::string_view symbol,
+                    Module::FunctionDecl::Fixity fixity) {
+            return visible_operators(modules, owner, symbol, fixity);
+          },
           {}, false, {}};
 }
 
@@ -646,29 +699,16 @@ private:
                         const Module::ParameterDecl& expected,
                         std::size_t arity) {
     std::vector<Module::FunctionDecl> result;
-    const auto owner = environment_.module(scope_);
-    if (!owner) {
-      return result;
-    }
-    std::vector<Module> visible{*owner};
-    for (const auto& import : owner->imports()) {
-      if (const auto module = environment_.module(import.name)) {
-        visible.push_back(*module);
+    for (const auto& candidate :
+         environment_.operators(scope_, symbol, fixity)) {
+      const auto known_inputs = parameter_inputs(candidate);
+      const auto known_results = parameter_results(candidate);
+      if (!ir_inputs(candidate).empty() || !ir_results(candidate).empty() ||
+          known_inputs.size() != arity || known_results.size() != 1U ||
+          known_results.front().domain != expected.domain) {
+        continue;
       }
-    }
-    for (const Module& module : visible) {
-      for (const auto& candidate : module.functions()) {
-        const auto known_inputs = parameter_inputs(candidate);
-        const auto known_results = parameter_results(candidate);
-        if (candidate.operator_symbol() != symbol ||
-            candidate.operator_fixity() != fixity ||
-            !ir_inputs(candidate).empty() || !ir_results(candidate).empty() ||
-            known_inputs.size() != arity || known_results.size() != 1U ||
-            known_results.front().domain != expected.domain) {
-          continue;
-        }
-        result.push_back(candidate);
-      }
+      result.push_back(candidate);
     }
     return result;
   }
@@ -812,8 +852,23 @@ private:
           : expression.kind == Kind::Postfix
               ? Module::FunctionDecl::Fixity::Postfix
               : Module::FunctionDecl::Fixity::Infix;
-      const auto overloads =
+      auto overloads =
           operator_declarations(expression.text, fixity, expected, arity);
+      overloads.erase(
+          std::remove_if(
+              overloads.begin(), overloads.end(),
+              [&](const Module::FunctionDecl& candidate) {
+                const auto inputs = parameter_inputs(candidate);
+                for (std::size_t index = 0; index < arity; ++index) {
+                  const auto actual =
+                      known_domain(expression.arguments[index], bindings);
+                  if (actual && inputs[index].domain != *actual) {
+                    return true;
+                  }
+                }
+                return false;
+              }),
+          overloads.end());
       if (overloads.size() > 1U) {
         report("compile-time operator '" + expression.text +
                "' is ambiguous");

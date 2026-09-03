@@ -63,7 +63,9 @@ can denote a Residual target operation when its declared operands are program
 values. Comparison and logical operators are not hard-coded semantic cases:
 `<=`, `>=`, `==`, `!=`, `&&`, `||`, prefix `!`, and extension-defined symbols
 all enter this declaration lookup before the minimal bootstrap arithmetic is
-considered.
+considered. Overloads may share a symbol and result domain: Known operand
+domains select between, for example, `int < int` and `string < string` before
+either implementation runs.
 
 An external declaration needs at most one host binding:
 
