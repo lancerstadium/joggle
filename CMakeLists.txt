@@ -262,14 +262,14 @@ if(JOGGLE_BUILD_TESTS)
     JOGGLE_PRELUDE_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/prelude.joggle")
   add_test(NAME prelude COMMAND joggle_prelude_test)
 
-  add_executable(joggle_pass_test tests/pass_test.cpp)
-  target_link_libraries(joggle_pass_test PRIVATE joggle::joggle)
-  target_compile_definitions(joggle_pass_test PRIVATE
+  add_executable(joggle_compiler_function_test tests/compiler_function_test.cpp)
+  target_link_libraries(joggle_compiler_function_test PRIVATE joggle::joggle)
+  target_compile_definitions(joggle_compiler_function_test PRIVATE
     JOGGLE_TEST_MODULE="${JOGGLE_TEST_MODULE}"
     JOGGLE_IR_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/ir.joggle"
     JOGGLE_TEST_BEHAVIOR="$<TARGET_FILE:joggle_compiler_test_behavior>"
   )
-  add_test(NAME pass COMMAND joggle_pass_test)
+  add_test(NAME compiler_function COMMAND joggle_compiler_function_test)
 
   add_executable(joggle_sha256_test tests/sha256_test.cpp src/sha256.cpp)
   target_compile_features(joggle_sha256_test PRIVATE cxx_std_20)

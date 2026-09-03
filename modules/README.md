@@ -15,8 +15,8 @@ Module; the others are installable packages.
 - `arith` defines scalar computation over Prelude types and custom types
   implementing `prelude.scalar`.
 - `tensor` defines ranked and unranked tensor values plus shape-preserving
-  operations. It does not define neural-network operators or storage.
-- `nn` defines common inference operations over `tensor.ranked`, including
+  functions. It does not define neural-network operators or storage.
+- `nn` defines common inference functions over `tensor.ranked`, including
   explicit NCHW convolution and pooling shape contracts. It does not define an
   import format, device, schedule, or storage mapping.
 - `buffer` defines explicit storage values and token-ordered memory effects. It

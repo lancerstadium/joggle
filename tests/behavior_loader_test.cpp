@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
   ok &= expect(value.has_value(),
                "the loaded behavior refines type construction");
   ok &= expect(function && compiler.run(*function, "behavior_plugin.noop"),
-               "the loaded behavior implements a bodyless pass");
+               "the loaded behavior implements a bodyless compiler function");
   ok &= expect(compiler.load_behavior("behavior_plugin", argv[2]),
                "loading the same exact behavior is idempotent");
 

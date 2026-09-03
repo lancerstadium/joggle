@@ -403,7 +403,7 @@ evaluate_interface_method(bool linked, const Subject& subject,
                           std::string_view subject_kind) {
   if constexpr (std::is_same_v<Subject, ir::Instruction>) {
     if (!subject.valid()) {
-      diagnostics.report("invalid operation used as an interface subject");
+      diagnostics.report("invalid Instruction used as an interface subject");
       return std::nullopt;
     }
   }
@@ -500,11 +500,11 @@ struct Compiler::State {
   std::map<std::string, VerifierFunction<Attribute>, std::less<>>
       attribute_verifiers;
   std::map<std::string, VerifierFunction<ir::Instruction>, std::less<>>
-      operation_verifiers;
+      instruction_verifiers;
   std::map<std::string, MethodFunction<Attribute>, std::less<>>
       attribute_methods;
   std::map<std::string, MethodFunction<ir::Instruction>, std::less<>>
-      operation_methods;
+      instruction_methods;
   std::map<std::string, BoundFunction, std::less<>> bindings;
   std::map<std::string, detail::ParameterValue, std::less<>>
       hermetic_evaluations;
@@ -1113,15 +1113,15 @@ bool Compiler::link() {
           detail::ir_results(declaration).empty()) {
         continue;
       }
-      const auto operation_source = detail::ModuleAccess::declaration_source(
+      const auto function_source = detail::ModuleAccess::declaration_source(
           module, Module::SymbolKind::Function, declaration.name());
-      const auto report_operation = [&](std::string message) {
-        state_->diagnostics.report(std::move(message), operation_source);
+      const auto report_function = [&](std::string message) {
+        state_->diagnostics.report(std::move(message), function_source);
       };
       const auto& contract = detail::FunctionTypeAccess::get(declaration);
       if (!contract.bindings.empty() &&
           contract.bindings.size() != declaration.inputs().size()) {
-        report_operation("function '" + name + "." +
+        report_function("function '" + name + "." +
                          std::string(declaration.name()) +
                          "' has an invalid type contract");
         continue;
@@ -1133,20 +1133,20 @@ bool Compiler::link() {
       for (const auto& input : detail::ir_inputs(declaration)) {
         detail::check_declaration_expression(
             *this, module, input.domain, type_domain, contract.generics, {},
-            state_->diagnostics, operation_source, subject);
+            state_->diagnostics, function_source, subject);
       }
       for (std::size_t index = 0; index < declaration.inputs().size(); ++index) {
         if (!contract.bindings.empty() && contract.bindings[index]) {
           detail::check_declaration_expression(
               *this, module, *contract.bindings[index],
               declaration.inputs()[index].domain, contract.generics, {},
-              state_->diagnostics, operation_source, subject);
+              state_->diagnostics, function_source, subject);
         }
       }
       for (const auto& result : detail::ir_results(declaration)) {
         detail::check_declaration_expression(
             *this, module, result.domain, type_domain, contract.generics, {},
-            state_->diagnostics, operation_source, subject);
+            state_->diagnostics, function_source, subject);
       }
     }
 
@@ -1427,9 +1427,9 @@ bool Compiler::load_behavior(const Module& module,
 
   auto type_verifiers = state_->type_verifiers;
   auto attribute_verifiers = state_->attribute_verifiers;
-  auto operation_verifiers = state_->operation_verifiers;
+  auto instruction_verifiers = state_->instruction_verifiers;
   auto attribute_methods = state_->attribute_methods;
-  auto operation_methods = state_->operation_methods;
+  auto instruction_methods = state_->instruction_methods;
   auto bindings = state_->bindings;
   auto host_types = state_->host_types;
   auto host_representations = state_->host_representations;
@@ -1447,9 +1447,9 @@ bool Compiler::load_behavior(const Module& module,
   if (!bound || state_->diagnostics.size() != before) {
     state_->type_verifiers = std::move(type_verifiers);
     state_->attribute_verifiers = std::move(attribute_verifiers);
-    state_->operation_verifiers = std::move(operation_verifiers);
+    state_->instruction_verifiers = std::move(instruction_verifiers);
     state_->attribute_methods = std::move(attribute_methods);
-    state_->operation_methods = std::move(operation_methods);
+    state_->instruction_methods = std::move(instruction_methods);
     state_->bindings = std::move(bindings);
     state_->host_types = std::move(host_types);
     state_->host_representations = std::move(host_representations);
@@ -1836,11 +1836,11 @@ void Compiler::bind_method(Module::FunctionDecl declaration,
                            MethodFunction<ir::Instruction> function) {
   bind_interface_method(
       state_->linked, std::move(declaration), std::move(method),
-      std::move(function), state_->operation_methods, state_->diagnostics,
+      std::move(function), state_->instruction_methods, state_->diagnostics,
       [this](const auto& subject, const auto& interface) {
         return conforms(subject, interface);
       },
-      "operation");
+      "function call");
 }
 
 std::optional<ParameterValue>
@@ -1862,11 +1862,11 @@ Compiler::call(const ir::Instruction& subject,
                std::span<const ParameterValue> parameters) {
   return evaluate_interface_method(
       state_->linked, subject, std::move(method), parameters,
-      state_->operation_methods, state_->modules, state_->diagnostics,
+      state_->instruction_methods, state_->modules, state_->diagnostics,
       [this](const auto& declaration, const auto& interface) {
         return conforms(declaration, interface);
       },
-      "operation");
+      "function call");
 }
 
 void Compiler::bind_verifier(Module::TypeDecl schema,
@@ -1922,20 +1922,20 @@ void Compiler::bind_verifier(Module::FunctionDecl schema,
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
       owner->second.digest() != symbol.module_digest()) {
-    state_->diagnostics.report("cannot bind operation '" +
-                               symbol.qualified_name() +
-                               "' outside this compiler");
+    state_->diagnostics.report(
+        "cannot bind an Instruction verifier for function '" +
+        symbol.qualified_name() + "' outside this compiler");
     return;
   }
   if (!verifier) {
-    state_->diagnostics.report("operation verifier binding is empty");
+    state_->diagnostics.report("Instruction verifier binding is empty");
     return;
   }
-  if (!state_->operation_verifiers
+  if (!state_->instruction_verifiers
            .emplace(symbol.stable_name(), std::move(verifier))
            .second) {
-    state_->diagnostics.report("operation '" + symbol.qualified_name() +
-                               "' already has a verifier binding");
+    state_->diagnostics.report("function '" + symbol.qualified_name() +
+                               "' already has an Instruction verifier");
   }
 }
 
@@ -2102,7 +2102,7 @@ bool Compiler::check_host_values(
     expected_results.push_back(host == nullptr ? std::optional<Type>{}
                                                : host->concrete_type);
   }
-  return detail::resolve_operation_types(
+  return detail::resolve_call_types(
              *this, function, value_arguments, known_arguments,
              expected_results, state_->diagnostics)
       .has_value();
@@ -2456,7 +2456,7 @@ Compiler::lookup_method(Module::FunctionDecl declaration,
   if (!state_->linked || owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
       owner->second.digest() != symbol.module_digest()) {
-    state_->diagnostics.report("operation '" + symbol.qualified_name() +
+    state_->diagnostics.report("function '" + symbol.qualified_name() +
                                "' is not in this compilation");
     return std::nullopt;
   }
@@ -2487,30 +2487,30 @@ bool Compiler::verify(const ir::Function& function) {
   }
   bool valid = detail::FunctionAccess::verify_contracts(
       function, *this, state_->diagnostics);
-  for (const ir::Instruction& operation : function.instructions()) {
-      const Module::FunctionDecl schema = operation.callee();
-      const Module::Symbol symbol = schema.symbol();
-      const auto location = detail::FunctionAccess::location(operation);
-      const auto verifier =
-          state_->operation_verifiers.find(symbol.stable_name());
-      if (verifier != state_->operation_verifiers.end()) {
-        Diagnostics reported;
-        const bool accepted = verifier->second(operation, reported);
-        if (!accepted && reported.ok()) {
-          reported.report("operation verifier rejected '" +
-                          symbol.qualified_name() + "'");
-        }
-        for (const Diagnostic& entry : reported.entries()) {
-          Diagnostic diagnostic = entry;
-          if (!diagnostic.source) {
-            diagnostic.source = location;
-          }
-          state_->diagnostics.report(std::move(diagnostic));
-        }
-        if (!accepted || !reported.ok()) {
-          valid = false;
-        }
+  for (const ir::Instruction& instruction : function.instructions()) {
+    const Module::FunctionDecl schema = instruction.callee();
+    const Module::Symbol symbol = schema.symbol();
+    const auto location = detail::FunctionAccess::location(instruction);
+    const auto verifier =
+        state_->instruction_verifiers.find(symbol.stable_name());
+    if (verifier != state_->instruction_verifiers.end()) {
+      Diagnostics reported;
+      const bool accepted = verifier->second(instruction, reported);
+      if (!accepted && reported.ok()) {
+        reported.report("Instruction verifier rejected call to '" +
+                        symbol.qualified_name() + "'");
       }
+      for (const Diagnostic& entry : reported.entries()) {
+        Diagnostic diagnostic = entry;
+        if (!diagnostic.source) {
+          diagnostic.source = location;
+        }
+        state_->diagnostics.report(std::move(diagnostic));
+      }
+      if (!accepted || !reported.ok()) {
+        valid = false;
+      }
+    }
   }
   return valid;
 }

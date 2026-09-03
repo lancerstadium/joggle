@@ -10,7 +10,7 @@
 
 namespace joggle::detail {
 
-struct OperationTypes {
+struct CallTypes {
   std::vector<Type> arguments;
   std::vector<Type> results;
 };
@@ -31,16 +31,15 @@ std::optional<std::vector<ParameterValue>> resolve_derived_parameters(
     std::span<const Module> modules, const Module::TypeDecl& schema,
     std::span<const ParameterValue> parameters, Diagnostics& diagnostics);
 
-std::optional<OperationTypes>
-resolve_operation_types(Compiler& compiler,
-                        const Module::FunctionDecl& schema,
-                        std::span<const Type> arguments,
-                        std::span<const std::optional<ParameterValue>> known_arguments,
-                        std::span<const std::optional<Type>> expected_results,
-                        Diagnostics& diagnostics,
-                        std::optional<SourceRange> source = std::nullopt);
+std::optional<CallTypes> resolve_call_types(
+    Compiler& compiler, const Module::FunctionDecl& schema,
+    std::span<const Type> arguments,
+    std::span<const std::optional<ParameterValue>> known_arguments,
+    std::span<const std::optional<Type>> expected_results,
+    Diagnostics& diagnostics,
+    std::optional<SourceRange> source = std::nullopt);
 
-std::optional<OperationTypes> resolve_partial_operation_types(
+std::optional<CallTypes> resolve_partial_call_types(
     Compiler& compiler, const Module::FunctionDecl& schema,
     std::span<const std::optional<Type>> arguments,
     std::span<const std::optional<ParameterValue>> known_arguments,
@@ -49,7 +48,7 @@ std::optional<OperationTypes> resolve_partial_operation_types(
     std::optional<SourceRange> source = std::nullopt,
     bool allow_host_evaluation = true);
 
-std::optional<OperationTypes> resolve_operation_types(
+std::optional<CallTypes> resolve_call_types(
     std::span<const Module> modules, const Module::FunctionDecl& schema,
     std::span<const Type> arguments,
     std::span<const std::optional<ParameterValue>> known_arguments,
@@ -58,14 +57,14 @@ std::optional<OperationTypes> resolve_operation_types(
     std::optional<SourceRange> source = std::nullopt);
 
 std::optional<std::vector<Type>>
-infer_operation_types(Compiler& compiler, const Module::FunctionDecl& schema,
-                      std::span<const Type> arguments,
-                      std::span<const std::optional<ParameterValue>> known_arguments,
-                      std::span<const std::optional<Type>> expected_results,
-                      Diagnostics& diagnostics,
-                      std::optional<SourceRange> source = std::nullopt);
+infer_call_types(Compiler& compiler, const Module::FunctionDecl& schema,
+                 std::span<const Type> arguments,
+                 std::span<const std::optional<ParameterValue>> known_arguments,
+                 std::span<const std::optional<Type>> expected_results,
+                 Diagnostics& diagnostics,
+                 std::optional<SourceRange> source = std::nullopt);
 
-std::optional<std::vector<Type>> infer_operation_types(
+std::optional<std::vector<Type>> infer_call_types(
     std::span<const Module> modules, const Module::FunctionDecl& schema,
     std::span<const Type> arguments,
     std::span<const std::optional<ParameterValue>> known_arguments,

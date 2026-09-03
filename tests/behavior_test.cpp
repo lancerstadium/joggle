@@ -64,15 +64,15 @@ int main() {
                   }
                   return true;
                 });
-  const auto same_type = [](const joggle::ir::Instruction& operation,
+  const auto same_type = [](const joggle::ir::Instruction& instruction,
                             joggle::Diagnostics& diagnostics) {
-    const auto arguments = operation.arguments();
-    const auto results = operation.results();
+    const auto arguments = instruction.arguments();
+    const auto results = instruction.results();
     if (results.empty() ||
         std::any_of(arguments.begin(), arguments.end(), [&](const auto& value) {
           return value.type() != results[0].type();
         })) {
-      diagnostics.report("integer operation types must agree");
+      diagnostics.report("integer Instruction types must agree");
       return false;
     }
     return true;
@@ -109,19 +109,19 @@ int main() {
         const auto operations = function.instructions();
         const bool has_marker =
             std::any_of(operations.begin(), operations.end(),
-                        [](const joggle::ir::Instruction& operation) {
-                          return operation.callee().name() == "marker";
+                        [](const joggle::ir::Instruction& instruction) {
+                          return instruction.callee().name() == "marker";
                         });
         if (!has_marker) {
           return true;
         }
         auto edit = function.edit();
-        for (const joggle::ir::Instruction& operation : operations) {
-          if (operation.callee().name() != "marker") {
+        for (const joggle::ir::Instruction& instruction : operations) {
+          if (instruction.callee().name() != "marker") {
             continue;
           }
-          edit.replace(operation.result(0), operation.arguments()[0]);
-          edit.erase(operation);
+          edit.replace(instruction.result(0), instruction.arguments()[0]);
+          edit.erase(instruction);
         }
         return edit.commit(diagnostics);
       });
@@ -147,13 +147,13 @@ int main() {
   }
 
   bool ok = true;
-  ok &= expect(compiler.verify(*function), "native operation verification");
+  ok &= expect(compiler.verify(*function), "native Instruction verification");
   ok &= expect(compiler.run(*function, *optimize_schema),
                "composed native transformations run");
   ok &= expect(function->instructions().size() == 1U,
-               "composed pass transforms through Function::Edit");
+               "a compiler function transforms through Function::Edit");
   ok &= expect(query_runs == 1U,
-               "pass-local analysis executes explicitly without a side API");
+               "function-local analysis executes explicitly without a side API");
 
   compiler.bind(*abort_schema, [marker_schema,
                                 integer](joggle::Compiler&, joggle::ir::Function& current,
@@ -167,9 +167,9 @@ int main() {
     return false;
   });
   ok &= expect(!compiler.run(*function, *abort_schema),
-               "failing pass reports failure");
+               "a failing compiler function reports failure");
   ok &= expect(function->instructions().size() == 1U,
-               "pass-level checkpoint restores committed inner edits");
+               "function-level checkpoint restores committed inner edits");
 
   joggle::Compiler invalid;
   invalid.load(JOGGLE_TEST_MODULE);

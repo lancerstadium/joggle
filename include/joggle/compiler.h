@@ -624,7 +624,7 @@ public:
     using Traits = detail::CallableTraits<Callable>;
     using Arguments = typename Traits::arguments;
     constexpr std::size_t arity = Traits::arity;
-    constexpr bool operation_verifier = [] {
+    constexpr bool instruction_verifier = [] {
       if constexpr (arity == 0U) {
         return false;
       } else {
@@ -633,7 +633,7 @@ public:
             ir::Instruction>;
       }
     }();
-    if constexpr (operation_verifier) {
+    if constexpr (instruction_verifier) {
       bind_typed_verifier<ir::Instruction>(std::move(schema),
                                            std::forward<Function>(function));
     } else {

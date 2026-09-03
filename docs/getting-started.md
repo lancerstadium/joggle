@@ -127,7 +127,7 @@ joggle run example.joggle main rewrite \
 `main` is instantiated as executable IR, then each following function is
 applied in order. The output is canonical Joggle source.
 
-The same operation in C++ is direct:
+The same pipeline in C++ is direct:
 
 ```cpp
 joggle::Compiler compiler;

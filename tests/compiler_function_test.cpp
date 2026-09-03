@@ -357,7 +357,7 @@ module pipeline@1.0.0 {
                        joggle::Module::Expression::reference("bytes") &&
                    compile->results().front().domain ==
                        joggle::Module::Expression::reference("bytes"),
-               "pass declarations reflect functional types");
+               "compiler functions reflect functional types");
 
   compiler.bind(*read,
                 [](joggle::Compiler& current,
@@ -633,7 +633,8 @@ module pipeline@1.0.0 {
   }
   ok &= expect(signature_roundtrip &&
                    joggle::format(*signature_roundtrip) == signature_text,
-               "typed pass signatures format and parse canonically");
+               "typed compiler-function signatures format and parse "
+               "canonically");
   const auto bits = integer->get<std::int64_t>("storage_bits");
   ok &= expect(bits && *bits == 8,
                "derived parameters share the ordinary Type query path");
@@ -708,10 +709,10 @@ module pipeline@1.0.0 {
   guarded_compiler.bind(
       *guarded_identity,
       [](const joggle::ir::Instruction&, joggle::Diagnostics& diagnostics) {
-        diagnostics.report("guarded pass input rejected");
+        diagnostics.report("guarded compiler-function input rejected");
         return false;
       });
-  bool pass_called = false;
+  bool transform_called = false;
   const auto guarded_touch = guarded->function("touch");
   if (!guarded_touch) {
     return EXIT_FAILURE;
@@ -719,13 +720,13 @@ module pipeline@1.0.0 {
   guarded_compiler.bind(
       *guarded_touch,
       [&](joggle::Compiler&, joggle::ir::Function&, joggle::Diagnostics&) {
-        pass_called = true;
+        transform_called = true;
         return true;
       });
   ok &= expect(!guarded_compiler.run(*guarded_function, "guarded.touch") &&
-                   !pass_called && !guarded_compiler.ok(),
-               "a pass does not execute on a Function rejected by bound domain "
-               "semantics");
+                   !transform_called && !guarded_compiler.ok(),
+               "a compiler function does not execute on a Function rejected "
+               "by bound domain semantics");
 
   joggle::Compiler named_compiler;
   named_compiler.add("joggle 1; module named@1.0.0 { "
@@ -753,7 +754,8 @@ module pipeline@1.0.0 {
       expect(!unqualified_run && !named_called && !named_diagnostics.empty() &&
                  named_diagnostics.back().message.find("module.member") !=
                      std::string::npos,
-               "pass lookup requires one unambiguous qualified member name");
+               "compiler-function lookup requires one unambiguous qualified "
+               "member name");
 
   joggle::Compiler incompatible;
   incompatible.add(R"(
@@ -768,7 +770,7 @@ module incompatible@1.0.0 {
 )",
                    "incompatible.joggle");
   ok &= expect(!incompatible.link() && !incompatible.ok(),
-               "pass sequence composition is checked by type");
+               "compiler-function composition is checked by type");
 
   joggle::Compiler transactional;
   transactional.add(R"(
@@ -826,15 +828,16 @@ module transactional@1.0.0 {
       "binding-mismatch.joggle");
   const bool mismatch_linked = binding_mismatch.link();
   const auto binding_module = binding_mismatch.module("binding_mismatch");
-  const auto count_pass =
+  const auto count_function =
       binding_module ? binding_module->function("count") : std::nullopt;
-  if (!mismatch_linked || !count_pass) {
+  if (!mismatch_linked || !count_function) {
     return EXIT_FAILURE;
   }
-  binding_mismatch.bind(*count_pass,
+  binding_mismatch.bind(*count_function,
                         [](const joggle::ir::Function&) { return std::string{"bad"}; });
   ok &= expect(!binding_mismatch.ok(),
-               "C++ pass binding is checked against its declared type");
+               "C++ compiler-function binding is checked against its "
+               "declared type");
 
   joggle::Compiler represented;
   represented.add(R"(

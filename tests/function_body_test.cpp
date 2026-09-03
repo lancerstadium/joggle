@@ -1437,7 +1437,7 @@ module dependent@1.0.0 {
   ok &= expect(named_width && *named_width == 12 &&
                    defaulted.verify(*named_function),
                "a Known C++ argument participates in result inference at "
-               "operation creation");
+               "Instruction creation");
 
   bool extra_argument_rejected = false;
   try {

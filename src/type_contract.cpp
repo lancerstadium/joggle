@@ -242,7 +242,7 @@ public:
     return evaluate(expression, expected, bindings);
   }
 
-  std::optional<OperationTypes>
+  std::optional<CallTypes>
   infer(std::span<const Type> arguments,
         std::span<const std::optional<ParameterValue>> known_arguments,
         std::span<const std::optional<Type>> expected) {
@@ -254,19 +254,19 @@ public:
     return infer_partial(values, known_arguments, expected);
   }
 
-  std::optional<OperationTypes>
+  std::optional<CallTypes>
   infer_partial(std::span<const std::optional<Type>> arguments,
                 std::span<const std::optional<ParameterValue>> known_arguments,
                 std::span<const std::optional<Type>> expected) {
     if (schema_ == nullptr || contract_ == nullptr) {
-      report("operation solver has no operation schema");
+      report("call solver has no function declaration");
       return std::nullopt;
     }
     const auto known_inputs = parameter_inputs(*schema_);
     const auto value_inputs = ir_inputs(*schema_);
     const auto value_results = ir_results(*schema_);
     if (known_arguments.size() != known_inputs.size()) {
-      report("operation known argument map does not match its schema");
+      report("call Known-argument map does not match its function");
       return std::nullopt;
     }
     Bindings bindings;
@@ -274,7 +274,7 @@ public:
     for (const auto& input : value_inputs) {
       const std::size_t count = input.variadic ? arguments.size() - argument : 1U;
       if (argument + count > arguments.size()) {
-        report("operation has too few arguments");
+        report("function call has too few arguments");
         return std::nullopt;
       }
       for (std::size_t item = 0; item < count; ++item) {
@@ -286,7 +286,7 @@ public:
       }
     }
     if (argument != arguments.size()) {
-      report("operation has too many arguments");
+      report("function call has too many arguments");
       return std::nullopt;
     }
     std::size_t known_index = 0;
@@ -303,13 +303,15 @@ public:
       if (!actual) {
         if (!contract_->bindings.empty() &&
             contract_->bindings[input_index]) {
-          report("operation is missing known argument '" + input.name + "'");
+          report("function call is missing Known argument '" + input.name +
+                 "'");
           return std::nullopt;
         }
         continue;
       }
       if (!matches_parameter(input, *actual)) {
-        report("operation known argument '" + input.name + "' has the wrong kind");
+        report("function call Known argument '" + input.name +
+               "' has the wrong domain");
         return std::nullopt;
       }
       if (!contract_->bindings.empty() && contract_->bindings[input_index] &&
@@ -318,7 +320,7 @@ public:
       }
     }
     if (expected.size() != value_results.size()) {
-      report("operation result count does not match its schema");
+      report("function call result count does not match its declaration");
       return std::nullopt;
     }
     for (std::size_t index = 0; index < expected.size(); ++index) {
@@ -332,7 +334,7 @@ public:
 
     const Module::ParameterDecl type_parameter{
         "result", domain_expression(ValueKind::Type), false, std::nullopt};
-    OperationTypes resolved;
+    CallTypes resolved;
     resolved.arguments.reserve(arguments.size());
     argument = 0;
     for (const auto& input : value_inputs) {
@@ -830,10 +832,10 @@ private:
       }
       return ParameterValue::list(std::move(values));
     }
-    const bool operation = expression.kind == Kind::Prefix ||
-                           expression.kind == Kind::Infix ||
-                           expression.kind == Kind::Postfix;
-    if (operation) {
+    const bool operator_expression = expression.kind == Kind::Prefix ||
+                                     expression.kind == Kind::Infix ||
+                                     expression.kind == Kind::Postfix;
+    if (operator_expression) {
       const std::size_t arity = expression.kind == Kind::Infix ? 2U : 1U;
       if (expression.arguments.size() != arity) {
         report("malformed operator expression");
@@ -1348,47 +1350,45 @@ std::optional<ParameterValue> evaluate_known_expression(
 }
 
 std::optional<std::vector<Type>>
-infer_operation_types(Compiler& compiler, const Module::FunctionDecl& schema,
-                      std::span<const Type> arguments,
-                      std::span<const std::optional<ParameterValue>> known_arguments,
-                      std::span<const std::optional<Type>> expected_results,
-                      Diagnostics& diagnostics,
-                      std::optional<SourceRange> source) {
-  auto resolved = resolve_operation_types(compiler, schema, arguments,
-                                          known_arguments, expected_results,
-                                          diagnostics, std::move(source));
+infer_call_types(Compiler& compiler, const Module::FunctionDecl& schema,
+                 std::span<const Type> arguments,
+                 std::span<const std::optional<ParameterValue>> known_arguments,
+                 std::span<const std::optional<Type>> expected_results,
+                 Diagnostics& diagnostics,
+                 std::optional<SourceRange> source) {
+  auto resolved = resolve_call_types(compiler, schema, arguments,
+                                     known_arguments, expected_results,
+                                     diagnostics, std::move(source));
   return resolved ? std::optional<std::vector<Type>>{
                         std::move(resolved->results)}
                   : std::nullopt;
 }
 
-std::optional<std::vector<Type>> infer_operation_types(
+std::optional<std::vector<Type>> infer_call_types(
     std::span<const Module> modules, const Module::FunctionDecl& schema,
     std::span<const Type> arguments,
     std::span<const std::optional<ParameterValue>> known_arguments,
     std::span<const std::optional<Type>> expected_results,
     Diagnostics& diagnostics, std::optional<SourceRange> source) {
-  auto resolved = resolve_operation_types(modules, schema, arguments,
-                                          known_arguments, expected_results,
-                                          diagnostics, std::move(source));
+  auto resolved = resolve_call_types(modules, schema, arguments,
+                                     known_arguments, expected_results,
+                                     diagnostics, std::move(source));
   return resolved ? std::optional<std::vector<Type>>{
                         std::move(resolved->results)}
                   : std::nullopt;
 }
 
-std::optional<OperationTypes>
-resolve_operation_types(Compiler& compiler,
-                        const Module::FunctionDecl& schema,
-                        std::span<const Type> arguments,
-                        std::span<const std::optional<ParameterValue>> known_arguments,
-                        std::span<const std::optional<Type>> expected_results,
-                        Diagnostics& diagnostics,
-                        std::optional<SourceRange> source) {
+std::optional<CallTypes> resolve_call_types(
+    Compiler& compiler, const Module::FunctionDecl& schema,
+    std::span<const Type> arguments,
+    std::span<const std::optional<ParameterValue>> known_arguments,
+    std::span<const std::optional<Type>> expected_results,
+    Diagnostics& diagnostics, std::optional<SourceRange> source) {
   return Solver(environment(compiler), schema, diagnostics, std::move(source))
       .infer(arguments, known_arguments, expected_results);
 }
 
-std::optional<OperationTypes> resolve_partial_operation_types(
+std::optional<CallTypes> resolve_partial_call_types(
     Compiler& compiler, const Module::FunctionDecl& schema,
     std::span<const std::optional<Type>> arguments,
     std::span<const std::optional<ParameterValue>> known_arguments,
@@ -1400,7 +1400,7 @@ std::optional<OperationTypes> resolve_partial_operation_types(
       .infer_partial(arguments, known_arguments, expected_results);
 }
 
-std::optional<OperationTypes> resolve_operation_types(
+std::optional<CallTypes> resolve_call_types(
     std::span<const Module> modules, const Module::FunctionDecl& schema,
     std::span<const Type> arguments,
     std::span<const std::optional<ParameterValue>> known_arguments,

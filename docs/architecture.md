@@ -49,7 +49,7 @@ fn emit(input: ir.module, target: target) -> bytes;
 ```
 
 The signatures state what composes. A Module may define a body in Joggle, bind
-an external implementation in C++, or leave a program operation Residual. The
+an external implementation in C++, or leave a function call Residual. The
 core has no `frontend`, `lower`, `analysis`, `pass`, or `backend` registry.
 Teams may use those words as project roles without making them language
 keywords.

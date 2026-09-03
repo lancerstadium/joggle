@@ -1109,10 +1109,10 @@ private:
         }
       }
     }
-    const bool operation = expression.kind == Kind::Prefix ||
-                           expression.kind == Kind::Infix ||
-                           expression.kind == Kind::Postfix;
-    if (operation) {
+    const bool operator_expression = expression.kind == Kind::Prefix ||
+                                     expression.kind == Kind::Infix ||
+                                     expression.kind == Kind::Postfix;
+    if (operator_expression) {
       const std::size_t arity = expression.kind == Kind::Infix ? 2U : 1U;
       if (expression.arguments.size() != arity) {
         report("malformed operator expression in " + std::string(owner));

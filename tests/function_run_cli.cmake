@@ -15,7 +15,7 @@ string(FIND "${unknown_option_error}" "unknown option '--unknown'"
   unknown_option_position)
 if(unknown_option_result EQUAL 0 OR unknown_option_position EQUAL -1)
   message(FATAL_ERROR
-    "run treated an unknown option as a pass name:\n${unknown_option_error}")
+    "run treated an unknown option as a function name:\n${unknown_option_error}")
 endif()
 
 set(target_output "${JOGGLE_OUTPUT}.target")

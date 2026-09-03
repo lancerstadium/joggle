@@ -478,10 +478,10 @@ private:
     if (expression.kind == Kind::List) {
       return list(expression, range, expected);
     }
-    const bool operation = expression.kind == Kind::Prefix ||
-                           expression.kind == Kind::Infix ||
-                           expression.kind == Kind::Postfix;
-    if (operation) {
+    const bool operator_expression = expression.kind == Kind::Prefix ||
+                                     expression.kind == Kind::Infix ||
+                                     expression.kind == Kind::Postfix;
+    if (operator_expression) {
       const auto fixity =
           expression.kind == Kind::Prefix
               ? Module::FunctionDecl::Fixity::Prefix

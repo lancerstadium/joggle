@@ -45,8 +45,8 @@ class Module {
 
 public:
   // Immutable declaration expression. The parser, formatter, linker, and type
-  // solver all use this representation; operation ports do not keep a second
-  // private spelling of their types.
+  // solver all use this representation; function signatures do not keep a
+  // second private spelling of their types.
   struct Expression {
     enum class Kind {
       Number,

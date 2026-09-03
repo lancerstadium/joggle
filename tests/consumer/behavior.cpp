@@ -17,9 +17,9 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
                             joggle::Diagnostics& pass_diagnostics) {
     const auto operations = function.instructions();
     auto edit = function.edit();
-    for (const joggle::ir::Instruction& operation : operations) {
-      if (operation.callee() == keep) {
-        edit.replace(operation, converted);
+    for (const joggle::ir::Instruction& instruction : operations) {
+      if (instruction.callee() == keep) {
+        edit.replace(instruction, converted);
       }
     }
     return edit.commit(pass_diagnostics);

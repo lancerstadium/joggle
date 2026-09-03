@@ -97,7 +97,7 @@ int main() {
                "derived parameters share Type::get with identity parameters");
   ok &= expect(tag_result == std::optional<std::string>{"label"} &&
                    latency_result == std::optional<std::int64_t>{2},
-               "attribute and operation behavior methods remain typed");
+               "attribute and function-call behavior methods remain typed");
 
   joggle::Compiler ambiguous;
   ambiguous.add(R"(

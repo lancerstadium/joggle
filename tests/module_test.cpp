@@ -466,10 +466,10 @@ int main() {
   ok &= expect(!wrong_interface && !wrong_interface_diagnostics.ok(),
                "an interface still constrains its declaration kind");
 
-  joggle::Compiler pass_cycle;
-  pass_cycle.add(R"(
+  joggle::Compiler function_cycle;
+  function_cycle.add(R"(
     joggle 1;
-    module pass_cycle@1.0.0 {
+    module function_cycle@1.0.0 {
       fn first(input: function) -> function {
         return second(input);
       }
@@ -478,15 +478,17 @@ int main() {
       }
     }
   )",
-                 "pass-cycle.joggle");
-  const bool pass_cycle_linked = pass_cycle.link();
-  const auto pass_cycle_diagnostics = pass_cycle.diagnostics().entries();
-  ok &= expect(!pass_cycle_linked && !pass_cycle_diagnostics.empty() &&
-                   pass_cycle_diagnostics.back().source &&
-                   pass_cycle_diagnostics.back().source->source ==
-                       "pass-cycle.joggle" &&
-                   pass_cycle_diagnostics.back().source->begin.line == 7U,
-               "pass composition cycle is rejected");
+                 "function-cycle.joggle");
+  const bool function_cycle_linked = function_cycle.link();
+  const auto function_cycle_diagnostics =
+      function_cycle.diagnostics().entries();
+  ok &= expect(!function_cycle_linked &&
+                   !function_cycle_diagnostics.empty() &&
+                   function_cycle_diagnostics.back().source &&
+                   function_cycle_diagnostics.back().source->source ==
+                       "function-cycle.joggle" &&
+                   function_cycle_diagnostics.back().source->begin.line == 7U,
+               "compiler-function composition cycle is rejected");
 
   joggle::Compiler missing;
   missing.add(R"(

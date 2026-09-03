@@ -423,7 +423,7 @@ bool matches_function_reference(const FunctionState& function,
     expected.emplace_back(result);
   }
   Diagnostics diagnostics;
-  const auto resolved = detail::resolve_operation_types(
+  const auto resolved = detail::resolve_call_types(
       modules, *value.reference, *inputs, {}, expected, diagnostics);
   return resolved && resolved->results == *results;
 }
@@ -809,8 +809,8 @@ bool verify_instruction_contracts(const FunctionState& function,
           std::span<const std::optional<ParameterValue>> known_arguments,
           std::span<const std::optional<Type>> results,
           Diagnostics& reported, std::optional<SourceRange> location) {
-        return resolve_operation_types(modules, schema, arguments, known_arguments,
-                                       results, reported, std::move(location));
+        return resolve_call_types(modules, schema, arguments, known_arguments,
+                                  results, reported, std::move(location));
       });
 }
 
@@ -822,8 +822,8 @@ bool verify_instruction_contracts(const FunctionState& function, Compiler& compi
           std::span<const std::optional<ParameterValue>> known_arguments,
           std::span<const std::optional<Type>> results,
           Diagnostics& reported, std::optional<SourceRange> location) {
-        return resolve_operation_types(compiler, schema, arguments, known_arguments,
-                                       results, reported, std::move(location));
+        return resolve_call_types(compiler, schema, arguments, known_arguments,
+                                  results, reported, std::move(location));
       });
 }
 
@@ -1452,7 +1452,7 @@ Instruction Function::Edit::add(Block block,
       modules.push_back(module);
     }
     Diagnostics diagnostics;
-    auto inferred = detail::infer_operation_types(
+    auto inferred = detail::infer_call_types(
         modules, schema, argument_types, inference_known, expected,
         diagnostics);
     if (!inferred) {

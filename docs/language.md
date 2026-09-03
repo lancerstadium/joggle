@@ -89,9 +89,10 @@ fn checked(value: int) -> (int, bool) {
 }
 ```
 
-A trailing `;` declares behavior supplied elsewhere or an operation that may
-remain Residual. Braces define a body. `as` associates prefix, infix, or postfix
-notation with the same function and overload set. Interfaces follow `:`.
+A trailing `;` declares behavior supplied elsewhere or a function call that
+may remain Residual. Braces define a body. `as` associates prefix, infix, or
+postfix notation with the same function and overload set. Interfaces follow
+`:`.
 Zero results use no arrow, one result uses `-> T`, and multiple positional
 results use `-> (T, U, ...)`. A call binds exactly its declared result count;
 there is no synthetic unit or `Result` value.
@@ -210,7 +211,7 @@ Residual control.
 
 When a Known compiler payload must enter the program, the compiler selects one
 visible ordinary function implementing `prelude.literal` for the required
-program type. There is no built-in constant operation or materializer hook.
+program type. There is no built-in constant Instruction or materializer hook.
 
 ## Conditional control flow
 
@@ -269,7 +270,7 @@ new Known local scoped to one iteration. Iterations expand in list order and
 may generate Residual Instructions or branches. `continue`, `break`, and
 `return` have their usual nearest-loop meaning. The evaluation budget bounds
 the expansion. A runtime collection is not silently unrolled; use `while` and
-program operations to express a Residual loop.
+Residual function calls to express a runtime loop.
 
 This makes a binding such as `S: list<int>` useful in all three places:
 

@@ -438,7 +438,7 @@ private:
     }
     statement.expression = expression();
     if (is(TokenKind::LeftBrace)) {
-      error("operation-owned bodies were removed; pass a closure as an "
+      error("a call cannot own a nested body; pass a named function as an "
             "ordinary argument");
     }
     expect(TokenKind::Semicolon, "';'");
@@ -883,7 +883,7 @@ class Instantiator {
   struct PendingCall {
     Module::FunctionDecl function;
     std::vector<std::vector<PendingArgument>> arguments;
-    detail::OperationTypes partial_types;
+    detail::CallTypes partial_types;
     std::vector<std::optional<ParameterValue>> known_arguments;
   };
 
@@ -1687,7 +1687,7 @@ private:
     }
 
     Diagnostics attempt;
-    auto types = detail::resolve_partial_operation_types(
+    auto types = detail::resolve_partial_call_types(
         compiler_, function, argument_types, result.known_arguments, expected,
         errors ? *errors : attempt, source(range), allow_guarded_evaluation);
     if (!types || types->arguments.size() != argument_types.size()) {
@@ -1715,7 +1715,7 @@ private:
       expected.emplace_back(result);
     }
     Diagnostics attempt;
-    const auto resolved = detail::resolve_operation_types(
+    const auto resolved = detail::resolve_call_types(
         compiler_, function, *inputs, {}, expected, attempt, source(range));
     return resolved && resolved->results == *results;
   }
@@ -1958,7 +1958,7 @@ private:
         Diagnostics candidate_diagnostics;
         const std::array<std::optional<ParameterValue>, 1> known{payload};
         const std::array<std::optional<Type>, 1> expected{target};
-        if (detail::resolve_operation_types(
+        if (detail::resolve_call_types(
                 compiler_, candidate, {}, known, expected,
                 candidate_diagnostics)) {
           matches.push_back(candidate);
@@ -1981,10 +1981,10 @@ private:
       return std::nullopt;
     }
 
-    Instruction operation =
+    Instruction instruction =
         edit_->append(block, matches.front(), {value}, {target});
-    detail::FunctionAccess::locate(*edit_, operation, source(range));
-    return operation.result(0);
+    detail::FunctionAccess::locate(*edit_, instruction, source(range));
+    return instruction.result(0);
   }
 
   std::pair<Block, std::optional<Value>>
@@ -2565,7 +2565,7 @@ private:
       return next(block);
     }
     if (expression.kind != Kind::If) {
-      instantiate_operation(statement, block);
+      instantiate_call(statement, block);
       return next(block);
     }
     if (expression.arguments.size() != 3U ||
@@ -2652,8 +2652,8 @@ private:
     return next(merge);
   }
 
-  void instantiate_operation(const detail::StatementSyntax& statement,
-                             Block block) {
+  void instantiate_call(const detail::StatementSyntax& statement,
+                        Block block) {
     const bool require_known = statement.expression.value.kind ==
                                Module::Expression::Kind::Evaluate;
     const bool can_evaluate = statement.bindings.size() == 1U &&
@@ -2754,7 +2754,7 @@ private:
       expected_types.push_back(std::move(resolved));
     }
     if (invalid_expected_type) {
-      report("operation result names and types have different counts",
+      report("call result names and types have different counts",
              statement.range);
       invalidate_results();
       return;
@@ -2842,18 +2842,18 @@ private:
         call_arguments.push_back(std::move(*value));
       }
     }
-    Instruction operation = edit_->append(
+    Instruction instruction = edit_->append(
         std::move(block), plan.function, std::move(call_arguments),
         plan.partial_types.results);
     detail::FunctionAccess::locate(
-        *edit_, operation, source(statement.expression.range));
-    if (statement.bindings.size() != operation.results().size()) {
+        *edit_, instruction, source(statement.expression.range));
+    if (statement.bindings.size() != instruction.results().size()) {
       report("call result count does not match its bindings", statement.range);
       invalidate_results();
       return;
     }
     for (std::size_t index = 0; index < statement.bindings.size(); ++index) {
-      bind(statement.bindings[index], operation.result(index));
+      bind(statement.bindings[index], instruction.result(index));
     }
   }
 
@@ -3103,21 +3103,21 @@ private:
     return {expression(value(type)), {}};
   }
 
-  detail::StatementSyntax convert(const Instruction& operation) {
+  detail::StatementSyntax convert(const Instruction& instruction) {
     detail::StatementSyntax result;
     result.expression.value.kind = Module::Expression::Kind::Call;
     result.expression.value.text =
-        operation.callee().symbol().qualified_name();
-    for (const Value& output : operation.results()) {
+        instruction.callee().symbol().qualified_name();
+    for (const Value& output : instruction.results()) {
       result.bindings.push_back(
           {bind(output, "v"), type_expression(output.type()), {}});
     }
-    const auto arguments = operation.arguments();
-    const auto parameters = operation.callee().inputs();
+    const auto arguments = instruction.arguments();
+    const auto parameters = instruction.callee().inputs();
     for (std::size_t index = 0; index < arguments.size(); ++index) {
       const Value& argument = arguments[index];
       const std::size_t parameter_index =
-          detail::FunctionAccess::argument_parameter(operation, index);
+          detail::FunctionAccess::argument_parameter(instruction, index);
       if (argument.known()) {
         const auto payload = detail::FunctionAccess::known_value(argument);
         if (!payload || parameter_index >= parameters.size()) {
@@ -3133,15 +3133,15 @@ private:
         result.expression.value.labels.emplace_back();
       }
     }
-    const auto notation = operation.callee().operator_symbol();
-    const auto fixity = operation.callee().operator_fixity();
+    const auto notation = instruction.callee().operator_symbol();
+    const auto fixity = instruction.callee().operator_fixity();
     const bool valid_arity =
         fixity && ((*fixity == Module::FunctionDecl::Fixity::Infix &&
-                    operation.arguments().size() == 2U) ||
+                    instruction.arguments().size() == 2U) ||
                    (*fixity != Module::FunctionDecl::Fixity::Infix &&
-                    operation.arguments().size() == 1U));
+                    instruction.arguments().size() == 1U));
     if (notation && valid_arity && result.bindings.size() == 1U &&
-        detail::parameter_inputs(operation.callee()).empty()) {
+        detail::parameter_inputs(instruction.callee()).empty()) {
       result.expression.value.text = std::string(*notation);
       if (*fixity == Module::FunctionDecl::Fixity::Prefix) {
         result.expression.value.kind = Module::Expression::Kind::Prefix;
