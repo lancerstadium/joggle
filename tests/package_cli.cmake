@@ -95,10 +95,53 @@ expect_success("idempotent base install"
 expect_success("install leaf"
   "${JOGGLE_CLI}" install "${leaf}" --root "${root}")
 
+set(generic "${JOGGLE_PACKAGE_TEST_DIR}/generic.joggle")
+file(WRITE "${generic}" [=[joggle 1;
+
+module package_generic@1.0.0 {
+  type word(width: int);
+  fn identity<T: type>(input: T) -> T;
+
+  fn staged<S: list<bool>>(steps: S, input: word<8>) -> word<8> {
+    current = input;
+    for enabled in S {
+      if enabled {
+        current = identity(current);
+      }
+    }
+    return current;
+  }
+}
+]=])
+expect_success("check generic staged body"
+  "${JOGGLE_CLI}" check "${generic}" --root "${root}")
+expect_success("install generic staged body"
+  "${JOGGLE_CLI}" install "${generic}" --root "${root}")
+
+set(invalid_generic "${JOGGLE_PACKAGE_TEST_DIR}/invalid-generic.joggle")
+file(WRITE "${invalid_generic}" [=[joggle 1;
+
+module package_invalid_generic@1.0.0 {
+  fn invalid<T: type>(input: T) -> T {
+    return missing(input);
+  }
+}
+]=])
+expect_failure("reject invalid generic body"
+  "${JOGGLE_CLI}" check "${invalid_generic}" --root "${root}")
+string(FIND "${command_error}" "no visible overload of 'missing'"
+  missing_generic_call)
+if(missing_generic_call EQUAL -1)
+  message(FATAL_ERROR
+    "invalid generic body lacked its source diagnostic:\n${command_error}")
+endif()
+
 expect_success("list modules" "${JOGGLE_CLI}" list --root "${root}")
 string(FIND "${command_output}" "package_base@1.0.0#" base_position)
 string(FIND "${command_output}" "package_leaf@1.0.0#" leaf_position)
-if(base_position EQUAL -1 OR leaf_position EQUAL -1)
+string(FIND "${command_output}" "package_generic@1.0.0#" generic_position)
+if(base_position EQUAL -1 OR leaf_position EQUAL -1 OR
+   generic_position EQUAL -1)
   message(FATAL_ERROR "module list is incomplete:\n${command_output}")
 endif()
 

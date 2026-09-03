@@ -95,6 +95,12 @@ operand. Generics participate in dependent result types and overload solving.
 A generic bound by a Known input is also a normal Known local inside a defined
 body, so `N` or `S: list<int>` may drive expressions and control flow.
 
+Independent Module checking never guesses a value for a required Known
+generic. It validates the generic body's syntax, scopes, declarations, and
+call shapes; each concrete specialization then validates the selected staged
+paths and resolved types. Defaults make a specialization available to package
+checking without a caller.
+
 Compiler lists are `list<D>`. Variadic `T...` is reserved for program-value
 inputs; compiler callbacks always have a finite C++ signature.
 

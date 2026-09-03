@@ -29,7 +29,7 @@ void usage(std::ostream& output) {
          << "  joggle check <file.joggle> [--with <module.joggle>] "
             "[--behavior <library>] [--root <directory>]\n"
          << "  joggle fmt <file.joggle> [--write | -o <file>]\n"
-         << "  joggle run <file.joggle> <function> [pass ...] "
+         << "  joggle run <file.joggle> <function> [transform ...] "
             "[--with <module.joggle>] [--load-behavior <module[=library]>] "
             "[--behavior <library>] [--root <directory>] [-o <file>]\n"
          << "  joggle install <module.joggle> [--behavior <library>] "
@@ -326,12 +326,36 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
   if (behavior && !compiler.load_behavior(linked->name(), *behavior)) {
     return false;
   }
+  const auto default_instantiable = [](const auto& function) {
+    const auto& contract = joggle::detail::FunctionTypeAccess::get(function);
+    std::vector<std::string_view> bound_generics;
+    for (std::size_t index = 0; index < function.inputs().size(); ++index) {
+      if (contract.ir_inputs[index]) {
+        continue;
+      }
+      if (!function.inputs()[index].default_value) {
+        return false;
+      }
+      if (index < contract.bindings.size() && contract.bindings[index] &&
+          contract.bindings[index]->kind ==
+              joggle::Module::Expression::Kind::Variable) {
+        bound_generics.push_back(contract.bindings[index]->text);
+      }
+    }
+    return std::all_of(
+        function.generics().begin(), function.generics().end(),
+        [&](const auto& generic) {
+          return std::find(bound_generics.begin(), bound_generics.end(),
+                           generic.name) != bound_generics.end();
+        });
+  };
   for (const joggle::Module& loaded : compiler.modules()) {
     for (const joggle::Module::FunctionDecl& function : loaded.functions()) {
       if (function.form() == joggle::Module::FunctionDecl::Form::Body &&
           joggle::detail::ModuleAccess::expression(function) == nullptr &&
           (!joggle::detail::ir_inputs(function).empty() ||
            !joggle::detail::ir_results(function).empty()) &&
+          default_instantiable(function) &&
           !compiler.function(function.symbol())) {
         return false;
       }

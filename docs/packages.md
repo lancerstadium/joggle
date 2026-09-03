@@ -19,10 +19,15 @@ joggle lock root.joggle -o joggle.lock
 All repository commands accept `--root directory`. Without it, Joggle uses
 `JOGGLE_MODULE_ROOT`, then the default user repository.
 
-`check` parses, resolves the import closure, validates declarations and
-contracts, and instantiates defined Functions. Repeated `--with` options add
-uninstalled local dependencies without modifying a repository. `--behavior`
-also validates an exact behavior library and runs registered verifiers.
+`check` parses, resolves the import closure, and validates declarations,
+contracts, body structure, and call shapes. It also instantiates every defined
+Function whose signature is concrete from defaults alone. A body requiring
+caller-supplied Known generics is checked independently as far as its abstract
+environment permits, then fully type-checked at each concrete specialization;
+package validation does not invent representative generic values. Repeated
+`--with` options add uninstalled local dependencies without modifying a
+repository. `--behavior` additionally validates an exact behavior library and
+runs registered verifiers.
 
 `fmt` produces canonical text. In-place and explicit-output writes stage a
 complete replacement beside the destination, preserve an existing file on
