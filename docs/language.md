@@ -276,7 +276,7 @@ header, body, and exit in the Function. Rebound outer values become inferred
 loop-carried Block arguments. `continue` transfers current values to the
 header; `break` transfers them to the exit.
 
-`for` is the finite compile-time iteration form:
+An untyped `for` is the finite compile-time iteration form:
 
 ```joggle
 current = input;
@@ -293,6 +293,25 @@ may generate Residual Ops or branches. `continue`, `break`, and
 `return` have their usual nearest-loop meaning. The evaluation budget bounds
 the expansion. A runtime collection is not silently unrolled; use `while` and
 Residual function calls to express a runtime loop.
+
+Annotating the iterator with a module type keeps the counted loop Residual:
+
+```joggle
+for offset: index in range(size(Shape)) {
+  value = load(input, offset);
+  store(output, offset, value);
+}
+```
+
+The iterable is still Known, so specialization fixes a finite arithmetic
+progression and rejects irregular lists. The iterator, comparison, and
+increment are materialized through the visible literal and operator functions
+for the annotated type. The generated Function has a header, body, latch, and
+exit regardless of trip count; it does not contain one copy of the body per
+element. Rebound outer values are loop-carried Block arguments, `continue`
+reaches the latch, and `break` reaches the exit. An empty iterable generates no
+loop. Thus `for i in range(N)` and `for i: index in range(N)` are one syntax
+with two ordinary staging outcomes, not separate host and kernel languages.
 
 Integer generics use the same list rule through ordinary Prelude functions:
 
@@ -383,7 +402,7 @@ body       := "{" { statement } "}"
 statement  := [ bindings "=" ] expression ";"
             | "if" expression body [ "else" body ]
             | "while" expression body
-            | "for" name "in" expression body
+            | "for" name [ ":" expression ] "in" expression body
             | "return" [ expressions ] ";"
             | "break" ";" | "continue" ";"
 

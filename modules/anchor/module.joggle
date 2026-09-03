@@ -77,14 +77,10 @@ module anchor@1.0.0 {
     PO: mem.space
   >(input: ref<E, S, LI, PI>) -> ref<E, S, LO, PO> : nn.activation {
     output: ref<E, S, LO, PO> = mem.alloc();
-    offset: index = 0;
-    limit: index = size(S);
-    one: index = 1;
-    while offset < limit {
+    for offset: index in range(size(S)) {
       value: E = load(input, offset);
       zero: E = 0;
       store(output, offset, arith.max(value, zero));
-      offset = offset + one;
     }
     return output;
   }
@@ -103,14 +99,10 @@ module anchor@1.0.0 {
     rhs: ref<E, S, LR, PR>
   ) -> ref<E, S, LO, PO> {
     output: ref<E, S, LO, PO> = mem.alloc();
-    offset: index = 0;
-    limit: index = size(S);
-    one: index = 1;
-    while offset < limit {
+    for offset: index in range(size(S)) {
       left: E = load(lhs, offset);
       right: E = load(rhs, offset);
       store(output, offset, left + right);
-      offset = offset + one;
     }
     return output;
   }

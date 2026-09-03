@@ -44,6 +44,11 @@ time, while each `identity` call may remain as a normal Residual Op.
 The same body can therefore express compiler decisions and the module they
 produce without a second metaprogramming language.
 
+Writing `for stage: index in range(N)` instead keeps the counted loop in the
+generated Function as a fixed-size CFG. The annotation changes staging, not
+the language or IR kind; iterator arithmetic resolves through ordinary visible
+functions.
+
 ## Build
 
 Joggle requires a C++20 compiler and CMake 3.20 or newer.

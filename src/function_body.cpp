@@ -21,6 +21,7 @@
 #include <charconv>
 #include <cstdint>
 #include <locale>
+#include <limits>
 #include <optional>
 #include <span>
 #include <sstream>
@@ -376,6 +377,10 @@ private:
                                   {iterator_begin, previous_end_},
                                   false};
       }
+      if (statement.iterator && match(TokenKind::Colon)) {
+        statement.iterator->type = expression();
+        statement.iterator->range.end = previous_end_;
+      }
       expect_name("in");
       statement.expression = expression();
       expect(TokenKind::LeftBrace, "'{' after for iterable");
@@ -383,9 +388,12 @@ private:
       const auto outer_locals = locals_;
       if (statement.iterator) {
         locals_.insert(statement.iterator->name);
-        variables_.push_back({statement.iterator->name,
-                              Module::Expression::reference("type"),
-                              std::nullopt});
+        variables_.push_back(
+            {statement.iterator->name,
+             statement.iterator->type
+                 ? statement.iterator->type->value
+                 : Module::Expression::reference("type"),
+             std::nullopt});
       }
       ++loop_depth_;
       while (!is(TokenKind::RightBrace) && !is(TokenKind::End) && ok()) {
@@ -762,7 +770,13 @@ private:
       return;
     }
     if (statement.kind == detail::StatementSyntax::Kind::For) {
-      output_ << spaces(level) << "for " << statement.iterator->name << " in "
+      output_ << spaces(level) << "for " << statement.iterator->name;
+      if (statement.iterator->type) {
+        output_ << ": "
+                << detail::format_expression(
+                       statement.iterator->type->value);
+      }
+      output_ << " in "
               << detail::format_expression(statement.expression.value)
               << " {\n";
       for (const auto& nested : statement.body) {
@@ -2360,6 +2374,254 @@ private:
     if (!elements) {
       report("for iterable must be a Known list", statement.expression.range);
       return next(block);
+    }
+
+    if (statement.iterator->type) {
+      const auto iterator_type = expected_type(*statement.iterator);
+      if (!iterator_type) {
+        return next(block);
+      }
+      if (elements->empty()) {
+        return next(block);
+      }
+
+      std::vector<std::int64_t> sequence;
+      sequence.reserve(elements->size());
+      for (const detail::ExecutionValue& element : *elements) {
+        const auto* integer = std::get_if<std::int64_t>(&element);
+        if (!integer) {
+          report("a typed for iterable must contain integers",
+                 statement.expression.range);
+          return next(block);
+        }
+        sequence.push_back(*integer);
+      }
+
+      const auto checked_add = [](std::int64_t lhs, std::int64_t rhs)
+          -> std::optional<std::int64_t> {
+        if ((rhs > 0 && lhs > std::numeric_limits<std::int64_t>::max() - rhs) ||
+            (rhs < 0 && lhs < std::numeric_limits<std::int64_t>::min() - rhs)) {
+          return std::nullopt;
+        }
+        return lhs + rhs;
+      };
+      const auto checked_subtract = [](std::int64_t lhs, std::int64_t rhs)
+          -> std::optional<std::int64_t> {
+        if ((rhs > 0 && lhs < std::numeric_limits<std::int64_t>::min() + rhs) ||
+            (rhs < 0 && lhs > std::numeric_limits<std::int64_t>::max() + rhs)) {
+          return std::nullopt;
+        }
+        return lhs - rhs;
+      };
+
+      std::int64_t step = 1;
+      if (sequence.size() > 1U) {
+        const auto difference = checked_subtract(sequence[1], sequence[0]);
+        if (!difference || *difference == 0) {
+          report("a typed for iterable must be an arithmetic progression",
+                 statement.expression.range);
+          return next(block);
+        }
+        step = *difference;
+        for (std::size_t index = 2; index < sequence.size(); ++index) {
+          const auto next_step =
+              checked_subtract(sequence[index], sequence[index - 1U]);
+          if (!next_step || *next_step != step) {
+            report("a typed for iterable must be an arithmetic progression",
+                   statement.expression.range);
+            return next(block);
+          }
+        }
+      } else if (sequence.front() ==
+                 std::numeric_limits<std::int64_t>::max()) {
+        step = -1;
+      }
+      const auto limit = checked_add(sequence.back(), step);
+      if (!limit) {
+        report("typed for range exceeds the compiler integer domain",
+               statement.expression.range);
+        return next(block);
+      }
+
+      std::vector<std::string> carried_names;
+      std::unordered_set<std::string> seen;
+      collect_rebindings(statement.body, carried_names, seen);
+      std::vector<Type> carried_types;
+      std::vector<Value> initial;
+      for (const std::string& name : carried_names) {
+        auto value = lookup(name);
+        if (!value) {
+          report("loop-carried value '" + name + "' is unavailable",
+                 statement.range);
+          continue;
+        }
+        std::optional<Type> target;
+        if (!value->known()) {
+          target = value->type();
+        } else if (const auto expected = expected_values_.find(name);
+                   expected != expected_values_.end()) {
+          target = expected->second;
+        }
+        if (!target) {
+          report("Known loop-carried value '" + name +
+                     "' needs an explicit or downstream module type",
+                 statement.range);
+          continue;
+        }
+        carried_types.push_back(*target);
+        auto carried = materialize(*value, *target, block, statement.range);
+        if (carried) {
+          initial.push_back(*carried);
+        }
+      }
+      if (initial.size() != carried_names.size()) {
+        return next(block);
+      }
+
+      const auto materialize_integer = [&](std::int64_t integer) {
+        auto staged =
+            detail::stage(compiler_, detail::ExecutionValue{integer});
+        auto known = staged ? detail::ir_value(compiler_, *staged)
+                            : std::optional<Value>{};
+        return known ? materialize(*known, *iterator_type, block,
+                                   statement.iterator->range)
+                     : std::optional<Value>{};
+      };
+      auto start = materialize_integer(sequence.front());
+      auto bound = materialize_integer(*limit);
+      auto step_value = materialize_integer(step);
+      if (!start || !bound || !step_value) {
+        report("typed for bounds cannot be materialized as its iterator type",
+               statement.iterator->range);
+        return next(block);
+      }
+
+      std::vector<Type> header_types{*iterator_type};
+      header_types.insert(header_types.end(), carried_types.begin(),
+                          carried_types.end());
+      std::vector<Value> header_initial{*start};
+      header_initial.insert(header_initial.end(), initial.begin(),
+                            initial.end());
+      const Block header = edit_->block(header_types);
+      const Block body = edit_->block();
+      const Block exit = edit_->block(carried_types);
+      edit_->jump(block, header, std::move(header_initial));
+      const std::vector<Value> header_arguments = header.arguments();
+
+      const std::size_t outer_scope_depth = locals_.depth();
+      const detail::Locals outer_locals = locals_;
+      const std::size_t outer_residual_depth = residual_control_depth_;
+      ++residual_control_depth_;
+      locals_.push();
+      const std::string state_name =
+          "$for.iterator" + std::to_string(next_temporary_++);
+      const std::string limit_name =
+          "$for.limit" + std::to_string(next_temporary_++);
+      const std::string step_name =
+          "$for.step" + std::to_string(next_temporary_++);
+      define(state_name, header_arguments.front(), statement.iterator->range);
+      define(statement.iterator->name, header_arguments.front(),
+             statement.iterator->range);
+      define(limit_name, *bound, statement.expression.range);
+      define(step_name, *step_value, statement.expression.range);
+      for (std::size_t index = 0; index < carried_names.size(); ++index) {
+        bind({carried_names[index], std::nullopt, statement.range, true},
+             header_arguments[index + 1U]);
+      }
+
+      const auto infix = [](std::string symbol, std::string lhs,
+                            std::string rhs) {
+        return Module::Expression{
+            Module::Expression::Kind::Infix, std::move(symbol),
+            {Module::Expression::reference(std::move(lhs)),
+             Module::Expression::reference(std::move(rhs))}};
+      };
+      auto [condition_tail, condition] = instantiate_expression(
+          infix(step > 0 ? "<" : ">", state_name, limit_name),
+          statement.expression.range, header);
+      const auto i1 = compiler_.make("i1");
+      if (!condition || condition->known() || !i1 ||
+          condition->type() != *i1) {
+        report("typed for comparison must produce i1",
+               statement.expression.range);
+        return next(block);
+      }
+      std::vector<Value> exit_values(header_arguments.begin() + 1,
+                                     header_arguments.end());
+      edit_->branch(condition_tail, *condition, body, {}, exit,
+                    std::move(exit_values));
+
+      const detail::Locals loop_locals = locals_;
+      loops_.push_back({});
+      Flow body_flow = instantiate_sequence(statement.body, body);
+      loops_.pop_back();
+
+      const auto carried_values = [&](const Path& active) {
+        std::vector<Value> values;
+        restore(active);
+        for (std::size_t index = 0; index < carried_names.size(); ++index) {
+          if (auto value = lookup(carried_names[index])) {
+            auto carried = materialize(*value, carried_types[index],
+                                       active.block, statement.range);
+            if (carried) {
+              values.push_back(*carried);
+            }
+          }
+        }
+        if (values.size() != carried_names.size()) {
+          report("for body does not produce every loop-carried value",
+                 statement.range);
+        }
+        return values;
+      };
+
+      for (const Path& active : body_flow.breaks) {
+        auto values = carried_values(active);
+        if (values.size() == carried_names.size()) {
+          edit_->jump(active.block, exit, std::move(values));
+        }
+      }
+      body_flow.next.insert(
+          body_flow.next.end(),
+          std::make_move_iterator(body_flow.continues.begin()),
+          std::make_move_iterator(body_flow.continues.end()));
+      if (!body_flow.next.empty()) {
+        const Block latch = edit_->block(carried_types);
+        const std::vector<Value> latch_arguments = latch.arguments();
+        for (const Path& active : body_flow.next) {
+          auto values = carried_values(active);
+          if (values.size() == carried_names.size()) {
+            edit_->jump(active.block, latch, std::move(values));
+          }
+        }
+        locals_ = loop_locals;
+        for (std::size_t index = 0; index < carried_names.size(); ++index) {
+          bind({carried_names[index], std::nullopt, statement.range, true},
+               latch_arguments[index]);
+        }
+        auto [increment_tail, increment] = instantiate_expression(
+            infix("+", state_name, step_name), statement.iterator->range,
+            latch);
+        if (!increment || increment->known() ||
+            increment->type() != *iterator_type) {
+          report("typed for increment has the wrong iterator type",
+                 statement.iterator->range);
+          return next(block);
+        }
+        std::vector<Value> next_values{*increment};
+        next_values.insert(next_values.end(), latch_arguments.begin(),
+                           latch_arguments.end());
+        edit_->jump(increment_tail, header, std::move(next_values));
+      }
+
+      locals_ = outer_locals;
+      locals_.resize(outer_scope_depth);
+      residual_control_depth_ = outer_residual_depth;
+      for (std::size_t index = 0; index < carried_names.size(); ++index) {
+        bind({carried_names[index], std::nullopt, statement.range, true},
+             exit.arguments()[index]);
+      }
+      return next(exit);
     }
 
     std::vector<Path> active{path(block)};

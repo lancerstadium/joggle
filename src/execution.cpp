@@ -633,6 +633,11 @@ private:
         continue;
       }
       if (statement.kind == StatementSyntax::Kind::For) {
+        if (statement.iterator && statement.iterator->type) {
+          report("a typed for iterator requires Residual materialization",
+                 statement.iterator->range);
+          return {Control::Error, {}};
+        }
         auto iterable = evaluate(statement.expression.value,
                                  statement.expression.range, nullptr);
         const ExecutionValue* payload =

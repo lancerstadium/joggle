@@ -2139,6 +2139,10 @@ module staged_control@1.0.0 {
   fn integer_add(lhs: int, rhs: int) -> int as +;
   fn integer_less(lhs: int, rhs: int) -> bool as <;
   fn integer_greater(lhs: int, rhs: int) -> bool as >;
+  fn integer_literal<T: prelude.integer>(value: int) -> T : prelude.literal;
+  fn index_add(lhs: index, rhs: index) -> index as +;
+  fn index_less(lhs: index, rhs: index) -> i1 as <;
+  fn touch(input: i32, position: index) -> i32;
 
   fn sum_shape<S: list<int>>(shape: S) -> int {
     total = 0;
@@ -2176,6 +2180,29 @@ module staged_control@1.0.0 {
     for stage in S {
       if stage > 0 {
         current = identity(current);
+      }
+    }
+    return current;
+  }
+
+  fn residual_count<N: int>(count: N, input: i32) -> i32 {
+    current = input;
+    for position: index in range(N) {
+      current = touch(current, position);
+    }
+    return current;
+  }
+
+  fn residual_control<N: int>(count: N, input: i32, stop: i1, skip: i1)
+      -> i32 {
+    current = input;
+    for position: index in range(N) {
+      if skip {
+        continue;
+      }
+      current = touch(current, position);
+      if stop {
+        break;
       }
     }
     return current;
@@ -2235,6 +2262,11 @@ module staged_control@1.0.0 {
       staged_module ? staged_module->function("specialize") : std::nullopt;
   const auto pipeline_decl =
       staged_module ? staged_module->function("pipeline") : std::nullopt;
+  const auto residual_count_decl =
+      staged_module ? staged_module->function("residual_count") : std::nullopt;
+  const auto residual_control_decl =
+      staged_module ? staged_module->function("residual_control")
+                    : std::nullopt;
   const auto integer_type = staged_control.make("int");
   const auto prelude_module = staged_control.module("prelude");
   const auto list_decl =
@@ -2258,7 +2290,23 @@ module staged_control@1.0.0 {
       pipeline_decl && stages
           ? staged_control.materialize(*pipeline_decl, {*stages})
           : std::nullopt;
-  if (!staged_control_linked || !specialized || !pipeline) {
+  const auto residual_count =
+      residual_count_decl && width
+          ? staged_control.materialize(*residual_count_decl, {*width})
+          : std::nullopt;
+  const auto zero = integer_type
+                        ? staged_control.known(*integer_type, std::int64_t{0})
+                        : std::nullopt;
+  const auto empty_residual_count =
+      residual_count_decl && zero
+          ? staged_control.materialize(*residual_count_decl, {*zero})
+          : std::nullopt;
+  const auto residual_control =
+      residual_control_decl && width
+          ? staged_control.materialize(*residual_control_decl, {*width})
+          : std::nullopt;
+  if (!staged_control_linked || !specialized || !pipeline ||
+      !residual_count || !empty_residual_count || !residual_control) {
     staged_control.diagnostics().print(std::cerr);
   }
   ok &= expect(
@@ -2268,8 +2316,18 @@ module staged_control@1.0.0 {
           joggle::format(*staged_control_roundtrip) == staged_control_text &&
           staged_control_text.find("for dimension in S {") !=
               std::string::npos &&
+          staged_control_text.find(
+              "for position: index in range(N) {") != std::string::npos &&
           sum_shape == std::optional<std::int64_t>{14} &&
           count == std::optional<std::int64_t>{3} && specialized && pipeline &&
+          residual_count && staged_control.verify(*residual_count) &&
+          residual_count->blocks().size() == 5U &&
+          residual_count->ops().size() == 6U &&
+          empty_residual_count &&
+          staged_control.verify(*empty_residual_count) &&
+          empty_residual_count->blocks().size() == 1U &&
+          empty_residual_count->ops().empty() && residual_control &&
+          staged_control.verify(*residual_control) &&
           specialized->arguments().front().type().get<std::int64_t>("width") ==
               std::optional<std::int64_t>{8} &&
           specialized->ops().size() == 1U &&

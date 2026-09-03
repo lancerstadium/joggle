@@ -143,16 +143,21 @@ The same rule controls source flow:
 - Known `bool` selects `if` or advances `while` in the compiler;
 - Residual `i1` creates Blocks and typed edges;
 - `for item in values` requires a Known `list<D>` and deterministically expands
-  one iteration per element.
+  one iteration per element;
+- `for item: T in values` materializes a finite integer progression as a
+  fixed-size CFG whose iterator has module type `T`.
 
 Generic values bound by compiler inputs are ordinary Known locals. They can
 drive control flow and dependent type expressions without being wrapped in
 temporary IR Values.
 
 Integer-count loops use the same rule rather than a second loop form. The
-ordinary Hermetic Prelude overloads of `range` construct a Known `list<int>`,
-so `for i in range(N)` works when generic `N` is Known. Range construction and
-loop expansion are both bounded by the Compiler evaluation budget.
+ordinary Hermetic Prelude overloads of `range` construct a Known `list<int>`.
+An untyped iterator expands when generic `N` is Known; an iterator annotated
+with a module type residualizes the same progression into header, body, latch,
+and exit Blocks. Literal, comparison, and increment semantics come from
+ordinary visible functions for that type. Range construction and compile-time
+expansion are bounded by the Compiler evaluation budget.
 
 Execution preserves the declared result sequence: zero results are empty, one
 result is one value, and multiple results remain positional values. The C++

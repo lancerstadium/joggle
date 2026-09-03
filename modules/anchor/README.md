@@ -11,7 +11,9 @@ bodyless target primitives tagged with the ordinary `mem.read` and `mem.write`
 interfaces. Their `offset` is a logical row-major ordinal; the reference layout
 is responsible for mapping that ordinal to physical storage. `relu` and `add`
 are not opaque target calls: they are generic Joggle bodies built from
-`mem.alloc`, `load`, `store`, arithmetic, and residual control flow. A target
+`mem.alloc`, `load`, `store`, arithmetic, and `for offset: index`, which
+materializes one fixed-size residual CFG instead of trip-count-sized
+unrolling. A target
 package may replace those bodies or use different primitives without adding a
 kernel class or declaration kind. Compiler functions that inspect or rewrite a
 whole Module remain native behavior for now; target computation itself does
