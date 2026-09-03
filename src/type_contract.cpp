@@ -730,6 +730,50 @@ private:
     return result;
   }
 
+  std::optional<ParameterValue> evaluate_function(
+      const Module::FunctionDecl& function,
+      std::span<const ParameterValue> values, const Bindings& arguments) {
+    const std::string identity = function.symbol().stable_name();
+    if (std::find(calls_.begin(), calls_.end(), identity) != calls_.end()) {
+      report("recursive compile-time call to '" +
+             function.symbol().qualified_name() + "'");
+      return std::nullopt;
+    }
+    calls_.push_back(identity);
+    struct CallGuard {
+      std::vector<std::string>& calls;
+      ~CallGuard() { calls.pop_back(); }
+    } guard{calls_};
+
+    if (environment_.require_hermetic_host_evaluation &&
+        (!environment_.can_evaluate ||
+         !environment_.can_evaluate(function))) {
+      report("host implementation of function '" +
+             function.symbol().qualified_name() +
+             "' is guarded and cannot execute under Residual control");
+      return std::nullopt;
+    }
+    if (environment_.evaluate) {
+      return environment_.evaluate(function, values);
+    }
+
+    const Module::Expression* body = ModuleAccess::expression(function);
+    const auto results = parameter_results(function);
+    if (body == nullptr || results.size() != 1U) {
+      report("compile-time function '" +
+             function.symbol().qualified_name() +
+             "' has no available evaluator");
+      return std::nullopt;
+    }
+    struct ScopeGuard {
+      std::string& scope;
+      std::string caller;
+      ~ScopeGuard() { scope = std::move(caller); }
+    } scope_guard{scope_, scope_};
+    scope_ = std::string(function.symbol().module_name());
+    return evaluate(*body, results.front(), arguments);
+  }
+
   std::optional<ParameterValue> evaluate(const TypeExpression& expression,
                                          const Module::ParameterDecl& expected,
                                          const Bindings& bindings) {
@@ -906,33 +950,7 @@ private:
           values.push_back(*value);
           arguments.emplace(inputs[index].name, std::move(*value));
         }
-        const std::string identity = function.symbol().stable_name();
-        if (std::find(calls_.begin(), calls_.end(), identity) != calls_.end()) {
-          report("recursive compile-time operator '" + expression.text + "'");
-          return std::nullopt;
-        }
-        calls_.push_back(identity);
-        std::optional<ParameterValue> value;
-        if (ModuleAccess::expression(function) != nullptr) {
-          const std::string caller_scope = scope_;
-          scope_ = std::string(function.symbol().module_name());
-          value = evaluate(*ModuleAccess::expression(function),
-                           parameter_results(function).front(), arguments);
-          scope_ = caller_scope;
-        } else if (environment_.require_hermetic_host_evaluation &&
-                   (!environment_.can_evaluate ||
-                    !environment_.can_evaluate(function))) {
-          report("host implementation of function '" +
-                 function.symbol().qualified_name() +
-                 "' is guarded and cannot execute under Residual control");
-        } else if (environment_.evaluate) {
-          value = environment_.evaluate(function, values);
-        } else {
-          report("compile-time operator '" + expression.text +
-                 "' has no registered evaluator");
-        }
-        calls_.pop_back();
-        return value;
+        return evaluate_function(function, values, arguments);
       }
       if (domain->element != ValueKind::Integer &&
           domain->element != ValueKind::Real) {
@@ -1148,34 +1166,7 @@ private:
         arguments.emplace(inputs[index].name, std::move(*bound[index]));
       }
 
-      const Module::FunctionDecl& function = selected.function;
-      const std::string identity = function.symbol().stable_name();
-      if (std::find(calls_.begin(), calls_.end(), identity) != calls_.end()) {
-        report("recursive pure function call '" + expression.text + "'");
-        return std::nullopt;
-      }
-      calls_.push_back(identity);
-      std::optional<ParameterValue> value;
-      if (ModuleAccess::expression(function) != nullptr) {
-        const std::string caller_scope = scope_;
-        scope_ = std::string(function.symbol().module_name());
-        value = evaluate(*ModuleAccess::expression(function),
-                         parameter_results(function).front(), arguments);
-        scope_ = caller_scope;
-      } else if (environment_.require_hermetic_host_evaluation &&
-                 (!environment_.can_evaluate ||
-                  !environment_.can_evaluate(function))) {
-        report("host implementation of function '" +
-               function.symbol().qualified_name() +
-               "' is guarded and cannot execute under Residual control");
-      } else if (environment_.evaluate) {
-        value = environment_.evaluate(function, values);
-      } else {
-        report("compile-time call '" + expression.text +
-               "' has no registered evaluator");
-      }
-      calls_.pop_back();
-      return value;
+      return evaluate_function(selected.function, values, arguments);
     }
     if (expression.kind == Kind::Number || expression.kind == Kind::Boolean ||
         expression.kind == Kind::String) {

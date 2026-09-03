@@ -414,16 +414,29 @@ private:
           : expression.kind == Kind::Postfix
               ? Module::FunctionDecl::Fixity::Postfix
               : Module::FunctionDecl::Fixity::Infix;
-      auto declarations = visible_operators(
-          compiler_, function_.symbol().module_name(), expression.text,
-          fixity);
-      if (!declarations.empty()) {
-        return call(expression, range, expected, std::move(declarations));
-      }
       auto inferred = expected == nullptr ? infer_operator_result(expression)
                                           : std::nullopt;
       if (expected == nullptr && inferred) {
         expected = &*inferred;
+      }
+      auto declarations = visible_operators(
+          compiler_, function_.symbol().module_name(), expression.text,
+          fixity);
+      if (expected != nullptr && kernel_domain(expected->domain)) {
+        declarations.erase(
+            std::remove_if(
+                declarations.begin(), declarations.end(),
+                [&](const Module::FunctionDecl& declaration) {
+                  const auto results = parameter_results(declaration);
+                  return !ir_inputs(declaration).empty() ||
+                         !ir_results(declaration).empty() ||
+                         results.size() != 1U ||
+                         results.front().domain != expected->domain;
+                }),
+            declarations.end());
+      }
+      if (!declarations.empty()) {
+        return call(expression, range, expected, std::move(declarations));
       }
       if (expected == nullptr) {
         report("compiler operator needs a contextual result type", range);

@@ -379,3 +379,12 @@ same expression AST and parser. Type and attribute constructors, lists,
 operators, calls, conditionals, and prefix `@` therefore have one meaning in
 signatures and bodies. The residualizing evaluator—not a restricted annotation
 parser—decides which parts execute and which parts become IR.
+
+When a Compiler is available, dependent-type calls no longer interpret short
+Function bodies through a special fast path. A one-line expression body, a
+structured source body, and a native binding all enter `Compiler::execute`.
+The schema-only verifier retains a deliberately limited expression-body
+fallback because it has no behavior registry. The remaining implementation
+work is to merge the all-Known body executor with the mixed Known/Residual
+specializer; that is an internal consolidation, not another public function or
+control-flow kind.

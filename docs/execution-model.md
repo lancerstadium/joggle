@@ -410,6 +410,10 @@ so a Guarded binding is never executed merely to choose an overload. Once the
 declaration is unique, its dependent type computation may use a Guarded binding
 only on a Known control path; beneath Residual control it still requires a
 Hermetic implementation.
+When a Compiler is present, even a single-return source Function enters this
+execution path; the dependent-type solver no longer interprets that Function
+body itself. Adding statements to a helper therefore cannot silently switch
+its call, overload, effect, or evaluation-limit semantics.
 Linking already traverses every structured arm, including arms not selected by
 a particular invocation, and rejects unresolved names or call
 shapes before host code can run. The remaining consolidation work is a single
