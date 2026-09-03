@@ -456,6 +456,10 @@ module pipeline@1.0.0 {
       compiler.run<joggle::Bytes>(*last, std::int64_t{3}, joggle::Bytes{});
   const auto overloaded =
       compiler.run<std::int64_t>(*use_twice, std::int64_t{6});
+  const auto named_integer_overload =
+      compiler.run<std::int64_t>("pipeline.twice", std::int64_t{6});
+  const auto named_string_overload =
+      compiler.run<std::string>("pipeline.twice", std::string{"ab"});
   const auto operated = compiler.run<std::int64_t>(
       *use_operator, std::int64_t{2}, std::int64_t{3});
   const auto ordered =
@@ -481,6 +485,10 @@ module pipeline@1.0.0 {
                    broken->size() == 1U && continued &&
                    continued->size() == 1U && append_calls == 8U &&
                    overloaded == std::optional<std::int64_t>{12} &&
+                   named_integer_overload ==
+                       std::optional<std::int64_t>{12} &&
+                   named_string_overload ==
+                       std::optional<std::string>{"abab"} &&
                    operated == std::optional<std::int64_t>{105} &&
                    ordered == std::optional<std::int64_t>{7} &&
                    inverted == std::optional<bool>{false} &&
@@ -809,6 +817,48 @@ module source_model@1.0.0 {
                        std::string::npos,
                "compiler-function lookup requires one unambiguous qualified "
                "member name");
+
+  joggle::Compiler mismatched_overload;
+  mismatched_overload.add(R"(
+joggle 1;
+module mismatched_overload@1.0.0 {
+  fn choose(input: int) -> int;
+  fn choose(input: string) -> string;
+}
+)",
+                          "mismatched-overload.joggle");
+  const bool mismatched_linked = mismatched_overload.link();
+  const auto mismatched_module =
+      mismatched_overload.module("mismatched_overload");
+  bool mismatched_called = false;
+  if (mismatched_module) {
+    mismatched_overload.bind(
+        *mismatched_module, "choose", [&](std::int64_t input) {
+          mismatched_called = true;
+          return input;
+        });
+    mismatched_overload.bind(
+        *mismatched_module, "choose", [&](std::string input) {
+          mismatched_called = true;
+          return input;
+        });
+  }
+  const auto mismatched_result =
+      mismatched_linked
+          ? mismatched_overload.run<bool>("mismatched_overload.choose",
+                                          std::int64_t{1})
+          : std::optional<bool>{};
+  const bool reports_mismatched_invocation = std::any_of(
+      mismatched_overload.diagnostics().entries().begin(),
+      mismatched_overload.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("matches the C++ invocation") !=
+               std::string::npos;
+      });
+  ok &= expect(!mismatched_result && !mismatched_called &&
+                   reports_mismatched_invocation,
+               "named invocation selects an overload by its complete input "
+               "and result signature");
 
   joggle::Compiler incompatible;
   incompatible.add(R"(

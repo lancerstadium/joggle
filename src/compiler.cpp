@@ -2153,9 +2153,17 @@ Compiler::lookup_binding(const Module& module, std::string_view name,
   if (!scope) {
     return std::nullopt;
   }
-  const auto overloads = scope->overloads(name);
+  return resolve_host_overload(*scope, name, inputs, results, "C++ binding");
+}
+
+std::optional<Module::FunctionDecl>
+Compiler::resolve_host_overload(const Module& module, std::string_view name,
+                                std::span<const std::string_view> inputs,
+                                std::span<const std::string_view> results,
+                                std::string_view purpose) {
+  const auto overloads = module.overloads(name);
   if (overloads.empty()) {
-    state_->diagnostics.report("module '" + std::string(scope->name()) +
+    state_->diagnostics.report("module '" + std::string(module.name()) +
                                "' has no function named '" + std::string(name) +
                                "'");
     return std::nullopt;
@@ -2166,19 +2174,46 @@ Compiler::lookup_binding(const Module& module, std::string_view name,
       continue;
     }
     if (match) {
-      state_->diagnostics.report(
-          "C++ binding is ambiguous for overloaded function '" +
-          std::string(scope->name()) + "." + std::string(name) + "'");
+      state_->diagnostics.report(std::string(purpose) +
+                                 " is ambiguous for overloaded function '" +
+                                 std::string(module.name()) + "." +
+                                 std::string(name) + "'");
       return std::nullopt;
     }
     match = candidate;
   }
   if (!match) {
     state_->diagnostics.report("no overload of function '" +
-                               std::string(scope->name()) + "." +
-                               std::string(name) + "' matches the C++ binding");
+                               std::string(module.name()) + "." +
+                               std::string(name) + "' matches the " +
+                               std::string(purpose));
   }
   return match;
+}
+
+std::optional<Module::FunctionDecl>
+Compiler::lookup_run(std::string_view name,
+                     std::span<const std::string_view> inputs,
+                     std::span<const std::string_view> results) {
+  if (!state_->linked) {
+    state_->diagnostics.report(
+        "cannot run a compiler function before the compiler is linked");
+    return std::nullopt;
+  }
+  const auto member = qualified_member(name);
+  if (!member) {
+    state_->diagnostics.report("function name '" + std::string(name) +
+                               "' must be qualified as module.member");
+    return std::nullopt;
+  }
+  const auto owner = state_->modules.find(member->first);
+  if (owner == state_->modules.end()) {
+    state_->diagnostics.report("function '" + std::string(name) +
+                               "' names an unlinked module");
+    return std::nullopt;
+  }
+  return resolve_host_overload(owner->second, member->second, inputs, results,
+                               "C++ invocation");
 }
 
 void Compiler::bind_native(Module::FunctionDecl schema, NativeFunction function,

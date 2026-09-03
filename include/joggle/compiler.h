@@ -752,7 +752,10 @@ public:
   template <typename Result = void, typename... Arguments>
   std::conditional_t<std::is_void_v<Result>, bool, std::optional<Result>>
   run(std::string_view name, Arguments&&... arguments) {
-    const auto declaration = lookup(name);
+    const std::array<std::string_view, sizeof...(Arguments)> inputs{
+        detail::host_type_name<Arguments>()...};
+    const auto results = detail::execution_result_types<Result>();
+    const auto declaration = lookup_run(name, inputs, results);
     if (!declaration) {
       if constexpr (std::is_void_v<Result>) {
         return false;
@@ -803,6 +806,14 @@ private:
   lookup_binding(const Module& module, std::string_view name,
                  std::span<const std::string_view> inputs,
                  std::span<const std::string_view> results);
+  std::optional<Module::FunctionDecl>
+  resolve_host_overload(const Module& module, std::string_view name,
+                        std::span<const std::string_view> inputs,
+                        std::span<const std::string_view> results,
+                        std::string_view purpose);
+  std::optional<Module::FunctionDecl>
+  lookup_run(std::string_view name, std::span<const std::string_view> inputs,
+             std::span<const std::string_view> results);
   bool check_run_signature(const Module::FunctionDecl& schema,
                            std::span<const std::string_view> inputs,
                            std::span<const std::string_view> results);

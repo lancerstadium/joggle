@@ -325,7 +325,9 @@ overload. Passing a reflected `FunctionDecl` remains available when code
 already needs the declaration as a rewrite target or exact identity.
 `invocable<Result, Args...>` checks the entire reflected C++ signature.
 `lookup("module.function")` reflects one unique linked Function member for
-tools that receive a qualified name; the same handle is passed to `run`.
+tools that need a declaration handle. In contrast,
+`run<Result>("module.function", arguments...)` uses its input and result C++
+types to select an overload directly.
 Declared inputs bind by value or `const&`, never by mutable lvalue reference.
 A transformation returns its changed artifact instead of creating an
 undeclared in-place output.
