@@ -177,8 +177,9 @@ convert_function(joggle::Compiler& compiler, const joggle::Function& input,
 
   auto output = joggle::clone(
       compiler, input,
-      [&](const joggle::Type& type) {
-        return convert_type(compiler, type, ranked, f32, f16, diagnostics);
+      [&](const joggle::Value& value) {
+        return convert_type(compiler, value.type(), ranked, f32, f16,
+                            diagnostics);
       },
       diagnostics);
   if (!output) {

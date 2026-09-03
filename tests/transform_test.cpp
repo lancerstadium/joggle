@@ -336,9 +336,10 @@ module mapping@1.0.0 {
   joggle::Diagnostics clone_diagnostics;
   const auto cloned = joggle::clone(
       compiler, *cfg,
-      [&](const joggle::Type& type) -> std::optional<joggle::Type> {
-        return type == *word ? std::optional<joggle::Type>{*alternate}
-                             : std::optional<joggle::Type>{type};
+      [&](const joggle::Value& value) -> std::optional<joggle::Type> {
+        return value.type() == *word
+                   ? std::optional<joggle::Type>{*alternate}
+                   : std::optional<joggle::Type>{value.type()};
       },
       clone_diagnostics);
   ok &= expect(

@@ -25,7 +25,7 @@ std::optional<To> mapped(const std::vector<std::pair<From, To>>& values,
 
 std::optional<Function> clone(
     Compiler& compiler, const Function& source,
-    const std::function<std::optional<Type>(const Type&)>& map_type,
+    const std::function<std::optional<Type>(const Value&)>& map_value_type,
     const std::function<std::optional<Module::FunctionDecl>(const Op&)>&
         map_callee,
     Diagnostics& diagnostics) {
@@ -38,17 +38,18 @@ std::optional<Function> clone(
     std::vector<std::pair<Value, Value>> values;
     std::vector<std::pair<Block, Block>> blocks;
 
-    const auto convert_type = [&](const Type& type) -> std::optional<Type> {
-      const auto converted = map_type(type);
+    const auto convert_type = [&](const Value& value) -> std::optional<Type> {
+      const auto converted = map_value_type(value);
       if (!converted) {
         diagnostics.report("clone has no mapping for type '" +
-                           type.schema().symbol().qualified_name() + "'");
+                           value.type().schema().symbol().qualified_name() +
+                           "'");
       }
       return converted;
     };
 
     for (const Value& argument : source.arguments()) {
-      const auto type = convert_type(argument.type());
+      const auto type = convert_type(argument);
       if (!type) {
         return std::nullopt;
       }
@@ -59,7 +60,7 @@ std::optional<Function> clone(
     for (std::size_t index = 0; index < source_blocks.size(); ++index) {
       std::vector<Type> argument_types;
       for (const Value& argument : source_blocks[index].arguments()) {
-        const auto type = convert_type(argument.type());
+        const auto type = convert_type(argument);
         if (!type) {
           return std::nullopt;
         }
@@ -90,7 +91,7 @@ std::optional<Function> clone(
         return existing;
       }
       const auto reference = value.referenced_function();
-      const auto type = reference ? convert_type(value.type())
+      const auto type = reference ? convert_type(value)
                                   : std::optional<Type>{};
       if (reference && type) {
         const Value converted = edit.reference(*reference, *type);
@@ -124,7 +125,7 @@ std::optional<Function> clone(
         }
         std::vector<Type> result_types;
         for (const Value& result : op.results()) {
-          const auto type = convert_type(result.type());
+          const auto type = convert_type(result);
           if (!type) {
             return std::nullopt;
           }
@@ -209,10 +210,10 @@ std::optional<Function> clone(
 
 std::optional<Function> clone(
     Compiler& compiler, const Function& source,
-    const std::function<std::optional<Type>(const Type&)>& map_type,
+    const std::function<std::optional<Type>(const Value&)>& map_value_type,
     Diagnostics& diagnostics) {
   return clone(
-      compiler, source, map_type,
+      compiler, source, map_value_type,
       [](const Op& op) -> std::optional<Module::FunctionDecl> {
         return op.callee();
       },

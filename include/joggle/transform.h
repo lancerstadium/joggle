@@ -23,14 +23,14 @@ namespace joggle {
 // standalone value and can be inserted into a destination Module.
 std::optional<Function> clone(
     Compiler& compiler, const Function& source,
-    const std::function<std::optional<Type>(const Type&)>& map_type,
+    const std::function<std::optional<Type>(const Value&)>& map_value_type,
     const std::function<std::optional<Module::FunctionDecl>(const Op&)>&
         map_callee,
     Diagnostics& diagnostics);
 
 std::optional<Function> clone(
     Compiler& compiler, const Function& source,
-    const std::function<std::optional<Type>(const Type&)>& map_type,
+    const std::function<std::optional<Type>(const Value&)>& map_value_type,
     Diagnostics& diagnostics);
 
 namespace transform_detail {

@@ -240,11 +240,14 @@ not introduce a target registry or assume that conversions move downward.
 
 ## Clone while changing representation
 
-`joggle::clone(compiler, function, map_type, diagnostics)` preserves the full
-CFG while applying `map_type` to Function arguments, Block arguments, Op
-results, callable references, and returns. An overload also accepts a callee
-mapper for one-to-one vocabulary conversion. Known properties remain the same
-typed Values. Failure to map or verify any element returns no Function.
+`joggle::clone(compiler, function, map_value_type, diagnostics)` preserves the
+full CFG while applying `map_value_type` to Function arguments, Block
+arguments, Op results, callable references, and returns. The callback receives
+the source Value, so it can distinguish graph inputs, constants, intermediate
+results, and block arguments when choosing a representation. An overload also
+accepts a callee mapper for one-to-one vocabulary conversion. Known properties
+remain the same typed Values. Failure to map or verify any element returns no
+Function.
 
 The result is a standalone Function ready for `Module::insert`. This is the
 primitive for tensor element, layout, or reference-type conversion; local

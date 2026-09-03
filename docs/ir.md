@@ -56,11 +56,11 @@ verify the complete result, and publish it only on success. `convert` adds a
 caller-defined legality check, so a conversion can be partial internally but
 cannot leak a mixed representation accidentally.
 
-`clone` reconstructs an arbitrary CFG while mapping types and, optionally,
-callees. It preserves Known properties, Blocks, edges, block arguments,
-function references, and result positions, then verifies the complete cloned
-Function once. Representation-changing passes therefore do not need a private
-straight-line graph copier.
+`clone` reconstructs an arbitrary CFG while mapping each source Value's type
+and, optionally, callees. It preserves Known properties, Blocks, edges, Block
+arguments, function references, and result positions, then verifies the
+complete cloned Function once. Representation-changing passes therefore do
+not need a private straight-line graph copier.
 
 Joggle does not number IR levels. Vocabularies are Modules and conversions are
 explicit edges. The shipped ONNX path demonstrates this rule:
