@@ -59,7 +59,7 @@ After linking, look up the declaration and bind a matching C++ callable:
 
 ```cpp
 const auto module = compiler.module("metrics");
-const auto volume = module ? module->declaration("volume") : std::nullopt;
+const auto volume = module ? module->function("volume") : std::nullopt;
 if (volume) {
   compiler.bind(*volume, [](const std::vector<std::int64_t>& shape) {
     std::int64_t result = 1;

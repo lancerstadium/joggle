@@ -211,97 +211,97 @@ module pipeline@1.0.0 {
   }
   const auto integer_decl = test_ir ? test_ir->type("integer") : std::nullopt;
   const auto arith_cast_decl =
-      test_ir ? test_ir->declaration("cast") : std::nullopt;
+      test_ir ? test_ir->function("cast") : std::nullopt;
   const auto format_decl =
       test_ir ? test_ir->interface("numeric_format") : std::nullopt;
   const auto canonicalize =
-      test_ir ? test_ir->declaration("canonicalize") : std::nullopt;
-  const auto clean = pipeline ? pipeline->declaration("clean") : std::nullopt;
-  const auto read = pipeline ? pipeline->declaration("read") : std::nullopt;
-  const auto emit = pipeline ? pipeline->declaration("emit") : std::nullopt;
+      test_ir ? test_ir->function("canonicalize") : std::nullopt;
+  const auto clean = pipeline ? pipeline->function("clean") : std::nullopt;
+  const auto read = pipeline ? pipeline->function("read") : std::nullopt;
+  const auto emit = pipeline ? pipeline->function("emit") : std::nullopt;
   const auto inspect =
-      pipeline ? pipeline->declaration("inspect") : std::nullopt;
+      pipeline ? pipeline->function("inspect") : std::nullopt;
   const auto compile =
-      pipeline ? pipeline->declaration("compile") : std::nullopt;
+      pipeline ? pipeline->function("compile") : std::nullopt;
   const auto consume =
-      pipeline ? pipeline->declaration("consume") : std::nullopt;
+      pipeline ? pipeline->function("consume") : std::nullopt;
   const auto module_identity =
-      pipeline ? pipeline->declaration("module_identity") : std::nullopt;
+      pipeline ? pipeline->function("module_identity") : std::nullopt;
   const auto convert_words = pipeline
                                  ? pipeline->overloads("convert_word")
                                  : std::vector<joggle::Module::FunctionDecl>{};
   const auto configured_copy =
-      pipeline ? pipeline->declaration("configured_copy") : std::nullopt;
+      pipeline ? pipeline->function("configured_copy") : std::nullopt;
   const auto compute_width =
-      pipeline ? pipeline->declaration("compute_width") : std::nullopt;
+      pipeline ? pipeline->function("compute_width") : std::nullopt;
   const auto width_copy =
-      pipeline ? pipeline->declaration("width_copy") : std::nullopt;
+      pipeline ? pipeline->function("width_copy") : std::nullopt;
   const auto residual_overload =
-      pipeline ? pipeline->declaration("residual_overload") : std::nullopt;
+      pipeline ? pipeline->function("residual_overload") : std::nullopt;
   const auto residual_arguments =
-      pipeline ? pipeline->declaration("residual_arguments") : std::nullopt;
+      pipeline ? pipeline->function("residual_arguments") : std::nullopt;
   const auto residual_variadic =
-      pipeline ? pipeline->declaration("residual_variadic") : std::nullopt;
+      pipeline ? pipeline->function("residual_variadic") : std::nullopt;
   const auto residual_dependent =
-      pipeline ? pipeline->declaration("residual_dependent") : std::nullopt;
-  const auto append = pipeline ? pipeline->declaration("append") : std::nullopt;
+      pipeline ? pipeline->function("residual_dependent") : std::nullopt;
+  const auto append = pipeline ? pipeline->function("append") : std::nullopt;
   const auto nonzero =
-      pipeline ? pipeline->declaration("nonzero") : std::nullopt;
-  const auto select = pipeline ? pipeline->declaration("select") : std::nullopt;
-  const auto repeat = pipeline ? pipeline->declaration("repeat") : std::nullopt;
-  const auto choose = pipeline ? pipeline->declaration("choose") : std::nullopt;
-  const auto once = pipeline ? pipeline->declaration("once") : std::nullopt;
-  const auto last = pipeline ? pipeline->declaration("last") : std::nullopt;
-  const auto typed = pipeline ? pipeline->declaration("typed") : std::nullopt;
+      pipeline ? pipeline->function("nonzero") : std::nullopt;
+  const auto select = pipeline ? pipeline->function("select") : std::nullopt;
+  const auto repeat = pipeline ? pipeline->function("repeat") : std::nullopt;
+  const auto choose = pipeline ? pipeline->function("choose") : std::nullopt;
+  const auto once = pipeline ? pipeline->function("once") : std::nullopt;
+  const auto last = pipeline ? pipeline->function("last") : std::nullopt;
+  const auto typed = pipeline ? pipeline->function("typed") : std::nullopt;
   const auto twice = pipeline ? pipeline->overloads("twice")
                               : std::vector<joggle::Module::FunctionDecl>{};
   const auto add_offset =
-      pipeline ? pipeline->declaration("add_offset") : std::nullopt;
-  const auto less = pipeline ? pipeline->declaration("less") : std::nullopt;
+      pipeline ? pipeline->function("add_offset") : std::nullopt;
+  const auto less = pipeline ? pipeline->function("less") : std::nullopt;
   const auto text_less =
-      pipeline ? pipeline->declaration("text_less") : std::nullopt;
+      pipeline ? pipeline->function("text_less") : std::nullopt;
   const auto less_equal =
-      pipeline ? pipeline->declaration("less_equal") : std::nullopt;
+      pipeline ? pipeline->function("less_equal") : std::nullopt;
   const auto greater =
-      pipeline ? pipeline->declaration("greater") : std::nullopt;
+      pipeline ? pipeline->function("greater") : std::nullopt;
   const auto greater_equal =
-      pipeline ? pipeline->declaration("greater_equal") : std::nullopt;
-  const auto equal = pipeline ? pipeline->declaration("equal") : std::nullopt;
+      pipeline ? pipeline->function("greater_equal") : std::nullopt;
+  const auto equal = pipeline ? pipeline->function("equal") : std::nullopt;
   const auto not_equal =
-      pipeline ? pipeline->declaration("not_equal") : std::nullopt;
+      pipeline ? pipeline->function("not_equal") : std::nullopt;
   const auto logical_not =
-      pipeline ? pipeline->declaration("logical_not") : std::nullopt;
+      pipeline ? pipeline->function("logical_not") : std::nullopt;
   const auto earlier =
-      pipeline ? pipeline->declaration("earlier") : std::nullopt;
-  const auto invert = pipeline ? pipeline->declaration("invert") : std::nullopt;
+      pipeline ? pipeline->function("earlier") : std::nullopt;
+  const auto invert = pipeline ? pipeline->function("invert") : std::nullopt;
   const auto ordered_typed =
-      pipeline ? pipeline->declaration("ordered_typed") : std::nullopt;
+      pipeline ? pipeline->function("ordered_typed") : std::nullopt;
   const auto unequal_order =
-      pipeline ? pipeline->declaration("unequal_order") : std::nullopt;
+      pipeline ? pipeline->function("unequal_order") : std::nullopt;
   const auto relation_typed =
-      pipeline ? pipeline->declaration("relation_typed") : std::nullopt;
+      pipeline ? pipeline->function("relation_typed") : std::nullopt;
   const auto text_relation_typed =
-      pipeline ? pipeline->declaration("text_relation_typed") : std::nullopt;
+      pipeline ? pipeline->function("text_relation_typed") : std::nullopt;
   const auto overload_typed =
-      pipeline ? pipeline->declaration("overload_typed") : std::nullopt;
+      pipeline ? pipeline->function("overload_typed") : std::nullopt;
   const auto default_typed =
-      pipeline ? pipeline->declaration("default_typed") : std::nullopt;
+      pipeline ? pipeline->function("default_typed") : std::nullopt;
   const auto staged_overload =
-      pipeline ? pipeline->declaration("staged_overload") : std::nullopt;
+      pipeline ? pipeline->function("staged_overload") : std::nullopt;
   const auto use_twice =
-      pipeline ? pipeline->declaration("use_twice") : std::nullopt;
+      pipeline ? pipeline->function("use_twice") : std::nullopt;
   const auto use_operator =
-      pipeline ? pipeline->declaration("use_operator") : std::nullopt;
-  const auto divide = pipeline ? pipeline->declaration("divide") : std::nullopt;
+      pipeline ? pipeline->function("use_operator") : std::nullopt;
+  const auto divide = pipeline ? pipeline->function("divide") : std::nullopt;
   const auto divide_exact =
-      pipeline ? pipeline->declaration("divide_exact") : std::nullopt;
+      pipeline ? pipeline->function("divide_exact") : std::nullopt;
   const auto observe =
-      pipeline ? pipeline->declaration("observe") : std::nullopt;
+      pipeline ? pipeline->function("observe") : std::nullopt;
   const auto observe_once =
-      pipeline ? pipeline->declaration("observe_once") : std::nullopt;
-  const auto fork = pipeline ? pipeline->declaration("fork") : std::nullopt;
+      pipeline ? pipeline->function("observe_once") : std::nullopt;
+  const auto fork = pipeline ? pipeline->function("fork") : std::nullopt;
   const auto relay_fork =
-      pipeline ? pipeline->declaration("relay_fork") : std::nullopt;
+      pipeline ? pipeline->function("relay_fork") : std::nullopt;
   if (!integer_decl || !arith_cast_decl || !format_decl || !canonicalize ||
       !clean || !read || !emit || !inspect || !compile || !consume ||
       !module_identity || convert_words.size() != 2U || !configured_copy ||
@@ -621,17 +621,17 @@ module pipeline@1.0.0 {
     return EXIT_FAILURE;
   }
   {
-    auto edit = copied_module->function("main")->edit();
+    auto edit = copied_module->body("main")->edit();
     edit.argument(*i32);
     if (!edit.commit(module_diagnostics)) {
       return EXIT_FAILURE;
     }
   }
-  ok &= expect(module.function_count() == 1U &&
-                   copied_module->function_count() == 1U &&
-                   module.function("main") != nullptr &&
-                   module.function("main")->arguments().empty() &&
-                   copied_module->function("main")->arguments().size() == 1U,
+  ok &= expect(module.functions().size() == 1U &&
+                   copied_module->functions().size() == 1U &&
+                   module.body("main") != nullptr &&
+                   module.body("main")->arguments().empty() &&
+                   copied_module->body("main")->arguments().size() == 1U,
                "the builtin module value flows through an ordinary fn "
                "with deep-copy isolation");
 
@@ -651,7 +651,7 @@ module pipeline@1.0.0 {
   const auto guarded = guarded_compiler.module("guarded");
   const auto guarded_a_decl = guarded ? guarded->type("a") : std::nullopt;
   const auto guarded_identity =
-      guarded ? guarded->declaration("identity") : std::nullopt;
+      guarded ? guarded->function("identity") : std::nullopt;
   const auto guarded_a =
       guarded_a_decl ? guarded_compiler.make(*guarded_a_decl) : std::nullopt;
   auto guarded_function = guarded_compiler.function();
@@ -674,7 +674,7 @@ module pipeline@1.0.0 {
         return false;
       });
   bool transform_called = false;
-  const auto guarded_touch = guarded->declaration("touch");
+  const auto guarded_touch = guarded->function("touch");
   if (!guarded_touch) {
     return EXIT_FAILURE;
   }
@@ -698,7 +698,7 @@ module pipeline@1.0.0 {
   auto named_function = named_compiler.function();
   bool named_called = false;
   if (named_module) {
-    const auto noop = named_module->declaration("noop");
+    const auto noop = named_module->function("noop");
     if (!noop) {
       return EXIT_FAILURE;
     }
@@ -749,16 +749,16 @@ module transactional@1.0.0 {
   const bool transactional_linked = transactional.link();
   const auto transactional_module = transactional.module("transactional");
   const auto token = transactional_module
-                         ? transactional_module->declaration("token")
+                         ? transactional_module->function("token")
                          : std::nullopt;
   const auto mutate = transactional_module
-                          ? transactional_module->declaration("mutate")
+                          ? transactional_module->function("mutate")
                           : std::nullopt;
   const auto reject = transactional_module
-                          ? transactional_module->declaration("reject")
+                          ? transactional_module->function("reject")
                           : std::nullopt;
   const auto transaction = transactional_module
-                               ? transactional_module->declaration("pipeline")
+                               ? transactional_module->function("pipeline")
                                : std::nullopt;
   auto transactional_function = transactional.function();
   if (!transactional_linked || !token || !mutate || !reject || !transaction ||
@@ -788,7 +788,7 @@ module transactional@1.0.0 {
   const bool mismatch_linked = binding_mismatch.link();
   const auto binding_module = binding_mismatch.module("binding_mismatch");
   const auto count_function =
-      binding_module ? binding_module->declaration("count") : std::nullopt;
+      binding_module ? binding_module->function("count") : std::nullopt;
   if (!mismatch_linked || !count_function) {
     return EXIT_FAILURE;
   }
@@ -820,10 +820,10 @@ module represented@1.0.0 {
   const auto estimate_type =
       represented_module ? represented_module->type("estimate") : std::nullopt;
   const auto measure = represented_module
-                           ? represented_module->declaration("measure")
+                           ? represented_module->function("measure")
                            : std::nullopt;
   const auto analyze = represented_module
-                           ? represented_module->declaration("analyze")
+                           ? represented_module->function("analyze")
                            : std::nullopt;
   if (!represented_linked || !target_type || !estimate_type || !measure ||
       !analyze || !represented.represent<Target>(*target_type) ||
@@ -892,16 +892,16 @@ module parameterized_host@1.0.0 {
       parameterized_module ? parameterized_module->type("estimate")
                            : std::nullopt;
   const auto parameterized_measure =
-      parameterized_module ? parameterized_module->declaration("measure")
+      parameterized_module ? parameterized_module->function("measure")
                            : std::nullopt;
   const auto parameterized_analyze =
-      parameterized_module ? parameterized_module->declaration("analyze")
+      parameterized_module ? parameterized_module->function("analyze")
                            : std::nullopt;
   const auto fixed = parameterized_module
-                         ? parameterized_module->declaration("fixed")
+                         ? parameterized_module->function("fixed")
                          : std::nullopt;
   const auto wrong = parameterized_module
-                         ? parameterized_module->declaration("wrong")
+                         ? parameterized_module->function("wrong")
                          : std::nullopt;
   if (!parameterized_linked || !parameterized_target ||
       !parameterized_estimate || !parameterized_measure ||
@@ -954,9 +954,9 @@ module lists@1.0.0 {
   const bool lists_linked = lists.link();
   const auto lists_module = lists.module("lists");
   const auto reverse =
-      lists_module ? lists_module->declaration("reverse") : std::nullopt;
+      lists_module ? lists_module->function("reverse") : std::nullopt;
   const auto sum =
-      lists_module ? lists_module->declaration("sum") : std::nullopt;
+      lists_module ? lists_module->function("sum") : std::nullopt;
   if (!lists_linked || !reverse || !sum) {
     lists.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -996,7 +996,7 @@ module bounded@1.0.0 {
   const bool bounded_linked = bounded.link();
   const auto bounded_module = bounded.module("bounded");
   const auto spin =
-      bounded_module ? bounded_module->declaration("spin") : std::nullopt;
+      bounded_module ? bounded_module->function("spin") : std::nullopt;
   const auto spinning = bounded_linked && spin
                             ? bounded.run<joggle::Bytes>(*spin, joggle::Bytes{})
                             : std::optional<joggle::Bytes>{};

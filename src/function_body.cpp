@@ -1351,7 +1351,7 @@ private:
     } else if constexpr (std::is_same_v<Declaration, Module::AttributeDecl>) {
       result = module->attribute(local);
     } else {
-      result = module->declaration(local);
+      result = module->function(local);
     }
     if (!result) {
       constexpr std::string_view kind =
@@ -1923,7 +1923,7 @@ private:
 
     std::vector<Module::FunctionDecl> matches;
     for (const Module& module : visible) {
-      for (const auto& candidate : module.declarations()) {
+      for (const auto& candidate : module.functions()) {
         if (!compiler_.conforms(candidate, *literal) ||
             detail::parameter_inputs(candidate).size() != 1U ||
             !detail::ir_inputs(candidate).empty() ||
@@ -3372,6 +3372,11 @@ std::string format_function_syntax(const FunctionSyntax& function,
   return SyntaxWriter(function, indent).write();
 }
 
+FunctionSyntax materialized_function_syntax(const ir::Function& function,
+                                            std::string_view name) {
+  return RuntimeSyntax(function, name).build();
+}
+
 std::optional<ir::Function>
 instantiate_function(Compiler& compiler, Module::FunctionDecl function,
                      const FunctionBody& body, Diagnostics& diagnostics,
@@ -3394,8 +3399,8 @@ std::string format(const ir::Function& function, std::string_view name) {
       !std::all_of(name.begin() + 1, name.end(), identifier_character)) {
     throw std::invalid_argument("a formatted Function needs a valid name");
   }
-  return detail::format_function_syntax(RuntimeSyntax(function, name).build(),
-                                        0U);
+  return detail::format_function_syntax(
+      detail::materialized_function_syntax(function, name), 0U);
 }
 
 }  // namespace joggle

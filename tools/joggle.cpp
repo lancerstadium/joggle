@@ -327,7 +327,7 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
     return false;
   }
   for (const joggle::Module& loaded : compiler.modules()) {
-    for (const joggle::Module::FunctionDecl& function : loaded.declarations()) {
+    for (const joggle::Module::FunctionDecl& function : loaded.functions()) {
       if (function.form() == joggle::Module::FunctionDecl::Form::Body &&
           joggle::detail::ModuleAccess::expression(function) == nullptr &&
           (!joggle::detail::ir_inputs(function).empty() ||
@@ -365,7 +365,7 @@ std::optional<Transform> transform(joggle::Compiler& compiler,
     return std::nullopt;
   }
   std::vector<Transform> matches;
-  for (const joggle::Module::FunctionDecl& function : module->declarations()) {
+  for (const joggle::Module::FunctionDecl& function : module->functions()) {
     if (function.name() != function_name || function.inputs().size() != 1U ||
         function.results().size() != 1U) {
       continue;
@@ -571,7 +571,7 @@ int main(int argc, char** argv) {
         module = std::move(*transformed);
         continue;
       }
-      joggle::ir::Function* entry = module.function(function_body);
+      joggle::ir::Function* entry = module.body(function_body);
       if (entry == nullptr) {
         diagnostics.report("Function transform '" + name +
                            "' needs missing entry '" + function_body + "'");

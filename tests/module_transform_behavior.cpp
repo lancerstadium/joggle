@@ -7,7 +7,7 @@ namespace {
 
 bool bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
-  const auto add_helper = module.declaration("add_helper");
+  const auto add_helper = module.function("add_helper");
   if (!add_helper) {
     diagnostics.report("Module transform behavior does not match its Module");
     return false;
@@ -17,7 +17,7 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
       [](joggle::Module input,
          joggle::Diagnostics& reported) -> std::optional<joggle::Module> {
         const joggle::ir::Function* main =
-            static_cast<const joggle::Module&>(input).function("main");
+            static_cast<const joggle::Module&>(input).body("main");
         if (main == nullptr ||
             !input.insert("helper", main->clone(), reported)) {
           return std::nullopt;

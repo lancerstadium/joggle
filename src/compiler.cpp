@@ -1076,7 +1076,7 @@ bool Compiler::link() {
       }
     }
 
-    for (const Module::FunctionDecl& function : module.declarations()) {
+    for (const Module::FunctionDecl& function : module.functions()) {
       const auto location = detail::ModuleAccess::declaration_source(
           module, Module::SymbolKind::Function, function.name());
       validate_interfaces(function.interfaces(), Module::SymbolKind::Function,
@@ -1090,7 +1090,7 @@ bool Compiler::link() {
       }
     }
 
-    for (const Module::FunctionDecl& function : module.declarations()) {
+    for (const Module::FunctionDecl& function : module.functions()) {
       if (detail::ModuleAccess::expression(function) == nullptr ||
           !detail::ir_inputs(function).empty() ||
           !detail::ir_results(function).empty() ||
@@ -1107,7 +1107,7 @@ bool Compiler::link() {
           state_->diagnostics, location,
           "function '" + name + "." + std::string(function.name()) + "'");
     }
-    for (const Module::FunctionDecl& declaration : module.declarations()) {
+    for (const Module::FunctionDecl& declaration : module.functions()) {
       if (detail::ir_inputs(declaration).empty() &&
           detail::ir_results(declaration).empty()) {
         continue;
@@ -1271,7 +1271,7 @@ bool Compiler::link() {
 
   for (const auto& [name, module] : state_->modules) {
     static_cast<void>(name);
-    for (const Module::FunctionDecl& function : module.declarations()) {
+    for (const Module::FunctionDecl& function : module.functions()) {
       if (!visit_function(visit_function, function, std::nullopt)) {
         return false;
       }
@@ -2185,7 +2185,7 @@ void Compiler::bind_prelude_primitives() {
   if (found == state_->modules.end()) {
     return;
   }
-  for (const Module::FunctionDecl& function : found->second.declarations()) {
+  for (const Module::FunctionDecl& function : found->second.functions()) {
     if (!detail::is_prelude_primitive(function)) {
       continue;
     }
@@ -2590,7 +2590,7 @@ Compiler::find_function(std::string_view name) {
                                "' names an unlinked module");
     return std::nullopt;
   }
-  const auto declaration = owner->second.declaration(member->second);
+  const auto declaration = owner->second.function(member->second);
   if (!declaration) {
     state_->diagnostics.report("unknown compiler function '" +
                                std::string(name) + "'");

@@ -31,10 +31,10 @@ that same type. A repository may package a serialized Module with native
 behavior, but packaging does not create another language or IR layer.
 
 Declarations and materialized bodies are two states inside the same Module,
-not separate owners. `declaration(name)` reflects an overloadable source
-signature; `function(name)` accesses a concrete editable body. This boundary
-will narrow further as generic specialization moves into the unified Function
-handle, without reintroducing a second Module representation.
+not separate owners. `function(name)` reflects the unique function member and
+its signature; `body(name)` accesses its concrete editable CFG when one has
+been materialized. Generic specialization can therefore refine a Function
+without creating another Module representation.
 
 The other public concepts are small:
 

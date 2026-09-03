@@ -72,9 +72,9 @@ int main() {
   const auto integer = module->type("integer");
   const auto numeric_format = module->interface("numeric_format");
   const auto elementwise = module->interface("elementwise");
-  const auto align = module->declaration("align");
-  const auto add = module->declaration("add");
-  const auto canonicalize = module->declaration("canonicalize");
+  const auto align = module->function("align");
+  const auto add = module->function("add");
+  const auto canonicalize = module->function("canonicalize");
   ok &=
       expect(integer && integer->parameters().size() == 2U &&
                  integer->interfaces().size() == 1U &&
@@ -328,7 +328,7 @@ int main() {
                    linked_client->imports().front().prefix() == "math",
                "an import alias is a local prefix for one module identity");
   const auto inference =
-      linked_client ? linked_client->declaration("inference") : std::nullopt;
+      linked_client ? linked_client->function("inference") : std::nullopt;
   ok &= expect(inference && elementwise &&
                    compiler.conforms(*inference, *elementwise),
                "aliased cross-module interface implementation");

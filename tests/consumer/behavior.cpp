@@ -4,9 +4,9 @@ namespace {
 
 bool bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
-  const auto keep = module.declaration("keep");
-  const auto converted = module.declaration("converted");
-  const auto convert = module.declaration("convert");
+  const auto keep = module.function("keep");
+  const auto converted = module.function("converted");
+  const auto convert = module.function("convert");
   if (!keep || !converted || !convert) {
     diagnostics.report("external behavior does not match its Module");
     return false;

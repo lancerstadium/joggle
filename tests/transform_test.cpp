@@ -45,11 +45,11 @@ module mapping@1.0.0 {
   }
 
   const auto schema = compiler.module("mapping");
-  const auto keep = schema ? schema->declaration("keep") : std::nullopt;
+  const auto keep = schema ? schema->function("keep") : std::nullopt;
   const auto converted =
-      schema ? schema->declaration("converted") : std::nullopt;
-  const auto other = schema ? schema->declaration("other") : std::nullopt;
-  const auto binary = schema ? schema->declaration("binary") : std::nullopt;
+      schema ? schema->function("converted") : std::nullopt;
+  const auto other = schema ? schema->function("other") : std::nullopt;
+  const auto binary = schema ? schema->function("binary") : std::nullopt;
   auto first = compiler.function("mapping.first");
   auto second = compiler.function("mapping.second");
   if (!keep || !converted || !other || !binary || !first || !second) {
@@ -103,9 +103,9 @@ module mapping@1.0.0 {
   }
 
   const auto* original_first =
-      static_cast<const joggle::Module&>(module).function("first");
+      static_cast<const joggle::Module&>(module).body("first");
   const auto* original_second =
-      static_cast<const joggle::Module&>(module).function("second");
+      static_cast<const joggle::Module&>(module).body("second");
   const auto original_first_revision = original_first->revision();
   const auto original_second_revision = original_second->revision();
   const std::string original_digest(module.digest());
@@ -120,9 +120,9 @@ module mapping@1.0.0 {
   ok &= expect(
       module_no_op && *module_no_op == 0U && module_no_op_diagnostics.ok() &&
           module.digest() == original_digest &&
-          static_cast<const joggle::Module&>(module).function("first") ==
+          static_cast<const joggle::Module&>(module).body("first") ==
               original_first &&
-          static_cast<const joggle::Module&>(module).function("second") ==
+          static_cast<const joggle::Module&>(module).body("second") ==
               original_second,
       "a no-op Module mapping preserves shared Function storage");
 
@@ -141,9 +141,9 @@ module mapping@1.0.0 {
       },
       module_failure_diagnostics);
   const auto* unchanged_first =
-      static_cast<const joggle::Module&>(module).function("first");
+      static_cast<const joggle::Module&>(module).body("first");
   const auto* unchanged_second =
-      static_cast<const joggle::Module&>(module).function("second");
+      static_cast<const joggle::Module&>(module).body("second");
   ok &= expect(
       !module_failure && !module_failure_diagnostics.ok() &&
           module.digest() == original_digest && unchanged_first != nullptr &&
@@ -156,9 +156,9 @@ module mapping@1.0.0 {
   const auto module_success = joggle::ir::replace_calls(
       module, *keep, *converted, module_success_diagnostics);
   const auto* mapped_first =
-      static_cast<const joggle::Module&>(module).function("first");
+      static_cast<const joggle::Module&>(module).body("first");
   const auto* preserved_second =
-      static_cast<const joggle::Module&>(module).function("second");
+      static_cast<const joggle::Module&>(module).body("second");
   ok &=
       expect(module_success && *module_success == 1U &&
                  module_success_diagnostics.ok() && mapped_first != nullptr &&

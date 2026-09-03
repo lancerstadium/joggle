@@ -103,9 +103,9 @@ int main() {
   bool ok = true;
   ok &= expect(module.has_value(), "the function owner remains available");
   const auto configured_decl =
-      module ? module->declaration("configured") : std::nullopt;
+      module ? module->function("configured") : std::nullopt;
   const auto default_configured_decl =
-      module ? module->declaration("default_configured") : std::nullopt;
+      module ? module->function("default_configured") : std::nullopt;
   const auto configured_int = compiler.make("int");
   const auto scale = configured_int
                          ? compiler.known(*configured_int, std::int64_t{8})
@@ -980,7 +980,7 @@ module cyclic_mixed_loop@1.0.0 {
       cyclic_mixed_loop.module("cyclic_mixed_loop");
   const auto cyclic_mixed_loop_declaration =
       cyclic_mixed_loop_module
-          ? cyclic_mixed_loop_module->declaration("rebuild")
+          ? cyclic_mixed_loop_module->function("rebuild")
           : std::nullopt;
   const auto compiler_integer = cyclic_mixed_loop.make("int");
   const auto initial_phase =
@@ -1300,7 +1300,7 @@ module dependent@1.0.0 {
   const bool dependent_linked = dependent.link();
   const auto dependent_module = dependent.module("dependent");
   const auto dependent_double =
-      dependent_module ? dependent_module->declaration("double") : std::nullopt;
+      dependent_module ? dependent_module->function("double") : std::nullopt;
   if (dependent_double) {
     dependent.bind(*dependent_double,
                    [](std::int64_t value) { return value * 2; });
@@ -1335,10 +1335,10 @@ module dependent@1.0.0 {
   const auto inconsistent_word =
       inconsistent_module ? inconsistent_module->type("word") : std::nullopt;
   const auto inconsistent_input =
-      inconsistent_module ? inconsistent_module->declaration("input")
+      inconsistent_module ? inconsistent_module->function("input")
                           : std::nullopt;
   const auto default_input =
-      inconsistent_module ? inconsistent_module->declaration("default_input")
+      inconsistent_module ? inconsistent_module->function("default_input")
                           : std::nullopt;
   const auto word8 =
       inconsistent_word ? inconsistent.make(*inconsistent_word, std::int64_t{8})
@@ -1370,10 +1370,10 @@ module dependent@1.0.0 {
   const bool defaulted_linked = defaulted.link();
   const auto defaulted_module = defaulted.module("dependent");
   const auto defaulted_input =
-      defaulted_module ? defaulted_module->declaration("default_input")
+      defaulted_module ? defaulted_module->function("default_input")
                        : std::nullopt;
   const auto named_input =
-      defaulted_module ? defaulted_module->declaration("input") : std::nullopt;
+      defaulted_module ? defaulted_module->function("input") : std::nullopt;
   const auto defaulted_int = defaulted.make("int");
   auto defaulted_function = defaulted.function();
   if (!defaulted_linked || !defaulted_input || !named_input || !defaulted_int ||
@@ -1533,7 +1533,7 @@ module computed@1.0.0 {
   const bool computed_linked = computed.link();
   const auto computed_module = computed.module("computed");
   const auto host_double = computed_module
-                               ? computed_module->declaration("host_double")
+                               ? computed_module->function("host_double")
                                : std::nullopt;
   if (computed_linked && host_double) {
     computed.bind(*host_double, [](std::int64_t value) { return value * 2; });
@@ -1996,7 +1996,7 @@ module guarded_host@1.0.0 {
   const bool guarded_host_linked = guarded_host.link();
   const auto guarded_host_module = guarded_host.module("guarded_host");
   const auto observe = guarded_host_module
-                           ? guarded_host_module->declaration("observe")
+                           ? guarded_host_module->function("observe")
                            : std::nullopt;
   std::int64_t observations = 0;
   if (observe) {
@@ -2040,7 +2040,7 @@ module hermetic_host@1.0.0 {
   const bool hermetic_host_linked = hermetic_host.link();
   const auto hermetic_host_module = hermetic_host.module("hermetic_host");
   const auto hermetic_evaluate =
-      hermetic_host_module ? hermetic_host_module->declaration("evaluate")
+      hermetic_host_module ? hermetic_host_module->function("evaluate")
                            : std::nullopt;
   if (hermetic_evaluate) {
     hermetic_host.bind(
@@ -2089,7 +2089,7 @@ module list_evaluation@1.0.0 {
                                  "list-evaluation-roundtrip.joggle")
           : std::nullopt;
   const auto list_sum = list_evaluation_module
-                            ? list_evaluation_module->declaration("sum")
+                            ? list_evaluation_module->function("sum")
                             : std::nullopt;
   if (list_sum) {
     list_evaluation.bind(*list_sum,
@@ -2201,11 +2201,11 @@ module staged_control@1.0.0 {
   const bool staged_control_linked = staged_control.link();
   const auto staged_module = staged_control.module("staged_control");
   const auto integer_add =
-      staged_module ? staged_module->declaration("integer_add") : std::nullopt;
+      staged_module ? staged_module->function("integer_add") : std::nullopt;
   const auto integer_less =
-      staged_module ? staged_module->declaration("integer_less") : std::nullopt;
+      staged_module ? staged_module->function("integer_less") : std::nullopt;
   const auto integer_greater =
-      staged_module ? staged_module->declaration("integer_greater")
+      staged_module ? staged_module->function("integer_greater")
                     : std::nullopt;
   if (integer_add) {
     staged_control.bind(*integer_add, [](std::int64_t lhs, std::int64_t rhs) {
@@ -2232,9 +2232,9 @@ module staged_control@1.0.0 {
                                "staged_control.count", std::int64_t{3})
                          : std::nullopt;
   const auto specialize_decl =
-      staged_module ? staged_module->declaration("specialize") : std::nullopt;
+      staged_module ? staged_module->function("specialize") : std::nullopt;
   const auto pipeline_decl =
-      staged_module ? staged_module->declaration("pipeline") : std::nullopt;
+      staged_module ? staged_module->function("pipeline") : std::nullopt;
   const auto integer_type = staged_control.make("int");
   const auto prelude_module = staged_control.module("prelude");
   const auto list_decl =

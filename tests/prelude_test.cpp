@@ -233,7 +233,7 @@ module primitive_test@1.0.0 {
                                : std::nullopt;
   const auto primitive_module = primitives.module("primitive_test");
   const auto unroll_decl =
-      primitive_module ? primitive_module->declaration("unroll") : std::nullopt;
+      primitive_module ? primitive_module->function("unroll") : std::nullopt;
   const auto integer_type = primitives.make("int");
   const auto count = integer_type
                          ? primitives.known(*integer_type, std::int64_t{3})

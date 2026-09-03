@@ -97,7 +97,7 @@ They are not inserted as runtime Function arguments.
 ## Instantiate a source Function
 
 ```cpp
-auto declaration = model->declaration("kernel");
+auto declaration = model->function("kernel");
 auto function = declaration && width
                     ? compiler.function(*declaration, {*width})
                     : std::nullopt;
@@ -199,8 +199,12 @@ joggle::Module module("compiled_model", {1, 0, 0});
 joggle::Diagnostics diagnostics;
 module.insert("main", std::move(*function), diagnostics);
 
-const auto names = module.function_names();
-auto* main = module.function("main");
+for (const auto function : module.functions()) {
+  if (const auto* body = module.body(function.name())) {
+    // Inspect or transform the materialized CFG.
+  }
+}
+auto* main = module.body("main");
 ```
 
 Copies use Function-granular copy-on-write. Const lookup shares; mutable lookup

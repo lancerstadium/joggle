@@ -41,17 +41,17 @@ int main() {
   const auto test_ir = compiler.module("test_ir");
   const auto control = compiler.module("control");
   const auto integer_schema = test_ir ? test_ir->type("integer") : std::nullopt;
-  const auto add_schema = test_ir ? test_ir->declaration("add") : std::nullopt;
+  const auto add_schema = test_ir ? test_ir->function("add") : std::nullopt;
   const auto cast_schema =
-      test_ir ? test_ir->declaration("cast") : std::nullopt;
+      test_ir ? test_ir->function("cast") : std::nullopt;
   const auto source_schema =
-      control ? control->declaration("source") : std::nullopt;
+      control ? control->function("source") : std::nullopt;
   const auto add_i32_schema =
-      control ? control->declaration("add_i32") : std::nullopt;
+      control ? control->function("add_i32") : std::nullopt;
   const auto callback_schema =
-      control ? control->declaration("callback") : std::nullopt;
+      control ? control->function("callback") : std::nullopt;
   const auto apply_schema =
-      control ? control->declaration("apply") : std::nullopt;
+      control ? control->function("apply") : std::nullopt;
   const auto prelude = compiler.module("prelude");
   const auto callable_schema =
       prelude ? prelude->type("callable") : std::nullopt;

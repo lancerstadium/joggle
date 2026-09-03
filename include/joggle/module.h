@@ -287,24 +287,24 @@ public:
   std::optional<InterfaceDecl> interface(std::string_view name) const;
   std::optional<TypeDecl> type(std::string_view name) const;
   std::optional<AttributeDecl> attribute(std::string_view name) const;
-  std::optional<FunctionDecl> declaration(std::string_view name) const;
+  std::optional<FunctionDecl> function(std::string_view name) const;
   std::vector<FunctionDecl> overloads(std::string_view name) const;
   std::optional<Symbol> symbol(SymbolKind kind, std::string_view name) const;
   std::vector<Symbol> members() const;
   std::vector<InterfaceDecl> interfaces() const;
   std::vector<TypeDecl> types() const;
   std::vector<AttributeDecl> attributes() const;
-  std::vector<FunctionDecl> declarations() const;
+  std::vector<FunctionDecl> functions() const;
 
-  // Materialized IR Functions belong to this Module. Mutable lookup detaches
-  // only the selected Function; copying a Module is otherwise cheap.
+  // A Function always occupies one Module member and has one canonical
+  // signature. insert() adds a member whose body is already materialized as
+  // editable IR; body() is absent for external and not-yet-materialized
+  // members. Mutable body lookup detaches only that body.
   bool insert(std::string name, ir::Function function,
               Diagnostics& diagnostics);
-  ir::Function* function(std::string_view name);
-  const ir::Function* function(std::string_view name) const;
-  std::vector<std::string> function_names() const;
+  ir::Function* body(std::string_view name);
+  const ir::Function* body(std::string_view name) const;
   std::vector<Dependency> dependencies() const;
-  std::size_t function_count() const;
   bool operator==(const Module& other) const;
 
 private:

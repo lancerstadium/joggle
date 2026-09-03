@@ -43,13 +43,13 @@ int main() {
     return EXIT_FAILURE;
   }
   const auto integer_schema = test_ir->type("integer");
-  const auto add_schema = test_ir->declaration("add");
-  const auto cast_schema = test_ir->declaration("cast");
-  const auto canonicalize_schema = test_ir->declaration("canonicalize");
-  const auto marker_schema = testing->declaration("marker");
-  const auto cleanup_schema = testing->declaration("cleanup");
-  const auto optimize_schema = testing->declaration("optimize");
-  const auto abort_schema = testing->declaration("abort");
+  const auto add_schema = test_ir->function("add");
+  const auto cast_schema = test_ir->function("cast");
+  const auto canonicalize_schema = test_ir->function("canonicalize");
+  const auto marker_schema = testing->function("marker");
+  const auto cleanup_schema = testing->function("cleanup");
+  const auto optimize_schema = testing->function("optimize");
+  const auto abort_schema = testing->function("abort");
   if (!integer_schema || !add_schema || !cast_schema || !canonicalize_schema ||
       !marker_schema || !cleanup_schema || !optimize_schema || !abort_schema) {
     return EXIT_FAILURE;

@@ -9,13 +9,13 @@ namespace {
 
 bool bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
-  const auto map_relu = module.declaration("map_relu");
-  const auto emit_joggle = module.declaration("emit_joggle");
+  const auto map_relu = module.function("map_relu");
+  const auto emit_joggle = module.function("emit_joggle");
   const auto nn = compiler.module("nn");
   const auto accelerator = compiler.module("example_accel");
-  const auto nn_relu = nn ? nn->declaration("relu") : std::nullopt;
+  const auto nn_relu = nn ? nn->function("relu") : std::nullopt;
   const auto accelerator_relu =
-      accelerator ? accelerator->declaration("relu") : std::nullopt;
+      accelerator ? accelerator->function("relu") : std::nullopt;
   if (!map_relu || !emit_joggle || !nn_relu || !accelerator_relu) {
     diagnostics.report("nn_pipeline behavior does not match its Module set");
     return false;

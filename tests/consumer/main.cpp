@@ -19,8 +19,8 @@ int main(int argc, char** argv) {
     compiler.diagnostics().print(std::cerr);
     return 1;
   }
-  const auto make = module->declaration("make");
-  const auto converted = module->declaration("converted");
+  const auto make = module->function("make");
+  const auto converted = module->function("converted");
   if (!make || !converted || !compiler.load_behavior("external")) {
     compiler.diagnostics().print(std::cerr);
     return 1;

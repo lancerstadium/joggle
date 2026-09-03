@@ -95,11 +95,11 @@ template <typename Mapper>
 std::optional<ModuleCallPlan> plan_calls(const Module& module, Mapper& mapper,
                                          Diagnostics& diagnostics) {
   ModuleCallPlan plan;
-  for (const std::string& name : module.function_names()) {
-    const Function* function = module.function(name);
+  for (const joggle::Module::FunctionDecl& member : module.functions()) {
+    const std::string name(member.name());
+    const Function* function = module.body(name);
     if (function == nullptr) {
-      diagnostics.report("Module lost function '" + name + "'");
-      return std::nullopt;
+      continue;
     }
     auto replacements = plan_calls(*function, mapper, diagnostics);
     if (!replacements) {
@@ -116,7 +116,7 @@ std::optional<ModuleCallPlan> plan_calls(const Module& module, Mapper& mapper,
 inline bool apply_calls(Module& module, const ModuleCallPlan& plan,
                         Diagnostics& diagnostics) {
   for (const FunctionCallPlan& function_plan : plan.functions) {
-    Function* function = module.function(function_plan.name);
+    Function* function = module.body(function_plan.name);
     if (function == nullptr) {
       diagnostics.report("Module lost function '" + function_plan.name + "'");
       return false;

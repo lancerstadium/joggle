@@ -441,7 +441,7 @@ private:
     if constexpr (std::is_same_v<Declaration, Module::TypeDecl>) {
       result = module->type(local);
     } else if constexpr (std::is_same_v<Declaration, Module::FunctionDecl>) {
-      result = module->declaration(local);
+      result = module->function(local);
     } else {
       result = module->attribute(local);
     }

@@ -46,7 +46,7 @@ module module_defs@1.0.0 {
   const auto definitions = compiler.module("module_defs");
   const auto prelude = compiler.module("prelude");
   const auto callback_decl =
-      definitions ? definitions->declaration("callback") : std::nullopt;
+      definitions ? definitions->function("callback") : std::nullopt;
   const auto callable_decl = prelude ? prelude->type("callable") : std::nullopt;
   const auto i32 = compiler.make("i32");
   const auto callable =
@@ -82,6 +82,7 @@ module module_defs@1.0.0 {
   }
 
   const auto dependencies = module.dependencies();
+  const auto materialized_main = module.function("main");
   const std::string text = joggle::format(module);
   joggle::Diagnostics parse_diagnostics;
   const auto parsed =
@@ -92,6 +93,14 @@ module module_defs@1.0.0 {
   }
 
   bool ok = true;
+  ok &= expect(materialized_main &&
+                   materialized_main->form() ==
+                       joggle::Module::FunctionDecl::Form::Body &&
+                   materialized_main->inputs().empty() &&
+                   materialized_main->results().size() == 1U &&
+                   module.functions().size() == 3U,
+               "a materialized member exposes the same canonical function "
+               "signature instead of living in a second function table");
   ok &= expect(dependencies ==
                    std::vector<joggle::Module::Dependency>{
                        {"module_defs", {1, 0, 0}}, {"prelude", {2, 0, 0}}},
@@ -147,8 +156,8 @@ module module_defs@1.0.0 {
                                  "mixed-module.joggle")
           : std::nullopt;
   ok &= expect(mixed_inserted && mixed_diagnostics.ok() && mixed_reparsed &&
-                   mixed_reparsed->declaration("source") &&
-                   mixed_reparsed->declaration("compiled_main") &&
+                   mixed_reparsed->function("source") &&
+                   mixed_reparsed->function("compiled_main") &&
                    mixed_text.find("import module_defs") == std::string::npos,
                "one Module member table carries source declarations and "
                "materialized IR without a self-import or second container");

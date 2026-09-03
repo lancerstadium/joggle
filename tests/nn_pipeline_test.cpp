@@ -29,8 +29,8 @@ std::string decode(const joggle::Bytes& bytes) {
 
 std::size_t calls(const joggle::Module& module, std::string_view symbol) {
   std::size_t count = 0;
-  for (const std::string& name : module.function_names()) {
-    const joggle::ir::Function* function = module.function(name);
+  for (const joggle::Module::FunctionDecl& member : module.functions()) {
+    const joggle::ir::Function* function = module.body(member.name());
     if (function == nullptr) {
       continue;
     }
@@ -61,9 +61,9 @@ int main() {
 
   const auto prepare = compiler.module("nn_pipeline");
   const auto prepare_function =
-      prepare ? prepare->declaration("prepare") : std::nullopt;
+      prepare ? prepare->function("prepare") : std::nullopt;
   const auto compile_function =
-      prepare ? prepare->declaration("compile") : std::nullopt;
+      prepare ? prepare->function("compile") : std::nullopt;
   auto block = compiler.function("resnet18_basic_block.main");
   if (!prepare_function || !compile_function || !block ||
       !compiler.load_behavior("nn_pipeline", JOGGLE_NN_PIPELINE_BEHAVIOR)) {
@@ -96,7 +96,7 @@ int main() {
       joggle::parse_module(source, parse_diagnostics, "compiled-model.joggle");
 
   bool ok = true;
-  ok &= expect(model.function_count() == 2U && calls(model, "nn.relu") == 4U,
+  ok &= expect(model.functions().size() == 2U && calls(model, "nn.relu") == 4U,
                "the original multi-Function NN Module remains unchanged");
   ok &= expect(unchanged && calls(*unchanged, "nn.relu") == 4U &&
                    calls(*unchanged, "example_accel.relu") == 0U,

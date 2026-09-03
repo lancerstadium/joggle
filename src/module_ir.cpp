@@ -126,6 +126,54 @@ function_dependencies(const ir::Function& function) {
   return result;
 }
 
+Module::Expression expression(const detail::ValueSyntax& value) {
+  Module::Expression result;
+  switch (value.kind) {
+  case detail::ValueSyntax::Kind::Number:
+    result.kind = Module::Expression::Kind::Number;
+    break;
+  case detail::ValueSyntax::Kind::Boolean:
+    result.kind = Module::Expression::Kind::Boolean;
+    break;
+  case detail::ValueSyntax::Kind::String:
+    result.kind = Module::Expression::Kind::String;
+    break;
+  case detail::ValueSyntax::Kind::List:
+    result.kind = Module::Expression::Kind::List;
+    break;
+  case detail::ValueSyntax::Kind::Reference:
+    result.kind = Module::Expression::Kind::Reference;
+    break;
+  }
+  result.text = value.text;
+  result.arguments.reserve(value.elements.size());
+  for (const detail::ValueSyntax& element : value.elements) {
+    result.arguments.push_back(expression(element));
+  }
+  return result;
+}
+
+detail::FunctionDefinition definition(const ir::Function& function,
+                                      std::string_view name) {
+  const detail::FunctionSyntax syntax =
+      detail::materialized_function_syntax(function, name);
+  detail::FunctionDefinition result;
+  result.name = syntax.name;
+  result.inputs.reserve(syntax.arguments.size());
+  for (const detail::FunctionArgumentSyntax& argument : syntax.arguments) {
+    result.inputs.push_back(
+        {argument.name, expression(argument.type), false, std::nullopt});
+  }
+  result.results.reserve(syntax.result_types.size());
+  for (const detail::ValueSyntax& type : syntax.result_types) {
+    result.results.push_back({"", expression(type), false, std::nullopt});
+  }
+  result.types.bindings.resize(result.inputs.size());
+  result.types.ir_inputs.assign(result.inputs.size(), true);
+  result.types.ir_results.assign(result.results.size(), true);
+  return result;
+}
+
 }  // namespace
 
 bool Module::insert(std::string name, ir::Function function,
@@ -174,8 +222,15 @@ bool Module::insert(std::string name, ir::Function function,
       }
     }
   }
+  detail::FunctionDefinition declaration;
+  try {
+    declaration = definition(function, name);
+  } catch (const std::exception& error) {
+    diagnostics.report(error.what());
+    return false;
+  }
   next->functions.push_back(
-      {std::move(name), std::nullopt,
+      {std::move(name), std::move(declaration),
        std::make_shared<ir::Function>(std::move(function))});
   Module candidate(next);
   next->digest = detail::sha256(format(candidate));
@@ -190,7 +245,7 @@ bool Module::insert(std::string name, ir::Function function,
   return true;
 }
 
-ir::Function* Module::function(std::string_view name) {
+ir::Function* Module::body(std::string_view name) {
   const auto found = std::find_if(
       storage_->functions.begin(), storage_->functions.end(),
       [&](const detail::FunctionMember& function) {
@@ -214,25 +269,13 @@ ir::Function* Module::function(std::string_view name) {
   return result;
 }
 
-const ir::Function* Module::function(std::string_view name) const {
+const ir::Function* Module::body(std::string_view name) const {
   const auto found = std::find_if(
       storage_->functions.begin(), storage_->functions.end(),
       [&](const detail::FunctionMember& function) {
         return function.name == name && function.ir != nullptr;
       });
   return found == storage_->functions.end() ? nullptr : found->ir.get();
-}
-
-std::vector<std::string> Module::function_names() const {
-  std::vector<std::string> result;
-  result.reserve(storage_->functions.size());
-  for (const detail::FunctionMember& function : storage_->functions) {
-    if (function.ir) {
-      result.push_back(function.name);
-    }
-  }
-  std::sort(result.begin(), result.end());
-  return result;
 }
 
 std::vector<Module::Dependency> Module::dependencies() const {
@@ -248,14 +291,6 @@ std::vector<Module::Dependency> Module::dependencies() const {
     result.push_back({name, version});
   }
   return result;
-}
-
-std::size_t Module::function_count() const {
-  return static_cast<std::size_t>(
-      std::count_if(storage_->functions.begin(), storage_->functions.end(),
-                    [](const detail::FunctionMember& function) {
-                      return function.ir != nullptr;
-                    }));
 }
 
 }  // namespace joggle

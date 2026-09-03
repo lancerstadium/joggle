@@ -2008,8 +2008,9 @@ Module::FunctionDecl::operator_fixity() const {
 }
 
 Module::FunctionDecl::Form Module::FunctionDecl::form() const {
-  return storage_->functions[index_].declaration->body ? Form::Body
-                                                        : Form::External;
+  const detail::FunctionMember& function = storage_->functions[index_];
+  return function.ir || function.declaration->body ? Form::Body
+                                                    : Form::External;
 }
 
 const Module::Expression*
@@ -2187,7 +2188,7 @@ Module::attribute(std::string_view name) const {
 }
 
 std::optional<Module::FunctionDecl>
-Module::declaration(std::string_view name) const {
+Module::function(std::string_view name) const {
   const auto values = overloads(name);
   return values.size() == 1U ? std::optional<FunctionDecl>{values.front()}
                              : std::nullopt;
@@ -2273,7 +2274,7 @@ std::vector<Module::AttributeDecl> Module::attributes() const {
   return result;
 }
 
-std::vector<Module::FunctionDecl> Module::declarations() const {
+std::vector<Module::FunctionDecl> Module::functions() const {
   std::vector<FunctionDecl> result;
   result.reserve(storage_->functions.size());
   for (std::size_t index = 0; index < storage_->functions.size(); ++index) {
@@ -2543,11 +2544,11 @@ std::string format(const Module& module) {
       std::any_of(module.storage_->functions.begin(),
                   module.storage_->functions.end(),
                   [](const detail::FunctionMember& function) {
-                    return function.declaration.has_value();
+                    return function.declaration.has_value() && !function.ir;
                   });
   begin_group(has_declarations);
   for (const detail::FunctionMember& member : module.storage_->functions) {
-    if (!member.declaration) {
+    if (!member.declaration || member.ir) {
       continue;
     }
     const detail::FunctionDefinition& function = *member.declaration;

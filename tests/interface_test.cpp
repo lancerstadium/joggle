@@ -54,7 +54,7 @@ int main() {
   const auto module = compiler.module("semantics");
   const auto scalar_decl = module ? module->type("scalar") : std::nullopt;
   const auto label_decl = module ? module->attribute("label") : std::nullopt;
-  const auto work_decl = module ? module->declaration("work") : std::nullopt;
+  const auto work_decl = module ? module->function("work") : std::nullopt;
   const auto metric = module ? module->interface("metric") : std::nullopt;
   const auto tagged = module ? module->interface("tagged") : std::nullopt;
   const auto costed = module ? module->interface("costed") : std::nullopt;

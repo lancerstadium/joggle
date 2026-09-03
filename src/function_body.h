@@ -127,6 +127,8 @@ std::string format_function_body(const FunctionBody& body,
                                  std::size_t indent = 0);
 std::string format_function_syntax(const FunctionSyntax& function,
                                    std::size_t indent = 0);
+FunctionSyntax materialized_function_syntax(const ir::Function& function,
+                                            std::string_view name);
 std::optional<ir::Function>
 instantiate_function(Compiler& compiler, Module::FunctionDecl function,
                      const FunctionBody& body, Diagnostics& diagnostics,
