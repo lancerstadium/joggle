@@ -36,6 +36,10 @@ module mapping@1.0.0 {
   fn second(input: word) -> word {
     return other(input);
   }
+
+  fn expanded(input: word) -> word {
+    return keep(input);
+  }
 }
 )",
                "mapping.joggle");
@@ -52,7 +56,9 @@ module mapping@1.0.0 {
   const auto binary = schema ? schema->function("binary") : std::nullopt;
   auto first = compiler.materialize("mapping.first");
   auto second = compiler.materialize("mapping.second");
-  if (!keep || !converted || !other || !binary || !first || !second) {
+  auto expanded = compiler.materialize("mapping.expanded");
+  if (!keep || !converted || !other || !binary || !first || !second ||
+      !expanded) {
     return EXIT_FAILURE;
   }
 
@@ -71,6 +77,17 @@ module mapping@1.0.0 {
                    first->instructions().front().callee() == *keep,
                "a no-op mapping preserves the Function revision");
 
+  joggle::Diagnostics no_op_rewrite_diagnostics;
+  const auto no_op_rewrite = joggle::ir::rewrite(
+      *first,
+      [](const joggle::ir::Instruction&, joggle::ir::Function::Edit&,
+         joggle::Diagnostics&) { return false; },
+      no_op_rewrite_diagnostics);
+  ok &= expect(no_op_rewrite && *no_op_rewrite == 0U &&
+                   no_op_rewrite_diagnostics.ok() &&
+                   first->revision() == first_revision,
+               "a no-op rewrite preserves the Function revision");
+
   joggle::Diagnostics replace_diagnostics;
   const auto replaced =
       joggle::ir::replace_calls(*first, *keep, *converted, replace_diagnostics);
@@ -78,6 +95,34 @@ module mapping@1.0.0 {
                    first->revision() != first_revision &&
                    first->instructions().front().callee() == *converted,
                "a committed replacement advances the Function revision");
+
+  const auto expanded_revision = expanded->revision();
+  joggle::Diagnostics rewrite_diagnostics;
+  const auto rewritten = joggle::ir::rewrite(
+      *expanded,
+      [&](const joggle::ir::Instruction& instruction,
+          joggle::ir::Function::Edit& edit, joggle::Diagnostics&) {
+        if (instruction.callee() != *keep) {
+          return false;
+        }
+        const auto first_step =
+            edit.insert(instruction, *converted, instruction.arguments());
+        const auto second_step =
+            edit.insert(instruction, *other, {first_step.value()});
+        edit.replace(instruction, {second_step.value()});
+        return true;
+      },
+      rewrite_diagnostics);
+  const auto expanded_instructions = expanded->instructions();
+  ok &= expect(
+      rewritten && *rewritten == 1U && rewrite_diagnostics.ok() &&
+          expanded->revision() != expanded_revision &&
+          expanded_instructions.size() == 2U &&
+          expanded_instructions[0].callee() == *converted &&
+          expanded_instructions[1].callee() == *other &&
+          expanded->entry().terminator().returned().front() ==
+              expanded_instructions[1].value(),
+      "one lambda transactionally expands a call into multiple Instructions");
 
   const std::string before_invalid = joggle::format(*second, "second");
   const auto before_invalid_revision = second->revision();
@@ -128,17 +173,19 @@ module mapping@1.0.0 {
       "a no-op Module mapping preserves shared Function storage");
 
   joggle::Diagnostics module_failure_diagnostics;
-  const auto module_failure = joggle::ir::map_calls(
+  const auto module_failure = joggle::ir::rewrite(
       module,
-      [&](const joggle::ir::Instruction& instruction)
-          -> std::optional<joggle::Module::Function> {
+      [&](const joggle::ir::Instruction& instruction,
+          joggle::ir::Function::Edit& edit,
+          joggle::Diagnostics& reported) {
         if (instruction.callee() == *keep) {
-          return *converted;
+          edit.replace(instruction, *converted);
+          return true;
         }
         if (instruction.callee() == *other) {
-          return *binary;
+          reported.report("second Function rejects conversion");
         }
-        return std::nullopt;
+        return false;
       },
       module_failure_diagnostics);
   const auto* unchanged_first = read_body("first");

@@ -29,6 +29,39 @@ struct ModuleCallPlan {
   std::size_t changed = 0;
 };
 
+template <typename Rule>
+std::optional<std::size_t> rewrite_function(Function& function, Rule& rule,
+                                            Diagnostics& diagnostics) {
+  const std::size_t before = diagnostics.size();
+  try {
+    const auto instructions = function.instructions();
+    auto edit = function.edit();
+    std::size_t changed = 0;
+    for (const Instruction& instruction : instructions) {
+      if (!instruction.valid()) {
+        continue;
+      }
+      if (std::invoke(rule, instruction, edit, diagnostics)) {
+        ++changed;
+      }
+      if (diagnostics.size() != before) {
+        return std::nullopt;
+      }
+    }
+    if (changed == 0U) {
+      return 0U;
+    }
+    return edit.commit(diagnostics)
+               ? std::optional<std::size_t>{changed}
+               : std::nullopt;
+  } catch (const std::exception& error) {
+    diagnostics.report("rewrite failed: " + std::string(error.what()));
+  } catch (...) {
+    diagnostics.report("rewrite failed with an unknown exception");
+  }
+  return std::nullopt;
+}
+
 template <typename Mapper>
 std::optional<std::vector<CallReplacement>>
 plan_calls(const Function& function, Mapper& mapper, Diagnostics& diagnostics) {
@@ -129,6 +162,60 @@ inline bool apply_calls(Module& module, const ModuleCallPlan& plan,
 }
 
 }  // namespace transform_detail
+
+// Applies one lambda to the committed Instructions present at the start of a
+// sweep. The lambda receives (Instruction, Function::Edit, Diagnostics) and
+// returns true only when it changed the IR. All edits commit together; an
+// exception, diagnostic, or failed verification restores the prior Function.
+template <typename Rule>
+std::optional<std::size_t> rewrite(Function& function, Rule&& rule,
+                                   Diagnostics& diagnostics) {
+  using Changed = std::invoke_result_t<Rule&, const Instruction&,
+                                       Function::Edit&, Diagnostics&>;
+  static_assert(std::is_convertible_v<Changed, bool>,
+                "a rewrite lambda must return bool");
+  return transform_detail::rewrite_function(function, rule, diagnostics);
+}
+
+// Applies the same rule to every materialized Function on a private Module
+// value. The Module is published only if every Function rewrite succeeds.
+template <typename Rule>
+std::optional<std::size_t> rewrite(Module& module, Rule&& rule,
+                                   Diagnostics& diagnostics) {
+  using Changed = std::invoke_result_t<Rule&, const Instruction&,
+                                       Function::Edit&, Diagnostics&>;
+  static_assert(std::is_convertible_v<Changed, bool>,
+                "a rewrite lambda must return bool");
+
+  Module candidate = module;
+  std::size_t changed = 0;
+  for (const joggle::Module::Function& member : module.functions()) {
+    const Function* source = member.body();
+    if (source == nullptr) {
+      continue;
+    }
+    Function rewritten = *source;
+    auto count =
+        transform_detail::rewrite_function(rewritten, rule, diagnostics);
+    if (!count) {
+      return std::nullopt;
+    }
+    if (*count != 0U) {
+      Function* target = candidate.body(member.name());
+      if (target == nullptr) {
+        diagnostics.report("Module lost function '" +
+                           std::string(member.name()) + "'");
+        return std::nullopt;
+      }
+      *target = std::move(rewritten);
+    }
+    changed += *count;
+  }
+  if (changed != 0U) {
+    module = std::move(candidate);
+  }
+  return changed;
+}
 
 // Transactionally maps call declarations in one Function. The mapper receives
 // each committed Instruction and returns either a replacement declaration or

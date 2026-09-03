@@ -184,6 +184,9 @@ public:
                 std::vector<Value> false_arguments);
     void replace(Value from, Value to);
     Instruction replace(Instruction instruction, Module::Function schema);
+    // Replaces every result position and erases the old Instruction. An empty
+    // replacement erases a zero-result Instruction.
+    void replace(Instruction instruction, std::vector<Value> results);
     void erase(Instruction instruction);
 
     bool commit(Diagnostics& diagnostics);

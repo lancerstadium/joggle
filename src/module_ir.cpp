@@ -263,7 +263,7 @@ ir::Function* Module::body(std::string_view name) {
       [&](const detail::FunctionMember& function) {
         return function.name == name && function.ir != nullptr;
       });
-  selected->ir = std::make_shared<ir::Function>(selected->ir->clone());
+  selected->ir = std::make_shared<ir::Function>(*selected->ir);
   ir::Function* result = selected->ir.get();
   storage_ = std::move(next);
   return result;

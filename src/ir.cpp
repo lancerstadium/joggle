@@ -1641,6 +1641,32 @@ Instruction Function::Edit::replace(Instruction instruction,
   return replacement;
 }
 
+void Function::Edit::replace(Instruction instruction,
+                             std::vector<Value> results) {
+  check_same_function(state_->function, instruction, "instruction");
+  const auto previous = instruction.results();
+  if (previous.size() != results.size()) {
+    throw std::invalid_argument(
+        "replacement result count does not match the instruction");
+  }
+  for (std::size_t index = 0; index < results.size(); ++index) {
+    if (results[index].known()) {
+      throw std::invalid_argument(
+          "a Known value cannot replace an Instruction result");
+    }
+    check_same_function(state_->function, results[index], "replacement value");
+    if (previous[index].type() != results[index].type()) {
+      throw std::invalid_argument(
+          "replacement result has a different type at position " +
+          std::to_string(index));
+    }
+  }
+  for (std::size_t index = 0; index < results.size(); ++index) {
+    replace(previous[index], results[index]);
+  }
+  erase(instruction);
+}
+
 void Function::Edit::erase(Instruction instruction) {
   check_same_function(state_->function, instruction, "instruction");
   auto& state = *state_->function->state;

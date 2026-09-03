@@ -67,7 +67,36 @@ The existing kernel provides the invariants every compiler function needs:
 These guarantees are target-neutral. They are sufficient to write a correct
 transform without a target or device model in the kernel.
 
-## Transactional call mapping
+## Transactional rewriting
+
+General structural rewrites are one lambda and one transaction. There is no
+pattern base class, rewrite registry, or second IR container:
+
+```cpp
+auto changed = joggle::ir::rewrite(
+    module,
+    [&](const joggle::ir::Instruction& instruction,
+        joggle::ir::Function::Edit& edit,
+        joggle::Diagnostics&) {
+      if (instruction.callee() != source_call) {
+        return false;
+      }
+      auto first = edit.insert(instruction, normalize,
+                               instruction.arguments());
+      auto second = edit.insert(instruction, target, {first.value()});
+      edit.replace(instruction, {second.value()});
+      return true;
+    },
+    diagnostics);
+```
+
+The rule visits the committed Instructions present at the start of the sweep
+and returns whether it changed each one. Every changed Function is verified;
+an exception, a new diagnostic, or failed verification publishes nothing.
+Replacing an Instruction with a positional result list supports erasure and
+multi-Instruction expansion without inventing a replacement object.
+
+Exact call mapping remains as a smaller convenience:
 
 The first reusable transform primitive is intentionally a pair of free
 functions rather than a base class or registry:
@@ -108,9 +137,8 @@ registering another pass hierarchy.
 The next implementation layer is a C++ utility library over the public IR, not
 new source syntax. Its components should be independently usable:
 
-1. **Structural rewriting.** Captured operands, multi-instruction replacement,
-   erasure, greedy/fixed-point drivers, and explicit convergence limits. The
-   initial `map_calls` utility covers verified call-to-call mapping only.
+1. **Rewrite drivers.** Greedy and fixed-point sweeps with explicit convergence
+   limits over the transactional `rewrite` primitive.
 2. **Conversion contracts.** A caller-supplied legality predicate, declared
    conversion functions, partial/full conversion modes, and diagnostics that
    identify the first illegal residual construct. There is no global target

@@ -174,6 +174,18 @@ Function directly. They include terminator uses where appropriate and do not
 create a Graph owner. Analysis libraries may cache their own products against a
 Function snapshot.
 
+## Rewrite transactionally
+
+`joggle::ir::rewrite` accepts a lambda over each committed Instruction and a
+single `Function::Edit`. The lambda may insert calls, replace one call with a
+positional result list, redirect uses, or erase an unused Instruction. It
+returns `true` only when it changed the IR. The Function overload commits one
+verified transaction; the Module overload publishes only after every changed
+Function verifies.
+
+No-op sweeps preserve the Function revision and Module storage. Failure returns
+`std::nullopt` and preserves the complete input value.
+
 ## Map calls transactionally
 
 `joggle::ir::replace_calls` replaces one exact declaration with another in a
