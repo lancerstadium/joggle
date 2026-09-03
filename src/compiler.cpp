@@ -1644,7 +1644,7 @@ Compiler::make(const Module::AttributeDecl& schema,
   return attribute;
 }
 
-std::optional<ir::Function> Compiler::body() {
+std::optional<ir::Function> Compiler::create_function() {
   if (!state_->linked) {
     state_->diagnostics.report(
         "cannot create a function before the compiler is linked");

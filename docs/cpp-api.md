@@ -110,14 +110,14 @@ The resulting `ir::Function` contains only its Residual boundary. Source
 bodies, generic values, defaults, and `@` expressions are evaluated while it
 is built. Use `joggle::format(*function, "kernel")` for canonical source.
 
-`Compiler::body()` creates an unnamed empty `ir::Function` for programmatic
-construction. It does not perform declaration lookup or source-body
-specialization.
+`Compiler::create_function()` creates an unnamed empty `ir::Function` for
+programmatic construction. It does not perform declaration lookup or
+source-body specialization.
 
 ## Edit a Function
 
 ```cpp
-auto function = compiler.body();
+auto function = compiler.create_function();
 auto edit = function->edit();
 
 auto lhs = edit.argument(*i32);

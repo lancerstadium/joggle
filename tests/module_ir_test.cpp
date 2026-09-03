@@ -56,7 +56,7 @@ module module_defs@1.0.0 {
           ? compiler.make(*callable_decl, std::vector<joggle::Type>{*i32},
                           std::vector<joggle::Type>{*i32})
           : std::optional<joggle::Type>{};
-  auto callback_value = compiler.body();
+  auto callback_value = compiler.create_function();
   if (!main || !choose || !callback_decl || !callable || !callback_value) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;

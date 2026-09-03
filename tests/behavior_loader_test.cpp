@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
   const auto positive = module->type("positive");
   const auto value = positive ? compiler.make(*positive, std::int64_t{7})
                               : std::optional<joggle::Type>{};
-  auto function = compiler.body();
+  auto function = compiler.create_function();
   bool ok = true;
   ok &= expect(value.has_value(),
                "the loaded behavior refines type construction");
@@ -51,8 +51,8 @@ int main(int argc, char** argv) {
   joggle::Compiler adjacent;
   adjacent.load(argv[1]);
   const bool adjacent_linked = adjacent.link();
-  const bool adjacent_loaded = adjacent_linked &&
-                               adjacent.load_behavior("behavior_plugin");
+  const bool adjacent_loaded =
+      adjacent_linked && adjacent.load_behavior("behavior_plugin");
   if (!adjacent_loaded) {
     adjacent.diagnostics().print(std::cerr);
   }
@@ -66,8 +66,7 @@ int main(int argc, char** argv) {
   const bool linked = rollback.link();
   const auto rollback_module = rollback.module("behavior_plugin");
   const bool rejected =
-      rollback_module &&
-      !rollback.load_behavior("behavior_plugin", argv[3]);
+      rollback_module && !rollback.load_behavior("behavior_plugin", argv[3]);
   const auto rollback_type = rollback_module
                                  ? rollback_module->type("positive")
                                  : std::optional<joggle::Module::TypeDecl>{};

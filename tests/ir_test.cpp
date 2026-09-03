@@ -42,16 +42,14 @@ int main() {
   const auto control = compiler.module("control");
   const auto integer_schema = test_ir ? test_ir->type("integer") : std::nullopt;
   const auto add_schema = test_ir ? test_ir->function("add") : std::nullopt;
-  const auto cast_schema =
-      test_ir ? test_ir->function("cast") : std::nullopt;
+  const auto cast_schema = test_ir ? test_ir->function("cast") : std::nullopt;
   const auto source_schema =
       control ? control->function("source") : std::nullopt;
   const auto add_i32_schema =
       control ? control->function("add_i32") : std::nullopt;
   const auto callback_schema =
       control ? control->function("callback") : std::nullopt;
-  const auto apply_schema =
-      control ? control->function("apply") : std::nullopt;
+  const auto apply_schema = control ? control->function("apply") : std::nullopt;
   const auto prelude = compiler.module("prelude");
   const auto callable_schema =
       prelude ? prelude->type("callable") : std::nullopt;
@@ -61,14 +59,13 @@ int main() {
       !callable_schema || !other_schema) {
     return EXIT_FAILURE;
   }
-  compiler.verify(
-      *integer_schema,
-      [](const joggle::Type&, joggle::Diagnostics&) { return true; });
+  compiler.verify(*integer_schema, [](const joggle::Type&,
+                                      joggle::Diagnostics&) { return true; });
   const auto integer = compiler.make(*integer_schema, std::int64_t{8});
   const auto other = compiler.make(*other_schema);
   const auto boolean = compiler.make("i1");
   const auto i32 = compiler.make("i32");
-  auto function = compiler.body();
+  auto function = compiler.create_function();
   if (!integer || !other || !boolean || !i32 || !function) {
     return EXIT_FAILURE;
   }
@@ -118,7 +115,7 @@ int main() {
                "Function copies share a revision and detach on edit");
 
   const auto known_seven = compiler.known(*i32, std::int64_t{7});
-  auto mixed = compiler.body();
+  auto mixed = compiler.create_function();
   if (!known_seven || !mixed) {
     return EXIT_FAILURE;
   }
@@ -143,7 +140,7 @@ int main() {
   const auto callable =
       compiler.make(*callable_schema, std::vector<joggle::Type>{*i32},
                     std::vector<joggle::Type>{*i32});
-  auto higher_order = compiler.body();
+  auto higher_order = compiler.create_function();
   if (!callable || !higher_order) {
     return EXIT_FAILURE;
   }
@@ -263,7 +260,7 @@ int main() {
                        add->result(0),
                "replace rewires instruction and boundary uses before erase");
 
-  auto queried = compiler.body();
+  auto queried = compiler.create_function();
   std::optional<joggle::ir::Value> queried_input;
   std::optional<joggle::ir::Instruction> queried_first;
   std::optional<joggle::ir::Instruction> queried_second;
@@ -301,7 +298,7 @@ int main() {
           !queried->dominates(queried_second->result(0), *queried_first),
       "value dominance follows arguments, blocks, and instruction order");
 
-  auto inconsistent_returns = compiler.body();
+  auto inconsistent_returns = compiler.create_function();
   if (!inconsistent_returns) {
     return EXIT_FAILURE;
   }
@@ -320,7 +317,7 @@ int main() {
                  "all returns of an anonymous function share one signature");
   }
 
-  auto invalid = compiler.body();
+  auto invalid = compiler.create_function();
   if (!invalid) {
     return EXIT_FAILURE;
   }
@@ -336,7 +333,7 @@ int main() {
                  "a type-invalid edit rolls the complete transaction back");
   }
 
-  auto branched = compiler.body();
+  auto branched = compiler.create_function();
   if (!branched) {
     return EXIT_FAILURE;
   }
@@ -393,7 +390,7 @@ int main() {
                  branched->has_uses(merge->arguments().front()),
              "branch, edge, and return operands are visible as boundary uses");
 
-  auto invalid_edge = compiler.body();
+  auto invalid_edge = compiler.create_function();
   if (!invalid_edge) {
     return EXIT_FAILURE;
   }
@@ -411,7 +408,7 @@ int main() {
                  "edge type errors reject and roll back the whole CFG edit");
   }
 
-  auto invalid_dominance = compiler.body();
+  auto invalid_dominance = compiler.create_function();
   if (!invalid_dominance) {
     return EXIT_FAILURE;
   }

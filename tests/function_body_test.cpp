@@ -1349,7 +1349,7 @@ module dependent@1.0.0 {
   const auto int_type = inconsistent.make("int");
   const auto width7 =
       int_type ? inconsistent.known(*int_type, std::int64_t{7}) : std::nullopt;
-  auto inconsistent_function = inconsistent.body();
+  auto inconsistent_function = inconsistent.create_function();
   if (!inconsistent_linked || !inconsistent_input || !default_input || !word8 ||
       !width7 || !inconsistent_function) {
     return EXIT_FAILURE;
@@ -1378,7 +1378,7 @@ module dependent@1.0.0 {
   const auto named_input =
       defaulted_module ? defaulted_module->function("input") : std::nullopt;
   const auto defaulted_int = defaulted.make("int");
-  auto defaulted_function = defaulted.body();
+  auto defaulted_function = defaulted.create_function();
   if (!defaulted_linked || !defaulted_input || !named_input || !defaulted_int ||
       !defaulted_function) {
     return EXIT_FAILURE;
@@ -1403,7 +1403,7 @@ module dependent@1.0.0 {
                "C++ append infers a result from a schema-owned default "
                "default without repeating the type");
 
-  auto named_function = defaulted.body();
+  auto named_function = defaulted.create_function();
   if (!named_function) {
     return EXIT_FAILURE;
   }

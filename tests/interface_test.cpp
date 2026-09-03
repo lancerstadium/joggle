@@ -74,7 +74,7 @@ int main() {
 
   const auto scalar = compiler.make(*scalar_decl);
   const auto label = compiler.make(*label_decl);
-  auto function = compiler.body();
+  auto function = compiler.create_function();
   if (!scalar || !label || !function) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;

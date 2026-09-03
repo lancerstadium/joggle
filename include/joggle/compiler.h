@@ -484,7 +484,7 @@ public:
     return make(schema, std::span<const detail::ParameterValue>(values));
   }
   // Creates an empty executable body in this linked compilation.
-  std::optional<ir::Function> body();
+  std::optional<ir::Function> create_function();
 
   // Specializes a source-defined Function and materializes its residual body.
   // The declaration, symbol, or qualified name selects the same Module member;

@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  auto constructed = compiler.body();
+  auto constructed = compiler.create_function();
   const auto int_type = compiler.make("int");
   const auto bits12 =
       int_type ? compiler.known(*int_type, std::int64_t{12}) : std::nullopt;

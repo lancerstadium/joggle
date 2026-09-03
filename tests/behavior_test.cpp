@@ -55,16 +55,15 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  compiler.verify(
-      *integer_schema,
-      [](const joggle::Type& type, joggle::Diagnostics& diagnostics) {
-        const auto width = type.get<std::int64_t>("width");
-        if (!width || *width <= 0) {
-          diagnostics.report("integer width must be positive");
-          return false;
-        }
-        return true;
-      });
+  compiler.verify(*integer_schema, [](const joggle::Type& type,
+                                      joggle::Diagnostics& diagnostics) {
+    const auto width = type.get<std::int64_t>("width");
+    if (!width || *width <= 0) {
+      diagnostics.report("integer width must be positive");
+      return false;
+    }
+    return true;
+  });
   const auto same_type = [](const joggle::ir::Instruction& instruction,
                             joggle::Diagnostics& diagnostics) {
     const auto arguments = instruction.arguments();
@@ -81,24 +80,25 @@ int main() {
   compiler.verify(*add_schema, same_type);
   compiler.verify(*cast_schema, same_type);
   compiler.verify(*marker_schema, same_type);
-  compiler.bind(*canonicalize_schema, [cast_schema](
-                                          joggle::ir::Function function,
-                                          joggle::Diagnostics& diagnostics)
-                                          -> std::optional<
-                                              joggle::ir::Function> {
-    auto edit = function.edit();
-    for (const joggle::ir::Instruction& instruction : function.instructions()) {
-      if (instruction.callee() != *cast_schema) {
-        continue;
-      }
-      edit.replace(instruction.result(0), instruction.arguments().front());
-      edit.erase(instruction);
-    }
-    if (!edit.commit(diagnostics)) {
-      return std::nullopt;
-    }
-    return function;
-  });
+  compiler.bind(*canonicalize_schema,
+                [cast_schema](joggle::ir::Function function,
+                              joggle::Diagnostics& diagnostics)
+                    -> std::optional<joggle::ir::Function> {
+                  auto edit = function.edit();
+                  for (const joggle::ir::Instruction& instruction :
+                       function.instructions()) {
+                    if (instruction.callee() != *cast_schema) {
+                      continue;
+                    }
+                    edit.replace(instruction.result(0),
+                                 instruction.arguments().front());
+                    edit.erase(instruction);
+                  }
+                  if (!edit.commit(diagnostics)) {
+                    return std::nullopt;
+                  }
+                  return function;
+                });
 
   std::size_t query_runs = 0;
   const auto compute_nodes = [&](const joggle::ir::Function& function) {
@@ -107,9 +107,10 @@ int main() {
   };
 
   compiler.bind(
-      *cleanup_schema, [&compute_nodes](joggle::ir::Function function,
-                                       joggle::Diagnostics& diagnostics)
-                           -> std::optional<joggle::ir::Function> {
+      *cleanup_schema,
+      [&compute_nodes](joggle::ir::Function function,
+                       joggle::Diagnostics& diagnostics)
+          -> std::optional<joggle::ir::Function> {
         static_cast<void>(compute_nodes(function));
         const auto operations = function.instructions();
         const bool has_marker =
@@ -135,7 +136,7 @@ int main() {
       });
 
   const auto integer = compiler.make(*integer_schema, 8);
-  auto function = compiler.body();
+  auto function = compiler.create_function();
   if (!integer || !function) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -165,8 +166,7 @@ int main() {
              "function-local analysis executes explicitly without a side API");
 
   compiler.bind(*abort_schema,
-                [marker_schema](joggle::Compiler&,
-                                joggle::ir::Function current,
+                [marker_schema](joggle::Compiler&, joggle::ir::Function current,
                                 joggle::Diagnostics& diagnostics)
                     -> std::optional<joggle::ir::Function> {
                   const auto producer = current.instructions().front();

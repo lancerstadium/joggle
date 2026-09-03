@@ -312,7 +312,7 @@ module pipeline@1.0.0 {
     return EXIT_FAILURE;
   }
   const auto integer = compiler.make(*integer_decl, std::int64_t{8});
-  auto function = compiler.body();
+  auto function = compiler.create_function();
   if (!integer || !function) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -348,11 +348,12 @@ module pipeline@1.0.0 {
                        joggle::Module::Expression::reference("bytes"),
                "compiler functions reflect functional types");
 
-  compiler.bind(*read,
-                [](joggle::Compiler& current, const joggle::Bytes& bytes)
-                    -> std::optional<joggle::ir::Function> {
-                  return bytes.empty() ? std::nullopt : current.body();
-                });
+  compiler.bind(
+      *read,
+      [](joggle::Compiler& current,
+         const joggle::Bytes& bytes) -> std::optional<joggle::ir::Function> {
+        return bytes.empty() ? std::nullopt : current.create_function();
+      });
   compiler.bind(
       *inspect, [](const joggle::ir::Function& current) -> std::int64_t {
         return static_cast<std::int64_t>(current.instructions().size());
@@ -620,7 +621,7 @@ module pipeline@1.0.0 {
                "the native transformation removes redundant casts");
 
   joggle::Module module("compiler_pipeline", {1, 0, 0});
-  auto module_main = compiler.body();
+  auto module_main = compiler.create_function();
   joggle::Diagnostics module_diagnostics;
   if (!module_main ||
       !module.insert("main", std::move(*module_main), module_diagnostics)) {
@@ -674,7 +675,7 @@ module pipeline@1.0.0 {
       guarded ? guarded->function("identity") : std::nullopt;
   const auto guarded_a =
       guarded_a_decl ? guarded_compiler.make(*guarded_a_decl) : std::nullopt;
-  auto guarded_function = guarded_compiler.body();
+  auto guarded_function = guarded_compiler.create_function();
   if (!guarded || !guarded_identity || !guarded_a || !guarded_function) {
     return EXIT_FAILURE;
   }
@@ -715,7 +716,7 @@ module pipeline@1.0.0 {
                      "named.joggle");
   const bool named_linked = named_compiler.link();
   const auto named_module = named_compiler.module("named");
-  auto named_function = named_compiler.body();
+  auto named_function = named_compiler.create_function();
   bool named_called = false;
   if (named_module) {
     const auto noop = named_module->function("noop");
@@ -781,7 +782,7 @@ module transactional@1.0.0 {
   const auto transaction = transactional_module
                                ? transactional_module->function("pipeline")
                                : std::nullopt;
-  auto transactional_function = transactional.body();
+  auto transactional_function = transactional.create_function();
   if (!transactional_linked || !token || !mutate || !reject || !transaction ||
       !transactional_function) {
     return EXIT_FAILURE;
@@ -1045,7 +1046,7 @@ module module_validation@1.0.0 {
                                        : std::nullopt;
   const auto module_produce =
       validation_module ? validation_module->function("produce") : std::nullopt;
-  auto invalid_body = module_validation.body();
+  auto invalid_body = module_validation.create_function();
   if (!module_validation_linked || !validation_word || !forbidden ||
       !validation_identity || !module_produce || !invalid_body) {
     module_validation.diagnostics().print(std::cerr);
