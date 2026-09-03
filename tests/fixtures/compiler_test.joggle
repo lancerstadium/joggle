@@ -14,7 +14,7 @@ module test_ir@1.0.0 {
   }
 
   fn align(value: int, multiple: int) -> int {
-    return @(ceildiv(value, multiple)) * multiple;
+    return @ceildiv(value, multiple) * multiple;
   }
   fn cast<T: type>(input: T) -> T : elementwise;
   fn add<T: type>(lhs: T, rhs: T) -> T as + : elementwise, commutative;

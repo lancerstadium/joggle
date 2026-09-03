@@ -56,7 +56,7 @@ evaluation; the automatically linked `prelude` Module owns reflected compiler
 value types, native scalar declarations, and their interfaces.
 Expression-bodied `fn` declarations and derived type parameters can compute
 dependent type arguments without host callbacks. Calls evaluate automatically
-when their inputs are Known and residualize otherwise; `@(expression)` only
+when their inputs are Known and residualize otherwise; prefix `@` only
 requires a Known result. The declaration needs no separate `const` function
 kind. Fixed-width Prelude scalars expose the `storage_bits` field through this
 same mechanism; custom formats implement the identical interface from their

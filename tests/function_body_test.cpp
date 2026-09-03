@@ -1916,7 +1916,7 @@ module list_evaluation@1.0.0 {
                    joggle::format(*list_evaluation_roundtrip) ==
                        list_evaluation_text &&
                    list_evaluation_text.find(
-                       "value: word<@(sum([1, 2, 3]))> = source();") !=
+                       "value: word<@sum([1, 2, 3])> = source();") !=
                        std::string::npos,
                "local type annotations use the full compile-time expression "
                "grammar, including list-valued host functions and empty "

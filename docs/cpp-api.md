@@ -193,7 +193,7 @@ External `fn` declarations may bind to typed C++ callables. A binding is keyed b
 the full Module symbol identity, not a textual name. The same declaration is
 used for Known evaluation and Residual calls; Joggle does not maintain separate
 operator, compile-time-function, operation, or pass namespaces. `=` only binds
-a source name. `@(...)` adds a Known-result requirement to the ordinary
+a source name. Prefix `@` adds a Known-result requirement to the ordinary
 expression evaluator; it does not select another callable or assignment rule.
 
 Compiler-oriented functions currently use `Compiler::bind` and

@@ -139,7 +139,7 @@ private:
         result.arguments.push_back(parse(0));
         expect(TokenKind::RightParen, "')'");
       } else {
-        // Convenient input only. The formatter always emits `@(expression)`.
+        // Parentheses are only required when the operand is not a primary.
         result.arguments.push_back(primary());
       }
       return result;
@@ -485,7 +485,10 @@ std::string format_expression(const Module::Expression& expression,
       }
     }
   } else if (expression.kind == Kind::Evaluate) {
-    result = "@(" + format_expression(expression.arguments.front()) + ')';
+    const auto& operand = expression.arguments.front();
+    result = expression_precedence(operand) == 100
+                 ? "@" + format_expression(operand)
+                 : "@(" + format_expression(operand) + ')';
   } else if (expression.kind == Kind::If) {
     result = "if " + format_expression(expression.arguments[0]) + " { " +
              format_expression(expression.arguments[1]) + " } else { " +

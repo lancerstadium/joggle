@@ -157,7 +157,7 @@ compiler.bind(choose_width,
 ```
 
 With Known arguments the binding produces a Known value. A function returning
-program values residualizes as an Instruction when needed. `@(...)` merely
+program values residualizes as an Instruction when needed. Prefix `@` merely
 requires the ordinary evaluation to succeed as Known.
 
 Compiler-domain lists use ordinary C++ vectors. The declaration remains the

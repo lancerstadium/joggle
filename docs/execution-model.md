@@ -58,7 +58,7 @@ does not require an `emit` callback, an intrinsic subclass, or a second
 registration table. A later function may transform that call for a target.
 
 An unbound external call is legal while it can remain Residual. It is an error
-only when a Known result is required, for example below `@(...)` or inside a
+only when a Known result is required, for example below `@` or inside a
 type argument.
 
 ## `@` is a requirement, not another language
@@ -67,13 +67,15 @@ type argument.
 
 ```joggle
 count = @(elements // width);
-shape = @([batch, count]);
-choice = @(if configured { lhs } else { rhs });
+shape = @[batch, count];
+tile = @choose_tile(shape, target);
 ```
 
-Canonical source always writes `@(expression)`. Evaluation proceeds normally,
-then `@` requires the result to be Known. A Residual result is a diagnostic.
-The assignment operator has no staging meaning.
+`@` is a prefix requirement. Primary operands need no punctuation
+(`@choose_tile(...)`, `@value`, `@[a, b]`); parentheses only group a larger
+expression such as `@(elements // width)`. Evaluation proceeds normally, then
+`@` requires the result to be Known. A Residual result is a diagnostic. The
+assignment operator has no staging meaning.
 
 Contexts that intrinsically require a Known value, such as a type constructor
 argument, impose the same requirement without needing `@`. Authors use `@`
@@ -149,7 +151,7 @@ The evaluator uses one rule:
 - Known condition: evaluate only the selected block. No branch enters IR.
 - Residual condition: validate both blocks, require compatible result types and
   effects, and create ordinary Blocks and typed successor edges.
-- `@(if ...)` with a Residual condition: report that compile-time evaluation
+- `@` applied to an `if` with a Residual condition: report that compile-time evaluation
   cannot be completed.
 
 Both arms are name-resolved and type-checked during linking. "Evaluate only the
@@ -334,7 +336,7 @@ The Function-body evaluator now uses the same ordered `Value` arguments for
 Known and Residual calls. It evaluates compiler-domain literals, arithmetic,
 lists, type and attribute constructors, text-defined pure functions, and
 registered external functions. Evaluation happens automatically when a call is
-fully Known; `@(expression)` adds the explicit Known requirement.
+fully Known; prefix `@` adds the explicit Known requirement.
 
 Named Function construction accepts its compiler-domain inputs as Known
 `Value`s. Those values bind generics and compute concrete residual input and

@@ -72,7 +72,7 @@ fn compile(input: bytes, target: device.target) -> bytes {
 
 Calls use the same overload and staging rules as program computations. Known
 arguments execute a body or registered implementation. If a value must remain
-in the generated program, the call residualizes. `@(expression)` requires the
+in the generated program, the call residualizes. Prefix `@` requires the
 result to be Known but does not select another function namespace.
 
 ## Rewrites and analyses

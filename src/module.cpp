@@ -1716,7 +1716,10 @@ std::string type_expression_text(const detail::TypeExpression& expression,
       }
     }
   } else if (expression.kind == Kind::Evaluate) {
-    result = "@(" + type_expression_text(expression.arguments.front()) + ')';
+    const auto& operand = expression.arguments.front();
+    result = type_expression_precedence(operand) == 100
+                 ? "@" + type_expression_text(operand)
+                 : "@(" + type_expression_text(operand) + ')';
   } else if (expression.kind == Kind::If) {
     result = "if " + type_expression_text(expression.arguments[0]) + " { " +
              type_expression_text(expression.arguments[1]) + " } else { " +

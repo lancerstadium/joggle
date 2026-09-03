@@ -185,7 +185,7 @@ Evaluation of an ordinary `fn` proceeds as follows:
    Known and Residual arguments.
 2. A host binding runs when its required arguments are Known.
 3. Otherwise a residualizable call becomes an Instruction.
-4. `@(expression)` requires the result to be Known; it does not select another
+4. prefix `@` requires the result to be Known; it does not select another
    function kind or evaluator.
 
 For a Known `if` condition, both branches are checked but only the selected
@@ -294,6 +294,6 @@ same dependent-type solver used for IR calls.
 
 Function bodies and every local or Block-argument type annotation now use the
 same expression AST and parser. Type and attribute constructors, lists,
-operators, calls, conditionals, and `@(...)` therefore have one meaning in
+operators, calls, conditionals, and prefix `@` therefore have one meaning in
 signatures and bodies. The residualizing evaluator—not a restricted annotation
 parser—decides which parts execute and which parts become IR.

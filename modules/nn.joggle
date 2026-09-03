@@ -56,12 +56,7 @@ module nn@1.0.0 {
   ) ->
     tensor.ranked<
       E,
-      [
-        N,
-        O,
-        @(conv_extent(H, KH, SH, DH, PT, PB)),
-        @(conv_extent(W, KW, SW, DW, PL, PR))
-      ]
+      [N, O, @conv_extent(H, KH, SH, DH, PT, PB), @conv_extent(W, KW, SW, DW, PL, PR)]
     >;
   fn batch_norm_nchw<E: prelude.scalar, N: int, C: int, H: int, W: int>(
     input: tensor.ranked<E, [N, C, H, W]>,
@@ -102,12 +97,7 @@ module nn@1.0.0 {
   ) ->
     tensor.ranked<
       E,
-      [
-        N,
-        C,
-        @(conv_extent(H, KH, SH, DH, PT, PB)),
-        @(conv_extent(W, KW, SW, DW, PL, PR))
-      ]
+      [N, C, @conv_extent(H, KH, SH, DH, PT, PB), @conv_extent(W, KW, SW, DW, PL, PR)]
     > : pooling;
   fn global_average_pool_nchw<E: prelude.scalar, N: int, C: int, H: int, W: int>(
     input: tensor.ranked<E, [N, C, H, W]>

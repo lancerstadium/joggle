@@ -96,10 +96,10 @@ fn layer(input: tensor<f32, [1, 64]>, bias: tensor<f32, [64]>)
 
 These are not different function kinds. Availability at a particular call
 decides which expressions execute in the compiler and which become residual
-Instructions. `@(expression)` requires a Known result:
+Instructions. Prefix `@` requires a Known result:
 
 ```joggle
-tile = @(choose_tile(device, shape));
+tile = @choose_tile(device, shape);
 ```
 
 `@` does not change overload resolution, select a second body, or change the
@@ -111,7 +111,7 @@ constructor-only syntax:
 
 ```joggle
 fn build() -> word<6> {
-  value: word<@(sum([1, 2, 3]))> = source();
+  value: word<@sum([1, 2, 3])> = source();
   return value;
 }
 ```
@@ -190,7 +190,7 @@ fn choose<T: type>(condition: i1, lhs: T, rhs: T) -> T {
 
 With a Known condition, the compiler executes only the selected branch. With a
 Residual condition, the same expression becomes Blocks and typed successor
-edges. `@(if ...)` rejects a Residual condition.
+edges. Applying `@` to the whole `if` rejects a Residual condition.
 
 `if` is also an ordinary statement when several computations or outer
 rebindings are needed:
