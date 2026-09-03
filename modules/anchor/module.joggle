@@ -313,7 +313,7 @@ module anchor@1.0.0 {
   >;
 
   fn batch_norm_nchw<
-    E: prelude.numeric,
+    E: prelude.floating_point,
     N: int,
     C: int,
     H: int,
@@ -337,7 +337,51 @@ module anchor@1.0.0 {
     mean: ref<E, [C], LM, PM>,
     variance: ref<E, [C], LV, PV>,
     epsilon: real = 1e-05
-  ) -> ref<E, [N, C, H, W], LO, PO> : nn.normalization;
+  ) -> ref<E, [N, C, H, W], LO, PO> : nn.normalization {
+    output: ref<E, [N, C, H, W], LO, PO> = mem.alloc();
+    channels: index = C;
+    input_height: index = H;
+    input_width: index = W;
+    epsilon_value: E = epsilon;
+    for batch: index in range(N) {
+      for channel: index in range(C) {
+        scale_value: E = load(scale, channel);
+        bias_value: E = load(bias, channel);
+        mean_value: E = load(mean, channel);
+        variance_value: E = load(variance, channel);
+        denominator: E = arith.sqrt(
+          arith.add(variance_value, epsilon_value)
+        );
+        channel_offset: index = arith.add(
+          arith.mul(batch, channels),
+          channel
+        );
+        for input_y: index in range(H) {
+          row_offset: index = arith.add(
+            arith.mul(channel_offset, input_height),
+            input_y
+          );
+          for input_x: index in range(W) {
+            offset: index = arith.add(
+              arith.mul(row_offset, input_width),
+              input_x
+            );
+            input_value: E = load(input, offset);
+            normalized: E = arith.div(
+              arith.sub(input_value, mean_value),
+              denominator
+            );
+            value: E = arith.add(
+              arith.mul(scale_value, normalized),
+              bias_value
+            );
+            store(output, offset, value);
+          }
+        }
+      }
+    }
+    return output;
+  }
 
   fn max_pool2d_nchw<
     E: prelude.numeric,

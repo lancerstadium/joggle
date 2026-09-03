@@ -45,6 +45,10 @@ module custom_numeric@1.0.0 {
   fn logical_equality(lhs: i1, rhs: i1) -> i1 {
     return lhs != rhs;
   }
+
+  fn floating_root(input: f32) -> f32 {
+    return arith.sqrt(input);
+  }
 }
 )",
                "custom-numeric.joggle");
@@ -59,7 +63,10 @@ module custom_numeric@1.0.0 {
       compiler.materialize("custom_numeric.index_equality");
   const auto logical_equality =
       compiler.materialize("custom_numeric.logical_equality");
-  if (!integer || !logical || !index_equality || !logical_equality) {
+  const auto floating_root =
+      compiler.materialize("custom_numeric.floating_root");
+  if (!integer || !logical || !index_equality || !logical_equality ||
+      !floating_root) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -98,5 +105,12 @@ module custom_numeric@1.0.0 {
                            .symbol()
                            .qualified_name() == "arith.logical_not_equal",
                "numeric and logical equality overloads include index and i1");
+  ok &= expect(floating_root->ops().size() == 1U &&
+                   floating_root->ops()
+                           .front()
+                           .callee()
+                           .symbol()
+                           .qualified_name() == "arith.sqrt",
+               "floating-point square root remains an ordinary typed call");
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

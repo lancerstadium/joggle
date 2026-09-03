@@ -36,6 +36,13 @@ the element type. `flatten_nchw`
 copies logical row-major ordinals, allowing the destination layout to differ
 without changing tensor semantics.
 
+`batch_norm_nchw` accepts floating-point elements and implements the inference
+equation `scale * (input - mean) / sqrt(variance + epsilon) + bias`. Scale,
+bias, mean, and variance are loaded once per channel; values are traversed in
+deterministic `N -> C -> H -> W` order. Square root remains an ordinary typed
+`arith.sqrt` call, so a target can lower or replace it through the same Module
+and function mechanisms as other arithmetic.
+
 `map(input, tile_rows, tile_columns)` converts ranked `tensor` values and the
 supported `nn` calls to `anchor.ref` values and target calls while
 preserving CFG, SSA edges, named properties, Function signatures, and immutable

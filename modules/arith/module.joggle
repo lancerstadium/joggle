@@ -16,6 +16,7 @@ module arith@2.0.0 {
   fn sub<T: prelude.numeric>(lhs: T, rhs: T) -> T as - : elementwise;
   fn mul<T: prelude.numeric>(lhs: T, rhs: T) -> T as * : elementwise, commutative;
   fn div<T: prelude.numeric>(lhs: T, rhs: T) -> T as / : elementwise;
+  fn sqrt<T: prelude.floating_point>(input: T) -> T : elementwise;
   fn remainder<T: prelude.integer>(lhs: T, rhs: T) -> T as % : elementwise;
   fn bitwise_not<T: prelude.integer>(input: T) -> T as ~ : elementwise;
   fn bitwise_and<T: prelude.integer>(

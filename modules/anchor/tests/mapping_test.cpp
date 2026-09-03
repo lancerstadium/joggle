@@ -137,6 +137,16 @@ module anchor_kernel@1.0.0 {
     return anchor.global_average_pool_nchw(input);
   }
 
+  fn batch_norm_f32(
+    input: anchor.ref<f32, [1, 2, 3, 4], anchor.linear, anchor.io>,
+    scale: anchor.ref<f32, [2], anchor.linear, anchor.read_only>,
+    bias: anchor.ref<f32, [2], anchor.linear, anchor.read_only>,
+    mean: anchor.ref<f32, [2], anchor.linear, anchor.read_only>,
+    variance: anchor.ref<f32, [2], anchor.linear, anchor.read_only>
+  ) -> anchor.ref<f32, [1, 2, 3, 4], anchor.tiled<2, 2>, anchor.local> {
+    return anchor.batch_norm_nchw(input, scale, bias, mean, variance);
+  }
+
   fn flatten_f32(
     input: anchor.ref<f32, [1, 2, 3, 4], anchor.linear, anchor.io>
   ) -> anchor.ref<f32, [1, 24], anchor.linear, anchor.local> {
@@ -198,6 +208,8 @@ module anchor_kernel@1.0.0 {
       materialize_call_body("anchor_kernel.max_pool_strided_f32");
   const auto global_average_body =
       materialize_call_body("anchor_kernel.global_average_f32");
+  const auto batch_norm_body =
+      materialize_call_body("anchor_kernel.batch_norm_f32");
   const auto flatten_body =
       materialize_call_body("anchor_kernel.flatten_f32");
   const auto read = memory ? memory->interface("read") : std::nullopt;
@@ -207,7 +219,7 @@ module anchor_kernel@1.0.0 {
       !load || !store || !relu || !add || !linear_function || !linear_call ||
       !linear_body || !padded_conv_body || !strided_conv_body || !read ||
       !write || !padded_pool_body || !strided_pool_body ||
-      !global_average_body || !flatten_body) {
+      !global_average_body || !batch_norm_body || !flatten_body) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -338,6 +350,16 @@ module anchor_kernel@1.0.0 {
                    calls_named(*flatten_body, "anchor.store") == 1U,
                "global average pooling and flatten materialize deterministic "
                "logical-order reduction and copy bodies");
+  ok &= expect(compiler.verify(*batch_norm_body) &&
+                   batch_norm_body->blocks().size() == 17U &&
+                   calls_named(*batch_norm_body, "mem.alloc") == 1U &&
+                   calls_named(*batch_norm_body, "anchor.load") == 5U &&
+                   calls_named(*batch_norm_body, "anchor.store") == 1U &&
+                   calls_named(*batch_norm_body, "arith.sqrt") == 1U &&
+                   calls_named(*batch_norm_body,
+                               "anchor.batch_norm_nchw") == 0U,
+               "BatchNorm materializes a fixed-size four-loop NCHW body "
+               "with the standard floating-point inference equation");
   ok &= expect(calls(*source, "nn") == 7U && calls(*body, "nn") == 0U &&
                    calls(*body, "anchor") == 7U,
                "mapping replaces the complete basic-block NN vocabulary");

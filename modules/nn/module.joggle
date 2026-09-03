@@ -92,7 +92,7 @@ module nn@2.0.0 {
       E,
       [N, O, @conv_extent(H, KH, SH, DH, PT, PB), @conv_extent(W, KW, SW, DW, PL, PR)]
     >;
-  fn batch_norm_nchw<E: prelude.numeric, N: int, C: int, H: int, W: int>(
+  fn batch_norm_nchw<E: prelude.floating_point, N: int, C: int, H: int, W: int>(
     input: tensor.ranked<E, [N, C, H, W]>,
     scale: tensor.ranked<E, [C]>,
     bias: tensor.ranked<E, [C]>,
