@@ -49,7 +49,8 @@ std::optional<OperationTypes> resolve_partial_operation_types(
     std::span<const std::optional<ParameterValue>> known_arguments,
     std::span<const std::optional<Type>> expected_results,
     Diagnostics& diagnostics,
-    std::optional<SourceRange> source = std::nullopt);
+    std::optional<SourceRange> source = std::nullopt,
+    bool allow_host_evaluation = true);
 
 std::optional<OperationTypes> resolve_operation_types(
     std::span<const Module> modules, const Module::FunctionDecl& schema,

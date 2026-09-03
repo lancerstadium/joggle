@@ -835,6 +835,13 @@ class Instantiator {
     bool is_function() const { return !function.empty(); }
   };
 
+  struct PendingCall {
+    Module::FunctionDecl function;
+    std::vector<std::vector<PendingArgument>> arguments;
+    detail::OperationTypes partial_types;
+    std::vector<std::optional<ParameterValue>> known_arguments;
+  };
+
 public:
   Instantiator(Compiler& compiler, Module::FunctionDecl function,
                const detail::FunctionBody& body, Diagnostics& diagnostics,
@@ -1552,6 +1559,92 @@ private:
     return detail::visible_functions(compiler_, owner_, reference);
   }
 
+  std::optional<PendingCall> plan_call(
+      const Module::FunctionDecl& function,
+      const Module::Expression& expression,
+      std::span<const PendingArgument> supplied,
+      std::span<const std::optional<Type>> expected,
+      detail::SyntaxRange range, bool allow_guarded_evaluation,
+      Diagnostics* errors = nullptr) {
+    const auto reject = [&](std::string message) {
+      if (errors) {
+        errors->report(std::move(message), source(range));
+      }
+    };
+    const auto candidate = detail::call_candidate(function, expression);
+    if (!candidate || candidate->parameters.size() != supplied.size()) {
+      reject("call arguments do not match '" + function.signature() + "'");
+      return std::nullopt;
+    }
+
+    const auto parameters = function.inputs();
+    const auto& contract = detail::FunctionTypeAccess::get(function);
+    PendingCall result{function,
+                       std::vector<std::vector<PendingArgument>>(
+                           parameters.size()),
+                       {}, std::vector<std::optional<ParameterValue>>(
+                               detail::parameter_inputs(function).size())};
+    for (std::size_t index = 0; index < supplied.size(); ++index) {
+      result.arguments[candidate->parameters[index]].push_back(supplied[index]);
+    }
+
+    std::vector<std::optional<Type>> argument_types;
+    std::size_t known_index = 0;
+    for (std::size_t index = 0; index < parameters.size(); ++index) {
+      auto& arguments = result.arguments[index];
+      if (arguments.empty() && parameters[index].default_value) {
+        const auto payload = detail::parameter_default(parameters[index]);
+        auto type = reflected_type(parameters[index].domain);
+        auto value = payload && type
+                         ? compiler_.known(std::move(*type), *payload)
+                         : std::optional<Value>{};
+        if (!value) {
+          reject("cannot construct default argument '" +
+                 parameters[index].name + "'");
+          return std::nullopt;
+        }
+        arguments.push_back({std::move(*value), {}});
+      }
+      if (arguments.empty() && !parameters[index].variadic) {
+        reject("call is missing argument '" + parameters[index].name + "'");
+        return std::nullopt;
+      }
+      if (contract.ir_inputs[index]) {
+        for (const PendingArgument& argument : arguments) {
+          argument_types.push_back(argument.value
+                                       ? std::optional<Type>{
+                                             argument.value->type()}
+                                       : std::nullopt);
+        }
+        continue;
+      }
+      if (arguments.size() != 1U || !arguments.front().value ||
+          !arguments.front().value->known()) {
+        reject("argument '" + parameters[index].name +
+               "' must be one Known value");
+        return std::nullopt;
+      }
+      const auto payload = detail::FunctionAccess::known_value(
+          *arguments.front().value);
+      if (!payload || !detail::matches_parameter(parameters[index], *payload)) {
+        reject("argument '" + parameters[index].name +
+               "' has an incompatible compiler domain");
+        return std::nullopt;
+      }
+      result.known_arguments[known_index++] = *payload;
+    }
+
+    Diagnostics attempt;
+    auto types = detail::resolve_partial_operation_types(
+        compiler_, function, argument_types, result.known_arguments, expected,
+        errors ? *errors : attempt, source(range), allow_guarded_evaluation);
+    if (!types || types->arguments.size() != argument_types.size()) {
+      return std::nullopt;
+    }
+    result.partial_types = std::move(*types);
+    return result;
+  }
+
   bool matches_function_value(const Module::FunctionDecl& function,
                               const Type& callable,
                               detail::SyntaxRange range) {
@@ -1823,52 +1916,6 @@ private:
         edit_->append(block, matches.front(), {value}, {target});
     detail::FunctionAccess::locate(*edit_, operation, source(range));
     return operation.result(0);
-  }
-
-  std::optional<Module::FunctionDecl>
-  operator_declaration(std::string_view notation,
-                       Module::FunctionDecl::Fixity fixity,
-                       std::span<const Type> argument_types,
-                       detail::SyntaxRange range) {
-    const auto owner = compiler_.module(owner_);
-    if (!owner) {
-      report("cannot resolve operator '" + std::string(notation) +
-                 "' without its owning module",
-             range);
-      return std::nullopt;
-    }
-    std::vector<Module::FunctionDecl> matches;
-    for (const auto& candidate :
-         detail::visible_operators(compiler_, owner_, notation, fixity)) {
-      std::vector<std::optional<ParameterValue>> named_arguments(
-          detail::parameter_inputs(candidate).size());
-      std::vector<std::optional<Type>> expected(
-          detail::ir_results(candidate).size());
-      Diagnostics attempt;
-      if (detail::resolve_operation_types(
-              compiler_, candidate, argument_types, named_arguments, expected,
-              attempt)) {
-        matches.push_back(candidate);
-      }
-    }
-    if (matches.empty()) {
-      report("no visible function matches operator '" +
-                 std::string(notation) + "' for these argument types",
-             range);
-      return std::nullopt;
-    }
-    if (matches.size() != 1U) {
-      std::string candidates;
-      for (const auto& match : matches) {
-        candidates += candidates.empty() ? "" : ", ";
-        candidates += match.symbol().qualified_name();
-      }
-      report("operator '" + std::string(notation) +
-                 "' is ambiguous between " + candidates,
-             range);
-      return std::nullopt;
-    }
-    return matches.front();
   }
 
   std::pair<Block, std::optional<Value>>
@@ -2533,113 +2580,6 @@ private:
       arguments.push_back(std::move(argument));
     }
 
-    std::optional<Module::FunctionDecl> schema;
-    if (fixity) {
-      std::vector<Type> types;
-      types.reserve(arguments.size());
-      for (const PendingArgument& argument : arguments) {
-        if (!argument.value) {
-          report("operator arguments cannot contain an unresolved function "
-                 "value",
-                 statement.expression.range);
-          invalidate_results();
-          return;
-        }
-        types.push_back(argument.value->type());
-      }
-      schema = operator_declaration(expression.text, *fixity, types,
-                                    statement.expression.range);
-    } else {
-      schema = declaration<Module::FunctionDecl>(
-          expression.text, statement.expression.range);
-    }
-    if (!schema) {
-      invalidate_results();
-      return;
-    }
-
-    const auto parameters = schema->inputs();
-    std::vector<std::vector<PendingArgument>> bound(parameters.size());
-    std::size_t positional = 0;
-    bool invalid_argument = false;
-    for (std::size_t index = 0; index < arguments.size(); ++index) {
-      const std::string_view label =
-          index < expression.labels.size() ? expression.labels[index]
-                                           : std::string_view{};
-      std::size_t target = parameters.size();
-      if (!label.empty()) {
-        const auto found = std::find_if(
-            parameters.begin(), parameters.end(),
-            [&](const Module::ParameterDecl& parameter) {
-              return parameter.name == label;
-            });
-        if (found != parameters.end()) {
-          target = static_cast<std::size_t>(
-              std::distance(parameters.begin(), found));
-        }
-      } else if (positional < parameters.size()) {
-        target = positional;
-        if (!parameters[target].variadic) {
-          ++positional;
-        }
-      }
-      if (target == parameters.size()) {
-        report(label.empty() ? "call has too many positional arguments"
-                             : "call has no argument named '" +
-                                   std::string(label) + "'",
-               statement.expression.range);
-        invalid_argument = true;
-        continue;
-      }
-      if (!parameters[target].variadic && !bound[target].empty()) {
-        report("call provides argument '" + parameters[target].name +
-                   "' more than once",
-               statement.expression.range);
-        invalid_argument = true;
-        continue;
-      }
-      bound[target].push_back(std::move(arguments[index]));
-    }
-
-    const auto& contract = detail::FunctionTypeAccess::get(*schema);
-    for (std::size_t index = 0; index < parameters.size(); ++index) {
-      if (bound[index].empty() && parameters[index].default_value) {
-        auto payload = detail::parameter_default(parameters[index]);
-        auto type = reflected_type(parameters[index].domain);
-        auto value = payload && type
-                         ? compiler_.known(std::move(*type),
-                                           std::move(*payload))
-                         : std::optional<Value>{};
-        if (value) {
-          bound[index].push_back({std::move(*value), {}});
-        }
-      }
-      if (bound[index].empty() && !parameters[index].variadic) {
-        report("call is missing argument '" + parameters[index].name + "'",
-               statement.expression.range);
-        invalid_argument = true;
-      }
-      if (!contract.ir_inputs[index]) {
-        for (const PendingArgument& argument : bound[index]) {
-          const auto payload = argument.value && argument.value->known()
-                                   ? detail::FunctionAccess::known_value(
-                                         *argument.value)
-                                   : std::nullopt;
-          if (!payload ||
-              !detail::matches_parameter(parameters[index], *payload)) {
-            report("argument '" + parameters[index].name +
-                       "' must be Known and compatible",
-                   statement.expression.range);
-            invalid_argument = true;
-          }
-        }
-      }
-    }
-    if (invalid_argument) {
-      invalidate_results();
-      return;
-    }
-
     std::vector<std::optional<Type>> expected_types;
     bool invalid_expected_type = false;
     for (std::size_t index = 0; index < statement.bindings.size(); ++index) {
@@ -2665,90 +2605,71 @@ private:
       return;
     }
 
-    std::vector<std::optional<Type>> partial_argument_types;
-    std::vector<std::optional<ParameterValue>> known_values(
-        detail::parameter_inputs(*schema).size());
-    std::size_t known_index = 0;
-    for (std::size_t index = 0; index < parameters.size(); ++index) {
-      if (contract.ir_inputs[index]) {
-        for (const PendingArgument& argument : bound[index]) {
-          partial_argument_types.push_back(
-              argument.value ? std::optional<Type>{argument.value->type()}
-                             : std::nullopt);
-        }
-      } else {
-        if (!bound[index].empty()) {
-          known_values[known_index] =
-              bound[index].front().value
-                  ? detail::FunctionAccess::known_value(
-                        *bound[index].front().value)
-                  : std::nullopt;
-        }
-        ++known_index;
+    std::vector<Module::FunctionDecl> declarations =
+        fixity ? detail::visible_operators(compiler_, owner_, expression.text,
+                                           *fixity)
+               : visible_functions(expression.text);
+    std::vector<PendingCall> plans;
+    const bool unique_declaration = declarations.size() == 1U;
+    const std::size_t diagnostics_before_planning = diagnostics_.size();
+    for (const auto& function : declarations) {
+      auto plan = plan_call(
+          function, expression, arguments, expected_types,
+          statement.expression.range,
+          unique_declaration && residual_control_depth_ == 0U,
+          unique_declaration ? &diagnostics_ : nullptr);
+      if (plan) {
+        plans.push_back(std::move(*plan));
       }
     }
-    const bool has_function_argument = std::any_of(
-        bound.begin(), bound.end(), [](const auto& arguments) {
-          return std::any_of(arguments.begin(), arguments.end(),
-                             [](const PendingArgument& argument) {
-                               return argument.is_function();
-                             });
-        });
-    if (has_function_argument) {
-      auto partial = detail::resolve_partial_operation_types(
-          compiler_, *schema, partial_argument_types, known_values,
-          expected_types, diagnostics_, source(statement.expression.range));
-      if (!partial ||
-          partial->arguments.size() != partial_argument_types.size()) {
-        invalidate_results();
-        return;
+    if (plans.empty()) {
+      if (diagnostics_.size() == diagnostics_before_planning) {
+        report("no overload of '" + expression.text +
+                   "' accepts the call arguments and expected results",
+               statement.expression.range);
       }
-      std::size_t argument_index = 0;
-      bool unresolved = false;
-      for (std::size_t index = 0; index < parameters.size(); ++index) {
-        if (!contract.ir_inputs[index]) {
-          continue;
-        }
-        for (PendingArgument& argument : bound[index]) {
-          if (argument.is_function()) {
-            argument.value = function_reference(
-                argument.function, statement.expression.range,
-                partial->arguments[argument_index]);
-            unresolved = !argument.value || unresolved;
-          }
-          ++argument_index;
-        }
+      invalidate_results();
+      return;
+    }
+    if (plans.size() != 1U) {
+      std::string message = fixity ? "operator '" + expression.text +
+                                         "' is ambiguous between"
+                                   : "call to '" + expression.text +
+                                         "' is ambiguous between";
+      for (const PendingCall& plan : plans) {
+        message += " '" + plan.function.symbol().qualified_name() + "'";
       }
-      if (unresolved) {
-        invalidate_results();
-        return;
-      }
+      report(std::move(message), statement.expression.range);
+      invalidate_results();
+      return;
     }
 
-    std::vector<Type> argument_types;
-    argument_types.reserve(partial_argument_types.size());
+    PendingCall plan = std::move(plans.front());
+    const auto parameters = plan.function.inputs();
+    const auto& contract = detail::FunctionTypeAccess::get(plan.function);
+    std::size_t argument_index = 0;
+    bool unresolved = false;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
       if (!contract.ir_inputs[index]) {
         continue;
       }
-      for (const PendingArgument& argument : bound[index]) {
-        if (!argument.value) {
-          invalidate_results();
-          return;
+      for (PendingArgument& argument : plan.arguments[index]) {
+        if (argument.is_function()) {
+          argument.value = function_reference(
+              argument.function, statement.expression.range,
+              plan.partial_types.arguments[argument_index]);
+          unresolved = !argument.value || unresolved;
         }
-        argument_types.push_back(argument.value->type());
+        ++argument_index;
       }
     }
-    auto resolved = detail::resolve_operation_types(
-        compiler_, *schema, argument_types, known_values, expected_types,
-        diagnostics_, source(statement.expression.range));
-    if (!resolved) {
+    if (unresolved) {
       invalidate_results();
       return;
     }
 
     std::vector<Value> call_arguments;
-    for (const auto& parameter_arguments : bound) {
+    for (const auto& parameter_arguments : plan.arguments) {
       for (const PendingArgument& argument : parameter_arguments) {
         if (!argument.value) {
           invalidate_results();
@@ -2758,7 +2679,8 @@ private:
       }
     }
     Instruction operation = edit_->append(
-        std::move(block), *schema, std::move(call_arguments), resolved->results);
+        std::move(block), plan.function, std::move(call_arguments),
+        plan.partial_types.results);
     detail::FunctionAccess::locate(
         *edit_, operation, source(statement.expression.range));
     if (statement.bindings.size() != operation.results().size()) {

@@ -144,6 +144,8 @@ checked_integer_binary(std::string_view symbol, std::int64_t left,
 struct Environment {
   using Evaluator = std::function<std::optional<ParameterValue>(
       Module::FunctionDecl, std::span<const ParameterValue>)>;
+  using EvaluationCheck =
+      std::function<bool(const Module::FunctionDecl&)>;
   using FunctionLookup = std::function<std::vector<Module::FunctionDecl>(
       std::string_view, std::string_view)>;
   using OperatorLookup = std::function<std::vector<Module::FunctionDecl>(
@@ -160,6 +162,7 @@ struct Environment {
       conforms;
   FunctionLookup functions;
   OperatorLookup operators;
+  EvaluationCheck can_evaluate;
   Evaluator evaluate;
   bool require_hermetic_host_evaluation = false;
   Compiler::EvaluationLimits limits;
@@ -187,6 +190,11 @@ Environment environment(Compiler& compiler, bool allow_host_evaluation = true) {
           [&](std::string_view owner, std::string_view symbol,
               Module::FunctionDecl::Fixity fixity) {
             return visible_operators(compiler, owner, symbol, fixity);
+          },
+          [&, under_residual_control = !allow_host_evaluation](
+              const Module::FunctionDecl& function) {
+            return CompilerAccess::can_evaluate(
+                compiler, function, under_residual_control);
           },
           Environment::Evaluator{
               [&, under_residual_control = !allow_host_evaluation](
@@ -272,7 +280,7 @@ Environment environment(std::span<const Module> modules,
                     Module::FunctionDecl::Fixity fixity) {
             return visible_operators(modules, owner, symbol, fixity);
           },
-          {}, false, {}};
+          {}, {}, false, {}};
 }
 
 class Solver {
@@ -911,11 +919,14 @@ private:
           value = evaluate(*ModuleAccess::expression(function),
                            parameter_results(function).front(), arguments);
           scope_ = caller_scope;
+        } else if (environment_.require_hermetic_host_evaluation &&
+                   (!environment_.can_evaluate ||
+                    !environment_.can_evaluate(function))) {
+          report("host implementation of function '" +
+                 function.symbol().qualified_name() +
+                 "' is guarded and cannot execute under Residual control");
         } else if (environment_.evaluate) {
           value = environment_.evaluate(function, values);
-        } else if (environment_.require_hermetic_host_evaluation) {
-          report("host evaluation under Residual control requires a "
-                 "Hermetic binding");
         } else {
           report("compile-time operator '" + expression.text +
                  "' has no registered evaluator");
@@ -1151,11 +1162,14 @@ private:
         value = evaluate(*ModuleAccess::expression(function),
                          parameter_results(function).front(), arguments);
         scope_ = caller_scope;
+      } else if (environment_.require_hermetic_host_evaluation &&
+                 (!environment_.can_evaluate ||
+                  !environment_.can_evaluate(function))) {
+        report("host implementation of function '" +
+               function.symbol().qualified_name() +
+               "' is guarded and cannot execute under Residual control");
       } else if (environment_.evaluate) {
         value = environment_.evaluate(function, values);
-      } else if (environment_.require_hermetic_host_evaluation) {
-        report("host evaluation under Residual control requires a Hermetic "
-               "binding");
       } else {
         report("compile-time call '" + expression.text +
                "' has no registered evaluator");
@@ -1353,17 +1367,36 @@ private:
                                                      receiver_dot);
                       });
         if (generic == generic_end) {
-          auto function = declaration<Module::FunctionDecl>(expression.text);
-          if (!function || ModuleAccess::expression(*function) == nullptr ||
-              !ir_inputs(*function).empty() || !ir_results(*function).empty() ||
-              parameter_results(*function).size() != 1U) {
+          std::vector<CallCandidate> candidates;
+          for (const auto& function :
+               environment_.functions(scope_, expression.text)) {
+            auto candidate = call_candidate(function, expression);
+            const auto results = parameter_results(function);
+            if (!candidate || !ir_inputs(function).empty() ||
+                !ir_results(function).empty() || results.size() != 1U ||
+                !matches_parameter(results.front(), actual)) {
+              continue;
+            }
+            bool accepts = true;
+            for (std::size_t index = 0; index < expression.arguments.size();
+                 ++index) {
+              const auto domain =
+                  known_domain(expression.arguments[index], bindings);
+              if (domain &&
+                  function.inputs()[candidate->parameters[index]].domain !=
+                      *domain) {
+                accepts = false;
+                break;
+              }
+            }
+            if (accepts) {
+              candidates.push_back(std::move(*candidate));
+            }
+          }
+          if (candidates.size() != 1U) {
             return false;
           }
-          expected = parameter_results(*function).front();
-          if (!matches_parameter(expected, actual)) {
-            report("const function result does not match the type parameter");
-            return false;
-          }
+          expected = parameter_results(candidates.front().function).front();
         } else {
           report("type derived parameters do not take arguments");
           return false;
@@ -1546,8 +1579,10 @@ std::optional<OperationTypes> resolve_partial_operation_types(
     std::span<const std::optional<Type>> arguments,
     std::span<const std::optional<ParameterValue>> known_arguments,
     std::span<const std::optional<Type>> expected_results,
-    Diagnostics& diagnostics, std::optional<SourceRange> source) {
-  return Solver(environment(compiler), schema, diagnostics, std::move(source))
+    Diagnostics& diagnostics, std::optional<SourceRange> source,
+    bool allow_host_evaluation) {
+  return Solver(environment(compiler, allow_host_evaluation), schema,
+                diagnostics, std::move(source))
       .infer_partial(arguments, known_arguments, expected_results);
 }
 

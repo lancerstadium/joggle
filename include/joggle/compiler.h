@@ -754,6 +754,8 @@ private:
   evaluate_binding(Module::FunctionDecl function,
                    std::span<const detail::ParameterValue> arguments,
                    bool under_residual_control);
+  bool can_evaluate_binding(const Module::FunctionDecl& function,
+                            bool under_residual_control) const;
   std::optional<Module::FunctionDecl> find_function(std::string_view name);
   std::optional<detail::ParameterValue>
   call(const Attribute& subject, Module::InterfaceDecl::MethodDecl method,

@@ -524,5 +524,16 @@ int main() {
                    contract_diagnostics.back().source->begin.line == 5U,
                "linking validates imported type expressions in op contracts");
 
+  joggle::Diagnostics compiler_variadic_diagnostics;
+  const auto compiler_variadic = joggle::parse_module(R"(
+    joggle 1;
+    module compiler_variadic@1.0.0 {
+      fn invalid(values: int...) -> int;
+    }
+  )",
+      compiler_variadic_diagnostics, "compiler-variadic.joggle");
+  ok &= expect(!compiler_variadic && !compiler_variadic_diagnostics.ok(),
+               "compiler collections use list domains instead of variadics");
+
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

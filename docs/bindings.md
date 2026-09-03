@@ -195,7 +195,9 @@ compiler.bind(choose_width, implementation,
 runtime memory-write operation may still have a hermetic compiler evaluator,
 and a compiler-only function may still call the filesystem. Keeping this
 capability on the binding avoids conflating those two effect systems or adding
-a second function syntax. Known evaluation also obeys configured
+a second function syntax. Hermetic compiler-domain calls are memoized by stable
+Function identity and canonical argument values, so repeated type solving does
+not repeatedly invoke native code. Known evaluation also obeys configured
 expression-step and nesting-depth limits.
 
 ## Behavior libraries

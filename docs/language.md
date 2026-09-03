@@ -57,6 +57,8 @@ types. They and `i32`, `f32`, and similar program types have reflected
 declarations in the ambient Prelude Module. The trusted kernel supplies the
 former group with bootstrap host representations; it does not give them a
 second declaration system. Custom formats implement the same interfaces.
+Compiler collections use `list<D>`; variadic `T...` is reserved for program
+inputs so a native binding always retains a finite, typed compiler signature.
 
 Type constructors are ordinary declarations. Parameters of one type may be
 computed from other parameters or interface fields:

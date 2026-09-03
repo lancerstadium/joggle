@@ -533,6 +533,8 @@ struct Compiler::State {
   std::map<std::string, MethodFunction<Instruction>, std::less<>>
       operation_methods;
   std::map<std::string, BoundFunction, std::less<>> bindings;
+  std::map<std::string, detail::ParameterValue, std::less<>>
+      hermetic_evaluations;
   std::map<std::string, HostRepresentation, std::less<>> host_types;
   std::map<std::string, std::string, std::less<>> host_representations;
   std::set<std::string, std::less<>> constructing_types;
@@ -2831,6 +2833,18 @@ void Compiler::bind_native(Module::FunctionDecl schema, NativeFunction function,
   }
 }
 
+bool Compiler::can_evaluate_binding(
+    const Module::FunctionDecl& function,
+    bool under_residual_control) const {
+  if (function.form() == Module::FunctionDecl::Form::Body) {
+    return true;
+  }
+  const auto binding = state_->bindings.find(function.symbol().stable_name());
+  return binding != state_->bindings.end() &&
+         (!under_residual_control ||
+          binding->second.evaluation == HostEvaluation::Hermetic);
+}
+
 std::optional<detail::ParameterValue> Compiler::evaluate_binding(
     Module::FunctionDecl function,
     std::span<const detail::ParameterValue> arguments,
@@ -2843,6 +2857,22 @@ std::optional<detail::ParameterValue> Compiler::evaluate_binding(
                                function.symbol().qualified_name() +
                                "' cannot be evaluated from Known values");
     return std::nullopt;
+  }
+  std::optional<std::string> cache_key;
+  if (function.form() == Module::FunctionDecl::Form::External) {
+    const auto binding = state_->bindings.find(function.symbol().stable_name());
+    if (binding != state_->bindings.end() &&
+        binding->second.evaluation == HostEvaluation::Hermetic) {
+      cache_key = function.symbol().stable_name();
+      for (const auto& argument : arguments) {
+        const std::string value = argument.canonical();
+        *cache_key += "/" + std::to_string(value.size()) + ":" + value;
+      }
+      const auto cached = state_->hermetic_evaluations.find(*cache_key);
+      if (cached != state_->hermetic_evaluations.end()) {
+        return cached->second;
+      }
+    }
   }
   std::vector<detail::ExecutionValue> values;
   values.reserve(arguments.size());
@@ -2869,6 +2899,9 @@ std::optional<detail::ParameterValue> Compiler::evaluate_binding(
                                function.symbol().qualified_name() +
                                "' produced a value with the wrong type");
     return std::nullopt;
+  }
+  if (cache_key) {
+    state_->hermetic_evaluations.emplace(std::move(*cache_key), *result);
   }
   return result;
 }

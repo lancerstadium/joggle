@@ -66,6 +66,31 @@ module pipeline@1.0.0 {
     return if lhs { true } else { rhs };
   }
   fn module_identity(input: ir.module) -> ir.module;
+  fn convert_word(input: test_ir.integer<8>) -> test_ir.integer<8>;
+  fn convert_word(input: test_ir.integer<16>) -> test_ir.integer<16>;
+  fn configured_copy(input: test_ir.integer<8>, tag: int = 7)
+      -> test_ir.integer<8>;
+  fn choose_first<T: type>(items: T...) -> T;
+  fn compute_width(value: int) -> int;
+  fn width_copy(input: test_ir.integer<8>)
+      -> test_ir.integer<compute_width(8)>;
+  fn residual_overload(input: test_ir.integer<8>) -> test_ir.integer<8> {
+    result = convert_word(input);
+    return result;
+  }
+  fn residual_arguments(input: test_ir.integer<8>) -> test_ir.integer<8> {
+    first = configured_copy(input);
+    second = configured_copy(tag: 9, input: first);
+    return second;
+  }
+  fn residual_variadic(input: test_ir.integer<8>) -> test_ir.integer<8> {
+    result = choose_first(input, input);
+    return result;
+  }
+  fn residual_dependent(input: test_ir.integer<8>) -> test_ir.integer<8> {
+    result = width_copy(input);
+    return result;
+  }
   fn clean(input: function) -> function {
     return test_ir.canonicalize(input);
   }
@@ -186,6 +211,23 @@ module pipeline@1.0.0 {
   const auto consume = pipeline ? pipeline->function("consume") : std::nullopt;
   const auto module_identity =
       pipeline ? pipeline->function("module_identity") : std::nullopt;
+  const auto convert_words =
+      pipeline ? pipeline->overloads("convert_word")
+               : std::vector<joggle::Module::FunctionDecl>{};
+  const auto configured_copy =
+      pipeline ? pipeline->function("configured_copy") : std::nullopt;
+  const auto compute_width =
+      pipeline ? pipeline->function("compute_width") : std::nullopt;
+  const auto width_copy =
+      pipeline ? pipeline->function("width_copy") : std::nullopt;
+  const auto residual_overload =
+      pipeline ? pipeline->function("residual_overload") : std::nullopt;
+  const auto residual_arguments =
+      pipeline ? pipeline->function("residual_arguments") : std::nullopt;
+  const auto residual_variadic =
+      pipeline ? pipeline->function("residual_variadic") : std::nullopt;
+  const auto residual_dependent =
+      pipeline ? pipeline->function("residual_dependent") : std::nullopt;
   const auto append =
       pipeline ? pipeline->function("append") : std::nullopt;
   const auto nonzero =
@@ -243,7 +285,10 @@ module pipeline@1.0.0 {
       ir_module ? ir_module->type("module") : std::nullopt;
   if (!integer_decl || !arith_cast_decl || !format_decl || !canonicalize ||
       !clean || !read || !emit || !inspect || !compile || !consume ||
-      !module_identity || !append || !nonzero || !select ||
+      !module_identity || convert_words.size() != 2U || !configured_copy ||
+      !compute_width || !width_copy ||
+      !residual_overload || !residual_arguments || !residual_variadic ||
+      !residual_dependent || !append || !nonzero || !select ||
       !repeat || !choose || !once || !last || !typed || twice.size() != 2U ||
       !add_offset || !less || !text_less || !less_equal || !greater ||
       !greater_equal || !equal || !not_equal || !logical_not || !earlier ||
@@ -355,6 +400,14 @@ module pipeline@1.0.0 {
     return lhs != rhs;
   });
   compiler.bind(*logical_not, [](bool input) { return !input; });
+  std::size_t width_evaluations = 0;
+  compiler.bind(
+      *compute_width,
+      [&](std::int64_t value) {
+        ++width_evaluations;
+        return value;
+      },
+      joggle::HostEvaluation::Hermetic);
   if (!compiler.represent<joggle::ir::Module>(*ir_module_schema)) {
     return EXIT_FAILURE;
   }
@@ -432,6 +485,20 @@ module pipeline@1.0.0 {
   const auto overload_typed_function = compiler.function(*overload_typed);
   const auto default_typed_function = compiler.function(*default_typed);
   const auto staged_overload_function = compiler.function(*staged_overload);
+  const auto residual_overload_function =
+      compiler.function(*residual_overload);
+  const auto residual_arguments_function =
+      compiler.function(*residual_arguments);
+  const auto residual_variadic_function =
+      compiler.function(*residual_variadic);
+  const auto residual_dependent_function =
+      compiler.function(*residual_dependent);
+  const auto convert_word_8 = std::find_if(
+      convert_words.begin(), convert_words.end(), [](const auto& function) {
+        const auto& domain = function.inputs().front().domain;
+        return !domain.arguments.empty() &&
+               domain.arguments.front().text == "8";
+      });
   ok &= expect(typed_function && typed_function->arguments().size() == 1U &&
                    typed_function->result_types().size() == 1U &&
                    typed_function->arguments().front().type() ==
@@ -462,9 +529,40 @@ module pipeline@1.0.0 {
                    staged_overload_function &&
                    staged_overload_function->arguments().size() == 1U &&
                    staged_overload_function->arguments().front().type() ==
-                       staged_overload_function->result_types().front(),
+                       staged_overload_function->result_types().front() &&
+                   residual_overload_function &&
+                   residual_overload_function->instructions().size() == 1U &&
+                   convert_word_8 != convert_words.end() &&
+                   residual_overload_function->instructions()
+                           .front()
+                           .callee() ==
+                       *convert_word_8 &&
+                   residual_arguments_function &&
+                   residual_arguments_function->instructions().size() == 2U &&
+                   residual_arguments_function->instructions()[0]
+                           .arguments()[1]
+                           .get<std::int64_t>() ==
+                       std::optional<std::int64_t>{7} &&
+                   residual_arguments_function->instructions()[1]
+                           .arguments()[1]
+                           .get<std::int64_t>() ==
+                       std::optional<std::int64_t>{9} &&
+                   residual_variadic_function &&
+                   residual_variadic_function->instructions().size() == 1U &&
+                   residual_variadic_function->instructions().front()
+                           .arguments()
+                           .size() ==
+                       2U &&
+                   residual_dependent_function &&
+                   residual_dependent_function->instructions().size() == 1U &&
+                   residual_dependent_function->instructions()
+                           .front()
+                           .callee() ==
+                       *width_copy &&
+                   width_evaluations == 1U,
                "structured compiler functions participate in dependent type "
-               "evaluation with overloads, named arguments, and defaults");
+               "evaluation and residual calls share overloads, named "
+               "arguments, defaults, variadics, and single evaluation");
   joggle::Diagnostics signature_diagnostics;
   const std::string signature_text = joggle::format(*pipeline);
   const auto signature_roundtrip = joggle::parse_module(

@@ -401,12 +401,20 @@ executes structured bodies through `Compiler::execute`. The same entry invokes
 native bindings and is used by type-level calls, so multi-statement `if` and
 `while` computations can select dependent types. Its call path filters visible
 overloads by argument placement, expected result, and evaluated host types;
-declared operators enter that same path. The remaining consolidation work is
-to share full dependent-type selection and structured traversal with residual
-specialization. Linking already traverses every structured arm, including arms
-not selected by a particular invocation, and rejects unresolved names or call
-shapes before host code can run; complete symbolic type compatibility at these
-sites remains under construction.
+declared operators enter that same path. Residual specialization now plans a
+call over the complete visible overload set using the same positional, named,
+default, and variadic argument mapping, then combines Known arguments,
+Residual argument types, and expected result types before selecting exactly one
+Function. Probing competing candidates permits only Hermetic host evaluation,
+so a Guarded binding is never executed merely to choose an overload. Once the
+declaration is unique, its dependent type computation may use a Guarded binding
+only on a Known control path; beneath Residual control it still requires a
+Hermetic implementation.
+Linking already traverses every structured arm, including arms not selected by
+a particular invocation, and rejects unresolved names or call
+shapes before host code can run. The remaining consolidation work is a single
+structured traversal implementation for host execution and residual
+specialization, plus nested Residual call expressions.
 Explicit low-level CFG bodies remain residual artifacts rather than compiler
 scripts.
 

@@ -799,6 +799,10 @@ private:
         }
         if (match(TokenKind::Ellipsis)) {
           input.variadic = true;
+          if (!ir_input) {
+            error("a compile-time parameter uses list<D> rather than "
+                  "variadic syntax");
+          }
         }
         if (match(TokenKind::Equal)) {
           const auto domain = detail::kernel_domain(input.domain);

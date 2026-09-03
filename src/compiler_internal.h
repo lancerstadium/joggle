@@ -32,6 +32,12 @@ struct CompilerAccess {
                                      under_residual_control);
   }
 
+  static bool can_evaluate(const Compiler& compiler,
+                           const Module::FunctionDecl& function,
+                           bool under_residual_control) {
+    return compiler.can_evaluate_binding(function, under_residual_control);
+  }
+
   static bool accepts(Compiler& compiler,
                       const Module::FunctionDecl& function,
                       const Module::ParameterDecl& parameter,

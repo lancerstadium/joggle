@@ -129,12 +129,6 @@ std::optional<CallCandidate>
 call_candidate(const Module::FunctionDecl& function,
                const Module::Expression& expression) {
   const auto parameters = function.inputs();
-  if (std::any_of(parameters.begin(), parameters.end(),
-                  [](const Module::ParameterDecl& parameter) {
-                    return parameter.variadic;
-                  })) {
-    return std::nullopt;
-  }
   CallCandidate result{function, {}};
   result.parameters.reserve(expression.arguments.size());
   std::vector<bool> supplied(parameters.size(), false);
@@ -155,21 +149,27 @@ call_candidate(const Module::FunctionDecl& function,
             std::distance(parameters.begin(), found));
       }
     } else {
-      while (positional < parameters.size() && supplied[positional]) {
+      while (positional < parameters.size() && supplied[positional] &&
+             !parameters[positional].variadic) {
         ++positional;
       }
       if (positional < parameters.size()) {
-        target = positional++;
+        target = positional;
+        if (!parameters[target].variadic) {
+          ++positional;
+        }
       }
     }
-    if (target == parameters.size() || supplied[target]) {
+    if (target == parameters.size() ||
+        (supplied[target] && !parameters[target].variadic)) {
       return std::nullopt;
     }
     supplied[target] = true;
     result.parameters.push_back(target);
   }
   for (std::size_t index = 0; index < parameters.size(); ++index) {
-    if (!supplied[index] && !parameters[index].default_value) {
+    if (!supplied[index] && !parameters[index].variadic &&
+        !parameters[index].default_value) {
       return std::nullopt;
     }
   }

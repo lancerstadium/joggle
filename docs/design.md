@@ -257,10 +257,17 @@ control flow. A binding explicitly marked `HostEvaluation::Hermetic` promises
 deterministic execution without observable host effects and may execute while
 both residual arms are elaborated. This is a property of the C++
 implementation, not of the residual target call, so the source language needs
-no second effect or function syntax. Hermetic calls may be memoized once their
-host representations provide stable equality and hashing. Evaluation has
-deterministic limits for steps, recursion, and allocation; exhausting a limit
-is an error, never an implicit change of program meaning.
+no second effect or function syntax. Compiler-domain Hermetic calls are
+memoized by stable Function identity and canonical argument values. Evaluation
+has deterministic limits for steps, recursion, and allocation; exhausting a
+limit is an error, never an implicit change of program meaning.
+
+Overload resolution is also staged. Candidate probing may evaluate only
+Hermetic compiler functions because a rejected candidate must have no host
+effects. After structural and type constraints leave one declaration, its
+dependent computation may invoke a Guarded binding only when the current
+control path is Known. Selection therefore cannot observe registration order,
+speculate I/O, or run arbitrary host code once per candidate.
 
 Known values cross a Residual boundary through an ordinary visible function
 implementing `prelude.literal`. Selection uses the same overload constraints
