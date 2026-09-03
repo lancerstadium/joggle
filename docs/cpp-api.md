@@ -186,6 +186,11 @@ Function verifies.
 No-op sweeps preserve the Function revision and Module storage. Failure returns
 `std::nullopt` and preserves the complete input value.
 
+`joggle::ir::convert` takes the same rewrite lambda followed by a legality
+predicate over the resulting Instructions. It commits only if the complete
+Function or Module is legal. Legality is caller-defined, so the utility does
+not introduce a target registry or assume that conversions move downward.
+
 ## Map calls transactionally
 
 `joggle::ir::replace_calls` replaces one exact declaration with another in a
@@ -193,9 +198,9 @@ Function or Module. `joggle::ir::map_calls` accepts a callable returning an
 optional replacement declaration for each Instruction. Both return an optional
 change count: zero means a successful no-op and absence means failure.
 
-The Function overload uses one `Function::Edit`. The Module overload plans
-the complete mapping, edits a private copy, and publishes it only when every
-changed Function verifies. Unchanged Functions retain their shared storage.
+Both overloads use the same `rewrite` transaction. The Module overload edits a
+private value and publishes it only when every changed Function verifies.
+Unchanged Functions retain their shared storage.
 
 ## Function references
 

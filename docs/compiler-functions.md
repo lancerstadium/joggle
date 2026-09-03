@@ -96,10 +96,7 @@ an exception, a new diagnostic, or failed verification publishes nothing.
 Replacing an Instruction with a positional result list supports erasure and
 multi-Instruction expansion without inventing a replacement object.
 
-Exact call mapping remains as a smaller convenience:
-
-The first reusable transform primitive is intentionally a pair of free
-functions rather than a base class or registry:
+Exact call mapping remains as a pair of smaller convenience functions:
 
 ```cpp
 auto changed = joggle::ir::replace_calls(
@@ -117,11 +114,28 @@ auto selected = joggle::ir::map_calls(
 ```
 
 Both functions return the number of changed calls, with `std::nullopt` on
-failure. The Function overload commits one verified edit. The Module overload
-plans every replacement first, edits a private copy, detaches only changed
-Functions, and publishes nothing if any Function fails verification. Matching
-uses Function handles or explicit interface queries; the utility never
-interprets a textual function name.
+failure. They use the same rewrite transaction, so the Module overload
+publishes nothing if any Function fails verification. Matching uses Function
+handles or explicit interface queries; the utility never interprets a textual
+function name.
+
+## Conversion completion
+
+`ir::convert` combines the same rewrite lambda with a final legality predicate:
+
+```cpp
+auto changed = joggle::ir::convert(
+    module, rewrite_rule,
+    [&](const joggle::ir::Instruction& instruction) {
+      return target_accepts(instruction.callee());
+    },
+    diagnostics);
+```
+
+The predicate defines the caller's accepted result rather than naming a global
+target or lowering direction. The candidate Module is published only when all
+materialized Functions verify and every remaining Instruction is legal. The
+first illegal residual call is diagnosed with its Function context.
 
 ## Command-line boundary
 
@@ -139,16 +153,12 @@ new source syntax. Its components should be independently usable:
 
 1. **Rewrite drivers.** Greedy and fixed-point sweeps with explicit convergence
    limits over the transactional `rewrite` primitive.
-2. **Conversion contracts.** A caller-supplied legality predicate, declared
-   conversion functions, partial/full conversion modes, and diagnostics that
-   identify the first illegal residual construct. There is no global target
-   registry and no assumed lowering direction.
-3. **Analysis storage.** Results keyed by immutable Function snapshots, with
+2. **Analysis storage.** Results keyed by immutable Function snapshots, with
    explicit preservation after a committed edit. The cache owns no alternate
    graph representation and never changes observable compilation semantics.
-The order matters. Structural rewriting, conversion legality, and analysis invalidation
-must stabilize before shipping optimizer collections. Otherwise each example
-would create an incompatible private framework.
+
+These facilities must stabilize before shipping optimizer collections.
+Otherwise each example would create an incompatible private framework.
 
 ## What remains outside the core
 

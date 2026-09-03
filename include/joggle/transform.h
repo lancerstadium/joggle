@@ -5,6 +5,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -100,6 +101,92 @@ std::optional<std::size_t> rewrite(Module& module, Rule&& rule,
     changed += *count;
   }
   if (changed != 0U) {
+    module = std::move(candidate);
+  }
+  return changed;
+}
+
+namespace transform_detail {
+
+template <typename Legal>
+bool legal(const Function& function, Legal& predicate,
+           Diagnostics& diagnostics, std::string_view member = {}) {
+  try {
+    for (const Instruction& instruction : function.instructions()) {
+      if (std::invoke(predicate, instruction)) {
+        continue;
+      }
+      std::string message = "conversion left illegal call '" +
+                            instruction.callee().symbol().qualified_name() +
+                            "'";
+      if (!member.empty()) {
+        message += " in function '" + std::string(member) + "'";
+      }
+      diagnostics.report(std::move(message));
+      return false;
+    }
+  } catch (const std::exception& error) {
+    diagnostics.report("conversion legality check failed: " +
+                       std::string(error.what()));
+    return false;
+  } catch (...) {
+    diagnostics.report("conversion legality check failed with an unknown "
+                       "exception");
+    return false;
+  }
+  return true;
+}
+
+template <typename Legal>
+bool legal(const Module& module, Legal& predicate, Diagnostics& diagnostics) {
+  for (const joggle::Module::Function& member : module.functions()) {
+    const Function* function = member.body();
+    if (function != nullptr &&
+        !legal(*function, predicate, diagnostics, member.name())) {
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace transform_detail
+
+// Rewrites a private Function value and publishes it only if every remaining
+// Instruction satisfies the caller's legality predicate.
+template <typename Rule, typename Legal>
+std::optional<std::size_t> convert(Function& function, Rule&& rule,
+                                   Legal&& legal, Diagnostics& diagnostics) {
+  using Accepted = std::invoke_result_t<Legal&, const Instruction&>;
+  static_assert(std::is_convertible_v<Accepted, bool>,
+                "a conversion legality predicate must return bool");
+
+  Function candidate = function;
+  auto changed = rewrite(candidate, rule, diagnostics);
+  if (!changed ||
+      !transform_detail::legal(candidate, legal, diagnostics)) {
+    return std::nullopt;
+  }
+  if (*changed != 0U) {
+    function = std::move(candidate);
+  }
+  return changed;
+}
+
+// Applies the same contract to all materialized Functions. Both rewriting and
+// the final legality check are atomic at the Module boundary.
+template <typename Rule, typename Legal>
+std::optional<std::size_t> convert(Module& module, Rule&& rule, Legal&& legal,
+                                   Diagnostics& diagnostics) {
+  using Accepted = std::invoke_result_t<Legal&, const Instruction&>;
+  static_assert(std::is_convertible_v<Accepted, bool>,
+                "a conversion legality predicate must return bool");
+
+  Module candidate = module;
+  auto changed = rewrite(candidate, rule, diagnostics);
+  if (!changed || !transform_detail::legal(candidate, legal, diagnostics)) {
+    return std::nullopt;
+  }
+  if (*changed != 0U) {
     module = std::move(candidate);
   }
   return changed;

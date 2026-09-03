@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include <joggle/joggle.h>
@@ -57,8 +58,9 @@ module mapping@1.0.0 {
   auto first = compiler.materialize("mapping.first");
   auto second = compiler.materialize("mapping.second");
   auto expanded = compiler.materialize("mapping.expanded");
+  auto convertible = compiler.materialize("mapping.first");
   if (!keep || !converted || !other || !binary || !first || !second ||
-      !expanded) {
+      !expanded || !convertible) {
     return EXIT_FAILURE;
   }
 
@@ -124,6 +126,28 @@ module mapping@1.0.0 {
               expanded_instructions[1].value(),
       "one lambda transactionally expands a call into multiple Instructions");
 
+  const auto convertible_revision = convertible->revision();
+  joggle::Diagnostics conversion_diagnostics;
+  const auto conversion = joggle::ir::convert(
+      *convertible,
+      [&](const joggle::ir::Instruction& instruction,
+          joggle::ir::Function::Edit& edit, joggle::Diagnostics&) {
+        if (instruction.callee() != *keep) {
+          return false;
+        }
+        edit.replace(instruction, *converted);
+        return true;
+      },
+      [&](const joggle::ir::Instruction& instruction) {
+        return instruction.callee() != *keep;
+      },
+      conversion_diagnostics);
+  ok &= expect(conversion && *conversion == 1U &&
+                   conversion_diagnostics.ok() &&
+                   convertible->revision() != convertible_revision &&
+                   convertible->instructions().front().callee() == *converted,
+               "conversion publishes a rewritten legal Function");
+
   const std::string before_invalid = joggle::format(*second, "second");
   const auto before_invalid_revision = second->revision();
   joggle::Diagnostics invalid_diagnostics;
@@ -173,30 +197,32 @@ module mapping@1.0.0 {
       "a no-op Module mapping preserves shared Function storage");
 
   joggle::Diagnostics module_failure_diagnostics;
-  const auto module_failure = joggle::ir::rewrite(
+  const auto module_failure = joggle::ir::convert(
       module,
       [&](const joggle::ir::Instruction& instruction,
           joggle::ir::Function::Edit& edit,
-          joggle::Diagnostics& reported) {
+          joggle::Diagnostics&) {
         if (instruction.callee() == *keep) {
           edit.replace(instruction, *converted);
           return true;
         }
-        if (instruction.callee() == *other) {
-          reported.report("second Function rejects conversion");
-        }
         return false;
+      },
+      [&](const joggle::ir::Instruction& instruction) {
+        return instruction.callee() != *other;
       },
       module_failure_diagnostics);
   const auto* unchanged_first = read_body("first");
   const auto* unchanged_second = read_body("second");
   ok &= expect(
       !module_failure && !module_failure_diagnostics.ok() &&
+          module_failure_diagnostics.entries().front().message.find(
+              "function 'second'") != std::string::npos &&
           module.digest() == original_digest && unchanged_first != nullptr &&
           unchanged_second != nullptr &&
           unchanged_first->instructions().front().callee() == *keep &&
           unchanged_second->instructions().front().callee() == *other,
-      "a failed whole-Module mapping publishes no partial Function edits");
+      "an illegal whole-Module conversion publishes no partial edits");
 
   joggle::Diagnostics module_success_diagnostics;
   const auto module_success = joggle::ir::replace_calls(
