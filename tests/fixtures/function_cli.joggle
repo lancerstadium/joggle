@@ -17,6 +17,9 @@ module function_cli@1.0.0 {
     normalized = behavior_plugin.normalize_model(input);
     return behavior_plugin.reject_model(normalized);
   }
+  fn failing_entry(input: module) -> module {
+    return failing_model(input);
+  }
   fn emit_model(input: module) -> bytes {
     return behavior_plugin.emit_model(input);
   }

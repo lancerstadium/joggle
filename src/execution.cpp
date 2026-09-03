@@ -366,7 +366,9 @@ private:
       }
       arguments.push_back(std::move(*bound[index]));
     }
-    auto results = execute_(selected.function, std::move(arguments));
+    auto results = execute_(
+        selected.function, std::move(arguments),
+        SourceRange{body_.source, range.begin, range.end});
     if (!results || results->size() != result_count) {
       if (results) {
         report("compiler call returned the wrong number of values", range);

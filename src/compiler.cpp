@@ -2,6 +2,7 @@
 
 #include "call_resolution.h"
 #include "declaration_check.h"
+#include "diagnostic_internal.h"
 #include "domain.h"
 #include "execution.h"
 #include "expression_syntax.h"
@@ -2879,8 +2880,23 @@ Compiler::execute(Module::FunctionDecl declaration,
       }
       const detail::ExecuteFunction invoke =
           [&](Module::FunctionDecl function,
-              std::vector<detail::ExecutionValue> arguments) {
-            return self(self, function, std::move(arguments));
+              std::vector<detail::ExecutionValue> arguments,
+              SourceRange call_site) {
+            const std::size_t call_diagnostics = state_->diagnostics.size();
+            auto result = self(self, function, std::move(arguments));
+            if (!result && state_->diagnostics.size() > call_diagnostics) {
+              std::string note =
+                  "while calling '" + function.symbol().qualified_name() +
+                  "' from '" + current.symbol().qualified_name() + "'";
+              if (!call_site.source.empty()) {
+                note += " at " + call_site.source + ":" +
+                        std::to_string(call_site.begin.line) + ":" +
+                        std::to_string(call_site.begin.column);
+              }
+              detail::DiagnosticAccess::note_since(
+                  state_->diagnostics, call_diagnostics, std::move(note));
+            }
+            return result;
           };
       auto evaluated = detail::execute_body(
           *this, current, *body, values, state_->evaluation_limits, steps,

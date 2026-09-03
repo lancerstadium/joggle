@@ -181,6 +181,11 @@ The intermediate result is checked before the next call and only the final
 result crosses the `run` boundary. The same functions remain independently
 invocable and require no generated registration table.
 
+If a nested call fails, its original diagnostic remains the primary error.
+Joggle adds one source-positioned note for each enclosing `fn` call, from the
+failing call outward. This is ordinary call context; pipelines do not need a
+separate trace format or pass-manager diagnostics.
+
 ## Analysis values and reuse
 
 An analysis is an ordinary typed function: its result is a Module-declared type

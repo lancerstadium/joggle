@@ -105,7 +105,7 @@ endif()
 
 file(REMOVE "${failed_output}")
 execute_process(
-  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" failing_model
+  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" failing_entry
           "${model_input}" --with "${JOGGLE_DEPENDENCY}"
           --load-behavior "behavior_plugin=${JOGGLE_BEHAVIOR}"
           -o "${failed_output}"
@@ -114,7 +114,14 @@ execute_process(
 )
 string(FIND "${failing_error}" "test transform requested rejection"
   failing_position)
+string(FIND "${failing_error}"
+  "while calling 'behavior_plugin.reject_model' from 'function_cli.failing_model'"
+  failing_inner_context)
+string(FIND "${failing_error}"
+  "while calling 'function_cli.failing_model' from 'function_cli.failing_entry'"
+  failing_outer_context)
 if(failing_result EQUAL 0 OR failing_position EQUAL -1 OR
+   failing_inner_context EQUAL -1 OR failing_outer_context EQUAL -1 OR
    EXISTS "${failed_output}")
   message(FATAL_ERROR
     "failed typed fn pipeline published an intermediate Module:\n${failing_error}")
