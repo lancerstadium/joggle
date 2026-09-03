@@ -47,6 +47,8 @@ module pipeline@1.0.0 {
   fn twice(input: int) -> int;
   fn twice(input: string) -> string;
   fn add_offset(lhs: int, rhs: int) -> int as +;
+  fn less(lhs: int, rhs: int) -> bool as <;
+  fn logical_not(input: bool) -> bool as !;
   fn module_identity(input: ir.module) -> ir.module;
   fn clean(input: function) -> function {
     return test_ir.canonicalize(input);
@@ -106,6 +108,18 @@ module pipeline@1.0.0 {
   fn use_operator(lhs: int, rhs: int) -> int {
     return lhs + rhs;
   }
+  fn earlier(lhs: int, rhs: int) -> int {
+    if lhs < rhs {
+      return lhs;
+    }
+    return rhs;
+  }
+  fn invert(input: bool) -> bool {
+    return !input;
+  }
+  fn ordered_typed(input: word<earlier(9, 7)>) -> word<7> {
+    return input;
+  }
 }
 )",
                "pipeline.joggle");
@@ -153,6 +167,14 @@ module pipeline@1.0.0 {
                               : std::vector<joggle::Module::FunctionDecl>{};
   const auto add_offset =
       pipeline ? pipeline->function("add_offset") : std::nullopt;
+  const auto less = pipeline ? pipeline->function("less") : std::nullopt;
+  const auto logical_not =
+      pipeline ? pipeline->function("logical_not") : std::nullopt;
+  const auto earlier =
+      pipeline ? pipeline->function("earlier") : std::nullopt;
+  const auto invert = pipeline ? pipeline->function("invert") : std::nullopt;
+  const auto ordered_typed =
+      pipeline ? pipeline->function("ordered_typed") : std::nullopt;
   const auto use_twice =
       pipeline ? pipeline->function("use_twice") : std::nullopt;
   const auto use_operator =
@@ -164,7 +186,8 @@ module pipeline@1.0.0 {
       !clean || !read || !emit || !inspect || !compile || !consume ||
       !module_identity || !append || !nonzero || !select ||
       !repeat || !choose || !once || !last || !typed || twice.size() != 2U ||
-      !add_offset || !use_twice || !use_operator || !ir_module_schema) {
+      !add_offset || !less || !logical_not || !earlier || !invert ||
+      !ordered_typed || !use_twice || !use_operator || !ir_module_schema) {
     return EXIT_FAILURE;
   }
   const auto integer = compiler.make(*integer_decl, std::int64_t{8});
@@ -248,6 +271,10 @@ module pipeline@1.0.0 {
   compiler.bind(*add_offset, [](std::int64_t lhs, std::int64_t rhs) {
     return lhs + rhs + 100;
   });
+  compiler.bind(*less, [](std::int64_t lhs, std::int64_t rhs) {
+    return lhs < rhs;
+  });
+  compiler.bind(*logical_not, [](bool input) { return !input; });
   if (!compiler.represent<joggle::ir::Module>(*ir_module_schema)) {
     return EXIT_FAILURE;
   }
@@ -288,6 +315,9 @@ module pipeline@1.0.0 {
       compiler.run<std::int64_t>(*use_twice, std::int64_t{6});
   const auto operated = compiler.run<std::int64_t>(
       *use_operator, std::int64_t{2}, std::int64_t{3});
+  const auto ordered = compiler.run<std::int64_t>(
+      *earlier, std::int64_t{9}, std::int64_t{7});
+  const auto inverted = compiler.run<bool>(*invert, true);
   ok &= expect(decoded && count && *count == 0 && direct_encoded &&
                    reencoded && consume_ok && consumed &&
                    reencoded->size() == 1U &&
@@ -300,14 +330,22 @@ module pipeline@1.0.0 {
                    broken->size() == 1U && continued &&
                    continued->size() == 1U && append_calls == 8U &&
                    overloaded == std::optional<std::int64_t>{12} &&
-                   operated == std::optional<std::int64_t>{105},
+                   operated == std::optional<std::int64_t>{105} &&
+                   ordered == std::optional<std::int64_t>{7} &&
+                   inverted == std::optional<bool>{false},
                "structured compiler functions execute selected branches, "
-               "loops, overloads, declared operators, and if expressions");
+               "loops, overloads, typed operators, and if expressions");
   const auto typed_function = compiler.function(*typed);
+  const auto ordered_typed_function = compiler.function(*ordered_typed);
   ok &= expect(typed_function && typed_function->arguments().size() == 1U &&
                    typed_function->result_types().size() == 1U &&
                    typed_function->arguments().front().type() ==
-                       typed_function->result_types().front(),
+                       typed_function->result_types().front() &&
+                   ordered_typed_function &&
+                   ordered_typed_function->arguments().size() == 1U &&
+                   ordered_typed_function->result_types().size() == 1U &&
+                   ordered_typed_function->arguments().front().type() ==
+                       ordered_typed_function->result_types().front(),
                "structured compiler functions participate in dependent type "
                "evaluation through the same execution entry");
   joggle::Diagnostics signature_diagnostics;

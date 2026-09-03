@@ -45,6 +45,23 @@ evaluator then acts on the resolved call:
    Residual.
 3. If neither is possible, report a staging error at the call site.
 
+An operator is only another spelling for a typed function. Its input and
+result domains need not match, so an extension can define a compiler predicate
+without adding a special expression node:
+
+```joggle
+fn less(lhs: int, rhs: int) -> bool as <;
+
+fn earlier(lhs: int, rhs: int) -> int {
+  return if lhs < rhs { lhs } else { rhs };
+}
+```
+
+Binding `less` to an ordinary `bool(std::int64_t, std::int64_t)` C++ callable
+makes the branch executable during specialization. The same overload spelling
+can denote a Residual target operation when its declared operands are program
+values.
+
 An external declaration needs at most one host binding:
 
 ```cpp

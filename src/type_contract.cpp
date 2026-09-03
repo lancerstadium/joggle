@@ -667,12 +667,7 @@ private:
             known_results.front().domain != expected.domain) {
           continue;
         }
-        const bool inputs_match = std::all_of(
-            known_inputs.begin(), known_inputs.end(),
-            [&](const auto& input) { return input.domain == expected.domain; });
-        if (inputs_match) {
-          result.push_back(candidate);
-        }
+        result.push_back(candidate);
       }
     }
     return result;
@@ -806,11 +801,6 @@ private:
                            expression.kind == Kind::Infix ||
                            expression.kind == Kind::Postfix;
     if (operation) {
-      if (domain->element != ValueKind::Integer &&
-          domain->element != ValueKind::Real) {
-        report("operator expression is not defined for this compiler domain");
-        return std::nullopt;
-      }
       const std::size_t arity = expression.kind == Kind::Infix ? 2U : 1U;
       if (expression.arguments.size() != arity) {
         report("malformed operator expression");
@@ -868,6 +858,11 @@ private:
         }
         calls_.pop_back();
         return value;
+      }
+      if (domain->element != ValueKind::Integer &&
+          domain->element != ValueKind::Real) {
+        report("operator expression is not defined for this compiler domain");
+        return std::nullopt;
       }
       auto left = evaluate(expression.arguments.front(), expected, bindings);
       if (!left) {

@@ -220,8 +220,7 @@ private:
 
     result.text = reference("an expression");
     if (result.text.find('.') == std::string::npos &&
-        variable(result.text) && !is(TokenKind::Less) &&
-        !is(TokenKind::LeftParen)) {
+        variable(result.text) && !is(TokenKind::LeftParen)) {
       result.kind = Kind::Variable;
       return result;
     }
@@ -281,7 +280,8 @@ private:
   bool is_operator() const {
     return is(TokenKind::Plus) || is(TokenKind::Minus) ||
            is(TokenKind::Star) || is(TokenKind::Slash) ||
-           is(TokenKind::Caret) || is(TokenKind::Operator);
+           is(TokenKind::Caret) || is(TokenKind::Less) ||
+           is(TokenKind::Operator);
   }
 
   std::string take_operator() {

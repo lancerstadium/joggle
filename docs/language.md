@@ -173,6 +173,12 @@ Calls, prefix operators, infix operators, and postfix operators all resolve
 through the same visible `fn` overload set. `as` associates a spelling with an
 ordinary Function; there is no operator-specific evaluator.
 
+Operator signatures are fully typed rather than restricted to closed
+arithmetic. For example, `fn less(lhs: int, rhs: int) -> bool as <;` may be
+bound by an extension and used directly as a compile-time branch condition.
+When `<` follows a local value or literal it is parsed as an operator; `<...>`
+following a declaration name remains a type or generic argument list.
+
 ## Control flow
 
 `if` is an expression:

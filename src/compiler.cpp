@@ -1070,16 +1070,95 @@ bool Compiler::link() {
                              expression.kind == Kind::Infix ||
                              expression.kind == Kind::Postfix;
       if (operation) {
-        if (domain->element != detail::ValueKind::Integer &&
-            domain->element != detail::ValueKind::Real) {
-          report("arithmetic has the wrong domain in compile-time "
-                 "definition '" +
-                 std::string(declaration) + "'");
-          return;
-        }
         const std::size_t arity = expression.kind == Kind::Infix ? 2U : 1U;
         if (expression.arguments.size() != arity) {
           report("malformed operator expression in compile-time definition '" +
+                 std::string(declaration) + "'");
+          return;
+        }
+        const auto fixity =
+            expression.kind == Kind::Prefix
+                ? Module::FunctionDecl::Fixity::Prefix
+            : expression.kind == Kind::Postfix
+                ? Module::FunctionDecl::Fixity::Postfix
+                : Module::FunctionDecl::Fixity::Infix;
+        std::vector<Module::FunctionDecl> operators;
+        const auto append_operators = [&](const Module& visible) {
+          for (const auto& candidate : visible.functions()) {
+            if (candidate.operator_symbol() == expression.text &&
+                candidate.operator_fixity() == fixity &&
+                candidate.inputs().size() == arity &&
+                candidate.results().size() == 1U &&
+                candidate.results().front().domain == expected) {
+              operators.push_back(candidate);
+            }
+          }
+        };
+        append_operators(module);
+        for (const auto& import : module.imports()) {
+          const auto imported = state_->modules.find(import.name);
+          if (imported != state_->modules.end()) {
+            append_operators(imported->second);
+          }
+        }
+        const auto argument_domain = [&](const Module::Expression& argument)
+            -> std::optional<Module::Expression> {
+          if (argument.kind == Kind::Variable) {
+            const auto variable = std::find_if(
+                variables.begin(), variables.end(),
+                [&](const Module::ParameterDecl& value) {
+                  return value.name == argument.text;
+                });
+            return variable == variables.end()
+                       ? std::optional<Module::Expression>{}
+                       : std::optional<Module::Expression>{variable->domain};
+          }
+          if (argument.kind == Kind::Number) {
+            return detail::domain_expression(
+                argument.text.find_first_of(".eE") == std::string::npos
+                    ? detail::ValueKind::Integer
+                    : detail::ValueKind::Real);
+          }
+          if (argument.kind == Kind::Boolean) {
+            return detail::domain_expression(detail::ValueKind::Boolean);
+          }
+          if (argument.kind == Kind::String) {
+            return detail::domain_expression(detail::ValueKind::String);
+          }
+          return std::nullopt;
+        };
+        operators.erase(
+            std::remove_if(
+                operators.begin(), operators.end(),
+                [&](const Module::FunctionDecl& candidate) {
+                  for (std::size_t index = 0; index < arity; ++index) {
+                    const auto actual = argument_domain(
+                        expression.arguments[index]);
+                    if (actual && candidate.inputs()[index].domain != *actual) {
+                      return true;
+                    }
+                  }
+                  return false;
+                }),
+            operators.end());
+        if (operators.size() == 1U) {
+          for (std::size_t index = 0; index < arity; ++index) {
+            self(self, expression.arguments[index],
+                 operators.front().inputs()[index].domain, variables,
+                 declaration, location);
+          }
+          return;
+        }
+        if (!operators.empty()) {
+          report("ambiguous operator '" + expression.text +
+                 "' in compile-time definition '" +
+                 std::string(declaration) + "'");
+          return;
+        }
+        if (domain->element != detail::ValueKind::Integer &&
+            domain->element != detail::ValueKind::Real) {
+          report("operator '" + expression.text +
+                 "' has no matching declaration in compile-time definition '" +
                  std::string(declaration) + "'");
           return;
         }
