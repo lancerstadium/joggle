@@ -269,10 +269,13 @@ position independently:
 3. missing or ambiguous literal implementations are staging diagnostics.
 
 The branch itself is a terminator. It neither contains its arms nor owns a
-hidden container. Host bindings carry an effect capability: an effectful host
-call runs only beneath Known control; beneath Residual control it must remain
-as a residual call or produce a diagnostic. The evaluator therefore never
-speculatively performs I/O in both arms.
+hidden container. Native bindings are guarded by default: they run only when
+the current control path is Known. A binding explicitly promised
+`HostEvaluation::Hermetic` may run while a Residual branch is elaborated on
+both sides because it is deterministic and has no observable host effect.
+This capability belongs to the native implementation rather than the target
+operation's semantics, so the DSL needs no effect keyword and the evaluator
+never speculatively performs undeclared I/O.
 
 ## No language-level `graph`
 
@@ -360,7 +363,6 @@ cycles over a repeated staged state close directly into CFG backedges. This
 also covers computed Known conditions and compiler-only state without assigning
 it a target representation. General quotienting of ever-changing Residual
 state remains to be implemented.
-Registered host implementations are conservatively forbidden beneath
-Residual control, so constructing both branches never executes host side
-effects. A future hermetic-call contract may permit safe native evaluation
-without weakening this default.
+Registered host implementations are conservatively guarded beneath Residual
+control. An implementation explicitly registered as Hermetic may evaluate
+there without weakening the default.

@@ -181,8 +181,22 @@ guessing from payload elements. An empty list therefore retains its declared
 element domain during native evaluation and can safely participate in type,
 shape, layout, or schedule computation.
 
-Host callbacks are not speculatively executed below Residual control. Known
-evaluation also obeys configured expression-step and nesting-depth limits.
+Native bindings are `HostEvaluation::Guarded` by default. They execute on a
+path whose control is Known, but never speculatively in both arms of a
+Residual branch. A deterministic implementation with no observable host
+effects may opt in explicitly:
+
+```cpp
+compiler.bind(choose_width, implementation,
+              joggle::HostEvaluation::Hermetic);
+```
+
+`Hermetic` describes the native implementation, not the target operation. A
+runtime memory-write operation may still have a hermetic compiler evaluator,
+and a compiler-only function may still call the filesystem. Keeping this
+capability on the binding avoids conflating those two effect systems or adding
+a second function syntax. Known evaluation also obeys configured
+expression-step and nesting-depth limits.
 
 ## Behavior libraries
 

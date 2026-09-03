@@ -26,8 +26,10 @@ struct CompilerAccess {
 
   static std::optional<ParameterValue>
   evaluate(Compiler& compiler, Module::FunctionDecl function,
-           std::span<const ParameterValue> arguments) {
-    return compiler.evaluate_binding(std::move(function), arguments);
+           std::span<const ParameterValue> arguments,
+           bool under_residual_control) {
+    return compiler.evaluate_binding(std::move(function), arguments,
+                                     under_residual_control);
   }
 };
 

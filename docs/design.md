@@ -194,11 +194,15 @@ CFG. Equal path-independent Known results remain Known. Different Known values
 are materialized on their edges and merge as Residual. Distinct host-only
 values that cannot be materialized are a staging error.
 
-Pure compile-time calls may be memoized. Observable host effects cannot be
-speculatively executed below Residual control flow: they must residualize or
-produce a staging diagnostic. Evaluation has deterministic limits for steps,
-recursion, and allocation; exhausting a limit is an error, never an implicit
-change of program meaning.
+Native bindings are guarded by default and cannot execute below Residual
+control flow. A binding explicitly marked `HostEvaluation::Hermetic` promises
+deterministic execution without observable host effects and may execute while
+both residual arms are elaborated. This is a property of the C++
+implementation, not of the residual target call, so the source language needs
+no second effect or function syntax. Hermetic calls may be memoized once their
+host representations provide stable equality and hashing. Evaluation has
+deterministic limits for steps, recursion, and allocation; exhausting a limit
+is an error, never an implicit change of program meaning.
 
 Known values cross a Residual boundary through an ordinary visible function
 implementing `prelude.literal`. Selection uses the same overload constraints

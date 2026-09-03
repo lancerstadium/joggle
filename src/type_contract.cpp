@@ -113,7 +113,7 @@ struct Environment {
                      const Module::InterfaceDecl&)>
       conforms;
   Evaluator evaluate;
-  bool host_evaluation_forbidden = false;
+  bool require_hermetic_host_evaluation = false;
   Compiler::EvaluationLimits limits;
 };
 
@@ -133,14 +133,14 @@ Environment environment(Compiler& compiler, bool allow_host_evaluation = true) {
               const Module::InterfaceDecl& interface) {
             return compiler.conforms(declaration, interface);
           },
-          allow_host_evaluation
-              ? Environment::Evaluator{
-                    [&](Module::FunctionDecl function,
-                        std::span<const ParameterValue> arguments) {
-                      return CompilerAccess::evaluate(
-                          compiler, std::move(function), arguments);
-                    }}
-              : Environment::Evaluator{},
+          Environment::Evaluator{
+              [&, under_residual_control = !allow_host_evaluation](
+                  Module::FunctionDecl function,
+                  std::span<const ParameterValue> arguments) {
+                return CompilerAccess::evaluate(
+                    compiler, std::move(function), arguments,
+                    under_residual_control);
+              }},
           !allow_host_evaluation, CompilerAccess::limits(compiler)};
 }
 
@@ -827,8 +827,9 @@ private:
           scope_ = caller_scope;
         } else if (environment_.evaluate) {
           value = environment_.evaluate(function, values);
-        } else if (environment_.host_evaluation_forbidden) {
-          report("host evaluation is not allowed under Residual control");
+        } else if (environment_.require_hermetic_host_evaluation) {
+          report("host evaluation under Residual control requires a "
+                 "Hermetic binding");
         } else {
           report("compile-time operator '" + expression.text +
                  "' has no registered evaluator");
@@ -980,8 +981,9 @@ private:
         scope_ = caller_scope;
       } else if (environment_.evaluate) {
         value = environment_.evaluate(*function, values);
-      } else if (environment_.host_evaluation_forbidden) {
-        report("host evaluation is not allowed under Residual control");
+      } else if (environment_.require_hermetic_host_evaluation) {
+        report("host evaluation under Residual control requires a Hermetic "
+               "binding");
       } else {
         report("compile-time call '" + expression.text +
                "' has no registered evaluator");

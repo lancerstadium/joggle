@@ -701,6 +701,10 @@ struct Compiler::State {
     Module::TypeDecl schema;
     RepresentationProjector project;
   };
+  struct BoundFunction {
+    PassFunction callable;
+    HostEvaluation evaluation = HostEvaluation::Guarded;
+  };
   Diagnostics diagnostics;
   std::map<std::string, Module, std::less<>> modules;
   std::map<std::string, std::filesystem::path, std::less<>> module_sources;
@@ -720,7 +724,7 @@ struct Compiler::State {
       attribute_methods;
   std::map<std::string, MethodFunction<Instruction>, std::less<>>
       operation_methods;
-  std::map<std::string, PassFunction, std::less<>> passes;
+  std::map<std::string, BoundFunction, std::less<>> passes;
   std::map<std::string, HostRepresentation, std::less<>> host_types;
   std::map<std::string, std::string, std::less<>> host_representations;
   std::set<std::string, std::less<>> constructing_types;
@@ -2888,7 +2892,8 @@ bool Compiler::check_pass_signature(
   return true;
 }
 
-void Compiler::bind_pass(Module::FunctionDecl schema, PassFunction function) {
+void Compiler::bind_pass(Module::FunctionDecl schema, PassFunction function,
+                         HostEvaluation evaluation) {
   const Module::Symbol symbol = schema.symbol();
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
@@ -2909,7 +2914,9 @@ void Compiler::bind_pass(Module::FunctionDecl schema, PassFunction function) {
     state_->diagnostics.report("compiler-function binding is empty");
     return;
   }
-  if (!state_->passes.emplace(symbol.stable_name(), std::move(function))
+  if (!state_->passes
+           .emplace(symbol.stable_name(),
+                    State::BoundFunction{std::move(function), evaluation})
            .second) {
     state_->diagnostics.report("compiler function '" +
                                symbol.qualified_name() +
@@ -2919,13 +2926,22 @@ void Compiler::bind_pass(Module::FunctionDecl schema, PassFunction function) {
 
 std::optional<detail::ParameterValue> Compiler::evaluate_binding(
     Module::FunctionDecl function,
-    std::span<const detail::ParameterValue> arguments) {
+    std::span<const detail::ParameterValue> arguments,
+    bool under_residual_control) {
   const std::string identity = function.symbol().stable_name();
   const auto binding = state_->passes.find(identity);
   if (binding == state_->passes.end()) {
     state_->diagnostics.report("function '" +
                                function.symbol().qualified_name() +
                                "' has no registered evaluator");
+    return std::nullopt;
+  }
+  if (under_residual_control &&
+      binding->second.evaluation != HostEvaluation::Hermetic) {
+    state_->diagnostics.report(
+        "host implementation of function '" +
+        function.symbol().qualified_name() +
+        "' is guarded and cannot execute under Residual control");
     return std::nullopt;
   }
   if (!detail::ir_inputs(function).empty() ||
@@ -2958,7 +2974,8 @@ std::optional<detail::ParameterValue> Compiler::evaluate_binding(
   }
   std::optional<detail::PassValue> produced;
   try {
-    produced = binding->second(*this, values, state_->diagnostics);
+    produced =
+        binding->second.callable(*this, values, state_->diagnostics);
   } catch (...) {
     state_->evaluating_functions.erase(identity);
     throw;
@@ -3353,7 +3370,8 @@ Compiler::run_pass(Module::FunctionDecl pass,
       }
       std::optional<detail::PassValue> execution;
       try {
-        execution = binding->second(*this, values, state_->diagnostics);
+        execution =
+            binding->second.callable(*this, values, state_->diagnostics);
       } catch (const std::bad_variant_access&) {
         state_->diagnostics.report(
             "C++ binding for compiler function '" +

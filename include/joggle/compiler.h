@@ -26,6 +26,11 @@ namespace joggle {
 using Bytes = std::vector<std::byte>;
 class Compiler;
 
+// Controls whether a native implementation may be evaluated while the
+// current source path is guarded by Residual control. Hermetic is an explicit
+// promise that evaluation is deterministic and has no observable host effect.
+enum class HostEvaluation { Guarded, Hermetic };
+
 namespace detail {
 
 struct CompilerAccess;
@@ -532,7 +537,8 @@ public:
   }
 
   template <typename Function>
-  void bind(Module::FunctionDecl schema, Function&& function) {
+  void bind(Module::FunctionDecl schema, Function&& function,
+            HostEvaluation evaluation = HostEvaluation::Guarded) {
     using Callable = std::decay_t<Function>;
     using Traits = detail::CallableTraits<Callable>;
     using Arguments = typename Traits::arguments;
@@ -621,7 +627,7 @@ public:
               callable, compiler, arguments, diagnostics, function_transform,
               std::make_index_sequence<argument_count>{});
         };
-    bind_pass(std::move(schema), std::move(pass));
+    bind_pass(std::move(schema), std::move(pass), evaluation);
     }
   }
 
@@ -708,7 +714,8 @@ private:
   bool accepts_host_type(const Module::FunctionDecl& function,
                          const Module::ParameterDecl& field,
                          std::string_view type) const;
-  void bind_pass(Module::FunctionDecl schema, PassFunction function);
+  void bind_pass(Module::FunctionDecl schema, PassFunction function,
+                 HostEvaluation evaluation);
   bool check_pass_signature(
       const Module::FunctionDecl& schema,
       std::span<const std::string_view> inputs,
@@ -722,7 +729,8 @@ private:
            std::vector<detail::PassValue> arguments);
   std::optional<detail::ParameterValue>
   evaluate_binding(Module::FunctionDecl function,
-                   std::span<const detail::ParameterValue> arguments);
+                   std::span<const detail::ParameterValue> arguments,
+                   bool under_residual_control);
   std::optional<Module::FunctionDecl> find_pass(std::string_view pass);
   std::optional<detail::ParameterValue>
   call(const Attribute& subject, Module::InterfaceDecl::MethodDecl method,

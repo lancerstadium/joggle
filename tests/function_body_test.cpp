@@ -1839,12 +1839,48 @@ module guarded_host@1.0.0 {
       guarded_host.diagnostics().entries().end(),
       [](const joggle::Diagnostic& diagnostic) {
         return diagnostic.message.find(
-                   "host evaluation is not allowed under Residual control") !=
+                   "guarded and cannot execute under Residual control") !=
                std::string::npos;
       });
   ok &= expect(!guarded_host_function && observations == 0 &&
                    reports_guarded_host,
                "Residual branches never speculatively execute host code");
+
+  joggle::Compiler hermetic_host;
+  hermetic_host.add(R"(
+joggle 1;
+module hermetic_host@1.0.0 {
+  fn evaluate(value: int) -> int;
+  fn valid(condition: i1) {
+    if condition {
+      selected = evaluate(1);
+    } else {
+      selected = evaluate(2);
+    }
+    return;
+  }
+}
+)",
+                    "hermetic-host.joggle");
+  const bool hermetic_host_linked = hermetic_host.link();
+  const auto hermetic_host_module = hermetic_host.module("hermetic_host");
+  const auto hermetic_evaluate =
+      hermetic_host_module
+          ? hermetic_host_module->function("evaluate")
+          : std::nullopt;
+  if (hermetic_evaluate) {
+    hermetic_host.bind(
+        *hermetic_evaluate,
+        [](std::int64_t value) { return value; },
+        joggle::HostEvaluation::Hermetic);
+  }
+  const auto hermetic_host_function =
+      hermetic_host_linked && hermetic_evaluate
+          ? hermetic_host.function("hermetic_host.valid")
+          : std::nullopt;
+  ok &= expect(hermetic_host_function && hermetic_host.ok(),
+               "a binding explicitly promised Hermetic may evaluate beneath "
+               "Residual control");
 
   joggle::Compiler list_evaluation;
   list_evaluation.add(R"(
