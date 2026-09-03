@@ -13,6 +13,8 @@
 namespace joggle::detail {
 namespace {
 
+constexpr int generic_argument_precedence = 41;
+
 class ExpressionParser {
 public:
   ExpressionParser(
@@ -35,11 +37,16 @@ public:
     while (is_operator()) {
       Lexer lookahead_lexer = lexer_;
       Token lookahead_current = current_;
+      const TokenKind first = current_.kind;
       const std::string symbol = take_operator();
-      const bool has_right_operand =
-          !is(TokenKind::Semicolon) && !is(TokenKind::Comma) &&
-          !is(TokenKind::RightParen) && !is(TokenKind::RightBracket) &&
-          !is(TokenKind::RightBrace) && !is(TokenKind::Greater);
+      const int precedence = operator_precedence(symbol);
+      if (first == TokenKind::Greater &&
+          precedence < minimum_precedence) {
+        lexer_ = lookahead_lexer;
+        current_ = lookahead_current;
+        break;
+      }
+      const bool has_right_operand = starts_expression();
       if (!has_right_operand) {
         Module::Expression combined;
         combined.kind = Module::Expression::Kind::Postfix;
@@ -48,7 +55,6 @@ public:
         result = std::move(combined);
         continue;
       }
-      const int precedence = operator_precedence(symbol);
       if (precedence < minimum_precedence) {
         lexer_ = lookahead_lexer;
         current_ = lookahead_current;
@@ -68,6 +74,16 @@ private:
   bool is(TokenKind kind) const { return current_.kind == kind; }
   bool is_name(std::string_view value) const {
     return is(TokenKind::Name) && current_.text == value;
+  }
+
+  bool starts_expression() const {
+    return is(TokenKind::Name) || is(TokenKind::Integer) ||
+           is(TokenKind::Number) || is(TokenKind::String) ||
+           is(TokenKind::At) || is(TokenKind::LeftParen) ||
+           is(TokenKind::LeftBracket) || is(TokenKind::Plus) ||
+           is(TokenKind::Minus) || is(TokenKind::Star) ||
+           is(TokenKind::Slash) || is(TokenKind::Caret) ||
+           is(TokenKind::Operator);
   }
 
   void advance() {
@@ -236,7 +252,10 @@ private:
       result.kind = Kind::Reference;
       if (!match(TokenKind::Greater)) {
         do {
-          result.arguments.push_back(parse(0));
+          // Comparison operators share angle brackets with generic syntax.
+          // At this level `>` closes the argument list; parentheses opt an
+          // argument back into the full expression grammar when needed.
+          result.arguments.push_back(parse(generic_argument_precedence));
         } while (match(TokenKind::Comma));
         expect(TokenKind::Greater, "'>'");
       }
@@ -277,11 +296,24 @@ private:
     return result;
   }
 
+  static bool is_symbol(TokenKind kind) {
+    return kind == TokenKind::Equal || kind == TokenKind::Less ||
+           kind == TokenKind::Greater || kind == TokenKind::Plus ||
+           kind == TokenKind::Minus || kind == TokenKind::Star ||
+           kind == TokenKind::Slash || kind == TokenKind::Caret ||
+           kind == TokenKind::Pipe || kind == TokenKind::Operator;
+  }
+
   bool is_operator() const {
-    return is(TokenKind::Plus) || is(TokenKind::Minus) ||
-           is(TokenKind::Star) || is(TokenKind::Slash) ||
-           is(TokenKind::Caret) || is(TokenKind::Less) ||
-           is(TokenKind::Operator);
+    if (!is_symbol(current_.kind)) {
+      return false;
+    }
+    if (!is(TokenKind::Equal)) {
+      return true;
+    }
+    Lexer lookahead = lexer_;
+    const Token next = lookahead.take();
+    return next.begin == current_.end && is_symbol(next.kind);
   }
 
   std::string take_operator() {
@@ -293,7 +325,7 @@ private:
       if (current_.begin != end) {
         break;
       }
-    } while (is_operator());
+    } while (is_symbol(current_.kind));
     return result;
   }
 
@@ -447,7 +479,8 @@ std::string format_expression(const Module::Expression& expression,
         if (index != 0U) {
           result += ", ";
         }
-        result += format_expression(expression.arguments[index]);
+        result += format_expression(expression.arguments[index],
+                                    generic_argument_precedence);
       }
       result += '>';
     }

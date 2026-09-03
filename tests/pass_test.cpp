@@ -38,6 +38,7 @@ module pipeline@1.0.0 {
   import test_ir@1;
   import ir@1;
   type word(width: int);
+  type flag(enabled: bool);
   fn read(input: bytes) -> function;
   fn inspect(input: function) -> int;
   fn emit(input: function) -> bytes;
@@ -48,7 +49,18 @@ module pipeline@1.0.0 {
   fn twice(input: string) -> string;
   fn add_offset(lhs: int, rhs: int) -> int as +;
   fn less(lhs: int, rhs: int) -> bool as <;
+  fn less_equal(lhs: int, rhs: int) -> bool as <=;
+  fn greater(lhs: int, rhs: int) -> bool as >;
+  fn greater_equal(lhs: int, rhs: int) -> bool as >=;
+  fn equal(lhs: int, rhs: int) -> bool as ==;
+  fn not_equal(lhs: int, rhs: int) -> bool as !=;
   fn logical_not(input: bool) -> bool as !;
+  fn logical_and(lhs: bool, rhs: bool) -> bool as && {
+    return if lhs { rhs } else { false };
+  }
+  fn logical_or(lhs: bool, rhs: bool) -> bool as || {
+    return if lhs { true } else { rhs };
+  }
   fn module_identity(input: ir.module) -> ir.module;
   fn clean(input: function) -> function {
     return test_ir.canonicalize(input);
@@ -120,6 +132,13 @@ module pipeline@1.0.0 {
   fn ordered_typed(input: word<earlier(9, 7)>) -> word<7> {
     return input;
   }
+  fn unequal_order(lhs: int, rhs: int) -> bool {
+    return (lhs <= rhs && lhs != rhs) ||
+           (lhs > rhs && lhs >= rhs);
+  }
+  fn relation_typed(input: flag<(9 > 7)>) -> flag<true> {
+    return input;
+  }
 }
 )",
                "pipeline.joggle");
@@ -168,6 +187,15 @@ module pipeline@1.0.0 {
   const auto add_offset =
       pipeline ? pipeline->function("add_offset") : std::nullopt;
   const auto less = pipeline ? pipeline->function("less") : std::nullopt;
+  const auto less_equal =
+      pipeline ? pipeline->function("less_equal") : std::nullopt;
+  const auto greater =
+      pipeline ? pipeline->function("greater") : std::nullopt;
+  const auto greater_equal =
+      pipeline ? pipeline->function("greater_equal") : std::nullopt;
+  const auto equal = pipeline ? pipeline->function("equal") : std::nullopt;
+  const auto not_equal =
+      pipeline ? pipeline->function("not_equal") : std::nullopt;
   const auto logical_not =
       pipeline ? pipeline->function("logical_not") : std::nullopt;
   const auto earlier =
@@ -175,6 +203,10 @@ module pipeline@1.0.0 {
   const auto invert = pipeline ? pipeline->function("invert") : std::nullopt;
   const auto ordered_typed =
       pipeline ? pipeline->function("ordered_typed") : std::nullopt;
+  const auto unequal_order =
+      pipeline ? pipeline->function("unequal_order") : std::nullopt;
+  const auto relation_typed =
+      pipeline ? pipeline->function("relation_typed") : std::nullopt;
   const auto use_twice =
       pipeline ? pipeline->function("use_twice") : std::nullopt;
   const auto use_operator =
@@ -186,8 +218,10 @@ module pipeline@1.0.0 {
       !clean || !read || !emit || !inspect || !compile || !consume ||
       !module_identity || !append || !nonzero || !select ||
       !repeat || !choose || !once || !last || !typed || twice.size() != 2U ||
-      !add_offset || !less || !logical_not || !earlier || !invert ||
-      !ordered_typed || !use_twice || !use_operator || !ir_module_schema) {
+      !add_offset || !less || !less_equal || !greater || !greater_equal ||
+      !equal || !not_equal || !logical_not || !earlier || !invert ||
+      !ordered_typed || !unequal_order || !relation_typed || !use_twice ||
+      !use_operator || !ir_module_schema) {
     return EXIT_FAILURE;
   }
   const auto integer = compiler.make(*integer_decl, std::int64_t{8});
@@ -274,6 +308,21 @@ module pipeline@1.0.0 {
   compiler.bind(*less, [](std::int64_t lhs, std::int64_t rhs) {
     return lhs < rhs;
   });
+  compiler.bind(*less_equal, [](std::int64_t lhs, std::int64_t rhs) {
+    return lhs <= rhs;
+  });
+  compiler.bind(*greater, [](std::int64_t lhs, std::int64_t rhs) {
+    return lhs > rhs;
+  });
+  compiler.bind(*greater_equal, [](std::int64_t lhs, std::int64_t rhs) {
+    return lhs >= rhs;
+  });
+  compiler.bind(*equal, [](std::int64_t lhs, std::int64_t rhs) {
+    return lhs == rhs;
+  });
+  compiler.bind(*not_equal, [](std::int64_t lhs, std::int64_t rhs) {
+    return lhs != rhs;
+  });
   compiler.bind(*logical_not, [](bool input) { return !input; });
   if (!compiler.represent<joggle::ir::Module>(*ir_module_schema)) {
     return EXIT_FAILURE;
@@ -318,6 +367,12 @@ module pipeline@1.0.0 {
   const auto ordered = compiler.run<std::int64_t>(
       *earlier, std::int64_t{9}, std::int64_t{7});
   const auto inverted = compiler.run<bool>(*invert, true);
+  const auto ascending = compiler.run<bool>(
+      *unequal_order, std::int64_t{3}, std::int64_t{7});
+  const auto descending = compiler.run<bool>(
+      *unequal_order, std::int64_t{9}, std::int64_t{7});
+  const auto equal_order = compiler.run<bool>(
+      *unequal_order, std::int64_t{7}, std::int64_t{7});
   ok &= expect(decoded && count && *count == 0 && direct_encoded &&
                    reencoded && consume_ok && consumed &&
                    reencoded->size() == 1U &&
@@ -332,11 +387,15 @@ module pipeline@1.0.0 {
                    overloaded == std::optional<std::int64_t>{12} &&
                    operated == std::optional<std::int64_t>{105} &&
                    ordered == std::optional<std::int64_t>{7} &&
-                   inverted == std::optional<bool>{false},
+                   inverted == std::optional<bool>{false} &&
+                   ascending == std::optional<bool>{true} &&
+                   descending == std::optional<bool>{true} &&
+                   equal_order == std::optional<bool>{false},
                "structured compiler functions execute selected branches, "
                "loops, overloads, typed operators, and if expressions");
   const auto typed_function = compiler.function(*typed);
   const auto ordered_typed_function = compiler.function(*ordered_typed);
+  const auto relation_typed_function = compiler.function(*relation_typed);
   ok &= expect(typed_function && typed_function->arguments().size() == 1U &&
                    typed_function->result_types().size() == 1U &&
                    typed_function->arguments().front().type() ==
@@ -345,13 +404,26 @@ module pipeline@1.0.0 {
                    ordered_typed_function->arguments().size() == 1U &&
                    ordered_typed_function->result_types().size() == 1U &&
                    ordered_typed_function->arguments().front().type() ==
-                       ordered_typed_function->result_types().front(),
+                       ordered_typed_function->result_types().front() &&
+                   relation_typed_function &&
+                   relation_typed_function->arguments().size() == 1U &&
+                   relation_typed_function->result_types().size() == 1U &&
+                   relation_typed_function->arguments().front().type() ==
+                       relation_typed_function->result_types().front(),
                "structured compiler functions participate in dependent type "
                "evaluation through the same execution entry");
   joggle::Diagnostics signature_diagnostics;
   const std::string signature_text = joggle::format(*pipeline);
   const auto signature_roundtrip = joggle::parse_module(
       signature_text, signature_diagnostics, "pipeline-canonical.joggle");
+  if (!signature_roundtrip) {
+    signature_diagnostics.print(std::cerr);
+    std::cerr << signature_text;
+  } else if (joggle::format(*signature_roundtrip) != signature_text) {
+    std::cerr << "canonical signature changed after reparsing:\n"
+              << signature_text << "reparsed:\n"
+              << joggle::format(*signature_roundtrip);
+  }
   ok &= expect(signature_roundtrip &&
                    joggle::format(*signature_roundtrip) == signature_text,
                "typed pass signatures format and parse canonically");

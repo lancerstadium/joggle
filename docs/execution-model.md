@@ -60,7 +60,10 @@ fn earlier(lhs: int, rhs: int) -> int {
 Binding `less` to an ordinary `bool(std::int64_t, std::int64_t)` C++ callable
 makes the branch executable during specialization. The same overload spelling
 can denote a Residual target operation when its declared operands are program
-values.
+values. Comparison and logical operators are not hard-coded semantic cases:
+`<=`, `>=`, `==`, `!=`, `&&`, `||`, prefix `!`, and extension-defined symbols
+all enter this declaration lookup before the minimal bootstrap arithmetic is
+considered.
 
 An external declaration needs at most one host binding:
 

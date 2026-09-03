@@ -176,8 +176,13 @@ ordinary Function; there is no operator-specific evaluator.
 Operator signatures are fully typed rather than restricted to closed
 arithmetic. For example, `fn less(lhs: int, rhs: int) -> bool as <;` may be
 bound by an extension and used directly as a compile-time branch condition.
-When `<` follows a local value or literal it is parsed as an operator; `<...>`
-following a declaration name remains a type or generic argument list.
+Symbolic spellings such as `<`, `>`, `<=`, `>=`, `==`, `!=`, `&&`, and `||`
+use the same precedence parser. A `<...>` immediately following a declaration
+name is a type or generic argument list; angle brackets between expressions
+are operators. An angle-bracket comparison used inside a generic argument is
+parenthesized, for example `flag<(lanes >= 4)>`; this keeps closing `>`
+unambiguous without lexer modes. Adjacent nested closings such as
+`tensor<word<8>>` remain ordinary delimiters.
 
 ## Control flow
 

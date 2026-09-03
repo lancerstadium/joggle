@@ -40,6 +40,35 @@ namespace {
 
 using detail::ParameterValue;
 
+template <typename Variables>
+std::optional<Module::Expression>
+immediate_domain(const Module::Expression& expression,
+                 const Variables& variables) {
+  using Kind = Module::Expression::Kind;
+  if (expression.kind == Kind::Variable) {
+    const auto variable =
+        std::find_if(variables.begin(), variables.end(), [&](const auto& value) {
+          return value.name == expression.text;
+        });
+    return variable == variables.end()
+               ? std::optional<Module::Expression>{}
+               : std::optional<Module::Expression>{variable->domain};
+  }
+  if (expression.kind == Kind::Number) {
+    return detail::domain_expression(
+        expression.text.find_first_of(".eE") == std::string::npos
+            ? detail::ValueKind::Integer
+            : detail::ValueKind::Real);
+  }
+  if (expression.kind == Kind::Boolean) {
+    return detail::domain_expression(detail::ValueKind::Boolean);
+  }
+  if (expression.kind == Kind::String) {
+    return detail::domain_expression(detail::ValueKind::String);
+  }
+  return std::nullopt;
+}
+
 class DynamicLibrary {
 public:
   DynamicLibrary() = default;
@@ -1083,50 +1112,15 @@ bool Compiler::link() {
             : expression.kind == Kind::Postfix
                 ? Module::FunctionDecl::Fixity::Postfix
                 : Module::FunctionDecl::Fixity::Infix;
-        auto operators = detail::visible_operators(
-            *this, name, expression.text, fixity);
-        operators.erase(
-            std::remove_if(
-                operators.begin(), operators.end(),
-                [&](const Module::FunctionDecl& candidate) {
-                  return candidate.inputs().size() != arity ||
-                         candidate.results().size() != 1U ||
-                         candidate.results().front().domain != expected;
-                }),
-            operators.end());
-        const auto argument_domain = [&](const Module::Expression& argument)
-            -> std::optional<Module::Expression> {
-          if (argument.kind == Kind::Variable) {
-            const auto variable = std::find_if(
-                variables.begin(), variables.end(),
-                [&](const Module::ParameterDecl& value) {
-                  return value.name == argument.text;
-                });
-            return variable == variables.end()
-                       ? std::optional<Module::Expression>{}
-                       : std::optional<Module::Expression>{variable->domain};
-          }
-          if (argument.kind == Kind::Number) {
-            return detail::domain_expression(
-                argument.text.find_first_of(".eE") == std::string::npos
-                    ? detail::ValueKind::Integer
-                    : detail::ValueKind::Real);
-          }
-          if (argument.kind == Kind::Boolean) {
-            return detail::domain_expression(detail::ValueKind::Boolean);
-          }
-          if (argument.kind == Kind::String) {
-            return detail::domain_expression(detail::ValueKind::String);
-          }
-          return std::nullopt;
-        };
+        auto operators = detail::operator_candidates(
+            *this, name, expression.text, fixity, arity, expected);
         operators.erase(
             std::remove_if(
                 operators.begin(), operators.end(),
                 [&](const Module::FunctionDecl& candidate) {
                   for (std::size_t index = 0; index < arity; ++index) {
-                    const auto actual = argument_domain(
-                        expression.arguments[index]);
+                    const auto actual =
+                        immediate_domain(expression.arguments[index], variables);
                     if (actual && candidate.inputs()[index].domain != *actual) {
                       return true;
                     }
@@ -1585,18 +1579,55 @@ bool Compiler::link() {
                                expression.kind == Kind::Infix ||
                                expression.kind == Kind::Postfix;
         if (operation) {
-          if (domain->element != detail::ValueKind::Integer &&
-              domain->element != detail::ValueKind::Real) {
-            report_operation("arithmetic expression in operation '" + name +
-                             "." + std::string(declaration.name()) +
-                             "' has the wrong kind");
-            return;
-          }
           const std::size_t arity = expression.kind == Kind::Infix ? 2U : 1U;
           if (expression.arguments.size() != arity) {
             report_operation("operation '" + name + "." +
                              std::string(declaration.name()) +
                              "' contains malformed operator expression");
+            return;
+          }
+          const auto fixity =
+              expression.kind == Kind::Prefix
+                  ? Module::FunctionDecl::Fixity::Prefix
+              : expression.kind == Kind::Postfix
+                  ? Module::FunctionDecl::Fixity::Postfix
+                  : Module::FunctionDecl::Fixity::Infix;
+          auto operators = detail::operator_candidates(
+              *this, name, expression.text, fixity, arity, expected);
+          operators.erase(
+              std::remove_if(
+                  operators.begin(), operators.end(),
+                  [&](const Module::FunctionDecl& candidate) {
+                    for (std::size_t index = 0; index < arity; ++index) {
+                      const auto actual = immediate_domain(
+                          expression.arguments[index], contract.generics);
+                      if (actual &&
+                          candidate.inputs()[index].domain != *actual) {
+                        return true;
+                      }
+                    }
+                    return false;
+                  }),
+              operators.end());
+          if (operators.size() == 1U) {
+            for (std::size_t index = 0; index < arity; ++index) {
+              self(self, expression.arguments[index],
+                   operators.front().inputs()[index].domain);
+            }
+            return;
+          }
+          if (!operators.empty()) {
+            report_operation("operator '" + expression.text +
+                             "' is ambiguous in operation '" + name + "." +
+                             std::string(declaration.name()) + "'");
+            return;
+          }
+          if (domain->element != detail::ValueKind::Integer &&
+              domain->element != detail::ValueKind::Real) {
+            report_operation("operator '" + expression.text +
+                             "' has no matching declaration in operation '" +
+                             name + "." +
+                             std::string(declaration.name()) + "'");
             return;
           }
           for (const auto& argument : expression.arguments) {

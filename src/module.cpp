@@ -1114,6 +1114,56 @@ private:
         report("malformed operator expression in " + std::string(owner));
         return;
       }
+      const auto fixity =
+          expression.kind == Kind::Prefix
+              ? Module::FunctionDecl::Fixity::Prefix
+          : expression.kind == Kind::Postfix
+              ? Module::FunctionDecl::Fixity::Postfix
+              : Module::FunctionDecl::Fixity::Infix;
+      std::vector<const ParsedModule::FunctionDefinition*> candidates;
+      for (const auto& candidate : module_.functions) {
+        if (candidate.operator_symbol == expression.text &&
+            candidate.operator_fixity == fixity &&
+            candidate.inputs.size() == arity &&
+            candidate.results.size() == 1U &&
+            candidate.results.front().domain == expected) {
+          candidates.push_back(&candidate);
+        }
+      }
+      candidates.erase(
+          std::remove_if(
+              candidates.begin(), candidates.end(),
+              [&](const ParsedModule::FunctionDefinition* candidate) {
+                for (std::size_t index = 0; index < arity; ++index) {
+                  const auto& argument = expression.arguments[index];
+                  const auto* variable =
+                      argument.kind == Kind::Variable
+                          ? operation_generic(variables, argument.text)
+                          : nullptr;
+                  if (variable != nullptr &&
+                      candidate->inputs[index].domain != variable->domain) {
+                    return true;
+                  }
+                }
+                return false;
+              }),
+          candidates.end());
+      if (candidates.size() == 1U) {
+        for (std::size_t index = 0; index < arity; ++index) {
+          validate_declaration_expression(
+              variables, owner, source, expression.arguments[index],
+              candidates.front()->inputs[index].domain);
+        }
+        return;
+      }
+      const bool builtin_arithmetic =
+          domain->element == ValueKind::Integer ||
+          domain->element == ValueKind::Real;
+      if (!builtin_arithmetic) {
+        // Imports and overload ambiguity are resolved after the complete
+        // Module closure is available to Compiler::link.
+        return;
+      }
       for (const auto& argument : expression.arguments) {
         validate_declaration_expression(variables, owner, source, argument,
                                         expected);
@@ -1550,33 +1600,6 @@ std::string subject_kind_name(Module::SymbolKind kind) {
   return "invalid";
 }
 
-std::string escape(std::string_view value) {
-  std::string result = "\"";
-  for (const char character : value) {
-    switch (character) {
-    case '\\':
-      result += "\\\\";
-      break;
-    case '"':
-      result += "\\\"";
-      break;
-    case '\n':
-      result += "\\n";
-      break;
-    case '\r':
-      result += "\\r";
-      break;
-    case '\t':
-      result += "\\t";
-      break;
-    default:
-      result.push_back(character);
-      break;
-    }
-  }
-  return result + '"';
-}
-
 std::string type_expression_text(const detail::TypeExpression& expression,
                                  int parent_precedence = 0,
                                  bool right_operand = false);
@@ -1651,96 +1674,8 @@ int type_expression_precedence(const detail::TypeExpression& expression) {
 std::string type_expression_text(const detail::TypeExpression& expression,
                                  int parent_precedence,
                                  bool right_operand) {
-  using Kind = detail::TypeExpression::Kind;
-  const int precedence = type_expression_precedence(expression);
-  std::string result;
-  if (expression.kind == Kind::String) {
-    result = escape(expression.text);
-  } else if (expression.kind == Kind::Number ||
-             expression.kind == Kind::Boolean ||
-             expression.kind == Kind::Variable) {
-    result = expression.text;
-  } else if (expression.kind == Kind::List) {
-    result = "[";
-    for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
-      if (index != 0U) {
-        result += ", ";
-      }
-      result += type_expression_text(expression.arguments[index]);
-    }
-    result += ']';
-  } else if (expression.kind == Kind::Reference) {
-    result = detail::display_type_name(expression.text);
-    if (!expression.arguments.empty()) {
-      result += '<';
-      for (std::size_t index = 0; index < expression.arguments.size();
-           ++index) {
-        if (index != 0U) {
-          result += ", ";
-        }
-        result += type_expression_text(expression.arguments[index]);
-      }
-      result += '>';
-    }
-  } else if (expression.kind == Kind::Call) {
-    result = expression.text + '(';
-    for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
-      if (index != 0U) {
-        result += ", ";
-      }
-      if (index < expression.labels.size() &&
-          !expression.labels[index].empty()) {
-        result += expression.labels[index] + ": ";
-      }
-      result += type_expression_text(expression.arguments[index]);
-    }
-    result += ')';
-  } else if (expression.kind == Kind::FunctionType) {
-    const auto write_types = [&](std::span<const Module::Expression> list) {
-      std::string types;
-      for (std::size_t index = 0; index < list.size(); ++index) {
-        if (index != 0U) {
-          types += ", ";
-        }
-        types += type_expression_text(list[index]);
-      }
-      return types;
-    };
-    if (const auto signature = detail::callable_type(expression)) {
-      result = "(" + write_types(signature->inputs) + ") -> ";
-      if (signature->results.size() == 1U &&
-          signature->results.front().kind != Kind::FunctionType) {
-        result += type_expression_text(signature->results.front());
-      } else {
-        result += "(" + write_types(signature->results) + ")";
-      }
-    }
-  } else if (expression.kind == Kind::Evaluate) {
-    const auto& operand = expression.arguments.front();
-    result = type_expression_precedence(operand) == 100
-                 ? "@" + type_expression_text(operand)
-                 : "@(" + type_expression_text(operand) + ')';
-  } else if (expression.kind == Kind::If) {
-    result = "if " + type_expression_text(expression.arguments[0]) + " { " +
-             type_expression_text(expression.arguments[1]) + " } else { " +
-             type_expression_text(expression.arguments[2]) + " }";
-  } else if (expression.kind == Kind::Prefix) {
-    result = expression.text +
-             type_expression_text(expression.arguments.front(), precedence,
-                                  true);
-  } else if (expression.kind == Kind::Postfix) {
-    result = type_expression_text(expression.arguments.front(), precedence,
-                                  false) + expression.text;
-  } else {
-    result = type_expression_text(expression.arguments[0], precedence, false) +
-             " " + expression.text + " " +
-             type_expression_text(expression.arguments[1], precedence, true);
-  }
-  if (precedence < parent_precedence ||
-      (right_operand && precedence == parent_precedence && precedence < 100)) {
-    return '(' + result + ')';
-  }
-  return result;
+  return detail::format_expression(expression, parent_precedence,
+                                   right_operand);
 }
 
 constexpr std::size_t canonical_line_width = 88U;

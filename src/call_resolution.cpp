@@ -59,6 +59,21 @@ visible_operators(const Compiler& compiler, std::string_view owner,
   return result;
 }
 
+std::vector<Module::FunctionDecl> operator_candidates(
+    const Compiler& compiler, std::string_view owner, std::string_view symbol,
+    Module::FunctionDecl::Fixity fixity, std::size_t arity,
+    const Module::Expression& result_domain) {
+  auto result = visible_operators(compiler, owner, symbol, fixity);
+  result.erase(
+      std::remove_if(result.begin(), result.end(), [&](const auto& candidate) {
+        return candidate.inputs().size() != arity ||
+               candidate.results().size() != 1U ||
+               candidate.results().front().domain != result_domain;
+      }),
+      result.end());
+  return result;
+}
+
 std::optional<CallCandidate>
 call_candidate(const Module::FunctionDecl& function,
                const Module::Expression& expression) {
