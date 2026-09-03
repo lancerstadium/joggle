@@ -75,11 +75,20 @@ fn volume(shape: list<int>) -> int;
 fn align(value: int, multiple: int) -> int {
   return ceildiv(value, multiple) * multiple;
 }
+
+fn classify(value: int) -> (int, bool);
+fn checked(value: int) -> (int, bool) {
+  magnitude, valid = classify(value);
+  return magnitude, valid;
+}
 ```
 
 A trailing `;` declares behavior supplied elsewhere or an operation that may
 remain Residual. Braces define a body. `as` associates prefix, infix, or postfix
 notation with the same function and overload set. Interfaces follow `:`.
+Zero results use no arrow, one result uses `-> T`, and multiple positional
+results use `-> (T, U, ...)`. A call binds exactly its declared result count;
+there is no synthetic unit or `Result` value.
 
 Generic declarations have a name and either a compiler domain or a type
 interface constraint:

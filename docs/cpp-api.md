@@ -207,8 +207,27 @@ compiler.bind(*estimate_decl,
 auto estimate = compiler.run<std::int64_t>(*estimate_decl, *function);
 ```
 
-`invocable<Result, Args...>` checks the reflected C++ signature.
-`run<Result>` returns `std::optional<Result>`; `run<void>` returns `bool`.
+Function results have one direct C++ mapping:
+
+| Joggle result sequence | C++ binding return | Invocation return |
+| --- | --- | --- |
+| no results | `void` | `run<void>` returns `bool` |
+| one `T` | `T` or `std::optional<T>` | `run<T>` returns `std::optional<T>` |
+| `(T, U, ...)` | `std::tuple<T, U, ...>` or its `std::optional` form | `run<std::tuple<T, U, ...>>` |
+
+For example:
+
+```cpp
+compiler.bind(*classify_decl, [](std::int64_t value) {
+  return std::tuple{value < 0 ? -value : value, value >= 0};
+});
+
+auto result = compiler.run<std::tuple<std::int64_t, bool>>(
+    *classify_decl, std::int64_t{-4});
+```
+
+The tuple is a positional boundary mapping, not a Joggle wrapper object.
+`invocable<Result, Args...>` checks the entire reflected C++ signature.
 A mutable Function transform can also be invoked with
 `compiler.run(function, transform)`.
 

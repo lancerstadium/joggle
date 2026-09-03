@@ -82,6 +82,11 @@ Generic values bound by compiler inputs are ordinary Known locals. They can
 drive control flow and dependent type expressions without being wrapped in
 temporary IR Values.
 
+Execution preserves the declared result sequence: zero results are empty, one
+result is one value, and multiple results remain positional values. The C++
+boundary maps those cases to `void`, `T`, and `std::tuple<Ts...>`; the IR and
+source evaluator do not invent a unit result or a separate result container.
+
 ## One graph, no Graph object
 
 A Function already contains the nodes and relations needed by graph-shaped AI

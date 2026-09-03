@@ -76,6 +76,11 @@ Supported compiler-domain mappings are `std::int64_t`, `double`, `bool`,
 homogeneous `std::vector<T>` forms. Whole-IR functions use
 `joggle::ir::Function` or `joggle::ir::Module`.
 
+A no-result declaration binds to C++ `void`; one result binds to `T`; multiple
+results bind positionally to `std::tuple<Ts...>`. Returning
+`std::optional<T>` or `std::optional<std::tuple<Ts...>>` reports ordinary
+execution failure when empty. No result-wrapper class is generated.
+
 A binding may optionally receive `joggle::Compiler&` first and
 `joggle::Diagnostics&` last. A `Function&` input must remain a reference so a
 transform does not accidentally consume the artifact. Signature mismatches are
