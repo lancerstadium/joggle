@@ -40,6 +40,12 @@ specializes a source definition into a `Function`, while
 `Compiler::create_function()` constructs an empty one. Generic specialization
 therefore creates a body, not another Module representation.
 
+Canonical content is also the Module's symbol identity. A committed body edit
+changes the Module digest, and every declaration obtained from that Module
+derives its `Symbol` from the same current digest. Copy-on-write Modules keep
+older declaration handles as snapshots instead of silently rebinding them to a
+new revision.
+
 The other public concepts are small:
 
 - `joggle::Compiler` owns a linked declaration environment, behavior bindings,

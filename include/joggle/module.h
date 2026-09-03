@@ -280,6 +280,9 @@ public:
 
   std::string_view name() const;
   Version version() const;
+  // SHA-256 of the current canonical Module. Committed edits to a materialized
+  // body change this identity; declarations obtained from that same Module
+  // use the same refreshed digest when producing Symbols.
   std::string_view digest() const;
   std::span<const Import> imports() const;
 
@@ -306,7 +309,9 @@ public:
   bool operator==(const Module& other) const;
 
 private:
-  explicit Module(std::shared_ptr<Storage> storage);
+  explicit Module(std::shared_ptr<const Storage> storage);
+  static std::string_view
+  current_digest(const std::shared_ptr<const Storage>& storage);
   std::shared_ptr<const Storage> storage_;
 
   friend class Compiler;

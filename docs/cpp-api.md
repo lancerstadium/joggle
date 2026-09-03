@@ -262,6 +262,13 @@ overloads. `joggle::format(module)` emits that same Module as canonical source
 and derives exact dependencies from its current IR, so a transformation cannot
 leave a stale import list behind.
 
+`module.digest()` and symbols produced by declarations from that Module observe
+the same canonical revision. Calling `function.symbol()` immediately after a
+committed whole-Module transformation therefore cannot expose the digest of the
+pre-transformation body. A declaration retained across a copy-on-write edit is
+an intentional handle to the older Module snapshot; reacquire the declaration
+from the edited Module to address its new identity.
+
 The embedded Prelude type `module` is automatically represented by
 `joggle::Module`; `function` is represented by a materialized
 `joggle::Function` body. Compiler-function signatures using either type

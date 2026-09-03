@@ -281,15 +281,22 @@ module mapping@1.0.0 {
                                                     module_success_diagnostics);
   const auto* mapped_first = read_body("first");
   const auto* preserved_second = read_body("second");
+  const auto mapped_declaration = module.function("first");
+  const std::string mapped_symbol_digest =
+      mapped_declaration
+          ? std::string(mapped_declaration->symbol().module_digest())
+          : std::string{};
   ok &=
       expect(module_success && *module_success == 1U &&
                  module_success_diagnostics.ok() && mapped_first != nullptr &&
                  module.digest() != original_digest &&
+                 mapped_symbol_digest == module.digest() &&
                  mapped_first->revision() != original_first_revision &&
                  mapped_first->instructions().front().callee() == *converted &&
                  preserved_second != nullptr &&
                  preserved_second->revision() == original_second_revision,
-             "whole-Module replacement advances only changed revisions");
+             "whole-Module replacement advances only changed revisions and "
+             "publishes one current Module identity");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

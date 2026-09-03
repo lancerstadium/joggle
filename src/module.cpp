@@ -1805,7 +1805,7 @@ std::string Module::InterfaceDecl::MethodDecl::qualified_name() const {
 
 std::string Module::InterfaceDecl::MethodDecl::stable_name() const {
   return storage_->name + "@" + to_string(storage_->version) + "#" +
-         storage_->digest + "/interface/" +
+         std::string(Module::current_digest(storage_)) + "/interface/" +
          storage_->interfaces[interface_index_].name + "/method/" +
          std::string(name());
 }
@@ -1852,7 +1852,8 @@ Module::InterfaceDecl::methods() const {
 }
 
 Module::Symbol Module::InterfaceDecl::symbol() const {
-  return {storage_->name, storage_->version, storage_->digest,
+  return {storage_->name, storage_->version,
+          std::string(Module::current_digest(storage_)),
           SymbolKind::Interface, storage_->interfaces[index_].name};
 }
 
@@ -1882,7 +1883,8 @@ std::span<const std::string> Module::TypeDecl::interfaces() const {
 }
 
 Module::Symbol Module::TypeDecl::symbol() const {
-  return {storage_->name, storage_->version, storage_->digest, SymbolKind::Type,
+  return {storage_->name, storage_->version,
+          std::string(Module::current_digest(storage_)), SymbolKind::Type,
           storage_->types[index_].name};
 }
 
@@ -1907,7 +1909,8 @@ std::span<const std::string> Module::AttributeDecl::interfaces() const {
 }
 
 Module::Symbol Module::AttributeDecl::symbol() const {
-  return {storage_->name, storage_->version, storage_->digest,
+  return {storage_->name, storage_->version,
+          std::string(Module::current_digest(storage_)),
           SymbolKind::Attribute, storage_->attributes[index_].name};
 }
 
@@ -2088,7 +2091,7 @@ std::string Module::FunctionDecl::signature() const {
 Module::Symbol Module::FunctionDecl::symbol() const {
   return {storage_->name,
           storage_->version,
-          storage_->digest,
+          std::string(Module::current_digest(storage_)),
           SymbolKind::Function,
           storage_->functions[index_].name,
           signature()};
@@ -2103,7 +2106,7 @@ detail::FunctionTypeAccess::get(const Module::FunctionDecl& function) {
   return function.storage_->functions[function.index_].declaration->types;
 }
 
-Module::Module(std::shared_ptr<Storage> storage)
+Module::Module(std::shared_ptr<const Storage> storage)
     : storage_(std::move(storage)) {}
 
 Module::Module(std::string name, Version version) {
@@ -2151,24 +2154,29 @@ std::string_view Module::name() const { return storage_->name; }
 
 Version Module::version() const { return storage_->version; }
 
-std::string_view Module::digest() const {
-  if (std::any_of(storage_->functions.begin(), storage_->functions.end(),
+std::string_view
+Module::current_digest(const std::shared_ptr<const Storage>& storage) {
+  if (std::any_of(storage->functions.begin(), storage->functions.end(),
                   [](const detail::FunctionMember& function) {
                     return function.ir != nullptr;
                   })) {
     std::vector<std::pair<std::string, Function::Revision>> revisions;
-    revisions.reserve(storage_->functions.size());
-    for (const detail::FunctionMember& function : storage_->functions) {
+    revisions.reserve(storage->functions.size());
+    for (const detail::FunctionMember& function : storage->functions) {
       if (function.ir) {
         revisions.emplace_back(function.name, function.ir->revision());
       }
     }
-    if (revisions != storage_->digest_revisions) {
-      storage_->digest = detail::sha256(format(*this));
-      storage_->digest_revisions = std::move(revisions);
+    if (revisions != storage->digest_revisions) {
+      storage->digest = detail::sha256(format(Module(storage)));
+      storage->digest_revisions = std::move(revisions);
     }
   }
-  return storage_->digest;
+  return storage->digest;
+}
+
+std::string_view Module::digest() const {
+  return current_digest(storage_);
 }
 
 std::span<const Module::Import> Module::imports() const {
@@ -2230,7 +2238,8 @@ std::optional<Module::Symbol> Module::symbol(SymbolKind kind,
     return std::nullopt;
   }
   return Symbol(std::string(storage_->name), storage_->version,
-                storage_->digest, kind, std::string(name));
+                std::string(current_digest(storage_)), kind,
+                std::string(name));
 }
 
 std::vector<Module::Symbol> Module::members() const {
@@ -2240,7 +2249,7 @@ std::vector<Module::Symbol> Module::members() const {
   const auto append = [&](SymbolKind kind, const auto& definitions) {
     for (const auto& definition : definitions) {
       result.push_back(Symbol(std::string(storage_->name), storage_->version,
-                              storage_->digest, kind,
+                              std::string(current_digest(storage_)), kind,
                               std::string(definition.name)));
     }
   };
