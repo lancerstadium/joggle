@@ -204,14 +204,16 @@ Ops never own Blocks.
 for (const auto& block : function->blocks()) {
   for (const auto& op : block.ops()) {
     for (const auto& result : op.results()) {
-      auto consumers = function->users(result);
+      auto consumers = result.users();
     }
   }
 }
 ```
 
-`predecessors`, `users`, `has_uses`, and `dominates` query the committed
-Function directly. They include terminator uses where appropriate and do not
+`Value::defining_op()` and `Value::users()` provide the common local def-use
+walk for Residual values. `Function::predecessors`, `users`, `has_uses`, and
+`dominates` query the committed Function directly. They include terminator
+uses where appropriate and do not
 create a Graph owner. Analysis libraries may cache their own products against a
 Function snapshot.
 

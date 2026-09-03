@@ -319,7 +319,9 @@ int main() {
   ok &= expect(
       input_users.size() == 2U && input_users[0] == *queried_first &&
           input_users[1] == *queried_second && first_users.size() == 1U &&
-          first_users.front() == *queried_second,
+          first_users.front() == *queried_second &&
+          queried_input->users() == input_users &&
+          queried_first->value().users() == first_users,
       "use queries return each consuming op once in function order");
   ok &= expect(queried->has_uses(queried_second->result(0)) &&
                    queried->users(queried_second->result(0)).empty(),

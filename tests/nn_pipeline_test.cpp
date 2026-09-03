@@ -107,20 +107,22 @@ int main() {
   ok &= expect(model.functions().size() == 2U && calls(model, "nn.relu") == 4U,
                "the original multi-Function NN Module remains unchanged");
   ok &= expect(unchanged && calls(*unchanged, "nn.relu") == 4U &&
-                   calls(*unchanged, "example_accel.relu") == 0U,
+                   calls(*unchanged, "example_accel.batch_norm_relu_nchw") ==
+                       0U,
                "a Known false compiler branch returns the original module");
-  ok &= expect(mapped && calls(*mapped, "nn.relu") == 0U &&
-                   calls(*mapped, "example_accel.relu") == 4U,
-               "a Known true compiler branch invokes a legalizing Module "
-               "conversion");
+  ok &= expect(
+      mapped && calls(*mapped, "nn.relu") == 2U &&
+          calls(*mapped, "nn.batch_norm_nchw") == 2U &&
+          calls(*mapped, "example_accel.batch_norm_relu_nchw") == 2U,
+      "a Known true compiler branch invokes a def-use graph fusion");
   ok &= expect(source_op_count == std::optional<std::int64_t>{14} &&
-                   mapped_op_count == source_op_count,
-               "an ordinary typed analysis observes source and converted "
-               "Modules through the same invocation mechanism");
+                   mapped_op_count == std::optional<std::int64_t>{12},
+               "an ordinary typed analysis observes the fused Module");
   ok &= expect(parsed &&
                    source.find("import example_accel@2.0.0;") !=
                        std::string::npos &&
-                   source.find("example_accel.relu") != std::string::npos,
+                   source.find("example_accel.batch_norm_relu_nchw") !=
+                       std::string::npos,
                "an ordinary emitter produces canonical, parseable source");
   if (!parse_diagnostics.ok()) {
     parse_diagnostics.print(std::cerr);

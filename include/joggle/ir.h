@@ -47,6 +47,9 @@ public:
   bool is_block_argument() const;
   std::optional<Module::FunctionDecl> referenced_function() const;
   std::optional<Op> defining_op() const;
+  // Direct Op users of this Residual value in Function order. Known values do
+  // not retain one owning Function and therefore return an empty list.
+  std::vector<Op> users() const;
   bool operator==(const Value&) const;
 
 private:

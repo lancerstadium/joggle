@@ -3,7 +3,12 @@ joggle 1;
 module example_accel@2.0.0 {
   import tensor@2.0.0;
 
-  fn relu<E: prelude.numeric, S: list<int>>(
-    input: tensor.ranked<E, S>
-  ) -> tensor.ranked<E, S>;
+  fn batch_norm_relu_nchw<E: prelude.numeric, N: int, C: int, H: int, W: int>(
+    input: tensor.ranked<E, [N, C, H, W]>,
+    scale: tensor.ranked<E, [C]>,
+    bias: tensor.ranked<E, [C]>,
+    mean: tensor.ranked<E, [C]>,
+    variance: tensor.ranked<E, [C]>,
+    epsilon: real = 1e-05
+  ) -> tensor.ranked<E, [N, C, H, W]>;
 }

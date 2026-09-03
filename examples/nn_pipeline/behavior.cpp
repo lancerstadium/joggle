@@ -14,32 +14,55 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
   const auto nn = compiler.module("nn");
   const auto accelerator = compiler.module("example_accel");
   const auto nn_relu = nn ? nn->function("relu") : std::nullopt;
-  const auto accelerator_relu =
-      accelerator ? accelerator->function("relu") : std::nullopt;
-  if (!nn_relu || !accelerator_relu) {
+  const auto nn_batch_norm =
+      nn ? nn->function("batch_norm_nchw") : std::nullopt;
+  const auto fused = accelerator
+                         ? accelerator->function("batch_norm_relu_nchw")
+                         : std::nullopt;
+  if (!nn_relu || !nn_batch_norm || !fused) {
     diagnostics.report("nn_pipeline behavior does not match its Module set");
     return;
   }
 
-  compiler.bind(module, "convert_relu",
-                [nn_relu, accelerator_relu](joggle::Module input,
-                                            joggle::Diagnostics& reported)
+  compiler.bind(module, "fuse_norm_relu",
+                [nn_relu, nn_batch_norm, fused](
+                    joggle::Module input, joggle::Diagnostics& reported)
                     -> std::optional<joggle::Module> {
-                  const auto converted = joggle::convert(
+                  const auto changed = joggle::rewrite(
                       input,
                       [&](const joggle::Op& op,
                           joggle::Function::Edit& edit, joggle::Diagnostics&) {
                         if (op.callee() != *nn_relu) {
                           return false;
                         }
-                        edit.replace(op, *accelerator_relu);
+                        const auto operands = op.operands();
+                        const auto producer =
+                            operands.size() == 1U
+                                ? operands.front().defining_op()
+                                : std::optional<joggle::Op>{};
+                        if (!producer || producer->callee() != *nn_batch_norm ||
+                            producer->results().size() != 1U ||
+                            producer->parent() != op.parent() ||
+                            producer->value().users() !=
+                                std::vector<joggle::Op>{op}) {
+                          return false;
+                        }
+                        std::vector<joggle::Value> arguments =
+                            producer->operands();
+                        const auto epsilon = producer->property("epsilon");
+                        if (!epsilon) {
+                          return false;
+                        }
+                        arguments.push_back(*epsilon);
+                        const auto replacement = edit.insert(
+                            op, *fused, std::move(arguments),
+                            {op.value().type()});
+                        edit.replace(op, replacement.results());
+                        edit.erase(*producer);
                         return true;
                       },
-                      [&](const joggle::Op& op) {
-                        return op.callee() != *nn_relu;
-                      },
                       reported);
-                  if (!converted) {
+                  if (!changed) {
                     return std::nullopt;
                   }
                   return input;

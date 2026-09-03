@@ -1038,6 +1038,29 @@ std::optional<Op> Value::defining_op() const {
   return Op(function_, found->second.owner);
 }
 
+std::vector<Op> Value::users() const {
+  if (!valid() || known()) {
+    return {};
+  }
+  std::vector<Op> result;
+  for (const std::uint64_t block : function_->state->block_order) {
+    for (const std::uint64_t op_id : function_->state->blocks.at(block).ops) {
+      const auto& op = function_->state->ops.at(op_id);
+      const bool consumes = std::any_of(
+          op.arguments.begin(), op.arguments.end(),
+          [&](const detail::StoredArgument& argument) {
+            return detail::FunctionAccess::restore(function_, argument.value.id,
+                                                   argument.value.known) ==
+                   *this;
+          });
+      if (consumes) {
+        result.push_back(Op(function_, op_id));
+      }
+    }
+  }
+  return result;
+}
+
 std::optional<Module::FunctionDecl> Value::referenced_function() const {
   if (!function_) {
     return std::nullopt;
@@ -1049,8 +1072,7 @@ std::optional<Module::FunctionDecl> Value::referenced_function() const {
              : std::nullopt;
 }
 
-Op::Op(std::shared_ptr<FunctionIdentity> function,
-                         std::uint64_t id)
+Op::Op(std::shared_ptr<FunctionIdentity> function, std::uint64_t id)
     : function_(std::move(function)), id_(id) {}
 
 bool Op::valid() const {

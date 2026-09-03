@@ -43,7 +43,7 @@ fn conv<X: type, W: type, Y: type>(
 ) -> Y;
 ```
 
-A fusion rule follows `Value::defining_op()` and `Function::users()`. A
+A fusion rule follows `Value::defining_op()` and `Value::users()`. A
 quantization or layout rule reads named properties. Neither needs to decode a
 flat argument list or keep a private copy of the operator definition.
 
