@@ -383,8 +383,8 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
     for (const joggle::Module::FunctionDecl& function : loaded.functions()) {
       if (function.form() == joggle::Module::FunctionDecl::Form::Body &&
           joggle::detail::ModuleAccess::expression(function) == nullptr &&
-          (!joggle::detail::ir_inputs(function).empty() ||
-           !joggle::detail::ir_results(function).empty()) &&
+          (!joggle::detail::value_inputs(function).empty() ||
+           !joggle::detail::value_results(function).empty()) &&
           joggle::detail::has_default_specialization(function) &&
           !compiler.materialize(function.symbol())) {
         return false;

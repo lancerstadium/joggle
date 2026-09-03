@@ -294,9 +294,9 @@ private:
     for (const auto& function :
          visible_functions(compiler_, scope_.name(), expression.text)) {
       auto candidate = call_candidate(function, expression);
-      const auto results = parameter_results(function);
-      if (!candidate || !ir_inputs(function).empty() ||
-          !ir_results(function).empty() || results.size() != 1U ||
+      const auto results = compiler_results(function);
+      if (!candidate || !value_inputs(function).empty() ||
+          !value_results(function).empty() || results.size() != 1U ||
           results.front().domain != expected) {
         continue;
       }

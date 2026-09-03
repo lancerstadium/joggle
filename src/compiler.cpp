@@ -1092,15 +1092,15 @@ bool Compiler::link() {
 
     for (const Module::FunctionDecl& function : module.functions()) {
       if (detail::ModuleAccess::expression(function) == nullptr ||
-          !detail::ir_inputs(function).empty() ||
-          !detail::ir_results(function).empty() ||
-          detail::parameter_results(function).size() != 1U) {
+          !detail::value_inputs(function).empty() ||
+          !detail::value_results(function).empty() ||
+          detail::compiler_results(function).size() != 1U) {
         continue;
       }
       const auto location = detail::ModuleAccess::declaration_source(
           module, Module::SymbolKind::Function, function.name());
-      const auto inputs = detail::parameter_inputs(function);
-      const auto results = detail::parameter_results(function);
+      const auto inputs = detail::compiler_inputs(function);
+      const auto results = detail::compiler_results(function);
       detail::check_declaration_expression(
           *this, module, *detail::ModuleAccess::expression(function),
           results.front().domain, function.generics(), inputs,
@@ -1108,8 +1108,8 @@ bool Compiler::link() {
           "function '" + name + "." + std::string(function.name()) + "'");
     }
     for (const Module::FunctionDecl& declaration : module.functions()) {
-      if (detail::ir_inputs(declaration).empty() &&
-          detail::ir_results(declaration).empty()) {
+      if (detail::value_inputs(declaration).empty() &&
+          detail::value_results(declaration).empty()) {
         continue;
       }
       const auto function_source = detail::ModuleAccess::declaration_source(
@@ -1129,7 +1129,7 @@ bool Compiler::link() {
           detail::domain_expression(detail::ValueKind::Type);
       const std::string subject =
           "function '" + name + "." + std::string(declaration.name()) + "'";
-      for (const auto& input : detail::ir_inputs(declaration)) {
+      for (const auto& input : detail::value_inputs(declaration)) {
         detail::check_declaration_expression(
             *this, module, input.domain, type_domain, contract.generics, {},
             state_->diagnostics, function_source, subject);
@@ -1143,7 +1143,7 @@ bool Compiler::link() {
               state_->diagnostics, function_source, subject);
         }
       }
-      for (const auto& result : detail::ir_results(declaration)) {
+      for (const auto& result : detail::value_results(declaration)) {
         detail::check_declaration_expression(
             *this, module, result.domain, type_domain, contract.generics, {},
             state_->diagnostics, function_source, subject);
@@ -1716,8 +1716,8 @@ Compiler::materialize(Module::Symbol symbol,
           ? std::shared_ptr<const detail::FunctionBody>{}
           : detail::ModuleAccess::body(owner->second, *function);
   const bool compile_time_only =
-      function != overloads.end() && detail::ir_inputs(*function).empty() &&
-      detail::ir_results(*function).empty() &&
+      function != overloads.end() && detail::value_inputs(*function).empty() &&
+      detail::value_results(*function).empty() &&
       detail::ModuleAccess::expression(*function) != nullptr;
   if (!definition || compile_time_only) {
     state_->diagnostics.report("unknown function '" + symbol.qualified_name() +
@@ -2042,14 +2042,13 @@ bool Compiler::check_host_values(
     return true;
   }
 
-  const auto& contract = detail::FunctionTypeAccess::get(function);
   if (arguments.size() != function.inputs().size()) {
     return false;
   }
   std::vector<Type> value_arguments;
   std::vector<std::optional<ParameterValue>> known_arguments;
   for (std::size_t index = 0; index < arguments.size(); ++index) {
-    if (contract.ir_inputs[index]) {
+    if (detail::is_value_port(function.inputs()[index])) {
       const auto* host = std::get_if<detail::HostValue>(&arguments[index]);
       if (host == nullptr || !host->concrete_type) {
         state_->diagnostics.report(
@@ -2063,9 +2062,9 @@ bool Compiler::check_host_values(
   }
 
   std::vector<std::optional<Type>> expected_results;
-  expected_results.reserve(detail::ir_results(function).size());
+  expected_results.reserve(detail::value_results(function).size());
   for (std::size_t index = 0; index < function.results().size(); ++index) {
-    if (!contract.ir_results[index]) {
+    if (!detail::is_value_port(function.results()[index])) {
       continue;
     }
     const auto* host = results.empty()
@@ -2253,10 +2252,10 @@ std::optional<detail::ParameterValue>
 Compiler::evaluate_binding(Module::FunctionDecl function,
                            std::span<const detail::ParameterValue> arguments,
                            bool under_residual_control) {
-  if (!detail::ir_inputs(function).empty() ||
-      !detail::ir_results(function).empty() ||
-      detail::parameter_inputs(function).size() != arguments.size() ||
-      detail::parameter_results(function).size() != 1U) {
+  if (!detail::value_inputs(function).empty() ||
+      !detail::value_results(function).empty() ||
+      detail::compiler_inputs(function).size() != arguments.size() ||
+      detail::compiler_results(function).size() != 1U) {
     state_->diagnostics.report("function '" +
                                function.symbol().qualified_name() +
                                "' cannot be evaluated from Known values");
@@ -2280,7 +2279,7 @@ Compiler::evaluate_binding(Module::FunctionDecl function,
   }
   std::vector<detail::ExecutionValue> values;
   values.reserve(arguments.size());
-  const auto parameters = detail::parameter_inputs(function);
+  const auto parameters = detail::compiler_inputs(function);
   for (std::size_t index = 0; index < arguments.size(); ++index) {
     auto converted =
         detail::execution_value(arguments[index], parameters[index]);
@@ -2298,7 +2297,7 @@ Compiler::evaluate_binding(Module::FunctionDecl function,
   }
   auto result = detail::parameter_value(produced->front());
   if (!result || !detail::matches_parameter(
-                     detail::parameter_results(function).front(), *result)) {
+                     detail::compiler_results(function).front(), *result)) {
     state_->diagnostics.report("compiler execution of function '" +
                                function.symbol().qualified_name() +
                                "' produced a value with the wrong type");

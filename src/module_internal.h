@@ -20,46 +20,46 @@ using GenericDefinition = Module::FunctionDecl::GenericDecl;
 
 struct FunctionTypeContract {
   std::vector<GenericDefinition> generics;
-  // Entries align with Function::inputs(). A parameter input carries an
-  // expression when its value binds a generic; IR inputs have no binding.
+  // Entries align with Function::inputs(). A compiler-domain input carries an
+  // expression only when its value binds a generic.
   std::vector<std::optional<TypeExpression>> bindings;
-  // Transitional implementation detail. Public parameters have one form;
-  // these bits only record which values the current IR bridge can represent
-  // as SSA values. Staged arguments will replace this split.
-  std::vector<bool> ir_inputs;
-  std::vector<bool> ir_results;
 };
+
+// A port is a module value exactly when its declared domain is not one of the
+// compiler domains. This is derived from the declaration and never stored as
+// a parallel signature.
+bool is_value_port(const Module::ParameterDecl& parameter);
 
 struct FunctionTypeAccess {
   static const FunctionTypeContract& get(const Module::FunctionDecl&);
   static std::vector<Module::ParameterDecl>
-  parameter_inputs(const Module::FunctionDecl&);
+  compiler_inputs(const Module::FunctionDecl&);
   static std::vector<Module::ParameterDecl>
-  ir_inputs(const Module::FunctionDecl&);
+  value_inputs(const Module::FunctionDecl&);
   static std::vector<Module::ParameterDecl>
-  parameter_results(const Module::FunctionDecl&);
+  compiler_results(const Module::FunctionDecl&);
   static std::vector<Module::ParameterDecl>
-  ir_results(const Module::FunctionDecl&);
+  value_results(const Module::FunctionDecl&);
 };
 
 inline std::vector<Module::ParameterDecl>
-parameter_inputs(const Module::FunctionDecl& function) {
-  return FunctionTypeAccess::parameter_inputs(function);
+compiler_inputs(const Module::FunctionDecl& function) {
+  return FunctionTypeAccess::compiler_inputs(function);
 }
 
 inline std::vector<Module::ParameterDecl>
-ir_inputs(const Module::FunctionDecl& function) {
-  return FunctionTypeAccess::ir_inputs(function);
+value_inputs(const Module::FunctionDecl& function) {
+  return FunctionTypeAccess::value_inputs(function);
 }
 
 inline std::vector<Module::ParameterDecl>
-parameter_results(const Module::FunctionDecl& function) {
-  return FunctionTypeAccess::parameter_results(function);
+compiler_results(const Module::FunctionDecl& function) {
+  return FunctionTypeAccess::compiler_results(function);
 }
 
 inline std::vector<Module::ParameterDecl>
-ir_results(const Module::FunctionDecl& function) {
-  return FunctionTypeAccess::ir_results(function);
+value_results(const Module::FunctionDecl& function) {
+  return FunctionTypeAccess::value_results(function);
 }
 
 // True when a body can be instantiated without caller-supplied Known values

@@ -494,10 +494,9 @@ private:
         declarations.erase(
             std::remove_if(declarations.begin(), declarations.end(),
                            [&](const Module::FunctionDecl& declaration) {
-                             const auto results =
-                                 parameter_results(declaration);
-                             return !ir_inputs(declaration).empty() ||
-                                    !ir_results(declaration).empty() ||
+                             const auto results = compiler_results(declaration);
+                             return !value_inputs(declaration).empty() ||
+                                    !value_results(declaration).empty() ||
                                     results.size() != 1U ||
                                     results.front().domain != expected->domain;
                            }),

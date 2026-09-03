@@ -85,6 +85,12 @@ orthogonal to type:
 - a Known value has a compiler payload;
 - a Residual value is represented by a `joggle::Value`.
 
+A function declaration stores one ordered input list and one ordered result
+list. Whether a port belongs to a compiler domain (`int`, `type`, `attr`, and
+so on) or denotes a module value is derived from its declared domain; no
+parallel static/value signature is stored. Known and Residual are execution
+states of those same typed ports, not declaration flags.
+
 Known locals retain both their declared domain and payload. In particular, an
 empty `list<string>` remains distinct from an empty `list<type>`, so ordinary
 overload resolution does not need payload tags, special list operations, or a

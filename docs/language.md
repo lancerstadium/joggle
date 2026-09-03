@@ -214,6 +214,10 @@ It turns failure to evaluate completely into a staging diagnostic.
 Type and availability are independent. At a particular invocation a value is
 either Known to the compiler or Residual in the generated Function.
 
+The signature itself contains only its ordered typed inputs and results. It
+does not carry a second Known/Residual port list; availability is determined
+for each invocation.
+
 - A call with admissible Known inputs executes its source body or C++ binding.
 - A call requiring a Residual input becomes an Instruction.
 - A computation under `@` must finish Known.

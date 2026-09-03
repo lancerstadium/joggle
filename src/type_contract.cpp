@@ -296,16 +296,16 @@ public:
       report("call solver has no function declaration");
       return std::nullopt;
     }
-    const auto known_inputs = parameter_inputs(*schema_);
-    const auto value_inputs = ir_inputs(*schema_);
-    const auto value_results = ir_results(*schema_);
-    if (known_arguments.size() != known_inputs.size()) {
+    const auto compiler_ports = compiler_inputs(*schema_);
+    const auto input_ports = value_inputs(*schema_);
+    const auto result_ports = value_results(*schema_);
+    if (known_arguments.size() != compiler_ports.size()) {
       report("call Known-argument map does not match its function");
       return std::nullopt;
     }
     Bindings bindings;
     std::size_t argument = 0;
-    for (const auto& input : value_inputs) {
+    for (const auto& input : input_ports) {
       const std::size_t count =
           input.variadic ? arguments.size() - argument : 1U;
       if (argument + count > arguments.size()) {
@@ -327,7 +327,7 @@ public:
     for (std::size_t input_index = 0; input_index < schema_->inputs().size();
          ++input_index) {
       const auto& input = schema_->inputs()[input_index];
-      if (contract_->ir_inputs[input_index]) {
+      if (is_value_port(input)) {
         continue;
       }
       std::optional<ParameterValue> actual = known_arguments[known_index++];
@@ -352,13 +352,13 @@ public:
         return std::nullopt;
       }
     }
-    if (expected.size() != value_results.size()) {
+    if (expected.size() != result_ports.size()) {
       report("function call result count does not match its declaration");
       return std::nullopt;
     }
     for (std::size_t index = 0; index < expected.size(); ++index) {
       if (expected[index] &&
-          !unify(value_results[index].domain, ParameterValue(*expected[index]),
+          !unify(result_ports[index].domain, ParameterValue(*expected[index]),
                  bindings)) {
         return std::nullopt;
       }
@@ -369,7 +369,7 @@ public:
     CallTypes resolved;
     resolved.arguments.reserve(arguments.size());
     argument = 0;
-    for (const auto& input : value_inputs) {
+    for (const auto& input : input_ports) {
       const std::size_t count =
           input.variadic ? arguments.size() - argument : 1U;
       for (std::size_t item = 0; item < count; ++item) {
@@ -385,8 +385,8 @@ public:
         ++argument;
       }
     }
-    resolved.results.reserve(value_results.size());
-    for (const auto& result : value_results) {
+    resolved.results.reserve(result_ports.size());
+    for (const auto& result : result_ports) {
       auto value = evaluate(result.domain, type_parameter, bindings);
       if (!value || value->as_type() == nullptr) {
         return std::nullopt;
@@ -677,10 +677,11 @@ private:
     std::vector<Module::FunctionDecl> result;
     for (const auto& candidate :
          environment_.operators(scope_, symbol, fixity)) {
-      const auto known_inputs = parameter_inputs(candidate);
-      const auto known_results = parameter_results(candidate);
-      if (!ir_inputs(candidate).empty() || !ir_results(candidate).empty() ||
-          known_inputs.size() != arity || known_results.size() != 1U ||
+      const auto known_inputs = compiler_inputs(candidate);
+      const auto known_results = compiler_results(candidate);
+      if (!value_inputs(candidate).empty() ||
+          !value_results(candidate).empty() || known_inputs.size() != arity ||
+          known_results.size() != 1U ||
           known_results.front().domain != expected.domain) {
         continue;
       }
@@ -718,7 +719,7 @@ private:
     }
 
     const Module::Expression* body = ModuleAccess::expression(function);
-    const auto results = parameter_results(function);
+    const auto results = compiler_results(function);
     if (body == nullptr || results.size() != 1U) {
       report("compile-time function '" + function.symbol().qualified_name() +
              "' has no available evaluator");
@@ -877,7 +878,7 @@ private:
       overloads.erase(
           std::remove_if(overloads.begin(), overloads.end(),
                          [&](const Module::FunctionDecl& candidate) {
-                           const auto inputs = parameter_inputs(candidate);
+                           const auto inputs = compiler_inputs(candidate);
                            for (std::size_t index = 0; index < arity; ++index) {
                              const auto actual = known_domain(
                                  expression.arguments[index], bindings);
@@ -897,7 +898,7 @@ private:
         Bindings arguments;
         std::vector<ParameterValue> values;
         values.reserve(arity);
-        const auto inputs = parameter_inputs(function);
+        const auto inputs = compiler_inputs(function);
         for (std::size_t index = 0; index < arity; ++index) {
           auto value =
               evaluate(expression.arguments[index], inputs[index], bindings);
@@ -919,9 +920,9 @@ private:
       for (const auto& function :
            environment_.functions(scope_, expression.text)) {
         auto candidate = call_candidate(function, expression);
-        const auto results = parameter_results(function);
-        if (!candidate || !ir_inputs(function).empty() ||
-            !ir_results(function).empty() || results.size() != 1U ||
+        const auto results = compiler_results(function);
+        if (!candidate || !value_inputs(function).empty() ||
+            !value_results(function).empty() || results.size() != 1U ||
             results.front().domain != expected.domain) {
           continue;
         }
@@ -1220,9 +1221,9 @@ private:
           for (const auto& function :
                environment_.functions(scope_, computed_expression.text)) {
             auto candidate = call_candidate(function, computed_expression);
-            const auto results = parameter_results(function);
-            if (!candidate || !ir_inputs(function).empty() ||
-                !ir_results(function).empty() || results.size() != 1U ||
+            const auto results = compiler_results(function);
+            if (!candidate || !value_inputs(function).empty() ||
+                !value_results(function).empty() || results.size() != 1U ||
                 !matches_parameter(results.front(), actual)) {
               continue;
             }
@@ -1245,7 +1246,7 @@ private:
           if (candidates.size() != 1U) {
             return false;
           }
-          expected = parameter_results(candidates.front().function).front();
+          expected = compiler_results(candidates.front().function).front();
         } else {
           report("type derived parameters do not take arguments");
           return false;

@@ -714,7 +714,6 @@ private:
     auto generics = function_generics();
     std::vector<Parameter> inputs;
     std::vector<std::optional<ParsedModule::TypeExpression>> input_bindings;
-    std::vector<bool> ir_inputs;
     expect(TokenKind::LeftParen, "'('");
     if (!match(TokenKind::RightParen)) {
       do {
@@ -759,7 +758,6 @@ private:
         }
         inputs.push_back(std::move(input));
         input_bindings.push_back(std::move(binding));
-        ir_inputs.push_back(ir_input);
       } while (match(TokenKind::Comma));
       expect(TokenKind::RightParen, "')'");
     }
@@ -788,23 +786,30 @@ private:
     definition.types.generics = std::move(generics);
     definition.inputs = std::move(inputs);
     definition.types.bindings = std::move(input_bindings);
-    definition.types.ir_inputs = std::move(ir_inputs);
     for (std::size_t index = 0; index < result_types.size(); ++index) {
-      const bool ir_result =
-          is_ir_port(result_types[index], definition.generics);
+      if (!is_ir_port(result_types[index], definition.generics) &&
+          !detail::kernel_domain(result_types[index])) {
+        const auto* generic =
+            result_types[index].kind ==
+                    ParsedModule::TypeExpression::Kind::Variable
+                ? find_generic(definition.generics, result_types[index].text)
+                : nullptr;
+        if (generic != nullptr) {
+          result_types[index] = generic->domain;
+        }
+      }
       definition.results.push_back(
           {result_types.size() == 1U ? "result"
                                      : "result" + std::to_string(index),
            std::move(result_types[index]), false, std::nullopt});
-      definition.types.ir_results.push_back(ir_result);
     }
     definition.interfaces = std::move(interfaces);
     definition.operator_symbol = std::move(declared_operator);
     definition.operator_fixity = declared_fixity;
     if (definition.operator_symbol && !definition.operator_fixity) {
       const auto value_inputs = static_cast<std::size_t>(
-          std::count(definition.types.ir_inputs.begin(),
-                     definition.types.ir_inputs.end(), true));
+          std::count_if(definition.inputs.begin(), definition.inputs.end(),
+                        detail::is_value_port));
       const std::size_t operands =
           value_inputs == 0U ? definition.inputs.size() : value_inputs;
       definition.operator_fixity =
@@ -855,13 +860,12 @@ private:
   void validate_parameters(const std::vector<Parameter>& values,
                            std::string_view owner,
                            std::optional<SourceRange> source,
-                           const std::vector<bool>& ir_ports = {}) {
+                           bool allow_value_ports = false) {
     if (!unique_parameter_names(values)) {
       error("duplicate parameter in '" + std::string(owner) + "'", source);
     }
     for (std::size_t index = 0; index < values.size(); ++index) {
-      const bool ir_port = index < ir_ports.size() && ir_ports[index];
-      if (!ir_port && !detail::kernel_domain(values[index].domain)) {
+      if (!allow_value_ports && detail::is_value_port(values[index])) {
         error("unknown parameter domain on '" + values[index].name + "' in '" +
                   std::string(owner) + "'",
               source);
@@ -1237,9 +1241,7 @@ private:
         if (function.name != candidate.name ||
             function.generics.size() != candidate.generics.size() ||
             function.inputs.size() != candidate.inputs.size() ||
-            function.results.size() != candidate.results.size() ||
-            function.types.ir_inputs != candidate.types.ir_inputs ||
-            function.types.ir_results != candidate.types.ir_results) {
+            function.results.size() != candidate.results.size()) {
           continue;
         }
         const bool same_inputs = std::equal(
@@ -1303,9 +1305,9 @@ private:
     }
     for (const auto& function : module_.functions) {
       validate_parameters(function.inputs, function.name, function.source,
-                          function.types.ir_inputs);
+                          true);
       validate_parameters(function.results, function.name, function.source,
-                          function.types.ir_results);
+                          true);
       std::unordered_set<std::string> input_names;
       for (std::size_t index = 0; index < function.inputs.size(); ++index) {
         const auto& input = function.inputs[index];
@@ -1368,7 +1370,7 @@ private:
       const std::string owner = "function '" + function.name + "'";
       for (std::size_t index = 0; index < function.inputs.size(); ++index) {
         const auto& input = function.inputs[index];
-        if (function.types.ir_inputs[index]) {
+        if (detail::is_value_port(input)) {
           validate_declaration_expression(function.generics, owner,
                                           function.source, input.domain,
                                           type_domain);
@@ -1393,8 +1395,8 @@ private:
       for (std::size_t index = 0; index < function.results.size(); ++index) {
         const auto& result = function.results[index];
         const auto expected =
-            function.types.ir_results[index] ? type_domain : result.domain;
-        if (function.types.ir_results[index]) {
+            detail::is_value_port(result) ? type_domain : result.domain;
+        if (detail::is_value_port(result)) {
           validate_declaration_expression(function.generics, owner,
                                           function.source, result.domain,
                                           expected);
@@ -1402,8 +1404,8 @@ private:
       }
       if (function.operator_symbol) {
         const auto module_values = static_cast<std::size_t>(
-            std::count(function.types.ir_inputs.begin(),
-                       function.types.ir_inputs.end(), true));
+            std::count_if(function.inputs.begin(), function.inputs.end(),
+                          detail::is_value_port));
         const std::size_t operands =
             module_values == 0U ? function.inputs.size() : module_values;
         const std::size_t required =
@@ -1413,7 +1415,8 @@ private:
         const bool expected_ir_result = module_values != 0U;
         if (!function.operator_fixity || operands != required ||
             function.results.size() != 1U ||
-            function.types.ir_results.front() != expected_ir_result) {
+            detail::is_value_port(function.results.front()) !=
+                expected_ir_result) {
           error("operator on function '" + function.name +
                     "' has an incompatible signature",
                 function.source);
@@ -1424,15 +1427,14 @@ private:
 
       if (const Module::Expression* expression = body_expression(function.body);
           expression != nullptr && function.results.size() == 1U &&
-          !function.types.ir_results.front() &&
-          std::find(function.types.ir_inputs.begin(),
-                    function.types.ir_inputs.end(),
-                    true) == function.types.ir_inputs.end()) {
+          !detail::is_value_port(function.results.front()) &&
+          std::none_of(function.inputs.begin(), function.inputs.end(),
+                       detail::is_value_port)) {
         std::vector<ParsedModule::GenericDefinition> variables =
             function.generics;
         for (std::size_t index = 0; index < function.inputs.size(); ++index) {
           const auto& input = function.inputs[index];
-          if (!function.types.ir_inputs[index]) {
+          if (!detail::is_value_port(input)) {
             variables.push_back({input.name, input.domain, std::nullopt});
           }
         }
@@ -1937,44 +1939,46 @@ std::span<const Module::ParameterDecl> Module::FunctionDecl::results() const {
 namespace {
 std::vector<Module::ParameterDecl>
 select_parameters(std::span<const Module::ParameterDecl> parameters,
-                  const std::vector<bool>& ir_ports, bool select_ir) {
+                  bool select_values) {
   std::vector<Module::ParameterDecl> result;
-  for (std::size_t index = 0;
-       index < parameters.size() && index < ir_ports.size(); ++index) {
-    if (ir_ports[index] == select_ir) {
-      result.push_back(parameters[index]);
+  for (const Module::ParameterDecl& parameter : parameters) {
+    if (detail::is_value_port(parameter) == select_values) {
+      result.push_back(parameter);
     }
   }
   return result;
 }
 }  // namespace
 
-std::vector<Module::ParameterDecl> detail::FunctionTypeAccess::parameter_inputs(
+bool detail::is_value_port(const Module::ParameterDecl& parameter) {
+  return !kernel_domain(parameter.domain);
+}
+
+std::vector<Module::ParameterDecl> detail::FunctionTypeAccess::compiler_inputs(
     const Module::FunctionDecl& function) {
-  return select_parameters(function.inputs(), get(function).ir_inputs, false);
+  return select_parameters(function.inputs(), false);
 }
 
 std::vector<Module::ParameterDecl>
-detail::FunctionTypeAccess::ir_inputs(const Module::FunctionDecl& function) {
-  return select_parameters(function.inputs(), get(function).ir_inputs, true);
+detail::FunctionTypeAccess::value_inputs(const Module::FunctionDecl& function) {
+  return select_parameters(function.inputs(), true);
 }
 
-std::vector<Module::ParameterDecl>
-detail::FunctionTypeAccess::parameter_results(
+std::vector<Module::ParameterDecl> detail::FunctionTypeAccess::compiler_results(
     const Module::FunctionDecl& function) {
-  return select_parameters(function.results(), get(function).ir_results, false);
+  return select_parameters(function.results(), false);
 }
 
-std::vector<Module::ParameterDecl>
-detail::FunctionTypeAccess::ir_results(const Module::FunctionDecl& function) {
-  return select_parameters(function.results(), get(function).ir_results, true);
+std::vector<Module::ParameterDecl> detail::FunctionTypeAccess::value_results(
+    const Module::FunctionDecl& function) {
+  return select_parameters(function.results(), true);
 }
 
 bool detail::has_default_specialization(const Module::FunctionDecl& function) {
   const auto& contract = FunctionTypeAccess::get(function);
   std::vector<std::string_view> bound_generics;
   for (std::size_t index = 0; index < function.inputs().size(); ++index) {
-    if (contract.ir_inputs[index]) {
+    if (is_value_port(function.inputs()[index])) {
       continue;
     }
     if (!function.inputs()[index].default_value) {
@@ -2019,8 +2023,8 @@ const Function* Module::FunctionDecl::body() const {
 
 const Module::Expression*
 detail::ModuleAccess::expression(const Module::FunctionDecl& function) {
-  if (!FunctionTypeAccess::ir_inputs(function).empty() ||
-      !FunctionTypeAccess::ir_results(function).empty()) {
+  if (!FunctionTypeAccess::value_inputs(function).empty() ||
+      !FunctionTypeAccess::value_results(function).empty()) {
     return nullptr;
   }
   return returned_expression(function);

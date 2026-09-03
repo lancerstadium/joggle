@@ -199,6 +199,30 @@ int main() {
           surface_roundtrip->digest() == surface->digest(),
       "the complete DSL surface has one canonical member order and digest");
 
+  joggle::Diagnostics compiler_generic_diagnostics;
+  const auto compiler_generic = joggle::parse_module(
+      R"(
+    joggle 1;
+    module compiler_generic@1.0.0 {
+      fn identity<N: int>(value: N) -> N {
+        return value;
+      }
+    }
+  )",
+      compiler_generic_diagnostics, "compiler-generic.joggle");
+  const auto compiler_identity =
+      compiler_generic ? compiler_generic->function("identity") : std::nullopt;
+  const auto integer_domain = joggle::Module::Expression::reference("int");
+  ok &= expect(
+      compiler_identity &&
+          compiler_identity->inputs().front().domain == integer_domain &&
+          compiler_identity->results().front().domain == integer_domain &&
+          joggle::format(*compiler_generic)
+                  .find("fn identity<N: int>(value: N) -> int") !=
+              std::string::npos,
+      "compiler-value generics bind inputs without creating a "
+      "parallel port signature");
+
   joggle::Diagnostics trivia_diagnostics;
   const std::string with_trivia =
       "\n# source location and comments are not identity\n" + text.str() +

@@ -900,13 +900,14 @@ public:
     detail::KnownBindings bindings;
     std::size_t supplied = 0;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
-      if (contract.ir_inputs[index]) {
+      if (detail::is_value_port(parameters[index])) {
         continue;
       }
       const Module::ParameterDecl& parameter = parameters[index];
       std::size_t required_after = 0;
       for (std::size_t next = index + 1U; next < parameters.size(); ++next) {
-        if (!contract.ir_inputs[next] && !parameters[next].default_value) {
+        if (!detail::is_value_port(parameters[next]) &&
+            !parameters[next].default_value) {
           ++required_after;
         }
       }
@@ -974,7 +975,7 @@ public:
     };
 
     result_types_.clear();
-    const auto results = detail::ir_results(declaration_);
+    const auto results = detail::value_results(declaration_);
     for (const auto& result : results) {
       if (auto result_type = resolve_type(result.domain, "result")) {
         result_types_.push_back(*result_type);
@@ -1029,14 +1030,14 @@ public:
     }
     std::vector<Type> argument_types;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
-      if (contract.ir_inputs[index]) {
+      if (detail::is_value_port(parameters[index])) {
         if (auto argument_type =
                 resolve_type(parameters[index].domain, "input")) {
           argument_types.push_back(*argument_type);
         }
       }
     }
-    if (argument_types.size() != detail::ir_inputs(declaration_).size() ||
+    if (argument_types.size() != detail::value_inputs(declaration_).size() ||
         result_types_.size() != results.size()) {
       return std::nullopt;
     }
@@ -1047,7 +1048,7 @@ public:
     locals_.push();
     std::size_t residual = 0;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
-      if (contract.ir_inputs[index]) {
+      if (detail::is_value_port(parameters[index])) {
         define(parameters[index].name,
                edit_->argument(argument_types[residual++]), body_.range);
       } else if (known_parameters[index]) {
@@ -1462,9 +1463,9 @@ private:
       std::vector<Module::ParameterDecl> matches;
       for (const auto& function : visible_functions(expression.text)) {
         auto candidate = detail::call_candidate(function, expression);
-        const auto results = detail::parameter_results(function);
-        if (!candidate || !detail::ir_inputs(function).empty() ||
-            !detail::ir_results(function).empty() || results.size() != 1U) {
+        const auto results = detail::compiler_results(function);
+        if (!candidate || !detail::value_inputs(function).empty() ||
+            !detail::value_results(function).empty() || results.size() != 1U) {
           continue;
         }
         bool accepts = true;
@@ -1503,10 +1504,10 @@ private:
       std::vector<Module::ParameterDecl> matches;
       for (const auto& function : detail::visible_operators(
                compiler_, owner_, expression.text, fixity)) {
-        const auto inputs = detail::parameter_inputs(function);
-        const auto results = detail::parameter_results(function);
-        if (!detail::ir_inputs(function).empty() ||
-            !detail::ir_results(function).empty() ||
+        const auto inputs = detail::compiler_inputs(function);
+        const auto results = detail::compiler_results(function);
+        if (!detail::value_inputs(function).empty() ||
+            !detail::value_results(function).empty() ||
             inputs.size() != expression.arguments.size() ||
             results.size() != 1U) {
           continue;
@@ -1608,13 +1609,12 @@ private:
     }
 
     const auto parameters = function.inputs();
-    const auto& contract = detail::FunctionTypeAccess::get(function);
     PendingCall result{
         function,
         std::vector<std::vector<PendingArgument>>(parameters.size()),
         {},
         std::vector<std::optional<ParameterValue>>(
-            detail::parameter_inputs(function).size())};
+            detail::compiler_inputs(function).size())};
     for (std::size_t index = 0; index < supplied.size(); ++index) {
       result.arguments[candidate->parameters[index]].push_back(supplied[index]);
     }
@@ -1641,7 +1641,7 @@ private:
         reject("call is missing argument '" + parameters[index].name + "'");
         return std::nullopt;
       }
-      if (contract.ir_inputs[index]) {
+      if (detail::is_value_port(parameters[index])) {
         for (const PendingArgument& argument : arguments) {
           argument_types.push_back(
               argument.value ? std::optional<Type>{argument.value->type()}
@@ -1685,8 +1685,8 @@ private:
     const auto results = callable.get<std::vector<Type>>("results");
     if (schema.module_name() != detail::prelude_module_name ||
         schema.local_name() != "callable" || !inputs || !results ||
-        !detail::parameter_inputs(function).empty() ||
-        !detail::parameter_results(function).empty()) {
+        !detail::compiler_inputs(function).empty() ||
+        !detail::compiler_results(function).empty()) {
       return false;
     }
     std::vector<std::optional<Type>> expected;
@@ -1741,8 +1741,8 @@ private:
              range);
       return std::nullopt;
     }
-    if (!detail::parameter_inputs(declaration).empty() ||
-        !detail::parameter_results(declaration).empty()) {
+    if (!detail::compiler_inputs(declaration).empty() ||
+        !detail::compiler_results(declaration).empty()) {
       report("function value '" + std::string(reference) +
                  "' requires compile-time specialization",
              range);
@@ -1771,8 +1771,8 @@ private:
       }
       return types;
     };
-    auto inputs = resolve_ports(detail::ir_inputs(declaration));
-    auto results = resolve_ports(detail::ir_results(declaration));
+    auto inputs = resolve_ports(detail::value_inputs(declaration));
+    auto results = resolve_ports(detail::value_results(declaration));
     const auto prelude = compiler_.module(detail::prelude_module_name);
     const auto callable =
         prelude ? prelude->type("callable") : std::optional<Module::TypeDecl>{};
@@ -1925,10 +1925,10 @@ private:
     for (const Module& module : visible) {
       for (const auto& candidate : module.functions()) {
         if (!compiler_.conforms(candidate, *literal) ||
-            detail::parameter_inputs(candidate).size() != 1U ||
-            !detail::ir_inputs(candidate).empty() ||
-            !detail::parameter_results(candidate).empty() ||
-            detail::ir_results(candidate).size() != 1U) {
+            detail::compiler_inputs(candidate).size() != 1U ||
+            !detail::value_inputs(candidate).empty() ||
+            !detail::compiler_results(candidate).empty() ||
+            detail::value_results(candidate).size() != 1U) {
           continue;
         }
         Diagnostics candidate_diagnostics;
@@ -2783,11 +2783,10 @@ private:
 
     PendingCall plan = std::move(plans.front());
     const auto parameters = plan.function.inputs();
-    const auto& contract = detail::FunctionTypeAccess::get(plan.function);
     std::size_t argument_index = 0;
     bool unresolved = false;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
-      if (!contract.ir_inputs[index]) {
+      if (!detail::is_value_port(parameters[index])) {
         continue;
       }
       for (PendingArgument& argument : plan.arguments[index]) {
@@ -3133,7 +3132,7 @@ private:
                    (*fixity != Module::FunctionDecl::Fixity::Infix &&
                     instruction.arguments().size() == 1U));
     if (notation && valid_arity && result.bindings.size() == 1U &&
-        detail::parameter_inputs(instruction.callee()).empty()) {
+        detail::compiler_inputs(instruction.callee()).empty()) {
       result.expression.value.text = std::string(*notation);
       if (*fixity == Module::FunctionDecl::Fixity::Prefix) {
         result.expression.value.kind = Module::Expression::Kind::Prefix;

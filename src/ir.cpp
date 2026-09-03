@@ -406,8 +406,8 @@ bool matches_function_reference(const FunctionState& function,
   const auto results = value.type.get<std::vector<Type>>("results");
   if (type.module_name() != detail::prelude_module_name ||
       type.local_name() != "callable" || !inputs || !results ||
-      !detail::parameter_inputs(*value.reference).empty() ||
-      !detail::parameter_results(*value.reference).empty()) {
+      !detail::compiler_inputs(*value.reference).empty() ||
+      !detail::compiler_results(*value.reference).empty()) {
     return false;
   }
 
@@ -443,7 +443,7 @@ bool verify_instruction(const FunctionState& function, std::uint64_t id,
     diagnostics.report("instruction '" + name + "' has no parent block");
     valid = false;
   }
-  if (!accepts_count(detail::ir_results(instruction.schema),
+  if (!accepts_count(detail::value_results(instruction.schema),
                      instruction.results.size())) {
     diagnostics.report("instruction '" + name +
                        "' has the wrong number of results");
@@ -451,7 +451,6 @@ bool verify_instruction(const FunctionState& function, std::uint64_t id,
   }
 
   const auto parameters = instruction.schema.inputs();
-  const auto& contract = detail::FunctionTypeAccess::get(instruction.schema);
   std::vector<std::size_t> counts(parameters.size());
   std::size_t previous_parameter = 0;
   for (std::size_t index = 0; index < instruction.arguments.size(); ++index) {
@@ -475,7 +474,7 @@ bool verify_instruction(const FunctionState& function, std::uint64_t id,
     if (argument.known) {
       if (!owns(function, argument.known->type) ||
           !owns(function, argument.known->value) ||
-          (!contract.ir_inputs[stored.parameter] &&
+          (!detail::is_value_port(parameter) &&
            !matches(parameter, argument.known->value))) {
         diagnostics.report("argument " + std::to_string(index) +
                            " of instruction '" + name +
@@ -484,7 +483,7 @@ bool verify_instruction(const FunctionState& function, std::uint64_t id,
       }
       continue;
     }
-    if (!contract.ir_inputs[stored.parameter]) {
+    if (!detail::is_value_port(parameter)) {
       diagnostics.report("argument '" + parameter.name +
                          "' must be Known in the current IR");
       valid = false;
@@ -749,19 +748,18 @@ bool verify_instruction_contracts(const FunctionState& function,
           function.instructions.at(instruction_id);
       const Module::FunctionDecl schema = instruction.schema;
 
-      const auto& contract = detail::FunctionTypeAccess::get(schema);
       std::vector<Type> arguments;
       std::vector<std::optional<ParameterValue>> known_arguments;
-      known_arguments.reserve(detail::parameter_inputs(schema).size());
+      known_arguments.reserve(detail::compiler_inputs(schema).size());
       for (std::size_t index = 0; index < schema.inputs().size(); ++index) {
-        if (!contract.ir_inputs[index]) {
+        if (!detail::is_value_port(schema.inputs()[index])) {
           known_arguments.emplace_back();
         }
       }
       std::size_t known_index = 0;
       std::vector<std::size_t> known_indices(schema.inputs().size());
       for (std::size_t index = 0; index < schema.inputs().size(); ++index) {
-        if (!contract.ir_inputs[index]) {
+        if (!detail::is_value_port(schema.inputs()[index])) {
           known_indices[index] = known_index++;
         }
       }
@@ -770,7 +768,7 @@ bool verify_instruction_contracts(const FunctionState& function,
           continue;
         }
         const detail::StoredValue& argument = stored.value;
-        if (contract.ir_inputs[stored.parameter]) {
+        if (detail::is_value_port(schema.inputs()[stored.parameter])) {
           if (argument.known) {
             arguments.push_back(argument.known->type);
           } else {
@@ -897,8 +895,8 @@ void FunctionAccess::declare(Function& function,
     throw std::logic_error("function signature must be fixed before its body");
   }
   if (!owns(state, declaration.symbol()) ||
-      ir_inputs(declaration).size() != argument_types.size() ||
-      ir_results(declaration).size() != result_types.size()) {
+      value_inputs(declaration).size() != argument_types.size() ||
+      value_results(declaration).size() != result_types.size()) {
     throw std::invalid_argument(
         "function signature does not match its declaration");
   }
@@ -1358,7 +1356,6 @@ Instruction Function::Edit::add(Block block, std::optional<Instruction> before,
                                      .location
                                : std::optional<SourceRange>{};
   const auto parameters = schema.inputs();
-  const auto& contract = detail::FunctionTypeAccess::get(schema);
   std::vector<detail::StoredArgument> argument_ids;
   argument_ids.reserve(std::max(arguments.size(), parameters.size()));
   std::size_t supplied = 0;
@@ -1400,7 +1397,7 @@ Instruction Function::Edit::add(Block block, std::optional<Instruction> before,
       const Value& argument = arguments[supplied++];
       check_same_function(state_->function, argument, "argument");
       const auto& known = detail::FunctionAccess::known(argument);
-      if (!contract.ir_inputs[parameter_index] &&
+      if (!detail::is_value_port(parameter) &&
           (!known || !matches(parameter, known->value))) {
         throw std::invalid_argument("argument '" + parameter.name +
                                     "' of instruction '" +
@@ -1418,16 +1415,16 @@ Instruction Function::Edit::add(Block block, std::optional<Instruction> before,
                                 "' has too many arguments");
   }
 
-  if (result_types.empty() && !detail::ir_results(schema).empty()) {
+  if (result_types.empty() && !detail::value_results(schema).empty()) {
     std::vector<Type> argument_types;
     std::vector<std::optional<Type>> expected(
-        detail::ir_results(schema).size());
+        detail::value_results(schema).size());
     std::vector<std::optional<ParameterValue>> inference_known;
-    inference_known.reserve(detail::parameter_inputs(schema).size());
+    inference_known.reserve(detail::compiler_inputs(schema).size());
     std::size_t current_parameter = 0;
     for (std::size_t parameter_index = 0; parameter_index < parameters.size();
          ++parameter_index) {
-      if (!contract.ir_inputs[parameter_index]) {
+      if (!detail::is_value_port(parameters[parameter_index])) {
         const auto item =
             std::find_if(argument_ids.begin(), argument_ids.end(),
                          [&](const detail::StoredArgument& argument) {

@@ -169,8 +169,6 @@ detail::FunctionDefinition definition(const Function& function,
     result.results.push_back({"", expression(type), false, std::nullopt});
   }
   result.types.bindings.resize(result.inputs.size());
-  result.types.ir_inputs.assign(result.inputs.size(), true);
-  result.types.ir_results.assign(result.results.size(), true);
   return result;
 }
 
