@@ -59,8 +59,10 @@ module mapping@1.0.0 {
   auto second = compiler.materialize("mapping.second");
   auto expanded = compiler.materialize("mapping.expanded");
   auto convertible = compiler.materialize("mapping.first");
+  auto fixedpoint = compiler.materialize("mapping.expanded");
+  auto oscillating = compiler.materialize("mapping.expanded");
   if (!keep || !converted || !other || !binary || !first || !second ||
-      !expanded || !convertible) {
+      !expanded || !convertible || !fixedpoint || !oscillating) {
     return EXIT_FAILURE;
   }
 
@@ -148,6 +150,46 @@ module mapping@1.0.0 {
                    convertible->instructions().front().callee() == *converted,
                "conversion publishes a rewritten legal Function");
 
+  const auto staged_rewrite =
+      [&](const joggle::ir::Instruction& instruction,
+          joggle::ir::Function::Edit& edit, joggle::Diagnostics&) {
+        if (instruction.callee() == *keep) {
+          edit.replace(instruction, *converted);
+          return true;
+        }
+        if (instruction.callee() == *converted) {
+          edit.replace(instruction, *other);
+          return true;
+        }
+        return false;
+      };
+  joggle::Diagnostics fixedpoint_diagnostics;
+  const auto fixedpoint_changes = joggle::ir::rewrite_to_fixpoint(
+      *fixedpoint, staged_rewrite, 3U, fixedpoint_diagnostics);
+  ok &= expect(fixedpoint_changes && *fixedpoint_changes == 2U &&
+                   fixedpoint_diagnostics.ok() &&
+                   fixedpoint->instructions().front().callee() == *other,
+               "bounded sweeps process calls inserted by an earlier sweep");
+
+  const auto oscillating_revision = oscillating->revision();
+  joggle::Diagnostics oscillating_diagnostics;
+  const auto oscillating_result = joggle::ir::rewrite_to_fixpoint(
+      *oscillating,
+      [&](const joggle::ir::Instruction& instruction,
+          joggle::ir::Function::Edit& edit, joggle::Diagnostics&) {
+        if (instruction.callee() == *keep) {
+          edit.replace(instruction, *converted);
+        } else {
+          edit.replace(instruction, *keep);
+        }
+        return true;
+      },
+      2U, oscillating_diagnostics);
+  ok &= expect(!oscillating_result && !oscillating_diagnostics.ok() &&
+                   oscillating->revision() == oscillating_revision &&
+                   oscillating->instructions().front().callee() == *keep,
+               "a non-convergent rewrite publishes no intermediate sweep");
+
   const std::string before_invalid = joggle::format(*second, "second");
   const auto before_invalid_revision = second->revision();
   joggle::Diagnostics invalid_diagnostics;
@@ -181,6 +223,21 @@ module mapping@1.0.0 {
   const auto original_first_revision = original_first->revision();
   const auto original_second_revision = original_second->revision();
   const std::string original_digest(module.digest());
+
+  joggle::Module fixedpoint_module = module;
+  joggle::Diagnostics fixedpoint_module_diagnostics;
+  const auto fixedpoint_module_changes = joggle::ir::rewrite_to_fixpoint(
+      fixedpoint_module, staged_rewrite, 3U, fixedpoint_module_diagnostics);
+  const auto fixedpoint_first = fixedpoint_module.function("first");
+  ok &= expect(fixedpoint_module_changes &&
+                   *fixedpoint_module_changes == 2U &&
+                   fixedpoint_module_diagnostics.ok() && fixedpoint_first &&
+                   fixedpoint_first->body() != nullptr &&
+                   fixedpoint_first->body()->instructions().front().callee() ==
+                       *other &&
+                   module.digest() == original_digest,
+               "fixed-point Module rewriting publishes one final value");
+
   joggle::Diagnostics module_no_op_diagnostics;
   const auto module_no_op = joggle::ir::map_calls(
       module,

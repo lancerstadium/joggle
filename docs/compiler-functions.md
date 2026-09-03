@@ -96,6 +96,18 @@ an exception, a new diagnostic, or failed verification publishes nothing.
 Replacing an Instruction with a positional result list supports erasure and
 multi-Instruction expansion without inventing a replacement object.
 
+When inserted calls must be reconsidered, the bounded driver is explicit:
+
+```cpp
+auto changed = joggle::ir::rewrite_to_fixpoint(
+    module, rewrite_rule, 8, diagnostics);
+```
+
+Each iteration sees the previous iteration's committed calls. A zero-change
+iteration proves convergence. Exhausting the supplied limit diagnoses failure
+and publishes none of the intermediate Module values; there is deliberately no
+hidden default iteration budget.
+
 Exact call mapping remains as a pair of smaller convenience functions:
 
 ```cpp
@@ -146,19 +158,18 @@ file boundary, not the pipeline's internal artifact type. A Module can compose
 `schedule -> bytes` functions without teaching the CLI any of those roles or
 registering another pass hierarchy.
 
-## Reusable facilities still required
+## Analysis values and reuse
 
-The next implementation layer is a C++ utility library over the public IR, not
-new source syntax. Its components should be independently usable:
+An analysis is an ordinary typed function: its result is a Module-declared type
+with a registered C++ representation. Read-only implementations accept
+`const ir::Function&` or `const Module&`; no analysis declaration or manager is
+needed.
 
-1. **Rewrite drivers.** Greedy and fixed-point sweeps with explicit convergence
-   limits over the transactional `rewrite` primitive.
-2. **Analysis storage.** Results keyed by immutable Function snapshots, with
-   explicit preservation after a committed edit. The cache owns no alternate
-   graph representation and never changes observable compilation semantics.
-
-These facilities must stabilize before shipping optimizer collections.
-Otherwise each example would create an incompatible private framework.
+Algorithms that cache a Function-local result retain its `Function::Revision`
+beside the result and reuse it only while it equals `function.revision()`.
+Function copies initially share a Revision, successful edits acquire a new one,
+and failed or no-op rewrites preserve it. Cache ownership and eviction remain
+with the analysis implementation rather than a global compiler registry.
 
 ## What remains outside the core
 

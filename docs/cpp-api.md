@@ -186,6 +186,10 @@ Function verifies.
 No-op sweeps preserve the Function revision and Module storage. Failure returns
 `std::nullopt` and preserves the complete input value.
 
+`joggle::ir::rewrite_to_fixpoint` repeats those sweeps with a required maximum
+iteration count. It publishes only after a zero-change sweep proves
+convergence; reaching the limit rolls back every intermediate sweep.
+
 `joggle::ir::convert` takes the same rewrite lambda followed by a legality
 predicate over the resulting Instructions. It commits only if the complete
 Function or Module is legal. Legality is caller-defined, so the utility does

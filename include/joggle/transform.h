@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <exception>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -104,6 +105,68 @@ std::optional<std::size_t> rewrite(Module& module, Rule&& rule,
     module = std::move(candidate);
   }
   return changed;
+}
+
+namespace transform_detail {
+
+template <typename Subject, typename Rule>
+std::optional<std::size_t>
+rewrite_to_fixpoint(Subject& subject, Rule& rule, std::size_t max_iterations,
+                    Diagnostics& diagnostics) {
+  if (max_iterations == 0U) {
+    diagnostics.report("a fixed-point rewrite needs at least one iteration");
+    return std::nullopt;
+  }
+  Subject candidate = subject;
+  std::size_t total = 0;
+  for (std::size_t iteration = 0; iteration < max_iterations; ++iteration) {
+    auto changed = rewrite(candidate, rule, diagnostics);
+    if (!changed) {
+      return std::nullopt;
+    }
+    if (*changed == 0U) {
+      if (total != 0U) {
+        subject = std::move(candidate);
+      }
+      return total;
+    }
+    if (std::numeric_limits<std::size_t>::max() - total < *changed) {
+      diagnostics.report("fixed-point rewrite change count overflowed");
+      return std::nullopt;
+    }
+    total += *changed;
+  }
+  diagnostics.report("rewrite did not converge after " +
+                     std::to_string(max_iterations) + " iterations");
+  return std::nullopt;
+}
+
+}  // namespace transform_detail
+
+// Repeats transactional sweeps until one makes no changes. All intermediate
+// sweeps stay private; exhausting the explicit limit publishes nothing.
+template <typename Rule>
+std::optional<std::size_t>
+rewrite_to_fixpoint(Function& function, Rule&& rule,
+                    std::size_t max_iterations, Diagnostics& diagnostics) {
+  using Changed = std::invoke_result_t<Rule&, const Instruction&,
+                                       Function::Edit&, Diagnostics&>;
+  static_assert(std::is_convertible_v<Changed, bool>,
+                "a rewrite lambda must return bool");
+  return transform_detail::rewrite_to_fixpoint(
+      function, rule, max_iterations, diagnostics);
+}
+
+template <typename Rule>
+std::optional<std::size_t>
+rewrite_to_fixpoint(Module& module, Rule&& rule, std::size_t max_iterations,
+                    Diagnostics& diagnostics) {
+  using Changed = std::invoke_result_t<Rule&, const Instruction&,
+                                       Function::Edit&, Diagnostics&>;
+  static_assert(std::is_convertible_v<Changed, bool>,
+                "a rewrite lambda must return bool");
+  return transform_detail::rewrite_to_fixpoint(
+      module, rule, max_iterations, diagnostics);
 }
 
 namespace transform_detail {
