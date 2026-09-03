@@ -198,6 +198,7 @@ public:
   bool has_uses(Value value) const;
   bool dominates(Block dominator, Block block) const;
   bool dominates(Value definition, Instruction instruction) const;
+  Function clone() const;
   Edit edit();
 
 private:

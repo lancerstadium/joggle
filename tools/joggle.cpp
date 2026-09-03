@@ -555,8 +555,8 @@ int main(int argc, char** argv) {
                  ? std::string(root->name()) + "." + std::string(member)
                  : std::string(member);
     };
-    const std::string graph_name = qualified(parsed.positional[1]);
-    auto function = compiler.function(graph_name);
+    const std::string function_name = qualified(parsed.positional[1]);
+    auto function = compiler.function(function_name);
     if (!function) {
       return fail(compiler.diagnostics());
     }
@@ -565,9 +565,9 @@ int main(int argc, char** argv) {
         return fail(compiler.diagnostics());
       }
     }
-    const std::size_t separator = graph_name.find('.');
-    const std::string function_body = graph_name.substr(separator + 1U);
-    const std::string graph_source =
+    const std::size_t separator = function_name.find('.');
+    const std::string function_body = function_name.substr(separator + 1U);
+    const std::string function_source =
         joggle::format(*function, function_body);
     const auto dependencies = referenced_modules(*function);
     std::string artifact_name(root->name());
@@ -596,7 +596,7 @@ int main(int argc, char** argv) {
       artifact_source << "  import " << module->name() << '@'
                       << joggle::to_string(module->version()) << ";\n";
     }
-    artifact_source << '\n' << graph_source << "}\n";
+    artifact_source << '\n' << function_source << "}\n";
     const auto artifact = joggle::parse_module(
         artifact_source.str(), diagnostics, "<compiled Module>");
     if (!artifact) {

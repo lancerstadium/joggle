@@ -167,6 +167,26 @@ also respects Function arguments, Block arguments, and instruction order.
 These are snapshot queries over the current committed Function. Libraries may
 cache richer analyses, but those results never own program objects.
 
+## Executable modules
+
+`joggle::ir::Module` carries several named Functions through ordinary compiler
+functions without adding a Graph abstraction:
+
+```cpp
+joggle::ir::Module program;
+joggle::Diagnostics diagnostics;
+program.insert("main", std::move(*function), diagnostics);
+
+auto main = program.function("main");
+```
+
+Copies share Functions until mutable lookup. Calling the non-const `function`
+overload detaches only that Function, so by-value compiler functions are
+isolated without an eager whole-program clone. The `ir.module` declaration is
+shipped in `modules/ir.joggle`; applications register this standard C++
+representation through the same `Compiler::represent` API as any other
+Module-declared host type.
+
 ## Registered behavior
 
 External `fn` declarations may bind to typed C++ callables. A binding is keyed by

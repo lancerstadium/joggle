@@ -31,14 +31,17 @@ struct Estimate {
 int main() {
   joggle::Compiler compiler;
   compiler.load(JOGGLE_TEST_MODULE);
+  compiler.load(JOGGLE_IR_MODULE);
   compiler.add(R"(
 joggle 1;
 module pipeline@1.0.0 {
   import test_ir@1;
+  import ir@1;
   fn read(input: bytes) -> function;
   fn inspect(input: function) -> int;
   fn emit(input: function) -> bytes;
   fn consume(input: bytes);
+  fn module_identity(input: ir.module) -> ir.module;
   fn clean(input: function) -> function {
     return test_ir.canonicalize(input);
   }
@@ -73,8 +76,14 @@ module pipeline@1.0.0 {
   const auto inspect = pipeline ? pipeline->function("inspect") : std::nullopt;
   const auto compile = pipeline ? pipeline->function("compile") : std::nullopt;
   const auto consume = pipeline ? pipeline->function("consume") : std::nullopt;
+  const auto module_identity =
+      pipeline ? pipeline->function("module_identity") : std::nullopt;
+  const auto ir_module = compiler.module("ir");
+  const auto ir_module_schema =
+      ir_module ? ir_module->type("module") : std::nullopt;
   if (!integer_decl || !arith_cast_decl || !format_decl || !canonicalize ||
-      !clean || !read || !emit || !inspect || !compile || !consume) {
+      !clean || !read || !emit || !inspect || !compile || !consume ||
+      !module_identity || !ir_module_schema) {
     return EXIT_FAILURE;
   }
   const auto integer = compiler.make(*integer_decl, std::int64_t{8});
@@ -138,6 +147,12 @@ module pipeline@1.0.0 {
       });
   bool consumed = false;
   compiler.bind(*consume, [&](const joggle::Bytes&) { consumed = true; });
+  if (!compiler.represent<joggle::ir::Module>(*ir_module_schema)) {
+    return EXIT_FAILURE;
+  }
+  compiler.bind(
+      *module_identity,
+      [](joggle::ir::Module input) { return input; });
   const joggle::Bytes encoded{std::byte{0x42}};
   auto decoded = compiler.run<joggle::Function>(*read, encoded);
   auto count = decoded
@@ -170,6 +185,34 @@ module pipeline@1.0.0 {
                "an imported transformation composes through an ordinary fn");
   ok &= expect(function->instructions().empty(),
                "the native transformation removes redundant casts");
+
+  joggle::ir::Module program;
+  auto program_main = compiler.function();
+  joggle::Diagnostics program_diagnostics;
+  if (!program_main ||
+      !program.insert("main", std::move(*program_main), program_diagnostics)) {
+    return EXIT_FAILURE;
+  }
+  auto copied_program = compiler.run<joggle::ir::Module>(*module_identity,
+                                                         program);
+  const auto i32 = compiler.make("i32");
+  if (!copied_program || !i32 || !copied_program->function("main")) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = copied_program->function("main")->edit();
+    edit.argument(*i32);
+    if (!edit.commit(program_diagnostics)) {
+      return EXIT_FAILURE;
+    }
+  }
+  ok &= expect(program.size() == 1U && copied_program->size() == 1U &&
+                   program.function("main") != nullptr &&
+                   program.function("main")->arguments().empty() &&
+                   copied_program->function("main")->arguments().size() ==
+                       1U,
+               "an extension-owned ir.module flows through an ordinary fn "
+               "with deep-copy isolation");
 
   constexpr std::string_view guarded_source = R"(
     joggle 1;

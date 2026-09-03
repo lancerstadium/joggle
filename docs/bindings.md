@@ -81,8 +81,8 @@ auto nodes = compiler.run<std::int64_t>(count, function);
 invokes the callable, and verifies the result. A false result, diagnostic,
 exception, or failed verification restores the Function checkpoint.
 
-Module-declared host representations can map parameterless types such as
-`device.target`, `cost.report`, or `ir.module` to ordinary C++ value types:
+Module-declared host representations map parameterless types such as
+`device.target` or `cost.report` to ordinary C++ value types:
 
 ```joggle
 type target();
@@ -103,6 +103,21 @@ auto result = compiler.run<Estimate>(measure, Target{/* ... */});
 No base class, generated wrapper, trait specialization, or adapter object is
 required. Registration is one-to-one between a linked Module Type declaration
 and a copyable C++ type.
+
+The shipped `ir.module` type uses the same mechanism with the standard
+`joggle::ir::Module` representation:
+
+```cpp
+auto ir = compiler.module("ir");
+auto module_type = ir ? ir->type("module") : std::nullopt;
+if (module_type) {
+  compiler.represent<joggle::ir::Module>(*module_type);
+}
+```
+
+An `ir::Module` owns named executable Functions. Its copy-on-write storage
+makes ordinary by-value pass composition isolated without eagerly duplicating
+the whole program.
 
 A parameterized representation adds one ordinary projection lambda. It returns
 the declaration's parameters in their declared order:

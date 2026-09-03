@@ -28,6 +28,7 @@ add_library(joggle
   src/domain.cpp
   src/expression_syntax.cpp
   src/ir.cpp
+  src/ir_module.cpp
   src/function_body.cpp
   src/module.cpp
   src/module_repository.cpp
@@ -227,6 +228,7 @@ if(JOGGLE_BUILD_TESTS)
   target_link_libraries(joggle_pass_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_pass_test PRIVATE
     JOGGLE_TEST_MODULE="${JOGGLE_TEST_MODULE}"
+    JOGGLE_IR_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/ir.joggle"
     JOGGLE_TEST_BEHAVIOR="$<TARGET_FILE:joggle_compiler_test_behavior>"
   )
   add_test(NAME pass COMMAND joggle_pass_test)

@@ -16,16 +16,27 @@ installable Modules. The core does not assign frontend/backend status or a
 lowering direction to them. A bridge Module may define conversions in either
 direction.
 
-The current implementation uses the reflected Prelude `function` type as a
-bootstrap host representation for whole-Function callbacks:
+The shipped `ir` Module declares the whole-program value used by ordinary
+compiler functions:
+
+```joggle
+module ir@1.0.0 {
+  type module();
+}
+```
+
+Its standard C++ representation is `joggle::ir::Module`, a copy-on-write named
+set of executable `joggle::Function` values. Prelude `function` remains a
+low-level convenience for callbacks that intentionally operate on one
+Function:
 
 ```joggle
 fn canonicalize(input: function) -> function;
 ```
 
-This does not introduce a `Graph`: the C++ value is the ordinary owning
-`Function`. The bootstrap restriction will disappear when Module-declared
-types can register host representations directly.
+Neither type introduces a `Graph`: data-flow and control-flow relations belong
+to each `Function`. `ir.module` only supplies program ownership across multiple
+functions, including generated helper functions and future lifted closures.
 
 ## Binding
 

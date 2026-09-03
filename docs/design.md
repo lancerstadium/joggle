@@ -14,10 +14,15 @@ or code generator. Those are installable Modules.
 
 The design has four public concepts:
 
-- `Module`: a versioned namespace and ownership unit for types and functions;
+- `Module`: a versioned schema package for types and function declarations;
 - `Function`: a signature plus zero or more Blocks;
 - `Compiler`: Module resolution, host binding, evaluation, and invocation;
 - values: either Known to the compiler or Residual in a Function.
+
+An executable artifact containing several named Functions is the ordinary
+Module-declared value `ir.module`, represented by `joggle::ir::Module`. It is
+not a fifth semantic layer: it supplies ownership and transport, while each
+Function still owns all executable graph structure.
 
 There is one callable declaration, `fn`. Loading, conversion, transformation,
 analysis, scheduling, simulation, and emission are ordinary typed functions.
@@ -25,11 +30,25 @@ There is no `op`/`pass` split and no fixed frontend/backend pipeline.
 
 ## Ownership
 
-The complete program hierarchy is:
+The two ownership trees are deliberately separate:
 
 ```text
-Module
-  Function
+joggle::Module                   joggle::ir::Module
+  TypeDecl / FunctionDecl          named joggle::Function
+                                     Block
+                                       Instruction
+                                       Terminator
+```
+
+The left tree is an installable schema package. The right tree is a
+transformable executable artifact. Instructions in the right tree reference
+resolved Function declarations from the left tree; neither tree contains an
+owning `Graph` or `Region` object.
+
+Within an executable Function the hierarchy is:
+
+```text
+Function
     Block
       Instruction
       Terminator

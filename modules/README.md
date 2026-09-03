@@ -17,6 +17,9 @@ fixtures.
 - `buffer` defines explicit storage values and token-ordered memory effects. It
   names an address space but does not prescribe devices, capacities, banks, or
   schedules.
+- `ir` declares `ir.module`, the ordinary compiler value used to carry a named
+  set of executable Functions through loaders, transformations, analyses, and
+  emitters. It does not define an IR level or a graph dialect.
 
 The list is not an abstraction ladder. A function body may call declarations
 from any installed Modules. Joggle has no built-in `lower` direction. A

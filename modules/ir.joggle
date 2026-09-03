@@ -1,0 +1,5 @@
+joggle 1;
+
+module ir@1.0.0 {
+  type module();
+}

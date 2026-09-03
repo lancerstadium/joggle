@@ -1,8 +1,10 @@
 # IR Modules
 
 Joggle has one Function IR and any number of installable vocabulary Modules.
-A Module owns names, declarations, contracts, versions, and optional behavior;
-it is not a graph container or a fixed compiler level.
+`joggle::Module` owns declarations, contracts, versions, and optional behavior;
+it is not a graph container or a fixed compiler level. The installable `ir`
+Module separately declares the value type `ir.module`, represented in C++ by
+`joggle::ir::Module`, for a named set of executable Functions.
 
 ## Ambient Prelude
 
@@ -40,6 +42,7 @@ The sources in [`modules`](../modules) are normal installable packages:
 | `tensor` | tensor values and shape transformations | allocation, NN operators |
 | `nn` | inference operation contracts and explicit layouts | file formats, devices |
 | `buffer` | storage values and token-ordered effects | capacities, banks, targets |
+| `ir` | a named executable-Function artifact | vocabulary levels, targets, pipelines |
 
 An Instruction is identified by the Function declaration it calls. A single
 Function may contain Instructions from several imported vocabularies, enabling
@@ -58,10 +61,12 @@ module onnx_io@1.0.0 {
 }
 ```
 
-`ir.module` is an extension-owned host value in the intended registration
-model. The current bootstrap API uses Prelude `function` when C++ behavior
-needs direct access to `joggle::Function`; this temporary restriction is
-documented in [compiler functions](passes.md).
+`ir.module` has the standard C++ representation `joggle::ir::Module`. It owns
+named `joggle::Function` values and is copy-on-write: an ordinary compiler
+function may accept and return it by value without cloning every Function, and
+the first mutable lookup detaches only the selected Function. Loaders,
+transformations, analyses, and emitters can therefore use the same ordinary
+function invocation mechanism.
 
 A bridge owns only the relation it implements:
 
@@ -70,8 +75,8 @@ module a_b@1.0.0 {
   import a@1;
   import b@1;
 
-  fn to_a(input: function) -> function;
-  fn to_b(input: function) -> function;
+  fn to_a(input: ir.module) -> ir.module;
+  fn to_b(input: ir.module) -> ir.module;
 }
 ```
 
