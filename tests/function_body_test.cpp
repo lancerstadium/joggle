@@ -79,7 +79,7 @@ bool expect(bool condition, std::string_view message) {
   return condition;
 }
 
-std::optional<joggle::Function> load_function(joggle::Compiler& compiler,
+std::optional<joggle::ir::Function> load_function(joggle::Compiler& compiler,
                                               std::string_view text) {
   compiler.add(text, "logic.joggle");
   if (!compiler.link()) {
@@ -129,7 +129,7 @@ int main() {
   const auto direct_overloaded_callback_value =
       compiler.function("logic.direct_overloaded_callback_value");
   const auto callback_arguments =
-      callback_user ? callback_user->arguments() : std::vector<joggle::Value>{};
+      callback_user ? callback_user->arguments() : std::vector<joggle::ir::Value>{};
   const auto callback_parameters =
       callback_arguments.size() == 2U
           ? callback_arguments[1].type().get<std::vector<joggle::Type>>(
@@ -170,10 +170,10 @@ int main() {
                "and participates in generic call inference");
   const auto callback_operations = callback_value
                                        ? callback_value->instructions()
-                                       : std::vector<joggle::Instruction>{};
+                                       : std::vector<joggle::ir::Instruction>{};
   const auto applied_arguments = callback_operations.size() == 1U
                                      ? callback_operations.front().arguments()
-                                     : std::vector<joggle::Value>{};
+                                     : std::vector<joggle::ir::Value>{};
   const auto referenced = applied_arguments.size() == 2U
                               ? applied_arguments[1].referenced_function()
                               : std::optional<joggle::Module::FunctionDecl>{};
@@ -196,7 +196,7 @@ int main() {
   const auto replayed_callback =
       callback_linked
           ? callback_compiler.function("callback_artifact.compiled_callback")
-          : std::optional<joggle::Function>{};
+          : std::optional<joggle::ir::Function>{};
   ok &= expect(callback_text.find("logic.callback") != std::string::npos &&
                    replayed_callback &&
                    joggle::format(*replayed_callback, "compiled_callback") ==
@@ -205,12 +205,12 @@ int main() {
   const auto generic_arguments =
       generic_callback_value && !generic_callback_value->instructions().empty()
           ? generic_callback_value->instructions().front().arguments()
-          : std::vector<joggle::Value>{};
+          : std::vector<joggle::ir::Value>{};
   const auto overloaded_arguments =
       overloaded_callback_value &&
               !overloaded_callback_value->instructions().empty()
           ? overloaded_callback_value->instructions().front().arguments()
-          : std::vector<joggle::Value>{};
+          : std::vector<joggle::ir::Value>{};
   const auto generic_reference =
       generic_arguments.size() == 2U
           ? generic_arguments[1].referenced_function()
@@ -245,12 +245,12 @@ int main() {
   const auto replayed_generic =
       contextual_linked
           ? contextual_compiler.function("contextual_artifact.generic_value")
-          : std::optional<joggle::Function>{};
+          : std::optional<joggle::ir::Function>{};
   const auto replayed_overloaded =
       contextual_linked
           ? contextual_compiler.function(
                 "contextual_artifact.overloaded_value")
-          : std::optional<joggle::Function>{};
+          : std::optional<joggle::ir::Function>{};
   ok &= expect(replayed_generic && replayed_overloaded &&
                    joggle::format(*replayed_generic, "generic_value") ==
                        generic_text &&
@@ -262,14 +262,14 @@ int main() {
       direct_generic_callback_value &&
               direct_generic_callback_value->instructions().size() == 1U
           ? direct_generic_callback_value->instructions().front().arguments()
-          : std::vector<joggle::Value>{};
+          : std::vector<joggle::ir::Value>{};
   const auto direct_overloaded_arguments =
       direct_overloaded_callback_value &&
               direct_overloaded_callback_value->instructions().size() == 1U
           ? direct_overloaded_callback_value->instructions()
                 .front()
                 .arguments()
-          : std::vector<joggle::Value>{};
+          : std::vector<joggle::ir::Value>{};
   ok &= expect(direct_generic_arguments.size() == 2U &&
                    direct_generic_arguments[1].referenced_function() &&
                    direct_overloaded_arguments.size() == 2U &&
@@ -335,7 +335,7 @@ module invalid_callback@1.0.0 {
   const bool emitted_linked = emitted_compiler.link();
   const auto emitted_function =
       emitted_linked ? emitted_compiler.function("artifact.compiled")
-                     : std::optional<joggle::Function>{};
+                     : std::optional<joggle::ir::Function>{};
   ok &= expect(emitted_function &&
                    joggle::format(*emitted_function, "compiled") == emitted,
                "a committed Function formats to round-trippable canonical DSL");
@@ -519,10 +519,10 @@ module cfg@1.0.0 {
       cfg_function ? joggle::format(*cfg_function, "choose") : std::string{};
   const auto materialized_operations =
       cfg_materialized ? cfg_materialized->instructions()
-                       : std::vector<joggle::Instruction>{};
+                       : std::vector<joggle::ir::Instruction>{};
   const auto early_literal_operations =
       cfg_early_literal ? cfg_early_literal->instructions()
-                        : std::vector<joggle::Instruction>{};
+                        : std::vector<joggle::ir::Instruction>{};
   ok &= expect(cfg_function && cfg_structured && cfg_specialized &&
                    cfg_nested && cfg_materialized &&
                    cfg_compiler.verify(*cfg_function) &&
@@ -540,9 +540,9 @@ module cfg@1.0.0 {
                    cfg_specialized->entry().terminator().returned().front() ==
                        cfg_specialized->instructions().front().result(0) &&
                    cfg_function->entry().terminator().kind() ==
-                       joggle::Terminator::Kind::Branch &&
+                       joggle::ir::Terminator::Kind::Branch &&
                    cfg_structured->entry().terminator().kind() ==
-                       joggle::Terminator::Kind::Branch &&
+                       joggle::ir::Terminator::Kind::Branch &&
                    cfg_function->blocks().back().arguments().size() == 1U &&
                    cfg_function->blocks().back().terminator().returned().front() ==
                        cfg_function->blocks().back().arguments().front() &&
@@ -558,7 +558,7 @@ module cfg@1.0.0 {
                    std::all_of(
                        materialized_operations.begin(),
                        materialized_operations.end(),
-                       [](const joggle::Instruction& instruction) {
+                       [](const joggle::ir::Instruction& instruction) {
                          return instruction.callee().name() ==
                                 "integer_literal";
                        }) &&
@@ -605,7 +605,7 @@ module cfg@1.0.0 {
                    std::all_of(
                        early_literal_operations.begin(),
                        early_literal_operations.end(),
-                       [](const joggle::Instruction& instruction) {
+                       [](const joggle::ir::Instruction& instruction) {
                          return instruction.callee().name() ==
                                 "integer_literal";
                        }),
@@ -672,7 +672,7 @@ module missing_literal@1.0.0 {
   const auto missing_literal_function =
       missing_literal_linked
           ? missing_literal.function("missing_literal.choose")
-          : std::optional<joggle::Function>{};
+          : std::optional<joggle::ir::Function>{};
   const bool reports_missing_literal = std::any_of(
       missing_literal.diagnostics().entries().begin(),
       missing_literal.diagnostics().entries().end(),
@@ -701,7 +701,7 @@ module ambiguous_literal@1.0.0 {
   const auto ambiguous_literal_function =
       ambiguous_literal_linked
           ? ambiguous_literal.function("ambiguous_literal.choose")
-          : std::optional<joggle::Function>{};
+          : std::optional<joggle::ir::Function>{};
   const bool reports_ambiguous_literal = std::any_of(
       ambiguous_literal.diagnostics().entries().begin(),
       ambiguous_literal.diagnostics().entries().end(),
@@ -819,30 +819,30 @@ module loops@1.0.0 {
   const bool loops_linked = loop_compiler.link();
   const auto repeat = loops_linked
                           ? loop_compiler.function("loops.repeat")
-                          : std::optional<joggle::Function>{};
+                          : std::optional<joggle::ir::Function>{};
   const auto specialize = loops_linked
                               ? loop_compiler.function("loops.specialize")
-                              : std::optional<joggle::Function>{};
+                              : std::optional<joggle::ir::Function>{};
   const auto count_from_zero =
       loops_linked ? loop_compiler.function("loops.count_from_zero")
-                   : std::optional<joggle::Function>{};
+                   : std::optional<joggle::ir::Function>{};
   const auto controlled =
       loops_linked ? loop_compiler.function("loops.controlled")
-                   : std::optional<joggle::Function>{};
+                   : std::optional<joggle::ir::Function>{};
   const auto known_break =
       loops_linked ? loop_compiler.function("loops.known_break")
-                   : std::optional<joggle::Function>{};
+                   : std::optional<joggle::ir::Function>{};
   const auto known_continue =
       loops_linked ? loop_compiler.function("loops.known_continue")
-                   : std::optional<joggle::Function>{};
+                   : std::optional<joggle::ir::Function>{};
   ok &= expect(repeat && loop_compiler.verify(*repeat) &&
                    repeat->blocks().size() == 4U &&
                    repeat->instructions().size() == 2U &&
                    repeat->entry().terminator().kind() ==
-                       joggle::Terminator::Kind::Jump &&
+                       joggle::ir::Terminator::Kind::Jump &&
                    repeat->blocks()[1].arguments().size() == 1U &&
                    repeat->blocks()[1].terminator().kind() ==
-                       joggle::Terminator::Kind::Branch &&
+                       joggle::ir::Terminator::Kind::Branch &&
                    repeat->blocks()[3].arguments().size() == 1U,
                "Residual loops carry rebinding through typed Block "
                "arguments");
@@ -936,20 +936,20 @@ module mixed_loop_transfer@1.0.0 {
   const auto mixed_break =
       mixed_loop_transfer_linked
           ? mixed_loop_transfer.function("mixed_loop_transfer.break_on")
-          : std::optional<joggle::Function>{};
+          : std::optional<joggle::ir::Function>{};
   const auto mixed_continue =
       mixed_loop_transfer_linked
           ? mixed_loop_transfer.function("mixed_loop_transfer.continue_on")
-          : std::optional<joggle::Function>{};
-  const auto mixed_control_shape = [](const joggle::Function& function) {
+          : std::optional<joggle::ir::Function>{};
+  const auto mixed_control_shape = [](const joggle::ir::Function& function) {
     const auto blocks = function.blocks();
     return blocks.size() == 3U &&
            blocks.front().terminator().kind() ==
-               joggle::Terminator::Kind::Branch &&
+               joggle::ir::Terminator::Kind::Branch &&
            blocks[1].terminator().kind() ==
-               joggle::Terminator::Kind::Return &&
+               joggle::ir::Terminator::Kind::Return &&
            blocks[2].terminator().kind() ==
-               joggle::Terminator::Kind::Return;
+               joggle::ir::Terminator::Kind::Return;
   };
   std::vector<std::int64_t> mixed_break_literals;
   if (mixed_break) {
@@ -1009,7 +1009,7 @@ module cyclic_mixed_loop@1.0.0 {
               initial_phase
           ? cyclic_mixed_loop.function(*cyclic_mixed_loop_declaration,
                                        {*initial_phase})
-          : std::optional<joggle::Function>{};
+          : std::optional<joggle::ir::Function>{};
   if (!cyclic_mixed_loop_function) {
     cyclic_mixed_loop.diagnostics().print(std::cerr);
   }
@@ -1029,7 +1029,7 @@ module cyclic_mixed_loop@1.0.0 {
     std::sort(cyclic_integer_literals.begin(),
               cyclic_integer_literals.end());
   }
-  const auto has_backedge = [](const joggle::Function& function) {
+  const auto has_backedge = [](const joggle::ir::Function& function) {
     const auto blocks = function.blocks();
     for (std::size_t index = 0; index < blocks.size(); ++index) {
       const auto terminator = blocks[index].terminator();
@@ -1084,7 +1084,7 @@ module computed_cycle@1.0.0 {
   const auto computed_cycle_function =
       computed_cycle_linked
           ? computed_cycle.function("computed_cycle.invalid")
-          : std::optional<joggle::Function>{};
+          : std::optional<joggle::ir::Function>{};
   ok &= expect(computed_cycle_linked && computed_cycle_function &&
                    computed_cycle.verify(*computed_cycle_function) &&
                    has_backedge(*computed_cycle_function),
@@ -1114,7 +1114,7 @@ module unconstrained_cycle@1.0.0 {
   const auto unconstrained_cycle_function =
       unconstrained_cycle_linked
           ? unconstrained_cycle.function("unconstrained_cycle.invalid")
-          : std::optional<joggle::Function>{};
+          : std::optional<joggle::ir::Function>{};
   ok &= expect(unconstrained_cycle_linked &&
                    unconstrained_cycle_function &&
                    unconstrained_cycle.verify(*unconstrained_cycle_function) &&
@@ -1141,7 +1141,7 @@ module bounded_loop@1.0.0 {
   const auto never_finishes =
       bounded_loop_linked
           ? bounded_loop.function("bounded_loop.never_finishes")
-          : std::optional<joggle::Function>{};
+          : std::optional<joggle::ir::Function>{};
   const bool reports_loop_limit = std::any_of(
       bounded_loop.diagnostics().entries().begin(),
       bounded_loop.diagnostics().entries().end(),
@@ -1226,7 +1226,7 @@ module logic@1.0.0 {
   const bool unqualified_linked = unqualified.link();
   const auto unqualified_function = unqualified_linked
                                      ? unqualified.function("main")
-                                     : std::optional<joggle::Function>{};
+                                     : std::optional<joggle::ir::Function>{};
   const auto unqualified_diagnostics = unqualified.diagnostics().entries();
   ok &= expect(!unqualified_function && !unqualified_diagnostics.empty() &&
                    unqualified_diagnostics.back().message.find(
@@ -1249,7 +1249,7 @@ module mismatch@1.0.0 {
                "mismatch.joggle");
   const bool mismatch_linked = mismatch.link();
   const auto mismatch_function = mismatch_linked ? mismatch.function("mismatch.main")
-                                              : std::optional<joggle::Function>{};
+                                              : std::optional<joggle::ir::Function>{};
   ok &= expect(!mismatch_function && !mismatch.ok(),
                "one type variable rejects operands with different types");
 
@@ -1269,7 +1269,7 @@ module return_inferred@1.0.0 {
   const bool return_inferred_linked = return_inferred.link();
   const auto return_inferred_function =
       return_inferred_linked ? return_inferred.function("return_inferred.main")
-                             : std::optional<joggle::Function>{};
+                             : std::optional<joggle::ir::Function>{};
   ok &= expect(return_inferred_function &&
                    return_inferred_function->entry().terminator().returned().size() == 1U,
                "a function result constrains an output-only type variable");
@@ -1289,7 +1289,7 @@ module unbound@1.0.0 {
               "unbound.joggle");
   const bool unbound_linked = unbound.link();
   const auto unbound_function = unbound_linked ? unbound.function("unbound.main")
-                                            : std::optional<joggle::Function>{};
+                                            : std::optional<joggle::ir::Function>{};
   ok &=
       expect(!unbound_function && !unbound.ok(),
              "an unconstrained output-only type variable needs an annotation");
@@ -1330,7 +1330,7 @@ module dependent@1.0.0 {
           : std::nullopt;
   const auto dependent_operations =
       dependent_function ? dependent_function->instructions()
-                      : std::vector<joggle::Instruction>{};
+                      : std::vector<joggle::ir::Instruction>{};
   const auto dependent_width =
       dependent_operations.empty()
           ? std::optional<std::int64_t>{}

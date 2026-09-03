@@ -32,7 +32,7 @@ its resolved method declaration or by an unambiguous name:
 
 ```cpp
 compiler.bind(instruction, "latency",
-  [](const joggle::Instruction& value, std::int64_t lanes) {
+  [](const joggle::ir::Instruction& value, std::int64_t lanes) {
     return estimate_latency(value, lanes);
   });
 ```
@@ -49,7 +49,7 @@ they are not replaced by callbacks.
 ## Compiler functions
 
 The current bootstrap representation maps Prelude `function` to
-`joggle::Function`:
+`joggle::ir::Function`:
 
 ```joggle
 fn canonicalize(input: function) -> function;
@@ -58,14 +58,14 @@ fn count(input: function) -> int;
 
 ```cpp
 compiler.bind(canonicalize,
-  [](joggle::Function& function, joggle::Diagnostics& diagnostics) {
+  [](joggle::ir::Function& function, joggle::Diagnostics& diagnostics) {
     auto edit = function.edit();
     // Transform Blocks, Instructions, and Values.
     return edit.commit(diagnostics);
   });
 
 compiler.bind(count,
-  [](const joggle::Function& function) -> std::int64_t {
+  [](const joggle::ir::Function& function) -> std::int64_t {
     return static_cast<std::int64_t>(function.instructions().size());
   });
 ```

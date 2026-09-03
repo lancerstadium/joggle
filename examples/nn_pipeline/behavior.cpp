@@ -27,13 +27,13 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
                                  joggle::Diagnostics& reported)
           -> std::optional<joggle::ir::Module> {
         for (const std::string& name : input.function_names()) {
-          joggle::Function* function = input.function(name);
+          joggle::ir::Function* function = input.function(name);
           if (function == nullptr) {
             reported.report("IR Module lost function '" + name + "'");
             return std::nullopt;
           }
           auto edit = function->edit();
-          for (const joggle::Instruction& instruction :
+          for (const joggle::ir::Instruction& instruction :
                function->instructions()) {
             if (instruction.callee() == *nn_relu) {
               edit.replace(instruction, *accelerator_relu);

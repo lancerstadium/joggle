@@ -36,6 +36,11 @@
 namespace joggle {
 namespace {
 
+using ir::Block;
+using ir::Function;
+using ir::Instruction;
+using ir::Terminator;
+using ir::Value;
 using detail::ParameterValue;
 using TokenKind = detail::TokenKind;
 using Token = detail::Token;
@@ -3236,11 +3241,10 @@ std::string format_function_syntax(const FunctionSyntax& function,
   return SyntaxWriter(function, indent).write();
 }
 
-std::optional<Function> instantiate_function(Compiler& compiler,
-                                          Module::FunctionDecl function,
-                                          const FunctionBody& body,
-                                          Diagnostics& diagnostics,
-                                          std::vector<Value> known_arguments) {
+std::optional<ir::Function>
+instantiate_function(Compiler& compiler, Module::FunctionDecl function,
+                     const FunctionBody& body, Diagnostics& diagnostics,
+                     std::vector<ir::Value> known_arguments) {
   return Instantiator(compiler, std::move(function), body, diagnostics,
                       std::move(known_arguments))
       .instantiate();
@@ -3248,7 +3252,7 @@ std::optional<Function> instantiate_function(Compiler& compiler,
 
 }  // namespace detail
 
-std::string format(const Function& function, std::string_view name) {
+std::string format(const ir::Function& function, std::string_view name) {
   const auto identifier_character = [](char character) {
     return std::isalnum(static_cast<unsigned char>(character)) != 0 ||
            character == '_';

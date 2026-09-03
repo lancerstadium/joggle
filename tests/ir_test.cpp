@@ -73,7 +73,7 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  std::optional<joggle::Instruction> add;
+  std::optional<joggle::ir::Instruction> add;
   {
     auto edit = function->edit();
     const auto lhs = edit.argument(*integer);
@@ -127,8 +127,8 @@ int main() {
   if (!callable || !higher_order) {
     return EXIT_FAILURE;
   }
-  std::optional<joggle::Value> callback;
-  std::optional<joggle::Instruction> applied;
+  std::optional<joggle::ir::Value> callback;
+  std::optional<joggle::ir::Instruction> applied;
   {
     auto edit = higher_order->edit();
     const auto input = edit.argument(*i32);
@@ -146,7 +146,7 @@ int main() {
                        callback_schema->symbol() &&
                    higher_order->dominates(*callback, *applied) &&
                    higher_order->users(*callback) ==
-                       std::vector<joggle::Instruction>{*applied},
+                       std::vector<joggle::ir::Instruction>{*applied},
                "a typed function reference is a globally dominating value");
   bool wrong_callable_rejected = false;
   const auto wrong_callable = compiler.make(
@@ -175,7 +175,7 @@ int main() {
   ok &= expect(needs_explicit_result && compiler.ok(),
                "an output-only type variable needs an explicit result type");
 
-  std::optional<joggle::Instruction> inserted;
+  std::optional<joggle::ir::Instruction> inserted;
   {
     auto edit = function->edit();
     inserted = edit.insert(*add, *cast_schema, {function->arguments()[0]});
@@ -188,7 +188,7 @@ int main() {
   ok &= expect(inserted && function->instructions().front() == *inserted,
                "an edit inserts before an existing instruction");
 
-  const joggle::Instruction original_add = *add;
+  const joggle::ir::Instruction original_add = *add;
   {
     auto edit = function->edit();
     add = edit.replace(*add, *add_schema);
@@ -213,8 +213,8 @@ int main() {
   ok &= expect(missing_argument_rejected,
                "a missing call argument is rejected immediately");
 
-  std::optional<joggle::Instruction> first_cast;
-  std::optional<joggle::Instruction> second_cast;
+  std::optional<joggle::ir::Instruction> first_cast;
+  std::optional<joggle::ir::Instruction> second_cast;
   {
     auto edit = function->edit();
     first_cast = edit.append(*cast_schema, {add->result(0)});
@@ -242,9 +242,9 @@ int main() {
                "replace rewires instruction and boundary uses before erase");
 
   auto queried = compiler.function();
-  std::optional<joggle::Value> queried_input;
-  std::optional<joggle::Instruction> queried_first;
-  std::optional<joggle::Instruction> queried_second;
+  std::optional<joggle::ir::Value> queried_input;
+  std::optional<joggle::ir::Instruction> queried_first;
+  std::optional<joggle::ir::Instruction> queried_second;
   if (!queried) {
     return EXIT_FAILURE;
   }
@@ -320,12 +320,12 @@ int main() {
   if (!branched) {
     return EXIT_FAILURE;
   }
-  std::optional<joggle::Value> branch_condition;
-  std::optional<joggle::Value> branch_lhs;
-  std::optional<joggle::Value> branch_rhs;
-  std::optional<joggle::Block> left;
-  std::optional<joggle::Block> right;
-  std::optional<joggle::Block> merge;
+  std::optional<joggle::ir::Value> branch_condition;
+  std::optional<joggle::ir::Value> branch_lhs;
+  std::optional<joggle::ir::Value> branch_rhs;
+  std::optional<joggle::ir::Block> left;
+  std::optional<joggle::ir::Block> right;
+  std::optional<joggle::ir::Block> merge;
   {
     auto edit = branched->edit();
     branch_condition = edit.argument(*boolean);
@@ -348,7 +348,7 @@ int main() {
   ok &= expect(compiler.verify(*branched) && branched->blocks().size() == 4U &&
                    merge && merge->arguments().front().is_block_argument() &&
                    entry_terminator.kind() ==
-                       joggle::Terminator::Kind::Branch &&
+                       joggle::ir::Terminator::Kind::Branch &&
                    entry_terminator.successor_count() == 2U &&
                    merge->terminator().returned().front() ==
                        merge->arguments().front(),

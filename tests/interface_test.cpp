@@ -68,7 +68,7 @@ int main() {
                   return attribute.get<std::string>("name");
                 });
   compiler.bind(*work_decl, *latency,
-                [](const joggle::Instruction&) -> std::int64_t { return 2; });
+                [](const joggle::ir::Instruction&) -> std::int64_t { return 2; });
 
   const auto scalar = compiler.make(*scalar_decl);
   const auto label = compiler.make(*label_decl);

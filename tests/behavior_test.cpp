@@ -64,7 +64,7 @@ int main() {
                   }
                   return true;
                 });
-  const auto same_type = [](const joggle::Instruction& operation,
+  const auto same_type = [](const joggle::ir::Instruction& operation,
                             joggle::Diagnostics& diagnostics) {
     const auto arguments = operation.arguments();
     const auto results = operation.results();
@@ -82,10 +82,10 @@ int main() {
   compiler.bind(*marker_schema, same_type);
   compiler.bind(
       *canonicalize_schema,
-      [cast_schema](joggle::Function& function,
+      [cast_schema](joggle::ir::Function& function,
                     joggle::Diagnostics& diagnostics) {
         auto edit = function.edit();
-        for (const joggle::Instruction& instruction : function.instructions()) {
+        for (const joggle::ir::Instruction& instruction : function.instructions()) {
           if (instruction.callee() != *cast_schema) {
             continue;
           }
@@ -96,27 +96,27 @@ int main() {
       });
 
   std::size_t query_runs = 0;
-  const auto compute_nodes = [&](const joggle::Function& function) {
+  const auto compute_nodes = [&](const joggle::ir::Function& function) {
     ++query_runs;
     return function.instructions().size();
   };
 
   compiler.bind(
       *cleanup_schema,
-      [&compute_nodes](joggle::Function& function,
+      [&compute_nodes](joggle::ir::Function& function,
                        joggle::Diagnostics& diagnostics) {
         static_cast<void>(compute_nodes(function));
         const auto operations = function.instructions();
         const bool has_marker =
             std::any_of(operations.begin(), operations.end(),
-                        [](const joggle::Instruction& operation) {
+                        [](const joggle::ir::Instruction& operation) {
                           return operation.callee().name() == "marker";
                         });
         if (!has_marker) {
           return true;
         }
         auto edit = function.edit();
-        for (const joggle::Instruction& operation : operations) {
+        for (const joggle::ir::Instruction& operation : operations) {
           if (operation.callee().name() != "marker") {
             continue;
           }
@@ -156,7 +156,7 @@ int main() {
                "pass-local analysis executes explicitly without a side API");
 
   compiler.bind(*abort_schema, [marker_schema,
-                                integer](joggle::Compiler&, joggle::Function& current,
+                                integer](joggle::Compiler&, joggle::ir::Function& current,
                                       joggle::Diagnostics& diagnostics) {
     const auto producer = current.instructions().front();
     auto edit = current.edit();

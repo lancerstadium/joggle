@@ -132,7 +132,7 @@ module program_defs@1.0.0 {
                                    ? replay_callback->entry()
                                          .terminator()
                                          .returned()
-                                   : std::vector<joggle::Value>{};
+                                   : std::vector<joggle::ir::Value>{};
   ok &= expect(replay_returned.size() == 1U &&
                    replay_returned.front().referenced_function() &&
                    replay_returned.front()

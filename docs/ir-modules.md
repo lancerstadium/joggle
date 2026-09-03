@@ -62,7 +62,7 @@ module onnx_io@1.0.0 {
 ```
 
 `ir.module` has the standard C++ representation `joggle::ir::Module`. It owns
-named `joggle::Function` values and is copy-on-write: an ordinary compiler
+named `joggle::ir::Function` values and is copy-on-write: an ordinary compiler
 function may accept and return it by value without cloning every Function, and
 the first mutable lookup detaches only the selected Function. Loaders,
 transformations, analyses, and emitters can therefore use the same ordinary

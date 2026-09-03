@@ -1,6 +1,7 @@
 #pragma once
 
-// Function-owned intermediate representation.
+// Executable intermediate representation. Package schemas remain in
+// `joggle`; all executable ownership and handle types live in `joggle::ir`.
 
 #include <cstddef>
 #include <cstdint>
@@ -18,11 +19,6 @@
 namespace joggle {
 
 class Compiler;
-class Function;
-class Block;
-class Value;
-class Instruction;
-class Terminator;
 
 namespace detail {
 struct FunctionIdentity;
@@ -30,6 +26,14 @@ struct FunctionEditState;
 struct KnownValueStorage;
 struct FunctionAccess;
 }  // namespace detail
+
+namespace ir {
+
+class Function;
+class Block;
+class Value;
+class Instruction;
+class Terminator;
 
 class Value {
 public:
@@ -54,12 +58,12 @@ private:
   std::shared_ptr<const detail::KnownValueStorage> known_;
   std::uint64_t id_ = 0;
 
-  friend class Compiler;
+  friend class joggle::Compiler;
   friend class Function;
   friend class Block;
   friend class Instruction;
   friend class Terminator;
-  friend struct detail::FunctionAccess;
+  friend struct joggle::detail::FunctionAccess;
 };
 
 class Instruction {
@@ -81,7 +85,8 @@ public:
 
 private:
   std::optional<Value> argument(std::string_view name) const;
-  Instruction(std::shared_ptr<detail::FunctionIdentity> function, std::uint64_t id);
+  Instruction(std::shared_ptr<detail::FunctionIdentity> function,
+              std::uint64_t id);
   std::shared_ptr<detail::FunctionIdentity> function_;
   std::uint64_t id_ = 0;
 
@@ -89,7 +94,7 @@ private:
   friend class Block;
   friend class Function;
   friend class Terminator;
-  friend struct detail::FunctionAccess;
+  friend struct joggle::detail::FunctionAccess;
 };
 
 class Terminator {
@@ -132,7 +137,7 @@ private:
   friend class Function;
   friend class Instruction;
   friend class Terminator;
-  friend struct detail::FunctionAccess;
+  friend struct joggle::detail::FunctionAccess;
 };
 
 class Function {
@@ -153,11 +158,11 @@ public:
                        std::vector<Value> arguments = {},
                        std::vector<Type> result_types = {});
     Instruction append(Block block, Module::FunctionDecl schema,
-                     std::vector<Value> arguments = {},
-                     std::vector<Type> result_types = {});
+                       std::vector<Value> arguments = {},
+                       std::vector<Type> result_types = {});
     Instruction insert(Instruction before, Module::FunctionDecl schema,
-                     std::vector<Value> arguments = {},
-                     std::vector<Type> result_types = {});
+                       std::vector<Value> arguments = {},
+                       std::vector<Type> result_types = {});
 
     void ret(Block block, std::vector<Value> values = {});
     void jump(Block block, Block target, std::vector<Value> arguments = {});
@@ -178,7 +183,7 @@ public:
                     std::vector<Type> result_types);
     std::unique_ptr<detail::FunctionEditState> state_;
     friend class Function;
-    friend struct detail::FunctionAccess;
+    friend struct joggle::detail::FunctionAccess;
   };
 
   ~Function();
@@ -211,16 +216,20 @@ private:
   void restore(std::shared_ptr<const Snapshot> snapshot);
   static Value make_value(std::shared_ptr<detail::FunctionIdentity> function,
                           std::uint64_t id);
-  static Instruction make_instruction(std::shared_ptr<detail::FunctionIdentity> function,
-                                  std::uint64_t id);
+  static Instruction
+  make_instruction(std::shared_ptr<detail::FunctionIdentity> function,
+                   std::uint64_t id);
   static Block make_block(std::shared_ptr<detail::FunctionIdentity> function,
                           std::uint64_t id);
   std::shared_ptr<detail::FunctionIdentity> function_;
 
-  friend class Compiler;
-  friend struct detail::FunctionAccess;
+  friend class joggle::Compiler;
+  friend struct joggle::detail::FunctionAccess;
 };
 
-std::string format(const Function& function, std::string_view name = "main");
+}  // namespace ir
+
+std::string format(const ir::Function& function,
+                   std::string_view name = "main");
 
 }  // namespace joggle

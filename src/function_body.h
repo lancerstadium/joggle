@@ -126,11 +126,10 @@ std::string format_function_body(const FunctionBody& body,
                                  std::size_t indent = 0);
 std::string format_function_syntax(const FunctionSyntax& function,
                                    std::size_t indent = 0);
-std::optional<Function> instantiate_function(Compiler& compiler,
-                                          Module::FunctionDecl function,
-                                          const FunctionBody& body,
-                                          Diagnostics& diagnostics,
-                                          std::vector<Value> known_arguments = {});
+std::optional<ir::Function>
+instantiate_function(Compiler& compiler, Module::FunctionDecl function,
+                     const FunctionBody& body, Diagnostics& diagnostics,
+                     std::vector<ir::Value> known_arguments = {});
 
 }  // namespace detail
 }  // namespace joggle

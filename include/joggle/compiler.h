@@ -50,7 +50,7 @@ using AttributeList = std::vector<Attribute>;
 
 using ExecutionValue =
     std::variant<std::monostate, std::int64_t, double, bool, std::string, Type,
-                 Attribute, Bytes, std::shared_ptr<Function>, IntegerList,
+                 Attribute, Bytes, std::shared_ptr<ir::Function>, IntegerList,
                  RealList, BooleanList, StringList, TypeList, AttributeList,
                  HostValue>;
 
@@ -82,8 +82,8 @@ inline bool has_domain(const Module::ParameterDecl& field,
 
 template <typename T> ExecutionValue store_execution_value(T&& value) {
   using Value = std::remove_cvref_t<T>;
-  if constexpr (std::is_same_v<Value, Function>) {
-    return {std::make_shared<Function>(std::forward<T>(value))};
+  if constexpr (std::is_same_v<Value, ir::Function>) {
+    return {std::make_shared<ir::Function>(std::forward<T>(value))};
   } else if constexpr (is_builtin_host_value<Value>) {
     return {Value(std::forward<T>(value))};
   } else {
@@ -94,13 +94,14 @@ template <typename T> ExecutionValue store_execution_value(T&& value) {
 
 template <typename T> ExecutionValue store_execution_input(T&& value) {
   using Value = std::remove_cvref_t<T>;
-  if constexpr (std::is_same_v<Value, Function>) {
+  if constexpr (std::is_same_v<Value, ir::Function>) {
     static_assert(std::is_lvalue_reference_v<T>,
                   "a Function compiler input must be an lvalue");
     static_assert(!std::is_const_v<std::remove_reference_t<T>>,
                   "compiler-function invocation requires a non-const Function "
                   "handle");
-    return {std::shared_ptr<Function>(std::addressof(value), [](Function*) {})};
+    return {std::shared_ptr<ir::Function>(std::addressof(value),
+                                          [](ir::Function*) {})};
   } else if constexpr (is_builtin_host_value<Value>) {
     return {Value(std::forward<T>(value))};
   } else {
@@ -111,8 +112,8 @@ template <typename T> ExecutionValue store_execution_input(T&& value) {
 
 template <typename T> decltype(auto) execution_argument(ExecutionValue& value) {
   using Value = std::remove_cvref_t<T>;
-  if constexpr (std::is_same_v<Value, Function>) {
-    auto& function = *std::get<std::shared_ptr<Function>>(value);
+  if constexpr (std::is_same_v<Value, ir::Function>) {
+    auto& function = *std::get<std::shared_ptr<ir::Function>>(value);
     return static_cast<T>(function);
   } else if constexpr (is_builtin_host_value<Value>) {
     auto& stored = std::get<Value>(value);
@@ -130,8 +131,8 @@ template <typename T> decltype(auto) execution_argument(ExecutionValue& value) {
 template <typename T>
 std::optional<T> take_execution_value(ExecutionValue value) {
   using Value = std::remove_cvref_t<T>;
-  if constexpr (std::is_same_v<Value, Function>) {
-    auto function = std::get<std::shared_ptr<Function>>(std::move(value));
+  if constexpr (std::is_same_v<Value, ir::Function>) {
+    auto function = std::get<std::shared_ptr<ir::Function>>(std::move(value));
     return function ? std::optional<T>{std::move(*function)} : std::nullopt;
   } else if constexpr (is_builtin_host_value<Value>) {
     return std::get<Value>(std::move(value));
@@ -412,7 +413,7 @@ public:
   // or index. Parameterized Prelude types use the declaration overload above.
   std::optional<Type> make(std::string_view prelude_type);
 
-  template <typename T> std::optional<Value> known(Type type, T&& value) {
+  template <typename T> std::optional<ir::Value> known(Type type, T&& value) {
     return make_known(std::move(type),
                       detail::encode_parameter(std::forward<T>(value)));
   }
@@ -427,16 +428,17 @@ public:
      ...);
     return make(schema, std::span<const detail::ParameterValue>(values));
   }
-  std::optional<Function> function();
-  std::optional<Function> function(Module::FunctionDecl declaration);
-  std::optional<Function> function(Module::FunctionDecl declaration,
-                                   std::vector<Value> known_arguments);
-  std::optional<Function> function(Module::Symbol symbol);
-  std::optional<Function> function(Module::Symbol symbol,
-                                   std::vector<Value> known_arguments);
-  std::optional<Function> function(std::string_view name);
-  std::optional<Function> function(std::string_view name,
-                                   std::vector<Value> known_arguments);
+  std::optional<ir::Function> function();
+  std::optional<ir::Function> function(Module::FunctionDecl declaration);
+  std::optional<ir::Function>
+  function(Module::FunctionDecl declaration,
+           std::vector<ir::Value> known_arguments);
+  std::optional<ir::Function> function(Module::Symbol symbol);
+  std::optional<ir::Function>
+  function(Module::Symbol symbol, std::vector<ir::Value> known_arguments);
+  std::optional<ir::Function> function(std::string_view name);
+  std::optional<ir::Function>
+  function(std::string_view name, std::vector<ir::Value> known_arguments);
 
   bool conforms(const Module::TypeDecl& declaration,
                 const Module::InterfaceDecl& interface) const;
@@ -456,7 +458,7 @@ public:
   template <typename Result, typename... Arguments, typename Function>
   void bind(Module::FunctionDecl declaration,
             Module::InterfaceDecl::MethodDecl method, Function&& function) {
-    bind_typed_method<Instruction, Result, Arguments...>(
+    bind_typed_method<ir::Instruction, Result, Arguments...>(
         std::move(declaration), std::move(method),
         std::forward<Function>(function));
   }
@@ -471,8 +473,8 @@ public:
   template <typename Function>
   void bind(Module::FunctionDecl declaration,
             Module::InterfaceDecl::MethodDecl method, Function&& function) {
-    bind_inferred<Instruction>(std::move(declaration), std::move(method),
-                             std::forward<Function>(function));
+    bind_inferred<ir::Instruction>(std::move(declaration), std::move(method),
+                                   std::forward<Function>(function));
   }
 
   template <typename Function>
@@ -517,7 +519,7 @@ public:
   std::optional<Result> call(const Subject& subject, std::string_view method,
                              Arguments&&... arguments) {
     static_assert(std::is_same_v<Subject, Attribute> ||
-                      std::is_same_v<Subject, Instruction>,
+                      std::is_same_v<Subject, ir::Instruction>,
                   "an interface call subject must be an Attribute or "
                   "Instruction; Type fields use Type::get");
     const auto declaration = lookup_method(subject, method);
@@ -551,92 +553,93 @@ public:
       } else {
         return std::is_same_v<
             std::remove_cvref_t<std::tuple_element_t<0, Arguments>>,
-            Instruction>;
+            ir::Instruction>;
       }
     }();
     if constexpr (operation_verifier) {
-      bind_typed_verifier<Instruction>(std::move(schema),
-                                     std::forward<Function>(function));
+      bind_typed_verifier<ir::Instruction>(std::move(schema),
+                                           std::forward<Function>(function));
     } else {
-    constexpr bool with_compiler = [] {
-      if constexpr (arity == 0U) {
-        return false;
-      } else {
-        return std::is_same_v<std::tuple_element_t<0, Arguments>, Compiler&>;
+      constexpr bool with_compiler = [] {
+        if constexpr (arity == 0U) {
+          return false;
+        } else {
+          return std::is_same_v<std::tuple_element_t<0, Arguments>, Compiler&>;
+        }
+      }();
+      constexpr bool with_diagnostics = [] {
+        if constexpr (arity == 0U) {
+          return false;
+        } else {
+          return std::is_same_v<std::tuple_element_t<arity - 1U, Arguments>,
+                                Diagnostics&>;
+        }
+      }();
+      constexpr std::size_t argument_count =
+          arity - static_cast<std::size_t>(with_compiler) -
+          static_cast<std::size_t>(with_diagnostics);
+      constexpr std::size_t offset = with_compiler ? 1U : 0U;
+      const auto argument_types = []<std::size_t... Indices>(
+                                      std::index_sequence<Indices...>) {
+        static_assert(
+            ((!std::is_same_v<
+                  std::remove_cvref_t<
+                      std::tuple_element_t<offset + Indices, Arguments>>,
+                  joggle::ir::Function> ||
+              std::is_reference_v<
+                  std::tuple_element_t<offset + Indices, Arguments>>) &&
+             ...),
+            "a Function compiler input must be Function& or const Function&");
+        return std::array<std::string_view, sizeof...(Indices)>{
+            detail::host_type_name<
+                std::tuple_element_t<offset + Indices, Arguments>>()...};
+      }(std::make_index_sequence<argument_count>{});
+      const bool function_transform =
+          schema.inputs().size() == 1U &&
+          detail::has_domain(schema.inputs().front(), "function") &&
+          schema.results().size() == 1U &&
+          detail::has_domain(schema.results().front(), "function");
+      using Produced = std::remove_cvref_t<typename Traits::result>;
+      std::optional<std::string_view> result_type;
+      if constexpr (!std::is_void_v<Produced>) {
+        using Value =
+            std::conditional_t<detail::OptionalValue<Produced>::value,
+                               typename detail::OptionalValue<Produced>::type,
+                               Produced>;
+        if constexpr (std::is_same_v<Produced, bool>) {
+          result_type = function_transform
+                            ? detail::host_type_name<joggle::ir::Function>()
+                            : detail::host_type_name<bool>();
+        } else {
+          result_type = detail::host_type_name<Value>();
+        }
       }
-    }();
-    constexpr bool with_diagnostics = [] {
-      if constexpr (arity == 0U) {
-        return false;
-      } else {
-        return std::is_same_v<std::tuple_element_t<arity - 1U, Arguments>,
-                              Diagnostics&>;
+      if (!check_binding_signature(schema, argument_types, result_type)) {
+        return;
       }
-    }();
-    constexpr std::size_t argument_count =
-        arity - static_cast<std::size_t>(with_compiler) -
-        static_cast<std::size_t>(with_diagnostics);
-    constexpr std::size_t offset = with_compiler ? 1U : 0U;
-    const auto argument_types = []<std::size_t... Indices>(
-                                    std::index_sequence<Indices...>) {
-      static_assert(
-          ((!std::is_same_v<
-                std::remove_cvref_t<
-                    std::tuple_element_t<offset + Indices, Arguments>>,
-                joggle::Function> ||
-            std::is_reference_v<
-                std::tuple_element_t<offset + Indices, Arguments>>) &&
-           ...),
-          "a Function compiler input must be Function& or const Function&");
-      return std::array<std::string_view, sizeof...(Indices)>{
-          detail::host_type_name<
-              std::tuple_element_t<offset + Indices, Arguments>>()...};
-    }(std::make_index_sequence<argument_count>{});
-    const bool function_transform =
-        schema.inputs().size() == 1U &&
-        detail::has_domain(schema.inputs().front(), "function") &&
-        schema.results().size() == 1U &&
-        detail::has_domain(schema.results().front(), "function");
-    using Produced = std::remove_cvref_t<typename Traits::result>;
-    std::optional<std::string_view> result_type;
-    if constexpr (!std::is_void_v<Produced>) {
-      using Value = std::conditional_t<detail::OptionalValue<Produced>::value,
-                                       typename detail::OptionalValue<Produced>::type,
-                                       Produced>;
-      if constexpr (std::is_same_v<Produced, bool>) {
-        result_type =
-            function_transform ? detail::host_type_name<joggle::Function>()
-                               : detail::host_type_name<bool>();
-      } else {
-        result_type = detail::host_type_name<Value>();
-      }
-    }
-    if (!check_binding_signature(schema, argument_types, result_type)) {
-      return;
-    }
-    NativeFunction binding =
-        [callable = Callable(std::forward<Function>(function)),
-         function_transform](Compiler& compiler,
-                             std::span<detail::ExecutionValue> arguments,
-                             Diagnostics& diagnostics) mutable {
-          if (arguments.size() != argument_count) {
-            diagnostics.report(
-                "compiler-function binding received the wrong argument count");
-            return std::optional<detail::ExecutionValue>{};
-          }
-          return detail::invoke_typed_function<Callable, Arguments, offset,
-                                               with_compiler,
-                                               with_diagnostics>(
-              callable, compiler, arguments, diagnostics, function_transform,
-              std::make_index_sequence<argument_count>{});
-        };
-    bind_native(std::move(schema), std::move(binding), evaluation);
+      NativeFunction binding =
+          [callable = Callable(std::forward<Function>(function)),
+           function_transform](Compiler& compiler,
+                               std::span<detail::ExecutionValue> arguments,
+                               Diagnostics& diagnostics) mutable {
+            if (arguments.size() != argument_count) {
+              diagnostics.report(
+                  "compiler-function binding received the wrong argument count");
+              return std::optional<detail::ExecutionValue>{};
+            }
+            return detail::invoke_typed_function<Callable, Arguments, offset,
+                                                 with_compiler,
+                                                 with_diagnostics>(
+                callable, compiler, arguments, diagnostics, function_transform,
+                std::make_index_sequence<argument_count>{});
+          };
+      bind_native(std::move(schema), std::move(binding), evaluation);
     }
   }
 
-  bool verify(const Function& function);
-  bool run(Function& function, Module::FunctionDecl transform);
-  bool run(Function& function, std::string_view transform);
+  bool verify(const ir::Function& function);
+  bool run(ir::Function& function, Module::FunctionDecl transform);
+  bool run(ir::Function& function, std::string_view transform);
 
   template <typename Result = void, typename... Arguments>
   bool invocable(const Module::FunctionDecl& function) const {
@@ -704,8 +707,8 @@ public:
   const Diagnostics& diagnostics() const;
 
 private:
-  std::optional<Value> make_known(Type type,
-                                  detail::ParameterValue value);
+  std::optional<ir::Value> make_known(Type type,
+                                      detail::ParameterValue value);
   std::optional<Type> make(const Module::TypeDecl& schema,
                            std::span<const detail::ParameterValue> parameters);
   std::optional<Attribute>
@@ -716,12 +719,12 @@ private:
                    MethodFunction<Attribute> function);
   void bind_method(Module::FunctionDecl declaration,
                    Module::InterfaceDecl::MethodDecl method,
-                   MethodFunction<Instruction> function);
+                   MethodFunction<ir::Instruction> function);
   void bind_verifier(Module::TypeDecl schema, VerifierFunction<Type> verifier);
   void bind_verifier(Module::AttributeDecl schema,
                      VerifierFunction<Attribute> verifier);
   void bind_verifier(Module::FunctionDecl schema,
-                     VerifierFunction<Instruction> verifier);
+                     VerifierFunction<ir::Instruction> verifier);
   bool bind_representation(Module::TypeDecl schema, std::string_view type);
   bool bind_representation(Module::TypeDecl schema, std::string_view type,
                            RepresentationProjector projector);
@@ -761,7 +764,8 @@ private:
   call(const Attribute& subject, Module::InterfaceDecl::MethodDecl method,
        std::span<const detail::ParameterValue> parameters);
   std::optional<detail::ParameterValue>
-  call(const Instruction& subject, Module::InterfaceDecl::MethodDecl method,
+  call(const ir::Instruction& subject,
+       Module::InterfaceDecl::MethodDecl method,
        std::span<const detail::ParameterValue> parameters);
 
   template <typename Subject, typename Result, typename... Arguments,
@@ -874,7 +878,7 @@ private:
   std::optional<Module::InterfaceDecl::MethodDecl>
   lookup_method(const Attribute& subject, std::string_view reference);
   std::optional<Module::InterfaceDecl::MethodDecl>
-  lookup_method(const Instruction& subject, std::string_view reference);
+  lookup_method(const ir::Instruction& subject, std::string_view reference);
   bool load_behavior(const Module& module,
                      const std::filesystem::path& library);
   bool load_behavior(const Module& module);

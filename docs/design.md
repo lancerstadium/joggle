@@ -92,7 +92,7 @@ The two ownership trees are deliberately separate:
 
 ```text
 joggle::Module                   joggle::ir::Module
-  TypeDecl / FunctionDecl          named joggle::Function
+  TypeDecl / FunctionDecl          named joggle::ir::Function
                                      Block
                                        Instruction
                                        Terminator
@@ -368,7 +368,7 @@ formatting emits a typed local binding for a selected Function value, so a
 round trip cannot lose an overload decision.
 
 The `function` kernel domain remains the bootstrap representation for direct
-`joggle::Function` callbacks. Parameterless Module-declared types can now
+`joggle::ir::Function` callbacks. Parameterless Module-declared types can now
 register ordinary copyable C++ host representations and flow through composed
 compiler functions. Parameterized host values provide an ordered tuple
 projection; their concrete Type travels with the payload and is checked by the

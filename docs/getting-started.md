@@ -55,7 +55,7 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
 
   compiler.bind(*convert,
     [keep = *keep, converted = *converted](
-        joggle::Function& function,
+        joggle::ir::Function& function,
         joggle::Diagnostics& pass_diagnostics) {
       const auto instructions = function.instructions();
       auto edit = function.edit();

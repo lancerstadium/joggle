@@ -372,7 +372,7 @@ transform(joggle::Compiler& compiler, std::string_view qualified,
     if (compiler.invocable<joggle::ir::Module, joggle::ir::Module>(
             function)) {
       matches.push_back({function, TransformKind::Module});
-    } else if (compiler.invocable<joggle::Function, joggle::Function&>(
+    } else if (compiler.invocable<joggle::ir::Function, joggle::ir::Function&>(
                    function)) {
       matches.push_back({function, TransformKind::Function});
     }
@@ -569,7 +569,7 @@ int main(int argc, char** argv) {
         program = std::move(*transformed);
         continue;
       }
-      joggle::Function* entry = program.function(function_body);
+      joggle::ir::Function* entry = program.function(function_body);
       if (entry == nullptr) {
         diagnostics.report("Function transform '" + name +
                            "' needs missing entry '" + function_body + "'");

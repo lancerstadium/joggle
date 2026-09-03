@@ -9,6 +9,12 @@
 
 namespace joggle::detail {
 
+using ir::Block;
+using ir::Function;
+using ir::Instruction;
+using ir::Terminator;
+using ir::Value;
+
 struct FunctionIdentity;
 struct FunctionState;
 

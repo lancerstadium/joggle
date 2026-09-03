@@ -172,7 +172,7 @@ std::size_t FunctionAccess::argument_parameter(
 
 }  // namespace joggle::detail
 
-namespace joggle {
+namespace joggle::ir {
 
 struct Function::Snapshot {
   std::shared_ptr<detail::FunctionState> state;
@@ -855,27 +855,32 @@ void check_same_function(const std::shared_ptr<FunctionIdentity>& function,
 
 }  // namespace
 
-bool detail::FunctionAccess::verify_structure(const Function& function,
-                                              Diagnostics& diagnostics) {
-  return verify_function(*function.function_->state, diagnostics);
+}  // namespace joggle::ir
+
+namespace joggle::detail {
+
+bool FunctionAccess::verify_structure(const ir::Function& function,
+                                      Diagnostics& diagnostics) {
+  return ir::verify_function(*function.function_->state, diagnostics);
 }
 
-bool detail::FunctionAccess::verify_contracts(const Function& function,
-                                              Diagnostics& diagnostics) {
-  return verify_instruction_contracts(*function.function_->state, diagnostics);
+bool FunctionAccess::verify_contracts(const ir::Function& function,
+                                      Diagnostics& diagnostics) {
+  return ir::verify_instruction_contracts(*function.function_->state,
+                                          diagnostics);
 }
 
-bool detail::FunctionAccess::verify_contracts(const Function& function,
-                                              Compiler& compiler,
-                                              Diagnostics& diagnostics) {
-  return verify_instruction_contracts(*function.function_->state, compiler,
-                                      diagnostics);
+bool FunctionAccess::verify_contracts(const ir::Function& function,
+                                      Compiler& compiler,
+                                      Diagnostics& diagnostics) {
+  return ir::verify_instruction_contracts(*function.function_->state,
+                                          compiler, diagnostics);
 }
 
-void detail::FunctionAccess::declare(Function& function,
-                                     Module::FunctionDecl declaration,
-                                     std::vector<Type> argument_types,
-                                     std::vector<Type> result_types) {
+void FunctionAccess::declare(ir::Function& function,
+                             Module::FunctionDecl declaration,
+                             std::vector<Type> argument_types,
+                             std::vector<Type> result_types) {
   auto& identity = function.function_;
   auto& state = *identity->state;
   if (identity->editing || state.signature) {
@@ -885,18 +890,18 @@ void detail::FunctionAccess::declare(Function& function,
       !state.instructions.empty()) {
     throw std::logic_error("function signature must be fixed before its body");
   }
-  if (!owns(state, declaration.symbol()) ||
-      detail::ir_inputs(declaration).size() != argument_types.size() ||
-      detail::ir_results(declaration).size() != result_types.size()) {
+  if (!ir::owns(state, declaration.symbol()) ||
+      ir_inputs(declaration).size() != argument_types.size() ||
+      ir_results(declaration).size() != result_types.size()) {
     throw std::invalid_argument(
         "function signature does not match its declaration");
   }
   const bool owned_arguments = std::all_of(
       argument_types.begin(), argument_types.end(),
-      [&](const Type& type) { return owns(state, type); });
+      [&](const Type& type) { return ir::owns(state, type); });
   const bool owned_results = std::all_of(
       result_types.begin(), result_types.end(),
-      [&](const Type& type) { return owns(state, type); });
+      [&](const Type& type) { return ir::owns(state, type); });
   if (!owned_arguments || !owned_results) {
     throw std::invalid_argument(
         "function signature references a type outside its module closure");
@@ -906,14 +911,14 @@ void detail::FunctionAccess::declare(Function& function,
       std::move(result_types)};
 }
 
-bool detail::FunctionAccess::commit(Function::Edit& edit, Compiler& compiler,
-                                    Diagnostics& diagnostics) {
+bool FunctionAccess::commit(ir::Function::Edit& edit, Compiler& compiler,
+                            Diagnostics& diagnostics) {
   if (!edit.state_ || !edit.state_->active) {
     throw std::logic_error("function edit is no longer active");
   }
-  if (!verify_function(*edit.state_->function->state, diagnostics) ||
-      !verify_instruction_contracts(*edit.state_->function->state, compiler,
-                                    diagnostics)) {
+  if (!ir::verify_function(*edit.state_->function->state, diagnostics) ||
+      !ir::verify_instruction_contracts(*edit.state_->function->state,
+                                        compiler, diagnostics)) {
     edit.state_->function->state = std::move(edit.state_->backup);
     edit.state_->function->editing = false;
     edit.state_->active = false;
@@ -924,6 +929,10 @@ bool detail::FunctionAccess::commit(Function::Edit& edit, Compiler& compiler,
   edit.state_->function->editing = false;
   return true;
 }
+
+}  // namespace joggle::detail
+
+namespace joggle::ir {
 
 Value::Value(std::shared_ptr<FunctionIdentity> function, std::uint64_t id)
     : function_(std::move(function)), id_(id) {}
@@ -1850,7 +1859,7 @@ bool Function::dominates(Block dominator, Block block) const {
       !dominator.valid() || !block.valid()) {
     throw std::invalid_argument("dominance query block is outside function");
   }
-  const auto relation = joggle::dominators(*function_->state);
+  const auto relation = dominators(*function_->state);
   return relation.at(block.id_).contains(dominator.id_);
 }
 
@@ -1870,7 +1879,7 @@ bool Function::dominates(Value definition, Instruction instruction) const {
       user == function_->state->instructions.end()) {
     return false;
   }
-  const auto relation = joggle::dominators(*function_->state);
+  const auto relation = dominators(*function_->state);
   return definition_dominates(*function_->state, found->second,
                               user->second.parent, instruction.id_, relation);
 }
@@ -1919,4 +1928,4 @@ Block Function::make_block(std::shared_ptr<FunctionIdentity> function,
   return Block(std::move(function), id);
 }
 
-}  // namespace joggle
+}  // namespace joggle::ir

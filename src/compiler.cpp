@@ -428,14 +428,14 @@ evaluate_interface_method(bool linked, const Subject& subject,
                           const BindingMap& bindings, const Modules& modules,
                           Diagnostics& diagnostics, Conforms conforms,
                           std::string_view subject_kind) {
-  if constexpr (std::is_same_v<Subject, Instruction>) {
+  if constexpr (std::is_same_v<Subject, ir::Instruction>) {
     if (!subject.valid()) {
       diagnostics.report("invalid operation used as an interface subject");
       return std::nullopt;
     }
   }
   const auto declaration = [&] {
-    if constexpr (std::is_same_v<Subject, Instruction>) {
+    if constexpr (std::is_same_v<Subject, ir::Instruction>) {
       return subject.callee();
     } else {
       return subject.schema();
@@ -468,7 +468,7 @@ evaluate_interface_method(bool linked, const Subject& subject,
                     "' did not produce a value");
   }
   std::optional<SourceRange> location;
-  if constexpr (std::is_same_v<Subject, Instruction>) {
+  if constexpr (std::is_same_v<Subject, ir::Instruction>) {
     location = detail::FunctionAccess::location(subject);
   }
   for (const Diagnostic& entry : reported.entries()) {
@@ -526,11 +526,11 @@ struct Compiler::State {
   std::map<std::string, VerifierFunction<Type>, std::less<>> type_verifiers;
   std::map<std::string, VerifierFunction<Attribute>, std::less<>>
       attribute_verifiers;
-  std::map<std::string, VerifierFunction<Instruction>, std::less<>>
+  std::map<std::string, VerifierFunction<ir::Instruction>, std::less<>>
       operation_verifiers;
   std::map<std::string, MethodFunction<Attribute>, std::less<>>
       attribute_methods;
-  std::map<std::string, MethodFunction<Instruction>, std::less<>>
+  std::map<std::string, MethodFunction<ir::Instruction>, std::less<>>
       operation_methods;
   std::map<std::string, BoundFunction, std::less<>> bindings;
   std::map<std::string, detail::ParameterValue, std::less<>>
@@ -2243,7 +2243,8 @@ std::optional<Type> Compiler::make(std::string_view prelude_type) {
   return make(*declaration, std::span<const ParameterValue>{});
 }
 
-std::optional<Value> Compiler::make_known(Type type, ParameterValue value) {
+std::optional<ir::Value> Compiler::make_known(Type type,
+                                              ParameterValue value) {
   if (!state_->linked) {
     state_->diagnostics.report(
         "cannot create a Known value before the compiler is linked");
@@ -2261,7 +2262,7 @@ std::optional<Value> Compiler::make_known(Type type, ParameterValue value) {
         type.schema().symbol().qualified_name() + "'");
     return std::nullopt;
   }
-  return Value(std::move(type), std::move(value));
+  return ir::Value(std::move(type), std::move(value));
 }
 
 std::optional<Attribute>
@@ -2315,7 +2316,7 @@ Compiler::make(const Module::AttributeDecl& schema,
   return attribute;
 }
 
-std::optional<Function> Compiler::function() {
+std::optional<ir::Function> Compiler::function() {
   if (!state_->linked) {
     state_->diagnostics.report(
         "cannot create a function before the compiler is linked");
@@ -2327,27 +2328,27 @@ std::optional<Function> Compiler::function() {
     static_cast<void>(name);
     modules.push_back(module);
   }
-  return Function(std::move(modules));
+  return ir::Function(std::move(modules));
 }
 
-std::optional<Function>
+std::optional<ir::Function>
 Compiler::function(Module::FunctionDecl declaration) {
   return function(std::move(declaration), {});
 }
 
-std::optional<Function>
+std::optional<ir::Function>
 Compiler::function(Module::FunctionDecl declaration,
-                   std::vector<Value> known_arguments) {
+                   std::vector<ir::Value> known_arguments) {
   return function(declaration.symbol(), std::move(known_arguments));
 }
 
-std::optional<Function> Compiler::function(std::string_view name) {
+std::optional<ir::Function> Compiler::function(std::string_view name) {
   return function(name, {});
 }
 
-std::optional<Function>
+std::optional<ir::Function>
 Compiler::function(std::string_view name,
-                   std::vector<Value> known_arguments) {
+                   std::vector<ir::Value> known_arguments) {
   if (!state_->linked) {
     state_->diagnostics.report(
         "cannot construct a function before the compiler is linked");
@@ -2375,13 +2376,13 @@ Compiler::function(std::string_view name,
   return function(*symbol, std::move(known_arguments));
 }
 
-std::optional<Function> Compiler::function(Module::Symbol symbol) {
+std::optional<ir::Function> Compiler::function(Module::Symbol symbol) {
   return function(std::move(symbol), {});
 }
 
-std::optional<Function>
+std::optional<ir::Function>
 Compiler::function(Module::Symbol symbol,
-                   std::vector<Value> known_arguments) {
+                   std::vector<ir::Value> known_arguments) {
   if (!state_->linked) {
     state_->diagnostics.report(
         "cannot construct a function before the compiler is linked");
@@ -2500,7 +2501,7 @@ void Compiler::bind_method(Module::AttributeDecl declaration,
 
 void Compiler::bind_method(Module::FunctionDecl declaration,
                            Module::InterfaceDecl::MethodDecl method,
-                           MethodFunction<Instruction> function) {
+                           MethodFunction<ir::Instruction> function) {
   bind_interface_method(
       state_->linked, std::move(declaration), std::move(method),
       std::move(function), state_->operation_methods, state_->diagnostics,
@@ -2524,7 +2525,7 @@ Compiler::call(const Attribute& subject,
 }
 
 std::optional<ParameterValue>
-Compiler::call(const Instruction& subject,
+Compiler::call(const ir::Instruction& subject,
                Module::InterfaceDecl::MethodDecl method,
                std::span<const ParameterValue> parameters) {
   return evaluate_interface_method(
@@ -2583,7 +2584,7 @@ void Compiler::bind_verifier(Module::AttributeDecl schema,
 }
 
 void Compiler::bind_verifier(Module::FunctionDecl schema,
-                             VerifierFunction<Instruction> verifier) {
+                             VerifierFunction<ir::Instruction> verifier) {
   const Module::Symbol symbol = schema.symbol();
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
@@ -3092,11 +3093,12 @@ Compiler::lookup_method(const Attribute& subject, std::string_view reference) {
 }
 
 std::optional<Module::InterfaceDecl::MethodDecl>
-Compiler::lookup_method(const Instruction& subject, std::string_view reference) {
+Compiler::lookup_method(const ir::Instruction& subject,
+                        std::string_view reference) {
   return lookup_method(subject.callee(), reference);
 }
 
-bool Compiler::verify(const Function& function) {
+bool Compiler::verify(const ir::Function& function) {
   if (!state_->linked) {
     state_->diagnostics.report(
         "cannot verify a function before the compiler is linked");
@@ -3107,7 +3109,7 @@ bool Compiler::verify(const Function& function) {
   }
   bool valid = detail::FunctionAccess::verify_contracts(
       function, *this, state_->diagnostics);
-  for (const Instruction& operation : function.instructions()) {
+  for (const ir::Instruction& operation : function.instructions()) {
       const Module::FunctionDecl schema = operation.callee();
       const Module::Symbol symbol = schema.symbol();
       const auto location = detail::FunctionAccess::location(operation);
@@ -3239,12 +3241,13 @@ Compiler::execute(Module::FunctionDecl declaration,
     return std::nullopt;
   }
 
-  std::vector<std::pair<std::shared_ptr<Function>,
-                        std::shared_ptr<const Function::Snapshot>>>
+  std::vector<std::pair<std::shared_ptr<ir::Function>,
+                        std::shared_ptr<const ir::Function::Snapshot>>>
       checkpoints;
   for (detail::ExecutionValue& argument : arguments) {
-    if (detail::execution_value_type(argument) == typeid(Function).name()) {
-      auto function = std::get<std::shared_ptr<Function>>(argument);
+    if (detail::execution_value_type(argument) ==
+        typeid(ir::Function).name()) {
+      auto function = std::get<std::shared_ptr<ir::Function>>(argument);
       if (!verify(*function)) {
         return std::nullopt;
       }
@@ -3287,9 +3290,10 @@ Compiler::execute(Module::FunctionDecl declaration,
                                    "' received an argument with the wrong type");
         return std::nullopt;
       }
-      if (detail::execution_value_type(values[index]) == typeid(Function).name()) {
+      if (detail::execution_value_type(values[index]) ==
+          typeid(ir::Function).name()) {
         const auto function =
-            std::get<std::shared_ptr<Function>>(values[index]);
+            std::get<std::shared_ptr<ir::Function>>(values[index]);
         if (!function->accepts(current.symbol())) {
           state_->diagnostics.report(
               "compiler function '" + current.symbol().qualified_name() +
@@ -3423,8 +3427,9 @@ Compiler::execute(Module::FunctionDecl declaration,
     throw;
   }
   bool valid = result.has_value() && state_->diagnostics.size() == before;
-  if (valid && detail::execution_value_type(*result) == typeid(Function).name()) {
-    valid = verify(*std::get<std::shared_ptr<Function>>(*result)) && valid;
+  if (valid && detail::execution_value_type(*result) ==
+                   typeid(ir::Function).name()) {
+    valid = verify(*std::get<std::shared_ptr<ir::Function>>(*result)) && valid;
   }
   if (!valid) {
     for (auto& [function, snapshot] : checkpoints) {
@@ -3435,7 +3440,8 @@ Compiler::execute(Module::FunctionDecl declaration,
   return result;
 }
 
-bool Compiler::run(Function& function, Module::FunctionDecl transform) {
+bool Compiler::run(ir::Function& function,
+                   Module::FunctionDecl transform) {
   const Module::Symbol symbol = transform.symbol();
   const bool function_transform =
       transform.inputs().size() == 1U &&
@@ -3452,11 +3458,11 @@ bool Compiler::run(Function& function, Module::FunctionDecl transform) {
   }
   std::vector<detail::ExecutionValue> arguments;
   arguments.push_back(
-      {std::shared_ptr<Function>(&function, [](Function*) {})});
+      {std::shared_ptr<ir::Function>(&function, [](ir::Function*) {})});
   return execute(std::move(transform), std::move(arguments)).has_value();
 }
 
-bool Compiler::run(Function& function, std::string_view transform) {
+bool Compiler::run(ir::Function& function, std::string_view transform) {
   const auto declaration = find_function(transform);
   return declaration && run(function, *declaration);
 }

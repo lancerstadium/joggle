@@ -26,7 +26,7 @@ module ir@1.0.0 {
 ```
 
 Its standard C++ representation is `joggle::ir::Module`, a copy-on-write named
-set of executable `joggle::Function` values. Prelude `function` remains a
+set of executable `joggle::ir::Function` values. Prelude `function` remains a
 low-level convenience for callbacks that intentionally operate on one
 Function:
 
@@ -48,7 +48,7 @@ attached to the declaration's full Module identity:
 
 ```cpp
 compiler.bind(*canonicalize,
-  [](joggle::Function& function,
+  [](joggle::ir::Function& function,
      joggle::Diagnostics& diagnostics) {
     auto edit = function.edit();
     // Transform Blocks, Instructions, and Values.

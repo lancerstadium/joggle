@@ -334,21 +334,21 @@ module pipeline@1.0.0 {
 
   compiler.bind(*read,
                 [](joggle::Compiler& current,
-                   const joggle::Bytes& bytes) -> std::optional<joggle::Function> {
+                   const joggle::Bytes& bytes) -> std::optional<joggle::ir::Function> {
                   return bytes.empty() ? std::nullopt : current.function();
                 });
-  compiler.bind(*inspect, [](const joggle::Function& current) -> std::int64_t {
+  compiler.bind(*inspect, [](const joggle::ir::Function& current) -> std::int64_t {
     return static_cast<std::int64_t>(current.instructions().size());
   });
-  compiler.bind(*emit, [](const joggle::Function& current) -> joggle::Bytes {
+  compiler.bind(*emit, [](const joggle::ir::Function& current) -> joggle::Bytes {
     return {static_cast<std::byte>(current.instructions().size())};
   });
   compiler.bind(
       *canonicalize,
-      [arith_cast_decl](joggle::Function& current,
+      [arith_cast_decl](joggle::ir::Function& current,
                         joggle::Diagnostics& diagnostics) {
         auto edit = current.edit();
-        for (const joggle::Instruction& instruction : current.instructions()) {
+        for (const joggle::ir::Instruction& instruction : current.instructions()) {
           if (instruction.callee() != *arith_cast_decl) {
             continue;
           }
@@ -414,15 +414,15 @@ module pipeline@1.0.0 {
   ok &= expect(
       compiler.invocable<joggle::ir::Module, joggle::ir::Module>(
           *module_identity) &&
-          compiler.invocable<joggle::Function, joggle::Function&>(*clean) &&
-          !compiler.invocable<joggle::ir::Module, joggle::Function&>(*clean),
+          compiler.invocable<joggle::ir::Function, joggle::ir::Function&>(*clean) &&
+          !compiler.invocable<joggle::ir::Module, joggle::ir::Function&>(*clean),
       "typed invocability distinguishes whole-Module and single-Function "
       "transforms");
   compiler.bind(
       *module_identity,
       [](joggle::ir::Module input) { return input; });
   const joggle::Bytes encoded{std::byte{0x42}};
-  auto decoded = compiler.run<joggle::Function>(*read, encoded);
+  auto decoded = compiler.run<joggle::ir::Function>(*read, encoded);
   auto count = decoded
                    ? compiler.run<std::int64_t>(*inspect, *decoded)
                    : std::optional<std::int64_t>{};
@@ -651,7 +651,7 @@ module pipeline@1.0.0 {
   }
   guarded_compiler.bind(
       *guarded_identity,
-      [](const joggle::Instruction&, joggle::Diagnostics& diagnostics) {
+      [](const joggle::ir::Instruction&, joggle::Diagnostics& diagnostics) {
         diagnostics.report("guarded pass input rejected");
         return false;
       });
@@ -662,7 +662,7 @@ module pipeline@1.0.0 {
   }
   guarded_compiler.bind(
       *guarded_touch,
-      [&](joggle::Compiler&, joggle::Function&, joggle::Diagnostics&) {
+      [&](joggle::Compiler&, joggle::ir::Function&, joggle::Diagnostics&) {
         pass_called = true;
         return true;
       });
@@ -684,7 +684,7 @@ module pipeline@1.0.0 {
     if (!noop) {
       return EXIT_FAILURE;
     }
-    named_compiler.bind(*noop, [&](joggle::Compiler&, joggle::Function&,
+    named_compiler.bind(*noop, [&](joggle::Compiler&, joggle::ir::Function&,
                                    joggle::Diagnostics&) {
       named_called = true;
       return true;
@@ -747,7 +747,7 @@ module transactional@1.0.0 {
     return EXIT_FAILURE;
   }
   transactional.bind(
-      *mutate, [token = *token](joggle::Function& current,
+      *mutate, [token = *token](joggle::ir::Function& current,
                                joggle::Diagnostics& diagnostics) {
         auto edit = current.edit();
         edit.append(token);
@@ -755,7 +755,7 @@ module transactional@1.0.0 {
       });
   transactional.bind(
       *reject,
-      [](const joggle::Function&) -> std::optional<joggle::Bytes> {
+      [](const joggle::ir::Function&) -> std::optional<joggle::Bytes> {
         return std::nullopt;
       });
   const auto rejected =
@@ -776,7 +776,7 @@ module transactional@1.0.0 {
     return EXIT_FAILURE;
   }
   binding_mismatch.bind(*count_pass,
-                        [](const joggle::Function&) { return std::string{"bad"}; });
+                        [](const joggle::ir::Function&) { return std::string{"bad"}; });
   ok &= expect(!binding_mismatch.ok(),
                "C++ pass binding is checked against its declared type");
 

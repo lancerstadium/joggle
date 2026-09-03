@@ -30,14 +30,14 @@ std::string decode(const joggle::Bytes& bytes) {
 std::size_t calls(const joggle::ir::Module& module, std::string_view symbol) {
   std::size_t count = 0;
   for (const std::string& name : module.function_names()) {
-    const joggle::Function* function = module.function(name);
+    const joggle::ir::Function* function = module.function(name);
     if (function == nullptr) {
       continue;
     }
     const auto instructions = function->instructions();
     count += static_cast<std::size_t>(std::count_if(
         instructions.begin(), instructions.end(),
-        [symbol](const joggle::Instruction& instruction) {
+        [symbol](const joggle::ir::Instruction& instruction) {
           return instruction.callee().symbol().qualified_name() == symbol;
         }));
   }
@@ -76,7 +76,7 @@ int main() {
 
   joggle::ir::Module model;
   joggle::Diagnostics diagnostics;
-  joggle::Function second = block->clone();
+  joggle::ir::Function second = block->clone();
   if (!model.insert("stage1_block0", std::move(*block), diagnostics) ||
       !model.insert("stage1_block1", std::move(second), diagnostics)) {
     diagnostics.print(std::cerr);
