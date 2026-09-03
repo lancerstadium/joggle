@@ -72,8 +72,9 @@ Run `joggle --help` for the complete command forms.
 
 [`modules`](modules) contains ordinary installable declarations:
 
-- `prelude`: compiler domains, native scalar types, callable types, and core
-  interfaces;
+- `prelude`: compiler domains, native scalar types, callable types, core
+  interfaces, and ordinary `fn` declarations for deterministic compiler
+  arithmetic and control predicates;
 - `arith`: generic scalar operations and literal materialization;
 - `tensor`: ranked tensor values and structural operations;
 - `nn`: common inference operators and checked shape relations;

@@ -19,8 +19,14 @@ components. Imports accept `1`, `1.2`, `1.2.3`, or a caret range such as
 `^1.2.3`. An alias changes local spelling only; linked identity uses the real
 Module name, version, and canonical digest.
 
-Names resolve in the current Module, its direct imports, and the ambient
-Prelude. Unrelated installed Modules cannot alter overload resolution.
+Unqualified declaration names resolve in the current Module. A direct import
+is addressed through its Module name or alias. Operator notation considers
+operator functions from the current Module and direct imports because the
+symbol has no qualifier. The ambient Prelude supplies compiler-domain names,
+functions, and operators without an import. A local function name hides the
+same Prelude name; a local or imported operator with the same signature hides
+that Prelude operator. `prelude.name` explicitly selects the ambient
+declaration. Unrelated installed Modules cannot alter overload resolution.
 
 ## Compiler domains and program types
 
@@ -112,6 +118,44 @@ checking without a caller.
 
 Compiler lists are `list<D>`. Variadic `T...` is reserved for program-value
 inputs; compiler callbacks always have a finite C++ signature.
+
+## Prelude functions and operators
+
+Compiler-domain arithmetic is not a second expression evaluator. The Prelude
+declares ordinary external functions and associates them with familiar
+operators:
+
+```joggle
+fn add(lhs: int, rhs: int) -> int as +;
+fn less(lhs: int, rhs: int) -> bool as <;
+fn logical_and(lhs: bool, rhs: bool) -> bool as &&;
+fn ceildiv(lhs: int, rhs: int) -> int;
+```
+
+The compiler provides deterministic Hermetic implementations for the exact
+Prelude declarations. They enter normal visibility, overload selection,
+signature checking, Known evaluation, and diagnostics. There is no fallback
+that interprets an undeclared symbol or recognizes a call merely by its text.
+
+The shipped surface covers unary `+` and `-`; integer and real `+`, `-`, `*`,
+`/`, and `//`; integer `%`; numeric comparisons; equality for `int`, `real`,
+`bool`, and `string`; boolean `!`, `&&`, and `||`; and `ceildiv`, `min`, and
+`max`. Integer arithmetic is checked for signed 64-bit overflow. Division by
+zero and non-finite real results are errors. `ceildiv` accepts a non-negative
+dividend and a positive divisor.
+
+Prelude operators are defaults, not privileged syntax. A Module can replace
+one signature with its own ordinary function:
+
+```joggle
+fn difference_as_add(lhs: int, rhs: int) -> int as + {
+  return lhs - rhs;
+}
+```
+
+Named local functions hide the whole ambient Prelude name, while explicit
+qualification remains available. Operator operands are eagerly evaluated;
+`&&` and `||` do not define a separate short-circuit control form.
 
 ## Expressions and bindings
 
@@ -293,7 +337,8 @@ module     := "module" name "@" version "{" { member } "}"
 member     := import | interface | type | attr | fn
 
 fn         := "fn" name [ generics ] parameters [ "->" results ]
-              [ "as" operator ] [ interfaces ] ( ";" | body )
+              [ "as" [ fixity ] operator ] [ interfaces ] ( ";" | body )
+fixity     := "prefix" | "infix" | "postfix"
 body       := "{" { statement } "}"
 statement  := [ bindings "=" ] expression ";"
             | "if" expression body [ "else" body ]

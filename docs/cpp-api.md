@@ -197,6 +197,10 @@ one canonical source Module with exact declaration dependencies.
 
 ## Bind and run compiler functions
 
+The Compiler installs Hermetic bindings for the exact arithmetic, comparison,
+logic, and helper functions declared by the embedded Prelude. Extension
+functions remain explicit:
+
 ```cpp
 compiler.bind(*estimate_decl,
               [](const joggle::ir::Function& function) -> std::int64_t {

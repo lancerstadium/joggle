@@ -104,7 +104,11 @@ transformation output and exact serialization.
 The kernel implements parsing, canonical formatting, module identity, package
 resolution, typed values, overload and dependent-type solving, staged
 execution, IR ownership, transactions, and verification. The ambient Prelude
-declares compiler domains, native scalar types, callable types, and interfaces.
+declares compiler domains, native scalar types, callable types, interfaces,
+and compiler-domain primitive functions. Those primitives use the same `fn`
+resolution and execution path as extension functions; the kernel contributes
+only their deterministic Hermetic implementations. It never evaluates an
+undeclared operator token or a magic function name.
 
 Everything specific to an AI framework, model format, hardware target, numeric
 format, schedule, simulator, or emitter belongs in installable Modules and

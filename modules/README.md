@@ -1,12 +1,17 @@
 # Modules
 
-This directory contains reusable IR Modules shipped with Joggle. They are
-ordinary installable `.joggle` packages, not compiler built-ins and not test
-fixtures.
+This directory contains reusable Modules shipped with Joggle. Their public
+semantics are ordinary `.joggle` declarations rather than hidden declaration
+kinds or test fixtures. The Prelude is embedded as the ambient language
+Module; the others are installable packages.
 
 - Native `i1/i8/i16/i32/i64`, `u8/u16/u32/u64`,
   `f16/bf16/f32/f64`, and `index` types are declarations in the automatically
   linked `prelude` Module. They need no explicit import.
+- Compiler arithmetic, comparisons, logic, `ceildiv`, `min`, and `max` are
+  ordinary Prelude `fn` declarations with deterministic Hermetic core
+  implementations. Local declarations can shadow them through the normal
+  name and operator rules.
 - `arith` defines scalar computation over Prelude types and custom types
   implementing `prelude.scalar`.
 - `tensor` defines ranked and unranked tensor values plus shape-preserving
