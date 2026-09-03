@@ -95,6 +95,35 @@ arguments execute a body or registered implementation. If a value must remain
 in the generated program, the call residualizes. Prefix `@` requires the
 result to be Known but does not select another function namespace.
 
+Compiler-side branches and loops use the same direct syntax:
+
+```joggle
+fn optimize(input: ir.module, target: device.target) -> ir.module {
+  if should_fuse(input, target) {
+    input = fuse(input, target);
+  }
+  while has_profitable_rewrite(input, target) {
+    input = rewrite_once(input, target);
+  }
+  return input;
+}
+```
+
+Under the execution contract, `Compiler::run` supplies these values as typed
+host representations. `bool` conditions therefore select a branch or continue
+a loop in the compiler. Only the selected branch executes. Step and nesting
+limits bound the computation, and a failed invocation restores checkpointed IR
+inputs.
+
+The syntax does not change for a program function. A Residual `i1` condition
+instead becomes Block successors in the current Function. This is one staged
+control-flow rule, not separate `compile_if`, `region`, or pass-pipeline syntax.
+
+The current invocation path executes external bindings and expression-bodied
+function composition. Structured host-body execution is being moved into the
+shared staged evaluator before the example above is enabled; it will not be
+implemented by extending a second pass-only interpreter.
+
 ## Rewrites and analyses
 
 Pattern rewriting, dominance, cost estimation, scheduling, simulation, and

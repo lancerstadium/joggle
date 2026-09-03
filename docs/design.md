@@ -28,6 +28,64 @@ There is one callable declaration, `fn`. Loading, conversion, transformation,
 analysis, scheduling, simulation, and emission are ordinary typed functions.
 There is no `op`/`pass` split and no fixed frontend/backend pipeline.
 
+## One execution engine
+
+Joggle does not have a type-expression interpreter, a pass interpreter, and a
+program builder with independently evolving semantics. One staged evaluator
+consumes the same function body and produces one of two outcomes for each
+value:
+
+```text
+Known(type, host value)       execute now
+Residual(type, IR value)      retain in the current Function
+```
+
+A source call first resolves one `fn` declaration. If its required inputs are
+Known and an implementation is available, the evaluator executes it. Otherwise
+it emits an ordinary call when residual execution is valid. `@expression` only
+rejects the second outcome; it is not a different invocation mechanism.
+
+The implementation separates policy from storage without duplicating language
+semantics:
+
+- the evaluator owns calls, literals, bindings, `if`, `while`, `return`, and
+  deterministic execution limits;
+- the specializer supplies residual Block and Instruction construction when an
+  evaluated value is not Known;
+- the type solver consumes Known values needed by type expressions, but does
+  not evaluate a second subset of the language.
+
+This boundary is important for compiler code. An extension declares a normal
+type, associates it with a copyable C++ representation, and binds normal
+external functions:
+
+```joggle
+type module();
+fn profitable(input: module, target: target) -> bool;
+fn fuse(input: module) -> module;
+
+fn optimize(input: module, target: target) -> module {
+  if profitable(input, target) {
+    input = fuse(input);
+  }
+  return input;
+}
+```
+
+`module` and `target` are Known host objects during compiler invocation, so the
+branch executes in the compiler. Extension authors implement only
+`profitable` and `fuse`; they do not register an evaluator, control-flow node,
+or pass class. The same body may call more text-defined functions. Calls are
+type checked at the Module boundary, host exceptions become diagnostics, input
+artifacts are checkpointed, and step/depth budgets make failure deterministic.
+
+Known computation under Residual control is deliberately constrained. A
+guarded native function is not speculatively executed. A hermetic binding may
+execute on both paths, but a path-dependent opaque host object cannot cross a
+Residual join unless its type provides an ordinary materialization function or
+both paths preserve the same Known value. The evaluator never invents a target
+representation for a compiler object.
+
 ## Ownership
 
 The two ownership trees are deliberately separate:

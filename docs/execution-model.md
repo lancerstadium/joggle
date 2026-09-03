@@ -374,6 +374,13 @@ types; Residual loops become header/body/exit Blocks with inferred loop-carried
 arguments. Configurable expression-step, loop-iteration, and nesting-depth
 budgets fail with a diagnostic instead of silently residualizing.
 
+Top-level invocation of functions over registered C++ representations still
+executes only external bindings and expression-bodied composition. Extending
+that path with an independent statement interpreter was rejected because it
+would duplicate call, operator, and control-flow semantics. The active
+milestone is to route structured host execution through the same evaluator
+used by specialization.
+
 Multi-statement expression arms, anonymous closures, allocation budgets, and
 host-object serialization remain to be implemented. Named Functions are
 already typed callable Values; outer-call constraints select generic and

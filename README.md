@@ -26,6 +26,13 @@ not additional program containers. The normative architecture and staging semant
 [the design](docs/design.md) and
 [the execution model](docs/execution-model.md).
 
+The execution design uses the same structured `fn` body for compiler
+computation and generated programs. A Known `bool` executes `if`/`while` in the
+compiler; a Residual `i1` creates typed Block edges in the Function. Extensions
+bind ordinary functions over registered C++ representations and never
+implement a Region or a second pass evaluator. Structured host-body execution
+is the current implementation milestone.
+
 The language directly supports `i1/i8/i16/i32/i64`, `u8/u16/u32/u64`,
 `f16/bf16/f32/f64`, and `index` as program value types. They require no import.
 Custom scalar formats implement the ambient `prelude.scalar` interface and can

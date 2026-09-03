@@ -48,7 +48,7 @@ using StringList = std::vector<std::string>;
 using TypeList = std::vector<Type>;
 using AttributeList = std::vector<Attribute>;
 
-using PassValue =
+using ExecutionValue =
     std::variant<std::monostate, std::int64_t, double, bool, std::string, Type,
                  Attribute, Bytes, std::shared_ptr<Function>, IntegerList,
                  RealList, BooleanList, StringList, TypeList, AttributeList,
@@ -80,7 +80,7 @@ inline bool has_domain(const Module::ParameterDecl& field,
          field.domain.text == domain && field.domain.arguments.empty();
 }
 
-template <typename T> PassValue store_pass_value(T&& value) {
+template <typename T> ExecutionValue store_execution_value(T&& value) {
   using Value = std::remove_cvref_t<T>;
   if constexpr (std::is_same_v<Value, Function>) {
     return {std::make_shared<Function>(std::forward<T>(value))};
@@ -92,7 +92,7 @@ template <typename T> PassValue store_pass_value(T&& value) {
   }
 }
 
-template <typename T> PassValue store_pass_input(T&& value) {
+template <typename T> ExecutionValue store_execution_input(T&& value) {
   using Value = std::remove_cvref_t<T>;
   if constexpr (std::is_same_v<Value, Function>) {
     static_assert(std::is_lvalue_reference_v<T>,
@@ -109,7 +109,7 @@ template <typename T> PassValue store_pass_input(T&& value) {
   }
 }
 
-template <typename T> decltype(auto) pass_argument(PassValue& value) {
+template <typename T> decltype(auto) execution_argument(ExecutionValue& value) {
   using Value = std::remove_cvref_t<T>;
   if constexpr (std::is_same_v<Value, Function>) {
     auto& function = *std::get<std::shared_ptr<Function>>(value);
@@ -127,7 +127,8 @@ template <typename T> decltype(auto) pass_argument(PassValue& value) {
   }
 }
 
-template <typename T> std::optional<T> take_pass_value(PassValue value) {
+template <typename T>
+std::optional<T> take_execution_value(ExecutionValue value) {
   using Value = std::remove_cvref_t<T>;
   if constexpr (std::is_same_v<Value, Function>) {
     auto function = std::get<std::shared_ptr<Function>>(std::move(value));
@@ -185,46 +186,47 @@ struct CallableTraits<Result (Owner::*)(Arguments...) const noexcept>
 
 template <typename Function, typename Arguments, std::size_t Offset,
           bool WithCompiler, bool WithDiagnostics, std::size_t... Indices>
-std::optional<PassValue>
-invoke_typed_pass(Function& function, Compiler& compiler,
-                  std::span<PassValue> arguments, Diagnostics& diagnostics,
-                  bool function_transform, std::index_sequence<Indices...>) {
+std::optional<ExecutionValue>
+invoke_typed_function(Function& function, Compiler& compiler,
+                      std::span<ExecutionValue> arguments,
+                      Diagnostics& diagnostics, bool function_transform,
+                      std::index_sequence<Indices...>) {
   using Traits = CallableTraits<Function>;
   using Produced = typename Traits::result;
   const auto invoke = [&]() -> Produced {
     if constexpr (WithCompiler && WithDiagnostics) {
       return std::invoke(
           function, compiler,
-          pass_argument<std::tuple_element_t<Offset + Indices, Arguments>>(
+          execution_argument<std::tuple_element_t<Offset + Indices, Arguments>>(
               arguments[Indices])...,
           diagnostics);
     } else if constexpr (WithCompiler) {
       return std::invoke(
           function, compiler,
-          pass_argument<std::tuple_element_t<Offset + Indices, Arguments>>(
+          execution_argument<std::tuple_element_t<Offset + Indices, Arguments>>(
               arguments[Indices])...);
     } else if constexpr (WithDiagnostics) {
       return std::invoke(
           function,
-          pass_argument<std::tuple_element_t<Offset + Indices, Arguments>>(
+          execution_argument<std::tuple_element_t<Offset + Indices, Arguments>>(
               arguments[Indices])...,
           diagnostics);
     } else {
       return std::invoke(
           function,
-          pass_argument<std::tuple_element_t<Offset + Indices, Arguments>>(
+          execution_argument<std::tuple_element_t<Offset + Indices, Arguments>>(
               arguments[Indices])...);
     }
   };
 
   if constexpr (std::is_void_v<Produced>) {
     invoke();
-    return PassValue{};
+    return ExecutionValue{};
   } else {
     auto produced = invoke();
     if constexpr (std::is_same_v<std::remove_cvref_t<Produced>, bool>) {
       if (function_transform) {
-        return produced ? std::optional<PassValue>{arguments.front()}
+        return produced ? std::optional<ExecutionValue>{arguments.front()}
                         : std::nullopt;
       }
     }
@@ -233,9 +235,9 @@ invoke_typed_pass(Function& function, Compiler& compiler,
       if (!produced) {
         return std::nullopt;
       }
-      return store_pass_value(std::move(*produced));
+      return store_execution_value(std::move(*produced));
     } else {
-      return store_pass_value(std::move(produced));
+      return store_execution_value(std::move(produced));
     }
   }
 }
@@ -312,8 +314,8 @@ private:
       const Subject&, std::span<const detail::ParameterValue>, Diagnostics&)>;
   template <typename Subject>
   using VerifierFunction = std::function<bool(const Subject&, Diagnostics&)>;
-  using PassFunction = std::function<std::optional<detail::PassValue>(
-      Compiler&, std::span<detail::PassValue>, Diagnostics&)>;
+  using NativeFunction = std::function<std::optional<detail::ExecutionValue>(
+      Compiler&, std::span<detail::ExecutionValue>, Diagnostics&)>;
   using RepresentationProjector = std::function<std::optional<Type>(
       Compiler&, const Module::TypeDecl&, const void*)>;
 
@@ -609,31 +611,32 @@ public:
         result_type = detail::host_type_name<Value>();
       }
     }
-    if (!check_pass_signature(schema, argument_types, result_type)) {
+    if (!check_binding_signature(schema, argument_types, result_type)) {
       return;
     }
-    PassFunction pass =
+    NativeFunction binding =
         [callable = Callable(std::forward<Function>(function)),
          function_transform](Compiler& compiler,
-                          std::span<detail::PassValue> arguments,
-                          Diagnostics& diagnostics) mutable {
+                             std::span<detail::ExecutionValue> arguments,
+                             Diagnostics& diagnostics) mutable {
           if (arguments.size() != argument_count) {
             diagnostics.report(
                 "compiler-function binding received the wrong argument count");
-            return std::optional<detail::PassValue>{};
+            return std::optional<detail::ExecutionValue>{};
           }
-          return detail::invoke_typed_pass<Callable, Arguments, offset,
-                                           with_compiler, with_diagnostics>(
+          return detail::invoke_typed_function<Callable, Arguments, offset,
+                                               with_compiler,
+                                               with_diagnostics>(
               callable, compiler, arguments, diagnostics, function_transform,
               std::make_index_sequence<argument_count>{});
         };
-    bind_pass(std::move(schema), std::move(pass), evaluation);
+    bind_native(std::move(schema), std::move(binding), evaluation);
     }
   }
 
   bool verify(const Function& function);
-  bool run(Function& function, Module::FunctionDecl pass);
-  bool run(Function& function, std::string_view pass);
+  bool run(Function& function, Module::FunctionDecl transform);
+  bool run(Function& function, std::string_view transform);
 
   template <typename Result = void, typename... Arguments>
   bool invocable(const Module::FunctionDecl& function) const {
@@ -652,7 +655,7 @@ public:
 
   template <typename Result = void, typename... Arguments>
   std::conditional_t<std::is_void_v<Result>, bool, std::optional<Result>>
-  run(Module::FunctionDecl pass, Arguments&&... arguments) {
+  run(Module::FunctionDecl function, Arguments&&... arguments) {
     const std::array<std::string_view, sizeof...(Arguments)> types{
         detail::host_type_name<Arguments>()...};
     const std::optional<std::string_view> result_type = [] {
@@ -663,31 +666,31 @@ public:
             detail::host_type_name<Result>()};
       }
     }();
-    if (!check_run_signature(pass, types, result_type)) {
+    if (!check_run_signature(function, types, result_type)) {
       if constexpr (std::is_void_v<Result>) {
         return false;
       } else {
         return std::nullopt;
       }
     }
-    std::vector<detail::PassValue> values;
+    std::vector<detail::ExecutionValue> values;
     values.reserve(sizeof...(Arguments));
-    (values.push_back(
-         detail::store_pass_input<Arguments>(std::forward<Arguments>(arguments))),
+    (values.push_back(detail::store_execution_input<Arguments>(
+         std::forward<Arguments>(arguments))),
      ...);
-    auto value = run_pass(std::move(pass), std::move(values));
+    auto value = execute(std::move(function), std::move(values));
     if constexpr (std::is_void_v<Result>) {
       return value.has_value();
     } else {
-      return value ? detail::take_pass_value<Result>(std::move(*value))
+      return value ? detail::take_execution_value<Result>(std::move(*value))
                    : std::optional<Result>{};
     }
   }
 
   template <typename Result = void, typename... Arguments>
   std::conditional_t<std::is_void_v<Result>, bool, std::optional<Result>>
-  run(std::string_view pass, Arguments&&... arguments) {
-    const auto declaration = find_pass(pass);
+  run(std::string_view name, Arguments&&... arguments) {
+    const auto declaration = find_function(name);
     if (!declaration) {
       if constexpr (std::is_void_v<Result>) {
         return false;
@@ -722,16 +725,16 @@ private:
   bool bind_representation(Module::TypeDecl schema, std::string_view type);
   bool bind_representation(Module::TypeDecl schema, std::string_view type,
                            RepresentationProjector projector);
-  bool project_host_value(detail::PassValue& value);
+  bool project_host_value(detail::ExecutionValue& value);
   bool check_host_values(const Module::FunctionDecl& function,
-                         std::span<const detail::PassValue> arguments,
-                         const detail::PassValue* result = nullptr);
+                         std::span<const detail::ExecutionValue> arguments,
+                         const detail::ExecutionValue* result = nullptr);
   bool accepts_host_type(const Module::FunctionDecl& function,
                          const Module::ParameterDecl& field,
                          std::string_view type) const;
-  void bind_pass(Module::FunctionDecl schema, PassFunction function,
+  void bind_native(Module::FunctionDecl schema, NativeFunction function,
                  HostEvaluation evaluation);
-  bool check_pass_signature(
+  bool check_binding_signature(
       const Module::FunctionDecl& schema,
       std::span<const std::string_view> inputs,
       std::optional<std::string_view> result);
@@ -743,14 +746,14 @@ private:
       const Module::FunctionDecl& schema,
       std::span<const std::string_view> inputs,
       std::optional<std::string_view> result) const;
-  std::optional<detail::PassValue>
-  run_pass(Module::FunctionDecl pass,
-           std::vector<detail::PassValue> arguments);
+  std::optional<detail::ExecutionValue>
+  execute(Module::FunctionDecl declaration,
+           std::vector<detail::ExecutionValue> arguments);
   std::optional<detail::ParameterValue>
   evaluate_binding(Module::FunctionDecl function,
                    std::span<const detail::ParameterValue> arguments,
                    bool under_residual_control);
-  std::optional<Module::FunctionDecl> find_pass(std::string_view pass);
+  std::optional<Module::FunctionDecl> find_function(std::string_view name);
   std::optional<detail::ParameterValue>
   call(const Attribute& subject, Module::InterfaceDecl::MethodDecl method,
        std::span<const detail::ParameterValue> parameters);

@@ -205,7 +205,7 @@ qualified_member(std::string_view name) {
   return std::pair{name.substr(0U, separator), name.substr(separator + 1U)};
 }
 
-std::string_view pass_value_type(const detail::PassValue& value) {
+std::string_view execution_value_type(const detail::ExecutionValue& value) {
   if (std::holds_alternative<std::int64_t>(value)) {
     return typeid(std::int64_t).name();
   }
@@ -334,30 +334,31 @@ std::optional<Module::TypeDecl> field_type_declaration(
 }
 
 template <typename T>
-std::optional<detail::PassValue> list_pass_value(const ParameterValue& value) {
+std::optional<detail::ExecutionValue>
+list_execution_value(const ParameterValue& value) {
   auto decoded = detail::decode_parameter<std::vector<T>>(value);
-  return decoded ? std::optional<detail::PassValue>{std::move(*decoded)}
+  return decoded ? std::optional<detail::ExecutionValue>{std::move(*decoded)}
                  : std::nullopt;
 }
 
-std::optional<detail::PassValue>
-pass_value(const ParameterValue& value,
-           const Module::ParameterDecl& parameter) {
+std::optional<detail::ExecutionValue>
+execution_value(const ParameterValue& value,
+                const Module::ParameterDecl& parameter) {
   const auto domain = detail::kernel_domain(parameter.domain);
   if (domain && domain->list) {
     switch (domain->element) {
     case detail::ValueKind::Integer:
-      return list_pass_value<std::int64_t>(value);
+      return list_execution_value<std::int64_t>(value);
     case detail::ValueKind::Real:
-      return list_pass_value<double>(value);
+      return list_execution_value<double>(value);
     case detail::ValueKind::Boolean:
-      return list_pass_value<bool>(value);
+      return list_execution_value<bool>(value);
     case detail::ValueKind::String:
-      return list_pass_value<std::string>(value);
+      return list_execution_value<std::string>(value);
     case detail::ValueKind::Type:
-      return list_pass_value<Type>(value);
+      return list_execution_value<Type>(value);
     case detail::ValueKind::Attribute:
-      return list_pass_value<Attribute>(value);
+      return list_execution_value<Attribute>(value);
     case detail::ValueKind::Function:
     case detail::ValueKind::Bytes:
       return std::nullopt;
@@ -365,17 +366,17 @@ pass_value(const ParameterValue& value,
   }
   switch (value.kind()) {
   case ParameterValue::Kind::I64:
-    return detail::PassValue{*value.as_i64()};
+    return detail::ExecutionValue{*value.as_i64()};
   case ParameterValue::Kind::F64:
-    return detail::PassValue{*value.as_f64()};
+    return detail::ExecutionValue{*value.as_f64()};
   case ParameterValue::Kind::Boolean:
-    return detail::PassValue{*value.as_bool()};
+    return detail::ExecutionValue{*value.as_bool()};
   case ParameterValue::Kind::String:
-    return detail::PassValue{*value.as_string()};
+    return detail::ExecutionValue{*value.as_string()};
   case ParameterValue::Kind::Type:
-    return detail::PassValue{*value.as_type()};
+    return detail::ExecutionValue{*value.as_type()};
   case ParameterValue::Kind::Attribute:
-    return detail::PassValue{*value.as_attribute()};
+    return detail::ExecutionValue{*value.as_attribute()};
   case ParameterValue::Kind::List:
     return std::nullopt;
   }
@@ -402,7 +403,7 @@ ParameterValue list_parameter_value(const std::vector<bool>& values) {
 }
 
 std::optional<ParameterValue>
-parameter_value(const detail::PassValue& value) {
+parameter_value(const detail::ExecutionValue& value) {
   if (const auto* stored = std::get_if<std::int64_t>(&value)) {
     return ParameterValue(*stored);
   }
@@ -665,9 +666,9 @@ evaluate_interface_method(bool linked, const Subject& subject,
 }
 
 template <typename Modules>
-std::optional<Module::FunctionDecl> resolve_pass(const Modules& modules,
-                                             std::string_view owner,
-                                             std::string_view reference) {
+std::optional<Module::FunctionDecl> resolve_function(const Modules& modules,
+                                                     std::string_view owner,
+                                                     std::string_view reference) {
   const std::size_t dot = reference.find('.');
   std::string_view module_name = owner;
   if (dot != std::string_view::npos) {
@@ -702,7 +703,7 @@ struct Compiler::State {
     RepresentationProjector project;
   };
   struct BoundFunction {
-    PassFunction callable;
+    NativeFunction callable;
     HostEvaluation evaluation = HostEvaluation::Guarded;
   };
   Diagnostics diagnostics;
@@ -724,7 +725,7 @@ struct Compiler::State {
       attribute_methods;
   std::map<std::string, MethodFunction<Instruction>, std::less<>>
       operation_methods;
-  std::map<std::string, BoundFunction, std::less<>> passes;
+  std::map<std::string, BoundFunction, std::less<>> bindings;
   std::map<std::string, HostRepresentation, std::less<>> host_types;
   std::map<std::string, std::string, std::less<>> host_representations;
   std::set<std::string, std::less<>> constructing_types;
@@ -2189,7 +2190,7 @@ bool Compiler::load_behavior(const Module& module,
   auto operation_verifiers = state_->operation_verifiers;
   auto attribute_methods = state_->attribute_methods;
   auto operation_methods = state_->operation_methods;
-  auto passes = state_->passes;
+  auto bindings = state_->bindings;
   auto host_types = state_->host_types;
   auto host_representations = state_->host_representations;
   const std::size_t before = state_->diagnostics.size();
@@ -2209,7 +2210,7 @@ bool Compiler::load_behavior(const Module& module,
     state_->operation_verifiers = std::move(operation_verifiers);
     state_->attribute_methods = std::move(attribute_methods);
     state_->operation_methods = std::move(operation_methods);
-    state_->passes = std::move(passes);
+    state_->bindings = std::move(bindings);
     state_->host_types = std::move(host_types);
     state_->host_representations = std::move(host_representations);
     if (!bound && state_->diagnostics.size() == before) {
@@ -2777,7 +2778,7 @@ bool Compiler::accepts_host_type(const Module::FunctionDecl& function,
          representation->second == type;
 }
 
-bool Compiler::project_host_value(detail::PassValue& value) {
+bool Compiler::project_host_value(detail::ExecutionValue& value) {
   auto* host = std::get_if<detail::HostValue>(&value);
   if (host == nullptr || host->concrete_type) {
     return true;
@@ -2814,8 +2815,8 @@ bool Compiler::project_host_value(detail::PassValue& value) {
 
 bool Compiler::check_host_values(
     const Module::FunctionDecl& function,
-    std::span<const detail::PassValue> arguments,
-    const detail::PassValue* result) {
+    std::span<const detail::ExecutionValue> arguments,
+    const detail::ExecutionValue* result) {
   const bool has_host_input =
       std::any_of(arguments.begin(), arguments.end(), [](const auto& value) {
         return std::holds_alternative<detail::HostValue>(value);
@@ -2865,7 +2866,7 @@ bool Compiler::check_host_values(
       .has_value();
 }
 
-bool Compiler::check_pass_signature(
+bool Compiler::check_binding_signature(
     const Module::FunctionDecl& schema,
     std::span<const std::string_view> inputs,
     std::optional<std::string_view> result) {
@@ -2892,7 +2893,7 @@ bool Compiler::check_pass_signature(
   return true;
 }
 
-void Compiler::bind_pass(Module::FunctionDecl schema, PassFunction function,
+void Compiler::bind_native(Module::FunctionDecl schema, NativeFunction function,
                          HostEvaluation evaluation) {
   const Module::Symbol symbol = schema.symbol();
   const auto owner = state_->modules.find(symbol.module_name());
@@ -2914,7 +2915,7 @@ void Compiler::bind_pass(Module::FunctionDecl schema, PassFunction function,
     state_->diagnostics.report("compiler-function binding is empty");
     return;
   }
-  if (!state_->passes
+  if (!state_->bindings
            .emplace(symbol.stable_name(),
                     State::BoundFunction{std::move(function), evaluation})
            .second) {
@@ -2929,8 +2930,8 @@ std::optional<detail::ParameterValue> Compiler::evaluate_binding(
     std::span<const detail::ParameterValue> arguments,
     bool under_residual_control) {
   const std::string identity = function.symbol().stable_name();
-  const auto binding = state_->passes.find(identity);
-  if (binding == state_->passes.end()) {
+  const auto binding = state_->bindings.find(identity);
+  if (binding == state_->bindings.end()) {
     state_->diagnostics.report("function '" +
                                function.symbol().qualified_name() +
                                "' has no registered evaluator");
@@ -2958,11 +2959,11 @@ std::optional<detail::ParameterValue> Compiler::evaluate_binding(
                                function.symbol().qualified_name() + "'");
     return std::nullopt;
   }
-  std::vector<detail::PassValue> values;
+  std::vector<detail::ExecutionValue> values;
   values.reserve(arguments.size());
   const auto parameters = detail::parameter_inputs(function);
   for (std::size_t index = 0; index < arguments.size(); ++index) {
-    auto converted = pass_value(arguments[index], parameters[index]);
+    auto converted = execution_value(arguments[index], parameters[index]);
     if (!converted) {
       state_->diagnostics.report(
           "registered evaluator cannot represent argument '" +
@@ -2972,7 +2973,7 @@ std::optional<detail::ParameterValue> Compiler::evaluate_binding(
     }
     values.push_back(std::move(*converted));
   }
-  std::optional<detail::PassValue> produced;
+  std::optional<detail::ExecutionValue> produced;
   try {
     produced =
         binding->second.callable(*this, values, state_->diagnostics);
@@ -3269,43 +3270,44 @@ bool Compiler::matches_run_signature(
   return input_match && result_match;
 }
 
-std::optional<Module::FunctionDecl> Compiler::find_pass(std::string_view pass) {
+std::optional<Module::FunctionDecl>
+Compiler::find_function(std::string_view name) {
   if (!state_->linked) {
     state_->diagnostics.report(
         "cannot run a compiler function before the compiler is linked");
     return std::nullopt;
   }
-  const auto member = qualified_member(pass);
+  const auto member = qualified_member(name);
   if (!member) {
-    state_->diagnostics.report("compiler-function name '" + std::string(pass) +
+    state_->diagnostics.report("compiler-function name '" + std::string(name) +
                                "' must be qualified as module.member");
     return std::nullopt;
   }
   const auto owner = state_->modules.find(member->first);
   if (owner == state_->modules.end()) {
-    state_->diagnostics.report("compiler function '" + std::string(pass) +
+    state_->diagnostics.report("compiler function '" + std::string(name) +
                                "' names an unlinked module");
     return std::nullopt;
   }
   const auto declaration = owner->second.function(member->second);
   if (!declaration) {
     state_->diagnostics.report("unknown compiler function '" +
-                               std::string(pass) + "'");
+                               std::string(name) + "'");
   }
   return declaration;
 }
 
-std::optional<detail::PassValue>
-Compiler::run_pass(Module::FunctionDecl pass,
-                   std::vector<detail::PassValue> arguments) {
+std::optional<detail::ExecutionValue>
+Compiler::execute(Module::FunctionDecl declaration,
+                   std::vector<detail::ExecutionValue> arguments) {
   if (!state_->linked) {
     state_->diagnostics.report(
         "cannot run a compiler function before the compiler is linked");
     return std::nullopt;
   }
-  if (arguments.size() != pass.inputs().size()) {
+  if (arguments.size() != declaration.inputs().size()) {
     state_->diagnostics.report("compiler function '" +
-                               pass.symbol().qualified_name() +
+                               declaration.symbol().qualified_name() +
                                "' received the wrong argument count");
     return std::nullopt;
   }
@@ -3315,23 +3317,23 @@ Compiler::run_pass(Module::FunctionDecl pass,
     }
   }
   for (std::size_t index = 0; index < arguments.size(); ++index) {
-    if (!accepts_host_type(pass, pass.inputs()[index],
-                           pass_value_type(arguments[index]))) {
+    if (!accepts_host_type(declaration, declaration.inputs()[index],
+                           execution_value_type(arguments[index]))) {
       state_->diagnostics.report("compiler function '" +
-                                 pass.symbol().qualified_name() +
+                                 declaration.symbol().qualified_name() +
                                  "' received an argument with the wrong type");
       return std::nullopt;
     }
   }
-  if (!check_host_values(pass, arguments)) {
+  if (!check_host_values(declaration, arguments)) {
     return std::nullopt;
   }
 
   std::vector<std::pair<std::shared_ptr<Function>,
                         std::shared_ptr<const Function::Snapshot>>>
       checkpoints;
-  for (detail::PassValue& argument : arguments) {
-    if (pass_value_type(argument) == typeid(Function).name()) {
+  for (detail::ExecutionValue& argument : arguments) {
+    if (execution_value_type(argument) == typeid(Function).name()) {
       auto function = std::get<std::shared_ptr<Function>>(argument);
       if (!verify(*function)) {
         return std::nullopt;
@@ -3341,8 +3343,8 @@ Compiler::run_pass(Module::FunctionDecl pass,
   }
   const std::size_t before = state_->diagnostics.size();
   const auto execute = [&](const auto& self, const Module::FunctionDecl& current,
-                           std::vector<detail::PassValue> values)
-      -> std::optional<detail::PassValue> {
+                           std::vector<detail::ExecutionValue> values)
+      -> std::optional<detail::ExecutionValue> {
     if (values.size() != current.inputs().size()) {
       state_->diagnostics.report("compiler function '" +
                                  current.symbol().qualified_name() +
@@ -3356,13 +3358,13 @@ Compiler::run_pass(Module::FunctionDecl pass,
     }
     for (std::size_t index = 0; index < values.size(); ++index) {
       if (!accepts_host_type(current, current.inputs()[index],
-                             pass_value_type(values[index]))) {
+                             execution_value_type(values[index]))) {
         state_->diagnostics.report("compiler function '" +
                                    current.symbol().qualified_name() +
                                    "' received an argument with the wrong type");
         return std::nullopt;
       }
-      if (pass_value_type(values[index]) == typeid(Function).name()) {
+      if (execution_value_type(values[index]) == typeid(Function).name()) {
         const auto function =
             std::get<std::shared_ptr<Function>>(values[index]);
         if (!function->accepts(current.symbol())) {
@@ -3378,14 +3380,14 @@ Compiler::run_pass(Module::FunctionDecl pass,
     }
     switch (current.form()) {
     case Module::FunctionDecl::Form::External: {
-      const auto binding = state_->passes.find(current.symbol().stable_name());
-      if (binding == state_->passes.end()) {
+      const auto binding = state_->bindings.find(current.symbol().stable_name());
+      if (binding == state_->bindings.end()) {
         state_->diagnostics.report("compiler function '" +
                                    current.symbol().qualified_name() +
                                    "' has no C++ binding");
         return std::nullopt;
       }
-      std::optional<detail::PassValue> execution;
+      std::optional<detail::ExecutionValue> execution;
       try {
         execution =
             binding->second.callable(*this, values, state_->diagnostics);
@@ -3410,7 +3412,7 @@ Compiler::run_pass(Module::FunctionDecl pass,
       if (!current.results().empty()) {
         if (current.results().size() != 1U ||
             !accepts_host_type(current, current.results().front(),
-                               pass_value_type(*execution))) {
+                               execution_value_type(*execution))) {
           state_->diagnostics.report("compiler function '" +
                                      current.symbol().qualified_name() +
                                      "' produced a value with the wrong type");
@@ -3431,7 +3433,7 @@ Compiler::run_pass(Module::FunctionDecl pass,
       }
       const auto evaluate = [&](const auto& evaluate_self,
                                 const Module::Expression& expression)
-          -> std::optional<detail::PassValue> {
+          -> std::optional<detail::ExecutionValue> {
         if (expression.kind == Module::Expression::Kind::Variable) {
           const auto input = std::find_if(
               current.inputs().begin(), current.inputs().end(),
@@ -3453,16 +3455,16 @@ Compiler::run_pass(Module::FunctionDecl pass,
               "' contains an unsupported expression");
           return std::nullopt;
         }
-        const auto next = resolve_pass(state_->modules,
-                                       current.symbol().module_name(),
-                                       expression.text);
+        const auto next = resolve_function(state_->modules,
+                                           current.symbol().module_name(),
+                                           expression.text);
         if (!next) {
           state_->diagnostics.report(
               "function '" + current.symbol().qualified_name() +
               "' cannot resolve callee '" + expression.text + "'");
           return std::nullopt;
         }
-        std::vector<detail::PassValue> arguments;
+        std::vector<detail::ExecutionValue> arguments;
         arguments.reserve(expression.arguments.size());
         for (const auto& argument : expression.arguments) {
           auto value = evaluate_self(evaluate_self, argument);
@@ -3485,9 +3487,9 @@ Compiler::run_pass(Module::FunctionDecl pass,
     return std::nullopt;
   };
 
-  std::optional<detail::PassValue> result;
+  std::optional<detail::ExecutionValue> result;
   try {
-    result = execute(execute, pass, std::move(arguments));
+    result = execute(execute, declaration, std::move(arguments));
   } catch (...) {
     for (auto& [function, snapshot] : checkpoints) {
       function->restore(std::move(snapshot));
@@ -3495,7 +3497,7 @@ Compiler::run_pass(Module::FunctionDecl pass,
     throw;
   }
   bool valid = result.has_value() && state_->diagnostics.size() == before;
-  if (valid && pass_value_type(*result) == typeid(Function).name()) {
+  if (valid && execution_value_type(*result) == typeid(Function).name()) {
     valid = verify(*std::get<std::shared_ptr<Function>>(*result)) && valid;
   }
   if (!valid) {
@@ -3507,14 +3509,14 @@ Compiler::run_pass(Module::FunctionDecl pass,
   return result;
 }
 
-bool Compiler::run(Function& function, Module::FunctionDecl pass) {
-  const Module::Symbol symbol = pass.symbol();
+bool Compiler::run(Function& function, Module::FunctionDecl transform) {
+  const Module::Symbol symbol = transform.symbol();
   const bool function_transform =
-      pass.inputs().size() == 1U &&
-      pass_field_domain(pass.inputs().front()) ==
+      transform.inputs().size() == 1U &&
+      pass_field_domain(transform.inputs().front()) ==
           detail::Domain{detail::ValueKind::Function, false} &&
-      pass.results().size() == 1U &&
-      pass_field_domain(pass.results().front()) ==
+      transform.results().size() == 1U &&
+      pass_field_domain(transform.results().front()) ==
           detail::Domain{detail::ValueKind::Function, false};
   if (!function_transform) {
     state_->diagnostics.report("compiler function '" +
@@ -3522,14 +3524,14 @@ bool Compiler::run(Function& function, Module::FunctionDecl pass) {
                                "' is not a function -> function transformation");
     return false;
   }
-  std::vector<detail::PassValue> arguments;
+  std::vector<detail::ExecutionValue> arguments;
   arguments.push_back(
       {std::shared_ptr<Function>(&function, [](Function*) {})});
-  return run_pass(std::move(pass), std::move(arguments)).has_value();
+  return execute(std::move(transform), std::move(arguments)).has_value();
 }
 
-bool Compiler::run(Function& function, std::string_view pass) {
-  const auto declaration = find_pass(pass);
+bool Compiler::run(Function& function, std::string_view transform) {
+  const auto declaration = find_function(transform);
   return declaration && run(function, *declaration);
 }
 
