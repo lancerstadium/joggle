@@ -145,3 +145,14 @@ Ops, 49 simulated events, 10,946,464 scratch bytes, and 29,453,374 analytical
 cycles. Nine Conv-ReLU fusions reduce these to 122 Ops, 40 events, 7,735,200
 scratch bytes, and 29,161,690 cycles. Repeated compilation and simulation
 produce the same Module digest and byte-identical artifacts.
+
+When `precision` is enabled, `module.anchor.precision.onnx` applies
+`f32_to_f16` both before and after `onnx.to_nn`. The two legal compositions
+converge to the same planned Module, resources, and timeline, demonstrating
+that the format transform is not tied to one fixed conversion rung. The f16
+artifact retains 122 Ops, nine fusions, and 40 events while reducing immutable
+data to 23,369,424 bytes and scratch to 3,867,600 bytes. It therefore fits a
+4 MiB `config` rejected by the f32 plan; under the same rates its analytical
+duration is 28,848,157 cycles. This test covers representation, composition,
+resource feasibility, and the declared performance model, not numerical
+accuracy or measured latency.

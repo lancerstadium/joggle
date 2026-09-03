@@ -51,3 +51,9 @@ current reference model converts 42 payloads from 46,738,848 to 23,369,424
 bytes and produces a deterministic 91-op f16 Module. This is a
 compiler semantic and artifact-size test; it makes no accuracy or performance
 claim.
+
+With `JOGGLE_BUILD_MODULES='anchor;onnx;precision'`, the separate
+`module.anchor.precision.onnx` test carries that format through NN conversion,
+target mapping, ReLU fusion, storage planning, simulation, and emission. It
+also checks that conversion before and after `onnx.to_nn` produces the same
+planned artifact rather than depending on a prescribed dialect order.
