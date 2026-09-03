@@ -1,6 +1,5 @@
 #pragma once
 
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -54,6 +53,16 @@ struct FunctionDefinition {
   std::optional<SourceRange> source;
 };
 
+// One Module owns one ordered function-member table. A parsed member initially
+// has a declaration; a compiler-produced member initially has materialized IR.
+// Keeping both states in the same entry lets linking/materialization converge
+// without creating a second whole-module container.
+struct FunctionMember {
+  std::string name;
+  std::optional<FunctionDefinition> declaration;
+  std::shared_ptr<ir::Function> ir;
+};
+
 }  // namespace joggle::detail
 
 struct joggle::Module::Storage {
@@ -65,9 +74,7 @@ struct joggle::Module::Storage {
   std::vector<detail::InterfaceDefinition> interfaces;
   std::vector<detail::TypeDefinition> types;
   std::vector<detail::AttributeDefinition> attributes;
-  std::vector<detail::FunctionDefinition> functions;
-  std::map<std::string, std::shared_ptr<ir::Function>, std::less<>>
-      materialized_functions;
+  std::vector<detail::FunctionMember> functions;
   mutable std::vector<std::pair<std::string, ir::Function::Revision>>
       digest_revisions;
 };

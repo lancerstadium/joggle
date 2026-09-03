@@ -134,10 +134,9 @@ bool Module::insert(std::string name, ir::Function function,
     diagnostics.report("Module function name '" + name + "' is invalid");
     return false;
   }
-  if (storage_->materialized_functions.contains(name) ||
-      std::any_of(storage_->functions.begin(), storage_->functions.end(),
-                  [&](const detail::FunctionDefinition& declaration) {
-                    return declaration.name == name;
+  if (std::any_of(storage_->functions.begin(), storage_->functions.end(),
+                  [&](const detail::FunctionMember& function) {
+                    return function.name == name;
                   })) {
     diagnostics.report("Module already contains function '" + name + "'");
     return false;
@@ -175,58 +174,73 @@ bool Module::insert(std::string name, ir::Function function,
       }
     }
   }
-  next->materialized_functions.emplace(
-      std::move(name), std::make_shared<ir::Function>(std::move(function)));
+  next->functions.push_back(
+      {std::move(name), std::nullopt,
+       std::make_shared<ir::Function>(std::move(function))});
   Module candidate(next);
   next->digest = detail::sha256(format(candidate));
   next->digest_revisions.clear();
-  next->digest_revisions.reserve(next->materialized_functions.size());
-  for (const auto& [function_name, materialized] :
-       next->materialized_functions) {
-    next->digest_revisions.emplace_back(function_name,
-                                        materialized->revision());
+  next->digest_revisions.reserve(next->functions.size());
+  for (const detail::FunctionMember& member : next->functions) {
+    if (member.ir) {
+      next->digest_revisions.emplace_back(member.name, member.ir->revision());
+    }
   }
   storage_ = std::move(next);
   return true;
 }
 
 ir::Function* Module::function(std::string_view name) {
-  const auto found = storage_->materialized_functions.find(name);
-  if (found == storage_->materialized_functions.end()) {
+  const auto found = std::find_if(
+      storage_->functions.begin(), storage_->functions.end(),
+      [&](const detail::FunctionMember& function) {
+        return function.name == name && function.ir != nullptr;
+      });
+  if (found == storage_->functions.end()) {
     return nullptr;
   }
-  if (storage_.use_count() == 1 && found->second.use_count() == 1) {
-    return found->second.get();
+  if (storage_.use_count() == 1 && found->ir.use_count() == 1) {
+    return found->ir.get();
   }
   auto next = std::make_shared<Storage>(*storage_);
-  auto selected = next->materialized_functions.find(name);
-  selected->second = std::make_shared<ir::Function>(selected->second->clone());
-  ir::Function* result = selected->second.get();
+  auto selected = std::find_if(
+      next->functions.begin(), next->functions.end(),
+      [&](const detail::FunctionMember& function) {
+        return function.name == name && function.ir != nullptr;
+      });
+  selected->ir = std::make_shared<ir::Function>(selected->ir->clone());
+  ir::Function* result = selected->ir.get();
   storage_ = std::move(next);
   return result;
 }
 
 const ir::Function* Module::function(std::string_view name) const {
-  const auto found = storage_->materialized_functions.find(name);
-  return found == storage_->materialized_functions.end() ? nullptr
-                                                         : found->second.get();
+  const auto found = std::find_if(
+      storage_->functions.begin(), storage_->functions.end(),
+      [&](const detail::FunctionMember& function) {
+        return function.name == name && function.ir != nullptr;
+      });
+  return found == storage_->functions.end() ? nullptr : found->ir.get();
 }
 
 std::vector<std::string> Module::function_names() const {
   std::vector<std::string> result;
-  result.reserve(storage_->materialized_functions.size());
-  for (const auto& [name, unused] : storage_->materialized_functions) {
-    static_cast<void>(unused);
-    result.push_back(name);
+  result.reserve(storage_->functions.size());
+  for (const detail::FunctionMember& function : storage_->functions) {
+    if (function.ir) {
+      result.push_back(function.name);
+    }
   }
+  std::sort(result.begin(), result.end());
   return result;
 }
 
 std::vector<Module::Dependency> Module::dependencies() const {
   DependencyMap found;
-  for (const auto& [name, function] : storage_->materialized_functions) {
-    static_cast<void>(name);
-    collect(found, *function);
+  for (const detail::FunctionMember& function : storage_->functions) {
+    if (function.ir) {
+      collect(found, *function.ir);
+    }
   }
   std::vector<Dependency> result;
   result.reserve(found.size());
@@ -237,7 +251,11 @@ std::vector<Module::Dependency> Module::dependencies() const {
 }
 
 std::size_t Module::function_count() const {
-  return storage_->materialized_functions.size();
+  return static_cast<std::size_t>(
+      std::count_if(storage_->functions.begin(), storage_->functions.end(),
+                    [](const detail::FunctionMember& function) {
+                      return function.ir != nullptr;
+                    }));
 }
 
 }  // namespace joggle

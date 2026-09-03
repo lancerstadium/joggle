@@ -133,6 +133,26 @@ module module_defs@1.0.0 {
                            .qualified_name() == "module_defs.callback",
                "function-reference dependencies serialize and replay");
 
+  auto mixed_main = compiler.function("module_defs.main");
+  joggle::Module mixed = *definitions;
+  joggle::Diagnostics mixed_diagnostics;
+  const bool mixed_inserted =
+      mixed_main && mixed.insert("compiled_main", std::move(*mixed_main),
+                                 mixed_diagnostics);
+  const std::string mixed_text = mixed_inserted ? joggle::format(mixed) : "";
+  joggle::Diagnostics mixed_parse_diagnostics;
+  const auto mixed_reparsed =
+      mixed_inserted
+          ? joggle::parse_module(mixed_text, mixed_parse_diagnostics,
+                                 "mixed-module.joggle")
+          : std::nullopt;
+  ok &= expect(mixed_inserted && mixed_diagnostics.ok() && mixed_reparsed &&
+                   mixed_reparsed->declaration("source") &&
+                   mixed_reparsed->declaration("compiled_main") &&
+                   mixed_text.find("import module_defs") == std::string::npos,
+               "one Module member table carries source declarations and "
+               "materialized IR without a self-import or second container");
+
   auto duplicate = compiler.function("module_defs.main");
   ok &= expect(duplicate &&
                    !module.insert("main", std::move(*duplicate), diagnostics) &&

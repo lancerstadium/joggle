@@ -1923,15 +1923,15 @@ std::string_view Module::FunctionDecl::name() const {
 
 std::span<const Module::FunctionDecl::GenericDecl>
 Module::FunctionDecl::generics() const {
-  return storage_->functions[index_].generics;
+  return storage_->functions[index_].declaration->generics;
 }
 
 std::span<const Module::ParameterDecl> Module::FunctionDecl::inputs() const {
-  return storage_->functions[index_].inputs;
+  return storage_->functions[index_].declaration->inputs;
 }
 
 std::span<const Module::ParameterDecl> Module::FunctionDecl::results() const {
-  return storage_->functions[index_].results;
+  return storage_->functions[index_].declaration->results;
 }
 
 namespace {
@@ -1994,21 +1994,22 @@ bool detail::has_default_specialization(const Module::FunctionDecl& function) {
 }
 
 std::span<const std::string> Module::FunctionDecl::interfaces() const {
-  return storage_->functions[index_].interfaces;
+  return storage_->functions[index_].declaration->interfaces;
 }
 
 std::optional<std::string_view> Module::FunctionDecl::operator_symbol() const {
-  const auto& value = storage_->functions[index_].operator_symbol;
+  const auto& value = storage_->functions[index_].declaration->operator_symbol;
   return value ? std::optional<std::string_view>{*value} : std::nullopt;
 }
 
 std::optional<Module::FunctionDecl::Fixity>
 Module::FunctionDecl::operator_fixity() const {
-  return storage_->functions[index_].operator_fixity;
+  return storage_->functions[index_].declaration->operator_fixity;
 }
 
 Module::FunctionDecl::Form Module::FunctionDecl::form() const {
-  return storage_->functions[index_].body ? Form::Body : Form::External;
+  return storage_->functions[index_].declaration->body ? Form::Body
+                                                        : Form::External;
 }
 
 const Module::Expression*
@@ -2022,7 +2023,8 @@ detail::ModuleAccess::expression(const Module::FunctionDecl& function) {
 
 const Module::Expression* detail::ModuleAccess::returned_expression(
     const Module::FunctionDecl& function) {
-  const auto& body = function.storage_->functions[function.index_].body;
+  const auto& body =
+      function.storage_->functions[function.index_].declaration->body;
   if (!body || body->blocks.size() != 1U || body->blocks.front().terminator ||
       body->blocks.front().statements.size() != 1U ||
       body->blocks.front().statements.front().kind !=
@@ -2089,7 +2091,7 @@ bool Module::FunctionDecl::operator==(const FunctionDecl& other) const {
 
 const detail::FunctionTypeContract&
 detail::FunctionTypeAccess::get(const Module::FunctionDecl& function) {
-  return function.storage_->functions[function.index_].types;
+  return function.storage_->functions[function.index_].declaration->types;
 }
 
 Module::Module(std::shared_ptr<Storage> storage)
@@ -2113,13 +2115,17 @@ Module::Module(std::string name, Version version) {
 }
 
 Module::Module(const Module& other) : storage_(other.storage_) {
-  if (storage_->materialized_functions.empty()) {
+  if (std::none_of(storage_->functions.begin(), storage_->functions.end(),
+                   [](const detail::FunctionMember& function) {
+                     return function.ir != nullptr;
+                   })) {
     return;
   }
   auto storage = std::make_shared<Storage>(*storage_);
-  for (auto& [name, function] : storage->materialized_functions) {
-    static_cast<void>(name);
-    function = std::make_shared<ir::Function>(function->fork());
+  for (detail::FunctionMember& function : storage->functions) {
+    if (function.ir) {
+      function.ir = std::make_shared<ir::Function>(function.ir->fork());
+    }
   }
   storage_ = std::move(storage);
 }
@@ -2137,11 +2143,16 @@ std::string_view Module::name() const { return storage_->name; }
 Version Module::version() const { return storage_->version; }
 
 std::string_view Module::digest() const {
-  if (!storage_->materialized_functions.empty()) {
+  if (std::any_of(storage_->functions.begin(), storage_->functions.end(),
+                  [](const detail::FunctionMember& function) {
+                    return function.ir != nullptr;
+                  })) {
     std::vector<std::pair<std::string, ir::Function::Revision>> revisions;
-    revisions.reserve(storage_->materialized_functions.size());
-    for (const auto& [name, function] : storage_->materialized_functions) {
-      revisions.emplace_back(name, function->revision());
+    revisions.reserve(storage_->functions.size());
+    for (const detail::FunctionMember& function : storage_->functions) {
+      if (function.ir) {
+        revisions.emplace_back(function.name, function.ir->revision());
+      }
     }
     if (revisions != storage_->digest_revisions) {
       storage_->digest = detail::sha256(format(*this));
@@ -2186,7 +2197,8 @@ std::vector<Module::FunctionDecl>
 Module::overloads(std::string_view name) const {
   std::vector<FunctionDecl> result;
   for (std::size_t index = 0; index < storage_->functions.size(); ++index) {
-    if (storage_->functions[index].name == name) {
+    if (storage_->functions[index].declaration &&
+        storage_->functions[index].name == name) {
       result.push_back(FunctionDecl(storage_, index));
     }
   }
@@ -2227,7 +2239,9 @@ std::vector<Module::Symbol> Module::members() const {
   append(SymbolKind::Type, storage_->types);
   append(SymbolKind::Attribute, storage_->attributes);
   for (std::size_t index = 0; index < storage_->functions.size(); ++index) {
-    result.push_back(FunctionDecl(storage_, index).symbol());
+    if (storage_->functions[index].declaration) {
+      result.push_back(FunctionDecl(storage_, index).symbol());
+    }
   }
   return result;
 }
@@ -2263,7 +2277,9 @@ std::vector<Module::FunctionDecl> Module::declarations() const {
   std::vector<FunctionDecl> result;
   result.reserve(storage_->functions.size());
   for (std::size_t index = 0; index < storage_->functions.size(); ++index) {
-    result.push_back(FunctionDecl(storage_, index));
+    if (storage_->functions[index].declaration) {
+      result.push_back(FunctionDecl(storage_, index));
+    }
   }
   return result;
 }
@@ -2280,7 +2296,12 @@ detail::ModuleAccess::body(const Module& module,
       function.index_ >= module.storage_->functions.size()) {
     return nullptr;
   }
-  const auto& body = module.storage_->functions[function.index_].body;
+  const auto& declaration =
+      module.storage_->functions[function.index_].declaration;
+  if (!declaration) {
+    return nullptr;
+  }
+  const auto& body = declaration->body;
   if (!body) {
     return nullptr;
   }
@@ -2308,8 +2329,16 @@ std::optional<SourceRange> detail::ModuleAccess::declaration_source(
     return find_source(module.storage_->types);
   case Module::SymbolKind::Attribute:
     return find_source(module.storage_->attributes);
-  case Module::SymbolKind::Function:
-    return find_source(module.storage_->functions);
+  case Module::SymbolKind::Function: {
+    const auto found = std::find_if(
+        module.storage_->functions.begin(), module.storage_->functions.end(),
+        [&](const detail::FunctionMember& function) {
+          return function.declaration && function.name == name;
+        });
+    return found != module.storage_->functions.end()
+               ? found->declaration->source
+               : std::optional<SourceRange>{};
+  }
   }
   return std::nullopt;
 }
@@ -2329,7 +2358,12 @@ std::optional<Module> parse_module(std::string_view text,
   storage->interfaces = std::move(parsed->interfaces);
   storage->types = std::move(parsed->types);
   storage->attributes = std::move(parsed->attributes);
-  storage->functions = std::move(parsed->functions);
+  storage->functions.reserve(parsed->functions.size());
+  for (detail::FunctionDefinition& function : parsed->functions) {
+    std::string name = function.name;
+    storage->functions.push_back(
+        {std::move(name), std::move(function), nullptr});
+  }
   Module module(storage);
   storage->digest = detail::sha256(format(module));
   return module;
@@ -2505,8 +2539,18 @@ std::string format(const Module& module) {
     output << interfaces_text(attribute.interfaces);
     output << ";\n";
   }
-  begin_group(!module.storage_->functions.empty());
-  for (const auto& function : module.storage_->functions) {
+  const bool has_declarations =
+      std::any_of(module.storage_->functions.begin(),
+                  module.storage_->functions.end(),
+                  [](const detail::FunctionMember& function) {
+                    return function.declaration.has_value();
+                  });
+  begin_group(has_declarations);
+  for (const detail::FunctionMember& member : module.storage_->functions) {
+    if (!member.declaration) {
+      continue;
+    }
+    const detail::FunctionDefinition& function = *member.declaration;
     std::string head = "  fn " + function.name;
     if (!function.generics.empty()) {
       std::vector<std::string> generics;
@@ -2643,9 +2687,27 @@ std::string format(const Module& module) {
     }
     output << ";\n";
   }
-  begin_group(!module.storage_->materialized_functions.empty());
-  for (const auto& [name, function] : module.storage_->materialized_functions) {
-    write_indented(output, joggle::format(*function, name));
+  const bool has_materialized =
+      std::any_of(module.storage_->functions.begin(),
+                  module.storage_->functions.end(),
+                  [](const detail::FunctionMember& function) {
+                    return function.ir != nullptr;
+                  });
+  begin_group(has_materialized);
+  std::vector<const detail::FunctionMember*> materialized;
+  materialized.reserve(module.storage_->functions.size());
+  for (const detail::FunctionMember& function : module.storage_->functions) {
+    if (function.ir) {
+      materialized.push_back(&function);
+    }
+  }
+  std::sort(materialized.begin(), materialized.end(),
+            [](const detail::FunctionMember* left,
+               const detail::FunctionMember* right) {
+              return left->name < right->name;
+            });
+  for (const detail::FunctionMember* function : materialized) {
+    write_indented(output, joggle::format(*function->ir, function->name));
   }
   output << "}\n";
   return output.str();
