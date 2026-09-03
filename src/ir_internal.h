@@ -17,23 +17,23 @@ struct FunctionState;
 struct FunctionAccess {
   static const std::shared_ptr<FunctionIdentity>& owner(const Value& value);
   static const std::shared_ptr<FunctionIdentity>&
-  owner(const Instruction& instruction);
+  owner(const Op& op);
   static const std::shared_ptr<FunctionIdentity>& owner(const Block& block);
   static const std::shared_ptr<const KnownValueStorage>&
   known(const Value& value);
 
   static std::uint64_t id(const Value& value);
-  static std::uint64_t id(const Instruction& instruction);
+  static std::uint64_t id(const Op& op);
   static std::uint64_t id(const Block& block);
   static Value restore(std::shared_ptr<FunctionIdentity> function,
                        std::uint64_t id,
                        std::shared_ptr<const KnownValueStorage> known);
 
-  static void locate(Function::Edit& edit, const Instruction& instruction,
+  static void locate(Function::Edit& edit, const Op& op,
                      SourceRange source);
-  static std::optional<SourceRange> location(const Instruction& instruction);
+  static std::optional<SourceRange> location(const Op& op);
   static std::optional<ParameterValue> known_value(const Value& value);
-  static std::size_t argument_parameter(const Instruction& instruction,
+  static std::size_t argument_parameter(const Op& op,
                                         std::size_t argument);
   static bool verify_structure(const Function& function,
                                Diagnostics& diagnostics);

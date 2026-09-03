@@ -67,15 +67,15 @@ int main() {
     }
     return true;
   });
-  const auto same_type = [](const joggle::Instruction& instruction,
+  const auto same_type = [](const joggle::Op& op,
                             joggle::Diagnostics& diagnostics) {
-    const auto arguments = instruction.arguments();
-    const auto results = instruction.results();
+    const auto arguments = op.arguments();
+    const auto results = op.results();
     if (results.empty() ||
         std::any_of(arguments.begin(), arguments.end(), [&](const auto& value) {
           return value.type() != results[0].type();
         })) {
-      diagnostics.report("integer Instruction types must agree");
+      diagnostics.report("integer Op types must agree");
       return false;
     }
     return true;
@@ -88,12 +88,12 @@ int main() {
       [cast_schema](joggle::Function function, joggle::Diagnostics& diagnostics)
           -> std::optional<joggle::Function> {
         auto edit = function.edit();
-        for (const joggle::Instruction& instruction : function.instructions()) {
-          if (instruction.callee() != *cast_schema) {
+        for (const joggle::Op& op : function.ops()) {
+          if (op.callee() != *cast_schema) {
             continue;
           }
-          edit.replace(instruction.result(0), instruction.arguments().front());
-          edit.erase(instruction);
+          edit.replace(op.result(0), op.arguments().front());
+          edit.erase(op);
         }
         if (!edit.commit(diagnostics)) {
           return std::nullopt;
@@ -104,7 +104,7 @@ int main() {
   std::size_t query_runs = 0;
   const auto compute_nodes = [&](const joggle::Function& function) {
     ++query_runs;
-    return function.instructions().size();
+    return function.ops().size();
   };
 
   compiler.bind(
@@ -113,22 +113,22 @@ int main() {
           joggle::Function function,
           joggle::Diagnostics& diagnostics) -> std::optional<joggle::Function> {
         static_cast<void>(compute_nodes(function));
-        const auto operations = function.instructions();
+        const auto operations = function.ops();
         const bool has_marker =
             std::any_of(operations.begin(), operations.end(),
-                        [](const joggle::Instruction& instruction) {
-                          return instruction.callee().name() == "marker";
+                        [](const joggle::Op& op) {
+                          return op.callee().name() == "marker";
                         });
         if (!has_marker) {
           return function;
         }
         auto edit = function.edit();
-        for (const joggle::Instruction& instruction : operations) {
-          if (instruction.callee().name() != "marker") {
+        for (const joggle::Op& op : operations) {
+          if (op.callee().name() != "marker") {
             continue;
           }
-          edit.replace(instruction.result(0), instruction.arguments()[0]);
-          edit.erase(instruction);
+          edit.replace(op.result(0), op.arguments()[0]);
+          edit.erase(op);
         }
         if (!edit.commit(diagnostics)) {
           return std::nullopt;
@@ -157,13 +157,13 @@ int main() {
   }
 
   bool ok = true;
-  ok &= expect(compiler.verify(*function), "native Instruction verification");
+  ok &= expect(compiler.verify(*function), "native Op verification");
   auto optimized = compiler.run<joggle::Function>(*optimize_schema, *function);
   ok &= expect(optimized.has_value(), "composed native transformations run");
   if (optimized) {
     function = std::move(optimized);
   }
-  ok &= expect(function->instructions().size() == 1U,
+  ok &= expect(function->ops().size() == 1U,
                "a compiler function transforms through Function::Edit");
   ok &=
       expect(query_runs == 1U,
@@ -173,7 +173,7 @@ int main() {
                 [marker_schema](joggle::Compiler&, joggle::Function current,
                                 joggle::Diagnostics& diagnostics)
                     -> std::optional<joggle::Function> {
-                  const auto producer = current.instructions().front();
+                  const auto producer = current.ops().front();
                   auto edit = current.edit();
                   edit.append(*marker_schema, {producer.result(0)});
                   if (!edit.commit(diagnostics)) {
@@ -183,7 +183,7 @@ int main() {
                 });
   const auto aborted = compiler.run<joggle::Function>(*abort_schema, *function);
   ok &= expect(!aborted, "a failing compiler function reports failure");
-  ok &= expect(function->instructions().size() == 1U,
+  ok &= expect(function->ops().size() == 1U,
                "function-level checkpoint restores committed inner edits");
 
   joggle::Compiler invalid;
@@ -265,8 +265,8 @@ module throwing@1.0.0 {
                     throw 1;
                   });
   throwing.verify(*throwing_cast,
-                  [](const joggle::Instruction&) -> bool {
-                    throw std::runtime_error("Instruction verifier exception");
+                  [](const joggle::Op&) -> bool {
+                    throw std::runtime_error("Op verifier exception");
                   });
   const auto rejected_type = throwing.make(*throwing_integer, 16);
   const auto rejected_attribute = throwing.make(*throwing_tag, 1);
@@ -285,17 +285,17 @@ module throwing@1.0.0 {
         return diagnostic.message.find("unknown exception") !=
                std::string::npos;
       });
-  const bool locates_instruction_exception = std::any_of(
+  const bool locates_op_exception = std::any_of(
       throwing_diagnostics.begin(), throwing_diagnostics.end(),
       [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find("Instruction verifier exception") !=
+        return diagnostic.message.find("Op verifier exception") !=
                    std::string::npos &&
                diagnostic.source.has_value();
       });
   ok &= expect(!rejected_type && !rejected_attribute && !rejected_function &&
                    thrown_diagnostics == 3 && reports_unknown_exception &&
-                   locates_instruction_exception,
-               "Type, Attribute, and Instruction verifier exceptions become "
+                   locates_op_exception,
+               "Type, Attribute, and Op verifier exceptions become "
                "ordinary diagnostics");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;

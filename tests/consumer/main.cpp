@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
     return 1;
   }
   function = std::move(transformed);
-  const auto operations = function->instructions();
+  const auto operations = function->ops();
   if (operations.size() != 1U || operations.front().callee() != *converted) {
     compiler.diagnostics().print(std::cerr);
     return 1;

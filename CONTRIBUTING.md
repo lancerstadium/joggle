@@ -1,7 +1,7 @@
 # Contributing to Joggle
 
 Joggle is intentionally small. Changes should preserve one canonical text
-Module model and the Function/Block/Instruction/Value ownership hierarchy. A
+Module model and the Function/Block/Op/Value ownership hierarchy. A
 def-use graph or CFG is a non-owning relation over a Function, not another IR
 container. New domain concepts normally belong in an installable Module rather
 than the core.
@@ -26,7 +26,7 @@ Before submitting a change:
 ## Compatibility
 
 The `joggle 1;` header versions the text language. Module semantic versions
-version extension schemas. Behavior libraries bind to the exact canonical
+version Module schemas. Behavior libraries bind to the exact canonical
 Module digest and host ABI; changing a Module requires rebuilding its behavior.
 
 Public C++ headers live in `include/joggle`. Implementation-only types stay in

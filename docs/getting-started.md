@@ -15,7 +15,7 @@ ctest --test-dir build --output-on-failure
 For a separate consumer project, install Joggle and use
 `find_package(Joggle CONFIG REQUIRED)`.
 
-## 2. Declare an extension
+## 2. Declare a Module
 
 Create `example.joggle`:
 
@@ -69,11 +69,11 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Function function,
           joggle::Diagnostics& edit_diagnostics)
           -> std::optional<joggle::Function> {
-        const auto instructions = function.instructions();
+        const auto ops = function.ops();
         auto edit = function.edit();
-        for (const auto& instruction : instructions) {
-          if (instruction.callee() == keep) {
-            edit.replace(instruction, replacement);
+        for (const auto& op : ops) {
+          if (op.callee() == keep) {
+            edit.replace(op, replacement);
           }
         }
         if (!edit.commit(edit_diagnostics)) {
@@ -119,7 +119,7 @@ joggle check example.joggle --behavior build/example_behavior.dylib
 
 Use the platform suffix produced by CMake: `.so`, `.dylib`, or `.dll`.
 `joggle_add_behavior` embeds the canonical Module identity in a generated,
-hidden translation unit; extension code includes only the stable generic API.
+hidden translation unit; Module code includes only the stable generic API.
 
 ## 5. Run a compiler function
 

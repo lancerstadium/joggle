@@ -1,6 +1,6 @@
-# Extensions
+# Modules and native behavior
 
-An extension consists of canonical Module source and, only when necessary, a
+A package consists of canonical Module source and, only when necessary, a
 platform-specific behavior library. Source owns declarations, signatures,
 interfaces, defaults, and dependent types. C++ supplies behavior that cannot
 or should not be written as a Joggle body.
@@ -9,7 +9,7 @@ or should not be written as a Joggle body.
 
 A Module should own one coherent vocabulary, not one position in a global
 pipeline. Typical boundaries are a model format, tensor algebra, numeric
-format, target instruction family, layout system, simulator state, or emitted
+format, target op family, layout system, simulator state, or emitted
 artifact.
 
 Conversions belong to bridge Modules:
@@ -98,7 +98,7 @@ of using a hidden success convention. Signature mismatches are reported when
 binding, not deferred to invocation.
 
 Before a binding receives a `Function` or `Module`, the compiler validates its
-materialized IR against the linked contracts and extension verifiers. Returned
+materialized IR against the linked contracts and Module verifiers. Returned
 artifacts are checked again before they can flow to the next typed function.
 
 Bindings default to guarded host evaluation. Use the explicit
@@ -137,18 +137,18 @@ use the public registration mechanism and require no core class.
 ## Verifiers and interface behavior
 
 `compiler.verify(declaration, callback)` attaches semantic checks to a Type,
-Attribute, or residual Instruction declaration. The callback receives
+Attribute, or residual Op declaration. The callback receives
 `const joggle::Type&`, `const joggle::Attribute&`, or
-`const joggle::Instruction&`; it returns `bool` and may accept Diagnostics
+`const joggle::Op&`; it returns `bool` and may accept Diagnostics
 last. This explicit API keeps `bind` reserved for implementations whose C++
 inputs and outputs match a declared `fn`. There is no verifier declaration kind
 or trait class. Verifier and interface-method exceptions become diagnostics;
-extension callbacks never throw through the Compiler API. Core verification
+Module callbacks never throw through the Compiler API. Core verification
 always checks ownership, arity, types, CFG structure, SSA, and declaration
-contracts before extension verifiers run.
+contracts before Module verifiers run.
 
 Interface methods are bound against a reflected method declaration and called
-on an Attribute or Instruction. Type-interface fields are different: they are
+on an Attribute or Op. Type-interface fields are different: they are
 declarative values computed by the type declaration and read with
 `Type::get<T>`; they are not dynamic callbacks.
 
@@ -160,7 +160,6 @@ A behavior library exports one versioned descriptor:
 void bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
   // Reflect declarations and attach behavior.
-  return true;
 }
 
 JOGGLE_EXPORT_BEHAVIOR(bind)
@@ -192,5 +191,5 @@ the previous Function.
 
 Prefer declarations for concepts that must survive serialization. Prefer C++
 only for algorithms, external libraries, file formats, or host integration.
-Do not encode target policy in the core merely to make one extension easier;
+Do not encode target policy in the core merely to make one Module easier;
 declare a target type and pass it explicitly through typed compiler functions.

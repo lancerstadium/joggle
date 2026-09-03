@@ -99,7 +99,7 @@ int main() {
   }
 
   const auto module = compiler.module("logic");
-  const auto operations = function->instructions();
+  const auto operations = function->ops();
   bool ok = true;
   ok &= expect(module.has_value(), "the function owner remains available");
   const auto configured_decl =
@@ -161,12 +161,12 @@ int main() {
                        std::optional<std::int64_t>{8} &&
                    callback_results->front().get<std::int64_t>("width") ==
                        std::optional<std::int64_t>{16} &&
-                   callback_user->instructions().size() == 1U,
+                   callback_user->ops().size() == 1U,
                "function type syntax constructs a reflected callable type "
                "and participates in generic call inference");
   const auto callback_operations = callback_value
-                                       ? callback_value->instructions()
-                                       : std::vector<joggle::Instruction>{};
+                                       ? callback_value->ops()
+                                       : std::vector<joggle::Op>{};
   const auto applied_arguments = callback_operations.size() == 1U
                                      ? callback_operations.front().arguments()
                                      : std::vector<joggle::Value>{};
@@ -178,7 +178,7 @@ int main() {
                  referenced->symbol().qualified_name() == "logic.callback" &&
                  applied_arguments[1].type().schema().name() == "callable",
              "a named function is a typed module value without a region "
-             "or wrapper instruction");
+             "or wrapper op");
   const std::string callback_text =
       callback_value ? joggle::format(*callback_value, "compiled_callback")
                      : "";
@@ -199,13 +199,13 @@ int main() {
                        callback_text,
                "named function values format and instantiate canonically");
   const auto generic_arguments =
-      generic_callback_value && !generic_callback_value->instructions().empty()
-          ? generic_callback_value->instructions().front().arguments()
+      generic_callback_value && !generic_callback_value->ops().empty()
+          ? generic_callback_value->ops().front().arguments()
           : std::vector<joggle::Value>{};
   const auto overloaded_arguments =
       overloaded_callback_value &&
-              !overloaded_callback_value->instructions().empty()
-          ? overloaded_callback_value->instructions().front().arguments()
+              !overloaded_callback_value->ops().empty()
+          ? overloaded_callback_value->ops().front().arguments()
           : std::vector<joggle::Value>{};
   const auto generic_reference =
       generic_arguments.size() == 2U
@@ -254,13 +254,13 @@ int main() {
                "type across canonical serialization");
   const auto direct_generic_arguments =
       direct_generic_callback_value &&
-              direct_generic_callback_value->instructions().size() == 1U
-          ? direct_generic_callback_value->instructions().front().arguments()
+              direct_generic_callback_value->ops().size() == 1U
+          ? direct_generic_callback_value->ops().front().arguments()
           : std::vector<joggle::Value>{};
   const auto direct_overloaded_arguments =
       direct_overloaded_callback_value &&
-              direct_overloaded_callback_value->instructions().size() == 1U
-          ? direct_overloaded_callback_value->instructions().front().arguments()
+              direct_overloaded_callback_value->ops().size() == 1U
+          ? direct_overloaded_callback_value->ops().front().arguments()
           : std::vector<joggle::Value>{};
   ok &= expect(direct_generic_arguments.size() == 2U &&
                    direct_generic_arguments[1].referenced_function() &&
@@ -299,7 +299,7 @@ module invalid_callback@1.0.0 {
   const auto reflected_function =
       main_symbol ? compiler.materialize(*main_symbol) : std::nullopt;
   ok &= expect(reflected_function &&
-                   reflected_function->instructions().size() == 2U,
+                   reflected_function->ops().size() == 2U,
                "a reflected function symbol opens without rebuilding its name");
   ok &= expect(function->declaration() && main_symbol &&
                    function->declaration()->symbol() == *main_symbol &&
@@ -314,7 +314,7 @@ module invalid_callback@1.0.0 {
                    function->result_types().front() ==
                        operations.back().result(0).type(),
                "a concrete function signature and its SSA boundary agree");
-  ok &= expect(operations.front().get<std::string>("name") ==
+  ok &= expect(operations.front().property<std::string>("name") ==
                    "input } // still a string",
                "function boundaries are parsed by the real string grammar");
 
@@ -507,11 +507,11 @@ module cfg@1.0.0 {
   const std::string cfg_ir =
       cfg_function ? joggle::format(*cfg_function, "choose") : std::string{};
   const auto materialized_operations = cfg_materialized
-                                           ? cfg_materialized->instructions()
-                                           : std::vector<joggle::Instruction>{};
+                                           ? cfg_materialized->ops()
+                                           : std::vector<joggle::Op>{};
   const auto early_literal_operations =
-      cfg_early_literal ? cfg_early_literal->instructions()
-                        : std::vector<joggle::Instruction>{};
+      cfg_early_literal ? cfg_early_literal->ops()
+                        : std::vector<joggle::Op>{};
   ok &= expect(
       cfg_function && cfg_structured && cfg_specialized && cfg_nested &&
           cfg_materialized && cfg_compiler.verify(*cfg_function) &&
@@ -523,11 +523,11 @@ module cfg@1.0.0 {
           cfg_structured->blocks().size() == 4U &&
           cfg_specialized->blocks().size() == 1U &&
           cfg_nested->blocks().size() == 7U &&
-          cfg_structured->instructions().size() == 2U &&
-          cfg_specialized->instructions().size() == 1U &&
-          cfg_nested->instructions().size() == 3U &&
+          cfg_structured->ops().size() == 2U &&
+          cfg_specialized->ops().size() == 1U &&
+          cfg_nested->ops().size() == 3U &&
           cfg_specialized->entry().terminator().returned().front() ==
-              cfg_specialized->instructions().front().result(0) &&
+              cfg_specialized->ops().front().result(0) &&
           cfg_function->entry().terminator().kind() ==
               joggle::Terminator::Kind::Branch &&
           cfg_structured->entry().terminator().kind() ==
@@ -542,11 +542,11 @@ module cfg@1.0.0 {
       "format without a nested ownership container");
   ok &= expect(
       cfg_materialized && cfg_materialized->blocks().size() == 4U &&
-          cfg_materialized->instructions().size() == 2U &&
+          cfg_materialized->ops().size() == 2U &&
           std::all_of(materialized_operations.begin(),
                       materialized_operations.end(),
-                      [](const joggle::Instruction& instruction) {
-                        return instruction.callee().name() == "integer_literal";
+                      [](const joggle::Op& op) {
+                        return op.callee().name() == "integer_literal";
                       }) &&
           cfg_materialized->result_types().front() ==
               cfg_materialized->blocks().back().arguments().front().type(),
@@ -559,12 +559,12 @@ module cfg@1.0.0 {
           cfg_compiler.verify(*cfg_statement_specialized) &&
           cfg_compiler.verify(*cfg_statement_without_else) &&
           cfg_statement_branch->blocks().size() == 4U &&
-          cfg_statement_branch->instructions().size() == 2U &&
+          cfg_statement_branch->ops().size() == 2U &&
           cfg_statement_branch->blocks().back().arguments().size() == 1U &&
           cfg_statement_specialized->blocks().size() == 1U &&
-          cfg_statement_specialized->instructions().size() == 1U &&
+          cfg_statement_specialized->ops().size() == 1U &&
           cfg_statement_without_else->blocks().size() == 4U &&
-          cfg_statement_without_else->instructions().size() == 1U &&
+          cfg_statement_without_else->ops().size() == 1U &&
           cfg_statement_without_else->blocks().back().arguments().size() == 1U,
       "statement if specializes Known control and automatically "
       "merges outer rebindings under Residual control");
@@ -577,19 +577,19 @@ module cfg@1.0.0 {
           cfg_compiler.verify(*cfg_loop_return) &&
           cfg_compiler.verify(*cfg_early_literal) &&
           cfg_early_return->blocks().size() == 3U &&
-          cfg_early_return->instructions().size() == 2U &&
+          cfg_early_return->ops().size() == 2U &&
           cfg_early_return_both->blocks().size() == 3U &&
-          cfg_early_return_both->instructions().size() == 2U &&
+          cfg_early_return_both->ops().size() == 2U &&
           cfg_specialized_return->blocks().size() == 1U &&
-          cfg_specialized_return->instructions().size() == 1U &&
+          cfg_specialized_return->ops().size() == 1U &&
           cfg_loop_return->blocks().size() == 4U &&
-          cfg_loop_return->instructions().size() == 2U &&
+          cfg_loop_return->ops().size() == 2U &&
           cfg_early_literal->blocks().size() == 3U &&
-          cfg_early_literal->instructions().size() == 2U &&
+          cfg_early_literal->ops().size() == 2U &&
           std::all_of(early_literal_operations.begin(),
                       early_literal_operations.end(),
-                      [](const joggle::Instruction& instruction) {
-                        return instruction.callee().name() == "integer_literal";
+                      [](const joggle::Op& op) {
+                        return op.callee().name() == "integer_literal";
                       }),
       "structured returns terminate only their selected control "
       "paths without a Region or synthetic merge");
@@ -819,7 +819,7 @@ module loops@1.0.0 {
                    : std::optional<joggle::Function>{};
   ok &= expect(repeat && loop_compiler.verify(*repeat) &&
                    repeat->blocks().size() == 4U &&
-                   repeat->instructions().size() == 2U &&
+                   repeat->ops().size() == 2U &&
                    repeat->entry().terminator().kind() ==
                        joggle::Terminator::Kind::Jump &&
                    repeat->blocks()[1].arguments().size() == 1U &&
@@ -830,22 +830,22 @@ module loops@1.0.0 {
                "arguments");
   ok &= expect(count_from_zero && loop_compiler.verify(*count_from_zero) &&
                    count_from_zero->blocks().size() == 4U &&
-                   count_from_zero->instructions().size() == 3U &&
-                   count_from_zero->instructions().front().callee().name() ==
+                   count_from_zero->ops().size() == 3U &&
+                   count_from_zero->ops().front().callee().name() ==
                        "integer_literal",
                "a typed Known initializer materializes before becoming a "
                "Residual loop-carried value");
   ok &= expect(specialize && loop_compiler.verify(*specialize) &&
                    specialize->blocks().size() == 1U &&
-                   specialize->instructions().size() == 1U &&
+                   specialize->ops().size() == 1U &&
                    specialize->result_types().front() ==
-                       specialize->instructions().front().result(0).type(),
+                       specialize->ops().front().result(0).type(),
                "Known loops execute during specialization without entering "
                "the residual CFG");
   ok &= expect(
       controlled && loop_compiler.verify(*controlled) &&
           controlled->blocks().size() == 8U &&
-          controlled->instructions().size() == 4U &&
+          controlled->ops().size() == 4U &&
           controlled->blocks()[1].arguments().size() == 1U &&
           controlled->predecessors(controlled->blocks()[1]).size() == 3U &&
           controlled->predecessors(controlled->blocks()[3]).size() == 2U,
@@ -935,8 +935,8 @@ module mixed_loop_transfer@1.0.0 {
   };
   std::vector<std::int64_t> mixed_break_literals;
   if (mixed_break) {
-    for (const auto& instruction : mixed_break->instructions()) {
-      if (const auto value = instruction.get<std::int64_t>("value")) {
+    for (const auto& op : mixed_break->ops()) {
+      if (const auto value = op.property<std::int64_t>("value")) {
         mixed_break_literals.push_back(*value);
       }
     }
@@ -995,11 +995,11 @@ module cyclic_mixed_loop@1.0.0 {
   std::vector<bool> cyclic_literals;
   std::vector<std::int64_t> cyclic_integer_literals;
   if (cyclic_mixed_loop_function) {
-    for (const auto& instruction : cyclic_mixed_loop_function->instructions()) {
-      if (const auto value = instruction.get<bool>("value")) {
+    for (const auto& op : cyclic_mixed_loop_function->ops()) {
+      if (const auto value = op.property<bool>("value")) {
         cyclic_literals.push_back(*value);
       }
-      if (const auto value = instruction.get<std::int64_t>("value")) {
+      if (const auto value = op.property<std::int64_t>("value")) {
         cyclic_integer_literals.push_back(*value);
       }
     }
@@ -1094,7 +1094,7 @@ module unconstrained_cycle@1.0.0 {
   ok &= expect(unconstrained_cycle_linked && unconstrained_cycle_function &&
                    unconstrained_cycle.verify(*unconstrained_cycle_function) &&
                    has_backedge(*unconstrained_cycle_function) &&
-                   unconstrained_cycle_function->instructions().empty(),
+                   unconstrained_cycle_function->ops().empty(),
                "control-state specialization needs no target width for an "
                "unconstrained compiler integer");
 
@@ -1309,8 +1309,8 @@ module dependent@1.0.0 {
                                 ? dependent.materialize("dependent.inferred")
                                 : std::nullopt;
   const auto dependent_operations = dependent_function
-                                        ? dependent_function->instructions()
-                                        : std::vector<joggle::Instruction>{};
+                                        ? dependent_function->ops()
+                                        : std::vector<joggle::Op>{};
   const auto dependent_width =
       dependent_operations.empty()
           ? std::optional<std::int64_t>{}
@@ -1361,7 +1361,7 @@ module dependent@1.0.0 {
   }
   ok &= expect(inconsistent_rejected &&
                    inconsistent_function->arguments().empty() &&
-                   inconsistent_function->instructions().empty(),
+                   inconsistent_function->ops().empty(),
                "commit validates an explicit result against its dependent "
                "known argument and rolls back on mismatch");
 
@@ -1426,7 +1426,7 @@ module dependent@1.0.0 {
   ok &= expect(named_width && *named_width == 12 &&
                    defaulted.verify(*named_function),
                "a Known C++ argument participates in result inference at "
-               "Instruction creation");
+               "Op creation");
 
   bool extra_argument_rejected = false;
   try {
@@ -1644,10 +1644,10 @@ module computed@1.0.0 {
           *main_width == 8 && *packed_width == 15 && *aligned_width == 16 &&
           *compile_time_operator_width == 8 &&
           *compile_time_branch_width == 8 && *compile_time_host_width == 14 &&
-          sum_function->instructions().size() == 1U &&
-          sum_function->instructions().front().callee().name() == "add" &&
-          quotient_function->instructions().size() == 1U &&
-          quotient_function->instructions().front().callee().name() ==
+          sum_function->ops().size() == 1U &&
+          sum_function->ops().front().callee().name() == "add" &&
+          quotient_function->ops().size() == 1U &&
+          quotient_function->ops().front().callee().name() ==
               "floor_word" &&
           computed_text.find("word<W + 1>") != std::string::npos &&
           computed_text.find("word<ceildiv(M * N, 8)>") != std::string::npos &&
@@ -1890,8 +1890,8 @@ module imported_operator@1.0.0 {
     imported_operator.diagnostics().print(std::cerr);
   }
   ok &= expect(imported_operator_function &&
-                   imported_operator_function->instructions().size() == 1U &&
-                   imported_operator_function->instructions()
+                   imported_operator_function->ops().size() == 1U &&
+                   imported_operator_function->ops()
                            .front()
                            .callee()
                            .symbol()
@@ -2272,8 +2272,8 @@ module staged_control@1.0.0 {
           count == std::optional<std::int64_t>{3} && specialized && pipeline &&
           specialized->arguments().front().type().get<std::int64_t>("width") ==
               std::optional<std::int64_t>{8} &&
-          specialized->instructions().size() == 1U &&
-          pipeline->instructions().size() == 2U,
+          specialized->ops().size() == 1U &&
+          pipeline->ops().size() == 2U,
       "generic bindings are ordinary Known locals that drive if, while, for, "
       "dependent types, and deterministic residual expansion");
 

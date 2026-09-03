@@ -22,7 +22,7 @@ joggle::Module
   └─ joggle::Module::FunctionDecl
        └─ optional joggle::Function body
             └─ joggle::Block
-                 ├─ joggle::Instruction
+                 ├─ joggle::Op
                  ├─ joggle::Value
                  └─ joggle::Terminator
 ```
@@ -43,7 +43,7 @@ therefore creates a body, not another Module representation.
 `Module::insert` turns a standalone Function into a real member: it creates
 one declaration from the current argument and result types, attaches that
 declaration to the body, and freezes the signature. Later transactions may
-rewrite instructions or control flow but cannot make the declaration and CFG
+rewrite ops or control flow but cannot make the declaration and CFG
 silently drift apart. `Compiler::verify(module)` checks the attachment before
 validating each body against the linked environment.
 
@@ -65,6 +65,25 @@ The other public concepts are small:
 - `joggle::Type` and `joggle::Attribute` are immutable instances of
   Module-declared schemas.
 - `fn` is the only callable declaration in source.
+
+Every `Op` is a typed call to one `fn` declaration. Its inputs have one schema,
+but two IR roles are derived from their declared domains:
+
+- value-domain inputs are SSA operands, even when a caller supplies a Known
+  literal while constructing the IR;
+- compiler-domain inputs are immutable named properties.
+
+`Op::operands()`, `Op::properties()`, and the named lookup methods expose this
+split directly. Consequently a fusion rule can traverse def-use edges while a
+layout or quantization rule reads stable properties, without inventing a
+second operator schema beside the language declaration.
+
+A Module also owns immutable binary data addressed as `sha256:<digest>`.
+`Module::store` deduplicates it and `Module::data` provides read-only views.
+Artifact identity covers the data names, while interface identity does not.
+This keeps model constants, rewritten IR, and their transactional publication
+inside one value without serializing megabytes into the textual body or
+threading a separate resource object through every compiler function.
 
 ## One extensibility mechanism
 
@@ -89,10 +108,10 @@ with a `bytes -> bytes`, `bytes -> module`, `module -> module`, or
 `module -> bytes` boundary; it does not accept an external list of specially
 classified passes. Module inputs are linked and materialized before the call,
 and Module outputs use canonical source. In-process users retain the full C++
-type surface, including extension-owned artifacts.
+  type surface, including Module-owned artifacts.
 
 This is also why Joggle does not prescribe tiles, streams, FPGA resources,
-RISC-V instructions, devices, schedules, or cost models. An extension defines
+RISC-V ops, devices, schedules, or cost models. A Module defines
 the types and functions it needs. A bridge Module imports two vocabularies and
 owns conversions between them; neither vocabulary has to depend on the other.
 
@@ -143,16 +162,16 @@ source evaluator do not invent a unit result or a separate result container.
 ## One graph, no Graph object
 
 A Function already contains the nodes and relations needed by graph-shaped AI
-workloads. Its Blocks and terminators define the CFG; Instructions and Values
+workloads. Its Blocks and terminators define the CFG; Ops and Values
 define def-use. `predecessors`, `users`, and `dominates` query those relations
 directly. Analyses may cache richer products, but they do not own a second
 module representation.
 
 Structured source is an authoring form over this IR. It is not a Region tree.
-Instructions never own Blocks. Explicit Blocks remain available for arbitrary
+Ops never own Blocks. Explicit Blocks remain available for arbitrary
 transformation output and exact serialization.
 
-## Trusted kernel and extension plane
+## Trusted kernel and Module plane
 
 The kernel implements parsing, canonical formatting, module identity, release
 resolution, typed values, overload and dependent-type solving, staged
@@ -161,7 +180,7 @@ declares compiler domains, native scalar types, callable types, interfaces,
 the whole-module `module` type, and compiler-domain primitive functions. Its
 source is embedded from `language/prelude.joggle`, so source tooling and the
 runtime share one authority. Those primitives use the same `fn`
-resolution and execution path as extension functions; the kernel contributes
+resolution and execution path as Module functions; the kernel contributes
 only their deterministic Hermetic implementations. It never evaluates an
 undeclared operator token or a magic function name.
 

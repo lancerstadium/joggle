@@ -83,6 +83,15 @@ module module_defs@1.0.0 {
     return EXIT_FAILURE;
   }
 
+  const std::string before_data(module.digest());
+  joggle::Bytes payload{std::byte{0x10}, std::byte{0x20}, std::byte{0x30}};
+  const std::string data_name = module.store(payload);
+  const std::string with_data(module.digest());
+  joggle::Module data_copy = module;
+  const std::string duplicate_name = data_copy.store(payload);
+  const std::string second_name =
+      data_copy.store(joggle::Bytes{std::byte{0x40}});
+
   const auto dependencies = module.dependencies();
   const auto materialized_main = module.function("main");
   const std::string text = joggle::format(module);
@@ -95,6 +104,16 @@ module module_defs@1.0.0 {
   }
 
   bool ok = true;
+  const auto stored = module.data(data_name);
+  ok &= expect(data_name.starts_with("sha256:") &&
+                   duplicate_name == data_name && second_name != data_name &&
+                   before_data != with_data && module.digest() == with_data &&
+                   data_copy.digest() != module.digest() && stored &&
+                   std::vector<std::byte>(stored->begin(), stored->end()) ==
+                       payload &&
+                   module.data() == std::vector<std::string>{data_name},
+               "Module owns content-addressed immutable data with copy-on-write "
+               "identity");
   ok &= expect(materialized_main &&
                    materialized_main->form() ==
                        joggle::Module::FunctionDecl::Form::Body &&
@@ -132,7 +151,7 @@ module module_defs@1.0.0 {
   if (!replay_main || !replay_choose || !replay_callback) {
     replay.diagnostics().print(std::cerr);
   }
-  ok &= expect(replay_main && replay_main->instructions().size() == 1U &&
+  ok &= expect(replay_main && replay_main->ops().size() == 1U &&
                    replay_choose && replay_choose->blocks().size() == 4U,
                "serialized data-flow and control-flow Functions link and "
                "instantiate again");

@@ -28,6 +28,7 @@ int main() {
       type other();
       fn source<T: type>() -> T;
       fn add_i32(lhs: i32, rhs: i32) -> i32;
+      fn configure(input: i32, axis: int = 1) -> i32;
       fn callback(input: i32) -> i32;
       fn apply(input: i32, body: (i32) -> i32) -> i32;
     }
@@ -47,6 +48,8 @@ int main() {
       control ? control->function("source") : std::nullopt;
   const auto add_i32_schema =
       control ? control->function("add_i32") : std::nullopt;
+  const auto configure_schema =
+      control ? control->function("configure") : std::nullopt;
   const auto callback_schema =
       control ? control->function("callback") : std::nullopt;
   const auto apply_schema = control ? control->function("apply") : std::nullopt;
@@ -55,7 +58,7 @@ int main() {
       prelude ? prelude->type("callable") : std::nullopt;
   const auto other_schema = control ? control->type("other") : std::nullopt;
   if (!integer_schema || !add_schema || !cast_schema || !source_schema ||
-      !add_i32_schema || !callback_schema || !apply_schema ||
+      !add_i32_schema || !configure_schema || !callback_schema || !apply_schema ||
       !callable_schema || !other_schema) {
     return EXIT_FAILURE;
   }
@@ -70,7 +73,7 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  std::optional<joggle::Instruction> add;
+  std::optional<joggle::Op> add;
   {
     auto edit = function->edit();
     const auto lhs = edit.argument(*integer);
@@ -89,19 +92,19 @@ int main() {
       expect(compiler.verify(*function), "a committed function body verifies");
   ok &=
       expect(function->arguments().size() == 2U &&
-                 function->instructions().size() == 2U &&
-                 function->instructions() == function->instructions(),
-             "a Function owns one ordered instruction view across its blocks");
+                 function->ops().size() == 2U &&
+                 function->ops() == function->ops(),
+             "a Function owns one ordered op view across its blocks");
   ok &= expect(add && add->value().type() == *integer &&
                    !add->result(0).is_function_argument() &&
                    !add->result(0).is_block_argument(),
-               "instruction results retain their inferred type");
+               "op results retain their inferred type");
 
   auto copied = *function;
   const auto shared_revision = copied.revision();
   {
     auto edit = copied.edit();
-    edit.erase(copied.instructions().back());
+    edit.erase(copied.ops().back());
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
@@ -110,8 +113,8 @@ int main() {
   }
   ok &= expect(shared_revision == function->revision() &&
                    copied.revision() != function->revision() &&
-                   copied.instructions().size() == 1U &&
-                   function->instructions().size() == 2U,
+                   copied.ops().size() == 1U &&
+                   function->ops().size() == 2U,
                "Function copies share a revision and detach on edit");
 
   const auto known_seven = compiler.known(*i32, std::int64_t{7});
@@ -130,12 +133,42 @@ int main() {
       return EXIT_FAILURE;
     }
   }
-  const auto mixed_arguments = mixed->instructions().front().arguments();
+  const auto mixed_arguments = mixed->ops().front().arguments();
+  const auto mixed_operands = mixed->ops().front().operands();
   ok &=
       expect(mixed_arguments.size() == 2U && mixed_arguments.front().known() &&
                  mixed_arguments.front().get<std::int64_t>() == 7 &&
-                 !mixed_arguments.back().known(),
-             "one argument sequence carries Known and Residual Values");
+                 !mixed_arguments.back().known() &&
+                 mixed_operands == mixed_arguments &&
+                 mixed->ops().front().properties().empty(),
+             "Known literals on value ports remain SSA operands");
+
+  auto configured = compiler.create_function();
+  if (!configured) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = configured->edit();
+    const auto input = edit.argument(*i32);
+    const auto value = edit.append(*configure_schema, {input});
+    edit.ret(configured->entry(), {value.value()});
+    joggle::Diagnostics diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  const auto configured_op = configured->ops().front();
+  const auto configured_properties = configured_op.properties();
+  ok &= expect(configured_op.operands().size() == 1U &&
+                   configured_op.operand("input") ==
+                       std::optional<joggle::Value>{configured->arguments().front()} &&
+                   !configured_op.operand("axis") &&
+                   configured_properties.size() == 1U &&
+                   configured_properties.front().first == "axis" &&
+                   configured_op.property<std::int64_t>("axis") == 1 &&
+                   !configured_op.property("input"),
+               "compiler-domain inputs are named immutable Op properties");
 
   const auto callable =
       compiler.make(*callable_schema, std::vector<joggle::Type>{*i32},
@@ -145,7 +178,7 @@ int main() {
     return EXIT_FAILURE;
   }
   std::optional<joggle::Value> callback;
-  std::optional<joggle::Instruction> applied;
+  std::optional<joggle::Op> applied;
   {
     auto edit = higher_order->edit();
     const auto input = edit.argument(*i32);
@@ -163,7 +196,7 @@ int main() {
                        callback_schema->symbol() &&
                    higher_order->dominates(*callback, *applied) &&
                    higher_order->users(*callback) ==
-                       std::vector<joggle::Instruction>{*applied},
+                       std::vector<joggle::Op>{*applied},
                "a typed function reference is a globally dominating value");
   bool wrong_callable_rejected = false;
   const auto wrong_callable =
@@ -192,7 +225,7 @@ int main() {
   ok &= expect(needs_explicit_result && compiler.ok(),
                "an output-only type variable needs an explicit result type");
 
-  std::optional<joggle::Instruction> inserted;
+  std::optional<joggle::Op> inserted;
   {
     auto edit = function->edit();
     inserted = edit.insert(*add, *cast_schema, {function->arguments()[0]});
@@ -202,10 +235,10 @@ int main() {
       return EXIT_FAILURE;
     }
   }
-  ok &= expect(inserted && function->instructions().front() == *inserted,
-               "an edit inserts before an existing instruction");
+  ok &= expect(inserted && function->ops().front() == *inserted,
+               "an edit inserts before an existing op");
 
-  const joggle::Instruction original_add = *add;
+  const joggle::Op original_add = *add;
   {
     auto edit = function->edit();
     add = edit.replace(*add, *add_schema);
@@ -231,8 +264,8 @@ int main() {
   ok &= expect(missing_argument_rejected,
                "a missing call argument is rejected immediately");
 
-  std::optional<joggle::Instruction> first_cast;
-  std::optional<joggle::Instruction> second_cast;
+  std::optional<joggle::Op> first_cast;
+  std::optional<joggle::Op> second_cast;
   {
     auto edit = function->edit();
     first_cast = edit.append(*cast_schema, {add->result(0)});
@@ -258,12 +291,12 @@ int main() {
                    second_cast->arguments().front() == add->result(0) &&
                    function->entry().terminator().returned().front() ==
                        add->result(0),
-               "replace rewires instruction and boundary uses before erase");
+               "replace rewires op and boundary uses before erase");
 
   auto queried = compiler.create_function();
   std::optional<joggle::Value> queried_input;
-  std::optional<joggle::Instruction> queried_first;
-  std::optional<joggle::Instruction> queried_second;
+  std::optional<joggle::Op> queried_first;
+  std::optional<joggle::Op> queried_second;
   if (!queried) {
     return EXIT_FAILURE;
   }
@@ -287,16 +320,16 @@ int main() {
       input_users.size() == 2U && input_users[0] == *queried_first &&
           input_users[1] == *queried_second && first_users.size() == 1U &&
           first_users.front() == *queried_second,
-      "use queries return each consuming instruction once in function order");
+      "use queries return each consuming op once in function order");
   ok &= expect(queried->has_uses(queried_second->result(0)) &&
                    queried->users(queried_second->result(0)).empty(),
                "boundary uses count without pretending terminators are "
-               "instructions");
+               "ops");
   ok &= expect(
       queried->dominates(*queried_input, *queried_first) &&
           queried->dominates(queried_first->result(0), *queried_second) &&
           !queried->dominates(queried_second->result(0), *queried_first),
-      "value dominance follows arguments, blocks, and instruction order");
+      "value dominance follows arguments, blocks, and op order");
 
   auto inconsistent_returns = compiler.create_function();
   if (!inconsistent_returns) {
@@ -329,7 +362,7 @@ int main() {
     joggle::Diagnostics diagnostics;
     ok &= expect(!edit.commit(diagnostics) && !diagnostics.ok() &&
                      invalid->arguments().empty() &&
-                     invalid->instructions().empty(),
+                     invalid->ops().empty(),
                  "a type-invalid edit rolls the complete transaction back");
   }
 

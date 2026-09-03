@@ -48,10 +48,10 @@ Every typed call validates materialized Function bodies at both its input and
 output boundary; repeated references to the same immutable revision are checked
 once per invocation.
 
-Analyses and emitted artifacts remain extension-owned. For example, a Module
+Analyses and emitted artifacts remain Module-owned. For example, a Module
 declares `estimate`, `schedule`, or `object`, and its behavior registers the
 corresponding C++ representation with `Compiler::represent<T>`. `bytes` is the
-portable boundary for file emission, but an extension can retain a structured
+portable boundary for file emission, but a package can retain a structured
 artifact between stages.
 
 ## What the core guarantees now
@@ -78,26 +78,26 @@ pattern base class, rewrite registry, or second IR container:
 ```cpp
 auto changed = joggle::rewrite(
     module,
-    [&](const joggle::Instruction& instruction,
+    [&](const joggle::Op& op,
         joggle::Function::Edit& edit,
         joggle::Diagnostics&) {
-      if (instruction.callee() != source_call) {
+      if (op.callee() != source_call) {
         return false;
       }
-      auto first = edit.insert(instruction, normalize,
-                               instruction.arguments());
-      auto second = edit.insert(instruction, target, {first.value()});
-      edit.replace(instruction, {second.value()});
+      auto first = edit.insert(op, normalize,
+                               op.arguments());
+      auto second = edit.insert(op, target, {first.value()});
+      edit.replace(op, {second.value()});
       return true;
     },
     diagnostics);
 ```
 
-The rule visits the committed Instructions present at the start of the sweep
+The rule visits the committed Ops present at the start of the sweep
 and returns whether it changed each one. Every changed Function is verified;
 an exception, a new diagnostic, or failed verification publishes nothing.
-Replacing an Instruction with a positional result list supports erasure and
-multi-Instruction expansion without inventing a replacement object.
+Replacing an Op with a positional result list supports erasure and
+multi-Op expansion without inventing a replacement object.
 
 When inserted calls must be reconsidered, the bounded driver is explicit:
 
@@ -119,10 +119,10 @@ auto changed = joggle::replace_calls(
 
 auto selected = joggle::map_calls(
     module,
-    [&](const joggle::Instruction& instruction)
+    [&](const joggle::Op& op)
         -> std::optional<joggle::Module::FunctionDecl> {
-      return compiler.conforms(instruction.callee(), elementwise)
-                 ? choose_replacement(instruction)
+      return compiler.conforms(op.callee(), elementwise)
+                 ? choose_replacement(op)
                  : std::nullopt;
     },
     diagnostics);
@@ -141,15 +141,15 @@ function name.
 ```cpp
 auto changed = joggle::convert(
     module, rewrite_rule,
-    [&](const joggle::Instruction& instruction) {
-      return target_accepts(instruction.callee());
+    [&](const joggle::Op& op) {
+      return target_accepts(op.callee());
     },
     diagnostics);
 ```
 
 The predicate defines the caller's accepted result rather than naming a global
 target or lowering direction. The candidate Module is published only when all
-materialized Functions verify and every remaining Instruction is legal. The
+materialized Functions verify and every remaining Op is legal. The
 first illegal residual call is diagnosed with its Function context.
 
 ## Command-line boundary
@@ -210,7 +210,7 @@ The following stay in Modules and behavior libraries:
 
 - ONNX or other format import;
 - quantization, layout, tiling, scheduling, and bufferization policy;
-- FPGA, custom-instruction, or ISA vocabularies;
+- FPGA, custom-op, or ISA vocabularies;
 - device/resource descriptions and simulators;
 - cost, latency, energy, WCET, or accuracy models;
 - target code generation and SystemVerilog or assembly emission.

@@ -288,7 +288,7 @@ module primitive_test@1.0.0 {
           *reversed == std::vector<std::int64_t>({6, 4, 2}) && reversed_types &&
           *reversed_types == std::vector<joggle::Type>({*f16, *i8}) &&
           names == std::optional<std::vector<std::string>>{{"weight"}} &&
-          unrolled && unrolled->instructions().size() == 3U,
+          unrolled && unrolled->ops().size() == 3U,
       "Prelude fn primitives drive generic for, typed compile-time "
       "lists, control, arithmetic, comparisons, and logic");
 

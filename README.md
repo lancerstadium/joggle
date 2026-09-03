@@ -16,9 +16,9 @@ The design is intentionally small:
 - loading, transformation, analysis, simulation, and emission are ordinary
   typed functions.
 
-There is no language-level `op`, `pass`, `graph`, `region`, `lower`, frontend,
-or backend hierarchy. Those can be useful roles in an extension, but the core
-does not force their direction or storage model.
+There is no second source declaration for an Op or pass: every residual `fn`
+call is an `Op`, and every compiler transformation is an ordinary typed `fn`.
+The core does not force a lowering direction or target storage model.
 
 ```joggle
 joggle 1;
@@ -40,7 +40,7 @@ module example@1.0.0 {
 
 Here `count: N` binds integer generic `N`, and the ordinary Prelude function
 `range(N)` produces a Known list. `for` expands deterministically at compile
-time, while each `identity` call may remain as a normal Residual Instruction.
+time, while each `identity` call may remain as a normal Residual Op.
 The same body can therefore express compiler decisions and the module they
 produce without a second metaprogramming language.
 
@@ -84,36 +84,36 @@ It is ambient and cannot be replaced by repository lookup.
 - `tensor`: ranked tensor values and structural operations;
 - `nn`: common inference operators and checked shape relations;
 - `buffer`: explicit storage values and token-ordered effects;
-- `resource`: detached payload sets shared by importers, transforms, and
-  emitters.
 
-These Modules are not an ordered lowering stack. Extensions may import and
+These Modules are not an ordered lowering stack. Modules may import and
 bridge them in either direction. Prelude's `module` type carries an entire
 `joggle::Module` through ordinary compiler functions; it is not another
-installable vocabulary.
+installable vocabulary. Each Module also owns immutable, content-addressed
+binary data, so constants remain part of one compiler artifact without being
+expanded into source text or threaded through a side channel.
 
-## Optional extensions
+## Optional Modules
 
-[`extensions/onnx`](extensions/onnx) provides an optional, typed ONNX import
-Module. It accepts model bytes and returns an ordinary Joggle Module together
-with detached, content-addressed tensor resources. Protobuf remains isolated
-to the extension and is not a dependency of the core library. The first exact
-profile targets the official opset-18 ResNet-18 model; unsupported ONNX
-semantics are rejected rather than approximated.
+[`modules/onnx`](modules/onnx) provides an optional, typed ONNX import
+Module. `onnx.read` preserves source operations as `onnx.*` IR;
+`onnx.to_nn` is a separate transactional conversion to the portable `nn`
+vocabulary. Initializer bytes are content-addressed data owned by the returned
+Module. Protobuf remains isolated to this Module's native behavior and is not
+a dependency of the core library.
 
-[`extensions/precision`](extensions/precision) provides a resource-aware
-f32-to-f16 transformation. It transactionally rebuilds the typed Module and
-content-addressed resources together, demonstrating the same function model
-for representation-changing compiler work.
+[`modules/precision`](modules/precision) provides an f32-to-f16
+transformation. It discovers constants through the `tensor.immutable_data`
+interface rather than naming their producer, and transactionally updates types
+and Module data together.
 
 ## Documentation
 
 Start at the [documentation index](docs/README.md). The
-[getting-started guide](docs/getting-started.md) builds one extension, the
+[getting-started guide](docs/getting-started.md) builds one Module, the
 [language reference](docs/language.md) defines source semantics, and the
 [architecture](docs/architecture.md) explains the project boundary. The
 [standard Modules](docs/standard-modules.md) and
-[compiler-function design](docs/compiler-functions.md) specify the extension
+[compiler-function design](docs/compiler-functions.md) specify the Module
 foundation used by optimization, analysis, conversion, and emission.
 
 The [`examples/nn_pipeline`](examples/nn_pipeline) project demonstrates a

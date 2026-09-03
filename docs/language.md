@@ -223,7 +223,7 @@ does not carry a second Known/Residual port list; availability is determined
 for each invocation.
 
 - A call with admissible Known inputs executes its source body or C++ binding.
-- A call requiring a Residual input becomes an Instruction.
+- A call requiring a Residual input becomes an Op.
 - A computation under `@` must finish Known.
 
 The same declared function can therefore execute now in one invocation and
@@ -233,7 +233,7 @@ Residual control.
 
 When a Known compiler payload must enter the module, the compiler selects one
 visible ordinary function implementing `prelude.literal` for the required
-module type. There is no built-in constant Instruction or materializer hook.
+module type. There is no built-in constant Op or materializer hook.
 
 ## Conditional control flow
 
@@ -289,7 +289,7 @@ for enabled in Stages {
 
 The iterable must evaluate to a Known homogeneous `list<D>`. The iterator is a
 new Known local scoped to one iteration. Iterations expand in list order and
-may generate Residual Instructions or branches. `continue`, `break`, and
+may generate Residual Ops or branches. `continue`, `break`, and
 `return` have their usual nearest-loop meaning. The evaluation budget bounds
 the expansion. A runtime collection is not silently unrolled; use `while` and
 Residual function calls to express a runtime loop.
@@ -366,7 +366,7 @@ fn activate(input: tensor<f32>) -> tensor<f32> {
 
 `(T) -> U` is a reflected callable type. Context can select an overload or
 specialize a generic function value. The IR records the referenced Function
-symbol directly; no wrapper Instruction or Region is introduced. Anonymous
+symbol directly; no wrapper Op or Region is introduced. Anonymous
 closure literals and capture lifting are not implemented.
 
 ## Compact grammar

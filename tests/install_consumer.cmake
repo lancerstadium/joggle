@@ -75,7 +75,7 @@ endif()
 
 execute_process(
   COMMAND "${installed_cli}" check
-          "${JOGGLE_SOURCE_DIR}/tests/consumer/extension.joggle"
+          "${JOGGLE_SOURCE_DIR}/tests/consumer/module.joggle"
   RESULT_VARIABLE cli_result
 )
 if(NOT cli_result EQUAL 0)
@@ -114,17 +114,6 @@ if(NOT standard_modules_result EQUAL 0)
     "installed standard Modules failed to link:\n${standard_modules_error}")
 endif()
 execute_process(
-  COMMAND "${installed_cli}" check
-          "${installed_module_dir}/resource.joggle"
-  RESULT_VARIABLE resource_module_result
-  ERROR_VARIABLE resource_module_error
-)
-if(NOT resource_module_result EQUAL 0)
-  message(FATAL_ERROR
-    "installed resource Module failed to link:\n${resource_module_error}")
-endif()
-
-execute_process(
   COMMAND "${CMAKE_COMMAND}" --build "${consumer_build}"
   RESULT_VARIABLE build_result
 )
@@ -138,7 +127,7 @@ set(rebuild_build
   "${JOGGLE_BUILD_DIR}/test-${JOGGLE_INSTALL_CASE}-rebuild-build")
 file(REMOVE_RECURSE "${rebuild_source}" "${rebuild_build}")
 file(MAKE_DIRECTORY "${rebuild_source}")
-file(COPY_FILE "${JOGGLE_SOURCE_DIR}/tests/consumer/extension.joggle"
+file(COPY_FILE "${JOGGLE_SOURCE_DIR}/tests/consumer/module.joggle"
   "${rebuild_source}/module.joggle")
 file(COPY_FILE "${JOGGLE_SOURCE_DIR}/tests/rebuild_consumer/CMakeLists.txt"
   "${rebuild_source}/CMakeLists.txt")
@@ -187,7 +176,7 @@ file(READ "${rebuild_build}/behavior-path.txt" rebuilt_behavior)
 string(STRIP "${rebuilt_behavior}" rebuilt_behavior)
 execute_process(
   COMMAND "${installed_cli}" check
-          "${JOGGLE_SOURCE_DIR}/tests/consumer/extension.joggle"
+          "${JOGGLE_SOURCE_DIR}/tests/consumer/module.joggle"
           --behavior "${rebuilt_behavior}"
   RESULT_VARIABLE stale_behavior_result
   ERROR_VARIABLE stale_behavior_error
@@ -206,7 +195,7 @@ file(READ "${consumer_build}/consumer-path.txt" consumer_path)
 string(STRIP "${consumer_path}" consumer_path)
 execute_process(
   COMMAND "${installed_cli}" install
-          "${JOGGLE_SOURCE_DIR}/tests/consumer/extension.joggle"
+          "${JOGGLE_SOURCE_DIR}/tests/consumer/module.joggle"
           --behavior "${behavior_path}" --root "${module_root}"
   RESULT_VARIABLE install_result
   OUTPUT_VARIABLE installed_module

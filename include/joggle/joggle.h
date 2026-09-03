@@ -6,6 +6,5 @@
 #include "joggle/digest.h"
 #include "joggle/ir.h"
 #include "joggle/module.h"
-#include "joggle/resource.h"
 #include "joggle/transform.h"
 #include "joggle/type.h"

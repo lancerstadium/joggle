@@ -23,14 +23,14 @@ std::optional<std::size_t> rewrite_function(Function& function, Rule& rule,
                                             Diagnostics& diagnostics) {
   const std::size_t before = diagnostics.size();
   try {
-    const auto instructions = function.instructions();
+    const auto ops = function.ops();
     auto edit = function.edit();
     std::size_t changed = 0;
-    for (const Instruction& instruction : instructions) {
-      if (!instruction.valid()) {
+    for (const Op& op : ops) {
+      if (!op.valid()) {
         continue;
       }
-      if (std::invoke(rule, instruction, edit, diagnostics)) {
+      if (std::invoke(rule, op, edit, diagnostics)) {
         ++changed;
       }
       if (diagnostics.size() != before) {
@@ -52,14 +52,14 @@ std::optional<std::size_t> rewrite_function(Function& function, Rule& rule,
 
 }  // namespace transform_detail
 
-// Applies one lambda to the committed Instructions present at the start of a
-// sweep. The lambda receives (Instruction, Function::Edit, Diagnostics) and
+// Applies one lambda to the committed Ops present at the start of a
+// sweep. The lambda receives (Op, Function::Edit, Diagnostics) and
 // returns true only when it changed the IR. All edits commit together; an
 // exception, diagnostic, or failed verification restores the prior Function.
 template <typename Rule>
 std::optional<std::size_t> rewrite(Function& function, Rule&& rule,
                                    Diagnostics& diagnostics) {
-  using Changed = std::invoke_result_t<Rule&, const Instruction&,
+  using Changed = std::invoke_result_t<Rule&, const Op&,
                                        Function::Edit&, Diagnostics&>;
   static_assert(std::is_convertible_v<Changed, bool>,
                 "a rewrite lambda must return bool");
@@ -71,7 +71,7 @@ std::optional<std::size_t> rewrite(Function& function, Rule&& rule,
 template <typename Rule>
 std::optional<std::size_t> rewrite(Module& module, Rule&& rule,
                                    Diagnostics& diagnostics) {
-  using Changed = std::invoke_result_t<Rule&, const Instruction&,
+  using Changed = std::invoke_result_t<Rule&, const Op&,
                                        Function::Edit&, Diagnostics&>;
   static_assert(std::is_convertible_v<Changed, bool>,
                 "a rewrite lambda must return bool");
@@ -148,7 +148,7 @@ template <typename Rule>
 std::optional<std::size_t> rewrite_to_fixpoint(Function& function, Rule&& rule,
                                                std::size_t max_iterations,
                                                Diagnostics& diagnostics) {
-  using Changed = std::invoke_result_t<Rule&, const Instruction&,
+  using Changed = std::invoke_result_t<Rule&, const Op&,
                                        Function::Edit&, Diagnostics&>;
   static_assert(std::is_convertible_v<Changed, bool>,
                 "a rewrite lambda must return bool");
@@ -160,7 +160,7 @@ template <typename Rule>
 std::optional<std::size_t> rewrite_to_fixpoint(Module& module, Rule&& rule,
                                                std::size_t max_iterations,
                                                Diagnostics& diagnostics) {
-  using Changed = std::invoke_result_t<Rule&, const Instruction&,
+  using Changed = std::invoke_result_t<Rule&, const Op&,
                                        Function::Edit&, Diagnostics&>;
   static_assert(std::is_convertible_v<Changed, bool>,
                 "a rewrite lambda must return bool");
@@ -174,12 +174,12 @@ template <typename Legal>
 bool legal(const Function& function, Legal& predicate, Diagnostics& diagnostics,
            std::string_view member = {}) {
   try {
-    for (const Instruction& instruction : function.instructions()) {
-      if (std::invoke(predicate, instruction)) {
+    for (const Op& op : function.ops()) {
+      if (std::invoke(predicate, op)) {
         continue;
       }
       std::string message = "conversion left illegal call '" +
-                            instruction.callee().symbol().qualified_name() +
+                            op.callee().symbol().qualified_name() +
                             "'";
       if (!member.empty()) {
         message += " in function '" + std::string(member) + "'";
@@ -214,11 +214,11 @@ bool legal(const Module& module, Legal& predicate, Diagnostics& diagnostics) {
 }  // namespace transform_detail
 
 // Rewrites a private Function value and publishes it only if every remaining
-// Instruction satisfies the caller's legality predicate.
+// Op satisfies the caller's legality predicate.
 template <typename Rule, typename Legal>
 std::optional<std::size_t> convert(Function& function, Rule&& rule,
                                    Legal&& legal, Diagnostics& diagnostics) {
-  using Accepted = std::invoke_result_t<Legal&, const Instruction&>;
+  using Accepted = std::invoke_result_t<Legal&, const Op&>;
   static_assert(std::is_convertible_v<Accepted, bool>,
                 "a conversion legality predicate must return bool");
 
@@ -238,7 +238,7 @@ std::optional<std::size_t> convert(Function& function, Rule&& rule,
 template <typename Rule, typename Legal>
 std::optional<std::size_t> convert(Module& module, Rule&& rule, Legal&& legal,
                                    Diagnostics& diagnostics) {
-  using Accepted = std::invoke_result_t<Legal&, const Instruction&>;
+  using Accepted = std::invoke_result_t<Legal&, const Op&>;
   static_assert(std::is_convertible_v<Accepted, bool>,
                 "a conversion legality predicate must return bool");
 
@@ -254,13 +254,13 @@ std::optional<std::size_t> convert(Module& module, Rule&& rule, Legal&& legal,
 }
 
 // Transactionally maps call declarations in one Function. The mapper receives
-// each committed Instruction and returns either a replacement declaration or
+// each committed Op and returns either a replacement declaration or
 // std::nullopt to keep the call. The count is absent on failure; zero is a
 // successful no-op.
 template <typename Mapper>
 std::optional<std::size_t> map_calls(Function& function, Mapper&& mapper,
                                      Diagnostics& diagnostics) {
-  using Mapped = std::invoke_result_t<Mapper&, const Instruction&>;
+  using Mapped = std::invoke_result_t<Mapper&, const Op&>;
   static_assert(
       std::is_convertible_v<Mapped,
                             std::optional<joggle::Module::FunctionDecl>>,
@@ -269,13 +269,13 @@ std::optional<std::size_t> map_calls(Function& function, Mapper&& mapper,
 
   return rewrite(
       function,
-      [&](const Instruction& instruction, Function::Edit& edit, Diagnostics&) {
+      [&](const Op& op, Function::Edit& edit, Diagnostics&) {
         std::optional<joggle::Module::FunctionDecl> replacement =
-            std::invoke(mapper, instruction);
-        if (!replacement || *replacement == instruction.callee()) {
+            std::invoke(mapper, op);
+        if (!replacement || *replacement == op.callee()) {
           return false;
         }
-        edit.replace(instruction, *replacement);
+        edit.replace(op, *replacement);
         return true;
       },
       diagnostics);
@@ -285,7 +285,7 @@ std::optional<std::size_t> map_calls(Function& function, Mapper&& mapper,
 template <typename Mapper>
 std::optional<std::size_t> map_calls(Module& module, Mapper&& mapper,
                                      Diagnostics& diagnostics) {
-  using Mapped = std::invoke_result_t<Mapper&, const Instruction&>;
+  using Mapped = std::invoke_result_t<Mapper&, const Op&>;
   static_assert(
       std::is_convertible_v<Mapped,
                             std::optional<joggle::Module::FunctionDecl>>,
@@ -294,13 +294,13 @@ std::optional<std::size_t> map_calls(Module& module, Mapper&& mapper,
 
   return rewrite(
       module,
-      [&](const Instruction& instruction, Function::Edit& edit, Diagnostics&) {
+      [&](const Op& op, Function::Edit& edit, Diagnostics&) {
         std::optional<joggle::Module::FunctionDecl> replacement =
-            std::invoke(mapper, instruction);
-        if (!replacement || *replacement == instruction.callee()) {
+            std::invoke(mapper, op);
+        if (!replacement || *replacement == op.callee()) {
           return false;
         }
-        edit.replace(instruction, *replacement);
+        edit.replace(op, *replacement);
         return true;
       },
       diagnostics);
@@ -312,9 +312,9 @@ replace_calls(Function& function, const joggle::Module::FunctionDecl& from,
               Diagnostics& diagnostics) {
   return map_calls(
       function,
-      [&](const Instruction& instruction)
+      [&](const Op& op)
           -> std::optional<joggle::Module::FunctionDecl> {
-        return instruction.callee() == from
+        return op.callee() == from
                    ? std::optional<joggle::Module::FunctionDecl>{to}
                    : std::nullopt;
       },
@@ -327,9 +327,9 @@ replace_calls(Module& module, const joggle::Module::FunctionDecl& from,
               Diagnostics& diagnostics) {
   return map_calls(
       module,
-      [&](const Instruction& instruction)
+      [&](const Op& op)
           -> std::optional<joggle::Module::FunctionDecl> {
-        return instruction.callee() == from
+        return op.callee() == from
                    ? std::optional<joggle::Module::FunctionDecl>{to}
                    : std::nullopt;
       },

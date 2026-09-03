@@ -64,35 +64,35 @@ module custom_numeric@1.0.0 {
     return EXIT_FAILURE;
   }
 
-  const auto integer_instructions = integer->instructions();
-  const auto logical_instructions = logical->instructions();
+  const auto integer_ops = integer->ops();
+  const auto logical_ops = logical->ops();
   bool ok = true;
-  ok &= expect(integer_instructions.size() == 4U &&
-                   integer_instructions[0].callee().symbol().qualified_name() ==
+  ok &= expect(integer_ops.size() == 4U &&
+                   integer_ops[0].callee().symbol().qualified_name() ==
                        "arith.bitwise_and" &&
-                   integer_instructions[1].callee().symbol().qualified_name() ==
+                   integer_ops[1].callee().symbol().qualified_name() ==
                        "arith.bitwise_not" &&
-                   integer_instructions[2].callee().symbol().qualified_name() ==
+                   integer_ops[2].callee().symbol().qualified_name() ==
                        "arith.shift_left" &&
-                   integer_instructions[3].callee().symbol().qualified_name() ==
+                   integer_ops[3].callee().symbol().qualified_name() ==
                        "arith.less",
                "custom low-bit integers reuse reflected arithmetic operators");
-  ok &= expect(logical_instructions.size() == 3U &&
-                   logical_instructions[0].callee().symbol().qualified_name() ==
+  ok &= expect(logical_ops.size() == 3U &&
+                   logical_ops[0].callee().symbol().qualified_name() ==
                        "arith.logical_not" &&
-                   logical_instructions[1].callee().symbol().qualified_name() ==
+                   logical_ops[1].callee().symbol().qualified_name() ==
                        "arith.logical_and" &&
-                   logical_instructions[2].callee().symbol().qualified_name() ==
+                   logical_ops[2].callee().symbol().qualified_name() ==
                        "arith.logical_or",
                "nested logical expressions preserve operator precedence");
-  ok &= expect(index_equality->instructions().size() == 1U &&
-                   index_equality->instructions()
+  ok &= expect(index_equality->ops().size() == 1U &&
+                   index_equality->ops()
                            .front()
                            .callee()
                            .symbol()
                            .qualified_name() == "arith.equal" &&
-                   logical_equality->instructions().size() == 1U &&
-                   logical_equality->instructions()
+                   logical_equality->ops().size() == 1U &&
+                   logical_equality->ops()
                            .front()
                            .callee()
                            .symbol()

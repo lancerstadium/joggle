@@ -436,14 +436,14 @@ evaluate_interface_method(bool linked, const Subject& subject,
                           const BindingMap& bindings, const Modules& modules,
                           Diagnostics& diagnostics, Conforms conforms,
                           std::string_view subject_kind) {
-  if constexpr (std::is_same_v<Subject, Instruction>) {
+  if constexpr (std::is_same_v<Subject, Op>) {
     if (!subject.valid()) {
-      diagnostics.report("invalid Instruction used as an interface subject");
+      diagnostics.report("invalid Op used as an interface subject");
       return std::nullopt;
     }
   }
   const auto declaration = [&] {
-    if constexpr (std::is_same_v<Subject, Instruction>) {
+    if constexpr (std::is_same_v<Subject, Op>) {
       return subject.callee();
     } else {
       return subject.schema();
@@ -485,7 +485,7 @@ evaluate_interface_method(bool linked, const Subject& subject,
                     "' did not produce a value");
   }
   std::optional<SourceRange> location;
-  if constexpr (std::is_same_v<Subject, Instruction>) {
+  if constexpr (std::is_same_v<Subject, Op>) {
     location = detail::FunctionAccess::location(subject);
   }
   for (const Diagnostic& entry : reported.entries()) {
@@ -543,12 +543,12 @@ struct Compiler::State {
   std::map<std::string, VerifierFunction<Type>, std::less<>> type_verifiers;
   std::map<std::string, VerifierFunction<Attribute>, std::less<>>
       attribute_verifiers;
-  std::map<std::string, VerifierFunction<Instruction>, std::less<>>
-      instruction_verifiers;
+  std::map<std::string, VerifierFunction<Op>, std::less<>>
+      op_verifiers;
   std::map<std::string, MethodFunction<Attribute>, std::less<>>
       attribute_methods;
-  std::map<std::string, MethodFunction<Instruction>, std::less<>>
-      instruction_methods;
+  std::map<std::string, MethodFunction<Op>, std::less<>>
+      op_methods;
   std::map<std::string, BoundFunction, std::less<>> bindings;
   std::map<std::string, detail::ParameterValue, std::less<>>
       hermetic_evaluations;
@@ -1468,9 +1468,9 @@ bool Compiler::load_behavior(const Module& module,
 
   auto type_verifiers = state_->type_verifiers;
   auto attribute_verifiers = state_->attribute_verifiers;
-  auto instruction_verifiers = state_->instruction_verifiers;
+  auto op_verifiers = state_->op_verifiers;
   auto attribute_methods = state_->attribute_methods;
-  auto instruction_methods = state_->instruction_methods;
+  auto op_methods = state_->op_methods;
   auto bindings = state_->bindings;
   auto hermetic_evaluations = state_->hermetic_evaluations;
   auto host_types = state_->host_types;
@@ -1488,9 +1488,9 @@ bool Compiler::load_behavior(const Module& module,
   if (state_->diagnostics.size() != before) {
     state_->type_verifiers = std::move(type_verifiers);
     state_->attribute_verifiers = std::move(attribute_verifiers);
-    state_->instruction_verifiers = std::move(instruction_verifiers);
+    state_->op_verifiers = std::move(op_verifiers);
     state_->attribute_methods = std::move(attribute_methods);
-    state_->instruction_methods = std::move(instruction_methods);
+    state_->op_methods = std::move(op_methods);
     state_->bindings = std::move(bindings);
     state_->hermetic_evaluations = std::move(hermetic_evaluations);
     state_->host_types = std::move(host_types);
@@ -1870,10 +1870,10 @@ void Compiler::bind_method(Module::AttributeDecl declaration,
 
 void Compiler::bind_method(Module::FunctionDecl declaration,
                            Module::InterfaceDecl::MethodDecl method,
-                           MethodFunction<Instruction> function) {
+                           MethodFunction<Op> function) {
   bind_interface_method(
       state_->linked, std::move(declaration), std::move(method),
-      std::move(function), state_->instruction_methods, state_->diagnostics,
+      std::move(function), state_->op_methods, state_->diagnostics,
       [this](const auto& subject, const auto& interface) {
         return conforms(subject, interface);
       },
@@ -1894,12 +1894,12 @@ Compiler::call(const Attribute& subject,
 }
 
 std::optional<ParameterValue>
-Compiler::call(const Instruction& subject,
+Compiler::call(const Op& subject,
                Module::InterfaceDecl::MethodDecl method,
                std::span<const ParameterValue> parameters) {
   return evaluate_interface_method(
       state_->linked, subject, std::move(method), parameters,
-      state_->instruction_methods, state_->modules, state_->diagnostics,
+      state_->op_methods, state_->modules, state_->diagnostics,
       [this](const auto& declaration, const auto& interface) {
         return conforms(declaration, interface);
       },
@@ -1953,26 +1953,26 @@ void Compiler::bind_verifier(Module::AttributeDecl schema,
 }
 
 void Compiler::bind_verifier(Module::FunctionDecl schema,
-                             VerifierFunction<Instruction> verifier) {
+                             VerifierFunction<Op> verifier) {
   const Module::Symbol symbol = schema.symbol();
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
       owner->second.interface_digest() != symbol.interface_digest()) {
     state_->diagnostics.report(
-        "cannot bind an Instruction verifier for function '" +
+        "cannot bind an Op verifier for function '" +
         symbol.qualified_name() + "' outside this compiler");
     return;
   }
   if (!verifier) {
-    state_->diagnostics.report("Instruction verifier binding is empty");
+    state_->diagnostics.report("Op verifier binding is empty");
     return;
   }
-  if (!state_->instruction_verifiers
+  if (!state_->op_verifiers
            .emplace(symbol.stable_name(), std::move(verifier))
            .second) {
     state_->diagnostics.report("function '" + symbol.qualified_name() +
-                               "' already has an Instruction verifier");
+                               "' already has an Op verifier");
   }
 }
 
@@ -2596,7 +2596,7 @@ Compiler::lookup_method(const Attribute& subject, std::string_view reference) {
 }
 
 std::optional<Module::InterfaceDecl::MethodDecl>
-Compiler::lookup_method(const Instruction& subject,
+Compiler::lookup_method(const Op& subject,
                         std::string_view reference) {
   return lookup_method(subject.callee(), reference);
 }
@@ -2613,14 +2613,14 @@ bool Compiler::verify(const Function& function) {
   }
   bool valid = detail::FunctionAccess::verify_contracts(function, *this,
                                                         state_->diagnostics);
-  for (const Instruction& instruction : function.instructions()) {
-    const Module::FunctionDecl schema = instruction.callee();
+  for (const Op& op : function.ops()) {
+    const Module::FunctionDecl schema = op.callee();
     const Module::Symbol symbol = schema.symbol();
-    const auto location = detail::FunctionAccess::location(instruction);
+    const auto location = detail::FunctionAccess::location(op);
     const auto verifier =
-        state_->instruction_verifiers.find(symbol.stable_name());
-    if (verifier != state_->instruction_verifiers.end() &&
-        !invoke_verifier(verifier->second, instruction,
+        state_->op_verifiers.find(symbol.stable_name());
+    if (verifier != state_->op_verifiers.end() &&
+        !invoke_verifier(verifier->second, op,
                          "call to '" + symbol.qualified_name() + "'",
                          state_->diagnostics, location)) {
       valid = false;

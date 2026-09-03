@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -76,6 +77,7 @@ struct joggle::Module::Storage {
   std::vector<detail::TypeDefinition> types;
   std::vector<detail::AttributeDefinition> attributes;
   std::vector<detail::FunctionMember> functions;
+  std::map<std::string, std::shared_ptr<const Bytes>, std::less<>> data;
   mutable std::vector<std::pair<std::string, Function::Revision>>
       digest_revisions;
 };

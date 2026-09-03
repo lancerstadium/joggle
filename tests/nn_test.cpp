@@ -108,7 +108,7 @@ module projected_schema@1.0.0 {
     return EXIT_FAILURE;
   }
 
-  const auto operations = function->instructions();
+  const auto operations = function->ops();
   const auto outputs = function->entry().terminator().returned();
   const auto shape =
       outputs.empty()
@@ -148,7 +148,7 @@ module projected_schema@1.0.0 {
                                     .front()
                                     .type()
                                     .get<std::vector<std::int64_t>>("shape");
-  const auto constants = constant_value->instructions();
+  const auto constants = constant_value->ops();
   const std::string constant_source =
       joggle::format(*constant_value, "constant_value");
   ok &= expect(
@@ -168,7 +168,7 @@ module projected_schema@1.0.0 {
       constants.size() == 1U &&
           constants.front().callee().symbol().qualified_name() ==
               "tensor.constant" &&
-          constants.front().get<std::string>("resource") ==
+          constants.front().property<std::string>("resource") ==
               std::optional<std::string>{
                   "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"} &&
           constant_value->entry()
@@ -183,13 +183,13 @@ module projected_schema@1.0.0 {
               "\"sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"") !=
               std::string::npos,
       "a stable tensor resource reference is a typed, serializable IR "
-      "instruction");
-  const auto memory_instructions = dynamic_read->instructions();
+      "op");
+  const auto memory_ops = dynamic_read->ops();
   ok &= expect(
-      memory_instructions.size() == 2U &&
-          memory_instructions.back().callee().symbol().qualified_name() ==
+      memory_ops.size() == 2U &&
+          memory_ops.back().callee().symbol().qualified_name() ==
               "buffer.read" &&
-          memory_instructions.back().arguments().size() == 4U,
+          memory_ops.back().arguments().size() == 4U,
       "buffer accesses accept dynamic variadic index values");
   ok &= expect(joggle::format(*nn) == read(JOGGLE_NN_MODULE) &&
                    joggle::format(*model) == read(JOGGLE_RESNET_BLOCK),

@@ -64,10 +64,10 @@ int main() {
   const auto tag = tagged ? tagged->method("tag") : std::nullopt;
   const auto latency = costed ? costed->method("latency") : std::nullopt;
   const auto attribute_crash = tagged ? tagged->method("crash") : std::nullopt;
-  const auto instruction_crash =
+  const auto op_crash =
       costed ? costed->method("crash") : std::nullopt;
   if (!scalar_decl || !label_decl || !work_decl || !metric || !tag ||
-      !latency || !attribute_crash || !instruction_crash) {
+      !latency || !attribute_crash || !op_crash) {
     return EXIT_FAILURE;
   }
 
@@ -75,13 +75,13 @@ int main() {
     return attribute.get<std::string>("name");
   });
   compiler.bind(*work_decl, *latency,
-                [](const joggle::Instruction&) -> std::int64_t { return 2; });
+                [](const joggle::Op&) -> std::int64_t { return 2; });
   compiler.bind(*label_decl, *attribute_crash,
                 [](const joggle::Attribute&) -> std::string {
                   throw std::runtime_error("attribute method exception");
                 });
-  compiler.bind(*work_decl, *instruction_crash,
-                [](const joggle::Instruction&) -> std::int64_t { throw 1; });
+  compiler.bind(*work_decl, *op_crash,
+                [](const joggle::Op&) -> std::int64_t { throw 1; });
 
   const auto scalar = compiler.make(*scalar_decl);
   const auto label = compiler.make(*label_decl);
@@ -111,8 +111,8 @@ int main() {
                "attribute and function-call behavior methods remain typed");
   const auto rejected_attribute_method =
       compiler.call<std::string>(*label, *attribute_crash);
-  const auto rejected_instruction_method =
-      compiler.call<std::int64_t>(work, *instruction_crash);
+  const auto rejected_op_method =
+      compiler.call<std::int64_t>(work, *op_crash);
   const auto thrown_methods = std::count_if(
       compiler.diagnostics().entries().begin(),
       compiler.diagnostics().entries().end(),
@@ -121,7 +121,7 @@ int main() {
                    std::string::npos &&
                diagnostic.message.find("threw") != std::string::npos;
       });
-  ok &= expect(!rejected_attribute_method && !rejected_instruction_method &&
+  ok &= expect(!rejected_attribute_method && !rejected_op_method &&
                    thrown_methods == 2,
                "interface method exceptions become ordinary diagnostics");
 

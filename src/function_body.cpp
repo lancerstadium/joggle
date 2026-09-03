@@ -1226,8 +1226,8 @@ private:
     if (left_value == nullptr || right_value == nullptr) {
       return false;
     }
-    const auto left = left_value->defining_instruction();
-    const auto right = right_value->defining_instruction();
+    const auto left = left_value->defining_op();
+    const auto right = right_value->defining_op();
     if (!left || !right ||
         left->callee().symbol() != right->callee().symbol()) {
       return false;
@@ -1956,10 +1956,10 @@ private:
       return std::nullopt;
     }
 
-    Instruction instruction =
+    Op op =
         edit_->append(block, matches.front(), {value}, {target});
-    detail::FunctionAccess::locate(*edit_, instruction, source(range));
-    return instruction.result(0);
+    detail::FunctionAccess::locate(*edit_, op, source(range));
+    return op.result(0);
   }
 
   std::pair<Block, std::optional<Value>>
@@ -2823,18 +2823,18 @@ private:
         call_arguments.push_back(std::move(*value));
       }
     }
-    Instruction instruction =
+    Op op =
         edit_->append(std::move(block), plan.function,
                       std::move(call_arguments), plan.partial_types.results);
-    detail::FunctionAccess::locate(*edit_, instruction,
+    detail::FunctionAccess::locate(*edit_, op,
                                    source(statement.expression.range));
-    if (statement.bindings.size() != instruction.results().size()) {
+    if (statement.bindings.size() != op.results().size()) {
       report("call result count does not match its bindings", statement.range);
       invalidate_results();
       return;
     }
     for (std::size_t index = 0; index < statement.bindings.size(); ++index) {
-      bind(statement.bindings[index], instruction.result(index));
+      bind(statement.bindings[index], op.result(index));
     }
   }
 
@@ -2884,8 +2884,8 @@ public:
       }
     }
     for (const Block& block : blocks) {
-      for (const Instruction& instruction : block.instructions()) {
-        for (const Value& argument : instruction.arguments()) {
+      for (const Op& op : block.ops()) {
+        for (const Value& argument : op.arguments()) {
           remember_function(argument);
         }
       }
@@ -2915,8 +2915,8 @@ public:
           syntax.statements.push_back(function_binding(function));
         }
       }
-      for (const Instruction& instruction : block.instructions()) {
-        syntax.statements.push_back(convert(instruction));
+      for (const Op& op : block.ops()) {
+        syntax.statements.push_back(convert(op));
       }
       syntax.terminator = convert(block.terminator());
       syntax_.body.blocks.push_back(std::move(syntax));
@@ -3094,25 +3094,25 @@ private:
     return {expression(value(type)), {}};
   }
 
-  detail::StatementSyntax convert(const Instruction& instruction) {
+  detail::StatementSyntax convert(const Op& op) {
     detail::StatementSyntax result;
     result.expression.value.kind = Module::Expression::Kind::Call;
     result.expression.value.text =
-        instruction.callee().symbol().qualified_name();
-    for (const Value& output : instruction.results()) {
+        op.callee().symbol().qualified_name();
+    for (const Value& output : op.results()) {
       result.bindings.push_back(
           {bind(output, "v"), type_expression(output.type()), {}});
     }
-    const auto arguments = instruction.arguments();
-    const auto parameters = instruction.callee().inputs();
+    const auto arguments = op.arguments();
+    const auto parameters = op.callee().inputs();
     for (std::size_t index = 0; index < arguments.size(); ++index) {
       const Value& argument = arguments[index];
       const std::size_t parameter_index =
-          detail::FunctionAccess::argument_parameter(instruction, index);
+          detail::FunctionAccess::argument_parameter(op, index);
       if (argument.known()) {
         const auto payload = detail::FunctionAccess::known_value(argument);
         if (!payload || parameter_index >= parameters.size()) {
-          throw std::logic_error("instruction has an invalid Known argument");
+          throw std::logic_error("op has an invalid Known argument");
         }
         result.expression.value.arguments.push_back(
             expression(value(*payload)));
@@ -3124,15 +3124,15 @@ private:
         result.expression.value.labels.emplace_back();
       }
     }
-    const auto notation = instruction.callee().operator_symbol();
-    const auto fixity = instruction.callee().operator_fixity();
+    const auto notation = op.callee().operator_symbol();
+    const auto fixity = op.callee().operator_fixity();
     const bool valid_arity =
         fixity && ((*fixity == Module::FunctionDecl::Fixity::Infix &&
-                    instruction.arguments().size() == 2U) ||
+                    op.arguments().size() == 2U) ||
                    (*fixity != Module::FunctionDecl::Fixity::Infix &&
-                    instruction.arguments().size() == 1U));
+                    op.arguments().size() == 1U));
     if (notation && valid_arity && result.bindings.size() == 1U &&
-        detail::compiler_inputs(instruction.callee()).empty()) {
+        detail::compiler_inputs(op.callee()).empty()) {
       result.expression.value.text = std::string(*notation);
       if (*fixity == Module::FunctionDecl::Fixity::Prefix) {
         result.expression.value.kind = Module::Expression::Kind::Prefix;

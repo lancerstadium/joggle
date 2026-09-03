@@ -17,7 +17,7 @@ instead produce typed CFG edges. Neither case requires a `graph`, `region`,
 
 The example conversion maps `nn.relu` calls to an independently installable
 accelerator vocabulary and rejects the result if any source `nn.relu` remains.
-The instruction-count analysis consumes the same `module` value without a
+The op-count analysis consumes the same `module` value without a
 separate analysis framework. It is intentionally small: new imports,
 analyses, transforms, simulators, and emitters use the same typed-function
 mechanism rather than a framework-specific registration hierarchy.

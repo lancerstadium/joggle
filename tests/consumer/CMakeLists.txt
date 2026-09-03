@@ -8,7 +8,7 @@ file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/module-dir.txt"
   CONTENT "${Joggle_MODULE_DIR}\n")
 
 joggle_add_behavior(joggle_consumer_behavior
-  MODULE extension.joggle
+  MODULE module.joggle
   SOURCES behavior.cpp
 )
 set_target_properties(joggle_consumer_behavior PROPERTIES

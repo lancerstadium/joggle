@@ -1,6 +1,6 @@
 # Modules
 
-This directory contains the optional standard Modules shipped with Joggle.
+This directory is the single source tree for Modules shipped with Joggle.
 Their public semantics are ordinary `.joggle` declarations rather than hidden
 declaration kinds or test fixtures. The embedded language ABI lives separately
 in `language/prelude.joggle`; Prelude is not an installable Module.
@@ -18,23 +18,28 @@ in `language/prelude.joggle`; Prelude is not an installable Module.
   is meaningful. The distinction excludes logical `i1` from numeric functions
   without fixing a target representation.
 - `tensor` defines ranked and unranked tensor values plus structural functions.
-  It imports `arith` only to reuse the single `arith.elementwise` function
-  contract. It does not define neural-network operators or storage.
+  `tensor.immutable_data` lets generic transformations recognize constants
+  independently of the Module that produced them.
 - `nn` defines common inference functions over `tensor.ranked`, including
   explicit NCHW convolution and pooling shape contracts. It does not define an
   import format, device, schedule, or storage mapping.
 - `buffer` defines explicit storage values and token-ordered memory effects. It
   names an address space but does not prescribe devices, capacities, banks, or
   schedules.
-- `resource` defines the format-neutral detached payload set shared across
-  importer, transformation, simulator, and emitter Modules. It introduces no
-  singleton or ambient resource manager.
+- `onnx` preserves a bounded ONNX source vocabulary and provides the explicit
+  `onnx.to_nn` conversion. Its native behavior is optional.
+- `precision` supplies a representation-changing compiler function over the
+  same Module IR and content-addressed data.
 
 The list is not an abstraction ladder. A function body may call declarations
 from any installed Modules. Joggle has no built-in `lower` direction. A
 conversion is an ordinary typed function in a bridge Module that imports the
 vocabularies it connects. A bridge may own conversions in both directions
 without changing either connected Module or the compiler core.
+
+Every Module uses the same directory shape: `module.joggle` is the public
+contract, while optional `behavior.cpp`, tests, or private support files stay
+beside it. There is no parallel `extensions` category.
 
 Input decoding, transformation, analysis, and output encoding use the same
 function registration and invocation mechanism. Format-specific code therefore

@@ -12,10 +12,10 @@ edits are explicit transactions.
 
 `joggle::sha256(bytes)` returns the lowercase hexadecimal digest of an exact,
 length-aware byte string. Module and repository identities use the same public
-primitive, so extensions can create compatible content-addressed resource
-names without importing a private header or selecting another hash library.
-`joggle::ResourceSet` is the format-neutral C++ representation of the standard
-`resource.set` Module type; it is a plain value, not a manager or singleton.
+primitive. `Module::store(bytes)` returns the compatible
+`sha256:<digest>` name, deduplicates equal payloads, and keeps the immutable
+data inside that Module value. `Module::data(name)` returns a read-only span;
+`Module::data()` lists names in canonical order.
 
 ## Namespaces and ownership
 
@@ -27,7 +27,7 @@ names without importing a private header or selecting another hash library.
 | `joggle::Type`, `joggle::Attribute` | Immutable schema instances |
 | `joggle::Function` | Copy-on-write materialized CFG value of a Module Function |
 | `joggle::Block` | CFG node owned by a Function |
-| `joggle::Instruction` | Declared call owned by a Block |
+| `joggle::Op` | Declared call owned by a Block |
 | `joggle::Value` | Typed Known or Residual value handle |
 | `joggle::Terminator` | Return, jump, or branch owned by a Block |
 
@@ -151,6 +151,23 @@ types are inferred from declaration contracts when possible. Explicit result
 types constrain result-only generics. Dropping an uncommitted edit, or failing
 commit, restores the prior Function.
 
+An Op has one declaration but exposes its arguments by role:
+
+```cpp
+for (const auto& operand : op.operands()) {
+  // SSA data-flow edge.
+}
+for (const auto& [name, property] : op.properties()) {
+  // Immutable compiler-domain input.
+}
+auto axis = op.property<std::int64_t>("axis");
+```
+
+The split follows declared input domains, not whether a particular Value is
+currently Known. Supplying a Known scalar to an `i32` port still creates an
+operand; an `int` port is a property. Passes therefore share the same schema as
+source calls and native behavior.
+
 `Function` copies share an immutable revision until one copy starts an
 edit. This makes read-only analysis handoff constant-time while preserving
 value semantics for `function -> function` transformations. `Compiler::run`
@@ -178,15 +195,15 @@ edit.ret(merge, {merge.arguments().front()});
 ```
 
 Verification checks ownership, reachability, dominance, terminators, edge
-arity and types, result signatures, Known arguments, and extension contracts.
-Instructions never own Blocks.
+arity and types, result signatures, Known arguments, and Module contracts.
+Ops never own Blocks.
 
 ## Inspect relations
 
 ```cpp
 for (const auto& block : function->blocks()) {
-  for (const auto& instruction : block.instructions()) {
-    for (const auto& result : instruction.results()) {
+  for (const auto& op : block.ops()) {
+    for (const auto& result : op.results()) {
       auto consumers = function->users(result);
     }
   }
@@ -200,9 +217,9 @@ Function snapshot.
 
 ## Rewrite transactionally
 
-`joggle::rewrite` accepts a lambda over each committed Instruction and a
+`joggle::rewrite` accepts a lambda over each committed Op and a
 single `Function::Edit`. The lambda may insert calls, replace one call with a
-positional result list, redirect uses, or erase an unused Instruction. It
+positional result list, redirect uses, or erase an unused Op. It
 returns `true` only when it changed the IR. The Function overload commits one
 verified transaction; the Module overload publishes only after every changed
 Function verifies.
@@ -215,7 +232,7 @@ iteration count. It publishes only after a zero-change sweep proves
 convergence; reaching the limit rolls back every intermediate sweep.
 
 `joggle::convert` takes the same rewrite lambda followed by a legality
-predicate over the resulting Instructions. It commits only if the complete
+predicate over the resulting Ops. It commits only if the complete
 Function or Module is legal. Legality is caller-defined, so the utility does
 not introduce a target registry or assume that conversions move downward.
 
@@ -223,7 +240,7 @@ not introduce a target registry or assume that conversions move downward.
 
 `joggle::replace_calls` replaces one exact declaration with another in a
 Function or Module. `joggle::map_calls` accepts a callable returning an
-optional replacement declaration for each Instruction. Both return an optional
+optional replacement declaration for each Op. Both return an optional
 change count: zero means a successful no-op and absence means failure.
 
 Both overloads use the same `rewrite` transaction. The Module overload edits a
@@ -300,7 +317,7 @@ const auto estimate_decl =
 compiler.bind(*analysis_module, "estimate",
               [](const joggle::Function& function) -> std::int64_t {
                 return static_cast<std::int64_t>(
-                    function.instructions().size());
+                    function.ops().size());
               });
 
 auto estimate = compiler.run<std::int64_t>(*estimate_decl, *function);
@@ -345,8 +362,8 @@ Compiler API.
 
 Semantic hooks use `compiler.verify(declaration, callback)`. This is distinct
 from `bind`: verification augments the invariant of a Type, Attribute, or
-residual Instruction, while binding implements a declared `fn` and must match
+residual Op, while binding implements a declared `fn` and must match
 its complete signature.
 
-See [Extensions](extensions.md) for representations, verifiers, interface
+See [Modules](modules.md) for representations, verifiers, interface
 methods, and behavior libraries.

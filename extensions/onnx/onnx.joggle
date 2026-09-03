@@ -1,9 +1,0 @@
-joggle 1;
-
-module onnx@2.0.0 {
-  import nn@2.0.0;
-  import resource@1.0.0;
-  import tensor@2.0.0;
-
-  fn read(input: bytes) -> (module, resource.set);
-}

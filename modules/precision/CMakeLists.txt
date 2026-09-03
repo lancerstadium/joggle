@@ -1,5 +1,5 @@
 joggle_add_behavior(joggle_precision_behavior
-  MODULE precision.joggle
+  MODULE module.joggle
   SOURCES behavior.cpp)
 set_target_properties(joggle_precision_behavior PROPERTIES
   PREFIX ""
@@ -21,11 +21,10 @@ if(JOGGLE_BUILD_TESTS)
       -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
   endif()
   target_compile_definitions(joggle_precision_test PRIVATE
-    JOGGLE_ARITH_MODULE="${PROJECT_SOURCE_DIR}/modules/arith.joggle"
-    JOGGLE_RESOURCE_MODULE="${PROJECT_SOURCE_DIR}/modules/resource.joggle"
-    JOGGLE_TENSOR_MODULE="${PROJECT_SOURCE_DIR}/modules/tensor.joggle"
-    JOGGLE_NN_MODULE="${PROJECT_SOURCE_DIR}/modules/nn.joggle"
-    JOGGLE_PRECISION_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/precision.joggle"
+    JOGGLE_ARITH_MODULE="${PROJECT_SOURCE_DIR}/modules/arith/module.joggle"
+    JOGGLE_TENSOR_MODULE="${PROJECT_SOURCE_DIR}/modules/tensor/module.joggle"
+    JOGGLE_NN_MODULE="${PROJECT_SOURCE_DIR}/modules/nn/module.joggle"
+    JOGGLE_PRECISION_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/module.joggle"
     JOGGLE_PRECISION_BEHAVIOR="$<TARGET_FILE:joggle_precision_behavior>")
   add_dependencies(joggle_precision_test joggle_precision_behavior)
   add_test(NAME precision COMMAND joggle_precision_test)
@@ -40,13 +39,12 @@ if(JOGGLE_BUILD_TESTS)
         -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
     endif()
     target_compile_definitions(joggle_precision_onnx_test PRIVATE
-      JOGGLE_ARITH_MODULE="${PROJECT_SOURCE_DIR}/modules/arith.joggle"
-      JOGGLE_RESOURCE_MODULE="${PROJECT_SOURCE_DIR}/modules/resource.joggle"
-      JOGGLE_TENSOR_MODULE="${PROJECT_SOURCE_DIR}/modules/tensor.joggle"
-      JOGGLE_NN_MODULE="${PROJECT_SOURCE_DIR}/modules/nn.joggle"
-      JOGGLE_ONNX_MODULE="${PROJECT_SOURCE_DIR}/extensions/onnx/onnx.joggle"
+      JOGGLE_ARITH_MODULE="${PROJECT_SOURCE_DIR}/modules/arith/module.joggle"
+      JOGGLE_TENSOR_MODULE="${PROJECT_SOURCE_DIR}/modules/tensor/module.joggle"
+      JOGGLE_NN_MODULE="${PROJECT_SOURCE_DIR}/modules/nn/module.joggle"
+      JOGGLE_ONNX_MODULE="${PROJECT_SOURCE_DIR}/modules/onnx/module.joggle"
       JOGGLE_ONNX_BEHAVIOR="$<TARGET_FILE:joggle_onnx_behavior>"
-      JOGGLE_PRECISION_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/precision.joggle"
+      JOGGLE_PRECISION_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/module.joggle"
       JOGGLE_PRECISION_BEHAVIOR="$<TARGET_FILE:joggle_precision_behavior>"
       JOGGLE_PRECISION_ONNX_MODEL="${JOGGLE_ONNX_MODEL}")
     add_dependencies(joggle_precision_onnx_test
@@ -55,8 +53,9 @@ if(JOGGLE_BUILD_TESTS)
   endif()
 endif()
 
-install(FILES precision.joggle
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules)
+install(FILES module.joggle
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules
+  RENAME precision.joggle)
 install(TARGETS joggle_precision_behavior
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/joggle/behaviors
   RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/joggle/behaviors)

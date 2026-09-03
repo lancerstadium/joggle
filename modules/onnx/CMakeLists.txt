@@ -45,7 +45,7 @@ target_include_directories(joggle_onnx_proto PUBLIC
   "${joggle_onnx_generated}")
 
 joggle_add_behavior(joggle_onnx_behavior
-  MODULE onnx.joggle
+  MODULE module.joggle
   SOURCES behavior.cpp)
 set_target_properties(joggle_onnx_behavior PROPERTIES
   PREFIX ""
@@ -74,11 +74,10 @@ if(JOGGLE_BUILD_TESTS)
       -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
   endif()
   target_compile_definitions(joggle_onnx_test PRIVATE
-    JOGGLE_ARITH_MODULE="${PROJECT_SOURCE_DIR}/modules/arith.joggle"
-    JOGGLE_RESOURCE_MODULE="${PROJECT_SOURCE_DIR}/modules/resource.joggle"
-    JOGGLE_TENSOR_MODULE="${PROJECT_SOURCE_DIR}/modules/tensor.joggle"
-    JOGGLE_NN_MODULE="${PROJECT_SOURCE_DIR}/modules/nn.joggle"
-    JOGGLE_ONNX_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/onnx.joggle"
+    JOGGLE_ARITH_MODULE="${PROJECT_SOURCE_DIR}/modules/arith/module.joggle"
+    JOGGLE_TENSOR_MODULE="${PROJECT_SOURCE_DIR}/modules/tensor/module.joggle"
+    JOGGLE_NN_MODULE="${PROJECT_SOURCE_DIR}/modules/nn/module.joggle"
+    JOGGLE_ONNX_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/module.joggle"
     JOGGLE_ONNX_BEHAVIOR="$<TARGET_FILE:joggle_onnx_behavior>")
   add_dependencies(joggle_onnx_test joggle_onnx_behavior)
   add_test(NAME onnx COMMAND joggle_onnx_test)
@@ -92,8 +91,9 @@ if(JOGGLE_BUILD_TESTS)
   endif()
 endif()
 
-install(FILES onnx.joggle
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules)
+install(FILES module.joggle
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules
+  RENAME onnx.joggle)
 install(TARGETS joggle_onnx_behavior
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/joggle/behaviors
   RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/joggle/behaviors)

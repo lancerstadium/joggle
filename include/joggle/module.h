@@ -15,6 +15,8 @@
 
 namespace joggle {
 
+using Bytes = std::vector<std::byte>;
+
 namespace detail {
 struct ModuleAccess;
 struct FunctionTypeAccess;
@@ -291,6 +293,13 @@ public:
   std::string_view interface_digest() const;
   std::span<const Import> imports() const;
 
+  // Large immutable payloads (for example model weights) travel with the
+  // Module without becoming textual declarations or separate pass results.
+  // store() content-addresses and deduplicates bytes; copies share payloads.
+  std::string store(Bytes bytes);
+  std::optional<std::span<const std::byte>> data(std::string_view name) const;
+  std::vector<std::string> data() const;
+
   std::optional<InterfaceDecl> interface(std::string_view name) const;
   std::optional<TypeDecl> type(std::string_view name) const;
   std::optional<AttributeDecl> attribute(std::string_view name) const;
@@ -319,6 +328,8 @@ private:
   explicit Module(std::shared_ptr<const Storage> storage);
   static std::string_view
   current_digest(const std::shared_ptr<const Storage>& storage);
+  static std::string
+  compute_digest(const std::shared_ptr<const Storage>& storage);
   static std::string
   compute_interface_digest(const std::shared_ptr<const Storage>& storage);
   static Module

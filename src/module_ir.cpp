@@ -90,12 +90,12 @@ void collect(DependencyMap& dependencies, const Function& function) {
     for (const Value& argument : block.arguments()) {
       collect(dependencies, argument);
     }
-    for (const Instruction& instruction : block.instructions()) {
-      collect(dependencies, instruction.callee().symbol());
-      for (const Value& argument : instruction.arguments()) {
+    for (const Op& op : block.ops()) {
+      collect(dependencies, op.callee().symbol());
+      for (const Value& argument : op.arguments()) {
         collect(dependencies, argument);
       }
-      for (const Value& result : instruction.results()) {
+      for (const Value& result : op.results()) {
         collect(dependencies, result);
       }
     }
@@ -250,7 +250,7 @@ bool Module::insert(std::string name, Function function,
           diagnostics)) {
     return false;
   }
-  next->digest = sha256(format(candidate));
+  next->digest = Module::compute_digest(next);
   next->digest_revisions.clear();
   next->digest_revisions.reserve(next->functions.size());
   for (const detail::FunctionMember& member : next->functions) {

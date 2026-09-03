@@ -31,7 +31,7 @@ struct FunctionAccess;
 class Function;
 class Block;
 class Value;
-class Instruction;
+class Op;
 class Terminator;
 
 class Value {
@@ -46,7 +46,7 @@ public:
   bool is_function_argument() const;
   bool is_block_argument() const;
   std::optional<Module::FunctionDecl> referenced_function() const;
-  std::optional<Instruction> defining_instruction() const;
+  std::optional<Op> defining_op() const;
   bool operator==(const Value&) const;
 
 private:
@@ -60,32 +60,39 @@ private:
   friend class joggle::Compiler;
   friend class Function;
   friend class Block;
-  friend class Instruction;
+  friend class Op;
   friend class Terminator;
   friend struct joggle::detail::FunctionAccess;
 };
 
-class Instruction {
+class Op {
 public:
   bool valid() const;
   Module::FunctionDecl callee() const;
   Block parent() const;
+  // Residual inputs are SSA edges. Known inputs are immutable properties.
+  // Both are derived from the callee's single `fn` signature; an IR schema
+  // never maintains a second operand/attribute declaration.
+  std::vector<Value> operands() const;
+  std::vector<std::pair<std::string, Value>> properties() const;
+  std::optional<Value> operand(std::string_view name) const;
+  std::optional<Value> property(std::string_view name) const;
   std::vector<Value> arguments() const;
   std::vector<Value> results() const;
   Value value() const;
   Value result(std::size_t index) const;
 
-  template <typename T> std::optional<T> get(std::string_view name) const {
-    const auto value = argument(name);
+  template <typename T>
+  std::optional<T> property(std::string_view name) const {
+    const auto value = property(name);
     return value ? value->get<T>() : std::nullopt;
   }
 
-  bool operator==(const Instruction&) const = default;
+  bool operator==(const Op&) const = default;
 
 private:
   std::optional<Value> argument(std::string_view name) const;
-  Instruction(std::shared_ptr<detail::FunctionIdentity> function,
-              std::uint64_t id);
+  Op(std::shared_ptr<detail::FunctionIdentity> function, std::uint64_t id);
   std::shared_ptr<detail::FunctionIdentity> function_;
   std::uint64_t id_ = 0;
 
@@ -124,7 +131,7 @@ public:
   bool valid() const;
   bool is_entry() const;
   std::vector<Value> arguments() const;
-  std::vector<Instruction> instructions() const;
+  std::vector<Op> ops() const;
   Terminator terminator() const;
   bool operator==(const Block&) const = default;
 
@@ -134,7 +141,7 @@ private:
   std::uint64_t id_ = 0;
 
   friend class Function;
-  friend class Instruction;
+  friend class Op;
   friend class Terminator;
   friend struct joggle::detail::FunctionAccess;
 };
@@ -165,15 +172,14 @@ public:
     Value reference(Module::FunctionDecl function, Type type);
     Block block(std::vector<Type> argument_types = {});
     // Straight-line convenience: append to the entry Block.
-    Instruction append(Module::FunctionDecl schema,
-                       std::vector<Value> arguments = {},
-                       std::vector<Type> result_types = {});
-    Instruction append(Block block, Module::FunctionDecl schema,
-                       std::vector<Value> arguments = {},
-                       std::vector<Type> result_types = {});
-    Instruction insert(Instruction before, Module::FunctionDecl schema,
-                       std::vector<Value> arguments = {},
-                       std::vector<Type> result_types = {});
+    Op append(Module::FunctionDecl schema, std::vector<Value> arguments = {},
+              std::vector<Type> result_types = {});
+    Op append(Block block, Module::FunctionDecl schema,
+              std::vector<Value> arguments = {},
+              std::vector<Type> result_types = {});
+    Op insert(Op before, Module::FunctionDecl schema,
+              std::vector<Value> arguments = {},
+              std::vector<Type> result_types = {});
 
     void ret(Block block, std::vector<Value> values = {});
     void jump(Block block, Block target, std::vector<Value> arguments = {});
@@ -181,17 +187,17 @@ public:
                 std::vector<Value> true_arguments, Block false_target,
                 std::vector<Value> false_arguments);
     void replace(Value from, Value to);
-    Instruction replace(Instruction instruction, Module::FunctionDecl schema);
-    // Replaces every result position and erases the old Instruction. An empty
-    // replacement erases a zero-result Instruction.
-    void replace(Instruction instruction, std::vector<Value> results);
-    void erase(Instruction instruction);
+    Op replace(Op op, Module::FunctionDecl schema);
+    // Replaces every result position and erases the old Op. An empty
+    // replacement erases a zero-result Op.
+    void replace(Op op, std::vector<Value> results);
+    void erase(Op op);
 
     bool commit(Diagnostics& diagnostics);
 
   private:
     explicit Edit(std::shared_ptr<detail::FunctionIdentity> function);
-    Instruction add(Block block, std::optional<Instruction> before,
+    Op add(Block block, std::optional<Op> before,
                     Module::FunctionDecl schema, std::vector<Value> arguments,
                     std::vector<Type> result_types);
     std::unique_ptr<detail::FunctionEditState> state_;
@@ -212,14 +218,14 @@ public:
   std::vector<Type> result_types() const;
   Block entry() const;
   std::vector<Block> blocks() const;
-  std::vector<Instruction> instructions() const;
+  std::vector<Op> ops() const;
   // Reverse relations over this Function's existing IR. These queries do not
   // create or own a second graph representation.
   std::vector<Block> predecessors(Block block) const;
-  std::vector<Instruction> users(Value value) const;
+  std::vector<Op> users(Value value) const;
   bool has_uses(Value value) const;
   bool dominates(Block dominator, Block block) const;
-  bool dominates(Value definition, Instruction instruction) const;
+  bool dominates(Value definition, Op op) const;
   Revision revision() const;
   Edit edit();
 
@@ -228,9 +234,8 @@ private:
   bool accepts(const Module::Symbol& symbol) const;
   static Value make_value(std::shared_ptr<detail::FunctionIdentity> function,
                           std::uint64_t id);
-  static Instruction
-  make_instruction(std::shared_ptr<detail::FunctionIdentity> function,
-                   std::uint64_t id);
+  static Op make_op(std::shared_ptr<detail::FunctionIdentity> function,
+                    std::uint64_t id);
   static Block make_block(std::shared_ptr<detail::FunctionIdentity> function,
                           std::uint64_t id);
   std::shared_ptr<detail::FunctionIdentity> function_;

@@ -139,6 +139,108 @@ tensor_type(joggle::Compiler& compiler,
                      std::move(dimensions), diagnostics);
 }
 
+struct RankedType {
+  joggle::Type element;
+  std::vector<std::int64_t> shape;
+};
+
+std::optional<RankedType>
+ranked_type(const joggle::Type& type,
+            const joggle::Module::TypeDecl& ranked,
+            std::string_view context, joggle::Diagnostics& diagnostics) {
+  if (type.schema() != ranked) {
+    diagnostics.report(std::string(context) + " requires ranked tensors");
+    return std::nullopt;
+  }
+  const auto element = type.get<joggle::Type>("element");
+  const auto shape = type.get<std::vector<std::int64_t>>("shape");
+  if (!element || !shape) {
+    diagnostics.report(std::string(context) +
+                       " received a malformed ranked tensor type");
+    return std::nullopt;
+  }
+  return RankedType{*element, *shape};
+}
+
+std::optional<joggle::Type>
+make_ranked(joggle::Compiler& compiler,
+            const joggle::Module::TypeDecl& ranked,
+            const joggle::Type& element, std::vector<std::int64_t> shape) {
+  return compiler.make(ranked, element, std::move(shape));
+}
+
+std::optional<std::int64_t>
+window_extent(std::int64_t input, std::int64_t kernel, std::int64_t stride,
+              std::int64_t dilation, std::int64_t before,
+              std::int64_t after) {
+  if (input <= 0 || kernel <= 0 || stride <= 0 || dilation <= 0 || before < 0 ||
+      after < 0) {
+    return std::nullopt;
+  }
+  const std::int64_t numerator =
+      input + before + after - dilation * (kernel - 1) - 1;
+  if (numerator < 0) {
+    return std::nullopt;
+  }
+  return numerator / stride + 1;
+}
+
+std::optional<joggle::Type>
+conv_result(joggle::Compiler& compiler,
+            const joggle::Module::TypeDecl& ranked,
+            const joggle::Type& input_type, const joggle::Type& weight_type,
+            const std::vector<std::int64_t>& strides,
+            const std::vector<std::int64_t>& dilations,
+            const std::vector<std::int64_t>& pads,
+            joggle::Diagnostics& diagnostics) {
+  const auto input =
+      ranked_type(input_type, ranked, "ONNX Conv", diagnostics);
+  const auto weight =
+      ranked_type(weight_type, ranked, "ONNX Conv", diagnostics);
+  if (!input || !weight || input->shape.size() != 4U ||
+      weight->shape.size() != 4U || input->element != weight->element) {
+    diagnostics.report("ONNX Conv requires compatible rank-4 tensors");
+    return std::nullopt;
+  }
+  const auto height = window_extent(input->shape[2], weight->shape[2],
+                                    strides[0], dilations[0], pads[0], pads[2]);
+  const auto width = window_extent(input->shape[3], weight->shape[3],
+                                   strides[1], dilations[1], pads[1], pads[3]);
+  if (!height || !width) {
+    diagnostics.report("ONNX Conv has an invalid output extent");
+    return std::nullopt;
+  }
+  return make_ranked(compiler, ranked, input->element,
+                     {input->shape[0], weight->shape[0], *height, *width});
+}
+
+std::optional<joggle::Type>
+pool_result(joggle::Compiler& compiler,
+            const joggle::Module::TypeDecl& ranked,
+            const joggle::Type& input_type,
+            const std::vector<std::int64_t>& kernel,
+            const std::vector<std::int64_t>& strides,
+            const std::vector<std::int64_t>& dilations,
+            const std::vector<std::int64_t>& pads,
+            joggle::Diagnostics& diagnostics) {
+  const auto input =
+      ranked_type(input_type, ranked, "ONNX MaxPool", diagnostics);
+  if (!input || input->shape.size() != 4U) {
+    diagnostics.report("ONNX MaxPool requires a rank-4 tensor");
+    return std::nullopt;
+  }
+  const auto height = window_extent(input->shape[2], kernel[0], strides[0],
+                                    dilations[0], pads[0], pads[2]);
+  const auto width = window_extent(input->shape[3], kernel[1], strides[1],
+                                   dilations[1], pads[1], pads[3]);
+  if (!height || !width) {
+    diagnostics.report("ONNX MaxPool has an invalid output extent");
+    return std::nullopt;
+  }
+  return make_ranked(compiler, ranked, input->element,
+                     {input->shape[0], input->shape[1], *height, *width});
+}
+
 joggle::Bytes bytes(std::string_view source) {
   joggle::Bytes result;
   result.reserve(source.size());
@@ -304,7 +406,7 @@ bool explicit_padding(const ::onnx::NodeProto& node, std::size_t node_index,
   return true;
 }
 
-std::optional<std::tuple<joggle::Module, joggle::ResourceSet>>
+std::optional<joggle::Module>
 read(joggle::Compiler& compiler, joggle::Bytes input,
      joggle::Diagnostics& diagnostics) {
   if (input.size() >
@@ -338,31 +440,37 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
   }
 
   const auto tensor = compiler.module("tensor");
-  const auto nn = compiler.module("nn");
+  const auto onnx = compiler.module("onnx");
   const auto ranked = tensor ? tensor->type("ranked") : std::nullopt;
-  const auto constant = tensor ? tensor->function("constant") : std::nullopt;
-  const auto add = nn ? nn->function("add") : std::nullopt;
-  const auto relu = nn ? nn->function("relu") : std::nullopt;
-  const auto convs = nn ? nn->overloads("conv2d_nchw")
+  const auto constant = onnx ? onnx->function("constant") : std::nullopt;
+  const auto add = onnx ? onnx->function("add") : std::nullopt;
+  const auto relu = onnx ? onnx->function("relu") : std::nullopt;
+  const auto convs = onnx ? onnx->overloads("conv")
                         : std::vector<joggle::Module::FunctionDecl>{};
   const auto conv = std::find_if(
       convs.begin(), convs.end(),
-      [](const auto& candidate) { return candidate.inputs().size() == 10U; });
+      [](const auto& candidate) { return candidate.inputs().size() == 6U; });
   const auto biased_conv = std::find_if(
       convs.begin(), convs.end(),
-      [](const auto& candidate) { return candidate.inputs().size() == 11U; });
-  const auto max_pool = nn ? nn->function("max_pool2d_nchw") : std::nullopt;
+      [](const auto& candidate) { return candidate.inputs().size() == 7U; });
+  const auto max_pool = onnx ? onnx->function("max_pool") : std::nullopt;
   const auto global_average_pool =
-      nn ? nn->function("global_average_pool_nchw") : std::nullopt;
-  const auto flatten = nn ? nn->function("flatten_nchw") : std::nullopt;
-  const auto linear = nn ? nn->function("linear") : std::nullopt;
+      onnx ? onnx->function("global_average_pool") : std::nullopt;
+  const auto flatten = onnx ? onnx->function("flatten") : std::nullopt;
+  const auto gemm = onnx ? onnx->function("gemm") : std::nullopt;
   const auto string_type = compiler.make("string");
   const auto integer_type = compiler.make("int");
+  const auto real_type = compiler.make("real");
+  const auto prelude = compiler.module("prelude");
+  const auto list = prelude ? prelude->type("list") : std::nullopt;
+  const auto integer_list = list && integer_type
+                                ? compiler.make(*list, *integer_type)
+                                : std::nullopt;
   if (!ranked || !constant || !add || !relu || conv == convs.end() ||
       biased_conv == convs.end() || !max_pool ||
-      !global_average_pool || !flatten || !linear || !string_type ||
-      !integer_type) {
-    diagnostics.report("ONNX behavior requires tensor@2 and nn@2");
+      !global_average_pool || !flatten || !gemm || !string_type ||
+      !integer_type || !real_type || !integer_list) {
+    diagnostics.report("ONNX behavior requires its source schema and tensor@2");
     return std::nullopt;
   }
 
@@ -373,7 +481,7 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
   auto edit = function->edit();
   std::map<std::string, joggle::Value, std::less<>> values;
   std::set<std::string, std::less<>> initializer_names;
-  joggle::ResourceSet resources;
+  joggle::Module imported(module_name(model.graph().name()), {1, 0, 0});
 
   for (const auto& initializer : model.graph().initializer()) {
     if (initializer.name().empty() ||
@@ -386,16 +494,13 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
     if (!type || !payload) {
       return std::nullopt;
     }
-    const std::string raw(reinterpret_cast<const char*>(payload->data()),
-                          payload->size());
-    const std::string resource = "sha256:" + joggle::sha256(raw);
-    resources.try_emplace(resource, *payload);
+    const std::string resource = imported.store(std::move(*payload));
     const auto known = compiler.known(*string_type, resource);
     if (!known) {
       return std::nullopt;
     }
-    const auto instruction = edit.append(*constant, {*known}, {*type});
-    values.emplace(initializer.name(), instruction.value());
+    const auto op = edit.append(*constant, {*known}, {*type});
+    values.emplace(initializer.name(), op.value());
   }
 
   for (const auto& argument : model.graph().input()) {
@@ -451,6 +556,22 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
       arguments.push_back(*known);
       return true;
     };
+    const auto append_real = [&](double value) {
+      const auto known = compiler.known(*real_type, value);
+      if (!known) {
+        return false;
+      }
+      arguments.push_back(*known);
+      return true;
+    };
+    const auto append_integers = [&](const std::vector<std::int64_t>& value) {
+      const auto known = compiler.known(*integer_list, value);
+      if (!known) {
+        return false;
+      }
+      arguments.push_back(*known);
+      return true;
+    };
     const auto valid_pair = [&](const std::vector<std::int64_t>& values,
                                 std::string_view name) {
       if (values.size() == 2U && values[0] > 0 && values[1] > 0) {
@@ -476,6 +597,7 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
     };
 
     const joggle::Module::FunctionDecl* declaration = nullptr;
+    std::optional<joggle::Type> result_type;
     if (node.op_type() == "Add") {
       if (!arity(2U) ||
           !attributes_are(node, {}, static_cast<std::size_t>(node_index),
@@ -483,6 +605,7 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
         return std::nullopt;
       }
       declaration = &*add;
+      result_type = arguments.front().type();
     } else if (node.op_type() == "Relu") {
       if (!arity(1U) ||
           !attributes_are(node, {}, static_cast<std::size_t>(node_index),
@@ -490,6 +613,7 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
         return std::nullopt;
       }
       declaration = &*relu;
+      result_type = arguments.front().type();
     } else if (node.op_type() == "Conv") {
       if ((arguments.size() != 2U && arguments.size() != 3U) ||
           !attributes_are(node,
@@ -528,15 +652,15 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
         }
         return std::nullopt;
       }
-      if (!append_integer((*strides)[0]) ||
-          !append_integer((*strides)[1]) ||
-          !append_integer((*dilations)[0]) ||
-          !append_integer((*dilations)[1]) || !append_integer((*pads)[0]) ||
-          !append_integer((*pads)[1]) || !append_integer((*pads)[2]) ||
-          !append_integer((*pads)[3])) {
+      result_type = conv_result(compiler, *ranked, arguments[0].type(),
+                                arguments[1].type(), *strides, *dilations,
+                                *pads, diagnostics);
+      if (!result_type || !append_integers(*strides) ||
+          !append_integers(*dilations) || !append_integers(*pads) ||
+          !append_integer(*group)) {
         return std::nullopt;
       }
-      declaration = arguments.size() == 2U ? &*conv : &*biased_conv;
+      declaration = node.input_size() == 2 ? &*conv : &*biased_conv;
     } else if (node.op_type() == "MaxPool") {
       if (!arity(1U) ||
           !attributes_are(node,
@@ -581,13 +705,13 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
         }
         return std::nullopt;
       }
-      if (!append_integer((*kernel)[0]) || !append_integer((*kernel)[1]) ||
-          !append_integer((*strides)[0]) ||
-          !append_integer((*strides)[1]) ||
-          !append_integer((*dilations)[0]) ||
-          !append_integer((*dilations)[1]) || !append_integer((*pads)[0]) ||
-          !append_integer((*pads)[1]) || !append_integer((*pads)[2]) ||
-          !append_integer((*pads)[3])) {
+      result_type = pool_result(compiler, *ranked, arguments[0].type(),
+                                *kernel, *strides, *dilations, *pads,
+                                diagnostics);
+      if (!result_type || !append_integers(*kernel) ||
+          !append_integers(*strides) || !append_integers(*dilations) ||
+          !append_integers(*pads) || !append_integer(*ceil_mode) ||
+          !append_integer(*storage_order)) {
         return std::nullopt;
       }
       declaration = &*max_pool;
@@ -598,6 +722,14 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
         return std::nullopt;
       }
       declaration = &*global_average_pool;
+      const auto source_type = ranked_type(
+          arguments[0].type(), *ranked, "ONNX GlobalAveragePool", diagnostics);
+      if (!source_type || source_type->shape.size() != 4U) {
+        return std::nullopt;
+      }
+      result_type = make_ranked(
+          compiler, *ranked, source_type->element,
+          {source_type->shape[0], source_type->shape[1], 1, 1});
     } else if (node.op_type() == "Flatten") {
       const auto axis = integer_attribute(
           node, "axis", 1, static_cast<std::size_t>(node_index), diagnostics);
@@ -612,6 +744,18 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
         return std::nullopt;
       }
       declaration = &*flatten;
+      const auto source_type = ranked_type(arguments[0].type(), *ranked,
+                                           "ONNX Flatten", diagnostics);
+      if (!source_type || source_type->shape.size() != 4U) {
+        return std::nullopt;
+      }
+      result_type = make_ranked(
+          compiler, *ranked, source_type->element,
+          {source_type->shape[0], source_type->shape[1] * source_type->shape[2] *
+                                      source_type->shape[3]});
+      if (!result_type || !append_integer(*axis)) {
+        return std::nullopt;
+      }
     } else if (node.op_type() == "Gemm") {
       const auto alpha = real_attribute(
           node, "alpha", 1.0, static_cast<std::size_t>(node_index), diagnostics);
@@ -635,7 +779,22 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
         }
         return std::nullopt;
       }
-      declaration = &*linear;
+      declaration = &*gemm;
+      const auto a = ranked_type(arguments[0].type(), *ranked, "ONNX Gemm",
+                                 diagnostics);
+      const auto b = ranked_type(arguments[1].type(), *ranked, "ONNX Gemm",
+                                 diagnostics);
+      if (!a || !b || a->shape.size() != 2U || b->shape.size() != 2U ||
+          a->element != b->element) {
+        diagnostics.report("ONNX Gemm requires compatible rank-2 tensors");
+        return std::nullopt;
+      }
+      result_type = make_ranked(compiler, *ranked, a->element,
+                                {a->shape[0], b->shape[0]});
+      if (!result_type || !append_real(*alpha) || !append_real(*beta) ||
+          !append_integer(*trans_a) || !append_integer(*trans_b)) {
+        return std::nullopt;
+      }
     }
     if (declaration == nullptr) {
       diagnostics.report("ONNX node " + std::to_string(node_index) +
@@ -643,16 +802,16 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
                          "'");
       return std::nullopt;
     }
-    std::optional<joggle::Instruction> instruction;
+    std::optional<joggle::Op> op;
     try {
-      instruction = edit.append(*declaration, std::move(arguments));
+      op = edit.append(*declaration, std::move(arguments), {*result_type});
     } catch (const std::exception& error) {
       diagnostics.report("ONNX node " + std::to_string(node_index) + " ('" +
                          node.op_type() + "') is ill-typed: " + error.what());
       return std::nullopt;
     }
     if (node.output_size() !=
-        static_cast<int>(instruction->results().size())) {
+        static_cast<int>(op->results().size())) {
       diagnostics.report("ONNX node " + std::to_string(node_index) +
                          " has an unsupported result count");
       return std::nullopt;
@@ -661,7 +820,7 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
       if (node.output(output).empty() ||
           !values
                .emplace(node.output(output),
-                        instruction->result(static_cast<std::size_t>(output)))
+                        op->result(static_cast<std::size_t>(output)))
                .second) {
         diagnostics.report("ONNX value names must be unique and non-empty");
         return std::nullopt;
@@ -691,22 +850,169 @@ read(joggle::Compiler& compiler, joggle::Bytes input,
     return std::nullopt;
   }
 
-  joggle::Module imported(module_name(model.graph().name()), {1, 0, 0});
   if (!imported.insert("main", std::move(*function), diagnostics)) {
     return std::nullopt;
   }
-  return std::tuple{std::move(imported), std::move(resources)};
+  return imported;
+}
+
+std::optional<joggle::Module>
+to_nn(joggle::Compiler& compiler, joggle::Module input,
+      joggle::Diagnostics& diagnostics) {
+  const auto tensor = compiler.module("tensor");
+  const auto nn = compiler.module("nn");
+  const auto constant = tensor ? tensor->function("constant") : std::nullopt;
+  const auto add = nn ? nn->function("add") : std::nullopt;
+  const auto relu = nn ? nn->function("relu") : std::nullopt;
+  const auto convs = nn ? nn->overloads("conv2d_nchw")
+                        : std::vector<joggle::Module::FunctionDecl>{};
+  const auto conv = std::find_if(
+      convs.begin(), convs.end(),
+      [](const auto& candidate) { return candidate.inputs().size() == 10U; });
+  const auto biased_conv = std::find_if(
+      convs.begin(), convs.end(),
+      [](const auto& candidate) { return candidate.inputs().size() == 11U; });
+  const auto max_pool = nn ? nn->function("max_pool2d_nchw") : std::nullopt;
+  const auto global_average_pool =
+      nn ? nn->function("global_average_pool_nchw") : std::nullopt;
+  const auto flatten = nn ? nn->function("flatten_nchw") : std::nullopt;
+  const auto linear = nn ? nn->function("linear") : std::nullopt;
+  const auto integer = compiler.make("int");
+  if (!constant || !add || !relu || conv == convs.end() ||
+      biased_conv == convs.end() || !max_pool || !global_average_pool ||
+      !flatten || !linear || !integer) {
+    diagnostics.report("onnx.to_nn requires tensor@2 and nn@2");
+    return std::nullopt;
+  }
+
+  const auto changes = joggle::convert(
+      input,
+      [&](const joggle::Op& op, joggle::Function::Edit& edit,
+          joggle::Diagnostics& rule_diagnostics) {
+        const auto symbol = op.callee().symbol();
+        if (symbol.module_name() != "onnx") {
+          return false;
+        }
+
+        const auto fail = [&](std::string message) {
+          rule_diagnostics.report("cannot convert '" +
+                                  symbol.qualified_name() + "': " + message);
+          return false;
+        };
+        const auto integers = [&](std::string_view name)
+            -> std::optional<std::vector<std::int64_t>> {
+          return op.property<std::vector<std::int64_t>>(name);
+        };
+        std::vector<joggle::Value> arguments = op.operands();
+        const joggle::Module::FunctionDecl* target = nullptr;
+        const auto append_integers =
+            [&](const std::vector<std::int64_t>& values) {
+              for (const std::int64_t value : values) {
+                const auto known = compiler.known(*integer, value);
+                if (!known) {
+                  return false;
+                }
+                arguments.push_back(*known);
+              }
+              return true;
+            };
+
+        if (symbol.local_name() == "constant") {
+          const auto resource = op.property("resource");
+          if (!resource) {
+            return fail("missing resource property");
+          }
+          arguments = {*resource};
+          target = &*constant;
+        } else if (symbol.local_name() == "add") {
+          target = &*add;
+        } else if (symbol.local_name() == "relu") {
+          target = &*relu;
+        } else if (symbol.local_name() == "conv") {
+          const auto strides = integers("strides");
+          const auto dilations = integers("dilations");
+          const auto pads = integers("pads");
+          const auto group = op.property<std::int64_t>("group");
+          if (!strides || strides->size() != 2U || !dilations ||
+              dilations->size() != 2U || !pads || pads->size() != 4U ||
+              group != std::optional<std::int64_t>{1}) {
+            return fail("nn.conv2d_nchw requires 2-D attributes and group=1");
+          }
+          if (!append_integers(*strides) || !append_integers(*dilations) ||
+              !append_integers(*pads)) {
+            return fail("could not materialize an integer property");
+          }
+          target = arguments.size() == 10U ? &*conv : &*biased_conv;
+        } else if (symbol.local_name() == "max_pool") {
+          const auto kernel = integers("kernel_shape");
+          const auto strides = integers("strides");
+          const auto dilations = integers("dilations");
+          const auto pads = integers("pads");
+          const auto ceil_mode = op.property<std::int64_t>("ceil_mode");
+          const auto storage_order =
+              op.property<std::int64_t>("storage_order");
+          if (!kernel || kernel->size() != 2U || !strides ||
+              strides->size() != 2U || !dilations ||
+              dilations->size() != 2U || !pads || pads->size() != 4U ||
+              ceil_mode != std::optional<std::int64_t>{0} ||
+              storage_order != std::optional<std::int64_t>{0}) {
+            return fail("nn.max_pool2d_nchw requires floor rounding and "
+                        "row-major indices");
+          }
+          if (!append_integers(*kernel) || !append_integers(*strides) ||
+              !append_integers(*dilations) || !append_integers(*pads)) {
+            return fail("could not materialize an integer property");
+          }
+          target = &*max_pool;
+        } else if (symbol.local_name() == "global_average_pool") {
+          target = &*global_average_pool;
+        } else if (symbol.local_name() == "flatten") {
+          if (op.property<std::int64_t>("axis") !=
+              std::optional<std::int64_t>{1}) {
+            return fail("nn.flatten_nchw requires axis=1");
+          }
+          target = &*flatten;
+        } else if (symbol.local_name() == "gemm") {
+          if (op.property<double>("alpha") != std::optional<double>{1.0} ||
+              op.property<double>("beta") != std::optional<double>{1.0} ||
+              op.property<std::int64_t>("trans_a") !=
+                  std::optional<std::int64_t>{0} ||
+              op.property<std::int64_t>("trans_b") !=
+                  std::optional<std::int64_t>{1}) {
+            return fail("nn.linear requires alpha=1, beta=1, transA=0, "
+                        "and transB=1");
+          }
+          target = &*linear;
+        } else {
+          return fail("no nn representation is registered");
+        }
+
+        const auto replacement =
+            edit.insert(op, *target, std::move(arguments),
+                        [&] {
+                          std::vector<joggle::Type> types;
+                          for (const auto& result : op.results()) {
+                            types.push_back(result.type());
+                          }
+                          return types;
+                        }());
+        edit.replace(op, replacement.results());
+        return true;
+      },
+      [](const joggle::Op& op) {
+        return op.callee().symbol().module_name() != "onnx";
+      },
+      diagnostics);
+  if (!changes) {
+    return std::nullopt;
+  }
+  return input;
 }
 
 void bind(joggle::Compiler& compiler, const joggle::Module& module,
-          joggle::Diagnostics& diagnostics) {
-  const auto resources = compiler.module("resource");
-  const auto resource_type = resources ? resources->type("set") : std::nullopt;
-  if (!resource_type || !compiler.represent<joggle::ResourceSet>(*resource_type)) {
-    diagnostics.report("ONNX behavior requires resource@1");
-    return;
-  }
+          joggle::Diagnostics&) {
   compiler.bind(module, "read", read);
+  compiler.bind(module, "to_nn", to_nn);
 }
 
 }  // namespace

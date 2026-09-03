@@ -11,7 +11,7 @@ inspection; repository resolution never chooses another Prelude. Changing Prelud
 therefore changes the language ABI and requires the same compatibility care as
 changing a public C++ header.
 
-Prelude owns only concepts that every extension must agree on:
+Prelude owns only concepts that every Module must agree on:
 
 - compiler domains: `int`, `real`, `bool`, `string`, `type`, `attr`, `bytes`,
   `function`, and `list<D>`;
@@ -53,7 +53,7 @@ ordinary functions with operator spellings. A transform therefore matches an
 exact declaration such as `arith.less` or `arith.shift_left`; it never decodes
 a predicate string. Their generic constraints admit custom fixed-width types
 that opt into Prelude's `scalar`, `numeric`, `integer`, or `logical`
-interfaces, so a four-bit extension does not need a parallel arithmetic
+interfaces, so a four-bit Module does not need a parallel arithmetic
 dialect.
 
 Literal materializers implement `prelude.literal`. Their distinct names are
@@ -61,19 +61,6 @@ intentional: an integer token may materialize an integer or a floating-point
 module value, and those declarations otherwise have the same input domain.
 The literal-selection mechanism uses the interface and result constraint, not
 the function name.
-
-## `resource`: explicit detached payloads
-
-`resource.set` is the shared typed value for detached payloads carried beside
-a Module. It is deliberately not a global manager and has no implicit compiler
-lifetime. Importers produce it; transformations may return a replacement;
-simulators and emitters consume it explicitly. Resource names belong to the
-producer's contract, with `sha256:<digest>` as the convention for
-content-addressed payloads.
-
-The C++ representation is the transparent `joggle::ResourceSet` map. Keeping
-the declared type format-neutral prevents a target or quantizer from depending
-on the model format that happened to produce the Module.
 
 ## `tensor`: value shape, not storage
 
@@ -89,13 +76,13 @@ output shape, and the evaluator remains Module source rather than compiler
 core.
 
 `tensor.constant(resource)` introduces an immutable tensor through a stable
-resource identifier. Element type and shape are inferred from the expected
-`tensor.ranked` result. The function deliberately stores no payload in the IR:
-an importer returns the Module together with a typed `resource.set`, and an
-emitter or simulator receives both explicitly. This keeps large
-model parameters out of textual IR without adding an ambient resource manager
-or a second artifact container to the core. Resource extensions may impose a
-stronger convention, such as a validated `sha256:<digest>` identifier.
+data identifier. Element type and shape are inferred from the expected
+`tensor.ranked` result. The payload lives in the owning Module's
+content-addressed data table, not in the textual Op. The
+`tensor.immutable_data` function interface lets transforms discover constants
+from other vocabularies, such as `onnx.constant`, without depending on their
+producer. This keeps large parameters out of source text while retaining a
+single transactional compiler artifact.
 
 ## `nn`: common inference semantics
 
@@ -120,7 +107,7 @@ remain Known type parameters. `reads`, `writes`, and `allocates` are function
 contracts for effect-aware transforms. Buffers may contain any module type,
 not only Prelude scalars.
 
-## Dependency and extension rules
+## Dependency and Module rules
 
 Standard dependencies are ordinary imports: `tensor` imports `arith`, while
 `nn` imports both. A tool loading loose source files must supply direct and
@@ -133,7 +120,7 @@ from that directory explicitly or install selected releases into their Module
 repository. Joggle does not make the standard Modules ambient or search them
 implicitly; only Prelude has language-wide visibility.
 
-An extension should add a Module when it introduces a serializable vocabulary
+Add a Module when a project introduces a serializable vocabulary
 or artifact contract. It should add a behavior library when declarations need
 native algorithms or external I/O. It should not add a core class, keyword, or
 registry merely to name a pipeline role.

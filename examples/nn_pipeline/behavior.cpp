@@ -27,16 +27,16 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
                     -> std::optional<joggle::Module> {
                   const auto converted = joggle::convert(
                       input,
-                      [&](const joggle::Instruction& instruction,
+                      [&](const joggle::Op& op,
                           joggle::Function::Edit& edit, joggle::Diagnostics&) {
-                        if (instruction.callee() != *nn_relu) {
+                        if (op.callee() != *nn_relu) {
                           return false;
                         }
-                        edit.replace(instruction, *accelerator_relu);
+                        edit.replace(op, *accelerator_relu);
                         return true;
                       },
-                      [&](const joggle::Instruction& instruction) {
-                        return instruction.callee() != *nn_relu;
+                      [&](const joggle::Op& op) {
+                        return op.callee() != *nn_relu;
                       },
                       reported);
                   if (!converted) {
@@ -46,7 +46,7 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
                 });
 
   compiler.bind(
-      module, "count_instructions",
+      module, "count_ops",
       [](const joggle::Module& input,
          joggle::Diagnostics& reported) -> std::optional<std::int64_t> {
         std::size_t count = 0;
@@ -55,16 +55,16 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
           if (function == nullptr) {
             continue;
           }
-          const std::size_t size = function->instructions().size();
+          const std::size_t size = function->ops().size();
           if (std::numeric_limits<std::size_t>::max() - count < size) {
-            reported.report("instruction count overflowed");
+            reported.report("op count overflowed");
             return std::nullopt;
           }
           count += size;
         }
         if (count > static_cast<std::size_t>(
                         std::numeric_limits<std::int64_t>::max())) {
-          reported.report("instruction count does not fit in int");
+          reported.report("op count does not fit in int");
           return std::nullopt;
         }
         return static_cast<std::int64_t>(count);

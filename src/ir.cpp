@@ -21,7 +21,7 @@ struct ValueData {
   enum class Origin {
     FunctionArgument,
     BlockArgument,
-    InstructionResult,
+    OpResult,
     FunctionReference
   };
 
@@ -47,7 +47,7 @@ struct StoredArgument {
   StoredValue value;
 };
 
-struct InstructionData {
+struct OpData {
   Module::FunctionDecl schema;
   std::uint64_t parent = 0;
   std::vector<StoredArgument> arguments;
@@ -69,7 +69,7 @@ struct TerminatorData {
 
 struct BlockData {
   std::vector<std::uint64_t> arguments;
-  std::vector<std::uint64_t> instructions;
+  std::vector<std::uint64_t> ops;
   std::optional<TerminatorData> terminator;
 };
 
@@ -82,7 +82,7 @@ struct FunctionState {
 
   std::map<std::string, Module, std::less<>> modules;
   std::unordered_map<std::uint64_t, ValueData> values;
-  std::unordered_map<std::uint64_t, InstructionData> instructions;
+  std::unordered_map<std::uint64_t, OpData> ops;
   std::vector<std::uint64_t> arguments;
   std::unordered_map<std::uint64_t, BlockData> blocks;
   std::vector<std::uint64_t> block_order;
@@ -108,8 +108,8 @@ FunctionAccess::owner(const Value& value) {
 }
 
 const std::shared_ptr<FunctionIdentity>&
-FunctionAccess::owner(const Instruction& instruction) {
-  return instruction.function_;
+FunctionAccess::owner(const Op& op) {
+  return op.function_;
 }
 
 const std::shared_ptr<FunctionIdentity>&
@@ -123,8 +123,8 @@ FunctionAccess::known(const Value& value) {
 }
 
 std::uint64_t FunctionAccess::id(const Value& value) { return value.id_; }
-std::uint64_t FunctionAccess::id(const Instruction& instruction) {
-  return instruction.id_;
+std::uint64_t FunctionAccess::id(const Op& op) {
+  return op.id_;
 }
 std::uint64_t FunctionAccess::id(const Block& block) { return block.id_; }
 
@@ -140,22 +140,22 @@ Value FunctionAccess::restore(std::shared_ptr<FunctionIdentity> function,
   return Value(std::move(function), id);
 }
 void FunctionAccess::locate(Function::Edit& edit,
-                            const Instruction& instruction,
+                            const Op& op,
                             SourceRange source) {
-  if (instruction.function_ != edit.state_->function || !instruction.valid()) {
+  if (op.function_ != edit.state_->function || !op.valid()) {
     throw std::invalid_argument(
-        "instruction does not belong to this function edit");
+        "op does not belong to this function edit");
   }
-  edit.state_->function->state->instructions.at(id(instruction)).location =
+  edit.state_->function->state->ops.at(id(op)).location =
       std::move(source);
 }
 
 std::optional<SourceRange>
-FunctionAccess::location(const Instruction& instruction) {
-  if (!instruction.valid()) {
+FunctionAccess::location(const Op& op) {
+  if (!op.valid()) {
     return std::nullopt;
   }
-  return instruction.function_->state->instructions.at(instruction.id_)
+  return op.function_->state->ops.at(op.id_)
       .location;
 }
 
@@ -163,14 +163,14 @@ std::optional<ParameterValue> FunctionAccess::known_value(const Value& value) {
   return value.known_value();
 }
 
-std::size_t FunctionAccess::argument_parameter(const Instruction& instruction,
+std::size_t FunctionAccess::argument_parameter(const Op& op,
                                                std::size_t argument) {
-  if (!instruction.valid() ||
-      argument >= instruction.function_->state->instructions.at(instruction.id_)
+  if (!op.valid() ||
+      argument >= op.function_->state->ops.at(op.id_)
                       .arguments.size()) {
-    throw std::out_of_range("instruction argument index is out of range");
+    throw std::out_of_range("op argument index is out of range");
   }
-  return instruction.function_->state->instructions.at(instruction.id_)
+  return op.function_->state->ops.at(op.id_)
       .arguments[argument]
       .parameter;
 }
@@ -183,7 +183,7 @@ namespace {
 
 using detail::FunctionIdentity;
 using detail::FunctionState;
-using detail::InstructionData;
+using detail::OpData;
 using detail::ParameterValue;
 using detail::ValueData;
 
@@ -295,23 +295,23 @@ bool accepts_count(std::span<const Module::ParameterDecl> parameters,
   return variadic ? count >= minimum : count == minimum;
 }
 
-std::optional<std::size_t> instruction_position(const FunctionState& function,
-                                                std::uint64_t instruction) {
-  const auto item = function.instructions.find(instruction);
-  if (item == function.instructions.end()) {
+std::optional<std::size_t> op_position(const FunctionState& function,
+                                                std::uint64_t op) {
+  const auto item = function.ops.find(op);
+  if (item == function.ops.end()) {
     return std::nullopt;
   }
   const auto owner = function.blocks.find(item->second.parent);
   if (owner == function.blocks.end()) {
     return std::nullopt;
   }
-  const auto found = std::find(owner->second.instructions.begin(),
-                               owner->second.instructions.end(), instruction);
-  if (found == owner->second.instructions.end()) {
+  const auto found = std::find(owner->second.ops.begin(),
+                               owner->second.ops.end(), op);
+  if (found == owner->second.ops.end()) {
     return std::nullopt;
   }
   return static_cast<std::size_t>(
-      std::distance(owner->second.instructions.begin(), found));
+      std::distance(owner->second.ops.begin(), found));
 }
 
 using BlockSet = std::unordered_set<std::uint64_t>;
@@ -361,7 +361,7 @@ dominators(const FunctionState& function) {
 
 bool definition_dominates(
     const FunctionState& function, const ValueData& definition,
-    std::uint64_t user_block, std::optional<std::uint64_t> user_instruction,
+    std::uint64_t user_block, std::optional<std::uint64_t> user_op,
     const std::unordered_map<std::uint64_t, BlockSet>& dom) {
   if (definition.origin == ValueData::Origin::FunctionArgument) {
     return definition.owner == 0 &&
@@ -376,19 +376,19 @@ bool definition_dominates(
            definition.index < owner->second.arguments.size() &&
            dom.at(user_block).contains(definition.owner);
   }
-  const auto producer = function.instructions.find(definition.owner);
-  if (producer == function.instructions.end()) {
+  const auto producer = function.ops.find(definition.owner);
+  if (producer == function.ops.end()) {
     return false;
   }
   if (producer->second.parent != user_block) {
     return dom.at(user_block).contains(producer->second.parent);
   }
-  if (!user_instruction) {
-    return instruction_position(function, definition.owner).has_value();
+  if (!user_op) {
+    return op_position(function, definition.owner).has_value();
   }
   const auto producer_position =
-      instruction_position(function, definition.owner);
-  const auto user_position = instruction_position(function, *user_instruction);
+      op_position(function, definition.owner);
+  const auto user_position = op_position(function, *user_op);
   return producer_position && user_position &&
          *producer_position < *user_position;
 }
@@ -427,36 +427,36 @@ bool matches_function_reference(const FunctionState& function,
   return resolved && resolved->results == *results;
 }
 
-bool verify_instruction(const FunctionState& function, std::uint64_t id,
-                        const InstructionData& instruction,
+bool verify_op(const FunctionState& function, std::uint64_t id,
+                        const OpData& op,
                         const std::unordered_map<std::uint64_t, BlockSet>& dom,
                         Diagnostics& diagnostics) {
   bool valid = true;
-  const std::string name(instruction.schema.symbol().qualified_name());
-  if (!owns(function, instruction.schema.symbol())) {
-    diagnostics.report("instruction '" + name +
+  const std::string name(op.schema.symbol().qualified_name());
+  if (!owns(function, op.schema.symbol())) {
+    diagnostics.report("op '" + name +
                        "' is outside the function's module closure");
     valid = false;
   }
-  if (!contains(function.blocks, instruction.parent)) {
-    diagnostics.report("instruction '" + name + "' has no parent block");
+  if (!contains(function.blocks, op.parent)) {
+    diagnostics.report("op '" + name + "' has no parent block");
     valid = false;
   }
-  if (!accepts_count(detail::value_results(instruction.schema),
-                     instruction.results.size())) {
-    diagnostics.report("instruction '" + name +
+  if (!accepts_count(detail::value_results(op.schema),
+                     op.results.size())) {
+    diagnostics.report("op '" + name +
                        "' has the wrong number of results");
     valid = false;
   }
 
-  const auto parameters = instruction.schema.inputs();
+  const auto parameters = op.schema.inputs();
   std::vector<std::size_t> counts(parameters.size());
   std::size_t previous_parameter = 0;
-  for (std::size_t index = 0; index < instruction.arguments.size(); ++index) {
-    const detail::StoredArgument& stored = instruction.arguments[index];
+  for (std::size_t index = 0; index < op.arguments.size(); ++index) {
+    const detail::StoredArgument& stored = op.arguments[index];
     if (stored.parameter >= parameters.size() ||
         (index != 0U && stored.parameter < previous_parameter)) {
-      diagnostics.report("instruction '" + name +
+      diagnostics.report("op '" + name +
                          "' has a malformed argument order");
       valid = false;
       continue;
@@ -465,7 +465,7 @@ bool verify_instruction(const FunctionState& function, std::uint64_t id,
     ++counts[stored.parameter];
     const Module::ParameterDecl& parameter = parameters[stored.parameter];
     if (!parameter.variadic && counts[stored.parameter] > 1U) {
-      diagnostics.report("instruction '" + name + "' repeats argument '" +
+      diagnostics.report("op '" + name + "' repeats argument '" +
                          parameter.name + "'");
       valid = false;
     }
@@ -476,7 +476,7 @@ bool verify_instruction(const FunctionState& function, std::uint64_t id,
           (!detail::is_value_port(parameter) &&
            !matches(parameter, argument.known->value))) {
         diagnostics.report("argument " + std::to_string(index) +
-                           " of instruction '" + name +
+                           " of op '" + name +
                            "' has an invalid Known value");
         valid = false;
       }
@@ -490,30 +490,30 @@ bool verify_instruction(const FunctionState& function, std::uint64_t id,
     }
     const auto value = function.values.find(argument.id);
     if (value == function.values.end()) {
-      diagnostics.report("instruction '" + name + "' has an invalid argument");
+      diagnostics.report("op '" + name + "' has an invalid argument");
       valid = false;
-    } else if (contains(function.blocks, instruction.parent) &&
+    } else if (contains(function.blocks, op.parent) &&
                !definition_dominates(function, value->second,
-                                     instruction.parent, id, dom)) {
+                                     op.parent, id, dom)) {
       diagnostics.report("argument " + std::to_string(index) +
-                         " of instruction '" + name +
+                         " of op '" + name +
                          "' is not dominated by its definition");
       valid = false;
     }
   }
   for (std::size_t index = 0; index < parameters.size(); ++index) {
     if (!parameters[index].variadic && counts[index] != 1U) {
-      diagnostics.report("instruction '" + name + "' is missing argument '" +
+      diagnostics.report("op '" + name + "' is missing argument '" +
                          parameters[index].name + "'");
       valid = false;
     }
   }
-  for (std::uint64_t result : instruction.results) {
+  for (std::uint64_t result : op.results) {
     const auto value = function.values.find(result);
     if (value == function.values.end() ||
-        value->second.origin != ValueData::Origin::InstructionResult ||
+        value->second.origin != ValueData::Origin::OpResult ||
         value->second.owner != id || !owns(function, value->second.type)) {
-      diagnostics.report("instruction '" + name + "' has an invalid result");
+      diagnostics.report("op '" + name + "' has an invalid result");
       valid = false;
     }
   }
@@ -528,7 +528,7 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
     diagnostics.report("function has no valid entry block");
     return false;
   }
-  std::unordered_set<std::uint64_t> listed_instructions;
+  std::unordered_set<std::uint64_t> listed_ops;
   std::unordered_set<std::uint64_t> listed_blocks;
   for (const auto& [id, value] : function.values) {
     static_cast<void>(id);
@@ -579,12 +579,12 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
       diagnostics.report("block has no terminator");
       valid = false;
     }
-    for (const std::uint64_t id : block->second.instructions) {
-      const auto instruction = function.instructions.find(id);
-      if (instruction == function.instructions.end() ||
-          instruction->second.parent != block_id ||
-          !listed_instructions.insert(id).second) {
-        diagnostics.report("block has an invalid instruction order");
+    for (const std::uint64_t id : block->second.ops) {
+      const auto op = function.ops.find(id);
+      if (op == function.ops.end() ||
+          op->second.parent != block_id ||
+          !listed_ops.insert(id).second) {
+        diagnostics.report("block has an invalid op order");
         valid = false;
       }
     }
@@ -597,12 +597,12 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
     }
   }
   const auto dom = dominators(function);
-  for (const auto& [id, instruction] : function.instructions) {
-    if (!listed_instructions.contains(id)) {
-      diagnostics.report("function contains an unordered instruction");
+  for (const auto& [id, op] : function.ops) {
+    if (!listed_ops.contains(id)) {
+      diagnostics.report("function contains an unordered op");
       valid = false;
     }
-    valid = verify_instruction(function, id, instruction, dom, diagnostics) &&
+    valid = verify_op(function, id, op, dom, diagnostics) &&
             valid;
   }
 
@@ -737,15 +737,15 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
 }
 
 template <typename Resolve>
-bool verify_instruction_contracts(const FunctionState& function,
+bool verify_op_contracts(const FunctionState& function,
                                   Diagnostics& diagnostics, Resolve&& resolve) {
   bool valid = true;
   for (const std::uint64_t block_id : function.block_order) {
-    for (const std::uint64_t instruction_id :
-         function.blocks.at(block_id).instructions) {
-      const InstructionData& instruction =
-          function.instructions.at(instruction_id);
-      const Module::FunctionDecl schema = instruction.schema;
+    for (const std::uint64_t op_id :
+         function.blocks.at(block_id).ops) {
+      const OpData& op =
+          function.ops.at(op_id);
+      const Module::FunctionDecl schema = op.schema;
 
       std::vector<Type> arguments;
       std::vector<std::optional<ParameterValue>> known_arguments;
@@ -762,7 +762,7 @@ bool verify_instruction_contracts(const FunctionState& function,
           known_indices[index] = known_index++;
         }
       }
-      for (const detail::StoredArgument& stored : instruction.arguments) {
+      for (const detail::StoredArgument& stored : op.arguments) {
         if (stored.parameter >= schema.inputs().size()) {
           continue;
         }
@@ -783,13 +783,13 @@ bool verify_instruction_contracts(const FunctionState& function,
       }
 
       std::vector<std::optional<Type>> results;
-      results.reserve(instruction.results.size());
-      for (const std::uint64_t result : instruction.results) {
+      results.reserve(op.results.size());
+      for (const std::uint64_t result : op.results) {
         results.push_back(function.values.at(result).type);
       }
 
       auto resolved = resolve(schema, arguments, known_arguments, results,
-                              diagnostics, instruction.location);
+                              diagnostics, op.location);
       if (!resolved) {
         valid = false;
       }
@@ -798,7 +798,7 @@ bool verify_instruction_contracts(const FunctionState& function,
   return valid;
 }
 
-bool verify_instruction_contracts(const FunctionState& function,
+bool verify_op_contracts(const FunctionState& function,
                                   Diagnostics& diagnostics) {
   std::vector<Module> modules;
   modules.reserve(function.modules.size());
@@ -806,7 +806,7 @@ bool verify_instruction_contracts(const FunctionState& function,
     static_cast<void>(name);
     modules.push_back(module);
   }
-  return verify_instruction_contracts(
+  return verify_op_contracts(
       function, diagnostics,
       [&](const Module::FunctionDecl& schema, std::span<const Type> arguments,
           std::span<const std::optional<ParameterValue>> known_arguments,
@@ -817,10 +817,10 @@ bool verify_instruction_contracts(const FunctionState& function,
       });
 }
 
-bool verify_instruction_contracts(const FunctionState& function,
+bool verify_op_contracts(const FunctionState& function,
                                   Compiler& compiler,
                                   Diagnostics& diagnostics) {
-  return verify_instruction_contracts(
+  return verify_op_contracts(
       function, diagnostics,
       [&](const Module::FunctionDecl& schema, std::span<const Type> arguments,
           std::span<const std::optional<ParameterValue>> known_arguments,
@@ -870,13 +870,13 @@ bool FunctionAccess::verify_structure(const Function& function,
 
 bool FunctionAccess::verify_contracts(const Function& function,
                                       Diagnostics& diagnostics) {
-  return verify_instruction_contracts(*function.function_->state, diagnostics);
+  return verify_op_contracts(*function.function_->state, diagnostics);
 }
 
 bool FunctionAccess::verify_contracts(const Function& function,
                                       Compiler& compiler,
                                       Diagnostics& diagnostics) {
-  return verify_instruction_contracts(*function.function_->state, compiler,
+  return verify_op_contracts(*function.function_->state, compiler,
                                       diagnostics);
 }
 
@@ -890,7 +890,7 @@ void FunctionAccess::declare(Function& function,
     throw std::logic_error("function signature is already fixed");
   }
   if (!state.arguments.empty() || state.blocks.size() != 1U ||
-      !state.instructions.empty()) {
+      !state.ops.empty()) {
     throw std::logic_error("function signature must be fixed before its body");
   }
   if (!owns(state, declaration.symbol()) ||
@@ -952,7 +952,7 @@ bool FunctionAccess::commit(Function::Edit& edit, Compiler& compiler,
     throw std::logic_error("function edit is no longer active");
   }
   if (!verify_function(*edit.state_->function->state, diagnostics) ||
-      !verify_instruction_contracts(*edit.state_->function->state, compiler,
+      !verify_op_contracts(*edit.state_->function->state, compiler,
                                     diagnostics)) {
     edit.state_->function->state = std::move(edit.state_->backup);
     edit.state_->function->editing = false;
@@ -1026,16 +1026,16 @@ bool Value::is_block_argument() const {
          found->second.origin == ValueData::Origin::BlockArgument;
 }
 
-std::optional<Instruction> Value::defining_instruction() const {
+std::optional<Op> Value::defining_op() const {
   if (!function_) {
     return std::nullopt;
   }
   const auto found = function_->state->values.find(id_);
   if (found == function_->state->values.end() ||
-      found->second.origin != ValueData::Origin::InstructionResult) {
+      found->second.origin != ValueData::Origin::OpResult) {
     return std::nullopt;
   }
-  return Instruction(function_, found->second.owner);
+  return Op(function_, found->second.owner);
 }
 
 std::optional<Module::FunctionDecl> Value::referenced_function() const {
@@ -1049,35 +1049,35 @@ std::optional<Module::FunctionDecl> Value::referenced_function() const {
              : std::nullopt;
 }
 
-Instruction::Instruction(std::shared_ptr<FunctionIdentity> function,
+Op::Op(std::shared_ptr<FunctionIdentity> function,
                          std::uint64_t id)
     : function_(std::move(function)), id_(id) {}
 
-bool Instruction::valid() const {
-  return function_ && contains(function_->state->instructions, id_);
+bool Op::valid() const {
+  return function_ && contains(function_->state->ops, id_);
 }
 
-Module::FunctionDecl Instruction::callee() const {
-  const auto found = function_->state->instructions.find(id_);
-  if (found == function_->state->instructions.end()) {
-    throw std::logic_error("instruction is no longer valid");
+Module::FunctionDecl Op::callee() const {
+  const auto found = function_->state->ops.find(id_);
+  if (found == function_->state->ops.end()) {
+    throw std::logic_error("op is no longer valid");
   }
   return found->second.schema;
 }
 
-Block Instruction::parent() const {
-  const auto found = function_->state->instructions.find(id_);
-  if (found == function_->state->instructions.end() ||
+Block Op::parent() const {
+  const auto found = function_->state->ops.find(id_);
+  if (found == function_->state->ops.end() ||
       !contains(function_->state->blocks, found->second.parent)) {
-    throw std::logic_error("instruction has no valid parent block");
+    throw std::logic_error("op has no valid parent block");
   }
   return Block(function_, found->second.parent);
 }
 
-std::vector<Value> Instruction::arguments() const {
-  const auto found = function_->state->instructions.find(id_);
-  if (found == function_->state->instructions.end()) {
-    throw std::logic_error("instruction is no longer valid");
+std::vector<Value> Op::arguments() const {
+  const auto found = function_->state->ops.find(id_);
+  if (found == function_->state->ops.end()) {
+    throw std::logic_error("op is no longer valid");
   }
   std::vector<Value> values;
   values.reserve(found->second.arguments.size());
@@ -1089,10 +1089,72 @@ std::vector<Value> Instruction::arguments() const {
   return values;
 }
 
-std::vector<Value> Instruction::results() const {
-  const auto found = function_->state->instructions.find(id_);
-  if (found == function_->state->instructions.end()) {
-    throw std::logic_error("instruction is no longer valid");
+std::vector<Value> Op::operands() const {
+  const auto found = function_->state->ops.find(id_);
+  if (found == function_->state->ops.end()) {
+    throw std::logic_error("op is no longer valid");
+  }
+  const auto parameters = found->second.schema.inputs();
+  std::vector<Value> values;
+  for (const detail::StoredArgument& argument : found->second.arguments) {
+    if (detail::is_value_port(parameters[argument.parameter])) {
+      values.push_back(detail::FunctionAccess::restore(
+          function_, argument.value.id, argument.value.known));
+    }
+  }
+  return values;
+}
+
+std::vector<std::pair<std::string, Value>> Op::properties() const {
+  const auto found = function_->state->ops.find(id_);
+  if (found == function_->state->ops.end()) {
+    throw std::logic_error("op is no longer valid");
+  }
+  const auto parameters = found->second.schema.inputs();
+  std::vector<std::pair<std::string, Value>> values;
+  for (const detail::StoredArgument& argument : found->second.arguments) {
+    if (!detail::is_value_port(parameters[argument.parameter])) {
+      values.emplace_back(
+          parameters[argument.parameter].name,
+          detail::FunctionAccess::restore(function_, argument.value.id,
+                                          argument.value.known));
+    }
+  }
+  return values;
+}
+
+std::optional<Value> Op::operand(std::string_view name) const {
+  const auto value = argument(name);
+  if (!value) {
+    return std::nullopt;
+  }
+  const auto parameters = callee().inputs();
+  const auto parameter = std::find_if(
+      parameters.begin(), parameters.end(),
+      [&](const Module::ParameterDecl& candidate) { return candidate.name == name; });
+  return parameter != parameters.end() && detail::is_value_port(*parameter)
+             ? value
+             : std::nullopt;
+}
+
+std::optional<Value> Op::property(std::string_view name) const {
+  const auto value = argument(name);
+  if (!value) {
+    return std::nullopt;
+  }
+  const auto parameters = callee().inputs();
+  const auto parameter = std::find_if(
+      parameters.begin(), parameters.end(),
+      [&](const Module::ParameterDecl& candidate) { return candidate.name == name; });
+  return parameter != parameters.end() && !detail::is_value_port(*parameter)
+             ? value
+             : std::nullopt;
+}
+
+std::vector<Value> Op::results() const {
+  const auto found = function_->state->ops.find(id_);
+  if (found == function_->state->ops.end()) {
+    throw std::logic_error("op is no longer valid");
   }
   std::vector<Value> values;
   values.reserve(found->second.results.size());
@@ -1102,29 +1164,29 @@ std::vector<Value> Instruction::results() const {
   return values;
 }
 
-Value Instruction::value() const {
-  const auto found = function_->state->instructions.find(id_);
-  if (found == function_->state->instructions.end()) {
-    throw std::logic_error("instruction is no longer valid");
+Value Op::value() const {
+  const auto found = function_->state->ops.find(id_);
+  if (found == function_->state->ops.end()) {
+    throw std::logic_error("op is no longer valid");
   }
   if (found->second.results.size() != 1U) {
-    throw std::logic_error("instruction does not have exactly one value");
+    throw std::logic_error("op does not have exactly one value");
   }
   return Value(function_, found->second.results.front());
 }
 
-Value Instruction::result(std::size_t index) const {
-  const auto found = function_->state->instructions.find(id_);
-  if (found == function_->state->instructions.end() ||
+Value Op::result(std::size_t index) const {
+  const auto found = function_->state->ops.find(id_);
+  if (found == function_->state->ops.end() ||
       index >= found->second.results.size()) {
-    throw std::out_of_range("instruction result index is out of range");
+    throw std::out_of_range("op result index is out of range");
   }
   return Value(function_, found->second.results[index]);
 }
 
-std::optional<Value> Instruction::argument(std::string_view name) const {
-  const auto found = function_->state->instructions.find(id_);
-  if (found == function_->state->instructions.end()) {
+std::optional<Value> Op::argument(std::string_view name) const {
+  const auto found = function_->state->ops.find(id_);
+  if (found == function_->state->ops.end()) {
     return std::nullopt;
   }
   const auto parameters = found->second.schema.inputs();
@@ -1251,17 +1313,17 @@ std::vector<Value> Block::arguments() const {
   return values;
 }
 
-std::vector<Instruction> Block::instructions() const {
+std::vector<Op> Block::ops() const {
   const auto found = function_->state->blocks.find(id_);
   if (found == function_->state->blocks.end()) {
     throw std::logic_error("block is no longer valid");
   }
-  std::vector<Instruction> instructions;
-  instructions.reserve(found->second.instructions.size());
-  for (const std::uint64_t instruction : found->second.instructions) {
-    instructions.push_back(Instruction(function_, instruction));
+  std::vector<Op> ops;
+  ops.reserve(found->second.ops.size());
+  for (const std::uint64_t op : found->second.ops) {
+    ops.push_back(Op(function_, op));
   }
-  return instructions;
+  return ops;
 }
 
 Terminator Block::terminator() const {
@@ -1351,7 +1413,7 @@ Block Function::Edit::block(std::vector<Type> argument_types) {
   return Function::make_block(state_->function, block_id);
 }
 
-Instruction Function::Edit::append(Module::FunctionDecl schema,
+Op Function::Edit::append(Module::FunctionDecl schema,
                                    std::vector<Value> arguments,
                                    std::vector<Type> result_types) {
   return add(
@@ -1360,14 +1422,14 @@ Instruction Function::Edit::append(Module::FunctionDecl schema,
       std::move(result_types));
 }
 
-Instruction Function::Edit::append(Block block, Module::FunctionDecl schema,
+Op Function::Edit::append(Block block, Module::FunctionDecl schema,
                                    std::vector<Value> arguments,
                                    std::vector<Type> result_types) {
   return add(std::move(block), std::nullopt, std::move(schema),
              std::move(arguments), std::move(result_types));
 }
 
-Instruction Function::Edit::insert(Instruction before,
+Op Function::Edit::insert(Op before,
                                    Module::FunctionDecl schema,
                                    std::vector<Value> arguments,
                                    std::vector<Type> result_types) {
@@ -1376,13 +1438,13 @@ Instruction Function::Edit::insert(Instruction before,
              std::move(result_types));
 }
 
-Instruction Function::Edit::add(Block block, std::optional<Instruction> before,
+Op Function::Edit::add(Block block, std::optional<Op> before,
                                 Module::FunctionDecl schema,
                                 std::vector<Value> arguments,
                                 std::vector<Type> result_types) {
   check_same_function(state_->function, block, "block");
   const std::uint64_t block_id = detail::FunctionAccess::id(block);
-  const auto location = before ? state_->function->state->instructions
+  const auto location = before ? state_->function->state->ops
                                      .at(detail::FunctionAccess::id(*before))
                                      .location
                                : std::optional<SourceRange>{};
@@ -1412,7 +1474,7 @@ Instruction Function::Edit::add(Block block, std::optional<Instruction> before,
                          : nullptr;
       if (!known) {
         throw std::invalid_argument("cannot construct default argument '" +
-                                    parameter.name + "' for instruction '" +
+                                    parameter.name + "' for op '" +
                                     schema.symbol().qualified_name() + "'");
       }
       argument_ids.push_back(
@@ -1421,7 +1483,7 @@ Instruction Function::Edit::add(Block block, std::optional<Instruction> before,
     }
     if (supplied + count > arguments.size()) {
       throw std::invalid_argument(
-          "instruction '" + schema.symbol().qualified_name() +
+          "op '" + schema.symbol().qualified_name() +
           "' is missing argument '" + parameter.name + "'");
     }
     for (std::size_t item = 0; item < count; ++item) {
@@ -1431,7 +1493,7 @@ Instruction Function::Edit::add(Block block, std::optional<Instruction> before,
       if (!detail::is_value_port(parameter) &&
           (!known || !matches(parameter, known->value))) {
         throw std::invalid_argument("argument '" + parameter.name +
-                                    "' of instruction '" +
+                                    "' of op '" +
                                     schema.symbol().qualified_name() +
                                     "' must be a compatible Known value");
       }
@@ -1441,7 +1503,7 @@ Instruction Function::Edit::add(Block block, std::optional<Instruction> before,
     }
   }
   if (supplied != arguments.size()) {
-    throw std::invalid_argument("instruction '" +
+    throw std::invalid_argument("op '" +
                                 schema.symbol().qualified_name() +
                                 "' has too many arguments");
   }
@@ -1492,7 +1554,7 @@ Instruction Function::Edit::add(Block block, std::optional<Instruction> before,
         detail::infer_call_types(modules, schema, argument_types,
                                  inference_known, expected, diagnostics);
     if (!inferred) {
-      std::string message = "cannot infer results for instruction '" +
+      std::string message = "cannot infer results for op '" +
                             schema.symbol().qualified_name() + "'";
       if (!diagnostics.entries().empty()) {
         message += ": " + diagnostics.entries().front().message;
@@ -1508,27 +1570,27 @@ Instruction Function::Edit::add(Block block, std::optional<Instruction> before,
     const std::uint64_t result = state_->function->next_id++;
     state_->function->state->values.emplace(
         result, ValueData{std::move(result_types[index]),
-                          ValueData::Origin::InstructionResult, id, index,
+                          ValueData::Origin::OpResult, id, index,
                           std::nullopt});
     results.push_back(result);
   }
-  state_->function->state->instructions.emplace(
-      id, InstructionData{std::move(schema), block_id, std::move(argument_ids),
+  state_->function->state->ops.emplace(
+      id, OpData{std::move(schema), block_id, std::move(argument_ids),
                           std::move(results), location});
-  auto& instruction_order =
-      state_->function->state->blocks.at(block_id).instructions;
+  auto& op_order =
+      state_->function->state->blocks.at(block_id).ops;
   if (before) {
     const std::uint64_t before_id = detail::FunctionAccess::id(*before);
-    const auto position = std::find(instruction_order.begin(),
-                                    instruction_order.end(), before_id);
-    if (position == instruction_order.end()) {
+    const auto position = std::find(op_order.begin(),
+                                    op_order.end(), before_id);
+    if (position == op_order.end()) {
       throw std::invalid_argument("insertion point is not in this function");
     }
-    instruction_order.insert(position, id);
+    op_order.insert(position, id);
   } else {
-    instruction_order.push_back(id);
+    op_order.push_back(id);
   }
-  return Function::make_instruction(state_->function, id);
+  return Function::make_op(state_->function, id);
 }
 
 void Function::Edit::ret(Block block, std::vector<Value> values) {
@@ -1622,9 +1684,9 @@ void Function::Edit::replace(Value from, Value to) {
   }
   const std::uint64_t from_id = detail::FunctionAccess::id(from);
   const std::uint64_t to_id = detail::FunctionAccess::id(to);
-  for (auto& [id, instruction] : state_->function->state->instructions) {
+  for (auto& [id, op] : state_->function->state->ops) {
     static_cast<void>(id);
-    for (detail::StoredArgument& argument : instruction.arguments) {
+    for (detail::StoredArgument& argument : op.arguments) {
       if (!argument.value.known && argument.value.id == from_id) {
         argument.value.id = to_id;
       }
@@ -1647,35 +1709,35 @@ void Function::Edit::replace(Value from, Value to) {
   }
 }
 
-Instruction Function::Edit::replace(Instruction instruction,
+Op Function::Edit::replace(Op op,
                                     Module::FunctionDecl schema) {
-  check_same_function(state_->function, instruction, "instruction");
+  check_same_function(state_->function, op, "op");
   std::vector<Type> result_types;
-  result_types.reserve(instruction.results().size());
-  for (const Value& result : instruction.results()) {
+  result_types.reserve(op.results().size());
+  for (const Value& result : op.results()) {
     result_types.push_back(result.type());
   }
-  const Instruction replacement = insert(instruction, std::move(schema),
-                                         instruction.arguments(), result_types);
+  const Op replacement = insert(op, std::move(schema),
+                                         op.arguments(), result_types);
   for (std::size_t index = 0; index < result_types.size(); ++index) {
-    replace(instruction.result(index), replacement.result(index));
+    replace(op.result(index), replacement.result(index));
   }
-  erase(instruction);
+  erase(op);
   return replacement;
 }
 
-void Function::Edit::replace(Instruction instruction,
+void Function::Edit::replace(Op op,
                              std::vector<Value> results) {
-  check_same_function(state_->function, instruction, "instruction");
-  const auto previous = instruction.results();
+  check_same_function(state_->function, op, "op");
+  const auto previous = op.results();
   if (previous.size() != results.size()) {
     throw std::invalid_argument(
-        "replacement result count does not match the instruction");
+        "replacement result count does not match the op");
   }
   for (std::size_t index = 0; index < results.size(); ++index) {
     if (results[index].known()) {
       throw std::invalid_argument(
-          "a Known value cannot replace an Instruction result");
+          "a Known value cannot replace an Op result");
     }
     check_same_function(state_->function, results[index], "replacement value");
     if (previous[index].type() != results[index].type()) {
@@ -1687,18 +1749,18 @@ void Function::Edit::replace(Instruction instruction,
   for (std::size_t index = 0; index < results.size(); ++index) {
     replace(previous[index], results[index]);
   }
-  erase(instruction);
+  erase(op);
 }
 
-void Function::Edit::erase(Instruction instruction) {
-  check_same_function(state_->function, instruction, "instruction");
+void Function::Edit::erase(Op op) {
+  check_same_function(state_->function, op, "op");
   auto& state = *state_->function->state;
-  const std::uint64_t instruction_id = detail::FunctionAccess::id(instruction);
-  const auto found = state.instructions.find(instruction_id);
+  const std::uint64_t op_id = detail::FunctionAccess::id(op);
+  const auto found = state.ops.find(op_id);
   std::unordered_set<std::uint64_t> values;
   values.insert(found->second.results.begin(), found->second.results.end());
-  for (const auto& [id, user] : state.instructions) {
-    if (id == instruction_id) {
+  for (const auto& [id, user] : state.ops) {
+    if (id == op_id) {
       continue;
     }
     if (std::any_of(user.arguments.begin(), user.arguments.end(),
@@ -1706,7 +1768,7 @@ void Function::Edit::erase(Instruction instruction) {
                       return !argument.value.known &&
                              values.contains(argument.value.id);
                     })) {
-      throw std::invalid_argument("instruction still has live result uses");
+      throw std::invalid_argument("op still has live result uses");
     }
   }
   for (const auto& [id, block] : state.blocks) {
@@ -1728,17 +1790,17 @@ void Function::Edit::erase(Instruction instruction) {
                       return live(edge.arguments);
                     })) {
       throw std::invalid_argument(
-          "instruction still has a live terminator use");
+          "op still has a live terminator use");
     }
   }
-  auto& instructions = state.blocks.at(found->second.parent).instructions;
-  instructions.erase(
-      std::remove(instructions.begin(), instructions.end(), instruction_id),
-      instructions.end());
+  auto& ops = state.blocks.at(found->second.parent).ops;
+  ops.erase(
+      std::remove(ops.begin(), ops.end(), op_id),
+      ops.end());
   for (const std::uint64_t value : values) {
     state.values.erase(value);
   }
-  state.instructions.erase(instruction_id);
+  state.ops.erase(op_id);
 }
 
 bool Function::Edit::commit(Diagnostics& diagnostics) {
@@ -1746,7 +1808,7 @@ bool Function::Edit::commit(Diagnostics& diagnostics) {
     throw std::logic_error("function edit is no longer active");
   }
   if (!verify_function(*state_->function->state, diagnostics) ||
-      !verify_instruction_contracts(*state_->function->state, diagnostics)) {
+      !verify_op_contracts(*state_->function->state, diagnostics)) {
     state_->function->state = std::move(state_->backup);
     state_->function->editing = false;
     state_->active = false;
@@ -1852,13 +1914,13 @@ std::vector<Block> Function::blocks() const {
   return result;
 }
 
-std::vector<Instruction> Function::instructions() const {
-  std::vector<Instruction> result;
-  result.reserve(function_->state->instructions.size());
+std::vector<Op> Function::ops() const {
+  std::vector<Op> result;
+  result.reserve(function_->state->ops.size());
   for (const std::uint64_t block : function_->state->block_order) {
-    for (const std::uint64_t instruction :
-         function_->state->blocks.at(block).instructions) {
-      result.push_back(make_instruction(function_, instruction));
+    for (const std::uint64_t op :
+         function_->state->blocks.at(block).ops) {
+      result.push_back(make_op(function_, op));
     }
   }
   return result;
@@ -1884,28 +1946,28 @@ std::vector<Block> Function::predecessors(Block block) const {
   return result;
 }
 
-std::vector<Instruction> Function::users(Value value) const {
+std::vector<Op> Function::users(Value value) const {
   if (!value.valid() || (!value.known() && value.function_ != function_) ||
       (value.known() &&
        (!owns(*function_->state, ParameterValue(value.type())) ||
         !owns(*function_->state, *value.known_value())))) {
     throw std::invalid_argument("use query value is outside function");
   }
-  std::vector<Instruction> result;
+  std::vector<Op> result;
   for (const std::uint64_t block : function_->state->block_order) {
-    for (const std::uint64_t instruction_id :
-         function_->state->blocks.at(block).instructions) {
-      const auto& instruction =
-          function_->state->instructions.at(instruction_id);
+    for (const std::uint64_t op_id :
+         function_->state->blocks.at(block).ops) {
+      const auto& op =
+          function_->state->ops.at(op_id);
       const bool consumes = std::any_of(
-          instruction.arguments.begin(), instruction.arguments.end(),
+          op.arguments.begin(), op.arguments.end(),
           [&](const detail::StoredArgument& argument) {
             return detail::FunctionAccess::restore(function_, argument.value.id,
                                                    argument.value.known) ==
                    value;
           });
       if (consumes) {
-        result.push_back(make_instruction(function_, instruction_id));
+        result.push_back(make_op(function_, op_id));
       }
     }
   }
@@ -1948,9 +2010,9 @@ bool Function::dominates(Block dominator, Block block) const {
   return relation.at(block.id_).contains(dominator.id_);
 }
 
-bool Function::dominates(Value definition, Instruction instruction) const {
-  if (!definition.valid() || !instruction.valid() ||
-      instruction.function_ != function_ ||
+bool Function::dominates(Value definition, Op op) const {
+  if (!definition.valid() || !op.valid() ||
+      op.function_ != function_ ||
       (!definition.known() && definition.function_ != function_)) {
     throw std::invalid_argument("dominance query value is outside function");
   }
@@ -1959,14 +2021,14 @@ bool Function::dominates(Value definition, Instruction instruction) const {
            owns(*function_->state, *definition.known_value());
   }
   const auto found = function_->state->values.find(definition.id_);
-  const auto user = function_->state->instructions.find(instruction.id_);
+  const auto user = function_->state->ops.find(op.id_);
   if (found == function_->state->values.end() ||
-      user == function_->state->instructions.end()) {
+      user == function_->state->ops.end()) {
     return false;
   }
   const auto relation = dominators(*function_->state);
   return definition_dominates(*function_->state, found->second,
-                              user->second.parent, instruction.id_, relation);
+                              user->second.parent, op.id_, relation);
 }
 
 Function::Revision Function::revision() const {
@@ -1984,10 +2046,10 @@ Value Function::make_value(std::shared_ptr<FunctionIdentity> function,
   return Value(std::move(function), id);
 }
 
-Instruction
-Function::make_instruction(std::shared_ptr<FunctionIdentity> function,
+Op
+Function::make_op(std::shared_ptr<FunctionIdentity> function,
                            std::uint64_t id) {
-  return Instruction(std::move(function), id);
+  return Op(std::move(function), id);
 }
 
 Block Function::make_block(std::shared_ptr<FunctionIdentity> function,

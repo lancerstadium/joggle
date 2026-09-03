@@ -2126,7 +2126,7 @@ Module::Module(std::string name, Version version) {
   storage->name = std::move(name);
   storage->version = version;
   storage_ = storage;
-  storage->digest = sha256(format(*this));
+  storage->digest = compute_digest(storage);
   storage->interface_digest = compute_interface_digest(storage);
 }
 
@@ -2158,6 +2158,18 @@ std::string_view Module::name() const { return storage_->name; }
 
 Version Module::version() const { return storage_->version; }
 
+std::string Module::compute_digest(
+    const std::shared_ptr<const Storage>& storage) {
+  std::string canonical = format(Module(storage));
+  for (const auto& [name, payload] : storage->data) {
+    static_cast<void>(payload);
+    canonical += "\ndata ";
+    canonical += name;
+    canonical += ';';
+  }
+  return sha256(canonical);
+}
+
 std::string_view
 Module::current_digest(const std::shared_ptr<const Storage>& storage) {
   if (std::any_of(storage->functions.begin(), storage->functions.end(),
@@ -2172,7 +2184,7 @@ Module::current_digest(const std::shared_ptr<const Storage>& storage) {
       }
     }
     if (revisions != storage->digest_revisions) {
-      storage->digest = sha256(format(Module(storage)));
+      storage->digest = compute_digest(storage);
       storage->digest_revisions = std::move(revisions);
     }
   }
@@ -2211,6 +2223,7 @@ Module::interface_view(const std::shared_ptr<const Storage>& storage) {
     }
     member.ir.reset();
   }
+  interface->data.clear();
   std::vector<std::size_t> order(interface->functions.size());
   for (std::size_t index = 0; index < order.size(); ++index) {
     order[index] = index;
@@ -2230,7 +2243,7 @@ Module::interface_view(const std::shared_ptr<const Storage>& storage) {
   interface->interface_digest.clear();
   interface->digest_revisions.clear();
   Module result(interface);
-  interface->digest = sha256(format(result));
+  interface->digest = compute_digest(interface);
   interface->interface_digest = interface->digest;
   return result;
 }
@@ -2245,6 +2258,43 @@ std::string_view Module::interface_digest() const {
 
 std::span<const Module::Import> Module::imports() const {
   return storage_->imports;
+}
+
+std::string Module::store(Bytes bytes) {
+  const std::string_view raw(reinterpret_cast<const char*>(bytes.data()),
+                             bytes.size());
+  const std::string name = "sha256:" + sha256(raw);
+  const auto existing = storage_->data.find(name);
+  if (existing != storage_->data.end()) {
+    if (*existing->second != bytes) {
+      throw std::logic_error("content-addressed Module data collision");
+    }
+    return name;
+  }
+  auto next = std::make_shared<Storage>(*storage_);
+  next->data.emplace(name,
+                     std::make_shared<const Bytes>(std::move(bytes)));
+  next->digest = compute_digest(next);
+  storage_ = std::move(next);
+  return name;
+}
+
+std::optional<std::span<const std::byte>>
+Module::data(std::string_view name) const {
+  const auto found = storage_->data.find(name);
+  return found == storage_->data.end()
+             ? std::nullopt
+             : std::optional<std::span<const std::byte>>{*found->second};
+}
+
+std::vector<std::string> Module::data() const {
+  std::vector<std::string> names;
+  names.reserve(storage_->data.size());
+  for (const auto& [name, payload] : storage_->data) {
+    static_cast<void>(payload);
+    names.push_back(name);
+  }
+  return names;
 }
 
 std::optional<Module::InterfaceDecl>
@@ -2450,7 +2500,7 @@ std::optional<Module> parse_module(std::string_view text,
         {std::move(name), std::move(function), nullptr});
   }
   Module module(storage);
-  storage->digest = sha256(format(module));
+  storage->digest = Module::compute_digest(storage);
   storage->interface_digest = Module::compute_interface_digest(storage);
   return module;
 }

@@ -365,10 +365,10 @@ module pipeline@1.0.0 {
         return bytes.empty() ? std::nullopt : current.create_function();
       });
   compiler.bind(*inspect, [](const joggle::Function& current) -> std::int64_t {
-    return static_cast<std::int64_t>(current.instructions().size());
+    return static_cast<std::int64_t>(current.ops().size());
   });
   compiler.bind(*emit, [](const joggle::Function& current) -> joggle::Bytes {
-    return {static_cast<std::byte>(current.instructions().size())};
+    return {static_cast<std::byte>(current.ops().size())};
   });
   compiler.bind(
       *canonicalize,
@@ -376,12 +376,12 @@ module pipeline@1.0.0 {
           joggle::Function current,
           joggle::Diagnostics& diagnostics) -> std::optional<joggle::Function> {
         auto edit = current.edit();
-        for (const joggle::Instruction& instruction : current.instructions()) {
-          if (instruction.callee() != *arith_cast_decl) {
+        for (const joggle::Op& op : current.ops()) {
+          if (op.callee() != *arith_cast_decl) {
             continue;
           }
-          edit.replace(instruction.result(0), instruction.arguments().front());
-          edit.erase(instruction);
+          edit.replace(op.result(0), op.arguments().front());
+          edit.erase(op);
         }
         if (!edit.commit(diagnostics)) {
           return std::nullopt;
@@ -565,33 +565,33 @@ module pipeline@1.0.0 {
           staged_overload_function->arguments().front().type() ==
               staged_overload_function->result_types().front() &&
           residual_overload_function &&
-          residual_overload_function->instructions().size() == 1U &&
+          residual_overload_function->ops().size() == 1U &&
           convert_word_8 != convert_words.end() &&
-          residual_overload_function->instructions().front().callee() ==
+          residual_overload_function->ops().front().callee() ==
               *convert_word_8 &&
           residual_arguments_function &&
-          residual_arguments_function->instructions().size() == 2U &&
-          residual_arguments_function->instructions()[0]
+          residual_arguments_function->ops().size() == 2U &&
+          residual_arguments_function->ops()[0]
                   .arguments()[1]
                   .get<std::int64_t>() == std::optional<std::int64_t>{7} &&
-          residual_arguments_function->instructions()[1]
+          residual_arguments_function->ops()[1]
                   .arguments()[1]
                   .get<std::int64_t>() == std::optional<std::int64_t>{9} &&
           residual_variadic_function &&
-          residual_variadic_function->instructions().size() == 1U &&
-          residual_variadic_function->instructions()
+          residual_variadic_function->ops().size() == 1U &&
+          residual_variadic_function->ops()
                   .front()
                   .arguments()
                   .size() == 2U &&
           residual_dependent_function &&
-          residual_dependent_function->instructions().size() == 1U &&
-          residual_dependent_function->instructions().front().callee() ==
+          residual_dependent_function->ops().size() == 1U &&
+          residual_dependent_function->ops().front().callee() ==
               *width_copy &&
           relay_fork_function &&
           relay_fork_function->result_types().size() == 2U &&
-          relay_fork_function->instructions().size() == 1U &&
-          relay_fork_function->instructions().front().callee() == *fork &&
-          relay_fork_function->instructions().front().results().size() == 2U &&
+          relay_fork_function->ops().size() == 1U &&
+          relay_fork_function->ops().front().callee() == *fork &&
+          relay_fork_function->ops().front().results().size() == 2U &&
           width_evaluations == 1U,
       "structured compiler functions participate in dependent type "
       "evaluation and residual calls share overloads, named "
@@ -621,9 +621,9 @@ module pipeline@1.0.0 {
                "a native transformation uses an ordinary function declaration");
   const auto input_revision = function->revision();
   auto cleaned = compiler.run<joggle::Function>(*clean, *function);
-  ok &= expect(cleaned && cleaned->instructions().empty() &&
+  ok &= expect(cleaned && cleaned->ops().empty() &&
                    function->revision() == input_revision &&
-                   !function->instructions().empty(),
+                   !function->ops().empty(),
                "a typed Function transform returns an isolated COW value");
   auto recomposed = compiler.run<joggle::Function>(*clean, *function);
   ok &= expect(recomposed.has_value(),
@@ -631,7 +631,7 @@ module pipeline@1.0.0 {
   if (recomposed) {
     function = std::move(recomposed);
   }
-  ok &= expect(function->instructions().empty(),
+  ok &= expect(function->ops().empty(),
                "the native transformation removes redundant casts");
 
   joggle::Module module("compiler_pipeline", {1, 0, 0});
@@ -723,13 +723,13 @@ module source_model@1.0.0 {
       materialized_model ? materialized_model->function("keep") : std::nullopt;
   const auto materialized_calls =
       materialized_main && materialized_main->body()
-          ? materialized_main->body()->instructions()
-          : std::vector<joggle::Instruction>{};
+          ? materialized_main->body()->ops()
+          : std::vector<joggle::Op>{};
   ok &=
       expect(source_model_linked && source_model_main &&
                  source_model_main->body() == nullptr && materialized_main &&
                  materialized_main->body() != nullptr &&
-                 materialized_main->body()->instructions().size() == 1U &&
+                 materialized_main->body()->ops().size() == 1U &&
                  materialized_keep && materialized_calls.size() == 1U &&
                  materialized_calls.front().callee() == *materialized_keep &&
                  materialized_model->interface_digest() ==
@@ -775,7 +775,7 @@ module source_model@1.0.0 {
   }
   guarded_compiler.verify(
       *guarded_identity,
-      [](const joggle::Instruction&, joggle::Diagnostics& diagnostics) {
+      [](const joggle::Op&, joggle::Diagnostics& diagnostics) {
         diagnostics.report("guarded compiler-function input rejected");
         return false;
       });
@@ -933,7 +933,7 @@ module transactional@1.0.0 {
       });
   const auto rejected =
       transactional.run<joggle::Bytes>(*transaction, *transactional_function);
-  ok &= expect(!rejected && transactional_function->instructions().empty(),
+  ok &= expect(!rejected && transactional_function->ops().empty(),
                "typed sequence failure restores its existing Function input");
 
   joggle::Compiler short_circuit;
@@ -1265,7 +1265,7 @@ module module_validation@1.0.0 {
     invalid_body_diagnostics.print(std::cerr);
     return EXIT_FAILURE;
   }
-  module_validation.verify(*forbidden, [](const joggle::Instruction&,
+  module_validation.verify(*forbidden, [](const joggle::Op&,
                                           joggle::Diagnostics& diagnostics) {
     diagnostics.report("forbidden call reached a Module boundary");
     return false;

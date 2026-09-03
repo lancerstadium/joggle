@@ -11,7 +11,6 @@
 #include <set>
 #include <string>
 #include <string_view>
-#include <tuple>
 
 #include <joggle/joggle.h>
 
@@ -107,7 +106,6 @@ int main(int argc, char** argv) {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   joggle::Compiler compiler;
   compiler.load(JOGGLE_ARITH_MODULE);
-  compiler.load(JOGGLE_RESOURCE_MODULE);
   compiler.load(JOGGLE_TENSOR_MODULE);
   compiler.load(JOGGLE_NN_MODULE);
   compiler.load(JOGGLE_ONNX_MODULE);
@@ -115,11 +113,13 @@ int main(int argc, char** argv) {
 joggle 1;
 module onnx_composition@1.0.0 {
   import onnx@2.0.0;
-  import resource@1.0.0;
 
-  fn read(input: bytes) -> (module, resource.set) {
-    model, resources = onnx.read(input);
-    return model, resources;
+  fn read(input: bytes) -> module {
+    return onnx.read(input);
+  }
+
+  fn read_nn(input: bytes) -> module {
+    return onnx.to_nn(onnx.read(input));
   }
 }
 )",
@@ -130,7 +130,7 @@ module onnx_composition@1.0.0 {
     return EXIT_FAILURE;
   }
 
-  using Imported = std::tuple<joggle::Module, joggle::ResourceSet>;
+  using Imported = joggle::Module;
   if (argc == 2) {
     const auto source = read_file(argv[1]);
     ::onnx::ModelProto reference;
@@ -148,20 +148,27 @@ module onnx_composition@1.0.0 {
                               ? compiler.run<Imported>("onnx_composition.read",
                                                        *source)
                               : std::optional<Imported>{};
-    if (!reference_valid || !imported || !repeated) {
+    const auto converted =
+        source ? compiler.run<Imported>("onnx_composition.read_nn", *source)
+               : std::optional<Imported>{};
+    if (!reference_valid || !imported || !converted || !repeated) {
       if (!source) {
         std::cerr << "cannot read ONNX model '" << argv[1] << "'\n";
       }
       compiler.diagnostics().print(std::cerr);
       return EXIT_FAILURE;
     }
-    const auto& [module, resources] = *imported;
+    const auto& source_module = *imported;
+    const auto& module = *converted;
+    const auto source_main = source_module.function("main");
+    const joggle::Function* source_body =
+        source_main ? source_main->body() : nullptr;
     const auto main = module.function("main");
     const joggle::Function* body = main ? main->body() : nullptr;
     std::map<std::string, std::size_t, std::less<>> counts;
     if (body) {
-      for (const auto& instruction : body->instructions()) {
-        ++counts[instruction.callee().symbol().qualified_name()];
+      for (const auto& op : body->ops()) {
+        ++counts[op.callee().symbol().qualified_name()];
       }
     }
     const std::map<std::string, std::size_t, std::less<>> expected{
@@ -173,14 +180,29 @@ module onnx_composition@1.0.0 {
         {"nn.max_pool2d_nchw", 1U},
         {"nn.relu", 17U},
     };
-    bool valid = body != nullptr;
+    std::map<std::string, std::size_t, std::less<>> source_counts;
+    if (source_body) {
+      for (const auto& op : source_body->ops()) {
+        ++source_counts[op.callee().symbol().qualified_name()];
+      }
+    }
+    const std::map<std::string, std::size_t, std::less<>> source_expected{
+        {"onnx.add", 8U},
+        {"onnx.conv", 20U},
+        {"onnx.flatten", 1U},
+        {"onnx.gemm", 1U},
+        {"onnx.global_average_pool", 1U},
+        {"onnx.max_pool", 1U},
+        {"onnx.relu", 17U},
+    };
+    bool valid = source_body != nullptr && body != nullptr;
     std::set<std::string, std::less<>> referenced_resources;
     if (body) {
-      for (const auto& instruction : body->instructions()) {
-        if (instruction.callee().symbol().qualified_name() ==
+      for (const auto& op : body->ops()) {
+        if (op.callee().symbol().qualified_name() ==
             "tensor.constant") {
-          const auto resource = instruction.get<std::string>("resource");
-          valid = valid && resource && resources.contains(*resource);
+          const auto resource = op.property<std::string>("resource");
+          valid = valid && resource && module.data(*resource);
           if (resource) {
             referenced_resources.insert(*resource);
           }
@@ -191,22 +213,29 @@ module onnx_composition@1.0.0 {
       valid = valid && counts[name] == count;
       counts.erase(name);
     }
+    for (const auto& [name, count] : source_expected) {
+      valid = valid && source_counts[name] == count;
+      source_counts.erase(name);
+    }
     const auto constants = counts.extract("tensor.constant");
+    const auto source_constants = source_counts.extract("onnx.constant");
     valid = valid && !constants.empty() && counts.empty() &&
             constants.mapped() ==
                 static_cast<std::size_t>(reference.graph().initializer_size()) &&
-            referenced_resources.size() == resources.size() &&
-            !resources.empty() &&
-            module.digest() == std::get<0>(*repeated).digest() &&
-            resources == std::get<1>(*repeated);
+            !source_constants.empty() && source_counts.empty() &&
+            source_constants.mapped() == constants.mapped() &&
+            referenced_resources.size() == module.data().size() &&
+            !module.data().empty() &&
+            source_module.digest() == repeated->digest() &&
+            source_module.data() == module.data();
     std::size_t resource_bytes = 0;
-    for (const auto& [name, payload] : resources) {
-      static_cast<void>(name);
-      resource_bytes += payload.size();
+    for (const auto& name : module.data()) {
+      const auto payload = module.data(name);
+      resource_bytes += payload ? payload->size() : 0U;
     }
     std::cout << "module " << module.name() << '#' << module.digest() << '\n'
               << "operators 49\n"
-              << "resources " << resources.size() << '\n'
+              << "resources " << module.data().size() << '\n'
               << "resource-bytes " << resource_bytes << '\n';
     return valid ? EXIT_SUCCESS : EXIT_FAILURE;
   }
@@ -224,31 +253,51 @@ module onnx_composition@1.0.0 {
     return EXIT_FAILURE;
   }
 
-  const auto& [module, resources] = *first;
-  const auto& [repeated_module, repeated_resources] = *second;
+  const auto& source_module = *first;
+  const auto& repeated_module = *second;
+  const auto converted = compiler.run<Imported>("onnx.to_nn", source_module);
+  if (!converted) {
+    compiler.diagnostics().print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  const auto& module = *converted;
+  const auto source_main = source_module.function("main");
+  const joggle::Function* source_body =
+      source_main ? source_main->body() : nullptr;
+  const auto source_ops = source_body ? source_body->ops()
+                                      : std::vector<joggle::Op>{};
   const auto main = module.function("main");
   const joggle::Function* body = main ? main->body() : nullptr;
-  const auto instructions = body ? body->instructions()
-                                 : std::vector<joggle::Instruction>{};
-  const std::string resource = resources.empty() ? std::string{}
-                                                  : resources.begin()->first;
-  const auto found = resources.find(resource);
+  const auto ops = body ? body->ops()
+                                 : std::vector<joggle::Op>{};
+  const auto data_names = module.data();
+  const std::string resource = data_names.empty() ? std::string{}
+                                                   : data_names.front();
+  const auto found = module.data(resource);
 
   bool ok = true;
   ok &= expect(
-      body && body->arguments().size() == 1U && instructions.size() == 3U &&
-          instructions[0].callee().symbol().qualified_name() ==
+      source_body && source_body->arguments().size() == 1U &&
+          source_ops.size() == 3U &&
+          source_ops[0].callee().symbol().qualified_name() ==
+              "onnx.constant" &&
+          source_ops[1].callee().symbol().qualified_name() == "onnx.add" &&
+          source_ops[2].callee().symbol().qualified_name() == "onnx.relu",
+      "ONNX import preserves source operations before conversion");
+  ok &= expect(
+      body && body->arguments().size() == 1U && ops.size() == 3U &&
+          ops[0].callee().symbol().qualified_name() ==
               "tensor.constant" &&
-          instructions[1].callee().symbol().qualified_name() == "nn.add" &&
-          instructions[2].callee().symbol().qualified_name() == "nn.relu",
-      "ONNX dataflow becomes ordinary typed Joggle instructions");
-  ok &= expect(resources.size() == 1U && resource.starts_with("sha256:") &&
-                   resource.size() == 71U && found != resources.end() &&
-                   found->second.size() == 8U,
-               "initializer bytes are detached behind a content digest");
-  ok &= expect(module.digest() == repeated_module.digest() &&
-                   resources == repeated_resources &&
-                   joggle::format(module) == joggle::format(repeated_module),
+          ops[1].callee().symbol().qualified_name() == "nn.add" &&
+          ops[2].callee().symbol().qualified_name() == "nn.relu",
+      "onnx.to_nn transactionally converts source operations to nn");
+  ok &= expect(data_names.size() == 1U && resource.starts_with("sha256:") &&
+                   resource.size() == 71U && found && found->size() == 8U,
+               "initializer bytes are Module-owned behind a content digest");
+  ok &= expect(source_module.digest() == repeated_module.digest() &&
+                   joggle::format(source_module) ==
+                       joggle::format(repeated_module) &&
+                   source_module.data() == module.data(),
                "repeated ONNX import is deterministic");
 
   auto changed_model = model();
@@ -257,10 +306,9 @@ module onnx_composition@1.0.0 {
       ->set_raw_data(floats({0x40400000U, 0x40000000U}));
   const auto changed =
       compiler.run<Imported>("onnx_composition.read", encode(changed_model));
-  ok &= expect(changed && std::get<0>(*changed).digest() != module.digest() &&
-                   std::get<1>(*changed) != resources,
-               "changing initializer bytes changes resource and Module "
-               "identity");
+  ok &= expect(changed && changed->digest() != source_module.digest() &&
+                   changed->data() != source_module.data(),
+               "changing initializer bytes changes Module data and identity");
 
   const auto rejected =
       compiler.run<Imported>("onnx_composition.read", encode(model("Sigmoid")));

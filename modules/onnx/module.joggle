@@ -1,0 +1,49 @@
+joggle 1;
+
+module onnx@2.0.0 {
+  import nn@2.0.0;
+  import tensor@2.0.0;
+
+  fn constant<T: type>(resource: string) -> T : tensor.immutable_data;
+  fn add<T: type>(lhs: T, rhs: T) -> T;
+  fn relu<T: type>(input: T) -> T;
+  fn conv<X: type, W: type, Y: type>(
+    input: X,
+    weight: W,
+    strides: list<int>,
+    dilations: list<int>,
+    pads: list<int>,
+    group: int
+  ) -> Y;
+  fn conv<X: type, W: type, B: type, Y: type>(
+    input: X,
+    weight: W,
+    bias: B,
+    strides: list<int>,
+    dilations: list<int>,
+    pads: list<int>,
+    group: int
+  ) -> Y;
+  fn max_pool<X: type, Y: type>(
+    input: X,
+    kernel_shape: list<int>,
+    strides: list<int>,
+    dilations: list<int>,
+    pads: list<int>,
+    ceil_mode: int,
+    storage_order: int
+  ) -> Y;
+  fn global_average_pool<X: type, Y: type>(input: X) -> Y;
+  fn flatten<X: type, Y: type>(input: X, axis: int) -> Y;
+  fn gemm<A: type, B: type, C: type, Y: type>(
+    a: A,
+    b: B,
+    c: C,
+    alpha: real,
+    beta: real,
+    trans_a: int,
+    trans_b: int
+  ) -> Y;
+  fn read(input: bytes) -> module;
+  fn to_nn(input: module) -> module;
+}

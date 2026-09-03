@@ -5,6 +5,7 @@
 #include <limits>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -117,9 +118,8 @@ convert_function(joggle::Compiler& compiler, const joggle::Function& input,
                  const joggle::Module::TypeDecl& ranked,
                  const joggle::Module::TypeDecl& f32,
                  const joggle::Type& f16,
-                 const joggle::Module::FunctionDecl& constant,
-                 joggle::ResourceSet& resources,
-                 std::set<std::string, std::less<>>& converted_resources,
+                 const joggle::Module::InterfaceDecl& immutable_data,
+                 const joggle::Module& source, joggle::Module& destination,
                  joggle::Diagnostics& diagnostics) {
   const auto blocks = input.blocks();
   if (blocks.size() != 1U ||
@@ -153,10 +153,10 @@ convert_function(joggle::Compiler& compiler, const joggle::Function& input,
                                  : std::optional<joggle::Value>{found->second};
   };
 
-  for (const auto& instruction : input.instructions()) {
+  for (const auto& op : input.ops()) {
     std::vector<joggle::Value> arguments;
-    arguments.reserve(instruction.arguments().size());
-    for (const auto& argument : instruction.arguments()) {
+    arguments.reserve(op.arguments().size());
+    for (const auto& argument : op.arguments()) {
       const auto value = mapped(argument);
       if (!value) {
         diagnostics.report("f32_to_f16 encountered an unmapped operand");
@@ -165,8 +165,8 @@ convert_function(joggle::Compiler& compiler, const joggle::Function& input,
       arguments.push_back(*value);
     }
     std::vector<joggle::Type> result_types;
-    result_types.reserve(instruction.results().size());
-    for (const auto& result : instruction.results()) {
+    result_types.reserve(op.results().size());
+    for (const auto& result : op.results()) {
       const auto type =
           convert_type(compiler, result.type(), ranked, f32, f16, diagnostics);
       if (!type) {
@@ -175,15 +175,16 @@ convert_function(joggle::Compiler& compiler, const joggle::Function& input,
       result_types.push_back(*type);
     }
 
-    if (instruction.callee() == constant && instruction.results().size() == 1U &&
-        is_f32_tensor(instruction.value().type(), ranked, f32)) {
-      const auto resource = instruction.get<std::string>("resource");
-      const auto payload = resource ? resources.find(*resource) : resources.end();
-      if (!resource || payload == resources.end()) {
+    const bool constant = compiler.conforms(op.callee(), immutable_data);
+    if (constant && op.results().size() == 1U &&
+        is_f32_tensor(op.value().type(), ranked, f32)) {
+      const auto resource = op.property<std::string>("resource");
+      const auto payload = resource ? source.data(*resource) : std::nullopt;
+      if (!resource || !payload) {
         diagnostics.report("f32 tensor constant references a missing resource");
         return std::nullopt;
       }
-      const auto shape = instruction.value().type().get<
+      const auto shape = op.value().type().get<
           std::vector<std::int64_t>>("shape");
       std::size_t expected = 4U;
       if (!shape) {
@@ -199,44 +200,49 @@ convert_function(joggle::Compiler& compiler, const joggle::Function& input,
         }
         expected *= static_cast<std::size_t>(dimension);
       }
-      if (payload->second.size() != expected) {
+      if (payload->size() != expected) {
         diagnostics.report("f32 tensor constant resource size disagrees with "
                            "its type");
         return std::nullopt;
       }
-      const auto converted = convert_payload(payload->second, *resource, diagnostics);
+      const joggle::Bytes source_bytes(payload->begin(), payload->end());
+      const auto converted = convert_payload(source_bytes, *resource, diagnostics);
       if (!converted) {
         return std::nullopt;
       }
-      const std::string raw(reinterpret_cast<const char*>(converted->data()),
-                            converted->size());
-      const std::string name = "sha256:" + joggle::sha256(raw);
-      const auto existing = resources.find(name);
-      if (existing != resources.end() && existing->second != *converted) {
-        diagnostics.report("resource name collision while encoding f16 data");
-        return std::nullopt;
-      }
-      resources.try_emplace(name, *converted);
-      converted_resources.insert(*resource);
+      const std::string name = destination.store(*converted);
       const auto known = compiler.make("string");
       const auto resource_value = known ? compiler.known(*known, name) : std::nullopt;
       if (!resource_value) {
         return std::nullopt;
       }
       arguments = {*resource_value};
+    } else if (constant) {
+      const auto resource = op.property<std::string>("resource");
+      const auto payload = resource ? source.data(*resource) : std::nullopt;
+      if (!resource || !payload) {
+        diagnostics.report("tensor constant references missing Module data");
+        return std::nullopt;
+      }
+      const std::string copied =
+          destination.store(joggle::Bytes(payload->begin(), payload->end()));
+      if (copied != *resource) {
+        diagnostics.report("content-addressed Module data changed while copying");
+        return std::nullopt;
+      }
     }
 
-    std::optional<joggle::Instruction> created;
+    std::optional<joggle::Op> created;
     try {
-      created = edit.append(instruction.callee(), std::move(arguments),
+      created = edit.append(op.callee(), std::move(arguments),
                             std::move(result_types));
     } catch (const std::exception& error) {
       diagnostics.report("f32_to_f16 cannot rebuild call '" +
-                         std::string(instruction.callee().symbol().qualified_name()) +
+                         std::string(op.callee().symbol().qualified_name()) +
                          "': " + error.what());
       return std::nullopt;
     }
-    const auto old_results = instruction.results();
+    const auto old_results = op.results();
     const auto new_results = created->results();
     for (std::size_t index = 0; index < old_results.size(); ++index) {
       values.emplace_back(old_results[index], new_results[index]);
@@ -256,40 +262,40 @@ convert_function(joggle::Compiler& compiler, const joggle::Function& input,
   return edit.commit(diagnostics) ? std::move(output) : std::nullopt;
 }
 
-std::optional<std::tuple<joggle::Module, joggle::ResourceSet>>
+std::optional<joggle::Module>
 f32_to_f16(joggle::Compiler& compiler, joggle::Module input,
-           joggle::ResourceSet resources, joggle::Diagnostics& diagnostics) {
+           joggle::Diagnostics& diagnostics) {
   const auto tensor = compiler.module("tensor");
   const auto ranked = tensor ? tensor->type("ranked") : std::nullopt;
-  const auto constant = tensor ? tensor->function("constant") : std::nullopt;
+  const auto immutable_data =
+      tensor ? tensor->interface("immutable_data") : std::nullopt;
   const auto f32 = compiler.make("f32");
   const auto f16 = compiler.make("f16");
-  if (!ranked || !constant || !f32 || !f16) {
+  if (!ranked || !immutable_data || !f32 || !f16) {
     diagnostics.report("precision behavior requires tensor@2");
     return std::nullopt;
   }
 
   joggle::Module output(std::string(input.name()), input.version());
-  std::set<std::string, std::less<>> converted_resources;
   for (const auto& declaration : input.functions()) {
     if (declaration.body() == nullptr) {
       diagnostics.report("f32_to_f16 requires every input Function to have a body");
       return std::nullopt;
     }
-    const auto instructions = declaration.body()->instructions();
+    const auto ops = declaration.body()->ops();
     const auto internal_call = std::find_if(
-        instructions.begin(), instructions.end(),
-        [&](const joggle::Instruction& instruction) {
-          return instruction.callee().symbol().module_name() == input.name();
+        ops.begin(), ops.end(),
+        [&](const joggle::Op& op) {
+          return op.callee().symbol().module_name() == input.name();
         });
-    if (internal_call != instructions.end()) {
+    if (internal_call != ops.end()) {
       diagnostics.report(
           "f32_to_f16 currently rejects calls between input Module Functions");
       return std::nullopt;
     }
     auto function = convert_function(compiler, *declaration.body(), *ranked,
-                                     f32->schema(), *f16, *constant, resources,
-                                     converted_resources, diagnostics);
+                                     f32->schema(), *f16, *immutable_data,
+                                     input, output, diagnostics);
     if (!function ||
         !output.insert(std::string(declaration.name()), std::move(*function),
                        diagnostics)) {
@@ -297,36 +303,14 @@ f32_to_f16(joggle::Compiler& compiler, joggle::Module input,
     }
   }
 
-  std::set<std::string, std::less<>> referenced;
-  for (const auto& declaration : output.functions()) {
-    for (const auto& instruction : declaration.body()->instructions()) {
-      if (instruction.callee() == *constant) {
-        const auto resource = instruction.get<std::string>("resource");
-        if (resource) {
-          referenced.insert(*resource);
-        }
-      }
-    }
-  }
-  for (const auto& resource : converted_resources) {
-    if (!referenced.contains(resource)) {
-      resources.erase(resource);
-    }
-  }
   if (!compiler.verify(output)) {
     return std::nullopt;
   }
-  return std::tuple{std::move(output), std::move(resources)};
+  return output;
 }
 
 void bind(joggle::Compiler& compiler, const joggle::Module& module,
-          joggle::Diagnostics& diagnostics) {
-  const auto resource = compiler.module("resource");
-  const auto set = resource ? resource->type("set") : std::nullopt;
-  if (!set || !compiler.represent<joggle::ResourceSet>(*set)) {
-    diagnostics.report("precision behavior requires resource@1");
-    return;
-  }
+          joggle::Diagnostics&) {
   compiler.bind(module, "f32_to_f16", f32_to_f16);
 }
 

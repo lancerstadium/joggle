@@ -24,7 +24,6 @@
 
 namespace joggle {
 
-using Bytes = std::vector<std::byte>;
 class Compiler;
 
 // Controls whether a native implementation may be evaluated while the
@@ -584,7 +583,7 @@ public:
   template <typename Result, typename... Arguments, typename Function>
   void bind(Module::FunctionDecl declaration,
             Module::InterfaceDecl::MethodDecl method, Function&& function) {
-    bind_typed_method<Instruction, Result, Arguments...>(
+    bind_typed_method<Op, Result, Arguments...>(
         std::move(declaration), std::move(method),
         std::forward<Function>(function));
   }
@@ -599,7 +598,7 @@ public:
   template <typename Function>
   void bind(Module::FunctionDecl declaration,
             Module::InterfaceDecl::MethodDecl method, Function&& function) {
-    bind_inferred<Instruction>(std::move(declaration), std::move(method),
+    bind_inferred<Op>(std::move(declaration), std::move(method),
                                std::forward<Function>(function));
   }
 
@@ -643,9 +642,9 @@ public:
   std::optional<Result> call(const Subject& subject, std::string_view method,
                              Arguments&&... arguments) {
     static_assert(std::is_same_v<Subject, Attribute> ||
-                      std::is_same_v<Subject, Instruction>,
+                      std::is_same_v<Subject, Op>,
                   "an interface call subject must be an Attribute or "
-                  "Instruction; Type fields use Type::get");
+                  "Op; Type fields use Type::get");
     const auto declaration = lookup_method(subject, method);
     return declaration ? call<Result>(subject, *declaration,
                                       std::forward<Arguments>(arguments)...)
@@ -666,13 +665,13 @@ public:
 
   template <typename Function>
   void verify(Module::FunctionDecl schema, Function&& function) {
-    bind_typed_verifier<Instruction>(std::move(schema),
+    bind_typed_verifier<Op>(std::move(schema),
                                      std::forward<Function>(function));
   }
 
   // Binds an implementation whose C++ input and result types match the
   // declared fn. Semantic validators use verify() instead.
-  // A Module and local name are sufficient for normal extension code. The
+  // A Module and local name are sufficient for normal package code. The
   // callable's C++ signature selects an overload without a generated wrapper.
   template <typename Function>
   void bind(const Module& module, std::string_view name, Function&& function,
@@ -789,12 +788,12 @@ private:
                    MethodFunction<Attribute> function);
   void bind_method(Module::FunctionDecl declaration,
                    Module::InterfaceDecl::MethodDecl method,
-                   MethodFunction<Instruction> function);
+                   MethodFunction<Op> function);
   void bind_verifier(Module::TypeDecl schema, VerifierFunction<Type> verifier);
   void bind_verifier(Module::AttributeDecl schema,
                      VerifierFunction<Attribute> verifier);
   void bind_verifier(Module::FunctionDecl schema,
-                     VerifierFunction<Instruction> verifier);
+                     VerifierFunction<Op> verifier);
   bool bind_representation(Module::TypeDecl schema, std::string_view type);
   bool bind_representation(Module::TypeDecl schema, std::string_view type,
                            RepresentationProjector projector);
@@ -844,7 +843,7 @@ private:
   call(const Attribute& subject, Module::InterfaceDecl::MethodDecl method,
        std::span<const detail::ParameterValue> parameters);
   std::optional<detail::ParameterValue>
-  call(const Instruction& subject, Module::InterfaceDecl::MethodDecl method,
+  call(const Op& subject, Module::InterfaceDecl::MethodDecl method,
        std::span<const detail::ParameterValue> parameters);
 
   template <typename Subject, typename Result, typename... Arguments,
@@ -957,7 +956,7 @@ private:
   std::optional<Module::InterfaceDecl::MethodDecl>
   lookup_method(const Attribute& subject, std::string_view reference);
   std::optional<Module::InterfaceDecl::MethodDecl>
-  lookup_method(const Instruction& subject, std::string_view reference);
+  lookup_method(const Op& subject, std::string_view reference);
   bool load_behavior(const Module& module,
                      const std::filesystem::path& library);
   bool load_behavior(const Module& module);
