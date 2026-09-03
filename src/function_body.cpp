@@ -7,6 +7,7 @@
 
 #include "diagnostic_internal.h"
 #include "domain.h"
+#include "execution.h"
 #include "ir_internal.h"
 #include "joggle/compiler.h"
 #include "module_internal.h"
@@ -792,7 +793,8 @@ split_reference(std::string_view owner, std::string_view reference) {
 }
 
 class Instantiator {
-  using Scope = std::unordered_map<std::string, std::optional<Value>>;
+  using Scope =
+      std::unordered_map<std::string, std::optional<detail::StagedValue>>;
   using Scopes = std::vector<Scope>;
 
   struct Path {
@@ -880,7 +882,7 @@ public:
         value = supplied_known_[supplied++];
       } else if (parameter.default_value) {
         auto payload = detail::parameter_default(parameter);
-        auto type = reflected_type(parameter.domain);
+        auto type = detail::domain_type(compiler_, parameter.domain);
         value = payload && type
                     ? compiler_.known(std::move(*type), std::move(*payload))
                     : std::optional<Value>{};
@@ -1328,51 +1330,6 @@ private:
     return std::nullopt;
   }
 
-  std::optional<Type> reflected_type(const Module::Expression& expression) {
-    const auto domain = detail::kernel_domain(expression);
-    if (!domain) {
-      return std::nullopt;
-    }
-    if (!domain->list) {
-      return compiler_.make(detail::domain_name(domain->element));
-    }
-    if (expression.arguments.size() != 1U) {
-      return std::nullopt;
-    }
-    auto element = reflected_type(expression.arguments.front());
-    const auto prelude = compiler_.module(detail::prelude_module_name);
-    const auto list = prelude ? prelude->type("list")
-                              : std::optional<Module::TypeDecl>{};
-    return element && list ? compiler_.make(*list, *element)
-                           : std::optional<Type>{};
-  }
-
-  std::optional<Module::Expression> domain(const Type& type) const {
-    const Module::Symbol symbol = type.schema().symbol();
-    if (symbol.module_name() != detail::prelude_module_name) {
-      return std::nullopt;
-    }
-    if (symbol.local_name() == "list") {
-      const auto parameters = detail::TypeAccess::parameters(type);
-      const Type* element = parameters.size() == 1U
-                                ? parameters.front().as_type()
-                                : nullptr;
-      auto element_domain = element ? domain(*element) : std::nullopt;
-      return element_domain
-                 ? std::optional<Module::Expression>{
-                       Module::Expression::list_domain(
-                           std::move(*element_domain))}
-                 : std::nullopt;
-    }
-    return detail::kernel_domain(
-               Module::Expression::reference(
-                   std::string(symbol.local_name())))
-               ? std::optional<Module::Expression>{
-                     Module::Expression::reference(
-                         std::string(symbol.local_name()))}
-               : std::nullopt;
-  }
-
   std::optional<Module::ParameterDecl>
   known_result(const Module::Expression& expression,
                detail::SyntaxRange range) {
@@ -1398,7 +1355,8 @@ private:
         }
       }
       auto value = lookup(expression.text);
-      auto value_domain = value ? domain(value->type()) : std::nullopt;
+      auto value_domain = value ? detail::type_domain(value->type())
+                                : std::nullopt;
       return value_domain
                  ? std::optional<Module::ParameterDecl>{
                        {"result", std::move(*value_domain), false,
@@ -1497,9 +1455,11 @@ private:
         if (bindings.contains(name) || !value || !value->known()) {
           continue;
         }
-        if (const auto payload =
-                detail::FunctionAccess::known_value(*value)) {
-          bindings.emplace(name, *payload);
+        const detail::ExecutionValue* known = value->known_value();
+        if (known != nullptr) {
+          if (auto payload = detail::parameter_value(*known)) {
+            bindings.emplace(name, std::move(*payload));
+          }
         }
       }
     }
@@ -1516,7 +1476,8 @@ private:
     auto payload = detail::evaluate_known_expression(
         compiler_, owner_, syntax.value, *expected, known_bindings(),
         diagnostics_, source(syntax.range), residual_control_depth_ == 0U);
-    auto type = payload ? reflected_type(expected->domain) : std::nullopt;
+    auto type = payload ? detail::domain_type(compiler_, expected->domain)
+                        : std::nullopt;
     return payload && type
                ? compiler_.known(std::move(*type), std::move(*payload))
                : std::optional<Value>{};
@@ -1542,7 +1503,9 @@ private:
     for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
       const auto found = scope->find(std::string(name));
       if (found != scope->end()) {
-        return found->second;
+        return found->second
+                   ? detail::ir_value(compiler_, *found->second)
+                   : std::optional<Value>{};
       }
     }
     return std::nullopt;
@@ -1594,7 +1557,7 @@ private:
       auto& arguments = result.arguments[index];
       if (arguments.empty() && parameters[index].default_value) {
         const auto payload = detail::parameter_default(parameters[index]);
-        auto type = reflected_type(parameters[index].domain);
+        auto type = detail::domain_type(compiler_, parameters[index].domain);
         auto value = payload && type
                          ? compiler_.known(std::move(*type), *payload)
                          : std::optional<Value>{};
@@ -1795,17 +1758,28 @@ private:
   }
 
   void define(std::string name, Value value, detail::SyntaxRange range) {
-    if (!scopes_.back()
-             .emplace(std::move(name), std::optional<Value>{std::move(value)})
-             .second) {
+    auto staged = detail::stage(std::move(value));
+    if (!staged) {
+      report("a local value cannot enter staged evaluation", range);
+      return;
+    }
+    if (!scopes_.back().emplace(std::move(name), std::move(staged)).second) {
       report("a local value may only be defined once", range);
     }
   }
 
   void bind(const detail::BindingSyntax& binding,
             std::optional<Value> value) {
+    std::optional<detail::StagedValue> staged;
+    if (value) {
+      staged = detail::stage(std::move(*value));
+      if (!staged) {
+        report("a local value cannot enter staged evaluation", binding.range);
+        return;
+      }
+    }
     if (!binding.rebind) {
-      if (!scopes_.back().emplace(binding.name, std::move(value)).second) {
+      if (!scopes_.back().emplace(binding.name, std::move(staged)).second) {
         report("a local value may only be defined once", binding.range);
       }
       return;
@@ -1813,7 +1787,7 @@ private:
     for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
       const auto found = scope->find(binding.name);
       if (found != scope->end()) {
-        found->second = std::move(value);
+        found->second = std::move(staged);
         return;
       }
     }
@@ -2702,7 +2676,8 @@ private:
   std::optional<Function> function_;
   std::optional<Function::Edit> edit_;
   std::vector<
-      std::unordered_map<std::string, std::optional<Value>>>
+      std::unordered_map<std::string,
+                         std::optional<detail::StagedValue>>>
       scopes_;
   std::unordered_map<std::string, Type> expected_values_;
   std::vector<Type> result_types_;

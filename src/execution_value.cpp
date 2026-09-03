@@ -1,7 +1,10 @@
 #include "execution.h"
 
+#include "ir_internal.h"
+#include "prelude.h"
 #include "type_internal.h"
 
+#include <stdexcept>
 #include <typeinfo>
 #include <utility>
 
@@ -36,6 +39,35 @@ ParameterValue list_parameter_value(const std::vector<bool>& values) {
 }
 
 }  // namespace
+
+StagedValue::StagedValue(Type type, ExecutionValue value)
+    : type_(std::move(type)), value_(std::move(value)) {}
+
+StagedValue::StagedValue(Value value)
+    : type_(value.type()), value_(std::move(value)) {
+  if (std::get<Value>(value_).known()) {
+    throw std::invalid_argument(
+        "a Known IR value must enter staging through stage(Value)");
+  }
+}
+
+bool StagedValue::known() const {
+  return std::holds_alternative<ExecutionValue>(value_);
+}
+
+const Type& StagedValue::type() const { return type_; }
+
+const ExecutionValue* StagedValue::known_value() const {
+  return std::get_if<ExecutionValue>(&value_);
+}
+
+ExecutionValue* StagedValue::known_value() {
+  return std::get_if<ExecutionValue>(&value_);
+}
+
+const Value* StagedValue::residual_value() const {
+  return std::get_if<Value>(&value_);
+}
 
 std::string_view execution_value_type(const ExecutionValue& value) {
   if (std::holds_alternative<std::int64_t>(value)) {
@@ -130,6 +162,94 @@ std::optional<Domain> cpp_value_domain(std::string_view type) {
     return Domain{ValueKind::Attribute, true};
   }
   return std::nullopt;
+}
+
+std::optional<Type> domain_type(Compiler& compiler,
+                                const Module::Expression& expression) {
+  const auto domain = kernel_domain(expression);
+  if (!domain) {
+    return std::nullopt;
+  }
+  if (!domain->list) {
+    return compiler.make(domain_name(domain->element));
+  }
+  if (expression.arguments.size() != 1U) {
+    return std::nullopt;
+  }
+  auto element = domain_type(compiler, expression.arguments.front());
+  const auto prelude = compiler.module(prelude_module_name);
+  const auto list = prelude ? prelude->type("list")
+                            : std::optional<Module::TypeDecl>{};
+  return element && list ? compiler.make(*list, *element)
+                         : std::optional<Type>{};
+}
+
+std::optional<Module::Expression> type_domain(const Type& type) {
+  const Module::Symbol symbol = type.schema().symbol();
+  if (symbol.module_name() != prelude_module_name) {
+    return std::nullopt;
+  }
+  if (symbol.local_name() != "list") {
+    const auto expression = Module::Expression::reference(
+        std::string(symbol.local_name()));
+    return kernel_domain(expression)
+               ? std::optional<Module::Expression>{expression}
+               : std::nullopt;
+  }
+  const auto parameters = TypeAccess::parameters(type);
+  const Type* element = parameters.size() == 1U
+                            ? parameters.front().as_type()
+                            : nullptr;
+  auto domain = element ? type_domain(*element)
+                        : std::optional<Module::Expression>{};
+  return domain ? std::optional<Module::Expression>{
+                      Module::Expression::list_domain(std::move(*domain))}
+                : std::nullopt;
+}
+
+std::optional<Type> execution_type(Compiler& compiler,
+                                   const ExecutionValue& value) {
+  if (const auto* host = std::get_if<HostValue>(&value)) {
+    return host->concrete_type;
+  }
+  const auto domain = cpp_value_domain(execution_value_type(value));
+  return domain ? domain_type(
+                      compiler,
+                      domain_expression(domain->element, domain->list))
+                : std::optional<Type>{};
+}
+
+std::optional<StagedValue> stage(Compiler& compiler, ExecutionValue value) {
+  auto type = execution_type(compiler, value);
+  return type ? std::optional<StagedValue>{
+                    std::in_place, std::move(*type), std::move(value)}
+              : std::nullopt;
+}
+
+std::optional<StagedValue> stage(Value value) {
+  if (!value.known()) {
+    return StagedValue(std::move(value));
+  }
+  const auto domain = type_domain(value.type());
+  const auto payload = FunctionAccess::known_value(value);
+  const Module::ParameterDecl parameter{
+      "value", domain ? *domain : Module::Expression{}, false, std::nullopt};
+  auto known = domain && payload ? execution_value(*payload, parameter)
+                                 : std::optional<ExecutionValue>{};
+  return known ? std::optional<StagedValue>{
+                     std::in_place, value.type(), std::move(*known)}
+               : std::nullopt;
+}
+
+std::optional<Value> ir_value(Compiler& compiler, const StagedValue& value) {
+  if (const Value* residual = value.residual_value()) {
+    return *residual;
+  }
+  const ExecutionValue* known = value.known_value();
+  auto payload = known ? parameter_value(*known)
+                       : std::optional<ParameterValue>{};
+  return payload ? compiler.known(value.type(), std::move(*payload))
+                 : std::optional<Value>{};
 }
 
 std::optional<ExecutionValue>

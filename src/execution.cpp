@@ -23,10 +23,10 @@ class BodyEvaluator {
 
   struct Flow {
     Control control = Control::Next;
-    std::optional<ExecutionValue> value;
+    std::optional<StagedValue> value;
   };
 
-  using Scope = std::unordered_map<std::string, ExecutionValue>;
+  using Scope = std::unordered_map<std::string, StagedValue>;
   using Scopes = std::vector<Scope>;
 
 public:
@@ -40,21 +40,36 @@ public:
         steps_(steps), under_residual_control_(under_residual_control),
         diagnostics_(diagnostics), execute_(execute), scopes_(1U) {
     for (std::size_t index = 0; index < function_.inputs().size(); ++index) {
+      auto value = stage(compiler_, arguments[index]);
+      if (!value) {
+        report("compiler function argument has no resolved Joggle type",
+               body_.range);
+        continue;
+      }
       scopes_.front().emplace(function_.inputs()[index].name,
-                              arguments[index]);
+                              std::move(*value));
     }
   }
 
   std::optional<ExecutionValue> run() {
     Flow flow = sequence(body_.blocks.front().statements);
-    if (flow.control != Control::Return || !flow.value) {
+    if (flow.control != Control::Return ||
+        (!flow.value && !function_.results().empty())) {
       if (flow.control != Control::Error) {
         report("compiler function path falls through without returning",
                body_.range);
       }
       return std::nullopt;
     }
-    return flow.value;
+    if (!flow.value) {
+      return ExecutionValue{};
+    }
+    const ExecutionValue* value = flow.value->known_value();
+    if (value == nullptr) {
+      report("compiler function returned a Residual value", body_.range);
+      return std::nullopt;
+    }
+    return *value;
   }
 
 private:
@@ -72,7 +87,7 @@ private:
     return false;
   }
 
-  ExecutionValue* local(std::string_view name) {
+  StagedValue* local(std::string_view name) {
     for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
       const auto found = scope->find(std::string(name));
       if (found != scope->end()) {
@@ -82,7 +97,15 @@ private:
     return nullptr;
   }
 
-  std::optional<ExecutionValue>
+  std::optional<StagedValue> known(ExecutionValue value, SyntaxRange range) {
+    auto result = stage(compiler_, std::move(value));
+    if (!result) {
+      report("compiler value has no resolved Joggle type", range);
+    }
+    return result;
+  }
+
+  std::optional<StagedValue>
   list(const Module::Expression& expression, SyntaxRange range,
        const Module::ParameterDecl* expected) {
     std::vector<ExecutionValue> elements;
@@ -92,7 +115,12 @@ private:
       if (!value) {
         return std::nullopt;
       }
-      elements.push_back(std::move(*value));
+      const ExecutionValue* known = value->known_value();
+      if (known == nullptr) {
+        report("compiler list element is Residual", range);
+        return std::nullopt;
+      }
+      elements.push_back(*known);
     }
     const auto domain = expected ? kernel_domain(expected->domain)
                                  : std::optional<Domain>{};
@@ -138,55 +166,58 @@ private:
       for (auto& element : elements) {
         result.push_back(std::get<std::int64_t>(element));
       }
-      return ExecutionValue{std::move(result)};
+      return known(ExecutionValue{std::move(result)}, range);
     }
     if (element_type == typeid(double).name()) {
       RealList result;
       for (auto& element : elements) {
         result.push_back(std::get<double>(element));
       }
-      return ExecutionValue{std::move(result)};
+      return known(ExecutionValue{std::move(result)}, range);
     }
     if (element_type == typeid(bool).name()) {
       BooleanList result;
       for (auto& element : elements) {
         result.push_back(std::get<bool>(element));
       }
-      return ExecutionValue{std::move(result)};
+      return known(ExecutionValue{std::move(result)}, range);
     }
     if (element_type == typeid(std::string).name()) {
       StringList result;
       for (auto& element : elements) {
         result.push_back(std::get<std::string>(std::move(element)));
       }
-      return ExecutionValue{std::move(result)};
+      return known(ExecutionValue{std::move(result)}, range);
     }
     if (element_type == typeid(Type).name()) {
       TypeList result;
       for (auto& element : elements) {
         result.push_back(std::get<Type>(std::move(element)));
       }
-      return ExecutionValue{std::move(result)};
+      return known(ExecutionValue{std::move(result)}, range);
     }
     if (element_type == typeid(Attribute).name()) {
       AttributeList result;
       for (auto& element : elements) {
         result.push_back(std::get<Attribute>(std::move(element)));
       }
-      return ExecutionValue{std::move(result)};
+      return known(ExecutionValue{std::move(result)}, range);
     }
     report("compiler list element type is not representable", range);
     return std::nullopt;
   }
 
-  std::optional<ExecutionValue>
+  std::optional<StagedValue>
   known_expression(const Module::Expression& expression, SyntaxRange range,
                    const Module::ParameterDecl& expected) {
     KnownBindings bindings;
     for (const auto& scope : scopes_) {
       for (const auto& [name, stored] : scope) {
-        if (auto value = parameter_value(stored)) {
-          bindings.insert_or_assign(name, std::move(*value));
+        const ExecutionValue* known = stored.known_value();
+        if (known != nullptr) {
+          if (auto value = parameter_value(*known)) {
+            bindings.insert_or_assign(name, std::move(*value));
+          }
         }
       }
     }
@@ -195,8 +226,10 @@ private:
         bindings, diagnostics_,
         SourceRange{body_.source, range.begin, range.end},
         !under_residual_control_);
-    return value ? execution_value(*value, expected)
-                 : std::optional<ExecutionValue>{};
+    auto result = value ? execution_value(*value, expected)
+                        : std::optional<ExecutionValue>{};
+    return result ? known(std::move(*result), range)
+                  : std::optional<StagedValue>{};
   }
 
   std::optional<Module::ParameterDecl>
@@ -210,7 +243,10 @@ private:
          operand.kind == Module::Expression::Kind::Reference) &&
         operand.arguments.empty()) {
       if (const auto* value = local(operand.text)) {
-        domain = cpp_value_domain(execution_value_type(*value));
+        const ExecutionValue* known = value->known_value();
+        if (known != nullptr) {
+          domain = cpp_value_domain(execution_value_type(*known));
+        }
       }
     } else if (operand.kind == Module::Expression::Kind::Number) {
       domain = Domain{
@@ -226,7 +262,7 @@ private:
                : std::nullopt;
   }
 
-  std::optional<ExecutionValue> call(
+  std::optional<StagedValue> call(
       const Module::Expression& expression, SyntaxRange range,
       const Module::ParameterDecl* expected,
       std::vector<Module::FunctionDecl> declarations = {}) {
@@ -266,10 +302,14 @@ private:
           });
       auto value = evaluate(expression.arguments[index], range,
                             common ? &first_parameter : nullptr);
-      if (!value) {
+      const ExecutionValue* known = value ? value->known_value() : nullptr;
+      if (known == nullptr) {
+        if (value) {
+          report("compiler call argument is Residual", range);
+        }
         return std::nullopt;
       }
-      supplied.push_back(std::move(*value));
+      supplied.push_back(*known);
     }
 
     candidates.erase(
@@ -326,10 +366,12 @@ private:
       }
       arguments.push_back(std::move(*bound[index]));
     }
-    return execute_(selected.function, std::move(arguments));
+    auto result = execute_(selected.function, std::move(arguments));
+    return result ? known(std::move(*result), range)
+                  : std::optional<StagedValue>{};
   }
 
-  std::optional<ExecutionValue>
+  std::optional<StagedValue>
   evaluate(const Module::Expression& expression, SyntaxRange range,
            const Module::ParameterDecl* expected) {
     if (!step(range)) {
@@ -357,7 +399,7 @@ private:
             expression.text.data() + expression.text.size(), integer);
         if (parsed.ec == std::errc{} &&
             parsed.ptr == expression.text.data() + expression.text.size()) {
-          return ExecutionValue{integer};
+          return known(ExecutionValue{integer}, range);
         }
       } else {
         double real = 0.0;
@@ -365,17 +407,17 @@ private:
         input.imbue(std::locale::classic());
         input >> real;
         if (input && input.peek() == std::char_traits<char>::eof()) {
-          return ExecutionValue{real};
+          return known(ExecutionValue{real}, range);
         }
       }
       report("invalid compiler numeric literal", range);
       return std::nullopt;
     }
     if (expression.kind == Kind::Boolean) {
-      return ExecutionValue{expression.text == "true"};
+      return known(ExecutionValue{expression.text == "true"}, range);
     }
     if (expression.kind == Kind::String) {
-      return ExecutionValue{expression.text};
+      return known(ExecutionValue{expression.text}, range);
     }
     if (expression.kind == Kind::Evaluate) {
       if (expression.arguments.size() != 1U) {
@@ -393,7 +435,8 @@ private:
           "condition", domain_expression(ValueKind::Boolean), false,
           std::nullopt};
       auto value = evaluate(expression.arguments[0], range, &condition);
-      const bool* selected = value ? std::get_if<bool>(&*value) : nullptr;
+      const ExecutionValue* known = value ? value->known_value() : nullptr;
+      const bool* selected = known ? std::get_if<bool>(known) : nullptr;
       if (selected == nullptr) {
         report("compiler if condition must be bool", range);
         return std::nullopt;
@@ -452,7 +495,7 @@ private:
                                          : unsupported(range);
   }
 
-  std::optional<ExecutionValue> unsupported(SyntaxRange range) {
+  std::optional<StagedValue> unsupported(SyntaxRange range) {
     report("compiler function '" + function_.symbol().qualified_name() +
                "' contains an unsupported expression",
            range);
@@ -472,7 +515,7 @@ private:
           return {Control::Error, std::nullopt};
         }
         if (statement.values.empty()) {
-          return {Control::Return, ExecutionValue{}};
+          return {Control::Return, std::nullopt};
         }
         auto value = evaluate(statement.values.front().value,
                               statement.values.front().range,
@@ -492,7 +535,8 @@ private:
             std::nullopt};
         auto value = evaluate(statement.expression.value,
                               statement.expression.range, &condition);
-        const bool* selected = value ? std::get_if<bool>(&*value) : nullptr;
+        const ExecutionValue* known = value ? value->known_value() : nullptr;
+        const bool* selected = known ? std::get_if<bool>(known) : nullptr;
         if (selected == nullptr) {
           report("compiler if condition must be bool", statement.range);
           return {Control::Error, std::nullopt};
@@ -513,7 +557,8 @@ private:
               std::nullopt};
           auto value = evaluate(statement.expression.value,
                                 statement.expression.range, &condition);
-          const bool* selected = value ? std::get_if<bool>(&*value) : nullptr;
+          const ExecutionValue* known = value ? value->known_value() : nullptr;
+          const bool* selected = known ? std::get_if<bool>(known) : nullptr;
           if (selected == nullptr) {
             report("compiler while condition must be bool", statement.range);
             return {Control::Error, std::nullopt};

@@ -13,8 +13,35 @@ namespace joggle::detail {
 
 struct FunctionBody;
 
+// The evaluator's one internal value domain. Known values retain their C++
+// payload; Residual values retain their Function-owned SSA handle. Both carry
+// one resolved Joggle Type, so staging never changes typing semantics.
+class StagedValue {
+public:
+  StagedValue(Type type, ExecutionValue value);
+  explicit StagedValue(Value value);
+
+  bool known() const;
+  const Type& type() const;
+  const ExecutionValue* known_value() const;
+  ExecutionValue* known_value();
+  const Value* residual_value() const;
+
+private:
+  Type type_;
+  std::variant<ExecutionValue, Value> value_;
+};
+
 std::string_view execution_value_type(const ExecutionValue& value);
 std::optional<Domain> cpp_value_domain(std::string_view type);
+std::optional<Type> domain_type(Compiler& compiler,
+                                const Module::Expression& domain);
+std::optional<Module::Expression> type_domain(const Type& type);
+std::optional<Type> execution_type(Compiler& compiler,
+                                   const ExecutionValue& value);
+std::optional<StagedValue> stage(Compiler& compiler, ExecutionValue value);
+std::optional<StagedValue> stage(Value value);
+std::optional<Value> ir_value(Compiler& compiler, const StagedValue& value);
 
 std::optional<ExecutionValue>
 execution_value(const ParameterValue& value,

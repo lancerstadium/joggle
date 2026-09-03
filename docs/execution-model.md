@@ -414,6 +414,11 @@ When a Compiler is present, even a single-return source Function enters this
 execution path; the dependent-type solver no longer interprets that Function
 body itself. Adding statements to a helper therefore cannot silently switch
 its call, overload, effect, or evaluation-limit semantics.
+The all-Known executor and mixed-stage specializer now share one private value
+domain: `Known(ExecutionValue, Type)` or `Residual(Value)`. This is an
+implementation bridge toward one structured traversal, not a source or public
+IR construct. Host objects without a declared materialization remain Known and
+cannot leak into residual Instructions.
 Linking already traverses every structured arm, including arms not selected by
 a particular invocation, and rejects unresolved names or call
 shapes before host code can run. The remaining consolidation work is a single

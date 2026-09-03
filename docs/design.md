@@ -388,3 +388,11 @@ fallback because it has no behavior registry. The remaining implementation
 work is to merge the all-Known body executor with the mixed Known/Residual
 specializer; that is an internal consolidation, not another public function or
 control-flow kind.
+
+Both execution paths now store locals in one private staged-value
+representation. It contains either a typed C++ payload known to the compiler or
+a typed SSA Value owned by the residual Function. Prelude values can cross the
+boundary losslessly; arbitrary registered host objects remain Known until an
+extension provides an ordinary materialization function. This representation
+is not exposed in the DSL, public C++ headers, or serialized IR. Control-flow
+traversal is still duplicated and remains scheduled for removal.
