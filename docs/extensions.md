@@ -19,7 +19,7 @@ module tensor_to_accel@1.0.0 {
   import tensor@1.0.0;
   import accel@1.0.0;
 
-  fn convert(input: program, target: accel.target) -> program;
+  fn convert(input: module, target: accel.target) -> module;
 }
 ```
 
@@ -33,25 +33,25 @@ The language has no separate pass declaration. A function becomes compiler
 work because its inputs and results have compiler representations:
 
 ```joggle
-fn load(path: string) -> program;
-fn canonicalize(input: program) -> program;
-fn cost(input: program, target: target) -> estimate;
-fn emit(input: program) -> bytes;
+fn load(path: string) -> module;
+fn canonicalize(input: module) -> module;
+fn cost(input: module, target: target) -> estimate;
+fn emit(input: module) -> bytes;
 
 fn compile(path: string, target: target) -> bytes {
-  program = canonicalize(load(path));
-  return emit(program);
+  module = canonicalize(load(path));
+  return emit(module);
 }
 ```
 
-The same call rules compose program operations and compiler functions. A body
+The same call rules compose module operations and compiler functions. A body
 can branch on Known configuration and use `for` over Known lists. Calls that
-depend on Residual program values remain in the executable IR.
+depend on Residual module values remain in the executable IR.
 
-Prelude declares `program`. The compiler automatically represents it as
-`joggle::ir::Program`, which carries multiple named Functions through a
+Prelude declares `module`. The compiler automatically represents it as
+`joggle::Module`, which carries multiple named Functions through a
 pipeline. No package import or manual representation registration is required.
-This is a whole-program value, not a second IR hierarchy.
+This is a whole-module value, not a second IR hierarchy.
 
 ## Bind a function
 
@@ -59,7 +59,7 @@ After linking, look up the declaration and bind a matching C++ callable:
 
 ```cpp
 const auto module = compiler.module("metrics");
-const auto volume = module ? module->function("volume") : std::nullopt;
+const auto volume = module ? module->declaration("volume") : std::nullopt;
 if (volume) {
   compiler.bind(*volume, [](const std::vector<std::int64_t>& shape) {
     std::int64_t result = 1;
@@ -74,7 +74,7 @@ if (volume) {
 Supported compiler-domain mappings are `std::int64_t`, `double`, `bool`,
 `std::string`, `joggle::Type`, `joggle::Attribute`, `joggle::Bytes`, and
 homogeneous `std::vector<T>` forms. Whole-IR functions use
-`joggle::ir::Function` or `joggle::ir::Program`.
+`joggle::ir::Function` or `joggle::Module`.
 
 A no-result declaration binds to C++ `void`; one result binds to `T`; multiple
 results bind positionally to `std::tuple<Ts...>`. Returning
@@ -112,7 +112,7 @@ The projection order is the declaration's parameter order. The Module remains
 the type authority; registration only supplies storage and projection for host
 invocation.
 
-The core registers the Prelude `program` representation before linking.
+The core registers the Prelude `module` representation before linking.
 Extension-defined artifacts, cost estimates, schedules, and device descriptions
 use the public registration mechanism and require no core class.
 

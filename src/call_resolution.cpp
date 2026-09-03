@@ -19,20 +19,21 @@ bool same_signature(const Module::FunctionDecl& left,
       [](const auto& lhs, const auto& rhs) {
         return lhs.domain == rhs.domain && lhs.variadic == rhs.variadic;
       });
-  const bool same_results = std::equal(
-      left.results().begin(), left.results().end(), right.results().begin(),
-      [](const auto& lhs, const auto& rhs) { return lhs.domain == rhs.domain; });
+  const bool same_results =
+      std::equal(left.results().begin(), left.results().end(),
+                 right.results().begin(), [](const auto& lhs, const auto& rhs) {
+                   return lhs.domain == rhs.domain;
+                 });
   return same_inputs && same_results;
 }
 
 void append_unshadowed(std::vector<Module::FunctionDecl>& destination,
                        std::span<const Module::FunctionDecl> candidates) {
   for (const auto& candidate : candidates) {
-    const bool shadowed =
-        std::any_of(destination.begin(), destination.end(),
-                    [&](const auto& visible) {
-                      return same_signature(visible, candidate);
-                    });
+    const bool shadowed = std::any_of(
+        destination.begin(), destination.end(), [&](const auto& visible) {
+          return same_signature(visible, candidate);
+        });
     if (!shadowed) {
       destination.push_back(candidate);
     }
@@ -40,8 +41,9 @@ void append_unshadowed(std::vector<Module::FunctionDecl>& destination,
 }
 
 template <typename Lookup>
-std::vector<Module::FunctionDecl> find_visible_functions(
-    Lookup&& lookup, std::string_view owner, std::string_view reference) {
+std::vector<Module::FunctionDecl>
+find_visible_functions(Lookup&& lookup, std::string_view owner,
+                       std::string_view reference) {
   const std::size_t dot = reference.find('.');
   std::string module_name(owner);
   std::string_view local = reference;
@@ -67,8 +69,7 @@ std::vector<Module::FunctionDecl> find_visible_functions(
   }
   const auto module = lookup(module_name);
   std::vector<Module::FunctionDecl> result =
-      module ? module->overloads(local)
-             : std::vector<Module::FunctionDecl>{};
+      module ? module->overloads(local) : std::vector<Module::FunctionDecl>{};
   if (dot == std::string_view::npos && module_name != prelude_module_name &&
       result.empty()) {
     if (const auto prelude = lookup(prelude_module_name)) {
@@ -79,16 +80,17 @@ std::vector<Module::FunctionDecl> find_visible_functions(
 }
 
 template <typename Lookup>
-std::vector<Module::FunctionDecl> find_visible_operators(
-    Lookup&& lookup, std::string_view owner, std::string_view symbol,
-    Module::FunctionDecl::Fixity fixity) {
+std::vector<Module::FunctionDecl>
+find_visible_operators(Lookup&& lookup, std::string_view owner,
+                       std::string_view symbol,
+                       Module::FunctionDecl::Fixity fixity) {
   std::vector<Module::FunctionDecl> result;
   const auto scope = lookup(owner);
   if (!scope) {
     return result;
   }
   const auto append = [&](const Module& module) {
-    for (const auto& function : module.functions()) {
+    for (const auto& function : module.declarations()) {
       if (function.operator_symbol() == symbol &&
           function.operator_fixity() == fixity) {
         result.push_back(function);
@@ -104,7 +106,7 @@ std::vector<Module::FunctionDecl> find_visible_operators(
   if (scope->name() != prelude_module_name) {
     if (const auto prelude = lookup(prelude_module_name)) {
       std::vector<Module::FunctionDecl> ambient;
-      for (const auto& function : prelude->functions()) {
+      for (const auto& function : prelude->declarations()) {
         if (function.operator_symbol() == symbol &&
             function.operator_fixity() == fixity) {
           ambient.push_back(function);
@@ -132,9 +134,8 @@ visible_functions(std::span<const Module> modules, std::string_view owner,
   return find_visible_functions(
       [&](std::string_view name) -> std::optional<Module> {
         const auto found =
-            std::find_if(modules.begin(), modules.end(), [&](const auto& item) {
-              return item.name() == name;
-            });
+            std::find_if(modules.begin(), modules.end(),
+                         [&](const auto& item) { return item.name() == name; });
         return found == modules.end() ? std::optional<Module>{}
                                       : std::optional<Module>{*found};
       },
@@ -157,27 +158,28 @@ visible_operators(std::span<const Module> modules, std::string_view owner,
   return find_visible_operators(
       [&](std::string_view name) -> std::optional<Module> {
         const auto found =
-            std::find_if(modules.begin(), modules.end(), [&](const auto& item) {
-              return item.name() == name;
-            });
+            std::find_if(modules.begin(), modules.end(),
+                         [&](const auto& item) { return item.name() == name; });
         return found == modules.end() ? std::optional<Module>{}
                                       : std::optional<Module>{*found};
       },
       owner, symbol, fixity);
 }
 
-std::vector<Module::FunctionDecl> operator_candidates(
-    const Compiler& compiler, std::string_view owner, std::string_view symbol,
-    Module::FunctionDecl::Fixity fixity, std::size_t arity,
-    const Module::Expression& result_domain) {
+std::vector<Module::FunctionDecl>
+operator_candidates(const Compiler& compiler, std::string_view owner,
+                    std::string_view symbol,
+                    Module::FunctionDecl::Fixity fixity, std::size_t arity,
+                    const Module::Expression& result_domain) {
   auto result = visible_operators(compiler, owner, symbol, fixity);
-  result.erase(
-      std::remove_if(result.begin(), result.end(), [&](const auto& candidate) {
-        return candidate.inputs().size() != arity ||
-               candidate.results().size() != 1U ||
-               candidate.results().front().domain != result_domain;
-      }),
-      result.end());
+  result.erase(std::remove_if(result.begin(), result.end(),
+                              [&](const auto& candidate) {
+                                return candidate.inputs().size() != arity ||
+                                       candidate.results().size() != 1U ||
+                                       candidate.results().front().domain !=
+                                           result_domain;
+                              }),
+               result.end());
   return result;
 }
 
@@ -190,19 +192,19 @@ call_candidate(const Module::FunctionDecl& function,
   std::vector<bool> supplied(parameters.size(), false);
   std::size_t positional = 0;
   for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
-    const std::string_view label =
-        index < expression.labels.size() ? expression.labels[index]
-                                         : std::string_view{};
+    const std::string_view label = index < expression.labels.size()
+                                       ? expression.labels[index]
+                                       : std::string_view{};
     std::size_t target = parameters.size();
     if (!label.empty()) {
-      const auto found = std::find_if(
-          parameters.begin(), parameters.end(),
-          [&](const Module::ParameterDecl& parameter) {
-            return parameter.name == label;
-          });
+      const auto found =
+          std::find_if(parameters.begin(), parameters.end(),
+                       [&](const Module::ParameterDecl& parameter) {
+                         return parameter.name == label;
+                       });
       if (found != parameters.end()) {
-        target = static_cast<std::size_t>(
-            std::distance(parameters.begin(), found));
+        target =
+            static_cast<std::size_t>(std::distance(parameters.begin(), found));
       }
     } else {
       while (positional < parameters.size() && supplied[positional] &&

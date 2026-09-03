@@ -1,6 +1,6 @@
 # Standard Modules
 
-Joggle separates the language ABI from reusable program vocabularies. This is
+Joggle separates the language ABI from reusable module vocabularies. This is
 an ownership boundary, not a lowering order.
 
 ## Prelude is the language ABI
@@ -15,14 +15,14 @@ Prelude owns only concepts that every extension must agree on:
 
 - compiler domains: `int`, `real`, `bool`, `string`, `type`, `attr`, `bytes`,
   `function`, and `list<D>`;
-- the core-represented whole-program artifact type `program`;
-- native program scalars and `index`;
+- the core-represented whole-module artifact type `module`;
+- native IR scalar types and `index`;
 - basic type and function contracts;
 - deterministic compiler-domain arithmetic, comparison, logic, and `range`.
 
-`function` maps to one `joggle::ir::Function`. `program` maps to one
-`joggle::ir::Program`. Both mappings are supplied by the core because staged
-execution and whole-program composition require a common host representation.
+`function` maps to one `joggle::ir::Function`. `module` maps to one
+`joggle::Module`. Both mappings are supplied by the core because staged
+execution and whole-module composition require a common host representation.
 No other artifact type is privileged.
 
 Prelude distinguishes two related interfaces:
@@ -49,7 +49,7 @@ spelling.
 
 Literal materializers implement `prelude.literal`. Their distinct names are
 intentional: an integer token may materialize an integer or a floating-point
-program value, and those declarations otherwise have the same input domain.
+module value, and those declarations otherwise have the same input domain.
 The literal-selection mechanism uses the interface and result constraint, not
 the function name.
 
@@ -83,9 +83,9 @@ and an open string address-space name. It does not declare capacities, banks,
 latencies, or a global machine.
 
 Memory functions thread `buffer.token` explicitly. Their `index...` operands
-are program values, so dynamic access is representable; shape and address space
+are module values, so dynamic access is representable; shape and address space
 remain Known type parameters. `reads`, `writes`, and `allocates` are function
-contracts for effect-aware transforms. Buffers may contain any program type,
+contracts for effect-aware transforms. Buffers may contain any module type,
 not only Prelude scalars.
 
 ## Dependency and extension rules

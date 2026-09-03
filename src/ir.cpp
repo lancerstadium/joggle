@@ -102,7 +102,8 @@ struct FunctionEditState {
   bool active = true;
 };
 
-const std::shared_ptr<FunctionIdentity>& FunctionAccess::owner(const Value& value) {
+const std::shared_ptr<FunctionIdentity>&
+FunctionAccess::owner(const Value& value) {
   return value.function_;
 }
 
@@ -111,7 +112,8 @@ FunctionAccess::owner(const Instruction& instruction) {
   return instruction.function_;
 }
 
-const std::shared_ptr<FunctionIdentity>& FunctionAccess::owner(const Block& block) {
+const std::shared_ptr<FunctionIdentity>&
+FunctionAccess::owner(const Block& block) {
   return block.function_;
 }
 
@@ -137,31 +139,34 @@ Value FunctionAccess::restore(std::shared_ptr<FunctionIdentity> function,
   }
   return Value(std::move(function), id);
 }
-void FunctionAccess::locate(Function::Edit& edit, const Instruction& instruction,
-                         SourceRange source) {
+void FunctionAccess::locate(Function::Edit& edit,
+                            const Instruction& instruction,
+                            SourceRange source) {
   if (instruction.function_ != edit.state_->function || !instruction.valid()) {
-    throw std::invalid_argument("instruction does not belong to this function edit");
+    throw std::invalid_argument(
+        "instruction does not belong to this function edit");
   }
   edit.state_->function->state->instructions.at(id(instruction)).location =
       std::move(source);
 }
 
-std::optional<SourceRange> FunctionAccess::location(const Instruction& instruction) {
+std::optional<SourceRange>
+FunctionAccess::location(const Instruction& instruction) {
   if (!instruction.valid()) {
     return std::nullopt;
   }
-  return instruction.function_->state->instructions.at(instruction.id_).location;
+  return instruction.function_->state->instructions.at(instruction.id_)
+      .location;
 }
 
 std::optional<ParameterValue> FunctionAccess::known_value(const Value& value) {
   return value.known_value();
 }
 
-std::size_t FunctionAccess::argument_parameter(
-    const Instruction& instruction, std::size_t argument) {
+std::size_t FunctionAccess::argument_parameter(const Instruction& instruction,
+                                               std::size_t argument) {
   if (!instruction.valid() ||
-      argument >= instruction.function_->state->instructions
-                      .at(instruction.id_)
+      argument >= instruction.function_->state->instructions.at(instruction.id_)
                       .arguments.size()) {
     throw std::out_of_range("instruction argument index is out of range");
   }
@@ -212,9 +217,10 @@ bool owns(const FunctionState& function, const Type& type) {
 bool owns(const FunctionState& function, const Attribute& attribute) {
   const auto parameters = detail::TypeAccess::parameters(attribute);
   return owns(function, attribute.schema().symbol()) &&
-         std::all_of(
-             parameters.begin(), parameters.end(),
-             [&](const ParameterValue& value) { return owns(function, value); });
+         std::all_of(parameters.begin(), parameters.end(),
+                     [&](const ParameterValue& value) {
+                       return owns(function, value);
+                     });
 }
 
 bool owns(const FunctionState& function, const ParameterValue& value) {
@@ -232,11 +238,11 @@ bool owns(const FunctionState& function, const ParameterValue& value) {
   return true;
 }
 
-bool matches(const Module::ParameterDecl& schema,
-             const ParameterValue& value);
+bool matches(const Module::ParameterDecl& schema, const ParameterValue& value);
 
-std::optional<Type> reflected_parameter_type(
-    const FunctionState& function, const Module::Expression& expression) {
+std::optional<Type>
+reflected_parameter_type(const FunctionState& function,
+                         const Module::Expression& expression) {
   const auto domain = detail::kernel_domain(expression);
   if (!domain) {
     return std::nullopt;
@@ -254,8 +260,8 @@ std::optional<Type> reflected_parameter_type(
   }
   std::vector<ParameterValue> parameters;
   if (domain->list) {
-    auto element = reflected_parameter_type(function,
-                                            expression.arguments.front());
+    auto element =
+        reflected_parameter_type(function, expression.arguments.front());
     if (!element) {
       return std::nullopt;
     }
@@ -264,9 +270,9 @@ std::optional<Type> reflected_parameter_type(
   return detail::TypeAccess::make(*declaration, std::move(parameters));
 }
 
-std::shared_ptr<const detail::KnownValueStorage> make_known(
-    const FunctionState& function, const Module::ParameterDecl& parameter,
-    ParameterValue value) {
+std::shared_ptr<const detail::KnownValueStorage>
+make_known(const FunctionState& function,
+           const Module::ParameterDecl& parameter, ParameterValue value) {
   auto type = reflected_parameter_type(function, parameter.domain);
   if (!type || !matches(parameter, value) || !owns(function, *type) ||
       !owns(function, value)) {
@@ -280,9 +286,8 @@ bool matches(const Module::ParameterDecl& schema, const ParameterValue& value) {
   return detail::matches_parameter(schema, value);
 }
 
-bool accepts_count(
-    std::span<const Module::ParameterDecl> parameters,
-    std::size_t count) {
+bool accepts_count(std::span<const Module::ParameterDecl> parameters,
+                   std::size_t count) {
   std::size_t minimum = 0;
   bool variadic = false;
   for (const auto& parameter : parameters) {
@@ -361,8 +366,7 @@ dominators(const FunctionState& function) {
 
 bool definition_dominates(
     const FunctionState& function, const ValueData& definition,
-    std::uint64_t user_block,
-    std::optional<std::uint64_t> user_instruction,
+    std::uint64_t user_block, std::optional<std::uint64_t> user_instruction,
     const std::unordered_map<std::uint64_t, BlockSet>& dom) {
   if (definition.origin == ValueData::Origin::FunctionArgument) {
     return definition.owner == 0 &&
@@ -428,11 +432,10 @@ bool matches_function_reference(const FunctionState& function,
   return resolved && resolved->results == *results;
 }
 
-bool verify_instruction(
-    const FunctionState& function, std::uint64_t id,
-    const InstructionData& instruction,
-    const std::unordered_map<std::uint64_t, BlockSet>& dom,
-    Diagnostics& diagnostics) {
+bool verify_instruction(const FunctionState& function, std::uint64_t id,
+                        const InstructionData& instruction,
+                        const std::unordered_map<std::uint64_t, BlockSet>& dom,
+                        Diagnostics& diagnostics) {
   bool valid = true;
   const std::string name(instruction.schema.symbol().qualified_name());
   if (!owns(function, instruction.schema.symbol())) {
@@ -567,7 +570,8 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
       valid = false;
       continue;
     }
-    for (std::size_t index = 0; index < block->second.arguments.size(); ++index) {
+    for (std::size_t index = 0; index < block->second.arguments.size();
+         ++index) {
       const auto value = function.values.find(block->second.arguments[index]);
       if (value == function.values.end() ||
           value->second.origin != ValueData::Origin::BlockArgument ||
@@ -604,7 +608,8 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
       diagnostics.report("function contains an unordered instruction");
       valid = false;
     }
-    valid = verify_instruction(function, id, instruction, dom, diagnostics) && valid;
+    valid = verify_instruction(function, id, instruction, dom, diagnostics) &&
+            valid;
   }
 
   if (function.signature) {
@@ -613,16 +618,18 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
       valid = false;
     }
     if (function.arguments.size() != function.signature->arguments.size()) {
-      diagnostics.report("function argument count does not match its signature");
+      diagnostics.report(
+          "function argument count does not match its signature");
       valid = false;
     }
-    const std::size_t count =
-        std::min(function.arguments.size(), function.signature->arguments.size());
+    const std::size_t count = std::min(function.arguments.size(),
+                                       function.signature->arguments.size());
     for (std::size_t index = 0; index < count; ++index) {
       const auto value = function.values.find(function.arguments[index]);
       if (value != function.values.end() &&
           value->second.type != function.signature->arguments[index]) {
-        diagnostics.report("function argument type does not match its signature");
+        diagnostics.report(
+            "function argument type does not match its signature");
         valid = false;
       }
     }
@@ -652,8 +659,8 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
     const auto verify_use = [&](std::uint64_t id) {
       const auto value = function.values.find(id);
       if (value == function.values.end() ||
-          !definition_dominates(function, value->second, block_id,
-                                std::nullopt, dom)) {
+          !definition_dominates(function, value->second, block_id, std::nullopt,
+                                dom)) {
         diagnostics.report("terminator uses a value that does not dominate it");
         valid = false;
       }
@@ -712,8 +719,10 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
       for (std::size_t index = 0; index < count; ++index) {
         verify_use(edge.arguments[index]);
         const auto argument = function.values.find(edge.arguments[index]);
-        const auto parameter = function.values.find(target->second.arguments[index]);
-        if (argument != function.values.end() && parameter != function.values.end() &&
+        const auto parameter =
+            function.values.find(target->second.arguments[index]);
+        if (argument != function.values.end() &&
+            parameter != function.values.end() &&
             argument->second.type != parameter->second.type) {
           diagnostics.report("successor edge argument has the wrong type");
           valid = false;
@@ -735,13 +744,13 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
 
 template <typename Resolve>
 bool verify_instruction_contracts(const FunctionState& function,
-                                Diagnostics& diagnostics,
-                                Resolve&& resolve) {
+                                  Diagnostics& diagnostics, Resolve&& resolve) {
   bool valid = true;
   for (const std::uint64_t block_id : function.block_order) {
     for (const std::uint64_t instruction_id :
          function.blocks.at(block_id).instructions) {
-      const InstructionData& instruction = function.instructions.at(instruction_id);
+      const InstructionData& instruction =
+          function.instructions.at(instruction_id);
       const Module::FunctionDecl schema = instruction.schema;
 
       const auto& contract = detail::FunctionTypeAccess::get(schema);
@@ -775,7 +784,8 @@ bool verify_instruction_contracts(const FunctionState& function,
             }
           }
         } else if (argument.known) {
-          known_arguments[known_indices[stored.parameter]] = argument.known->value;
+          known_arguments[known_indices[stored.parameter]] =
+              argument.known->value;
         }
       }
 
@@ -796,7 +806,7 @@ bool verify_instruction_contracts(const FunctionState& function,
 }
 
 bool verify_instruction_contracts(const FunctionState& function,
-                                Diagnostics& diagnostics) {
+                                  Diagnostics& diagnostics) {
   std::vector<Module> modules;
   modules.reserve(function.modules.size());
   for (const auto& [name, module] : function.modules) {
@@ -807,21 +817,22 @@ bool verify_instruction_contracts(const FunctionState& function,
       function, diagnostics,
       [&](const Module::FunctionDecl& schema, std::span<const Type> arguments,
           std::span<const std::optional<ParameterValue>> known_arguments,
-          std::span<const std::optional<Type>> results,
-          Diagnostics& reported, std::optional<SourceRange> location) {
+          std::span<const std::optional<Type>> results, Diagnostics& reported,
+          std::optional<SourceRange> location) {
         return resolve_call_types(modules, schema, arguments, known_arguments,
                                   results, reported, std::move(location));
       });
 }
 
-bool verify_instruction_contracts(const FunctionState& function, Compiler& compiler,
-                                Diagnostics& diagnostics) {
+bool verify_instruction_contracts(const FunctionState& function,
+                                  Compiler& compiler,
+                                  Diagnostics& diagnostics) {
   return verify_instruction_contracts(
       function, diagnostics,
       [&](const Module::FunctionDecl& schema, std::span<const Type> arguments,
           std::span<const std::optional<ParameterValue>> known_arguments,
-          std::span<const std::optional<Type>> results,
-          Diagnostics& reported, std::optional<SourceRange> location) {
+          std::span<const std::optional<Type>> results, Diagnostics& reported,
+          std::optional<SourceRange> location) {
         return resolve_call_types(compiler, schema, arguments, known_arguments,
                                   results, reported, std::move(location));
       });
@@ -829,7 +840,7 @@ bool verify_instruction_contracts(const FunctionState& function, Compiler& compi
 
 template <typename Handle>
 void check_same_function(const std::shared_ptr<FunctionIdentity>& function,
-                      const Handle& handle, std::string_view kind) {
+                         const Handle& handle, std::string_view kind) {
   if (detail::FunctionAccess::owner(handle) != function || !handle.valid()) {
     throw std::invalid_argument(std::string(kind) +
                                 " does not belong to this function edit");
@@ -873,8 +884,8 @@ bool FunctionAccess::verify_contracts(const ir::Function& function,
 bool FunctionAccess::verify_contracts(const ir::Function& function,
                                       Compiler& compiler,
                                       Diagnostics& diagnostics) {
-  return ir::verify_instruction_contracts(*function.function_->state,
-                                          compiler, diagnostics);
+  return ir::verify_instruction_contracts(*function.function_->state, compiler,
+                                          diagnostics);
 }
 
 void FunctionAccess::declare(ir::Function& function,
@@ -896,19 +907,19 @@ void FunctionAccess::declare(ir::Function& function,
     throw std::invalid_argument(
         "function signature does not match its declaration");
   }
-  const bool owned_arguments = std::all_of(
-      argument_types.begin(), argument_types.end(),
-      [&](const Type& type) { return ir::owns(state, type); });
-  const bool owned_results = std::all_of(
-      result_types.begin(), result_types.end(),
-      [&](const Type& type) { return ir::owns(state, type); });
+  const bool owned_arguments =
+      std::all_of(argument_types.begin(), argument_types.end(),
+                  [&](const Type& type) { return ir::owns(state, type); });
+  const bool owned_results =
+      std::all_of(result_types.begin(), result_types.end(),
+                  [&](const Type& type) { return ir::owns(state, type); });
   if (!owned_arguments || !owned_results) {
     throw std::invalid_argument(
         "function signature references a type outside its module closure");
   }
-  state.signature = FunctionState::Signature{
-      std::move(declaration), std::move(argument_types),
-      std::move(result_types)};
+  state.signature = FunctionState::Signature{std::move(declaration),
+                                             std::move(argument_types),
+                                             std::move(result_types)};
 }
 
 bool FunctionAccess::commit(ir::Function::Edit& edit, Compiler& compiler,
@@ -917,8 +928,8 @@ bool FunctionAccess::commit(ir::Function::Edit& edit, Compiler& compiler,
     throw std::logic_error("function edit is no longer active");
   }
   if (!ir::verify_function(*edit.state_->function->state, diagnostics) ||
-      !ir::verify_instruction_contracts(*edit.state_->function->state,
-                                        compiler, diagnostics)) {
+      !ir::verify_instruction_contracts(*edit.state_->function->state, compiler,
+                                        diagnostics)) {
     edit.state_->function->state = std::move(edit.state_->backup);
     edit.state_->function->editing = false;
     edit.state_->active = false;
@@ -1014,7 +1025,8 @@ std::optional<Module::FunctionDecl> Value::referenced_function() const {
              : std::nullopt;
 }
 
-Instruction::Instruction(std::shared_ptr<FunctionIdentity> function, std::uint64_t id)
+Instruction::Instruction(std::shared_ptr<FunctionIdentity> function,
+                         std::uint64_t id)
     : function_(std::move(function)), id_(id) {}
 
 bool Instruction::valid() const {
@@ -1047,8 +1059,8 @@ std::vector<Value> Instruction::arguments() const {
   values.reserve(found->second.arguments.size());
   for (const detail::StoredArgument& argument : found->second.arguments) {
     const detail::StoredValue& value = argument.value;
-    values.push_back(detail::FunctionAccess::restore(
-        function_, value.id, value.known));
+    values.push_back(
+        detail::FunctionAccess::restore(function_, value.id, value.known));
   }
   return values;
 }
@@ -1092,16 +1104,16 @@ std::optional<Value> Instruction::argument(std::string_view name) const {
     return std::nullopt;
   }
   const auto parameters = found->second.schema.inputs();
-  const auto parameter = std::find_if(
-      parameters.begin(), parameters.end(),
-      [&](const Module::ParameterDecl& candidate) {
-        return candidate.name == name;
-      });
+  const auto parameter =
+      std::find_if(parameters.begin(), parameters.end(),
+                   [&](const Module::ParameterDecl& candidate) {
+                     return candidate.name == name;
+                   });
   if (parameter == parameters.end()) {
     return std::nullopt;
   }
-  const std::size_t index = static_cast<std::size_t>(
-      std::distance(parameters.begin(), parameter));
+  const std::size_t index =
+      static_cast<std::size_t>(std::distance(parameters.begin(), parameter));
   const auto argument = std::find_if(
       found->second.arguments.begin(), found->second.arguments.end(),
       [&](const detail::StoredArgument& candidate) {
@@ -1110,8 +1122,8 @@ std::optional<Value> Instruction::argument(std::string_view name) const {
   if (argument == found->second.arguments.end()) {
     return std::nullopt;
   }
-  return detail::FunctionAccess::restore(
-      function_, argument->value.id, argument->value.known);
+  return detail::FunctionAccess::restore(function_, argument->value.id,
+                                         argument->value.known);
 }
 
 Terminator::Terminator(std::shared_ptr<FunctionIdentity> function,
@@ -1271,8 +1283,8 @@ Value Function::Edit::argument(Type type) {
   const std::uint64_t id = state_->function->next_id++;
   const std::size_t index = state_->function->state->arguments.size();
   state_->function->state->values.emplace(
-      id, ValueData{std::move(type), ValueData::Origin::FunctionArgument,
-                    0, index, std::nullopt});
+      id, ValueData{std::move(type), ValueData::Origin::FunctionArgument, 0,
+                    index, std::nullopt});
   state_->function->state->arguments.push_back(id);
   return Function::make_value(state_->function, id);
 }
@@ -1305,10 +1317,9 @@ Block Function::Edit::block(std::vector<Type> argument_types) {
   for (std::size_t index = 0; index < argument_types.size(); ++index) {
     const std::uint64_t value_id = state_->function->next_id++;
     state_->function->state->values.emplace(
-        value_id,
-        ValueData{std::move(argument_types[index]),
-                  ValueData::Origin::BlockArgument, block_id, index,
-                  std::nullopt});
+        value_id, ValueData{std::move(argument_types[index]),
+                            ValueData::Origin::BlockArgument, block_id, index,
+                            std::nullopt});
     data.arguments.push_back(value_id);
   }
   state_->function->state->blocks.emplace(block_id, std::move(data));
@@ -1326,25 +1337,25 @@ Instruction Function::Edit::append(Module::FunctionDecl schema,
 }
 
 Instruction Function::Edit::append(Block block, Module::FunctionDecl schema,
-                              std::vector<Value> arguments,
-                              std::vector<Type> result_types) {
+                                   std::vector<Value> arguments,
+                                   std::vector<Type> result_types) {
   return add(std::move(block), std::nullopt, std::move(schema),
              std::move(arguments), std::move(result_types));
 }
 
-Instruction Function::Edit::insert(Instruction before, Module::FunctionDecl schema,
-                              std::vector<Value> arguments,
-                              std::vector<Type> result_types) {
+Instruction Function::Edit::insert(Instruction before,
+                                   Module::FunctionDecl schema,
+                                   std::vector<Value> arguments,
+                                   std::vector<Type> result_types) {
   check_same_function(state_->function, before, "insertion point");
   return add(before.parent(), before, std::move(schema), std::move(arguments),
              std::move(result_types));
 }
 
-Instruction Function::Edit::add(Block block,
-                           std::optional<Instruction> before,
-                           Module::FunctionDecl schema,
-                           std::vector<Value> arguments,
-                           std::vector<Type> result_types) {
+Instruction Function::Edit::add(Block block, std::optional<Instruction> before,
+                                Module::FunctionDecl schema,
+                                std::vector<Value> arguments,
+                                std::vector<Type> result_types) {
   check_same_function(state_->function, block, "block");
   const std::uint64_t block_id = detail::FunctionAccess::id(block);
   const auto location = before ? state_->function->state->instructions
@@ -1363,10 +1374,9 @@ Instruction Function::Edit::add(Block block,
     bool use_default = false;
     if (!parameter.variadic && parameter.default_value) {
       std::size_t required_after = 0;
-      for (std::size_t index = parameter_index + 1U;
-           index < parameters.size(); ++index) {
-        if (!parameters[index].variadic &&
-            !parameters[index].default_value) {
+      for (std::size_t index = parameter_index + 1U; index < parameters.size();
+           ++index) {
+        if (!parameters[index].variadic && !parameters[index].default_value) {
           ++required_after;
         }
       }
@@ -1387,10 +1397,9 @@ Instruction Function::Edit::add(Block block,
       continue;
     }
     if (supplied + count > arguments.size()) {
-      throw std::invalid_argument("instruction '" +
-                                  schema.symbol().qualified_name() +
-                                  "' is missing argument '" + parameter.name +
-                                  "'");
+      throw std::invalid_argument(
+          "instruction '" + schema.symbol().qualified_name() +
+          "' is missing argument '" + parameter.name + "'");
     }
     for (std::size_t item = 0; item < count; ++item) {
       const Value& argument = arguments[supplied++];
@@ -1421,14 +1430,14 @@ Instruction Function::Edit::add(Block block,
     std::vector<std::optional<ParameterValue>> inference_known;
     inference_known.reserve(detail::parameter_inputs(schema).size());
     std::size_t current_parameter = 0;
-    for (std::size_t parameter_index = 0;
-         parameter_index < parameters.size(); ++parameter_index) {
+    for (std::size_t parameter_index = 0; parameter_index < parameters.size();
+         ++parameter_index) {
       if (!contract.ir_inputs[parameter_index]) {
-        const auto item = std::find_if(
-            argument_ids.begin(), argument_ids.end(),
-            [&](const detail::StoredArgument& argument) {
-              return argument.parameter == parameter_index;
-            });
+        const auto item =
+            std::find_if(argument_ids.begin(), argument_ids.end(),
+                         [&](const detail::StoredArgument& argument) {
+                           return argument.parameter == parameter_index;
+                         });
         inference_known.push_back(
             item == argument_ids.end() || !item->value.known
                 ? std::optional<ParameterValue>{}
@@ -1444,8 +1453,9 @@ Instruction Function::Edit::add(Block block,
         const detail::StoredValue& argument =
             argument_ids[current_parameter++].value;
         argument_types.push_back(
-            argument.known ? argument.known->type
-                           : state_->function->state->values.at(argument.id).type);
+            argument.known
+                ? argument.known->type
+                : state_->function->state->values.at(argument.id).type);
       }
     }
     std::vector<Module> modules;
@@ -1455,9 +1465,9 @@ Instruction Function::Edit::add(Block block,
       modules.push_back(module);
     }
     Diagnostics diagnostics;
-    auto inferred = detail::infer_call_types(
-        modules, schema, argument_types, inference_known, expected,
-        diagnostics);
+    auto inferred =
+        detail::infer_call_types(modules, schema, argument_types,
+                                 inference_known, expected, diagnostics);
     if (!inferred) {
       std::string message = "cannot infer results for instruction '" +
                             schema.symbol().qualified_name() + "'";
@@ -1479,12 +1489,9 @@ Instruction Function::Edit::add(Block block,
                           std::nullopt});
     results.push_back(result);
   }
-  state_->function->state->instructions.emplace(id,
-                                           InstructionData{std::move(schema),
-                                                         block_id,
-                                                         std::move(argument_ids),
-                                                         std::move(results),
-                                                         location});
+  state_->function->state->instructions.emplace(
+      id, InstructionData{std::move(schema), block_id, std::move(argument_ids),
+                          std::move(results), location});
   auto& instruction_order =
       state_->function->state->blocks.at(block_id).instructions;
   if (before) {
@@ -1513,11 +1520,11 @@ void Function::Edit::ret(Block block, std::vector<Value> values) {
     }
     ids.push_back(detail::FunctionAccess::id(value));
   }
-  auto& terminator = state_->function->state->blocks
-                         .at(detail::FunctionAccess::id(block))
-                         .terminator;
-  terminator = detail::TerminatorData{Terminator::Kind::Return, std::nullopt,
-                                      std::move(ids), {}};
+  auto& terminator =
+      state_->function->state->blocks.at(detail::FunctionAccess::id(block))
+          .terminator;
+  terminator = detail::TerminatorData{
+      Terminator::Kind::Return, std::nullopt, std::move(ids), {}};
 }
 
 void Function::Edit::jump(Block block, Block target,
@@ -1534,11 +1541,13 @@ void Function::Edit::jump(Block block, Block target,
     }
     ids.push_back(detail::FunctionAccess::id(value));
   }
-  auto& terminator = state_->function->state->blocks
-                         .at(detail::FunctionAccess::id(block))
-                         .terminator;
+  auto& terminator =
+      state_->function->state->blocks.at(detail::FunctionAccess::id(block))
+          .terminator;
   terminator = detail::TerminatorData{
-      Terminator::Kind::Jump, std::nullopt, {},
+      Terminator::Kind::Jump,
+      std::nullopt,
+      {},
       {{detail::FunctionAccess::id(target), std::move(ids)}}};
 }
 
@@ -1567,11 +1576,13 @@ void Function::Edit::branch(Block block, Value condition, Block true_target,
     }
     return result;
   };
-  auto& terminator = state_->function->state->blocks
-                         .at(detail::FunctionAccess::id(block))
-                         .terminator;
+  auto& terminator =
+      state_->function->state->blocks.at(detail::FunctionAccess::id(block))
+          .terminator;
   terminator = detail::TerminatorData{
-      Terminator::Kind::Branch, detail::FunctionAccess::id(condition), {},
+      Terminator::Kind::Branch,
+      detail::FunctionAccess::id(condition),
+      {},
       {{detail::FunctionAccess::id(true_target), ids(true_arguments)},
        {detail::FunctionAccess::id(false_target), ids(false_arguments)}}};
 }
@@ -1614,15 +1625,15 @@ void Function::Edit::replace(Value from, Value to) {
 }
 
 Instruction Function::Edit::replace(Instruction instruction,
-                               Module::FunctionDecl schema) {
+                                    Module::FunctionDecl schema) {
   check_same_function(state_->function, instruction, "instruction");
   std::vector<Type> result_types;
   result_types.reserve(instruction.results().size());
   for (const Value& result : instruction.results()) {
     result_types.push_back(result.type());
   }
-  const Instruction replacement =
-      insert(instruction, std::move(schema), instruction.arguments(), result_types);
+  const Instruction replacement = insert(instruction, std::move(schema),
+                                         instruction.arguments(), result_types);
   for (std::size_t index = 0; index < result_types.size(); ++index) {
     replace(instruction.result(index), replacement.result(index));
   }
@@ -1641,14 +1652,12 @@ void Function::Edit::erase(Instruction instruction) {
     if (id == instruction_id) {
       continue;
     }
-    if (std::any_of(
-            user.arguments.begin(), user.arguments.end(),
-            [&](const detail::StoredArgument& argument) {
-              return !argument.value.known &&
-                     values.contains(argument.value.id);
-            })) {
-      throw std::invalid_argument(
-          "instruction still has live result uses");
+    if (std::any_of(user.arguments.begin(), user.arguments.end(),
+                    [&](const detail::StoredArgument& argument) {
+                      return !argument.value.known &&
+                             values.contains(argument.value.id);
+                    })) {
+      throw std::invalid_argument("instruction still has live result uses");
     }
   }
   for (const auto& [id, block] : state.blocks) {
@@ -1729,8 +1738,8 @@ std::vector<Value> Function::arguments() const {
 
 std::optional<Module::FunctionDecl> Function::declaration() const {
   return function_->state->signature
-             ? std::optional<Module::FunctionDecl>{
-                   function_->state->signature->declaration}
+             ? std::optional<Module::FunctionDecl>{function_->state->signature
+                                                       ->declaration}
              : std::nullopt;
 }
 
@@ -1790,10 +1799,8 @@ std::vector<Block> Function::predecessors(Block block) const {
       continue;
     }
     const bool reaches = std::any_of(
-        data.terminator->successors.begin(),
-        data.terminator->successors.end(), [&](const detail::EdgeData& edge) {
-          return edge.target == block.id_;
-        });
+        data.terminator->successors.begin(), data.terminator->successors.end(),
+        [&](const detail::EdgeData& edge) { return edge.target == block.id_; });
     if (reaches) {
       result.push_back(make_block(function_, candidate));
     }
@@ -1802,8 +1809,7 @@ std::vector<Block> Function::predecessors(Block block) const {
 }
 
 std::vector<Instruction> Function::users(Value value) const {
-  if (!value.valid() ||
-      (!value.known() && value.function_ != function_) ||
+  if (!value.valid() || (!value.known() && value.function_ != function_) ||
       (value.known() &&
        (!owns(*function_->state, ParameterValue(value.type())) ||
         !owns(*function_->state, *value.known_value())))) {
@@ -1818,8 +1824,8 @@ std::vector<Instruction> Function::users(Value value) const {
       const bool consumes = std::any_of(
           instruction.arguments.begin(), instruction.arguments.end(),
           [&](const detail::StoredArgument& argument) {
-            return detail::FunctionAccess::restore(
-                       function_, argument.value.id, argument.value.known) ==
+            return detail::FunctionAccess::restore(function_, argument.value.id,
+                                                   argument.value.known) ==
                    value;
           });
       if (consumes) {
@@ -1902,6 +1908,16 @@ Function Function::clone() const {
   return result;
 }
 
+Function Function::fork() const {
+  if (function_->editing) {
+    throw std::logic_error("cannot fork a function with an active edit");
+  }
+  Function result({});
+  result.function_->state = function_->state;
+  result.function_->next_id = function_->next_id;
+  return result;
+}
+
 Function::Edit Function::edit() { return Edit(function_); }
 
 bool Function::accepts(const Module::Symbol& symbol) const {
@@ -1921,12 +1937,13 @@ void Function::restore(std::shared_ptr<const Snapshot> snapshot) {
 }
 
 Value Function::make_value(std::shared_ptr<FunctionIdentity> function,
-                        std::uint64_t id) {
+                           std::uint64_t id) {
   return Value(std::move(function), id);
 }
 
-Instruction Function::make_instruction(std::shared_ptr<FunctionIdentity> function,
-                                std::uint64_t id) {
+Instruction
+Function::make_instruction(std::shared_ptr<FunctionIdentity> function,
+                           std::uint64_t id) {
   return Instruction(std::move(function), id);
 }
 

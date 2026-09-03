@@ -22,7 +22,7 @@ bool expect(bool condition, std::string_view message) {
 int main() {
   constexpr std::string_view source = R"(
 joggle 1;
-module program_defs@1.0.0 {
+module module_defs@1.0.0 {
   type word();
   fn source() -> word;
   fn callback(input: i32) -> i32;
@@ -39,24 +39,21 @@ module program_defs@1.0.0 {
 )";
 
   joggle::Compiler compiler;
-  compiler.add(source, "program-defs.joggle");
+  compiler.add(source, "module-defs.joggle");
   const bool linked = compiler.link();
-  auto main = linked ? compiler.function("program_defs.main") : std::nullopt;
-  auto choose = linked ? compiler.function("program_defs.choose")
-                       : std::nullopt;
-  const auto definitions = compiler.module("program_defs");
+  auto main = linked ? compiler.function("module_defs.main") : std::nullopt;
+  auto choose = linked ? compiler.function("module_defs.choose") : std::nullopt;
+  const auto definitions = compiler.module("module_defs");
   const auto prelude = compiler.module("prelude");
   const auto callback_decl =
-      definitions ? definitions->function("callback") : std::nullopt;
-  const auto callable_decl =
-      prelude ? prelude->type("callable") : std::nullopt;
+      definitions ? definitions->declaration("callback") : std::nullopt;
+  const auto callable_decl = prelude ? prelude->type("callable") : std::nullopt;
   const auto i32 = compiler.make("i32");
-  const auto callable = callable_decl && i32
-                            ? compiler.make(
-                                  *callable_decl,
-                                  std::vector<joggle::Type>{*i32},
-                                  std::vector<joggle::Type>{*i32})
-                            : std::optional<joggle::Type>{};
+  const auto callable =
+      callable_decl && i32
+          ? compiler.make(*callable_decl, std::vector<joggle::Type>{*i32},
+                          std::vector<joggle::Type>{*i32})
+          : std::optional<joggle::Type>{};
   auto callback_value = compiler.function();
   if (!main || !choose || !callback_decl || !callable || !callback_value) {
     compiler.diagnostics().print(std::cerr);
@@ -74,52 +71,49 @@ module program_defs@1.0.0 {
     }
   }
 
-  joggle::ir::Program program;
+  joggle::Module module("compiled_module", {2, 3, 4});
   joggle::Diagnostics diagnostics;
-  if (!program.insert("main", std::move(*main), diagnostics) ||
-      !program.insert("choose", std::move(*choose), diagnostics) ||
-      !program.insert("callback_value", std::move(*callback_value),
-                      diagnostics)) {
+  if (!module.insert("main", std::move(*main), diagnostics) ||
+      !module.insert("choose", std::move(*choose), diagnostics) ||
+      !module.insert("callback_value", std::move(*callback_value),
+                     diagnostics)) {
     diagnostics.print(std::cerr);
     return EXIT_FAILURE;
   }
 
-  const auto dependencies = joggle::ir::dependencies(program);
-  const std::string text =
-      joggle::format(program, "compiled_program", {2, 3, 4});
+  const auto dependencies = module.dependencies();
+  const std::string text = joggle::format(module);
   joggle::Diagnostics parse_diagnostics;
-  const auto parsed = joggle::parse_module(
-      text, parse_diagnostics, "compiled-program.joggle");
+  const auto parsed =
+      joggle::parse_module(text, parse_diagnostics, "compiled-module.joggle");
   const std::string reparsed = parsed ? joggle::format(*parsed) : std::string{};
   if (parsed && reparsed != text) {
     std::cerr << "serialized:\n" << text << "reformatted:\n" << reparsed;
   }
 
   bool ok = true;
-  ok &= expect(
-      dependencies ==
-          std::vector<joggle::ir::Dependency>{{"prelude", {1, 4, 0}},
-                                              {"program_defs", {1, 0, 0}}},
-      "an executable Module reports exact schema dependencies");
+  ok &= expect(dependencies ==
+                   std::vector<joggle::Module::Dependency>{
+                       {"module_defs", {1, 0, 0}}, {"prelude", {2, 0, 0}}},
+               "an executable Module reports exact schema dependencies");
   ok &= expect(parsed && reparsed == text,
-               "a multi-Function Program serializes as canonical source");
-  ok &= expect(text.find("import program_defs@1.0.0;") != std::string::npos &&
+               "a multi-Function Module serializes as canonical source");
+  ok &= expect(text.find("import module_defs@1.0.0;") != std::string::npos &&
                    text.find("import prelude") == std::string::npos &&
                    text.find("fn choose") < text.find("fn main"),
                "serialization emits exact non-ambient imports and stable "
                "Function order");
 
   joggle::Compiler replay;
-  replay.add(source, "program-defs.joggle");
-  replay.add(text, "compiled-program.joggle");
+  replay.add(source, "module-defs.joggle");
+  replay.add(text, "compiled-module.joggle");
   const bool replay_linked = replay.link();
   const auto replay_main =
-      replay_linked ? replay.function("compiled_program.main") : std::nullopt;
+      replay_linked ? replay.function("compiled_module.main") : std::nullopt;
   const auto replay_choose =
-      replay_linked ? replay.function("compiled_program.choose")
-                    : std::nullopt;
+      replay_linked ? replay.function("compiled_module.choose") : std::nullopt;
   const auto replay_callback =
-      replay_linked ? replay.function("compiled_program.callback_value")
+      replay_linked ? replay.function("compiled_module.callback_value")
                     : std::nullopt;
   if (!replay_main || !replay_choose || !replay_callback) {
     replay.diagnostics().print(std::cerr);
@@ -128,22 +122,20 @@ module program_defs@1.0.0 {
                    replay_choose && replay_choose->blocks().size() == 4U,
                "serialized data-flow and control-flow Functions link and "
                "instantiate again");
-  const auto replay_returned = replay_callback
-                                   ? replay_callback->entry()
-                                         .terminator()
-                                         .returned()
-                                   : std::vector<joggle::ir::Value>{};
+  const auto replay_returned =
+      replay_callback ? replay_callback->entry().terminator().returned()
+                      : std::vector<joggle::ir::Value>{};
   ok &= expect(replay_returned.size() == 1U &&
                    replay_returned.front().referenced_function() &&
                    replay_returned.front()
                            .referenced_function()
                            ->symbol()
-                           .qualified_name() == "program_defs.callback",
+                           .qualified_name() == "module_defs.callback",
                "function-reference dependencies serialize and replay");
 
-  auto duplicate = compiler.function("program_defs.main");
+  auto duplicate = compiler.function("module_defs.main");
   ok &= expect(duplicate &&
-                   !program.insert("main", std::move(*duplicate), diagnostics) &&
+                   !module.insert("main", std::move(*duplicate), diagnostics) &&
                    !diagnostics.ok(),
                "an executable Module rejects duplicate Function names");
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;

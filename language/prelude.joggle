@@ -1,6 +1,6 @@
 joggle 1;
 
-module prelude@1.4.0 {
+module prelude@2.0.0 {
   interface scalar: type {
     storage_bits: int;
   }
@@ -21,7 +21,7 @@ module prelude@1.4.0 {
   type attr();
   type bytes();
   type function();
-  type program();
+  type module();
   type callable(inputs: list<type>, results: list<type>);
   type list(element: type);
   type i1() : scalar, logical {

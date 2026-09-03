@@ -54,7 +54,7 @@ int main() {
   const auto module = compiler.module("semantics");
   const auto scalar_decl = module ? module->type("scalar") : std::nullopt;
   const auto label_decl = module ? module->attribute("label") : std::nullopt;
-  const auto work_decl = module ? module->function("work") : std::nullopt;
+  const auto work_decl = module ? module->declaration("work") : std::nullopt;
   const auto metric = module ? module->interface("metric") : std::nullopt;
   const auto tagged = module ? module->interface("tagged") : std::nullopt;
   const auto costed = module ? module->interface("costed") : std::nullopt;
@@ -65,12 +65,12 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  compiler.bind(*label_decl, *tag,
-                [](const joggle::Attribute& attribute) {
-                  return attribute.get<std::string>("name");
-                });
-  compiler.bind(*work_decl, *latency,
-                [](const joggle::ir::Instruction&) -> std::int64_t { return 2; });
+  compiler.bind(*label_decl, *tag, [](const joggle::Attribute& attribute) {
+    return attribute.get<std::string>("name");
+  });
+  compiler.bind(
+      *work_decl, *latency,
+      [](const joggle::ir::Instruction&) -> std::int64_t { return 2; });
 
   const auto scalar = compiler.make(*scalar_decl);
   const auto label = compiler.make(*label_decl);
@@ -92,7 +92,7 @@ int main() {
   ok &= expect(metric->fields().size() == 2U && metric->methods().empty(),
                "type interfaces expose fields rather than methods");
   ok &= expect(scalar->get<std::int64_t>("score") ==
-                   std::optional<std::int64_t>{21} &&
+                       std::optional<std::int64_t>{21} &&
                    scalar->get<bool>("valid") == std::optional<bool>{true},
                "derived parameters share Type::get with identity parameters");
   ok &= expect(tag_result == std::optional<std::string>{"label"} &&
@@ -170,16 +170,16 @@ module invalid_query@1.0.0 {
 )",
                          "invalid-query.joggle");
   const bool invalid_linked = invalid_constraint.link();
-  const bool reports_non_type_constraint = std::any_of(
-      invalid_constraint.diagnostics().entries().begin(),
-      invalid_constraint.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find("non-type interface") !=
-               std::string::npos;
-      });
+  const bool reports_non_type_constraint =
+      std::any_of(invalid_constraint.diagnostics().entries().begin(),
+                  invalid_constraint.diagnostics().entries().end(),
+                  [](const joggle::Diagnostic& diagnostic) {
+                    return diagnostic.message.find("non-type interface") !=
+                           std::string::npos;
+                  });
   ok &= expect(!invalid_linked && reports_non_type_constraint,
                "an imported generic constraint is checked even when the "
-               "function has no program values");
+               "function has no module values");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

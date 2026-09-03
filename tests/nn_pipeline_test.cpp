@@ -27,10 +27,10 @@ std::string decode(const joggle::Bytes& bytes) {
   return result;
 }
 
-std::size_t calls(const joggle::ir::Program& program, std::string_view symbol) {
+std::size_t calls(const joggle::Module& module, std::string_view symbol) {
   std::size_t count = 0;
-  for (const std::string& name : program.function_names()) {
-    const joggle::ir::Function* function = program.function(name);
+  for (const std::string& name : module.function_names()) {
+    const joggle::ir::Function* function = module.function(name);
     if (function == nullptr) {
       continue;
     }
@@ -61,9 +61,9 @@ int main() {
 
   const auto prepare = compiler.module("nn_pipeline");
   const auto prepare_function =
-      prepare ? prepare->function("prepare") : std::nullopt;
+      prepare ? prepare->declaration("prepare") : std::nullopt;
   const auto compile_function =
-      prepare ? prepare->function("compile") : std::nullopt;
+      prepare ? prepare->declaration("compile") : std::nullopt;
   auto block = compiler.function("resnet18_basic_block.main");
   if (!prepare_function || !compile_function || !block ||
       !compiler.load_behavior("nn_pipeline", JOGGLE_NN_PIPELINE_BEHAVIOR)) {
@@ -71,7 +71,7 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  joggle::ir::Program model;
+  joggle::Module model("resnet18_pipeline", {1, 0, 0});
   joggle::Diagnostics diagnostics;
   joggle::ir::Function second = block->clone();
   if (!model.insert("stage1_block0", std::move(*block), diagnostics) ||
@@ -81,9 +81,9 @@ int main() {
   }
 
   const auto unchanged =
-      compiler.run<joggle::ir::Program>(*prepare_function, model, false);
+      compiler.run<joggle::Module>(*prepare_function, model, false);
   const auto mapped =
-      compiler.run<joggle::ir::Program>(*prepare_function, model, true);
+      compiler.run<joggle::Module>(*prepare_function, model, true);
   const auto emitted =
       compiler.run<joggle::Bytes>(*compile_function, model, true);
   if (!unchanged || !mapped || !emitted) {
@@ -92,15 +92,15 @@ int main() {
 
   const std::string source = emitted ? decode(*emitted) : std::string{};
   joggle::Diagnostics parse_diagnostics;
-  const auto parsed = joggle::parse_module(
-      source, parse_diagnostics, "compiled-model.joggle");
+  const auto parsed =
+      joggle::parse_module(source, parse_diagnostics, "compiled-model.joggle");
 
   bool ok = true;
-  ok &= expect(model.size() == 2U && calls(model, "nn.relu") == 4U,
+  ok &= expect(model.function_count() == 2U && calls(model, "nn.relu") == 4U,
                "the original multi-Function NN Module remains unchanged");
   ok &= expect(unchanged && calls(*unchanged, "nn.relu") == 4U &&
                    calls(*unchanged, "example_accel.relu") == 0U,
-               "a Known false compiler branch returns the original program");
+               "a Known false compiler branch returns the original module");
   ok &= expect(mapped && calls(*mapped, "nn.relu") == 0U &&
                    calls(*mapped, "example_accel.relu") == 4U,
                "a Known true compiler branch invokes an ordinary Module "

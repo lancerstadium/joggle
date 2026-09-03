@@ -50,8 +50,8 @@ using TypeList = std::vector<Type>;
 using AttributeList = std::vector<Attribute>;
 
 using ExecutionValue =
-    std::variant<std::int64_t, double, bool, std::string, Type, Attribute, Bytes,
-                 std::shared_ptr<ir::Function>, IntegerList, RealList,
+    std::variant<std::int64_t, double, bool, std::string, Type, Attribute,
+                 Bytes, std::shared_ptr<ir::Function>, IntegerList, RealList,
                  BooleanList, StringList, TypeList, AttributeList, HostValue>;
 using ExecutionValues = std::vector<ExecutionValue>;
 
@@ -154,8 +154,7 @@ struct IsTuple<std::tuple<Values...>> : std::true_type {};
 template <typename T>
 inline constexpr bool is_tuple = IsTuple<std::remove_cvref_t<T>>::value;
 
-template <typename T>
-std::vector<std::string_view> execution_result_types() {
+template <typename T> std::vector<std::string_view> execution_result_types() {
   using Value = std::remove_cvref_t<T>;
   if constexpr (std::is_void_v<Value>) {
     return {};
@@ -192,8 +191,8 @@ template <typename T> ExecutionValues store_execution_values(T&& value) {
 }
 
 template <typename Tuple, std::size_t... Indices>
-std::optional<Tuple> take_execution_tuple(
-    ExecutionValues values, std::index_sequence<Indices...>) {
+std::optional<Tuple> take_execution_tuple(ExecutionValues values,
+                                          std::index_sequence<Indices...>) {
   if (values.size() != sizeof...(Indices)) {
     return std::nullopt;
   }
@@ -302,10 +301,9 @@ invoke_typed_function(Function& function, Compiler& compiler,
     auto produced = invoke();
     if constexpr (std::is_same_v<std::remove_cvref_t<Produced>, bool>) {
       if (function_transform) {
-        return produced
-                   ? std::optional<ExecutionValues>{
-                         ExecutionValues{arguments.front()}}
-                   : std::nullopt;
+        return produced ? std::optional<ExecutionValues>{ExecutionValues{
+                              arguments.front()}}
+                        : std::nullopt;
       }
     }
     using Value = std::remove_cvref_t<Produced>;
@@ -451,8 +449,9 @@ public:
         std::remove_cvref_t<std::invoke_result_t<Callable&, const Value&>>;
     static_assert(std::is_copy_constructible_v<Value>,
                   "a host representation must be copy constructible");
-    static_assert(requires { std::tuple_size<Parameters>::value; },
-                  "a host type projection must return a std::tuple");
+    static_assert(
+        requires { std::tuple_size<Parameters>::value; },
+        "a host type projection must return a std::tuple");
     RepresentationProjector erased =
         [callable = Callable(std::forward<Projection>(projection))](
             Compiler& compiler, const Module::TypeDecl& declaration,
@@ -464,15 +463,13 @@ public:
           std::invoke(callable, *static_cast<const Value*>(storage));
       return std::apply(
           [&](auto&&... values) {
-            return compiler.make(
-                declaration,
-                std::forward<decltype(values)>(values)...);
+            return compiler.make(declaration,
+                                 std::forward<decltype(values)>(values)...);
           },
           std::move(parameters));
     };
-    return bind_representation(std::move(schema),
-                               detail::host_type_name<Value>(),
-                               std::move(erased));
+    return bind_representation(
+        std::move(schema), detail::host_type_name<Value>(), std::move(erased));
   }
 
   template <typename... Arguments>
@@ -507,15 +504,14 @@ public:
   }
   std::optional<ir::Function> function();
   std::optional<ir::Function> function(Module::FunctionDecl declaration);
-  std::optional<ir::Function>
-  function(Module::FunctionDecl declaration,
-           std::vector<ir::Value> known_arguments);
+  std::optional<ir::Function> function(Module::FunctionDecl declaration,
+                                       std::vector<ir::Value> known_arguments);
   std::optional<ir::Function> function(Module::Symbol symbol);
-  std::optional<ir::Function>
-  function(Module::Symbol symbol, std::vector<ir::Value> known_arguments);
+  std::optional<ir::Function> function(Module::Symbol symbol,
+                                       std::vector<ir::Value> known_arguments);
   std::optional<ir::Function> function(std::string_view name);
-  std::optional<ir::Function>
-  function(std::string_view name, std::vector<ir::Value> known_arguments);
+  std::optional<ir::Function> function(std::string_view name,
+                                       std::vector<ir::Value> known_arguments);
 
   bool conforms(const Module::TypeDecl& declaration,
                 const Module::InterfaceDecl& interface) const;
@@ -559,8 +555,7 @@ public:
             Function&& function) {
     const auto member = lookup_method(declaration, method);
     if (member) {
-      bind(std::move(declaration), *member,
-           std::forward<Function>(function));
+      bind(std::move(declaration), *member, std::forward<Function>(function));
     }
   }
 
@@ -569,8 +564,7 @@ public:
             Function&& function) {
     const auto member = lookup_method(declaration, method);
     if (member) {
-      bind(std::move(declaration), *member,
-           std::forward<Function>(function));
+      bind(std::move(declaration), *member, std::forward<Function>(function));
     }
   }
 
@@ -659,10 +653,9 @@ public:
       const auto argument_types = []<std::size_t... Indices>(
                                       std::index_sequence<Indices...>) {
         static_assert(
-            ((!std::is_same_v<
-                  std::remove_cvref_t<
-                      std::tuple_element_t<offset + Indices, Arguments>>,
-                  joggle::ir::Function> ||
+            ((!std::is_same_v<std::remove_cvref_t<std::tuple_element_t<
+                                  offset + Indices, Arguments>>,
+                              joggle::ir::Function> ||
               std::is_reference_v<
                   std::tuple_element_t<offset + Indices, Arguments>>) &&
              ...),
@@ -686,8 +679,8 @@ public:
         if constexpr (std::is_same_v<Produced, bool>) {
           result_types =
               function_transform
-                  ? std::vector<std::string_view>{
-                        detail::host_type_name<joggle::ir::Function>()}
+                  ? std::vector<std::string_view>{detail::host_type_name<
+                        joggle::ir::Function>()}
                   : detail::execution_result_types<Value>();
         } else {
           result_types = detail::execution_result_types<Value>();
@@ -696,22 +689,22 @@ public:
       if (!check_binding_signature(schema, argument_types, result_types)) {
         return;
       }
-      NativeFunction binding =
-          [callable = Callable(std::forward<Function>(function)),
-           function_transform](Compiler& compiler,
-                               std::span<detail::ExecutionValue> arguments,
-                               Diagnostics& diagnostics) mutable {
-            if (arguments.size() != argument_count) {
-              diagnostics.report(
-                  "compiler-function binding received the wrong argument count");
-              return std::optional<detail::ExecutionValues>{};
-            }
-            return detail::invoke_typed_function<Callable, Arguments, offset,
-                                                 with_compiler,
-                                                 with_diagnostics>(
-                callable, compiler, arguments, diagnostics, function_transform,
-                std::make_index_sequence<argument_count>{});
-          };
+      NativeFunction binding = [callable =
+                                    Callable(std::forward<Function>(function)),
+                                function_transform](
+                                   Compiler& compiler,
+                                   std::span<detail::ExecutionValue> arguments,
+                                   Diagnostics& diagnostics) mutable {
+        if (arguments.size() != argument_count) {
+          diagnostics.report(
+              "compiler-function binding received the wrong argument count");
+          return std::optional<detail::ExecutionValues>{};
+        }
+        return detail::invoke_typed_function<Callable, Arguments, offset,
+                                             with_compiler, with_diagnostics>(
+            callable, compiler, arguments, diagnostics, function_transform,
+            std::make_index_sequence<argument_count>{});
+      };
       bind_native(std::move(schema), std::move(binding), evaluation);
     }
   }
@@ -724,8 +717,8 @@ public:
   bool invocable(const Module::FunctionDecl& function) const {
     const std::array<std::string_view, sizeof...(Arguments)> inputs{
         detail::host_type_name<Arguments>()...};
-    return matches_run_signature(
-        function, inputs, detail::execution_result_types<Result>());
+    return matches_run_signature(function, inputs,
+                                 detail::execution_result_types<Result>());
   }
 
   template <typename Result = void, typename... Arguments>
@@ -767,14 +760,12 @@ public:
         return std::nullopt;
       }
     }
-    return run<Result>(*declaration,
-                       std::forward<Arguments>(arguments)...);
+    return run<Result>(*declaration, std::forward<Arguments>(arguments)...);
   }
   const Diagnostics& diagnostics() const;
 
 private:
-  std::optional<ir::Value> make_known(Type type,
-                                      detail::ParameterValue value);
+  std::optional<ir::Value> make_known(Type type, detail::ParameterValue value);
   std::optional<Type> make(const Module::TypeDecl& schema,
                            std::span<const detail::ParameterValue> parameters);
   std::optional<Attribute>
@@ -802,21 +793,18 @@ private:
                          const Module::ParameterDecl& field,
                          std::string_view type) const;
   void bind_native(Module::FunctionDecl schema, NativeFunction function,
-                 HostEvaluation evaluation);
-  void bind_prelude_program();
+                   HostEvaluation evaluation);
+  void bind_prelude_module();
   void bind_prelude_primitives();
-  bool check_binding_signature(
-      const Module::FunctionDecl& schema,
-      std::span<const std::string_view> inputs,
-      std::span<const std::string_view> results);
-  bool check_run_signature(
-      const Module::FunctionDecl& schema,
-      std::span<const std::string_view> inputs,
-      std::span<const std::string_view> results);
-  bool matches_run_signature(
-      const Module::FunctionDecl& schema,
-      std::span<const std::string_view> inputs,
-      std::span<const std::string_view> results) const;
+  bool check_binding_signature(const Module::FunctionDecl& schema,
+                               std::span<const std::string_view> inputs,
+                               std::span<const std::string_view> results);
+  bool check_run_signature(const Module::FunctionDecl& schema,
+                           std::span<const std::string_view> inputs,
+                           std::span<const std::string_view> results);
+  bool matches_run_signature(const Module::FunctionDecl& schema,
+                             std::span<const std::string_view> inputs,
+                             std::span<const std::string_view> results) const;
   std::optional<detail::ExecutionValues>
   execute(Module::FunctionDecl declaration,
           std::vector<detail::ExecutionValue> arguments,
@@ -832,8 +820,7 @@ private:
   call(const Attribute& subject, Module::InterfaceDecl::MethodDecl method,
        std::span<const detail::ParameterValue> parameters);
   std::optional<detail::ParameterValue>
-  call(const ir::Instruction& subject,
-       Module::InterfaceDecl::MethodDecl method,
+  call(const ir::Instruction& subject, Module::InterfaceDecl::MethodDecl method,
        std::span<const detail::ParameterValue> parameters);
 
   template <typename Subject, typename Result, typename... Arguments,
@@ -869,8 +856,8 @@ private:
           if constexpr (std::is_invocable_r_v<bool, Callable&, const Subject&,
                                               Diagnostics&>) {
             return std::invoke(callable, value, diagnostics);
-          } else if constexpr (
-              std::is_invocable_r_v<bool, Callable&, const Subject&>) {
+          } else if constexpr (std::is_invocable_r_v<bool, Callable&,
+                                                     const Subject&>) {
             return std::invoke(callable, value);
           } else {
             static_assert(

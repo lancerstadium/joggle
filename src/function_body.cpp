@@ -36,12 +36,12 @@
 namespace joggle {
 namespace {
 
+using detail::ParameterValue;
 using ir::Block;
 using ir::Function;
 using ir::Instruction;
 using ir::Terminator;
 using ir::Value;
-using detail::ParameterValue;
 using TokenKind = detail::TokenKind;
 using Token = detail::Token;
 using Lexer = detail::Lexer;
@@ -163,9 +163,7 @@ private:
                   : std::nullopt;
   }
 
-  std::optional<std::string> local_name() {
-    return name("a local value name");
-  }
+  std::optional<std::string> local_name() { return name("a local value name"); }
 
   detail::ExpressionSyntax expression() {
     const SourcePosition begin = current_.begin;
@@ -264,9 +262,9 @@ private:
         expect(TokenKind::Colon, "':'");
         argument.type = expression();
         argument.range = {argument_begin, previous_end_};
-        variables_.push_back(
-            {argument.name, Module::Expression::reference("type"),
-             std::nullopt});
+        variables_.push_back({argument.name,
+                              Module::Expression::reference("type"),
+                              std::nullopt});
         locals_.insert(argument.name);
         block.arguments.push_back(std::move(argument));
       } while (match(TokenKind::Comma));
@@ -377,9 +375,11 @@ private:
       statement.kind = detail::StatementSyntax::Kind::For;
       const SourcePosition iterator_begin = current_.begin;
       if (auto iterator = local_name()) {
-        statement.iterator = detail::BindingSyntax{
-            std::move(*iterator), std::nullopt,
-            {iterator_begin, previous_end_}, false};
+        statement.iterator =
+            detail::BindingSyntax{std::move(*iterator),
+                                  std::nullopt,
+                                  {iterator_begin, previous_end_},
+                                  false};
       }
       expect_name("in");
       statement.expression = expression();
@@ -388,9 +388,9 @@ private:
       const auto outer_locals = locals_;
       if (statement.iterator) {
         locals_.insert(statement.iterator->name);
-        variables_.push_back(
-            {statement.iterator->name, Module::Expression::reference("type"),
-             std::nullopt});
+        variables_.push_back({statement.iterator->name,
+                              Module::Expression::reference("type"),
+                              std::nullopt});
       }
       ++loop_depth_;
       while (!is(TokenKind::RightBrace) && !is(TokenKind::End) && ok()) {
@@ -418,9 +418,9 @@ private:
         binding.range = {binding_begin, previous_end_};
         if (!binding.rebind) {
           locals_.insert(binding.name);
-          variables_.push_back(
-              {binding.name, Module::Expression::reference("type"),
-               std::nullopt});
+          variables_.push_back({binding.name,
+                                Module::Expression::reference("type"),
+                                std::nullopt});
         }
         statement.bindings.push_back(std::move(binding));
       };
@@ -551,13 +551,12 @@ public:
 private:
   void write_body() {
     output_ << "{\n";
-    const bool straight_line =
-        body_->blocks.size() == 1U &&
-        body_->blocks.front().name == "entry" &&
-        body_->blocks.front().arguments.empty() &&
-        (!body_->blocks.front().terminator ||
-         body_->blocks.front().terminator->kind ==
-             detail::TerminatorSyntax::Kind::Return);
+    const bool straight_line = body_->blocks.size() == 1U &&
+                               body_->blocks.front().name == "entry" &&
+                               body_->blocks.front().arguments.empty() &&
+                               (!body_->blocks.front().terminator ||
+                                body_->blocks.front().terminator->kind ==
+                                    detail::TerminatorSyntax::Kind::Return);
     if (straight_line) {
       const detail::BlockSyntax& entry = body_->blocks.front();
       for (const auto& statement : entry.statements) {
@@ -676,8 +675,8 @@ private:
     }
   }
 
-  void
-  write_arguments(const std::vector<detail::FunctionArgumentSyntax>& arguments) {
+  void write_arguments(
+      const std::vector<detail::FunctionArgumentSyntax>& arguments) {
     output_ << '(';
     for (std::size_t index = 0; index < arguments.size(); ++index) {
       if (index != 0U) {
@@ -788,8 +787,8 @@ private:
       prefix_width += statement.bindings[index].name.size();
       if (statement.bindings[index].type) {
         output_ << ": ";
-        const std::string type = detail::format_expression(
-            statement.bindings[index].type->value);
+        const std::string type =
+            detail::format_expression(statement.bindings[index].type->value);
         prefix_width += 2U + type.size();
         output_ << type;
       }
@@ -854,11 +853,9 @@ class Instantiator {
     std::vector<Path> continues;
 
     void append(Flow&& flow) {
-      next.insert(next.end(),
-                  std::make_move_iterator(flow.next.begin()),
+      next.insert(next.end(), std::make_move_iterator(flow.next.begin()),
                   std::make_move_iterator(flow.next.end()));
-      breaks.insert(breaks.end(),
-                    std::make_move_iterator(flow.breaks.begin()),
+      breaks.insert(breaks.end(), std::make_move_iterator(flow.breaks.begin()),
                     std::make_move_iterator(flow.breaks.end()));
       continues.insert(continues.end(),
                        std::make_move_iterator(flow.continues.begin()),
@@ -892,8 +889,8 @@ public:
                const detail::FunctionBody& body, Diagnostics& diagnostics,
                std::vector<Value> known_arguments)
       : compiler_(compiler), declaration_(std::move(function)), body_(body),
-        owner_(declaration_.symbol().module_name()),
-        diagnostics_(diagnostics), initial_diagnostics_(diagnostics.size()),
+        owner_(declaration_.symbol().module_name()), diagnostics_(diagnostics),
+        initial_diagnostics_(diagnostics.size()),
         supplied_known_(std::move(known_arguments)) {}
 
   std::optional<Function> instantiate() {
@@ -918,20 +915,18 @@ public:
           ++required_after;
         }
       }
-      const bool use_default = parameter.default_value &&
-                               supplied_known_.size() - supplied ==
-                                   required_after;
+      const bool use_default =
+          parameter.default_value &&
+          supplied_known_.size() - supplied == required_after;
       std::optional<detail::StagedValue> value;
       if (!use_default && supplied < supplied_known_.size()) {
         value = detail::stage(supplied_known_[supplied++]);
       } else if (parameter.default_value) {
         auto payload = detail::parameter_default(parameter);
-        auto execution = payload
-                             ? detail::execution_value(*payload, parameter)
-                             : std::optional<detail::ExecutionValue>{};
-        value = execution
-                    ? detail::stage(compiler_, std::move(*execution))
-                    : std::optional<detail::StagedValue>{};
+        auto execution = payload ? detail::execution_value(*payload, parameter)
+                                 : std::optional<detail::ExecutionValue>{};
+        value = execution ? detail::stage(compiler_, std::move(*execution))
+                          : std::optional<detail::StagedValue>{};
       }
       const detail::ExecutionValue* known =
           value && value->known() ? value->known_value() : nullptr;
@@ -960,9 +955,9 @@ public:
       return std::nullopt;
     }
 
-    const auto resolve_type = [&](const Module::Expression& expression,
-                                  std::string_view role)
-        -> std::optional<Type> {
+    const auto resolve_type =
+        [&](const Module::Expression& expression,
+            std::string_view role) -> std::optional<Type> {
       const Module::ParameterDecl expected{
           std::string(role), detail::domain_expression(detail::ValueKind::Type),
           false, std::nullopt};
@@ -971,8 +966,9 @@ public:
           source(body_.range));
       const Type* type = value ? value->as_type() : nullptr;
       if (type == nullptr) {
-        report("cannot resolve " + std::string(role) + " type during "
-               "function specialization",
+        report("cannot resolve " + std::string(role) +
+                   " type during "
+                   "function specialization",
                body_.range);
         return std::nullopt;
       }
@@ -994,10 +990,8 @@ public:
           for (std::size_t index = 0; index < statement.values.size();
                ++index) {
             const auto& expression = statement.values[index];
-            if ((expression.value.kind !=
-                     Module::Expression::Kind::Reference &&
-                 expression.value.kind !=
-                     Module::Expression::Kind::Variable) ||
+            if ((expression.value.kind != Module::Expression::Kind::Reference &&
+                 expression.value.kind != Module::Expression::Kind::Variable) ||
                 !expression.value.arguments.empty()) {
               continue;
             }
@@ -1068,14 +1062,13 @@ public:
       if (found == bindings.end() || locals_.contains(generic.name)) {
         continue;
       }
-      const Module::ParameterDecl parameter{
-          generic.name, generic.domain, false, std::nullopt};
+      const Module::ParameterDecl parameter{generic.name, generic.domain, false,
+                                            std::nullopt};
       auto value = detail::execution_value(found->second, parameter);
       auto staged = value ? detail::stage(compiler_, std::move(*value))
                           : std::optional<detail::StagedValue>{};
       if (!staged) {
-        report("generic '" + generic.name +
-                   "' cannot enter staged evaluation",
+        report("generic '" + generic.name + "' cannot enter staged evaluation",
                body_.range);
         continue;
       }
@@ -1104,7 +1097,8 @@ public:
       }
       const auto arguments = ir->second.arguments();
       for (std::size_t index = 0;
-           index < block.arguments.size() && index < arguments.size(); ++index) {
+           index < block.arguments.size() && index < arguments.size();
+           ++index) {
         define(block.arguments[index].name, arguments[index],
                block.arguments[index].range);
       }
@@ -1144,16 +1138,13 @@ public:
       for (const Path& active : current.next) {
         restore(active);
         if (terminator.kind == detail::TerminatorSyntax::Kind::Return) {
-          instantiate_return(terminator.values, terminator.range,
-                             active.block);
+          instantiate_return(terminator.values, terminator.range, active.block);
           continue;
         }
         std::vector<std::vector<Value>> edge_arguments;
-        for (const detail::SuccessorSyntax& successor :
-             terminator.successors) {
+        for (const detail::SuccessorSyntax& successor : terminator.successors) {
           std::vector<Value> values;
-          for (const detail::ExpressionSyntax& argument :
-               successor.arguments) {
+          for (const detail::ExpressionSyntax& argument : successor.arguments) {
             if (auto value = use(argument)) {
               values.push_back(*value);
             }
@@ -1163,14 +1154,12 @@ public:
         if (terminator.kind == detail::TerminatorSyntax::Kind::Jump) {
           if (auto destination = target(0)) {
             edit_->jump(active.block, *destination,
-                        edge_arguments.empty()
-                            ? std::vector<Value>{}
-                            : std::move(edge_arguments[0]));
+                        edge_arguments.empty() ? std::vector<Value>{}
+                                               : std::move(edge_arguments[0]));
           }
         } else {
-          auto condition = terminator.condition
-                               ? use(*terminator.condition)
-                               : std::optional<Value>{};
+          auto condition = terminator.condition ? use(*terminator.condition)
+                                                : std::optional<Value>{};
           auto true_target = target(0);
           auto false_target = target(1);
           if (!condition || !true_target || !false_target ||
@@ -1245,18 +1234,17 @@ private:
       return false;
     }
     const auto prelude = compiler_.module(detail::prelude_module_name);
-    const auto literal = prelude
-                             ? prelude->interface("literal")
-                             : std::optional<Module::InterfaceDecl>{};
+    const auto literal = prelude ? prelude->interface("literal")
+                                 : std::optional<Module::InterfaceDecl>{};
     if (!literal || !compiler_.conforms(left->callee(), *literal)) {
       return false;
     }
     const auto left_results = left->results();
     const auto right_results = right->results();
-    const auto left_result = std::find(left_results.begin(),
-                                       left_results.end(), *left_value);
-    const auto right_result = std::find(right_results.begin(),
-                                        right_results.end(), *right_value);
+    const auto left_result =
+        std::find(left_results.begin(), left_results.end(), *left_value);
+    const auto right_result =
+        std::find(right_results.begin(), right_results.end(), *right_value);
     if (left_result == left_results.end() ||
         right_result == right_results.end() ||
         std::distance(left_results.begin(), left_result) !=
@@ -1280,8 +1268,8 @@ private:
                       });
   }
 
-  Flow instantiate_sequence(
-      std::span<const detail::StatementSyntax> statements, Block block) {
+  Flow instantiate_sequence(std::span<const detail::StatementSyntax> statements,
+                            Block block) {
     Flow current = next(std::move(block));
     for (const detail::StatementSyntax& statement : statements) {
       Flow following;
@@ -1338,13 +1326,12 @@ private:
     if (scope.empty()) {
       scope = owner_;
     }
-    const bool prelude_type =
-        std::is_same_v<Declaration, Module::TypeDecl> &&
-        detail::is_prelude_type(reference);
+    const bool prelude_type = std::is_same_v<Declaration, Module::TypeDecl> &&
+                              detail::is_prelude_type(reference);
     const std::string qualified =
         prelude_type ? std::string(detail::prelude_module_name) + "." +
-                          std::string(reference)
-                    : std::string(reference);
+                           std::string(reference)
+                     : std::string(reference);
     const auto [prefix, local] = split_reference(scope, qualified);
     const auto module_name = resolve_prefix(scope, prefix);
     if (!module_name) {
@@ -1364,7 +1351,7 @@ private:
     } else if constexpr (std::is_same_v<Declaration, Module::AttributeDecl>) {
       result = module->attribute(local);
     } else {
-      result = module->function(local);
+      result = module->declaration(local);
     }
     if (!result) {
       constexpr std::string_view kind =
@@ -1389,8 +1376,8 @@ private:
                      : std::string(reference);
     const auto [prefix, local] = split_reference(owner_, qualified);
     const auto module_name = resolve_prefix(owner_, prefix);
-    const auto module = module_name ? compiler_.module(*module_name)
-                                    : std::optional<Module>{};
+    const auto module =
+        module_name ? compiler_.module(*module_name) : std::optional<Module>{};
     if (!module) {
       return std::nullopt;
     }
@@ -1420,25 +1407,25 @@ private:
             kind == Module::SymbolKind::Attribute) {
           return Module::ParameterDecl{
               "result",
-              detail::domain_expression(
-                  kind == Module::SymbolKind::Type
-                      ? detail::ValueKind::Type
-                      : detail::ValueKind::Attribute),
+              detail::domain_expression(kind == Module::SymbolKind::Type
+                                            ? detail::ValueKind::Type
+                                            : detail::ValueKind::Attribute),
               false, std::nullopt};
         }
       }
       auto value = lookup_staged(expression.text);
-      auto value_domain = value ? detail::type_domain(value->type())
-                                : std::nullopt;
+      auto value_domain =
+          value ? detail::type_domain(value->type()) : std::nullopt;
       return value_domain
-                 ? std::optional<Module::ParameterDecl>{
-                       {"result", std::move(*value_domain), false,
-                        std::nullopt}}
+                 ? std::optional<Module::ParameterDecl>{{"result",
+                                                         std::move(
+                                                             *value_domain),
+                                                         false, std::nullopt}}
                  : std::nullopt;
     }
     if (expression.kind == Kind::Number) {
-      const bool real = expression.text.find_first_of(".eE") !=
-                        std::string::npos;
+      const bool real =
+          expression.text.find_first_of(".eE") != std::string::npos;
       return Module::ParameterDecl{
           "result",
           detail::domain_expression(real ? detail::ValueKind::Real
@@ -1452,21 +1439,22 @@ private:
     }
     if (expression.kind == Kind::String) {
       return Module::ParameterDecl{
-          "result", detail::domain_expression(detail::ValueKind::String),
-          false, std::nullopt};
+          "result", detail::domain_expression(detail::ValueKind::String), false,
+          std::nullopt};
     }
     if (expression.kind == Kind::FunctionType) {
       return Module::ParameterDecl{
-          "result", detail::domain_expression(detail::ValueKind::Type),
-          false, std::nullopt};
+          "result", detail::domain_expression(detail::ValueKind::Type), false,
+          std::nullopt};
     }
     if (expression.kind == Kind::List && !expression.arguments.empty()) {
       auto element = known_result(expression.arguments.front(), range);
       return element
-                 ? std::optional<Module::ParameterDecl>{
-                       {"result",
-                        Module::Expression::list_domain(element->domain),
-                        false, std::nullopt}}
+                 ? std::optional<
+                       Module::ParameterDecl>{{"result",
+                                               Module::Expression::list_domain(
+                                                   element->domain),
+                                               false, std::nullopt}}
                  : std::nullopt;
     }
     if (expression.kind == Kind::If && expression.arguments.size() == 3U) {
@@ -1506,16 +1494,14 @@ private:
                  ? std::optional<Module::ParameterDecl>{matches.front()}
                  : std::nullopt;
     }
-    if ((expression.kind == Kind::Prefix ||
-         expression.kind == Kind::Infix ||
+    if ((expression.kind == Kind::Prefix || expression.kind == Kind::Infix ||
          expression.kind == Kind::Postfix) &&
         !expression.arguments.empty()) {
-      const auto fixity =
-          expression.kind == Kind::Prefix
-              ? Module::FunctionDecl::Fixity::Prefix
-          : expression.kind == Kind::Postfix
-              ? Module::FunctionDecl::Fixity::Postfix
-              : Module::FunctionDecl::Fixity::Infix;
+      const auto fixity = expression.kind == Kind::Prefix
+                              ? Module::FunctionDecl::Fixity::Prefix
+                          : expression.kind == Kind::Postfix
+                              ? Module::FunctionDecl::Fixity::Postfix
+                              : Module::FunctionDecl::Fixity::Infix;
       std::vector<Module::ParameterDecl> matches;
       for (const auto& function : detail::visible_operators(
                compiler_, owner_, expression.text, fixity)) {
@@ -1578,23 +1564,20 @@ private:
         diagnostics_, source(syntax.range), residual_control_depth_ == 0U);
     const Type* resolved = value ? value->as_type() : nullptr;
     if (resolved == nullptr && diagnostics_.size() == before) {
-      report("type annotation does not evaluate to a Known type",
-             syntax.range);
+      report("type annotation does not evaluate to a Known type", syntax.range);
     }
     return resolved ? std::optional<Type>{*resolved} : std::nullopt;
   }
 
   std::optional<Value> lookup(std::string_view name) const {
     auto value = lookup_staged(name);
-    return value ? detail::ir_value(compiler_, *value)
-                 : std::optional<Value>{};
+    return value ? detail::ir_value(compiler_, *value) : std::optional<Value>{};
   }
 
   std::optional<detail::StagedValue>
   lookup_staged(std::string_view name) const {
     const detail::StagedValue* value = locals_.find(name);
-    return value ? std::optional<detail::StagedValue>{*value}
-                 : std::nullopt;
+    return value ? std::optional<detail::StagedValue>{*value} : std::nullopt;
   }
 
   bool declared_local(std::string_view name) const {
@@ -1606,13 +1589,13 @@ private:
     return detail::visible_functions(compiler_, owner_, reference);
   }
 
-  std::optional<PendingCall> plan_call(
-      const Module::FunctionDecl& function,
-      const Module::Expression& expression,
-      std::span<const PendingArgument> supplied,
-      std::span<const std::optional<Type>> expected,
-      detail::SyntaxRange range, bool allow_guarded_evaluation,
-      Diagnostics* errors = nullptr) {
+  std::optional<PendingCall>
+  plan_call(const Module::FunctionDecl& function,
+            const Module::Expression& expression,
+            std::span<const PendingArgument> supplied,
+            std::span<const std::optional<Type>> expected,
+            detail::SyntaxRange range, bool allow_guarded_evaluation,
+            Diagnostics* errors = nullptr) {
     const auto reject = [&](std::string message) {
       if (errors) {
         errors->report(std::move(message), source(range));
@@ -1626,11 +1609,12 @@ private:
 
     const auto parameters = function.inputs();
     const auto& contract = detail::FunctionTypeAccess::get(function);
-    PendingCall result{function,
-                       std::vector<std::vector<PendingArgument>>(
-                           parameters.size()),
-                       {}, std::vector<std::optional<ParameterValue>>(
-                               detail::parameter_inputs(function).size())};
+    PendingCall result{
+        function,
+        std::vector<std::vector<PendingArgument>>(parameters.size()),
+        {},
+        std::vector<std::optional<ParameterValue>>(
+            detail::parameter_inputs(function).size())};
     for (std::size_t index = 0; index < supplied.size(); ++index) {
       result.arguments[candidate->parameters[index]].push_back(supplied[index]);
     }
@@ -1641,13 +1625,11 @@ private:
       auto& arguments = result.arguments[index];
       if (arguments.empty() && parameters[index].default_value) {
         const auto payload = detail::parameter_default(parameters[index]);
-        auto execution = payload
-                             ? detail::execution_value(*payload,
-                                                       parameters[index])
-                             : std::optional<detail::ExecutionValue>{};
-        auto value = execution
-                         ? detail::stage(compiler_, std::move(*execution))
-                         : std::optional<detail::StagedValue>{};
+        auto execution =
+            payload ? detail::execution_value(*payload, parameters[index])
+                    : std::optional<detail::ExecutionValue>{};
+        auto value = execution ? detail::stage(compiler_, std::move(*execution))
+                               : std::optional<detail::StagedValue>{};
         if (!value) {
           reject("cannot construct default argument '" +
                  parameters[index].name + "'");
@@ -1661,10 +1643,9 @@ private:
       }
       if (contract.ir_inputs[index]) {
         for (const PendingArgument& argument : arguments) {
-          argument_types.push_back(argument.value
-                                       ? std::optional<Type>{
-                                             argument.value->type()}
-                                       : std::nullopt);
+          argument_types.push_back(
+              argument.value ? std::optional<Type>{argument.value->type()}
+                             : std::nullopt);
         }
         continue;
       }
@@ -1698,8 +1679,7 @@ private:
   }
 
   bool matches_function_value(const Module::FunctionDecl& function,
-                              const Type& callable,
-                              detail::SyntaxRange range) {
+                              const Type& callable, detail::SyntaxRange range) {
     const Module::Symbol schema = callable.schema().symbol();
     const auto inputs = callable.get<std::vector<Type>>("inputs");
     const auto results = callable.get<std::vector<Type>>("results");
@@ -1774,8 +1754,8 @@ private:
         detail::domain_expression(detail::ValueKind::Type), false,
         std::nullopt};
     const detail::KnownBindings bindings;
-    const auto resolve_ports = [&](const auto& ports)
-        -> std::optional<std::vector<Type>> {
+    const auto resolve_ports =
+        [&](const auto& ports) -> std::optional<std::vector<Type>> {
       std::vector<Type> types;
       types.reserve(ports.size());
       for (const auto& port : ports) {
@@ -1794,8 +1774,8 @@ private:
     auto inputs = resolve_ports(detail::ir_inputs(declaration));
     auto results = resolve_ports(detail::ir_results(declaration));
     const auto prelude = compiler_.module(detail::prelude_module_name);
-    const auto callable = prelude ? prelude->type("callable")
-                                  : std::optional<Module::TypeDecl>{};
+    const auto callable =
+        prelude ? prelude->type("callable") : std::optional<Module::TypeDecl>{};
     auto type = inputs && results && callable
                     ? compiler_.make(*callable, *inputs, *results)
                     : std::optional<Type>{};
@@ -1816,9 +1796,8 @@ private:
     return std::nullopt;
   }
 
-  std::optional<Value>
-  use(const detail::ExpressionSyntax& expression,
-      std::optional<Type> expected_type = std::nullopt) {
+  std::optional<Value> use(const detail::ExpressionSyntax& expression,
+                           std::optional<Type> expected_type = std::nullopt) {
     if ((expression.value.kind != Module::Expression::Kind::Reference &&
          expression.value.kind != Module::Expression::Kind::Variable) ||
         !expression.value.arguments.empty()) {
@@ -1832,9 +1811,9 @@ private:
       return std::nullopt;
     }
     if (expression.value.kind == Module::Expression::Kind::Reference) {
-      if (auto value = function_reference(expression.value.text,
-                                          expression.range,
-                                          std::move(expected_type))) {
+      if (auto value =
+              function_reference(expression.value.text, expression.range,
+                                 std::move(expected_type))) {
         return value;
       }
       if (!visible_functions(expression.value.text).empty()) {
@@ -1862,8 +1841,7 @@ private:
     }
   }
 
-  void bind(const detail::BindingSyntax& binding,
-            std::optional<Value> value) {
+  void bind(const detail::BindingSyntax& binding, std::optional<Value> value) {
     std::optional<detail::StagedValue> staged;
     if (value) {
       staged = detail::stage(std::move(*value));
@@ -1896,8 +1874,7 @@ private:
     }
   }
 
-  std::optional<Type>
-  expected_type(const detail::BindingSyntax& binding) {
+  std::optional<Type> expected_type(const detail::BindingSyntax& binding) {
     if (binding.type) {
       return type(*binding.type);
     }
@@ -1918,9 +1895,8 @@ private:
     }
     const auto payload = detail::FunctionAccess::known_value(value);
     const auto prelude = compiler_.module(detail::prelude_module_name);
-    const auto literal = prelude
-                             ? prelude->interface("literal")
-                             : std::optional<Module::InterfaceDecl>{};
+    const auto literal = prelude ? prelude->interface("literal")
+                                 : std::optional<Module::InterfaceDecl>{};
     if (!payload || !literal) {
       report("no literal function is available for this Known value", range);
       return std::nullopt;
@@ -1947,7 +1923,7 @@ private:
 
     std::vector<Module::FunctionDecl> matches;
     for (const Module& module : visible) {
-      for (const auto& candidate : module.functions()) {
+      for (const auto& candidate : module.declarations()) {
         if (!compiler_.conforms(candidate, *literal) ||
             detail::parameter_inputs(candidate).size() != 1U ||
             !detail::ir_inputs(candidate).empty() ||
@@ -1958,9 +1934,8 @@ private:
         Diagnostics candidate_diagnostics;
         const std::array<std::optional<ParameterValue>, 1> known{payload};
         const std::array<std::optional<Type>, 1> expected{target};
-        if (detail::resolve_call_types(
-                compiler_, candidate, {}, known, expected,
-                candidate_diagnostics)) {
+        if (detail::resolve_call_types(compiler_, candidate, {}, known,
+                                       expected, candidate_diagnostics)) {
           matches.push_back(candidate);
         }
       }
@@ -1996,10 +1971,9 @@ private:
          expression.kind == Kind::Reference) &&
         expression.arguments.empty()) {
       const auto expected = expected_values_.find(expression.text);
-      return {block,
-              use(syntax, expected == expected_values_.end()
-                              ? std::optional<Type>{}
-                              : std::optional<Type>{expected->second})};
+      return {block, use(syntax, expected == expected_values_.end()
+                                     ? std::optional<Type>{}
+                                     : std::optional<Type>{expected->second})};
     }
     const std::string name = "$value" + std::to_string(next_temporary_++);
     detail::StatementSyntax statement;
@@ -2013,14 +1987,13 @@ private:
       return {block, std::nullopt};
     }
     restore(flow.next.front());
-    return {flow.next.front().block,
-            use(detail::LocalUseSyntax{name, range})};
+    return {flow.next.front().block, use(detail::LocalUseSyntax{name, range})};
   }
 
-  void collect_rebindings(
-      const std::vector<detail::StatementSyntax>& statements,
-      std::vector<std::string>& names,
-      std::unordered_set<std::string>& seen) const {
+  void
+  collect_rebindings(const std::vector<detail::StatementSyntax>& statements,
+                     std::vector<std::string>& names,
+                     std::unordered_set<std::string>& seen) const {
     for (const auto& statement : statements) {
       if (statement.kind != detail::StatementSyntax::Kind::Expression) {
         collect_rebindings(statement.body, names, seen);
@@ -2098,10 +2071,9 @@ private:
     --residual_control_depth_;
     locals_ = incoming;
 
-    const bool transfers = !true_flow.breaks.empty() ||
-                           !true_flow.continues.empty() ||
-                           !false_flow.breaks.empty() ||
-                           !false_flow.continues.empty();
+    const bool transfers =
+        !true_flow.breaks.empty() || !true_flow.continues.empty() ||
+        !false_flow.breaks.empty() || !false_flow.continues.empty();
     if (transfers) {
       Flow result;
       result.append(std::move(true_flow));
@@ -2122,9 +2094,8 @@ private:
                  statement.range);
           continue;
         }
-        bind_staged(
-            {carried_names[index], std::nullopt, statement.range, true},
-            values[index]);
+        bind_staged({carried_names[index], std::nullopt, statement.range, true},
+                    values[index]);
       }
       return true_continues ? std::move(true_flow) : std::move(false_flow);
     }
@@ -2160,21 +2131,20 @@ private:
            true_values[index]->type() != *target) ||
           (!false_values[index]->known() &&
            false_values[index]->type() != *target)) {
-        report("if arms assign incompatible types to '" +
-                   carried_names[index] + "'",
+        report("if arms assign incompatible types to '" + carried_names[index] +
+                   "'",
                statement.range);
         continue;
       }
       auto true_ir = detail::ir_value(compiler_, *true_values[index]);
       auto false_ir = detail::ir_value(compiler_, *false_values[index]);
       auto true_value =
-          true_ir ? materialize(*true_ir, *target,
-                                true_flow.next.front().block, statement.range)
+          true_ir ? materialize(*true_ir, *target, true_flow.next.front().block,
+                                statement.range)
                   : std::optional<Value>{};
       auto false_value =
           false_ir ? materialize(*false_ir, *target,
-                                 false_flow.next.front().block,
-                                 statement.range)
+                                 false_flow.next.front().block, statement.range)
                    : std::optional<Value>{};
       if (!true_value || !false_value) {
         continue;
@@ -2193,8 +2163,8 @@ private:
     edit_->jump(false_flow.next.front().block, merge, false_arguments);
     const auto arguments = merge.arguments();
     for (std::size_t index = 0; index < carried_names.size(); ++index) {
-      const detail::BindingSyntax binding{
-          carried_names[index], std::nullopt, statement.range, true};
+      const detail::BindingSyntax binding{carried_names[index], std::nullopt,
+                                          statement.range, true};
       if (merged[index]) {
         bind(binding, arguments[*merged[index]]);
       } else {
@@ -2243,11 +2213,11 @@ private:
         }
         const auto repeated =
             state.size() == carried_names.size()
-                ? std::find_if(
-                      visited.begin(), visited.end(),
-                      [&](const StagedState& previous) {
-                        return same_staged_state(previous.values, state);
-                      })
+                ? std::find_if(visited.begin(), visited.end(),
+                               [&](const StagedState& previous) {
+                                 return same_staged_state(previous.values,
+                                                          state);
+                               })
                 : visited.end();
         if (repeated != visited.end() && active.residual_depth != 0U) {
           edit_->jump(active.block, repeated->block);
@@ -2302,7 +2272,7 @@ private:
       }
       if (!target) {
         report("Known loop-carried value '" + name +
-                   "' needs an explicit or downstream program type",
+                   "' needs an explicit or downstream module type",
                statement.range);
         continue;
       }
@@ -2349,8 +2319,8 @@ private:
       for (std::size_t index = 0; index < carried_names.size(); ++index) {
         const std::string& name = carried_names[index];
         if (auto value = lookup(name)) {
-          auto carried = materialize(*value, carried_types[index],
-                                     active.block, statement.range);
+          auto carried = materialize(*value, carried_types[index], active.block,
+                                     statement.range);
           if (carried) {
             updated.push_back(*carried);
           }
@@ -2376,8 +2346,7 @@ private:
     return next(exit);
   }
 
-  Flow instantiate_for(const detail::StatementSyntax& statement,
-                       Block block) {
+  Flow instantiate_for(const detail::StatementSyntax& statement, Block block) {
     if (!statement.iterator) {
       report("for statement has no iterator", statement.range);
       return next(block);
@@ -2385,9 +2354,9 @@ private:
     auto iterable = evaluate_known(statement.expression);
     const detail::ExecutionValue* payload =
         iterable && iterable->known() ? iterable->known_value() : nullptr;
-    auto elements =
-        payload ? detail::list_elements(*payload)
-                : std::optional<std::vector<detail::ExecutionValue>>{};
+    auto elements = payload
+                        ? detail::list_elements(*payload)
+                        : std::optional<std::vector<detail::ExecutionValue>>{};
     if (!elements) {
       report("for iterable must be a Known list", statement.expression.range);
       return next(block);
@@ -2432,15 +2401,13 @@ private:
         break;
       }
     }
-    exits.next.insert(exits.next.end(),
-                      std::make_move_iterator(active.begin()),
+    exits.next.insert(exits.next.end(), std::make_move_iterator(active.begin()),
                       std::make_move_iterator(active.end()));
     return exits;
   }
 
-  Flow instantiate_return(
-      std::span<const detail::ExpressionSyntax> expressions,
-      detail::SyntaxRange range, Block block) {
+  Flow instantiate_return(std::span<const detail::ExpressionSyntax> expressions,
+                          detail::SyntaxRange range, Block block) {
     std::vector<Value> returned;
     if (expressions.size() != result_types_.size()) {
       report("function return count does not match its result signature",
@@ -2491,16 +2458,16 @@ private:
     return {};
   }
 
-  Flow instantiate_loop_control(detail::Control kind,
-                                detail::SyntaxRange range, Block block) {
+  Flow instantiate_loop_control(detail::Control kind, detail::SyntaxRange range,
+                                Block block) {
     if (loops_.empty()) {
       report("loop control is outside a structured loop", range);
       return {};
     }
     const LoopContext& loop = loops_.back();
-    const std::optional<Block>& target =
-        kind == detail::Control::Continue ? loop.continue_target
-                                          : loop.break_target;
+    const std::optional<Block>& target = kind == detail::Control::Continue
+                                             ? loop.continue_target
+                                             : loop.break_target;
     if (!target) {
       return transfer(kind == detail::Control::Break, block);
     }
@@ -2568,16 +2535,15 @@ private:
       instantiate_call(statement, block);
       return next(block);
     }
-    if (expression.arguments.size() != 3U ||
-        statement.bindings.size() != 1U) {
+    if (expression.arguments.size() != 3U || statement.bindings.size() != 1U) {
       report("if expression must have one condition, two values, and one "
              "result",
              statement.range);
       return next(block);
     }
 
-    const detail::ExpressionSyntax condition_syntax{
-        expression.arguments[0], statement.expression.range};
+    const detail::ExpressionSyntax condition_syntax{expression.arguments[0],
+                                                    statement.expression.range};
     if (known_result(condition_syntax.value, condition_syntax.range)) {
       auto condition = evaluate_known(condition_syntax);
       const auto selected =
@@ -2628,7 +2594,7 @@ private:
       }
     }
     if (!merge_type) {
-      report("Known branch values need an expected program type for "
+      report("Known branch values need an expected module type for "
              "materialization",
              statement.range);
       return next(block);
@@ -2652,14 +2618,13 @@ private:
     return next(merge);
   }
 
-  void instantiate_call(const detail::StatementSyntax& statement,
-                        Block block) {
-    const bool require_known = statement.expression.value.kind ==
-                               Module::Expression::Kind::Evaluate;
-    const bool can_evaluate = statement.bindings.size() == 1U &&
-                              known_result(statement.expression.value,
-                                           statement.expression.range)
-                                  .has_value();
+  void instantiate_call(const detail::StatementSyntax& statement, Block block) {
+    const bool require_known =
+        statement.expression.value.kind == Module::Expression::Kind::Evaluate;
+    const bool can_evaluate =
+        statement.bindings.size() == 1U &&
+        known_result(statement.expression.value, statement.expression.range)
+            .has_value();
     if (require_known || can_evaluate) {
       if (statement.bindings.size() != 1U) {
         report("compile-time evaluation must bind exactly one value",
@@ -2671,9 +2636,9 @@ private:
         auto expected = expected_type(statement.bindings.front());
         if (expected && value->type() != *expected) {
           auto ir = detail::ir_value(compiler_, *value);
-          auto materialized = ir ? materialize(*ir, *expected, block,
-                                               statement.range)
-                                 : std::optional<Value>{};
+          auto materialized =
+              ir ? materialize(*ir, *expected, block, statement.range)
+                 : std::optional<Value>{};
           if (materialized) {
             bind(statement.bindings.front(), std::move(*materialized));
           } else {
@@ -2706,8 +2671,8 @@ private:
     std::vector<PendingArgument> arguments;
     arguments.reserve(expression.arguments.size());
     for (const Module::Expression& argument_expression : expression.arguments) {
-      detail::ExpressionSyntax argument_syntax{
-          argument_expression, statement.expression.range};
+      detail::ExpressionSyntax argument_syntax{argument_expression,
+                                               statement.expression.range};
       PendingArgument argument;
       if ((argument_expression.kind == Kind::Reference ||
            argument_expression.kind == Kind::Variable) &&
@@ -2743,10 +2708,9 @@ private:
         const auto expected = locals_.depth() == 1U
                                   ? expected_values_.find(binding.name)
                                   : expected_values_.end();
-        expected_types.push_back(
-            expected == expected_values_.end()
-                ? std::optional<Type>{}
-                : std::optional<Type>{expected->second});
+        expected_types.push_back(expected == expected_values_.end()
+                                     ? std::optional<Type>{}
+                                     : std::optional<Type>{expected->second});
         continue;
       }
       auto resolved = type(*binding.type);
@@ -2768,11 +2732,10 @@ private:
     const bool unique_declaration = declarations.size() == 1U;
     const std::size_t diagnostics_before_planning = diagnostics_.size();
     for (const auto& function : declarations) {
-      auto plan = plan_call(
-          function, expression, arguments, expected_types,
-          statement.expression.range,
-          unique_declaration && residual_control_depth_ == 0U,
-          unique_declaration ? &diagnostics_ : nullptr);
+      auto plan = plan_call(function, expression, arguments, expected_types,
+                            statement.expression.range,
+                            unique_declaration && residual_control_depth_ == 0U,
+                            unique_declaration ? &diagnostics_ : nullptr);
       if (plan) {
         plans.push_back(std::move(*plan));
       }
@@ -2787,10 +2750,9 @@ private:
       return;
     }
     if (plans.size() != 1U) {
-      std::string message = fixity ? "operator '" + expression.text +
-                                         "' is ambiguous between"
-                                   : "call to '" + expression.text +
-                                         "' is ambiguous between";
+      std::string message =
+          fixity ? "operator '" + expression.text + "' is ambiguous between"
+                 : "call to '" + expression.text + "' is ambiguous between";
       for (const PendingCall& plan : plans) {
         message += " '" + plan.function.symbol().qualified_name() + "'";
       }
@@ -2810,9 +2772,9 @@ private:
       }
       for (PendingArgument& argument : plan.arguments[index]) {
         if (argument.is_function()) {
-          auto reference = function_reference(
-              argument.function, statement.expression.range,
-              plan.partial_types.arguments[argument_index]);
+          auto reference =
+              function_reference(argument.function, statement.expression.range,
+                                 plan.partial_types.arguments[argument_index]);
           argument.value = reference ? detail::stage(std::move(*reference))
                                      : std::optional<detail::StagedValue>{};
           unresolved = !argument.value || unresolved;
@@ -2842,11 +2804,11 @@ private:
         call_arguments.push_back(std::move(*value));
       }
     }
-    Instruction instruction = edit_->append(
-        std::move(block), plan.function, std::move(call_arguments),
-        plan.partial_types.results);
-    detail::FunctionAccess::locate(
-        *edit_, instruction, source(statement.expression.range));
+    Instruction instruction =
+        edit_->append(std::move(block), plan.function,
+                      std::move(call_arguments), plan.partial_types.results);
+    detail::FunctionAccess::locate(*edit_, instruction,
+                                   source(statement.expression.range));
     if (statement.bindings.size() != instruction.results().size()) {
       report("call result count does not match its bindings", statement.range);
       invalidate_results();
@@ -2878,7 +2840,8 @@ private:
 
 class RuntimeSyntax {
 public:
-  RuntimeSyntax(const Function& function, std::string_view name) : function_(function) {
+  RuntimeSyntax(const Function& function, std::string_view name)
+      : function_(function) {
     syntax_.name = std::string(name);
   }
 
@@ -2892,8 +2855,9 @@ public:
     }
     const auto blocks = function_.blocks();
     for (std::size_t index = 0; index < blocks.size(); ++index) {
-      block_names_.emplace_back(
-          blocks[index], index == 0U ? "entry" : "block" + std::to_string(index));
+      block_names_.emplace_back(blocks[index],
+                                index == 0U ? "entry"
+                                            : "block" + std::to_string(index));
     }
     for (const Block& block : blocks) {
       for (const Value& argument : block.arguments()) {
@@ -2942,9 +2906,9 @@ public:
   }
 
 private:
-  static std::size_t visible_parameters(
-      std::span<const ParameterValue> parameters,
-      std::span<const Module::ParameterDecl> schema) {
+  static std::size_t
+  visible_parameters(std::span<const ParameterValue> parameters,
+                     std::span<const Module::ParameterDecl> schema) {
     std::size_t count = parameters.size();
     while (count != 0U && count <= schema.size() &&
            schema[count - 1U].default_value) {
@@ -2960,8 +2924,8 @@ private:
   static detail::ValueSyntax value(const Type& type) {
     detail::ValueSyntax result;
     result.kind = detail::ValueSyntax::Kind::Reference;
-    result.text = detail::display_type_name(
-        type.schema().symbol().qualified_name());
+    result.text =
+        detail::display_type_name(type.schema().symbol().qualified_name());
     const auto parameters = detail::TypeAccess::parameters(type);
     const std::size_t count =
         visible_parameters(parameters, type.schema().parameters());
@@ -3071,9 +3035,9 @@ private:
   }
 
   std::string block_name(const Block& block) const {
-    const auto found = std::find_if(
-        block_names_.begin(), block_names_.end(),
-        [&](const auto& entry) { return entry.first == block; });
+    const auto found =
+        std::find_if(block_names_.begin(), block_names_.end(),
+                     [&](const auto& entry) { return entry.first == block; });
     if (found == block_names_.end()) {
       throw std::invalid_argument("the function has an unknown successor");
     }
@@ -3084,10 +3048,18 @@ private:
     using Kind = Module::Expression::Kind;
     Module::Expression result;
     switch (value.kind) {
-    case detail::ValueSyntax::Kind::Number: result.kind = Kind::Number; break;
-    case detail::ValueSyntax::Kind::Boolean: result.kind = Kind::Boolean; break;
-    case detail::ValueSyntax::Kind::String: result.kind = Kind::String; break;
-    case detail::ValueSyntax::Kind::List: result.kind = Kind::List; break;
+    case detail::ValueSyntax::Kind::Number:
+      result.kind = Kind::Number;
+      break;
+    case detail::ValueSyntax::Kind::Boolean:
+      result.kind = Kind::Boolean;
+      break;
+    case detail::ValueSyntax::Kind::String:
+      result.kind = Kind::String;
+      break;
+    case detail::ValueSyntax::Kind::List:
+      result.kind = Kind::List;
+      break;
     case detail::ValueSyntax::Kind::Reference:
       result.kind = Kind::Reference;
       break;
@@ -3223,9 +3195,9 @@ bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics) {
 
   std::unordered_map<std::string_view, const BlockSyntax*> blocks;
   std::unordered_set<std::string_view> definitions;
-  const auto falls_through = [&](const auto& self,
-                                 const std::vector<StatementSyntax>& statements)
-      -> bool {
+  const auto falls_through =
+      [&](const auto& self,
+          const std::vector<StatementSyntax>& statements) -> bool {
     for (const StatementSyntax& statement : statements) {
       if (statement.kind == StatementSyntax::Kind::Return ||
           statement.kind == StatementSyntax::Kind::Break ||
@@ -3233,17 +3205,15 @@ bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics) {
         return false;
       }
       if (statement.kind == StatementSyntax::Kind::If && statement.has_else &&
-          !self(self, statement.body) &&
-          !self(self, statement.otherwise)) {
+          !self(self, statement.body) && !self(self, statement.otherwise)) {
         return false;
       }
     }
     return true;
   };
-  const auto check_statements = [&](const auto& self,
-                                    const std::vector<StatementSyntax>& statements,
-                                    std::unordered_set<std::string_view>& names)
-      -> void {
+  const auto check_statements =
+      [&](const auto& self, const std::vector<StatementSyntax>& statements,
+          std::unordered_set<std::string_view>& names) -> void {
     bool reachable = true;
     for (const StatementSyntax& statement : statements) {
       if (!reachable) {
@@ -3268,8 +3238,8 @@ bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics) {
             statement.kind == StatementSyntax::Kind::Break ||
             statement.kind == StatementSyntax::Kind::Continue ||
             (statement.kind == StatementSyntax::Kind::If &&
-             statement.has_else && !falls_through(falls_through,
-                                                   statement.body) &&
+             statement.has_else &&
+             !falls_through(falls_through, statement.body) &&
              !falls_through(falls_through, statement.otherwise))) {
           reachable = false;
         }
@@ -3291,8 +3261,7 @@ bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics) {
     }
     for (const BlockArgumentSyntax& argument : block.arguments) {
       if (!definitions.insert(argument.name).second) {
-        report("duplicate local value '" + argument.name + "'",
-               argument.range);
+        report("duplicate local value '" + argument.name + "'", argument.range);
       }
     }
     check_statements(check_statements, block.statements, definitions);
@@ -3388,15 +3357,13 @@ bool verify_function_body(const FunctionBody& body, Diagnostics& diagnostics) {
 }
 
 std::optional<FunctionBody> parse_function_body(
-    Lexer& lexer, Token& current, Diagnostics& diagnostics,
-    std::string source,
+    Lexer& lexer, Token& current, Diagnostics& diagnostics, std::string source,
     std::span<const Module::FunctionDecl::GenericDecl> variables) {
   return SyntaxParser(lexer, current, diagnostics, std::move(source), variables)
       .parse();
 }
 
-std::string format_function_body(const FunctionBody& body,
-                                 std::size_t indent) {
+std::string format_function_body(const FunctionBody& body, std::size_t indent) {
   return SyntaxWriter(body, indent).write();
 }
 
@@ -3427,7 +3394,8 @@ std::string format(const ir::Function& function, std::string_view name) {
       !std::all_of(name.begin() + 1, name.end(), identifier_character)) {
     throw std::invalid_argument("a formatted Function needs a valid name");
   }
-  return detail::format_function_syntax(RuntimeSyntax(function, name).build(), 0U);
+  return detail::format_function_syntax(RuntimeSyntax(function, name).build(),
+                                        0U);
 }
 
 }  // namespace joggle

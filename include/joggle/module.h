@@ -20,6 +20,10 @@ struct ModuleAccess;
 struct FunctionTypeAccess;
 }  // namespace detail
 
+namespace ir {
+class Function;
+}
+
 class Compiler;
 
 struct Version {
@@ -44,6 +48,14 @@ class Module {
   struct Storage;
 
 public:
+  // Creates an empty, named IR Module. Parsing uses the same Module type and
+  // additionally populates its declarations.
+  Module(std::string name, Version version);
+  Module(const Module& other);
+  Module& operator=(const Module& other);
+  Module(Module&&) noexcept = default;
+  Module& operator=(Module&&) noexcept = default;
+
   // Immutable declaration expression. The parser, formatter, linker, and type
   // solver all use this representation; function signatures do not keep a
   // second private spelling of their types.
@@ -73,11 +85,10 @@ public:
     std::vector<std::string> labels;
 
     Expression() = default;
-    Expression(Kind kind, std::string text,
-               std::vector<Expression> arguments,
+    Expression(Kind kind, std::string text, std::vector<Expression> arguments,
                std::vector<std::string> labels = {})
-        : kind(kind), text(std::move(text)),
-          arguments(std::move(arguments)), labels(std::move(labels)) {}
+        : kind(kind), text(std::move(text)), arguments(std::move(arguments)),
+          labels(std::move(labels)) {}
 
     static Expression reference(std::string name) {
       return {Kind::Reference, std::move(name), {}};
@@ -261,6 +272,13 @@ public:
     }
   };
 
+  struct Dependency {
+    std::string name;
+    Version version;
+
+    bool operator==(const Dependency&) const = default;
+  };
+
   std::string_view name() const;
   Version version() const;
   std::string_view digest() const;
@@ -269,18 +287,28 @@ public:
   std::optional<InterfaceDecl> interface(std::string_view name) const;
   std::optional<TypeDecl> type(std::string_view name) const;
   std::optional<AttributeDecl> attribute(std::string_view name) const;
-  std::optional<FunctionDecl> function(std::string_view name) const;
+  std::optional<FunctionDecl> declaration(std::string_view name) const;
   std::vector<FunctionDecl> overloads(std::string_view name) const;
   std::optional<Symbol> symbol(SymbolKind kind, std::string_view name) const;
   std::vector<Symbol> members() const;
   std::vector<InterfaceDecl> interfaces() const;
   std::vector<TypeDecl> types() const;
   std::vector<AttributeDecl> attributes() const;
-  std::vector<FunctionDecl> functions() const;
+  std::vector<FunctionDecl> declarations() const;
+
+  // Materialized IR Functions belong to this Module. Mutable lookup detaches
+  // only the selected Function; copying a Module is otherwise cheap.
+  bool insert(std::string name, ir::Function function,
+              Diagnostics& diagnostics);
+  ir::Function* function(std::string_view name);
+  const ir::Function* function(std::string_view name) const;
+  std::vector<std::string> function_names() const;
+  std::vector<Dependency> dependencies() const;
+  std::size_t function_count() const;
   bool operator==(const Module& other) const;
 
 private:
-  explicit Module(std::shared_ptr<const Storage> storage);
+  explicit Module(std::shared_ptr<Storage> storage);
   std::shared_ptr<const Storage> storage_;
 
   friend class Compiler;

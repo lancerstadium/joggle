@@ -63,17 +63,17 @@ ir_results(const Module::FunctionDecl& function) {
 }
 
 // True when a body can be instantiated without caller-supplied Known values
-// or program-type context. Package validation uses this concrete default
+// or module-type context. Package validation uses this concrete default
 // specialization in addition to declaration-level generic checking.
 bool has_default_specialization(const Module::FunctionDecl& function);
 
 struct ModuleAccess {
-  static std::shared_ptr<const FunctionBody> body(
-      const Module& module, const Module::FunctionDecl&);
-  static const Module::Expression* expression(
-      const Module::FunctionDecl& function);
-  static const Module::Expression* returned_expression(
-      const Module::FunctionDecl& function);
+  static std::shared_ptr<const FunctionBody> body(const Module& module,
+                                                  const Module::FunctionDecl&);
+  static const Module::Expression*
+  expression(const Module::FunctionDecl& function);
+  static const Module::Expression*
+  returned_expression(const Module::FunctionDecl& function);
   static std::optional<SourceRange> import_source(const Module& module,
                                                   std::size_t index);
   static std::optional<SourceRange> declaration_source(const Module& module,

@@ -84,13 +84,11 @@ module native_test@1.0.0 {
           ? compiler.make(*list_schema, *integer_value_type)
           : std::nullopt;
   const auto known_integer =
-      integer_value_type
-          ? compiler.known(*integer_value_type, std::int64_t{42})
-          : std::nullopt;
+      integer_value_type ? compiler.known(*integer_value_type, std::int64_t{42})
+                         : std::nullopt;
   const auto same_known_integer =
-      integer_value_type
-          ? compiler.known(*integer_value_type, std::int64_t{42})
-          : std::nullopt;
+      integer_value_type ? compiler.known(*integer_value_type, std::int64_t{42})
+                         : std::nullopt;
   const auto known_i32 =
       i32 ? compiler.known(*i32, std::int64_t{7}) : std::nullopt;
   const auto integers = compiler.function("native_test.integers");
@@ -108,45 +106,50 @@ module native_test@1.0.0 {
   ok &= expect(source_prelude && embedded_prelude &&
                    source_prelude->digest() == embedded_prelude->digest(),
                "the installed Prelude source is the embedded authority");
-  ok &= expect(i32 && u32 && f32 && integer_value_type && type_value_type &&
-                   integer_list &&
-                   integer_value_type->schema().symbol().qualified_name() ==
-                       "prelude.int" &&
-                   type_value_type->schema().symbol().qualified_name() ==
-                       "prelude.type" &&
-                   integer_list->get<joggle::Type>("element") ==
-                       integer_value_type &&
-                   i32->schema().symbol().qualified_name() == "prelude.i32" &&
-                   u32->schema().symbol().qualified_name() == "prelude.u32" &&
-                   f32->schema().symbol().qualified_name() == "prelude.f32" &&
-                   storage_bits &&
-                   i32->schema().derived_parameters().size() == 1U &&
-                   i32->schema().derived_parameters().front().name ==
-                       "storage_bits",
-               "compiler values and fixed-width scalars use ordinary "
-               "reflected Prelude declarations");
+  ok &= expect(
+      i32 && u32 && f32 && integer_value_type && type_value_type &&
+          integer_list &&
+          integer_value_type->schema().symbol().qualified_name() ==
+              "prelude.int" &&
+          type_value_type->schema().symbol().qualified_name() ==
+              "prelude.type" &&
+          integer_list->get<joggle::Type>("element") == integer_value_type &&
+          i32->schema().symbol().qualified_name() == "prelude.i32" &&
+          u32->schema().symbol().qualified_name() == "prelude.u32" &&
+          f32->schema().symbol().qualified_name() == "prelude.f32" &&
+          storage_bits && i32->schema().derived_parameters().size() == 1U &&
+          i32->schema().derived_parameters().front().name == "storage_bits",
+      "compiler values and fixed-width scalars use ordinary "
+      "reflected Prelude declarations");
   ok &= expect(integers && floating && custom && native_width && custom_width,
                "native and interface-conforming custom types instantiate");
-  ok &= expect(known_integer && same_known_integer && known_i32 &&
-                   known_integer->known() && !known_i32->is_function_argument() &&
-                   known_integer->type() == *integer_value_type &&
-                   known_integer->get<std::int64_t>() == 42 &&
-                   *known_integer == *same_known_integer,
-               "one Value model represents typed Known compiler values");
-  const auto native_bits =
-      native_width
-          ? native_width->entry().terminator().returned().front().type().get<std::int64_t>("width")
-          : std::nullopt;
-  const auto custom_bits =
-      custom_width
-          ? custom_width->entry().terminator().returned().front().type().get<std::int64_t>("width")
-          : std::nullopt;
+  ok &=
+      expect(known_integer && same_known_integer && known_i32 &&
+                 known_integer->known() && !known_i32->is_function_argument() &&
+                 known_integer->type() == *integer_value_type &&
+                 known_integer->get<std::int64_t>() == 42 &&
+                 *known_integer == *same_known_integer,
+             "one Value model represents typed Known compiler values");
+  const auto native_bits = native_width ? native_width->entry()
+                                              .terminator()
+                                              .returned()
+                                              .front()
+                                              .type()
+                                              .get<std::int64_t>("width")
+                                        : std::nullopt;
+  const auto custom_bits = custom_width ? custom_width->entry()
+                                              .terminator()
+                                              .returned()
+                                              .front()
+                                              .type()
+                                              .get<std::int64_t>("width")
+                                        : std::nullopt;
   ok &= expect(native_bits == std::optional<std::int64_t>{32} &&
                    custom_bits == std::optional<std::int64_t>{4},
                "one interface field computes parameters for native and "
                "custom scalar types");
-  const std::string text = integers ? joggle::format(*integers, "integers")
-                                    : std::string{};
+  const std::string text =
+      integers ? joggle::format(*integers, "integers") : std::string{};
   ok &= expect(text.find("arg0: i32") != std::string::npos &&
                    text.find("arg1: u32") != std::string::npos &&
                    text.find("prelude.i32") == std::string::npos,
@@ -206,51 +209,44 @@ module primitive_test@1.0.0 {
   const auto folded =
       primitives_linked
           ? primitives.run<std::int64_t>(
-                "primitive_test.fold",
-                std::vector<std::int64_t>{0, 1, 2, 3, 8})
+                "primitive_test.fold", std::vector<std::int64_t>{0, 1, 2, 3, 8})
           : std::nullopt;
   const auto predicate =
-      primitives_linked
-          ? primitives.run<bool>("primitive_test.predicate",
-                                 std::int64_t{3}, std::int64_t{4})
-          : std::nullopt;
+      primitives_linked ? primitives.run<bool>("primitive_test.predicate",
+                                               std::int64_t{3}, std::int64_t{4})
+                        : std::nullopt;
   const auto real_math =
       primitives_linked
           ? primitives.run<double>("primitive_test.real_math", 2.5, 4.0)
           : std::nullopt;
-  const auto ascending =
-      primitives_linked
-          ? primitives.run<std::vector<std::int64_t>>(
-                "primitive_test.ascending", std::int64_t{4})
-          : std::nullopt;
-  const auto descending =
-      primitives_linked
-          ? primitives.run<std::vector<std::int64_t>>(
-                "primitive_test.descending")
-          : std::nullopt;
-  const auto empty_range =
-      primitives_linked
-          ? primitives.run<std::vector<std::int64_t>>(
-                "primitive_test.empty_range")
-          : std::nullopt;
+  const auto ascending = primitives_linked
+                             ? primitives.run<std::vector<std::int64_t>>(
+                                   "primitive_test.ascending", std::int64_t{4})
+                             : std::nullopt;
+  const auto descending = primitives_linked
+                              ? primitives.run<std::vector<std::int64_t>>(
+                                    "primitive_test.descending")
+                              : std::nullopt;
+  const auto empty_range = primitives_linked
+                               ? primitives.run<std::vector<std::int64_t>>(
+                                     "primitive_test.empty_range")
+                               : std::nullopt;
   const auto primitive_module = primitives.module("primitive_test");
   const auto unroll_decl =
-      primitive_module ? primitive_module->function("unroll") : std::nullopt;
+      primitive_module ? primitive_module->declaration("unroll") : std::nullopt;
   const auto integer_type = primitives.make("int");
-  const auto count =
-      integer_type ? primitives.known(*integer_type, std::int64_t{3})
-                   : std::nullopt;
+  const auto count = integer_type
+                         ? primitives.known(*integer_type, std::int64_t{3})
+                         : std::nullopt;
   const auto unrolled = unroll_decl && count
                             ? primitives.function(*unroll_decl, {*count})
                             : std::nullopt;
   ok &= expect(primitives_linked && folded == std::optional<std::int64_t>{7} &&
                    predicate == std::optional<bool>{true} &&
                    real_math == std::optional<double>{4.0} && ascending &&
-                   *ascending ==
-                       std::vector<std::int64_t>({0, 1, 2, 3}) &&
+                   *ascending == std::vector<std::int64_t>({0, 1, 2, 3}) &&
                    descending &&
-                   *descending ==
-                       std::vector<std::int64_t>({5, 3, 1}) &&
+                   *descending == std::vector<std::int64_t>({5, 3, 1}) &&
                    empty_range && empty_range->empty() && unrolled &&
                    unrolled->instructions().size() == 3U,
                "Prelude fn primitives drive generic for, compile-time "
@@ -281,18 +277,18 @@ module shadowing@1.0.0 {
   const bool shadowing_linked = shadowing.link();
   const auto local_call =
       shadowing_linked
-          ? shadowing.run<std::int64_t>("shadowing.local_call",
-                                       std::int64_t{7}, std::int64_t{3})
+          ? shadowing.run<std::int64_t>("shadowing.local_call", std::int64_t{7},
+                                        std::int64_t{3})
           : std::nullopt;
   const auto local_operator =
       shadowing_linked
           ? shadowing.run<std::int64_t>("shadowing.local_operator",
-                                       std::int64_t{7}, std::int64_t{3})
+                                        std::int64_t{7}, std::int64_t{3})
           : std::nullopt;
   const auto standard_call =
       shadowing_linked
           ? shadowing.run<std::int64_t>("shadowing.standard_call",
-                                       std::int64_t{7}, std::int64_t{3})
+                                        std::int64_t{7}, std::int64_t{3})
           : std::nullopt;
   ok &= expect(shadowing_linked &&
                    local_call == std::optional<std::int64_t>{99} &&
@@ -312,11 +308,10 @@ module invalid_arithmetic@1.0.0 {
 )",
                          "invalid-arithmetic.joggle");
   const bool invalid_linked = invalid_arithmetic.link();
-  const auto invalid_result =
-      invalid_linked
-          ? invalid_arithmetic.run<std::int64_t>(
-                "invalid_arithmetic.divide_by_zero")
-          : std::nullopt;
+  const auto invalid_result = invalid_linked
+                                  ? invalid_arithmetic.run<std::int64_t>(
+                                        "invalid_arithmetic.divide_by_zero")
+                                  : std::nullopt;
   const bool reports_division_by_zero = std::any_of(
       invalid_arithmetic.diagnostics().entries().begin(),
       invalid_arithmetic.diagnostics().entries().end(),
@@ -364,10 +359,9 @@ module invalid_range@1.0.0 {
                     "invalid-range.joggle");
   const bool invalid_range_linked = invalid_range.link();
   const auto invalid_range_result =
-      invalid_range_linked
-          ? invalid_range.run<std::vector<std::int64_t>>(
-                "invalid_range.zero_step")
-          : std::nullopt;
+      invalid_range_linked ? invalid_range.run<std::vector<std::int64_t>>(
+                                 "invalid_range.zero_step")
+                           : std::nullopt;
   const bool reports_zero_step = std::any_of(
       invalid_range.diagnostics().entries().begin(),
       invalid_range.diagnostics().entries().end(),
@@ -375,9 +369,9 @@ module invalid_range@1.0.0 {
         return diagnostic.message.find("range step cannot be zero") !=
                std::string::npos;
       });
-  ok &= expect(invalid_range_linked && !invalid_range_result &&
-                   reports_zero_step,
-               "range rejects a zero step deterministically");
+  ok &=
+      expect(invalid_range_linked && !invalid_range_result && reports_zero_step,
+             "range rejects a zero step deterministically");
 
   joggle::Compiler bounded_range({4, 64});
   bounded_range.add(R"(
@@ -392,8 +386,7 @@ module bounded_range@1.0.0 {
   const bool bounded_range_linked = bounded_range.link();
   const auto bounded_range_result =
       bounded_range_linked
-          ? bounded_range.run<std::vector<std::int64_t>>(
-                "bounded_range.expand")
+          ? bounded_range.run<std::vector<std::int64_t>>("bounded_range.expand")
           : std::nullopt;
   const bool reports_range_limit = std::any_of(
       bounded_range.diagnostics().entries().begin(),

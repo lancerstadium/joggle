@@ -7,13 +7,12 @@ namespace {
 bool bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
   const auto positive = module.type("positive");
-  const auto noop = module.function("noop");
+  const auto noop = module.declaration("noop");
   if (!positive || !noop) {
     diagnostics.report("test behavior does not match its linked schema");
     return false;
   }
-  compiler.bind(*positive,
-                [](const joggle::Type& type, joggle::Diagnostics&) {
+  compiler.bind(*positive, [](const joggle::Type& type, joggle::Diagnostics&) {
     const auto value = type.get<std::int64_t>("value");
     return value && *value > 0;
   });

@@ -86,8 +86,8 @@ std::optional<Options> options(int argc, char** argv,
   Options result;
   for (int index = 2; index < argc; ++index) {
     const std::string_view argument(argv[index]);
-    const auto value = [&](std::string_view message)
-        -> std::optional<std::string_view> {
+    const auto value =
+        [&](std::string_view message) -> std::optional<std::string_view> {
       if (index + 1 >= argc ||
           std::string_view(argv[index + 1]).starts_with('-')) {
         diagnostics.report(std::string(message));
@@ -327,7 +327,7 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
     return false;
   }
   for (const joggle::Module& loaded : compiler.modules()) {
-    for (const joggle::Module::FunctionDecl& function : loaded.functions()) {
+    for (const joggle::Module::FunctionDecl& function : loaded.declarations()) {
       if (function.form() == joggle::Module::FunctionDecl::Form::Body &&
           joggle::detail::ModuleAccess::expression(function) == nullptr &&
           (!joggle::detail::ir_inputs(function).empty() ||
@@ -348,9 +348,9 @@ struct Transform {
   TransformKind kind;
 };
 
-std::optional<Transform>
-transform(joggle::Compiler& compiler, std::string_view qualified,
-          joggle::Diagnostics& diagnostics) {
+std::optional<Transform> transform(joggle::Compiler& compiler,
+                                   std::string_view qualified,
+                                   joggle::Diagnostics& diagnostics) {
   const std::size_t separator = qualified.find('.');
   if (separator == std::string_view::npos) {
     diagnostics.report("a transform name must use module.member");
@@ -365,13 +365,12 @@ transform(joggle::Compiler& compiler, std::string_view qualified,
     return std::nullopt;
   }
   std::vector<Transform> matches;
-  for (const joggle::Module::FunctionDecl& function : module->functions()) {
+  for (const joggle::Module::FunctionDecl& function : module->declarations()) {
     if (function.name() != function_name || function.inputs().size() != 1U ||
         function.results().size() != 1U) {
       continue;
     }
-    if (compiler.invocable<joggle::ir::Program, joggle::ir::Program>(
-            function)) {
+    if (compiler.invocable<joggle::Module, joggle::Module>(function)) {
       matches.push_back({function, TransformKind::Module});
     } else if (compiler.invocable<joggle::ir::Function, joggle::ir::Function&>(
                    function)) {
@@ -380,7 +379,7 @@ transform(joggle::Compiler& compiler, std::string_view qualified,
   }
   if (matches.size() != 1U) {
     diagnostics.report(matches.empty()
-                           ? "no unary Function or program transform named '" +
+                           ? "no unary Function or module transform named '" +
                                  std::string(qualified) + "'"
                            : "transform name '" + std::string(qualified) +
                                  "' is ambiguous");
@@ -483,8 +482,8 @@ int main(int argc, char** argv) {
 
   if (command == "run") {
     if (parsed.positional.size() < 2U) {
-      return usage_error(
-          diagnostics, "run expects a Module source file and function name");
+      return usage_error(diagnostics,
+                         "run expects a Module source file and function name");
     }
     if (parsed.in_place) {
       return usage_error(diagnostics, "run does not accept --write");
@@ -544,8 +543,17 @@ int main(int argc, char** argv) {
     }
     const std::size_t separator = function_name.find('.');
     const std::string function_body = function_name.substr(separator + 1U);
-    joggle::ir::Program program;
-    if (!program.insert(function_body, std::move(*function), diagnostics)) {
+    std::string artifact_name(root->name());
+    const auto root_members = root->members();
+    const bool already_derived =
+        artifact_name.ends_with("_compiled") && root_members.size() == 1U &&
+        root_members.front().kind() == joggle::Module::SymbolKind::Function &&
+        root_members.front().local_name() == function_body;
+    if (!already_derived) {
+      artifact_name += "_" + function_body + "_compiled";
+    }
+    joggle::Module module(artifact_name, root->version());
+    if (!module.insert(function_body, std::move(*function), diagnostics)) {
       return fail(diagnostics);
     }
     for (std::size_t index = 2U; index < parsed.positional.size(); ++index) {
@@ -555,15 +563,15 @@ int main(int argc, char** argv) {
         return fail(diagnostics);
       }
       if (selected->kind == TransformKind::Module) {
-        auto transformed = compiler.run<joggle::ir::Program>(
-            selected->declaration, std::move(program));
+        auto transformed = compiler.run<joggle::Module>(selected->declaration,
+                                                        std::move(module));
         if (!transformed) {
           return fail(compiler.diagnostics());
         }
-        program = std::move(*transformed);
+        module = std::move(*transformed);
         continue;
       }
-      joggle::ir::Function* entry = program.function(function_body);
+      joggle::ir::Function* entry = module.function(function_body);
       if (entry == nullptr) {
         diagnostics.report("Function transform '" + name +
                            "' needs missing entry '" + function_body + "'");
@@ -573,37 +581,27 @@ int main(int argc, char** argv) {
         return fail(compiler.diagnostics());
       }
     }
-    const auto dependencies = joggle::ir::dependencies(program);
+    const auto dependencies = module.dependencies();
     const auto references = [&](std::string_view name) {
-      return std::any_of(
-          dependencies.begin(), dependencies.end(),
-          [&](const joggle::ir::Dependency& dependency) {
-            return dependency.name == name;
-          });
+      return std::any_of(dependencies.begin(), dependencies.end(),
+                         [&](const joggle::Module::Dependency& dependency) {
+                           return dependency.name == name;
+                         });
     };
-    std::string artifact_name(root->name());
-    const auto root_members = root->members();
-    const bool already_derived =
-        program.size() == 1U && artifact_name.ends_with("_compiled") &&
-        root_members.size() == 1U &&
-        root_members.front().kind() == joggle::Module::SymbolKind::Function &&
-        root_members.front().local_name() == function_body &&
-        !references(artifact_name);
-    if (!already_derived) {
-      artifact_name += "_" + function_body + "_compiled";
-    }
-    while (references(artifact_name)) {
-      artifact_name += "_compiled";
+    if (references(artifact_name)) {
+      diagnostics.report("compiled Module name '" + artifact_name +
+                         "' conflicts with a referenced Module");
+      return fail(diagnostics);
     }
     std::string artifact_source;
     try {
-      artifact_source = joggle::format(program, artifact_name, root->version());
+      artifact_source = joggle::format(module);
     } catch (const std::exception& exception) {
       diagnostics.report(exception.what());
       return fail(diagnostics);
     }
-    const auto artifact = joggle::parse_module(
-        artifact_source, diagnostics, "<compiled Module>");
+    const auto artifact =
+        joggle::parse_module(artifact_source, diagnostics, "<compiled Module>");
     if (!artifact) {
       return fail(diagnostics);
     }
@@ -620,8 +618,7 @@ int main(int argc, char** argv) {
 
   if (command == "install") {
     if (parsed.positional.size() != 1U) {
-      return usage_error(diagnostics,
-                         "install expects one Module source file");
+      return usage_error(diagnostics, "install expects one Module source file");
     }
     if (parsed.output) {
       return usage_error(diagnostics, "install does not accept --output");
@@ -708,8 +705,7 @@ int main(int argc, char** argv) {
       return usage_error(diagnostics, "list does not accept --with");
     }
     if (!parsed.loaded_behaviors.empty()) {
-      return usage_error(diagnostics,
-                         "list does not accept --load-behavior");
+      return usage_error(diagnostics, "list does not accept --load-behavior");
     }
     const auto modules =
         joggle::detail::installed_modules(parsed.root, diagnostics);
@@ -738,8 +734,7 @@ int main(int argc, char** argv) {
       return usage_error(diagnostics, "lock does not accept --with");
     }
     if (!parsed.loaded_behaviors.empty()) {
-      return usage_error(diagnostics,
-                         "lock does not accept --load-behavior");
+      return usage_error(diagnostics, "lock does not accept --load-behavior");
     }
     auto source = read(parsed.positional[0], diagnostics);
     if (!source) {

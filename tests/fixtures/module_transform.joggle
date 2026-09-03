@@ -1,0 +1,5 @@
+joggle 1;
+
+module module_transform@1.0.0 {
+  fn add_helper(input: module) -> module;
+}

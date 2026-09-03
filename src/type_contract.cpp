@@ -67,8 +67,7 @@ known_domain(const Module::Expression& expression, const Bindings& bindings) {
 struct Environment {
   using Evaluator = std::function<std::optional<ParameterValue>(
       Module::FunctionDecl, std::span<const ParameterValue>)>;
-  using EvaluationCheck =
-      std::function<bool(const Module::FunctionDecl&)>;
+  using EvaluationCheck = std::function<bool(const Module::FunctionDecl&)>;
   using FunctionLookup = std::function<std::vector<Module::FunctionDecl>(
       std::string_view, std::string_view)>;
   using OperatorLookup = std::function<std::vector<Module::FunctionDecl>(
@@ -80,8 +79,7 @@ struct Environment {
   std::function<std::optional<Attribute>(const Module::AttributeDecl&,
                                          std::span<const ParameterValue>)>
       attribute;
-  std::function<bool(const Module::TypeDecl&,
-                     const Module::InterfaceDecl&)>
+  std::function<bool(const Module::TypeDecl&, const Module::InterfaceDecl&)>
       conforms;
   FunctionLookup functions;
   OperatorLookup operators;
@@ -116,18 +114,19 @@ Environment environment(Compiler& compiler, bool allow_host_evaluation = true) {
           },
           [&, under_residual_control = !allow_host_evaluation](
               const Module::FunctionDecl& function) {
-            return CompilerAccess::can_evaluate(
-                compiler, function, under_residual_control);
+            return CompilerAccess::can_evaluate(compiler, function,
+                                                under_residual_control);
           },
           Environment::Evaluator{
               [&, under_residual_control = !allow_host_evaluation](
                   Module::FunctionDecl function,
                   std::span<const ParameterValue> arguments) {
-                return CompilerAccess::evaluate(
-                    compiler, std::move(function), arguments,
-                    under_residual_control);
+                return CompilerAccess::evaluate(compiler, std::move(function),
+                                                arguments,
+                                                under_residual_control);
               }},
-          !allow_host_evaluation, CompilerAccess::limits(compiler)};
+          !allow_host_evaluation,
+          CompilerAccess::limits(compiler)};
 }
 
 Environment environment(std::span<const Module> modules,
@@ -139,9 +138,8 @@ Environment environment(std::span<const Module> modules,
     return module == modules.end() ? std::nullopt
                                    : std::optional<Module>{*module};
   };
-  const auto conforms = [find](
-                            const Module::TypeDecl& declaration,
-                            const Module::InterfaceDecl& interface) {
+  const auto conforms = [find](const Module::TypeDecl& declaration,
+                               const Module::InterfaceDecl& interface) {
     const auto owner = find(declaration.symbol().module_name());
     if (!owner) {
       return false;
@@ -153,13 +151,13 @@ Environment environment(std::span<const Module> modules,
       if (dot != std::string::npos) {
         const std::string_view prefix(reference.data(), dot);
         local_name = std::string_view(reference).substr(dot + 1U);
-        const auto imported = std::find_if(
-            owner->imports().begin(), owner->imports().end(),
-            [&](const Module::Import& import) {
-              return import.prefix() == prefix;
-            });
-        module_name = imported == owner->imports().end() ? prefix
-                                                         : imported->name;
+        const auto imported =
+            std::find_if(owner->imports().begin(), owner->imports().end(),
+                         [&](const Module::Import& import) {
+                           return import.prefix() == prefix;
+                         });
+        module_name =
+            imported == owner->imports().end() ? prefix : imported->name;
       }
       if (module_name == interface.symbol().module_name() &&
           local_name == interface.name()) {
@@ -168,51 +166,52 @@ Environment environment(std::span<const Module> modules,
     }
     return false;
   };
-  return {find,
-          [modules, &diagnostics](const Module::TypeDecl& schema,
-                                 std::span<const ParameterValue> parameters)
-              -> std::optional<Type> {
-            auto values = validate_parameters(schema.symbol().qualified_name(),
-                                              schema.parameters(), parameters,
-                                              diagnostics);
-            if (!values) {
-              return std::nullopt;
-            }
-            auto derived = resolve_derived_parameters(modules, schema, *values,
-                                                       diagnostics);
-            return derived
-                       ? std::optional<Type>{TypeAccess::make(
+  return {
+      find,
+      [modules, &diagnostics](
+          const Module::TypeDecl& schema,
+          std::span<const ParameterValue> parameters) -> std::optional<Type> {
+        auto values =
+            validate_parameters(schema.symbol().qualified_name(),
+                                schema.parameters(), parameters, diagnostics);
+        if (!values) {
+          return std::nullopt;
+        }
+        auto derived =
+            resolve_derived_parameters(modules, schema, *values, diagnostics);
+        return derived ? std::optional<Type>{TypeAccess::make(
                              schema, std::move(*values), std::move(*derived))}
                        : std::nullopt;
-          },
-          [&diagnostics](const Module::AttributeDecl& schema,
-                         std::span<const ParameterValue> parameters)
-              -> std::optional<Attribute> {
-            auto values = validate_parameters(schema.symbol().qualified_name(),
-                                              schema.parameters(), parameters,
-                                              diagnostics);
-            return values ? std::optional<Attribute>{TypeAccess::make(
-                                schema, std::move(*values))}
-                          : std::nullopt;
-          },
-          conforms,
-          [modules](std::string_view owner, std::string_view reference) {
-            return visible_functions(modules, owner, reference);
-          },
-          [modules](std::string_view owner, std::string_view symbol,
-                    Module::FunctionDecl::Fixity fixity) {
-            return visible_operators(modules, owner, symbol, fixity);
-          },
-          [](const Module::FunctionDecl& function) {
-            return is_prelude_primitive(function);
-          },
-          [&diagnostics](Module::FunctionDecl function,
-                         std::span<const ParameterValue> arguments) {
-            const Compiler::EvaluationLimits limits;
-            return evaluate_prelude_primitive(function, arguments,
-                                              diagnostics, limits.steps);
-          },
-          false, {}};
+      },
+      [&diagnostics](const Module::AttributeDecl& schema,
+                     std::span<const ParameterValue> parameters)
+          -> std::optional<Attribute> {
+        auto values =
+            validate_parameters(schema.symbol().qualified_name(),
+                                schema.parameters(), parameters, diagnostics);
+        return values ? std::optional<Attribute>{TypeAccess::make(
+                            schema, std::move(*values))}
+                      : std::nullopt;
+      },
+      conforms,
+      [modules](std::string_view owner, std::string_view reference) {
+        return visible_functions(modules, owner, reference);
+      },
+      [modules](std::string_view owner, std::string_view symbol,
+                Module::FunctionDecl::Fixity fixity) {
+        return visible_operators(modules, owner, symbol, fixity);
+      },
+      [](const Module::FunctionDecl& function) {
+        return is_prelude_primitive(function);
+      },
+      [&diagnostics](Module::FunctionDecl function,
+                     std::span<const ParameterValue> arguments) {
+        const Compiler::EvaluationLimits limits;
+        return evaluate_prelude_primitive(function, arguments, diagnostics,
+                                          limits.steps);
+      },
+      false,
+      {}};
 }
 
 class Solver {
@@ -220,8 +219,7 @@ public:
   Solver(Environment environment, const Module::FunctionDecl& schema,
          Diagnostics& diagnostics, std::optional<SourceRange> source)
       : limits_(environment.limits), environment_(std::move(environment)),
-        schema_(&schema),
-        diagnostics_(diagnostics), source_(std::move(source)),
+        schema_(&schema), diagnostics_(diagnostics), source_(std::move(source)),
         contract_(&FunctionTypeAccess::get(schema)),
         scope_(schema.symbol().module_name()) {}
 
@@ -273,15 +271,15 @@ public:
     Bindings bindings;
     std::size_t argument = 0;
     for (const auto& input : value_inputs) {
-      const std::size_t count = input.variadic ? arguments.size() - argument : 1U;
+      const std::size_t count =
+          input.variadic ? arguments.size() - argument : 1U;
       if (argument + count > arguments.size()) {
         report("function call has too few arguments");
         return std::nullopt;
       }
       for (std::size_t item = 0; item < count; ++item) {
         const auto& actual = arguments[argument++];
-        if (actual &&
-            !unify(input.domain, ParameterValue(*actual), bindings)) {
+        if (actual && !unify(input.domain, ParameterValue(*actual), bindings)) {
           return std::nullopt;
         }
       }
@@ -302,8 +300,7 @@ public:
         actual = parameter_default(input);
       }
       if (!actual) {
-        if (!contract_->bindings.empty() &&
-            contract_->bindings[input_index]) {
+        if (!contract_->bindings.empty() && contract_->bindings[input_index]) {
           report("function call is missing Known argument '" + input.name +
                  "'");
           return std::nullopt;
@@ -326,8 +323,7 @@ public:
     }
     for (std::size_t index = 0; index < expected.size(); ++index) {
       if (expected[index] &&
-          !unify(value_results[index].domain,
-                 ParameterValue(*expected[index]),
+          !unify(value_results[index].domain, ParameterValue(*expected[index]),
                  bindings)) {
         return std::nullopt;
       }
@@ -385,11 +381,11 @@ public:
         if (!interface) {
           return std::nullopt;
         }
-        const auto field = std::find_if(
-            interface->fields().begin(), interface->fields().end(),
-            [&](const auto& candidate) {
-              return candidate.name == derived.name;
-            });
+        const auto field =
+            std::find_if(interface->fields().begin(), interface->fields().end(),
+                         [&](const auto& candidate) {
+                           return candidate.name == derived.name;
+                         });
         if (field != interface->fields().end()) {
           matches.push_back(*field);
         }
@@ -444,9 +440,8 @@ private:
     std::optional<Declaration> result;
     if constexpr (std::is_same_v<Declaration, Module::TypeDecl>) {
       result = module->type(local);
-    } else if constexpr (std::is_same_v<Declaration,
-                                        Module::FunctionDecl>) {
-      result = module->function(local);
+    } else if constexpr (std::is_same_v<Declaration, Module::FunctionDecl>) {
+      result = module->declaration(local);
     } else {
       result = module->attribute(local);
     }
@@ -511,8 +506,7 @@ private:
         !environment_.conforms(type->schema(), *interface)) {
       if (interface) {
         report("type bound to '" + std::string(variable) +
-               "' does not implement interface '" + *generic->constraint +
-               "'");
+               "' does not implement interface '" + *generic->constraint + "'");
       }
       return false;
     }
@@ -520,11 +514,9 @@ private:
   }
 
   std::optional<ParameterValue>
-  expression_literal(const TypeExpression& expression,
-                     ValueKind expected) {
+  expression_literal(const TypeExpression& expression, ValueKind expected) {
     using Kind = TypeExpression::Kind;
-    if (expected == ValueKind::Integer &&
-        expression.kind == Kind::Number) {
+    if (expected == ValueKind::Integer && expression.kind == Kind::Number) {
       std::int64_t value = 0;
       const auto parsed = std::from_chars(
           expression.text.data(),
@@ -533,8 +525,7 @@ private:
           parsed.ptr == expression.text.data() + expression.text.size()) {
         return ParameterValue(value);
       }
-    } else if (expected == ValueKind::Real &&
-               expression.kind == Kind::Number) {
+    } else if (expected == ValueKind::Real && expression.kind == Kind::Number) {
       double value = 0.0;
       std::istringstream input(expression.text);
       input.imbue(std::locale::classic());
@@ -573,12 +564,12 @@ private:
     }
     const auto interface = interface_declaration(*generic.constraint);
     const auto field =
-        interface
-            ? std::find_if(interface->fields().begin(), interface->fields().end(),
-                           [&](const auto& candidate) {
-                             return candidate.name == field_name;
-                           })
-            : std::span<const Module::ParameterDecl>::iterator{};
+        interface ? std::find_if(interface->fields().begin(),
+                                 interface->fields().end(),
+                                 [&](const auto& candidate) {
+                                   return candidate.name == field_name;
+                                 })
+                  : std::span<const Module::ParameterDecl>::iterator{};
     if (!interface || field == interface->fields().end() ||
         field->domain != expected.domain) {
       report("ill-typed derived parameter '" + generic.name + "." +
@@ -587,16 +578,14 @@ private:
     }
     if (!environment_.conforms(type->schema(), *interface)) {
       report("type bound to '" + generic.name +
-             "' does not implement interface '" + *generic.constraint +
-             "'");
+             "' does not implement interface '" + *generic.constraint + "'");
       return std::nullopt;
     }
 
     const auto derived = std::find_if(
         type->schema().derived_parameters().begin(),
-        type->schema().derived_parameters().end(), [&](const auto& candidate) {
-          return candidate.name == field_name;
-        });
+        type->schema().derived_parameters().end(),
+        [&](const auto& candidate) { return candidate.name == field_name; });
     if (derived == type->schema().derived_parameters().end()) {
       const auto parameter = std::find_if(
           type->schema().parameters().begin(),
@@ -627,9 +616,8 @@ private:
       arguments.emplace(type->schema().parameters()[index].name,
                         parameters[index]);
     }
-    const std::string identity =
-        std::string(type->stable_name()) + "/derived/" +
-        std::string(field_name);
+    const std::string identity = std::string(type->stable_name()) +
+                                 "/derived/" + std::string(field_name);
     if (std::find(calls_.begin(), calls_.end(), identity) != calls_.end()) {
       report("recursive derived parameter '" + generic.name + "." +
              std::string(field_name) + "'");
@@ -644,11 +632,9 @@ private:
     return value;
   }
 
-  std::vector<Module::FunctionDecl>
-  operator_declarations(std::string_view symbol,
-                        Module::FunctionDecl::Fixity fixity,
-                        const Module::ParameterDecl& expected,
-                        std::size_t arity) {
+  std::vector<Module::FunctionDecl> operator_declarations(
+      std::string_view symbol, Module::FunctionDecl::Fixity fixity,
+      const Module::ParameterDecl& expected, std::size_t arity) {
     std::vector<Module::FunctionDecl> result;
     for (const auto& candidate :
          environment_.operators(scope_, symbol, fixity)) {
@@ -664,9 +650,10 @@ private:
     return result;
   }
 
-  std::optional<ParameterValue> evaluate_function(
-      const Module::FunctionDecl& function,
-      std::span<const ParameterValue> values, const Bindings& arguments) {
+  std::optional<ParameterValue>
+  evaluate_function(const Module::FunctionDecl& function,
+                    std::span<const ParameterValue> values,
+                    const Bindings& arguments) {
     const std::string identity = function.symbol().stable_name();
     if (std::find(calls_.begin(), calls_.end(), identity) != calls_.end()) {
       report("recursive compile-time call to '" +
@@ -680,8 +667,7 @@ private:
     } guard{calls_};
 
     if (environment_.require_hermetic_host_evaluation &&
-        (!environment_.can_evaluate ||
-         !environment_.can_evaluate(function))) {
+        (!environment_.can_evaluate || !environment_.can_evaluate(function))) {
       report("host implementation of function '" +
              function.symbol().qualified_name() +
              "' is guarded and cannot execute under Residual control");
@@ -695,8 +681,7 @@ private:
     const Module::Expression* body = ModuleAccess::expression(function);
     const auto results = parameter_results(function);
     if (body == nullptr || results.size() != 1U) {
-      report("compile-time function '" +
-             function.symbol().qualified_name() +
+      report("compile-time function '" + function.symbol().qualified_name() +
              "' has no available evaluator");
       return std::nullopt;
     }
@@ -811,7 +796,8 @@ private:
             contract_ ? contract_->generics.end() : empty_generics_.end();
         if (generic != generic_end) {
           return evaluate_derived_parameter(
-              *generic, std::string_view(expression.text).substr(field_dot + 1U),
+              *generic,
+              std::string_view(expression.text).substr(field_dot + 1U),
               expected, bindings);
         }
       }
@@ -842,32 +828,29 @@ private:
         report("malformed operator expression");
         return std::nullopt;
       }
-      const auto fixity =
-          expression.kind == Kind::Prefix
-              ? Module::FunctionDecl::Fixity::Prefix
-          : expression.kind == Kind::Postfix
-              ? Module::FunctionDecl::Fixity::Postfix
-              : Module::FunctionDecl::Fixity::Infix;
+      const auto fixity = expression.kind == Kind::Prefix
+                              ? Module::FunctionDecl::Fixity::Prefix
+                          : expression.kind == Kind::Postfix
+                              ? Module::FunctionDecl::Fixity::Postfix
+                              : Module::FunctionDecl::Fixity::Infix;
       auto overloads =
           operator_declarations(expression.text, fixity, expected, arity);
       overloads.erase(
-          std::remove_if(
-              overloads.begin(), overloads.end(),
-              [&](const Module::FunctionDecl& candidate) {
-                const auto inputs = parameter_inputs(candidate);
-                for (std::size_t index = 0; index < arity; ++index) {
-                  const auto actual =
-                      known_domain(expression.arguments[index], bindings);
-                  if (actual && inputs[index].domain != *actual) {
-                    return true;
-                  }
-                }
-                return false;
-              }),
+          std::remove_if(overloads.begin(), overloads.end(),
+                         [&](const Module::FunctionDecl& candidate) {
+                           const auto inputs = parameter_inputs(candidate);
+                           for (std::size_t index = 0; index < arity; ++index) {
+                             const auto actual = known_domain(
+                                 expression.arguments[index], bindings);
+                             if (actual && inputs[index].domain != *actual) {
+                               return true;
+                             }
+                           }
+                           return false;
+                         }),
           overloads.end());
       if (overloads.size() > 1U) {
-        report("compile-time operator '" + expression.text +
-               "' is ambiguous");
+        report("compile-time operator '" + expression.text + "' is ambiguous");
         return std::nullopt;
       }
       if (overloads.size() == 1U) {
@@ -877,8 +860,8 @@ private:
         values.reserve(arity);
         const auto inputs = parameter_inputs(function);
         for (std::size_t index = 0; index < arity; ++index) {
-          auto value = evaluate(expression.arguments[index], inputs[index],
-                                bindings);
+          auto value =
+              evaluate(expression.arguments[index], inputs[index], bindings);
           if (!value) {
             return std::nullopt;
           }
@@ -954,8 +937,8 @@ private:
               candidates.begin(), candidates.end(),
               [&](const CallCandidate& candidate) {
                 for (std::size_t index = 0; index < supplied.size(); ++index) {
-                  const auto& parameter = candidate.function.inputs()
-                      [candidate.parameters[index]];
+                  const auto& parameter =
+                      candidate.function.inputs()[candidate.parameters[index]];
                   if (!matches_parameter(parameter, supplied[index])) {
                     return true;
                   }
@@ -969,8 +952,7 @@ private:
         return std::nullopt;
       }
       if (candidates.size() != 1U) {
-        report("compile-time call to '" + expression.text +
-               "' is ambiguous");
+        report("compile-time call to '" + expression.text + "' is ambiguous");
         return std::nullopt;
       }
 
@@ -1121,28 +1103,26 @@ private:
     const std::size_t field_dot = expression.text.find('.');
     const auto field_generic =
         expression.kind == Kind::Reference && field_dot != std::string::npos
-            ? std::find_if(contract_ ? contract_->generics.begin()
-                                     : empty_generics_.begin(),
-                           contract_ ? contract_->generics.end()
-                                     : empty_generics_.end(),
-                           [&](const auto& candidate) {
-                             return candidate.name == std::string_view(
-                                 expression.text.data(), field_dot);
-                           })
+            ? std::find_if(
+                  contract_ ? contract_->generics.begin()
+                            : empty_generics_.begin(),
+                  contract_ ? contract_->generics.end() : empty_generics_.end(),
+                  [&](const auto& candidate) {
+                    return candidate.name ==
+                           std::string_view(expression.text.data(), field_dot);
+                  })
             : (contract_ ? contract_->generics.end() : empty_generics_.end());
     const auto generic_end =
         contract_ ? contract_->generics.end() : empty_generics_.end();
-    const bool computed = field_generic != generic_end ||
-                          expression.kind == Kind::Call ||
-                          expression.kind == Kind::If ||
-                          expression.kind == Kind::Evaluate ||
-                          expression.kind == Kind::Prefix ||
-                          expression.kind == Kind::Infix ||
-                          expression.kind == Kind::Postfix;
+    const bool computed =
+        field_generic != generic_end || expression.kind == Kind::Call ||
+        expression.kind == Kind::If || expression.kind == Kind::Evaluate ||
+        expression.kind == Kind::Prefix || expression.kind == Kind::Infix ||
+        expression.kind == Kind::Postfix;
     if (computed) {
-      Module::ParameterDecl expected{
-          "computed", domain_expression(ValueKind::Integer), false,
-          std::nullopt};
+      Module::ParameterDecl expected{"computed",
+                                     domain_expression(ValueKind::Integer),
+                                     false, std::nullopt};
       if (field_generic != generic_end) {
         const auto interface =
             field_generic->constraint
@@ -1151,13 +1131,12 @@ private:
         const std::string_view field_name =
             std::string_view(expression.text).substr(field_dot + 1U);
         const auto field =
-            interface
-                ? std::find_if(interface->fields().begin(),
-                               interface->fields().end(),
-                               [&](const auto& candidate) {
-                                 return candidate.name == field_name;
-                               })
-                : std::span<const Module::ParameterDecl>::iterator{};
+            interface ? std::find_if(interface->fields().begin(),
+                                     interface->fields().end(),
+                                     [&](const auto& candidate) {
+                                       return candidate.name == field_name;
+                                     })
+                      : std::span<const Module::ParameterDecl>::iterator{};
         if (!interface || field == interface->fields().end()) {
           report("unknown derived parameter '" + expression.text + "'");
           return false;
@@ -1173,16 +1152,15 @@ private:
             receiver_dot == std::string::npos
                 ? (contract_ ? contract_->generics.end()
                              : empty_generics_.end())
-                : std::find_if(
-                      contract_ ? contract_->generics.begin()
-                                : empty_generics_.begin(),
-                      contract_ ? contract_->generics.end()
-                                : empty_generics_.end(),
-                      [&](const auto& candidate) {
-                        return candidate.name == std::string_view(
-                                                     expression.text.data(),
-                                                     receiver_dot);
-                      });
+                : std::find_if(contract_ ? contract_->generics.begin()
+                                         : empty_generics_.begin(),
+                               contract_ ? contract_->generics.end()
+                                         : empty_generics_.end(),
+                               [&](const auto& candidate) {
+                                 return candidate.name ==
+                                        std::string_view(expression.text.data(),
+                                                         receiver_dot);
+                               });
         if (generic == generic_end) {
           std::vector<CallCandidate> candidates;
           for (const auto& function :
@@ -1340,13 +1318,11 @@ private:
 
 std::optional<ParameterValue> evaluate_known_expression(
     Compiler& compiler, std::string_view scope,
-    const Module::Expression& expression,
-    const Module::ParameterDecl& expected, const KnownBindings& bindings,
-    Diagnostics& diagnostics, std::optional<SourceRange> source,
-    bool allow_host_evaluation) {
+    const Module::Expression& expression, const Module::ParameterDecl& expected,
+    const KnownBindings& bindings, Diagnostics& diagnostics,
+    std::optional<SourceRange> source, bool allow_host_evaluation) {
   return Solver(environment(compiler, allow_host_evaluation),
-                std::string(scope), diagnostics,
-                std::move(source))
+                std::string(scope), diagnostics, std::move(source))
       .evaluate_known(expression, expected, bindings);
 }
 
@@ -1355,28 +1331,28 @@ infer_call_types(Compiler& compiler, const Module::FunctionDecl& schema,
                  std::span<const Type> arguments,
                  std::span<const std::optional<ParameterValue>> known_arguments,
                  std::span<const std::optional<Type>> expected_results,
-                 Diagnostics& diagnostics,
-                 std::optional<SourceRange> source) {
-  auto resolved = resolve_call_types(compiler, schema, arguments,
-                                     known_arguments, expected_results,
-                                     diagnostics, std::move(source));
-  return resolved ? std::optional<std::vector<Type>>{
-                        std::move(resolved->results)}
-                  : std::nullopt;
+                 Diagnostics& diagnostics, std::optional<SourceRange> source) {
+  auto resolved =
+      resolve_call_types(compiler, schema, arguments, known_arguments,
+                         expected_results, diagnostics, std::move(source));
+  return resolved
+             ? std::optional<std::vector<Type>>{std::move(resolved->results)}
+             : std::nullopt;
 }
 
-std::optional<std::vector<Type>> infer_call_types(
-    std::span<const Module> modules, const Module::FunctionDecl& schema,
-    std::span<const Type> arguments,
-    std::span<const std::optional<ParameterValue>> known_arguments,
-    std::span<const std::optional<Type>> expected_results,
-    Diagnostics& diagnostics, std::optional<SourceRange> source) {
-  auto resolved = resolve_call_types(modules, schema, arguments,
-                                     known_arguments, expected_results,
-                                     diagnostics, std::move(source));
-  return resolved ? std::optional<std::vector<Type>>{
-                        std::move(resolved->results)}
-                  : std::nullopt;
+std::optional<std::vector<Type>>
+infer_call_types(std::span<const Module> modules,
+                 const Module::FunctionDecl& schema,
+                 std::span<const Type> arguments,
+                 std::span<const std::optional<ParameterValue>> known_arguments,
+                 std::span<const std::optional<Type>> expected_results,
+                 Diagnostics& diagnostics, std::optional<SourceRange> source) {
+  auto resolved =
+      resolve_call_types(modules, schema, arguments, known_arguments,
+                         expected_results, diagnostics, std::move(source));
+  return resolved
+             ? std::optional<std::vector<Type>>{std::move(resolved->results)}
+             : std::nullopt;
 }
 
 std::optional<CallTypes> resolve_call_types(
@@ -1412,9 +1388,10 @@ std::optional<CallTypes> resolve_call_types(
       .infer(arguments, known_arguments, expected_results);
 }
 
-std::optional<std::vector<ParameterValue>> resolve_derived_parameters(
-    Compiler& compiler, const Module::TypeDecl& schema,
-    std::span<const ParameterValue> parameters, Diagnostics& diagnostics) {
+std::optional<std::vector<ParameterValue>>
+resolve_derived_parameters(Compiler& compiler, const Module::TypeDecl& schema,
+                           std::span<const ParameterValue> parameters,
+                           Diagnostics& diagnostics) {
   return Solver(environment(compiler), schema, diagnostics)
       .derive(schema, parameters);
 }

@@ -12,7 +12,6 @@
 #include "joggle/diagnostic.h"
 #include "joggle/ir.h"
 #include "joggle/module.h"
-#include "joggle/program.h"
 
 namespace joggle::ir {
 
@@ -25,7 +24,7 @@ struct FunctionCallPlan {
   std::vector<CallReplacement> replacements;
 };
 
-struct ProgramCallPlan {
+struct ModuleCallPlan {
   std::vector<FunctionCallPlan> functions;
   std::size_t changed = 0;
 };
@@ -93,14 +92,13 @@ inline bool apply_calls(Function& function,
 }
 
 template <typename Mapper>
-std::optional<ProgramCallPlan> plan_calls(const Program& program,
-                                          Mapper& mapper,
-                                          Diagnostics& diagnostics) {
-  ProgramCallPlan plan;
-  for (const std::string& name : program.function_names()) {
-    const Function* function = program.function(name);
+std::optional<ModuleCallPlan> plan_calls(const Module& module, Mapper& mapper,
+                                         Diagnostics& diagnostics) {
+  ModuleCallPlan plan;
+  for (const std::string& name : module.function_names()) {
+    const Function* function = module.function(name);
     if (function == nullptr) {
-      diagnostics.report("Program lost function '" + name + "'");
+      diagnostics.report("Module lost function '" + name + "'");
       return std::nullopt;
     }
     auto replacements = plan_calls(*function, mapper, diagnostics);
@@ -115,13 +113,12 @@ std::optional<ProgramCallPlan> plan_calls(const Program& program,
   return plan;
 }
 
-inline bool apply_calls(Program& program, const ProgramCallPlan& plan,
+inline bool apply_calls(Module& module, const ModuleCallPlan& plan,
                         Diagnostics& diagnostics) {
   for (const FunctionCallPlan& function_plan : plan.functions) {
-    Function* function = program.function(function_plan.name);
+    Function* function = module.function(function_plan.name);
     if (function == nullptr) {
-      diagnostics.report("Program lost function '" + function_plan.name +
-                         "'");
+      diagnostics.report("Module lost function '" + function_plan.name + "'");
       return false;
     }
     if (!apply_calls(*function, function_plan.replacements, diagnostics)) {
@@ -157,9 +154,9 @@ std::optional<std::size_t> map_calls(Function& function, Mapper&& mapper,
 }
 
 // Applies one call mapper to every Function on a private copy and publishes
-// the new Program only if every Function verifies.
+// the new Module only if every Function verifies.
 template <typename Mapper>
-std::optional<std::size_t> map_calls(Program& program, Mapper&& mapper,
+std::optional<std::size_t> map_calls(Module& module, Mapper&& mapper,
                                      Diagnostics& diagnostics) {
   using Mapped = std::invoke_result_t<Mapper&, const Instruction&>;
   static_assert(
@@ -168,8 +165,8 @@ std::optional<std::size_t> map_calls(Program& program, Mapper&& mapper,
       "a call mapper must return "
       "std::optional<joggle::Module::FunctionDecl>");
 
-  auto plan = transform_detail::plan_calls(
-      static_cast<const Program&>(program), mapper, diagnostics);
+  auto plan = transform_detail::plan_calls(static_cast<const Module&>(module),
+                                           mapper, diagnostics);
   if (!plan) {
     return std::nullopt;
   }
@@ -177,11 +174,11 @@ std::optional<std::size_t> map_calls(Program& program, Mapper&& mapper,
     return 0U;
   }
 
-  Program candidate = program;
+  Module candidate = module;
   if (!transform_detail::apply_calls(candidate, *plan, diagnostics)) {
     return std::nullopt;
   }
-  program = std::move(candidate);
+  module = std::move(candidate);
   return plan->changed;
 }
 
@@ -201,11 +198,11 @@ replace_calls(Function& function, const joggle::Module::FunctionDecl& from,
 }
 
 inline std::optional<std::size_t>
-replace_calls(Program& program, const joggle::Module::FunctionDecl& from,
+replace_calls(Module& module, const joggle::Module::FunctionDecl& from,
               const joggle::Module::FunctionDecl& to,
               Diagnostics& diagnostics) {
   return map_calls(
-      program,
+      module,
       [&](const Instruction& instruction)
           -> std::optional<joggle::Module::FunctionDecl> {
         return instruction.callee() == from

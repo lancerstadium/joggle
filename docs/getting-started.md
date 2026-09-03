@@ -56,9 +56,9 @@ namespace {
 
 bool bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
-  const auto keep = module.function("keep");
-  const auto replacement = module.function("replacement");
-  const auto rewrite = module.function("rewrite");
+  const auto keep = module.declaration("keep");
+  const auto replacement = module.declaration("replacement");
+  const auto rewrite = module.declaration("rewrite");
   if (!keep || !replacement || !rewrite) {
     diagnostics.report("example behavior does not match its Module");
     return false;

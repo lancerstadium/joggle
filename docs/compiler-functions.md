@@ -10,10 +10,10 @@ module deployment@1.0.0 {
 
   type estimate(cycles: int, bytes: int);
 
-  fn read(path: string) -> program;
-  fn optimize(input: program, target: target.config) -> program;
-  fn analyze(input: program, target: target.config) -> estimate;
-  fn emit(input: program, target: target.config) -> bytes;
+  fn read(path: string) -> module;
+  fn optimize(input: module, target: target.config) -> module;
+  fn analyze(input: module, target: target.config) -> estimate;
+  fn emit(input: module, target: target.config) -> bytes;
 
   fn compile(path: string, target: target.config) -> bytes {
     optimized = optimize(read(path), target);
@@ -29,13 +29,14 @@ analysis values as normal typed arguments.
 
 ## Artifact ownership
 
-The core owns two executable artifacts:
+The core exposes one top-level artifact and its Function elements:
 
-- `function` / `joggle::ir::Function` for one CFG and def-use graph;
-- `program` / `joggle::ir::Program` for a named collection of Functions.
+- `module` / `joggle::Module` is the identity, symbol, import, and ownership
+  boundary;
+- `function` / `joggle::ir::Function` is one editable CFG inside that Module.
 
-`program` values use copy-on-write Function storage. A native
-`program -> program` function receives an isolated value and publishes it only
+`module` values use copy-on-write Function storage. A native
+`module -> module` function receives an isolated value and publishes it only
 when invocation succeeds. A native Function transform edits through
 `Function::Edit`; `commit` verifies the candidate and rolls back failure.
 
@@ -56,7 +57,7 @@ The existing kernel provides the invariants every compiler function needs:
 - explicit Blocks, typed edges, SSA values, def-use and dominance queries;
 - structural and semantic verification on transactional edits;
 - deterministic evaluation budgets and guarded host effects;
-- canonical serialization of Functions and whole programs.
+- canonical serialization of Functions and whole modules.
 
 These guarantees are target-neutral. They are sufficient to write a correct
 transform without a target or device model in the kernel.
@@ -68,10 +69,10 @@ functions rather than a base class or registry:
 
 ```cpp
 auto changed = joggle::ir::replace_calls(
-    program, source_call, target_call, diagnostics);
+    module, source_call, target_call, diagnostics);
 
 auto selected = joggle::ir::map_calls(
-    program,
+    module,
     [&](const joggle::ir::Instruction& instruction)
         -> std::optional<joggle::Module::FunctionDecl> {
       return compiler.conforms(instruction.callee(), elementwise)
@@ -82,7 +83,7 @@ auto selected = joggle::ir::map_calls(
 ```
 
 Both functions return the number of changed calls, with `std::nullopt` on
-failure. The Function overload commits one verified edit. The Program overload
+failure. The Function overload commits one verified edit. The Module overload
 plans every replacement first, edits a private copy, detaches only changed
 Functions, and publishes nothing if any Function fails verification. Matching
 uses declaration handles or explicit interface queries; the utility never

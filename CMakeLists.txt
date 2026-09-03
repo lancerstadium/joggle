@@ -32,7 +32,7 @@ add_library(joggle
   src/execution_value.cpp
   src/expression_syntax.cpp
   src/ir.cpp
-  src/program.cpp
+  src/module_ir.cpp
   src/function_body.cpp
   src/module.cpp
   src/module_repository.cpp
@@ -152,9 +152,9 @@ if(JOGGLE_BUILD_TESTS)
   )
   add_test(NAME ir COMMAND joggle_ir_test)
 
-  add_executable(joggle_program_test tests/program_test.cpp)
-  target_link_libraries(joggle_program_test PRIVATE joggle::joggle)
-  add_test(NAME program COMMAND joggle_program_test)
+  add_executable(joggle_module_ir_test tests/module_ir_test.cpp)
+  target_link_libraries(joggle_module_ir_test PRIVATE joggle::joggle)
+  add_test(NAME module_ir COMMAND joggle_module_ir_test)
 
   add_executable(joggle_transform_test tests/transform_test.cpp)
   target_link_libraries(joggle_transform_test PRIVATE joggle::joggle)
@@ -214,8 +214,8 @@ if(JOGGLE_BUILD_TESTS)
       -DJOGGLE_BEHAVIOR_SOURCE=${CMAKE_CURRENT_BINARY_DIR}/behavior_plugin.joggle
       -DJOGGLE_BEHAVIOR=$<TARGET_FILE:joggle_test_behavior>
       -DJOGGLE_TARGET=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/function_target.joggle
-      -DJOGGLE_PROGRAM_TRANSFORM=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/program_transform.joggle
-      -DJOGGLE_PROGRAM_TRANSFORM_BEHAVIOR=$<TARGET_FILE:joggle_program_transform_behavior>
+      -DJOGGLE_MODULE_TRANSFORM=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/module_transform.joggle
+      -DJOGGLE_MODULE_TRANSFORM_BEHAVIOR=$<TARGET_FILE:joggle_module_transform_behavior>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/function_run_cli.cmake
   )
 
@@ -244,12 +244,12 @@ if(JOGGLE_BUILD_TESTS)
     PREFIX ""
     OUTPUT_NAME "behavior_failure"
   )
-  joggle_add_behavior(joggle_program_transform_behavior
-    MODULE tests/fixtures/program_transform.joggle
-    SOURCES tests/program_transform_behavior.cpp)
-  set_target_properties(joggle_program_transform_behavior PROPERTIES
+  joggle_add_behavior(joggle_module_transform_behavior
+    MODULE tests/fixtures/module_transform.joggle
+    SOURCES tests/module_transform_behavior.cpp)
+  set_target_properties(joggle_module_transform_behavior PROPERTIES
     PREFIX ""
-    OUTPUT_NAME "program_transform"
+    OUTPUT_NAME "module_transform"
   )
   add_executable(joggle_behavior_loader_test tests/behavior_loader_test.cpp)
   target_link_libraries(joggle_behavior_loader_test PRIVATE joggle::joggle)

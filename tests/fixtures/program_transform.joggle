@@ -1,5 +1,0 @@
-joggle 1;
-
-module program_transform@1.0.0 {
-  fn add_helper(input: program) -> program;
-}

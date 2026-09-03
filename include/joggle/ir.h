@@ -191,8 +191,7 @@ public:
   private:
     explicit Edit(std::shared_ptr<detail::FunctionIdentity> function);
     Instruction add(Block block, std::optional<Instruction> before,
-                    Module::FunctionDecl schema,
-                    std::vector<Value> arguments,
+                    Module::FunctionDecl schema, std::vector<Value> arguments,
                     std::vector<Type> result_types);
     std::unique_ptr<detail::FunctionEditState> state_;
     friend class Function;
@@ -225,6 +224,7 @@ public:
 private:
   struct Snapshot;
   explicit Function(std::vector<Module> modules);
+  Function fork() const;
   bool accepts(const Module::Symbol& symbol) const;
   std::shared_ptr<const Snapshot> snapshot() const;
   void restore(std::shared_ptr<const Snapshot> snapshot);
@@ -238,6 +238,7 @@ private:
   std::shared_ptr<detail::FunctionIdentity> function_;
 
   friend class joggle::Compiler;
+  friend class joggle::Module;
   friend struct joggle::detail::FunctionAccess;
 };
 

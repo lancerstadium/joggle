@@ -31,7 +31,8 @@ int main() {
       fn callback(input: i32) -> i32;
       fn apply(input: i32, body: (i32) -> i32) -> i32;
     }
-  )", "control.joggle");
+  )",
+               "control.joggle");
   if (!compiler.link()) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -39,20 +40,18 @@ int main() {
 
   const auto test_ir = compiler.module("test_ir");
   const auto control = compiler.module("control");
-  const auto integer_schema =
-      test_ir ? test_ir->type("integer") : std::nullopt;
-  const auto add_schema =
-      test_ir ? test_ir->function("add") : std::nullopt;
+  const auto integer_schema = test_ir ? test_ir->type("integer") : std::nullopt;
+  const auto add_schema = test_ir ? test_ir->declaration("add") : std::nullopt;
   const auto cast_schema =
-      test_ir ? test_ir->function("cast") : std::nullopt;
+      test_ir ? test_ir->declaration("cast") : std::nullopt;
   const auto source_schema =
-      control ? control->function("source") : std::nullopt;
+      control ? control->declaration("source") : std::nullopt;
   const auto add_i32_schema =
-      control ? control->function("add_i32") : std::nullopt;
+      control ? control->declaration("add_i32") : std::nullopt;
   const auto callback_schema =
-      control ? control->function("callback") : std::nullopt;
+      control ? control->declaration("callback") : std::nullopt;
   const auto apply_schema =
-      control ? control->function("apply") : std::nullopt;
+      control ? control->declaration("apply") : std::nullopt;
   const auto prelude = compiler.module("prelude");
   const auto callable_schema =
       prelude ? prelude->type("callable") : std::nullopt;
@@ -88,11 +87,13 @@ int main() {
   }
 
   bool ok = true;
-  ok &= expect(compiler.verify(*function), "a committed function body verifies");
-  ok &= expect(function->arguments().size() == 2U &&
-                   function->instructions().size() == 2U &&
-                   function->instructions() == function->instructions(),
-               "a Function owns one ordered instruction view across its blocks");
+  ok &=
+      expect(compiler.verify(*function), "a committed function body verifies");
+  ok &=
+      expect(function->arguments().size() == 2U &&
+                 function->instructions().size() == 2U &&
+                 function->instructions() == function->instructions(),
+             "a Function owns one ordered instruction view across its blocks");
   ok &= expect(add && add->value().type() == *integer &&
                    !add->result(0).is_function_argument() &&
                    !add->result(0).is_block_argument(),
@@ -115,14 +116,15 @@ int main() {
     }
   }
   const auto mixed_arguments = mixed->instructions().front().arguments();
-  ok &= expect(mixed_arguments.size() == 2U && mixed_arguments.front().known() &&
-                   mixed_arguments.front().get<std::int64_t>() == 7 &&
-                   !mixed_arguments.back().known(),
-               "one argument sequence carries Known and Residual Values");
+  ok &=
+      expect(mixed_arguments.size() == 2U && mixed_arguments.front().known() &&
+                 mixed_arguments.front().get<std::int64_t>() == 7 &&
+                 !mixed_arguments.back().known(),
+             "one argument sequence carries Known and Residual Values");
 
-  const auto callable = compiler.make(
-      *callable_schema, std::vector<joggle::Type>{*i32},
-      std::vector<joggle::Type>{*i32});
+  const auto callable =
+      compiler.make(*callable_schema, std::vector<joggle::Type>{*i32},
+                    std::vector<joggle::Type>{*i32});
   auto higher_order = compiler.function();
   if (!callable || !higher_order) {
     return EXIT_FAILURE;
@@ -149,9 +151,9 @@ int main() {
                        std::vector<joggle::ir::Instruction>{*applied},
                "a typed function reference is a globally dominating value");
   bool wrong_callable_rejected = false;
-  const auto wrong_callable = compiler.make(
-      *callable_schema, std::vector<joggle::Type>{*boolean},
-      std::vector<joggle::Type>{*i32});
+  const auto wrong_callable =
+      compiler.make(*callable_schema, std::vector<joggle::Type>{*boolean},
+                    std::vector<joggle::Type>{*i32});
   try {
     auto edit = higher_order->edit();
     if (wrong_callable) {
@@ -198,8 +200,9 @@ int main() {
       return EXIT_FAILURE;
     }
   }
-  ok &= expect(add && !original_add.valid() && add->arguments().size() == 2U,
-               "replacement preserves arguments and invalidates the old handle");
+  ok &=
+      expect(add && !original_add.valid() && add->arguments().size() == 2U,
+             "replacement preserves arguments and invalidates the old handle");
 
   bool missing_argument_rejected = false;
   try {
@@ -238,7 +241,8 @@ int main() {
   }
   ok &= expect(first_cast && !first_cast->valid() && second_cast &&
                    second_cast->arguments().front() == add->result(0) &&
-                   function->entry().terminator().returned().front() == add->result(0),
+                   function->entry().terminator().returned().front() ==
+                       add->result(0),
                "replace rewires instruction and boundary uses before erase");
 
   auto queried = compiler.function();
@@ -253,8 +257,8 @@ int main() {
     queried_input = edit.argument(*i32);
     queried_first =
         edit.append(*add_i32_schema, {*queried_input, *queried_input});
-    queried_second = edit.append(
-        *add_i32_schema, {queried_first->result(0), *queried_input});
+    queried_second = edit.append(*add_i32_schema,
+                                 {queried_first->result(0), *queried_input});
     edit.ret(queried->entry(), {queried_second->result(0)});
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -264,22 +268,20 @@ int main() {
   }
   const auto input_users = queried->users(*queried_input);
   const auto first_users = queried->users(queried_first->result(0));
-  ok &= expect(input_users.size() == 2U &&
-                   input_users[0] == *queried_first &&
-                   input_users[1] == *queried_second &&
-                   first_users.size() == 1U &&
-                   first_users.front() == *queried_second,
-               "use queries return each consuming instruction once in function order");
+  ok &= expect(
+      input_users.size() == 2U && input_users[0] == *queried_first &&
+          input_users[1] == *queried_second && first_users.size() == 1U &&
+          first_users.front() == *queried_second,
+      "use queries return each consuming instruction once in function order");
   ok &= expect(queried->has_uses(queried_second->result(0)) &&
                    queried->users(queried_second->result(0)).empty(),
                "boundary uses count without pretending terminators are "
                "instructions");
-  ok &= expect(queried->dominates(*queried_input, *queried_first) &&
-                   queried->dominates(queried_first->result(0),
-                                      *queried_second) &&
-                   !queried->dominates(queried_second->result(0),
-                                       *queried_first),
-               "value dominance follows arguments, blocks, and instruction order");
+  ok &= expect(
+      queried->dominates(*queried_input, *queried_first) &&
+          queried->dominates(queried_first->result(0), *queried_second) &&
+          !queried->dominates(queried_second->result(0), *queried_first),
+      "value dominance follows arguments, blocks, and instruction order");
 
   auto inconsistent_returns = compiler.function();
   if (!inconsistent_returns) {
@@ -345,14 +347,13 @@ int main() {
     }
   }
   const auto entry_terminator = branched->entry().terminator();
-  ok &= expect(compiler.verify(*branched) && branched->blocks().size() == 4U &&
-                   merge && merge->arguments().front().is_block_argument() &&
-                   entry_terminator.kind() ==
-                       joggle::ir::Terminator::Kind::Branch &&
-                   entry_terminator.successor_count() == 2U &&
-                   merge->terminator().returned().front() ==
-                       merge->arguments().front(),
-               "branches use sibling blocks and typed successor arguments");
+  ok &= expect(
+      compiler.verify(*branched) && branched->blocks().size() == 4U && merge &&
+          merge->arguments().front().is_block_argument() &&
+          entry_terminator.kind() == joggle::ir::Terminator::Kind::Branch &&
+          entry_terminator.successor_count() == 2U &&
+          merge->terminator().returned().front() == merge->arguments().front(),
+      "branches use sibling blocks and typed successor arguments");
   const auto left_predecessors = branched->predecessors(*left);
   const auto merge_predecessors = branched->predecessors(*merge);
   ok &= expect(branched->predecessors(branched->entry()).empty() &&
@@ -366,12 +367,13 @@ int main() {
                    branched->dominates(*left, *left) &&
                    !branched->dominates(*left, *merge),
                "block dominance is queried directly from a Function");
-  ok &= expect(branched->has_uses(*branch_condition) &&
-                   branched->users(*branch_condition).empty() &&
-                   branched->has_uses(*branch_lhs) &&
-                   branched->users(*branch_lhs).empty() &&
-                   branched->has_uses(merge->arguments().front()),
-               "branch, edge, and return operands are visible as boundary uses");
+  ok &=
+      expect(branched->has_uses(*branch_condition) &&
+                 branched->users(*branch_condition).empty() &&
+                 branched->has_uses(*branch_lhs) &&
+                 branched->users(*branch_lhs).empty() &&
+                 branched->has_uses(merge->arguments().front()),
+             "branch, edge, and return operands are visible as boundary uses");
 
   auto invalid_edge = compiler.function();
   if (!invalid_edge) {

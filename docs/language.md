@@ -28,7 +28,7 @@ same Prelude name; a local or imported operator with the same signature hides
 that Prelude operator. `prelude.name` explicitly selects the ambient
 declaration. Unrelated installed Modules cannot alter overload resolution.
 
-## Compiler domains and program types
+## Compiler domains and module types
 
 The compiler domains are:
 
@@ -37,11 +37,12 @@ int  real  bool  string  type  attr  bytes  function  list<D>
 ```
 
 They describe values held by the compiler. `function` carries one executable
-IR Function. Prelude additionally declares the ordinary type `program`, whose
-core host representation carries a named set of executable IR Functions.
+IR Function. Prelude additionally declares `module`, whose host representation
+is the same `joggle::Module` returned by parsing and used as the pass boundary;
+it is not a second container.
 `i1`, `i8`, `i16`, `i32`, `i64`,
 `u8`, `u16`, `u32`, `u64`, `f16`, `bf16`, `f32`, `f64`, and `index` are
-program types declared by the Prelude. Custom program types use the same
+module types declared by the Prelude. Custom module types use the same
 declaration mechanism:
 
 ```joggle
@@ -114,7 +115,7 @@ fn encode<T: numeric_format>(input: T) -> word<T.storage_bits>;
 ```
 
 `width: N` means that this Known input binds generic `N`; its concrete domain
-is `int`. Program inputs such as `input: T` infer a type generic from the
+is `int`. Module inputs such as `input: T` infer a type generic from the
 operand. Generics participate in dependent result types and overload solving.
 A generic bound by a Known input is also a normal Known local inside a defined
 body, so `N` or `S: list<int>` may drive expressions and control flow.
@@ -125,7 +126,7 @@ call shapes; each concrete specialization then validates the selected staged
 paths and resolved types. Defaults make a specialization available to package
 checking without a caller.
 
-Compiler lists are `list<D>`. Variadic `T...` is reserved for program-value
+Compiler lists are `list<D>`. Variadic `T...` is reserved for module-value
 inputs; compiler callbacks always have a finite C++ signature.
 
 ## Prelude functions and operators
@@ -214,13 +215,13 @@ either Known to the compiler or Residual in the generated Function.
 - A computation under `@` must finish Known.
 
 The same declared function can therefore execute now in one invocation and
-remain in the program in another. Host execution is bounded by the Compiler's
+remain in the module in another. Host execution is bounded by the Compiler's
 step and depth limits. A binding marked non-Hermetic is not speculated below
 Residual control.
 
-When a Known compiler payload must enter the program, the compiler selects one
+When a Known compiler payload must enter the module, the compiler selects one
 visible ordinary function implementing `prelude.literal` for the required
-program type. There is no built-in constant Instruction or materializer hook.
+module type. There is no built-in constant Instruction or materializer hook.
 
 ## Conditional control flow
 

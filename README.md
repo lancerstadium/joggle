@@ -7,11 +7,13 @@ device model.
 
 The design is intentionally small:
 
-- `joggle::Module` is a versioned package of declarations and contracts;
+- `joggle::Module` is the only top-level object: a versioned symbol scope and
+  multi-Function IR owner;
 - `fn` is the only callable declaration;
 - values are typed independently of whether they are Known to the compiler or
-  Residual in a program;
-- executable IR is uniformly under `joggle::ir`;
+  Residual in a module;
+- a second whole-IR container, Graph owner, or public package object does not
+  exist;
 - loading, transformation, analysis, simulation, and emission are ordinary
   typed functions.
 
@@ -40,7 +42,7 @@ module example@1.0.0 {
 Here `count: N` binds integer generic `N`, and the ordinary Prelude function
 `range(N)` produces a Known list. `for` expands deterministically at compile
 time, while each `identity` call may remain as a normal Residual Instruction.
-The same body can therefore express compiler decisions and the program they
+The same body can therefore express compiler decisions and the module they
 produce without a second metaprogramming language.
 
 ## Build
@@ -84,8 +86,8 @@ It is ambient and cannot be replaced by package search.
 - `buffer`: explicit storage values and token-ordered effects.
 
 These Modules are not an ordered lowering stack. Extensions may import and
-bridge them in either direction. Prelude's `program` type carries an entire
-`joggle::ir::Program` through ordinary compiler functions; it is not another
+bridge them in either direction. Prelude's `module` type carries an entire
+`joggle::Module` through ordinary compiler functions; it is not another
 installable vocabulary.
 
 ## Documentation

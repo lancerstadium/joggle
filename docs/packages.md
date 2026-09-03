@@ -1,9 +1,9 @@
 # Packages and reproducibility
 
-The package unit is `joggle::Module`: one canonical source file, one semantic
-version, and one SHA-256 content identity. The public library has no separate
-Package object; the CLI manages installed repositories and `Compiler` resolves
-ordinary search paths.
+A release is one serialized `joggle::Module`: one canonical source file, one
+semantic version, and one SHA-256 content identity. Packaging is repository
+metadata, not another language object or IR owner. The CLI manages installed
+releases and `Compiler` resolves ordinary search paths.
 
 ## Commands
 

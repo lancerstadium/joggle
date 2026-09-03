@@ -11,14 +11,13 @@ The source and C++ names correspond directly:
 
 | Source concept | C++ type | Meaning |
 | --- | --- | --- |
-| `module name@version { ... }` | `joggle::Module` | Immutable declaration package and contracts |
-| `function` | `joggle::ir::Function` | One executable CFG and def-use graph |
-| `program` | `joggle::ir::Program` | Named collection of executable Functions |
+| `module name@version { ... }` / `module` | `joggle::Module` | The single identity, symbol, import, and multi-Function IR owner |
+| `function` | `joggle::ir::Function` | One executable CFG and def-use graph inside a Module |
 
 All executable IR ownership types share one namespace and one hierarchy:
 
 ```text
-joggle::ir::Program
+joggle::Module
   └─ joggle::ir::Function
        └─ joggle::ir::Block
             ├─ joggle::ir::Instruction
@@ -26,9 +25,16 @@ joggle::ir::Program
             └─ joggle::ir::Terminator
 ```
 
-There are no root aliases for IR types and no second object called Module.
-`module` always denotes a declaration/package boundary; `program` always
-denotes a transformable whole-program artifact.
+There is no second whole-IR container, graph container, or public package object.
+Parsing returns a `Module`; whole-module compiler functions consume and return
+that same type. A repository may package a serialized Module with native
+behavior, but packaging does not create another language or IR layer.
+
+Declarations and materialized bodies are two states inside the same Module,
+not separate owners. `declaration(name)` reflects an overloadable source
+signature; `function(name)` accesses a concrete editable body. This boundary
+will narrow further as generic specialization moves into the unified Function
+handle, without reintroducing a second Module representation.
 
 The other public concepts are small:
 
@@ -44,10 +50,10 @@ Loading, transforming, analysing, simulating, and emitting are roles of typed
 functions, not compiler subsystems or declaration kinds. For example:
 
 ```joggle
-fn read_onnx(path: string) -> program;
-fn legalize(input: program, target: target) -> program;
-fn estimate(input: program, target: target) -> estimate;
-fn emit(input: program, target: target) -> bytes;
+fn read_onnx(path: string) -> module;
+fn legalize(input: module, target: target) -> module;
+fn estimate(input: module, target: target) -> estimate;
+fn emit(input: module, target: target) -> bytes;
 ```
 
 The signatures state what composes. A Module may define a body in Joggle, bind
@@ -97,10 +103,10 @@ source evaluator do not invent a unit result or a separate result container.
 ## One graph, no Graph object
 
 A Function already contains the nodes and relations needed by graph-shaped AI
-programs. Its Blocks and terminators define the CFG; Instructions and Values
+workloads. Its Blocks and terminators define the CFG; Instructions and Values
 define def-use. `predecessors`, `users`, and `dominates` query those relations
 directly. Analyses may cache richer products, but they do not own a second
-program representation.
+module representation.
 
 Structured source is an authoring form over this IR. It is not a Region tree.
 Instructions never own Blocks. Explicit Blocks remain available for arbitrary
@@ -108,11 +114,11 @@ transformation output and exact serialization.
 
 ## Trusted kernel and extension plane
 
-The kernel implements parsing, canonical formatting, module identity, package
+The kernel implements parsing, canonical formatting, module identity, release
 resolution, typed values, overload and dependent-type solving, staged
 execution, IR ownership, transactions, and verification. The ambient Prelude
 declares compiler domains, native scalar types, callable types, interfaces,
-the whole-program `program` type, and compiler-domain primitive functions. Its
+the whole-module `module` type, and compiler-domain primitive functions. Its
 source is embedded from `language/prelude.joggle`, so source tooling and the
 runtime share one authority. Those primitives use the same `fn`
 resolution and execution path as extension functions; the kernel contributes
@@ -124,7 +130,7 @@ format, schedule, simulator, or emitter belongs in installable Modules and
 optional behavior libraries. This boundary keeps the core small while leaving
 experiments inspectable and serializable.
 
-Prelude's `program` is represented by `joggle::ir::Program`; `function` is
+Prelude's `module` is represented by `joggle::Module`; `function` is
 represented by `joggle::ir::Function`. These are the only core-owned host
 artifact mappings. Extension-owned schedules, estimates, traces, object files,
 or target descriptions use ordinary declared types and `Compiler::represent`.

@@ -80,7 +80,7 @@ bool expect(bool condition, std::string_view message) {
 }
 
 std::optional<joggle::ir::Function> load_function(joggle::Compiler& compiler,
-                                              std::string_view text) {
+                                                  std::string_view text) {
   compiler.add(text, "logic.joggle");
   if (!compiler.link()) {
     return std::nullopt;
@@ -103,21 +103,19 @@ int main() {
   bool ok = true;
   ok &= expect(module.has_value(), "the function owner remains available");
   const auto configured_decl =
-      module ? module->function("configured") : std::nullopt;
+      module ? module->declaration("configured") : std::nullopt;
   const auto default_configured_decl =
-      module ? module->function("default_configured") : std::nullopt;
+      module ? module->declaration("default_configured") : std::nullopt;
   const auto configured_int = compiler.make("int");
-  const auto scale =
-      configured_int ? compiler.known(*configured_int, std::int64_t{8})
-                     : std::nullopt;
-  const auto configured =
-      scale && configured_decl
-          ? compiler.function(*configured_decl, {*scale})
-          : std::nullopt;
+  const auto scale = configured_int
+                         ? compiler.known(*configured_int, std::int64_t{8})
+                         : std::nullopt;
+  const auto configured = scale && configured_decl
+                              ? compiler.function(*configured_decl, {*scale})
+                              : std::nullopt;
   const auto default_configured =
-      default_configured_decl
-          ? compiler.function(*default_configured_decl)
-          : std::nullopt;
+      default_configured_decl ? compiler.function(*default_configured_decl)
+                              : std::nullopt;
   const auto callback_user = compiler.function("logic.callback_user");
   const auto callback_value = compiler.function("logic.callback_value");
   const auto generic_callback_value =
@@ -128,8 +126,9 @@ int main() {
       compiler.function("logic.direct_generic_callback_value");
   const auto direct_overloaded_callback_value =
       compiler.function("logic.direct_overloaded_callback_value");
-  const auto callback_arguments =
-      callback_user ? callback_user->arguments() : std::vector<joggle::ir::Value>{};
+  const auto callback_arguments = callback_user
+                                      ? callback_user->arguments()
+                                      : std::vector<joggle::ir::Value>{};
   const auto callback_parameters =
       callback_arguments.size() == 2U
           ? callback_arguments[1].type().get<std::vector<joggle::Type>>(
@@ -140,25 +139,23 @@ int main() {
           ? callback_arguments[1].type().get<std::vector<joggle::Type>>(
                 "results")
           : std::optional<std::vector<joggle::Type>>{};
-  ok &= expect(configured_decl && configured && default_configured &&
-                   configured_decl->inputs().size() == 2U &&
-                   configured_decl->inputs().front().name == "scale" &&
-                   configured->arguments().size() == 1U &&
-                   configured->arguments().front().type().get<std::int64_t>(
-                       "width") == std::optional<std::int64_t>{8} &&
-                   configured->result_types().front().get<std::int64_t>(
-                       "width") == std::optional<std::int64_t>{8} &&
-                   default_configured->arguments().front().type().get<
-                       std::int64_t>("width") ==
-                       std::optional<std::int64_t>{8} &&
-                   default_configured->result_types().front().get<
-                       std::int64_t>("width") ==
-                       std::optional<std::int64_t>{8},
-               "a function signature has one public parameter sequence while "
-               "Known specialization resolves its residual boundary");
+  ok &= expect(
+      configured_decl && configured && default_configured &&
+          configured_decl->inputs().size() == 2U &&
+          configured_decl->inputs().front().name == "scale" &&
+          configured->arguments().size() == 1U &&
+          configured->arguments().front().type().get<std::int64_t>("width") ==
+              std::optional<std::int64_t>{8} &&
+          configured->result_types().front().get<std::int64_t>("width") ==
+              std::optional<std::int64_t>{8} &&
+          default_configured->arguments().front().type().get<std::int64_t>(
+              "width") == std::optional<std::int64_t>{8} &&
+          default_configured->result_types().front().get<std::int64_t>(
+              "width") == std::optional<std::int64_t>{8},
+      "a function signature has one public parameter sequence while "
+      "Known specialization resolves its residual boundary");
   ok &= expect(callback_user && callback_arguments.size() == 2U &&
-                   callback_arguments[1].type().schema().name() ==
-                       "callable" &&
+                   callback_arguments[1].type().schema().name() == "callable" &&
                    callback_parameters && callback_parameters->size() == 1U &&
                    callback_results && callback_results->size() == 1U &&
                    callback_parameters->front().get<std::int64_t>("width") ==
@@ -177,12 +174,12 @@ int main() {
   const auto referenced = applied_arguments.size() == 2U
                               ? applied_arguments[1].referenced_function()
                               : std::optional<joggle::Module::FunctionDecl>{};
-  ok &= expect(callback_value && callback_operations.size() == 1U &&
-                   referenced &&
-                   referenced->symbol().qualified_name() == "logic.callback" &&
-                   applied_arguments[1].type().schema().name() == "callable",
-               "a named function is a typed program value without a region "
-               "or wrapper instruction");
+  ok &=
+      expect(callback_value && callback_operations.size() == 1U && referenced &&
+                 referenced->symbol().qualified_name() == "logic.callback" &&
+                 applied_arguments[1].type().schema().name() == "callable",
+             "a named function is a typed module value without a region "
+             "or wrapper instruction");
   const std::string callback_text =
       callback_value ? joggle::format(*callback_value, "compiled_callback")
                      : "";
@@ -236,11 +233,10 @@ int main() {
           : "";
   joggle::Compiler contextual_compiler;
   contextual_compiler.add(source, "logic.joggle");
-  contextual_compiler.add(
-      "joggle 1;\nmodule contextual_artifact@1.0.0 {\n"
-      "  import logic@1;\n" +
-          generic_text + overloaded_text + "}\n",
-      "contextual-artifact.joggle");
+  contextual_compiler.add("joggle 1;\nmodule contextual_artifact@1.0.0 {\n"
+                          "  import logic@1;\n" +
+                              generic_text + overloaded_text + "}\n",
+                          "contextual-artifact.joggle");
   const bool contextual_linked = contextual_compiler.link();
   const auto replayed_generic =
       contextual_linked
@@ -248,14 +244,13 @@ int main() {
           : std::optional<joggle::ir::Function>{};
   const auto replayed_overloaded =
       contextual_linked
-          ? contextual_compiler.function(
-                "contextual_artifact.overloaded_value")
+          ? contextual_compiler.function("contextual_artifact.overloaded_value")
           : std::optional<joggle::ir::Function>{};
   ok &= expect(replayed_generic && replayed_overloaded &&
                    joggle::format(*replayed_generic, "generic_value") ==
                        generic_text &&
-                   joggle::format(*replayed_overloaded,
-                                  "overloaded_value") == overloaded_text,
+                   joggle::format(*replayed_overloaded, "overloaded_value") ==
+                       overloaded_text,
                "context-selected function values preserve their callable "
                "type across canonical serialization");
   const auto direct_generic_arguments =
@@ -266,9 +261,7 @@ int main() {
   const auto direct_overloaded_arguments =
       direct_overloaded_callback_value &&
               direct_overloaded_callback_value->instructions().size() == 1U
-          ? direct_overloaded_callback_value->instructions()
-                .front()
-                .arguments()
+          ? direct_overloaded_callback_value->instructions().front().arguments()
           : std::vector<joggle::ir::Value>{};
   ok &= expect(direct_generic_arguments.size() == 2U &&
                    direct_generic_arguments[1].referenced_function() &&
@@ -291,12 +284,14 @@ int main() {
                    joggle::format(*module_roundtrip) == module_text,
                "function types format and parse canonically");
   joggle::Diagnostics invalid_callback_diagnostics;
-  const auto invalid_callback = joggle::parse_module(R"(
+  const auto invalid_callback = joggle::parse_module(
+      R"(
 joggle 1;
 module invalid_callback@1.0.0 {
   fn apply(body: (missing) -> i32) -> i32;
 }
-)", invalid_callback_diagnostics, "invalid-callback.joggle");
+)",
+      invalid_callback_diagnostics, "invalid-callback.joggle");
   ok &= expect(!invalid_callback && !invalid_callback_diagnostics.ok(),
                "types nested in callable signatures are name-resolved");
   const auto main_symbol =
@@ -307,25 +302,24 @@ module invalid_callback@1.0.0 {
   ok &= expect(reflected_function &&
                    reflected_function->instructions().size() == 2U,
                "a reflected function symbol opens without rebuilding its name");
-  ok &= expect(
-      function->declaration() && main_symbol &&
-          function->declaration()->symbol() == *main_symbol &&
-          function->result_types().size() == 1U &&
-          function->arguments().size() == 1U && operations.size() == 2U &&
-          function->entry().terminator().returned().size() == 1U &&
-          function->entry().terminator().returned().front() ==
-              operations.back().result(0) &&
-          operations.back().result(0).type() ==
-              function->arguments().front().type() &&
-          function->result_types().front() ==
-              operations.back().result(0).type(),
-      "a concrete function signature and its SSA boundary agree");
+  ok &= expect(function->declaration() && main_symbol &&
+                   function->declaration()->symbol() == *main_symbol &&
+                   function->result_types().size() == 1U &&
+                   function->arguments().size() == 1U &&
+                   operations.size() == 2U &&
+                   function->entry().terminator().returned().size() == 1U &&
+                   function->entry().terminator().returned().front() ==
+                       operations.back().result(0) &&
+                   operations.back().result(0).type() ==
+                       function->arguments().front().type() &&
+                   function->result_types().front() ==
+                       operations.back().result(0).type(),
+               "a concrete function signature and its SSA boundary agree");
   ok &= expect(operations.front().get<std::string>("name") ==
                    "input } // still a string",
                "function boundaries are parsed by the real string grammar");
 
-  const std::string emitted =
-      joggle::format(*function, "compiled");
+  const std::string emitted = joggle::format(*function, "compiled");
   joggle::Compiler emitted_compiler;
   emitted_compiler.add(source, "logic.joggle");
   emitted_compiler.add("joggle 1;\nmodule artifact@1.0.0 {\n"
@@ -450,36 +444,32 @@ module cfg@1.0.0 {
 }
 )";
   joggle::Diagnostics cfg_diagnostics;
-  const auto cfg = joggle::parse_module(cfg_source, cfg_diagnostics,
-                                        "cfg.joggle");
+  const auto cfg =
+      joggle::parse_module(cfg_source, cfg_diagnostics, "cfg.joggle");
   const std::string cfg_canonical = cfg ? joggle::format(*cfg) : std::string{};
   joggle::Diagnostics cfg_roundtrip_diagnostics;
   const auto cfg_roundtrip =
       cfg ? joggle::parse_module(cfg_canonical, cfg_roundtrip_diagnostics,
                                  "cfg-canonical.joggle")
           : std::nullopt;
-  ok &= expect(cfg && cfg_roundtrip && cfg_diagnostics.ok() &&
-                   cfg_roundtrip_diagnostics.ok() &&
-                   joggle::format(*cfg_roundtrip) == cfg_canonical &&
-                   cfg_canonical.find("branch condition, left(), right();") !=
-                       std::string::npos &&
-                   cfg_canonical.find("merge(value: word):") !=
-                       std::string::npos &&
-                   cfg_canonical.find(
-                       "return if condition { identity(lhs) } else { "
-                       "identity(rhs) };") !=
-                       std::string::npos &&
-                   cfg_canonical.find("if condition {\n") !=
-                       std::string::npos &&
-                   cfg_canonical.find("      return identity(lhs);\n") !=
-                       std::string::npos &&
-                   cfg_canonical.find(
-                       "      return identity(rhs);\n"
-                       "    }\n"
-                       "  }\n"
-                       "  fn specialized_return") != std::string::npos,
-               "one expression tree round-trips structured and explicit "
-               "region-free control flow");
+  ok &= expect(
+      cfg && cfg_roundtrip && cfg_diagnostics.ok() &&
+          cfg_roundtrip_diagnostics.ok() &&
+          joggle::format(*cfg_roundtrip) == cfg_canonical &&
+          cfg_canonical.find("branch condition, left(), right();") !=
+              std::string::npos &&
+          cfg_canonical.find("merge(value: word):") != std::string::npos &&
+          cfg_canonical.find("return if condition { identity(lhs) } else { "
+                             "identity(rhs) };") != std::string::npos &&
+          cfg_canonical.find("if condition {\n") != std::string::npos &&
+          cfg_canonical.find("      return identity(lhs);\n") !=
+              std::string::npos &&
+          cfg_canonical.find("      return identity(rhs);\n"
+                             "    }\n"
+                             "  }\n"
+                             "  fn specialized_return") != std::string::npos,
+      "one expression tree round-trips structured and explicit "
+      "region-free control flow");
 
   joggle::Compiler cfg_compiler;
   cfg_compiler.add(cfg_source, "cfg.joggle");
@@ -495,8 +485,7 @@ module cfg@1.0.0 {
   const auto cfg_materialized =
       cfg_linked ? cfg_compiler.function("cfg.materialized") : std::nullopt;
   const auto cfg_statement_branch =
-      cfg_linked ? cfg_compiler.function("cfg.statement_branch")
-                 : std::nullopt;
+      cfg_linked ? cfg_compiler.function("cfg.statement_branch") : std::nullopt;
   const auto cfg_statement_specialized =
       cfg_linked ? cfg_compiler.function("cfg.statement_specialized")
                  : std::nullopt;
@@ -523,97 +512,91 @@ module cfg@1.0.0 {
   const auto early_literal_operations =
       cfg_early_literal ? cfg_early_literal->instructions()
                         : std::vector<joggle::ir::Instruction>{};
-  ok &= expect(cfg_function && cfg_structured && cfg_specialized &&
-                   cfg_nested && cfg_materialized &&
-                   cfg_compiler.verify(*cfg_function) &&
-                   cfg_compiler.verify(*cfg_structured) &&
-                   cfg_compiler.verify(*cfg_specialized) &&
-                   cfg_compiler.verify(*cfg_nested) &&
-                   cfg_compiler.verify(*cfg_materialized) &&
-                   cfg_function->blocks().size() == 4U &&
-                   cfg_structured->blocks().size() == 4U &&
-                   cfg_specialized->blocks().size() == 1U &&
-                   cfg_nested->blocks().size() == 7U &&
-                   cfg_structured->instructions().size() == 2U &&
-                   cfg_specialized->instructions().size() == 1U &&
-                   cfg_nested->instructions().size() == 3U &&
-                   cfg_specialized->entry().terminator().returned().front() ==
-                       cfg_specialized->instructions().front().result(0) &&
-                   cfg_function->entry().terminator().kind() ==
-                       joggle::ir::Terminator::Kind::Branch &&
-                   cfg_structured->entry().terminator().kind() ==
-                       joggle::ir::Terminator::Kind::Branch &&
-                   cfg_function->blocks().back().arguments().size() == 1U &&
-                   cfg_function->blocks().back().terminator().returned().front() ==
-                       cfg_function->blocks().back().arguments().front() &&
-                   cfg_ir.find("branch arg0, block1(), block2();") !=
-                       std::string::npos &&
-                   cfg_ir.find("block3(arg3: cfg.word):") !=
-                       std::string::npos,
-               "explicit source blocks instantiate as Function-owned CFG and "
-               "format without a nested ownership container");
-  ok &= expect(cfg_materialized &&
-                   cfg_materialized->blocks().size() == 4U &&
-                   cfg_materialized->instructions().size() == 2U &&
-                   std::all_of(
-                       materialized_operations.begin(),
-                       materialized_operations.end(),
-                       [](const joggle::ir::Instruction& instruction) {
-                         return instruction.callee().name() ==
-                                "integer_literal";
-                       }) &&
-                   cfg_materialized->result_types().front() ==
-                       cfg_materialized->blocks().back().arguments().front().type(),
-               "unequal Known branch values use a visible literal function "
-               "before crossing Residual edges");
-  ok &= expect(cfg_statement_branch && cfg_statement_specialized &&
-                   cfg_statement_without_else &&
-                   cfg_compiler.verify(*cfg_statement_branch) &&
-                   cfg_compiler.verify(*cfg_statement_specialized) &&
-                   cfg_compiler.verify(*cfg_statement_without_else) &&
-                   cfg_statement_branch->blocks().size() == 4U &&
-                   cfg_statement_branch->instructions().size() == 2U &&
-                   cfg_statement_branch->blocks().back().arguments().size() ==
-                       1U &&
-                   cfg_statement_specialized->blocks().size() == 1U &&
-                   cfg_statement_specialized->instructions().size() == 1U &&
-                   cfg_statement_without_else->blocks().size() == 4U &&
-                   cfg_statement_without_else->instructions().size() == 1U &&
-                   cfg_statement_without_else->blocks().back()
-                           .arguments()
-                           .size() == 1U,
-               "statement if specializes Known control and automatically "
-               "merges outer rebindings under Residual control");
-  ok &= expect(cfg_early_return && cfg_early_return_both &&
-                   cfg_specialized_return && cfg_loop_return &&
-                   cfg_early_literal &&
-                   cfg_compiler.verify(*cfg_early_return) &&
-                   cfg_compiler.verify(*cfg_early_return_both) &&
-                   cfg_compiler.verify(*cfg_specialized_return) &&
-                   cfg_compiler.verify(*cfg_loop_return) &&
-                   cfg_compiler.verify(*cfg_early_literal) &&
-                   cfg_early_return->blocks().size() == 3U &&
-                   cfg_early_return->instructions().size() == 2U &&
-                   cfg_early_return_both->blocks().size() == 3U &&
-                   cfg_early_return_both->instructions().size() == 2U &&
-                   cfg_specialized_return->blocks().size() == 1U &&
-                   cfg_specialized_return->instructions().size() == 1U &&
-                   cfg_loop_return->blocks().size() == 4U &&
-                   cfg_loop_return->instructions().size() == 2U &&
-                   cfg_early_literal->blocks().size() == 3U &&
-                   cfg_early_literal->instructions().size() == 2U &&
-                   std::all_of(
-                       early_literal_operations.begin(),
-                       early_literal_operations.end(),
-                       [](const joggle::ir::Instruction& instruction) {
-                         return instruction.callee().name() ==
-                                "integer_literal";
-                       }),
-               "structured returns terminate only their selected control "
-               "paths without a Region or synthetic merge");
+  ok &= expect(
+      cfg_function && cfg_structured && cfg_specialized && cfg_nested &&
+          cfg_materialized && cfg_compiler.verify(*cfg_function) &&
+          cfg_compiler.verify(*cfg_structured) &&
+          cfg_compiler.verify(*cfg_specialized) &&
+          cfg_compiler.verify(*cfg_nested) &&
+          cfg_compiler.verify(*cfg_materialized) &&
+          cfg_function->blocks().size() == 4U &&
+          cfg_structured->blocks().size() == 4U &&
+          cfg_specialized->blocks().size() == 1U &&
+          cfg_nested->blocks().size() == 7U &&
+          cfg_structured->instructions().size() == 2U &&
+          cfg_specialized->instructions().size() == 1U &&
+          cfg_nested->instructions().size() == 3U &&
+          cfg_specialized->entry().terminator().returned().front() ==
+              cfg_specialized->instructions().front().result(0) &&
+          cfg_function->entry().terminator().kind() ==
+              joggle::ir::Terminator::Kind::Branch &&
+          cfg_structured->entry().terminator().kind() ==
+              joggle::ir::Terminator::Kind::Branch &&
+          cfg_function->blocks().back().arguments().size() == 1U &&
+          cfg_function->blocks().back().terminator().returned().front() ==
+              cfg_function->blocks().back().arguments().front() &&
+          cfg_ir.find("branch arg0, block1(), block2();") !=
+              std::string::npos &&
+          cfg_ir.find("block3(arg3: cfg.word):") != std::string::npos,
+      "explicit source blocks instantiate as Function-owned CFG and "
+      "format without a nested ownership container");
+  ok &= expect(
+      cfg_materialized && cfg_materialized->blocks().size() == 4U &&
+          cfg_materialized->instructions().size() == 2U &&
+          std::all_of(materialized_operations.begin(),
+                      materialized_operations.end(),
+                      [](const joggle::ir::Instruction& instruction) {
+                        return instruction.callee().name() == "integer_literal";
+                      }) &&
+          cfg_materialized->result_types().front() ==
+              cfg_materialized->blocks().back().arguments().front().type(),
+      "unequal Known branch values use a visible literal function "
+      "before crossing Residual edges");
+  ok &= expect(
+      cfg_statement_branch && cfg_statement_specialized &&
+          cfg_statement_without_else &&
+          cfg_compiler.verify(*cfg_statement_branch) &&
+          cfg_compiler.verify(*cfg_statement_specialized) &&
+          cfg_compiler.verify(*cfg_statement_without_else) &&
+          cfg_statement_branch->blocks().size() == 4U &&
+          cfg_statement_branch->instructions().size() == 2U &&
+          cfg_statement_branch->blocks().back().arguments().size() == 1U &&
+          cfg_statement_specialized->blocks().size() == 1U &&
+          cfg_statement_specialized->instructions().size() == 1U &&
+          cfg_statement_without_else->blocks().size() == 4U &&
+          cfg_statement_without_else->instructions().size() == 1U &&
+          cfg_statement_without_else->blocks().back().arguments().size() == 1U,
+      "statement if specializes Known control and automatically "
+      "merges outer rebindings under Residual control");
+  ok &= expect(
+      cfg_early_return && cfg_early_return_both && cfg_specialized_return &&
+          cfg_loop_return && cfg_early_literal &&
+          cfg_compiler.verify(*cfg_early_return) &&
+          cfg_compiler.verify(*cfg_early_return_both) &&
+          cfg_compiler.verify(*cfg_specialized_return) &&
+          cfg_compiler.verify(*cfg_loop_return) &&
+          cfg_compiler.verify(*cfg_early_literal) &&
+          cfg_early_return->blocks().size() == 3U &&
+          cfg_early_return->instructions().size() == 2U &&
+          cfg_early_return_both->blocks().size() == 3U &&
+          cfg_early_return_both->instructions().size() == 2U &&
+          cfg_specialized_return->blocks().size() == 1U &&
+          cfg_specialized_return->instructions().size() == 1U &&
+          cfg_loop_return->blocks().size() == 4U &&
+          cfg_loop_return->instructions().size() == 2U &&
+          cfg_early_literal->blocks().size() == 3U &&
+          cfg_early_literal->instructions().size() == 2U &&
+          std::all_of(early_literal_operations.begin(),
+                      early_literal_operations.end(),
+                      [](const joggle::ir::Instruction& instruction) {
+                        return instruction.callee().name() == "integer_literal";
+                      }),
+      "structured returns terminate only their selected control "
+      "paths without a Region or synthetic merge");
 
   joggle::Diagnostics incomplete_return_diagnostics;
-  const auto incomplete_return = joggle::parse_module(R"(
+  const auto incomplete_return = joggle::parse_module(
+      R"(
 joggle 1;
 module incomplete_return@1.0.0 {
   type word();
@@ -623,7 +606,8 @@ module incomplete_return@1.0.0 {
     }
   }
 }
-)", incomplete_return_diagnostics, "incomplete-return.joggle");
+)",
+      incomplete_return_diagnostics, "incomplete-return.joggle");
   const bool reports_incomplete_return = std::any_of(
       incomplete_return_diagnostics.entries().begin(),
       incomplete_return_diagnostics.entries().end(),
@@ -635,7 +619,8 @@ module incomplete_return@1.0.0 {
                "structured functions reject a fallthrough path");
 
   joggle::Diagnostics unreachable_statement_diagnostics;
-  const auto unreachable_statement = joggle::parse_module(R"(
+  const auto unreachable_statement = joggle::parse_module(
+      R"(
 joggle 1;
 module unreachable_statement@1.0.0 {
   type word();
@@ -647,14 +632,15 @@ module unreachable_statement@1.0.0 {
     return input;
   }
 }
-)", unreachable_statement_diagnostics, "unreachable-statement.joggle");
-  const bool reports_unreachable_statement = std::any_of(
-      unreachable_statement_diagnostics.entries().begin(),
-      unreachable_statement_diagnostics.entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find("unreachable statement") !=
-               std::string::npos;
-      });
+)",
+      unreachable_statement_diagnostics, "unreachable-statement.joggle");
+  const bool reports_unreachable_statement =
+      std::any_of(unreachable_statement_diagnostics.entries().begin(),
+                  unreachable_statement_diagnostics.entries().end(),
+                  [](const joggle::Diagnostic& diagnostic) {
+                    return diagnostic.message.find("unreachable statement") !=
+                           std::string::npos;
+                  });
   ok &= expect(!unreachable_statement && reports_unreachable_statement,
                "statements after a structured control transfer are rejected");
 
@@ -702,14 +688,14 @@ module ambiguous_literal@1.0.0 {
       ambiguous_literal_linked
           ? ambiguous_literal.function("ambiguous_literal.choose")
           : std::optional<joggle::ir::Function>{};
-  const bool reports_ambiguous_literal = std::any_of(
-      ambiguous_literal.diagnostics().entries().begin(),
-      ambiguous_literal.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find(
-                   "more than one visible literal function") !=
-               std::string::npos;
-      });
+  const bool reports_ambiguous_literal =
+      std::any_of(ambiguous_literal.diagnostics().entries().begin(),
+                  ambiguous_literal.diagnostics().entries().end(),
+                  [](const joggle::Diagnostic& diagnostic) {
+                    return diagnostic.message.find(
+                               "more than one visible literal function") !=
+                           std::string::npos;
+                  });
   ok &= expect(ambiguous_literal_linked && !ambiguous_literal_function &&
                    reports_ambiguous_literal,
                "ambiguous literal contracts fail deterministically");
@@ -791,47 +777,43 @@ module loops@1.0.0 {
 }
 )";
   joggle::Diagnostics loop_parse_diagnostics;
-  const auto loop_module = joggle::parse_module(
-      loop_source, loop_parse_diagnostics, "loops.joggle");
+  const auto loop_module =
+      joggle::parse_module(loop_source, loop_parse_diagnostics, "loops.joggle");
   const std::string loop_canonical =
       loop_module ? joggle::format(*loop_module) : std::string{};
   joggle::Diagnostics loop_roundtrip_diagnostics;
-  const auto loop_roundtrip = loop_module
-                                  ? joggle::parse_module(
-                                        loop_canonical,
-                                        loop_roundtrip_diagnostics,
-                                        "loops-canonical.joggle")
-                                  : std::nullopt;
-  ok &= expect(loop_module && loop_roundtrip &&
-                   loop_parse_diagnostics.ok() &&
+  const auto loop_roundtrip =
+      loop_module
+          ? joggle::parse_module(loop_canonical, loop_roundtrip_diagnostics,
+                                 "loops-canonical.joggle")
+          : std::nullopt;
+  ok &= expect(loop_module && loop_roundtrip && loop_parse_diagnostics.ok() &&
                    loop_roundtrip_diagnostics.ok() &&
                    joggle::format(*loop_roundtrip) == loop_canonical &&
                    loop_canonical.find("while less(current, limit) {") !=
                        std::string::npos &&
                    loop_canonical.find("        continue;\n") !=
                        std::string::npos &&
-                   loop_canonical.find("        break;\n") !=
-                       std::string::npos,
+                   loop_canonical.find("        break;\n") != std::string::npos,
                "structured while syntax round-trips without a Region form");
 
   joggle::Compiler loop_compiler;
   loop_compiler.add(loop_source, "loops.joggle");
   const bool loops_linked = loop_compiler.link();
-  const auto repeat = loops_linked
-                          ? loop_compiler.function("loops.repeat")
-                          : std::optional<joggle::ir::Function>{};
+  const auto repeat = loops_linked ? loop_compiler.function("loops.repeat")
+                                   : std::optional<joggle::ir::Function>{};
   const auto specialize = loops_linked
                               ? loop_compiler.function("loops.specialize")
                               : std::optional<joggle::ir::Function>{};
   const auto count_from_zero =
       loops_linked ? loop_compiler.function("loops.count_from_zero")
                    : std::optional<joggle::ir::Function>{};
-  const auto controlled =
-      loops_linked ? loop_compiler.function("loops.controlled")
-                   : std::optional<joggle::ir::Function>{};
-  const auto known_break =
-      loops_linked ? loop_compiler.function("loops.known_break")
-                   : std::optional<joggle::ir::Function>{};
+  const auto controlled = loops_linked
+                              ? loop_compiler.function("loops.controlled")
+                              : std::optional<joggle::ir::Function>{};
+  const auto known_break = loops_linked
+                               ? loop_compiler.function("loops.known_break")
+                               : std::optional<joggle::ir::Function>{};
   const auto known_continue =
       loops_linked ? loop_compiler.function("loops.known_continue")
                    : std::optional<joggle::ir::Function>{};
@@ -860,37 +842,38 @@ module loops@1.0.0 {
                        specialize->instructions().front().result(0).type(),
                "Known loops execute during specialization without entering "
                "the residual CFG");
-  ok &= expect(controlled && loop_compiler.verify(*controlled) &&
-                   controlled->blocks().size() == 8U &&
-                   controlled->instructions().size() == 4U &&
-                   controlled->blocks()[1].arguments().size() == 1U &&
-                   controlled->predecessors(controlled->blocks()[1]).size() ==
-                       3U &&
-                   controlled->predecessors(controlled->blocks()[3]).size() ==
-                       2U,
-               "Residual break and continue carry current values directly to "
-               "the loop exit and header");
-  ok &= expect(known_break && known_continue &&
-                   loop_compiler.verify(*known_break) &&
-                   loop_compiler.verify(*known_continue) &&
-                   known_break->blocks().size() == 1U &&
-                   known_continue->blocks().size() == 1U &&
-                   known_break->result_types().front().get<std::int64_t>(
-                       "width") == std::optional<std::int64_t>{1} &&
-                   known_continue->result_types().front().get<std::int64_t>(
-                       "width") == std::optional<std::int64_t>{1},
-               "Known break and continue execute as compiler control without "
-               "entering the residual CFG");
+  ok &= expect(
+      controlled && loop_compiler.verify(*controlled) &&
+          controlled->blocks().size() == 8U &&
+          controlled->instructions().size() == 4U &&
+          controlled->blocks()[1].arguments().size() == 1U &&
+          controlled->predecessors(controlled->blocks()[1]).size() == 3U &&
+          controlled->predecessors(controlled->blocks()[3]).size() == 2U,
+      "Residual break and continue carry current values directly to "
+      "the loop exit and header");
+  ok &= expect(
+      known_break && known_continue && loop_compiler.verify(*known_break) &&
+          loop_compiler.verify(*known_continue) &&
+          known_break->blocks().size() == 1U &&
+          known_continue->blocks().size() == 1U &&
+          known_break->result_types().front().get<std::int64_t>("width") ==
+              std::optional<std::int64_t>{1} &&
+          known_continue->result_types().front().get<std::int64_t>("width") ==
+              std::optional<std::int64_t>{1},
+      "Known break and continue execute as compiler control without "
+      "entering the residual CFG");
 
   joggle::Diagnostics outside_loop_diagnostics;
-  const auto outside_loop = joggle::parse_module(R"(
+  const auto outside_loop =
+      joggle::parse_module(R"(
 joggle 1;
 module outside_loop@1.0.0 {
   fn invalid() {
     break;
   }
 }
-)", outside_loop_diagnostics, "outside-loop.joggle");
+)",
+                           outside_loop_diagnostics, "outside-loop.joggle");
   const bool reports_outside_loop = std::any_of(
       outside_loop_diagnostics.entries().begin(),
       outside_loop_diagnostics.entries().end(),
@@ -931,7 +914,8 @@ module mixed_loop_transfer@1.0.0 {
     return;
   }
 }
-)", "mixed-loop-transfer.joggle");
+)",
+                          "mixed-loop-transfer.joggle");
   const bool mixed_loop_transfer_linked = mixed_loop_transfer.link();
   const auto mixed_break =
       mixed_loop_transfer_linked
@@ -965,8 +949,7 @@ module mixed_loop_transfer@1.0.0 {
                    mixed_loop_transfer.verify(*mixed_continue) &&
                    mixed_control_shape(*mixed_break) &&
                    mixed_control_shape(*mixed_continue) &&
-                   mixed_break_literals ==
-                       std::vector<std::int64_t>({1, 2}),
+                   mixed_break_literals == std::vector<std::int64_t>({1, 2}),
                "Residual break and continue inside finite Known loops retain "
                "separate specialized continuations and materialize Known "
                "state only when the return type requires it");
@@ -997,7 +980,7 @@ module cyclic_mixed_loop@1.0.0 {
       cyclic_mixed_loop.module("cyclic_mixed_loop");
   const auto cyclic_mixed_loop_declaration =
       cyclic_mixed_loop_module
-          ? cyclic_mixed_loop_module->function("rebuild")
+          ? cyclic_mixed_loop_module->declaration("rebuild")
           : std::nullopt;
   const auto compiler_integer = cyclic_mixed_loop.make("int");
   const auto initial_phase =
@@ -1005,8 +988,7 @@ module cyclic_mixed_loop@1.0.0 {
           ? cyclic_mixed_loop.known(*compiler_integer, std::int64_t{0})
           : std::nullopt;
   const auto cyclic_mixed_loop_function =
-      cyclic_mixed_loop_linked && cyclic_mixed_loop_declaration &&
-              initial_phase
+      cyclic_mixed_loop_linked && cyclic_mixed_loop_declaration && initial_phase
           ? cyclic_mixed_loop.function(*cyclic_mixed_loop_declaration,
                                        {*initial_phase})
           : std::optional<joggle::ir::Function>{};
@@ -1016,8 +998,7 @@ module cyclic_mixed_loop@1.0.0 {
   std::vector<bool> cyclic_literals;
   std::vector<std::int64_t> cyclic_integer_literals;
   if (cyclic_mixed_loop_function) {
-    for (const auto& instruction :
-         cyclic_mixed_loop_function->instructions()) {
+    for (const auto& instruction : cyclic_mixed_loop_function->instructions()) {
       if (const auto value = instruction.get<bool>("value")) {
         cyclic_literals.push_back(*value);
       }
@@ -1026,20 +1007,18 @@ module cyclic_mixed_loop@1.0.0 {
       }
     }
     std::sort(cyclic_literals.begin(), cyclic_literals.end());
-    std::sort(cyclic_integer_literals.begin(),
-              cyclic_integer_literals.end());
+    std::sort(cyclic_integer_literals.begin(), cyclic_integer_literals.end());
   }
   const auto has_backedge = [](const joggle::ir::Function& function) {
     const auto blocks = function.blocks();
     for (std::size_t index = 0; index < blocks.size(); ++index) {
       const auto terminator = blocks[index].terminator();
-      for (std::size_t successor = 0;
-           successor < terminator.successor_count(); ++successor) {
+      for (std::size_t successor = 0; successor < terminator.successor_count();
+           ++successor) {
         const auto target = std::find(blocks.begin(), blocks.end(),
                                       terminator.successor(successor));
-        if (target != blocks.end() &&
-            static_cast<std::size_t>(std::distance(blocks.begin(), target)) <=
-                index) {
+        if (target != blocks.end() && static_cast<std::size_t>(std::distance(
+                                          blocks.begin(), target)) <= index) {
           return true;
         }
       }
@@ -1051,11 +1030,11 @@ module cyclic_mixed_loop@1.0.0 {
                    has_backedge(*cyclic_mixed_loop_function) &&
                    cyclic_literals.empty() &&
                    std::find(cyclic_integer_literals.begin(),
-                             cyclic_integer_literals.end(), 0) !=
-                       cyclic_integer_literals.end() &&
+                             cyclic_integer_literals.end(),
+                             0) != cyclic_integer_literals.end() &&
                    std::find(cyclic_integer_literals.begin(),
-                             cyclic_integer_literals.end(), 1) !=
-                       cyclic_integer_literals.end(),
+                             cyclic_integer_literals.end(),
+                             1) != cyclic_integer_literals.end(),
                "a repeated mixed-stage state closes a CFG cycle without "
                "materializing its Known control state");
 
@@ -1082,9 +1061,8 @@ module computed_cycle@1.0.0 {
                      "computed-cycle.joggle");
   const bool computed_cycle_linked = computed_cycle.link();
   const auto computed_cycle_function =
-      computed_cycle_linked
-          ? computed_cycle.function("computed_cycle.invalid")
-          : std::optional<joggle::ir::Function>{};
+      computed_cycle_linked ? computed_cycle.function("computed_cycle.invalid")
+                            : std::optional<joggle::ir::Function>{};
   ok &= expect(computed_cycle_linked && computed_cycle_function &&
                    computed_cycle.verify(*computed_cycle_function) &&
                    has_backedge(*computed_cycle_function),
@@ -1109,14 +1087,13 @@ module unconstrained_cycle@1.0.0 {
   }
 }
 )",
-                        "unconstrained-cycle.joggle");
+                          "unconstrained-cycle.joggle");
   const bool unconstrained_cycle_linked = unconstrained_cycle.link();
   const auto unconstrained_cycle_function =
       unconstrained_cycle_linked
           ? unconstrained_cycle.function("unconstrained_cycle.invalid")
           : std::optional<joggle::ir::Function>{};
-  ok &= expect(unconstrained_cycle_linked &&
-                   unconstrained_cycle_function &&
+  ok &= expect(unconstrained_cycle_linked && unconstrained_cycle_function &&
                    unconstrained_cycle.verify(*unconstrained_cycle_function) &&
                    has_backedge(*unconstrained_cycle_function) &&
                    unconstrained_cycle_function->instructions().empty(),
@@ -1139,23 +1116,23 @@ module bounded_loop@1.0.0 {
                    "bounded-loop.joggle");
   const bool bounded_loop_linked = bounded_loop.link();
   const auto never_finishes =
-      bounded_loop_linked
-          ? bounded_loop.function("bounded_loop.never_finishes")
-          : std::optional<joggle::ir::Function>{};
-  const bool reports_loop_limit = std::any_of(
-      bounded_loop.diagnostics().entries().begin(),
-      bounded_loop.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find(
-                   "compile-time while iteration limit exceeded") !=
-               std::string::npos;
-      });
+      bounded_loop_linked ? bounded_loop.function("bounded_loop.never_finishes")
+                          : std::optional<joggle::ir::Function>{};
+  const bool reports_loop_limit =
+      std::any_of(bounded_loop.diagnostics().entries().begin(),
+                  bounded_loop.diagnostics().entries().end(),
+                  [](const joggle::Diagnostic& diagnostic) {
+                    return diagnostic.message.find(
+                               "compile-time while iteration limit exceeded") !=
+                           std::string::npos;
+                  });
   ok &= expect(bounded_loop_linked && !never_finishes && reports_loop_limit,
                "Known loops fail deterministically when their evaluation "
                "budget is exhausted");
 
   joggle::Diagnostics invalid_cfg_diagnostics;
-  const auto invalid_cfg = joggle::parse_module(R"(
+  const auto invalid_cfg =
+      joggle::parse_module(R"(
 joggle 1;
 module invalid_cfg@1.0.0 {
   type word();
@@ -1166,7 +1143,8 @@ module invalid_cfg@1.0.0 {
       return result;
   }
 }
-)", invalid_cfg_diagnostics, "invalid-cfg.joggle");
+)",
+                           invalid_cfg_diagnostics, "invalid-cfg.joggle");
   ok &= expect(!invalid_cfg && !invalid_cfg_diagnostics.ok() &&
                    std::any_of(invalid_cfg_diagnostics.entries().begin(),
                                invalid_cfg_diagnostics.entries().end(),
@@ -1198,13 +1176,12 @@ module logic@1.0.0 {
   joggle::Compiler invalid;
   const auto invalid_function = load_function(invalid, undefined);
   const auto invalid_diagnostics = invalid.diagnostics().entries();
-  ok &=
-      expect(!invalid_function && !invalid.ok() &&
-                 !invalid_diagnostics.empty() &&
-                 invalid_diagnostics.front().source.has_value() &&
-                 invalid_diagnostics.front().source->source == "logic.joggle" &&
-                 invalid_diagnostics.front().source->begin.line == 7U,
-             "undefined SSA diagnostics point into the function");
+  ok &= expect(
+      !invalid_function && !invalid.ok() && !invalid_diagnostics.empty() &&
+          invalid_diagnostics.front().source.has_value() &&
+          invalid_diagnostics.front().source->source == "logic.joggle" &&
+          invalid_diagnostics.front().source->begin.line == 7U,
+      "undefined SSA diagnostics point into the function");
 
   joggle::Compiler unknown;
   unknown.add(R"(
@@ -1225,13 +1202,14 @@ module logic@1.0.0 {
   unqualified.add(source, "logic.joggle");
   const bool unqualified_linked = unqualified.link();
   const auto unqualified_function = unqualified_linked
-                                     ? unqualified.function("main")
-                                     : std::optional<joggle::ir::Function>{};
+                                        ? unqualified.function("main")
+                                        : std::optional<joggle::ir::Function>{};
   const auto unqualified_diagnostics = unqualified.diagnostics().entries();
-  ok &= expect(!unqualified_function && !unqualified_diagnostics.empty() &&
-                   unqualified_diagnostics.back().message.find(
-                       "module.member") != std::string::npos,
-               "function lookup requires one unambiguous qualified member name");
+  ok &=
+      expect(!unqualified_function && !unqualified_diagnostics.empty() &&
+                 unqualified_diagnostics.back().message.find("module.member") !=
+                     std::string::npos,
+             "function lookup requires one unambiguous qualified member name");
 
   joggle::Compiler mismatch;
   mismatch.add(R"(
@@ -1248,8 +1226,9 @@ module mismatch@1.0.0 {
 )",
                "mismatch.joggle");
   const bool mismatch_linked = mismatch.link();
-  const auto mismatch_function = mismatch_linked ? mismatch.function("mismatch.main")
-                                              : std::optional<joggle::ir::Function>{};
+  const auto mismatch_function = mismatch_linked
+                                     ? mismatch.function("mismatch.main")
+                                     : std::optional<joggle::ir::Function>{};
   ok &= expect(!mismatch_function && !mismatch.ok(),
                "one type variable rejects operands with different types");
 
@@ -1270,9 +1249,11 @@ module return_inferred@1.0.0 {
   const auto return_inferred_function =
       return_inferred_linked ? return_inferred.function("return_inferred.main")
                              : std::optional<joggle::ir::Function>{};
-  ok &= expect(return_inferred_function &&
-                   return_inferred_function->entry().terminator().returned().size() == 1U,
-               "a function result constrains an output-only type variable");
+  ok &= expect(
+      return_inferred_function &&
+          return_inferred_function->entry().terminator().returned().size() ==
+              1U,
+      "a function result constrains an output-only type variable");
 
   joggle::Compiler unbound;
   unbound.add(R"(
@@ -1288,8 +1269,9 @@ module unbound@1.0.0 {
 )",
               "unbound.joggle");
   const bool unbound_linked = unbound.link();
-  const auto unbound_function = unbound_linked ? unbound.function("unbound.main")
-                                            : std::optional<joggle::ir::Function>{};
+  const auto unbound_function = unbound_linked
+                                    ? unbound.function("unbound.main")
+                                    : std::optional<joggle::ir::Function>{};
   ok &=
       expect(!unbound_function && !unbound.ok(),
              "an unconstrained output-only type variable needs an annotation");
@@ -1318,34 +1300,33 @@ module dependent@1.0.0 {
   const bool dependent_linked = dependent.link();
   const auto dependent_module = dependent.module("dependent");
   const auto dependent_double =
-      dependent_module ? dependent_module->function("double") : std::nullopt;
+      dependent_module ? dependent_module->declaration("double") : std::nullopt;
   if (dependent_double) {
-    dependent.bind(*dependent_double, [](std::int64_t value) {
-      return value * 2;
-    });
+    dependent.bind(*dependent_double,
+                   [](std::int64_t value) { return value * 2; });
   }
-  auto dependent_function =
-      dependent_linked && dependent_double
-          ? dependent.function("dependent.inferred")
-          : std::nullopt;
+  auto dependent_function = dependent_linked && dependent_double
+                                ? dependent.function("dependent.inferred")
+                                : std::nullopt;
   const auto dependent_operations =
       dependent_function ? dependent_function->instructions()
-                      : std::vector<joggle::ir::Instruction>{};
+                         : std::vector<joggle::ir::Instruction>{};
   const auto dependent_width =
       dependent_operations.empty()
           ? std::optional<std::int64_t>{}
           : dependent_operations.front().result(0).type().get<std::int64_t>(
                 "width");
-  ok &= expect(dependent_module && dependent_function && dependent_width &&
-                   *dependent_width == 8 &&
-                   joggle::format(*dependent_module).find(
-                       "fn input<N: int>(width: N) -> word<N>;") !=
-                       std::string::npos &&
-                   joggle::format(*dependent_module).find(
-                       "fn default_input<N: int>(width: N = 8) -> word<N>;") !=
-                       std::string::npos,
-               "a computed Known argument binds a generic and infers a text "
-               "function result without another annotation");
+  ok &= expect(
+      dependent_module && dependent_function && dependent_width &&
+          *dependent_width == 8 &&
+          joggle::format(*dependent_module)
+                  .find("fn input<N: int>(width: N) -> word<N>;") !=
+              std::string::npos &&
+          joggle::format(*dependent_module)
+                  .find("fn default_input<N: int>(width: N = 8) -> word<N>;") !=
+              std::string::npos,
+      "a computed Known argument binds a generic and infers a text "
+      "function result without another annotation");
 
   joggle::Compiler inconsistent;
   inconsistent.add(dependent_source, "dependent.joggle");
@@ -1354,18 +1335,17 @@ module dependent@1.0.0 {
   const auto inconsistent_word =
       inconsistent_module ? inconsistent_module->type("word") : std::nullopt;
   const auto inconsistent_input =
-      inconsistent_module ? inconsistent_module->function("input")
+      inconsistent_module ? inconsistent_module->declaration("input")
                           : std::nullopt;
   const auto default_input =
-      inconsistent_module ? inconsistent_module->function("default_input")
+      inconsistent_module ? inconsistent_module->declaration("default_input")
                           : std::nullopt;
-  const auto word8 = inconsistent_word
-                         ? inconsistent.make(*inconsistent_word, std::int64_t{8})
-                         : std::nullopt;
+  const auto word8 =
+      inconsistent_word ? inconsistent.make(*inconsistent_word, std::int64_t{8})
+                        : std::nullopt;
   const auto int_type = inconsistent.make("int");
-  const auto width7 = int_type
-                          ? inconsistent.known(*int_type, std::int64_t{7})
-                          : std::nullopt;
+  const auto width7 =
+      int_type ? inconsistent.known(*int_type, std::int64_t{7}) : std::nullopt;
   auto inconsistent_function = inconsistent.function();
   if (!inconsistent_linked || !inconsistent_input || !default_input || !word8 ||
       !width7 || !inconsistent_function) {
@@ -1379,7 +1359,8 @@ module dependent@1.0.0 {
     joggle::Diagnostics diagnostics;
     inconsistent_rejected = !edit.commit(diagnostics) && !diagnostics.ok();
   }
-  ok &= expect(inconsistent_rejected && inconsistent_function->arguments().empty() &&
+  ok &= expect(inconsistent_rejected &&
+                   inconsistent_function->arguments().empty() &&
                    inconsistent_function->instructions().empty(),
                "commit validates an explicit result against its dependent "
                "known argument and rolls back on mismatch");
@@ -1389,14 +1370,14 @@ module dependent@1.0.0 {
   const bool defaulted_linked = defaulted.link();
   const auto defaulted_module = defaulted.module("dependent");
   const auto defaulted_input =
-      defaulted_module ? defaulted_module->function("default_input")
+      defaulted_module ? defaulted_module->declaration("default_input")
                        : std::nullopt;
   const auto named_input =
-      defaulted_module ? defaulted_module->function("input") : std::nullopt;
+      defaulted_module ? defaulted_module->declaration("input") : std::nullopt;
   const auto defaulted_int = defaulted.make("int");
   auto defaulted_function = defaulted.function();
-  if (!defaulted_linked || !defaulted_input || !named_input ||
-      !defaulted_int || !defaulted_function) {
+  if (!defaulted_linked || !defaulted_input || !named_input || !defaulted_int ||
+      !defaulted_function) {
     return EXIT_FAILURE;
   }
   {
@@ -1408,8 +1389,12 @@ module dependent@1.0.0 {
       return EXIT_FAILURE;
     }
   }
-  const auto defaulted_width =
-      defaulted_function->entry().terminator().returned().front().type().get<std::int64_t>("width");
+  const auto defaulted_width = defaulted_function->entry()
+                                   .terminator()
+                                   .returned()
+                                   .front()
+                                   .type()
+                                   .get<std::int64_t>("width");
   ok &= expect(defaulted_width && *defaulted_width == 8 &&
                    defaulted.verify(*defaulted_function),
                "C++ append infers a result from a schema-owned default "
@@ -1432,8 +1417,12 @@ module dependent@1.0.0 {
       return EXIT_FAILURE;
     }
   }
-  const auto named_width =
-      named_function->entry().terminator().returned().front().type().get<std::int64_t>("width");
+  const auto named_width = named_function->entry()
+                               .terminator()
+                               .returned()
+                               .front()
+                               .type()
+                               .get<std::int64_t>("width");
   ok &= expect(named_width && *named_width == 12 &&
                    defaulted.verify(*named_function),
                "a Known C++ argument participates in result inference at "
@@ -1457,9 +1446,8 @@ module dependent@1.0.0 {
   try {
     auto edit = named_function->edit();
     const auto string_type = defaulted.make("string");
-    const auto wide = string_type
-                          ? defaulted.known(*string_type, "wide")
-                          : std::nullopt;
+    const auto wide =
+        string_type ? defaulted.known(*string_type, "wide") : std::nullopt;
     if (!wide) {
       return EXIT_FAILURE;
     }
@@ -1544,18 +1532,19 @@ module computed@1.0.0 {
   computed.add(computed_source, "computed.joggle");
   const bool computed_linked = computed.link();
   const auto computed_module = computed.module("computed");
-  const auto host_double =
-      computed_module ? computed_module->function("host_double") : std::nullopt;
+  const auto host_double = computed_module
+                               ? computed_module->declaration("host_double")
+                               : std::nullopt;
   if (computed_linked && host_double) {
-    computed.bind(*host_double,
-                  [](std::int64_t value) { return value * 2; });
+    computed.bind(*host_double, [](std::int64_t value) { return value * 2; });
   }
   const auto computed_function =
       computed_linked ? computed.function("computed.main") : std::nullopt;
   const auto packed_function =
       computed_linked ? computed.function("computed.pack") : std::nullopt;
-  const auto aligned_function =
-      computed_linked ? computed.function("computed.align_width") : std::nullopt;
+  const auto aligned_function = computed_linked
+                                    ? computed.function("computed.align_width")
+                                    : std::nullopt;
   const auto sum_function =
       computed_linked ? computed.function("computed.sum") : std::nullopt;
   const auto quotient_function =
@@ -1570,75 +1559,107 @@ module computed@1.0.0 {
       computed_linked ? computed.function("computed.compile_time_host")
                       : std::nullopt;
   const auto main_width =
-      computed_function && !computed_function->entry().terminator().returned().empty()
-          ? computed_function->entry().terminator().returned().front().type().get<std::int64_t>("width")
+      computed_function &&
+              !computed_function->entry().terminator().returned().empty()
+          ? computed_function->entry()
+                .terminator()
+                .returned()
+                .front()
+                .type()
+                .get<std::int64_t>("width")
           : std::optional<std::int64_t>{};
   const auto packed_width =
-      packed_function && !packed_function->entry().terminator().returned().empty()
-          ? packed_function->entry().terminator().returned().front().type().get<std::int64_t>("width")
+      packed_function &&
+              !packed_function->entry().terminator().returned().empty()
+          ? packed_function->entry()
+                .terminator()
+                .returned()
+                .front()
+                .type()
+                .get<std::int64_t>("width")
           : std::optional<std::int64_t>{};
   const auto aligned_width =
-      aligned_function && !aligned_function->entry().terminator().returned().empty()
-          ? aligned_function->entry().terminator().returned().front().type().get<std::int64_t>("width")
+      aligned_function &&
+              !aligned_function->entry().terminator().returned().empty()
+          ? aligned_function->entry()
+                .terminator()
+                .returned()
+                .front()
+                .type()
+                .get<std::int64_t>("width")
           : std::optional<std::int64_t>{};
   const std::string computed_text =
       computed_module ? joggle::format(*computed_module) : std::string{};
   const auto compile_time_operator_width =
-      compile_time_operator_function &&
-              !compile_time_operator_function->entry().terminator().returned().empty()
-          ? compile_time_operator_function->entry().terminator().returned().front().type().get<std::int64_t>(
-                "width")
+      compile_time_operator_function && !compile_time_operator_function->entry()
+                                             .terminator()
+                                             .returned()
+                                             .empty()
+          ? compile_time_operator_function->entry()
+                .terminator()
+                .returned()
+                .front()
+                .type()
+                .get<std::int64_t>("width")
           : std::optional<std::int64_t>{};
   const auto compile_time_branch_width =
-      compile_time_branch_function && !compile_time_branch_function->entry().terminator().returned().empty()
-          ? compile_time_branch_function->entry().terminator().returned().front().type().get<std::int64_t>(
-                "width")
+      compile_time_branch_function && !compile_time_branch_function->entry()
+                                           .terminator()
+                                           .returned()
+                                           .empty()
+          ? compile_time_branch_function->entry()
+                .terminator()
+                .returned()
+                .front()
+                .type()
+                .get<std::int64_t>("width")
           : std::optional<std::int64_t>{};
   const auto compile_time_host_width =
-      compile_time_host_function && !compile_time_host_function->entry().terminator().returned().empty()
-          ? compile_time_host_function->entry().terminator().returned().front().type().get<std::int64_t>(
-                "width")
+      compile_time_host_function && !compile_time_host_function->entry()
+                                         .terminator()
+                                         .returned()
+                                         .empty()
+          ? compile_time_host_function->entry()
+                .terminator()
+                .returned()
+                .front()
+                .type()
+                .get<std::int64_t>("width")
           : std::optional<std::int64_t>{};
-  if (!computed_function || !packed_function || !aligned_function || !sum_function ||
-      !quotient_function || !compile_time_operator_function ||
-      !compile_time_branch_function || !compile_time_host_function || !host_double ||
-      !main_width || !packed_width ||
-      !aligned_width || !compile_time_operator_width ||
-      !compile_time_branch_width || !compile_time_host_width) {
+  if (!computed_function || !packed_function || !aligned_function ||
+      !sum_function || !quotient_function || !compile_time_operator_function ||
+      !compile_time_branch_function || !compile_time_host_function ||
+      !host_double || !main_width || !packed_width || !aligned_width ||
+      !compile_time_operator_width || !compile_time_branch_width ||
+      !compile_time_host_width) {
     computed.diagnostics().print(std::cerr);
   }
-  ok &= expect(computed_function && packed_function && aligned_function && sum_function &&
-                   quotient_function && compile_time_operator_function && main_width &&
-                   compile_time_branch_function && compile_time_host_function &&
-                   host_double && packed_width && aligned_width &&
-                   compile_time_operator_width && compile_time_branch_width &&
-                   compile_time_host_width &&
-                   *main_width == 8 && *packed_width == 15 &&
-                   *aligned_width == 16 && *compile_time_operator_width == 8 &&
-                   *compile_time_branch_width == 8 &&
-                   *compile_time_host_width == 14 &&
-                   sum_function->instructions().size() == 1U &&
-                   sum_function->instructions().front().callee().name() == "add" &&
-                   quotient_function->instructions().size() == 1U &&
-                   quotient_function->instructions().front().callee().name() ==
-                       "floor_word" &&
-                   computed_text.find("word<W + 1>") != std::string::npos &&
-                   computed_text.find("word<ceildiv(M * N, 8)>") !=
-                       std::string::npos &&
-                   computed_text.find("word<align(W, 8)>") !=
-                       std::string::npos &&
-                   computed_text.find("word<@(W // 2)>") !=
-                       std::string::npos &&
-                   computed_text.find(
-                       "return if true { value } else { 1 / 0 };") !=
-                       std::string::npos &&
-                   computed_text.find("word<@(W!)>") != std::string::npos &&
-                   computed_text.find("result = lhs + rhs;") !=
-                       std::string::npos &&
-                   computed_text.find("result = lhs // rhs;") !=
-                       std::string::npos,
-               "checked symbolic arithmetic derives result widths and "
-               "typed operator notation round-trip canonically");
+  ok &= expect(
+      computed_function && packed_function && aligned_function &&
+          sum_function && quotient_function && compile_time_operator_function &&
+          main_width && compile_time_branch_function &&
+          compile_time_host_function && host_double && packed_width &&
+          aligned_width && compile_time_operator_width &&
+          compile_time_branch_width && compile_time_host_width &&
+          *main_width == 8 && *packed_width == 15 && *aligned_width == 16 &&
+          *compile_time_operator_width == 8 &&
+          *compile_time_branch_width == 8 && *compile_time_host_width == 14 &&
+          sum_function->instructions().size() == 1U &&
+          sum_function->instructions().front().callee().name() == "add" &&
+          quotient_function->instructions().size() == 1U &&
+          quotient_function->instructions().front().callee().name() ==
+              "floor_word" &&
+          computed_text.find("word<W + 1>") != std::string::npos &&
+          computed_text.find("word<ceildiv(M * N, 8)>") != std::string::npos &&
+          computed_text.find("word<align(W, 8)>") != std::string::npos &&
+          computed_text.find("word<@(W // 2)>") != std::string::npos &&
+          computed_text.find("return if true { value } else { 1 / 0 };") !=
+              std::string::npos &&
+          computed_text.find("word<@(W!)>") != std::string::npos &&
+          computed_text.find("result = lhs + rhs;") != std::string::npos &&
+          computed_text.find("result = lhs // rhs;") != std::string::npos,
+      "checked symbolic arithmetic derives result widths and "
+      "typed operator notation round-trip canonically");
 
   joggle::Compiler projected;
   projected.add(R"(
@@ -1687,9 +1708,8 @@ module projected@1.0.0 {
   const auto encode13 = projected_linked
                             ? projected.function("projected.encode13")
                             : std::nullopt;
-  const auto align13 = projected_linked
-                           ? projected.function("projected.align13")
-                           : std::nullopt;
+  const auto align13 =
+      projected_linked ? projected.function("projected.align13") : std::nullopt;
   const auto format_module = projected.module("formats");
   const std::string format_text =
       format_module ? joggle::format(*format_module) : std::string{};
@@ -1698,14 +1718,24 @@ module projected@1.0.0 {
   }
   ok &= expect(
       encode13 && align13 &&
-          encode13->entry().terminator().returned().front().type().get<std::int64_t>("width") ==
+          encode13->entry()
+                  .terminator()
+                  .returned()
+                  .front()
+                  .type()
+                  .get<std::int64_t>("width") ==
               std::optional<std::int64_t>{13} &&
-          encode13->entry().terminator().returned().front().type().get<bool>("signed") ==
-              std::optional<bool>{true} &&
-          align13->entry().terminator().returned().front().type().get<std::int64_t>("width") ==
+          encode13->entry().terminator().returned().front().type().get<bool>(
+              "signed") == std::optional<bool>{true} &&
+          align13->entry()
+                  .terminator()
+                  .returned()
+                  .front()
+                  .type()
+                  .get<std::int64_t>("width") ==
               std::optional<std::int64_t>{16} &&
-          align13->entry().terminator().returned().front().type().get<bool>("signed") ==
-              std::optional<bool>{true} &&
+          align13->entry().terminator().returned().front().type().get<bool>(
+              "signed") == std::optional<bool>{true} &&
           format_text.find("storage_bits = width;") != std::string::npos &&
           format_text.find("fn align") != std::string::npos,
       "a type-derived parameter deterministically feeds imported "
@@ -1752,8 +1782,7 @@ module ill_typed_field@1.0.0 {
 }
 )",
                       "ill-typed-field.joggle");
-  ok &= expect(!ill_typed_field.link() &&
-                   !ill_typed_field.diagnostics().ok(),
+  ok &= expect(!ill_typed_field.link() && !ill_typed_field.diagnostics().ok(),
                "derived parameters are checked against interface field "
                "domains during linking");
 
@@ -1771,13 +1800,13 @@ module recursive_function@1.0.0 {
 )",
                          "recursive-function.joggle");
   const bool recursive_linked = recursive_function.link();
-  const bool reports_function_cycle = std::any_of(
-      recursive_function.diagnostics().entries().begin(),
-      recursive_function.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find("pure function cycle") !=
-               std::string::npos;
-      });
+  const bool reports_function_cycle =
+      std::any_of(recursive_function.diagnostics().entries().begin(),
+                  recursive_function.diagnostics().entries().end(),
+                  [](const joggle::Diagnostic& diagnostic) {
+                    return diagnostic.message.find("pure function cycle") !=
+                           std::string::npos;
+                  });
   ok &= expect(!recursive_linked && reports_function_cycle,
                "pure function recursion is rejected during linking");
 
@@ -1813,8 +1842,13 @@ module imported_function@1.0.0 {
           ? imported_function.function("imported_function.main")
           : std::nullopt;
   const auto imported_width =
-      imported_function_function && !imported_function_function->entry().terminator().returned().empty()
-          ? imported_function_function->entry().terminator().returned()
+      imported_function_function && !imported_function_function->entry()
+                                         .terminator()
+                                         .returned()
+                                         .empty()
+          ? imported_function_function->entry()
+                .terminator()
+                .returned()
                 .front()
                 .type()
                 .get<std::int64_t>("width")
@@ -1912,13 +1946,12 @@ module unsafe_expression@1.0.0 {
   const auto unsafe_function =
       unsafe_linked ? unsafe_expression.function("unsafe_expression.main")
                     : std::nullopt;
-  const bool reports_division_by_zero =
-      std::any_of(unsafe_expression.diagnostics().entries().begin(),
-                  unsafe_expression.diagnostics().entries().end(),
-                  [](const joggle::Diagnostic& diagnostic) {
-                    return diagnostic.message.find("division by zero") !=
-                           std::string::npos;
-                  });
+  const bool reports_division_by_zero = std::any_of(
+      unsafe_expression.diagnostics().entries().begin(),
+      unsafe_expression.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("division by zero") != std::string::npos;
+      });
   ok &= expect(unsafe_linked && !unsafe_function && reports_division_by_zero,
                "non-total compile-time arithmetic is rejected when its "
                "bindings become concrete");
@@ -1938,15 +1971,14 @@ module dynamic_at@1.0.0 {
   const auto dynamic_at_function =
       dynamic_at_linked ? dynamic_at.function("dynamic_at.invalid")
                         : std::nullopt;
-  const bool reports_dynamic_at = std::any_of(
-      dynamic_at.diagnostics().entries().begin(),
-      dynamic_at.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find("compile-time evaluation") !=
-               std::string::npos;
-      });
-  ok &= expect(dynamic_at_linked && !dynamic_at_function &&
-                   reports_dynamic_at,
+  const bool reports_dynamic_at =
+      std::any_of(dynamic_at.diagnostics().entries().begin(),
+                  dynamic_at.diagnostics().entries().end(),
+                  [](const joggle::Diagnostic& diagnostic) {
+                    return diagnostic.message.find("compile-time evaluation") !=
+                           std::string::npos;
+                  });
+  ok &= expect(dynamic_at_linked && !dynamic_at_function && reports_dynamic_at,
                "@ rejects a Residual value instead of changing its stage");
 
   joggle::Compiler guarded_host;
@@ -1964,7 +1996,7 @@ module guarded_host@1.0.0 {
   const bool guarded_host_linked = guarded_host.link();
   const auto guarded_host_module = guarded_host.module("guarded_host");
   const auto observe = guarded_host_module
-                           ? guarded_host_module->function("observe")
+                           ? guarded_host_module->declaration("observe")
                            : std::nullopt;
   std::int64_t observations = 0;
   if (observe) {
@@ -2008,13 +2040,11 @@ module hermetic_host@1.0.0 {
   const bool hermetic_host_linked = hermetic_host.link();
   const auto hermetic_host_module = hermetic_host.module("hermetic_host");
   const auto hermetic_evaluate =
-      hermetic_host_module
-          ? hermetic_host_module->function("evaluate")
-          : std::nullopt;
+      hermetic_host_module ? hermetic_host_module->declaration("evaluate")
+                           : std::nullopt;
   if (hermetic_evaluate) {
     hermetic_host.bind(
-        *hermetic_evaluate,
-        [](std::int64_t value) { return value; },
+        *hermetic_evaluate, [](std::int64_t value) { return value; },
         joggle::HostEvaluation::Hermetic);
   }
   const auto hermetic_host_function =
@@ -2047,8 +2077,7 @@ module list_evaluation@1.0.0 {
 )",
                       "list-evaluation.joggle");
   const bool list_evaluation_linked = list_evaluation.link();
-  const auto list_evaluation_module =
-      list_evaluation.module("list_evaluation");
+  const auto list_evaluation_module = list_evaluation.module("list_evaluation");
   const std::string list_evaluation_text =
       list_evaluation_module ? joggle::format(*list_evaluation_module)
                              : std::string{};
@@ -2060,22 +2089,22 @@ module list_evaluation@1.0.0 {
                                  "list-evaluation-roundtrip.joggle")
           : std::nullopt;
   const auto list_sum = list_evaluation_module
-                            ? list_evaluation_module->function("sum")
+                            ? list_evaluation_module->declaration("sum")
                             : std::nullopt;
   if (list_sum) {
-    list_evaluation.bind(
-        *list_sum, [](const std::vector<std::int64_t>& values) {
-          std::int64_t result = 0;
-          for (const std::int64_t value : values) {
-            result += value;
-          }
-          return result;
-        });
+    list_evaluation.bind(*list_sum,
+                         [](const std::vector<std::int64_t>& values) {
+                           std::int64_t result = 0;
+                           for (const std::int64_t value : values) {
+                             result += value;
+                           }
+                           return result;
+                         });
   }
-  const auto populated = list_evaluation_linked && list_sum
-                             ? list_evaluation.function(
-                                   "list_evaluation.populated")
-                             : std::nullopt;
+  const auto populated =
+      list_evaluation_linked && list_sum
+          ? list_evaluation.function("list_evaluation.populated")
+          : std::nullopt;
   const auto empty = list_evaluation_linked && list_sum
                          ? list_evaluation.function("list_evaluation.empty")
                          : std::nullopt;
@@ -2088,18 +2117,17 @@ module list_evaluation@1.0.0 {
   const auto empty_width =
       empty ? empty->result_types().front().get<std::int64_t>("width")
             : std::nullopt;
-  ok &= expect(populated_width == std::optional<std::int64_t>{6} &&
-                   empty_width == std::optional<std::int64_t>{0} &&
-                   list_evaluation_roundtrip &&
-                   list_evaluation_roundtrip_diagnostics.ok() &&
-                   joggle::format(*list_evaluation_roundtrip) ==
-                       list_evaluation_text &&
-                   list_evaluation_text.find(
-                       "value: word<@sum([1, 2, 3])> = source();") !=
-                       std::string::npos,
-               "local type annotations use the full compile-time expression "
-               "grammar, including list-valued host functions and empty "
-               "lists");
+  ok &= expect(
+      populated_width == std::optional<std::int64_t>{6} &&
+          empty_width == std::optional<std::int64_t>{0} &&
+          list_evaluation_roundtrip &&
+          list_evaluation_roundtrip_diagnostics.ok() &&
+          joggle::format(*list_evaluation_roundtrip) == list_evaluation_text &&
+          list_evaluation_text.find(
+              "value: word<@sum([1, 2, 3])> = source();") != std::string::npos,
+      "local type annotations use the full compile-time expression "
+      "grammar, including list-valued host functions and empty "
+      "lists");
 
   constexpr std::string_view staged_control_source = R"(
 joggle 1;
@@ -2154,10 +2182,9 @@ module staged_control@1.0.0 {
 }
 )";
   joggle::Diagnostics staged_control_parse_diagnostics;
-  const auto staged_control_module =
-      joggle::parse_module(staged_control_source,
-                           staged_control_parse_diagnostics,
-                           "staged-control.joggle");
+  const auto staged_control_module = joggle::parse_module(
+      staged_control_source, staged_control_parse_diagnostics,
+      "staged-control.joggle");
   const std::string staged_control_text =
       staged_control_module ? joggle::format(*staged_control_module)
                             : std::string{};
@@ -2174,28 +2201,26 @@ module staged_control@1.0.0 {
   const bool staged_control_linked = staged_control.link();
   const auto staged_module = staged_control.module("staged_control");
   const auto integer_add =
-      staged_module ? staged_module->function("integer_add") : std::nullopt;
+      staged_module ? staged_module->declaration("integer_add") : std::nullopt;
   const auto integer_less =
-      staged_module ? staged_module->function("integer_less") : std::nullopt;
+      staged_module ? staged_module->declaration("integer_less") : std::nullopt;
   const auto integer_greater =
-      staged_module ? staged_module->function("integer_greater") : std::nullopt;
+      staged_module ? staged_module->declaration("integer_greater")
+                    : std::nullopt;
   if (integer_add) {
-    staged_control.bind(*integer_add,
-                        [](std::int64_t lhs, std::int64_t rhs) {
-                          return lhs + rhs;
-                        });
+    staged_control.bind(*integer_add, [](std::int64_t lhs, std::int64_t rhs) {
+      return lhs + rhs;
+    });
   }
   if (integer_less) {
-    staged_control.bind(*integer_less,
-                        [](std::int64_t lhs, std::int64_t rhs) {
-                          return lhs < rhs;
-                        });
+    staged_control.bind(*integer_less, [](std::int64_t lhs, std::int64_t rhs) {
+      return lhs < rhs;
+    });
   }
   if (integer_greater) {
-    staged_control.bind(*integer_greater,
-                        [](std::int64_t lhs, std::int64_t rhs) {
-                          return lhs > rhs;
-                        });
+    staged_control.bind(
+        *integer_greater,
+        [](std::int64_t lhs, std::int64_t rhs) { return lhs > rhs; });
   }
   const auto sum_shape = staged_control_linked
                              ? staged_control.run<std::int64_t>(
@@ -2207,17 +2232,16 @@ module staged_control@1.0.0 {
                                "staged_control.count", std::int64_t{3})
                          : std::nullopt;
   const auto specialize_decl =
-      staged_module ? staged_module->function("specialize") : std::nullopt;
+      staged_module ? staged_module->declaration("specialize") : std::nullopt;
   const auto pipeline_decl =
-      staged_module ? staged_module->function("pipeline") : std::nullopt;
+      staged_module ? staged_module->declaration("pipeline") : std::nullopt;
   const auto integer_type = staged_control.make("int");
   const auto prelude_module = staged_control.module("prelude");
   const auto list_decl =
       prelude_module ? prelude_module->type("list") : std::nullopt;
   const auto integer_list_type =
-      list_decl && integer_type
-          ? staged_control.make(*list_decl, *integer_type)
-          : std::nullopt;
+      list_decl && integer_type ? staged_control.make(*list_decl, *integer_type)
+                                : std::nullopt;
   const auto width = integer_type
                          ? staged_control.known(*integer_type, std::int64_t{8})
                          : std::nullopt;
@@ -2226,13 +2250,12 @@ module staged_control@1.0.0 {
           ? staged_control.known(*integer_list_type,
                                  std::vector<std::int64_t>{1, 0, 2})
           : std::nullopt;
-  const auto specialized = specialize_decl && width
-                               ? staged_control.function(*specialize_decl,
-                                                         {*width})
-                               : std::nullopt;
+  const auto specialized =
+      specialize_decl && width
+          ? staged_control.function(*specialize_decl, {*width})
+          : std::nullopt;
   const auto pipeline = pipeline_decl && stages
-                            ? staged_control.function(*pipeline_decl,
-                                                      {*stages})
+                            ? staged_control.function(*pipeline_decl, {*stages})
                             : std::nullopt;
   if (!staged_control_linked || !specialized || !pipeline) {
     staged_control.diagnostics().print(std::cerr);
@@ -2269,14 +2292,14 @@ module bounded@1.0.0 {
   const bool bounded_linked = bounded.link();
   const auto bounded_function =
       bounded_linked ? bounded.function("bounded.main") : std::nullopt;
-  const bool reports_step_limit = std::any_of(
-      bounded.diagnostics().entries().begin(),
-      bounded.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find(
-                   "compile-time evaluation step limit exceeded") !=
-               std::string::npos;
-      });
+  const bool reports_step_limit =
+      std::any_of(bounded.diagnostics().entries().begin(),
+                  bounded.diagnostics().entries().end(),
+                  [](const joggle::Diagnostic& diagnostic) {
+                    return diagnostic.message.find(
+                               "compile-time evaluation step limit exceeded") !=
+                           std::string::npos;
+                  });
   ok &= expect(bounded.evaluation_limits().steps == limits.steps &&
                    bounded.evaluation_limits().depth == limits.depth &&
                    bounded_linked && !bounded_function && reports_step_limit,

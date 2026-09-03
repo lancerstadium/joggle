@@ -6,17 +6,16 @@ Include the complete public surface with:
 #include <joggle/joggle.h>
 ```
 
-Joggle is a C++20 library. Public declarations are immutable handles; IR edits
-are explicit transactions.
+Joggle is a C++20 library. A Module is the sole top-level IR owner. Declaration
+handles are immutable and Function edits are explicit transactions.
 
 ## Namespaces and ownership
 
 | Type | Role |
 | --- | --- |
 | `joggle::Compiler` | Linked environment, behavior, execution, diagnostics |
-| `joggle::Module` | Immutable versioned declaration package |
+| `joggle::Module` | Versioned symbol scope and multi-Function IR owner |
 | `joggle::Type`, `joggle::Attribute` | Immutable schema instances |
-| `joggle::ir::Program` | Named executable Function set |
 | `joggle::ir::Function` | Executable IR owner |
 | `joggle::ir::Block` | CFG node owned by a Function |
 | `joggle::ir::Instruction` | Declared call owned by a Block |
@@ -54,8 +53,10 @@ adds an installed-Module repository. `link()` resolves and seals the complete
 environment. Diagnostics accumulate and retain source ranges.
 
 Reflect declarations through `compiler.module(name)` and the returned
-Module's `interface`, `type`, `attribute`, `function`, `overloads`, or
-`members` queries. Symbols expose qualified and stable names.
+Module's `interface`, `type`, `attribute`, `declaration`, `overloads`, or
+`members` queries. `function(name)` is reserved for a materialized editable
+Function, so signature reflection cannot be confused with IR lookup. Symbols
+expose qualified and stable names.
 
 ## Construct types, attributes, and Known values
 
@@ -96,7 +97,7 @@ They are not inserted as runtime Function arguments.
 ## Instantiate a source Function
 
 ```cpp
-auto declaration = model->function("kernel");
+auto declaration = model->declaration("kernel");
 auto function = declaration && width
                     ? compiler.function(*declaration, {*width})
                     : std::nullopt;
@@ -168,11 +169,11 @@ Function snapshot.
 ## Map calls transactionally
 
 `joggle::ir::replace_calls` replaces one exact declaration with another in a
-Function or Program. `joggle::ir::map_calls` accepts a callable returning an
+Function or Module. `joggle::ir::map_calls` accepts a callable returning an
 optional replacement declaration for each Instruction. Both return an optional
 change count: zero means a successful no-op and absence means failure.
 
-The Function overload uses one `Function::Edit`. The Program overload plans
+The Function overload uses one `Function::Edit`. The Module overload plans
 the complete mapping, edits a private copy, and publishes it only when every
 changed Function verifies. Unchanged Functions retain their shared storage.
 
@@ -191,23 +192,24 @@ auto callback = edit.reference(*callback_decl, *callable);
 `Value::referenced_function()` recovers the exact declaration. Commit verifies
 the callable signature and Module dependency.
 
-## Programs
+## Modules
 
 ```cpp
-joggle::ir::Program program;
+joggle::Module module("compiled_model", {1, 0, 0});
 joggle::Diagnostics diagnostics;
-program.insert("main", std::move(*function), diagnostics);
+module.insert("main", std::move(*function), diagnostics);
 
-const auto names = program.function_names();
-auto* main = program.function("main");
+const auto names = module.function_names();
+auto* main = module.function("main");
 ```
 
 Copies use Function-granular copy-on-write. Const lookup shares; mutable lookup
-detaches the selected Function. `joggle::format(program, name, version)` emits
-one canonical source Module with exact declaration dependencies.
+detaches the selected Function state. `joggle::format(module)` emits that same
+Module as canonical source and derives exact dependencies from its current IR,
+so a transformation cannot leave a stale import list behind.
 
-The embedded Prelude type `program` is automatically represented by
-`joggle::ir::Program`; `function` is represented by `joggle::ir::Function`.
+The embedded Prelude type `module` is automatically represented by
+`joggle::Module`; `function` is represented by `joggle::ir::Function`.
 Compiler-function signatures using either type need no generated wrapper or
 manual `Compiler::represent` call.
 
