@@ -1,5 +1,6 @@
 #include "execution.h"
 
+#include "compiler_internal.h"
 #include "function_body.h"
 #include "module_internal.h"
 #include "type_internal.h"
@@ -43,9 +44,9 @@ ParameterValue list_parameter_value(const std::vector<bool>& values) {
   return ParameterValue::list(std::move(elements));
 }
 
-std::optional<Module::FunctionDecl>
-resolve_function(Compiler& compiler, std::string_view owner,
-                 std::string_view reference) {
+std::vector<Module::FunctionDecl>
+visible_functions(Compiler& compiler, std::string_view owner,
+                  std::string_view reference) {
   const std::size_t dot = reference.find('.');
   std::string module_name(owner);
   std::string_view local = reference;
@@ -61,19 +62,98 @@ resolve_function(Compiler& compiler, std::string_view owner,
                                })
                 : std::span<const Module::Import>::iterator{};
       if (!scope || imported == scope->imports().end()) {
-        return std::nullopt;
+        return {};
       }
       module_name = imported->name;
     }
   }
   const auto module = compiler.module(module_name);
   if (!module) {
+    return {};
+  }
+  return module->overloads(local);
+}
+
+std::vector<Module::FunctionDecl>
+visible_operators(Compiler& compiler, std::string_view owner,
+                  std::string_view symbol,
+                  Module::FunctionDecl::Fixity fixity) {
+  std::vector<Module::FunctionDecl> result;
+  const auto scope = compiler.module(owner);
+  if (!scope) {
+    return result;
+  }
+  const auto append = [&](const Module& module) {
+    for (const auto& function : module.functions()) {
+      if (function.operator_symbol() == symbol &&
+          function.operator_fixity() == fixity) {
+        result.push_back(function);
+      }
+    }
+  };
+  append(*scope);
+  for (const auto& import : scope->imports()) {
+    if (const auto module = compiler.module(import.name)) {
+      append(*module);
+    }
+  }
+  return result;
+}
+
+struct CallCandidate {
+  Module::FunctionDecl function;
+  std::vector<std::size_t> parameters;
+};
+
+std::optional<CallCandidate>
+candidate(const Module::FunctionDecl& function,
+          const Module::Expression& expression) {
+  const auto parameters = function.inputs();
+  if (std::any_of(parameters.begin(), parameters.end(),
+                  [](const Module::ParameterDecl& parameter) {
+                    return parameter.variadic;
+                  })) {
     return std::nullopt;
   }
-  const auto overloads = module->overloads(local);
-  return overloads.size() == 1U
-             ? std::optional<Module::FunctionDecl>{overloads.front()}
-             : std::nullopt;
+  CallCandidate result{function, {}};
+  result.parameters.reserve(expression.arguments.size());
+  std::vector<bool> supplied(parameters.size(), false);
+  std::size_t positional = 0;
+  for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
+    const std::string_view label =
+        index < expression.labels.size() ? expression.labels[index]
+                                         : std::string_view{};
+    std::size_t target = parameters.size();
+    if (!label.empty()) {
+      const auto found = std::find_if(
+          parameters.begin(), parameters.end(),
+          [&](const Module::ParameterDecl& parameter) {
+            return parameter.name == label;
+          });
+      if (found != parameters.end()) {
+        target = static_cast<std::size_t>(
+            std::distance(parameters.begin(), found));
+      }
+    } else {
+      while (positional < parameters.size() && supplied[positional]) {
+        ++positional;
+      }
+      if (positional < parameters.size()) {
+        target = positional++;
+      }
+    }
+    if (target == parameters.size() || supplied[target]) {
+      return std::nullopt;
+    }
+    supplied[target] = true;
+    result.parameters.push_back(target);
+  }
+  for (std::size_t index = 0; index < parameters.size(); ++index) {
+    if (!supplied[index] && !parameters[index].default_value) {
+      return std::nullopt;
+    }
+  }
+  return result;
 }
 
 class BodyEvaluator {
@@ -284,48 +364,89 @@ private:
                : std::nullopt;
   }
 
-  std::optional<ExecutionValue>
-  call(const Module::Expression& expression, SyntaxRange range) {
-    const auto next = resolve_function(
-        compiler_, function_.symbol().module_name(), expression.text);
-    if (!next) {
-      report("function '" + function_.symbol().qualified_name() +
-                 "' cannot resolve one callee named '" + expression.text +
-                 "'",
+  std::optional<ExecutionValue> call(
+      const Module::Expression& expression, SyntaxRange range,
+      const Module::ParameterDecl* expected,
+      std::vector<Module::FunctionDecl> declarations = {}) {
+    if (declarations.empty()) {
+      declarations = visible_functions(
+          compiler_, function_.symbol().module_name(), expression.text);
+    }
+    std::vector<CallCandidate> candidates;
+    for (const auto& declaration : declarations) {
+      auto shaped = candidate(declaration, expression);
+      if (!shaped || declaration.results().size() > 1U ||
+          (expected != nullptr &&
+           (declaration.results().size() != 1U ||
+            declaration.results().front().domain != expected->domain))) {
+        continue;
+      }
+      candidates.push_back(std::move(*shaped));
+    }
+    if (candidates.empty()) {
+      report("no overload of '" + expression.text +
+                 "' accepts this call shape",
              range);
       return std::nullopt;
     }
-    const auto parameters = next->inputs();
-    std::vector<std::optional<ExecutionValue>> bound(parameters.size());
-    std::size_t positional = 0;
+
+    std::vector<ExecutionValue> supplied;
+    supplied.reserve(expression.arguments.size());
     for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
-      const std::string_view label =
-          index < expression.labels.size() ? expression.labels[index]
-                                           : std::string_view{};
-      std::size_t target = parameters.size();
-      if (!label.empty()) {
-        const auto found = std::find_if(
-            parameters.begin(), parameters.end(),
-            [&](const Module::ParameterDecl& parameter) {
-              return parameter.name == label;
-            });
-        if (found != parameters.end()) {
-          target = static_cast<std::size_t>(
-              std::distance(parameters.begin(), found));
-        }
-      } else if (positional < parameters.size()) {
-        target = positional++;
-      }
-      if (target == parameters.size() || bound[target]) {
-        report("compiler call has invalid argument placement", range);
-        return std::nullopt;
-      }
+      const auto& first = candidates.front();
+      const auto& first_parameter =
+          first.function.inputs()[first.parameters[index]];
+      const bool common = std::all_of(
+          candidates.begin() + 1, candidates.end(),
+          [&](const CallCandidate& current) {
+            return current.function.inputs()[current.parameters[index]].domain ==
+                   first_parameter.domain;
+          });
       auto value = evaluate(expression.arguments[index], range,
-                            &parameters[target]);
+                            common ? &first_parameter : nullptr);
       if (!value) {
         return std::nullopt;
       }
-      bound[target] = std::move(*value);
+      supplied.push_back(std::move(*value));
+    }
+
+    candidates.erase(
+        std::remove_if(
+            candidates.begin(), candidates.end(),
+            [&](const CallCandidate& current) {
+              for (std::size_t index = 0; index < supplied.size(); ++index) {
+                const auto& parameter =
+                    current.function.inputs()[current.parameters[index]];
+                if (!CompilerAccess::accepts(
+                        compiler_, current.function, parameter,
+                        execution_value_type(supplied[index]))) {
+                  return true;
+                }
+              }
+              return false;
+            }),
+        candidates.end());
+    if (candidates.empty()) {
+      report("no overload of '" + expression.text +
+                 "' accepts the evaluated argument types",
+             range);
+      return std::nullopt;
+    }
+    if (candidates.size() != 1U) {
+      std::string message = "call to '" + expression.text +
+                            "' is ambiguous between";
+      for (const auto& current : candidates) {
+        message += " '" + current.function.symbol().qualified_name() + "'";
+      }
+      report(std::move(message), range);
+      return std::nullopt;
+    }
+
+    const CallCandidate& selected = candidates.front();
+    const auto parameters = selected.function.inputs();
+    std::vector<std::optional<ExecutionValue>> bound(parameters.size());
+    for (std::size_t index = 0; index < supplied.size(); ++index) {
+      bound[selected.parameters[index]] = std::move(supplied[index]);
     }
     std::vector<ExecutionValue> arguments;
     arguments.reserve(parameters.size());
@@ -343,7 +464,7 @@ private:
       }
       arguments.push_back(std::move(*bound[index]));
     }
-    return execute_(*next, std::move(arguments));
+    return execute_(selected.function, std::move(arguments));
   }
 
   std::optional<ExecutionValue>
@@ -421,10 +542,22 @@ private:
     if (expression.kind == Kind::List) {
       return list(expression, range, expected);
     }
-    if (expression.kind == Kind::Prefix || expression.kind == Kind::Infix ||
-        expression.kind == Kind::Postfix ||
-        expression.kind == Kind::FunctionType ||
-        (expression.kind == Kind::Reference && expected != nullptr)) {
+    const bool operation = expression.kind == Kind::Prefix ||
+                           expression.kind == Kind::Infix ||
+                           expression.kind == Kind::Postfix;
+    if (operation) {
+      const auto fixity =
+          expression.kind == Kind::Prefix
+              ? Module::FunctionDecl::Fixity::Prefix
+          : expression.kind == Kind::Postfix
+              ? Module::FunctionDecl::Fixity::Postfix
+              : Module::FunctionDecl::Fixity::Infix;
+      auto declarations = visible_operators(
+          compiler_, function_.symbol().module_name(), expression.text,
+          fixity);
+      if (!declarations.empty()) {
+        return call(expression, range, expected, std::move(declarations));
+      }
       auto inferred = expected == nullptr ? infer_operator_result(expression)
                                           : std::nullopt;
       if (expected == nullptr && inferred) {
@@ -436,7 +569,11 @@ private:
       }
       return known_expression(expression, range, *expected);
     }
-    return expression.kind == Kind::Call ? call(expression, range)
+    if (expression.kind == Kind::FunctionType ||
+        (expression.kind == Kind::Reference && expected != nullptr)) {
+      return known_expression(expression, range, *expected);
+    }
+    return expression.kind == Kind::Call ? call(expression, range, expected)
                                          : unsupported(range);
   }
 

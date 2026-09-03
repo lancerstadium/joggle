@@ -377,10 +377,12 @@ budgets fail with a diagnostic instead of silently residualizing.
 Top-level invocation of functions over registered C++ representations now
 executes structured bodies through `Compiler::execute`. The same entry invokes
 native bindings and is used by type-level calls, so multi-statement `if` and
-`while` computations can select dependent types. The remaining consolidation
-work is to share the complete call/operator resolver and structured traversal
-with residual specialization and apply that resolver to every structured arm
-during linking, including arms not selected by a particular invocation.
+`while` computations can select dependent types. Its call path filters visible
+overloads by argument placement, expected result, and evaluated host types;
+declared operators enter that same path. The remaining consolidation work is
+to share this resolver and structured traversal with residual specialization
+and apply it to every structured arm during linking, including arms not
+selected by a particular invocation.
 Explicit low-level CFG bodies remain residual artifacts rather than compiler
 scripts.
 

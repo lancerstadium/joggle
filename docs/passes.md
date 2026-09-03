@@ -122,8 +122,10 @@ control-flow rule, not separate `compile_if`, `region`, or pass-pipeline syntax.
 The invocation path executes external bindings and structured text-defined
 functions through the same `Compiler::execute` entry. This includes selected
 `if` arms, `while`, `break`, `continue`, early returns, contextual lists, and
-dependent-type calls. Explicit low-level CFG bodies are residual artifacts and
-are not interpreted as compiler scripts.
+dependent-type calls. Calls select visible overloads from evaluated host types;
+declared prefix, infix, and postfix operators use the same function candidates.
+Explicit low-level CFG bodies are residual artifacts and are not interpreted as
+compiler scripts.
 
 ## Rewrites and analyses
 

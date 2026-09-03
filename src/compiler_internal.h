@@ -31,6 +31,13 @@ struct CompilerAccess {
     return compiler.evaluate_binding(std::move(function), arguments,
                                      under_residual_control);
   }
+
+  static bool accepts(Compiler& compiler,
+                      const Module::FunctionDecl& function,
+                      const Module::ParameterDecl& parameter,
+                      std::string_view cpp_type) {
+    return compiler.accepts_host_type(function, parameter, cpp_type);
+  }
 };
 
 }  // namespace joggle::detail

@@ -44,6 +44,9 @@ module pipeline@1.0.0 {
   fn consume(input: bytes);
   fn append(input: bytes) -> bytes;
   fn nonzero(input: int) -> bool;
+  fn twice(input: int) -> int;
+  fn twice(input: string) -> string;
+  fn add_offset(lhs: int, rhs: int) -> int as +;
   fn module_identity(input: ir.module) -> ir.module;
   fn clean(input: function) -> function {
     return test_ir.canonicalize(input);
@@ -97,6 +100,12 @@ module pipeline@1.0.0 {
   fn typed(input: word<choose_width(true)>) -> word<7> {
     return input;
   }
+  fn use_twice(input: int) -> int {
+    return twice(input);
+  }
+  fn use_operator(lhs: int, rhs: int) -> int {
+    return lhs + rhs;
+  }
 }
 )",
                "pipeline.joggle");
@@ -140,13 +149,22 @@ module pipeline@1.0.0 {
   const auto once = pipeline ? pipeline->function("once") : std::nullopt;
   const auto last = pipeline ? pipeline->function("last") : std::nullopt;
   const auto typed = pipeline ? pipeline->function("typed") : std::nullopt;
+  const auto twice = pipeline ? pipeline->overloads("twice")
+                              : std::vector<joggle::Module::FunctionDecl>{};
+  const auto add_offset =
+      pipeline ? pipeline->function("add_offset") : std::nullopt;
+  const auto use_twice =
+      pipeline ? pipeline->function("use_twice") : std::nullopt;
+  const auto use_operator =
+      pipeline ? pipeline->function("use_operator") : std::nullopt;
   const auto ir_module = compiler.module("ir");
   const auto ir_module_schema =
       ir_module ? ir_module->type("module") : std::nullopt;
   if (!integer_decl || !arith_cast_decl || !format_decl || !canonicalize ||
       !clean || !read || !emit || !inspect || !compile || !consume ||
       !module_identity || !append || !nonzero || !select ||
-      !repeat || !choose || !once || !last || !typed || !ir_module_schema) {
+      !repeat || !choose || !once || !last || !typed || twice.size() != 2U ||
+      !add_offset || !use_twice || !use_operator || !ir_module_schema) {
     return EXIT_FAILURE;
   }
   const auto integer = compiler.make(*integer_decl, std::int64_t{8});
@@ -218,6 +236,18 @@ module pipeline@1.0.0 {
   });
   compiler.bind(*nonzero,
                 [](std::int64_t input) { return input != 0; });
+  for (const auto& overload : twice) {
+    if (overload.inputs().front().domain ==
+        joggle::Module::Expression::reference("int")) {
+      compiler.bind(overload,
+                    [](std::int64_t input) { return input * 2; });
+    } else {
+      compiler.bind(overload, [](std::string input) { return input + input; });
+    }
+  }
+  compiler.bind(*add_offset, [](std::int64_t lhs, std::int64_t rhs) {
+    return lhs + rhs + 100;
+  });
   if (!compiler.represent<joggle::ir::Module>(*ir_module_schema)) {
     return EXIT_FAILURE;
   }
@@ -254,6 +284,10 @@ module pipeline@1.0.0 {
       compiler.run<joggle::Bytes>(*once, joggle::Bytes{});
   const auto continued = compiler.run<joggle::Bytes>(
       *last, std::int64_t{3}, joggle::Bytes{});
+  const auto overloaded =
+      compiler.run<std::int64_t>(*use_twice, std::int64_t{6});
+  const auto operated = compiler.run<std::int64_t>(
+      *use_operator, std::int64_t{2}, std::int64_t{3});
   ok &= expect(decoded && count && *count == 0 && direct_encoded &&
                    reencoded && consume_ok && consumed &&
                    reencoded->size() == 1U &&
@@ -264,9 +298,11 @@ module pipeline@1.0.0 {
                    repeated->size() == 3U && chosen && chosen->size() == 1U &&
                    chosen->front() == std::byte{0x02} && broken &&
                    broken->size() == 1U && continued &&
-                   continued->size() == 1U && append_calls == 8U,
+                   continued->size() == 1U && append_calls == 8U &&
+                   overloaded == std::optional<std::int64_t>{12} &&
+                   operated == std::optional<std::int64_t>{105},
                "structured compiler functions execute selected branches, "
-               "loops, break, continue, and if expressions");
+               "loops, overloads, declared operators, and if expressions");
   const auto typed_function = compiler.function(*typed);
   ok &= expect(typed_function && typed_function->arguments().size() == 1U &&
                    typed_function->result_types().size() == 1U &&

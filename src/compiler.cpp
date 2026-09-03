@@ -1118,21 +1118,65 @@ bool Compiler::link() {
             dot == std::string::npos ? expression.text
                                      : expression.text.substr(dot + 1U);
         const auto source = state_->modules.find(owner);
-        const auto function =
+        std::vector<Module::FunctionDecl> candidates =
             source == state_->modules.end()
-                ? std::optional<Module::FunctionDecl>{}
-                : source->second.function(local);
-        if (!function || function->results().front().domain != expected ||
-            function->inputs().size() != expression.arguments.size()) {
+                ? std::vector<Module::FunctionDecl>{}
+                : source->second.overloads(local);
+        candidates.erase(
+            std::remove_if(
+                candidates.begin(), candidates.end(),
+                [&](const Module::FunctionDecl& candidate) {
+                  if (candidate.results().size() != 1U ||
+                      candidate.results().front().domain != expected ||
+                      candidate.inputs().size() !=
+                          expression.arguments.size()) {
+                    return true;
+                  }
+                  for (std::size_t index = 0;
+                       index < expression.arguments.size(); ++index) {
+                    const auto& argument = expression.arguments[index];
+                    std::optional<Module::Expression> actual;
+                    if (argument.kind == Kind::Variable) {
+                      const auto variable = std::find_if(
+                          variables.begin(), variables.end(),
+                          [&](const Module::ParameterDecl& parameter) {
+                            return parameter.name == argument.text;
+                          });
+                      if (variable != variables.end()) {
+                        actual = variable->domain;
+                      }
+                    } else if (argument.kind == Kind::Number) {
+                      actual = detail::domain_expression(
+                          argument.text.find_first_of(".eE") ==
+                                  std::string::npos
+                              ? detail::ValueKind::Integer
+                              : detail::ValueKind::Real);
+                    } else if (argument.kind == Kind::Boolean) {
+                      actual = detail::domain_expression(
+                          detail::ValueKind::Boolean);
+                    } else if (argument.kind == Kind::String) {
+                      actual = detail::domain_expression(
+                          detail::ValueKind::String);
+                    }
+                    if (actual &&
+                        candidate.inputs()[index].domain != *actual) {
+                      return true;
+                    }
+                  }
+                  return false;
+                }),
+            candidates.end());
+        if (candidates.size() != 1U) {
           report("unknown or ill-typed pure call '" + expression.text +
                  "' in compile-time definition '" +
                  std::string(declaration) + "'");
           return;
         }
+        const Module::FunctionDecl& function = candidates.front();
         for (std::size_t index = 0; index < expression.arguments.size();
              ++index) {
           self(self, expression.arguments[index],
-               function->inputs()[index].domain, variables, declaration,
+               function.inputs()[index].domain, variables, declaration,
                location);
         }
         return;
