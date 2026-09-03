@@ -10,16 +10,20 @@ The implementation boundary is visible in the source. `load` and `store` are
 bodyless target primitives tagged with the ordinary `mem.read` and `mem.write`
 interfaces. Their `offset` is a logical row-major ordinal; the reference layout
 is responsible for mapping that ordinal to physical storage. `relu`, `add`,
-and `linear` are not opaque target calls: they are generic Joggle bodies built
-from `mem.alloc`, `load`, `store`, arithmetic, and `for offset: index`, which
-materializes one fixed-size residual CFG instead of trip-count-sized
-unrolling. `linear` uses three nested residual loops and preserves the declared
-row-major reduction order, including bias initialization. A concrete target
-call recovers its element, shape, layout, and space generics before the body is
-materialized. A target package may replace those bodies or use different
-primitives without adding a kernel class or declaration kind. Compiler
-functions that inspect or rewrite a whole Module remain native behavior for
-now; target computation itself does not require a host callback.
+unbiased `conv2d_nchw`, and `linear` are not opaque target calls: they are
+generic Joggle bodies built from `mem.alloc`, `load`, `store`, arithmetic, and
+typed residual `for`. Each materializes a fixed-size CFG instead of
+trip-count-sized unrolling. `linear` uses three nested loops and preserves the
+declared row-major reduction order, including bias initialization. Convolution
+uses seven nested NCHW loops, ordered `C -> KH -> KW` accumulation, stride and
+dilation arithmetic, and guarded top/left subtraction so zero-padding never
+underflows the unsigned `index` type; bottom/right padding participates in the
+output extent. Concrete target calls recover their element, shape, layout, and
+space generics before the body is materialized. A target package may replace
+these bodies or use different primitives without adding a kernel class or
+declaration kind. Compiler functions that inspect or rewrite a whole Module
+remain native behavior for now; target computation itself does not require a
+host callback.
 
 `map(input, tile_rows, tile_columns)` converts ranked `tensor` values and the
 supported `nn` calls to `anchor.ref` values and target calls while

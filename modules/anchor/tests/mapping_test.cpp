@@ -70,6 +70,36 @@ module anchor_kernel@1.0.0 {
   ) -> anchor.ref<f32, [2, 4], anchor.linear, anchor.local> {
     return anchor.linear(input, weight, bias);
   }
+
+  fn conv_padded_f32(
+    input: anchor.ref<f32, [1, 1, 3, 3], anchor.linear, anchor.io>,
+    weight: anchor.ref<f32, [1, 1, 2, 2], anchor.linear, anchor.read_only>
+  ) -> anchor.ref<f32, [1, 1, 4, 4], anchor.tiled<2, 2>, anchor.local> {
+    return anchor.conv2d_nchw(
+      input,
+      weight,
+      pad_top = 1,
+      pad_left = 1,
+      pad_bottom = 1,
+      pad_right = 1
+    );
+  }
+
+  fn conv_strided_f32(
+    input: anchor.ref<f32, [1, 2, 7, 7], anchor.linear, anchor.io>,
+    weight: anchor.ref<f32, [3, 2, 3, 3], anchor.linear, anchor.read_only>
+  ) -> anchor.ref<f32, [1, 3, 4, 4], anchor.tiled<2, 2>, anchor.local> {
+    return anchor.conv2d_nchw(
+      input,
+      weight,
+      stride_h = 2,
+      stride_w = 2,
+      pad_top = 1,
+      pad_left = 1,
+      pad_bottom = 1,
+      pad_right = 1
+    );
+  }
 }
 )",
                "anchor-kernel.joggle");
@@ -110,12 +140,23 @@ module anchor_kernel@1.0.0 {
   const auto linear_body =
       linear_call ? compiler.materialize(*linear_call)
                   : std::optional<joggle::Function>{};
+  const auto materialize_call_body = [&](std::string_view name) {
+    const auto wrapper = compiler.materialize(name);
+    const auto ops = wrapper ? wrapper->ops() : std::vector<joggle::Op>{};
+    return ops.size() == 1U ? compiler.materialize(ops.front())
+                            : std::optional<joggle::Function>{};
+  };
+  const auto padded_conv_body =
+      materialize_call_body("anchor_kernel.conv_padded_f32");
+  const auto strided_conv_body =
+      materialize_call_body("anchor_kernel.conv_strided_f32");
   const auto read = memory ? memory->interface("read") : std::nullopt;
   const auto write = memory ? memory->interface("write") : std::nullopt;
   if (!source || !map || !analyze || !plan || !scratch || !cycles || !emit ||
       !reference || !ref || !linear || !tiled || !io || !local || !config ||
       !load || !store || !relu || !add || !linear_function || !linear_call ||
-      !linear_body || !read || !write) {
+      !linear_body || !padded_conv_body || !strided_conv_body || !read ||
+      !write) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -205,6 +246,20 @@ module anchor_kernel@1.0.0 {
                    calls_named(*linear_body, "anchor.linear") == 0U,
                "a concrete Linear call specializes and materializes the "
                "generic Joggle body as three residual counted loops");
+  ok &= expect(compiler.verify(*padded_conv_body) &&
+                   compiler.verify(*strided_conv_body) &&
+                   padded_conv_body->blocks().size() > 30U &&
+                   padded_conv_body->blocks().size() ==
+                       strided_conv_body->blocks().size() &&
+                   padded_conv_body->ops().size() ==
+                       strided_conv_body->ops().size() &&
+                   calls_named(*padded_conv_body, "mem.alloc") == 1U &&
+                   calls_named(*padded_conv_body, "anchor.load") == 2U &&
+                   calls_named(*padded_conv_body, "anchor.store") == 1U &&
+                   calls_named(*padded_conv_body, "anchor.conv2d_nchw") == 0U,
+               "padded and strided Conv2D calls materialize the same "
+               "trip-count-independent seven-loop CFG with explicit guarded "
+               "NCHW indexing");
   ok &= expect(calls(*source, "nn") == 7U && calls(*body, "nn") == 0U &&
                    calls(*body, "anchor") == 7U,
                "mapping replaces the complete basic-block NN vocabulary");

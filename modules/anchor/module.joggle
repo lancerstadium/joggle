@@ -151,7 +151,117 @@ module anchor@1.0.0 {
     ],
     LO,
     PO
-  >;
+  > {
+    output: ref<
+      E,
+      [
+        N,
+        O,
+        @nn.conv_extent(H, KH, SH, DH, PT, PB),
+        @nn.conv_extent(W, KW, SW, DW, PL, PR)
+      ],
+      LO,
+      PO
+    > = mem.alloc();
+    input_channels: index = C;
+    input_height: index = H;
+    input_width: index = W;
+    output_channels: index = O;
+    output_height: index = @nn.conv_extent(H, KH, SH, DH, PT, PB);
+    output_width: index = @nn.conv_extent(W, KW, SW, DW, PL, PR);
+    kernel_height: index = KH;
+    kernel_width: index = KW;
+    stride_height: index = SH;
+    stride_width: index = SW;
+    dilation_height: index = DH;
+    dilation_width: index = DW;
+    padding_top: index = PT;
+    padding_left: index = PL;
+    for batch: index in range(N) {
+      for output_channel: index in range(O) {
+        for output_y: index in range(
+          @nn.conv_extent(H, KH, SH, DH, PT, PB)
+        ) {
+          for output_x: index in range(
+            @nn.conv_extent(W, KW, SW, DW, PL, PR)
+          ) {
+            accumulator: E = 0;
+            for input_channel: index in range(C) {
+              for kernel_y: index in range(KH) {
+                input_y_padded: index = arith.add(
+                  arith.mul(output_y, stride_height),
+                  arith.mul(kernel_y, dilation_height)
+                );
+                if input_y_padded >= padding_top {
+                  input_y: index = arith.sub(input_y_padded, padding_top);
+                  if input_y < input_height {
+                    for kernel_x: index in range(KW) {
+                      input_x_padded: index = arith.add(
+                        arith.mul(output_x, stride_width),
+                        arith.mul(kernel_x, dilation_width)
+                      );
+                      if input_x_padded >= padding_left {
+                        input_x: index = arith.sub(
+                          input_x_padded,
+                          padding_left
+                        );
+                        if input_x < input_width {
+                          input_channel_offset: index = arith.add(
+                            arith.mul(batch, input_channels),
+                            input_channel
+                          );
+                          input_row_offset: index = arith.add(
+                            arith.mul(input_channel_offset, input_height),
+                            input_y
+                          );
+                          input_offset: index = arith.add(
+                            arith.mul(input_row_offset, input_width),
+                            input_x
+                          );
+                          weight_channel_offset: index = arith.add(
+                            arith.mul(output_channel, input_channels),
+                            input_channel
+                          );
+                          weight_row_offset: index = arith.add(
+                            arith.mul(weight_channel_offset, kernel_height),
+                            kernel_y
+                          );
+                          weight_offset: index = arith.add(
+                            arith.mul(weight_row_offset, kernel_width),
+                            kernel_x
+                          );
+                          input_value: E = load(input, input_offset);
+                          weight_value: E = load(weight, weight_offset);
+                          accumulator = arith.add(
+                            accumulator,
+                            arith.mul(input_value, weight_value)
+                          );
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            output_channel_offset: index = arith.add(
+              arith.mul(batch, output_channels),
+              output_channel
+            );
+            output_row_offset: index = arith.add(
+              arith.mul(output_channel_offset, output_height),
+              output_y
+            );
+            output_offset: index = arith.add(
+              arith.mul(output_row_offset, output_width),
+              output_x
+            );
+            store(output, output_offset, accumulator);
+          }
+        }
+      }
+    }
+    return output;
+  }
 
   fn conv2d_nchw<
     E: prelude.numeric,
