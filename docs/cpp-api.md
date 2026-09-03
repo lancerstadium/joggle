@@ -266,7 +266,11 @@ logic, and helper functions declared by the embedded Prelude. Extension
 functions remain explicit:
 
 ```cpp
-compiler.bind(*estimate_decl,
+const auto analysis_module = compiler.module("analysis");
+const auto estimate_decl =
+    analysis_module ? analysis_module->function("estimate") : std::nullopt;
+
+compiler.bind(*analysis_module, "estimate",
               [](const joggle::ir::Function& function) -> std::int64_t {
                 return static_cast<std::int64_t>(
                     function.instructions().size());
@@ -286,7 +290,8 @@ Function results have one direct C++ mapping:
 For example:
 
 ```cpp
-compiler.bind(*classify_decl, [](std::int64_t value) {
+const auto classify_decl = analysis_module->function("classify");
+compiler.bind(*analysis_module, "classify", [](std::int64_t value) {
   return std::tuple{value < 0 ? -value : value, value >= 0};
 });
 
@@ -295,6 +300,9 @@ auto result = compiler.run<std::tuple<std::int64_t, bool>>(
 ```
 
 The tuple is a positional boundary mapping, not a Joggle wrapper object.
+Binding by Module and local name uses the callable signature to select an
+overload. Passing a reflected `FunctionDecl` remains available when code
+already needs the declaration as a rewrite target or exact identity.
 `invocable<Result, Args...>` checks the entire reflected C++ signature.
 `lookup("module.function")` reflects one unique linked Function member for
 tools that receive a qualified name; the same handle is passed to `run`.

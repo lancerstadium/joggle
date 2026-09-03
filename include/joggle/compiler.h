@@ -245,6 +245,57 @@ template <typename Owner, typename Result, typename... Arguments>
 struct CallableTraits<Result (Owner::*)(Arguments...) const noexcept>
     : CallableTraits<Result(Arguments...)> {};
 
+// The C++ spelling of an ordinary fn implementation. Compiler& and
+// Diagnostics& are host services rather than declared arguments, so the same
+// traits drive both overload selection and type-erased invocation.
+template <typename Function> struct FunctionBinding {
+  using Callable = std::decay_t<Function>;
+  using Traits = CallableTraits<Callable>;
+  using Arguments = typename Traits::arguments;
+  static constexpr std::size_t arity = Traits::arity;
+  static constexpr bool with_compiler = [] {
+    if constexpr (arity == 0U) {
+      return false;
+    } else {
+      return std::is_same_v<std::tuple_element_t<0, Arguments>, Compiler&>;
+    }
+  }();
+  static constexpr bool with_diagnostics = [] {
+    if constexpr (arity == 0U) {
+      return false;
+    } else {
+      return std::is_same_v<std::tuple_element_t<arity - 1U, Arguments>,
+                            Diagnostics&>;
+    }
+  }();
+  static constexpr std::size_t argument_count =
+      arity - static_cast<std::size_t>(with_compiler) -
+      static_cast<std::size_t>(with_diagnostics);
+  static constexpr std::size_t offset = with_compiler ? 1U : 0U;
+  using Produced = std::remove_cvref_t<typename Traits::result>;
+  using Result =
+      std::conditional_t<OptionalValue<Produced>::value,
+                         typename OptionalValue<Produced>::type, Produced>;
+
+  static auto input_types() {
+    return []<std::size_t... Indices>(std::index_sequence<Indices...>) {
+      static_assert(
+          ((!std::is_lvalue_reference_v<
+                std::tuple_element_t<offset + Indices, Arguments>> ||
+            std::is_const_v<std::remove_reference_t<
+                std::tuple_element_t<offset + Indices, Arguments>>>) &&
+           ...),
+          "fn inputs must be values or const references");
+      return std::array<std::string_view, sizeof...(Indices)>{host_type_name<
+          std::tuple_element_t<offset + Indices, Arguments>>()...};
+    }(std::make_index_sequence<argument_count>{});
+  }
+
+  static std::vector<std::string_view> result_types() {
+    return execution_result_types<Result>();
+  }
+};
+
 template <typename Function, typename Arguments, std::size_t Offset,
           bool WithCompiler, bool WithDiagnostics, std::size_t... Indices>
 std::optional<ExecutionValues> invoke_typed_function(
@@ -606,54 +657,34 @@ public:
 
   // Binds an implementation whose C++ input and result types match the
   // declared fn. Semantic validators use verify() instead.
+  // A Module and local name are sufficient for normal extension code. The
+  // callable's C++ signature selects an overload without a generated wrapper.
+  template <typename Function>
+  void bind(const Module& module, std::string_view name, Function&& function,
+            HostEvaluation evaluation = HostEvaluation::Guarded) {
+    using Binding = detail::FunctionBinding<Function>;
+    const auto inputs = Binding::input_types();
+    const auto results = Binding::result_types();
+    const auto declaration = lookup_binding(module, name, inputs, results);
+    if (declaration) {
+      bind(*declaration, std::forward<Function>(function), evaluation);
+    }
+  }
+
+  // A declaration handle remains useful when an implementation already
+  // reflects members for rewriting or when exact identity is intentional.
   template <typename Function>
   void bind(Module::FunctionDecl schema, Function&& function,
             HostEvaluation evaluation = HostEvaluation::Guarded) {
-    using Callable = std::decay_t<Function>;
-    using Traits = detail::CallableTraits<Callable>;
-    using Arguments = typename Traits::arguments;
-    constexpr std::size_t arity = Traits::arity;
-    constexpr bool with_compiler = [] {
-      if constexpr (arity == 0U) {
-        return false;
-      } else {
-        return std::is_same_v<std::tuple_element_t<0, Arguments>, Compiler&>;
-      }
-    }();
-    constexpr bool with_diagnostics = [] {
-      if constexpr (arity == 0U) {
-        return false;
-      } else {
-        return std::is_same_v<std::tuple_element_t<arity - 1U, Arguments>,
-                              Diagnostics&>;
-      }
-    }();
-    constexpr std::size_t argument_count =
-        arity - static_cast<std::size_t>(with_compiler) -
-        static_cast<std::size_t>(with_diagnostics);
-    constexpr std::size_t offset = with_compiler ? 1U : 0U;
-    const auto argument_types =
-        []<std::size_t... Indices>(std::index_sequence<Indices...>) {
-          static_assert(
-              ((!std::is_lvalue_reference_v<
-                    std::tuple_element_t<offset + Indices, Arguments>> ||
-                std::is_const_v<std::remove_reference_t<
-                    std::tuple_element_t<offset + Indices, Arguments>>>) &&
-               ...),
-              "fn inputs must be values or const references");
-          return std::array<std::string_view, sizeof...(Indices)>{
-              detail::host_type_name<
-                  std::tuple_element_t<offset + Indices, Arguments>>()...};
-        }(std::make_index_sequence<argument_count>{});
-    using Produced = std::remove_cvref_t<typename Traits::result>;
-    std::vector<std::string_view> result_types;
-    if constexpr (!std::is_void_v<Produced>) {
-      using Value =
-          std::conditional_t<detail::OptionalValue<Produced>::value,
-                             typename detail::OptionalValue<Produced>::type,
-                             Produced>;
-      result_types = detail::execution_result_types<Value>();
-    }
+    using Binding = detail::FunctionBinding<Function>;
+    using Callable = typename Binding::Callable;
+    using Arguments = typename Binding::Arguments;
+    constexpr std::size_t argument_count = Binding::argument_count;
+    constexpr std::size_t offset = Binding::offset;
+    constexpr bool with_compiler = Binding::with_compiler;
+    constexpr bool with_diagnostics = Binding::with_diagnostics;
+    const auto argument_types = Binding::input_types();
+    const auto result_types = Binding::result_types();
     if (!check_binding_signature(schema, argument_types, result_types)) {
       return;
     }
@@ -763,6 +794,10 @@ private:
   bool check_binding_signature(const Module::FunctionDecl& schema,
                                std::span<const std::string_view> inputs,
                                std::span<const std::string_view> results);
+  std::optional<Module::FunctionDecl>
+  lookup_binding(const Module& module, std::string_view name,
+                 std::span<const std::string_view> inputs,
+                 std::span<const std::string_view> results);
   bool check_run_signature(const Module::FunctionDecl& schema,
                            std::span<const std::string_view> inputs,
                            std::span<const std::string_view> results);

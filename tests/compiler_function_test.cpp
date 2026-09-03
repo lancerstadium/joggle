@@ -391,14 +391,10 @@ module pipeline@1.0.0 {
     return input;
   });
   compiler.bind(*nonzero, [](std::int64_t input) { return input != 0; });
-  for (const auto& overload : twice) {
-    if (overload.inputs().front().domain ==
-        joggle::Module::Expression::reference("int")) {
-      compiler.bind(overload, [](std::int64_t input) { return input * 2; });
-    } else {
-      compiler.bind(overload, [](std::string input) { return input + input; });
-    }
-  }
+  compiler.bind(*pipeline, "twice",
+                [](std::int64_t input) { return input * 2; });
+  compiler.bind(*pipeline, "twice",
+                [](std::string input) { return input + input; });
   compiler.bind(*add_offset, [](std::int64_t lhs, std::int64_t rhs) {
     return lhs + rhs + 100;
   });

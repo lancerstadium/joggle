@@ -58,14 +58,13 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
   const auto keep = module.function("keep");
   const auto replacement = module.function("replacement");
-  const auto rewrite = module.function("rewrite");
-  if (!keep || !replacement || !rewrite) {
+  if (!keep || !replacement) {
     diagnostics.report("example behavior does not match its Module");
     return false;
   }
 
   compiler.bind(
-      *rewrite,
+      module, "rewrite",
       [keep = *keep, replacement = *replacement](
           joggle::ir::Function function,
           joggle::Diagnostics& edit_diagnostics)
@@ -90,11 +89,12 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
 JOGGLE_EXPORT_BEHAVIOR(bind)
 ```
 
-The callback is an ordinary binding for the declared `rewrite` function. Its
-C++ input and output match the declared `function -> function` signature. The
-input is an isolated value, and the returned Function is published only after
-its edit commits; no pass base class, generated wrapper, Graph object, or
-Region API is involved.
+The callable's C++ input and output select and check the declared
+`function -> function` overload. Only `keep` and `replacement` need explicit
+declaration handles because the rewrite compares against their exact IR
+identity. The input is an isolated value, and the returned Function is
+published only after its edit commits; no pass base class, generated wrapper,
+Graph object, or Region API is involved.
 
 ## 4. Build and validate behavior
 

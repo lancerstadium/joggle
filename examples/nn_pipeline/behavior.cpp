@@ -11,22 +11,18 @@ namespace {
 
 bool bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
-  const auto convert_relu = module.function("convert_relu");
-  const auto count_instructions = module.function("count_instructions");
-  const auto emit_joggle = module.function("emit_joggle");
   const auto nn = compiler.module("nn");
   const auto accelerator = compiler.module("example_accel");
   const auto nn_relu = nn ? nn->function("relu") : std::nullopt;
   const auto accelerator_relu =
       accelerator ? accelerator->function("relu") : std::nullopt;
-  if (!convert_relu || !count_instructions || !emit_joggle || !nn_relu ||
-      !accelerator_relu) {
+  if (!nn_relu || !accelerator_relu) {
     diagnostics.report("nn_pipeline behavior does not match its Module set");
     return false;
   }
 
   compiler.bind(
-      *convert_relu,
+      module, "convert_relu",
       [nn_relu, accelerator_relu](
           joggle::Module input,
           joggle::Diagnostics& reported) -> std::optional<joggle::Module> {
@@ -51,7 +47,7 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
       });
 
   compiler.bind(
-      *count_instructions,
+      module, "count_instructions",
       [](const joggle::Module& input,
          joggle::Diagnostics& reported) -> std::optional<std::int64_t> {
         std::size_t count = 0;
@@ -75,7 +71,7 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
         return static_cast<std::int64_t>(count);
       });
 
-  compiler.bind(*emit_joggle,
+  compiler.bind(module, "emit_joggle",
                 [](const joggle::Module& input, joggle::Diagnostics& reported)
                     -> std::optional<joggle::Bytes> {
                   try {

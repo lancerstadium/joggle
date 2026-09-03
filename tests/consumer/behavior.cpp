@@ -6,21 +6,22 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
   const auto keep = module.function("keep");
   const auto converted = module.function("converted");
-  const auto convert = module.function("convert");
-  if (!keep || !converted || !convert) {
+  if (!keep || !converted) {
     diagnostics.report("external behavior does not match its Module");
     return false;
   }
 
-  compiler.bind(*convert, [keep = *keep, converted = *converted](
-                              joggle::ir::Function function,
-                              joggle::Diagnostics& diagnostics)
-                              -> std::optional<joggle::ir::Function> {
-    if (!joggle::ir::replace_calls(function, keep, converted, diagnostics)) {
-      return std::nullopt;
-    }
-    return function;
-  });
+  compiler.bind(
+      module, "convert",
+      [keep = *keep, converted = *converted](joggle::ir::Function function,
+                                             joggle::Diagnostics& diagnostics)
+          -> std::optional<joggle::ir::Function> {
+        if (!joggle::ir::replace_calls(function, keep, converted,
+                                       diagnostics)) {
+          return std::nullopt;
+        }
+        return function;
+      });
   return true;
 }
 

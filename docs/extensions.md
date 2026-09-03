@@ -56,13 +56,13 @@ This is a whole-module value, not a second IR hierarchy.
 
 ## Bind a function
 
-After linking, look up the declaration and bind a matching C++ callable:
+After linking, bind a local function name to a matching C++ callable:
 
 ```cpp
 const auto module = compiler.module("metrics");
-const auto volume = module ? module->function("volume") : std::nullopt;
-if (volume) {
-  compiler.bind(*volume, [](const std::vector<std::int64_t>& shape) {
+if (module) {
+  compiler.bind(*module, "volume",
+                [](const std::vector<std::int64_t>& shape) {
     std::int64_t result = 1;
     for (std::int64_t dimension : shape) {
       result *= dimension;
@@ -71,6 +71,11 @@ if (volume) {
   });
 }
 ```
+
+The callable signature selects an overload and is checked immediately. No
+wrapper, generated declaration header, or per-function adapter is needed.
+`Module::FunctionDecl` can still be reflected and passed directly when an
+implementation also needs the declaration as an IR rewrite target.
 
 Supported compiler-domain mappings are `std::int64_t`, `double`, `bool`,
 `std::string`, `joggle::Type`, `joggle::Attribute`, `joggle::Bytes`, and

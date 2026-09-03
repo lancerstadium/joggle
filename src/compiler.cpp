@@ -2110,6 +2110,42 @@ bool Compiler::check_binding_signature(
   return true;
 }
 
+std::optional<Module::FunctionDecl>
+Compiler::lookup_binding(const Module& module, std::string_view name,
+                         std::span<const std::string_view> inputs,
+                         std::span<const std::string_view> results) {
+  const auto scope = lookup_module(module);
+  if (!scope) {
+    return std::nullopt;
+  }
+  const auto overloads = scope->overloads(name);
+  if (overloads.empty()) {
+    state_->diagnostics.report("module '" + std::string(scope->name()) +
+                               "' has no function named '" + std::string(name) +
+                               "'");
+    return std::nullopt;
+  }
+  std::optional<Module::FunctionDecl> match;
+  for (const Module::FunctionDecl& candidate : overloads) {
+    if (!matches_run_signature(candidate, inputs, results)) {
+      continue;
+    }
+    if (match) {
+      state_->diagnostics.report(
+          "C++ binding is ambiguous for overloaded function '" +
+          std::string(scope->name()) + "." + std::string(name) + "'");
+      return std::nullopt;
+    }
+    match = candidate;
+  }
+  if (!match) {
+    state_->diagnostics.report("no overload of function '" +
+                               std::string(scope->name()) + "." +
+                               std::string(name) + "' matches the C++ binding");
+  }
+  return match;
+}
+
 void Compiler::bind_native(Module::FunctionDecl schema, NativeFunction function,
                            HostEvaluation evaluation) {
   const Module::Symbol symbol = schema.symbol();
