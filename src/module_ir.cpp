@@ -3,7 +3,7 @@
 #include "ir_internal.h"
 #include "module_storage.h"
 #include "prelude.h"
-#include "sha256.h"
+#include "joggle/digest.h"
 #include "type_internal.h"
 
 #include <algorithm>
@@ -250,7 +250,7 @@ bool Module::insert(std::string name, Function function,
           diagnostics)) {
     return false;
   }
-  next->digest = detail::sha256(format(candidate));
+  next->digest = sha256(format(candidate));
   next->digest_revisions.clear();
   next->digest_revisions.reserve(next->functions.size());
   for (const detail::FunctionMember& member : next->functions) {

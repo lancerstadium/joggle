@@ -10,6 +10,11 @@ Joggle is a C++20 library. A Module is the sole top-level IR owner.
 `Module::FunctionDecl` handles are immutable; materialized `Function` body
 edits are explicit transactions.
 
+`joggle::sha256(bytes)` returns the lowercase hexadecimal digest of an exact,
+length-aware byte string. Module and repository identities use the same public
+primitive, so extensions can create compatible content-addressed resource
+names without importing a private header or selecting another hash library.
+
 ## Namespaces and ownership
 
 | Type | Role |

@@ -7,7 +7,7 @@
 #include "function_body.h"
 #include "module_internal.h"
 #include "module_storage.h"
-#include "sha256.h"
+#include "joggle/digest.h"
 #include "syntax_lexer.h"
 
 #include <algorithm>
@@ -2126,7 +2126,7 @@ Module::Module(std::string name, Version version) {
   storage->name = std::move(name);
   storage->version = version;
   storage_ = storage;
-  storage->digest = detail::sha256(format(*this));
+  storage->digest = sha256(format(*this));
   storage->interface_digest = compute_interface_digest(storage);
 }
 
@@ -2172,7 +2172,7 @@ Module::current_digest(const std::shared_ptr<const Storage>& storage) {
       }
     }
     if (revisions != storage->digest_revisions) {
-      storage->digest = detail::sha256(format(Module(storage)));
+      storage->digest = sha256(format(Module(storage)));
       storage->digest_revisions = std::move(revisions);
     }
   }
@@ -2230,7 +2230,7 @@ Module::interface_view(const std::shared_ptr<const Storage>& storage) {
   interface->interface_digest.clear();
   interface->digest_revisions.clear();
   Module result(interface);
-  interface->digest = detail::sha256(format(result));
+  interface->digest = sha256(format(result));
   interface->interface_digest = interface->digest;
   return result;
 }
@@ -2450,7 +2450,7 @@ std::optional<Module> parse_module(std::string_view text,
         {std::move(name), std::move(function), nullptr});
   }
   Module module(storage);
-  storage->digest = detail::sha256(format(module));
+  storage->digest = sha256(format(module));
   storage->interface_digest = Module::compute_interface_digest(storage);
   return module;
 }

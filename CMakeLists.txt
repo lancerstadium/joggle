@@ -275,9 +275,8 @@ if(JOGGLE_BUILD_TESTS)
   )
   add_test(NAME compiler_function COMMAND joggle_compiler_function_test)
 
-  add_executable(joggle_sha256_test tests/sha256_test.cpp src/sha256.cpp)
-  target_compile_features(joggle_sha256_test PRIVATE cxx_std_20)
-  target_include_directories(joggle_sha256_test PRIVATE src)
+  add_executable(joggle_sha256_test tests/sha256_test.cpp)
+  target_link_libraries(joggle_sha256_test PRIVATE joggle::joggle)
   add_test(NAME sha256 COMMAND joggle_sha256_test)
 
   add_executable(joggle_module_repository_test

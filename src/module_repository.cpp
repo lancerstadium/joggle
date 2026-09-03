@@ -1,7 +1,7 @@
 #include "module_repository.h"
 
 #include "joggle/behavior.h"
-#include "sha256.h"
+#include "joggle/digest.h"
 
 #include <algorithm>
 #include <cstdlib>

@@ -1,7 +1,7 @@
 #include "joggle/type.h"
 
 #include "domain.h"
-#include "sha256.h"
+#include "joggle/digest.h"
 #include "type_internal.h"
 
 #include <algorithm>
@@ -89,7 +89,7 @@ std::string instance_name(const Module::Symbol& schema,
     const std::string item = parameter.canonical();
     encoding += std::to_string(item.size()) + ":" + item;
   }
-  return schema.stable_name() + "/instance/" + detail::sha256(encoding);
+  return schema.stable_name() + "/instance/" + sha256(encoding);
 }
 
 }  // namespace

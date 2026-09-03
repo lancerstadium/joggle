@@ -1,4 +1,4 @@
-#include "sha256.h"
+#include "joggle/digest.h"
 
 #include <array>
 #include <cstddef>
@@ -7,7 +7,7 @@
 #include <sstream>
 #include <vector>
 
-namespace joggle::detail {
+namespace joggle {
 namespace {
 
 constexpr std::array<std::uint32_t, 64> round_constants{
@@ -112,4 +112,4 @@ std::string sha256(std::string_view input) {
   return output.str();
 }
 
-}  // namespace joggle::detail
+}  // namespace joggle
