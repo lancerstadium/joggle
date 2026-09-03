@@ -40,6 +40,7 @@ current implementation can support.
 | End-to-end composition | The Anchor integration test imports the official opset-18 ResNet-18 ONNX model, converts it, maps target calls, fuses eligible epilogues, plans scratch storage, simulates a typed timeline, and emits a manifest. See [the ONNX integration test](../modules/anchor/tests/onnx_integration_test.cpp). | Emission is an inspectable manifest, not machine code. |
 | Order independence case | The precision integration test applies f32-to-f16 before or after ONNX-to-NN conversion; both paths produce identical planned Modules, resources, and traces. See [the precision integration test](../modules/anchor/tests/precision_integration_test.cpp). | One commuting pair does not establish general pass-order independence. |
 | Deterministic analytical result | For `anchor.config<16, 4, 32, 16, 16777216, 4>`, the checked f32 baseline has 140 planned Ops, 49 events, 10,946,464 scratch bytes, and 29,453,374 modeled cycles. Nine fusions produce 122 Ops, 40 events, 7,735,200 bytes, and 29,161,690 modeled cycles. The f16 composition has 3,867,600 scratch bytes and 28,848,157 modeled cycles. | These are outputs of the declared analytical model. They are not measured latency, energy, numerical accuracy, or WCET. |
+| Source-kernel closure | `anchor.kernel_report(module) -> bytes` recursively specializes concrete user function bodies and accepts leaves only through shared arithmetic, literal, allocation, memory, alias, and release interfaces. A separately installed four-element square kernel passes without name registration; an otherwise identical opaque declaration fails. The full ResNet-18 path closes 49 roots through 35 specializations and 1,547 primitive sites; the fused path closes 40 roots through 42 specializations and 1,609 sites. See [the closure test](../modules/anchor/tests/kernel_test.cpp) and [the ONNX integration test](../modules/anchor/tests/onnx_integration_test.cpp). | Closure proves that declared bodies reach an admitted primitive boundary. It does not prove that the current emitter consumes those bodies or that the primitives have correct target code. |
 | Numerical differential case | A Module-defined `execute_f32(module, bytes) -> bytes` function evaluates the fused and planned target graph. [The numerical test](../modules/anchor/tests/numerical_test.cpp) compares all 1,000 ResNet-18 logits with an ONNX Runtime oracle generated from the same pinned model: maximum scaled error `2.58669e-06`, exact top-1 agreement, with a `1e-4` acceptance bound. | This proves one f32 model path on a host semantic executor. It does not prove f16 accuracy, broad operator coverage, physical layout execution, or target performance. |
 
 This evidence establishes a coherent vertical slice and a testable abstraction.
@@ -59,6 +60,35 @@ feature-count table.
 | [TileLang](https://proceedings.iclr.cc/paper_files/paper/2026/hash/76fb92288bf90360c527efb0d1c2aba6-Abstract-Conference.html) and [PTO-DSL](https://github.com/huawei-csl/pto-dsl) | Expert-facing kernel programming with explicit tile, memory-placement, data-movement, scheduling, or NPU-native control. | User-defined target primitives and executable operator bodies. | Joggle should host or call such a kernel vocabulary as a Module, not clone it in the core. A tile, stream, or NPU syntax is therefore an extension case rather than Joggle's universal IR. |
 | [MATCH](https://arxiv.org/abs/2410.08855) | Retargetable edge-DNN deployment through customizable hardware execution modules, memory descriptions, operator APIs, cost models, and measured execution on heterogeneous MCUs. | This is the closest target-domain competitor: configurable operators, hardware models, graph transformation, resource reasoning, and edge deployment. | Joggle must demonstrate a benefit beyond renaming MATCH/TVM concepts: formats, operator semantics, transformations, analyses, and targets must be independently installable and composable, with lower measured framework coupling, on more than one real target. |
 | [Astra](https://doi.org/10.1145/3297858.3304072) | Compiler/runtime co-design that enumerates whole-program variants and uses predictable repeated training iterations plus fine-grained measurements to select and prune online. | It shows why a static cost model need not make every final policy decision. | Joggle has no online exploration today. Repeated inference may provide feedback opportunities, but cold-start limits, input variation, and edge resource budgets can invalidate Astra's amortization argument. This is a future hypothesis, not a present contribution. |
+
+### Extension-seam audit
+
+A focused primary-source audit on 2026-09-04 sharpened the comparison. TVM's
+[BYOC workflow](https://tvm.apache.org/docs/how_to/tutorials/bring_your_own_codegen.html)
+explicitly requires pattern registration, graph partitioning, code generation,
+and runtime execution, while its
+[custom-datatype mechanism](https://tvm.apache.org/2020/09/26/bring-your-own-datatypes)
+uses a separate datatype and lowering registry. IREE's
+[compiler API](https://iree.dev/reference/bindings/c-api/) exposes plugins for
+targets, dialects, passes, and pipelines, and its
+[deployment model](https://iree.dev/guides/deployment-configurations/) pairs
+compiler target backends with runtime HAL drivers. TileLang's
+[backend layout](https://github.com/tile-ai/tilelang/blob/main/tilelang/backend/README.md)
+separately registers pass pipelines, host code generation, device code
+generation, target operations, and runtime integration. ONNX-MLIR's
+[operation guide](https://github.com/onnx/onnx-mlir/blob/main/docs/ImportONNXDefs.md)
+combines generated dialect definitions with explicit hooks for custom
+verification, import, shape inference, and later lowering.
+
+Those seams are intentional engineering choices, not defects. A plain C
+emitter would therefore reproduce an established capability without testing
+Joggle's thesis. The discriminating experiment is *source closure*: after a
+new kernel is installed, can the same typed declaration be specialized through
+its nested source bodies to a small admitted primitive boundary, with no new
+operator-name registry or opaque native implementation? The implemented
+closure gate now answers that structural question for one custom kernel and
+the standard ResNet-18 path. The next emitter must consume this closed source
+form; another name-dispatch table would count as evidence against the thesis.
 
 The open gap is therefore not “a lighter MLIR” or “a more general TileLang.” It
 is whether a small typed extension plane can let co-design researchers change
@@ -179,8 +209,8 @@ target is insufficient for this route as well.
 The next implementation work should strengthen evidence, not add another core
 abstraction:
 
-1. connect one real emission/execution path and calibrate the Anchor resource
-   timeline;
+1. make one real emitter consume the source-closed kernel bodies and admitted
+   primitives, then execute its artifact and calibrate the Anchor timeline;
 2. extend differential correctness to every claimed format and model family;
 3. only then add bounded variant selection and measurement feedback as ordinary
    Module-defined types and functions.

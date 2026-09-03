@@ -10,6 +10,7 @@
 #include <joggle/joggle.h>
 
 #include "execute.h"
+#include "kernel.h"
 
 namespace {
 
@@ -1159,6 +1160,7 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
       });
   compiler.bind(module, "duration", duration);
   compiler.bind(module, "trace", trace);
+  compiler.bind(module, "kernel_report", joggle::anchor::kernel_report);
   compiler.bind(
       module, "execute_f32",
       [resolved](joggle::Compiler& bound, const joggle::Module& program,

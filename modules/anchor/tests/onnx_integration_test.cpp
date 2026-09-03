@@ -128,11 +128,13 @@ module anchor_pipeline@1.0.0 {
   const auto analyze =
       target ? target->function("scratch_bytes") : std::nullopt;
   const auto cycle_model = target ? target->function("cycles") : std::nullopt;
+  const auto kernel_report =
+      target ? target->function("kernel_report") : std::nullopt;
   const auto emit = target ? target->function("emit") : std::nullopt;
   const auto config = target ? target->type("config") : std::nullopt;
   const auto reference = memory ? memory->interface("reference") : std::nullopt;
-  if (!first || !second || !analyze || !cycle_model || !emit || !config ||
-      !reference) {
+  if (!first || !second || !analyze || !cycle_model || !kernel_report ||
+      !emit || !config || !reference) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -161,6 +163,14 @@ module anchor_pipeline@1.0.0 {
       fused && machine
           ? compiler.run<joggle::Bytes>("anchor.trace", *fused, *machine)
           : std::optional<joggle::Bytes>{};
+  const auto kernel_summary =
+      compiler.run<joggle::Bytes>(*kernel_report, *first);
+  const auto fused_kernel_summary =
+      fused ? compiler.run<joggle::Bytes>(*kernel_report, *fused)
+            : std::optional<joggle::Bytes>{};
+  if (!kernel_summary || !fused_kernel_summary) {
+    compiler.diagnostics().print(std::cerr);
+  }
   const auto fused_trace_again =
       fused && machine
           ? compiler.run<joggle::Bytes>("anchor.trace", *fused, *machine)
@@ -189,6 +199,10 @@ module anchor_pipeline@1.0.0 {
   const std::string timeline = trace ? decode(*trace) : std::string{};
   const std::string fused_timeline =
       fused_trace ? decode(*fused_trace) : std::string{};
+  const std::string kernels =
+      kernel_summary ? decode(*kernel_summary) : std::string{};
+  const std::string fused_kernels =
+      fused_kernel_summary ? decode(*fused_kernel_summary) : std::string{};
   const std::size_t events = event_count(timeline);
   const std::size_t fused_events = event_count(fused_timeline);
   const std::size_t fusions =
@@ -221,7 +235,26 @@ module anchor_pipeline@1.0.0 {
                *fused_cycles == 29161690 &&
                *fused_scratch == 7735200 &&
                fused_body->ops().size() == 122U &&
-               fusions == 9U &&
+               fusions == 9U && kernel_summary && fused_kernel_summary &&
+               kernels.starts_with(
+                   "anchor kernel closure 1\nmodule main_graph#") &&
+               kernels.find("\nroot-calls 49\n") != std::string::npos &&
+               kernels.find("\nsource-specializations 35\n") !=
+                   std::string::npos &&
+               kernels.find("\nprimitive-sites 1547\n") !=
+                   std::string::npos &&
+               kernels.find("\nmax-source-depth 2\n") !=
+                   std::string::npos &&
+               fused_kernels.starts_with(
+                   "anchor kernel closure 1\nmodule main_graph#") &&
+               fused_kernels.find("\nroot-calls 40\n") !=
+                   std::string::npos &&
+               fused_kernels.find("\nsource-specializations 42\n") !=
+                   std::string::npos &&
+               fused_kernels.find("\nprimitive-sites 1609\n") !=
+                   std::string::npos &&
+               fused_kernels.find("\nmax-source-depth 3\n") !=
+                   std::string::npos &&
                body->ops().size() == 140U && first->data().size() == 42U &&
                first->digest() == second->digest() &&
                first->data() == second->data();
@@ -261,6 +294,8 @@ module anchor_pipeline@1.0.0 {
             << "fused-scratch-bytes "
             << (fused_scratch ? *fused_scratch : 0) << '\n'
             << "fused-cycles " << (fused_cycles ? *fused_cycles : 0) << '\n'
+            << (kernel_summary ? kernels : std::string{})
+            << (fused_kernel_summary ? fused_kernels : std::string{})
             << "manifest-bytes " << (manifest ? manifest->size() : 0U)
             << '\n';
   return valid ? EXIT_SUCCESS : EXIT_FAILURE;

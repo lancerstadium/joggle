@@ -122,6 +122,25 @@ fn inspect(input: bytes, target: type) -> bytes {
 }
 ```
 
+`kernel_report(program)` is a fail-closed source-closure analysis. For every
+non-administrative call in a materialized program it specializes the declared
+function body from the concrete call, recursively follows nested bodies, and
+accepts leaves only when they implement the shared arithmetic, literal,
+allocation, memory-access, alias, or release interfaces. An opaque external
+call therefore fails instead of being silently treated as a kernel. The report
+records root calls, unique concrete source specializations, primitive sites,
+and maximum source-expansion depth. A separately declared user Module is
+covered by the same analysis without registering its function name with
+Anchor.
+
+On the checked ResNet-18 path, all 49 unfused compute calls close through 35
+unique source specializations and 1,547 primitive sites at maximum depth two.
+After nine fusions, 40 root calls close through 42 specializations and 1,609
+primitive sites at maximum depth three. The increase is expected: each fused
+body composes an existing convolution or normalization body with its residual
+epilogue. These counts characterize source coverage; they are not instruction
+counts or performance measurements.
+
 `execute_f32(program, input)` is a bounded semantic executor for the current
 f32 target vocabulary. It accepts one materialized, straight-line Function
 with one f32 reference input and output, resolves immutable tensors from the
@@ -139,7 +158,7 @@ cmake -S . -B build-anchor \
   -DJOGGLE_BUILD_MODULES=anchor
 cmake --build build-anchor
 ctest --test-dir build-anchor \
-  -R '^module\.anchor$' --output-on-failure
+  -R '^module\.anchor' --output-on-failure
 ```
 
 The current supported calls cover the ResNet-18 path: immutable constants,

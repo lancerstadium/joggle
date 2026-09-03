@@ -132,8 +132,11 @@ remove single-use biased-Conv/BatchNorm epilogues before placement and
 simulation. A bounded `execute_f32(module, bytes) -> bytes` function evaluates
 the planned target vocabulary for differential numerical testing; when ONNX
 Runtime is available, the optional test checks every ResNet-18 output logit
-against an independently generated oracle. The optional precision composition
-reaches the same f16 Anchor
+against an independently generated oracle. A fail-closed
+`kernel_report(module) -> bytes` analysis recursively specializes those target
+calls and proves that both built-in and separately installed user kernels end
+only in declared arithmetic and memory primitives. The optional precision
+composition reaches the same f16 Anchor
 artifact whether representation conversion runs before or after
 `onnx.to_nn`, providing a concrete non-ladder composition check.
 

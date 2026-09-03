@@ -320,6 +320,14 @@ reaches the latch, and `break` reaches the exit. An empty iterable generates no
 loop. Thus `for i in range(N)` and `for i: index in range(N)` are one syntax
 with two ordinary staging outcomes, not separate host and kernel languages.
 
+When the iterable resolves to the exact Prelude `range` declaration, a typed
+`for` evaluates only its integer bounds and step. It does not allocate the
+intermediate `list<int>`, so a billion-iteration runtime loop still produces a
+constant-size CFG within the normal compiler evaluation budget. This is an
+identity-based optimization of the Prelude function, not a textual special
+case: a shadowing or imported user `range` continues through ordinary Known
+list evaluation and its configured limits.
+
 Integer generics use the same list rule through ordinary Prelude functions:
 
 ```joggle

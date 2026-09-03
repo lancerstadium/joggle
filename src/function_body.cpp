@@ -3,6 +3,7 @@
 #include "call_resolution.h"
 #include "expression_syntax.h"
 #include "prelude.h"
+#include "prelude_runtime.h"
 #include "compiler_internal.h"
 
 #include "diagnostic_internal.h"
@@ -2362,20 +2363,129 @@ private:
     return next(exit);
   }
 
+  struct CountedRange {
+    std::int64_t start = 0;
+    std::int64_t limit = 0;
+    std::int64_t step = 1;
+    bool empty = false;
+  };
+
+  struct CountedRangeProbe {
+    bool matched = false;
+    std::optional<CountedRange> value;
+  };
+
+  CountedRangeProbe
+  prelude_counted_range(const detail::ExpressionSyntax& syntax) {
+    using Kind = Module::Expression::Kind;
+    if (syntax.value.kind != Kind::Call) {
+      return {};
+    }
+
+    std::optional<Module::FunctionDecl> selected;
+    std::optional<detail::CallCandidate> selected_call;
+    for (const auto& function : visible_functions(syntax.value.text)) {
+      const auto candidate = detail::call_candidate(function, syntax.value);
+      if (!candidate || !detail::is_prelude_primitive(function) ||
+          function.name() != "range") {
+        continue;
+      }
+      if (selected) {
+        return {};
+      }
+      selected = function;
+      selected_call = *candidate;
+    }
+    if (!selected || !selected_call) {
+      return {};
+    }
+
+    std::array<std::int64_t, 3> arguments{0, 0, 1};
+    for (std::size_t index = 0; index < syntax.value.arguments.size();
+         ++index) {
+      const std::size_t parameter = selected_call->parameters[index];
+      auto value = evaluate_known({syntax.value.arguments[index], syntax.range},
+                                  selected->inputs()[parameter]);
+      const auto* integer =
+          value && value->known()
+              ? std::get_if<std::int64_t>(value->known_value())
+              : nullptr;
+      if (integer == nullptr) {
+        return {true, std::nullopt};
+      }
+      arguments[parameter] = *integer;
+    }
+
+    const std::size_t count = syntax.value.arguments.size();
+    const std::int64_t start = count == 1U ? 0 : arguments[0];
+    const std::int64_t stop = count == 1U ? arguments[0] : arguments[1];
+    const std::int64_t step = count == 3U ? arguments[2] : 1;
+    if (step == 0) {
+      report("range step cannot be zero", syntax.range);
+      return {true, std::nullopt};
+    }
+    if (step > 0 ? start >= stop : start <= stop) {
+      return {true, CountedRange{start, stop, step, true}};
+    }
+
+    const auto checked_add =
+        [](std::int64_t lhs, std::int64_t rhs) -> std::optional<std::int64_t> {
+      if ((rhs > 0 && lhs > std::numeric_limits<std::int64_t>::max() - rhs) ||
+          (rhs < 0 && lhs < std::numeric_limits<std::int64_t>::min() - rhs)) {
+        return std::nullopt;
+      }
+      return lhs + rhs;
+    };
+    std::int64_t last = start;
+    if (step > 0) {
+      const std::uint64_t distance =
+          static_cast<std::uint64_t>(stop) - static_cast<std::uint64_t>(start);
+      const std::uint64_t remainder =
+          (distance - 1U) % static_cast<std::uint64_t>(step);
+      last = (stop - 1) - static_cast<std::int64_t>(remainder);
+    } else {
+      const std::uint64_t distance =
+          static_cast<std::uint64_t>(start) - static_cast<std::uint64_t>(stop);
+      const std::uint64_t magnitude =
+          std::uint64_t{0} - static_cast<std::uint64_t>(step);
+      const std::uint64_t remainder = (distance - 1U) % magnitude;
+      last = (stop + 1) + static_cast<std::int64_t>(remainder);
+    }
+    const auto limit = checked_add(last, step);
+    if (!limit) {
+      report("typed for range exceeds the compiler integer domain",
+             syntax.range);
+      return {true, std::nullopt};
+    }
+    return {true, CountedRange{start, *limit, step, false}};
+  }
+
   Flow instantiate_for(const detail::StatementSyntax& statement, Block block) {
     if (!statement.iterator) {
       report("for statement has no iterator", statement.range);
       return next(block);
     }
-    auto iterable = evaluate_known(statement.expression);
-    const detail::ExecutionValue* payload =
-        iterable && iterable->known() ? iterable->known_value() : nullptr;
-    auto elements = payload
-                        ? detail::list_elements(*payload)
-                        : std::optional<std::vector<detail::ExecutionValue>>{};
-    if (!elements) {
-      report("for iterable must be a Known list", statement.expression.range);
-      return next(block);
+    std::optional<CountedRange> counted;
+    std::optional<std::vector<detail::ExecutionValue>> elements;
+    if (statement.iterator->type) {
+      auto probe = prelude_counted_range(statement.expression);
+      if (probe.matched) {
+        if (!probe.value) {
+          return next(block);
+        }
+        counted = *probe.value;
+      }
+    }
+    if (!counted) {
+      auto iterable = evaluate_known(statement.expression);
+      const detail::ExecutionValue* payload =
+          iterable && iterable->known() ? iterable->known_value() : nullptr;
+      elements = payload ? detail::list_elements(*payload)
+                         : std::optional<std::vector<detail::ExecutionValue>>{};
+      if (!elements) {
+        report("for iterable must be a Known list", statement.expression.range);
+        return next(block);
+      }
     }
 
     if (statement.iterator->type) {
@@ -2383,20 +2493,22 @@ private:
       if (!iterator_type) {
         return next(block);
       }
-      if (elements->empty()) {
+      if ((counted && counted->empty) || (elements && elements->empty())) {
         return next(block);
       }
 
       std::vector<std::int64_t> sequence;
-      sequence.reserve(elements->size());
-      for (const detail::ExecutionValue& element : *elements) {
-        const auto* integer = std::get_if<std::int64_t>(&element);
-        if (!integer) {
-          report("a typed for iterable must contain integers",
-                 statement.expression.range);
-          return next(block);
+      if (elements) {
+        sequence.reserve(elements->size());
+        for (const detail::ExecutionValue& element : *elements) {
+          const auto* integer = std::get_if<std::int64_t>(&element);
+          if (!integer) {
+            report("a typed for iterable must contain integers",
+                   statement.expression.range);
+            return next(block);
+          }
+          sequence.push_back(*integer);
         }
-        sequence.push_back(*integer);
       }
 
       const auto checked_add = [](std::int64_t lhs, std::int64_t rhs)
@@ -2416,33 +2528,43 @@ private:
         return lhs - rhs;
       };
 
+      std::int64_t start_integer = 0;
+      std::int64_t limit_integer = 0;
       std::int64_t step = 1;
-      if (sequence.size() > 1U) {
-        const auto difference = checked_subtract(sequence[1], sequence[0]);
-        if (!difference || *difference == 0) {
-          report("a typed for iterable must be an arithmetic progression",
-                 statement.expression.range);
-          return next(block);
-        }
-        step = *difference;
-        for (std::size_t index = 2; index < sequence.size(); ++index) {
-          const auto next_step =
-              checked_subtract(sequence[index], sequence[index - 1U]);
-          if (!next_step || *next_step != step) {
+      if (counted) {
+        start_integer = counted->start;
+        limit_integer = counted->limit;
+        step = counted->step;
+      } else {
+        start_integer = sequence.front();
+        if (sequence.size() > 1U) {
+          const auto difference = checked_subtract(sequence[1], sequence[0]);
+          if (!difference || *difference == 0) {
             report("a typed for iterable must be an arithmetic progression",
                    statement.expression.range);
             return next(block);
           }
+          step = *difference;
+          for (std::size_t index = 2; index < sequence.size(); ++index) {
+            const auto next_step =
+                checked_subtract(sequence[index], sequence[index - 1U]);
+            if (!next_step || *next_step != step) {
+              report("a typed for iterable must be an arithmetic progression",
+                     statement.expression.range);
+              return next(block);
+            }
+          }
+        } else if (sequence.front() ==
+                   std::numeric_limits<std::int64_t>::max()) {
+          step = -1;
         }
-      } else if (sequence.front() ==
-                 std::numeric_limits<std::int64_t>::max()) {
-        step = -1;
-      }
-      const auto limit = checked_add(sequence.back(), step);
-      if (!limit) {
-        report("typed for range exceeds the compiler integer domain",
-               statement.expression.range);
-        return next(block);
+        const auto limit = checked_add(sequence.back(), step);
+        if (!limit) {
+          report("typed for range exceeds the compiler integer domain",
+                 statement.expression.range);
+          return next(block);
+        }
+        limit_integer = *limit;
       }
 
       std::vector<std::string> carried_names;
@@ -2489,8 +2611,8 @@ private:
                                    statement.iterator->range)
                      : std::optional<Value>{};
       };
-      auto start = materialize_integer(sequence.front());
-      auto bound = materialize_integer(*limit);
+      auto start = materialize_integer(start_integer);
+      auto bound = materialize_integer(limit_integer);
       auto step_value = materialize_integer(step);
       if (!start || !bound || !step_value) {
         report("typed for bounds cannot be materialized as its iterator type",

@@ -734,6 +734,8 @@ module loops@1.0.0 {
   fn source<T: type>() -> T;
   fn integer_literal<T: prelude.integer>(value: int) -> T : prelude.literal;
   fn less(lhs: i32, rhs: i32) -> i1;
+  fn counted_less(lhs: i32, rhs: i32) -> i1 as <;
+  fn counted_add(lhs: i32, rhs: i32) -> i32 as +;
   fn next(input: i32) -> i32;
 
   fn repeat(start: i32, limit: i32) -> i32 {
@@ -748,6 +750,15 @@ module loops@1.0.0 {
     current: i32 = 0;
     while less(current, limit) {
       current = next(current);
+    }
+    return current;
+  }
+
+  fn huge_counted_loop(input: i32) -> i32 {
+    current = input;
+    for offset: i32 in range(1000000000) {
+      current = next(current);
+      break;
     }
     return current;
   }
@@ -835,6 +846,9 @@ module loops@1.0.0 {
   const auto count_from_zero =
       loops_linked ? loop_compiler.materialize("loops.count_from_zero")
                    : std::optional<joggle::Function>{};
+  const auto huge_counted_loop =
+      loops_linked ? loop_compiler.materialize("loops.huge_counted_loop")
+                   : std::optional<joggle::Function>{};
   const auto controlled = loops_linked
                               ? loop_compiler.materialize("loops.controlled")
                               : std::optional<joggle::Function>{};
@@ -862,6 +876,12 @@ module loops@1.0.0 {
                        "integer_literal",
                "a typed Known initializer materializes before becoming a "
                "Residual loop-carried value");
+  ok &= expect(huge_counted_loop &&
+                   loop_compiler.verify(*huge_counted_loop) &&
+                   huge_counted_loop->blocks().size() <= 5U &&
+                   huge_counted_loop->ops().size() <= 8U,
+               "a typed Prelude range materializes a compact counted loop "
+               "without allocating its billion-element compiler list");
   ok &= expect(specialize && loop_compiler.verify(*specialize) &&
                    specialize->blocks().size() == 1U &&
                    specialize->ops().size() == 1U &&
