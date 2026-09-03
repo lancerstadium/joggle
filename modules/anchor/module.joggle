@@ -1,6 +1,7 @@
 joggle 1;
 
 module anchor@1.0.0 {
+  import arith@2.0.0;
   import mem@1.0.0;
   import nn@2.0.0;
   import tensor@2.0.0;
@@ -49,6 +50,24 @@ module anchor@1.0.0 {
     P: mem.space
   >(resource: string) -> ref<E, S, L, P> : tensor.immutable_data;
 
+  fn size(shape: list<int>) -> int {
+    result = 1;
+    for dimension in shape {
+      result = result * dimension;
+    }
+    return result;
+  }
+
+  fn load<E: type, S: list<int>, L: mem.layout, P: mem.space>(
+    source: ref<E, S, L, P>,
+    offset: index
+  ) -> E : mem.read;
+  fn store<E: type, S: list<int>, L: mem.layout, P: mem.space>(
+    destination: ref<E, S, L, P>,
+    offset: index,
+    value: E
+  ) : mem.write;
+
   fn relu<
     E: prelude.numeric,
     S: list<int>,
@@ -56,7 +75,19 @@ module anchor@1.0.0 {
     PI: mem.space,
     LO: mem.layout,
     PO: mem.space
-  >(input: ref<E, S, LI, PI>) -> ref<E, S, LO, PO> : nn.activation;
+  >(input: ref<E, S, LI, PI>) -> ref<E, S, LO, PO> : nn.activation {
+    output: ref<E, S, LO, PO> = mem.alloc();
+    offset: index = 0;
+    limit: index = size(S);
+    one: index = 1;
+    while offset < limit {
+      value: E = load(input, offset);
+      zero: E = 0;
+      store(output, offset, arith.max(value, zero));
+      offset = offset + one;
+    }
+    return output;
+  }
 
   fn add<
     E: prelude.numeric,
@@ -70,7 +101,19 @@ module anchor@1.0.0 {
   >(
     lhs: ref<E, S, LL, PL>,
     rhs: ref<E, S, LR, PR>
-  ) -> ref<E, S, LO, PO>;
+  ) -> ref<E, S, LO, PO> {
+    output: ref<E, S, LO, PO> = mem.alloc();
+    offset: index = 0;
+    limit: index = size(S);
+    one: index = 1;
+    while offset < limit {
+      left: E = load(lhs, offset);
+      right: E = load(rhs, offset);
+      store(output, offset, left + right);
+      offset = offset + one;
+    }
+    return output;
+  }
 
   fn conv2d_nchw<
     E: prelude.numeric,

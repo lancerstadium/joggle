@@ -34,6 +34,8 @@ in `language/prelude.joggle`; Prelude is not an installable Module.
   reference mapping, explicit layout/address-space types, deterministic static
   placement, validated scratch analysis, an explicit analytical machine model,
   and manifest emission without adding a target abstraction to compiler core.
+  Its ReLU and Add implementations are ordinary source bodies over target
+  `load`/`store` primitives; they are not hidden in the native behavior.
 
 The list is not an abstraction ladder. A function body may call declarations
 from any installed Modules. Joggle has no built-in `lower` direction. A

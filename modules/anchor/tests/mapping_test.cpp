@@ -73,8 +73,15 @@ int main() {
   const auto io = target ? target->type("io") : std::nullopt;
   const auto local = target ? target->type("local") : std::nullopt;
   const auto config = target ? target->type("config") : std::nullopt;
+  const auto load = target ? target->function("load") : std::nullopt;
+  const auto store = target ? target->function("store") : std::nullopt;
+  const auto relu = target ? target->function("relu") : std::nullopt;
+  const auto add = target ? target->function("add") : std::nullopt;
+  const auto read = memory ? memory->interface("read") : std::nullopt;
+  const auto write = memory ? memory->interface("write") : std::nullopt;
   if (!source || !map || !analyze || !plan || !scratch || !cycles || !emit ||
-      !reference || !ref || !linear || !tiled || !io || !local || !config) {
+      !reference || !ref || !linear || !tiled || !io || !local || !config ||
+      !load || !store || !relu || !add || !read || !write) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -145,6 +152,15 @@ int main() {
     }
   }
   bool ok = true;
+  ok &= expect(load->form() == joggle::Module::FunctionDecl::Form::External &&
+                   store->form() ==
+                       joggle::Module::FunctionDecl::Form::External &&
+                   compiler.conforms(*load, *read) &&
+                   compiler.conforms(*store, *write) &&
+                   relu->form() == joggle::Module::FunctionDecl::Form::Body &&
+                   add->form() == joggle::Module::FunctionDecl::Form::Body,
+               "target primitives remain residual while ReLU and Add have "
+               "ordinary Joggle bodies");
   ok &= expect(calls(*source, "nn") == 7U && calls(*body, "nn") == 0U &&
                    calls(*body, "anchor") == 7U,
                "mapping replaces the complete basic-block NN vocabulary");

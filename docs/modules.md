@@ -48,6 +48,27 @@ The same call rules compose module operations and compiler functions. A body
 can branch on Known configuration and use `for` over Known lists. Calls that
 depend on Residual module values remain in the executable IR.
 
+## Bodies, primitives, and behavior
+
+There is one `fn` declaration and three execution outcomes, not three function
+kinds:
+
+- A declaration with a body is evaluated as far as its Known inputs permit;
+  remaining value computation becomes a residual Function.
+- A bodyless declaration with value ports is an IR primitive. Calls remain as
+  typed Ops and need no host callback merely to exist in a Function.
+- A bodyless call whose inputs and results are all compiler domains must have a
+  native binding before it can execute. File decoding and host code generation
+  are typical examples.
+
+A target kernel can therefore be a normal body over bodyless target
+primitives. Native behavior is reserved for host work or transformations that
+cannot yet be expressed in source; it is not where target computation must be
+hidden. The `anchor` Module demonstrates the boundary: `load` and `store` are
+residual primitives, while `relu` and `add` have source bodies. Its whole-Module
+mapping, storage planning, analysis, and emission functions currently use the
+optional behavior library.
+
 Prelude declares `module`. The compiler automatically represents it as
 `joggle::Module`, which carries multiple named Functions through a
 pipeline. No repository import or manual representation registration is

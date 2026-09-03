@@ -6,6 +6,17 @@ spaces, layouts, reference type, supported operator vocabulary, mapping
 function, and resource analysis using the same declarations and native binding
 mechanism available to an external package.
 
+The implementation boundary is visible in the source. `load` and `store` are
+bodyless target primitives tagged with the ordinary `mem.read` and `mem.write`
+interfaces. Their `offset` is a logical row-major ordinal; the reference layout
+is responsible for mapping that ordinal to physical storage. `relu` and `add`
+are not opaque target calls: they are generic Joggle bodies built from
+`mem.alloc`, `load`, `store`, arithmetic, and residual control flow. A target
+package may replace those bodies or use different primitives without adding a
+kernel class or declaration kind. Compiler functions that inspect or rewrite a
+whole Module remain native behavior for now; target computation itself does
+not require a host callback.
+
 `map(input, tile_rows, tile_columns)` converts ranked `tensor` values and the
 supported `nn` calls to `anchor.ref` values and target calls while
 preserving CFG, SSA edges, named properties, Function signatures, and immutable

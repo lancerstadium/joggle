@@ -119,7 +119,9 @@ analysis are ordinary Module-owned semantics rather than compiler-core device
 classes. The same Module declares an explicit machine type, a deterministic
 analytical cycle model, and a portable manifest emitter, so a source-defined
 pipeline can run from ONNX bytes to an inspectable deployment artifact without
-a parallel pass or backend API.
+a parallel pass or backend API. Its elementwise kernels are ordinary Joggle
+function bodies over residual target primitives, showing the same `fn`
+mechanism on both the compiler and executable sides.
 
 ## Documentation
 
