@@ -129,7 +129,11 @@ ordinary Joggle function bodies over residual target primitives, showing the
 same `fn` mechanism on both the compiler and executable sides. A target-owned
 `fuse_relu(module) -> module` function uses the same IR transaction API to
 remove single-use biased-Conv/BatchNorm epilogues before placement and
-simulation. The optional precision composition reaches the same f16 Anchor
+simulation. A bounded `execute_f32(module, bytes) -> bytes` function evaluates
+the planned target vocabulary for differential numerical testing; when ONNX
+Runtime is available, the optional test checks every ResNet-18 output logit
+against an independently generated oracle. The optional precision composition
+reaches the same f16 Anchor
 artifact whether representation conversion runs before or after
 `onnx.to_nn`, providing a concrete non-ladder composition check.
 

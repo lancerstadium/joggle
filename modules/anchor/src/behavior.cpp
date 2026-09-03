@@ -9,6 +9,8 @@
 
 #include <joggle/joggle.h>
 
+#include "execute.h"
+
 namespace {
 
 struct Schema {
@@ -1157,6 +1159,16 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
       });
   compiler.bind(module, "duration", duration);
   compiler.bind(module, "trace", trace);
+  compiler.bind(
+      module, "execute_f32",
+      [resolved](joggle::Compiler& bound, const joggle::Module& program,
+                 const joggle::Bytes& input,
+                 joggle::Diagnostics& reported) {
+        const joggle::anchor::ExecutionSchema execution{
+            resolved->target, resolved->memory_reference, resolved->placement};
+        return joggle::anchor::execute_f32(bound, program, input, execution,
+                                           reported);
+      });
   compiler.bind(
       module, "emit",
       [resolved](joggle::Compiler& bound, const joggle::Module& input,

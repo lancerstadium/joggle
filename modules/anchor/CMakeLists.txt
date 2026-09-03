@@ -1,6 +1,6 @@
 joggle_add_behavior(joggle_module_anchor_behavior
   MODULE module.joggle
-  SOURCES src/behavior.cpp)
+  SOURCES src/behavior.cpp src/execute.cpp)
 set_target_properties(joggle_module_anchor_behavior PROPERTIES
   PREFIX ""
   OUTPUT_NAME "anchor")
@@ -64,6 +64,60 @@ if(JOGGLE_BUILD_TESTS)
     add_dependencies(joggle_module_anchor_onnx_test
       joggle_module_onnx_behavior joggle_module_anchor_behavior)
     add_test(NAME module.anchor.onnx COMMAND joggle_module_anchor_onnx_test)
+
+    find_package(Python3 QUIET COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+      execute_process(
+        COMMAND "${Python3_EXECUTABLE}" -c "import numpy, onnxruntime"
+        RESULT_VARIABLE joggle_anchor_oracle_status
+        OUTPUT_QUIET
+        ERROR_QUIET)
+      if(joggle_anchor_oracle_status EQUAL 0)
+        set(joggle_anchor_onnx_oracle
+          "${CMAKE_CURRENT_BINARY_DIR}/resnet18_f32_oracle.bin")
+        add_custom_command(
+          OUTPUT "${joggle_anchor_onnx_oracle}"
+          COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/onnx_oracle.py"
+            "${JOGGLE_ONNX_MODEL}"
+            "${joggle_anchor_onnx_oracle}"
+          DEPENDS
+            "${JOGGLE_ONNX_MODEL}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/onnx_oracle.py"
+          VERBATIM)
+        add_custom_target(joggle_module_anchor_onnx_oracle
+          DEPENDS "${joggle_anchor_onnx_oracle}")
+
+        add_executable(joggle_module_anchor_numerical_test
+          tests/numerical_test.cpp)
+        target_link_libraries(joggle_module_anchor_numerical_test PRIVATE
+          joggle::joggle)
+        if(MSVC)
+          target_compile_options(joggle_module_anchor_numerical_test PRIVATE
+            /W4 /WX)
+        else()
+          target_compile_options(joggle_module_anchor_numerical_test PRIVATE
+            -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
+        endif()
+        target_compile_definitions(joggle_module_anchor_numerical_test PRIVATE
+          JOGGLE_ARITH_MODULE="${PROJECT_SOURCE_DIR}/modules/arith/module.joggle"
+          JOGGLE_TENSOR_MODULE="${PROJECT_SOURCE_DIR}/modules/tensor/module.joggle"
+          JOGGLE_NN_MODULE="${PROJECT_SOURCE_DIR}/modules/nn/module.joggle"
+          JOGGLE_MEM_MODULE="${PROJECT_SOURCE_DIR}/modules/mem/module.joggle"
+          JOGGLE_ONNX_MODULE="${PROJECT_SOURCE_DIR}/modules/onnx/module.joggle"
+          JOGGLE_ONNX_BEHAVIOR="$<TARGET_FILE:joggle_module_onnx_behavior>"
+          JOGGLE_ANCHOR_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/module.joggle"
+          JOGGLE_ANCHOR_BEHAVIOR="${joggle_anchor_behavior}"
+          JOGGLE_ANCHOR_ONNX_MODEL="${JOGGLE_ONNX_MODEL}"
+          JOGGLE_ANCHOR_ONNX_ORACLE="${joggle_anchor_onnx_oracle}")
+        add_dependencies(joggle_module_anchor_numerical_test
+          joggle_module_onnx_behavior
+          joggle_module_anchor_behavior
+          joggle_module_anchor_onnx_oracle)
+        add_test(NAME module.anchor.onnx.numeric
+          COMMAND joggle_module_anchor_numerical_test)
+      endif()
+    endif()
   endif()
 
   if(JOGGLE_MODULE_ONNX_ENABLED AND JOGGLE_MODULE_PRECISION_ENABLED

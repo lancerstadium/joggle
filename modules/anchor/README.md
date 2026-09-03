@@ -122,6 +122,16 @@ fn inspect(input: bytes, target: type) -> bytes {
 }
 ```
 
+`execute_f32(program, input)` is a bounded semantic executor for the current
+f32 target vocabulary. It accepts one materialized, straight-line Function
+with one f32 reference input and output, resolves immutable tensors from the
+Module's content-addressed data, follows `place` aliases, and evaluates the
+supported Anchor calls in Function order. The input and output are portable
+little-endian f32 bytes whose shapes come from the Function signature. This is
+an executable specification for differential testing, not the target's code
+generator: it does not model physical tiled addressing, enact scratch slots,
+or turn analytical cycles into measured latency.
+
 Build and test the package with:
 
 ```sh
@@ -145,6 +155,17 @@ Ops, 49 simulated events, 10,946,464 scratch bytes, and 29,453,374 analytical
 cycles. Nine Conv-ReLU fusions reduce these to 122 Ops, 40 events, 7,735,200
 scratch bytes, and 29,161,690 cycles. Repeated compilation and simulation
 produce the same Module digest and byte-identical artifacts.
+
+If the configured Python interpreter provides NumPy and ONNX Runtime, CMake
+also registers `module.anchor.onnx.numeric`. Its oracle is generated in the
+build directory from the same pinned model with graph optimizations disabled
+and a deterministic f32 input. The test executes the fused, storage-planned
+Anchor Module through `execute_f32` and compares all 1,000 output logits. On
+the checked development configuration the maximum absolute error is
+`1.62125e-05`, the maximum error scaled by `1 + |reference|` is
+`2.58669e-06`, and both implementations select class 905. The acceptance
+bound is `1e-4` scaled error plus exact top-1 agreement. The test also rejects
+an input whose byte count disagrees with the Function signature.
 
 When `precision` is enabled, `module.anchor.precision.onnx` applies
 `f32_to_f16` both before and after `onnx.to_nn`. The two legal compositions

@@ -40,6 +40,7 @@ current implementation can support.
 | End-to-end composition | The Anchor integration test imports the official opset-18 ResNet-18 ONNX model, converts it, maps target calls, fuses eligible epilogues, plans scratch storage, simulates a typed timeline, and emits a manifest. See [the ONNX integration test](../modules/anchor/tests/onnx_integration_test.cpp). | Emission is an inspectable manifest, not machine code. |
 | Order independence case | The precision integration test applies f32-to-f16 before or after ONNX-to-NN conversion; both paths produce identical planned Modules, resources, and traces. See [the precision integration test](../modules/anchor/tests/precision_integration_test.cpp). | One commuting pair does not establish general pass-order independence. |
 | Deterministic analytical result | For `anchor.config<16, 4, 32, 16, 16777216, 4>`, the checked f32 baseline has 140 planned Ops, 49 events, 10,946,464 scratch bytes, and 29,453,374 modeled cycles. Nine fusions produce 122 Ops, 40 events, 7,735,200 bytes, and 29,161,690 modeled cycles. The f16 composition has 3,867,600 scratch bytes and 28,848,157 modeled cycles. | These are outputs of the declared analytical model. They are not measured latency, energy, numerical accuracy, or WCET. |
+| Numerical differential case | A Module-defined `execute_f32(module, bytes) -> bytes` function evaluates the fused and planned target graph. [The numerical test](../modules/anchor/tests/numerical_test.cpp) compares all 1,000 ResNet-18 logits with an ONNX Runtime oracle generated from the same pinned model: maximum scaled error `2.58669e-06`, exact top-1 agreement, with a `1e-4` acceptance bound. | This proves one f32 model path on a host semantic executor. It does not prove f16 accuracy, broad operator coverage, physical layout execution, or target performance. |
 
 This evidence establishes a coherent vertical slice and a testable abstraction.
 It does not yet establish competitive inference performance or a publishable
@@ -95,9 +96,9 @@ not an ASPLOS result.
   Known, Residual, materializable, or rejected.
 - Test incompatible Module versions, behavior identity, dependent types,
   failed transactions, non-convergent rewrites, and illegal target mappings.
-- Differentially execute generated operator semantics against a trusted ONNX
-  implementation. Structural bodies alone do not establish numerical
-  correctness.
+- Extend the existing f32 ONNX Runtime differential test to each claimed
+  format and model family. The current ResNet-18 case establishes one path;
+  structural bodies alone do not establish broader numerical correctness.
 
 ### 2. Controlled extension study
 
@@ -152,8 +153,9 @@ Stop or narrow the thesis if any of these conditions holds:
   its cost.
 
 The current repository must not claim native code generation, hardware speedup,
-cycle accuracy, numerical accuracy, WCET, energy improvement, broad ONNX
-coverage, or novelty over all compiler extension systems.
+cycle accuracy, numerical accuracy beyond the checked f32 ResNet-18 path, WCET,
+energy improvement, broad ONNX coverage, or novelty over all compiler extension
+systems.
 
 ## Venue gate
 
@@ -177,10 +179,9 @@ target is insufficient for this route as well.
 The next implementation work should strengthen evidence, not add another core
 abstraction:
 
-1. make the existing target operator path numerically executable and compare it
-   with the imported ONNX semantics;
-2. connect one real emission/execution path and calibrate the Anchor resource
+1. connect one real emission/execution path and calibrate the Anchor resource
    timeline;
+2. extend differential correctness to every claimed format and model family;
 3. only then add bounded variant selection and measurement feedback as ordinary
    Module-defined types and functions.
 

@@ -2,25 +2,42 @@ find_package(Protobuf CONFIG REQUIRED)
 
 set(JOGGLE_ONNX_PROTO "" CACHE FILEPATH
   "Path to an ONNX onnx.proto3 file; empty downloads the pinned schema")
+set(joggle_onnx_proto_sha256
+  "8b298f974c10d5efcbfcab0612719f9f543c7c9aafca5c6aeee4c4d1ee8dbef2")
 set(joggle_onnx_proto "${CMAKE_CURRENT_BINARY_DIR}/onnx.proto3")
-if(NOT JOGGLE_ONNX_PROTO AND NOT EXISTS "${joggle_onnx_proto}")
-  file(DOWNLOAD
-    "https://raw.githubusercontent.com/onnx/onnx/2bb50465112feca9003e1ed654d77f01ff1415ca/onnx/onnx.proto3"
-    "${joggle_onnx_proto}"
-    EXPECTED_HASH
-      "SHA256=8b298f974c10d5efcbfcab0612719f9f543c7c9aafca5c6aeee4c4d1ee8dbef2"
-    TLS_VERIFY ON
-    STATUS joggle_onnx_download)
-  list(GET joggle_onnx_download 0 joggle_onnx_download_code)
-  list(GET joggle_onnx_download 1 joggle_onnx_download_message)
-  if(NOT joggle_onnx_download_code EQUAL 0)
+if(JOGGLE_ONNX_PROTO)
+  if(NOT EXISTS "${JOGGLE_ONNX_PROTO}")
     message(FATAL_ERROR
-      "Cannot download the pinned ONNX schema: ${joggle_onnx_download_message}")
+      "JOGGLE_ONNX_PROTO does not exist: ${JOGGLE_ONNX_PROTO}")
   endif()
-elseif(JOGGLE_ONNX_PROTO AND NOT EXISTS "${JOGGLE_ONNX_PROTO}")
-  message(FATAL_ERROR "JOGGLE_ONNX_PROTO does not exist: ${JOGGLE_ONNX_PROTO}")
-elseif(JOGGLE_ONNX_PROTO)
+  file(SHA256 "${JOGGLE_ONNX_PROTO}" joggle_onnx_proto_actual_sha256)
+  if(NOT joggle_onnx_proto_actual_sha256 STREQUAL joggle_onnx_proto_sha256)
+    message(FATAL_ERROR
+      "JOGGLE_ONNX_PROTO does not match the pinned ONNX schema SHA-256")
+  endif()
   configure_file("${JOGGLE_ONNX_PROTO}" "${joggle_onnx_proto}" COPYONLY)
+else()
+  set(joggle_onnx_download_required TRUE)
+  if(EXISTS "${joggle_onnx_proto}")
+    file(SHA256 "${joggle_onnx_proto}" joggle_onnx_proto_actual_sha256)
+    if(joggle_onnx_proto_actual_sha256 STREQUAL joggle_onnx_proto_sha256)
+      set(joggle_onnx_download_required FALSE)
+    endif()
+  endif()
+  if(joggle_onnx_download_required)
+    file(DOWNLOAD
+      "https://raw.githubusercontent.com/onnx/onnx/2bb50465112feca9003e1ed654d77f01ff1415ca/onnx/onnx.proto3"
+      "${joggle_onnx_proto}"
+      EXPECTED_HASH "SHA256=${joggle_onnx_proto_sha256}"
+      TLS_VERIFY ON
+      STATUS joggle_onnx_download)
+    list(GET joggle_onnx_download 0 joggle_onnx_download_code)
+    list(GET joggle_onnx_download 1 joggle_onnx_download_message)
+    if(NOT joggle_onnx_download_code EQUAL 0)
+      message(FATAL_ERROR
+        "Cannot download the pinned ONNX schema: ${joggle_onnx_download_message}")
+    endif()
+  endif()
 endif()
 
 set(joggle_onnx_generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
