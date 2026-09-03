@@ -38,42 +38,42 @@ int main() {
   compiler.load(JOGGLE_NN_MODULE);
   compiler.load(JOGGLE_MEM_MODULE);
   compiler.load(JOGGLE_ONNX_MODULE);
-  compiler.load(JOGGLE_REFERENCE_TARGET_MODULE);
+  compiler.load(JOGGLE_ANCHOR_MODULE);
   compiler.add(R"(
 joggle 1;
-module reference_pipeline@1.0.0 {
+module anchor_pipeline@1.0.0 {
   import onnx@2.0.0;
-  import reference_target@1.0.0;
+  import anchor@1.0.0;
 
   fn compile(input: bytes) -> module {
     source = onnx.read(input);
     model = onnx.to_nn(source);
-    return reference_target.map(model, 8, 8);
+    mapped = anchor.map(model, 8, 8);
+    return anchor.plan_storage(mapped);
   }
 }
 )",
-               "reference-pipeline.joggle");
+               "anchor-pipeline.joggle");
   if (!compiler.link() ||
       !compiler.load_behavior("onnx", JOGGLE_ONNX_BEHAVIOR) ||
-      !compiler.load_behavior("reference_target",
-                              JOGGLE_REFERENCE_TARGET_BEHAVIOR)) {
+      !compiler.load_behavior("anchor", JOGGLE_ANCHOR_BEHAVIOR)) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
 
-  const auto source = read(JOGGLE_REFERENCE_TARGET_ONNX_MODEL);
+  const auto source = read(JOGGLE_ANCHOR_ONNX_MODEL);
   const auto first = source
                          ? compiler.run<joggle::Module>(
-                               "reference_pipeline.compile", *source)
+                               "anchor_pipeline.compile", *source)
                          : std::optional<joggle::Module>{};
   const auto second = source
                           ? compiler.run<joggle::Module>(
-                                "reference_pipeline.compile", *source)
+                                "anchor_pipeline.compile", *source)
                           : std::optional<joggle::Module>{};
-  const auto target = compiler.module("reference_target");
+  const auto target = compiler.module("anchor");
   const auto memory = compiler.module("mem");
   const auto analyze =
-      target ? target->function("local_bytes_upper_bound") : std::nullopt;
+      target ? target->function("scratch_bytes") : std::nullopt;
   const auto reference = memory ? memory->interface("reference") : std::nullopt;
   if (!first || !second || !analyze || !reference) {
     compiler.diagnostics().print(std::cerr);
@@ -85,7 +85,7 @@ module reference_pipeline@1.0.0 {
   const auto bytes =
       compiler.run<std::int64_t>(*analyze, *first);
   bool valid = body != nullptr && bytes && *bytes > 0 &&
-               body->ops().size() == 91U && first->data().size() == 42U &&
+               body->ops().size() == 140U && first->data().size() == 42U &&
                first->digest() == second->digest() &&
                first->data() == second->data();
   if (body != nullptr) {
@@ -95,7 +95,7 @@ module reference_pipeline@1.0.0 {
     for (const auto& op : body->ops()) {
       const auto results = op.results();
       valid = valid &&
-              op.callee().symbol().module_name() == "reference_target" &&
+              op.callee().symbol().module_name() == "anchor" &&
               std::all_of(results.begin(), results.end(),
                           [&](const joggle::Value& value) {
                             return compiler.conforms(value.type().schema(),
@@ -114,6 +114,6 @@ module reference_pipeline@1.0.0 {
             << "ops " << (body ? body->ops().size() : 0U) << '\n'
             << "resources " << first->data().size() << '\n'
             << "resource-bytes " << payload_bytes << '\n'
-            << "local-byte-upper-bound " << (bytes ? *bytes : 0) << '\n';
+            << "scratch-bytes " << (bytes ? *bytes : 0) << '\n';
   return valid ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -1,9 +1,11 @@
 joggle 1;
 
-module reference_target@1.0.0 {
+module anchor@1.0.0 {
   import mem@1.0.0;
   import nn@2.0.0;
   import tensor@2.0.0;
+
+  interface placement: fn;
 
   type linear() : mem.layout;
   type tiled(rows: int, columns: int) : mem.layout;
@@ -266,6 +268,9 @@ module reference_target@1.0.0 {
     bias: ref<E, [M], LB, PB>
   ) -> ref<E, [N, M], LO, PO>;
 
+  fn place<R: mem.reference>(input: R, slot: int) -> R : placement, mem.alias;
   fn map(input: module, tile_rows: int = 8, tile_columns: int = 8) -> module;
   fn local_bytes_upper_bound(input: module) -> int;
+  fn plan_storage(input: module) -> module;
+  fn scratch_bytes(input: module) -> int;
 }
