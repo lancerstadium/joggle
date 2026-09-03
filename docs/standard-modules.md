@@ -20,10 +20,11 @@ Prelude owns only concepts that every extension must agree on:
 - basic type and function contracts;
 - deterministic compiler-domain arithmetic, comparison, logic, and `range`.
 
-`function` maps to one `joggle::ir::Function`. `module` maps to one
-`joggle::Module`. Both mappings are supplied by the core because staged
-execution and whole-module composition require a common host representation.
-No other artifact type is privileged.
+`function` maps to the materialized `joggle::ir::Function` body of a
+`joggle::Module::Function`; `module` maps to one `joggle::Module`. Both
+mappings are supplied by the core because staged execution and whole-module
+composition require a common host representation. No other artifact type is
+privileged.
 
 Prelude distinguishes two related interfaces:
 

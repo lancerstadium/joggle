@@ -6,8 +6,9 @@ Include the complete public surface with:
 #include <joggle/joggle.h>
 ```
 
-Joggle is a C++20 library. A Module is the sole top-level IR owner. Declaration
-handles are immutable and Function edits are explicit transactions.
+Joggle is a C++20 library. A Module is the sole top-level IR owner.
+`Module::Function` handles are immutable; materialized `ir::Function` body
+edits are explicit transactions.
 
 ## Namespaces and ownership
 
@@ -15,8 +16,9 @@ handles are immutable and Function edits are explicit transactions.
 | --- | --- |
 | `joggle::Compiler` | Linked environment, behavior, execution, diagnostics |
 | `joggle::Module` | Versioned symbol scope and multi-Function IR owner |
+| `joggle::Module::Function` | Named callable member and canonical signature |
 | `joggle::Type`, `joggle::Attribute` | Immutable schema instances |
-| `joggle::ir::Function` | Executable IR owner |
+| `joggle::ir::Function` | Optional materialized CFG body of a Module Function |
 | `joggle::ir::Block` | CFG node owned by a Function |
 | `joggle::ir::Instruction` | Declared call owned by a Block |
 | `joggle::ir::Value` | Typed Known or Residual value handle |
@@ -213,9 +215,9 @@ Module as canonical source and derives exact dependencies from its current IR,
 so a transformation cannot leave a stale import list behind.
 
 The embedded Prelude type `module` is automatically represented by
-`joggle::Module`; `function` is represented by `joggle::ir::Function`.
-Compiler-function signatures using either type need no generated wrapper or
-manual `Compiler::represent` call.
+`joggle::Module`; `function` is represented by a materialized
+`joggle::ir::Function` body. Compiler-function signatures using either type
+need no generated wrapper or manual `Compiler::represent` call.
 
 ## Bind and run compiler functions
 

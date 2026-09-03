@@ -29,16 +29,21 @@ analysis values as normal typed arguments.
 
 ## Artifact ownership
 
-The core exposes one top-level artifact and its Function elements:
+The core exposes one top-level artifact, its function members, and optional
+materialized bodies:
 
 - `module` / `joggle::Module` is the identity, symbol, import, and ownership
   boundary;
-- `function` / `joggle::ir::Function` is one editable CFG inside that Module.
+- `fn` / `joggle::Module::Function` is one named callable member with its
+  signature;
+- a materialized member body is `joggle::ir::Function`, an editable CFG inside
+  that Module.
 
 `module` values use copy-on-write Function storage. A native
 `module -> module` function receives an isolated value and publishes it only
-when invocation succeeds. A native Function transform edits through
-`Function::Edit`; `commit` verifies the candidate and rolls back failure.
+when invocation succeeds. A native body transform edits through
+`joggle::ir::Function::Edit`; `commit` verifies the candidate and rolls back
+failure.
 
 Analyses and emitted artifacts remain extension-owned. For example, a Module
 declares `estimate`, `schedule`, or `object`, and its behavior registers the
@@ -86,7 +91,7 @@ Both functions return the number of changed calls, with `std::nullopt` on
 failure. The Function overload commits one verified edit. The Module overload
 plans every replacement first, edits a private copy, detaches only changed
 Functions, and publishes nothing if any Function fails verification. Matching
-uses declaration handles or explicit interface queries; the utility never
+uses Function handles or explicit interface queries; the utility never
 interprets a textual function name.
 
 ## Reusable facilities still required

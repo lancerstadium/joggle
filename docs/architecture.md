@@ -12,17 +12,19 @@ The source and C++ names correspond directly:
 | Source concept | C++ type | Meaning |
 | --- | --- | --- |
 | `module name@version { ... }` / `module` | `joggle::Module` | The single identity, symbol, import, and multi-Function IR owner |
-| `function` | `joggle::ir::Function` | One executable CFG and def-use graph inside a Module |
+| `fn` / `function` | `joggle::Module::Function` | One named callable member with a canonical signature |
+| materialized function body | `joggle::ir::Function` | Optional executable CFG and def-use graph owned by that member |
 
 All executable IR ownership types share one namespace and one hierarchy:
 
 ```text
 joggle::Module
-  └─ joggle::ir::Function
-       └─ joggle::ir::Block
-            ├─ joggle::ir::Instruction
-            ├─ joggle::ir::Value
-            └─ joggle::ir::Terminator
+  └─ joggle::Module::Function
+       └─ optional joggle::ir::Function body
+            └─ joggle::ir::Block
+                 ├─ joggle::ir::Instruction
+                 ├─ joggle::ir::Value
+                 └─ joggle::ir::Terminator
 ```
 
 There is no second whole-IR container, graph container, or public package object.
@@ -130,10 +132,11 @@ format, schedule, simulator, or emitter belongs in installable Modules and
 optional behavior libraries. This boundary keeps the core small while leaving
 experiments inspectable and serializable.
 
-Prelude's `module` is represented by `joggle::Module`; `function` is
-represented by `joggle::ir::Function`. These are the only core-owned host
-artifact mappings. Extension-owned schedules, estimates, traces, object files,
-or target descriptions use ordinary declared types and `Compiler::represent`.
+Prelude's `module` is represented by `joggle::Module`; its `function` value is
+the materialized `joggle::ir::Function` body of a `Module::Function`. These
+are the only core-owned host artifact mappings. Extension-owned schedules,
+estimates, traces, object files, or target descriptions use ordinary declared
+types and `Compiler::represent`.
 
 ## Deliberate non-goals
 
