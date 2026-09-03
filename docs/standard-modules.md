@@ -75,6 +75,15 @@ result with Prelude list operations. Callers cannot repeat an inconsistent
 output shape, and the evaluator remains Module source rather than compiler
 core.
 
+`tensor.constant(resource)` introduces an immutable tensor through a stable
+resource identifier. Element type and shape are inferred from the expected
+`tensor.ranked` result. The function deliberately stores no payload in the IR:
+an importer returns the Module together with an extension-owned, typed resource
+value, and an emitter or simulator receives both explicitly. This keeps large
+model parameters out of textual IR without adding an ambient resource manager
+or a second artifact container to the core. Resource extensions may impose a
+stronger convention, such as a validated `sha256:<digest>` identifier.
+
 ## `nn`: common inference semantics
 
 `nn` owns framework-independent inference functions over `tensor.ranked`.

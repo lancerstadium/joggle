@@ -65,6 +65,13 @@ module projected_schema@1.0.0 {
     return tensor.transpose(input, [2, 0, 1]);
   }
 
+  fn constant_value() -> tensor.ranked<f32, [2, 3]> {
+    value: tensor.ranked<f32, [2, 3]> = tensor.constant(
+      resource: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    );
+    return value;
+  }
+
   fn dynamic_read(
     input: buffer.buffer<f32, [2, 3], "sram">,
     row: index,
@@ -91,10 +98,12 @@ module projected_schema@1.0.0 {
       compiler.materialize("projected_schema.storage_value");
   const auto transpose_value =
       compiler.materialize("projected_schema.transpose_value");
+  const auto constant_value =
+      compiler.materialize("projected_schema.constant_value");
   const auto dynamic_read =
       compiler.materialize("projected_schema.dynamic_read");
   if (!nn || !model || !function || !tensor_value || !storage_value ||
-      !transpose_value || !dynamic_read) {
+      !transpose_value || !constant_value || !dynamic_read) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -139,6 +148,9 @@ module projected_schema@1.0.0 {
                                     .front()
                                     .type()
                                     .get<std::vector<std::int64_t>>("shape");
+  const auto constants = constant_value->instructions();
+  const std::string constant_source =
+      joggle::format(*constant_value, "constant_value");
   ok &= expect(
       tensor_element &&
           tensor_element->schema().symbol().qualified_name() == "prelude.f32" &&
@@ -152,6 +164,26 @@ module projected_schema@1.0.0 {
           transposed_shape ==
               std::optional<std::vector<std::int64_t>>{{4, 2, 3}},
       "type, list, and string fields flow through one parameter system");
+  ok &= expect(
+      constants.size() == 1U &&
+          constants.front().callee().symbol().qualified_name() ==
+              "tensor.constant" &&
+          constants.front().get<std::string>("resource") ==
+              std::optional<std::string>{
+                  "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"} &&
+          constant_value->entry()
+                  .terminator()
+                  .returned()
+                  .front()
+                  .type()
+                  .get<std::vector<std::int64_t>>("shape") ==
+              std::optional<std::vector<std::int64_t>>{{2, 3}} &&
+          constant_source.find(
+              "tensor.constant(resource: "
+              "\"sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"") !=
+              std::string::npos,
+      "a stable tensor resource reference is a typed, serializable IR "
+      "instruction");
   const auto memory_instructions = dynamic_read->instructions();
   ok &= expect(
       memory_instructions.size() == 2U &&

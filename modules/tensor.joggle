@@ -13,6 +13,9 @@ module tensor@2.0.0 {
   }
   type unranked(element: type);
 
+  fn constant<E: type, S: list<int>>(
+    resource: string
+  ) -> ranked<E, S>;
   fn cast<From: prelude.scalar, To: prelude.scalar, S: list<int>>(
     input: ranked<From, S>
   ) -> ranked<To, S> : arith.elementwise;
