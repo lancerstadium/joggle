@@ -256,6 +256,8 @@ auto result = compiler.run<std::tuple<std::int64_t, bool>>(
 
 The tuple is a positional boundary mapping, not a Joggle wrapper object.
 `invocable<Result, Args...>` checks the entire reflected C++ signature.
+`lookup("module.function")` reflects one unique linked Function member for
+tools that receive a qualified name; the same handle is passed to `run`.
 A mutable Function transform can also be invoked with
 `compiler.run(function, transform)`.
 

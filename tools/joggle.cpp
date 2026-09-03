@@ -351,41 +351,20 @@ struct Transform {
 std::optional<Transform> transform(joggle::Compiler& compiler,
                                    std::string_view qualified,
                                    joggle::Diagnostics& diagnostics) {
-  const std::size_t separator = qualified.find('.');
-  if (separator == std::string_view::npos) {
-    diagnostics.report("a transform name must use module.member");
+  const auto function = compiler.lookup(qualified);
+  if (!function) {
     return std::nullopt;
   }
-  const std::string_view module_name = qualified.substr(0U, separator);
-  const std::string_view function_name = qualified.substr(separator + 1U);
-  const auto module = compiler.module(module_name);
-  if (!module) {
-    diagnostics.report("transform references unknown module '" +
-                       std::string(module_name) + "'");
-    return std::nullopt;
+  if (compiler.invocable<joggle::Module, joggle::Module>(*function)) {
+    return Transform{*function, TransformKind::Module};
   }
-  std::vector<Transform> matches;
-  for (const joggle::Module::Function& function : module->functions()) {
-    if (function.name() != function_name || function.inputs().size() != 1U ||
-        function.results().size() != 1U) {
-      continue;
-    }
-    if (compiler.invocable<joggle::Module, joggle::Module>(function)) {
-      matches.push_back({function, TransformKind::Module});
-    } else if (compiler.invocable<joggle::ir::Function, joggle::ir::Function&>(
-                   function)) {
-      matches.push_back({function, TransformKind::Function});
-    }
+  if (compiler.invocable<joggle::ir::Function, joggle::ir::Function&>(
+          *function)) {
+    return Transform{*function, TransformKind::Function};
   }
-  if (matches.size() != 1U) {
-    diagnostics.report(matches.empty()
-                           ? "no unary Function or module transform named '" +
-                                 std::string(qualified) + "'"
-                           : "transform name '" + std::string(qualified) +
-                                 "' is ambiguous");
-    return std::nullopt;
-  }
-  return matches.front();
+  diagnostics.report("compiler function '" + function->symbol().qualified_name() +
+                     "' is not a Module or Function transform");
+  return std::nullopt;
 }
 
 }  // namespace

@@ -218,6 +218,7 @@ module pipeline@1.0.0 {
       test_ir ? test_ir->function("canonicalize") : std::nullopt;
   const auto clean = pipeline ? pipeline->function("clean") : std::nullopt;
   const auto read = pipeline ? pipeline->function("read") : std::nullopt;
+  const auto resolved_read = compiler.lookup("pipeline.read");
   const auto emit = pipeline ? pipeline->function("emit") : std::nullopt;
   const auto inspect =
       pipeline ? pipeline->function("inspect") : std::nullopt;
@@ -303,7 +304,7 @@ module pipeline@1.0.0 {
   const auto relay_fork =
       pipeline ? pipeline->function("relay_fork") : std::nullopt;
   if (!integer_decl || !arith_cast_decl || !format_decl || !canonicalize ||
-      !clean || !read || !emit || !inspect || !compile || !consume ||
+      !clean || !read || !resolved_read || !emit || !inspect || !compile || !consume ||
       !module_identity || convert_words.size() != 2U || !configured_copy ||
       !compute_width || !width_copy || !residual_overload ||
       !residual_arguments || !residual_variadic || !residual_dependent ||
@@ -335,6 +336,9 @@ module pipeline@1.0.0 {
   }
 
   bool ok = true;
+  ok &= expect(resolved_read->symbol() == read->symbol(),
+               "qualified compiler lookup returns the same Function member "
+               "used by typed invocation");
   ok &= expect(read->inputs().size() == 1U &&
                    read->inputs().front().domain ==
                        joggle::Module::Expression::reference("bytes") &&

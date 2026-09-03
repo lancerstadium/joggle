@@ -424,6 +424,10 @@ public:
 
   std::optional<Module> module(std::string_view name) const;
   std::vector<Module> modules() const;
+  // Resolves one uniquely named callable member after linking. The name must
+  // be qualified as module.function; overloads remain explicit because this
+  // lookup has no call arguments from which to infer a selection.
+  std::optional<Module::Function> lookup(std::string_view qualified);
   bool load_behavior(std::string_view module,
                      const std::filesystem::path& library);
   bool load_behavior(std::string_view module);
@@ -752,7 +756,7 @@ public:
   template <typename Result = void, typename... Arguments>
   std::conditional_t<std::is_void_v<Result>, bool, std::optional<Result>>
   run(std::string_view name, Arguments&&... arguments) {
-    const auto declaration = find_function(name);
+    const auto declaration = lookup(name);
     if (!declaration) {
       if constexpr (std::is_void_v<Result>) {
         return false;
@@ -815,7 +819,6 @@ private:
                    bool under_residual_control);
   bool can_evaluate_binding(const Module::Function& function,
                             bool under_residual_control) const;
-  std::optional<Module::Function> find_function(std::string_view name);
   std::optional<detail::ParameterValue>
   call(const Attribute& subject, Module::InterfaceDecl::MethodDecl method,
        std::span<const detail::ParameterValue> parameters);

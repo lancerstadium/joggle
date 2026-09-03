@@ -2572,7 +2572,7 @@ bool Compiler::matches_run_signature(
 }
 
 std::optional<Module::Function>
-Compiler::find_function(std::string_view name) {
+Compiler::lookup(std::string_view name) {
   if (!state_->linked) {
     state_->diagnostics.report(
         "cannot run a compiler function before the compiler is linked");
@@ -2862,7 +2862,7 @@ bool Compiler::run(ir::Function& function, Module::Function transform) {
 }
 
 bool Compiler::run(ir::Function& function, std::string_view transform) {
-  const auto declaration = find_function(transform);
+  const auto declaration = lookup(transform);
   return declaration && run(function, *declaration);
 }
 
