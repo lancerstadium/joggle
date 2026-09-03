@@ -36,4 +36,25 @@ private:
   std::unique_ptr<Storage> storage_;
 };
 
+struct Dependency {
+  std::string name;
+  Version version;
+
+  bool operator==(const Dependency&) const = default;
+};
+
+// Exact schema packages referenced by every Function in the executable
+// Module. Prelude is included here even though canonical source links it
+// implicitly.
+std::vector<Dependency> dependencies(const Module& module);
+
 }  // namespace joggle::ir
+
+namespace joggle {
+
+// Serializes an executable Module as one ordinary, canonical `.joggle`
+// package. No second artifact syntax or Graph declaration is introduced.
+std::string format(const ir::Module& module, std::string_view name,
+                   Version version);
+
+}  // namespace joggle

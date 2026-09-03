@@ -37,6 +37,9 @@ fn canonicalize(input: function) -> function;
 Neither type introduces a `Graph`: data-flow and control-flow relations belong
 to each `Function`. `ir.module` only supplies program ownership across multiple
 functions, including generated helper functions and future lifted closures.
+It serializes as a normal versioned `.joggle` Module, so pass output can be
+checked, installed, replayed, or passed to another tool without an adapter
+format.
 
 ## Binding
 

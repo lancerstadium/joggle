@@ -187,6 +187,18 @@ shipped in `modules/ir.joggle`; applications register this standard C++
 representation through the same `Compiler::represent` API as any other
 Module-declared host type.
 
+The ordinary `format` overload emits a canonical, installable source Module:
+
+```cpp
+auto dependencies = joggle::ir::dependencies(program);
+auto source = joggle::format(program, "compiled_model", {1, 0, 0});
+```
+
+Dependency discovery traverses every Function and all of its CFG blocks rather
+than only the entry return. The CLI uses this same path when publishing
+transformed Functions, so library and command-line artifacts cannot drift into
+different formats.
+
 ## Registered behavior
 
 External `fn` declarations may bind to typed C++ callables. A binding is keyed by

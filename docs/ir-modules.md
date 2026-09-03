@@ -68,6 +68,19 @@ the first mutable lookup detaches only the selected Function. Loaders,
 transformations, analyses, and emitters can therefore use the same ordinary
 function invocation mechanism.
 
+An executable Module serializes through the same canonical source language:
+
+```cpp
+auto source = joggle::format(program, "optimized_model", {1, 0, 0});
+```
+
+`joggle::ir::dependencies(program)` derives exact package dependencies from
+all Function inputs, results, Instructions, Known arguments, and CFG edges.
+Formatting emits those dependencies as imports, omits ambient Prelude, and
+writes every Function in stable name order. The result is an ordinary
+`.joggle` Module accepted by the existing parser, linker, formatter, package
+manager, and CLI; there is no binary-only wrapper or second IR file type.
+
 A bridge owns only the relation it implements:
 
 ```joggle

@@ -5,7 +5,6 @@
 #include <fstream>
 #include <iostream>
 #include <optional>
-#include <set>
 #include <span>
 #include <sstream>
 #include <string>
@@ -15,10 +14,8 @@
 
 #include <joggle/joggle.h>
 
-#include "ir_internal.h"
 #include "module_internal.h"
 #include "module_repository.h"
-#include "type_internal.h"
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -343,70 +340,6 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
   return true;
 }
 
-void collect_modules(const joggle::detail::ParameterValue& value,
-                     std::set<std::string, std::less<>>& modules);
-
-void collect_modules(const joggle::Type& type,
-                     std::set<std::string, std::less<>>& modules) {
-  modules.emplace(type.schema().symbol().module_name());
-  for (const joggle::detail::ParameterValue& parameter :
-       joggle::detail::TypeAccess::parameters(type)) {
-    collect_modules(parameter, modules);
-  }
-}
-
-void collect_modules(const joggle::Attribute& attribute,
-                     std::set<std::string, std::less<>>& modules) {
-  modules.emplace(attribute.schema().symbol().module_name());
-  for (const joggle::detail::ParameterValue& parameter :
-       joggle::detail::TypeAccess::parameters(attribute)) {
-    collect_modules(parameter, modules);
-  }
-}
-
-void collect_modules(const joggle::detail::ParameterValue& value,
-                     std::set<std::string, std::less<>>& modules) {
-  if (const joggle::Type* type = value.as_type()) {
-    collect_modules(*type, modules);
-  } else if (const joggle::Attribute* attribute = value.as_attribute()) {
-    collect_modules(*attribute, modules);
-  } else if (value.kind() == joggle::detail::ParameterValue::Kind::List) {
-    for (const joggle::detail::ParameterValue& element : value.elements()) {
-      collect_modules(element, modules);
-    }
-  }
-}
-
-void collect_modules(const joggle::Instruction& operation,
-                     std::set<std::string, std::less<>>& modules) {
-  modules.emplace(operation.callee().symbol().module_name());
-  for (const joggle::Value& result : operation.results()) {
-    collect_modules(result.type(), modules);
-  }
-  for (const joggle::Value& argument : operation.arguments()) {
-    collect_modules(argument.type(), modules);
-    if (const auto value =
-            joggle::detail::FunctionAccess::known_value(argument)) {
-      collect_modules(*value, modules);
-    }
-  }
-}
-
-std::set<std::string, std::less<>>
-referenced_modules(const joggle::Function& function) {
-  std::set<std::string, std::less<>> modules;
-  for (const joggle::Value& input : function.arguments()) {
-    collect_modules(input.type(), modules);
-  }
-  for (const joggle::Instruction& operation : function.instructions()) {
-    collect_modules(operation, modules);
-  }
-  for (const joggle::Value& output : function.entry().terminator().returned()) {
-    collect_modules(output.type(), modules);
-  }
-  return modules;
-}
-
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -567,38 +500,40 @@ int main(int argc, char** argv) {
     }
     const std::size_t separator = function_name.find('.');
     const std::string function_body = function_name.substr(separator + 1U);
-    const std::string function_source =
-        joggle::format(*function, function_body);
-    const auto dependencies = referenced_modules(*function);
+    joggle::ir::Module program;
+    if (!program.insert(function_body, std::move(*function), diagnostics)) {
+      return fail(diagnostics);
+    }
+    const auto dependencies = joggle::ir::dependencies(program);
+    const auto references = [&](std::string_view name) {
+      return std::any_of(
+          dependencies.begin(), dependencies.end(),
+          [&](const joggle::ir::Dependency& dependency) {
+            return dependency.name == name;
+          });
+    };
     std::string artifact_name(root->name());
     const auto root_members = root->members();
     const bool already_derived =
         artifact_name.ends_with("_compiled") && root_members.size() == 1U &&
         root_members.front().kind() == joggle::Module::SymbolKind::Function &&
         root_members.front().local_name() == function_body &&
-        !dependencies.contains(artifact_name);
+        !references(artifact_name);
     if (!already_derived) {
       artifact_name += "_" + function_body + "_compiled";
     }
-    while (dependencies.contains(artifact_name)) {
+    while (references(artifact_name)) {
       artifact_name += "_compiled";
     }
-    std::ostringstream artifact_source;
-    artifact_source << "joggle 1;\n\nmodule " << artifact_name << '@'
-                    << joggle::to_string(root->version()) << " {\n";
-    for (const std::string& dependency : dependencies) {
-      const auto module = compiler.module(dependency);
-      if (!module) {
-        diagnostics.report("compiled Function references unknown module '" +
-                           dependency + "'");
-        return fail(diagnostics);
-      }
-      artifact_source << "  import " << module->name() << '@'
-                      << joggle::to_string(module->version()) << ";\n";
+    std::string artifact_source;
+    try {
+      artifact_source = joggle::format(program, artifact_name, root->version());
+    } catch (const std::exception& exception) {
+      diagnostics.report(exception.what());
+      return fail(diagnostics);
     }
-    artifact_source << '\n' << function_source << "}\n";
     const auto artifact = joggle::parse_module(
-        artifact_source.str(), diagnostics, "<compiled Module>");
+        artifact_source, diagnostics, "<compiled Module>");
     if (!artifact) {
       return fail(diagnostics);
     }

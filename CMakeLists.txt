@@ -146,6 +146,10 @@ if(JOGGLE_BUILD_TESTS)
   )
   add_test(NAME ir COMMAND joggle_ir_test)
 
+  add_executable(joggle_ir_module_test tests/ir_module_test.cpp)
+  target_link_libraries(joggle_ir_module_test PRIVATE joggle::joggle)
+  add_test(NAME ir_module COMMAND joggle_ir_module_test)
+
   add_executable(joggle_function_body_test tests/function_body_test.cpp)
   target_link_libraries(joggle_function_body_test PRIVATE joggle::joggle)
   add_test(NAME function_body COMMAND joggle_function_body_test)
