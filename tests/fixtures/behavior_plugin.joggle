@@ -7,6 +7,9 @@ module behavior_plugin@1.0.0 {
   fn noop(input: function) -> function;
   fn reverse(input: bytes) -> bytes;
   fn read_model(input: bytes) -> module;
+  fn normalize_model(input: module) -> module;
+  fn specialize_model(input: module) -> module;
+  fn reject_model(input: module) -> module;
   fn emit_model(input: module) -> bytes;
   fn main() -> positive<1> {
     value = source();

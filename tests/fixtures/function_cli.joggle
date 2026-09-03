@@ -10,7 +10,12 @@ module function_cli@1.0.0 {
     return behavior_plugin.read_model(input);
   }
   fn optimize_model(input: module) -> module {
-    return input;
+    normalized = behavior_plugin.normalize_model(input);
+    return behavior_plugin.specialize_model(normalized);
+  }
+  fn failing_model(input: module) -> module {
+    normalized = behavior_plugin.normalize_model(input);
+    return behavior_plugin.reject_model(normalized);
   }
   fn emit_model(input: module) -> bytes {
     return behavior_plugin.emit_model(input);

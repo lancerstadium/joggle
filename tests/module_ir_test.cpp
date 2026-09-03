@@ -162,9 +162,11 @@ module module_defs@1.0.0 {
   ok &= expect(mixed_inserted && mixed_diagnostics.ok() && mixed_reparsed &&
                    mixed_reparsed->function("source") &&
                    mixed_reparsed->function("compiled_main") &&
-                   mixed_text.find("import module_defs") == std::string::npos,
+                   mixed_text.find("import module_defs") == std::string::npos &&
+                   compiler.verify(mixed),
                "one Module member table carries source declarations and "
-               "materialized IR without a self-import or second container");
+               "materialized IR through validation without a self-import or "
+               "second container");
 
   auto overloaded_main = compiler.materialize("module_defs.main");
   auto overloaded_choose = compiler.materialize("module_defs.choose");

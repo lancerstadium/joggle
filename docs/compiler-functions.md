@@ -167,6 +167,20 @@ directly runnable while preserving ordinary typed composition. Extension-owned
 `model`, `schedule`, or `estimate` values still compose in source or through
 the C++ API; the CLI does not classify them or register a pass hierarchy.
 
+A pipeline is consequently normal source, not an out-of-band pass list:
+
+```joggle
+fn prepare(input: module) -> module {
+  normalized = normalize(input);
+  return specialize(normalized);
+}
+```
+
+Each native `module -> module` implementation receives a copy-on-write value.
+The intermediate result is checked before the next call and only the final
+result crosses the `run` boundary. The same functions remain independently
+invocable and require no generated registration table.
+
 ## Analysis values and reuse
 
 An analysis is an ordinary typed function: its result is a Module-declared type

@@ -17,6 +17,17 @@ joggle::Bytes bytes(std::string_view text) {
   return result;
 }
 
+std::optional<joggle::Module>
+mark(joggle::Compiler& compiler, joggle::Module input, std::string name,
+     joggle::Diagnostics& diagnostics) {
+  auto marker = compiler.create_function();
+  if (!marker || !input.insert(std::move(name), std::move(*marker),
+                               diagnostics)) {
+    return std::nullopt;
+  }
+  return input;
+}
+
 void bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
   const auto positive = module.type("positive");
@@ -47,6 +58,25 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
                     return std::nullopt;
                   }
                   return model;
+                });
+  compiler.bind(module, "normalize_model",
+                [](joggle::Compiler& current, joggle::Module input,
+                   joggle::Diagnostics& transform_diagnostics) {
+                  return mark(current, std::move(input), "normalized",
+                              transform_diagnostics);
+                });
+  compiler.bind(module, "specialize_model",
+                [](joggle::Compiler& current, joggle::Module input,
+                   joggle::Diagnostics& transform_diagnostics) {
+                  return mark(current, std::move(input), "specialized",
+                              transform_diagnostics);
+                });
+  compiler.bind(module, "reject_model",
+                [](joggle::Module, joggle::Diagnostics& transform_diagnostics)
+                    -> std::optional<joggle::Module> {
+                  transform_diagnostics.report(
+                      "test transform requested rejection");
+                  return std::nullopt;
                 });
   compiler.bind(module, "emit_model", [](const joggle::Module& model) {
     return bytes(joggle::format(model));

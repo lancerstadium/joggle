@@ -11,6 +11,7 @@ set(model_input "${JOGGLE_OUTPUT}.model.joggle")
 set(model_output "${JOGGLE_OUTPUT}.optimized.joggle")
 set(model_emitted "${JOGGLE_OUTPUT}.emitted.joggle")
 set(loaded_output "${JOGGLE_OUTPUT}.loaded.joggle")
+set(failed_output "${JOGGLE_OUTPUT}.failed.joggle")
 file(WRITE "${model_input}" [=[joggle 1;
 
 module cli_model@1.0.0 {
@@ -82,6 +83,7 @@ endif()
 execute_process(
   COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" optimize_model
           "${model_input}" --with "${JOGGLE_DEPENDENCY}"
+          --load-behavior "behavior_plugin=${JOGGLE_BEHAVIOR}"
           -o "${model_output}"
   RESULT_VARIABLE optimize_result
   ERROR_VARIABLE optimize_error
@@ -93,9 +95,29 @@ endif()
 file(READ "${model_output}" optimized_source)
 string(FIND "${optimized_source}"
   "v1: cli_model.word = cli_model.keep(arg0);" materialized_entry)
-if(materialized_entry EQUAL -1)
+string(FIND "${optimized_source}" "fn normalized()" normalized_marker)
+string(FIND "${optimized_source}" "fn specialized()" specialized_marker)
+if(materialized_entry EQUAL -1 OR normalized_marker EQUAL -1 OR
+   specialized_marker EQUAL -1)
   message(FATAL_ERROR
-    "Module input was not materialized before transformation:\n${optimized_source}")
+    "typed fn pipeline did not materialize and compose both transforms:\n${optimized_source}")
+endif()
+
+file(REMOVE "${failed_output}")
+execute_process(
+  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" failing_model
+          "${model_input}" --with "${JOGGLE_DEPENDENCY}"
+          --load-behavior "behavior_plugin=${JOGGLE_BEHAVIOR}"
+          -o "${failed_output}"
+  RESULT_VARIABLE failing_result
+  ERROR_VARIABLE failing_error
+)
+string(FIND "${failing_error}" "test transform requested rejection"
+  failing_position)
+if(failing_result EQUAL 0 OR failing_position EQUAL -1 OR
+   EXISTS "${failed_output}")
+  message(FATAL_ERROR
+    "failed typed fn pipeline published an intermediate Module:\n${failing_error}")
 endif()
 
 execute_process(
