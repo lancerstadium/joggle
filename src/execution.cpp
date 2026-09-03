@@ -7,6 +7,7 @@
 #include "type_contract.h"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <locale>
 #include <sstream>
@@ -900,6 +901,101 @@ std::optional<ExecutionValue> execute_body(
   return BodyEvaluator(compiler, function, body, arguments, limits, steps,
                        under_residual_control, diagnostics, execute)
       .run();
+}
+
+bool verify_body_calls(Compiler& compiler,
+                       const Module::FunctionDecl& function,
+                       const FunctionBody& body, Diagnostics& diagnostics) {
+  const std::size_t before = diagnostics.size();
+  const auto report = [&](std::string message, SyntaxRange range) {
+    diagnostics.report(
+        std::move(message),
+        SourceRange{body.source, range.begin, range.end});
+  };
+  const auto verify_expression = [&](const auto& self,
+                                     const ExpressionSyntax& syntax) -> void {
+    using Kind = Module::Expression::Kind;
+    const Module::Expression& expression = syntax.value;
+    if (expression.kind == Kind::Call) {
+      const bool bootstrap = expression.text == "ceildiv" ||
+                             expression.text == "min" ||
+                             expression.text == "max";
+      const auto declarations = visible_functions(
+          compiler, function.symbol().module_name(), expression.text);
+      const bool shaped = std::any_of(
+          declarations.begin(), declarations.end(), [&](const auto& current) {
+            return candidate(current, expression).has_value();
+          });
+      if (!bootstrap && !shaped) {
+        report("no visible overload of '" + expression.text +
+                   "' accepts this call shape",
+               syntax.range);
+      }
+    } else if (expression.kind == Kind::Prefix ||
+               expression.kind == Kind::Infix ||
+               expression.kind == Kind::Postfix) {
+      const auto fixity =
+          expression.kind == Kind::Prefix
+              ? Module::FunctionDecl::Fixity::Prefix
+          : expression.kind == Kind::Postfix
+              ? Module::FunctionDecl::Fixity::Postfix
+              : Module::FunctionDecl::Fixity::Infix;
+      const auto declarations = visible_operators(
+          compiler, function.symbol().module_name(), expression.text, fixity);
+      const bool shaped = std::any_of(
+          declarations.begin(), declarations.end(), [&](const auto& current) {
+            return candidate(current, expression).has_value();
+          });
+      constexpr std::array<std::string_view, 5> bootstrap{
+          "+", "-", "*", "/", "//"};
+      const bool bootstrap_operator =
+          std::find(bootstrap.begin(), bootstrap.end(), expression.text) !=
+          bootstrap.end();
+      if ((!declarations.empty() && !shaped) ||
+          (declarations.empty() && !bootstrap_operator)) {
+        report("no visible function defines operator '" + expression.text +
+                   "' with this fixity and arity",
+               syntax.range);
+      }
+    }
+    for (const auto& argument : expression.arguments) {
+      self(self, ExpressionSyntax{argument, syntax.range});
+    }
+  };
+  const auto verify_statements = [&](const auto& self,
+                                     std::span<const StatementSyntax> code)
+      -> void {
+    for (const StatementSyntax& statement : code) {
+      if (statement.kind == StatementSyntax::Kind::Expression ||
+          statement.kind == StatementSyntax::Kind::If ||
+          statement.kind == StatementSyntax::Kind::While) {
+        verify_expression(verify_expression, statement.expression);
+      }
+      for (const auto& value : statement.values) {
+        verify_expression(verify_expression, value);
+      }
+      self(self, statement.body);
+      self(self, statement.otherwise);
+    }
+  };
+  for (const BlockSyntax& block : body.blocks) {
+    verify_statements(verify_statements, block.statements);
+    if (!block.terminator) {
+      continue;
+    }
+    if (block.terminator->condition) {
+      verify_expression(verify_expression, *block.terminator->condition);
+    }
+    for (const auto& value : block.terminator->values) {
+      verify_expression(verify_expression, value);
+    }
+    for (const auto& successor : block.terminator->successors) {
+      for (const auto& argument : successor.arguments) {
+        verify_expression(verify_expression, argument);
+      }
+    }
+  }
+  return diagnostics.size() == before;
 }
 
 }  // namespace joggle::detail

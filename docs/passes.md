@@ -124,6 +124,9 @@ functions through the same `Compiler::execute` entry. This includes selected
 `if` arms, `while`, `break`, `continue`, early returns, contextual lists, and
 dependent-type calls. Calls select visible overloads from evaluated host types;
 declared prefix, infix, and postfix operators use the same function candidates.
+Linking traverses every structured arm and validates that calls have a visible
+candidate with compatible positional/named/default argument placement, even
+when a Known condition will not select that arm in a particular invocation.
 Explicit low-level CFG bodies are residual artifacts and are not interpreted as
 compiler scripts.
 

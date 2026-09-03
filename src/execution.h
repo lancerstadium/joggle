@@ -32,4 +32,8 @@ std::optional<ExecutionValue> execute_body(
     bool under_residual_control, Diagnostics& diagnostics,
     const ExecuteFunction& execute);
 
+bool verify_body_calls(Compiler& compiler,
+                       const Module::FunctionDecl& function,
+                       const FunctionBody& body, Diagnostics& diagnostics);
+
 }  // namespace joggle::detail

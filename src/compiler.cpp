@@ -1354,6 +1354,14 @@ bool Compiler::link() {
     }
 
     for (const Module::FunctionDecl& function : module.functions()) {
+      const auto body = detail::ModuleAccess::body(module, function);
+      if (body) {
+        detail::verify_body_calls(*this, function, *body,
+                                  state_->diagnostics);
+      }
+    }
+
+    for (const Module::FunctionDecl& function : module.functions()) {
       if (detail::ModuleAccess::expression(function) == nullptr ||
           !detail::ir_inputs(function).empty() ||
           !detail::ir_results(function).empty() ||

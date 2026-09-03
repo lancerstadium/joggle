@@ -732,5 +732,30 @@ module bounded@1.0.0 {
   ok &= expect(!spinning && reports_budget,
                "structured compiler execution is bounded deterministically");
 
+  joggle::Compiler unchecked_arm;
+  unchecked_arm.add(R"(
+joggle 1;
+module unchecked_arm@1.0.0 {
+  fn broken(condition: bool, input: bytes) -> bytes {
+    if condition {
+      return input;
+    } else {
+      return missing(input);
+    }
+  }
+}
+)", "unchecked-arm.joggle");
+  const bool unchecked_linked = unchecked_arm.link();
+  const bool reports_unselected_call = std::any_of(
+      unchecked_arm.diagnostics().entries().begin(),
+      unchecked_arm.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("no visible overload of 'missing'") !=
+               std::string::npos;
+      });
+  ok &= expect(!unchecked_linked && reports_unselected_call,
+               "linking verifies calls in every structured branch before "
+               "Known execution selects one");
+
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

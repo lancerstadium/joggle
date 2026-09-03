@@ -380,9 +380,11 @@ native bindings and is used by type-level calls, so multi-statement `if` and
 `while` computations can select dependent types. Its call path filters visible
 overloads by argument placement, expected result, and evaluated host types;
 declared operators enter that same path. The remaining consolidation work is
-to share this resolver and structured traversal with residual specialization
-and apply it to every structured arm during linking, including arms not
-selected by a particular invocation.
+to share full dependent-type selection and structured traversal with residual
+specialization. Linking already traverses every structured arm, including arms
+not selected by a particular invocation, and rejects unresolved names or call
+shapes before host code can run; complete symbolic type compatibility at these
+sites remains under construction.
 Explicit low-level CFG bodies remain residual artifacts rather than compiler
 scripts.
 
