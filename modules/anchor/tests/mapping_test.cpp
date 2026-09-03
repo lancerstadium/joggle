@@ -100,6 +100,48 @@ module anchor_kernel@1.0.0 {
       pad_right = 1
     );
   }
+
+  fn max_pool_padded_f32(
+    input: anchor.ref<f32, [1, 1, 3, 3], anchor.linear, anchor.io>
+  ) -> anchor.ref<f32, [1, 1, 4, 4], anchor.tiled<2, 2>, anchor.local> {
+    return anchor.max_pool2d_nchw(
+      input,
+      2,
+      2,
+      pad_top = 1,
+      pad_left = 1,
+      pad_bottom = 1,
+      pad_right = 1
+    );
+  }
+
+  fn max_pool_strided_f32(
+    input: anchor.ref<f32, [1, 2, 7, 7], anchor.linear, anchor.io>
+  ) -> anchor.ref<f32, [1, 2, 4, 4], anchor.tiled<2, 2>, anchor.local> {
+    return anchor.max_pool2d_nchw(
+      input,
+      3,
+      3,
+      stride_h = 2,
+      stride_w = 2,
+      pad_top = 1,
+      pad_left = 1,
+      pad_bottom = 1,
+      pad_right = 1
+    );
+  }
+
+  fn global_average_f32(
+    input: anchor.ref<f32, [1, 2, 3, 4], anchor.linear, anchor.io>
+  ) -> anchor.ref<f32, [1, 2, 1, 1], anchor.linear, anchor.local> {
+    return anchor.global_average_pool_nchw(input);
+  }
+
+  fn flatten_f32(
+    input: anchor.ref<f32, [1, 2, 3, 4], anchor.linear, anchor.io>
+  ) -> anchor.ref<f32, [1, 24], anchor.linear, anchor.local> {
+    return anchor.flatten_nchw(input);
+  }
 }
 )",
                "anchor-kernel.joggle");
@@ -150,13 +192,22 @@ module anchor_kernel@1.0.0 {
       materialize_call_body("anchor_kernel.conv_padded_f32");
   const auto strided_conv_body =
       materialize_call_body("anchor_kernel.conv_strided_f32");
+  const auto padded_pool_body =
+      materialize_call_body("anchor_kernel.max_pool_padded_f32");
+  const auto strided_pool_body =
+      materialize_call_body("anchor_kernel.max_pool_strided_f32");
+  const auto global_average_body =
+      materialize_call_body("anchor_kernel.global_average_f32");
+  const auto flatten_body =
+      materialize_call_body("anchor_kernel.flatten_f32");
   const auto read = memory ? memory->interface("read") : std::nullopt;
   const auto write = memory ? memory->interface("write") : std::nullopt;
   if (!source || !map || !analyze || !plan || !scratch || !cycles || !emit ||
       !reference || !ref || !linear || !tiled || !io || !local || !config ||
       !load || !store || !relu || !add || !linear_function || !linear_call ||
       !linear_body || !padded_conv_body || !strided_conv_body || !read ||
-      !write) {
+      !write || !padded_pool_body || !strided_pool_body ||
+      !global_average_body || !flatten_body) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -260,6 +311,33 @@ module anchor_kernel@1.0.0 {
                "padded and strided Conv2D calls materialize the same "
                "trip-count-independent seven-loop CFG with explicit guarded "
                "NCHW indexing");
+  ok &= expect(compiler.verify(*padded_pool_body) &&
+                   compiler.verify(*strided_pool_body) &&
+                   padded_pool_body->blocks().size() > 25U &&
+                   padded_pool_body->blocks().size() ==
+                       strided_pool_body->blocks().size() &&
+                   padded_pool_body->ops().size() ==
+                       strided_pool_body->ops().size() &&
+                   calls_named(*padded_pool_body, "mem.alloc") == 1U &&
+                   calls_named(*padded_pool_body, "anchor.load") == 1U &&
+                   calls_named(*padded_pool_body, "anchor.store") == 1U &&
+                   calls_named(*padded_pool_body,
+                               "anchor.max_pool2d_nchw") == 0U,
+               "MaxPool materializes fixed-size guarded NCHW loops and uses "
+               "the first valid element instead of zero as its maximum seed");
+  ok &= expect(compiler.verify(*global_average_body) &&
+                   calls_named(*global_average_body, "mem.alloc") == 1U &&
+                   calls_named(*global_average_body, "anchor.load") == 1U &&
+                   calls_named(*global_average_body, "anchor.store") == 1U &&
+                   calls_named(*global_average_body,
+                               "anchor.global_average_pool_nchw") == 0U &&
+                   compiler.verify(*flatten_body) &&
+                   flatten_body->blocks().size() == 5U &&
+                   calls_named(*flatten_body, "mem.alloc") == 1U &&
+                   calls_named(*flatten_body, "anchor.load") == 1U &&
+                   calls_named(*flatten_body, "anchor.store") == 1U,
+               "global average pooling and flatten materialize deterministic "
+               "logical-order reduction and copy bodies");
   ok &= expect(calls(*source, "nn") == 7U && calls(*body, "nn") == 0U &&
                    calls(*body, "anchor") == 7U,
                "mapping replaces the complete basic-block NN vocabulary");

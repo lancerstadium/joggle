@@ -25,6 +25,17 @@ declaration kind. Compiler functions that inspect or rewrite a whole Module
 remain native behavior for now; target computation itself does not require a
 host callback.
 
+`max_pool2d_nchw` uses six residual loops and carries both an accumulator and
+an initialization bit. The first in-bounds element seeds the maximum, so
+zero-padding is excluded rather than incorrectly competing with negative input
+values. If a window has no in-bounds element, the reference body stores zero;
+targets that admit such windows and require a format-specific minimum or
+infinity can replace this explicit policy. `global_average_pool_nchw`
+accumulates in deterministic `H -> W` order and materializes the divisor in
+the element type. `flatten_nchw`
+copies logical row-major ordinals, allowing the destination layout to differ
+without changing tensor semantics.
+
 `map(input, tile_rows, tile_columns)` converts ranked `tensor` values and the
 supported `nn` calls to `anchor.ref` values and target calls while
 preserving CFG, SSA edges, named properties, Function signatures, and immutable
