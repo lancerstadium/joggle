@@ -32,8 +32,8 @@ in `language/prelude.joggle`; Prelude is not an installable Module.
   same Module IR and content-addressed data.
 - `anchor` demonstrates a user-owned target vocabulary, tensor-to-
   reference mapping, explicit layout/address-space types, deterministic static
-  placement, and validated scratch analysis without adding a target
-  abstraction to compiler core.
+  placement, validated scratch analysis, an explicit analytical machine model,
+  and manifest emission without adding a target abstraction to compiler core.
 
 The list is not an abstraction ladder. A function body may call declarations
 from any installed Modules. Joggle has no built-in `lower` direction. A

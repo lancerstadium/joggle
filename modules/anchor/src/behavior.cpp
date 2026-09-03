@@ -23,6 +23,7 @@ struct Schema {
   joggle::Module::InterfaceDecl memory_reference;
   joggle::Module::InterfaceDecl immutable_data;
   joggle::Module::InterfaceDecl placement;
+  joggle::Module::InterfaceDecl machine;
   joggle::Module::FunctionDecl place;
 };
 
@@ -175,13 +176,9 @@ map_module(joggle::Compiler& compiler, joggle::Module input,
 }
 
 std::optional<std::uint64_t>
-local_bytes(joggle::Compiler& compiler, const joggle::Type& type,
-            const Schema& schema, joggle::Diagnostics& diagnostics) {
+reference_bytes(joggle::Compiler& compiler, const joggle::Type& type,
+                const Schema& schema, joggle::Diagnostics& diagnostics) {
   if (!compiler.conforms(type.schema(), schema.memory_reference)) {
-    return std::uint64_t{0};
-  }
-  const auto space = type.get<joggle::Type>("space_type");
-  if (!space || space->schema() != schema.local) {
     return std::uint64_t{0};
   }
   const auto element = type.get<joggle::Type>("element_type");
@@ -190,7 +187,7 @@ local_bytes(joggle::Compiler& compiler, const joggle::Type& type,
                         ? element->get<std::int64_t>("storage_bits")
                         : std::optional<std::int64_t>{};
   if (!element || !shape || !bits || *bits <= 0) {
-    diagnostics.report("local reference has no positive storage_bits or shape");
+    diagnostics.report("reference has no positive storage_bits or shape");
     return std::nullopt;
   }
 
@@ -199,12 +196,24 @@ local_bytes(joggle::Compiler& compiler, const joggle::Type& type,
     if (dimension <= 0 ||
         static_cast<std::uint64_t>(dimension) >
             std::numeric_limits<std::uint64_t>::max() / total_bits) {
-      diagnostics.report("local reference size overflows");
+      diagnostics.report("reference size overflows");
       return std::nullopt;
     }
     total_bits *= static_cast<std::uint64_t>(dimension);
   }
   return total_bits / 8U + (total_bits % 8U == 0U ? 0U : 1U);
+}
+
+std::optional<std::uint64_t>
+local_bytes(joggle::Compiler& compiler, const joggle::Type& type,
+            const Schema& schema, joggle::Diagnostics& diagnostics) {
+  if (!compiler.conforms(type.schema(), schema.memory_reference)) {
+    return std::uint64_t{0};
+  }
+  const auto space = type.get<joggle::Type>("space_type");
+  return !space || space->schema() != schema.local
+             ? std::optional<std::uint64_t>{0}
+             : reference_bytes(compiler, type, schema, diagnostics);
 }
 
 std::optional<std::int64_t>
@@ -605,6 +614,303 @@ scratch_bytes(joggle::Compiler& compiler, const joggle::Module& input,
   return static_cast<std::int64_t>(required);
 }
 
+struct Machine {
+  std::uint64_t lanes = 0;
+  std::uint64_t macs_per_lane = 0;
+  std::uint64_t local_bytes_per_cycle = 0;
+  std::uint64_t external_bytes_per_cycle = 0;
+  std::uint64_t scratch_capacity = 0;
+  std::uint64_t launch_cycles = 0;
+};
+
+std::optional<Machine> machine(joggle::Compiler& compiler,
+                               const joggle::Type& type,
+                               const Schema& schema,
+                               joggle::Diagnostics& diagnostics) {
+  if (!compiler.conforms(type.schema(), schema.machine)) {
+    diagnostics.report("anchor cycle model requires a machine type");
+    return std::nullopt;
+  }
+  const auto lanes = type.get<std::int64_t>("lanes");
+  const auto macs = type.get<std::int64_t>("macs_per_lane");
+  const auto local = type.get<std::int64_t>("local_bytes_per_cycle");
+  const auto external = type.get<std::int64_t>("external_bytes_per_cycle");
+  const auto scratch = type.get<std::int64_t>("scratch_capacity");
+  const auto launch = type.get<std::int64_t>("launch_cycles");
+  if (!lanes || !macs || !local || !external || !scratch || !launch ||
+      *lanes <= 0 || *macs <= 0 || *local <= 0 || *external <= 0 ||
+      *scratch < 0 || *launch < 0) {
+    diagnostics.report("anchor machine fields are missing or invalid");
+    return std::nullopt;
+  }
+  return Machine{static_cast<std::uint64_t>(*lanes),
+                 static_cast<std::uint64_t>(*macs),
+                 static_cast<std::uint64_t>(*local),
+                 static_cast<std::uint64_t>(*external),
+                 static_cast<std::uint64_t>(*scratch),
+                 static_cast<std::uint64_t>(*launch)};
+}
+
+std::optional<std::uint64_t>
+elements(const joggle::Type& type, joggle::Diagnostics& diagnostics) {
+  const auto shape = type.get<std::vector<std::int64_t>>("shape");
+  if (!shape) {
+    diagnostics.report("anchor operation has no shaped reference result");
+    return std::nullopt;
+  }
+  std::uint64_t count = 1;
+  for (const std::int64_t dimension : *shape) {
+    if (dimension <= 0 ||
+        static_cast<std::uint64_t>(dimension) >
+            std::numeric_limits<std::uint64_t>::max() / count) {
+      diagnostics.report("anchor element count overflows");
+      return std::nullopt;
+    }
+    count *= static_cast<std::uint64_t>(dimension);
+  }
+  return count;
+}
+
+bool multiply(std::uint64_t& value, std::uint64_t factor,
+              joggle::Diagnostics& diagnostics, std::string_view context) {
+  if (factor != 0U &&
+      value > std::numeric_limits<std::uint64_t>::max() / factor) {
+    diagnostics.report(std::string(context) + " overflows");
+    return false;
+  }
+  value *= factor;
+  return true;
+}
+
+bool add(std::uint64_t& value, std::uint64_t amount,
+         joggle::Diagnostics& diagnostics, std::string_view context) {
+  if (amount > std::numeric_limits<std::uint64_t>::max() - value) {
+    diagnostics.report(std::string(context) + " overflows");
+    return false;
+  }
+  value += amount;
+  return true;
+}
+
+std::optional<std::pair<std::uint64_t, bool>>
+work(const joggle::Op& op, joggle::Diagnostics& diagnostics) {
+  const std::string_view name = op.callee().name();
+  if (name == "flatten_nchw") {
+    return std::pair<std::uint64_t, bool>{0, false};
+  }
+  const auto output = elements(op.value().type(), diagnostics);
+  if (!output) {
+    return std::nullopt;
+  }
+  std::uint64_t amount = *output;
+  bool mac = false;
+  if (name == "conv2d_nchw") {
+    const auto weight = op.operand("weight");
+    const auto shape = weight
+                           ? weight->type().get<std::vector<std::int64_t>>(
+                                 "shape")
+                           : std::optional<std::vector<std::int64_t>>{};
+    if (!shape || shape->size() != 4U) {
+      diagnostics.report("anchor convolution has no four-dimensional weight");
+      return std::nullopt;
+    }
+    for (std::size_t axis = 1; axis < shape->size(); ++axis) {
+      if ((*shape)[axis] <= 0 ||
+          !multiply(amount, static_cast<std::uint64_t>((*shape)[axis]),
+                    diagnostics, "convolution work")) {
+        return std::nullopt;
+      }
+    }
+    mac = true;
+  } else if (name == "linear") {
+    const auto weight = op.operand("weight");
+    const auto shape = weight
+                           ? weight->type().get<std::vector<std::int64_t>>(
+                                 "shape")
+                           : std::optional<std::vector<std::int64_t>>{};
+    if (!shape || shape->size() != 2U || (*shape)[1] <= 0 ||
+        !multiply(amount, static_cast<std::uint64_t>((*shape)[1]),
+                  diagnostics, "linear work")) {
+      diagnostics.report("anchor linear operation has an invalid weight");
+      return std::nullopt;
+    }
+    mac = true;
+  } else if (name == "batch_norm_nchw") {
+    if (!multiply(amount, 5U, diagnostics, "batch normalization work")) {
+      return std::nullopt;
+    }
+  } else if (name == "max_pool2d_nchw") {
+    const auto height = op.property<std::int64_t>("kernel_h");
+    const auto width = op.property<std::int64_t>("kernel_w");
+    if (!height || !width || *height <= 0 || *width <= 0 ||
+        !multiply(amount, static_cast<std::uint64_t>(*height), diagnostics,
+                  "pooling work") ||
+        !multiply(amount, static_cast<std::uint64_t>(*width), diagnostics,
+                  "pooling work")) {
+      return std::nullopt;
+    }
+  } else if (name == "global_average_pool_nchw") {
+    const auto input = op.operand("input");
+    if (!input) {
+      diagnostics.report("anchor global pooling has no input");
+      return std::nullopt;
+    }
+    const auto input_elements = elements(input->type(), diagnostics);
+    if (!input_elements) {
+      return std::nullopt;
+    }
+    amount = *input_elements;
+  } else if (name != "relu" && name != "add") {
+    diagnostics.report("anchor has no cycle model for '" + std::string(name) +
+                       "'");
+    return std::nullopt;
+  }
+  return std::pair<std::uint64_t, bool>{amount, mac};
+}
+
+struct Traffic {
+  std::uint64_t local = 0;
+  std::uint64_t external = 0;
+};
+
+std::optional<Traffic>
+traffic(joggle::Compiler& compiler, const joggle::Op& op,
+        const Schema& schema, joggle::Diagnostics& diagnostics) {
+  Traffic result;
+  const auto account = [&](const joggle::Type& type) -> bool {
+    if (!compiler.conforms(type.schema(), schema.memory_reference)) {
+      return true;
+    }
+    const auto bytes = reference_bytes(compiler, type, schema, diagnostics);
+    const auto space = type.get<joggle::Type>("space_type");
+    if (!bytes || !space) {
+      return false;
+    }
+    return space->schema() == schema.local
+               ? add(result.local, *bytes, diagnostics, "local traffic")
+               : add(result.external, *bytes, diagnostics,
+                     "external traffic");
+  };
+  for (const auto& operand : op.operands()) {
+    if (!account(operand.type())) {
+      return std::nullopt;
+    }
+  }
+  for (const auto& output : op.results()) {
+    if (!account(output.type())) {
+      return std::nullopt;
+    }
+  }
+  return result;
+}
+
+std::uint64_t ceil_div(std::uint64_t value, std::uint64_t divisor) {
+  return value / divisor + (value % divisor == 0U ? 0U : 1U);
+}
+
+std::optional<std::int64_t>
+cycle_count(joggle::Compiler& compiler, const joggle::Module& input,
+            const joggle::Type& target, const Schema& schema,
+            joggle::Diagnostics& diagnostics) {
+  const auto config = machine(compiler, target, schema, diagnostics);
+  const auto required = scratch_bytes(compiler, input, schema, diagnostics);
+  if (!config || !required) {
+    return std::nullopt;
+  }
+  if (static_cast<std::uint64_t>(*required) > config->scratch_capacity) {
+    diagnostics.report("anchor storage plan exceeds scratch capacity");
+    return std::nullopt;
+  }
+  std::uint64_t macs_per_cycle = config->lanes;
+  if (!multiply(macs_per_cycle, config->macs_per_lane, diagnostics,
+                "machine MAC throughput")) {
+    return std::nullopt;
+  }
+
+  std::uint64_t cycles = 0;
+  for (const auto& member : input.functions()) {
+    const joggle::Function* function_body = member.body();
+    if (function_body == nullptr) {
+      diagnostics.report("anchor cycle model requires materialized Functions");
+      return std::nullopt;
+    }
+    for (const auto& op : function_body->ops()) {
+      const std::string_view name = op.callee().name();
+      if (compiler.conforms(op.callee(), schema.placement) ||
+          name == "constant") {
+        continue;
+      }
+      if (op.callee().symbol().module_name() != schema.target.name()) {
+        diagnostics.report("anchor cycle model encountered a foreign call");
+        return std::nullopt;
+      }
+      const auto operation_work = work(op, diagnostics);
+      const auto operation_traffic = traffic(compiler, op, schema, diagnostics);
+      if (!operation_work || !operation_traffic) {
+        return std::nullopt;
+      }
+      const std::uint64_t compute =
+          ceil_div(operation_work->first,
+                   operation_work->second ? macs_per_cycle : config->lanes);
+      const std::uint64_t local =
+          ceil_div(operation_traffic->local, config->local_bytes_per_cycle);
+      const std::uint64_t external = ceil_div(
+          operation_traffic->external, config->external_bytes_per_cycle);
+      std::uint64_t operation_cycles = compute;
+      if (local > operation_cycles) {
+        operation_cycles = local;
+      }
+      if (external > operation_cycles) {
+        operation_cycles = external;
+      }
+      if (!add(operation_cycles, config->launch_cycles, diagnostics,
+               "operation cycle count") ||
+          !add(cycles, operation_cycles, diagnostics, "module cycle count")) {
+        return std::nullopt;
+      }
+    }
+  }
+  if (cycles > static_cast<std::uint64_t>(
+                   std::numeric_limits<std::int64_t>::max())) {
+    diagnostics.report("module cycle count does not fit in int");
+    return std::nullopt;
+  }
+  return static_cast<std::int64_t>(cycles);
+}
+
+std::optional<joggle::Bytes>
+emit(joggle::Compiler& compiler, const joggle::Module& input,
+     const joggle::Type& target, const Schema& schema,
+     joggle::Diagnostics& diagnostics) {
+  const auto config = machine(compiler, target, schema, diagnostics);
+  const auto required = scratch_bytes(compiler, input, schema, diagnostics);
+  const auto cycles = cycle_count(compiler, input, target, schema, diagnostics);
+  if (!config || !required || !cycles) {
+    return std::nullopt;
+  }
+  std::string output = "anchor 1\nmodule ";
+  output += input.name();
+  output += '#';
+  output += input.digest();
+  output += "\nlanes ";
+  output += std::to_string(config->lanes);
+  output += "\nmacs-per-lane ";
+  output += std::to_string(config->macs_per_lane);
+  output += "\nscratch-bytes ";
+  output += std::to_string(*required);
+  output += "\ncycles ";
+  output += std::to_string(*cycles);
+  output += "\n---\n";
+  output += joggle::format(input);
+  joggle::Bytes bytes;
+  bytes.reserve(output.size());
+  for (const char value : output) {
+    bytes.push_back(
+        static_cast<std::byte>(static_cast<unsigned char>(value)));
+  }
+  return bytes;
+}
+
 std::optional<Schema> schema(joggle::Compiler& compiler,
                              joggle::Diagnostics& diagnostics) {
   const auto target = compiler.module("anchor");
@@ -624,17 +930,19 @@ std::optional<Schema> schema(joggle::Compiler& compiler,
   const auto memory_reference = memory->interface("reference");
   const auto immutable_data = tensor->interface("immutable_data");
   const auto placement = target->interface("placement");
+  const auto machine_interface = target->interface("machine");
   const auto place = target->function("place");
   if (!reference || !linear || !tiled || !io || !read_only || !local ||
       !ranked_tensor || !memory_reference || !immutable_data || !placement ||
-      !place) {
+      !machine_interface || !place) {
     diagnostics.report("anchor behavior does not match its schema");
     return std::nullopt;
   }
   return Schema{*target,         *reference,      *linear,
                 *tiled,         *io,             *read_only,
                 *local,         *ranked_tensor,  *memory_reference,
-                *immutable_data, *placement,     *place};
+                *immutable_data, *placement,     *machine_interface,
+                *place};
 }
 
 void bind(joggle::Compiler& compiler, const joggle::Module& module,
@@ -668,6 +976,20 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
       [resolved](joggle::Compiler& bound, const joggle::Module& input,
                  joggle::Diagnostics& reported) {
         return scratch_bytes(bound, input, *resolved, reported);
+      });
+  compiler.bind(
+      module, "cycles",
+      [resolved](joggle::Compiler& bound, const joggle::Module& input,
+                 const joggle::Type& target,
+                 joggle::Diagnostics& reported) {
+        return cycle_count(bound, input, target, *resolved, reported);
+      });
+  compiler.bind(
+      module, "emit",
+      [resolved](joggle::Compiler& bound, const joggle::Module& input,
+                 const joggle::Type& target,
+                 joggle::Diagnostics& reported) {
+        return emit(bound, input, target, *resolved, reported);
       });
 }
 

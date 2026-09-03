@@ -6,6 +6,14 @@ module anchor@1.0.0 {
   import tensor@2.0.0;
 
   interface placement: fn;
+  interface machine: type {
+    lanes: int;
+    macs_per_lane: int;
+    local_bytes_per_cycle: int;
+    external_bytes_per_cycle: int;
+    scratch_capacity: int;
+    launch_cycles: int;
+  }
 
   type linear() : mem.layout;
   type tiled(rows: int, columns: int) : mem.layout;
@@ -13,6 +21,15 @@ module anchor@1.0.0 {
   type io() : mem.space;
   type read_only() : mem.space;
   type local() : mem.space;
+
+  type config(
+    lanes: int,
+    macs_per_lane: int,
+    local_bytes_per_cycle: int,
+    external_bytes_per_cycle: int,
+    scratch_capacity: int,
+    launch_cycles: int
+  ) : machine;
 
   type ref(
     element: type,
@@ -273,4 +290,6 @@ module anchor@1.0.0 {
   fn local_bytes_upper_bound(input: module) -> int;
   fn plan_storage(input: module) -> module;
   fn scratch_bytes(input: module) -> int;
+  fn cycles(input: module, target: type) -> int;
+  fn emit(input: module, target: type) -> bytes;
 }

@@ -20,6 +20,15 @@ bool expect(bool condition, std::string_view message) {
   return condition;
 }
 
+std::string decode(const joggle::Bytes& bytes) {
+  std::string result;
+  result.reserve(bytes.size());
+  for (const std::byte value : bytes) {
+    result.push_back(static_cast<char>(std::to_integer<unsigned char>(value)));
+  }
+  return result;
+}
+
 std::size_t calls(const joggle::Function& function, std::string_view module) {
   const auto ops = function.ops();
   return static_cast<std::size_t>(std::count_if(
@@ -55,14 +64,17 @@ int main() {
       target ? target->function("plan_storage") : std::nullopt;
   const auto scratch =
       target ? target->function("scratch_bytes") : std::nullopt;
+  const auto cycles = target ? target->function("cycles") : std::nullopt;
+  const auto emit = target ? target->function("emit") : std::nullopt;
   const auto reference = memory ? memory->interface("reference") : std::nullopt;
   const auto ref = target ? target->type("ref") : std::nullopt;
   const auto linear = target ? target->type("linear") : std::nullopt;
   const auto tiled = target ? target->type("tiled") : std::nullopt;
   const auto io = target ? target->type("io") : std::nullopt;
   const auto local = target ? target->type("local") : std::nullopt;
-  if (!source || !map || !analyze || !plan || !scratch || !reference || !ref ||
-      !linear || !tiled || !io || !local) {
+  const auto config = target ? target->type("config") : std::nullopt;
+  if (!source || !map || !analyze || !plan || !scratch || !cycles || !emit ||
+      !reference || !ref || !linear || !tiled || !io || !local || !config) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -94,12 +106,29 @@ int main() {
   const auto scratch_size =
       planned ? compiler.run<std::int64_t>(*scratch, *planned)
               : std::optional<std::int64_t>{};
+  const auto machine = compiler.make(*config, std::int64_t{16},
+                                     std::int64_t{4}, std::int64_t{32},
+                                     std::int64_t{8}, std::int64_t{2000000},
+                                     std::int64_t{3});
+  const auto cycle_count =
+      planned && machine
+          ? compiler.run<std::int64_t>(*cycles, *planned, *machine)
+          : std::optional<std::int64_t>{};
+  const auto emitted = planned && machine
+                           ? compiler.run<joggle::Bytes>(*emit, *planned,
+                                                        *machine)
+                           : std::optional<joggle::Bytes>{};
+  const auto emitted_again = planned && machine
+                                 ? compiler.run<joggle::Bytes>(*emit, *planned,
+                                                              *machine)
+                                 : std::optional<joggle::Bytes>{};
   const joggle::Function* planned_body =
       planned && !planned->functions().empty()
           ? planned->functions().front().body()
           : nullptr;
   if (!mapped || !mapped_again || body == nullptr || !bytes || !planned ||
-      !planned_again || planned_body == nullptr || !scratch_size) {
+      !planned_again || planned_body == nullptr || !scratch_size ||
+      !cycle_count || !emitted || !emitted_again) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -153,6 +182,16 @@ int main() {
                "storage planning records deterministic first-fit slot reuse");
   ok &= expect(*scratch_size == 1605632,
                "two alternating activation slots replace seven allocations");
+  const std::string manifest = decode(*emitted);
+  ok &= expect(*cycle_count > 0 && *emitted == *emitted_again &&
+                   manifest.starts_with("anchor 1\nmodule basic_block#") &&
+                   manifest.find("\nscratch-bytes 1605632\n") !=
+                       std::string::npos &&
+                   manifest.find("\ncycles " +
+                                 std::to_string(*cycle_count) + "\n") !=
+                       std::string::npos &&
+                   manifest.ends_with(joggle::format(*planned)),
+               "cycle analysis and manifest emission consume the same plan");
   ok &= expect(joggle::format(*mapped) == joggle::format(*mapped_again),
                "the target mapping is deterministic");
   ok &= expect(joggle::format(*planned) == joggle::format(*planned_again),
@@ -197,5 +236,16 @@ int main() {
           : std::optional<std::int64_t>{};
   ok &= expect(changed && *changed == 1U && !invalid_scratch,
                "scratch analysis rejects overlapping physical slot reuse");
+
+  const auto undersized = compiler.make(
+      *config, std::int64_t{16}, std::int64_t{4}, std::int64_t{32},
+      std::int64_t{8}, std::int64_t{1605631}, std::int64_t{3});
+  const auto impossible = undersized
+                              ? compiler.run<std::int64_t>(
+                                    *cycles, *planned, *undersized)
+                              : std::optional<std::int64_t>{};
+  ok &= expect(undersized && !impossible,
+               "cycle analysis rejects a machine below the planned scratch "
+               "requirement");
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

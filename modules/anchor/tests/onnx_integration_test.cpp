@@ -29,6 +29,15 @@ std::optional<joggle::Bytes> read(std::string_view path) {
   return result;
 }
 
+std::string decode(const joggle::Bytes& bytes) {
+  std::string result;
+  result.reserve(bytes.size());
+  for (const std::byte value : bytes) {
+    result.push_back(static_cast<char>(std::to_integer<unsigned char>(value)));
+  }
+  return result;
+}
+
 }  // namespace
 
 int main() {
@@ -50,6 +59,11 @@ module anchor_pipeline@1.0.0 {
     model = onnx.to_nn(source);
     mapped = anchor.map(model, 8, 8);
     return anchor.plan_storage(mapped);
+  }
+
+  fn deploy(input: bytes, target: type) -> bytes {
+    planned = compile(input);
+    return anchor.emit(planned, target);
   }
 }
 )",
@@ -74,17 +88,48 @@ module anchor_pipeline@1.0.0 {
   const auto memory = compiler.module("mem");
   const auto analyze =
       target ? target->function("scratch_bytes") : std::nullopt;
+  const auto cycle_model = target ? target->function("cycles") : std::nullopt;
+  const auto emit = target ? target->function("emit") : std::nullopt;
+  const auto config = target ? target->type("config") : std::nullopt;
   const auto reference = memory ? memory->interface("reference") : std::nullopt;
-  if (!first || !second || !analyze || !reference) {
+  if (!first || !second || !analyze || !cycle_model || !emit || !config ||
+      !reference) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
 
   const auto main = first->function("main");
   const joggle::Function* body = main ? main->body() : nullptr;
-  const auto bytes =
-      compiler.run<std::int64_t>(*analyze, *first);
-  bool valid = body != nullptr && bytes && *bytes > 0 &&
+  const auto scratch = compiler.run<std::int64_t>(*analyze, *first);
+  const auto machine = compiler.make(
+      *config, std::int64_t{16}, std::int64_t{4}, std::int64_t{32},
+      std::int64_t{16}, std::int64_t{16777216}, std::int64_t{4});
+  const auto cycles = machine
+                          ? compiler.run<std::int64_t>(*cycle_model, *first,
+                                                       *machine)
+                          : std::optional<std::int64_t>{};
+  const auto manifest = machine
+                            ? compiler.run<joggle::Bytes>(*emit, *first,
+                                                         *machine)
+                            : std::optional<joggle::Bytes>{};
+  const auto manifest_again = machine
+                                  ? compiler.run<joggle::Bytes>(*emit, *first,
+                                                               *machine)
+                                  : std::optional<joggle::Bytes>{};
+  const auto deployed = source && machine
+                            ? compiler.run<joggle::Bytes>(
+                                  "anchor_pipeline.deploy", *source, *machine)
+                            : std::optional<joggle::Bytes>{};
+  const std::string emitted = manifest ? decode(*manifest) : std::string{};
+  bool valid = body != nullptr && scratch && *scratch > 0 && cycles &&
+               *cycles == 29453374 && manifest && manifest_again &&
+               deployed && *manifest == *manifest_again &&
+               *manifest == *deployed &&
+               emitted.starts_with("anchor 1\nmodule main_graph#") &&
+               emitted.find("\nscratch-bytes 10946464\n") !=
+                   std::string::npos &&
+               emitted.find("\ncycles 29453374\n") != std::string::npos &&
+               emitted.ends_with(joggle::format(*first)) &&
                body->ops().size() == 140U && first->data().size() == 42U &&
                first->digest() == second->digest() &&
                first->data() == second->data();
@@ -114,6 +159,9 @@ module anchor_pipeline@1.0.0 {
             << "ops " << (body ? body->ops().size() : 0U) << '\n'
             << "resources " << first->data().size() << '\n'
             << "resource-bytes " << payload_bytes << '\n'
-            << "scratch-bytes " << (bytes ? *bytes : 0) << '\n';
+            << "scratch-bytes " << (scratch ? *scratch : 0) << '\n'
+            << "cycles " << (cycles ? *cycles : 0) << '\n'
+            << "manifest-bytes " << (manifest ? manifest->size() : 0U)
+            << '\n';
   return valid ? EXIT_SUCCESS : EXIT_FAILURE;
 }

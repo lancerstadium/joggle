@@ -29,6 +29,38 @@ slot reuse, and sums the unique slot sizes. For the official ResNet-18 model,
 the current plan reduces the conservative 22,988,704-byte SSA sum to a
 validated 10,946,464-byte static scratch arena.
 
+`config<...>` is an ordinary Module-defined type conforming to `machine`. Its
+fields state parallel lanes, MACs per lane, local and external byte rates,
+scratch capacity, and launch latency. `cycles(input, target)` validates the
+storage plan and then evaluates every supported call with the explicit model
+
+```text
+launch + max(compute work / throughput,
+             local bytes / local rate,
+             external bytes / external rate)
+```
+
+before summing the calls in the materialized Functions. Compute and transfers
+are therefore assumed to overlap within a call, while calls execute in source
+order. The result is a deterministic analytical estimate under those declared
+assumptions, not measured device latency. A target whose scratch capacity is
+smaller than the validated plan is rejected.
+
+`emit(input, target)` returns a portable byte manifest containing the Module
+digest, target parameters, required scratch, estimated cycles, and the
+canonical planned Module. It is an inspectable deployment artifact rather
+than machine code. A source Module can compose the complete path directly:
+
+```joggle
+fn deploy(input: bytes, target: type) -> bytes {
+  source = onnx.read(input);
+  model = onnx.to_nn(source);
+  mapped = anchor.map(model, 8, 8);
+  planned = anchor.plan_storage(mapped);
+  return anchor.emit(planned, target);
+}
+```
+
 Build and test the package with:
 
 ```sh
@@ -45,4 +77,7 @@ max pooling, global average pooling, flatten, and linear. Unsupported tensor
 calls fail transactionally instead of leaking a mixed tensor/reference graph.
 When `onnx` and the official `JOGGLE_ONNX_MODEL` are enabled, the
 `module.anchor.onnx` integration test exercises the complete
-`onnx.read -> onnx.to_nn -> anchor.map -> anchor.plan_storage` composition.
+`onnx.read -> onnx.to_nn -> anchor.map -> anchor.plan_storage -> anchor.emit`
+composition. With `config<16, 4, 32, 16, 16777216, 4>`, the checked result is
+10,946,464 scratch bytes and 29,453,374 analytical cycles. Repeated compilation
+produces the same Module digest and byte-identical manifest.
