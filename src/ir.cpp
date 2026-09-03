@@ -934,6 +934,9 @@ bool FunctionAccess::commit(ir::Function::Edit& edit, Compiler& compiler,
 
 namespace joggle::ir {
 
+Function::Revision::Revision(std::shared_ptr<const FunctionState> state)
+    : state_(std::move(state)) {}
+
 Value::Value(std::shared_ptr<FunctionIdentity> function, std::uint64_t id)
     : function_(std::move(function)), id_(id) {}
 
@@ -1882,6 +1885,10 @@ bool Function::dominates(Value definition, Instruction instruction) const {
   const auto relation = dominators(*function_->state);
   return definition_dominates(*function_->state, found->second,
                               user->second.parent, instruction.id_, relation);
+}
+
+Function::Revision Function::revision() const {
+  return Revision(function_->state);
 }
 
 Function Function::clone() const {

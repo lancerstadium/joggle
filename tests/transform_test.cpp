@@ -56,6 +56,7 @@ module mapping@1.0.0 {
   }
 
   bool ok = true;
+  const auto first_revision = first->revision();
   joggle::Diagnostics no_op_diagnostics;
   const auto no_op = joggle::ir::map_calls(
       *first,
@@ -65,23 +66,27 @@ module mapping@1.0.0 {
       },
       no_op_diagnostics);
   ok &= expect(no_op && *no_op == 0U && no_op_diagnostics.ok() &&
+                   first->revision() == first_revision &&
                    first->instructions().front().callee() == *keep,
-               "an empty call mapping is a successful no-op");
+               "a no-op mapping preserves the Function revision");
 
   joggle::Diagnostics replace_diagnostics;
   const auto replaced =
       joggle::ir::replace_calls(*first, *keep, *converted, replace_diagnostics);
   ok &= expect(replaced && *replaced == 1U && replace_diagnostics.ok() &&
+                   first->revision() != first_revision &&
                    first->instructions().front().callee() == *converted,
-               "exact call replacement commits transactionally");
+               "a committed replacement advances the Function revision");
 
   const std::string before_invalid = joggle::format(*second, "second");
+  const auto before_invalid_revision = second->revision();
   joggle::Diagnostics invalid_diagnostics;
   const auto invalid =
       joggle::ir::replace_calls(*second, *other, *binary, invalid_diagnostics);
   ok &= expect(!invalid && !invalid_diagnostics.ok() &&
+                   second->revision() == before_invalid_revision &&
                    joggle::format(*second, "second") == before_invalid,
-               "an invalid replacement restores the Function");
+               "an invalid replacement restores content and revision");
 
   auto program_first = compiler.function("mapping.first");
   auto program_second = compiler.function("mapping.second");

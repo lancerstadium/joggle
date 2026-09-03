@@ -22,6 +22,7 @@ class Compiler;
 
 namespace detail {
 struct FunctionIdentity;
+struct FunctionState;
 struct FunctionEditState;
 struct KnownValueStorage;
 struct FunctionAccess;
@@ -142,6 +143,18 @@ private:
 
 class Function {
 public:
+  // Opaque identity of one committed Function state. Analyses retain a
+  // Revision and compare it with revision() before reusing cached data.
+  class Revision {
+  public:
+    bool operator==(const Revision&) const = default;
+
+  private:
+    explicit Revision(std::shared_ptr<const detail::FunctionState> state);
+    std::shared_ptr<const detail::FunctionState> state_;
+    friend class Function;
+  };
+
   class Edit {
   public:
     ~Edit();
@@ -205,6 +218,7 @@ public:
   bool has_uses(Value value) const;
   bool dominates(Block dominator, Block block) const;
   bool dominates(Value definition, Instruction instruction) const;
+  Revision revision() const;
   Function clone() const;
   Edit edit();
 
