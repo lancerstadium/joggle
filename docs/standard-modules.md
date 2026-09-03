@@ -43,10 +43,18 @@ the common Residual vocabulary for constants, casts, numeric arithmetic,
 comparison, and selection. Familiar symbols such as `+` are aliases of these
 ordinary functions.
 
-`arith.elementwise` and `arith.commutative` are function contracts used by
-generic transforms. There is one standard `elementwise` identity; tensor and
-NN functions reuse it instead of declaring unrelated markers with the same
-spelling.
+`arith.elementwise`, `arith.commutative`, and `arith.comparison` are function
+contracts used by generic transforms. There is one standard `elementwise`
+identity; tensor and NN functions reuse it instead of declaring unrelated
+markers with the same spelling.
+
+Arithmetic, comparison, bitwise, shift, and logical operations are separate
+ordinary functions with operator spellings. A transform therefore matches an
+exact declaration such as `arith.less` or `arith.shift_left`; it never decodes
+a predicate string. Their generic constraints admit custom fixed-width types
+that opt into Prelude's `scalar`, `numeric`, `integer`, or `logical`
+interfaces, so a four-bit extension does not need a parallel arithmetic
+dialect.
 
 Literal materializers implement `prelude.literal`. Their distinct names are
 intentional: an integer token may materialize an integer or a floating-point

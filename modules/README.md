@@ -12,10 +12,11 @@ in `language/prelude.joggle`; Prelude is not an installable Module.
   integer `range` are ordinary Prelude `fn` declarations with deterministic
   Hermetic core implementations. Local declarations can shadow them through
   the normal name and operator rules.
-- `arith` defines Residual computation over Prelude types and custom numeric
-  types. `prelude.scalar` means fixed-width scalar representation;
-  `prelude.numeric` means arithmetic is meaningful. The distinction excludes
-  logical `i1` from numeric functions without fixing a target representation.
+- `arith` defines Residual arithmetic, comparison, bitwise, shift, and logical
+  functions over Prelude types and compatible custom types. `prelude.scalar`
+  means fixed-width scalar representation; `prelude.numeric` means arithmetic
+  is meaningful. The distinction excludes logical `i1` from numeric functions
+  without fixing a target representation.
 - `tensor` defines ranked and unranked tensor values plus structural functions.
   It imports `arith` only to reuse the single `arith.elementwise` function
   contract. It does not define neural-network operators or storage.

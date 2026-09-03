@@ -118,7 +118,7 @@ int main() {
                "an ordinary typed analysis observes source and converted "
                "Modules through the same invocation mechanism");
   ok &= expect(parsed &&
-                   source.find("import example_accel@1.0.0;") !=
+                   source.find("import example_accel@2.0.0;") !=
                        std::string::npos &&
                    source.find("example_accel.relu") != std::string::npos,
                "an ordinary emitter produces canonical, parseable source");

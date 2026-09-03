@@ -164,6 +164,13 @@ if(JOGGLE_BUILD_TESTS)
   target_link_libraries(joggle_function_body_test PRIVATE joggle::joggle)
   add_test(NAME function_body COMMAND joggle_function_body_test)
 
+  add_executable(joggle_arith_test tests/arith_test.cpp)
+  target_link_libraries(joggle_arith_test PRIVATE joggle::joggle)
+  target_compile_definitions(joggle_arith_test PRIVATE
+    JOGGLE_ARITH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/arith.joggle"
+  )
+  add_test(NAME arith COMMAND joggle_arith_test)
+
   add_executable(joggle_nn_test tests/nn_test.cpp)
   target_link_libraries(joggle_nn_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_nn_test PRIVATE

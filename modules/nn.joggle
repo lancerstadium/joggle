@@ -1,8 +1,8 @@
 joggle 1;
 
-module nn@1.0.0 {
-  import arith@1.0.0;
-  import tensor@1.0.0;
+module nn@2.0.0 {
+  import arith@2.0.0;
+  import tensor@2.0.0;
 
   interface activation: fn;
   interface normalization: fn;

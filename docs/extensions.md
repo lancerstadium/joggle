@@ -16,7 +16,7 @@ Conversions belong to bridge Modules:
 
 ```joggle
 module tensor_to_accel@1.0.0 {
-  import tensor@1.0.0;
+  import tensor@2.0.0;
   import accel@1.0.0;
 
   fn convert(input: module, target: accel.target) -> module;

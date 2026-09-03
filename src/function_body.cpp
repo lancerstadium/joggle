@@ -2705,8 +2705,15 @@ private:
           argument.value = used ? detail::stage(std::move(*used))
                                 : std::optional<detail::StagedValue>{};
         }
-      } else {
+      } else if (known_result(argument_expression,
+                              statement.expression.range)) {
         argument.value = evaluate_known(argument_syntax);
+      } else {
+        auto [argument_tail, value] = instantiate_expression(
+            argument_expression, statement.expression.range, block);
+        block = argument_tail;
+        argument.value = value ? detail::stage(std::move(*value))
+                               : std::optional<detail::StagedValue>{};
       }
       if (!argument.value && !argument.is_function()) {
         invalidate_results();

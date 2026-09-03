@@ -38,7 +38,7 @@ int main() {
   compiler.add(R"(
 joggle 1;
 module projected_schema@1.0.0 {
-  import tensor@1.0.0;
+  import tensor@2.0.0;
   import buffer@1.0.0;
 
   type descriptor(element: type, shape: list<int>, space: string);

@@ -1,7 +1,7 @@
 joggle 1;
 
-module example_accel@1.0.0 {
-  import tensor@1.0.0;
+module example_accel@2.0.0 {
+  import tensor@2.0.0;
 
   fn relu<E: prelude.numeric, S: list<int>>(
     input: tensor.ranked<E, S>

@@ -1,8 +1,8 @@
 joggle 1;
 
-module nn_pipeline@1.0.0 {
-  import example_accel@1.0.0;
-  import nn@1.0.0;
+module nn_pipeline@2.0.0 {
+  import example_accel@2.0.0;
+  import nn@2.0.0;
 
   fn convert_relu(input: module) -> module;
   fn count_instructions(input: module) -> int;

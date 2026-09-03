@@ -1,8 +1,8 @@
 joggle 1;
 
-module resnet18_basic_block@1.0.0 {
-  import nn@1.0.0;
-  import tensor@1.0.0;
+module resnet18_basic_block@2.0.0 {
+  import nn@2.0.0;
+  import tensor@2.0.0;
 
   fn main(
     input: tensor.ranked<f32, [1, 64, 56, 56]>,
