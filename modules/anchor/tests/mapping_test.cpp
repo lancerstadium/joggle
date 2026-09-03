@@ -38,6 +38,16 @@ std::size_t calls(const joggle::Function& function, std::string_view module) {
       }));
 }
 
+std::size_t calls_named(const joggle::Function& function,
+                        std::string_view qualified_name) {
+  const auto ops = function.ops();
+  return static_cast<std::size_t>(std::count_if(
+      ops.begin(), ops.end(),
+      [qualified_name](const joggle::Op& op) {
+        return op.callee().symbol().qualified_name() == qualified_name;
+      }));
+}
+
 }  // namespace
 
 int main() {
@@ -48,6 +58,21 @@ int main() {
   compiler.load(JOGGLE_MEM_MODULE);
   compiler.load(JOGGLE_ANCHOR_MODULE);
   compiler.load(JOGGLE_RESNET_BLOCK);
+  compiler.add(R"(
+joggle 1;
+module anchor_kernel@1.0.0 {
+  import anchor@1;
+
+  fn linear_f32(
+    input: anchor.ref<f32, [2, 3], anchor.linear, anchor.io>,
+    weight: anchor.ref<f32, [4, 3], anchor.linear, anchor.read_only>,
+    bias: anchor.ref<f32, [4], anchor.linear, anchor.read_only>
+  ) -> anchor.ref<f32, [2, 4], anchor.linear, anchor.local> {
+    return anchor.linear(input, weight, bias);
+  }
+}
+)",
+               "anchor-kernel.joggle");
   if (!compiler.link() ||
       !compiler.load_behavior("anchor", JOGGLE_ANCHOR_BEHAVIOR)) {
     compiler.diagnostics().print(std::cerr);
@@ -77,11 +102,20 @@ int main() {
   const auto store = target ? target->function("store") : std::nullopt;
   const auto relu = target ? target->function("relu") : std::nullopt;
   const auto add = target ? target->function("add") : std::nullopt;
+  const auto linear_function = compiler.materialize("anchor_kernel.linear_f32");
+  const auto linear_call =
+      linear_function && linear_function->ops().size() == 1U
+          ? std::optional<joggle::Op>{linear_function->ops().front()}
+          : std::nullopt;
+  const auto linear_body =
+      linear_call ? compiler.materialize(*linear_call)
+                  : std::optional<joggle::Function>{};
   const auto read = memory ? memory->interface("read") : std::nullopt;
   const auto write = memory ? memory->interface("write") : std::nullopt;
   if (!source || !map || !analyze || !plan || !scratch || !cycles || !emit ||
       !reference || !ref || !linear || !tiled || !io || !local || !config ||
-      !load || !store || !relu || !add || !read || !write) {
+      !load || !store || !relu || !add || !linear_function || !linear_call ||
+      !linear_body || !read || !write) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -161,6 +195,16 @@ int main() {
                    add->form() == joggle::Module::FunctionDecl::Form::Body,
                "target primitives remain residual while ReLU and Add have "
                "ordinary Joggle bodies");
+  ok &= expect(compiler.verify(*linear_body) &&
+                   linear_body->blocks().size() == 13U &&
+                   linear_body->arguments().size() == 3U &&
+                   linear_body->result_types().size() == 1U &&
+                   calls_named(*linear_body, "mem.alloc") == 1U &&
+                   calls_named(*linear_body, "anchor.load") == 3U &&
+                   calls_named(*linear_body, "anchor.store") == 1U &&
+                   calls_named(*linear_body, "anchor.linear") == 0U,
+               "a concrete Linear call specializes and materializes the "
+               "generic Joggle body as three residual counted loops");
   ok &= expect(calls(*source, "nn") == 7U && calls(*body, "nn") == 0U &&
                    calls(*body, "anchor") == 7U,
                "mapping replaces the complete basic-block NN vocabulary");

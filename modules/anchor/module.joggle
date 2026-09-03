@@ -318,7 +318,32 @@ module anchor@1.0.0 {
     input: ref<E, [N, K], LI, PI>,
     weight: ref<E, [M, K], LW, PW>,
     bias: ref<E, [M], LB, PB>
-  ) -> ref<E, [N, M], LO, PO>;
+  ) -> ref<E, [N, M], LO, PO> {
+    output: ref<E, [N, M], LO, PO> = mem.alloc();
+    input_width: index = K;
+    output_width: index = M;
+    for row: index in range(N) {
+      for column: index in range(M) {
+        accumulator: E = load(bias, column);
+        for reduction: index in range(K) {
+          input_offset: index = arith.add(arith.mul(row, input_width), reduction);
+          weight_offset: index = arith.add(
+            arith.mul(column, input_width),
+            reduction
+          );
+          input_value: E = load(input, input_offset);
+          weight_value: E = load(weight, weight_offset);
+          accumulator = arith.add(
+            accumulator,
+            arith.mul(input_value, weight_value)
+          );
+        }
+        output_offset: index = arith.add(arith.mul(row, output_width), column);
+        store(output, output_offset, accumulator);
+      }
+    }
+    return output;
+  }
 
   fn place<R: mem.reference>(input: R, slot: int) -> R : placement, mem.alias;
   fn map(input: module, tile_rows: int = 8, tile_columns: int = 8) -> module;
