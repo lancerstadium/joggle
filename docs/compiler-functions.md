@@ -61,15 +61,41 @@ The existing kernel provides the invariants every compiler function needs:
 These guarantees are target-neutral. They are sufficient to write a correct
 transform without a target or device model in the kernel.
 
+## Transactional call mapping
+
+The first reusable transform primitive is intentionally a pair of free
+functions rather than a base class or registry:
+
+```cpp
+auto changed = joggle::ir::replace_calls(
+    program, source_call, target_call, diagnostics);
+
+auto selected = joggle::ir::map_calls(
+    program,
+    [&](const joggle::ir::Instruction& instruction)
+        -> std::optional<joggle::Module::FunctionDecl> {
+      return compiler.conforms(instruction.callee(), elementwise)
+                 ? choose_replacement(instruction)
+                 : std::nullopt;
+    },
+    diagnostics);
+```
+
+Both functions return the number of changed calls, with `std::nullopt` on
+failure. The Function overload commits one verified edit. The Program overload
+plans every replacement first, edits a private copy, detaches only changed
+Functions, and publishes nothing if any Function fails verification. Matching
+uses declaration handles or explicit interface queries; the utility never
+interprets a textual function name.
+
 ## Reusable facilities still required
 
 The next implementation layer is a C++ utility library over the public IR, not
 new source syntax. Its components should be independently usable:
 
-1. **Matching and rewriting.** Typed instruction predicates, captured operands,
-   replacement helpers, greedy/fixed-point drivers, and explicit convergence
-   limits. Matching must use declaration identity and interfaces rather than
-   function-name strings.
+1. **Structural rewriting.** Captured operands, multi-instruction replacement,
+   erasure, greedy/fixed-point drivers, and explicit convergence limits. The
+   initial `map_calls` utility covers verified call-to-call mapping only.
 2. **Conversion contracts.** A caller-supplied legality predicate, declared
    conversion functions, partial/full conversion modes, and diagnostics that
    identify the first illegal residual construct. There is no global target
@@ -77,14 +103,12 @@ new source syntax. Its components should be independently usable:
 3. **Analysis storage.** Results keyed by immutable Function snapshots, with
    explicit preservation after a committed edit. The cache owns no alternate
    graph representation and never changes observable compilation semantics.
-4. **Program transactions.** Helpers that transform selected named Functions
-   on a private `program` value and publish only after all Functions verify.
-5. **Invocation I/O.** A typed CLI boundary for non-unary functions and
+4. **Invocation I/O.** A typed CLI boundary for non-unary functions and
    extension-owned artifact codecs. The CLI should discover callable
    declarations; it should not maintain separate command registries for
    converters, optimizers, analyses, or emitters.
 
-The order matters. Matching, conversion legality, and analysis invalidation
+The order matters. Structural rewriting, conversion legality, and analysis invalidation
 must stabilize before shipping optimizer collections. Otherwise each example
 would create an incompatible private framework.
 

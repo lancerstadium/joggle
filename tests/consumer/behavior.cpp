@@ -13,16 +13,10 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
   }
 
   compiler.bind(*convert, [keep = *keep, converted = *converted](
-                            joggle::ir::Function& function,
-                            joggle::Diagnostics& diagnostics) {
-    const auto instructions = function.instructions();
-    auto edit = function.edit();
-    for (const joggle::ir::Instruction& instruction : instructions) {
-      if (instruction.callee() == keep) {
-        edit.replace(instruction, converted);
-      }
-    }
-    return edit.commit(diagnostics);
+                              joggle::ir::Function& function,
+                              joggle::Diagnostics& diagnostics) {
+    return joggle::ir::replace_calls(function, keep, converted, diagnostics)
+        .has_value();
   });
   return true;
 }

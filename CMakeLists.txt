@@ -156,6 +156,10 @@ if(JOGGLE_BUILD_TESTS)
   target_link_libraries(joggle_program_test PRIVATE joggle::joggle)
   add_test(NAME program COMMAND joggle_program_test)
 
+  add_executable(joggle_transform_test tests/transform_test.cpp)
+  target_link_libraries(joggle_transform_test PRIVATE joggle::joggle)
+  add_test(NAME transform COMMAND joggle_transform_test)
+
   add_executable(joggle_function_body_test tests/function_body_test.cpp)
   target_link_libraries(joggle_function_body_test PRIVATE joggle::joggle)
   add_test(NAME function_body COMMAND joggle_function_body_test)

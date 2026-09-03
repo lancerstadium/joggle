@@ -165,6 +165,17 @@ Function directly. They include terminator uses where appropriate and do not
 create a Graph owner. Analysis libraries may cache their own products against a
 Function snapshot.
 
+## Map calls transactionally
+
+`joggle::ir::replace_calls` replaces one exact declaration with another in a
+Function or Program. `joggle::ir::map_calls` accepts a callable returning an
+optional replacement declaration for each Instruction. Both return an optional
+change count: zero means a successful no-op and absence means failure.
+
+The Function overload uses one `Function::Edit`. The Program overload plans
+the complete mapping, edits a private copy, and publishes it only when every
+changed Function verifies. Unchanged Functions retain their shared storage.
+
 ## Function references
 
 A named declaration can become a typed callable Value without a wrapper call:
