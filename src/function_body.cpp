@@ -1409,6 +1409,11 @@ private:
           "result", detail::domain_expression(detail::ValueKind::String),
           false, std::nullopt};
     }
+    if (expression.kind == Kind::FunctionType) {
+      return Module::ParameterDecl{
+          "result", detail::domain_expression(detail::ValueKind::Type),
+          false, std::nullopt};
+    }
     if (expression.kind == Kind::List && !expression.arguments.empty()) {
       auto element = known_result(expression.arguments.front(), range);
       return element

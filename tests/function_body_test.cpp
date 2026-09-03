@@ -23,6 +23,8 @@ module logic@1.0.0 {
   fn source<T: type>(name: string, meta: attr) -> T;
   fn identity<T: type>(input: T) -> T;
   fn add<T: type>(lhs: T, rhs: T) -> T;
+  fn apply<T: type, U: type>(input: T, body: (T) -> U) -> U;
+  fn callback_factory<T: type, U: type>() -> (T) -> U;
   fn main(lhs: tensor<word<8>, [2, 4]>) -> tensor<word<8>, [2, 4]> {
     input: tensor<word<8>, [2, 4]> = source(
       name = "input } // still a string",
@@ -39,6 +41,10 @@ module logic@1.0.0 {
   fn default_configured<N: int>(scale: N = 8, input: word<N>) -> word<N> {
     result = identity(input);
     return result;
+  }
+  fn callback_user(input: word<8>, body: (word<8>) -> word<16>)
+      -> word<16> {
+    return apply(input, body);
   }
 
 }
@@ -90,6 +96,19 @@ int main() {
       default_configured_decl
           ? compiler.function(*default_configured_decl)
           : std::nullopt;
+  const auto callback_user = compiler.function("logic.callback_user");
+  const auto callback_arguments =
+      callback_user ? callback_user->arguments() : std::vector<joggle::Value>{};
+  const auto callback_parameters =
+      callback_arguments.size() == 2U
+          ? callback_arguments[1].type().get<std::vector<joggle::Type>>(
+                "inputs")
+          : std::optional<std::vector<joggle::Type>>{};
+  const auto callback_results =
+      callback_arguments.size() == 2U
+          ? callback_arguments[1].type().get<std::vector<joggle::Type>>(
+                "results")
+          : std::optional<std::vector<joggle::Type>>{};
   ok &= expect(configured_decl && configured && default_configured &&
                    configured_decl->inputs().size() == 2U &&
                    configured_decl->inputs().front().name == "scale" &&
@@ -106,6 +125,37 @@ int main() {
                        std::optional<std::int64_t>{8},
                "a function signature has one public parameter sequence while "
                "Known specialization resolves its residual boundary");
+  ok &= expect(callback_user && callback_arguments.size() == 2U &&
+                   callback_arguments[1].type().schema().name() ==
+                       "callable" &&
+                   callback_parameters && callback_parameters->size() == 1U &&
+                   callback_results && callback_results->size() == 1U &&
+                   callback_parameters->front().get<std::int64_t>("width") ==
+                       std::optional<std::int64_t>{8} &&
+                   callback_results->front().get<std::int64_t>("width") ==
+                       std::optional<std::int64_t>{16} &&
+                   callback_user->instructions().size() == 1U,
+               "function type syntax constructs a reflected callable type "
+               "and participates in generic call inference");
+  const std::string module_text = module ? joggle::format(*module) : "";
+  joggle::Diagnostics module_roundtrip_diagnostics;
+  const auto module_roundtrip = joggle::parse_module(
+      module_text, module_roundtrip_diagnostics, "logic-roundtrip.joggle");
+  ok &= expect(module_roundtrip &&
+                   module_text.find("body: (T) -> U") != std::string::npos &&
+                   module_text.find("callback_factory<T: type, U: type>() "
+                                    "-> (T) -> U;") != std::string::npos &&
+                   joggle::format(*module_roundtrip) == module_text,
+               "function types format and parse canonically");
+  joggle::Diagnostics invalid_callback_diagnostics;
+  const auto invalid_callback = joggle::parse_module(R"(
+joggle 1;
+module invalid_callback@1.0.0 {
+  fn apply(body: (missing) -> i32) -> i32;
+}
+)", invalid_callback_diagnostics, "invalid-callback.joggle");
+  ok &= expect(!invalid_callback && !invalid_callback_diagnostics.ok(),
+               "types nested in callable signatures are name-resolved");
   const auto main_symbol =
       module ? module->symbol(joggle::Module::SymbolKind::Function, "main")
              : std::nullopt;

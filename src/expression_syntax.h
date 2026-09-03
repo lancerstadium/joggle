@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -14,6 +15,14 @@ namespace detail {
 
 class Lexer;
 struct Token;
+
+struct CallableTypeView {
+  std::span<const Module::Expression> inputs;
+  std::span<const Module::Expression> results;
+};
+
+std::optional<CallableTypeView>
+callable_type(const Module::Expression& expression);
 
 Module::Expression parse_expression(
     Lexer& lexer, Token& current, Diagnostics& diagnostics,

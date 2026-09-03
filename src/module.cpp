@@ -581,7 +581,28 @@ private:
   std::vector<ParsedModule::TypeExpression>
   operation_results(std::span<const ParsedModule::GenericDefinition> generics) {
     std::vector<ParsedModule::TypeExpression> result;
-    if (match(TokenKind::LeftParen)) {
+    const auto starts_function_type = [&] {
+      if (!is(TokenKind::LeftParen)) {
+        return false;
+      }
+      Lexer lookahead = lexer_;
+      std::size_t depth = 1U;
+      while (depth != 0U) {
+        const Token token = lookahead.take();
+        if (token.kind == TokenKind::End || token.kind == TokenKind::Invalid) {
+          return false;
+        }
+        if (token.kind == TokenKind::LeftParen) {
+          ++depth;
+        } else if (token.kind == TokenKind::RightParen) {
+          --depth;
+        }
+      }
+      return lookahead.take().kind == TokenKind::Arrow;
+    };
+    if (starts_function_type()) {
+      result.push_back(type_expression(generics));
+    } else if (match(TokenKind::LeftParen)) {
       if (!match(TokenKind::RightParen)) {
         do {
           result.push_back(type_expression(generics));
@@ -965,6 +986,21 @@ private:
     const auto domain = detail::kernel_domain(expected);
     if (!domain) {
       report("unknown parameter domain in " + std::string(owner));
+      return;
+    }
+    if (expression.kind == Kind::FunctionType) {
+      const auto signature = detail::callable_type(expression);
+      if (domain->list || domain->element != ValueKind::Type || !signature) {
+        report("malformed function type in " + std::string(owner));
+        return;
+      }
+      const auto type_domain = detail::domain_expression(ValueKind::Type);
+      for (const auto side : {signature->inputs, signature->results}) {
+        for (const auto& element : side) {
+          validate_declaration_expression(variables, owner, source, element,
+                                          type_domain);
+        }
+      }
       return;
     }
     if (expression.kind == Kind::Variable) {
@@ -1588,6 +1624,8 @@ int operator_precedence(std::string_view symbol) {
 int type_expression_precedence(const detail::TypeExpression& expression) {
   using Kind = detail::TypeExpression::Kind;
   switch (expression.kind) {
+  case Kind::FunctionType:
+    return 1;
   case Kind::If:
     return 5;
   case Kind::Infix:
@@ -1657,6 +1695,26 @@ std::string type_expression_text(const detail::TypeExpression& expression,
       result += type_expression_text(expression.arguments[index]);
     }
     result += ')';
+  } else if (expression.kind == Kind::FunctionType) {
+    const auto write_types = [&](std::span<const Module::Expression> list) {
+      std::string types;
+      for (std::size_t index = 0; index < list.size(); ++index) {
+        if (index != 0U) {
+          types += ", ";
+        }
+        types += type_expression_text(list[index]);
+      }
+      return types;
+    };
+    if (const auto signature = detail::callable_type(expression)) {
+      result = "(" + write_types(signature->inputs) + ") -> ";
+      if (signature->results.size() == 1U &&
+          signature->results.front().kind != Kind::FunctionType) {
+        result += type_expression_text(signature->results.front());
+      } else {
+        result += "(" + write_types(signature->results) + ")";
+      }
+    }
   } else if (expression.kind == Kind::Evaluate) {
     result = "@(" + type_expression_text(expression.arguments.front()) + ')';
   } else if (expression.kind == Kind::If) {

@@ -53,6 +53,12 @@ expected declaration. This matters for `[]`: an empty list passed to a
 `std::vector<std::int64_t>`. Lists are values in the same evaluator as scalars;
 they are not a separate AST-only literal facility.
 
+A program callable uses the arrow type `(inputs...) -> results`, not the bare
+`function` domain. Arrow types resolve to `prelude.callable<inputs, results>`;
+both sides are reflected `list<type>` parameters and participate structurally
+in generic inference. This separation prevents a nested computation from being
+mistaken for a whole-IR transformation handle.
+
 ## Prelude and user types
 
 Native scalar names are declarations in the ambient `prelude` Module:

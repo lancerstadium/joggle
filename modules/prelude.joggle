@@ -20,6 +20,7 @@ module prelude@1.0.0 {
   type attr();
   type bytes();
   type function();
+  type callable(inputs: list<type>, results: list<type>);
   type list(element: type);
   type i1() : scalar, logical {
     storage_bits = 1;

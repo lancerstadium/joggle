@@ -283,6 +283,14 @@ A closure captures lexical values. Normalization creates an ordinary private
 Function and makes captures explicit parameters. Instructions do not own
 nested Blocks, and the language exposes no Region or yield protocol.
 
+`(T, U) -> (V, W)` is a real type expression. It resolves to the reflected
+Prelude `callable` type whose `inputs` and `results` are lists of ordinary
+types, so generic inference can inspect and unify a callable signature. It is
+not the bare `function` compiler handle used temporarily by whole-Function
+tools. Parsing, canonical formatting, reflection, and generic signature
+inference are implemented; closure literals and capture normalization are the
+remaining step.
+
 ## Compact grammar
 
 ```text
@@ -325,10 +333,10 @@ successor     := identifier "(" [ expressions ] ")"
 The implementation uses this single expression grammar for local and Block
 argument type annotations, direct Known `if`, ordinary straight-line bodies,
 Residual and nested `if`, structured `while`, multi-statement `if`, structured
-early returns, and explicit typed CFG blocks. The public owning IR is
-Function/Block/Instruction/Value. Multi-statement *expression* arms, `for`, and
-closures remain under construction. Nested Region syntax and storage have
-been removed.
+early returns, function types, and explicit typed CFG blocks. The public owning
+IR is Function/Block/Instruction/Value. Multi-statement *expression* arms,
+`for`, and closure literals remain under construction. Nested Region syntax
+and storage have been removed.
 
 A Residual decision may control `break` or `continue` inside a finite Known
 loop. Joggle retains separate specialized continuations, so path-specific Known

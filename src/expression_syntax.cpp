@@ -157,9 +157,37 @@ private:
       return result;
     }
     if (match(TokenKind::LeftParen)) {
-      result = parse(0);
-      expect(TokenKind::RightParen, "')'");
-      return result;
+      std::vector<Module::Expression> elements;
+      if (!match(TokenKind::RightParen)) {
+        do {
+          elements.push_back(parse(0));
+        } while (match(TokenKind::Comma));
+        expect(TokenKind::RightParen, "')'");
+      }
+      if (match(TokenKind::Arrow)) {
+        std::vector<Module::Expression> results;
+        if (match(TokenKind::LeftParen)) {
+          if (!match(TokenKind::RightParen)) {
+            do {
+              results.push_back(parse(0));
+            } while (match(TokenKind::Comma));
+            expect(TokenKind::RightParen, "')'");
+          }
+        } else {
+          results.push_back(parse(0));
+        }
+        result.kind = Kind::FunctionType;
+        result.arguments.push_back(
+            Module::Expression{Kind::List, {}, std::move(elements)});
+        result.arguments.push_back(
+            Module::Expression{Kind::List, {}, std::move(results)});
+        return result;
+      }
+      if (elements.size() != 1U) {
+        error("a parenthesized expression must contain one value");
+        return result;
+      }
+      return std::move(elements.front());
     }
     if (is(TokenKind::Integer) || is(TokenKind::Number)) {
       result.kind = Kind::Number;
@@ -314,6 +342,19 @@ Module::Expression parse_expression(
       .parse(minimum_precedence);
 }
 
+std::optional<CallableTypeView>
+callable_type(const Module::Expression& expression) {
+  using Kind = Module::Expression::Kind;
+  if (expression.kind != Kind::FunctionType ||
+      expression.arguments.size() != 2U ||
+      expression.arguments[0].kind != Kind::List ||
+      expression.arguments[1].kind != Kind::List) {
+    return std::nullopt;
+  }
+  return CallableTypeView{expression.arguments[0].arguments,
+                          expression.arguments[1].arguments};
+}
+
 namespace {
 
 std::string escape_string(std::string_view value) {
@@ -356,6 +397,9 @@ int expression_precedence(const Module::Expression& expression) {
   using Kind = Module::Expression::Kind;
   if (expression.kind == Kind::If) {
     return 5;
+  }
+  if (expression.kind == Kind::FunctionType) {
+    return 1;
   }
   if (expression.kind == Kind::Infix) {
     return formatted_operator_precedence(expression.text);
@@ -420,6 +464,26 @@ std::string format_expression(const Module::Expression& expression,
       result += format_expression(expression.arguments[index]);
     }
     result += ')';
+  } else if (expression.kind == Kind::FunctionType) {
+    const auto write_types = [&](std::span<const Module::Expression> list) {
+      std::string types;
+      for (std::size_t index = 0; index < list.size(); ++index) {
+        if (index != 0U) {
+          types += ", ";
+        }
+        types += format_expression(list[index]);
+      }
+      return types;
+    };
+    if (const auto signature = callable_type(expression)) {
+      result = "(" + write_types(signature->inputs) + ") -> ";
+      if (signature->results.size() == 1U &&
+          signature->results.front().kind != Kind::FunctionType) {
+        result += format_expression(signature->results.front());
+      } else {
+        result += "(" + write_types(signature->results) + ")";
+      }
+    }
   } else if (expression.kind == Kind::Evaluate) {
     result = "@(" + format_expression(expression.arguments.front()) + ')';
   } else if (expression.kind == Kind::If) {

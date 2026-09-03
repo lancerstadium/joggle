@@ -2,6 +2,7 @@
 
 #include "prelude.h"
 #include "domain.h"
+#include "expression_syntax.h"
 #include "ir_internal.h"
 #include "function_body.h"
 #include "joggle/behavior.h"
@@ -1212,6 +1213,24 @@ bool Compiler::link() {
                std::string(declaration) + "'");
         return;
       }
+      if (expression.kind == Kind::FunctionType) {
+        const auto signature = detail::callable_type(expression);
+        if (domain->list || domain->element != detail::ValueKind::Type ||
+            !signature) {
+          report("malformed function type in compile-time definition '" +
+                 std::string(declaration) + "'");
+          return;
+        }
+        const auto type_domain =
+            detail::domain_expression(detail::ValueKind::Type);
+        for (const auto side : {signature->inputs, signature->results}) {
+          for (const auto& element : side) {
+            self(self, element, type_domain, variables, declaration,
+                 location);
+          }
+        }
+        return;
+      }
       if (expression.kind == Kind::Variable) {
         const auto variable = std::find_if(
             variables.begin(), variables.end(), [&](const auto& candidate) {
@@ -1580,6 +1599,24 @@ bool Compiler::link() {
         if (!domain) {
           report_operation("unknown parameter domain in operation '" + name +
                            "." + std::string(declaration.name()) + "'");
+          return;
+        }
+        if (expression.kind == Kind::FunctionType) {
+          const auto signature = detail::callable_type(expression);
+          if (domain->list || domain->element != detail::ValueKind::Type ||
+              !signature) {
+            report_operation("operation '" + name + "." +
+                             std::string(declaration.name()) +
+                             "' contains a malformed function type");
+            return;
+          }
+          const auto type_domain =
+              detail::domain_expression(detail::ValueKind::Type);
+          for (const auto side : {signature->inputs, signature->results}) {
+            for (const auto& element : side) {
+              self(self, element, type_domain);
+            }
+          }
           return;
         }
         if (expression.kind == Kind::Variable) {

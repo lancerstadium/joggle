@@ -2,10 +2,13 @@
 
 #include "compiler_internal.h"
 #include "domain.h"
+#include "expression_syntax.h"
 #include "module_internal.h"
+#include "prelude.h"
 #include "type_internal.h"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cmath>
 #include <functional>
@@ -672,6 +675,35 @@ private:
       report("unknown parameter domain for '" + expected.name + "'");
       return std::nullopt;
     }
+    if (expression.kind == Kind::FunctionType) {
+      const auto signature = callable_type(expression);
+      if (domain->list || domain->element != ValueKind::Type || !signature) {
+        report("malformed function type expression");
+        return std::nullopt;
+      }
+      const Module::ParameterDecl type_element{
+          "signature element", domain_expression(ValueKind::Type), false,
+          std::nullopt};
+      std::vector<ParameterValue> parameters;
+      parameters.reserve(2U);
+      for (const auto side : {signature->inputs, signature->results}) {
+        std::vector<ParameterValue> types;
+        types.reserve(side.size());
+        for (const auto& element : side) {
+          auto type = evaluate(element, type_element, bindings);
+          if (!type || type->as_type() == nullptr) {
+            return std::nullopt;
+          }
+          types.push_back(std::move(*type));
+        }
+        parameters.push_back(ParameterValue::list(std::move(types)));
+      }
+      auto callable = declaration<Module::TypeDecl>("prelude.callable");
+      auto value = callable ? environment_.type(*callable, parameters)
+                            : std::optional<Type>{};
+      return value ? std::optional<ParameterValue>{ParameterValue(*value)}
+                   : std::nullopt;
+    }
     if (expression.kind == Kind::Variable) {
       const auto found = bindings.find(expression.text);
       if (found == bindings.end()) {
@@ -1028,6 +1060,39 @@ private:
         return false;
       }
       return true;
+    }
+    if (expression.kind == Kind::FunctionType) {
+      const Type* callable = actual.as_type();
+      const auto signature = callable_type(expression);
+      if (callable == nullptr || !signature) {
+        report("function type does not match");
+        return false;
+      }
+      const Module::Symbol symbol = callable->schema().symbol();
+      const auto parameters = TypeAccess::parameters(*callable);
+      if (symbol.module_name() != prelude_module_name ||
+          symbol.local_name() != "callable" || parameters.size() != 2U ||
+          parameters[0].kind() != ParameterValue::Kind::List ||
+          parameters[1].kind() != ParameterValue::Kind::List) {
+        report("function type does not match");
+        return false;
+      }
+      bool valid = true;
+      const std::array expected_sides{signature->inputs, signature->results};
+      for (std::size_t side = 0; side < 2U; ++side) {
+        const auto expected_types = expected_sides[side];
+        const auto actual_types = parameters[side].elements();
+        if (expected_types.size() != actual_types.size()) {
+          report("function type has the wrong arity");
+          valid = false;
+          continue;
+        }
+        for (std::size_t index = 0; index < expected_types.size(); ++index) {
+          valid = unify(expected_types[index], actual_types[index], bindings) &&
+                  valid;
+        }
+      }
+      return valid;
     }
     if (expression.kind == Kind::List) {
       if (actual.kind() != ParameterValue::Kind::List ||

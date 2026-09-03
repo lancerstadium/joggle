@@ -57,6 +57,7 @@ public:
       Variable,
       Call,
       If,
+      FunctionType,
       Evaluate,
       Prefix,
       Infix,
