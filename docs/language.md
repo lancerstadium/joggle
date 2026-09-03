@@ -1,268 +1,186 @@
-# Joggle language
+# Language reference
 
-Joggle is a small declaration and function language for compiler extensions
-and AI programs. One source file contains one versioned Module. The only member
-forms are:
+One `.joggle` file declares one versioned Module. The language has five member
+forms: `import`, `interface`, `type`, `attr`, and `fn`. Only `fn` is callable.
 
-```text
-import      another Module
-interface   a reusable contract
-type        a value type
-attr        structured compiler data
-fn          anything callable
-```
-
-There is no `op`, `pass`, `graph`, or `region` declaration. A function's typed
-signature and body determine how it can be evaluated or residualized.
-
-## Module
+## Files and Modules
 
 ```joggle
 joggle 1;
 
-module model@1.2.0 {
+module schedule@1.2.0 {
   import tensor@^1.0.0;
-  import arithmetic@1.3 as arith;
+  import target@1.3 as hw;
 }
 ```
 
-Imports accept a major range (`1`), minor range (`1.2`), exact version
-(`1.2.3`), or caret range (`^1.2.3`). An alias changes only local spelling.
-Linked identity always contains the imported Module's canonical digest.
+The first integer is the source-language version. A Module version has three
+components. Imports accept `1`, `1.2`, `1.2.3`, or a caret range such as
+`^1.2.3`. An alias changes local spelling only; linked identity uses the real
+Module name, version, and canonical digest.
 
-## Types, attributes, and interfaces
+Names resolve in the current Module, its direct imports, and the ambient
+Prelude. Unrelated installed Modules cannot alter overload resolution.
+
+## Compiler domains and program types
+
+The compiler domains are:
+
+```text
+int  real  bool  string  type  attr  bytes  function  list<D>
+```
+
+They describe values held by the compiler. `i1`, `i8`, `i16`, `i32`, `i64`,
+`u8`, `u16`, `u32`, `u64`, `f16`, `bf16`, `f32`, `f64`, and `index` are
+program types declared by the Prelude. Custom program types use the same
+declaration mechanism:
 
 ```joggle
 type fixed(width: int, fraction: int, signed: bool = true);
 type tensor(element: type, shape: list<int>);
 attr layout(order: list<int>);
+```
 
+Type and attribute arguments are ordered and typed. Defaults may omit a suffix
+of arguments. A type may define derived fields:
+
+```joggle
 interface scalar: type {
   storage_bits: int;
 }
 
-type packed(width: int) : scalar {
-  storage_bits = width;
+type packed(width: int, lanes: int) : scalar {
+  storage_bits = width * lanes;
 }
 ```
 
-The small compiler-value vocabulary is:
+An interface on `type` declares compile-time fields. Interfaces on `attr` or
+`fn` declare methods or callable contracts. Conformance is declared after `:`;
+the linker checks required fields and signatures.
 
-```text
-int  real  bool  string  type  attr  bytes  list<D>
-```
+## Functions
 
-These names describe values held by the compiler; they are not target scalar
-types. They and `i32`, `f32`, and similar program types have reflected
-declarations in the ambient Prelude Module. The trusted kernel supplies the
-former group with bootstrap host representations; it does not give them a
-second declaration system. Custom formats implement the same interfaces.
-Compiler collections use `list<D>`; variadic `T...` is reserved for program
-inputs so a native binding always retains a finite, typed compiler signature.
-
-Type constructors are ordinary declarations. Parameters of one type may be
-computed from other parameters or interface fields:
+All callables use one declaration:
 
 ```joggle
-type word(bits: int);
-fn encode<T: scalar>(input: T) -> word<T.storage_bits>;
+fn name<generics>(inputs) -> results;
 ```
 
-## One function
-
-Every callable member has one form:
+Examples:
 
 ```joggle
-fn name<generics>(parameters) -> results body
-```
+fn add<T: prelude.scalar>(lhs: T, rhs: T) -> T as +;
+fn volume(shape: list<int>) -> int;
 
-An external function ends in `;`:
-
-```joggle
-fn add<T: scalar>(lhs: T, rhs: T) -> T as +;
-```
-
-A defined function has an ordinary body:
-
-```joggle
 fn align(value: int, multiple: int) -> int {
   return ceildiv(value, multiple) * multiple;
 }
-
-fn layer(input: tensor<f32, [1, 64]>, bias: tensor<f32, [64]>)
-    -> tensor<f32, [1, 64]> {
-  shifted = add(input, bias);
-  return relu(shifted);
-}
 ```
 
-These are not different function kinds. Availability at a particular call
-decides which expressions execute in the compiler and which become residual
-Instructions. Prefix `@` requires a Known result:
+A trailing `;` declares behavior supplied elsewhere or an operation that may
+remain Residual. Braces define a body. `as` associates prefix, infix, or postfix
+notation with the same function and overload set. Interfaces follow `:`.
+
+Generic declarations have a name and either a compiler domain or a type
+interface constraint:
 
 ```joggle
-tile = @choose_tile(device, shape);
+fn make<N: int>(width: N) -> word<N>;
+fn encode<T: numeric_format>(input: T) -> word<T.storage_bits>;
 ```
 
-`@` does not change overload resolution, select a second body, or change the
-meaning of `=`.
+`width: N` means that this Known input binds generic `N`; its concrete domain
+is `int`. Program inputs such as `input: T` infer a type generic from the
+operand. Generics participate in dependent result types and overload solving.
+A generic bound by a Known input is also a normal Known local inside a defined
+body, so `N` or `S: list<int>` may drive expressions and control flow.
 
-Knownness belongs to a particular invocation, not to a declaration. The same
-`fn` may execute completely during compilation for one call and leave a typed
-Instruction for another. Evaluation follows one rule:
+Compiler lists are `list<D>`. Variadic `T...` is reserved for program-value
+inputs; compiler callbacks always have a finite C++ signature.
 
-| Inputs and effects | Result |
-| --- | --- |
-| all required values are Known and the body/binding is admissible | execute now |
-| a required value is Residual | preserve the remaining call or control flow |
-| either case under `@` fails to produce a Known value | staging diagnostic |
+## Expressions and bindings
 
-This is ordinary partial evaluation with a Known-result assertion. It avoids a
-second `const fn` namespace and lets Modules extend compile-time computation by
-defining or binding the same typed functions used elsewhere. Host bindings run
-under the configured determinism and evaluation limits; a non-Hermetic binding
-is not speculated below Residual control.
-
-Type annotations use the same expression grammar as signatures and ordinary
-function bodies. Computed local types do not fall back to a restricted
-constructor-only syntax:
-
-```joggle
-fn build() -> word<6> {
-  value: word<@sum([1, 2, 3])> = source();
-  return value;
-}
-```
-
-The same rule applies to explicitly written Block argument types. Every such
-annotation must evaluate to one Known `type`; a Residual result is a staging
-error rather than a request to create a second type language.
-
-## Known values entering the program
-
-A Known compiler value sometimes has to become a Residual program value, for
-example when different integer literals leave a dynamic branch. The Prelude
-defines the marker interface `literal`; a visible Module supplies ordinary
-functions implementing it:
-
-```joggle
-fn integer_literal<T: prelude.integer>(value: int) -> T
-    : prelude.literal;
-```
-
-The compiler selects exactly one visible `literal` function whose compiler
-input accepts the Known payload and whose result resolves to the required
-concrete program type. It emits an ordinary call to that function before the
-dynamic edge. There is no built-in constant instruction or materializer
-callback. Missing and ambiguous matches are diagnostics. Visibility is the
-current Module plus its direct imports, so adding an unrelated installed
-Module cannot change a program.
-
-## Bindings and calls
-
-`=` introduces or updates a source binding. The compiler may rename bindings
-to SSA Values internally; authors do not write percent-prefixed names.
+`=` introduces a local name or rebinds an existing name:
 
 ```joggle
 sum = lhs + rhs;
-output = relu(sum);
+output: tensor<f32, [1, 64]> = relu(sum);
 return output;
 ```
 
-Named call arguments use `:` so they cannot be confused with bindings or
-parameter defaults:
+Authors write ordinary names. Residual locals are converted to SSA Values and
+Block arguments internally. A type annotation constrains an ambiguous result
+and uses the same expression grammar as signatures.
+
+Calls support positional arguments followed by named arguments. Named call
+arguments use `:`:
 
 ```joggle
-output = conv2d(
-  input,
-  weight,
-  stride_h: 2,
-  stride_w: 2
-);
+output = conv2d(input, weight, stride_h: 2, stride_w: 2);
 ```
 
-An optional binding annotation constrains an otherwise ambiguous result:
+Literals, lists, calls, member fields, function types, prefix/infix/postfix
+operators, and conditional expressions share one expression grammar. Operator
+precedence is syntactic; meaning comes from a visible `fn ... as symbol`
+declaration. Parenthesize comparisons inside generic arguments, for example
+`flag<(lanes >= 4)>`, to distinguish an operator from closing `>` tokens.
+
+`@expression` requires a Known result:
 
 ```joggle
-value: word<8> = source();
+tile = @choose_tile(shape, budget);
+value: word<@(align(width, 8))> = source();
 ```
 
-Calls, prefix operators, infix operators, and postfix operators all resolve
-through the same visible `fn` overload set. `as` associates a spelling with an
-ordinary Function; there is no operator-specific evaluator.
+`@` does not change `=`, select a special function, or enter another language.
+It turns failure to evaluate completely into a staging diagnostic.
 
-Operator signatures are fully typed rather than restricted to closed
-arithmetic. For example, `fn less(lhs: int, rhs: int) -> bool as <;` may be
-bound by an extension and used directly as a compile-time branch condition.
-Symbolic spellings such as `<`, `>`, `<=`, `>=`, `==`, `!=`, `&&`, and `||`
-use the same precedence parser. A `<...>` immediately following a declaration
-name is a type or generic argument list; angle brackets between expressions
-are operators. An angle-bracket comparison used inside a generic argument is
-parenthesized, for example `flag<(lanes >= 4)>`; this keeps closing `>`
-unambiguous without lexer modes. Adjacent nested closings such as
-`tensor<word<8>>` remain ordinary delimiters.
+## Known and Residual values
 
-## Control flow
+Type and availability are independent. At a particular invocation a value is
+either Known to the compiler or Residual in the generated Function.
 
-A Function owns Blocks, Instructions, and Values. Structured source syntax is
-the authoring view; a control-flow graph is the relation among those Blocks,
-and a data-flow graph is the def-use relation among the same Values. They are
-analysis views of one Function, not additional owning objects. Consequently a
-neural network is still graph-shaped without requiring a `graph` declaration
-or a conversion between Graph IR and control-flow IR.
+- A call with admissible Known inputs executes its source body or C++ binding.
+- A call requiring a Residual input becomes an Instruction.
+- A computation under `@` must finish Known.
 
-`if` is an expression:
+The same declared function can therefore execute now in one invocation and
+remain in the program in another. Host execution is bounded by the Compiler's
+step and depth limits. A binding marked non-Hermetic is not speculated below
+Residual control.
+
+When a Known compiler payload must enter the program, the compiler selects one
+visible ordinary function implementing `prelude.literal` for the required
+program type. There is no built-in constant operation or materializer hook.
+
+## Conditional control flow
+
+An `if` expression produces one value:
 
 ```joggle
-fn choose<T: type>(condition: i1, lhs: T, rhs: T) -> T {
-  value = if condition {
-    lhs
-  } else {
-    rhs
-  };
-  return value;
-}
+result = if condition { lhs } else { rhs };
 ```
 
-With a Known condition, the compiler executes only the selected branch. With a
-Residual condition, the same expression becomes Blocks and typed successor
-edges. Applying `@` to the whole `if` rejects a Residual condition.
-
-`if` is also an ordinary statement when several computations or outer
-rebindings are needed:
+An `if` statement may contain a sequence and rebind outer names:
 
 ```joggle
-value = input;
+result = input;
 if condition {
-  value = fast(value);
+  result = fast(result);
 } else {
-  value = safe(value);
+  result = safe(result);
 }
-return value;
+return result;
 ```
 
-Names first introduced inside an arm remain local. Existing names rebound by
-an arm are converted to SSA internally: Known control keeps the selected value;
-Residual control carries the value from each arm into a merge Block argument.
-An omitted `else` carries the incoming value along the false edge. Authors do
-not declare merge variables or write `yield`.
+A Known `bool` selects one arm during compilation. A Residual `i1` creates
+Blocks and typed successor edges. Rebound outer values become merge Block
+arguments when needed. Names first introduced in an arm remain local. An arm
+may `return`; only surviving paths continue.
 
-`return` may appear directly inside a structured arm or loop body:
+## Loops
 
-```joggle
-if ready(input) {
-  return fast(input);
-}
-return safe(input);
-```
-
-A returned arm terminates only that path. If the other arm falls through, it
-continues directly without a synthetic merge Block. If both arms return, no
-continuation Block or trailing dummy `return` is required. A Known condition
-instantiates only its selected return path. The parser rejects both incomplete
-Function paths and statements written after an unconditional control transfer.
-
-Structured loops use direct syntax:
+`while` supports Known and Residual conditions:
 
 ```joggle
 current = start;
@@ -271,18 +189,51 @@ while less(current, limit) {
 }
 ```
 
-A Known condition executes the loop in the compiler within its deterministic
-evaluation budget. A Residual `i1` condition becomes header, body, and exit
-Blocks. Rebound values used after the loop become typed Block arguments; the
-author writes no phi, `yield`, `iter_args`, or Region signature. `continue`
-passes the current inferred loop values to the header; `break` passes them to
-the exit. Under Known control they execute in the compiler and create no IR.
+A Known `bool` executes iterations in the compiler. A Residual `i1` creates a
+header, body, and exit in the Function. Rebound outer values become inferred
+loop-carried Block arguments. `continue` transfers current values to the
+header; `break` transfers them to the exit.
 
-Most authors never write Blocks explicitly. The low-level form exists for
-lossless formatting of arbitrary pass output:
+`for` is the finite compile-time iteration form:
 
 ```joggle
-fn choose<T: type>(condition: i1, lhs: T, rhs: T) -> T {
+current = input;
+for enabled in Stages {
+  if enabled {
+    current = transform(current);
+  }
+}
+```
+
+The iterable must evaluate to a Known homogeneous `list<D>`. The iterator is a
+new Known local scoped to one iteration. Iterations expand in list order and
+may generate Residual Instructions or branches. `continue`, `break`, and
+`return` have their usual nearest-loop meaning. The evaluation budget bounds
+the expansion. A runtime collection is not silently unrolled; use `while` and
+program operations to express a Residual loop.
+
+This makes a binding such as `S: list<int>` useful in all three places:
+
+```joggle
+fn specialize<S: list<int>>(shape: S, input: tensor<f32, S>)
+    -> tensor<f32, S> {
+  for dimension in S {
+    validate_dimension(dimension);
+  }
+  return input;
+}
+```
+
+The same Known `S` determines the signature, drives control, and supplies
+ordinary function arguments.
+
+## Explicit Blocks
+
+Structured syntax is preferred for source, but arbitrary transformed IR can be
+written without a Region representation:
+
+```joggle
+fn choose(condition: i1, lhs: i32, rhs: i32) -> i32 {
   entry():
     branch condition, yes(), no();
 
@@ -292,21 +243,21 @@ fn choose<T: type>(condition: i1, lhs: T, rhs: T) -> T {
   no():
     jump merge(rhs);
 
-  merge(value: T):
+  merge(value: i32):
     return value;
 }
 ```
 
-An explicit Block header is `name(arguments...):`. Every Block ends with
-`return`, `jump`, or `branch`. Successor arguments must match the target Block
-arguments exactly.
+Every explicit Block ends in `return`, `jump`, or `branch`. Successor values
+must match target Block arguments exactly. A body uses either structured form
+or explicit Blocks, not a nested mixture.
 
 ## Function values
 
-A concrete, non-overloaded Function name is an ordinary typed value:
+A concrete Function name can be an ordinary callable value:
 
 ```joggle
-fn map<T, U>(input: tensor<T>, body: (T) -> U) -> tensor<U>;
+fn map<T: type, U: type>(input: tensor<T>, body: (T) -> U) -> tensor<U>;
 fn relu_one(input: f32) -> f32;
 
 fn activate(input: tensor<f32>) -> tensor<f32> {
@@ -314,113 +265,45 @@ fn activate(input: tensor<f32>) -> tensor<f32> {
 }
 ```
 
-The value has reflected type `(f32) -> f32` and refers directly to the
-Function symbol. No wrapper call or constant Instruction is inserted.
-An expected callable type selects overloaded Functions and specializes generic
-Functions. It can come from an explicit local annotation or be propagated from
-the surrounding higher-order call after its ordinary arguments and expected
-results constrain the signature:
-
-```joggle
-fn identity<T: type>(input: T) -> T;
-fn apply<T: type>(input: T, body: (T) -> T) -> T;
-
-fn use(input: f32) -> f32 {
-  return apply(input, identity);
-}
-```
-
-If the surrounding call leaves the callable signature genuinely
-underconstrained, the author supplies the same ordinary type annotation used
-for every other value; there is no function-value-specific syntax.
-
-`(T, U) -> (V, W)` is a real type expression. It resolves to the reflected
-Prelude `callable` type whose `inputs` and `results` are lists of ordinary
-types, so generic inference can inspect and unify a callable signature. It is
-not the bare `function` compiler handle used by whole-Function tools.
-
-## Closure direction
-
-The intended surface for anonymous nested code is a closure expression:
-
-```joggle
-fn map<T, U>(input: tensor<T>, body: (T) -> U) -> tensor<U>;
-
-fn activate(input: tensor<f32>) -> tensor<f32> {
-  return map(input, { item =>
-    relu(item)
-  });
-}
-```
-
-A closure captures lexical values. Normalization creates an ordinary private
-Function and makes captures explicit parameters. Instructions do not own
-nested Blocks, and the language exposes no Region or yield protocol. Closure
-literals are not accepted yet: module-level ownership and capture lifting must
-land before this syntax becomes part of the implemented grammar.
+`(T) -> U` is a reflected callable type. Context can select an overload or
+specialize a generic function value. The IR records the referenced Function
+symbol directly; no wrapper Instruction or Region is introduced. Anonymous
+closure literals and capture lifting are not implemented.
 
 ## Compact grammar
 
 ```text
-file          := "joggle" integer ";" module
-module        := "module" identifier "@" exact-version
-                 "{" { member } "}"
-member        := import | interface | type | attr | fn
+file       := "joggle" integer ";" module
+module     := "module" name "@" version "{" { member } "}"
+member     := import | interface | type | attr | fn
 
-fn            := "fn" identifier [ generics ] parameters
-                 [ "->" results ] [ "as" operator ] ( ";" | body )
-body          := "{" { statement } "}"
-statement     := binding "=" expression ";"
-               | expression ";"
-               | "if" expression "{" { statement } "}"
-                 [ "else" "{" { statement } "}" ]
-               | "while" expression "{" { statement } "}"
-               | "return" [ expressions ] ";"
-               | "break" ";"
-               | "continue" ";"
-               | explicit-block
-binding       := identifier [ ":" expression ]
+fn         := "fn" name [ generics ] parameters [ "->" results ]
+              [ "as" operator ] [ interfaces ] ( ";" | body )
+body       := "{" { statement } "}"
+statement  := [ bindings "=" ] expression ";"
+            | "if" expression body [ "else" body ]
+            | "while" expression body
+            | "for" name "in" expression body
+            | "return" [ expressions ] ";"
+            | "break" ";" | "continue" ";"
 
-expression    := literal | reference | list | call | operator-expression
-               | if-expression | known-expression
-known-expression := "@" "(" expression ")"
-if-expression := "if" expression "{" expression "}"
-                 "else" "{" expression "}"
-call          := reference "(" [ call-argument { "," call-argument } ] ")"
-call-argument := expression | identifier ":" expression
+expression := literal | reference | list | call | operator-expression
+            | if-expression | "@" expression | function-type
 
-explicit-block := identifier "(" [ block-parameters ] ")" ":"
-                  { statement } terminator
-terminator    := "return" [ expressions ] ";"
-               | "jump" successor ";"
-               | "branch" expression "," successor "," successor ";"
-successor     := identifier "(" [ expressions ] ")"
+block      := name "(" [ block-arguments ] ")" ":"
+              { statement } terminator
+terminator := "return" [ expressions ] ";"
+            | "jump" successor ";"
+            | "branch" expression "," successor "," successor ";"
 ```
-
-The implementation uses this single expression grammar for local and Block
-argument type annotations, direct Known `if`, ordinary straight-line bodies,
-Residual and nested `if`, structured `while`, multi-statement `if`, structured
-early returns, function types, and explicit typed CFG blocks. The public owning
-IR is Function/Block/Instruction/Value. Multi-statement *expression* arms,
-`for`, and closure literals remain under construction. Nested Region syntax
-and storage have been removed.
-
-A Residual decision may control `break` or `continue` inside a finite Known
-loop. Joggle retains separate specialized continuations, so path-specific Known
-state need not acquire an arbitrary program type. A runtime-dependent cycle
-over a repeated staged state becomes a CFG backedge to the first Block for that
-state. This supports computed Known conditions and compiler-only carried state
-without materializing them as target values. States containing continually new
-Residual values remain bounded by the deterministic evaluation limit; the
-compiler does not guess an equivalence relation.
 
 ## Canonical source
 
-For valid source `x`, formatting is idempotent:
+Formatting is idempotent:
 
 ```text
-format(parse(format(parse(x)))) = format(parse(x))
+format(parse(format(parse(source)))) = format(parse(source))
 ```
 
-Canonical source is hashed into Module identity. Comments, source paths, host
-addresses, and registration order never affect that identity.
+Canonical source determines Module identity. Comments, file paths, host
+addresses, and behavior registration order do not affect the digest.

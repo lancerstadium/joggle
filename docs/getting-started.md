@@ -1,42 +1,53 @@
-# Build an extension
+# Getting started
 
-A Joggle extension is a text Module plus optional C++ behavior. The text file
-is the schema authority; no declaration header is generated.
+This guide creates one installable declaration Module and one optional C++
+behavior library. Joggle does not generate declaration headers: the `.joggle`
+file remains the schema authority.
 
-## 1. Declare a Module
+## 1. Build Joggle
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+For a separate consumer project, install Joggle and use
+`find_package(Joggle CONFIG REQUIRED)`.
+
+## 2. Declare an extension
+
+Create `example.joggle`:
 
 ```joggle
 joggle 1;
 
-module external@1.0.0 {
-  type scalar(bits: int);
+module example@1.0.0 {
+  type word(width: int);
 
-  fn make<N: int>(bits: N) -> scalar<N>;
   fn keep<T: type>(input: T) -> T;
-  fn converted<T: type>(input: T) -> T;
-  fn convert(input: function) -> function;
+  fn replacement<T: type>(input: T) -> T;
+  fn rewrite(input: function) -> function;
 
-  fn main(input: scalar<8>) -> scalar<8> {
-    output = keep(input);
-    return output;
+  fn main(input: word<8>) -> word<8> {
+    return keep(input);
   }
 }
 ```
 
-`fn` is the only callable declaration. `main` describes residual program IR;
-`convert` is used as compiler work because it accepts a Function value. This
-does not create separate operation and pass namespaces.
-
-Validate it before writing C++:
+Validate and format the source:
 
 ```bash
-joggle check external.joggle
+joggle check example.joggle
+joggle fmt example.joggle --write
 ```
 
-During multi-Module development, repeat `--with dependency.joggle` for local
-dependencies that have not been installed.
+Use repeated `--with dependency.joggle` options for local imports that are not
+installed yet.
 
-## 2. Attach optional C++ behavior
+## 3. Bind behavior
+
+Create `behavior.cpp`:
 
 ```cpp
 #include <joggle/joggle.h>
@@ -46,26 +57,27 @@ namespace {
 bool bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
   const auto keep = module.function("keep");
-  const auto converted = module.function("converted");
-  const auto convert = module.function("convert");
-  if (!keep || !converted || !convert) {
-    diagnostics.report("behavior does not match external.joggle");
+  const auto replacement = module.function("replacement");
+  const auto rewrite = module.function("rewrite");
+  if (!keep || !replacement || !rewrite) {
+    diagnostics.report("example behavior does not match its Module");
     return false;
   }
 
-  compiler.bind(*convert,
-    [keep = *keep, converted = *converted](
-        joggle::ir::Function& function,
-        joggle::Diagnostics& pass_diagnostics) {
-      const auto instructions = function.instructions();
-      auto edit = function.edit();
-      for (const auto& instruction : instructions) {
-        if (instruction.callee() == keep) {
-          edit.replace(instruction, converted);
+  compiler.bind(
+      *rewrite,
+      [keep = *keep, replacement = *replacement](
+          joggle::ir::Function& function,
+          joggle::Diagnostics& edit_diagnostics) {
+        const auto instructions = function.instructions();
+        auto edit = function.edit();
+        for (const auto& instruction : instructions) {
+          if (instruction.callee() == keep) {
+            edit.replace(instruction, replacement);
+          }
         }
-      }
-      return edit.commit(pass_diagnostics);
-    });
+        return edit.commit(edit_diagnostics);
+      });
   return true;
 }
 
@@ -74,75 +86,66 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
 JOGGLE_EXPORT_BEHAVIOR(bind)
 ```
 
-The callback edits the ordinary `Function`. There is no `Graph`, `Region`,
-generated declaration class, or pass subclass.
+The callback is an ordinary binding for the declared `rewrite` function. It
+edits `joggle::ir::Function` transactionally; no pass base class, generated
+wrapper, Graph object, or Region API is involved.
 
-## 3. Build the behavior
+## 4. Build and validate behavior
 
 ```cmake
 cmake_minimum_required(VERSION 3.20)
-project(External LANGUAGES CXX)
+project(ExampleBehavior LANGUAGES CXX)
 
 find_package(Joggle CONFIG REQUIRED)
 
-joggle_add_behavior(external_behavior
-  MODULE external.joggle
+joggle_add_behavior(example_behavior
+  MODULE example.joggle
   SOURCES behavior.cpp
 )
 ```
 
-`joggle_add_behavior` embeds the exact canonical Module identity in one hidden
-translation unit. Handwritten code includes only the generic Joggle API.
-
-## 4. Check and install
+Then build and validate the exact source/binary pair:
 
 ```bash
-joggle check external.joggle --behavior build/external_behavior.dylib
-joggle install external.joggle \
-  --behavior build/external_behavior.dylib
+cmake -S . -B build
+cmake --build build
+joggle check example.joggle --behavior build/example_behavior.dylib
 ```
 
-The platform-specific suffix may be `.so`, `.dylib`, or `.dll`. Installation
-publishes canonical Module text and optional behavior by content identity.
+Use the platform suffix produced by CMake: `.so`, `.dylib`, or `.dll`.
+`joggle_add_behavior` embeds the canonical Module identity in a generated,
+hidden translation unit; extension code includes only the stable generic API.
 
-For a local transformation:
+## 5. Run a compiler function
 
 ```bash
-joggle run external.joggle main convert \
-  --behavior build/external_behavior.dylib \
+joggle run example.joggle main rewrite \
+  --behavior build/example_behavior.dylib \
   -o transformed.joggle
 ```
 
-`main` is instantiated and placed in an executable `ir.module`. Each
-following name is an ordinary compiler function applied in order. A
-`function -> function` transform edits `main`; an
-`ir.module -> ir.module` transform may also add helper Functions. The output
-is one canonical Module containing every resulting Function and exact imports.
+`main` is instantiated as executable IR, then each following function is
+applied in order. The output is canonical Joggle source.
 
-## 5. Consume it from C++
+The same operation in C++ is direct:
 
 ```cpp
 joggle::Compiler compiler;
-compiler.search(module_root);
-compiler.load(module_path);
-if (!compiler.link() || !compiler.load_behavior("external")) {
+compiler.load("example.joggle");
+if (!compiler.link() ||
+    !compiler.load_behavior("example", "build/example_behavior.dylib")) {
   compiler.diagnostics().print(std::cerr);
   return 1;
 }
 
-auto function = compiler.function("external.main");
-if (!function || !compiler.run(*function, "external.convert")) {
+auto function = compiler.function("example.main");
+if (!function || !compiler.run(*function, "example.rewrite")) {
   compiler.diagnostics().print(std::cerr);
   return 1;
-}
-
-for (const auto& block : function->blocks()) {
-  for (const auto& instruction : block.instructions()) {
-    // Inspect the transformed Function.
-  }
 }
 ```
 
-The executable project in [`tests/consumer`](../tests/consumer) is the
-authoritative copyable example and is rebuilt against an installed Joggle in
-the end-to-end test suite.
+For installed discovery, call `compiler.search(root)` and the one-argument
+`load_behavior("example")`. See [Packages](packages.md) for repository and
+lock semantics, and [`tests/consumer`](../tests/consumer) for the tested
+installed-project example.

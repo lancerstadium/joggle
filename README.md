@@ -1,87 +1,52 @@
 # Joggle
 
-Joggle is a lightweight C++ compiler framework for AI hardware/software
-co-design. Its user model has four public concepts:
+Joggle is a lightweight C++ compiler substrate for AI hardware/software
+co-design. It lets a project define its own value types, operators, compiler
+functions, analyses, and artifacts without adopting a fixed dialect ladder or
+device model.
 
-- `Module` is a versioned package of types, functions, and contracts.
-- `fn` is the one callable declaration used for program operations and
-  compiler work.
-- values are either known to the compiler or residualized into a function
-  body; availability is independent of type;
-- `Compiler` loads Modules, checks programs, binds behavior, and invokes
-  functions.
+The design is intentionally small:
 
-There is no fixed frontend/backend split and no built-in lowering direction.
-A function body may use declarations from any installed Modules. A bridge
-Module can import two vocabularies and provide conversions in either direction.
-Input decoding, transformation, analysis, and output encoding are ordinary
-typed functions over module-owned types. The source language does not impose a
-frontend/backend direction, a graph domain, or a second pass namespace.
+- `joggle::Module` is a versioned package of declarations and contracts;
+- `fn` is the only callable declaration;
+- values are typed independently of whether they are Known to the compiler or
+  Residual in a program;
+- executable IR is uniformly under `joggle::ir`;
+- loading, transformation, analysis, simulation, and emission are ordinary
+  typed functions.
 
-The C++ IR follows `Module -> Function -> Block -> Instruction/Value`.
-`Graph` and `Region` are not ownership objects: def-use and control-flow graphs
-are relationships directly queryable from a Function. Dominance, liveness,
-topological order, and similar products are analyses of that one Function,
-not additional program containers. The normative architecture and staging semantics are specified in
-[the design](docs/design.md) and
-[the execution model](docs/execution-model.md).
-
-The execution design uses the same structured `fn` body for compiler
-computation and generated programs. A Known `bool` executes `if`/`while` in the
-compiler; a Residual `i1` creates typed Block edges in the Function. Extensions
-bind ordinary functions over registered C++ representations and never
-implement a Region or a second pass evaluator. Structured host-body execution
-supports direct branches, loops, early exits, and dependent-type calls.
-
-The language directly supports `i1/i8/i16/i32/i64`, `u8/u16/u32/u64`,
-`f16/bf16/f32/f64`, and `index` as program value types. They require no import.
-Custom scalar formats implement the ambient `prelude.scalar` interface and can
-then participate in interface-constrained generic operations.
+There is no language-level `op`, `pass`, `graph`, `region`, `lower`, frontend,
+or backend hierarchy. Those can be useful roles in an extension, but the core
+does not force their direction or storage model.
 
 ```joggle
 joggle 1;
 
 module example@1.0.0 {
-  fn main(condition: i1, lhs: i32, rhs: i32) -> i32 {
-    result = if condition { lhs } else { rhs };
-    return result;
+  type word(width: int);
+
+  fn identity<T: type>(input: T) -> T;
+
+  fn pipeline(input: word<8>) -> word<8> {
+    current = input;
+    for enabled in [true, false, true] {
+      if enabled {
+        current = identity(current);
+      }
+    }
+    return current;
   }
 }
 ```
 
-Reusable IR packages live in [`modules`](modules):
+Here the list is Known. `for` expands deterministically at compile time, while
+each `identity` call may remain as a normal Residual Instruction.
+The same body can therefore express compiler decisions and the program they
+produce without a second metaprogramming language.
 
-- `arith` provides scalar operations over native and registered scalar types;
-- `tensor` owns tensor value and shape semantics, not neural-network operators;
-- `nn` provides common inference contracts and checked NCHW shape relations;
-- `buffer` owns explicit storage values and token-ordered memory effects,
-  without a device model or capacity assumptions.
-- `ir` declares the copy-on-write multi-Function artifact used by loaders,
-  transforms, analyses, emitters, and the CLI.
+## Build
 
-These Modules are ordinary `.joggle` packages rather than C++ built-ins. The
-trusted kernel owns bootstrap host representations and checked expression
-evaluation; the automatically linked `prelude` Module owns reflected compiler
-value types, native scalar declarations, and their interfaces.
-Expression-bodied `fn` declarations and derived type parameters can compute
-dependent type arguments without host callbacks. Calls evaluate automatically
-when their inputs are Known and residualize otherwise; prefix `@` only
-requires a Known result. The declaration needs no separate `const` function
-kind. Fixed-width Prelude scalars expose the `storage_bits` field through this
-same mechanism; custom formats implement the identical interface from their
-own parameters.
-
-A concrete named `fn` is also a typed callable value. It can be passed to a
-higher-order operation directly; the IR records the function symbol and its
-`(inputs) -> results` type without a wrapper Instruction, nested Region, or
-second callable declaration kind.
-
-Known compiler values enter Residual programs through visible ordinary
-functions implementing `prelude.literal`. The standard `arith` Module provides
-integer, real, logical, and attribute literal functions; custom formats may
-provide their own without adding a core constant operation.
-
-Build and test with standard CMake:
+Joggle requires a C++20 compiler and CMake 3.20 or newer.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -90,23 +55,43 @@ ctest --test-dir build --output-on-failure
 cmake --install build --prefix /desired/prefix
 ```
 
-Useful commands:
+The CLI supports canonical formatting, validation, package installation,
+locking, and compiler-function pipelines:
 
 ```bash
-joggle fmt module.joggle --write
-joggle check modules/arith.joggle
-joggle install modules/arith.joggle
-joggle uninstall arith@1.0.0
-joggle lock root.joggle -o joggle.lock
-joggle run program.joggle main transform_fn -o transformed.joggle
+joggle fmt model.joggle --write
+joggle check model.joggle --with dependency.joggle
+joggle install model.joggle --behavior build/model_behavior.dylib
+joggle lock model.joggle -o joggle.lock
+joggle run model.joggle main canonicalize legalize -o output.joggle
 ```
 
-Start with [the design](docs/design.md),
-[the execution model](docs/execution-model.md),
-[the language reference](docs/language.md),
-[IR Modules](docs/ir-modules.md), [passes](docs/passes.md), and
-[the C++ API](docs/cpp-api.md). Package identity and behavior libraries are
-specified in [packages](docs/packages.md) and [bindings](docs/bindings.md).
-The [NN pipeline example](examples/nn_pipeline) shows a source-defined compiler
-branch composing a multi-Function transform and emitter without Graph or
-Region syntax.
+Run `joggle --help` for the complete command forms.
+
+## Shipped Modules
+
+[`modules`](modules) contains ordinary installable declarations:
+
+- `prelude`: compiler domains, native scalar types, callable types, and core
+  interfaces;
+- `arith`: generic scalar operations and literal materialization;
+- `tensor`: ranked tensor values and structural operations;
+- `nn`: common inference operators and checked shape relations;
+- `buffer`: explicit storage values and token-ordered effects;
+- `ir`: the declared `ir.module` type represented in C++ by
+  `joggle::ir::Module`.
+
+These Modules are not an ordered lowering stack. Extensions may import and
+bridge them in either direction.
+
+## Documentation
+
+Start at the [documentation index](docs/README.md). The
+[getting-started guide](docs/getting-started.md) builds one extension, the
+[language reference](docs/language.md) defines source semantics, and the
+[architecture](docs/architecture.md) explains the project boundary.
+
+The [`examples/nn_pipeline`](examples/nn_pipeline) project demonstrates a
+source-defined compiler branch, multi-Function transformation, and emitter.
+The [`tests/consumer`](tests/consumer) project is the installed-library
+integration example.

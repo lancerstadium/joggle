@@ -1,150 +1,109 @@
-# Module packages and locks
+# Packages and reproducibility
 
-A Module is the package unit. The public C++ API has no Package or PackageStore
-class; installation is a CLI concern, and Compiler resolution uses ordinary
-search paths.
+The package unit is `joggle::Module`: one canonical source file, one semantic
+version, and one SHA-256 content identity. The public library has no separate
+Package object; the CLI manages installed repositories and `Compiler` resolves
+ordinary search paths.
 
 ## Commands
 
 ```bash
-joggle check arith.joggle
-joggle check arith.joggle --behavior build/arith_behavior.dylib
-joggle fmt arith.joggle --write
-
-joggle install arith.joggle
-joggle install arith.joggle --behavior build/behavior.dylib
+joggle check module.joggle [--with dependency.joggle] [--behavior library]
+joggle fmt module.joggle [--write | -o output.joggle]
+joggle install module.joggle [--behavior library]
+joggle uninstall name@1.2.3
 joggle list
-joggle uninstall arith@1.0.0
-
-joggle lock nn.joggle -o joggle.lock
+joggle lock root.joggle -o joggle.lock
 ```
 
-`check` parses the source and links its complete import closure. Use `--root`
-to check an extension against an isolated installed Module set; unresolved
-imports, interface mismatches, operation type contracts, and pass-reference
-errors make the command fail. It also instantiates every defined Function in
-the resolved closure through the ordinary Compiler path, catching unknown
-declarations, SSA errors, and type-inference failures. `--behavior`
-additionally checks an explicitly chosen
-behavior library against the canonical Module identity and applies its domain
-verifiers while constructing those Functions. `fmt` only needs the source file.
-Parse, import-resolution, conformance, call-contract, Function, and
-behavior diagnostics retain their originating `.joggle` source range.
+All repository commands accept `--root directory`. Without it, Joggle uses
+`JOGGLE_MODULE_ROOT`, then the default user repository.
 
-`fmt --write`, `fmt -o`, and `lock -o` stage their complete output beside the
-destination and replace it atomically. A failed write leaves the previous file
-unchanged; in-place formatting also preserves its permission bits and follows
-an existing symbolic link rather than replacing the link itself.
+`check` parses, resolves the import closure, validates declarations and
+contracts, and instantiates defined Functions. Repeated `--with` options add
+uninstalled local dependencies without modifying a repository. `--behavior`
+also validates an exact behavior library and runs registered verifiers.
 
-`joggle check root.joggle --with dependency.joggle` validates a local source
-closure without installing it. `--with` may be repeated and does not alter the
-package root.
+`fmt` produces canonical text. In-place and explicit-output writes stage a
+complete replacement beside the destination, preserve an existing file on
+failure, and preserve permission bits for in-place formatting.
 
-`--root <directory>` selects an isolated module root. Otherwise Joggle uses
-`JOGGLE_MODULE_ROOT`, then `$HOME/.joggle/modules`.
+## Installed layout
 
-Installation stores canonical text at:
+Canonical Module source is content-addressed beneath:
 
 ```text
-<root>/<name>/<version>/<sha256>/module.joggle
+<root>/<name>/<version>/<module-sha256>/module.joggle
 ```
 
-An optional behavior library is validated by loading its versioned descriptor
-against the exact linked Module, then stored by host target and binary digest:
+An optional behavior library is stored beneath the exact Module identity by
+host target and binary digest:
 
 ```text
-<module-identity>/behavior/<target>/<behavior-sha256>/behavior.dylib
+<module-identity>/behavior/<target>/<binary-sha256>/behavior.<suffix>
 ```
 
-The final filename is `behavior.so`, `behavior.dylib`, or `behavior.dll` for
-the host platform. A second binary digest for the same Module and target is
-rejected rather than selected implicitly. `Compiler::load_behavior("module")`
-discovers the single installed candidate and rechecks both its path digest and
-descriptor before binding it.
+The suffix is platform-specific. Installing the same identity is idempotent.
+A different digest for the same name and exact version is rejected instead of
+silently replacing content. A second behavior digest for the same Module and
+target is likewise rejected.
 
-Installing the same identity is idempotent. Installing another digest under the
-same name and version is rejected rather than silently replacing content.
-Before publication, `install` links the complete import closure and instantiates
-every defined Function through the same validation path as `check`; a syntactically
-valid but unresolved or ill-typed Module is never published.
-Module text and an optional behavior are first assembled in a hidden directory
-on the same filesystem and become visible together through one atomic rename.
-Adding behavior to an existing Module uses the same staging-and-rename rule.
-Failed or interrupted staging directories are neither listed nor resolved, and
-reinstalling an existing identity revalidates its stored Module and behavior
-content rather than trusting the directory name.
-Uninstallation targets one exact `name@version`. It first renames that version
-out of the visible repository namespace and then reclaims its files. Resolution
-therefore sees either the complete version or no version, never a partially
-deleted package; an interrupted removal tombstone remains invisible. The CLI
-reports what it removed.
+Install validates the complete closure before publishing. Module text and
+behavior are assembled in a hidden same-filesystem staging directory and
+become visible atomically. Uninstall first removes the exact version from the
+visible namespace, then reclaims storage. Resolution therefore never observes
+a partial package.
 
 ## Resolution
 
 ```cpp
 joggle::Compiler compiler;
 compiler.search(module_root);
-compiler.load("nn.joggle");
-
+compiler.load("root.joggle");
 if (!compiler.link()) {
   compiler.diagnostics().print(std::cerr);
 }
 ```
 
-`link` resolves missing imports recursively from configured roots, chooses the
-highest installed version satisfying the source import range, validates every
-installed path against the parsed name, version, and digest, and then checks the
-complete import closure for version mismatches and cycles.
+For each import, linking chooses the highest installed version satisfying its
+range. It validates stored paths against parsed names, versions, and digests,
+then rejects conflicting identities, incompatible ranges, missing imports, and
+cycles.
 
-Import aliases are local source spelling only. Lock entries always record the
-real Module name, version, and digest, so a local prefix never becomes a second
-package identity.
+Aliases affect source spelling only. Stable symbols and locks record the real
+Module identity.
 
-`joggle run` writes one derived Module named `<source>_<function>_compiled`;
-its imports use the exact linked versions. A whole-program transform may add
-sibling Functions to that artifact. Distinct entry members and their source
-therefore have distinct package names, and replaying a derived single-Function
-Module preserves its name. A valid repository admits only one digest for a
-given name and exact version, and a Compiler rejects explicitly loaded Modules
-with conflicting identities. The derived text is reusable without embedding a
-digest in ordinary import syntax. For transport to another repository or for
-an executable behavior closure, generate and replay a lock; the lock carries
-the module and binary digests.
+## Locks
 
-## Lock replay
-
-A generated lock records the exact root and dependency identities:
+A lock records the exact root, dependency Modules, and target-specific behavior
+binaries:
 
 ```text
 joggle-lock 1;
-root nn@1.0.0#<digest>;
-module arith@1.0.0#<digest>;
+root model@1.0.0#<digest>;
 module tensor@1.0.0#<digest>;
-behavior arith@1.0.0#<module-digest> macos-arm64#<binary-digest>;
 behavior tensor@1.0.0#<module-digest> macos-arm64#<binary-digest>;
 ```
 
-It is consumed explicitly:
+Generate and replay it explicitly:
+
+```bash
+joggle lock model.joggle -o joggle.lock
+```
 
 ```cpp
 joggle::Compiler compiler;
 compiler.search(module_root);
 compiler.lock("joggle.lock");
-compiler.load("nn.joggle");
+compiler.load("model.joggle");
 compiler.link();
 ```
 
-Replay fails if the root differs, an entry is unused, a dependency is absent,
-the locked version violates an import, or the exact digest is not installed.
-For the host target it also fails if a behavior entry names another Module
-identity, the content-addressed binary is missing, or the file content differs
-from its locked digest. Loading behavior while a lock is active requires a
-matching entry. The lock therefore selects executable content rather than
-merely repeating version ranges.
+Replay fails when the root differs, an entry is absent or unused, a locked
+version violates an import, a digest differs, or the required behavior for the
+host target is unavailable. With a lock active, behavior discovery must match
+its entry. A lock therefore selects executable content, not only source version
+ranges.
 
-`joggle lock` first performs the same closure and defined-Function validation as
-`check`, then records installed behavior for the machine on which the lock is
-generated. That makes an executable lock target-specific; a different target
-needs its own behavior entry rather than silently substituting another binary.
-A behavior artifact contains executable callbacks only. Every declaration comes
-from canonical Module source and is resolved through runtime handles.
+Locks containing behavior are target-specific. Generate a lock for each target
+instead of substituting another platform's binary.
