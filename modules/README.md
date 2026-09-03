@@ -37,9 +37,22 @@ conversion is an ordinary typed function in a bridge Module that imports the
 vocabularies it connects. A bridge may own conversions in both directions
 without changing either connected Module or the compiler core.
 
-Every Module uses the same directory shape: `module.joggle` is the public
-contract, while optional `behavior.cpp`, tests, or private support files stay
-beside it. There is no parallel `extensions` category.
+Every Module follows one package layout:
+
+```text
+modules/<module_name>/
+  module.joggle
+  README.md              # when the Module needs its own guide
+  CMakeLists.txt         # only when native code is present
+  src/                   # private native implementation
+  tests/                 # Module-local tests
+```
+
+The snake_case directory name must equal the name declared by
+`module.joggle`; CMake rejects a mismatch. Source-only Modules contain no
+placeholder build files. Native Modules are selected together with
+`JOGGLE_BUILD_MODULES`, so adding one never adds another root-level option.
+There are no parallel `extensions`, `passes`, or `targets` package trees.
 
 Input decoding, transformation, analysis, and output encoding use the same
 function registration and invocation mechanism. Format-specific code therefore

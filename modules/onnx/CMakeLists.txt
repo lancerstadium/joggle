@@ -36,64 +36,60 @@ add_custom_command(
   DEPENDS "${joggle_onnx_proto}" protobuf::protoc
   VERBATIM)
 
-add_library(joggle_onnx_proto STATIC
+add_library(joggle_module_onnx_proto STATIC
   "${joggle_onnx_generated}/onnx.proto3.pb.cc")
-set_target_properties(joggle_onnx_proto PROPERTIES
+set_target_properties(joggle_module_onnx_proto PROPERTIES
   POSITION_INDEPENDENT_CODE ON)
-target_link_libraries(joggle_onnx_proto PUBLIC protobuf::libprotobuf)
-target_include_directories(joggle_onnx_proto PUBLIC
+target_link_libraries(joggle_module_onnx_proto PUBLIC protobuf::libprotobuf)
+target_include_directories(joggle_module_onnx_proto PUBLIC
   "${joggle_onnx_generated}")
 
-joggle_add_behavior(joggle_onnx_behavior
+joggle_add_behavior(joggle_module_onnx_behavior
   MODULE module.joggle
-  SOURCES behavior.cpp)
-set_target_properties(joggle_onnx_behavior PROPERTIES
+  SOURCES src/behavior.cpp)
+set_target_properties(joggle_module_onnx_behavior PROPERTIES
   PREFIX ""
   OUTPUT_NAME "onnx")
-target_link_libraries(joggle_onnx_behavior PRIVATE joggle_onnx_proto)
-target_include_directories(joggle_onnx_behavior PRIVATE include)
+target_link_libraries(joggle_module_onnx_behavior PRIVATE
+  joggle_module_onnx_proto)
 if(MSVC)
-  target_compile_options(joggle_onnx_behavior PRIVATE /W4 /WX)
+  target_compile_options(joggle_module_onnx_behavior PRIVATE /W4 /WX)
 else()
-  target_compile_options(joggle_onnx_behavior PRIVATE
+  target_compile_options(joggle_module_onnx_behavior PRIVATE
     -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
 endif()
 
 if(JOGGLE_BUILD_TESTS)
   set(JOGGLE_ONNX_MODEL "" CACHE FILEPATH
     "Optional ONNX Model Zoo ResNet-18 file for the full import test")
-  add_executable(joggle_onnx_test test.cpp)
-  target_link_libraries(joggle_onnx_test PRIVATE
+  add_executable(joggle_module_onnx_test tests/import_test.cpp)
+  target_link_libraries(joggle_module_onnx_test PRIVATE
     joggle::joggle
-    joggle_onnx_proto)
-  target_include_directories(joggle_onnx_test PRIVATE include)
+    joggle_module_onnx_proto)
   if(MSVC)
-    target_compile_options(joggle_onnx_test PRIVATE /W4 /WX)
+    target_compile_options(joggle_module_onnx_test PRIVATE /W4 /WX)
   else()
-    target_compile_options(joggle_onnx_test PRIVATE
+    target_compile_options(joggle_module_onnx_test PRIVATE
       -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
   endif()
-  target_compile_definitions(joggle_onnx_test PRIVATE
+  target_compile_definitions(joggle_module_onnx_test PRIVATE
     JOGGLE_ARITH_MODULE="${PROJECT_SOURCE_DIR}/modules/arith/module.joggle"
     JOGGLE_TENSOR_MODULE="${PROJECT_SOURCE_DIR}/modules/tensor/module.joggle"
     JOGGLE_NN_MODULE="${PROJECT_SOURCE_DIR}/modules/nn/module.joggle"
     JOGGLE_ONNX_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/module.joggle"
-    JOGGLE_ONNX_BEHAVIOR="$<TARGET_FILE:joggle_onnx_behavior>")
-  add_dependencies(joggle_onnx_test joggle_onnx_behavior)
-  add_test(NAME onnx COMMAND joggle_onnx_test)
+    JOGGLE_ONNX_BEHAVIOR="$<TARGET_FILE:joggle_module_onnx_behavior>")
+  add_dependencies(joggle_module_onnx_test joggle_module_onnx_behavior)
+  add_test(NAME module.onnx COMMAND joggle_module_onnx_test)
   if(JOGGLE_ONNX_MODEL)
     if(NOT EXISTS "${JOGGLE_ONNX_MODEL}")
       message(FATAL_ERROR
         "JOGGLE_ONNX_MODEL does not exist: ${JOGGLE_ONNX_MODEL}")
     endif()
-    add_test(NAME onnx_model
-      COMMAND joggle_onnx_test "${JOGGLE_ONNX_MODEL}")
+    add_test(NAME module.onnx.model
+      COMMAND joggle_module_onnx_test "${JOGGLE_ONNX_MODEL}")
   endif()
 endif()
 
-install(FILES module.joggle
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules
-  RENAME onnx.joggle)
-install(TARGETS joggle_onnx_behavior
+install(TARGETS joggle_module_onnx_behavior
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/joggle/behaviors
   RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/joggle/behaviors)

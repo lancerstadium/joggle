@@ -4,8 +4,6 @@ project(Joggle VERSION 0.1.0 LANGUAGES CXX)
 
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 option(JOGGLE_BUILD_TESTS "Build Joggle tests" ON)
-option(JOGGLE_BUILD_ONNX "Build the optional ONNX import Module" OFF)
-option(JOGGLE_BUILD_PRECISION "Build numeric precision transformations" OFF)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -84,13 +82,6 @@ install(TARGETS joggle_cli
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 install(DIRECTORY include/joggle DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(FILES modules/README.md
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules)
-foreach(joggle_standard_module arith mem nn tensor)
-  install(FILES modules/${joggle_standard_module}/module.joggle
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules
-    RENAME ${joggle_standard_module}.joggle)
-endforeach()
 install(FILES language/prelude.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/language)
 install(EXPORT JoggleTargets
@@ -196,25 +187,7 @@ if(JOGGLE_BUILD_TESTS)
       --with ${CMAKE_CURRENT_SOURCE_DIR}/modules/arith/module.joggle
   )
 
-  joggle_add_behavior(joggle_nn_pipeline_behavior
-    MODULE examples/nn_pipeline/nn_pipeline.joggle
-    SOURCES examples/nn_pipeline/behavior.cpp)
-  set_target_properties(joggle_nn_pipeline_behavior PROPERTIES
-    PREFIX ""
-    OUTPUT_NAME "nn_pipeline"
-  )
-  add_executable(joggle_nn_pipeline_test tests/nn_pipeline_test.cpp)
-  target_link_libraries(joggle_nn_pipeline_test PRIVATE joggle::joggle)
-  target_compile_definitions(joggle_nn_pipeline_test PRIVATE
-    JOGGLE_ARITH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/arith/module.joggle"
-    JOGGLE_TENSOR_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/tensor/module.joggle"
-    JOGGLE_NN_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/nn/module.joggle"
-    JOGGLE_RESNET_BLOCK="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/resnet18_basic_block.joggle"
-    JOGGLE_EXAMPLE_ACCEL_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/nn_pipeline/example_accel.joggle"
-    JOGGLE_NN_PIPELINE_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/nn_pipeline/nn_pipeline.joggle"
-    JOGGLE_NN_PIPELINE_BEHAVIOR="$<TARGET_FILE:joggle_nn_pipeline_behavior>"
-  )
-  add_test(NAME nn_pipeline COMMAND joggle_nn_pipeline_test)
+  add_subdirectory(examples/nn_pipeline)
 
   add_test(NAME function_cli
     COMMAND $<TARGET_FILE:joggle_cli> check
@@ -323,10 +296,4 @@ if(JOGGLE_BUILD_TESTS)
   )
 endif()
 
-if(JOGGLE_BUILD_ONNX)
-  add_subdirectory(modules/onnx)
-endif()
-
-if(JOGGLE_BUILD_PRECISION)
-  add_subdirectory(modules/precision)
-endif()
+add_subdirectory(modules)

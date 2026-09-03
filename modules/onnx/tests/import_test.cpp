@@ -240,7 +240,7 @@ module onnx_composition@1.0.0 {
     return valid ? EXIT_SUCCESS : EXIT_FAILURE;
   }
   if (argc != 1) {
-    std::cerr << "usage: joggle_onnx_test [model.onnx]\n";
+    std::cerr << "usage: joggle_module_onnx_test [model.onnx]\n";
     return EXIT_FAILURE;
   }
   const joggle::Bytes source = encode(model());

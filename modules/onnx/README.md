@@ -29,10 +29,10 @@ Build with:
 
 ```sh
 cmake -S . -B build-onnx \
-  -DJOGGLE_BUILD_ONNX=ON \
+  -DJOGGLE_BUILD_MODULES=onnx \
   -DCMAKE_PREFIX_PATH=/path/to/protobuf
 cmake --build build-onnx
-ctest --test-dir build-onnx -R '^onnx$' --output-on-failure
+ctest --test-dir build-onnx -R '^module\.onnx$' --output-on-failure
 ```
 
 Set `JOGGLE_ONNX_MODEL=/path/to/resnet18_Opset18.onnx` to register the full

@@ -38,13 +38,14 @@ work.
 Build and test independently with:
 
 ```sh
-cmake -S . -B build-precision -DJOGGLE_BUILD_PRECISION=ON
+cmake -S . -B build-precision -DJOGGLE_BUILD_MODULES=precision
 cmake --build build-precision
-ctest --test-dir build-precision -R '^precision$' --output-on-failure
+ctest --test-dir build-precision -R '^module\.precision$' --output-on-failure
 ```
 
-When both optional Modules are enabled and `JOGGLE_ONNX_MODEL` names the
-official opset-18 ResNet-18 file, CMake also registers `precision_onnx`. That
+When `JOGGLE_BUILD_MODULES='onnx;precision'` and `JOGGLE_ONNX_MODEL` names the
+official opset-18 ResNet-18 file, CMake also registers
+`module.precision.onnx`. That
 test composes ONNX decoding and precision conversion in Joggle source. The
 current reference model converts 42 payloads from 46,738,848 to 23,369,424
 bytes and produces a deterministic 91-op f16 Module. This is a

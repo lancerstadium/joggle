@@ -95,6 +95,11 @@ expanded into source text or threaded through a side channel.
 
 ## Optional Modules
 
+Native Modules use one scalable build selector. For example,
+`-DJOGGLE_BUILD_MODULES='onnx;precision'` builds both behaviors; source-only
+Modules are always installed. Each package's directory name, DSL name,
+installed filename, behavior filename, and CMake target stem are kept aligned.
+
 [`modules/onnx`](modules/onnx) provides an optional, typed ONNX import
 Module. `onnx.read` preserves source operations as `onnx.*` IR;
 `onnx.to_nn` is a separate transactional conversion to the portable `nn`
