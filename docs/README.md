@@ -13,6 +13,8 @@ of the project; none is a migration log.
   `arith`, `tensor`, `nn`, and `mem` vocabularies.
 - [Compiler functions](compiler-functions.md) defines composition and the
   reusable facilities required by transforms, analyses, and emitters.
+- [Research position](research-position.md) separates implemented evidence from
+  the hypotheses, comparisons, and experiments required for publication.
 - [Modules and native behavior](modules.md) covers packages, C++ behavior, and compiler
   functions.
 - [C++ API](cpp-api.md) documents the in-process library surface.
