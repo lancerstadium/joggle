@@ -245,6 +245,15 @@ template <typename Owner, typename Result, typename... Arguments>
 struct CallableTraits<Result (Owner::*)(Arguments...) const noexcept>
     : CallableTraits<Result(Arguments...)> {};
 
+template <typename T>
+inline constexpr bool valid_function_input =
+    !std::is_reference_v<T> ||
+    (std::is_lvalue_reference_v<T> &&
+     std::is_const_v<std::remove_reference_t<T>>);
+
+template <typename T>
+inline constexpr bool valid_function_result = !std::is_reference_v<T>;
+
 // The C++ spelling of an ordinary fn implementation. Compiler& and
 // Diagnostics& are host services rather than declared arguments, so the same
 // traits drive both overload selection and type-erased invocation.
@@ -272,6 +281,8 @@ template <typename Function> struct FunctionBinding {
       arity - static_cast<std::size_t>(with_compiler) -
       static_cast<std::size_t>(with_diagnostics);
   static constexpr std::size_t offset = with_compiler ? 1U : 0U;
+  static_assert(valid_function_result<typename Traits::result>,
+                "fn results must be values");
   using Produced = std::remove_cvref_t<typename Traits::result>;
   using Result =
       std::conditional_t<OptionalValue<Produced>::value,
@@ -280,10 +291,8 @@ template <typename Function> struct FunctionBinding {
   static auto input_types() {
     return []<std::size_t... Indices>(std::index_sequence<Indices...>) {
       static_assert(
-          ((!std::is_lvalue_reference_v<
-                std::tuple_element_t<offset + Indices, Arguments>> ||
-            std::is_const_v<std::remove_reference_t<
-                std::tuple_element_t<offset + Indices, Arguments>>>) &&
+          (valid_function_input<
+               std::tuple_element_t<offset + Indices, Arguments>> &&
            ...),
           "fn inputs must be values or const references");
       return std::array<std::string_view, sizeof...(Indices)>{host_type_name<

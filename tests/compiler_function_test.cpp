@@ -27,6 +27,15 @@ struct Estimate {
   std::int64_t cycles = 0;
 };
 
+static_assert(joggle::detail::valid_function_input<Target>);
+static_assert(joggle::detail::valid_function_input<const Target&>);
+static_assert(!joggle::detail::valid_function_input<Target&>);
+static_assert(!joggle::detail::valid_function_input<Target&&>);
+static_assert(!joggle::detail::valid_function_input<const Target&&>);
+static_assert(joggle::detail::valid_function_result<Estimate>);
+static_assert(!joggle::detail::valid_function_result<Estimate&>);
+static_assert(!joggle::detail::valid_function_result<Estimate&&>);
+
 }  // namespace
 
 int main() {

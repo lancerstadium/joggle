@@ -328,9 +328,9 @@ already needs the declaration as a rewrite target or exact identity.
 tools that need a declaration handle. In contrast,
 `run<Result>("module.function", arguments...)` uses its input and result C++
 types to select an overload directly.
-Declared inputs bind by value or `const&`, never by mutable lvalue reference.
-A transformation returns its changed artifact instead of creating an
-undeclared in-place output.
+Declared inputs bind by value or `const&`, never by mutable lvalue or rvalue
+reference. Declared results return by value. A transformation returns its
+changed artifact instead of creating an undeclared in-place output.
 Function transforms, Module transforms, analyses, loaders, and emitters all
 use the same `run<Result>(declaration, arguments...)` operation. Assigning a
 returned artifact is an ordinary C++ choice rather than a transformation-only
