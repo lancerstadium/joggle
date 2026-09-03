@@ -116,6 +116,23 @@ explicit result-type vector constrains result-only generics. Missing, extra,
 or incompatible Known arguments are rejected at construction. Structural and
 type-contract verification occurs again at commit.
 
+A named Function can be used as a callable `Value` without emitting a wrapper
+Instruction:
+
+```cpp
+auto callable = compiler.make(
+    *callable_type,
+    std::vector<joggle::Type>{*i32},
+    std::vector<joggle::Type>{*i32});
+auto body = edit.reference(*callback, *callable);
+auto output = edit.append(*map, {input, body}).value();
+```
+
+`Value::referenced_function()` exposes the exact Module declaration. Commit
+checks that the callable input/result types match that declaration, and a
+function reference dominates every Block in its owning Function. Serialization
+prints the qualified Function name and includes its Module as a dependency.
+
 Edits are transactional. A failed commit or an abandoned `Edit` restores the
 previous Function. `replace`, `insert`, and `erase` operate in the same
 transaction.

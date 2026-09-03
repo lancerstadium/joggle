@@ -46,6 +46,10 @@ module logic@1.0.0 {
       -> word<16> {
     return apply(input, body);
   }
+  fn callback(input: word<8>) -> word<16>;
+  fn callback_value(input: word<8>) -> word<16> {
+    return apply(input, callback);
+  }
 
 }
 )";
@@ -97,6 +101,7 @@ int main() {
           ? compiler.function(*default_configured_decl)
           : std::nullopt;
   const auto callback_user = compiler.function("logic.callback_user");
+  const auto callback_value = compiler.function("logic.callback_value");
   const auto callback_arguments =
       callback_user ? callback_user->arguments() : std::vector<joggle::Value>{};
   const auto callback_parameters =
@@ -137,6 +142,40 @@ int main() {
                    callback_user->instructions().size() == 1U,
                "function type syntax constructs a reflected callable type "
                "and participates in generic call inference");
+  const auto callback_operations = callback_value
+                                       ? callback_value->instructions()
+                                       : std::vector<joggle::Instruction>{};
+  const auto applied_arguments = callback_operations.size() == 1U
+                                     ? callback_operations.front().arguments()
+                                     : std::vector<joggle::Value>{};
+  const auto referenced = applied_arguments.size() == 2U
+                              ? applied_arguments[1].referenced_function()
+                              : std::optional<joggle::Module::FunctionDecl>{};
+  ok &= expect(callback_value && callback_operations.size() == 1U &&
+                   referenced &&
+                   referenced->symbol().qualified_name() == "logic.callback" &&
+                   applied_arguments[1].type().schema().name() == "callable",
+               "a named function is a typed program value without a region "
+               "or wrapper instruction");
+  const std::string callback_text =
+      callback_value ? joggle::format(*callback_value, "compiled_callback")
+                     : "";
+  joggle::Compiler callback_compiler;
+  callback_compiler.add(source, "logic.joggle");
+  callback_compiler.add("joggle 1;\nmodule callback_artifact@1.0.0 {\n"
+                        "  import logic@1;\n" +
+                            callback_text + "}\n",
+                        "callback-artifact.joggle");
+  const bool callback_linked = callback_compiler.link();
+  const auto replayed_callback =
+      callback_linked
+          ? callback_compiler.function("callback_artifact.compiled_callback")
+          : std::optional<joggle::Function>{};
+  ok &= expect(callback_text.find("logic.callback") != std::string::npos &&
+                   replayed_callback &&
+                   joggle::format(*replayed_callback, "compiled_callback") ==
+                       callback_text,
+               "named function values format and instantiate canonically");
   const std::string module_text = module ? joggle::format(*module) : "";
   joggle::Diagnostics module_roundtrip_diagnostics;
   const auto module_roundtrip = joggle::parse_module(

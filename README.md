@@ -64,6 +64,11 @@ kind. Fixed-width Prelude scalars expose the `storage_bits` field through this
 same mechanism; custom formats implement the identical interface from their
 own parameters.
 
+A concrete named `fn` is also a typed callable value. It can be passed to a
+higher-order operation directly; the IR records the function symbol and its
+`(inputs) -> results` type without a wrapper Instruction, nested Region, or
+second callable declaration kind.
+
 Known compiler values enter Residual programs through visible ordinary
 functions implementing `prelude.literal`. The standard `arith` Module provides
 integer, real, logical, and attribute literal functions; custom formats may

@@ -4,6 +4,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string_view>
+#include <vector>
 
 #include <joggle/joggle.h>
 
@@ -27,6 +28,8 @@ int main() {
       type other();
       fn source<T: type>() -> T;
       fn add_i32(lhs: i32, rhs: i32) -> i32;
+      fn callback(input: i32) -> i32;
+      fn apply(input: i32, body: (i32) -> i32) -> i32;
     }
   )", "control.joggle");
   if (!compiler.link()) {
@@ -46,9 +49,17 @@ int main() {
       control ? control->function("source") : std::nullopt;
   const auto add_i32_schema =
       control ? control->function("add_i32") : std::nullopt;
+  const auto callback_schema =
+      control ? control->function("callback") : std::nullopt;
+  const auto apply_schema =
+      control ? control->function("apply") : std::nullopt;
+  const auto prelude = compiler.module("prelude");
+  const auto callable_schema =
+      prelude ? prelude->type("callable") : std::nullopt;
   const auto other_schema = control ? control->type("other") : std::nullopt;
   if (!integer_schema || !add_schema || !cast_schema || !source_schema ||
-      !add_i32_schema || !other_schema) {
+      !add_i32_schema || !callback_schema || !apply_schema ||
+      !callable_schema || !other_schema) {
     return EXIT_FAILURE;
   }
   compiler.bind(*integer_schema,
@@ -108,6 +119,49 @@ int main() {
                    mixed_arguments.front().get<std::int64_t>() == 7 &&
                    !mixed_arguments.back().known(),
                "one argument sequence carries Known and Residual Values");
+
+  const auto callable = compiler.make(
+      *callable_schema, std::vector<joggle::Type>{*i32},
+      std::vector<joggle::Type>{*i32});
+  auto higher_order = compiler.function();
+  if (!callable || !higher_order) {
+    return EXIT_FAILURE;
+  }
+  std::optional<joggle::Value> callback;
+  std::optional<joggle::Instruction> applied;
+  {
+    auto edit = higher_order->edit();
+    const auto input = edit.argument(*i32);
+    callback = edit.reference(*callback_schema, *callable);
+    applied = edit.append(*apply_schema, {input, *callback});
+    edit.ret(higher_order->entry(), {applied->result(0)});
+    joggle::Diagnostics diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  ok &= expect(callback && applied && callback->referenced_function() &&
+                   callback->referenced_function()->symbol() ==
+                       callback_schema->symbol() &&
+                   higher_order->dominates(*callback, *applied) &&
+                   higher_order->users(*callback) ==
+                       std::vector<joggle::Instruction>{*applied},
+               "a typed function reference is a globally dominating value");
+  bool wrong_callable_rejected = false;
+  const auto wrong_callable = compiler.make(
+      *callable_schema, std::vector<joggle::Type>{*boolean},
+      std::vector<joggle::Type>{*i32});
+  try {
+    auto edit = higher_order->edit();
+    if (wrong_callable) {
+      static_cast<void>(edit.reference(*callback_schema, *wrong_callable));
+    }
+  } catch (const std::invalid_argument&) {
+    wrong_callable_rejected = true;
+  }
+  ok &= expect(wrong_callable_rejected,
+               "a function reference rejects a mismatched callable type");
 
   bool needs_explicit_result = false;
   try {

@@ -289,6 +289,12 @@ checks reachability, dominance, successor edges, and all function exits. The
 public Function now provides predecessor, use, and dominance queries without
 constructing an alternative graph object.
 
+Concrete named Functions can now enter IR as typed callable Values. Their
+signature is verified against the referenced Module declaration, they dominate
+all Blocks, and they serialize as qualified symbols rather than synthetic
+constant Instructions. This establishes the reference model needed for later
+closure lifting without reintroducing nested Region ownership.
+
 The `function` kernel domain remains the bootstrap representation for direct
 `joggle::Function` callbacks. Parameterless Module-declared types can now
 register ordinary copyable C++ host representations and flow through composed

@@ -42,6 +42,7 @@ public:
   }
   bool is_function_argument() const;
   bool is_block_argument() const;
+  std::optional<Module::FunctionDecl> referenced_function() const;
   std::optional<Instruction> defining_instruction() const;
   bool operator==(const Value&) const;
 
@@ -145,6 +146,7 @@ public:
     Edit& operator=(const Edit&) = delete;
 
     Value argument(Type type);
+    Value reference(Module::FunctionDecl function, Type type);
     Block block(std::vector<Type> argument_types = {});
     // Straight-line convenience: append to the entry Block.
     Instruction append(Module::FunctionDecl schema,

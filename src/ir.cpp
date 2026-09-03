@@ -18,12 +18,18 @@
 namespace joggle::detail {
 
 struct ValueData {
-  enum class Origin { FunctionArgument, BlockArgument, InstructionResult };
+  enum class Origin {
+    FunctionArgument,
+    BlockArgument,
+    InstructionResult,
+    FunctionReference
+  };
 
   Type type;
   Origin origin = Origin::FunctionArgument;
   std::uint64_t owner = 0;
   std::size_t index = 0;
+  std::optional<Module::FunctionDecl> reference;
 };
 
 struct KnownValueStorage {
@@ -362,6 +368,9 @@ bool definition_dominates(
     return definition.owner == 0 &&
            definition.index < function.arguments.size();
   }
+  if (definition.origin == ValueData::Origin::FunctionReference) {
+    return definition.reference.has_value();
+  }
   if (definition.origin == ValueData::Origin::BlockArgument) {
     const auto owner = function.blocks.find(definition.owner);
     return owner != function.blocks.end() &&
@@ -383,6 +392,40 @@ bool definition_dominates(
   const auto user_position = instruction_position(function, *user_instruction);
   return producer_position && user_position &&
          *producer_position < *user_position;
+}
+
+bool matches_function_reference(const FunctionState& function,
+                                const ValueData& value) {
+  if (value.origin != ValueData::Origin::FunctionReference ||
+      !value.reference || !owns(function, value.reference->symbol()) ||
+      !owns(function, value.type)) {
+    return false;
+  }
+  const Module::Symbol type = value.type.schema().symbol();
+  const auto inputs = value.type.get<std::vector<Type>>("inputs");
+  const auto results = value.type.get<std::vector<Type>>("results");
+  if (type.module_name() != detail::prelude_module_name ||
+      type.local_name() != "callable" || !inputs || !results ||
+      !detail::parameter_inputs(*value.reference).empty() ||
+      !detail::parameter_results(*value.reference).empty()) {
+    return false;
+  }
+
+  std::vector<Module> modules;
+  modules.reserve(function.modules.size());
+  for (const auto& [name, module] : function.modules) {
+    static_cast<void>(name);
+    modules.push_back(module);
+  }
+  std::vector<std::optional<Type>> expected;
+  expected.reserve(results->size());
+  for (const Type& result : *results) {
+    expected.emplace_back(result);
+  }
+  Diagnostics diagnostics;
+  const auto resolved = detail::resolve_operation_types(
+      modules, *value.reference, *inputs, {}, expected, diagnostics);
+  return resolved && resolved->results == *results;
 }
 
 bool verify_instruction(
@@ -490,6 +533,22 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
   }
   std::unordered_set<std::uint64_t> listed_instructions;
   std::unordered_set<std::uint64_t> listed_blocks;
+  for (const auto& [id, value] : function.values) {
+    static_cast<void>(id);
+    if (!owns(function, value.type)) {
+      diagnostics.report("function contains a value with an invalid type");
+      valid = false;
+    }
+    if (value.origin == ValueData::Origin::FunctionReference) {
+      if (!matches_function_reference(function, value)) {
+        diagnostics.report("function contains an invalid function reference");
+        valid = false;
+      }
+    } else if (value.reference) {
+      diagnostics.report("non-function value contains a function reference");
+      valid = false;
+    }
+  }
   for (std::size_t index = 0; index < function.arguments.size(); ++index) {
     const auto value = function.values.find(function.arguments[index]);
     if (value == function.values.end() ||
@@ -932,6 +991,17 @@ std::optional<Instruction> Value::defining_instruction() const {
   return Instruction(function_, found->second.owner);
 }
 
+std::optional<Module::FunctionDecl> Value::referenced_function() const {
+  if (!function_) {
+    return std::nullopt;
+  }
+  const auto found = function_->state->values.find(id_);
+  return found != function_->state->values.end() &&
+                 found->second.origin == ValueData::Origin::FunctionReference
+             ? found->second.reference
+             : std::nullopt;
+}
+
 Instruction::Instruction(std::shared_ptr<FunctionIdentity> function, std::uint64_t id)
     : function_(std::move(function)), id_(id) {}
 
@@ -1190,8 +1260,29 @@ Value Function::Edit::argument(Type type) {
   const std::size_t index = state_->function->state->arguments.size();
   state_->function->state->values.emplace(
       id, ValueData{std::move(type), ValueData::Origin::FunctionArgument,
-                    0, index});
+                    0, index, std::nullopt});
   state_->function->state->arguments.push_back(id);
+  return Function::make_value(state_->function, id);
+}
+
+Value Function::Edit::reference(Module::FunctionDecl function, Type type) {
+  if (!state_ || !state_->active) {
+    throw std::logic_error("cannot edit an inactive function");
+  }
+  if (!owns(*state_->function->state, function.symbol()) ||
+      !owns(*state_->function->state, type)) {
+    throw std::invalid_argument(
+        "referenced function is outside the module closure");
+  }
+  detail::ValueData data{std::move(type),
+                         detail::ValueData::Origin::FunctionReference, 0, 0,
+                         std::move(function)};
+  if (!matches_function_reference(*state_->function->state, data)) {
+    throw std::invalid_argument(
+        "function reference type does not match its declaration");
+  }
+  const std::uint64_t id = state_->function->next_id++;
+  state_->function->state->values.emplace(id, std::move(data));
   return Function::make_value(state_->function, id);
 }
 
@@ -1204,7 +1295,8 @@ Block Function::Edit::block(std::vector<Type> argument_types) {
     state_->function->state->values.emplace(
         value_id,
         ValueData{std::move(argument_types[index]),
-                  ValueData::Origin::BlockArgument, block_id, index});
+                  ValueData::Origin::BlockArgument, block_id, index,
+                  std::nullopt});
     data.arguments.push_back(value_id);
   }
   state_->function->state->blocks.emplace(block_id, std::move(data));
@@ -1371,7 +1463,8 @@ Instruction Function::Edit::add(Block block,
     const std::uint64_t result = state_->function->next_id++;
     state_->function->state->values.emplace(
         result, ValueData{std::move(result_types[index]),
-                          ValueData::Origin::InstructionResult, id, index});
+                          ValueData::Origin::InstructionResult, id, index,
+                          std::nullopt});
     results.push_back(result);
   }
   state_->function->state->instructions.emplace(id,

@@ -77,6 +77,9 @@ void collect(DependencyMap& dependencies,
 
 void collect(DependencyMap& dependencies, const Value& value) {
   collect(dependencies, value.type());
+  if (const auto function = value.referenced_function()) {
+    collect(dependencies, function->symbol());
+  }
   if (const auto known = detail::FunctionAccess::known_value(value)) {
     collect(dependencies, *known);
   }

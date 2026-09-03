@@ -265,9 +265,32 @@ An explicit Block header is `name(arguments...):`. Every Block ends with
 `return`, `jump`, or `branch`. Successor arguments must match the target Block
 arguments exactly.
 
-## Closures
+## Function values
 
-Nested code is a function value, written as a closure:
+A concrete, non-overloaded Function name is an ordinary typed value:
+
+```joggle
+fn map<T, U>(input: tensor<T>, body: (T) -> U) -> tensor<U>;
+fn relu_one(input: f32) -> f32;
+
+fn activate(input: tensor<f32>) -> tensor<f32> {
+  return map(input, relu_one);
+}
+```
+
+The value has reflected type `(f32) -> f32` and refers directly to the
+Function symbol. No wrapper call or constant Instruction is inserted.
+Contextual selection for overloaded or unspecialized generic Function values
+is not implemented yet.
+
+`(T, U) -> (V, W)` is a real type expression. It resolves to the reflected
+Prelude `callable` type whose `inputs` and `results` are lists of ordinary
+types, so generic inference can inspect and unify a callable signature. It is
+not the bare `function` compiler handle used by whole-Function tools.
+
+## Closure direction
+
+The intended surface for anonymous nested code is a closure expression:
 
 ```joggle
 fn map<T, U>(input: tensor<T>, body: (T) -> U) -> tensor<U>;
@@ -281,15 +304,9 @@ fn activate(input: tensor<f32>) -> tensor<f32> {
 
 A closure captures lexical values. Normalization creates an ordinary private
 Function and makes captures explicit parameters. Instructions do not own
-nested Blocks, and the language exposes no Region or yield protocol.
-
-`(T, U) -> (V, W)` is a real type expression. It resolves to the reflected
-Prelude `callable` type whose `inputs` and `results` are lists of ordinary
-types, so generic inference can inspect and unify a callable signature. It is
-not the bare `function` compiler handle used temporarily by whole-Function
-tools. Parsing, canonical formatting, reflection, and generic signature
-inference are implemented; closure literals and capture normalization are the
-remaining step.
+nested Blocks, and the language exposes no Region or yield protocol. Closure
+literals are not accepted yet: module-level ownership and capture lifting must
+land before this syntax becomes part of the implemented grammar.
 
 ## Compact grammar
 
@@ -314,13 +331,12 @@ statement     := binding "=" expression ";"
 binding       := identifier [ ":" expression ]
 
 expression    := literal | reference | list | call | operator-expression
-               | if-expression | known-expression | closure
+               | if-expression | known-expression
 known-expression := "@" "(" expression ")"
 if-expression := "if" expression "{" expression "}"
                  "else" "{" expression "}"
 call          := reference "(" [ call-argument { "," call-argument } ] ")"
 call-argument := expression | identifier ":" expression
-closure       := "{" [ identifiers ] "=>" { statement } "}"
 
 explicit-block := identifier "(" [ block-parameters ] ")" ":"
                   { statement } terminator

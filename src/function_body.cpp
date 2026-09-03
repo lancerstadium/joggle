@@ -1382,7 +1382,7 @@ private:
               false, std::nullopt};
         }
       }
-      auto value = use(detail::LocalUseSyntax{expression.text, range});
+      auto value = lookup(expression.text);
       auto value_domain = value ? domain(value->type()) : std::nullopt;
       return value_domain
                  ? std::optional<Module::ParameterDecl>{
@@ -1507,6 +1507,88 @@ private:
     return std::nullopt;
   }
 
+  bool declared_local(std::string_view name) const {
+    return std::any_of(scopes_.rbegin(), scopes_.rend(), [&](const auto& scope) {
+      return scope.contains(std::string(name));
+    });
+  }
+
+  std::vector<Module::FunctionDecl>
+  visible_functions(std::string_view reference) const {
+    const auto [prefix, local] = split_reference(owner_, reference);
+    const auto module_name = resolve_prefix(owner_, prefix);
+    const auto module = module_name ? compiler_.module(*module_name)
+                                    : std::optional<Module>{};
+    return module ? module->overloads(local)
+                  : std::vector<Module::FunctionDecl>{};
+  }
+
+  std::optional<Value> function_reference(std::string_view reference,
+                                          detail::SyntaxRange range) {
+    const auto overloads = visible_functions(reference);
+    if (overloads.empty()) {
+      return std::nullopt;
+    }
+    if (overloads.size() != 1U) {
+      report("overloaded function '" + std::string(reference) +
+                 "' needs a contextual callable type",
+             range);
+      return std::nullopt;
+    }
+    const Module::FunctionDecl declaration = overloads.front();
+    if (!declaration.generics().empty()) {
+      report("generic function '" + std::string(reference) +
+                 "' needs a contextual callable type",
+             range);
+      return std::nullopt;
+    }
+    if (!detail::parameter_inputs(declaration).empty() ||
+        !detail::parameter_results(declaration).empty()) {
+      report("function value '" + std::string(reference) +
+                 "' requires compile-time specialization",
+             range);
+      return std::nullopt;
+    }
+
+    const Module::ParameterDecl expected{
+        "function value type",
+        detail::domain_expression(detail::ValueKind::Type), false,
+        std::nullopt};
+    const detail::KnownBindings bindings;
+    const auto resolve_ports = [&](const auto& ports)
+        -> std::optional<std::vector<Type>> {
+      std::vector<Type> types;
+      types.reserve(ports.size());
+      for (const auto& port : ports) {
+        auto value = detail::evaluate_known_expression(
+            compiler_, declaration.symbol().module_name(), port.domain,
+            expected, bindings, diagnostics_, source(range),
+            residual_control_depth_ == 0U);
+        const Type* type = value ? value->as_type() : nullptr;
+        if (type == nullptr) {
+          return std::nullopt;
+        }
+        types.push_back(*type);
+      }
+      return types;
+    };
+    auto inputs = resolve_ports(detail::ir_inputs(declaration));
+    auto results = resolve_ports(detail::ir_results(declaration));
+    const auto prelude = compiler_.module(detail::prelude_module_name);
+    const auto callable = prelude ? prelude->type("callable")
+                                  : std::optional<Module::TypeDecl>{};
+    auto type = inputs && results && callable
+                    ? compiler_.make(*callable, *inputs, *results)
+                    : std::optional<Type>{};
+    if (!type) {
+      report("cannot construct callable type for function '" +
+                 std::string(reference) + "'",
+             range);
+      return std::nullopt;
+    }
+    return edit_->reference(declaration, std::move(*type));
+  }
+
   std::optional<Value> use(const detail::LocalUseSyntax& use) {
     if (auto value = lookup(use.name)) {
       return value;
@@ -1522,7 +1604,24 @@ private:
       report("expected a local value reference", expression.range);
       return std::nullopt;
     }
-    return use(detail::LocalUseSyntax{expression.value.text, expression.range});
+    if (auto value = lookup(expression.value.text)) {
+      return value;
+    }
+    if (declared_local(expression.value.text)) {
+      return std::nullopt;
+    }
+    if (expression.value.kind == Module::Expression::Kind::Reference) {
+      if (auto value = function_reference(expression.value.text,
+                                          expression.range)) {
+        return value;
+      }
+      if (!visible_functions(expression.value.text).empty()) {
+        return std::nullopt;
+      }
+    }
+    report("use of undefined local value '" + expression.value.text + "'",
+           expression.range);
+    return std::nullopt;
   }
 
   void define(std::string name, Value value, detail::SyntaxRange range) {
@@ -2675,6 +2774,9 @@ private:
   }
 
   std::string use(const Value& value) const {
+    if (const auto function = value.referenced_function()) {
+      return function->symbol().qualified_name();
+    }
     const auto found =
         std::find_if(names_.begin(), names_.end(),
                      [&](const auto& entry) { return entry.first == value; });

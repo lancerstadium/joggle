@@ -25,6 +25,7 @@ joggle 1;
 module program_defs@1.0.0 {
   type word();
   fn source() -> word;
+  fn callback(input: i32) -> i32;
 
   fn main() -> word {
     value = source();
@@ -43,15 +44,42 @@ module program_defs@1.0.0 {
   auto main = linked ? compiler.function("program_defs.main") : std::nullopt;
   auto choose = linked ? compiler.function("program_defs.choose")
                        : std::nullopt;
-  if (!main || !choose) {
+  const auto definitions = compiler.module("program_defs");
+  const auto prelude = compiler.module("prelude");
+  const auto callback_decl =
+      definitions ? definitions->function("callback") : std::nullopt;
+  const auto callable_decl =
+      prelude ? prelude->type("callable") : std::nullopt;
+  const auto i32 = compiler.make("i32");
+  const auto callable = callable_decl && i32
+                            ? compiler.make(
+                                  *callable_decl,
+                                  std::vector<joggle::Type>{*i32},
+                                  std::vector<joggle::Type>{*i32})
+                            : std::optional<joggle::Type>{};
+  auto callback_value = compiler.function();
+  if (!main || !choose || !callback_decl || !callable || !callback_value) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
+  }
+
+  {
+    auto edit = callback_value->edit();
+    const auto reference = edit.reference(*callback_decl, *callable);
+    edit.ret(callback_value->entry(), {reference});
+    joggle::Diagnostics callback_diagnostics;
+    if (!edit.commit(callback_diagnostics)) {
+      callback_diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
   }
 
   joggle::ir::Module program;
   joggle::Diagnostics diagnostics;
   if (!program.insert("main", std::move(*main), diagnostics) ||
-      !program.insert("choose", std::move(*choose), diagnostics)) {
+      !program.insert("choose", std::move(*choose), diagnostics) ||
+      !program.insert("callback_value", std::move(*callback_value),
+                      diagnostics)) {
     diagnostics.print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -90,13 +118,28 @@ module program_defs@1.0.0 {
   const auto replay_choose =
       replay_linked ? replay.function("compiled_program.choose")
                     : std::nullopt;
-  if (!replay_main || !replay_choose) {
+  const auto replay_callback =
+      replay_linked ? replay.function("compiled_program.callback_value")
+                    : std::nullopt;
+  if (!replay_main || !replay_choose || !replay_callback) {
     replay.diagnostics().print(std::cerr);
   }
   ok &= expect(replay_main && replay_main->instructions().size() == 1U &&
                    replay_choose && replay_choose->blocks().size() == 4U,
                "serialized data-flow and control-flow Functions link and "
                "instantiate again");
+  const auto replay_returned = replay_callback
+                                   ? replay_callback->entry()
+                                         .terminator()
+                                         .returned()
+                                   : std::vector<joggle::Value>{};
+  ok &= expect(replay_returned.size() == 1U &&
+                   replay_returned.front().referenced_function() &&
+                   replay_returned.front()
+                           .referenced_function()
+                           ->symbol()
+                           .qualified_name() == "program_defs.callback",
+               "function-reference dependencies serialize and replay");
 
   auto duplicate = compiler.function("program_defs.main");
   ok &= expect(duplicate &&

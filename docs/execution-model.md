@@ -226,8 +226,19 @@ the normal evaluation limit remains a deterministic diagnostic.
 ## Nested code without `region`
 
 `region` is not a source-language declaration or a public IR handle. Nested
-code is an ordinary function value. Function types use `(inputs) -> results`;
-a block literal is a closure expression:
+code is an ordinary function value. Function types use `(inputs) -> results`.
+A concrete named Function can already be passed directly:
+
+```joggle
+fn map<T, U>(input: tensor<T>, body: (T) -> U) -> tensor<U>;
+fn relu_one(input: f32) -> f32;
+
+fn activate(input: tensor<f32>) -> tensor<f32> {
+  return map(input, relu_one);
+}
+```
+
+The planned anonymous form is a block literal:
 
 ```joggle
 fn map<T, U>(input: tensor<T>, body: (T) -> U) -> tensor<U>;
@@ -254,7 +265,9 @@ Common control flow receives direct syntax (`if` and `while`).
 Extension-defined structured operations use function-typed parameters. Both
 elaborate to functions and blocks. A captured closure is normalized to a
 generated function whose captures are explicit parameters; it does not create
-a second nested-code abstraction.
+a second nested-code abstraction. The anonymous closure syntax remains pending
+until that module-level lifting path is implemented; it is not parsed as a
+temporary Region form.
 
 ### Residual branch elaboration
 
@@ -355,8 +368,10 @@ types; Residual loops become header/body/exit Blocks with inferred loop-carried
 arguments. Configurable expression-step, loop-iteration, and nesting-depth
 budgets fail with a diagnostic instead of silently residualizing.
 
-Multi-statement expression arms, closures, allocation budgets, and host-object
-serialization remain to be implemented. Statement `break` and `continue` are
+Multi-statement expression arms, anonymous closures, allocation budgets, and
+host-object serialization remain to be implemented. Concrete named Functions
+are already typed callable Values and round-trip as symbol references.
+Statement `break` and `continue` are
 implemented for Known and Residual loops. Residual transfers inside finite
 Known loops preserve multiple specialized continuations. Runtime-dependent
 cycles over a repeated staged state close directly into CFG backedges. This
