@@ -112,6 +112,11 @@ transformation. It discovers constants through the `tensor.immutable_data`
 interface rather than naming their producer, and transactionally updates types
 and Module data together.
 
+[`modules/reference_target`](modules/reference_target) is a concrete vertical
+slice from typed NN values to explicit target references and calls. Its layout,
+storage spaces, mapping, and resource analysis are ordinary Module-owned
+semantics rather than compiler-core device classes.
+
 ## Documentation
 
 Start at the [documentation index](docs/README.md). The

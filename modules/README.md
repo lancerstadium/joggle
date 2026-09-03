@@ -30,6 +30,9 @@ in `language/prelude.joggle`; Prelude is not an installable Module.
   `onnx.to_nn` conversion. Its native behavior is optional.
 - `precision` supplies a representation-changing compiler function over the
   same Module IR and content-addressed data.
+- `reference_target` demonstrates a user-owned target vocabulary, tensor-to-
+  reference mapping, explicit layout/address-space types, and conservative
+  local-storage analysis without adding a target abstraction to compiler core.
 
 The list is not an abstraction ladder. A function body may call declarations
 from any installed Modules. Joggle has no built-in `lower` direction. A

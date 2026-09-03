@@ -1,0 +1,271 @@
+joggle 1;
+
+module reference_target@1.0.0 {
+  import mem@1.0.0;
+  import nn@2.0.0;
+  import tensor@2.0.0;
+
+  type linear() : mem.layout;
+  type tiled(rows: int, columns: int) : mem.layout;
+
+  type io() : mem.space;
+  type read_only() : mem.space;
+  type local() : mem.space;
+
+  type ref(
+    element: type,
+    shape: list<int>,
+    layout: type,
+    space: type
+  ) : mem.reference {
+    element_type = element;
+    layout_type = layout;
+    space_type = space;
+  }
+
+  fn constant<
+    E: type,
+    S: list<int>,
+    L: mem.layout,
+    P: mem.space
+  >(resource: string) -> ref<E, S, L, P> : tensor.immutable_data;
+
+  fn relu<
+    E: prelude.numeric,
+    S: list<int>,
+    LI: mem.layout,
+    PI: mem.space,
+    LO: mem.layout,
+    PO: mem.space
+  >(input: ref<E, S, LI, PI>) -> ref<E, S, LO, PO> : nn.activation;
+
+  fn add<
+    E: prelude.numeric,
+    S: list<int>,
+    LL: mem.layout,
+    PL: mem.space,
+    LR: mem.layout,
+    PR: mem.space,
+    LO: mem.layout,
+    PO: mem.space
+  >(
+    lhs: ref<E, S, LL, PL>,
+    rhs: ref<E, S, LR, PR>
+  ) -> ref<E, S, LO, PO>;
+
+  fn conv2d_nchw<
+    E: prelude.numeric,
+    N: int,
+    C: int,
+    H: int,
+    W: int,
+    O: int,
+    KH: int,
+    KW: int,
+    SH: int,
+    SW: int,
+    DH: int,
+    DW: int,
+    PT: int,
+    PL: int,
+    PB: int,
+    PR: int,
+    LI: mem.layout,
+    PI: mem.space,
+    LW: mem.layout,
+    PW: mem.space,
+    LO: mem.layout,
+    PO: mem.space
+  >(
+    input: ref<E, [N, C, H, W], LI, PI>,
+    weight: ref<E, [O, C, KH, KW], LW, PW>,
+    stride_h: SH = 1,
+    stride_w: SW = 1,
+    dilation_h: DH = 1,
+    dilation_w: DW = 1,
+    pad_top: PT = 0,
+    pad_left: PL = 0,
+    pad_bottom: PB = 0,
+    pad_right: PR = 0
+  ) -> ref<
+    E,
+    [
+      N,
+      O,
+      @nn.conv_extent(H, KH, SH, DH, PT, PB),
+      @nn.conv_extent(W, KW, SW, DW, PL, PR)
+    ],
+    LO,
+    PO
+  >;
+
+  fn conv2d_nchw<
+    E: prelude.numeric,
+    N: int,
+    C: int,
+    H: int,
+    W: int,
+    O: int,
+    KH: int,
+    KW: int,
+    SH: int,
+    SW: int,
+    DH: int,
+    DW: int,
+    PT: int,
+    PL: int,
+    PB: int,
+    PR: int,
+    LI: mem.layout,
+    PI: mem.space,
+    LW: mem.layout,
+    PW: mem.space,
+    LB: mem.layout,
+    PBIAS: mem.space,
+    LO: mem.layout,
+    PO: mem.space
+  >(
+    input: ref<E, [N, C, H, W], LI, PI>,
+    weight: ref<E, [O, C, KH, KW], LW, PW>,
+    bias: ref<E, [O], LB, PBIAS>,
+    stride_h: SH = 1,
+    stride_w: SW = 1,
+    dilation_h: DH = 1,
+    dilation_w: DW = 1,
+    pad_top: PT = 0,
+    pad_left: PL = 0,
+    pad_bottom: PB = 0,
+    pad_right: PR = 0
+  ) -> ref<
+    E,
+    [
+      N,
+      O,
+      @nn.conv_extent(H, KH, SH, DH, PT, PB),
+      @nn.conv_extent(W, KW, SW, DW, PL, PR)
+    ],
+    LO,
+    PO
+  >;
+
+  fn batch_norm_nchw<
+    E: prelude.numeric,
+    N: int,
+    C: int,
+    H: int,
+    W: int,
+    LI: mem.layout,
+    PI: mem.space,
+    LS: mem.layout,
+    PS: mem.space,
+    LB: mem.layout,
+    PB: mem.space,
+    LM: mem.layout,
+    PM: mem.space,
+    LV: mem.layout,
+    PV: mem.space,
+    LO: mem.layout,
+    PO: mem.space
+  >(
+    input: ref<E, [N, C, H, W], LI, PI>,
+    scale: ref<E, [C], LS, PS>,
+    bias: ref<E, [C], LB, PB>,
+    mean: ref<E, [C], LM, PM>,
+    variance: ref<E, [C], LV, PV>,
+    epsilon: real = 1e-05
+  ) -> ref<E, [N, C, H, W], LO, PO> : nn.normalization;
+
+  fn max_pool2d_nchw<
+    E: prelude.numeric,
+    N: int,
+    C: int,
+    H: int,
+    W: int,
+    KH: int,
+    KW: int,
+    SH: int,
+    SW: int,
+    DH: int,
+    DW: int,
+    PT: int,
+    PL: int,
+    PB: int,
+    PR: int,
+    LI: mem.layout,
+    PI: mem.space,
+    LO: mem.layout,
+    PO: mem.space
+  >(
+    input: ref<E, [N, C, H, W], LI, PI>,
+    kernel_h: KH,
+    kernel_w: KW,
+    stride_h: SH = 1,
+    stride_w: SW = 1,
+    dilation_h: DH = 1,
+    dilation_w: DW = 1,
+    pad_top: PT = 0,
+    pad_left: PL = 0,
+    pad_bottom: PB = 0,
+    pad_right: PR = 0
+  ) -> ref<
+    E,
+    [
+      N,
+      C,
+      @nn.conv_extent(H, KH, SH, DH, PT, PB),
+      @nn.conv_extent(W, KW, SW, DW, PL, PR)
+    ],
+    LO,
+    PO
+  > : nn.pooling;
+
+  fn global_average_pool_nchw<
+    E: prelude.numeric,
+    N: int,
+    C: int,
+    H: int,
+    W: int,
+    LI: mem.layout,
+    PI: mem.space,
+    LO: mem.layout,
+    PO: mem.space
+  >(
+    input: ref<E, [N, C, H, W], LI, PI>
+  ) -> ref<E, [N, C, 1, 1], LO, PO> : nn.pooling;
+
+  fn flatten_nchw<
+    E: prelude.numeric,
+    N: int,
+    C: int,
+    H: int,
+    W: int,
+    LI: mem.layout,
+    PI: mem.space,
+    LO: mem.layout,
+    PO: mem.space
+  >(
+    input: ref<E, [N, C, H, W], LI, PI>
+  ) -> ref<E, [N, C * H * W], LO, PO>;
+
+  fn linear<
+    E: prelude.numeric,
+    N: int,
+    K: int,
+    M: int,
+    LI: mem.layout,
+    PI: mem.space,
+    LW: mem.layout,
+    PW: mem.space,
+    LB: mem.layout,
+    PB: mem.space,
+    LO: mem.layout,
+    PO: mem.space
+  >(
+    input: ref<E, [N, K], LI, PI>,
+    weight: ref<E, [M, K], LW, PW>,
+    bias: ref<E, [M], LB, PB>
+  ) -> ref<E, [N, M], LO, PO>;
+
+  fn map(input: module, tile_rows: int = 8, tile_columns: int = 8) -> module;
+  fn local_bytes_upper_bound(input: module) -> int;
+}
