@@ -138,7 +138,10 @@ commit, restores the prior Function.
 
 `ir::Function` copies share an immutable revision until one copy starts an
 edit. This makes read-only analysis handoff constant-time while preserving
-value semantics for `function -> function` transformations.
+value semantics for `function -> function` transformations. `Compiler::run`
+creates that COW value boundary once; it does not eagerly deep-copy a second
+checkpoint. A successful edit detaches, while a failed pipeline simply does
+not publish its private value.
 
 Construct control flow with sibling Blocks and typed edges:
 

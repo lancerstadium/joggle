@@ -226,11 +226,8 @@ public:
   Edit edit();
 
 private:
-  struct Snapshot;
   explicit Function(std::vector<Module> modules);
   bool accepts(const Module::Symbol& symbol) const;
-  std::shared_ptr<const Snapshot> snapshot() const;
-  void restore(std::shared_ptr<const Snapshot> snapshot);
   static Value make_value(std::shared_ptr<detail::FunctionIdentity> function,
                           std::uint64_t id);
   static Instruction

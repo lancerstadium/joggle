@@ -782,7 +782,7 @@ module transactional@1.0.0 {
     return EXIT_FAILURE;
   }
   transactional.bind(*mutate,
-                     [token = *token](joggle::ir::Function current,
+                     [token = *token](joggle::ir::Function& current,
                                       joggle::Diagnostics& diagnostics)
                          -> std::optional<joggle::ir::Function> {
                        auto edit = current.edit();

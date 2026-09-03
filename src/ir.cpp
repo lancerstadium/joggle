@@ -179,10 +179,6 @@ std::size_t FunctionAccess::argument_parameter(const Instruction& instruction,
 
 namespace joggle::ir {
 
-struct Function::Snapshot {
-  std::shared_ptr<detail::FunctionState> state;
-};
-
 namespace {
 
 using detail::FunctionIdentity;
@@ -1954,18 +1950,6 @@ Function::Edit Function::edit() { return Edit(function_); }
 
 bool Function::accepts(const Module::Symbol& symbol) const {
   return owns(*function_->state, symbol);
-}
-
-std::shared_ptr<const Function::Snapshot> Function::snapshot() const {
-  return std::make_shared<const Snapshot>(
-      Snapshot{std::make_shared<FunctionState>(*function_->state)});
-}
-
-void Function::restore(std::shared_ptr<const Snapshot> snapshot) {
-  if (function_->editing) {
-    throw std::logic_error("cannot restore a function with an active edit");
-  }
-  function_->state = std::make_shared<FunctionState>(*snapshot->state);
 }
 
 Value Function::make_value(std::shared_ptr<FunctionIdentity> function,

@@ -2611,16 +2611,12 @@ Compiler::execute(Module::Function declaration,
     return std::nullopt;
   }
 
-  std::vector<std::pair<std::shared_ptr<ir::Function>,
-                        std::shared_ptr<const ir::Function::Snapshot>>>
-      checkpoints;
   for (detail::ExecutionValue& argument : arguments) {
     if (detail::execution_value_type(argument) == typeid(ir::Function).name()) {
       auto function = std::get<std::shared_ptr<ir::Function>>(argument);
       if (!verify(*function)) {
         return std::nullopt;
       }
-      checkpoints.emplace_back(function, function->snapshot());
     }
   }
   const std::size_t before = state_->diagnostics.size();
@@ -2793,15 +2789,7 @@ Compiler::execute(Module::Function declaration,
     return std::nullopt;
   };
 
-  std::optional<detail::ExecutionValues> result;
-  try {
-    result = execute(execute, declaration, std::move(arguments));
-  } catch (...) {
-    for (auto& [function, snapshot] : checkpoints) {
-      function->restore(std::move(snapshot));
-    }
-    throw;
-  }
+  auto result = execute(execute, declaration, std::move(arguments));
   bool valid = result.has_value() && state_->diagnostics.size() == before;
   if (valid) {
     for (const auto& value : *result) {
@@ -2812,9 +2800,6 @@ Compiler::execute(Module::Function declaration,
     }
   }
   if (!valid) {
-    for (auto& [function, snapshot] : checkpoints) {
-      function->restore(std::move(snapshot));
-    }
     return std::nullopt;
   }
   return result;
