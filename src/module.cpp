@@ -2042,6 +2042,30 @@ std::vector<Module::ParameterDecl> detail::FunctionTypeAccess::ir_results(
   return select_parameters(function.results(), get(function).ir_results, true);
 }
 
+bool detail::has_default_specialization(
+    const Module::FunctionDecl& function) {
+  const auto& contract = FunctionTypeAccess::get(function);
+  std::vector<std::string_view> bound_generics;
+  for (std::size_t index = 0; index < function.inputs().size(); ++index) {
+    if (contract.ir_inputs[index]) {
+      continue;
+    }
+    if (!function.inputs()[index].default_value) {
+      return false;
+    }
+    if (index < contract.bindings.size() && contract.bindings[index] &&
+        contract.bindings[index]->kind == Module::Expression::Kind::Variable) {
+      bound_generics.push_back(contract.bindings[index]->text);
+    }
+  }
+  return std::all_of(
+      function.generics().begin(), function.generics().end(),
+      [&](const auto& generic) {
+        return std::find(bound_generics.begin(), bound_generics.end(),
+                         generic.name) != bound_generics.end();
+      });
+}
+
 std::span<const std::string> Module::FunctionDecl::interfaces() const {
   return storage_->functions[index_].interfaces;
 }
