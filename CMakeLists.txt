@@ -21,12 +21,14 @@ configure_file(src/prelude_source.cpp.in
   "${CMAKE_CURRENT_BINARY_DIR}/generated/prelude_source.cpp" @ONLY)
 
 add_library(joggle
+  src/call_resolution.cpp
   src/prelude.cpp
   "${CMAKE_CURRENT_BINARY_DIR}/generated/prelude_source.cpp"
   src/compiler.cpp
   src/diagnostic.cpp
   src/domain.cpp
   src/execution.cpp
+  src/execution_value.cpp
   src/expression_syntax.cpp
   src/ir.cpp
   src/ir_module.cpp

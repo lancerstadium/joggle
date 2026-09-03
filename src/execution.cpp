@@ -1,5 +1,6 @@
 #include "execution.h"
 
+#include "call_resolution.h"
 #include "compiler_internal.h"
 #include "function_body.h"
 #include "module_internal.h"
@@ -7,7 +8,6 @@
 #include "type_contract.h"
 
 #include <algorithm>
-#include <array>
 #include <charconv>
 #include <locale>
 #include <sstream>
@@ -17,145 +17,6 @@
 
 namespace joggle::detail {
 namespace {
-
-template <typename T>
-std::optional<ExecutionValue> list_execution_value(
-    const ParameterValue& value) {
-  auto decoded = decode_parameter<std::vector<T>>(value);
-  return decoded ? std::optional<ExecutionValue>{std::move(*decoded)}
-                 : std::nullopt;
-}
-
-template <typename T>
-ParameterValue list_parameter_value(const std::vector<T>& values) {
-  std::vector<ParameterValue> elements;
-  elements.reserve(values.size());
-  for (const T& value : values) {
-    elements.emplace_back(value);
-  }
-  return ParameterValue::list(std::move(elements));
-}
-
-ParameterValue list_parameter_value(const std::vector<bool>& values) {
-  std::vector<ParameterValue> elements;
-  elements.reserve(values.size());
-  for (const bool value : values) {
-    elements.emplace_back(value);
-  }
-  return ParameterValue::list(std::move(elements));
-}
-
-std::vector<Module::FunctionDecl>
-visible_functions(Compiler& compiler, std::string_view owner,
-                  std::string_view reference) {
-  const std::size_t dot = reference.find('.');
-  std::string module_name(owner);
-  std::string_view local = reference;
-  if (dot != std::string_view::npos) {
-    const std::string_view prefix = reference.substr(0U, dot);
-    local = reference.substr(dot + 1U);
-    if (prefix != owner) {
-      const auto scope = compiler.module(owner);
-      const auto imported =
-          scope ? std::find_if(scope->imports().begin(), scope->imports().end(),
-                               [&](const Module::Import& import) {
-                                 return import.prefix() == prefix;
-                               })
-                : std::span<const Module::Import>::iterator{};
-      if (!scope || imported == scope->imports().end()) {
-        return {};
-      }
-      module_name = imported->name;
-    }
-  }
-  const auto module = compiler.module(module_name);
-  if (!module) {
-    return {};
-  }
-  return module->overloads(local);
-}
-
-std::vector<Module::FunctionDecl>
-visible_operators(Compiler& compiler, std::string_view owner,
-                  std::string_view symbol,
-                  Module::FunctionDecl::Fixity fixity) {
-  std::vector<Module::FunctionDecl> result;
-  const auto scope = compiler.module(owner);
-  if (!scope) {
-    return result;
-  }
-  const auto append = [&](const Module& module) {
-    for (const auto& function : module.functions()) {
-      if (function.operator_symbol() == symbol &&
-          function.operator_fixity() == fixity) {
-        result.push_back(function);
-      }
-    }
-  };
-  append(*scope);
-  for (const auto& import : scope->imports()) {
-    if (const auto module = compiler.module(import.name)) {
-      append(*module);
-    }
-  }
-  return result;
-}
-
-struct CallCandidate {
-  Module::FunctionDecl function;
-  std::vector<std::size_t> parameters;
-};
-
-std::optional<CallCandidate>
-candidate(const Module::FunctionDecl& function,
-          const Module::Expression& expression) {
-  const auto parameters = function.inputs();
-  if (std::any_of(parameters.begin(), parameters.end(),
-                  [](const Module::ParameterDecl& parameter) {
-                    return parameter.variadic;
-                  })) {
-    return std::nullopt;
-  }
-  CallCandidate result{function, {}};
-  result.parameters.reserve(expression.arguments.size());
-  std::vector<bool> supplied(parameters.size(), false);
-  std::size_t positional = 0;
-  for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
-    const std::string_view label =
-        index < expression.labels.size() ? expression.labels[index]
-                                         : std::string_view{};
-    std::size_t target = parameters.size();
-    if (!label.empty()) {
-      const auto found = std::find_if(
-          parameters.begin(), parameters.end(),
-          [&](const Module::ParameterDecl& parameter) {
-            return parameter.name == label;
-          });
-      if (found != parameters.end()) {
-        target = static_cast<std::size_t>(
-            std::distance(parameters.begin(), found));
-      }
-    } else {
-      while (positional < parameters.size() && supplied[positional]) {
-        ++positional;
-      }
-      if (positional < parameters.size()) {
-        target = positional++;
-      }
-    }
-    if (target == parameters.size() || supplied[target]) {
-      return std::nullopt;
-    }
-    supplied[target] = true;
-    result.parameters.push_back(target);
-  }
-  for (std::size_t index = 0; index < parameters.size(); ++index) {
-    if (!supplied[index] && !parameters[index].default_value) {
-      return std::nullopt;
-    }
-  }
-  return result;
-}
 
 class BodyEvaluator {
   enum class Control { Next, Return, Break, Continue, Error };
@@ -375,7 +236,7 @@ private:
     }
     std::vector<CallCandidate> candidates;
     for (const auto& declaration : declarations) {
-      auto shaped = candidate(declaration, expression);
+      auto shaped = call_candidate(declaration, expression);
       if (!shaped || declaration.results().size() > 1U ||
           (expected != nullptr &&
            (declaration.results().size() != 1U ||
@@ -708,183 +569,6 @@ private:
 
 }  // namespace
 
-std::string_view execution_value_type(const ExecutionValue& value) {
-  if (std::holds_alternative<std::int64_t>(value)) {
-    return typeid(std::int64_t).name();
-  }
-  if (std::holds_alternative<double>(value)) {
-    return typeid(double).name();
-  }
-  if (std::holds_alternative<bool>(value)) {
-    return typeid(bool).name();
-  }
-  if (std::holds_alternative<std::string>(value)) {
-    return typeid(std::string).name();
-  }
-  if (std::holds_alternative<Type>(value)) {
-    return typeid(Type).name();
-  }
-  if (std::holds_alternative<Attribute>(value)) {
-    return typeid(Attribute).name();
-  }
-  if (std::holds_alternative<Bytes>(value)) {
-    return typeid(Bytes).name();
-  }
-  if (std::holds_alternative<std::shared_ptr<Function>>(value)) {
-    return typeid(Function).name();
-  }
-  if (std::holds_alternative<IntegerList>(value)) {
-    return typeid(IntegerList).name();
-  }
-  if (std::holds_alternative<RealList>(value)) {
-    return typeid(RealList).name();
-  }
-  if (std::holds_alternative<BooleanList>(value)) {
-    return typeid(BooleanList).name();
-  }
-  if (std::holds_alternative<StringList>(value)) {
-    return typeid(StringList).name();
-  }
-  if (std::holds_alternative<TypeList>(value)) {
-    return typeid(TypeList).name();
-  }
-  if (std::holds_alternative<AttributeList>(value)) {
-    return typeid(AttributeList).name();
-  }
-  if (const auto* host = std::get_if<HostValue>(&value)) {
-    return host->cpp_type;
-  }
-  return typeid(void).name();
-}
-
-std::optional<Domain> cpp_value_domain(std::string_view type) {
-  if (type == typeid(std::int64_t).name()) {
-    return Domain{ValueKind::Integer, false};
-  }
-  if (type == typeid(double).name()) {
-    return Domain{ValueKind::Real, false};
-  }
-  if (type == typeid(bool).name()) {
-    return Domain{ValueKind::Boolean, false};
-  }
-  if (type == typeid(std::string).name()) {
-    return Domain{ValueKind::String, false};
-  }
-  if (type == typeid(Type).name()) {
-    return Domain{ValueKind::Type, false};
-  }
-  if (type == typeid(Attribute).name()) {
-    return Domain{ValueKind::Attribute, false};
-  }
-  if (type == typeid(Bytes).name()) {
-    return Domain{ValueKind::Bytes, false};
-  }
-  if (type == typeid(Function).name()) {
-    return Domain{ValueKind::Function, false};
-  }
-  if (type == typeid(IntegerList).name()) {
-    return Domain{ValueKind::Integer, true};
-  }
-  if (type == typeid(RealList).name()) {
-    return Domain{ValueKind::Real, true};
-  }
-  if (type == typeid(BooleanList).name()) {
-    return Domain{ValueKind::Boolean, true};
-  }
-  if (type == typeid(StringList).name()) {
-    return Domain{ValueKind::String, true};
-  }
-  if (type == typeid(TypeList).name()) {
-    return Domain{ValueKind::Type, true};
-  }
-  if (type == typeid(AttributeList).name()) {
-    return Domain{ValueKind::Attribute, true};
-  }
-  return std::nullopt;
-}
-
-std::optional<ExecutionValue>
-execution_value(const ParameterValue& value,
-                const Module::ParameterDecl& parameter) {
-  const auto domain = kernel_domain(parameter.domain);
-  if (domain && domain->list) {
-    switch (domain->element) {
-    case ValueKind::Integer:
-      return list_execution_value<std::int64_t>(value);
-    case ValueKind::Real:
-      return list_execution_value<double>(value);
-    case ValueKind::Boolean:
-      return list_execution_value<bool>(value);
-    case ValueKind::String:
-      return list_execution_value<std::string>(value);
-    case ValueKind::Type:
-      return list_execution_value<Type>(value);
-    case ValueKind::Attribute:
-      return list_execution_value<Attribute>(value);
-    case ValueKind::Function:
-    case ValueKind::Bytes:
-      return std::nullopt;
-    }
-  }
-  switch (value.kind()) {
-  case ParameterValue::Kind::I64:
-    return ExecutionValue{*value.as_i64()};
-  case ParameterValue::Kind::F64:
-    return ExecutionValue{*value.as_f64()};
-  case ParameterValue::Kind::Boolean:
-    return ExecutionValue{*value.as_bool()};
-  case ParameterValue::Kind::String:
-    return ExecutionValue{*value.as_string()};
-  case ParameterValue::Kind::Type:
-    return ExecutionValue{*value.as_type()};
-  case ParameterValue::Kind::Attribute:
-    return ExecutionValue{*value.as_attribute()};
-  case ParameterValue::Kind::List:
-    return std::nullopt;
-  }
-  return std::nullopt;
-}
-
-std::optional<ParameterValue> parameter_value(const ExecutionValue& value) {
-  if (const auto* stored = std::get_if<std::int64_t>(&value)) {
-    return ParameterValue(*stored);
-  }
-  if (const auto* stored = std::get_if<double>(&value)) {
-    return ParameterValue(*stored);
-  }
-  if (const auto* stored = std::get_if<bool>(&value)) {
-    return ParameterValue(*stored);
-  }
-  if (const auto* stored = std::get_if<std::string>(&value)) {
-    return ParameterValue(*stored);
-  }
-  if (const auto* stored = std::get_if<Type>(&value)) {
-    return ParameterValue(*stored);
-  }
-  if (const auto* stored = std::get_if<Attribute>(&value)) {
-    return ParameterValue(*stored);
-  }
-  if (const auto* stored = std::get_if<IntegerList>(&value)) {
-    return list_parameter_value(*stored);
-  }
-  if (const auto* stored = std::get_if<RealList>(&value)) {
-    return list_parameter_value(*stored);
-  }
-  if (const auto* stored = std::get_if<BooleanList>(&value)) {
-    return list_parameter_value(*stored);
-  }
-  if (const auto* stored = std::get_if<StringList>(&value)) {
-    return list_parameter_value(*stored);
-  }
-  if (const auto* stored = std::get_if<TypeList>(&value)) {
-    return list_parameter_value(*stored);
-  }
-  if (const auto* stored = std::get_if<AttributeList>(&value)) {
-    return list_parameter_value(*stored);
-  }
-  return std::nullopt;
-}
-
 std::optional<ExecutionValue> execute_body(
     Compiler& compiler, const Module::FunctionDecl& function,
     const FunctionBody& body, std::span<const ExecutionValue> arguments,
@@ -917,14 +601,12 @@ bool verify_body_calls(Compiler& compiler,
     using Kind = Module::Expression::Kind;
     const Module::Expression& expression = syntax.value;
     if (expression.kind == Kind::Call) {
-      const bool bootstrap = expression.text == "ceildiv" ||
-                             expression.text == "min" ||
-                             expression.text == "max";
+      const bool bootstrap = is_bootstrap_call(expression.text);
       const auto declarations = visible_functions(
           compiler, function.symbol().module_name(), expression.text);
       const bool shaped = std::any_of(
           declarations.begin(), declarations.end(), [&](const auto& current) {
-            return candidate(current, expression).has_value();
+            return call_candidate(current, expression).has_value();
           });
       if (!bootstrap && !shaped) {
         report("no visible overload of '" + expression.text +
@@ -944,13 +626,10 @@ bool verify_body_calls(Compiler& compiler,
           compiler, function.symbol().module_name(), expression.text, fixity);
       const bool shaped = std::any_of(
           declarations.begin(), declarations.end(), [&](const auto& current) {
-            return candidate(current, expression).has_value();
+            return call_candidate(current, expression).has_value();
           });
-      constexpr std::array<std::string_view, 5> bootstrap{
-          "+", "-", "*", "/", "//"};
       const bool bootstrap_operator =
-          std::find(bootstrap.begin(), bootstrap.end(), expression.text) !=
-          bootstrap.end();
+          is_bootstrap_operator(expression.text);
       if ((!declarations.empty() && !shaped) ||
           (declarations.empty() && !bootstrap_operator)) {
         report("no visible function defines operator '" + expression.text +

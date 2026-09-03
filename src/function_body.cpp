@@ -1,5 +1,6 @@
 #include "function_body.h"
 
+#include "call_resolution.h"
 #include "expression_syntax.h"
 #include "prelude.h"
 #include "compiler_internal.h"
@@ -1522,12 +1523,7 @@ private:
 
   std::vector<Module::FunctionDecl>
   visible_functions(std::string_view reference) const {
-    const auto [prefix, local] = split_reference(owner_, reference);
-    const auto module_name = resolve_prefix(owner_, prefix);
-    const auto module = module_name ? compiler_.module(*module_name)
-                                    : std::optional<Module>{};
-    return module ? module->overloads(local)
-                  : std::vector<Module::FunctionDecl>{};
+    return detail::visible_functions(compiler_, owner_, reference);
   }
 
   bool matches_function_value(const Module::FunctionDecl& function,
@@ -1815,30 +1811,18 @@ private:
              range);
       return std::nullopt;
     }
-    std::vector<Module> visible{*owner};
-    for (const auto& import : owner->imports()) {
-      if (const auto module = compiler_.module(import.name)) {
-        visible.push_back(*module);
-      }
-    }
-
     std::vector<Module::FunctionDecl> matches;
-    for (const Module& module : visible) {
-      for (const auto& candidate : module.functions()) {
-        if (candidate.operator_symbol() != notation ||
-            candidate.operator_fixity() != fixity) {
-          continue;
-        }
-        std::vector<std::optional<ParameterValue>> named_arguments(
-            detail::parameter_inputs(candidate).size());
-        std::vector<std::optional<Type>> expected(
-            detail::ir_results(candidate).size());
-        Diagnostics attempt;
-        if (detail::resolve_operation_types(
-                compiler_, candidate, argument_types, named_arguments, expected,
-                attempt)) {
-          matches.push_back(candidate);
-        }
+    for (const auto& candidate :
+         detail::visible_operators(compiler_, owner_, notation, fixity)) {
+      std::vector<std::optional<ParameterValue>> named_arguments(
+          detail::parameter_inputs(candidate).size());
+      std::vector<std::optional<Type>> expected(
+          detail::ir_results(candidate).size());
+      Diagnostics attempt;
+      if (detail::resolve_operation_types(
+              compiler_, candidate, argument_types, named_arguments, expected,
+              attempt)) {
+        matches.push_back(candidate);
       }
     }
     if (matches.empty()) {
