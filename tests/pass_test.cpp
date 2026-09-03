@@ -44,7 +44,6 @@ module pipeline@1.0.0 {
   fn consume(input: bytes);
   fn append(input: bytes) -> bytes;
   fn nonzero(input: int) -> bool;
-  fn decrement(input: int) -> int;
   fn module_identity(input: ir.module) -> ir.module;
   fn clean(input: function) -> function {
     return test_ir.canonicalize(input);
@@ -65,7 +64,7 @@ module pipeline@1.0.0 {
     result = input;
     while nonzero(count) {
       result = append(result);
-      count = decrement(count);
+      count = count - 1;
     }
     return result;
   }
@@ -81,7 +80,7 @@ module pipeline@1.0.0 {
   }
   fn last(count: int, input: bytes) -> bytes {
     while nonzero(count) {
-      count = decrement(count);
+      count = count - 1;
       if nonzero(count) {
         continue;
       }
@@ -132,8 +131,6 @@ module pipeline@1.0.0 {
       pipeline ? pipeline->function("append") : std::nullopt;
   const auto nonzero =
       pipeline ? pipeline->function("nonzero") : std::nullopt;
-  const auto decrement =
-      pipeline ? pipeline->function("decrement") : std::nullopt;
   const auto select =
       pipeline ? pipeline->function("select") : std::nullopt;
   const auto repeat =
@@ -148,7 +145,7 @@ module pipeline@1.0.0 {
       ir_module ? ir_module->type("module") : std::nullopt;
   if (!integer_decl || !arith_cast_decl || !format_decl || !canonicalize ||
       !clean || !read || !emit || !inspect || !compile || !consume ||
-      !module_identity || !append || !nonzero || !decrement || !select ||
+      !module_identity || !append || !nonzero || !select ||
       !repeat || !choose || !once || !last || !typed || !ir_module_schema) {
     return EXIT_FAILURE;
   }
@@ -221,8 +218,6 @@ module pipeline@1.0.0 {
   });
   compiler.bind(*nonzero,
                 [](std::int64_t input) { return input != 0; });
-  compiler.bind(*decrement,
-                [](std::int64_t input) { return input - 1; });
   if (!compiler.represent<joggle::ir::Module>(*ir_module_schema)) {
     return EXIT_FAILURE;
   }

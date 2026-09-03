@@ -3670,6 +3670,35 @@ Compiler::execute(Module::FunctionDecl declaration,
             expression.kind == Kind::Postfix ||
             expression.kind == Kind::FunctionType ||
             (expression.kind == Kind::Reference && expected != nullptr)) {
+          std::optional<Module::ParameterDecl> inferred;
+          if (expected == nullptr &&
+              (expression.kind == Kind::Prefix ||
+               expression.kind == Kind::Infix ||
+               expression.kind == Kind::Postfix) &&
+              !expression.arguments.empty()) {
+            const Module::Expression& operand = expression.arguments.front();
+            std::optional<detail::Domain> domain;
+            if ((operand.kind == Kind::Variable ||
+                 operand.kind == Kind::Reference) &&
+                operand.arguments.empty()) {
+              if (const auto* value = find_local(environment, operand.text)) {
+                domain = cpp_value_domain(execution_value_type(*value));
+              }
+            } else if (operand.kind == Kind::Number) {
+              domain = detail::Domain{
+                  operand.text.find_first_of(".eE") == std::string::npos
+                      ? detail::ValueKind::Integer
+                      : detail::ValueKind::Real,
+                  false};
+            }
+            if (domain && !domain->list) {
+              inferred = Module::ParameterDecl{
+                  "operator result",
+                  detail::domain_expression(domain->element), false,
+                  std::nullopt};
+              expected = &*inferred;
+            }
+          }
           if (expected == nullptr) {
             report("compiler operator needs a contextual result type", range);
             return std::nullopt;
