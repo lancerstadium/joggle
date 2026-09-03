@@ -17,23 +17,23 @@ module buffer@1.0.0 {
   }
 
   fn start() -> token;
-  fn alloc<E: prelude.scalar, S: list<int>, Space: string>(
+  fn alloc<E: type, S: list<int>, Space: string>(
     chain: token,
     shape: S,
     space: Space = ""
   ) -> (buffer<E, S, Space>, token) : allocates;
-  fn read<E: prelude.scalar, S: list<int>, Space: string>(
+  fn read<E: type, S: list<int>, Space: string>(
     chain: token,
     source: buffer<E, S, Space>,
-    indices: list<int>
+    indices: index...
   ) -> (E, token) : reads;
-  fn write<E: prelude.scalar, S: list<int>, Space: string>(
+  fn write<E: type, S: list<int>, Space: string>(
     chain: token,
     value: E,
     destination: buffer<E, S, Space>,
-    indices: list<int>
+    indices: index...
   ) -> token : writes;
-  fn copy<E: prelude.scalar, S: list<int>, From: string, To: string>(
+  fn copy<E: type, S: list<int>, From: string, To: string>(
     chain: token,
     source: buffer<E, S, From>,
     destination: buffer<E, S, To>

@@ -31,12 +31,10 @@ struct Estimate {
 int main() {
   joggle::Compiler compiler;
   compiler.load(JOGGLE_TEST_MODULE);
-  compiler.load(JOGGLE_IR_MODULE);
   compiler.add(R"(
 joggle 1;
 module pipeline@1.0.0 {
   import test_ir@1;
-  import ir@1;
   type word(width: int);
   type flag(enabled: bool);
   fn read(input: bytes) -> function;
@@ -65,7 +63,7 @@ module pipeline@1.0.0 {
   fn logical_or(lhs: bool, rhs: bool) -> bool as || {
     return if lhs { true } else { rhs };
   }
-  fn module_identity(input: ir.module) -> ir.module;
+  fn module_identity(input: program) -> program;
   fn convert_word(input: test_ir.integer<8>) -> test_ir.integer<8>;
   fn convert_word(input: test_ir.integer<16>) -> test_ir.integer<16>;
   fn configured_copy(input: test_ir.integer<8>, tag: int = 7)
@@ -306,9 +304,6 @@ module pipeline@1.0.0 {
   const auto fork = pipeline ? pipeline->function("fork") : std::nullopt;
   const auto relay_fork =
       pipeline ? pipeline->function("relay_fork") : std::nullopt;
-  const auto ir_module = compiler.module("ir");
-  const auto ir_module_schema =
-      ir_module ? ir_module->type("module") : std::nullopt;
   if (!integer_decl || !arith_cast_decl || !format_decl || !canonicalize ||
       !clean || !read || !emit || !inspect || !compile || !consume ||
       !module_identity || convert_words.size() != 2U || !configured_copy ||
@@ -322,7 +317,7 @@ module pipeline@1.0.0 {
       !text_relation_typed || !overload_typed || !default_typed ||
       !staged_overload || !use_twice || !use_operator ||
       !divide || !divide_exact || !observe || !observe_once ||
-      !fork || !relay_fork || !ir_module_schema) {
+      !fork || !relay_fork) {
     return EXIT_FAILURE;
   }
   const auto integer = compiler.make(*integer_decl, std::int64_t{8});
@@ -441,9 +436,6 @@ module pipeline@1.0.0 {
         return value;
       },
       joggle::HostEvaluation::Hermetic);
-  if (!compiler.represent<joggle::ir::Module>(*ir_module_schema)) {
-    return EXIT_FAILURE;
-  }
   ok &= expect(
       compiler.invocable<joggle::ir::Module, joggle::ir::Module>(
           *module_identity) &&
@@ -671,7 +663,7 @@ module pipeline@1.0.0 {
                    program.function("main")->arguments().empty() &&
                    copied_program->function("main")->arguments().size() ==
                        1U,
-               "an extension-owned ir.module flows through an ordinary fn "
+               "the builtin program value flows through an ordinary fn "
                "with deep-copy isolation");
 
   constexpr std::string_view guarded_source = R"(

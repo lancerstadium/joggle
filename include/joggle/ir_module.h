@@ -13,7 +13,7 @@ namespace joggle::ir {
 
 // A named set of executable Functions. Vocabulary and package declarations
 // remain in joggle::Module; this value is the transformable IR artifact that
-// may flow through the installable `ir.module` type. Copies share immutable
+// flows through Prelude's builtin `program` type. Copies share immutable
 // Functions and detach a Function on first mutable access.
 class Module {
 public:

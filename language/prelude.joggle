@@ -1,9 +1,10 @@
 joggle 1;
 
-module prelude@1.2.0 {
+module prelude@1.4.0 {
   interface scalar: type {
     storage_bits: int;
   }
+  interface numeric: type;
   interface integer: type;
   interface signed_integer: type;
   interface unsigned_integer: type;
@@ -20,48 +21,49 @@ module prelude@1.2.0 {
   type attr();
   type bytes();
   type function();
+  type program();
   type callable(inputs: list<type>, results: list<type>);
   type list(element: type);
   type i1() : scalar, logical {
     storage_bits = 1;
   }
-  type i8() : scalar, integer, signed_integer {
+  type i8() : scalar, numeric, integer, signed_integer {
     storage_bits = 8;
   }
-  type i16() : scalar, integer, signed_integer {
+  type i16() : scalar, numeric, integer, signed_integer {
     storage_bits = 16;
   }
-  type i32() : scalar, integer, signed_integer {
+  type i32() : scalar, numeric, integer, signed_integer {
     storage_bits = 32;
   }
-  type i64() : scalar, integer, signed_integer {
+  type i64() : scalar, numeric, integer, signed_integer {
     storage_bits = 64;
   }
-  type u8() : scalar, integer, unsigned_integer {
+  type u8() : scalar, numeric, integer, unsigned_integer {
     storage_bits = 8;
   }
-  type u16() : scalar, integer, unsigned_integer {
+  type u16() : scalar, numeric, integer, unsigned_integer {
     storage_bits = 16;
   }
-  type u32() : scalar, integer, unsigned_integer {
+  type u32() : scalar, numeric, integer, unsigned_integer {
     storage_bits = 32;
   }
-  type u64() : scalar, integer, unsigned_integer {
+  type u64() : scalar, numeric, integer, unsigned_integer {
     storage_bits = 64;
   }
-  type f16() : scalar, floating_point {
+  type f16() : scalar, numeric, floating_point {
     storage_bits = 16;
   }
-  type bf16() : scalar, floating_point {
+  type bf16() : scalar, numeric, floating_point {
     storage_bits = 16;
   }
-  type f32() : scalar, floating_point {
+  type f32() : scalar, numeric, floating_point {
     storage_bits = 32;
   }
-  type f64() : scalar, floating_point {
+  type f64() : scalar, numeric, floating_point {
     storage_bits = 64;
   }
-  type index() : integer, unsigned_integer, index_type;
+  type index() : numeric, integer, unsigned_integer, index_type;
 
   fn positive(value: int) -> int as +;
   fn positive(value: real) -> real as +;

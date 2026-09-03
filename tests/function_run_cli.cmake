@@ -1,8 +1,7 @@
 if(NOT DEFINED JOGGLE_CLI OR NOT DEFINED JOGGLE_SOURCE OR
    NOT DEFINED JOGGLE_OUTPUT OR NOT DEFINED JOGGLE_BEHAVIOR_SOURCE OR
    NOT DEFINED JOGGLE_BEHAVIOR OR NOT DEFINED JOGGLE_TARGET OR
-   NOT DEFINED JOGGLE_IR_MODULE OR NOT DEFINED JOGGLE_IR_TRANSFORM OR
-   NOT DEFINED JOGGLE_IR_TRANSFORM_BEHAVIOR)
+   NOT DEFINED JOGGLE_IR_TRANSFORM OR NOT DEFINED JOGGLE_IR_TRANSFORM_BEHAVIOR)
   message(FATAL_ERROR "function run test arguments are incomplete")
 endif()
 
@@ -44,7 +43,6 @@ set(module_output "${JOGGLE_OUTPUT}.module")
 execute_process(
   COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" main
           ir_transform.add_helper
-          --with "${JOGGLE_IR_MODULE}"
           --with "${JOGGLE_IR_TRANSFORM}"
           --load-behavior
           "ir_transform=${JOGGLE_IR_TRANSFORM_BEHAVIOR}"
@@ -53,7 +51,7 @@ execute_process(
   ERROR_VARIABLE module_error
 )
 if(NOT module_result EQUAL 0)
-  message(FATAL_ERROR "ir.module pipeline failed:\n${module_error}")
+  message(FATAL_ERROR "program pipeline failed:\n${module_error}")
 endif()
 file(READ "${module_output}" module_program)
 string(FIND "${module_program}" "fn helper()" module_helper_position)
@@ -64,7 +62,7 @@ if(module_helper_position EQUAL -1 OR module_main_position EQUAL -1 OR
    module_import_position EQUAL -1 OR
    NOT module_helper_position LESS module_main_position)
   message(FATAL_ERROR
-    "ir.module transform did not publish a canonical multi-function artifact:\n"
+    "program transform did not publish a canonical multi-function artifact:\n"
     "${module_program}")
 endif()
 

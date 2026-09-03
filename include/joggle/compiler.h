@@ -803,6 +803,7 @@ private:
                          std::string_view type) const;
   void bind_native(Module::FunctionDecl schema, NativeFunction function,
                  HostEvaluation evaluation);
+  void bind_prelude_program();
   void bind_prelude_primitives();
   bool check_binding_signature(
       const Module::FunctionDecl& schema,

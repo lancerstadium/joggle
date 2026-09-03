@@ -2,20 +2,17 @@ joggle 1;
 
 module nn_pipeline@1.0.0 {
   import example_accel@1.0.0;
-  import ir@1.0.0;
   import nn@1.0.0;
 
-  fn map_relu(input: ir.module) -> ir.module;
-  fn emit_joggle(input: ir.module) -> bytes;
-
-  fn prepare(input: ir.module, use_accel: bool) -> ir.module {
+  fn map_relu(input: program) -> program;
+  fn emit_joggle(input: program) -> bytes;
+  fn prepare(input: program, use_accel: bool) -> program {
     if use_accel {
       return map_relu(input);
     }
     return input;
   }
-
-  fn compile(input: ir.module, use_accel: bool) -> bytes {
+  fn compile(input: program, use_accel: bool) -> bytes {
     return emit_joggle(prepare(input, use_accel));
   }
 }

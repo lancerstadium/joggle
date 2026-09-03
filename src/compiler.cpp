@@ -8,6 +8,7 @@
 #include "function_body.h"
 #include "ir_internal.h"
 #include "joggle/behavior.h"
+#include "joggle/ir_module.h"
 #include "module_internal.h"
 #include "module_repository.h"
 #include "prelude.h"
@@ -523,6 +524,7 @@ Compiler::Compiler(EvaluationLimits limits) : state_(std::make_unique<State>()) 
                               state_->diagnostics, "<prelude>");
   if (prelude) {
     add_module(std::move(*prelude), false, std::nullopt);
+    bind_prelude_program();
     bind_prelude_primitives();
   }
 }
@@ -2164,6 +2166,27 @@ void Compiler::bind_native(Module::FunctionDecl schema, NativeFunction function,
                                symbol.qualified_name() +
                                "' already has a binding");
   }
+}
+
+void Compiler::bind_prelude_program() {
+  const auto found = state_->modules.find(detail::prelude_module_name);
+  const auto program = found == state_->modules.end()
+                           ? std::optional<Module::TypeDecl>{}
+                           : found->second.type("program");
+  if (!program) {
+    state_->diagnostics.report("Prelude does not declare type 'program'");
+    return;
+  }
+  const std::string cpp_type(detail::host_type_name<ir::Module>());
+  const auto projector = [](Compiler& compiler,
+                            const Module::TypeDecl& declaration,
+                            const void*) {
+    return compiler.make(declaration);
+  };
+  state_->host_types.emplace(
+      cpp_type, State::HostRepresentation{*program, projector});
+  state_->host_representations.emplace(program->symbol().stable_name(),
+                                       cpp_type);
 }
 
 void Compiler::bind_prelude_primitives() {

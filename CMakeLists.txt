@@ -8,13 +8,13 @@ option(JOGGLE_BUILD_TESTS "Build Joggle tests" ON)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/modules/prelude.joggle"
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/language/prelude.joggle"
   JOGGLE_PRELUDE_SOURCE)
 string(FIND "${JOGGLE_PRELUDE_SOURCE}" ")JOGGLE\""
   JOGGLE_PRELUDE_DELIMITER)
 if(NOT JOGGLE_PRELUDE_DELIMITER EQUAL -1)
   message(FATAL_ERROR
-    "modules/prelude.joggle contains the reserved embed delimiter")
+    "language/prelude.joggle contains the reserved embed delimiter")
 endif()
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
 configure_file(src/prelude_source.cpp.in
@@ -84,6 +84,8 @@ install(DIRECTORY include/joggle DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(DIRECTORY modules/
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules
   FILES_MATCHING PATTERN "*.joggle" PATTERN "README.md")
+install(FILES language/prelude.joggle
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/language)
 install(EXPORT JoggleTargets
   FILE JoggleTargets.cmake
   NAMESPACE joggle::
@@ -161,6 +163,7 @@ if(JOGGLE_BUILD_TESTS)
   add_executable(joggle_nn_test tests/nn_test.cpp)
   target_link_libraries(joggle_nn_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_nn_test PRIVATE
+    JOGGLE_ARITH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/arith.joggle"
     JOGGLE_TENSOR_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/tensor.joggle"
     JOGGLE_BUFFER_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/buffer.joggle"
     JOGGLE_NN_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/nn.joggle"
@@ -172,6 +175,7 @@ if(JOGGLE_BUILD_TESTS)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/resnet18_basic_block.joggle
       --with ${CMAKE_CURRENT_SOURCE_DIR}/modules/nn.joggle
       --with ${CMAKE_CURRENT_SOURCE_DIR}/modules/tensor.joggle
+      --with ${CMAKE_CURRENT_SOURCE_DIR}/modules/arith.joggle
   )
 
   joggle_add_behavior(joggle_nn_pipeline_behavior
@@ -184,9 +188,9 @@ if(JOGGLE_BUILD_TESTS)
   add_executable(joggle_nn_pipeline_test tests/nn_pipeline_test.cpp)
   target_link_libraries(joggle_nn_pipeline_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_nn_pipeline_test PRIVATE
+    JOGGLE_ARITH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/arith.joggle"
     JOGGLE_TENSOR_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/tensor.joggle"
     JOGGLE_NN_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/nn.joggle"
-    JOGGLE_IR_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/ir.joggle"
     JOGGLE_RESNET_BLOCK="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/resnet18_basic_block.joggle"
     JOGGLE_EXAMPLE_ACCEL_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/nn_pipeline/example_accel.joggle"
     JOGGLE_NN_PIPELINE_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/nn_pipeline/nn_pipeline.joggle"
@@ -206,7 +210,6 @@ if(JOGGLE_BUILD_TESTS)
       -DJOGGLE_BEHAVIOR_SOURCE=${CMAKE_CURRENT_BINARY_DIR}/behavior_plugin.joggle
       -DJOGGLE_BEHAVIOR=$<TARGET_FILE:joggle_test_behavior>
       -DJOGGLE_TARGET=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/function_target.joggle
-      -DJOGGLE_IR_MODULE=${CMAKE_CURRENT_SOURCE_DIR}/modules/ir.joggle
       -DJOGGLE_IR_TRANSFORM=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/ir_transform.joggle
       -DJOGGLE_IR_TRANSFORM_BEHAVIOR=$<TARGET_FILE:joggle_ir_transform_behavior>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/function_run_cli.cmake
@@ -259,14 +262,13 @@ if(JOGGLE_BUILD_TESTS)
   add_executable(joggle_prelude_test tests/prelude_test.cpp)
   target_link_libraries(joggle_prelude_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_prelude_test PRIVATE
-    JOGGLE_PRELUDE_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/prelude.joggle")
+    JOGGLE_PRELUDE_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/language/prelude.joggle")
   add_test(NAME prelude COMMAND joggle_prelude_test)
 
   add_executable(joggle_compiler_function_test tests/compiler_function_test.cpp)
   target_link_libraries(joggle_compiler_function_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_compiler_function_test PRIVATE
     JOGGLE_TEST_MODULE="${JOGGLE_TEST_MODULE}"
-    JOGGLE_IR_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/ir.joggle"
     JOGGLE_TEST_BEHAVIOR="$<TARGET_FILE:joggle_compiler_test_behavior>"
   )
   add_test(NAME compiler_function COMMAND joggle_compiler_function_test)

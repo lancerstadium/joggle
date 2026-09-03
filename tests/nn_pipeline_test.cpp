@@ -48,9 +48,9 @@ std::size_t calls(const joggle::ir::Module& module, std::string_view symbol) {
 
 int main() {
   joggle::Compiler compiler;
+  compiler.load(JOGGLE_ARITH_MODULE);
   compiler.load(JOGGLE_TENSOR_MODULE);
   compiler.load(JOGGLE_NN_MODULE);
-  compiler.load(JOGGLE_IR_MODULE);
   compiler.load(JOGGLE_RESNET_BLOCK);
   compiler.load(JOGGLE_EXAMPLE_ACCEL_MODULE);
   compiler.load(JOGGLE_NN_PIPELINE_MODULE);
@@ -59,16 +59,13 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  const auto ir = compiler.module("ir");
-  const auto ir_module = ir ? ir->type("module") : std::nullopt;
   const auto prepare = compiler.module("nn_pipeline");
   const auto prepare_function =
       prepare ? prepare->function("prepare") : std::nullopt;
   const auto compile_function =
       prepare ? prepare->function("compile") : std::nullopt;
   auto block = compiler.function("resnet18_basic_block.main");
-  if (!ir_module || !prepare_function || !compile_function || !block ||
-      !compiler.represent<joggle::ir::Module>(*ir_module) ||
+  if (!prepare_function || !compile_function || !block ||
       !compiler.load_behavior("nn_pipeline", JOGGLE_NN_PIPELINE_BEHAVIOR)) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;

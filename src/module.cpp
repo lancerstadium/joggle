@@ -511,7 +511,7 @@ private:
     return result;
   }
 
-  std::vector<ParsedModule::GenericDefinition> operation_generics() {
+  std::vector<ParsedModule::GenericDefinition> function_generics() {
     std::vector<ParsedModule::GenericDefinition> result;
     if (!match(TokenKind::Less)) {
       return result;
@@ -545,8 +545,8 @@ private:
   }
 
   const ParsedModule::GenericDefinition*
-  operation_generic(std::span<const ParsedModule::GenericDefinition> generics,
-                    std::string_view name) const {
+  find_generic(std::span<const ParsedModule::GenericDefinition> generics,
+               std::string_view name) const {
     const auto found =
         std::find_if(generics.begin(), generics.end(),
                      [&](const auto& item) { return item.name == name; });
@@ -560,7 +560,7 @@ private:
       return false;
     }
     if (annotation.kind == ParsedModule::TypeExpression::Kind::Variable) {
-      const auto* generic = operation_generic(generics, annotation.text);
+      const auto* generic = find_generic(generics, annotation.text);
       const auto domain = generic == nullptr
                               ? std::optional<detail::Domain>{}
                               : detail::kernel_domain(generic->domain);
@@ -579,7 +579,7 @@ private:
   }
 
   std::vector<ParsedModule::TypeExpression>
-  operation_results(std::span<const ParsedModule::GenericDefinition> generics) {
+  function_results(std::span<const ParsedModule::GenericDefinition> generics) {
     std::vector<ParsedModule::TypeExpression> result;
     const auto starts_function_type = [&] {
       if (!is(TokenKind::LeftParen)) {
@@ -768,7 +768,7 @@ private:
     std::optional<Module::FunctionDecl::Fixity> declared_fixity;
     expect_name("fn");
     auto function_name = name("a function name");
-    auto generics = operation_generics();
+    auto generics = function_generics();
     std::vector<Parameter> inputs;
     std::vector<std::optional<ParsedModule::TypeExpression>> input_bindings;
     std::vector<bool> ir_inputs;
@@ -787,7 +787,7 @@ private:
         if (!ir_input && !detail::kernel_domain(input.domain)) {
           const auto* generic =
               input.domain.kind == ParsedModule::TypeExpression::Kind::Variable
-                  ? operation_generic(generics, input.domain.text)
+                  ? find_generic(generics, input.domain.text)
                   : nullptr;
           if (generic == nullptr) {
             error("a compile-time parameter annotation must name its domain "
@@ -823,7 +823,7 @@ private:
 
     std::vector<ParsedModule::TypeExpression> result_types;
     if (match(TokenKind::Arrow)) {
-      result_types = operation_results(generics);
+      result_types = function_results(generics);
     }
     if (match_name("as")) {
       if (match_name("prefix")) {
@@ -1008,7 +1008,7 @@ private:
       return;
     }
     if (expression.kind == Kind::Variable) {
-      const auto* variable = operation_generic(variables, expression.text);
+      const auto* variable = find_generic(variables, expression.text);
       if (variable == nullptr || variable->domain != expected) {
         report("type variable '" + expression.text +
                "' has the wrong domain in " + std::string(owner));
@@ -1060,7 +1060,7 @@ private:
       const std::size_t field_dot = expression.text.find('.');
       if (field_dot != std::string::npos) {
         const std::string_view receiver(expression.text.data(), field_dot);
-        const auto* generic = operation_generic(variables, receiver);
+        const auto* generic = find_generic(variables, receiver);
         if (generic != nullptr) {
           if (!generic->constraint) {
             report("generic '" + std::string(receiver) +
@@ -1142,7 +1142,7 @@ private:
                   const auto& argument = expression.arguments[index];
                   const auto* variable =
                       argument.kind == Kind::Variable
-                          ? operation_generic(variables, argument.text)
+                          ? find_generic(variables, argument.text)
                           : nullptr;
                   if (variable != nullptr &&
                       candidate->inputs[index].domain != variable->domain) {

@@ -1,7 +1,5 @@
 joggle 1;
 
 module ir_transform@1.0.0 {
-  import ir@1.0.0;
-
-  fn add_helper(input: ir.module) -> ir.module;
+  fn add_helper(input: program) -> program;
 }

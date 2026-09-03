@@ -30,6 +30,7 @@ std::string read(std::string_view path) {
 
 int main() {
   joggle::Compiler compiler;
+  compiler.load(JOGGLE_ARITH_MODULE);
   compiler.load(JOGGLE_TENSOR_MODULE);
   compiler.load(JOGGLE_BUFFER_MODULE);
   compiler.load(JOGGLE_NN_MODULE);
@@ -58,6 +59,16 @@ module projected_schema@1.0.0 {
     result = describe_buffer(input);
     return result;
   }
+
+  fn dynamic_read(
+    input: buffer.buffer<f32, [2, 3], "sram">,
+    row: index,
+    column: index
+  ) -> f32 {
+    chain = buffer.start();
+    value, chain = buffer.read(chain, input, row, column);
+    return value;
+  }
 }
 )",
                "projected-schema.joggle");
@@ -71,7 +82,9 @@ module projected_schema@1.0.0 {
   const auto function = compiler.function("resnet18_basic_block.main");
   const auto tensor_value = compiler.function("projected_schema.tensor_value");
   const auto storage_value = compiler.function("projected_schema.storage_value");
-  if (!nn || !model || !function || !tensor_value || !storage_value) {
+  const auto dynamic_read = compiler.function("projected_schema.dynamic_read");
+  if (!nn || !model || !function || !tensor_value || !storage_value ||
+      !dynamic_read) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -123,6 +136,13 @@ module projected_schema@1.0.0 {
               std::optional<std::vector<std::int64_t>>{{2, 3}} &&
           derived_space == std::optional<std::string>{"sram"},
       "type, list, and string fields flow through one parameter system");
+  const auto memory_instructions = dynamic_read->instructions();
+  ok &= expect(
+      memory_instructions.size() == 2U &&
+          memory_instructions.back().callee().symbol().qualified_name() ==
+              "buffer.read" &&
+          memory_instructions.back().arguments().size() == 4U,
+      "buffer accesses accept dynamic variadic index values");
   ok &= expect(joggle::format(*nn) == read(JOGGLE_NN_MODULE) &&
                    joggle::format(*model) == read(JOGGLE_RESNET_BLOCK),
                "the NN vocabulary and model fixture are canonical, "

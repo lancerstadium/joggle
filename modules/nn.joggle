@@ -1,9 +1,9 @@
 joggle 1;
 
 module nn@1.0.0 {
+  import arith@1.0.0;
   import tensor@1.0.0;
 
-  interface elementwise: fn;
   interface activation: fn;
   interface normalization: fn;
   interface pooling: fn;
@@ -18,15 +18,15 @@ module nn@1.0.0 {
   ) -> int {
     return (input + pad_before + pad_after - dilation * (kernel - 1) - 1) / stride + 1;
   }
-  fn relu<E: prelude.scalar, S: list<int>>(
+  fn relu<E: prelude.numeric, S: list<int>>(
     input: tensor.ranked<E, S>
-  ) -> tensor.ranked<E, S> : elementwise, activation;
-  fn add<E: prelude.scalar, S: list<int>>(
+  ) -> tensor.ranked<E, S> : arith.elementwise, activation;
+  fn add<E: prelude.numeric, S: list<int>>(
     lhs: tensor.ranked<E, S>,
     rhs: tensor.ranked<E, S>
-  ) -> tensor.ranked<E, S> as + : elementwise;
+  ) -> tensor.ranked<E, S> as + : arith.elementwise;
   fn conv2d_nchw<
-    E: prelude.scalar,
+    E: prelude.numeric,
     N: int,
     C: int,
     H: int,
@@ -58,7 +58,7 @@ module nn@1.0.0 {
       E,
       [N, O, @conv_extent(H, KH, SH, DH, PT, PB), @conv_extent(W, KW, SW, DW, PL, PR)]
     >;
-  fn batch_norm_nchw<E: prelude.scalar, N: int, C: int, H: int, W: int>(
+  fn batch_norm_nchw<E: prelude.numeric, N: int, C: int, H: int, W: int>(
     input: tensor.ranked<E, [N, C, H, W]>,
     scale: tensor.ranked<E, [C]>,
     bias: tensor.ranked<E, [C]>,
@@ -67,7 +67,7 @@ module nn@1.0.0 {
     epsilon: real = 1e-05
   ) -> tensor.ranked<E, [N, C, H, W]> : normalization;
   fn max_pool2d_nchw<
-    E: prelude.scalar,
+    E: prelude.numeric,
     N: int,
     C: int,
     H: int,
@@ -99,18 +99,18 @@ module nn@1.0.0 {
       E,
       [N, C, @conv_extent(H, KH, SH, DH, PT, PB), @conv_extent(W, KW, SW, DW, PL, PR)]
     > : pooling;
-  fn global_average_pool_nchw<E: prelude.scalar, N: int, C: int, H: int, W: int>(
+  fn global_average_pool_nchw<E: prelude.numeric, N: int, C: int, H: int, W: int>(
     input: tensor.ranked<E, [N, C, H, W]>
   ) -> tensor.ranked<E, [N, C, 1, 1]> : pooling;
-  fn flatten_nchw<E: prelude.scalar, N: int, C: int, H: int, W: int>(
+  fn flatten_nchw<E: prelude.numeric, N: int, C: int, H: int, W: int>(
     input: tensor.ranked<E, [N, C, H, W]>
   ) -> tensor.ranked<E, [N, C * H * W]>;
-  fn linear<E: prelude.scalar, N: int, K: int, M: int>(
+  fn linear<E: prelude.numeric, N: int, K: int, M: int>(
     input: tensor.ranked<E, [N, K]>,
     weight: tensor.ranked<E, [M, K]>,
     bias: tensor.ranked<E, [M]>
   ) -> tensor.ranked<E, [N, M]>;
-  fn softmax<E: prelude.scalar, S: list<int>>(
+  fn softmax<E: prelude.numeric, S: list<int>>(
     input: tensor.ranked<E, S>,
     axis: int
   ) -> tensor.ranked<E, S> : activation;

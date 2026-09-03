@@ -380,7 +380,7 @@ transform(joggle::Compiler& compiler, std::string_view qualified,
   }
   if (matches.size() != 1U) {
     diagnostics.report(matches.empty()
-                           ? "no unary Function or ir.module transform named '" +
+                           ? "no unary Function or program transform named '" +
                                  std::string(qualified) + "'"
                            : "transform name '" + std::string(qualified) +
                                  "' is ambiguous");
@@ -512,13 +512,6 @@ int main(int argc, char** argv) {
     }
     if (!compiler.link()) {
       return fail(compiler.diagnostics());
-    }
-    if (const auto ir = compiler.module("ir")) {
-      const auto module_type = ir->type("module");
-      if (!module_type ||
-          !compiler.represent<joggle::ir::Module>(*module_type)) {
-        return fail(compiler.diagnostics());
-      }
     }
     if (parsed.behavior &&
         !compiler.load_behavior(root->name(), *parsed.behavior)) {

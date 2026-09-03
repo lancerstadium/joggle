@@ -1,12 +1,12 @@
 joggle 1;
 
 module tensor@1.0.0 {
+  import arith@1.0.0;
+
   interface ranked_tensor: type {
     element_type: type;
     shape: list<int>;
   }
-  interface elementwise: fn;
-  interface shape_only: fn;
 
   type ranked(element: type, shape: list<int>) : ranked_tensor {
     element_type = element;
@@ -15,17 +15,18 @@ module tensor@1.0.0 {
 
   fn cast<From: prelude.scalar, To: prelude.scalar, S: list<int>>(
     input: ranked<From, S>
-  ) -> ranked<To, S> : elementwise;
-  fn reshape<E: prelude.scalar, From: list<int>, To: list<int>>(
+  ) -> ranked<To, S> : arith.elementwise;
+  fn reshape<E: type, From: list<int>, To: list<int>>(
     input: ranked<E, From>,
     shape: To
-  ) -> ranked<E, To> : shape_only;
-  fn transpose<E: prelude.scalar, From: list<int>, To: list<int>>(
+  ) -> ranked<E, To>;
+  fn transpose<E: type, From: list<int>, To: list<int>, P: list<int>>(
     input: ranked<E, From>,
-    permutation: To
-  ) -> ranked<E, To> : shape_only;
-  fn broadcast<E: prelude.scalar, From: list<int>, To: list<int>>(
+    permutation: P,
+    output_shape: To
+  ) -> ranked<E, To>;
+  fn broadcast<E: type, From: list<int>, To: list<int>>(
     input: ranked<E, From>,
     shape: To
-  ) -> ranked<E, To> : shape_only;
+  ) -> ranked<E, To>;
 }
