@@ -173,6 +173,26 @@ if(JOGGLE_BUILD_TESTS)
       --with ${CMAKE_CURRENT_SOURCE_DIR}/modules/tensor.joggle
   )
 
+  joggle_add_behavior(joggle_nn_pipeline_behavior
+    MODULE examples/nn_pipeline/nn_pipeline.joggle
+    SOURCES examples/nn_pipeline/behavior.cpp)
+  set_target_properties(joggle_nn_pipeline_behavior PROPERTIES
+    PREFIX ""
+    OUTPUT_NAME "nn_pipeline"
+  )
+  add_executable(joggle_nn_pipeline_test tests/nn_pipeline_test.cpp)
+  target_link_libraries(joggle_nn_pipeline_test PRIVATE joggle::joggle)
+  target_compile_definitions(joggle_nn_pipeline_test PRIVATE
+    JOGGLE_TENSOR_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/tensor.joggle"
+    JOGGLE_NN_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/nn.joggle"
+    JOGGLE_IR_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/ir.joggle"
+    JOGGLE_RESNET_BLOCK="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/resnet18_basic_block.joggle"
+    JOGGLE_EXAMPLE_ACCEL_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/nn_pipeline/example_accel.joggle"
+    JOGGLE_NN_PIPELINE_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/examples/nn_pipeline/nn_pipeline.joggle"
+    JOGGLE_NN_PIPELINE_BEHAVIOR="$<TARGET_FILE:joggle_nn_pipeline_behavior>"
+  )
+  add_test(NAME nn_pipeline COMMAND joggle_nn_pipeline_test)
+
   add_test(NAME function_cli
     COMMAND $<TARGET_FILE:joggle_cli> check
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/function_cli.joggle

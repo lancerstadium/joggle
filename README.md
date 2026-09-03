@@ -107,3 +107,6 @@ Start with [the design](docs/design.md),
 [IR Modules](docs/ir-modules.md), [passes](docs/passes.md), and
 [the C++ API](docs/cpp-api.md). Package identity and behavior libraries are
 specified in [packages](docs/packages.md) and [bindings](docs/bindings.md).
+The [NN pipeline example](examples/nn_pipeline) shows a source-defined compiler
+branch composing a multi-Function transform and emitter without Graph or
+Region syntax.

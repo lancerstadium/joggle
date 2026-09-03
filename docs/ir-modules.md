@@ -108,3 +108,8 @@ property of the called function and the types at that call site.
 5. Put cross-vocabulary relations in bridge Modules instead of creating cyclic
    imports.
 6. Treat canonical source, semantic version, and digest as package identity.
+
+The [NN pipeline example](../examples/nn_pipeline) applies these rules to a
+multi-Function ResNet fragment. A Joggle-defined `fn` chooses a transformation
+with ordinary `if`, while separately bound functions perform the structural
+rewrite and canonical emission.
