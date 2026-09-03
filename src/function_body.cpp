@@ -896,11 +896,13 @@ class Instantiator {
 public:
   Instantiator(Compiler& compiler, Module::FunctionDecl function,
                const detail::FunctionBody& body, Diagnostics& diagnostics,
-               std::vector<Value> known_arguments)
+               std::vector<Value> known_arguments,
+               detail::KnownBindings bindings)
       : compiler_(compiler), declaration_(std::move(function)), body_(body),
         owner_(declaration_.symbol().module_name()), diagnostics_(diagnostics),
         initial_diagnostics_(diagnostics.size()),
-        supplied_known_(std::move(known_arguments)) {}
+        supplied_known_(std::move(known_arguments)),
+        supplied_bindings_(std::move(bindings)) {}
 
   std::optional<Function> instantiate() {
     function_ = compiler_.create_function();
@@ -911,7 +913,7 @@ public:
     const auto parameters = declaration_.inputs();
     std::vector<std::optional<detail::StagedValue>> known_parameters(
         parameters.size());
-    detail::KnownBindings bindings;
+    detail::KnownBindings bindings = supplied_bindings_;
     std::size_t supplied = 0;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
       if (detail::is_value_port(parameters[index])) {
@@ -2788,8 +2790,19 @@ private:
         return next(block);
       }
       auto expected = expected_type(statement.bindings.front());
-      if (auto value = use(statement.expression, std::move(expected))) {
-        bind(statement.bindings.front(), std::move(*value));
+      if (auto value = use(statement.expression, expected)) {
+        if (expected && value->type() != *expected) {
+          if (value->known()) {
+            value = materialize(*value, *expected, block, statement.range);
+          } else {
+            report("referenced value does not match its annotated type",
+                   statement.range);
+            value.reset();
+          }
+        }
+        if (value) {
+          bind(statement.bindings.front(), std::move(*value));
+        }
       }
       return next(block);
     }
@@ -3117,6 +3130,7 @@ private:
   std::size_t residual_control_depth_ = 0;
   std::size_t loop_iterations_ = 0;
   std::vector<Value> supplied_known_;
+  detail::KnownBindings supplied_bindings_;
 };
 
 class RuntimeSyntax {
@@ -3661,9 +3675,10 @@ FunctionSyntax materialized_function_syntax(const Function& function,
 std::optional<Function>
 instantiate_function(Compiler& compiler, Module::FunctionDecl function,
                      const FunctionBody& body, Diagnostics& diagnostics,
-                     std::vector<Value> known_arguments) {
+                     std::vector<Value> known_arguments,
+                     KnownBindings bindings) {
   return Instantiator(compiler, std::move(function), body, diagnostics,
-                      std::move(known_arguments))
+                      std::move(known_arguments), std::move(bindings))
       .instantiate();
 }
 

@@ -13,6 +13,7 @@ namespace joggle::detail {
 struct CallTypes {
   std::vector<Type> arguments;
   std::vector<Type> results;
+  KnownBindings bindings;
 };
 
 std::optional<ParameterValue> evaluate_known_expression(

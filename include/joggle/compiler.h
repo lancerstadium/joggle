@@ -564,6 +564,9 @@ public:
   std::optional<Function> materialize(std::string_view name);
   std::optional<Function> materialize(std::string_view name,
                                       std::vector<Value> known_arguments);
+  // Specializes a source-defined callee from one already typed call. Concrete
+  // operand, property, and result types recover the call's generic bindings.
+  std::optional<Function> materialize(const Op& call);
 
   bool conforms(const Module::TypeDecl& declaration,
                 const Module::InterfaceDecl& interface) const;

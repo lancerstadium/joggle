@@ -258,7 +258,8 @@ field_type_declaration(const Modules& modules,
     return std::nullopt;
   }
   const std::size_t dot = field.domain.text.find('.');
-  std::string_view module_name = function.symbol().module_name();
+  const Module::Symbol symbol = function.symbol();
+  std::string_view module_name = symbol.module_name();
   const auto owner = modules.find(module_name);
   if (dot != std::string::npos) {
     module_name = owner == modules.end()
@@ -1793,6 +1794,96 @@ Compiler::materialize(Module::Symbol symbol,
   return detail::instantiate_function(*this, *function, *definition,
                                       state_->diagnostics,
                                       std::move(known_arguments));
+}
+
+std::optional<Function> Compiler::materialize(const Op& call) {
+  if (!state_->linked) {
+    state_->diagnostics.report(
+        "cannot construct a function before the compiler is linked");
+    return std::nullopt;
+  }
+  if (!call.valid()) {
+    state_->diagnostics.report("cannot materialize an invalid call");
+    return std::nullopt;
+  }
+
+  const Module::FunctionDecl callee = call.callee();
+  const auto owner = state_->modules.find(callee.symbol().module_name());
+  if (owner == state_->modules.end() ||
+      owner->second.version() != callee.symbol().module_version() ||
+      owner->second.interface_digest() != callee.symbol().interface_digest()) {
+    state_->diagnostics.report("function '" +
+                               callee.symbol().qualified_name() +
+                               "' is not in this compilation");
+    return std::nullopt;
+  }
+  const auto overloads = owner->second.overloads(callee.name());
+  const auto declaration = std::find_if(
+      overloads.begin(), overloads.end(),
+      [&](const Module::FunctionDecl& candidate) {
+        return candidate.symbol() == callee.symbol() &&
+               candidate.form() == Module::FunctionDecl::Form::Body;
+      });
+  const auto definition =
+      declaration == overloads.end()
+          ? std::shared_ptr<const detail::FunctionBody>{}
+          : detail::ModuleAccess::body(owner->second, *declaration);
+  if (!definition) {
+    state_->diagnostics.report("function '" +
+                               callee.symbol().qualified_name() +
+                               "' has no source body");
+    return std::nullopt;
+  }
+
+  std::vector<Type> argument_types;
+  std::vector<Value> known_values;
+  std::vector<std::optional<detail::ParameterValue>> known_arguments;
+  known_arguments.reserve(detail::compiler_inputs(*declaration).size());
+  const auto parameters = declaration->inputs();
+  const auto arguments = call.arguments();
+  for (std::size_t index = 0; index < arguments.size(); ++index) {
+    const Value& argument = arguments[index];
+    const std::size_t parameter =
+        detail::FunctionAccess::argument_parameter(call, index);
+    if (parameter >= parameters.size()) {
+      state_->diagnostics.report("call to '" +
+                                 callee.symbol().qualified_name() +
+                                 "' has an invalid argument map");
+      return std::nullopt;
+    }
+    if (detail::is_value_port(parameters[parameter])) {
+      argument_types.push_back(argument.type());
+      continue;
+    }
+    const auto value = detail::FunctionAccess::known_value(argument);
+    if (!value) {
+      state_->diagnostics.report("call property '" + parameters[parameter].name +
+                                 "' is not Known");
+      return std::nullopt;
+    }
+    known_values.push_back(argument);
+    known_arguments.push_back(*value);
+  }
+  std::vector<std::optional<Type>> expected_results;
+  for (const Value& result : call.results()) {
+    expected_results.push_back(result.type());
+  }
+  const auto specialization = detail::resolve_call_types(
+      *this, *declaration, argument_types, known_arguments, expected_results,
+      state_->diagnostics, detail::FunctionAccess::location(call));
+  if (!specialization) {
+    return std::nullopt;
+  }
+  detail::KnownBindings generic_bindings;
+  for (const auto& generic : declaration->generics()) {
+    const auto binding = specialization->bindings.find(generic.name);
+    if (binding != specialization->bindings.end()) {
+      generic_bindings.emplace(binding->first, binding->second);
+    }
+  }
+  return detail::instantiate_function(
+      *this, *declaration, *definition, state_->diagnostics,
+      std::move(known_values), std::move(generic_bindings));
 }
 
 bool Compiler::conforms(const Module::TypeDecl& declaration,

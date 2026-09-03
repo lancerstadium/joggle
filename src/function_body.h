@@ -6,6 +6,7 @@
 #include <string_view>
 #include <vector>
 
+#include "execution.h"
 #include "joggle/diagnostic.h"
 #include "joggle/ir.h"
 
@@ -131,7 +132,8 @@ FunctionSyntax materialized_function_syntax(const Function& function,
 std::optional<Function>
 instantiate_function(Compiler& compiler, Module::FunctionDecl function,
                      const FunctionBody& body, Diagnostics& diagnostics,
-                     std::vector<Value> known_arguments = {});
+                     std::vector<Value> known_arguments = {},
+                     KnownBindings bindings = {});
 
 }  // namespace detail
 }  // namespace joggle

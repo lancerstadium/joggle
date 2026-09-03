@@ -393,6 +393,7 @@ public:
       }
       resolved.results.push_back(*value->as_type());
     }
+    resolved.bindings = std::move(bindings);
     return resolved;
   }
 
@@ -543,6 +544,9 @@ private:
         !environment_.conforms(type->schema(), *interface)) {
       if (interface) {
         report("type bound to '" + std::string(variable) +
+               "' as '" +
+               (type ? type->schema().symbol().qualified_name()
+                     : std::string{"<non-type>"}) +
                "' does not implement interface '" + *generic->constraint + "'");
       }
       return false;

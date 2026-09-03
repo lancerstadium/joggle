@@ -22,6 +22,12 @@ module logic@1.0.0 {
 
   fn source<T: type>(name: string, meta: attr) -> T;
   fn identity<T: type>(input: T) -> T;
+  fn generic_body<T: type>(input: T) -> T {
+    return identity(input);
+  }
+  fn generic_body_user(input: word<8>) -> word<8> {
+    return generic_body(input);
+  }
   fn add<T: type>(lhs: T, rhs: T) -> T;
   fn apply<T: type, U: type>(input: T, body: (T) -> U) -> U;
   fn apply_same<T: type>(input: T, body: (T) -> T) -> T;
@@ -117,6 +123,15 @@ int main() {
       default_configured_decl ? compiler.materialize(*default_configured_decl)
                               : std::nullopt;
   const auto callback_user = compiler.materialize("logic.callback_user");
+  const auto generic_body_user =
+      compiler.materialize("logic.generic_body_user");
+  const auto generic_body_call =
+      generic_body_user && generic_body_user->ops().size() == 1U
+          ? std::optional<joggle::Op>{generic_body_user->ops().front()}
+          : std::nullopt;
+  const auto generic_body = generic_body_call
+                                ? compiler.materialize(*generic_body_call)
+                                : std::nullopt;
   const auto callback_value = compiler.materialize("logic.callback_value");
   const auto generic_callback_value =
       compiler.materialize("logic.generic_callback_value");
@@ -164,6 +179,18 @@ int main() {
                    callback_user->ops().size() == 1U,
                "function type syntax constructs a reflected callable type "
                "and participates in generic call inference");
+  ok &= expect(generic_body_user && generic_body_call && generic_body &&
+                   compiler.verify(*generic_body) &&
+                   generic_body->arguments().size() == 1U &&
+                   generic_body->result_types().size() == 1U &&
+                   generic_body->arguments().front().type() ==
+                       generic_body->result_types().front() &&
+                   generic_body->arguments().front().type().get<std::int64_t>(
+                       "width") == std::optional<std::int64_t>{8} &&
+                   generic_body->ops().size() == 1U &&
+                   generic_body->ops().front().callee().name() == "identity",
+               "a concrete typed call recovers generic bindings and "
+               "materializes its source-defined callee body");
   const auto callback_operations = callback_value
                                        ? callback_value->ops()
                                        : std::vector<joggle::Op>{};
@@ -2207,6 +2234,11 @@ module staged_control@1.0.0 {
     }
     return current;
   }
+
+  fn materialize_index<N: int>(value: N) -> index {
+    result: index = N;
+    return result;
+  }
 }
 )";
   joggle::Diagnostics staged_control_parse_diagnostics;
@@ -2267,6 +2299,9 @@ module staged_control@1.0.0 {
   const auto residual_control_decl =
       staged_module ? staged_module->function("residual_control")
                     : std::nullopt;
+  const auto materialize_index_decl =
+      staged_module ? staged_module->function("materialize_index")
+                    : std::nullopt;
   const auto integer_type = staged_control.make("int");
   const auto prelude_module = staged_control.module("prelude");
   const auto list_decl =
@@ -2305,8 +2340,13 @@ module staged_control@1.0.0 {
       residual_control_decl && width
           ? staged_control.materialize(*residual_control_decl, {*width})
           : std::nullopt;
+  const auto materialized_index =
+      materialize_index_decl && width
+          ? staged_control.materialize(*materialize_index_decl, {*width})
+          : std::nullopt;
   if (!staged_control_linked || !specialized || !pipeline ||
-      !residual_count || !empty_residual_count || !residual_control) {
+      !residual_count || !empty_residual_count || !residual_control ||
+      !materialized_index) {
     staged_control.diagnostics().print(std::cerr);
   }
   ok &= expect(
@@ -2328,6 +2368,10 @@ module staged_control@1.0.0 {
           empty_residual_count->blocks().size() == 1U &&
           empty_residual_count->ops().empty() && residual_control &&
           staged_control.verify(*residual_control) &&
+          materialized_index && staged_control.verify(*materialized_index) &&
+          materialized_index->ops().size() == 1U &&
+          materialized_index->result_types().front().schema().name() ==
+              "index" &&
           specialized->arguments().front().type().get<std::int64_t>("width") ==
               std::optional<std::int64_t>{8} &&
           specialized->ops().size() == 1U &&

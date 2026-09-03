@@ -231,6 +231,13 @@ remain in the module in another. Host execution is bounded by the Compiler's
 step and depth limits. A binding marked non-Hermetic is not speculated below
 Residual control.
 
+A Residual call still identifies the source-defined `fn` that produced it.
+The C++ API can materialize that concrete `Op`: its already-resolved operand,
+property, and result types recover the generic bindings, then the same function
+body specializes into a standalone `Function`. This is the primitive needed
+by inlining, kernel inspection, and implementation-selection transforms; a
+generic operator body is not stranded behind an unresolved declaration.
+
 When a Known compiler payload must enter the module, the compiler selects one
 visible ordinary function implementing `prelude.literal` for the required
 module type. There is no built-in constant Op or materializer hook.

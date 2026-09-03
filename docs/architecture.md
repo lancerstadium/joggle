@@ -103,6 +103,12 @@ core has no `frontend`, `lower`, `analysis`, `pass`, or `backend` registry.
 Teams may use those words as project roles without making them language
 keywords.
 
+A typed Residual `Op` is also a complete specialization site. Materializing
+that call recovers only the callee's declared generic bindings from concrete
+operand, property, and result types, then instantiates its ordinary source
+body. This keeps reusable generic operator implementations executable without
+a Kernel object, dialect registry, or parallel template API.
+
 The CLI preserves the same rule. `joggle run` invokes one reflected function
 with a `bytes -> bytes`, `bytes -> module`, `module -> module`, or
 `module -> bytes` boundary; it does not accept an external list of specially
