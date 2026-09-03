@@ -1,13 +1,16 @@
-if(NOT DEFINED JOGGLE_CLI OR NOT DEFINED JOGGLE_SOURCE OR
-   NOT DEFINED JOGGLE_OUTPUT OR NOT DEFINED JOGGLE_BEHAVIOR_SOURCE OR
-   NOT DEFINED JOGGLE_BEHAVIOR OR NOT DEFINED JOGGLE_TARGET OR
-   NOT DEFINED JOGGLE_MODULE_TRANSFORM OR
-   NOT DEFINED JOGGLE_MODULE_TRANSFORM_BEHAVIOR)
-  message(FATAL_ERROR "function run test arguments are incomplete")
-endif()
+foreach(required JOGGLE_CLI JOGGLE_SOURCE JOGGLE_DEPENDENCY JOGGLE_BEHAVIOR
+                 JOGGLE_OUTPUT)
+  if(NOT DEFINED ${required})
+    message(FATAL_ERROR "${required} was not provided")
+  endif()
+endforeach()
+
+set(input "${JOGGLE_OUTPUT}.input")
+file(WRITE "${input}" "edge-ai")
 
 execute_process(
-  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" main --unknown
+  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" pipeline "${input}"
+          --unknown
   RESULT_VARIABLE unknown_option_result
   ERROR_VARIABLE unknown_option_error
 )
@@ -15,120 +18,63 @@ string(FIND "${unknown_option_error}" "unknown option '--unknown'"
   unknown_option_position)
 if(unknown_option_result EQUAL 0 OR unknown_option_position EQUAL -1)
   message(FATAL_ERROR
-    "run treated an unknown option as a function name:\n${unknown_option_error}")
+    "run accepted an unknown option:\n${unknown_option_error}")
 endif()
 
-set(target_output "${JOGGLE_OUTPUT}.target")
 execute_process(
-  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" function_cli.main
-          function_target.convert --with "${JOGGLE_TARGET}" -o "${target_output}"
-  RESULT_VARIABLE target_result
-  ERROR_VARIABLE target_error
+  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" pipeline
+  RESULT_VARIABLE missing_input_result
+  ERROR_VARIABLE missing_input_error
 )
-if(NOT target_result EQUAL 0)
-  message(FATAL_ERROR "cross-Module pipeline failed:\n${target_error}")
-endif()
-file(READ "${target_output}" target_function)
-string(FIND "${target_function}" "module function_cli_main_compiled@1.0.0"
-  target_module_position)
-string(FIND "${target_function}" "function_cli.identity" target_identity_position)
-string(FIND "${target_function}" "import function_target" target_import_position)
-string(FIND "${target_function}" "function_cli.source()" target_source_position)
-if(target_module_position EQUAL -1 OR target_identity_position EQUAL -1 OR
-   NOT target_import_position EQUAL -1 OR target_source_position EQUAL -1)
+string(FIND "${missing_input_error}" "input file" missing_input_position)
+if(missing_input_result EQUAL 0 OR missing_input_position EQUAL -1)
   message(FATAL_ERROR
-    "cross-Module pipeline retained converted or unused target state:\n${target_function}")
+    "run accepted a missing byte input:\n${missing_input_error}")
 endif()
 
-set(module_output "${JOGGLE_OUTPUT}.module")
 execute_process(
-  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" main
-          module_transform.add_helper
-          --with "${JOGGLE_MODULE_TRANSFORM}"
-          --load-behavior
-          "module_transform=${JOGGLE_MODULE_TRANSFORM_BEHAVIOR}"
-          -o "${module_output}"
-  RESULT_VARIABLE module_result
-  ERROR_VARIABLE module_error
+  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" wrong_boundary "${input}"
+          --with "${JOGGLE_DEPENDENCY}"
+  RESULT_VARIABLE boundary_result
+  ERROR_VARIABLE boundary_error
 )
-if(NOT module_result EQUAL 0)
-  message(FATAL_ERROR "module pipeline failed:\n${module_error}")
-endif()
-file(READ "${module_output}" module_source)
-string(FIND "${module_source}" "fn helper()" module_helper_position)
-string(FIND "${module_source}" "fn main()" module_main_position)
-string(FIND "${module_source}" "import function_cli@1.0.0"
-  module_import_position)
-if(module_helper_position EQUAL -1 OR module_main_position EQUAL -1 OR
-   module_import_position EQUAL -1 OR
-   NOT module_helper_position LESS module_main_position)
+string(FIND "${boundary_error}" "must have signature bytes -> bytes"
+  boundary_position)
+if(boundary_result EQUAL 0 OR boundary_position EQUAL -1)
   message(FATAL_ERROR
-    "module transform did not publish a canonical multi-function artifact:\n"
-    "${module_source}")
-endif()
-
-set(behavior_output "${JOGGLE_OUTPUT}.behavior")
-execute_process(
-  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_BEHAVIOR_SOURCE}" main noop
-          --behavior "${JOGGLE_BEHAVIOR}" -o "${behavior_output}"
-  RESULT_VARIABLE behavior_result
-  ERROR_VARIABLE behavior_error
-)
-if(NOT behavior_result EQUAL 0)
-  message(FATAL_ERROR "C++ behavior pipeline failed:\n${behavior_error}")
-endif()
-file(READ "${behavior_output}" behavior_function)
-string(FIND "${behavior_function}" "module behavior_plugin_main_compiled@1.0.0"
-  behavior_module_position)
-string(FIND "${behavior_function}" "behavior_plugin.source()"
-  behavior_source_position)
-if(behavior_module_position EQUAL -1 OR behavior_source_position EQUAL -1)
-  message(FATAL_ERROR
-    "C++ behavior pipeline did not publish its Function:\n${behavior_function}")
+    "run accepted a non-byte pipeline boundary:\n${boundary_error}")
 endif()
 
 execute_process(
-  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" main simplify
+  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" pipeline "${input}"
+          --with "${JOGGLE_DEPENDENCY}"
+          --load-behavior "behavior_plugin=${JOGGLE_BEHAVIOR}"
           -o "${JOGGLE_OUTPUT}"
-  RESULT_VARIABLE result
-  OUTPUT_VARIABLE standard_output
-  ERROR_VARIABLE standard_error
+  RESULT_VARIABLE file_result
+  OUTPUT_VARIABLE file_stdout
+  ERROR_VARIABLE file_error
 )
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "joggle run failed:\n${standard_error}")
+if(NOT file_result EQUAL 0)
+  message(FATAL_ERROR "typed byte pipeline failed:\n${file_error}")
 endif()
-if(NOT standard_output STREQUAL "")
-  message(FATAL_ERROR "joggle run wrote stdout despite -o")
+if(NOT file_stdout STREQUAL "")
+  message(FATAL_ERROR "run wrote stdout despite -o")
 endif()
-
-file(READ "${JOGGLE_OUTPUT}" function)
-string(FIND "${function}" "fn main()" function_position)
-string(FIND "${function}" "module function_cli_main_compiled@1.0.0" module_position)
-string(FIND "${function}" "import function_cli@1.0.0" import_position)
-string(FIND "${function}" "function_cli.source()" source_position)
-string(FIND "${function}" "function_cli.identity" identity_position)
-if(module_position EQUAL -1 OR import_position EQUAL -1 OR
-   function_position EQUAL -1 OR source_position EQUAL -1 OR
-   identity_position EQUAL -1)
-  message(FATAL_ERROR "joggle run did not publish the transformed Function:\n${function}")
-endif()
-
-set(replayed "${JOGGLE_OUTPUT}.replayed")
-execute_process(
-  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_OUTPUT}" main
-          --with "${JOGGLE_SOURCE}" -o "${replayed}"
-  RESULT_VARIABLE replay_result
-  ERROR_VARIABLE replay_error
-)
-if(NOT replay_result EQUAL 0)
-  message(FATAL_ERROR "compiled Module is not a reusable input:\n${replay_error}")
-endif()
-file(READ "${replayed}" replayed_function)
-string(FIND "${replayed_function}" "module function_cli_main_compiled@1.0.0"
-  replayed_module_position)
-string(FIND "${replayed_function}" "import function_cli_main_compiled"
-  redundant_import_position)
-if(replayed_module_position EQUAL -1 OR NOT redundant_import_position EQUAL -1)
+file(READ "${JOGGLE_OUTPUT}" file_output)
+if(NOT file_output STREQUAL "ia-egde")
   message(FATAL_ERROR
-    "replayed pipeline changed identity or retained an unused Module:\n${replayed_function}")
+    "typed byte pipeline produced '${file_output}', expected 'ia-egde'")
+endif()
+
+execute_process(
+  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" function_cli.pipeline
+          "${input}" --with "${JOGGLE_DEPENDENCY}"
+          --load-behavior "behavior_plugin=${JOGGLE_BEHAVIOR}"
+  RESULT_VARIABLE stdout_result
+  OUTPUT_VARIABLE stdout_output
+  ERROR_VARIABLE stdout_error
+)
+if(NOT stdout_result EQUAL 0 OR NOT stdout_output STREQUAL "ia-egde")
+  message(FATAL_ERROR
+    "qualified byte pipeline failed:\n${stdout_error}${stdout_output}")
 endif()

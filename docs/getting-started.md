@@ -124,16 +124,8 @@ hidden translation unit; extension code includes only the stable generic API.
 
 ## 5. Run a compiler function
 
-```bash
-joggle run example.joggle main rewrite \
-  --behavior build/example_behavior.dylib \
-  -o transformed.joggle
-```
-
-`main` is instantiated as executable IR, then each following function is
-applied in order. The output is canonical Joggle source.
-
-The same pipeline in C++ is direct:
+The in-process form directly materializes and transforms the example's
+Function:
 
 ```cpp
 joggle::Compiler compiler;
@@ -150,6 +142,24 @@ if (!function || !compiler.run(*function, "example.rewrite")) {
   return 1;
 }
 ```
+
+Command-line pipelines expose one portable file boundary:
+
+```joggle
+fn compile(input: bytes) -> bytes {
+  return emit(optimize(read(input)));
+}
+```
+
+```bash
+joggle run driver.joggle compile model.onnx \
+  --behavior build/driver_behavior.dylib -o model.bin
+```
+
+The selected function must have signature `bytes -> bytes`. `read`,
+`optimize`, and `emit` retain their real internal types; the CLI does not
+classify them or prescribe a pass order. The output is written byte-for-byte
+to `-o`, or to standard output when `-o` is absent.
 
 For installed discovery, call `compiler.search(root)` and the one-argument
 `load_behavior("example")`. See the

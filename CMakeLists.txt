@@ -205,17 +205,15 @@ if(JOGGLE_BUILD_TESTS)
   add_test(NAME function_cli
     COMMAND $<TARGET_FILE:joggle_cli> check
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/function_cli.joggle
+      --with ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/behavior_plugin.joggle
   )
   add_test(NAME function_run_cli
     COMMAND ${CMAKE_COMMAND}
       -DJOGGLE_CLI=$<TARGET_FILE:joggle_cli>
       -DJOGGLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/function_cli.joggle
-      -DJOGGLE_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/function_run_output.joggle
-      -DJOGGLE_BEHAVIOR_SOURCE=${CMAKE_CURRENT_BINARY_DIR}/behavior_plugin.joggle
+      -DJOGGLE_DEPENDENCY=${CMAKE_CURRENT_BINARY_DIR}/behavior_plugin.joggle
+      -DJOGGLE_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/function_run_output.bin
       -DJOGGLE_BEHAVIOR=$<TARGET_FILE:joggle_test_behavior>
-      -DJOGGLE_TARGET=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/function_target.joggle
-      -DJOGGLE_MODULE_TRANSFORM=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/module_transform.joggle
-      -DJOGGLE_MODULE_TRANSFORM_BEHAVIOR=$<TARGET_FILE:joggle_module_transform_behavior>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/function_run_cli.cmake
   )
 
@@ -243,13 +241,6 @@ if(JOGGLE_BUILD_TESTS)
   set_target_properties(joggle_test_behavior_failure PROPERTIES
     PREFIX ""
     OUTPUT_NAME "behavior_failure"
-  )
-  joggle_add_behavior(joggle_module_transform_behavior
-    MODULE tests/fixtures/module_transform.joggle
-    SOURCES tests/module_transform_behavior.cpp)
-  set_target_properties(joggle_module_transform_behavior PROPERTIES
-    PREFIX ""
-    OUTPUT_NAME "module_transform"
   )
   add_executable(joggle_behavior_loader_test tests/behavior_loader_test.cpp)
   target_link_libraries(joggle_behavior_loader_test PRIVATE joggle::joggle)

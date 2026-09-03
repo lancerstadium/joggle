@@ -1,9 +1,11 @@
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <span>
 #include <sstream>
@@ -19,6 +21,8 @@
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
+#include <fcntl.h>
+#include <io.h>
 #include <windows.h>
 #endif
 
@@ -29,7 +33,7 @@ void usage(std::ostream& output) {
          << "  joggle check <file.joggle> [--with <module.joggle>] "
             "[--behavior <library>] [--root <directory>]\n"
          << "  joggle fmt <file.joggle> [--write | -o <file>]\n"
-         << "  joggle run <file.joggle> <function> [transform ...] "
+         << "  joggle run <file.joggle> <function> <input> "
             "[--with <module.joggle>] [--load-behavior <module[=library]>] "
             "[--behavior <library>] [--root <directory>] [-o <file>]\n"
          << "  joggle install <module.joggle> [--behavior <library>] "
@@ -225,7 +229,8 @@ bool publish(const std::filesystem::path& source,
 #endif
 }
 
-bool write(const std::filesystem::path& requested, std::string_view text,
+bool write(const std::filesystem::path& requested,
+           std::span<const std::byte> content,
            joggle::Diagnostics& diagnostics) {
   std::filesystem::path target = requested;
   std::error_code error;
@@ -275,7 +280,13 @@ bool write(const std::filesystem::path& requested, std::string_view text,
     diagnostics.report("cannot write '" + target.string() + "'");
     return false;
   }
-  output << text;
+  if (content.size() >
+      static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max())) {
+    diagnostics.report("output is too large for '" + target.string() + "'");
+    return false;
+  }
+  output.write(reinterpret_cast<const char*>(content.data()),
+               static_cast<std::streamsize>(content.size()));
   output.close();
   if (!output) {
     diagnostics.report("cannot finish writing '" + target.string() + "'");
@@ -291,6 +302,50 @@ bool write(const std::filesystem::path& requested, std::string_view text,
     }
   }
   return publish(staged, target, diagnostics);
+}
+
+bool write(const std::filesystem::path& requested, std::string_view text,
+           joggle::Diagnostics& diagnostics) {
+  return write(requested, std::as_bytes(std::span(text.data(), text.size())),
+               diagnostics);
+}
+
+std::optional<joggle::Bytes>
+read_bytes(const std::filesystem::path& path,
+           joggle::Diagnostics& diagnostics) {
+  auto content = read(path, diagnostics);
+  if (!content) {
+    return std::nullopt;
+  }
+  joggle::Bytes bytes;
+  bytes.reserve(content->size());
+  for (const char value : *content) {
+    bytes.push_back(
+        static_cast<std::byte>(static_cast<unsigned char>(value)));
+  }
+  return bytes;
+}
+
+bool write_stdout(std::span<const std::byte> content,
+                  joggle::Diagnostics& diagnostics) {
+  if (content.size() >
+      static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max())) {
+    diagnostics.report("output is too large for standard output");
+    return false;
+  }
+#if defined(_WIN32)
+  if (_setmode(_fileno(stdout), _O_BINARY) == -1) {
+    diagnostics.report("cannot switch standard output to binary mode");
+    return false;
+  }
+#endif
+  std::cout.write(reinterpret_cast<const char*>(content.data()),
+                  static_cast<std::streamsize>(content.size()));
+  if (!std::cout) {
+    diagnostics.report("cannot write standard output");
+    return false;
+  }
+  return true;
 }
 
 int fail(const joggle::Diagnostics& diagnostics) {
@@ -339,32 +394,6 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
     }
   }
   return true;
-}
-
-enum class TransformKind { Function, Module };
-
-struct Transform {
-  joggle::Module::Function declaration;
-  TransformKind kind;
-};
-
-std::optional<Transform> transform(joggle::Compiler& compiler,
-                                   std::string_view qualified,
-                                   joggle::Diagnostics& diagnostics) {
-  const auto function = compiler.lookup(qualified);
-  if (!function) {
-    return std::nullopt;
-  }
-  if (compiler.invocable<joggle::Module, joggle::Module>(*function)) {
-    return Transform{*function, TransformKind::Module};
-  }
-  if (compiler.invocable<joggle::ir::Function, joggle::ir::Function>(
-          *function)) {
-    return Transform{*function, TransformKind::Function};
-  }
-  diagnostics.report("compiler function '" + function->symbol().qualified_name() +
-                     "' is not a Module or Function transform");
-  return std::nullopt;
 }
 
 }  // namespace
@@ -460,9 +489,10 @@ int main(int argc, char** argv) {
   }
 
   if (command == "run") {
-    if (parsed.positional.size() < 2U) {
-      return usage_error(diagnostics,
-                         "run expects a Module source file and function name");
+    if (parsed.positional.size() != 3U) {
+      return usage_error(
+          diagnostics,
+          "run expects a Module source file, function name, and input file");
     }
     if (parsed.in_place) {
       return usage_error(diagnostics, "run does not accept --write");
@@ -510,87 +540,34 @@ int main(int argc, char** argv) {
       }
     }
 
-    const auto qualified = [&](std::string_view member) {
-      return member.find('.') == std::string_view::npos
-                 ? std::string(root->name()) + "." + std::string(member)
-                 : std::string(member);
-    };
-    const std::string function_name = qualified(parsed.positional[1]);
-    auto function = compiler.materialize(function_name);
+    const std::string function_name =
+        parsed.positional[1].find('.') == std::string::npos
+            ? std::string(root->name()) + "." + parsed.positional[1]
+            : parsed.positional[1];
+    const auto function = compiler.lookup(function_name);
     if (!function) {
       return fail(compiler.diagnostics());
     }
-    const std::size_t separator = function_name.find('.');
-    const std::string function_body = function_name.substr(separator + 1U);
-    std::string artifact_name(root->name());
-    const auto root_members = root->members();
-    const bool already_derived =
-        artifact_name.ends_with("_compiled") && root_members.size() == 1U &&
-        root_members.front().kind() == joggle::Module::SymbolKind::Function &&
-        root_members.front().local_name() == function_body;
-    if (!already_derived) {
-      artifact_name += "_" + function_body + "_compiled";
-    }
-    joggle::Module module(artifact_name, root->version());
-    if (!module.insert(function_body, std::move(*function), diagnostics)) {
+    if (!compiler.invocable<joggle::Bytes, joggle::Bytes>(*function)) {
+      diagnostics.report("CLI function '" + function_name +
+                         "' must have signature bytes -> bytes");
       return fail(diagnostics);
     }
-    for (std::size_t index = 2U; index < parsed.positional.size(); ++index) {
-      const std::string name = qualified(parsed.positional[index]);
-      auto selected = transform(compiler, name, diagnostics);
-      if (!selected) {
-        return fail(diagnostics);
-      }
-      if (selected->kind == TransformKind::Module) {
-        auto transformed = compiler.run<joggle::Module>(selected->declaration,
-                                                        std::move(module));
-        if (!transformed) {
-          return fail(compiler.diagnostics());
-        }
-        module = std::move(*transformed);
-        continue;
-      }
-      joggle::ir::Function* entry = module.body(function_body);
-      if (entry == nullptr) {
-        diagnostics.report("Function transform '" + name +
-                           "' needs missing entry '" + function_body + "'");
-        return fail(diagnostics);
-      }
-      if (!compiler.run(*entry, selected->declaration)) {
-        return fail(compiler.diagnostics());
-      }
-    }
-    const auto dependencies = module.dependencies();
-    const auto references = [&](std::string_view name) {
-      return std::any_of(dependencies.begin(), dependencies.end(),
-                         [&](const joggle::Module::Dependency& dependency) {
-                           return dependency.name == name;
-                         });
-    };
-    if (references(artifact_name)) {
-      diagnostics.report("compiled Module name '" + artifact_name +
-                         "' conflicts with a referenced Module");
+    auto input = read_bytes(parsed.positional[2], diagnostics);
+    if (!input) {
       return fail(diagnostics);
     }
-    std::string artifact_source;
-    try {
-      artifact_source = joggle::format(module);
-    } catch (const std::exception& exception) {
-      diagnostics.report(exception.what());
-      return fail(diagnostics);
+    auto output = compiler.run<joggle::Bytes>(*function, std::move(*input));
+    if (!output) {
+      return fail(compiler.diagnostics());
     }
-    const auto artifact =
-        joggle::parse_module(artifact_source, diagnostics, "<compiled Module>");
-    if (!artifact) {
-      return fail(diagnostics);
-    }
-    const std::string output = joggle::format(*artifact);
     if (parsed.output) {
-      if (!write(*parsed.output, output, diagnostics)) {
+      if (!write(*parsed.output, std::span<const std::byte>(*output),
+                 diagnostics)) {
         return fail(diagnostics);
       }
-    } else {
-      std::cout << output;
+    } else if (!write_stdout(std::span<const std::byte>(*output), diagnostics)) {
+      return fail(diagnostics);
     }
     return EXIT_SUCCESS;
   }

@@ -5,6 +5,7 @@ module behavior_plugin@1.0.0 {
 
   fn source() -> positive<1>;
   fn noop(input: function) -> function;
+  fn reverse(input: bytes) -> bytes;
   fn main() -> positive<1> {
     value = source();
     return value;

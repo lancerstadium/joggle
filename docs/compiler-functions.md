@@ -94,6 +94,15 @@ Functions, and publishes nothing if any Function fails verification. Matching
 uses Function handles or explicit interface queries; the utility never
 interprets a textual function name.
 
+## Command-line boundary
+
+`joggle run module.joggle pipeline input -o output` invokes one reflected
+function with the exact signature `bytes -> bytes`. Bytes are the portable
+file boundary, not the pipeline's internal artifact type. A Module can compose
+`bytes -> model`, `model -> schedule`, `schedule -> estimate`, and
+`schedule -> bytes` functions without teaching the CLI any of those roles or
+registering another pass hierarchy.
+
 ## Reusable facilities still required
 
 The next implementation layer is a C++ utility library over the public IR, not
@@ -109,11 +118,6 @@ new source syntax. Its components should be independently usable:
 3. **Analysis storage.** Results keyed by immutable Function snapshots, with
    explicit preservation after a committed edit. The cache owns no alternate
    graph representation and never changes observable compilation semantics.
-4. **Invocation I/O.** A typed CLI boundary for non-unary functions and
-   extension-owned artifact codecs. The CLI should discover callable
-   declarations; it should not maintain separate command registries for
-   converters, optimizers, analyses, or emitters.
-
 The order matters. Structural rewriting, conversion legality, and analysis invalidation
 must stabilize before shipping optimizer collections. Otherwise each example
 would create an incompatible private framework.

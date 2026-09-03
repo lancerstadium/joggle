@@ -1,16 +1,13 @@
 joggle 1;
 
 module function_cli@1.0.0 {
-  type word();
+  import behavior_plugin@1;
 
-  fn source<T: type>() -> T;
-  fn identity<T: type>(input: T) -> T;
-  fn simplify(input: function) -> function {
-    return input;
+  fn pipeline(input: bytes) -> bytes {
+    return behavior_plugin.reverse(input);
   }
-  fn main() -> word {
-    value: word = source();
-    result = identity(value);
-    return result;
+
+  fn wrong_boundary(input: bytes) -> int {
+    return 1;
   }
 }
