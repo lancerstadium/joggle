@@ -2129,7 +2129,7 @@ Module::Module(const Module& other) : storage_(other.storage_) {
   auto storage = std::make_shared<Storage>(*storage_);
   for (detail::FunctionMember& function : storage->functions) {
     if (function.ir) {
-      function.ir = std::make_shared<ir::Function>(function.ir->fork());
+      function.ir = std::make_shared<ir::Function>(*function.ir);
     }
   }
   storage_ = std::move(storage);

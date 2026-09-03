@@ -1950,27 +1950,6 @@ Function::Revision Function::revision() const {
   return Revision(function_->state);
 }
 
-Function Function::clone() const {
-  if (function_->editing) {
-    throw std::logic_error("cannot clone a function with an active edit");
-  }
-  Function result({});
-  result.function_->state =
-      std::make_shared<detail::FunctionState>(*function_->state);
-  result.function_->next_id = function_->next_id;
-  return result;
-}
-
-Function Function::fork() const {
-  if (function_->editing) {
-    throw std::logic_error("cannot fork a function with an active edit");
-  }
-  Function result({});
-  result.function_->state = function_->state;
-  result.function_->next_id = function_->next_id;
-  return result;
-}
-
 Function::Edit Function::edit() { return Edit(function_); }
 
 bool Function::accepts(const Module::Symbol& symbol) const {

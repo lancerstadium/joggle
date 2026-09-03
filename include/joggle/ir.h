@@ -223,13 +223,11 @@ public:
   bool dominates(Block dominator, Block block) const;
   bool dominates(Value definition, Instruction instruction) const;
   Revision revision() const;
-  Function clone() const;
   Edit edit();
 
 private:
   struct Snapshot;
   explicit Function(std::vector<Module> modules);
-  Function fork() const;
   bool accepts(const Module::Symbol& symbol) const;
   std::shared_ptr<const Snapshot> snapshot() const;
   void restore(std::shared_ptr<const Snapshot> snapshot);

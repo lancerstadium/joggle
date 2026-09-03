@@ -73,7 +73,7 @@ int main() {
 
   joggle::Module model("resnet18_pipeline", {1, 0, 0});
   joggle::Diagnostics diagnostics;
-  joggle::ir::Function second = block->clone();
+  joggle::ir::Function second = *block;
   if (!model.insert("stage1_block0", std::move(*block), diagnostics) ||
       !model.insert("stage1_block1", std::move(second), diagnostics)) {
     diagnostics.print(std::cerr);

@@ -93,18 +93,6 @@ template <typename T> ExecutionValue store_execution_value(T&& value) {
   }
 }
 
-template <typename T> ExecutionValue store_execution_input(T&& value) {
-  using Value = std::remove_cvref_t<T>;
-  if constexpr (std::is_same_v<Value, ir::Function>) {
-    return {std::make_shared<ir::Function>(std::forward<T>(value))};
-  } else if constexpr (is_builtin_host_value<Value>) {
-    return {Value(std::forward<T>(value))};
-  } else {
-    return {HostValue{std::string(host_type_name<Value>()),
-                      std::make_shared<Value>(std::forward<T>(value))}};
-  }
-}
-
 template <typename T> decltype(auto) execution_argument(ExecutionValue& value) {
   using Value = std::remove_cvref_t<T>;
   if constexpr (std::is_same_v<Value, ir::Function>) {
@@ -709,8 +697,8 @@ public:
     }
     std::vector<detail::ExecutionValue> values;
     values.reserve(sizeof...(Arguments));
-    (values.push_back(detail::store_execution_input<Arguments>(
-         std::forward<Arguments>(arguments))),
+    (values.push_back(
+         detail::store_execution_value(std::forward<Arguments>(arguments))),
      ...);
     auto results = execute(std::move(function), std::move(values));
     if constexpr (std::is_void_v<Result>) {
