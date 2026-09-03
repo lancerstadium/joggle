@@ -1432,9 +1432,8 @@ bool Compiler::load_behavior(const Module& module,
   auto host_types = state_->host_types;
   auto host_representations = state_->host_representations;
   const std::size_t before = state_->diagnostics.size();
-  bool bound = false;
   try {
-    bound = behavior->bind(*this, loaded->second, state_->diagnostics);
+    behavior->bind(*this, loaded->second, state_->diagnostics);
   } catch (const std::exception& exception) {
     state_->diagnostics.report("behavior binding for '" + identity +
                                "' threw: " + exception.what());
@@ -1442,7 +1441,7 @@ bool Compiler::load_behavior(const Module& module,
     state_->diagnostics.report("behavior binding for '" + identity +
                                "' threw an unknown exception");
   }
-  if (!bound || state_->diagnostics.size() != before) {
+  if (state_->diagnostics.size() != before) {
     state_->type_verifiers = std::move(type_verifiers);
     state_->attribute_verifiers = std::move(attribute_verifiers);
     state_->instruction_verifiers = std::move(instruction_verifiers);
@@ -1451,10 +1450,6 @@ bool Compiler::load_behavior(const Module& module,
     state_->bindings = std::move(bindings);
     state_->host_types = std::move(host_types);
     state_->host_representations = std::move(host_representations);
-    if (!bound && state_->diagnostics.size() == before) {
-      state_->diagnostics.report("behavior binding for '" + identity +
-                                 "' failed");
-    }
     return false;
   }
 

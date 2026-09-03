@@ -5,12 +5,12 @@
 
 namespace {
 
-bool bind(joggle::Compiler& compiler, const joggle::Module& module,
+void bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
   const auto positive = module.type("positive");
   if (!positive) {
     diagnostics.report("test behavior does not match its linked schema");
-    return false;
+    return;
   }
   compiler.verify(*positive,
                   [](const joggle::Type& type, joggle::Diagnostics&) {
@@ -25,9 +25,7 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
     return input;
   });
 #if defined(JOGGLE_TEST_BEHAVIOR_FAIL)
-  return false;
-#else
-  return true;
+  diagnostics.report("test behavior requested failure");
 #endif
 }
 

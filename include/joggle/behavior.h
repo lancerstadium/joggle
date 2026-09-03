@@ -13,8 +13,8 @@ namespace detail {
 extern const char behavior_module_identity[];
 }
 
-inline constexpr std::uint32_t behavior_abi = 3;
-inline constexpr const char* behavior_entry = "joggle_behavior_v3";
+inline constexpr std::uint32_t behavior_abi = 4;
+inline constexpr const char* behavior_entry = "joggle_behavior_v4";
 
 #if defined(_WIN32) && defined(_M_X64)
 inline constexpr const char* behavior_target = "windows-x86_64";
@@ -33,7 +33,7 @@ inline constexpr const char* behavior_target = "unknown-target";
 #endif
 
 struct Behavior {
-  using Bind = bool (*)(Compiler&, const Module&, Diagnostics&);
+  using Bind = void (*)(Compiler&, const Module&, Diagnostics&);
 
   constexpr explicit Behavior(Bind function)
       : abi(behavior_abi), size(sizeof(Behavior)),
@@ -59,7 +59,7 @@ using BehaviorEntry = const Behavior* (*)();
 
 #define JOGGLE_EXPORT_BEHAVIOR(bind_function)                                  \
   extern "C" JOGGLE_BEHAVIOR_EXPORT const ::joggle::Behavior*                  \
-  joggle_behavior_v3() {                                                       \
+  joggle_behavior_v4() {                                                       \
     static const ::joggle::Behavior descriptor{bind_function};                 \
     return &descriptor;                                                        \
   }

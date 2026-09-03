@@ -9,7 +9,7 @@
 
 namespace {
 
-bool bind(joggle::Compiler& compiler, const joggle::Module& module,
+void bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
   const auto nn = compiler.module("nn");
   const auto accelerator = compiler.module("example_accel");
@@ -18,7 +18,7 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
       accelerator ? accelerator->function("relu") : std::nullopt;
   if (!nn_relu || !accelerator_relu) {
     diagnostics.report("nn_pipeline behavior does not match its Module set");
-    return false;
+    return;
   }
 
   compiler.bind(
@@ -88,7 +88,6 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
                     return std::nullopt;
                   }
                 });
-  return true;
 }
 
 }  // namespace

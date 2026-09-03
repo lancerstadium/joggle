@@ -2,13 +2,13 @@
 
 namespace {
 
-bool bind(joggle::Compiler& compiler, const joggle::Module& module,
+void bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
   const auto keep = module.function("keep");
   const auto converted = module.function("converted");
   if (!keep || !converted) {
     diagnostics.report("external behavior does not match its Module");
-    return false;
+    return;
   }
 
   compiler.bind(
@@ -22,7 +22,6 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
         }
         return function;
       });
-  return true;
 }
 
 }  // namespace
