@@ -33,6 +33,9 @@ std::string decode(const joggle::Bytes& bytes) {
   std::string result;
   result.reserve(bytes.size());
   for (const std::byte value : bytes) {
+    if (value == std::byte{0}) {
+      break;
+    }
     result.push_back(static_cast<char>(std::to_integer<unsigned char>(value)));
   }
   return result;
@@ -135,13 +138,16 @@ module anchor_precision_pipeline@1.0.0 {
       target ? target->function("cycles") : std::nullopt;
   const auto bundle_function =
       target ? target->function("bundle") : std::nullopt;
+  const auto unpack_function =
+      target ? target->function("unpack") : std::nullopt;
   const auto emit_function =
       target ? target->function("emit") : std::nullopt;
   const auto config = target ? target->type("config") : std::nullopt;
   const auto reference =
       memory ? memory->interface("reference") : std::nullopt;
   if (!early || !late || !scratch_function || !cycle_function ||
-      !bundle_function || !emit_function || !config || !reference) {
+      !bundle_function || !unpack_function || !emit_function || !config ||
+      !reference) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -171,8 +177,12 @@ module anchor_precision_pipeline@1.0.0 {
                             ? compiler.run<joggle::Bytes>(*emit_function,
                                                          *early, *machine)
                             : std::optional<joggle::Bytes>{};
+  const auto unpacked = manifest
+                            ? compiler.run<joggle::Module>(*unpack_function,
+                                                           *manifest)
+                            : std::optional<joggle::Module>{};
   if (body == nullptr || !scratch || !machine || !cycles || !trace ||
-      !trace_again || !bundled || !manifest) {
+      !trace_again || !bundled || !manifest || !unpacked) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -219,7 +229,10 @@ module anchor_precision_pipeline@1.0.0 {
           std::string::npos &&
       bundled->functions().size() == 43U &&
       bundled->data() == early->data() &&
-      emitted.starts_with("anchor 2\nsource main_graph#") &&
+      unpacked->digest() == bundled->digest() &&
+      unpacked->data() == bundled->data() &&
+      joggle::format(*unpacked) == joggle::format(*bundled) &&
+      emitted.starts_with("anchor 3\nsource main_graph#") &&
       emitted.ends_with(joggle::format(*bundled));
 
   std::cout << "module " << early->name() << '#' << early->digest() << '\n'

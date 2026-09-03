@@ -9,6 +9,7 @@
 
 #include <joggle/joggle.h>
 
+#include "artifact.h"
 #include "execute.h"
 #include "kernel.h"
 
@@ -1064,7 +1065,18 @@ emit(joggle::Compiler& compiler, const joggle::Module& input,
   if (!bundle) {
     return std::nullopt;
   }
-  std::string output = "anchor 2\nsource ";
+  std::uint64_t resource_bytes = 0;
+  for (const std::string& name : bundle->data()) {
+    const auto payload = bundle->data(name);
+    if (!payload || payload->size() >
+                        std::numeric_limits<std::uint64_t>::max() -
+                            resource_bytes) {
+      diagnostics.report("anchor artifact resource size overflows");
+      return std::nullopt;
+    }
+    resource_bytes += static_cast<std::uint64_t>(payload->size());
+  }
+  std::string output = "anchor 3\nsource ";
   output += input.name();
   output += '#';
   output += input.digest();
@@ -1072,6 +1084,10 @@ emit(joggle::Compiler& compiler, const joggle::Module& input,
   output += bundle->name();
   output += '#';
   output += bundle->digest();
+  output += "\nresources ";
+  output += std::to_string(bundle->data().size());
+  output += "\nresource-bytes ";
+  output += std::to_string(resource_bytes);
   output += "\nlanes ";
   output += std::to_string(timeline->machine.lanes);
   output += "\nmacs-per-lane ";
@@ -1082,7 +1098,7 @@ emit(joggle::Compiler& compiler, const joggle::Module& input,
   output += std::to_string(timeline->cycles);
   output += "\n---\n";
   output += joggle::format(*bundle);
-  return encode(output);
+  return joggle::anchor::pack_artifact(output, *bundle, diagnostics);
 }
 
 std::optional<Schema> schema(joggle::Compiler& compiler,
@@ -1170,6 +1186,7 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
   compiler.bind(module, "duration", duration);
   compiler.bind(module, "trace", trace);
   compiler.bind(module, "bundle", joggle::anchor::kernel_bundle);
+  compiler.bind(module, "unpack", joggle::anchor::unpack_artifact);
   compiler.bind(module, "kernel_report", joggle::anchor::kernel_report);
   compiler.bind(
       module, "execute_f32",

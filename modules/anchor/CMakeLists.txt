@@ -1,6 +1,6 @@
 joggle_add_behavior(joggle_module_anchor_behavior
   MODULE module.joggle
-  SOURCES src/behavior.cpp src/execute.cpp src/kernel.cpp)
+  SOURCES src/artifact.cpp src/behavior.cpp src/execute.cpp src/kernel.cpp)
 set_target_properties(joggle_module_anchor_behavior PROPERTIES
   PREFIX ""
   OUTPUT_NAME "anchor")

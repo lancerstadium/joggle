@@ -833,6 +833,7 @@ module anchor@1.0.0 {
     return duration(simulate(input, target));
   }
   fn bundle(program: module) -> module;
+  fn unpack(artifact: bytes) -> module;
   fn kernel_report(program: module) -> bytes;
   fn execute_f32(program: module, input: bytes) -> bytes;
   fn emit(input: module, target: type) -> bytes;

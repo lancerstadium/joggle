@@ -449,6 +449,7 @@ public:
   // Adds a module without resolving its imports. Errors accumulate in this
   // compiler and can be inspected after loading a complete module set.
   void add(std::string_view text, std::string source = "<memory>");
+  void add(Module module);
   void load(const std::filesystem::path& path);
   void search(std::filesystem::path root);
   void lock(const std::filesystem::path& path);

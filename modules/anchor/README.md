@@ -110,13 +110,16 @@ the arithmetic, literal, allocation, memory-access, alias, or release
 interfaces. A new target can define a different boundary without changing the
 compiler core.
 
-`emit(input, target)` first bundles the program, then returns an `anchor 2`
-byte manifest containing both source and bundle digests, target parameters,
-required scratch, estimated cycles, and the canonical bundled Module. This
-proves that emission consumes the linked source bodies rather than the
-high-level operator graph. It remains an inspectable manifest, not machine
-code, and its text names content-addressed resources without packing their raw
-payloads. A source Module can compose the complete path directly:
+`emit(input, target)` first bundles the program, then returns an `anchor 3`
+binary artifact. Its zero-terminated manifest contains both source and bundle
+digests, target parameters, required scratch, estimated cycles, and the
+canonical bundled Module. A versioned binary table then stores every immutable
+payload under its content-addressed name. `unpack(artifact)` checks each
+payload identity and the complete bundle digest, reconstructs a fresh linked
+compilation, and rematerializes the exact bundle. Thus emission consumes the
+linked source bodies rather than the high-level operator graph and the result
+is self-contained with respect to model data. It is still not machine code. A
+source Module can compose the complete path directly:
 
 ```joggle
 fn deploy(input: bytes, target: type) -> bytes {
@@ -140,12 +143,12 @@ fn inspect(input: bytes, target: type) -> bytes {
 every non-administrative call in a materialized program it specializes the
 declared function body from the concrete call, recursively follows nested
 bodies, and accepts leaves only when they implement the shared arithmetic,
-literal,
-allocation, memory-access, alias, or release interfaces. An opaque external
-call therefore fails instead of being silently treated as a kernel. The report
-records root calls, unique concrete source specializations, primitive sites,
-and maximum source-expansion depth. A separately declared user Module is
-covered by the same analysis without registering its function name with
+literal, allocation, memory-access, alias, or release interfaces. An opaque
+external call therefore fails instead of being silently treated as a kernel.
+The report records root calls, unique concrete source specializations,
+primitive sites, and maximum source-expansion depth. A separately declared
+user Module is covered by the same analysis without registering its function
+name with
 Anchor.
 
 On the checked ResNet-18 path, all 49 unfused compute calls close through 35
@@ -188,7 +191,9 @@ anchor.plan_storage -> anchor.simulate/emit` composition. With
 Ops, 49 simulated events, 10,946,464 scratch bytes, and 29,453,374 analytical
 cycles. Nine Conv-ReLU fusions reduce these to 122 Ops, 40 events, 7,735,200
 scratch bytes, and 29,161,690 cycles. Repeated compilation and simulation
-produce the same Module digest and byte-identical artifacts.
+produce the same Module digest and byte-identical artifacts. The checked f32
+artifact contains 46,738,848 payload bytes across 42 resources; changing one
+payload byte makes `unpack` reject it instead of publishing a partial Module.
 
 If the configured Python interpreter provides NumPy and ONNX Runtime, CMake
 also registers `module.anchor.onnx.numeric`. Its oracle is generated in the

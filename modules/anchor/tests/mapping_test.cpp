@@ -24,6 +24,9 @@ std::string decode(const joggle::Bytes& bytes) {
   std::string result;
   result.reserve(bytes.size());
   for (const std::byte value : bytes) {
+    if (value == std::byte{0}) {
+      break;
+    }
     result.push_back(static_cast<char>(std::to_integer<unsigned char>(value)));
   }
   return result;
@@ -227,6 +230,7 @@ module anchor_kernel@1.0.0 {
       target ? target->function("scratch_bytes") : std::nullopt;
   const auto cycles = target ? target->function("cycles") : std::nullopt;
   const auto bundle = target ? target->function("bundle") : std::nullopt;
+  const auto unpack = target ? target->function("unpack") : std::nullopt;
   const auto emit = target ? target->function("emit") : std::nullopt;
   const auto reference = memory ? memory->interface("reference") : std::nullopt;
   const auto ref = target ? target->type("ref") : std::nullopt;
@@ -313,8 +317,8 @@ module anchor_kernel@1.0.0 {
   const auto read = memory ? memory->interface("read") : std::nullopt;
   const auto write = memory ? memory->interface("write") : std::nullopt;
   if (!source || !map || !analyze || !fuse || !plan || !scratch || !cycles ||
-      !bundle || !emit || !reference || !ref || !linear || !tiled || !io ||
-      !local || !config || !timeline || !load || !store || !relu || !add ||
+      !bundle || !unpack || !emit || !reference || !ref || !linear || !tiled ||
+      !io || !local || !config || !timeline || !load || !store || !relu || !add ||
       !linear_function || !linear_call || !linear_body || !padded_conv_body ||
       !strided_conv_body || !read || !biased_conv_body || !nested_conv_body ||
       !fused_conv_body || !nested_fused_conv_body || !write ||
@@ -384,6 +388,17 @@ module anchor_kernel@1.0.0 {
                                  ? compiler.run<joggle::Bytes>(*emit, *planned,
                                                               *machine)
                                  : std::optional<joggle::Bytes>{};
+  const auto unpacked = emitted
+                            ? compiler.run<joggle::Module>(*unpack, *emitted)
+                            : std::optional<joggle::Module>{};
+  joggle::Bytes corrupted = emitted ? *emitted : joggle::Bytes{};
+  if (!corrupted.empty()) {
+    corrupted.back() ^= std::byte{1};
+  }
+  const auto rejected_artifact =
+      corrupted.empty()
+          ? std::optional<joggle::Module>{}
+          : compiler.run<joggle::Module>(*unpack, corrupted);
   const auto trace = planned && machine
                          ? compiler.run<joggle::Bytes>("anchor.trace", *planned,
                                                        *machine)
@@ -402,7 +417,7 @@ module anchor_kernel@1.0.0 {
   if (!mapped || !mapped_again || !fused_mapped || !fused_mapped_again ||
       !fused_fixed_point || body == nullptr || fused_body == nullptr ||
       !bytes || !planned || !planned_again || planned_body == nullptr ||
-      !bundled || bundled_body == nullptr || !scratch_size ||
+      !bundled || bundled_body == nullptr || !unpacked || !scratch_size ||
       !cycle_count || !emitted || !emitted_again || !trace || !trace_again) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -590,7 +605,11 @@ module anchor_kernel@1.0.0 {
   ok &= expect(*cycle_count > 0 && *emitted == *emitted_again &&
                    linked_calls == 7U &&
                    bundled->functions().size() > planned->functions().size() &&
-                   manifest.starts_with("anchor 2\nsource basic_block#") &&
+                   !rejected_artifact &&
+                   unpacked->digest() == bundled->digest() &&
+                   unpacked->data() == bundled->data() &&
+                   joggle::format(*unpacked) == joggle::format(*bundled) &&
+                   manifest.starts_with("anchor 3\nsource basic_block#") &&
                    manifest.find("\nbundle basic_block#" +
                                  std::string(bundled->digest()) + "\n") !=
                        std::string::npos &&

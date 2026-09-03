@@ -140,6 +140,20 @@ module module_defs@1.0.0 {
                "serialization emits exact non-ambient imports and stable "
                "Function order");
 
+  joggle::Compiler object_replay;
+  if (definitions && parsed) {
+    object_replay.add(*definitions);
+    object_replay.add(*parsed);
+  }
+  const bool object_replay_linked = object_replay.link();
+  const auto object_replay_main =
+      object_replay_linked
+          ? object_replay.materialize("compiled_module.main")
+          : std::optional<joggle::Function>{};
+  ok &= expect(object_replay_main && object_replay_main->ops().size() == 1U,
+               "a parsed Module object can enter a fresh compilation without "
+               "a filesystem or text round trip");
+
   joggle::Compiler replay;
   replay.add(source, "module-defs.joggle");
   replay.add(text, "compiled-module.joggle");

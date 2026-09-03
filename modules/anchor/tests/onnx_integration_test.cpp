@@ -33,6 +33,9 @@ std::string decode(const joggle::Bytes& bytes) {
   std::string result;
   result.reserve(bytes.size());
   for (const std::byte value : bytes) {
+    if (value == std::byte{0}) {
+      break;
+    }
     result.push_back(static_cast<char>(std::to_integer<unsigned char>(value)));
   }
   return result;
@@ -131,11 +134,12 @@ module anchor_pipeline@1.0.0 {
   const auto kernel_report =
       target ? target->function("kernel_report") : std::nullopt;
   const auto bundle = target ? target->function("bundle") : std::nullopt;
+  const auto unpack = target ? target->function("unpack") : std::nullopt;
   const auto emit = target ? target->function("emit") : std::nullopt;
   const auto config = target ? target->type("config") : std::nullopt;
   const auto reference = memory ? memory->interface("reference") : std::nullopt;
   if (!first || !second || !analyze || !cycle_model || !kernel_report ||
-      !bundle || !emit || !config || !reference) {
+      !bundle || !unpack || !emit || !config || !reference) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -192,6 +196,17 @@ module anchor_pipeline@1.0.0 {
                             ? compiler.run<joggle::Bytes>(
                                   "anchor_pipeline.deploy", *source, *machine)
                             : std::optional<joggle::Bytes>{};
+  const auto unpacked = manifest
+                            ? compiler.run<joggle::Module>(*unpack, *manifest)
+                            : std::optional<joggle::Module>{};
+  joggle::Bytes corrupted = manifest ? *manifest : joggle::Bytes{};
+  if (!corrupted.empty()) {
+    corrupted.back() ^= std::byte{1};
+  }
+  const auto rejected_artifact =
+      corrupted.empty()
+          ? std::optional<joggle::Module>{}
+          : compiler.run<joggle::Module>(*unpack, corrupted);
   const auto trace = source && machine
                          ? compiler.run<joggle::Bytes>(
                                "anchor_pipeline.trace", *source, *machine)
@@ -234,7 +249,8 @@ module anchor_pipeline@1.0.0 {
   bool valid = body != nullptr && fused_body != nullptr && scratch &&
                *scratch > 0 && cycles && fused_scratch && fused_cycles &&
                *cycles == 29453374 && manifest && manifest_again &&
-               deployed && *manifest == *manifest_again &&
+               deployed && unpacked && !rejected_artifact &&
+               *manifest == *manifest_again &&
                *manifest == *deployed &&
                bundled && fused_bundle && bundled_body && fused_bundled_body &&
                bundled->functions().size() == 36U &&
@@ -243,11 +259,16 @@ module anchor_pipeline@1.0.0 {
                local_calls(fused_bundled_body, fused_bundle->name()) == 40U &&
                bundled->data() == first->data() &&
                fused_bundle->data() == fused->data() &&
-               emitted.starts_with("anchor 2\nsource main_graph#") &&
+               unpacked->digest() == bundled->digest() &&
+               unpacked->data() == bundled->data() &&
+               joggle::format(*unpacked) == joggle::format(*bundled) &&
+               emitted.starts_with("anchor 3\nsource main_graph#") &&
                emitted.find("\nbundle main_graph#" +
                             std::string(bundled->digest()) + "\n") !=
                    std::string::npos &&
                emitted.find("\nscratch-bytes 10946464\n") !=
+                   std::string::npos &&
+               emitted.find("\nresources 42\nresource-bytes 46738848\n") !=
                    std::string::npos &&
                emitted.find("\ncycles 29453374\n") != std::string::npos &&
                emitted.ends_with(joggle::format(*bundled)) &&

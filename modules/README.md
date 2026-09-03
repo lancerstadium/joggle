@@ -40,7 +40,8 @@ in `language/prelude.joggle`; Prelude is not an installable Module.
   external oracle, not to replace those bodies. Its `bundle` compiler function
   links a separately installed user kernel into the output Module only when
   recursive specialization terminates in declared arithmetic and memory
-  interfaces; emission consumes that linked Module.
+  interfaces; emission consumes that linked Module and packs its immutable
+  data into a verified artifact.
 
 The list is not an abstraction ladder. A function body may call declarations
 from any installed Modules. Joggle has no built-in `lower` direction. A

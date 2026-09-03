@@ -62,6 +62,12 @@ if (!compiler.link()) {
 adds an installed-Module repository. `link()` resolves and seals the complete
 environment. Diagnostics accumulate and retain source ranges.
 
+`add(module)` places an existing Module value into an unlinked Compiler
+without formatting it or writing a temporary file. Copies preserve
+content-addressed data and materialized bodies. This is the intended entry for
+an artifact decoder or an in-memory package resolver; the same identity and
+import-conflict checks apply as for source input.
+
 Reflect declarations through `compiler.module(name)` and the returned
 Module's `interface`, `type`, `attribute`, `function`, `overloads`, or
 `members` queries. `compiler.lookup("module.function")` performs the same

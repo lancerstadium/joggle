@@ -591,6 +591,15 @@ void Compiler::add(std::string_view text, std::string source) {
   add_module(std::move(*parsed), true, std::nullopt);
 }
 
+void Compiler::add(Module module) {
+  if (state_->linked) {
+    state_->diagnostics.report(
+        "cannot add a module after the compiler has been linked");
+    return;
+  }
+  add_module(std::move(module), true, std::nullopt);
+}
+
 void Compiler::add_module(Module module, bool explicit_module,
                           std::optional<std::filesystem::path> source) {
   const std::string name(module.name());

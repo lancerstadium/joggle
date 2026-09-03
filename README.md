@@ -122,7 +122,7 @@ values to explicit target references, calls, and static scratch placement. Its
 layout, storage spaces, deterministic slot reuse, and validated resource
 analysis are ordinary Module-owned semantics rather than compiler-core device
 classes. The same Module declares an explicit machine type, a first-class
-deterministic simulation timeline, and an inspectable manifest emitter, so a
+deterministic simulation timeline, and an inspectable artifact emitter, so a
 source-defined pipeline can run from ONNX bytes to inspectable timing and
 deployment artifacts without a parallel pass or backend API. Its kernels are
 ordinary Joggle function bodies over residual target primitives, showing the
@@ -136,8 +136,9 @@ against an independently generated oracle. A fail-closed
 `bundle(module) -> module` function recursively specializes those target calls,
 links their concrete bodies into the deployment Module, and leaves only
 declared arithmetic and memory primitives; `kernel_report` exposes its coverage
-counts. The manifest emitter serializes this bundle rather than the original
-operator graph. The optional precision
+counts. The artifact emitter serializes this bundle rather than the original
+operator graph, packs its content-addressed weights, and can reconstruct it in
+a fresh compilation with `unpack(bytes) -> module`. The optional precision
 composition reaches the same f16 Anchor
 artifact whether representation conversion runs before or after
 `onnx.to_nn`, providing a concrete non-ladder composition check.
