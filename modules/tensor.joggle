@@ -20,11 +20,18 @@ module tensor@1.0.0 {
     input: ranked<E, From>,
     shape: To
   ) -> ranked<E, To>;
-  fn transpose<E: type, From: list<int>, To: list<int>, P: list<int>>(
+
+  fn permute_shape(shape: list<int>, permutation: list<int>) -> list<int> {
+    result: list<int> = [];
+    for axis in permutation {
+      result = append(result, at(shape, axis));
+    }
+    return result;
+  }
+  fn transpose<E: type, From: list<int>, P: list<int>>(
     input: ranked<E, From>,
-    permutation: P,
-    output_shape: To
-  ) -> ranked<E, To>;
+    permutation: P
+  ) -> ranked<E, @permute_shape(From, P)>;
   fn broadcast<E: type, From: list<int>, To: list<int>>(
     input: ranked<E, From>,
     shape: To

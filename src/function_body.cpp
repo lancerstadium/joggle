@@ -1537,9 +1537,11 @@ private:
     return std::nullopt;
   }
 
-  std::optional<detail::StagedValue>
-  evaluate_known(const detail::ExpressionSyntax& syntax) {
-    auto expected = known_result(syntax.value, syntax.range);
+  std::optional<detail::StagedValue> evaluate_known(
+      const detail::ExpressionSyntax& syntax,
+      std::optional<Module::ParameterDecl> contextual = std::nullopt) {
+    auto expected = contextual ? std::move(contextual)
+                               : known_result(syntax.value, syntax.range);
     if (!expected) {
       report("cannot determine the type required by compile-time evaluation",
              syntax.range);
@@ -2621,23 +2623,36 @@ private:
   void instantiate_call(const detail::StatementSyntax& statement, Block block) {
     const bool require_known =
         statement.expression.value.kind == Module::Expression::Kind::Evaluate;
+    auto contextual_type = statement.bindings.size() == 1U
+                               ? expected_type(statement.bindings.front())
+                               : std::optional<Type>{};
+    auto expected_domain = contextual_type
+                               ? detail::type_domain(*contextual_type)
+                               : std::optional<Module::Expression>{};
     const bool can_evaluate =
         statement.bindings.size() == 1U &&
-        known_result(statement.expression.value, statement.expression.range)
-            .has_value();
+        (expected_domain ||
+         known_result(statement.expression.value, statement.expression.range)
+             .has_value());
     if (require_known || can_evaluate) {
       if (statement.bindings.size() != 1U) {
         report("compile-time evaluation must bind exactly one value",
                statement.range);
         return;
       }
-      auto value = evaluate_known(statement.expression);
+      auto value = evaluate_known(
+          statement.expression,
+          expected_domain
+              ? std::optional<Module::ParameterDecl>{{"result",
+                                                      std::move(
+                                                          *expected_domain),
+                                                      false, std::nullopt}}
+              : std::nullopt);
       if (value) {
-        auto expected = expected_type(statement.bindings.front());
-        if (expected && value->type() != *expected) {
+        if (contextual_type && value->type() != *contextual_type) {
           auto ir = detail::ir_value(compiler_, *value);
           auto materialized =
-              ir ? materialize(*ir, *expected, block, statement.range)
+              ir ? materialize(*ir, *contextual_type, block, statement.range)
                  : std::optional<Value>{};
           if (materialized) {
             bind(statement.bindings.front(), std::move(*materialized));

@@ -107,4 +107,7 @@ module prelude@2.0.0 {
   fn range(stop: int) -> list<int>;
   fn range(start: int, stop: int) -> list<int>;
   fn range(start: int, stop: int, step: int) -> list<int>;
+  fn length(values: list<int>) -> int;
+  fn at(values: list<int>, index: int) -> int;
+  fn append(values: list<int>, value: int) -> list<int>;
 }

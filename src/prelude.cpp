@@ -144,7 +144,8 @@ bool primitive_name(std::string_view name) {
       std::string_view{"logical_not"},  std::string_view{"logical_and"},
       std::string_view{"logical_or"},   std::string_view{"ceildiv"},
       std::string_view{"min"},          std::string_view{"max"},
-      std::string_view{"range"},
+      std::string_view{"range"},        std::string_view{"length"},
+      std::string_view{"at"},           std::string_view{"append"},
   };
   return std::find(names.begin(), names.end(), name) != names.end();
 }
@@ -208,6 +209,44 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
       }
       current = *next;
     }
+    return ParameterValue::list(std::move(result));
+  }
+  if (name == "length") {
+    if (arguments.size() != 1U ||
+        arguments[0].kind() != ParameterValue::Kind::List) {
+      return fail("Prelude length expects one list");
+    }
+    const std::size_t size = arguments[0].elements().size();
+    if (size >
+        static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
+      return fail("list length does not fit in int");
+    }
+    return ParameterValue(static_cast<std::int64_t>(size));
+  }
+  if (name == "at") {
+    const auto* index =
+        arguments.size() == 2U ? arguments[1].as_i64() : nullptr;
+    if (arguments.size() != 2U ||
+        arguments[0].kind() != ParameterValue::Kind::List || index == nullptr) {
+      return fail("Prelude at expects a list and an int index");
+    }
+    const auto elements = arguments[0].elements();
+    if (*index < 0 || static_cast<std::uint64_t>(*index) >= elements.size()) {
+      return fail("list index is out of bounds");
+    }
+    return elements[static_cast<std::size_t>(*index)];
+  }
+  if (name == "append") {
+    if (arguments.size() != 2U ||
+        arguments[0].kind() != ParameterValue::Kind::List) {
+      return fail("Prelude append expects a list and one value");
+    }
+    const auto elements = arguments[0].elements();
+    if (elements.size() >= element_limit) {
+      return fail("append exceeds the compiler evaluation step limit");
+    }
+    std::vector<ParameterValue> result(elements.begin(), elements.end());
+    result.push_back(arguments[1]);
     return ParameterValue::list(std::move(result));
   }
   if (name == "logical_not") {

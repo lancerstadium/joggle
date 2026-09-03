@@ -60,6 +60,11 @@ module projected_schema@1.0.0 {
     return result;
   }
 
+  fn transpose_value(input: tensor.ranked<f32, [2, 3, 4]>)
+    -> tensor.ranked<f32, [4, 2, 3]> {
+    return tensor.transpose(input, [2, 0, 1]);
+  }
+
   fn dynamic_read(
     input: buffer.buffer<f32, [2, 3], "sram">,
     row: index,
@@ -80,11 +85,16 @@ module projected_schema@1.0.0 {
   const auto nn = compiler.module("nn");
   const auto model = compiler.module("resnet18_basic_block");
   const auto function = compiler.materialize("resnet18_basic_block.main");
-  const auto tensor_value = compiler.materialize("projected_schema.tensor_value");
-  const auto storage_value = compiler.materialize("projected_schema.storage_value");
-  const auto dynamic_read = compiler.materialize("projected_schema.dynamic_read");
+  const auto tensor_value =
+      compiler.materialize("projected_schema.tensor_value");
+  const auto storage_value =
+      compiler.materialize("projected_schema.storage_value");
+  const auto transpose_value =
+      compiler.materialize("projected_schema.transpose_value");
+  const auto dynamic_read =
+      compiler.materialize("projected_schema.dynamic_read");
   if (!nn || !model || !function || !tensor_value || !storage_value ||
-      !dynamic_read) {
+      !transpose_value || !dynamic_read) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -96,23 +106,23 @@ module projected_schema@1.0.0 {
           ? std::optional<std::vector<std::int64_t>>{}
           : outputs.front().type().get<std::vector<std::int64_t>>("shape");
   bool ok = true;
-  ok &= expect(operations.size() == 7U &&
-                   operations[0].callee().symbol().qualified_name() ==
-                       "nn.conv2d_nchw" &&
-                   operations[1].callee().symbol().qualified_name() ==
-                       "nn.batch_norm_nchw" &&
-                   operations[5].callee().symbol().qualified_name() ==
-                       "nn.add" &&
-                   operations[6].callee().symbol().qualified_name() ==
-                       "nn.relu",
-               "the ResNet-18 basic block resolves to ordinary NN Module "
-               "operations");
-  ok &= expect(shape &&
-                   *shape == std::vector<std::int64_t>({1, 64, 56, 56}),
+  ok &=
+      expect(operations.size() == 7U &&
+                 operations[0].callee().symbol().qualified_name() ==
+                     "nn.conv2d_nchw" &&
+                 operations[1].callee().symbol().qualified_name() ==
+                     "nn.batch_norm_nchw" &&
+                 operations[5].callee().symbol().qualified_name() == "nn.add" &&
+                 operations[6].callee().symbol().qualified_name() == "nn.relu",
+             "the ResNet-18 basic block resolves to ordinary NN Module "
+             "operations");
+  ok &= expect(shape && *shape == std::vector<std::int64_t>({1, 64, 56, 56}),
                "convolution formulas and residual addition preserve the "
                "declared output shape");
-  const auto tensor_descriptor = tensor_value->entry().terminator().returned().front().type();
-  const auto storage_descriptor = storage_value->entry().terminator().returned().front().type();
+  const auto tensor_descriptor =
+      tensor_value->entry().terminator().returned().front().type();
+  const auto storage_descriptor =
+      storage_value->entry().terminator().returned().front().type();
   const auto tensor_input = tensor_value->arguments().front().type();
   const auto storage_input = storage_value->arguments().front().type();
   const auto tensor_element = tensor_descriptor.get<joggle::Type>("element");
@@ -123,18 +133,24 @@ module projected_schema@1.0.0 {
   const auto identity_shape =
       tensor_input.get<std::vector<std::int64_t>>("shape");
   const auto derived_space = storage_input.get<std::string>("address_space");
+  const auto transposed_shape = transpose_value->entry()
+                                    .terminator()
+                                    .returned()
+                                    .front()
+                                    .type()
+                                    .get<std::vector<std::int64_t>>("shape");
   ok &= expect(
       tensor_element &&
           tensor_element->schema().symbol().qualified_name() == "prelude.f32" &&
-          tensor_shape ==
-              std::optional<std::vector<std::int64_t>>{{2, 3}} &&
+          tensor_shape == std::optional<std::vector<std::int64_t>>{{2, 3}} &&
           storage_space == std::optional<std::string>{"sram"} &&
           derived_element &&
           derived_element->schema().symbol().qualified_name() ==
               "prelude.f32" &&
-          identity_shape ==
-              std::optional<std::vector<std::int64_t>>{{2, 3}} &&
-          derived_space == std::optional<std::string>{"sram"},
+          identity_shape == std::optional<std::vector<std::int64_t>>{{2, 3}} &&
+          derived_space == std::optional<std::string>{"sram"} &&
+          transposed_shape ==
+              std::optional<std::vector<std::int64_t>>{{4, 2, 3}},
       "type, list, and string fields flow through one parameter system");
   const auto memory_instructions = dynamic_read->instructions();
   ok &= expect(

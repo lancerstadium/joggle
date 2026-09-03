@@ -527,6 +527,32 @@ private:
     return std::nullopt;
   }
 
+  std::optional<Module::ParameterDecl>
+  compiler_binding_domain(const BindingSyntax& binding) {
+    if (!binding.type) {
+      return std::nullopt;
+    }
+    if (kernel_domain(binding.type->value)) {
+      return Module::ParameterDecl{binding.name, binding.type->value, false,
+                                   std::nullopt};
+    }
+    const Module::ParameterDecl expected_type{
+        "binding type", domain_expression(ValueKind::Type), false,
+        std::nullopt};
+    auto value = evaluate_known_expression(
+        compiler_, function_.symbol().module_name(), binding.type->value,
+        expected_type, locals_.known_bindings(), diagnostics_,
+        SourceRange{body_.source, binding.type->range.begin,
+                    binding.type->range.end},
+        !under_residual_control_);
+    const Type* type = value ? value->as_type() : nullptr;
+    auto domain = type ? type_domain(*type) : std::nullopt;
+    return domain ? std::optional<Module::ParameterDecl>{{binding.name,
+                                                          std::move(*domain),
+                                                          false, std::nullopt}}
+                  : std::nullopt;
+  }
+
   Flow sequence(std::span<const StatementSyntax> code) {
     for (const StatementSyntax& statement : code) {
       if (!step(statement.range)) {
@@ -673,8 +699,12 @@ private:
         }
         continue;
       }
-      auto value = evaluate(statement.expression.value,
-                            statement.expression.range, nullptr);
+      auto expected = statement.bindings.size() == 1U
+                          ? compiler_binding_domain(statement.bindings.front())
+                          : std::nullopt;
+      auto value =
+          evaluate(statement.expression.value, statement.expression.range,
+                   expected ? &*expected : nullptr);
       if (!value) {
         return {Control::Error, {}};
       }

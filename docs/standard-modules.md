@@ -61,10 +61,11 @@ type and shape. `tensor.ranked_tensor` exposes these facts to generic code.
 `tensor.unranked<E>` is deliberately weaker and does not claim that interface.
 
 The Module owns structural value functions only. It does not own NN operators,
-buffers, layouts, devices, or schedules. `transpose` currently receives both
-the permutation and `output_shape`: this is explicit because the core does not
-pretend to prove that a permutation produces a shape. A future list-algebra
-Module may compute and verify this relation without changing the tensor type.
+buffers, layouts, devices, or schedules. `transpose` accepts only its
+permutation; the ordinary `tensor.permute_shape` compiler function derives the
+result with Prelude list operations. Callers cannot repeat an inconsistent
+output shape, and the evaluator remains Module source rather than compiler
+core.
 
 ## `nn`: common inference semantics
 

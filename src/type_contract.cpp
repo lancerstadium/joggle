@@ -1100,25 +1100,33 @@ private:
       }
       return valid;
     }
-    const std::size_t field_dot = expression.text.find('.');
+    const Module::Expression& computed_expression =
+        expression.kind == Kind::Evaluate && expression.arguments.size() == 1U
+            ? expression.arguments.front()
+            : expression;
+    const std::size_t field_dot = computed_expression.text.find('.');
     const auto field_generic =
-        expression.kind == Kind::Reference && field_dot != std::string::npos
+        computed_expression.kind == Kind::Reference &&
+                field_dot != std::string::npos
             ? std::find_if(
                   contract_ ? contract_->generics.begin()
                             : empty_generics_.begin(),
                   contract_ ? contract_->generics.end() : empty_generics_.end(),
                   [&](const auto& candidate) {
                     return candidate.name ==
-                           std::string_view(expression.text.data(), field_dot);
+                           std::string_view(computed_expression.text.data(),
+                                            field_dot);
                   })
             : (contract_ ? contract_->generics.end() : empty_generics_.end());
     const auto generic_end =
         contract_ ? contract_->generics.end() : empty_generics_.end();
-    const bool computed =
-        field_generic != generic_end || expression.kind == Kind::Call ||
-        expression.kind == Kind::If || expression.kind == Kind::Evaluate ||
-        expression.kind == Kind::Prefix || expression.kind == Kind::Infix ||
-        expression.kind == Kind::Postfix;
+    const bool computed = field_generic != generic_end ||
+                          computed_expression.kind == Kind::Call ||
+                          computed_expression.kind == Kind::If ||
+                          expression.kind == Kind::Evaluate ||
+                          computed_expression.kind == Kind::Prefix ||
+                          computed_expression.kind == Kind::Infix ||
+                          computed_expression.kind == Kind::Postfix;
     if (computed) {
       Module::ParameterDecl expected{"computed",
                                      domain_expression(ValueKind::Integer),
@@ -1129,7 +1137,7 @@ private:
                 ? interface_declaration(*field_generic->constraint)
                 : std::optional<Module::InterfaceDecl>{};
         const std::string_view field_name =
-            std::string_view(expression.text).substr(field_dot + 1U);
+            std::string_view(computed_expression.text).substr(field_dot + 1U);
         const auto field =
             interface ? std::find_if(interface->fields().begin(),
                                      interface->fields().end(),
@@ -1138,7 +1146,8 @@ private:
                                      })
                       : std::span<const Module::ParameterDecl>::iterator{};
         if (!interface || field == interface->fields().end()) {
-          report("unknown derived parameter '" + expression.text + "'");
+          report("unknown derived parameter '" + computed_expression.text +
+                 "'");
           return false;
         }
         expected = *field;
@@ -1146,8 +1155,8 @@ private:
           report("derived parameter does not match the type parameter");
           return false;
         }
-      } else if (expression.kind == Kind::Call) {
-        const std::size_t receiver_dot = expression.text.find('.');
+      } else if (computed_expression.kind == Kind::Call) {
+        const std::size_t receiver_dot = computed_expression.text.find('.');
         const auto generic =
             receiver_dot == std::string::npos
                 ? (contract_ ? contract_->generics.end()
@@ -1158,14 +1167,15 @@ private:
                                          : empty_generics_.end(),
                                [&](const auto& candidate) {
                                  return candidate.name ==
-                                        std::string_view(expression.text.data(),
-                                                         receiver_dot);
+                                        std::string_view(
+                                            computed_expression.text.data(),
+                                            receiver_dot);
                                });
         if (generic == generic_end) {
           std::vector<CallCandidate> candidates;
           for (const auto& function :
-               environment_.functions(scope_, expression.text)) {
-            auto candidate = call_candidate(function, expression);
+               environment_.functions(scope_, computed_expression.text)) {
+            auto candidate = call_candidate(function, computed_expression);
             const auto results = parameter_results(function);
             if (!candidate || !ir_inputs(function).empty() ||
                 !ir_results(function).empty() || results.size() != 1U ||
@@ -1173,10 +1183,10 @@ private:
               continue;
             }
             bool accepts = true;
-            for (std::size_t index = 0; index < expression.arguments.size();
-                 ++index) {
+            for (std::size_t index = 0;
+                 index < computed_expression.arguments.size(); ++index) {
               const auto domain =
-                  known_domain(expression.arguments[index], bindings);
+                  known_domain(computed_expression.arguments[index], bindings);
               if (domain &&
                   function.inputs()[candidate->parameters[index]].domain !=
                       *domain) {

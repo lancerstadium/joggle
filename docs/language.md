@@ -151,9 +151,10 @@ that interprets an undeclared symbol or recognizes a call merely by its text.
 The shipped surface covers unary `+` and `-`; integer and real `+`, `-`, `*`,
 `/`, and `//`; integer `%`; numeric comparisons; equality for `int`, `real`,
 `bool`, and `string`; boolean `!`, `&&`, and `||`; `ceildiv`, `min`, and `max`;
-and integer `range`. Integer arithmetic is checked for signed 64-bit overflow.
-Division by zero and non-finite real results are errors. `ceildiv` accepts a
-non-negative dividend and a positive divisor.
+integer `range`; and `length`, `at`, and `append` for shape-oriented
+`list<int>` values. Integer arithmetic is checked for signed 64-bit overflow.
+Division by zero, an invalid list index, and non-finite real results are
+errors. `ceildiv` accepts a non-negative dividend and a positive divisor.
 
 Prelude operators are defaults, not privileged syntax. A Module can replace
 one signature with its own ordinary function:
@@ -194,6 +195,8 @@ operators, and conditional expressions share one expression grammar. Operator
 precedence is syntactic; meaning comes from a visible `fn ... as symbol`
 declaration. Parenthesize comparisons inside generic arguments, for example
 `flag<(lanes >= 4)>`, to distinguish an operator from closing `>` tokens.
+An empty list needs a contextual compiler domain, which a local annotation,
+function parameter, or result supplies: `shape: list<int> = [];`.
 
 `@expression` requires a Known result:
 

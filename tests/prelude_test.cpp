@@ -195,6 +195,14 @@ module primitive_test@1.0.0 {
     return range(4, 0);
   }
 
+  fn reverse(values: list<int>) -> list<int> {
+    result: list<int> = [];
+    for index in range(length(values)) {
+      result = append(result, at(values, length(values) - index - 1));
+    }
+    return result;
+  }
+
   fn unroll<N: int>(count: N, input: word<8>) -> word<8> {
     current = input;
     for index in range(N) {
@@ -231,6 +239,11 @@ module primitive_test@1.0.0 {
                                ? primitives.run<std::vector<std::int64_t>>(
                                      "primitive_test.empty_range")
                                : std::nullopt;
+  const auto reversed =
+      primitives_linked
+          ? primitives.run<std::vector<std::int64_t>>(
+                "primitive_test.reverse", std::vector<std::int64_t>{2, 4, 6})
+          : std::nullopt;
   const auto primitive_module = primitives.module("primitive_test");
   const auto unroll_decl =
       primitive_module ? primitive_module->function("unroll") : std::nullopt;
@@ -247,10 +260,11 @@ module primitive_test@1.0.0 {
                    *ascending == std::vector<std::int64_t>({0, 1, 2, 3}) &&
                    descending &&
                    *descending == std::vector<std::int64_t>({5, 3, 1}) &&
-                   empty_range && empty_range->empty() && unrolled &&
-                   unrolled->instructions().size() == 3U,
-               "Prelude fn primitives drive generic for, compile-time "
-               "range, control, arithmetic, comparisons, and logic");
+                   empty_range && empty_range->empty() && reversed &&
+                   *reversed == std::vector<std::int64_t>({6, 4, 2}) &&
+                   unrolled && unrolled->instructions().size() == 3U,
+               "Prelude fn primitives drive generic for, compile-time lists, "
+               "control, arithmetic, comparisons, and logic");
 
   joggle::Compiler shadowing;
   shadowing.add(R"(
@@ -400,6 +414,32 @@ module bounded_range@1.0.0 {
                    reports_range_limit,
                "range allocation is bounded by the compiler evaluation "
                "budget");
+
+  joggle::Compiler invalid_list;
+  invalid_list.add(R"(
+joggle 1;
+module invalid_list@1.0.0 {
+  fn out_of_bounds() -> int {
+    return at([4, 8], 2);
+  }
+}
+)",
+                   "invalid-list.joggle");
+  const bool invalid_list_linked = invalid_list.link();
+  const auto invalid_list_result =
+      invalid_list_linked
+          ? invalid_list.run<std::int64_t>("invalid_list.out_of_bounds")
+          : std::nullopt;
+  const bool reports_list_bounds = std::any_of(
+      invalid_list.diagnostics().entries().begin(),
+      invalid_list.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("list index is out of bounds") !=
+               std::string::npos;
+      });
+  ok &=
+      expect(invalid_list_linked && !invalid_list_result && reports_list_bounds,
+             "compile-time list indexing rejects an out-of-bounds index");
 
   const auto unknown = compiler.make("i33");
   ok &= expect(!unknown, "unknown Prelude type spellings are rejected");
