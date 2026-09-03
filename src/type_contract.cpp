@@ -245,6 +245,18 @@ public:
   infer(std::span<const Type> arguments,
         std::span<const std::optional<ParameterValue>> known_arguments,
         std::span<const std::optional<Type>> expected) {
+    std::vector<std::optional<Type>> values;
+    values.reserve(arguments.size());
+    for (const Type& argument : arguments) {
+      values.emplace_back(argument);
+    }
+    return infer_partial(values, known_arguments, expected);
+  }
+
+  std::optional<OperationTypes>
+  infer_partial(std::span<const std::optional<Type>> arguments,
+                std::span<const std::optional<ParameterValue>> known_arguments,
+                std::span<const std::optional<Type>> expected) {
     if (schema_ == nullptr || contract_ == nullptr) {
       report("operation solver has no operation schema");
       return std::nullopt;
@@ -265,7 +277,9 @@ public:
         return std::nullopt;
       }
       for (std::size_t item = 0; item < count; ++item) {
-        if (!unify(input.domain, ParameterValue(arguments[argument++]), bindings)) {
+        const auto& actual = arguments[argument++];
+        if (actual &&
+            !unify(input.domain, ParameterValue(*actual), bindings)) {
           return std::nullopt;
         }
       }
@@ -318,6 +332,24 @@ public:
     const Module::ParameterDecl type_parameter{
         "result", domain_expression(ValueKind::Type), false, std::nullopt};
     OperationTypes resolved;
+    resolved.arguments.reserve(arguments.size());
+    argument = 0;
+    for (const auto& input : value_inputs) {
+      const std::size_t count =
+          input.variadic ? arguments.size() - argument : 1U;
+      for (std::size_t item = 0; item < count; ++item) {
+        if (arguments[argument]) {
+          resolved.arguments.push_back(*arguments[argument++]);
+          continue;
+        }
+        auto value = evaluate(input.domain, type_parameter, bindings);
+        if (!value || value->as_type() == nullptr) {
+          return std::nullopt;
+        }
+        resolved.arguments.push_back(*value->as_type());
+        ++argument;
+      }
+    }
     resolved.results.reserve(value_results.size());
     for (const auto& result : value_results) {
       auto value = evaluate(result.domain, type_parameter, bindings);
@@ -1367,6 +1399,16 @@ resolve_operation_types(Compiler& compiler,
                         std::optional<SourceRange> source) {
   return Solver(environment(compiler), schema, diagnostics, std::move(source))
       .infer(arguments, known_arguments, expected_results);
+}
+
+std::optional<OperationTypes> resolve_partial_operation_types(
+    Compiler& compiler, const Module::FunctionDecl& schema,
+    std::span<const std::optional<Type>> arguments,
+    std::span<const std::optional<ParameterValue>> known_arguments,
+    std::span<const std::optional<Type>> expected_results,
+    Diagnostics& diagnostics, std::optional<SourceRange> source) {
+  return Solver(environment(compiler), schema, diagnostics, std::move(source))
+      .infer_partial(arguments, known_arguments, expected_results);
 }
 
 std::optional<OperationTypes> resolve_operation_types(

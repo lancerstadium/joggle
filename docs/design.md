@@ -295,6 +295,13 @@ all Blocks, and they serialize as qualified symbols rather than synthetic
 constant Instructions. This establishes the reference model needed for later
 closure lifting without reintroducing nested Region ownership.
 
+Function-value resolution is bidirectional. The operation solver first uses
+available ordinary operand types and expected results to resolve any missing
+callable operand types, then uses those types to select overloads or specialize
+generic Functions before performing the final complete call check. Canonical
+formatting emits a typed local binding for a selected Function value, so a
+round trip cannot lose an overload decision.
+
 The `function` kernel domain remains the bootstrap representation for direct
 `joggle::Function` callbacks. Parameterless Module-declared types can now
 register ordinary copyable C++ host representations and flow through composed

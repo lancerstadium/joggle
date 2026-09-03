@@ -132,6 +132,8 @@ auto output = edit.append(*map, {input, body}).value();
 checks that the callable input/result types match that declaration, and a
 function reference dominates every Block in its owning Function. Serialization
 prints the qualified Function name and includes its Module as a dependency.
+In source bodies, the same callable type may flow backward from an enclosing
+higher-order call to select an overload or specialize a generic Function.
 
 Edits are transactional. A failed commit or an abandoned `Edit` restores the
 previous Function. `replace`, `insert`, and `erase` operate in the same

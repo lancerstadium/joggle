@@ -14,6 +14,7 @@ namespace joggle::detail {
 using KnownBindings = std::unordered_map<std::string, ParameterValue>;
 
 struct OperationTypes {
+  std::vector<Type> arguments;
   std::vector<Type> results;
 };
 
@@ -41,6 +42,14 @@ resolve_operation_types(Compiler& compiler,
                         std::span<const std::optional<Type>> expected_results,
                         Diagnostics& diagnostics,
                         std::optional<SourceRange> source = std::nullopt);
+
+std::optional<OperationTypes> resolve_partial_operation_types(
+    Compiler& compiler, const Module::FunctionDecl& schema,
+    std::span<const std::optional<Type>> arguments,
+    std::span<const std::optional<ParameterValue>> known_arguments,
+    std::span<const std::optional<Type>> expected_results,
+    Diagnostics& diagnostics,
+    std::optional<SourceRange> source = std::nullopt);
 
 std::optional<OperationTypes> resolve_operation_types(
     std::span<const Module> modules, const Module::FunctionDecl& schema,

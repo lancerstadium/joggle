@@ -238,6 +238,12 @@ fn activate(input: tensor<f32>) -> tensor<f32> {
 }
 ```
 
+Callable expectations participate in the same dependent-type solution as the
+outer call. Once ordinary operands and expected results determine `(T) -> U`,
+that type selects a Function overload or specializes a generic Function. An
+underconstrained case uses an ordinary binding annotation rather than a new
+function-reference construct.
+
 The planned anonymous form is a block literal:
 
 ```joggle
@@ -369,8 +375,10 @@ arguments. Configurable expression-step, loop-iteration, and nesting-depth
 budgets fail with a diagnostic instead of silently residualizing.
 
 Multi-statement expression arms, anonymous closures, allocation budgets, and
-host-object serialization remain to be implemented. Concrete named Functions
-are already typed callable Values and round-trip as symbol references.
+host-object serialization remain to be implemented. Named Functions are
+already typed callable Values; outer-call constraints select generic and
+overloaded references, and canonical source preserves the selected callable
+type.
 Statement `break` and `continue` are
 implemented for Known and Residual loops. Residual transfers inside finite
 Known loops preserve multiple specialized continuations. Runtime-dependent

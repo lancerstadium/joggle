@@ -280,8 +280,23 @@ fn activate(input: tensor<f32>) -> tensor<f32> {
 
 The value has reflected type `(f32) -> f32` and refers directly to the
 Function symbol. No wrapper call or constant Instruction is inserted.
-Contextual selection for overloaded or unspecialized generic Function values
-is not implemented yet.
+An expected callable type selects overloaded Functions and specializes generic
+Functions. It can come from an explicit local annotation or be propagated from
+the surrounding higher-order call after its ordinary arguments and expected
+results constrain the signature:
+
+```joggle
+fn identity<T: type>(input: T) -> T;
+fn apply<T: type>(input: T, body: (T) -> T) -> T;
+
+fn use(input: f32) -> f32 {
+  return apply(input, identity);
+}
+```
+
+If the surrounding call leaves the callable signature genuinely
+underconstrained, the author supplies the same ordinary type annotation used
+for every other value; there is no function-value-specific syntax.
 
 `(T, U) -> (V, W)` is a real type expression. It resolves to the reflected
 Prelude `callable` type whose `inputs` and `results` are lists of ordinary

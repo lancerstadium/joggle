@@ -827,6 +827,13 @@ class Instantiator {
     std::vector<Type> carried_types;
   };
 
+  struct PendingArgument {
+    std::optional<Value> value;
+    std::string function;
+
+    bool is_function() const { return !function.empty(); }
+  };
+
 public:
   Instantiator(Compiler& compiler, Module::FunctionDecl function,
                const detail::FunctionBody& body, Diagnostics& diagnostics,
@@ -1523,11 +1530,56 @@ private:
                   : std::vector<Module::FunctionDecl>{};
   }
 
-  std::optional<Value> function_reference(std::string_view reference,
-                                          detail::SyntaxRange range) {
+  bool matches_function_value(const Module::FunctionDecl& function,
+                              const Type& callable,
+                              detail::SyntaxRange range) {
+    const Module::Symbol schema = callable.schema().symbol();
+    const auto inputs = callable.get<std::vector<Type>>("inputs");
+    const auto results = callable.get<std::vector<Type>>("results");
+    if (schema.module_name() != detail::prelude_module_name ||
+        schema.local_name() != "callable" || !inputs || !results ||
+        !detail::parameter_inputs(function).empty() ||
+        !detail::parameter_results(function).empty()) {
+      return false;
+    }
+    std::vector<std::optional<Type>> expected;
+    expected.reserve(results->size());
+    for (const Type& result : *results) {
+      expected.emplace_back(result);
+    }
+    Diagnostics attempt;
+    const auto resolved = detail::resolve_operation_types(
+        compiler_, function, *inputs, {}, expected, attempt, source(range));
+    return resolved && resolved->results == *results;
+  }
+
+  std::optional<Value>
+  function_reference(std::string_view reference, detail::SyntaxRange range,
+                     std::optional<Type> expected_type = std::nullopt) {
     const auto overloads = visible_functions(reference);
     if (overloads.empty()) {
       return std::nullopt;
+    }
+    if (expected_type) {
+      std::vector<Module::FunctionDecl> matches;
+      for (const auto& overload : overloads) {
+        if (matches_function_value(overload, *expected_type, range)) {
+          matches.push_back(overload);
+        }
+      }
+      if (matches.empty()) {
+        report("no overload of function '" + std::string(reference) +
+                   "' matches the contextual callable type",
+               range);
+        return std::nullopt;
+      }
+      if (matches.size() != 1U) {
+        report("function value '" + std::string(reference) +
+                   "' remains ambiguous for the contextual callable type",
+               range);
+        return std::nullopt;
+      }
+      return edit_->reference(matches.front(), std::move(*expected_type));
     }
     if (overloads.size() != 1U) {
       report("overloaded function '" + std::string(reference) +
@@ -1597,7 +1649,9 @@ private:
     return std::nullopt;
   }
 
-  std::optional<Value> use(const detail::ExpressionSyntax& expression) {
+  std::optional<Value>
+  use(const detail::ExpressionSyntax& expression,
+      std::optional<Type> expected_type = std::nullopt) {
     if ((expression.value.kind != Module::Expression::Kind::Reference &&
          expression.value.kind != Module::Expression::Kind::Variable) ||
         !expression.value.arguments.empty()) {
@@ -1612,7 +1666,8 @@ private:
     }
     if (expression.value.kind == Module::Expression::Kind::Reference) {
       if (auto value = function_reference(expression.value.text,
-                                          expression.range)) {
+                                          expression.range,
+                                          std::move(expected_type))) {
         return value;
       }
       if (!visible_functions(expression.value.text).empty()) {
@@ -1814,7 +1869,11 @@ private:
     if ((expression.kind == Kind::Variable ||
          expression.kind == Kind::Reference) &&
         expression.arguments.empty()) {
-      return {block, use(syntax)};
+      const auto expected = expected_values_.find(expression.text);
+      return {block,
+              use(syntax, expected == expected_values_.end()
+                              ? std::optional<Type>{}
+                              : std::optional<Type>{expected->second})};
     }
     const std::string name = "$value" + std::to_string(next_temporary_++);
     detail::StatementSyntax statement;
@@ -2295,7 +2354,8 @@ private:
                statement.range);
         return next(block);
       }
-      if (auto value = use(statement.expression)) {
+      auto expected = expected_type(statement.bindings.front());
+      if (auto value = use(statement.expression, std::move(expected))) {
         bind(statement.bindings.front(), std::move(*value));
       }
       return next(block);
@@ -2433,33 +2493,49 @@ private:
       return;
     }
 
-    std::vector<Value> arguments;
+    std::vector<PendingArgument> arguments;
     arguments.reserve(expression.arguments.size());
     for (const Module::Expression& argument_expression : expression.arguments) {
       detail::ExpressionSyntax argument_syntax{
           argument_expression, statement.expression.range};
-      std::optional<Value> argument;
+      PendingArgument argument;
       if ((argument_expression.kind == Kind::Reference ||
            argument_expression.kind == Kind::Variable) &&
           argument_expression.arguments.empty()) {
-        argument = use(argument_syntax);
+        argument.value = lookup(argument_expression.text);
+        if (!argument.value && declared_local(argument_expression.text)) {
+          invalidate_results();
+          return;
+        }
+        if (!argument.value && argument_expression.kind == Kind::Reference &&
+            !visible_functions(argument_expression.text).empty()) {
+          argument.function = argument_expression.text;
+        } else if (!argument.value) {
+          argument.value = use(argument_syntax);
+        }
       } else {
-        argument = evaluate_known(argument_syntax);
+        argument.value = evaluate_known(argument_syntax);
       }
-      if (argument) {
-        arguments.push_back(*argument);
-      } else {
+      if (!argument.value && !argument.is_function()) {
         invalidate_results();
         return;
       }
+      arguments.push_back(std::move(argument));
     }
 
     std::optional<Module::FunctionDecl> schema;
     if (fixity) {
       std::vector<Type> types;
       types.reserve(arguments.size());
-      for (const Value& argument : arguments) {
-        types.push_back(argument.type());
+      for (const PendingArgument& argument : arguments) {
+        if (!argument.value) {
+          report("operator arguments cannot contain an unresolved function "
+                 "value",
+                 statement.expression.range);
+          invalidate_results();
+          return;
+        }
+        types.push_back(argument.value->type());
       }
       schema = operator_declaration(expression.text, *fixity, types,
                                     statement.expression.range);
@@ -2473,7 +2549,7 @@ private:
     }
 
     const auto parameters = schema->inputs();
-    std::vector<std::vector<Value>> bound(parameters.size());
+    std::vector<std::vector<PendingArgument>> bound(parameters.size());
     std::size_t positional = 0;
     bool invalid_argument = false;
     for (std::size_t index = 0; index < arguments.size(); ++index) {
@@ -2512,7 +2588,7 @@ private:
         invalid_argument = true;
         continue;
       }
-      bound[target].push_back(arguments[index]);
+      bound[target].push_back(std::move(arguments[index]));
     }
 
     const auto& contract = detail::FunctionTypeAccess::get(*schema);
@@ -2525,7 +2601,7 @@ private:
                                            std::move(*payload))
                          : std::optional<Value>{};
         if (value) {
-          bound[index].push_back(std::move(*value));
+          bound[index].push_back({std::move(*value), {}});
         }
       }
       if (bound[index].empty() && !parameters[index].variadic) {
@@ -2534,9 +2610,10 @@ private:
         invalid_argument = true;
       }
       if (!contract.ir_inputs[index]) {
-        for (const Value& value : bound[index]) {
-          const auto payload = value.known()
-                                   ? detail::FunctionAccess::known_value(value)
+        for (const PendingArgument& argument : bound[index]) {
+          const auto payload = argument.value && argument.value->known()
+                                   ? detail::FunctionAccess::known_value(
+                                         *argument.value)
                                    : std::nullopt;
           if (!payload ||
               !detail::matches_parameter(parameters[index], *payload)) {
@@ -2578,21 +2655,78 @@ private:
       return;
     }
 
-    std::vector<Type> argument_types;
+    std::vector<std::optional<Type>> partial_argument_types;
     std::vector<std::optional<ParameterValue>> known_values(
         detail::parameter_inputs(*schema).size());
     std::size_t known_index = 0;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
       if (contract.ir_inputs[index]) {
-        for (const Value& value : bound[index]) {
-          argument_types.push_back(value.type());
+        for (const PendingArgument& argument : bound[index]) {
+          partial_argument_types.push_back(
+              argument.value ? std::optional<Type>{argument.value->type()}
+                             : std::nullopt);
         }
       } else {
         if (!bound[index].empty()) {
           known_values[known_index] =
-              detail::FunctionAccess::known_value(bound[index].front());
+              bound[index].front().value
+                  ? detail::FunctionAccess::known_value(
+                        *bound[index].front().value)
+                  : std::nullopt;
         }
         ++known_index;
+      }
+    }
+    const bool has_function_argument = std::any_of(
+        bound.begin(), bound.end(), [](const auto& arguments) {
+          return std::any_of(arguments.begin(), arguments.end(),
+                             [](const PendingArgument& argument) {
+                               return argument.is_function();
+                             });
+        });
+    if (has_function_argument) {
+      auto partial = detail::resolve_partial_operation_types(
+          compiler_, *schema, partial_argument_types, known_values,
+          expected_types, diagnostics_, source(statement.expression.range));
+      if (!partial ||
+          partial->arguments.size() != partial_argument_types.size()) {
+        invalidate_results();
+        return;
+      }
+      std::size_t argument_index = 0;
+      bool unresolved = false;
+      for (std::size_t index = 0; index < parameters.size(); ++index) {
+        if (!contract.ir_inputs[index]) {
+          continue;
+        }
+        for (PendingArgument& argument : bound[index]) {
+          if (argument.is_function()) {
+            argument.value = function_reference(
+                argument.function, statement.expression.range,
+                partial->arguments[argument_index]);
+            unresolved = !argument.value || unresolved;
+          }
+          ++argument_index;
+        }
+      }
+      if (unresolved) {
+        invalidate_results();
+        return;
+      }
+    }
+
+    std::vector<Type> argument_types;
+    argument_types.reserve(partial_argument_types.size());
+    for (std::size_t index = 0; index < parameters.size(); ++index) {
+      if (!contract.ir_inputs[index]) {
+        continue;
+      }
+      for (const PendingArgument& argument : bound[index]) {
+        if (!argument.value) {
+          invalidate_results();
+          return;
+        }
+        argument_types.push_back(argument.value->type());
       }
     }
     auto resolved = detail::resolve_operation_types(
@@ -2604,9 +2738,13 @@ private:
     }
 
     std::vector<Value> call_arguments;
-    for (const auto& values : bound) {
-      for (const Value& value : values) {
-        call_arguments.push_back(value);
+    for (const auto& parameter_arguments : bound) {
+      for (const PendingArgument& argument : parameter_arguments) {
+        if (!argument.value) {
+          invalidate_results();
+          return;
+        }
+        call_arguments.push_back(*argument.value);
       }
     }
     Instruction operation = edit_->append(
@@ -2669,11 +2807,36 @@ public:
       }
     }
     for (const Block& block : blocks) {
+      for (const Instruction& instruction : block.instructions()) {
+        for (const Value& argument : instruction.arguments()) {
+          remember_function(argument);
+        }
+      }
+      const Terminator terminator = block.terminator();
+      if (const auto condition = terminator.condition()) {
+        remember_function(*condition);
+      }
+      for (const Value& returned : terminator.returned()) {
+        remember_function(returned);
+      }
+      for (std::size_t index = 0; index < terminator.successor_count();
+           ++index) {
+        for (const Value& argument : terminator.arguments(index)) {
+          remember_function(argument);
+        }
+      }
+    }
+    for (const Block& block : blocks) {
       detail::BlockSyntax syntax;
       syntax.name = block_name(block);
       for (const Value& argument : block.arguments()) {
         syntax.arguments.push_back(
             {use(argument), type_expression(argument.type()), {}});
+      }
+      if (block.is_entry()) {
+        for (const Value& function : functions_) {
+          syntax.statements.push_back(function_binding(function));
+        }
       }
       for (const Instruction& instruction : block.instructions()) {
         syntax.statements.push_back(convert(instruction));
@@ -2773,13 +2936,39 @@ private:
     return name;
   }
 
-  std::string use(const Value& value) const {
-    if (const auto function = value.referenced_function()) {
-      return function->symbol().qualified_name();
+  void remember_function(const Value& value) {
+    if (!value.referenced_function() ||
+        std::find(functions_.begin(), functions_.end(), value) !=
+            functions_.end()) {
+      return;
     }
+    bind(value, "fn");
+    functions_.push_back(value);
+  }
+
+  detail::StatementSyntax function_binding(const Value& value) const {
+    const auto function = value.referenced_function();
+    if (!function) {
+      throw std::logic_error("function binding has no referenced function");
+    }
+    detail::StatementSyntax statement;
+    statement.kind = detail::StatementSyntax::Kind::Expression;
+    statement.bindings.push_back(
+        {use(value), type_expression(value.type()), {}});
+    statement.expression.value.kind = Module::Expression::Kind::Reference;
+    statement.expression.value.text = function->symbol().qualified_name();
+    return statement;
+  }
+
+  std::string use(const Value& value) const {
     const auto found =
         std::find_if(names_.begin(), names_.end(),
                      [&](const auto& entry) { return entry.first == value; });
+    if (found == names_.end()) {
+      if (const auto function = value.referenced_function()) {
+        return function->symbol().qualified_name();
+      }
+    }
     if (found == names_.end()) {
       throw std::invalid_argument(
           "the function contains a value before its definition");
@@ -2904,6 +3093,7 @@ private:
   const Function& function_;
   detail::FunctionSyntax syntax_;
   std::vector<std::pair<Value, std::string>> names_;
+  std::vector<Value> functions_;
   std::vector<std::pair<Block, std::string>> block_names_;
   std::size_t next_value_ = 0;
 };

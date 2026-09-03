@@ -24,6 +24,7 @@ module logic@1.0.0 {
   fn identity<T: type>(input: T) -> T;
   fn add<T: type>(lhs: T, rhs: T) -> T;
   fn apply<T: type, U: type>(input: T, body: (T) -> U) -> U;
+  fn apply_same<T: type>(input: T, body: (T) -> T) -> T;
   fn callback_factory<T: type, U: type>() -> (T) -> U;
   fn main(lhs: tensor<word<8>, [2, 4]>) -> tensor<word<8>, [2, 4]> {
     input: tensor<word<8>, [2, 4]> = source(
@@ -49,6 +50,23 @@ module logic@1.0.0 {
   fn callback(input: word<8>) -> word<16>;
   fn callback_value(input: word<8>) -> word<16> {
     return apply(input, callback);
+  }
+  fn generic_callback<T: type>(input: T) -> T;
+  fn generic_callback_value(input: word<8>) -> word<8> {
+    body: (word<8>) -> word<8> = generic_callback;
+    return apply_same(input, body);
+  }
+  fn direct_generic_callback_value(input: word<8>) -> word<8> {
+    return apply_same(input, generic_callback);
+  }
+  fn overloaded_callback(input: word<8>) -> word<8>;
+  fn overloaded_callback(input: word<16>) -> word<16>;
+  fn overloaded_callback_value(input: word<8>) -> word<8> {
+    body: (word<8>) -> word<8> = overloaded_callback;
+    return apply_same(input, body);
+  }
+  fn direct_overloaded_callback_value(input: word<8>) -> word<8> {
+    return apply_same(input, overloaded_callback);
   }
 
 }
@@ -102,6 +120,14 @@ int main() {
           : std::nullopt;
   const auto callback_user = compiler.function("logic.callback_user");
   const auto callback_value = compiler.function("logic.callback_value");
+  const auto generic_callback_value =
+      compiler.function("logic.generic_callback_value");
+  const auto overloaded_callback_value =
+      compiler.function("logic.overloaded_callback_value");
+  const auto direct_generic_callback_value =
+      compiler.function("logic.direct_generic_callback_value");
+  const auto direct_overloaded_callback_value =
+      compiler.function("logic.direct_overloaded_callback_value");
   const auto callback_arguments =
       callback_user ? callback_user->arguments() : std::vector<joggle::Value>{};
   const auto callback_parameters =
@@ -176,6 +202,84 @@ int main() {
                    joggle::format(*replayed_callback, "compiled_callback") ==
                        callback_text,
                "named function values format and instantiate canonically");
+  const auto generic_arguments =
+      generic_callback_value && !generic_callback_value->instructions().empty()
+          ? generic_callback_value->instructions().front().arguments()
+          : std::vector<joggle::Value>{};
+  const auto overloaded_arguments =
+      overloaded_callback_value &&
+              !overloaded_callback_value->instructions().empty()
+          ? overloaded_callback_value->instructions().front().arguments()
+          : std::vector<joggle::Value>{};
+  const auto generic_reference =
+      generic_arguments.size() == 2U
+          ? generic_arguments[1].referenced_function()
+          : std::optional<joggle::Module::FunctionDecl>{};
+  const auto overloaded_reference =
+      overloaded_arguments.size() == 2U
+          ? overloaded_arguments[1].referenced_function()
+          : std::optional<joggle::Module::FunctionDecl>{};
+  ok &= expect(generic_reference &&
+                   generic_reference->name() == "generic_callback" &&
+                   overloaded_reference &&
+                   overloaded_reference->signature().find("word<8>") !=
+                       std::string::npos,
+               "a callable annotation resolves generic and overloaded "
+               "function values contextually");
+  const std::string generic_text =
+      generic_callback_value
+          ? joggle::format(*generic_callback_value, "generic_value")
+          : "";
+  const std::string overloaded_text =
+      overloaded_callback_value
+          ? joggle::format(*overloaded_callback_value, "overloaded_value")
+          : "";
+  joggle::Compiler contextual_compiler;
+  contextual_compiler.add(source, "logic.joggle");
+  contextual_compiler.add(
+      "joggle 1;\nmodule contextual_artifact@1.0.0 {\n"
+      "  import logic@1;\n" +
+          generic_text + overloaded_text + "}\n",
+      "contextual-artifact.joggle");
+  const bool contextual_linked = contextual_compiler.link();
+  const auto replayed_generic =
+      contextual_linked
+          ? contextual_compiler.function("contextual_artifact.generic_value")
+          : std::optional<joggle::Function>{};
+  const auto replayed_overloaded =
+      contextual_linked
+          ? contextual_compiler.function(
+                "contextual_artifact.overloaded_value")
+          : std::optional<joggle::Function>{};
+  ok &= expect(replayed_generic && replayed_overloaded &&
+                   joggle::format(*replayed_generic, "generic_value") ==
+                       generic_text &&
+                   joggle::format(*replayed_overloaded,
+                                  "overloaded_value") == overloaded_text,
+               "context-selected function values preserve their callable "
+               "type across canonical serialization");
+  const auto direct_generic_arguments =
+      direct_generic_callback_value &&
+              direct_generic_callback_value->instructions().size() == 1U
+          ? direct_generic_callback_value->instructions().front().arguments()
+          : std::vector<joggle::Value>{};
+  const auto direct_overloaded_arguments =
+      direct_overloaded_callback_value &&
+              direct_overloaded_callback_value->instructions().size() == 1U
+          ? direct_overloaded_callback_value->instructions()
+                .front()
+                .arguments()
+          : std::vector<joggle::Value>{};
+  ok &= expect(direct_generic_arguments.size() == 2U &&
+                   direct_generic_arguments[1].referenced_function() &&
+                   direct_overloaded_arguments.size() == 2U &&
+                   direct_overloaded_arguments[1].referenced_function() &&
+                   direct_overloaded_arguments[1]
+                           .referenced_function()
+                           ->signature()
+                           .find("word<8>") != std::string::npos,
+               "a higher-order call propagates its inferred callable type "
+               "into generic and overloaded function arguments");
   const std::string module_text = module ? joggle::format(*module) : "";
   joggle::Diagnostics module_roundtrip_diagnostics;
   const auto module_roundtrip = joggle::parse_module(
