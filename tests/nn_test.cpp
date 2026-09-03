@@ -79,10 +79,10 @@ module projected_schema@1.0.0 {
 
   const auto nn = compiler.module("nn");
   const auto model = compiler.module("resnet18_basic_block");
-  const auto function = compiler.function("resnet18_basic_block.main");
-  const auto tensor_value = compiler.function("projected_schema.tensor_value");
-  const auto storage_value = compiler.function("projected_schema.storage_value");
-  const auto dynamic_read = compiler.function("projected_schema.dynamic_read");
+  const auto function = compiler.materialize("resnet18_basic_block.main");
+  const auto tensor_value = compiler.materialize("projected_schema.tensor_value");
+  const auto storage_value = compiler.materialize("projected_schema.storage_value");
+  const auto dynamic_read = compiler.materialize("projected_schema.dynamic_read");
   if (!nn || !model || !function || !tensor_value || !storage_value ||
       !dynamic_read) {
     compiler.diagnostics().print(std::cerr);

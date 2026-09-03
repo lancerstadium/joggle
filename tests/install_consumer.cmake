@@ -177,12 +177,12 @@ execute_process(
   COMMAND "${installed_cli}" install
           "${JOGGLE_SOURCE_DIR}/tests/consumer/extension.joggle"
           --behavior "${behavior_path}" --root "${module_root}"
-  RESULT_VARIABLE package_result
+  RESULT_VARIABLE install_result
   OUTPUT_VARIABLE installed_module
-  ERROR_VARIABLE package_error
+  ERROR_VARIABLE install_error
 )
-if(NOT package_result EQUAL 0)
-  message(FATAL_ERROR "external Module installation failed:\n${package_error}")
+if(NOT install_result EQUAL 0)
+  message(FATAL_ERROR "external Module installation failed:\n${install_error}")
 endif()
 string(STRIP "${installed_module}" installed_module)
 

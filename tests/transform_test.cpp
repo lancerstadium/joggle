@@ -50,8 +50,8 @@ module mapping@1.0.0 {
       schema ? schema->function("converted") : std::nullopt;
   const auto other = schema ? schema->function("other") : std::nullopt;
   const auto binary = schema ? schema->function("binary") : std::nullopt;
-  auto first = compiler.function("mapping.first");
-  auto second = compiler.function("mapping.second");
+  auto first = compiler.materialize("mapping.first");
+  auto second = compiler.materialize("mapping.second");
   if (!keep || !converted || !other || !binary || !first || !second) {
     return EXIT_FAILURE;
   }
@@ -89,8 +89,8 @@ module mapping@1.0.0 {
                    joggle::format(*second, "second") == before_invalid,
                "an invalid replacement restores content and revision");
 
-  auto module_first = compiler.function("mapping.first");
-  auto module_second = compiler.function("mapping.second");
+  auto module_first = compiler.materialize("mapping.first");
+  auto module_second = compiler.materialize("mapping.second");
   joggle::Module module("mapping_result", {1, 0, 0});
   joggle::Diagnostics insertion_diagnostics;
   if (!module_first || !module_second ||

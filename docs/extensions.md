@@ -50,7 +50,8 @@ depend on Residual module values remain in the executable IR.
 
 Prelude declares `module`. The compiler automatically represents it as
 `joggle::Module`, which carries multiple named Functions through a
-pipeline. No package import or manual representation registration is required.
+pipeline. No repository import or manual representation registration is
+required.
 This is a whole-module value, not a second IR hierarchy.
 
 ## Bind a function

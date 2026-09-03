@@ -85,7 +85,7 @@ std::optional<joggle::ir::Function> load_function(joggle::Compiler& compiler,
   if (!compiler.link()) {
     return std::nullopt;
   }
-  return compiler.function("logic.main");
+  return compiler.materialize("logic.main");
 }
 
 }  // namespace
@@ -111,21 +111,21 @@ int main() {
                          ? compiler.known(*configured_int, std::int64_t{8})
                          : std::nullopt;
   const auto configured = scale && configured_decl
-                              ? compiler.function(*configured_decl, {*scale})
+                              ? compiler.materialize(*configured_decl, {*scale})
                               : std::nullopt;
   const auto default_configured =
-      default_configured_decl ? compiler.function(*default_configured_decl)
+      default_configured_decl ? compiler.materialize(*default_configured_decl)
                               : std::nullopt;
-  const auto callback_user = compiler.function("logic.callback_user");
-  const auto callback_value = compiler.function("logic.callback_value");
+  const auto callback_user = compiler.materialize("logic.callback_user");
+  const auto callback_value = compiler.materialize("logic.callback_value");
   const auto generic_callback_value =
-      compiler.function("logic.generic_callback_value");
+      compiler.materialize("logic.generic_callback_value");
   const auto overloaded_callback_value =
-      compiler.function("logic.overloaded_callback_value");
+      compiler.materialize("logic.overloaded_callback_value");
   const auto direct_generic_callback_value =
-      compiler.function("logic.direct_generic_callback_value");
+      compiler.materialize("logic.direct_generic_callback_value");
   const auto direct_overloaded_callback_value =
-      compiler.function("logic.direct_overloaded_callback_value");
+      compiler.materialize("logic.direct_overloaded_callback_value");
   const auto callback_arguments = callback_user
                                       ? callback_user->arguments()
                                       : std::vector<joggle::ir::Value>{};
@@ -192,7 +192,7 @@ int main() {
   const bool callback_linked = callback_compiler.link();
   const auto replayed_callback =
       callback_linked
-          ? callback_compiler.function("callback_artifact.compiled_callback")
+          ? callback_compiler.materialize("callback_artifact.compiled_callback")
           : std::optional<joggle::ir::Function>{};
   ok &= expect(callback_text.find("logic.callback") != std::string::npos &&
                    replayed_callback &&
@@ -240,11 +240,11 @@ int main() {
   const bool contextual_linked = contextual_compiler.link();
   const auto replayed_generic =
       contextual_linked
-          ? contextual_compiler.function("contextual_artifact.generic_value")
+          ? contextual_compiler.materialize("contextual_artifact.generic_value")
           : std::optional<joggle::ir::Function>{};
   const auto replayed_overloaded =
       contextual_linked
-          ? contextual_compiler.function("contextual_artifact.overloaded_value")
+          ? contextual_compiler.materialize("contextual_artifact.overloaded_value")
           : std::optional<joggle::ir::Function>{};
   ok &= expect(replayed_generic && replayed_overloaded &&
                    joggle::format(*replayed_generic, "generic_value") ==
@@ -298,7 +298,7 @@ module invalid_callback@1.0.0 {
       module ? module->symbol(joggle::Module::SymbolKind::Function, "main")
              : std::nullopt;
   const auto reflected_function =
-      main_symbol ? compiler.function(*main_symbol) : std::nullopt;
+      main_symbol ? compiler.materialize(*main_symbol) : std::nullopt;
   ok &= expect(reflected_function &&
                    reflected_function->instructions().size() == 2U,
                "a reflected function symbol opens without rebuilding its name");
@@ -328,7 +328,7 @@ module invalid_callback@1.0.0 {
                        "artifact.joggle");
   const bool emitted_linked = emitted_compiler.link();
   const auto emitted_function =
-      emitted_linked ? emitted_compiler.function("artifact.compiled")
+      emitted_linked ? emitted_compiler.materialize("artifact.compiled")
                      : std::optional<joggle::ir::Function>{};
   ok &= expect(emitted_function &&
                    joggle::format(*emitted_function, "compiled") == emitted,
@@ -475,35 +475,35 @@ module cfg@1.0.0 {
   cfg_compiler.add(cfg_source, "cfg.joggle");
   const bool cfg_linked = cfg_compiler.link();
   const auto cfg_function =
-      cfg_linked ? cfg_compiler.function("cfg.choose") : std::nullopt;
+      cfg_linked ? cfg_compiler.materialize("cfg.choose") : std::nullopt;
   const auto cfg_structured =
-      cfg_linked ? cfg_compiler.function("cfg.structured") : std::nullopt;
+      cfg_linked ? cfg_compiler.materialize("cfg.structured") : std::nullopt;
   const auto cfg_specialized =
-      cfg_linked ? cfg_compiler.function("cfg.specialized") : std::nullopt;
+      cfg_linked ? cfg_compiler.materialize("cfg.specialized") : std::nullopt;
   const auto cfg_nested =
-      cfg_linked ? cfg_compiler.function("cfg.nested") : std::nullopt;
+      cfg_linked ? cfg_compiler.materialize("cfg.nested") : std::nullopt;
   const auto cfg_materialized =
-      cfg_linked ? cfg_compiler.function("cfg.materialized") : std::nullopt;
+      cfg_linked ? cfg_compiler.materialize("cfg.materialized") : std::nullopt;
   const auto cfg_statement_branch =
-      cfg_linked ? cfg_compiler.function("cfg.statement_branch") : std::nullopt;
+      cfg_linked ? cfg_compiler.materialize("cfg.statement_branch") : std::nullopt;
   const auto cfg_statement_specialized =
-      cfg_linked ? cfg_compiler.function("cfg.statement_specialized")
+      cfg_linked ? cfg_compiler.materialize("cfg.statement_specialized")
                  : std::nullopt;
   const auto cfg_statement_without_else =
-      cfg_linked ? cfg_compiler.function("cfg.statement_without_else")
+      cfg_linked ? cfg_compiler.materialize("cfg.statement_without_else")
                  : std::nullopt;
   const auto cfg_early_return =
-      cfg_linked ? cfg_compiler.function("cfg.early_return") : std::nullopt;
+      cfg_linked ? cfg_compiler.materialize("cfg.early_return") : std::nullopt;
   const auto cfg_early_return_both =
-      cfg_linked ? cfg_compiler.function("cfg.early_return_both")
+      cfg_linked ? cfg_compiler.materialize("cfg.early_return_both")
                  : std::nullopt;
   const auto cfg_specialized_return =
-      cfg_linked ? cfg_compiler.function("cfg.specialized_return")
+      cfg_linked ? cfg_compiler.materialize("cfg.specialized_return")
                  : std::nullopt;
   const auto cfg_loop_return =
-      cfg_linked ? cfg_compiler.function("cfg.loop_return") : std::nullopt;
+      cfg_linked ? cfg_compiler.materialize("cfg.loop_return") : std::nullopt;
   const auto cfg_early_literal =
-      cfg_linked ? cfg_compiler.function("cfg.early_literal") : std::nullopt;
+      cfg_linked ? cfg_compiler.materialize("cfg.early_literal") : std::nullopt;
   const std::string cfg_ir =
       cfg_function ? joggle::format(*cfg_function, "choose") : std::string{};
   const auto materialized_operations =
@@ -657,7 +657,7 @@ module missing_literal@1.0.0 {
   const bool missing_literal_linked = missing_literal.link();
   const auto missing_literal_function =
       missing_literal_linked
-          ? missing_literal.function("missing_literal.choose")
+          ? missing_literal.materialize("missing_literal.choose")
           : std::optional<joggle::ir::Function>{};
   const bool reports_missing_literal = std::any_of(
       missing_literal.diagnostics().entries().begin(),
@@ -686,7 +686,7 @@ module ambiguous_literal@1.0.0 {
   const bool ambiguous_literal_linked = ambiguous_literal.link();
   const auto ambiguous_literal_function =
       ambiguous_literal_linked
-          ? ambiguous_literal.function("ambiguous_literal.choose")
+          ? ambiguous_literal.materialize("ambiguous_literal.choose")
           : std::optional<joggle::ir::Function>{};
   const bool reports_ambiguous_literal =
       std::any_of(ambiguous_literal.diagnostics().entries().begin(),
@@ -800,22 +800,22 @@ module loops@1.0.0 {
   joggle::Compiler loop_compiler;
   loop_compiler.add(loop_source, "loops.joggle");
   const bool loops_linked = loop_compiler.link();
-  const auto repeat = loops_linked ? loop_compiler.function("loops.repeat")
+  const auto repeat = loops_linked ? loop_compiler.materialize("loops.repeat")
                                    : std::optional<joggle::ir::Function>{};
   const auto specialize = loops_linked
-                              ? loop_compiler.function("loops.specialize")
+                              ? loop_compiler.materialize("loops.specialize")
                               : std::optional<joggle::ir::Function>{};
   const auto count_from_zero =
-      loops_linked ? loop_compiler.function("loops.count_from_zero")
+      loops_linked ? loop_compiler.materialize("loops.count_from_zero")
                    : std::optional<joggle::ir::Function>{};
   const auto controlled = loops_linked
-                              ? loop_compiler.function("loops.controlled")
+                              ? loop_compiler.materialize("loops.controlled")
                               : std::optional<joggle::ir::Function>{};
   const auto known_break = loops_linked
-                               ? loop_compiler.function("loops.known_break")
+                               ? loop_compiler.materialize("loops.known_break")
                                : std::optional<joggle::ir::Function>{};
   const auto known_continue =
-      loops_linked ? loop_compiler.function("loops.known_continue")
+      loops_linked ? loop_compiler.materialize("loops.known_continue")
                    : std::optional<joggle::ir::Function>{};
   ok &= expect(repeat && loop_compiler.verify(*repeat) &&
                    repeat->blocks().size() == 4U &&
@@ -919,11 +919,11 @@ module mixed_loop_transfer@1.0.0 {
   const bool mixed_loop_transfer_linked = mixed_loop_transfer.link();
   const auto mixed_break =
       mixed_loop_transfer_linked
-          ? mixed_loop_transfer.function("mixed_loop_transfer.break_on")
+          ? mixed_loop_transfer.materialize("mixed_loop_transfer.break_on")
           : std::optional<joggle::ir::Function>{};
   const auto mixed_continue =
       mixed_loop_transfer_linked
-          ? mixed_loop_transfer.function("mixed_loop_transfer.continue_on")
+          ? mixed_loop_transfer.materialize("mixed_loop_transfer.continue_on")
           : std::optional<joggle::ir::Function>{};
   const auto mixed_control_shape = [](const joggle::ir::Function& function) {
     const auto blocks = function.blocks();
@@ -989,7 +989,7 @@ module cyclic_mixed_loop@1.0.0 {
           : std::nullopt;
   const auto cyclic_mixed_loop_function =
       cyclic_mixed_loop_linked && cyclic_mixed_loop_declaration && initial_phase
-          ? cyclic_mixed_loop.function(*cyclic_mixed_loop_declaration,
+          ? cyclic_mixed_loop.materialize(*cyclic_mixed_loop_declaration,
                                        {*initial_phase})
           : std::optional<joggle::ir::Function>{};
   if (!cyclic_mixed_loop_function) {
@@ -1061,7 +1061,7 @@ module computed_cycle@1.0.0 {
                      "computed-cycle.joggle");
   const bool computed_cycle_linked = computed_cycle.link();
   const auto computed_cycle_function =
-      computed_cycle_linked ? computed_cycle.function("computed_cycle.invalid")
+      computed_cycle_linked ? computed_cycle.materialize("computed_cycle.invalid")
                             : std::optional<joggle::ir::Function>{};
   ok &= expect(computed_cycle_linked && computed_cycle_function &&
                    computed_cycle.verify(*computed_cycle_function) &&
@@ -1091,7 +1091,7 @@ module unconstrained_cycle@1.0.0 {
   const bool unconstrained_cycle_linked = unconstrained_cycle.link();
   const auto unconstrained_cycle_function =
       unconstrained_cycle_linked
-          ? unconstrained_cycle.function("unconstrained_cycle.invalid")
+          ? unconstrained_cycle.materialize("unconstrained_cycle.invalid")
           : std::optional<joggle::ir::Function>{};
   ok &= expect(unconstrained_cycle_linked && unconstrained_cycle_function &&
                    unconstrained_cycle.verify(*unconstrained_cycle_function) &&
@@ -1116,7 +1116,7 @@ module bounded_loop@1.0.0 {
                    "bounded-loop.joggle");
   const bool bounded_loop_linked = bounded_loop.link();
   const auto never_finishes =
-      bounded_loop_linked ? bounded_loop.function("bounded_loop.never_finishes")
+      bounded_loop_linked ? bounded_loop.materialize("bounded_loop.never_finishes")
                           : std::optional<joggle::ir::Function>{};
   const bool reports_loop_limit =
       std::any_of(bounded_loop.diagnostics().entries().begin(),
@@ -1194,7 +1194,7 @@ module logic@1.0.0 {
   if (!unknown.link()) {
     return EXIT_FAILURE;
   }
-  const auto foreign = unknown.function("logic.main");
+  const auto foreign = unknown.materialize("logic.main");
   ok &= expect(!foreign && !unknown.ok(),
                "a named function keeps its module identity");
 
@@ -1202,7 +1202,7 @@ module logic@1.0.0 {
   unqualified.add(source, "logic.joggle");
   const bool unqualified_linked = unqualified.link();
   const auto unqualified_function = unqualified_linked
-                                        ? unqualified.function("main")
+                                        ? unqualified.materialize("main")
                                         : std::optional<joggle::ir::Function>{};
   const auto unqualified_diagnostics = unqualified.diagnostics().entries();
   ok &=
@@ -1227,7 +1227,7 @@ module mismatch@1.0.0 {
                "mismatch.joggle");
   const bool mismatch_linked = mismatch.link();
   const auto mismatch_function = mismatch_linked
-                                     ? mismatch.function("mismatch.main")
+                                     ? mismatch.materialize("mismatch.main")
                                      : std::optional<joggle::ir::Function>{};
   ok &= expect(!mismatch_function && !mismatch.ok(),
                "one type variable rejects operands with different types");
@@ -1247,7 +1247,7 @@ module return_inferred@1.0.0 {
                       "return-inferred.joggle");
   const bool return_inferred_linked = return_inferred.link();
   const auto return_inferred_function =
-      return_inferred_linked ? return_inferred.function("return_inferred.main")
+      return_inferred_linked ? return_inferred.materialize("return_inferred.main")
                              : std::optional<joggle::ir::Function>{};
   ok &= expect(
       return_inferred_function &&
@@ -1270,7 +1270,7 @@ module unbound@1.0.0 {
               "unbound.joggle");
   const bool unbound_linked = unbound.link();
   const auto unbound_function = unbound_linked
-                                    ? unbound.function("unbound.main")
+                                    ? unbound.materialize("unbound.main")
                                     : std::optional<joggle::ir::Function>{};
   ok &=
       expect(!unbound_function && !unbound.ok(),
@@ -1306,7 +1306,7 @@ module dependent@1.0.0 {
                    [](std::int64_t value) { return value * 2; });
   }
   auto dependent_function = dependent_linked && dependent_double
-                                ? dependent.function("dependent.inferred")
+                                ? dependent.materialize("dependent.inferred")
                                 : std::nullopt;
   const auto dependent_operations =
       dependent_function ? dependent_function->instructions()
@@ -1346,7 +1346,7 @@ module dependent@1.0.0 {
   const auto int_type = inconsistent.make("int");
   const auto width7 =
       int_type ? inconsistent.known(*int_type, std::int64_t{7}) : std::nullopt;
-  auto inconsistent_function = inconsistent.function();
+  auto inconsistent_function = inconsistent.body();
   if (!inconsistent_linked || !inconsistent_input || !default_input || !word8 ||
       !width7 || !inconsistent_function) {
     return EXIT_FAILURE;
@@ -1375,7 +1375,7 @@ module dependent@1.0.0 {
   const auto named_input =
       defaulted_module ? defaulted_module->function("input") : std::nullopt;
   const auto defaulted_int = defaulted.make("int");
-  auto defaulted_function = defaulted.function();
+  auto defaulted_function = defaulted.body();
   if (!defaulted_linked || !defaulted_input || !named_input || !defaulted_int ||
       !defaulted_function) {
     return EXIT_FAILURE;
@@ -1400,7 +1400,7 @@ module dependent@1.0.0 {
                "C++ append infers a result from a schema-owned default "
                "default without repeating the type");
 
-  auto named_function = defaulted.function();
+  auto named_function = defaulted.body();
   if (!named_function) {
     return EXIT_FAILURE;
   }
@@ -1539,24 +1539,24 @@ module computed@1.0.0 {
     computed.bind(*host_double, [](std::int64_t value) { return value * 2; });
   }
   const auto computed_function =
-      computed_linked ? computed.function("computed.main") : std::nullopt;
+      computed_linked ? computed.materialize("computed.main") : std::nullopt;
   const auto packed_function =
-      computed_linked ? computed.function("computed.pack") : std::nullopt;
+      computed_linked ? computed.materialize("computed.pack") : std::nullopt;
   const auto aligned_function = computed_linked
-                                    ? computed.function("computed.align_width")
+                                    ? computed.materialize("computed.align_width")
                                     : std::nullopt;
   const auto sum_function =
-      computed_linked ? computed.function("computed.sum") : std::nullopt;
+      computed_linked ? computed.materialize("computed.sum") : std::nullopt;
   const auto quotient_function =
-      computed_linked ? computed.function("computed.quotient") : std::nullopt;
+      computed_linked ? computed.materialize("computed.quotient") : std::nullopt;
   const auto compile_time_operator_function =
-      computed_linked ? computed.function("computed.compile_time_operator")
+      computed_linked ? computed.materialize("computed.compile_time_operator")
                       : std::nullopt;
   const auto compile_time_branch_function =
-      computed_linked ? computed.function("computed.compile_time_branch")
+      computed_linked ? computed.materialize("computed.compile_time_branch")
                       : std::nullopt;
   const auto compile_time_host_function =
-      computed_linked ? computed.function("computed.compile_time_host")
+      computed_linked ? computed.materialize("computed.compile_time_host")
                       : std::nullopt;
   const auto main_width =
       computed_function &&
@@ -1706,10 +1706,10 @@ module projected@1.0.0 {
                 "projected.joggle");
   const bool projected_linked = projected.link();
   const auto encode13 = projected_linked
-                            ? projected.function("projected.encode13")
+                            ? projected.materialize("projected.encode13")
                             : std::nullopt;
   const auto align13 =
-      projected_linked ? projected.function("projected.align13") : std::nullopt;
+      projected_linked ? projected.materialize("projected.align13") : std::nullopt;
   const auto format_module = projected.module("formats");
   const std::string format_text =
       format_module ? joggle::format(*format_module) : std::string{};
@@ -1839,7 +1839,7 @@ module imported_function@1.0.0 {
   const bool imported_function_linked = imported_function.link();
   const auto imported_function_function =
       imported_function_linked
-          ? imported_function.function("imported_function.main")
+          ? imported_function.materialize("imported_function.main")
           : std::nullopt;
   const auto imported_width =
       imported_function_function && !imported_function_function->entry()
@@ -1883,7 +1883,7 @@ module imported_operator@1.0.0 {
   const bool imported_operator_linked = imported_operator.link();
   const auto imported_operator_function =
       imported_operator_linked
-          ? imported_operator.function("imported_operator.main")
+          ? imported_operator.materialize("imported_operator.main")
           : std::nullopt;
   if (!imported_operator_function) {
     imported_operator.diagnostics().print(std::cerr);
@@ -1916,7 +1916,7 @@ module ambiguous_operator@1.0.0 {
   const bool ambiguous_operator_linked = ambiguous_operator.link();
   const auto ambiguous_operator_function =
       ambiguous_operator_linked
-          ? ambiguous_operator.function("ambiguous_operator.main")
+          ? ambiguous_operator.materialize("ambiguous_operator.main")
           : std::nullopt;
   const bool reports_operator_ambiguity = std::any_of(
       ambiguous_operator.diagnostics().entries().begin(),
@@ -1944,7 +1944,7 @@ module unsafe_expression@1.0.0 {
                         "unsafe-expression.joggle");
   const bool unsafe_linked = unsafe_expression.link();
   const auto unsafe_function =
-      unsafe_linked ? unsafe_expression.function("unsafe_expression.main")
+      unsafe_linked ? unsafe_expression.materialize("unsafe_expression.main")
                     : std::nullopt;
   const bool reports_division_by_zero = std::any_of(
       unsafe_expression.diagnostics().entries().begin(),
@@ -1969,7 +1969,7 @@ module dynamic_at@1.0.0 {
                  "dynamic-at.joggle");
   const bool dynamic_at_linked = dynamic_at.link();
   const auto dynamic_at_function =
-      dynamic_at_linked ? dynamic_at.function("dynamic_at.invalid")
+      dynamic_at_linked ? dynamic_at.materialize("dynamic_at.invalid")
                         : std::nullopt;
   const bool reports_dynamic_at =
       std::any_of(dynamic_at.diagnostics().entries().begin(),
@@ -2007,7 +2007,7 @@ module guarded_host@1.0.0 {
   }
   const auto guarded_host_function =
       guarded_host_linked && observe
-          ? guarded_host.function("guarded_host.invalid")
+          ? guarded_host.materialize("guarded_host.invalid")
           : std::nullopt;
   const bool reports_guarded_host = std::any_of(
       guarded_host.diagnostics().entries().begin(),
@@ -2049,7 +2049,7 @@ module hermetic_host@1.0.0 {
   }
   const auto hermetic_host_function =
       hermetic_host_linked && hermetic_evaluate
-          ? hermetic_host.function("hermetic_host.valid")
+          ? hermetic_host.materialize("hermetic_host.valid")
           : std::nullopt;
   ok &= expect(hermetic_host_function && hermetic_host.ok(),
                "a binding explicitly promised Hermetic may evaluate beneath "
@@ -2103,10 +2103,10 @@ module list_evaluation@1.0.0 {
   }
   const auto populated =
       list_evaluation_linked && list_sum
-          ? list_evaluation.function("list_evaluation.populated")
+          ? list_evaluation.materialize("list_evaluation.populated")
           : std::nullopt;
   const auto empty = list_evaluation_linked && list_sum
-                         ? list_evaluation.function("list_evaluation.empty")
+                         ? list_evaluation.materialize("list_evaluation.empty")
                          : std::nullopt;
   if (!populated || !empty) {
     list_evaluation.diagnostics().print(std::cerr);
@@ -2252,10 +2252,10 @@ module staged_control@1.0.0 {
           : std::nullopt;
   const auto specialized =
       specialize_decl && width
-          ? staged_control.function(*specialize_decl, {*width})
+          ? staged_control.materialize(*specialize_decl, {*width})
           : std::nullopt;
   const auto pipeline = pipeline_decl && stages
-                            ? staged_control.function(*pipeline_decl, {*stages})
+                            ? staged_control.materialize(*pipeline_decl, {*stages})
                             : std::nullopt;
   if (!staged_control_linked || !specialized || !pipeline) {
     staged_control.diagnostics().print(std::cerr);
@@ -2291,7 +2291,7 @@ module bounded@1.0.0 {
               "bounded.joggle");
   const bool bounded_linked = bounded.link();
   const auto bounded_function =
-      bounded_linked ? bounded.function("bounded.main") : std::nullopt;
+      bounded_linked ? bounded.materialize("bounded.main") : std::nullopt;
   const bool reports_step_limit =
       std::any_of(bounded.diagnostics().entries().begin(),
                   bounded.diagnostics().entries().end(),

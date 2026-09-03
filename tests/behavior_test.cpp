@@ -125,7 +125,7 @@ int main() {
       });
 
   const auto integer = compiler.make(*integer_schema, 8);
-  auto function = compiler.function();
+  auto function = compiler.body();
   if (!integer || !function) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;

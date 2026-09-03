@@ -333,7 +333,7 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
           (!joggle::detail::ir_inputs(function).empty() ||
            !joggle::detail::ir_results(function).empty()) &&
           joggle::detail::has_default_specialization(function) &&
-          !compiler.function(function.symbol())) {
+          !compiler.materialize(function.symbol())) {
         return false;
       }
     }
@@ -516,7 +516,7 @@ int main(int argc, char** argv) {
                  : std::string(member);
     };
     const std::string function_name = qualified(parsed.positional[1]);
-    auto function = compiler.function(function_name);
+    auto function = compiler.materialize(function_name);
     if (!function) {
       return fail(compiler.diagnostics());
     }

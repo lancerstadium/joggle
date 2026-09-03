@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
   const auto positive = module->type("positive");
   const auto value = positive ? compiler.make(*positive, std::int64_t{7})
                               : std::optional<joggle::Type>{};
-  auto function = compiler.function();
+  auto function = compiler.body();
   bool ok = true;
   ok &= expect(value.has_value(),
                "the loaded behavior refines type construction");
@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
     adjacent.diagnostics().print(std::cerr);
   }
   ok &= expect(adjacent_loaded,
-               "a package-adjacent platform library is discovered directly");
+               "a Module-adjacent platform library is discovered directly");
   ok &= expect(!adjacent.load_behavior("missing") && !adjacent.ok(),
                "behavior loading resolves one linked Module name");
 

@@ -12,8 +12,7 @@ The design is intentionally small:
 - `fn` is the only callable declaration;
 - values are typed independently of whether they are Known to the compiler or
   Residual in a module;
-- a second whole-IR container, Graph owner, or public package object does not
-  exist;
+- a second whole-IR container or Graph owner does not exist;
 - loading, transformation, analysis, simulation, and emission are ordinary
   typed functions.
 
@@ -56,8 +55,8 @@ ctest --test-dir build --output-on-failure
 cmake --install build --prefix /desired/prefix
 ```
 
-The CLI supports canonical formatting, validation, package installation,
-locking, and compiler-function pipelines:
+The CLI supports canonical formatting, validation, Module release
+installation, locking, and compiler-function pipelines:
 
 ```bash
 joggle fmt model.joggle --write
@@ -75,7 +74,7 @@ The language ABI is declared once in the embedded
 [`language/prelude.joggle`](language/prelude.joggle). It contains compiler
 domains, native scalar types, callable types, core interfaces, and the
 deterministic functions needed by dependent types and compile-time control.
-It is ambient and cannot be replaced by package search.
+It is ambient and cannot be replaced by repository lookup.
 
 [`modules`](modules) contains optional, ordinary installable declarations:
 

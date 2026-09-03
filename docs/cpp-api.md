@@ -55,10 +55,11 @@ adds an installed-Module repository. `link()` resolves and seals the complete
 environment. Diagnostics accumulate and retain source ranges.
 
 Reflect declarations through `compiler.module(name)` and the returned
-Module's `interface`, `type`, `attribute`, `declaration`, `overloads`, or
-`members` queries. `function(name)` is reserved for a materialized editable
-Function, so signature reflection cannot be confused with IR lookup. Symbols
-expose qualified and stable names.
+Module's `interface`, `type`, `attribute`, `function`, `overloads`, or
+`members` queries. `compiler.lookup("module.function")` performs the same
+unique Function-member lookup across the linked environment. Neither query
+constructs IR; `compiler.materialize(...)` does that explicitly. Symbols expose
+qualified and stable names.
 
 ## Construct types, attributes, and Known values
 
@@ -93,15 +94,15 @@ payloads are compiler scalars, Types, Attributes, and homogeneous ranges:
 auto width = compiler.known(*integer, std::int64_t{8});
 ```
 
-Known values are passed to `Compiler::function` to specialize compiler inputs.
-They are not inserted as runtime Function arguments.
+Known values are passed to `Compiler::materialize` to specialize compiler
+inputs. They are not inserted as runtime Function arguments.
 
 ## Instantiate a source Function
 
 ```cpp
 auto declaration = model->function("kernel");
 auto function = declaration && width
-                    ? compiler.function(*declaration, {*width})
+                    ? compiler.materialize(*declaration, {*width})
                     : std::nullopt;
 ```
 
@@ -109,13 +110,14 @@ The resulting `ir::Function` contains only its Residual boundary. Source
 bodies, generic values, defaults, and `@` expressions are evaluated while it
 is built. Use `joggle::format(*function, "kernel")` for canonical source.
 
-`Compiler::function()` creates an unnamed empty Function for programmatic
-construction.
+`Compiler::body()` creates an unnamed empty `ir::Function` for programmatic
+construction. It does not perform declaration lookup or source-body
+specialization.
 
 ## Edit a Function
 
 ```cpp
-auto function = compiler.function();
+auto function = compiler.body();
 auto edit = function->edit();
 
 auto lhs = edit.argument(*i32);

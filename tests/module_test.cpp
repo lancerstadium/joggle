@@ -202,7 +202,7 @@ int main() {
   joggle::Diagnostics trivia_diagnostics;
   const std::string with_trivia =
       "\n# source location and comments are not identity\n" + text.str() +
-      "\n# trailing package note\n";
+      "\n# trailing repository note\n";
   const auto trivia_module = joggle::parse_module(
       with_trivia, trivia_diagnostics, "another/path/compiler_test.joggle");
   const auto trivia_integer =

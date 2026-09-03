@@ -14,7 +14,8 @@ of the project; none is a migration log.
 - [Extensions](extensions.md) covers Modules, C++ behavior, and compiler
   functions.
 - [C++ API](cpp-api.md) documents the in-process library surface.
-- [Packages](packages.md) specifies installation, resolution, and lock files.
+- [Module repository](module-repository.md) specifies installation,
+  resolution, and lock files.
 
 The checked-in declarations in [`modules`](../modules) and executable examples
 in [`examples`](../examples) are part of the reference. If prose and behavior

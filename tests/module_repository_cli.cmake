@@ -1,4 +1,4 @@
-foreach(required JOGGLE_CLI JOGGLE_PACKAGE_TEST_DIR JOGGLE_LOCK_CONSUMER
+foreach(required JOGGLE_CLI JOGGLE_REPOSITORY_TEST_DIR JOGGLE_LOCK_CONSUMER
                  JOGGLE_BEHAVIOR_MODULE JOGGLE_BEHAVIOR_LIBRARY
                  JOGGLE_BEHAVIOR_FAILURE JOGGLE_BEHAVIOR_LOADER)
   if(NOT DEFINED ${required})
@@ -6,11 +6,11 @@ foreach(required JOGGLE_CLI JOGGLE_PACKAGE_TEST_DIR JOGGLE_LOCK_CONSUMER
   endif()
 endforeach()
 
-file(REMOVE_RECURSE "${JOGGLE_PACKAGE_TEST_DIR}")
-file(MAKE_DIRECTORY "${JOGGLE_PACKAGE_TEST_DIR}")
-set(root "${JOGGLE_PACKAGE_TEST_DIR}/modules")
-set(lock "${JOGGLE_PACKAGE_TEST_DIR}/joggle.lock")
-set(behavior_lock "${JOGGLE_PACKAGE_TEST_DIR}/behavior.lock")
+file(REMOVE_RECURSE "${JOGGLE_REPOSITORY_TEST_DIR}")
+file(MAKE_DIRECTORY "${JOGGLE_REPOSITORY_TEST_DIR}")
+set(root "${JOGGLE_REPOSITORY_TEST_DIR}/modules")
+set(lock "${JOGGLE_REPOSITORY_TEST_DIR}/joggle.lock")
+set(behavior_lock "${JOGGLE_REPOSITORY_TEST_DIR}/behavior.lock")
 
 function(expect_success label)
   execute_process(
@@ -43,7 +43,7 @@ if(unknown_position EQUAL -1)
   message(FATAL_ERROR "unknown command lacked a direct diagnostic")
 endif()
 
-set(format_case "${JOGGLE_PACKAGE_TEST_DIR}/format-case.joggle")
+set(format_case "${JOGGLE_REPOSITORY_TEST_DIR}/format-case.joggle")
 file(WRITE "${format_case}"
   "joggle 1; module formatted@1.0.0 { type word(width:int); }")
 expect_success("format in place" "${JOGGLE_CLI}" fmt "${format_case}" --write)
@@ -58,7 +58,7 @@ if(NOT formatted_text STREQUAL expected_format)
   message(FATAL_ERROR "in-place formatting is not canonical")
 endif()
 
-set(missing "${JOGGLE_PACKAGE_TEST_DIR}/missing.joggle")
+set(missing "${JOGGLE_REPOSITORY_TEST_DIR}/missing.joggle")
 file(WRITE "${missing}" [=[joggle 1;
 
 module missing@1.0.0 {
@@ -71,18 +71,18 @@ if(EXISTS "${root}/missing")
   message(FATAL_ERROR "failed install published an invalid module")
 endif()
 
-set(base "${JOGGLE_PACKAGE_TEST_DIR}/base.joggle")
-set(leaf "${JOGGLE_PACKAGE_TEST_DIR}/leaf.joggle")
+set(base "${JOGGLE_REPOSITORY_TEST_DIR}/base.joggle")
+set(leaf "${JOGGLE_REPOSITORY_TEST_DIR}/leaf.joggle")
 file(WRITE "${base}" [=[joggle 1;
 
-module package_base@1.0.0 {
+module repository_base@1.0.0 {
   type value();
 }
 ]=])
 file(WRITE "${leaf}" [=[joggle 1;
 
-module package_leaf@1.0.0 {
-  import package_base@1;
+module repository_leaf@1.0.0 {
+  import repository_base@1;
   type wrapper(element: type);
 }
 ]=])
@@ -95,10 +95,10 @@ expect_success("idempotent base install"
 expect_success("install leaf"
   "${JOGGLE_CLI}" install "${leaf}" --root "${root}")
 
-set(generic "${JOGGLE_PACKAGE_TEST_DIR}/generic.joggle")
+set(generic "${JOGGLE_REPOSITORY_TEST_DIR}/generic.joggle")
 file(WRITE "${generic}" [=[joggle 1;
 
-module package_generic@1.0.0 {
+module repository_generic@1.0.0 {
   type word(width: int);
   fn identity<T: type>(input: T) -> T;
 
@@ -118,10 +118,10 @@ expect_success("check generic staged body"
 expect_success("install generic staged body"
   "${JOGGLE_CLI}" install "${generic}" --root "${root}")
 
-set(invalid_generic "${JOGGLE_PACKAGE_TEST_DIR}/invalid-generic.joggle")
+set(invalid_generic "${JOGGLE_REPOSITORY_TEST_DIR}/invalid-generic.joggle")
 file(WRITE "${invalid_generic}" [=[joggle 1;
 
-module package_invalid_generic@1.0.0 {
+module repository_invalid_generic@1.0.0 {
   fn invalid<T: type>(input: T) -> T {
     return missing(input);
   }
@@ -137,9 +137,9 @@ if(missing_generic_call EQUAL -1)
 endif()
 
 expect_success("list modules" "${JOGGLE_CLI}" list --root "${root}")
-string(FIND "${command_output}" "package_base@1.0.0#" base_position)
-string(FIND "${command_output}" "package_leaf@1.0.0#" leaf_position)
-string(FIND "${command_output}" "package_generic@1.0.0#" generic_position)
+string(FIND "${command_output}" "repository_base@1.0.0#" base_position)
+string(FIND "${command_output}" "repository_leaf@1.0.0#" leaf_position)
+string(FIND "${command_output}" "repository_generic@1.0.0#" generic_position)
 if(base_position EQUAL -1 OR leaf_position EQUAL -1 OR
    generic_position EQUAL -1)
   message(FATAL_ERROR "module list is incomplete:\n${command_output}")
@@ -148,22 +148,22 @@ endif()
 expect_success("lock closure"
   "${JOGGLE_CLI}" lock "${leaf}" --root "${root}" -o "${lock}")
 file(READ "${lock}" lock_text)
-string(FIND "${lock_text}" "root package_leaf@1.0.0#" root_position)
-string(FIND "${lock_text}" "module package_base@1.0.0#" dependency_position)
+string(FIND "${lock_text}" "root repository_leaf@1.0.0#" root_position)
+string(FIND "${lock_text}" "module repository_base@1.0.0#" dependency_position)
 if(root_position EQUAL -1 OR dependency_position EQUAL -1)
   message(FATAL_ERROR "lock file is incomplete:\n${lock_text}")
 endif()
 expect_success("consume locked closure"
   "${JOGGLE_LOCK_CONSUMER}" "${root}" "${lock}" "${leaf}" 2)
 
-expect_success("install behavior package"
+expect_success("install behavior Module release"
   "${JOGGLE_CLI}" install "${JOGGLE_BEHAVIOR_MODULE}"
   --behavior "${JOGGLE_BEHAVIOR_LIBRARY}" --root "${root}")
 string(STRIP "${command_output}" installed_behavior_module)
 expect_success("load installed behavior"
   "${JOGGLE_BEHAVIOR_LOADER}" "${installed_behavior_module}"
   "${JOGGLE_BEHAVIOR_LIBRARY}" "${JOGGLE_BEHAVIOR_FAILURE}")
-expect_success("lock behavior package"
+expect_success("lock behavior Module release"
   "${JOGGLE_CLI}" lock "${JOGGLE_BEHAVIOR_MODULE}" --root "${root}"
   -o "${behavior_lock}")
 file(READ "${behavior_lock}" behavior_lock_text)
@@ -177,9 +177,9 @@ expect_success("replay locked behavior"
   "${JOGGLE_BEHAVIOR_LIBRARY}" "${JOGGLE_BEHAVIOR_FAILURE}"
   "${root}" "${behavior_lock}")
 
-set(conflict "${JOGGLE_PACKAGE_TEST_DIR}/conflict.joggle")
+set(conflict "${JOGGLE_REPOSITORY_TEST_DIR}/conflict.joggle")
 file(WRITE "${conflict}" [=[joggle 1;
-module package_base@1.0.0 {
+module repository_base@1.0.0 {
   type conflicting();
 }
 ]=])
@@ -187,7 +187,7 @@ expect_failure("reject conflicting identity"
   "${JOGGLE_CLI}" install "${conflict}" --root "${root}")
 
 expect_success("uninstall dependency"
-  "${JOGGLE_CLI}" uninstall package_base@1.0.0 --root "${root}")
+  "${JOGGLE_CLI}" uninstall repository_base@1.0.0 --root "${root}")
 expect_failure("reject lock with missing dependency"
   "${JOGGLE_CLI}" lock "${leaf}" --root "${root}")
 expect_failure("reject replay with missing digest"

@@ -123,7 +123,7 @@ body, so `N` or `S: list<int>` may drive expressions and control flow.
 Independent Module checking never guesses a value for a required Known
 generic. It validates the generic body's syntax, scopes, declarations, and
 call shapes; each concrete specialization then validates the selected staged
-paths and resolved types. Defaults make a specialization available to package
+paths and resolved types. Defaults make a specialization available to module
 checking without a caller.
 
 Compiler lists are `list<D>`. Variadic `T...` is reserved for module-value

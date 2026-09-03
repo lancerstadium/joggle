@@ -306,15 +306,15 @@ if(JOGGLE_BUILD_TESTS)
   add_executable(joggle_lock_consumer tests/lock_consumer.cpp)
   target_link_libraries(joggle_lock_consumer PRIVATE joggle::joggle)
 
-  add_test(NAME package_cli
+  add_test(NAME module_repository_cli
     COMMAND ${CMAKE_COMMAND}
       -DJOGGLE_CLI=$<TARGET_FILE:joggle_cli>
-      -DJOGGLE_PACKAGE_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/test-packages
+      -DJOGGLE_REPOSITORY_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/test-module-repository
       -DJOGGLE_LOCK_CONSUMER=$<TARGET_FILE:joggle_lock_consumer>
       -DJOGGLE_BEHAVIOR_MODULE=${CMAKE_CURRENT_BINARY_DIR}/behavior_plugin.joggle
       -DJOGGLE_BEHAVIOR_LIBRARY=$<TARGET_FILE:joggle_test_behavior>
       -DJOGGLE_BEHAVIOR_FAILURE=$<TARGET_FILE:joggle_test_behavior_failure>
       -DJOGGLE_BEHAVIOR_LOADER=$<TARGET_FILE:joggle_behavior_loader_test>
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/package_cli.cmake
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/module_repository_cli.cmake
   )
 endif()

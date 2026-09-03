@@ -3,7 +3,7 @@
 This directory contains the optional standard Modules shipped with Joggle.
 Their public semantics are ordinary `.joggle` declarations rather than hidden
 declaration kinds or test fixtures. The embedded language ABI lives separately
-in `language/prelude.joggle`; Prelude is not an installable package.
+in `language/prelude.joggle`; Prelude is not an installable Module.
 
 - Native `i1/i8/i16/i32/i64`, `u8/u16/u32/u64`,
   `f16/bf16/f32/f64`, and `index` types are declarations in the automatically

@@ -1,6 +1,6 @@
 #pragma once
 
-// Executable intermediate representation. Package schemas remain in
+// Executable intermediate representation. Module declarations remain in
 // `joggle`; all executable ownership and handle types live in `joggle::ir`.
 
 #include <cstddef>

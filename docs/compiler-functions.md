@@ -55,7 +55,7 @@ artifact between stages.
 
 The existing kernel provides the invariants every compiler function needs:
 
-- canonical declarations, package identity, dependency locking, and behavior
+- canonical declarations, Module identity, dependency locking, and behavior
   identity checks;
 - type/interface checking, overload resolution, dependent result types, and
   Known/Residual staging;

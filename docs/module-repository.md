@@ -1,9 +1,9 @@
-# Packages and reproducibility
+# Module repository and reproducibility
 
 A release is one serialized `joggle::Module`: one canonical source file, one
-semantic version, and one SHA-256 content identity. Packaging is repository
-metadata, not another language object or IR owner. The CLI manages installed
-releases and `Compiler` resolves ordinary search paths.
+semantic version, and one SHA-256 content identity. Release metadata belongs
+to the repository; it is not another language object or IR owner. The CLI
+manages installed releases and `Compiler` resolves ordinary search paths.
 
 ## Commands
 
@@ -24,7 +24,7 @@ contracts, body structure, and call shapes. It also instantiates every defined
 Function whose signature is concrete from defaults alone. A body requiring
 caller-supplied Known generics is checked independently as far as its abstract
 environment permits, then fully type-checked at each concrete specialization;
-package validation does not invent representative generic values. Repeated
+module validation does not invent representative generic values. Repeated
 `--with` options add uninstalled local dependencies without modifying a
 repository. `--behavior` additionally validates an exact behavior library and
 runs registered verifiers.
@@ -57,7 +57,7 @@ Install validates the complete closure before publishing. Module text and
 behavior are assembled in a hidden same-filesystem staging directory and
 become visible atomically. Uninstall first removes the exact version from the
 visible namespace, then reclaims storage. Resolution therefore never observes
-a partial package.
+a partial Module release.
 
 ## Resolution
 

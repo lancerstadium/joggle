@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  auto function = compiler.function("external.main");
+  auto function = compiler.materialize("external.main");
   if (!function || !compiler.run(*function, "external.convert")) {
     compiler.diagnostics().print(std::cerr);
     return 1;
@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  auto constructed = compiler.function();
+  auto constructed = compiler.body();
   const auto int_type = compiler.make("int");
   const auto bits12 =
       int_type ? compiler.known(*int_type, std::int64_t{12}) : std::nullopt;

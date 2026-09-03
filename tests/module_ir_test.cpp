@@ -41,8 +41,8 @@ module module_defs@1.0.0 {
   joggle::Compiler compiler;
   compiler.add(source, "module-defs.joggle");
   const bool linked = compiler.link();
-  auto main = linked ? compiler.function("module_defs.main") : std::nullopt;
-  auto choose = linked ? compiler.function("module_defs.choose") : std::nullopt;
+  auto main = linked ? compiler.materialize("module_defs.main") : std::nullopt;
+  auto choose = linked ? compiler.materialize("module_defs.choose") : std::nullopt;
   const auto definitions = compiler.module("module_defs");
   const auto prelude = compiler.module("prelude");
   const auto callback_decl =
@@ -54,7 +54,7 @@ module module_defs@1.0.0 {
           ? compiler.make(*callable_decl, std::vector<joggle::Type>{*i32},
                           std::vector<joggle::Type>{*i32})
           : std::optional<joggle::Type>{};
-  auto callback_value = compiler.function();
+  auto callback_value = compiler.body();
   if (!main || !choose || !callback_decl || !callable || !callback_value) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -118,11 +118,11 @@ module module_defs@1.0.0 {
   replay.add(text, "compiled-module.joggle");
   const bool replay_linked = replay.link();
   const auto replay_main =
-      replay_linked ? replay.function("compiled_module.main") : std::nullopt;
+      replay_linked ? replay.materialize("compiled_module.main") : std::nullopt;
   const auto replay_choose =
-      replay_linked ? replay.function("compiled_module.choose") : std::nullopt;
+      replay_linked ? replay.materialize("compiled_module.choose") : std::nullopt;
   const auto replay_callback =
-      replay_linked ? replay.function("compiled_module.callback_value")
+      replay_linked ? replay.materialize("compiled_module.callback_value")
                     : std::nullopt;
   if (!replay_main || !replay_choose || !replay_callback) {
     replay.diagnostics().print(std::cerr);
@@ -142,7 +142,7 @@ module module_defs@1.0.0 {
                            .qualified_name() == "module_defs.callback",
                "function-reference dependencies serialize and replay");
 
-  auto mixed_main = compiler.function("module_defs.main");
+  auto mixed_main = compiler.materialize("module_defs.main");
   joggle::Module mixed = *definitions;
   joggle::Diagnostics mixed_diagnostics;
   const bool mixed_inserted =
@@ -162,7 +162,7 @@ module module_defs@1.0.0 {
                "one Module member table carries source declarations and "
                "materialized IR without a self-import or second container");
 
-  auto duplicate = compiler.function("module_defs.main");
+  auto duplicate = compiler.materialize("module_defs.main");
   ok &= expect(duplicate &&
                    !module.insert("main", std::move(*duplicate), diagnostics) &&
                    !diagnostics.ok(),

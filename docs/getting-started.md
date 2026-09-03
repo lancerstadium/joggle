@@ -138,7 +138,7 @@ if (!compiler.link() ||
   return 1;
 }
 
-auto function = compiler.function("example.main");
+auto function = compiler.materialize("example.main");
 if (!function || !compiler.run(*function, "example.rewrite")) {
   compiler.diagnostics().print(std::cerr);
   return 1;
@@ -146,6 +146,7 @@ if (!function || !compiler.run(*function, "example.rewrite")) {
 ```
 
 For installed discovery, call `compiler.search(root)` and the one-argument
-`load_behavior("example")`. See [Packages](packages.md) for repository and
-lock semantics, and [`tests/consumer`](../tests/consumer) for the tested
-installed-project example.
+`load_behavior("example")`. See the
+[Module repository](module-repository.md) for repository and lock semantics,
+and [`tests/consumer`](../tests/consumer) for the tested installed-project
+example.

@@ -91,11 +91,11 @@ module native_test@1.0.0 {
                          : std::nullopt;
   const auto known_i32 =
       i32 ? compiler.known(*i32, std::int64_t{7}) : std::nullopt;
-  const auto integers = compiler.function("native_test.integers");
-  const auto floating = compiler.function("native_test.floating");
-  const auto custom = compiler.function("native_test.custom");
-  const auto native_width = compiler.function("native_test.native_width");
-  const auto custom_width = compiler.function("native_test.custom_width");
+  const auto integers = compiler.materialize("native_test.integers");
+  const auto floating = compiler.materialize("native_test.floating");
+  const auto custom = compiler.materialize("native_test.custom");
+  const auto native_width = compiler.materialize("native_test.native_width");
+  const auto custom_width = compiler.materialize("native_test.custom_width");
   const auto scalar =
       embedded_prelude ? embedded_prelude->interface("scalar") : std::nullopt;
   const auto storage_bits = scalar && !scalar->fields().empty()
@@ -155,7 +155,7 @@ module native_test@1.0.0 {
                    text.find("prelude.i32") == std::string::npos,
                "Prelude types retain their compact source spelling");
   ok &= expect(compiler.modules().size() == 1U,
-               "the ambient Prelude is not a package dependency");
+               "the ambient Prelude is not a repository dependency");
 
   joggle::Compiler primitives;
   primitives.add(R"(
@@ -239,7 +239,7 @@ module primitive_test@1.0.0 {
                          ? primitives.known(*integer_type, std::int64_t{3})
                          : std::nullopt;
   const auto unrolled = unroll_decl && count
-                            ? primitives.function(*unroll_decl, {*count})
+                            ? primitives.materialize(*unroll_decl, {*count})
                             : std::nullopt;
   ok &= expect(primitives_linked && folded == std::optional<std::int64_t>{7} &&
                    predicate == std::optional<bool>{true} &&

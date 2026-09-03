@@ -319,7 +319,7 @@ module pipeline@1.0.0 {
     return EXIT_FAILURE;
   }
   const auto integer = compiler.make(*integer_decl, std::int64_t{8});
-  auto function = compiler.function();
+  auto function = compiler.body();
   if (!integer || !function) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -358,7 +358,7 @@ module pipeline@1.0.0 {
   compiler.bind(*read,
                 [](joggle::Compiler& current, const joggle::Bytes& bytes)
                     -> std::optional<joggle::ir::Function> {
-                  return bytes.empty() ? std::nullopt : current.function();
+                  return bytes.empty() ? std::nullopt : current.body();
                 });
   compiler.bind(
       *inspect, [](const joggle::ir::Function& current) -> std::int64_t {
@@ -499,21 +499,21 @@ module pipeline@1.0.0 {
                "structured compiler functions execute selected branches, "
                "loops, overloads, typed operators, zero-result calls, and "
                "multi-result calls");
-  const auto typed_function = compiler.function(*typed);
-  const auto ordered_typed_function = compiler.function(*ordered_typed);
-  const auto relation_typed_function = compiler.function(*relation_typed);
+  const auto typed_function = compiler.materialize(*typed);
+  const auto ordered_typed_function = compiler.materialize(*ordered_typed);
+  const auto relation_typed_function = compiler.materialize(*relation_typed);
   const auto text_relation_typed_function =
-      compiler.function(*text_relation_typed);
-  const auto overload_typed_function = compiler.function(*overload_typed);
-  const auto default_typed_function = compiler.function(*default_typed);
-  const auto staged_overload_function = compiler.function(*staged_overload);
-  const auto residual_overload_function = compiler.function(*residual_overload);
+      compiler.materialize(*text_relation_typed);
+  const auto overload_typed_function = compiler.materialize(*overload_typed);
+  const auto default_typed_function = compiler.materialize(*default_typed);
+  const auto staged_overload_function = compiler.materialize(*staged_overload);
+  const auto residual_overload_function = compiler.materialize(*residual_overload);
   const auto residual_arguments_function =
-      compiler.function(*residual_arguments);
-  const auto residual_variadic_function = compiler.function(*residual_variadic);
+      compiler.materialize(*residual_arguments);
+  const auto residual_variadic_function = compiler.materialize(*residual_variadic);
   const auto residual_dependent_function =
-      compiler.function(*residual_dependent);
-  const auto relay_fork_function = compiler.function(*relay_fork);
+      compiler.materialize(*residual_dependent);
+  const auto relay_fork_function = compiler.materialize(*relay_fork);
   const auto convert_word_8 = std::find_if(
       convert_words.begin(), convert_words.end(), [](const auto& function) {
         const auto& domain = function.inputs().front().domain;
@@ -613,7 +613,7 @@ module pipeline@1.0.0 {
                "the native transformation removes redundant casts");
 
   joggle::Module module("compiler_pipeline", {1, 0, 0});
-  auto module_main = compiler.function();
+  auto module_main = compiler.body();
   joggle::Diagnostics module_diagnostics;
   if (!module_main ||
       !module.insert("main", std::move(*module_main), module_diagnostics)) {
@@ -658,7 +658,7 @@ module pipeline@1.0.0 {
       guarded ? guarded->function("identity") : std::nullopt;
   const auto guarded_a =
       guarded_a_decl ? guarded_compiler.make(*guarded_a_decl) : std::nullopt;
-  auto guarded_function = guarded_compiler.function();
+  auto guarded_function = guarded_compiler.body();
   if (!guarded || !guarded_identity || !guarded_a || !guarded_function) {
     return EXIT_FAILURE;
   }
@@ -699,7 +699,7 @@ module pipeline@1.0.0 {
                      "named.joggle");
   const bool named_linked = named_compiler.link();
   const auto named_module = named_compiler.module("named");
-  auto named_function = named_compiler.function();
+  auto named_function = named_compiler.body();
   bool named_called = false;
   if (named_module) {
     const auto noop = named_module->function("noop");
@@ -764,7 +764,7 @@ module transactional@1.0.0 {
   const auto transaction = transactional_module
                                ? transactional_module->function("pipeline")
                                : std::nullopt;
-  auto transactional_function = transactional.function();
+  auto transactional_function = transactional.body();
   if (!transactional_linked || !token || !mutate || !reject || !transaction ||
       !transactional_function) {
     return EXIT_FAILURE;

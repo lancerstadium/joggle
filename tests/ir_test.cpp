@@ -67,7 +67,7 @@ int main() {
   const auto other = compiler.make(*other_schema);
   const auto boolean = compiler.make("i1");
   const auto i32 = compiler.make("i32");
-  auto function = compiler.function();
+  auto function = compiler.body();
   if (!integer || !other || !boolean || !i32 || !function) {
     return EXIT_FAILURE;
   }
@@ -100,7 +100,7 @@ int main() {
                "instruction results retain their inferred type");
 
   const auto known_seven = compiler.known(*i32, std::int64_t{7});
-  auto mixed = compiler.function();
+  auto mixed = compiler.body();
   if (!known_seven || !mixed) {
     return EXIT_FAILURE;
   }
@@ -125,7 +125,7 @@ int main() {
   const auto callable =
       compiler.make(*callable_schema, std::vector<joggle::Type>{*i32},
                     std::vector<joggle::Type>{*i32});
-  auto higher_order = compiler.function();
+  auto higher_order = compiler.body();
   if (!callable || !higher_order) {
     return EXIT_FAILURE;
   }
@@ -245,7 +245,7 @@ int main() {
                        add->result(0),
                "replace rewires instruction and boundary uses before erase");
 
-  auto queried = compiler.function();
+  auto queried = compiler.body();
   std::optional<joggle::ir::Value> queried_input;
   std::optional<joggle::ir::Instruction> queried_first;
   std::optional<joggle::ir::Instruction> queried_second;
@@ -283,7 +283,7 @@ int main() {
           !queried->dominates(queried_second->result(0), *queried_first),
       "value dominance follows arguments, blocks, and instruction order");
 
-  auto inconsistent_returns = compiler.function();
+  auto inconsistent_returns = compiler.body();
   if (!inconsistent_returns) {
     return EXIT_FAILURE;
   }
@@ -302,7 +302,7 @@ int main() {
                  "all returns of an anonymous function share one signature");
   }
 
-  auto invalid = compiler.function();
+  auto invalid = compiler.body();
   if (!invalid) {
     return EXIT_FAILURE;
   }
@@ -318,7 +318,7 @@ int main() {
                  "a type-invalid edit rolls the complete transaction back");
   }
 
-  auto branched = compiler.function();
+  auto branched = compiler.body();
   if (!branched) {
     return EXIT_FAILURE;
   }
@@ -375,7 +375,7 @@ int main() {
                  branched->has_uses(merge->arguments().front()),
              "branch, edge, and return operands are visible as boundary uses");
 
-  auto invalid_edge = compiler.function();
+  auto invalid_edge = compiler.body();
   if (!invalid_edge) {
     return EXIT_FAILURE;
   }
@@ -393,7 +393,7 @@ int main() {
                  "edge type errors reject and roll back the whole CFG edit");
   }
 
-  auto invalid_dominance = compiler.function();
+  auto invalid_dominance = compiler.body();
   if (!invalid_dominance) {
     return EXIT_FAILURE;
   }

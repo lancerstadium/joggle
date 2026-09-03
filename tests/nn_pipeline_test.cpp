@@ -64,7 +64,7 @@ int main() {
       prepare ? prepare->function("prepare") : std::nullopt;
   const auto compile_function =
       prepare ? prepare->function("compile") : std::nullopt;
-  auto block = compiler.function("resnet18_basic_block.main");
+  auto block = compiler.materialize("resnet18_basic_block.main");
   if (!prepare_function || !compile_function || !block ||
       !compiler.load_behavior("nn_pipeline", JOGGLE_NN_PIPELINE_BEHAVIOR)) {
     compiler.diagnostics().print(std::cerr);

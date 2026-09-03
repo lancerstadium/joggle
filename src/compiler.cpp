@@ -1467,7 +1467,7 @@ bool Compiler::load_behavior(const Module& module) {
   const auto source = state_->module_sources.find(module.name());
   if (source == state_->module_sources.end()) {
     state_->diagnostics.report("module '" + module_identity(module) +
-                               "' has no filesystem package location");
+                               "' has no installed Module location");
     return false;
   }
   auto candidates =
@@ -1644,7 +1644,7 @@ Compiler::make(const Module::AttributeDecl& schema,
   return attribute;
 }
 
-std::optional<ir::Function> Compiler::function() {
+std::optional<ir::Function> Compiler::body() {
   if (!state_->linked) {
     state_->diagnostics.report(
         "cannot create a function before the compiler is linked");
@@ -1660,57 +1660,37 @@ std::optional<ir::Function> Compiler::function() {
 }
 
 std::optional<ir::Function>
-Compiler::function(Module::Function declaration) {
-  return function(std::move(declaration), {});
+Compiler::materialize(Module::Function declaration) {
+  return materialize(std::move(declaration), {});
 }
 
 std::optional<ir::Function>
-Compiler::function(Module::Function declaration,
-                   std::vector<ir::Value> known_arguments) {
-  return function(declaration.symbol(), std::move(known_arguments));
+Compiler::materialize(Module::Function declaration,
+                      std::vector<ir::Value> known_arguments) {
+  return materialize(declaration.symbol(), std::move(known_arguments));
 }
 
-std::optional<ir::Function> Compiler::function(std::string_view name) {
-  return function(name, {});
-}
-
-std::optional<ir::Function>
-Compiler::function(std::string_view name,
-                   std::vector<ir::Value> known_arguments) {
-  if (!state_->linked) {
-    state_->diagnostics.report(
-        "cannot construct a function before the compiler is linked");
-    return std::nullopt;
-  }
-  const auto member = qualified_member(name);
-  if (!member) {
-    state_->diagnostics.report("function name '" + std::string(name) +
-                               "' must be qualified as module.member");
-    return std::nullopt;
-  }
-  const auto [module_name, member_name] = *member;
-  const auto owner = state_->modules.find(module_name);
-  if (owner == state_->modules.end()) {
-    state_->diagnostics.report("function '" + std::string(name) +
-                               "' names an unlinked module");
-    return std::nullopt;
-  }
-  const auto symbol =
-      owner->second.symbol(Module::SymbolKind::Function, member_name);
-  if (!symbol) {
-    state_->diagnostics.report("unknown function '" + std::string(name) + "'");
-    return std::nullopt;
-  }
-  return function(*symbol, std::move(known_arguments));
-}
-
-std::optional<ir::Function> Compiler::function(Module::Symbol symbol) {
-  return function(std::move(symbol), {});
+std::optional<ir::Function> Compiler::materialize(std::string_view name) {
+  return materialize(name, {});
 }
 
 std::optional<ir::Function>
-Compiler::function(Module::Symbol symbol,
-                   std::vector<ir::Value> known_arguments) {
+Compiler::materialize(std::string_view name,
+                      std::vector<ir::Value> known_arguments) {
+  const auto declaration = lookup(name);
+  if (!declaration) {
+    return std::nullopt;
+  }
+  return materialize(*declaration, std::move(known_arguments));
+}
+
+std::optional<ir::Function> Compiler::materialize(Module::Symbol symbol) {
+  return materialize(std::move(symbol), {});
+}
+
+std::optional<ir::Function>
+Compiler::materialize(Module::Symbol symbol,
+                      std::vector<ir::Value> known_arguments) {
   if (!state_->linked) {
     state_->diagnostics.report(
         "cannot construct a function before the compiler is linked");
@@ -2574,25 +2554,25 @@ bool Compiler::matches_run_signature(
 std::optional<Module::Function>
 Compiler::lookup(std::string_view name) {
   if (!state_->linked) {
-    state_->diagnostics.report(
-        "cannot run a compiler function before the compiler is linked");
+    state_->diagnostics.report("cannot look up a function before the compiler "
+                               "is linked");
     return std::nullopt;
   }
   const auto member = qualified_member(name);
   if (!member) {
-    state_->diagnostics.report("compiler-function name '" + std::string(name) +
+    state_->diagnostics.report("function name '" + std::string(name) +
                                "' must be qualified as module.member");
     return std::nullopt;
   }
   const auto owner = state_->modules.find(member->first);
   if (owner == state_->modules.end()) {
-    state_->diagnostics.report("compiler function '" + std::string(name) +
+    state_->diagnostics.report("function '" + std::string(name) +
                                "' names an unlinked module");
     return std::nullopt;
   }
   const auto declaration = owner->second.function(member->second);
   if (!declaration) {
-    state_->diagnostics.report("unknown compiler function '" +
+    state_->diagnostics.report("unknown or overloaded function '" +
                                std::string(name) + "'");
   }
   return declaration;

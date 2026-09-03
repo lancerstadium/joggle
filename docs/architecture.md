@@ -27,16 +27,18 @@ joggle::Module
                  └─ joggle::ir::Terminator
 ```
 
-There is no second whole-IR container, graph container, or public package object.
-Parsing returns a `Module`; whole-module compiler functions consume and return
-that same type. A repository may package a serialized Module with native
-behavior, but packaging does not create another language or IR layer.
+There is no second whole-IR or graph container. Parsing returns a `Module`;
+whole-module compiler functions consume and return that same type. A repository
+stores immutable Module releases and optional native behavior, but it introduces
+no language object or IR layer.
 
 Declarations and materialized bodies are two states inside the same Module,
-not separate owners. `function(name)` reflects the unique function member and
-its signature; `body(name)` accesses its concrete editable CFG when one has
-been materialized. Generic specialization can therefore refine a Function
-without creating another Module representation.
+not separate owners. `Module::function(name)` reflects the unique function
+member and its signature; `Module::body(name)` accesses its concrete editable
+CFG when one has been inserted. `Compiler::materialize(...)` specializes a
+source definition into an `ir::Function`, while `Compiler::body()` constructs
+an empty one. Generic specialization therefore creates a body, not another
+Module representation.
 
 The other public concepts are small:
 

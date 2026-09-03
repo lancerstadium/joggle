@@ -894,7 +894,7 @@ public:
         supplied_known_(std::move(known_arguments)) {}
 
   std::optional<Function> instantiate() {
-    function_ = compiler_.function();
+    function_ = compiler_.body();
     if (!function_) {
       return std::nullopt;
     }

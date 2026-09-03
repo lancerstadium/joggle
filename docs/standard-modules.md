@@ -7,7 +7,7 @@ an ownership boundary, not a lowering order.
 
 `language/prelude.joggle` is embedded into the library and linked ambiently by
 every `Compiler`. The installed copy exists for editors, formatters, and API
-inspection; package resolution never chooses another Prelude. Changing Prelude
+inspection; repository resolution never chooses another Prelude. Changing Prelude
 therefore changes the language ABI and requires the same compatibility care as
 changing a public C++ header.
 
@@ -93,7 +93,7 @@ not only Prelude scalars.
 
 Standard dependencies are ordinary imports: `tensor` imports `arith`, while
 `nn` imports both. A tool loading loose source files must supply direct and
-transitive dependencies; an installed package is resolved through normal
+transitive dependencies; an installed Module release is resolved through normal
 search paths and lock files.
 
 An extension should add a Module when it introduces a serializable vocabulary

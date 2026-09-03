@@ -506,16 +506,22 @@ public:
      ...);
     return make(schema, std::span<const detail::ParameterValue>(values));
   }
-  std::optional<ir::Function> function();
-  std::optional<ir::Function> function(Module::Function declaration);
-  std::optional<ir::Function> function(Module::Function declaration,
-                                       std::vector<ir::Value> known_arguments);
-  std::optional<ir::Function> function(Module::Symbol symbol);
-  std::optional<ir::Function> function(Module::Symbol symbol,
-                                       std::vector<ir::Value> known_arguments);
-  std::optional<ir::Function> function(std::string_view name);
-  std::optional<ir::Function> function(std::string_view name,
-                                       std::vector<ir::Value> known_arguments);
+  // Creates an empty executable body in this linked compilation.
+  std::optional<ir::Function> body();
+
+  // Specializes a source-defined Function and materializes its residual body.
+  // The declaration, symbol, or qualified name selects the same Module member;
+  // known_arguments bind compile-time parameters before residualization.
+  std::optional<ir::Function> materialize(Module::Function declaration);
+  std::optional<ir::Function>
+  materialize(Module::Function declaration,
+              std::vector<ir::Value> known_arguments);
+  std::optional<ir::Function> materialize(Module::Symbol symbol);
+  std::optional<ir::Function>
+  materialize(Module::Symbol symbol, std::vector<ir::Value> known_arguments);
+  std::optional<ir::Function> materialize(std::string_view name);
+  std::optional<ir::Function>
+  materialize(std::string_view name, std::vector<ir::Value> known_arguments);
 
   bool conforms(const Module::TypeDecl& declaration,
                 const Module::InterfaceDecl& interface) const;
