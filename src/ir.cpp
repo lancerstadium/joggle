@@ -194,8 +194,7 @@ template <typename Map> bool contains(const Map& map, std::uint64_t id) {
 bool owns(const FunctionState& function, const Module::Symbol& symbol) {
   const auto module = function.modules.find(symbol.module_name());
   return module != function.modules.end() &&
-         module->second.version() == symbol.module_version() &&
-         module->second.interface_digest() == symbol.interface_digest();
+         module->second.version() == symbol.module_version();
 }
 
 bool owns(const FunctionState& function, const ParameterValue& value);
@@ -913,6 +912,38 @@ void FunctionAccess::declare(Function& function,
   state.signature = FunctionState::Signature{std::move(declaration),
                                              std::move(argument_types),
                                              std::move(result_types)};
+}
+
+bool FunctionAccess::attach(Function& function,
+                            Module::FunctionDecl declaration, Module owner,
+                            Diagnostics& diagnostics) {
+  if (!function.function_ || function.function_->editing) {
+    throw std::logic_error(
+        "cannot attach a moved-from function or one with an active edit");
+  }
+  Function candidate = function;
+  auto state = std::make_shared<FunctionState>(*candidate.function_->state);
+  state->modules.insert_or_assign(std::string(owner.name()), std::move(owner));
+
+  std::vector<Type> arguments;
+  arguments.reserve(state->arguments.size());
+  for (const std::uint64_t argument : state->arguments) {
+    const auto found = state->values.find(argument);
+    if (found == state->values.end()) {
+      diagnostics.report("cannot attach a malformed Function to a Module");
+      return false;
+    }
+    arguments.push_back(found->second.type);
+  }
+  std::vector<Type> results = function.result_types();
+  state->signature = FunctionState::Signature{
+      std::move(declaration), std::move(arguments), std::move(results)};
+  candidate.function_->state = std::move(state);
+  if (!verify_function(*candidate.function_->state, diagnostics)) {
+    return false;
+  }
+  function = std::move(candidate);
+  return true;
 }
 
 bool FunctionAccess::commit(Function::Edit& edit, Compiler& compiler,

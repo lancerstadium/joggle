@@ -18,8 +18,10 @@ The first integer is the source-language version. A Module version has three
 components. Imports accept `1`, `1.2`, `1.2.3`, or a caret range such as
 `^1.2.3`. An alias changes local spelling only. The full canonical digest
 identifies a reproducible Module artifact. Member Symbols additionally use an
-interface digest computed after Function bodies are erased; body-only compiler
-transformations therefore preserve type and callable identities.
+interface digest computed after Function bodies are erased as provenance for
+exact Compiler-boundary checks. Their logical identity is the versioned
+qualified declaration name, so body-only transformations and unrelated member
+additions preserve existing type and callable identities.
 
 Unqualified declaration names resolve in the current Module. A direct import
 is addressed through its Module name or alias. Operator notation considers

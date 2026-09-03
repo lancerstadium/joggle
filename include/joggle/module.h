@@ -119,13 +119,15 @@ public:
   public:
     std::string_view module_name() const { return module_name_; }
     Version module_version() const { return module_version_; }
+    // Interface provenance of the Module snapshot that produced this Symbol.
+    // Logical Symbol equality uses its versioned qualified declaration name.
     std::string_view interface_digest() const { return interface_digest_; }
     SymbolKind kind() const { return kind_; }
     std::string_view local_name() const { return local_name_; }
 
     std::string qualified_name() const;
     std::string stable_name() const;
-    bool operator==(const Symbol&) const = default;
+    bool operator==(const Symbol& other) const;
 
   private:
     Symbol(std::string module_name, Version module_version,
@@ -284,8 +286,8 @@ public:
   // body change this artifact identity.
   std::string_view digest() const;
   // SHA-256 of imports and declarations with Function bodies erased. Symbols
-  // use this stable interface identity, so body-only transformations do not
-  // change type or callable contracts.
+  // retain it as provenance and Compiler boundaries use it for exact interface
+  // compatibility. Logical Symbol names remain stable when members are added.
   std::string_view interface_digest() const;
   std::span<const Import> imports() const;
 
@@ -303,9 +305,11 @@ public:
 
   // A FunctionDecl always occupies one Module member and has one canonical
   // signature. insert() adds a declaration whose body is already materialized
-  // as editable IR; body() is absent for external and not-yet-materialized
-  // declarations. Mutable body lookup uses the complete declaration rather
-  // than an overload-ambiguous name and detaches only that body.
+  // as editable IR and fixes that Function's argument and result contract;
+  // subsequent body edits may change the CFG but not the member signature.
+  // body() is absent for external and not-yet-materialized declarations.
+  // Mutable body lookup uses the complete declaration rather than an
+  // overload-ambiguous name and detaches only that body.
   bool insert(std::string name, Function function, Diagnostics& diagnostics);
   Function* body(FunctionDecl declaration);
   std::vector<Dependency> dependencies() const;
@@ -317,6 +321,8 @@ private:
   current_digest(const std::shared_ptr<const Storage>& storage);
   static std::string
   compute_interface_digest(const std::shared_ptr<const Storage>& storage);
+  static Module
+  interface_view(const std::shared_ptr<const Storage>& storage);
   std::shared_ptr<const Storage> storage_;
 
   friend class Compiler;

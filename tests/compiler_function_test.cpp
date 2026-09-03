@@ -625,11 +625,10 @@ module pipeline@1.0.0 {
     return EXIT_FAILURE;
   }
   auto copied_module = compiler.run<joggle::Module>(*module_identity, module);
-  const auto i32 = compiler.make("i32");
   const auto source_main = module.function("main");
   auto copied_main =
       copied_module ? copied_module->function("main") : std::nullopt;
-  if (!copied_module || !i32 || !source_main || !copied_main) {
+  if (!copied_module || !source_main || !copied_main) {
     return EXIT_FAILURE;
   }
   {
@@ -638,7 +637,9 @@ module pipeline@1.0.0 {
       return EXIT_FAILURE;
     }
     auto edit = copied_body->edit();
-    edit.argument(*i32);
+    const auto tail = edit.block();
+    edit.jump(copied_body->entry(), tail);
+    edit.ret(tail);
     if (!edit.commit(module_diagnostics)) {
       return EXIT_FAILURE;
     }
@@ -647,11 +648,33 @@ module pipeline@1.0.0 {
   ok &= expect(module.functions().size() == 1U &&
                    copied_module->functions().size() == 1U &&
                    source_main->body() != nullptr &&
-                   source_main->body()->arguments().empty() && copied_main &&
+                   source_main->body()->blocks().size() == 1U && copied_main &&
                    copied_main->body() != nullptr &&
-                   copied_main->body()->arguments().size() == 1U,
+                   copied_main->body()->blocks().size() == 2U &&
+                   compiler.verify(*copied_module),
                "the builtin module value flows through an ordinary fn "
                "with deep-copy isolation");
+
+  const auto i32 = compiler.make("i32");
+  const auto attached_main = module.function("main");
+  auto* attached_body = attached_main ? module.body(*attached_main) : nullptr;
+  const auto attached_revision =
+      attached_body ? std::optional{attached_body->revision()} : std::nullopt;
+  joggle::Diagnostics attached_signature_diagnostics;
+  bool changed_signature = false;
+  if (attached_body && i32) {
+    auto edit = attached_body->edit();
+    edit.argument(*i32);
+    changed_signature = edit.commit(attached_signature_diagnostics);
+  }
+  const auto unchanged_main = module.function("main");
+  ok &= expect(i32 && attached_revision && !changed_signature &&
+                   !attached_signature_diagnostics.ok() && unchanged_main &&
+                   unchanged_main->body() &&
+                   unchanged_main->body()->revision() == *attached_revision &&
+                   compiler.verify(module),
+               "inserting a Function fixes the member signature while failed "
+               "body edits remain transactional");
 
   joggle::Compiler module_materialization;
   module_materialization.add(R"(

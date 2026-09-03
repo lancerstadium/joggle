@@ -8,7 +8,7 @@ manages installed releases and `Compiler` resolves ordinary search paths.
 This repository identity is `Module::digest()`, which covers Function bodies.
 It is intentionally stricter than `Module::interface_digest()`: two artifacts
 with identical declarations but different implementations cannot occupy the
-same installed release, even though their member Symbols are interface-
+same installed release, even though their versioned member names are
 compatible.
 
 ## Commands

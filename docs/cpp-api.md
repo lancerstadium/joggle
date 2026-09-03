@@ -257,17 +257,22 @@ auto* main = main_decl ? module.body(*main_decl) : nullptr;
 Copies use Function-granular copy-on-write. Const lookup shares; mutable lookup
 detaches the state selected by its complete `FunctionDecl`. `insert` accepts
 same-name Functions when their signatures differ and rejects only an exact
-signature duplicate; consequently, mutable access never guesses among
-overloads. `joggle::format(module)` emits that same Module as canonical source
-and derives exact dependencies from its current IR, so a transformation cannot
-leave a stale import list behind.
+signature duplicate. Insertion also attaches the new declaration to the body
+and fixes its argument and result contract; later body edits cannot change the
+member signature. Consequently, mutable access never guesses among overloads
+and `Compiler::verify(module)` can reject a body attached to the wrong member.
+`joggle::format(module)` emits that same Module as canonical source and derives
+exact dependencies from its current IR, so a transformation cannot leave a
+stale import list behind.
 
 `module.digest()` hashes the complete canonical artifact. It changes after a
 committed body transformation and is the identity used by repositories, locks,
 and behavior libraries. `module.interface_digest()` hashes imports and member
-declarations with Function bodies erased. `Module::Symbol` uses this interface
-digest, so types, call targets, and verifier registrations survive body-only
-transformations while a signature or schema change creates a new identity.
+declarations with Function bodies erased, and Compiler boundaries use it for
+exact interface compatibility. A `Module::Symbol` has a versioned qualified
+logical name and retains the interface digest only as provenance. Existing
+types, call targets, and verifier registrations therefore survive body-only
+transformations and unrelated additions to a Module.
 
 The embedded Prelude type `module` is automatically represented by
 `joggle::Module`; `function` is represented by a materialized

@@ -40,14 +40,23 @@ specializes a source definition into a `Function`, while
 `Compiler::create_function()` constructs an empty one. Generic specialization
 therefore creates a body, not another Module representation.
 
+`Module::insert` turns a standalone Function into a real member: it creates
+one declaration from the current argument and result types, attaches that
+declaration to the body, and freezes the signature. Later transactions may
+rewrite instructions or control flow but cannot make the declaration and CFG
+silently drift apart. `Compiler::verify(module)` checks the attachment before
+validating each body against the linked environment.
+
 Module identity has two deliberately different hashes. `digest()` covers the
 complete canonical artifact and therefore changes when a body changes; release
 locks and native behavior use it. `interface_digest()` erases Function bodies
-and covers imports plus declarations; member Symbols use it. An optimizer can
-therefore change executable content without changing the identity of an
-unchanged tensor type or call signature. Changing an import, type, attribute,
-interface, or Function signature changes both the interface and every Symbol
-derived from it.
+and covers imports plus declarations; Compiler API boundaries use it when exact
+interface compatibility is required. Member Symbols themselves use a
+versioned qualified declaration name. An optimizer can change executable
+content, and a Module can add another member, without renaming an unchanged
+tensor type or call signature. Incompatible reuse of the same Module version is
+still detected by its interface digest when a declaration crosses a Compiler
+boundary.
 
 The other public concepts are small:
 

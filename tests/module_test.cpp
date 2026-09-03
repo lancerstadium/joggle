@@ -124,7 +124,7 @@ int main() {
   const auto symbol = integer->symbol();
   ok &=
       expect(symbol.qualified_name() == "test_ir.integer", "qualified symbol");
-  ok &= expect(symbol.stable_name().starts_with("test_ir@1.0.0#") &&
+  ok &= expect(symbol.stable_name().starts_with("test_ir@1.0.0/") &&
                    symbol.stable_name().ends_with("/type/integer"),
                "persistent symbol identity");
 
@@ -252,8 +252,11 @@ int main() {
                                        : std::nullopt;
   ok &= expect(reparsed_integer && conflicting_integer &&
                    *reparsed_integer == *integer &&
-                   *conflicting_integer != *integer,
-               "declaration equality includes the canonical module digest");
+                   *conflicting_integer == *integer &&
+                   conflicting_identity->interface_digest() !=
+                       module->interface_digest(),
+               "versioned declaration identity is stable while an interface "
+               "digest detects incompatible same-version Modules");
 
   joggle::Diagnostics first_function_diagnostics;
   const auto first_function_module =

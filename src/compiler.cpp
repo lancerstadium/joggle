@@ -2593,6 +2593,14 @@ bool Compiler::verify(const Module& module) {
     if (body == nullptr) {
       continue;
     }
+    const auto declaration = body->declaration();
+    if (!declaration || *declaration != member) {
+      state_->diagnostics.report(
+          "Module function '" + std::string(member.name()) +
+          "' has a body attached to a different declaration");
+      valid = false;
+      continue;
+    }
     const auto revision = body->revision();
     if (std::find(verified.begin(), verified.end(), revision) !=
         verified.end()) {

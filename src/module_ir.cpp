@@ -232,9 +232,25 @@ bool Module::insert(std::string name, Function function,
       return false;
     }
   }
-  Module candidate(next);
-  next->digest = detail::sha256(format(candidate));
   next->interface_digest = Module::compute_interface_digest(next);
+  Module candidate(next);
+  Module owner = detail::ModuleAccess::interface_view(candidate);
+  const auto declarations = owner.overloads(inserted.name());
+  const auto attached = std::find_if(
+      declarations.begin(), declarations.end(), [&](const FunctionDecl& value) {
+        return value.signature() == inserted.signature();
+      });
+  if (attached == declarations.end()) {
+    diagnostics.report("Module lost inserted function '" +
+                       inserted.signature() + "'");
+    return false;
+  }
+  if (!detail::FunctionAccess::attach(
+          *next->functions[inserted_index].ir, *attached, std::move(owner),
+          diagnostics)) {
+    return false;
+  }
+  next->digest = detail::sha256(format(candidate));
   next->digest_revisions.clear();
   next->digest_revisions.reserve(next->functions.size());
   for (const detail::FunctionMember& member : next->functions) {

@@ -1765,13 +1765,19 @@ std::string Module::Symbol::qualified_name() const {
 }
 
 std::string Module::Symbol::stable_name() const {
-  std::string result = module_name_ + "@" + to_string(module_version_) + "#" +
-                       interface_digest_ + "/" + symbol_kind_name(kind_) +
-                       "/" + local_name_;
+  std::string result = module_name_ + "@" + to_string(module_version_) + "/" +
+                       symbol_kind_name(kind_) + "/" + local_name_;
   if (!discriminator_.empty()) {
     result += "/" + discriminator_;
   }
   return result;
+}
+
+bool Module::Symbol::operator==(const Symbol& other) const {
+  return module_name_ == other.module_name_ &&
+         module_version_ == other.module_version_ && kind_ == other.kind_ &&
+         local_name_ == other.local_name_ &&
+         discriminator_ == other.discriminator_;
 }
 
 Module::InterfaceDecl::MethodDecl::MethodDecl(
@@ -1804,8 +1810,7 @@ std::string Module::InterfaceDecl::MethodDecl::qualified_name() const {
 }
 
 std::string Module::InterfaceDecl::MethodDecl::stable_name() const {
-  return storage_->name + "@" + to_string(storage_->version) + "#" +
-         storage_->interface_digest + "/interface/" +
+  return storage_->name + "@" + to_string(storage_->version) + "/interface/" +
          storage_->interfaces[interface_index_].name + "/method/" +
          std::string(name());
 }
@@ -2176,6 +2181,11 @@ Module::current_digest(const std::shared_ptr<const Storage>& storage) {
 
 std::string
 Module::compute_interface_digest(const std::shared_ptr<const Storage>& storage) {
+  return std::string(interface_view(storage).digest());
+}
+
+Module
+Module::interface_view(const std::shared_ptr<const Storage>& storage) {
   auto interface = std::make_shared<Storage>(*storage);
   const Module source(storage);
   for (const Dependency& dependency : source.dependencies()) {
@@ -2219,7 +2229,10 @@ Module::compute_interface_digest(const std::shared_ptr<const Storage>& storage) 
   interface->digest.clear();
   interface->interface_digest.clear();
   interface->digest_revisions.clear();
-  return detail::sha256(format(Module(interface)));
+  Module result(interface);
+  interface->digest = detail::sha256(format(result));
+  interface->interface_digest = interface->digest;
+  return result;
 }
 
 std::string_view Module::digest() const {
@@ -2355,6 +2368,10 @@ std::vector<Module::FunctionDecl> Module::functions() const {
 bool Module::operator==(const Module& other) const {
   return name() == other.name() && version() == other.version() &&
          digest() == other.digest();
+}
+
+Module detail::ModuleAccess::interface_view(const Module& module) {
+  return Module::interface_view(module.storage_);
 }
 
 std::shared_ptr<const detail::FunctionBody>
