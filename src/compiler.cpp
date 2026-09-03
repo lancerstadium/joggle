@@ -23,6 +23,7 @@
 #include <charconv>
 #include <cctype>
 #include <cstring>
+#include <exception>
 #include <fstream>
 #include <map>
 #include <limits>
@@ -142,6 +143,35 @@ bool belongs_to(const Modules& modules, const ParameterValue& value) {
                        });
   }
   return true;
+}
+
+template <typename Subject, typename Verifier>
+bool invoke_verifier(Verifier& verifier, const Subject& subject,
+                     std::string description, Diagnostics& diagnostics,
+                     std::optional<SourceRange> location = std::nullopt) {
+  Diagnostics reported;
+  bool accepted = false;
+  try {
+    accepted = verifier(subject, reported);
+  } catch (const std::exception& exception) {
+    reported.report("semantic verifier for " + description +
+                    " threw: " + exception.what());
+  } catch (...) {
+    reported.report("semantic verifier for " + description +
+                    " threw an unknown exception");
+  }
+  if (!accepted && reported.ok()) {
+    reported.report("semantic verifier rejected " + description);
+  }
+  const bool valid = accepted && reported.ok();
+  for (const Diagnostic& entry : reported.entries()) {
+    Diagnostic diagnostic = entry;
+    if (!diagnostic.source && location) {
+      diagnostic.source = location;
+    }
+    diagnostics.report(std::move(diagnostic));
+  }
+  return valid;
 }
 
 bool accepts_known_value(const Type& type, const ParameterValue& value) {
@@ -440,7 +470,16 @@ evaluate_interface_method(bool linked, const Subject& subject,
     return std::nullopt;
   }
   Diagnostics reported;
-  auto result = binding->second(subject, *arguments, reported);
+  std::optional<ParameterValue> result;
+  try {
+    result = binding->second(subject, *arguments, reported);
+  } catch (const std::exception& exception) {
+    reported.report("interface method '" + method.qualified_name() +
+                    "' threw: " + exception.what());
+  } catch (...) {
+    reported.report("interface method '" + method.qualified_name() +
+                    "' threw an unknown exception");
+  }
   if (!result && reported.ok()) {
     reported.report("interface method '" + method.qualified_name() +
                     "' did not produce a value");
@@ -1539,19 +1578,11 @@ std::optional<Type> Compiler::make(const Module::TypeDecl& schema,
   Type type =
       detail::TypeAccess::make(schema, std::move(*values), std::move(*derived));
   const auto verifier = state_->type_verifiers.find(symbol.stable_name());
-  if (verifier != state_->type_verifiers.end()) {
-    Diagnostics reported;
-    const bool accepted = verifier->second(type, reported);
-    if (!accepted && reported.ok()) {
-      reported.report("type verifier rejected '" + symbol.qualified_name() +
-                      "'");
-    }
-    for (const Diagnostic& entry : reported.entries()) {
-      state_->diagnostics.report(entry);
-    }
-    if (!accepted || !reported.ok()) {
-      return std::nullopt;
-    }
+  if (verifier != state_->type_verifiers.end() &&
+      !invoke_verifier(verifier->second, type,
+                       "type '" + symbol.qualified_name() + "'",
+                       state_->diagnostics)) {
+    return std::nullopt;
   }
   return type;
 }
@@ -1628,19 +1659,11 @@ Compiler::make(const Module::AttributeDecl& schema,
   }
   Attribute attribute = detail::TypeAccess::make(schema, std::move(*values));
   const auto verifier = state_->attribute_verifiers.find(symbol.stable_name());
-  if (verifier != state_->attribute_verifiers.end()) {
-    Diagnostics reported;
-    const bool accepted = verifier->second(attribute, reported);
-    if (!accepted && reported.ok()) {
-      reported.report("attribute verifier rejected '" +
-                      symbol.qualified_name() + "'");
-    }
-    for (const Diagnostic& entry : reported.entries()) {
-      state_->diagnostics.report(entry);
-    }
-    if (!accepted || !reported.ok()) {
-      return std::nullopt;
-    }
+  if (verifier != state_->attribute_verifiers.end() &&
+      !invoke_verifier(verifier->second, attribute,
+                       "attribute '" + symbol.qualified_name() + "'",
+                       state_->diagnostics)) {
+    return std::nullopt;
   }
   return attribute;
 }
@@ -2596,23 +2619,11 @@ bool Compiler::verify(const Function& function) {
     const auto location = detail::FunctionAccess::location(instruction);
     const auto verifier =
         state_->instruction_verifiers.find(symbol.stable_name());
-    if (verifier != state_->instruction_verifiers.end()) {
-      Diagnostics reported;
-      const bool accepted = verifier->second(instruction, reported);
-      if (!accepted && reported.ok()) {
-        reported.report("Instruction verifier rejected call to '" +
-                        symbol.qualified_name() + "'");
-      }
-      for (const Diagnostic& entry : reported.entries()) {
-        Diagnostic diagnostic = entry;
-        if (!diagnostic.source) {
-          diagnostic.source = location;
-        }
-        state_->diagnostics.report(std::move(diagnostic));
-      }
-      if (!accepted || !reported.ok()) {
-        valid = false;
-      }
+    if (verifier != state_->instruction_verifiers.end() &&
+        !invoke_verifier(verifier->second, instruction,
+                         "call to '" + symbol.qualified_name() + "'",
+                         state_->diagnostics, location)) {
+      valid = false;
     }
   }
   return valid;

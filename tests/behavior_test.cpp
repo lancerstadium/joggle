@@ -1,6 +1,8 @@
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <stdexcept>
 #include <string_view>
 #include <utility>
 
@@ -222,6 +224,79 @@ int main() {
   ok &= expect(
       !reported.make(*reported_integer, 8, false) && !reported.ok(),
       "a verifier diagnostic rejects construction even if it returns true");
+
+  joggle::Compiler throwing;
+  throwing.load(JOGGLE_TEST_MODULE);
+  throwing.add(R"(
+joggle 1;
+module throwing@1.0.0 {
+  import test_ir@1;
+  attr tag(value: int);
+  fn use(input: test_ir.integer<8>) -> test_ir.integer<8> {
+    return test_ir.cast(input);
+  }
+}
+)",
+               "throwing.joggle");
+  const bool throwing_linked = throwing.link();
+  const auto throwing_test_ir = throwing.module("test_ir");
+  const auto throwing_module = throwing.module("throwing");
+  const auto throwing_integer =
+      throwing_test_ir ? throwing_test_ir->type("integer") : std::nullopt;
+  const auto throwing_cast =
+      throwing_test_ir ? throwing_test_ir->function("cast") : std::nullopt;
+  const auto throwing_tag =
+      throwing_module ? throwing_module->attribute("tag") : std::nullopt;
+  const auto existing_integer =
+      throwing_integer ? throwing.make(*throwing_integer, 8)
+                       : std::optional<joggle::Type>{};
+  const auto throwing_function = throwing.materialize("throwing.use");
+  if (!throwing_linked || !throwing_integer || !throwing_cast ||
+      !throwing_tag || !existing_integer || !throwing_function) {
+    throwing.diagnostics().print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  throwing.verify(*throwing_integer,
+                  [](const joggle::Type&) -> bool {
+                    throw std::runtime_error("type verifier exception");
+                  });
+  throwing.verify(*throwing_tag,
+                  [](const joggle::Attribute&) -> bool {
+                    throw 1;
+                  });
+  throwing.verify(*throwing_cast,
+                  [](const joggle::Instruction&) -> bool {
+                    throw std::runtime_error("Instruction verifier exception");
+                  });
+  const auto rejected_type = throwing.make(*throwing_integer, 16);
+  const auto rejected_attribute = throwing.make(*throwing_tag, 1);
+  const bool rejected_function = throwing.verify(*throwing_function);
+  const auto& throwing_diagnostics = throwing.diagnostics().entries();
+  const auto thrown_diagnostics = std::count_if(
+      throwing_diagnostics.begin(), throwing_diagnostics.end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("semantic verifier for") !=
+                   std::string::npos &&
+               diagnostic.message.find("threw") != std::string::npos;
+      });
+  const bool reports_unknown_exception = std::any_of(
+      throwing_diagnostics.begin(), throwing_diagnostics.end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("unknown exception") !=
+               std::string::npos;
+      });
+  const bool locates_instruction_exception = std::any_of(
+      throwing_diagnostics.begin(), throwing_diagnostics.end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("Instruction verifier exception") !=
+                   std::string::npos &&
+               diagnostic.source.has_value();
+      });
+  ok &= expect(!rejected_type && !rejected_attribute && !rejected_function &&
+                   thrown_diagnostics == 3 && reports_unknown_exception &&
+                   locates_instruction_exception,
+               "Type, Attribute, and Instruction verifier exceptions become "
+               "ordinary diagnostics");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

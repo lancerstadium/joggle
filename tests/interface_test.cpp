@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 
@@ -27,9 +28,11 @@ module semantics@1.0.0 {
   }
   interface tagged: attr {
     tag() -> string;
+    crash() -> string;
   }
   interface costed: fn {
     latency() -> int;
+    crash() -> int;
   }
 
   type scalar(bits: int = 7) : metric {
@@ -60,8 +63,11 @@ int main() {
   const auto costed = module ? module->interface("costed") : std::nullopt;
   const auto tag = tagged ? tagged->method("tag") : std::nullopt;
   const auto latency = costed ? costed->method("latency") : std::nullopt;
+  const auto attribute_crash = tagged ? tagged->method("crash") : std::nullopt;
+  const auto instruction_crash =
+      costed ? costed->method("crash") : std::nullopt;
   if (!scalar_decl || !label_decl || !work_decl || !metric || !tag ||
-      !latency) {
+      !latency || !attribute_crash || !instruction_crash) {
     return EXIT_FAILURE;
   }
 
@@ -70,6 +76,12 @@ int main() {
   });
   compiler.bind(*work_decl, *latency,
                 [](const joggle::Instruction&) -> std::int64_t { return 2; });
+  compiler.bind(*label_decl, *attribute_crash,
+                [](const joggle::Attribute&) -> std::string {
+                  throw std::runtime_error("attribute method exception");
+                });
+  compiler.bind(*work_decl, *instruction_crash,
+                [](const joggle::Instruction&) -> std::int64_t { throw 1; });
 
   const auto scalar = compiler.make(*scalar_decl);
   const auto label = compiler.make(*label_decl);
@@ -97,6 +109,21 @@ int main() {
   ok &= expect(tag_result == std::optional<std::string>{"label"} &&
                    latency_result == std::optional<std::int64_t>{2},
                "attribute and function-call behavior methods remain typed");
+  const auto rejected_attribute_method =
+      compiler.call<std::string>(*label, *attribute_crash);
+  const auto rejected_instruction_method =
+      compiler.call<std::int64_t>(work, *instruction_crash);
+  const auto thrown_methods = std::count_if(
+      compiler.diagnostics().entries().begin(),
+      compiler.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("interface method") !=
+                   std::string::npos &&
+               diagnostic.message.find("threw") != std::string::npos;
+      });
+  ok &= expect(!rejected_attribute_method && !rejected_instruction_method &&
+                   thrown_methods == 2,
+               "interface method exceptions become ordinary diagnostics");
 
   joggle::Compiler ambiguous;
   ambiguous.add(R"(

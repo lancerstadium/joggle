@@ -138,8 +138,10 @@ Attribute, or residual Instruction declaration. The callback receives
 `const joggle::Instruction&`; it returns `bool` and may accept Diagnostics
 last. This explicit API keeps `bind` reserved for implementations whose C++
 inputs and outputs match a declared `fn`. There is no verifier declaration kind
-or trait class. Core verification always checks ownership, arity, types, CFG
-structure, SSA, and declaration contracts before extension verifiers run.
+or trait class. Verifier and interface-method exceptions become diagnostics;
+extension callbacks never throw through the Compiler API. Core verification
+always checks ownership, arity, types, CFG structure, SSA, and declaration
+contracts before extension verifiers run.
 
 Interface methods are bound against a reflected method declaration and called
 on an Attribute or Instruction. Type-interface fields are different: they are
