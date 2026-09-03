@@ -25,6 +25,11 @@ declaration kind. Compiler functions that inspect or rewrite a whole Module
 remain native behavior for now; target computation itself does not require a
 host callback.
 
+The biased `conv2d_nchw` overload composes that same convolution body with an
+in-place `N -> O -> H -> W` bias epilogue. This avoids maintaining a duplicate
+seven-loop convolution and makes the unfused epilogue an explicit typed call
+graph boundary that a later target optimization can inline or fuse.
+
 `max_pool2d_nchw` uses six residual loops and carries both an accumulator and
 an initialization bit. The first in-bounds element seeds the maximum, so
 zero-padding is excluded rather than incorrectly competing with negative input

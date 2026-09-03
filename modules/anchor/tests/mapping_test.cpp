@@ -101,6 +101,24 @@ module anchor_kernel@1.0.0 {
     );
   }
 
+  fn conv_biased_f32(
+    input: anchor.ref<f32, [1, 2, 7, 7], anchor.linear, anchor.io>,
+    weight: anchor.ref<f32, [3, 2, 3, 3], anchor.linear, anchor.read_only>,
+    bias: anchor.ref<f32, [3], anchor.linear, anchor.read_only>
+  ) -> anchor.ref<f32, [1, 3, 4, 4], anchor.tiled<2, 2>, anchor.local> {
+    return anchor.conv2d_nchw(
+      input,
+      weight,
+      bias,
+      stride_h = 2,
+      stride_w = 2,
+      pad_top = 1,
+      pad_left = 1,
+      pad_bottom = 1,
+      pad_right = 1
+    );
+  }
+
   fn max_pool_padded_f32(
     input: anchor.ref<f32, [1, 1, 3, 3], anchor.linear, anchor.io>
   ) -> anchor.ref<f32, [1, 1, 4, 4], anchor.tiled<2, 2>, anchor.local> {
@@ -202,6 +220,20 @@ module anchor_kernel@1.0.0 {
       materialize_call_body("anchor_kernel.conv_padded_f32");
   const auto strided_conv_body =
       materialize_call_body("anchor_kernel.conv_strided_f32");
+  const auto biased_conv_body =
+      materialize_call_body("anchor_kernel.conv_biased_f32");
+  const auto biased_conv_ops =
+      biased_conv_body ? biased_conv_body->ops() : std::vector<joggle::Op>{};
+  const auto nested_conv = std::find_if(
+      biased_conv_ops.begin(), biased_conv_ops.end(),
+      [](const joggle::Op& op) {
+        return op.callee().symbol().qualified_name() ==
+               "anchor.conv2d_nchw";
+      });
+  const auto nested_conv_body =
+      nested_conv != biased_conv_ops.end()
+          ? compiler.materialize(*nested_conv)
+          : std::optional<joggle::Function>{};
   const auto padded_pool_body =
       materialize_call_body("anchor_kernel.max_pool_padded_f32");
   const auto strided_pool_body =
@@ -218,7 +250,8 @@ module anchor_kernel@1.0.0 {
       !reference || !ref || !linear || !tiled || !io || !local || !config ||
       !load || !store || !relu || !add || !linear_function || !linear_call ||
       !linear_body || !padded_conv_body || !strided_conv_body || !read ||
-      !write || !padded_pool_body || !strided_pool_body ||
+      !biased_conv_body || !nested_conv_body || !write || !padded_pool_body ||
+      !strided_pool_body ||
       !global_average_body || !batch_norm_body || !flatten_body) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -323,6 +356,21 @@ module anchor_kernel@1.0.0 {
                "padded and strided Conv2D calls materialize the same "
                "trip-count-independent seven-loop CFG with explicit guarded "
                "NCHW indexing");
+  ok &= expect(compiler.verify(*biased_conv_body) &&
+                   biased_conv_body->blocks().size() == 17U &&
+                   calls_named(*biased_conv_body, "mem.alloc") == 0U &&
+                   calls_named(*biased_conv_body, "anchor.load") == 2U &&
+                   calls_named(*biased_conv_body, "anchor.store") == 1U &&
+                   calls_named(*biased_conv_body,
+                               "anchor.conv2d_nchw") == 1U &&
+                   compiler.verify(*nested_conv_body) &&
+                   nested_conv_body->blocks().size() ==
+                       strided_conv_body->blocks().size() &&
+                   calls_named(*nested_conv_body, "mem.alloc") == 1U &&
+                   calls_named(*nested_conv_body,
+                               "anchor.conv2d_nchw") == 0U,
+               "biased Conv2D composes the verified convolution body with a "
+               "fixed-size in-place bias epilogue instead of duplicating it");
   ok &= expect(compiler.verify(*padded_pool_body) &&
                    compiler.verify(*strided_pool_body) &&
                    padded_pool_body->blocks().size() > 25U &&

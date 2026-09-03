@@ -310,7 +310,61 @@ module anchor@1.0.0 {
     ],
     LO,
     PO
-  >;
+  > {
+    output: ref<
+      E,
+      [
+        N,
+        O,
+        @nn.conv_extent(H, KH, SH, DH, PT, PB),
+        @nn.conv_extent(W, KW, SW, DW, PL, PR)
+      ],
+      LO,
+      PO
+    > = conv2d_nchw(
+      input,
+      weight,
+      stride_h = stride_h,
+      stride_w = stride_w,
+      dilation_h = dilation_h,
+      dilation_w = dilation_w,
+      pad_top = pad_top,
+      pad_left = pad_left,
+      pad_bottom = pad_bottom,
+      pad_right = pad_right
+    );
+    output_channels: index = O;
+    output_height: index = @nn.conv_extent(H, KH, SH, DH, PT, PB);
+    output_width: index = @nn.conv_extent(W, KW, SW, DW, PL, PR);
+    for batch: index in range(N) {
+      for output_channel: index in range(O) {
+        bias_value: E = load(bias, output_channel);
+        channel_offset: index = arith.add(
+          arith.mul(batch, output_channels),
+          output_channel
+        );
+        for output_y: index in range(
+          @nn.conv_extent(H, KH, SH, DH, PT, PB)
+        ) {
+          row_offset: index = arith.add(
+            arith.mul(channel_offset, output_height),
+            output_y
+          );
+          for output_x: index in range(
+            @nn.conv_extent(W, KW, SW, DW, PL, PR)
+          ) {
+            output_offset: index = arith.add(
+              arith.mul(row_offset, output_width),
+              output_x
+            );
+            value: E = load(output, output_offset);
+            store(output, output_offset, arith.add(value, bias_value));
+          }
+        }
+      }
+    }
+    return output;
+  }
 
   fn batch_norm_nchw<
     E: prelude.floating_point,
