@@ -1059,10 +1059,19 @@ emit(joggle::Compiler& compiler, const joggle::Module& input,
   if (!timeline) {
     return std::nullopt;
   }
-  std::string output = "anchor 1\nmodule ";
+  const auto bundle = joggle::anchor::kernel_bundle(compiler, input,
+                                                     diagnostics);
+  if (!bundle) {
+    return std::nullopt;
+  }
+  std::string output = "anchor 2\nsource ";
   output += input.name();
   output += '#';
   output += input.digest();
+  output += "\nbundle ";
+  output += bundle->name();
+  output += '#';
+  output += bundle->digest();
   output += "\nlanes ";
   output += std::to_string(timeline->machine.lanes);
   output += "\nmacs-per-lane ";
@@ -1072,7 +1081,7 @@ emit(joggle::Compiler& compiler, const joggle::Module& input,
   output += "\ncycles ";
   output += std::to_string(timeline->cycles);
   output += "\n---\n";
-  output += joggle::format(input);
+  output += joggle::format(*bundle);
   return encode(output);
 }
 
@@ -1160,6 +1169,7 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
       });
   compiler.bind(module, "duration", duration);
   compiler.bind(module, "trace", trace);
+  compiler.bind(module, "bundle", joggle::anchor::kernel_bundle);
   compiler.bind(module, "kernel_report", joggle::anchor::kernel_report);
   compiler.bind(
       module, "execute_f32",

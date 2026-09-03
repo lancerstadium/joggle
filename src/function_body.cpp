@@ -3257,8 +3257,9 @@ private:
 
 class RuntimeSyntax {
 public:
-  RuntimeSyntax(const Function& function, std::string_view name)
-      : function_(function) {
+  RuntimeSyntax(const Function& function, std::string_view name,
+                bool qualify_types)
+      : function_(function), qualify_types_(qualify_types) {
     syntax_.name = std::string(name);
   }
 
@@ -3338,11 +3339,13 @@ private:
     return count;
   }
 
-  static detail::ValueSyntax value(const Type& type) {
+  detail::ValueSyntax value(const Type& type) const {
     detail::ValueSyntax result;
     result.kind = detail::ValueSyntax::Kind::Reference;
-    result.text =
-        detail::display_type_name(type.schema().symbol().qualified_name());
+    result.text = qualify_types_
+                      ? type.schema().symbol().qualified_name()
+                      : detail::display_type_name(
+                            type.schema().symbol().qualified_name());
     const auto parameters = detail::TypeAccess::parameters(type);
     const std::size_t count =
         visible_parameters(parameters, type.schema().parameters());
@@ -3352,7 +3355,7 @@ private:
     return result;
   }
 
-  static detail::ValueSyntax value(const Attribute& attribute) {
+  detail::ValueSyntax value(const Attribute& attribute) const {
     detail::ValueSyntax result;
     result.kind = detail::ValueSyntax::Kind::Reference;
     result.text = attribute.schema().symbol().qualified_name();
@@ -3365,7 +3368,7 @@ private:
     return result;
   }
 
-  static detail::ValueSyntax value(const ParameterValue& parameter) {
+  detail::ValueSyntax value(const ParameterValue& parameter) const {
     detail::ValueSyntax result;
     switch (parameter.kind()) {
     case ParameterValue::Kind::I64:
@@ -3488,7 +3491,7 @@ private:
     return result;
   }
 
-  static detail::ExpressionSyntax type_expression(const Type& type) {
+  detail::ExpressionSyntax type_expression(const Type& type) const {
     return {expression(value(type)), {}};
   }
 
@@ -3579,6 +3582,7 @@ private:
   std::vector<Value> functions_;
   std::vector<std::pair<Block, std::string>> block_names_;
   std::size_t next_value_ = 0;
+  bool qualify_types_ = false;
 };
 
 }  // namespace
@@ -3790,8 +3794,9 @@ std::string format_function_syntax(const FunctionSyntax& function,
 }
 
 FunctionSyntax materialized_function_syntax(const Function& function,
-                                            std::string_view name) {
-  return RuntimeSyntax(function, name).build();
+                                            std::string_view name,
+                                            bool qualify_types) {
+  return RuntimeSyntax(function, name, qualify_types).build();
 }
 
 std::optional<Function>

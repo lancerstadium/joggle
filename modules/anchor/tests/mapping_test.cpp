@@ -226,6 +226,7 @@ module anchor_kernel@1.0.0 {
   const auto scratch =
       target ? target->function("scratch_bytes") : std::nullopt;
   const auto cycles = target ? target->function("cycles") : std::nullopt;
+  const auto bundle = target ? target->function("bundle") : std::nullopt;
   const auto emit = target ? target->function("emit") : std::nullopt;
   const auto reference = memory ? memory->interface("reference") : std::nullopt;
   const auto ref = target ? target->type("ref") : std::nullopt;
@@ -312,8 +313,8 @@ module anchor_kernel@1.0.0 {
   const auto read = memory ? memory->interface("read") : std::nullopt;
   const auto write = memory ? memory->interface("write") : std::nullopt;
   if (!source || !map || !analyze || !fuse || !plan || !scratch || !cycles ||
-      !emit || !reference || !ref || !linear || !tiled || !io || !local ||
-      !config || !timeline || !load || !store || !relu || !add ||
+      !bundle || !emit || !reference || !ref || !linear || !tiled || !io ||
+      !local || !config || !timeline || !load || !store || !relu || !add ||
       !linear_function || !linear_call || !linear_body || !padded_conv_body ||
       !strided_conv_body || !read || !biased_conv_body || !nested_conv_body ||
       !fused_conv_body || !nested_fused_conv_body || !write ||
@@ -372,6 +373,9 @@ module anchor_kernel@1.0.0 {
       planned && machine
           ? compiler.run<std::int64_t>(*cycles, *planned, *machine)
           : std::optional<std::int64_t>{};
+  const auto bundled =
+      planned ? compiler.run<joggle::Module>(*bundle, *planned)
+              : std::optional<joggle::Module>{};
   const auto emitted = planned && machine
                            ? compiler.run<joggle::Bytes>(*emit, *planned,
                                                         *machine)
@@ -392,10 +396,13 @@ module anchor_kernel@1.0.0 {
       planned && !planned->functions().empty()
           ? planned->functions().front().body()
           : nullptr;
+  const auto bundled_main = bundled ? bundled->function("main") : std::nullopt;
+  const joggle::Function* bundled_body =
+      bundled_main ? bundled_main->body() : nullptr;
   if (!mapped || !mapped_again || !fused_mapped || !fused_mapped_again ||
       !fused_fixed_point || body == nullptr || fused_body == nullptr ||
       !bytes || !planned || !planned_again || planned_body == nullptr ||
-      !scratch_size ||
+      !bundled || bundled_body == nullptr || !scratch_size ||
       !cycle_count || !emitted || !emitted_again || !trace || !trace_again) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -575,15 +582,26 @@ module anchor_kernel@1.0.0 {
                "two alternating activation slots replace seven allocations");
   const std::string manifest = decode(*emitted);
   const std::string timeline_text = decode(*trace);
+  const auto bundled_ops = bundled_body->ops();
+  const std::size_t linked_calls = static_cast<std::size_t>(std::count_if(
+      bundled_ops.begin(), bundled_ops.end(), [&](const joggle::Op& op) {
+        return op.callee().symbol().module_name() == bundled->name();
+      }));
   ok &= expect(*cycle_count > 0 && *emitted == *emitted_again &&
-                   manifest.starts_with("anchor 1\nmodule basic_block#") &&
+                   linked_calls == 7U &&
+                   bundled->functions().size() > planned->functions().size() &&
+                   manifest.starts_with("anchor 2\nsource basic_block#") &&
+                   manifest.find("\nbundle basic_block#" +
+                                 std::string(bundled->digest()) + "\n") !=
+                       std::string::npos &&
                    manifest.find("\nscratch-bytes 1605632\n") !=
                        std::string::npos &&
                    manifest.find("\ncycles " +
                                  std::to_string(*cycle_count) + "\n") !=
                        std::string::npos &&
-                   manifest.ends_with(joggle::format(*planned)),
-               "cycle analysis and manifest emission consume the same plan");
+                   manifest.ends_with(joggle::format(*bundled)),
+               "emission links every planned compute call to a concrete "
+               "source specialization while preserving its cycle model");
   ok &= expect(*trace == *trace_again &&
                    timeline_text.starts_with(
                        "anchor timeline 1\nmodule basic_block#") &&

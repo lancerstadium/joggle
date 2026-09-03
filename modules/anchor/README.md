@@ -99,10 +99,24 @@ the same timeline. This is a deterministic analytical simulation under the
 declared assumptions, not measured device latency. A target whose scratch
 capacity is smaller than the validated plan is rejected.
 
-`emit(input, target)` returns a portable byte manifest containing the Module
-digest, target parameters, required scratch, estimated cycles, and the
-canonical planned Module. It is an inspectable deployment artifact rather
-than machine code. A source Module can compose the complete path directly:
+`bundle(program)` performs target-owned semantic linking. It copies the planned
+Module, recursively specializes every non-administrative source call, inserts
+each unique concrete body as a deterministic local Function, and rewrites its
+callers to those local declarations. Known shape, stride, layout, and other
+compile-time arguments disappear from the linked call edge; only its Residual
+SSA operands remain. Content-addressed model data stays attached to the Module.
+The result fails closed if any leaf is neither source-defined nor admitted by
+the arithmetic, literal, allocation, memory-access, alias, or release
+interfaces. A new target can define a different boundary without changing the
+compiler core.
+
+`emit(input, target)` first bundles the program, then returns an `anchor 2`
+byte manifest containing both source and bundle digests, target parameters,
+required scratch, estimated cycles, and the canonical bundled Module. This
+proves that emission consumes the linked source bodies rather than the
+high-level operator graph. It remains an inspectable manifest, not machine
+code, and its text names content-addressed resources without packing their raw
+payloads. A source Module can compose the complete path directly:
 
 ```joggle
 fn deploy(input: bytes, target: type) -> bytes {
@@ -122,10 +136,11 @@ fn inspect(input: bytes, target: type) -> bytes {
 }
 ```
 
-`kernel_report(program)` is a fail-closed source-closure analysis. For every
-non-administrative call in a materialized program it specializes the declared
-function body from the concrete call, recursively follows nested bodies, and
-accepts leaves only when they implement the shared arithmetic, literal,
+`kernel_report(program)` reports the same fail-closed bundling traversal. For
+every non-administrative call in a materialized program it specializes the
+declared function body from the concrete call, recursively follows nested
+bodies, and accepts leaves only when they implement the shared arithmetic,
+literal,
 allocation, memory-access, alias, or release interfaces. An opaque external
 call therefore fails instead of being silently treated as a kernel. The report
 records root calls, unique concrete source specializations, primitive sites,

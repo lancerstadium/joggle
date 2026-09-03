@@ -25,6 +25,11 @@ struct Summary {
   std::size_t max_depth = 0;
 };
 
+struct Closure {
+  Module bundle;
+  Summary summary;
+};
+
 std::optional<Contracts> contracts(Compiler& compiler,
                                    Diagnostics& diagnostics) {
   const auto arithmetic = compiler.module("arith");
@@ -71,16 +76,55 @@ bool administrative(Compiler& compiler, const Module::FunctionDecl& function,
          compiler.conforms(function, schema.placement);
 }
 
-class Inspector {
+class Builder {
 public:
-  Inspector(Compiler& compiler, const Contracts& schema,
-            Diagnostics& diagnostics)
-      : compiler_(compiler), schema_(schema), diagnostics_(diagnostics) {}
+  Builder(Compiler& compiler, const Module& program, const Contracts& schema,
+          Diagnostics& diagnostics)
+      : compiler_(compiler), program_(program), schema_(schema),
+        diagnostics_(diagnostics), bundle_(program) {}
 
-  std::optional<std::size_t> inspect(const Op& call) {
+  std::optional<Closure> build() {
+    for (const auto& member : program_.functions()) {
+      const Function* source = member.body();
+      if (source == nullptr) {
+        diagnostics_.report("kernel bundle requires materialized Functions");
+        return std::nullopt;
+      }
+      const auto replacements = plan(*source, true);
+      if (!replacements) {
+        return std::nullopt;
+      }
+      Function* entry = bundle_.body(member);
+      if (entry == nullptr || !apply(*entry, *replacements)) {
+        return std::nullopt;
+      }
+    }
+    return Closure{std::move(bundle_), summary_};
+  }
+
+private:
+  struct Specialization {
+    std::string name;
+    std::string signature;
+    std::size_t depth = 0;
+  };
+
+  std::optional<Module::FunctionDecl>
+  declaration(const Specialization& specialization) {
+    for (const auto& candidate : bundle_.overloads(specialization.name)) {
+      if (candidate.signature() == specialization.signature) {
+        return candidate;
+      }
+    }
+    diagnostics_.report("kernel bundle lost specialization '" +
+                        specialization.name + "'");
+    return std::nullopt;
+  }
+
+  std::optional<Specialization> specialize(const Op& call) {
     if (conforms(compiler_, call.callee(), schema_.primitives)) {
       ++summary_.primitive_sites;
-      return std::size_t{0};
+      return Specialization{"", "", 0};
     }
 
     const auto body = compiler_.materialize(call);
@@ -96,7 +140,8 @@ public:
     key += call.callee().signature();
     key += '\n';
     key += format(*body, call.callee().name());
-    if (const auto known = depths_.find(key); known != depths_.end()) {
+    if (const auto known = specializations_.find(key);
+        known != specializations_.end()) {
       return known->second;
     }
     if (!active_.insert(key).second) {
@@ -105,32 +150,123 @@ public:
       return std::nullopt;
     }
 
-    ++summary_.specializations;
     std::size_t depth = 1;
-    for (const auto& nested : body->ops()) {
-      const auto nested_depth = inspect(nested);
-      if (!nested_depth) {
-        active_.erase(key);
-        return std::nullopt;
-      }
-      depth = std::max(depth, std::size_t{1} + *nested_depth);
+    const auto replacements = plan(*body, false, &depth);
+    if (!replacements) {
+      active_.erase(key);
+      return std::nullopt;
     }
+
+    std::string name;
+    do {
+      name = "kernel_" + std::to_string(next_name_++) + "_" +
+             std::string(call.callee().name());
+    } while (!bundle_.overloads(name).empty());
+    if (!bundle_.insert(name, *body, diagnostics_)) {
+      active_.erase(key);
+      return std::nullopt;
+    }
+    const auto inserted = bundle_.function(name);
+    Function* target = inserted ? bundle_.body(*inserted) : nullptr;
+    if (!inserted || target == nullptr) {
+      diagnostics_.report("kernel bundle lost inserted specialization '" +
+                          name + "'");
+      active_.erase(key);
+      return std::nullopt;
+    }
+    if (!apply(*target, *replacements)) {
+      active_.erase(key);
+      return std::nullopt;
+    }
+    const Specialization result{name, inserted->signature(), depth};
     active_.erase(key);
-    depths_.emplace(key, depth);
+    specializations_.emplace(std::move(key), result);
+    ++summary_.specializations;
     summary_.max_depth = std::max(summary_.max_depth, depth);
-    return depth;
+    return result;
   }
 
-  Summary& summary() { return summary_; }
+  using Plan = std::vector<std::optional<Specialization>>;
 
-private:
+  std::optional<Plan> plan(const Function& function, bool roots,
+                           std::size_t* source_depth = nullptr) {
+    Plan replacements;
+    replacements.reserve(function.ops().size());
+    for (const Op& call : function.ops()) {
+      if (administrative(compiler_, call.callee(), schema_)) {
+        replacements.push_back(std::nullopt);
+        continue;
+      }
+      if (roots) {
+        ++summary_.roots;
+      }
+      const auto nested = specialize(call);
+      if (!nested) {
+        return std::nullopt;
+      }
+      if (source_depth != nullptr) {
+        *source_depth =
+            std::max(*source_depth, std::size_t{1} + nested->depth);
+      }
+      if (nested->name.empty()) {
+        replacements.push_back(std::nullopt);
+        continue;
+      }
+      replacements.push_back(*nested);
+    }
+    return replacements;
+  }
+
+  bool apply(Function& function, const Plan& replacements) {
+    const auto calls = function.ops();
+    if (calls.size() != replacements.size()) {
+      diagnostics_.report("kernel bundle rewrite plan does not match its "
+                          "Function");
+      return false;
+    }
+    if (std::none_of(replacements.begin(), replacements.end(),
+                     [](const auto& replacement) {
+                       return replacement.has_value();
+                     })) {
+      return true;
+    }
+    auto edit = function.edit();
+    for (std::size_t index = 0; index < replacements.size(); ++index) {
+      if (!replacements[index]) {
+        continue;
+      }
+      const auto callee = declaration(*replacements[index]);
+      if (!callee) {
+        return false;
+      }
+      std::vector<Type> results;
+      for (const Value& result : calls[index].results()) {
+        results.push_back(result.type());
+      }
+      const Op linked = edit.insert(calls[index], *callee,
+                                    calls[index].operands(), results);
+      edit.replace(calls[index], linked.results());
+    }
+    return edit.commit(diagnostics_);
+  }
+
   Compiler& compiler_;
+  const Module& program_;
   const Contracts& schema_;
   Diagnostics& diagnostics_;
+  Module bundle_;
   Summary summary_;
   std::set<std::string> active_;
-  std::unordered_map<std::string, std::size_t> depths_;
+  std::unordered_map<std::string, Specialization> specializations_;
+  std::size_t next_name_ = 0;
 };
+
+std::optional<Closure> build(Compiler& compiler, const Module& program,
+                             Diagnostics& diagnostics) {
+  const auto schema = contracts(compiler, diagnostics);
+  return schema ? Builder(compiler, program, *schema, diagnostics).build()
+                : std::nullopt;
+}
 
 Bytes encode(std::string_view text) {
   Bytes result;
@@ -143,31 +279,21 @@ Bytes encode(std::string_view text) {
 
 }  // namespace
 
+std::optional<Module> kernel_bundle(Compiler& compiler, const Module& program,
+                                    Diagnostics& diagnostics) {
+  auto closure = build(compiler, program, diagnostics);
+  return closure ? std::optional<Module>{std::move(closure->bundle)}
+                 : std::nullopt;
+}
+
 std::optional<Bytes> kernel_report(Compiler& compiler, const Module& program,
                                    Diagnostics& diagnostics) {
-  const auto schema = contracts(compiler, diagnostics);
-  if (!schema) {
+  const auto closure = build(compiler, program, diagnostics);
+  if (!closure) {
     return std::nullopt;
   }
-  Inspector inspector(compiler, *schema, diagnostics);
-  for (const auto& member : program.functions()) {
-    const Function* body = member.body();
-    if (body == nullptr) {
-      diagnostics.report("kernel analysis requires materialized Functions");
-      return std::nullopt;
-    }
-    for (const auto& call : body->ops()) {
-      if (administrative(compiler, call.callee(), *schema)) {
-        continue;
-      }
-      ++inspector.summary().roots;
-      if (!inspector.inspect(call)) {
-        return std::nullopt;
-      }
-    }
-  }
 
-  const Summary& summary = inspector.summary();
+  const Summary& summary = closure->summary;
   std::string report = "anchor kernel closure 1\nmodule ";
   report += program.name();
   report += '#';

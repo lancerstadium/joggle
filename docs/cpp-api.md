@@ -303,6 +303,9 @@ signature duplicate. Insertion also attaches the new declaration to the body
 and fixes its argument and result contract; later body edits cannot change the
 member signature. Consequently, mutable access never guesses among overloads
 and `Compiler::verify(module)` can reject a body attached to the wrong member.
+The generated declaration retains fully qualified type identities internally,
+which makes newly inserted members immediately usable as call targets from
+other materialized Functions in the same Module.
 `joggle::format(module)` emits that same Module as canonical source and derives
 exact dependencies from its current IR, so a transformation cannot leave a
 stale import list behind.

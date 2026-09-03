@@ -37,9 +37,10 @@ in `language/prelude.joggle`; Prelude is not an installable Module.
   abstraction to compiler core. Its ResNet-path operator implementations are
   ordinary source bodies over target `load`/`store` primitives; the optional
   host executor exists to test their model-level numerical contract against an
-  external oracle, not to replace those bodies. Its source-closure analysis
-  also accepts a separately installed user kernel only when recursive
-  specialization terminates in declared arithmetic and memory interfaces.
+  external oracle, not to replace those bodies. Its `bundle` compiler function
+  links a separately installed user kernel into the output Module only when
+  recursive specialization terminates in declared arithmetic and memory
+  interfaces; emission consumes that linked Module.
 
 The list is not an abstraction ladder. A function body may call declarations
 from any installed Modules. Joggle has no built-in `lower` direction. A

@@ -130,11 +130,12 @@ module anchor_pipeline@1.0.0 {
   const auto cycle_model = target ? target->function("cycles") : std::nullopt;
   const auto kernel_report =
       target ? target->function("kernel_report") : std::nullopt;
+  const auto bundle = target ? target->function("bundle") : std::nullopt;
   const auto emit = target ? target->function("emit") : std::nullopt;
   const auto config = target ? target->type("config") : std::nullopt;
   const auto reference = memory ? memory->interface("reference") : std::nullopt;
   if (!first || !second || !analyze || !cycle_model || !kernel_report ||
-      !emit || !config || !reference) {
+      !bundle || !emit || !config || !reference) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -168,7 +169,11 @@ module anchor_pipeline@1.0.0 {
   const auto fused_kernel_summary =
       fused ? compiler.run<joggle::Bytes>(*kernel_report, *fused)
             : std::optional<joggle::Bytes>{};
-  if (!kernel_summary || !fused_kernel_summary) {
+  const auto bundled = compiler.run<joggle::Module>(*bundle, *first);
+  const auto fused_bundle =
+      fused ? compiler.run<joggle::Module>(*bundle, *fused)
+            : std::optional<joggle::Module>{};
+  if (!kernel_summary || !fused_kernel_summary || !bundled || !fused_bundle) {
     compiler.diagnostics().print(std::cerr);
   }
   const auto fused_trace_again =
@@ -207,16 +212,45 @@ module anchor_pipeline@1.0.0 {
   const std::size_t fused_events = event_count(fused_timeline);
   const std::size_t fusions =
       fused_body ? calls_named(*fused_body, "anchor.conv_relu_nchw") : 0U;
+  const auto bundled_main = bundled ? bundled->function("main") : std::nullopt;
+  const auto fused_bundled_main =
+      fused_bundle ? fused_bundle->function("main") : std::nullopt;
+  const joggle::Function* bundled_body =
+      bundled_main ? bundled_main->body() : nullptr;
+  const joggle::Function* fused_bundled_body =
+      fused_bundled_main ? fused_bundled_main->body() : nullptr;
+  const auto local_calls = [](const joggle::Function* function,
+                              std::string_view module) {
+    if (function == nullptr) {
+      return std::size_t{0};
+    }
+    const auto ops = function->ops();
+    return static_cast<std::size_t>(std::count_if(
+        ops.begin(), ops.end(),
+        [&](const joggle::Op& op) {
+          return op.callee().symbol().module_name() == module;
+        }));
+  };
   bool valid = body != nullptr && fused_body != nullptr && scratch &&
                *scratch > 0 && cycles && fused_scratch && fused_cycles &&
                *cycles == 29453374 && manifest && manifest_again &&
                deployed && *manifest == *manifest_again &&
                *manifest == *deployed &&
-               emitted.starts_with("anchor 1\nmodule main_graph#") &&
+               bundled && fused_bundle && bundled_body && fused_bundled_body &&
+               bundled->functions().size() == 36U &&
+               fused_bundle->functions().size() == 43U &&
+               local_calls(bundled_body, bundled->name()) == 49U &&
+               local_calls(fused_bundled_body, fused_bundle->name()) == 40U &&
+               bundled->data() == first->data() &&
+               fused_bundle->data() == fused->data() &&
+               emitted.starts_with("anchor 2\nsource main_graph#") &&
+               emitted.find("\nbundle main_graph#" +
+                            std::string(bundled->digest()) + "\n") !=
+                   std::string::npos &&
                emitted.find("\nscratch-bytes 10946464\n") !=
                    std::string::npos &&
                emitted.find("\ncycles 29453374\n") != std::string::npos &&
-               emitted.ends_with(joggle::format(*first)) &&
+               emitted.ends_with(joggle::format(*bundled)) &&
                trace && trace_again && *trace == *trace_again &&
                timeline.starts_with(
                    "anchor timeline 1\nmodule main_graph#") &&

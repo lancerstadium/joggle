@@ -96,5 +96,7 @@ The core supports multi-Block SSA, dominance, reverse-use queries,
 transactional edits, conversion legality, CFG-preserving clone, and
 Module-owned data. The shipped precision transformation now uses the same clone
 facility, but does not yet preserve calls between transformed Functions.
-Symbol-aware interprocedural rewriting and a portable on-disk bundle for Module
+Inserted Function declarations are immediately usable as local call targets,
+and Anchor uses that mechanism for target-owned semantic linking. General
+symbol-aware interprocedural cloning and a packed on-disk encoding for Module
 data remain explicit implementation milestones.

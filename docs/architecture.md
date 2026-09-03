@@ -45,7 +45,10 @@ one declaration from the current argument and result types, attaches that
 declaration to the body, and freezes the signature. Later transactions may
 rewrite ops or control flow but cannot make the declaration and CFG
 silently drift apart. `Compiler::verify(module)` checks the attachment before
-validating each body against the linked environment.
+validating each body against the linked environment. The stored declaration
+uses fully qualified type identities internally, so another materialized
+member can call it before a format-and-parse round trip; human-facing Function
+formatting still uses Prelude's concise type spellings.
 
 Module identity has two deliberately different hashes. `digest()` covers the
 complete canonical artifact and therefore changes when a body changes; release

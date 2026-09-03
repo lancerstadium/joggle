@@ -33,6 +33,10 @@ module module_defs@1.0.0 {
     return value;
   }
 
+  fn forward() -> word {
+    return main();
+  }
+
   fn choose(condition: i1, lhs: word, rhs: word) -> word {
     return if condition { lhs } else { rhs };
   }
@@ -165,6 +169,42 @@ module module_defs@1.0.0 {
                            ->symbol()
                            .qualified_name() == "module_defs.callback",
                "function-reference dependencies serialize and replay");
+
+  auto local_callee = compiler.materialize("module_defs.main");
+  auto local_caller = compiler.materialize("module_defs.forward");
+  joggle::Module local("local_link", {1, 0, 0});
+  joggle::Diagnostics local_diagnostics;
+  if (!local_callee || !local_caller ||
+      !local.insert("callee", std::move(*local_callee), local_diagnostics) ||
+      !local.insert("caller", std::move(*local_caller), local_diagnostics)) {
+    local_diagnostics.print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  const auto callee = local.function("callee");
+  const auto caller = local.function("caller");
+  joggle::Function* caller_body = caller ? local.body(*caller) : nullptr;
+  if (!callee || caller_body == nullptr || caller_body->ops().size() != 1U) {
+    return EXIT_FAILURE;
+  }
+  {
+    const joggle::Op call = caller_body->ops().front();
+    auto edit = caller_body->edit();
+    edit.replace(call, *callee);
+    if (!edit.commit(local_diagnostics)) {
+      local_diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  const std::string local_text = joggle::format(local);
+  joggle::Diagnostics local_parse_diagnostics;
+  const auto local_reparsed = joggle::parse_module(
+      local_text, local_parse_diagnostics, "local-link.joggle");
+  ok &= expect(compiler.verify(local) && local_reparsed &&
+                   joggle::format(*local_reparsed) == local_text &&
+                   caller_body->ops().front().callee().symbol().module_name() ==
+                       "local_link",
+               "inserted Functions are immediately usable as typed local "
+               "callees without a format-and-parse round trip");
 
   auto mixed_main = compiler.materialize("module_defs.main");
   joggle::Module mixed = *definitions;

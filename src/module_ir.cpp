@@ -156,7 +156,7 @@ Module::Expression expression(const detail::ValueSyntax& value) {
 detail::FunctionDefinition definition(const Function& function,
                                       std::string_view name) {
   const detail::FunctionSyntax syntax =
-      detail::materialized_function_syntax(function, name);
+      detail::materialized_function_syntax(function, name, true);
   detail::FunctionDefinition result;
   result.name = syntax.name;
   result.inputs.reserve(syntax.arguments.size());
