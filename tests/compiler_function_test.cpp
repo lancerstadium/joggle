@@ -936,6 +936,61 @@ module transactional@1.0.0 {
   ok &= expect(!rejected && transactional_function->instructions().empty(),
                "typed sequence failure restores its existing Function input");
 
+  joggle::Compiler short_circuit;
+  short_circuit.add(R"(
+joggle 1;
+module short_circuit@1.0.0 {
+  fn report(input: bytes) -> bytes;
+  fn observe(input: bytes) -> bytes;
+  fn pipeline(input: bytes) -> bytes {
+    reported = report(input);
+    return observe(reported);
+  }
+}
+)",
+                    "short-circuit.joggle");
+  const bool short_circuit_linked = short_circuit.link();
+  const auto short_circuit_module = short_circuit.module("short_circuit");
+  const auto report = short_circuit_module
+                          ? short_circuit_module->function("report")
+                          : std::nullopt;
+  const auto short_observe = short_circuit_module
+                                 ? short_circuit_module->function("observe")
+                                 : std::nullopt;
+  const auto short_pipeline = short_circuit_module
+                                  ? short_circuit_module->function("pipeline")
+                                  : std::nullopt;
+  if (!short_circuit_linked || !report || !short_observe || !short_pipeline) {
+    short_circuit.diagnostics().print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  bool observed_after_failure = false;
+  short_circuit.bind(
+      *report, [](joggle::Bytes input, joggle::Diagnostics& diagnostics) {
+        diagnostics.report("native function rejected its input");
+        return input;
+      });
+  short_circuit.bind(*short_observe, [&](joggle::Bytes input) {
+    observed_after_failure = true;
+    return input;
+  });
+  const auto short_result =
+      short_circuit.run<joggle::Bytes>(*short_pipeline, joggle::Bytes(3));
+  const bool reports_native_failure = std::any_of(
+      short_circuit.diagnostics().entries().begin(),
+      short_circuit.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message == "native function rejected its input" &&
+               !diagnostic.notes.empty() &&
+               diagnostic.notes.back().find(
+                   "while calling 'short_circuit.report'") !=
+                   std::string::npos;
+      });
+  ok &= expect(!short_result && !observed_after_failure &&
+                   reports_native_failure,
+               "a diagnostic from a native function immediately stops its "
+               "enclosing typed sequence");
+
   joggle::Compiler binding_mismatch;
   binding_mismatch.add("joggle 1; module binding_mismatch@1.0.0 { "
                        "fn count(input: function) -> int; }",

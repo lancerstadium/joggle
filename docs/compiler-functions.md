@@ -186,6 +186,11 @@ Joggle adds one source-positioned note for each enclosing `fn` call, from the
 failing call outward. This is ordinary call context; pipelines do not need a
 separate trace format or pass-manager diagnostics.
 
+A native function that reports a diagnostic fails that invocation, even if
+its C++ callback also returns a value. The enclosing source function stops at
+that call, so later transformations, emitters, or other effectful functions do
+not execute after a reported error.
+
 ## Analysis values and reuse
 
 An analysis is an ordinary typed function: its result is a Module-declared type

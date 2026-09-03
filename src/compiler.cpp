@@ -2860,6 +2860,7 @@ Compiler::execute(Module::FunctionDecl declaration,
             "' is guarded and cannot execute under Residual control");
         return std::nullopt;
       }
+      const std::size_t call_diagnostics = state_->diagnostics.size();
       std::optional<detail::ExecutionValues> execution;
       try {
         execution =
@@ -2882,11 +2883,14 @@ Compiler::execute(Module::FunctionDecl declaration,
         return std::nullopt;
       }
       if (!execution) {
-        if (state_->diagnostics.size() == before) {
+        if (state_->diagnostics.size() == call_diagnostics) {
           state_->diagnostics.report("compiler function '" +
                                      current.symbol().qualified_name() +
                                      "' failed");
         }
+        return std::nullopt;
+      }
+      if (state_->diagnostics.size() != call_diagnostics) {
         return std::nullopt;
       }
       if (execution->size() != current.results().size()) {
