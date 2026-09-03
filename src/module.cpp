@@ -1160,39 +1160,17 @@ private:
         }
         return;
       }
-      const bool builtin_arithmetic =
-          domain->element == ValueKind::Integer ||
-          domain->element == ValueKind::Real;
-      if (!builtin_arithmetic) {
-        // Imports and overload ambiguity are resolved after the complete
-        // Module closure is available to Compiler::link.
-        return;
-      }
-      for (const auto& argument : expression.arguments) {
-        validate_declaration_expression(variables, owner, source, argument,
-                                        expected);
-      }
+      // Imports, the ambient Prelude, and overload ambiguity are resolved
+      // after the complete Module closure is available to Compiler::link.
       return;
     }
     if (expression.kind == Kind::Call) {
-      const bool integer_call = expression.text == "ceildiv" ||
-                                expression.text == "min" ||
-                                expression.text == "max";
-      if (!integer_call || domain->element != ValueKind::Integer ||
-          expression.arguments.size() != 2U) {
-        if (!reference_is_visible(expression.text, "function", source)) {
-          return;
-        }
-        // Calls need the complete import closure, overload set, labels, and
-        // defaults. Compiler::link performs that semantic check once Modules
-        // have immutable declarations; parsing only checks visibility here.
+      if (!reference_is_visible(expression.text, "function", source)) {
         return;
       }
-      const auto integer_domain = detail::domain_expression(ValueKind::Integer);
-      for (const auto& argument : expression.arguments) {
-        validate_declaration_expression(variables, owner, source, argument,
-                                        integer_domain);
-      }
+      // Calls need the complete import closure, overload set, labels, and
+      // defaults. Compiler::link performs that semantic check once Modules
+      // have immutable declarations; parsing only checks visibility here.
       return;
     }
     if (expression.kind == Kind::Number || expression.kind == Kind::Boolean ||

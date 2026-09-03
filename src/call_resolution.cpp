@@ -1,10 +1,43 @@
 #include "call_resolution.h"
 
+#include "prelude.h"
+
 #include <algorithm>
-#include <array>
 
 namespace joggle::detail {
 namespace {
+
+bool same_signature(const Module::FunctionDecl& left,
+                    const Module::FunctionDecl& right) {
+  if (left.generics().size() != right.generics().size() ||
+      left.inputs().size() != right.inputs().size() ||
+      left.results().size() != right.results().size()) {
+    return false;
+  }
+  const bool same_inputs = std::equal(
+      left.inputs().begin(), left.inputs().end(), right.inputs().begin(),
+      [](const auto& lhs, const auto& rhs) {
+        return lhs.domain == rhs.domain && lhs.variadic == rhs.variadic;
+      });
+  const bool same_results = std::equal(
+      left.results().begin(), left.results().end(), right.results().begin(),
+      [](const auto& lhs, const auto& rhs) { return lhs.domain == rhs.domain; });
+  return same_inputs && same_results;
+}
+
+void append_unshadowed(std::vector<Module::FunctionDecl>& destination,
+                       std::span<const Module::FunctionDecl> candidates) {
+  for (const auto& candidate : candidates) {
+    const bool shadowed =
+        std::any_of(destination.begin(), destination.end(),
+                    [&](const auto& visible) {
+                      return same_signature(visible, candidate);
+                    });
+    if (!shadowed) {
+      destination.push_back(candidate);
+    }
+  }
+}
 
 template <typename Lookup>
 std::vector<Module::FunctionDecl> find_visible_functions(
@@ -15,7 +48,10 @@ std::vector<Module::FunctionDecl> find_visible_functions(
   if (dot != std::string_view::npos) {
     const std::string_view prefix = reference.substr(0U, dot);
     local = reference.substr(dot + 1U);
-    if (prefix != owner) {
+    if (prefix == prelude_module_name) {
+      module_name = std::string(prelude_module_name);
+    }
+    if (prefix != owner && prefix != prelude_module_name) {
       const auto scope = lookup(owner);
       const auto imported =
           scope ? std::find_if(scope->imports().begin(), scope->imports().end(),
@@ -30,8 +66,16 @@ std::vector<Module::FunctionDecl> find_visible_functions(
     }
   }
   const auto module = lookup(module_name);
-  return module ? module->overloads(local)
-                : std::vector<Module::FunctionDecl>{};
+  std::vector<Module::FunctionDecl> result =
+      module ? module->overloads(local)
+             : std::vector<Module::FunctionDecl>{};
+  if (dot == std::string_view::npos && module_name != prelude_module_name &&
+      result.empty()) {
+    if (const auto prelude = lookup(prelude_module_name)) {
+      result = prelude->overloads(local);
+    }
+  }
+  return result;
 }
 
 template <typename Lookup>
@@ -55,6 +99,18 @@ std::vector<Module::FunctionDecl> find_visible_operators(
   for (const auto& import : scope->imports()) {
     if (const auto module = lookup(import.name)) {
       append(*module);
+    }
+  }
+  if (scope->name() != prelude_module_name) {
+    if (const auto prelude = lookup(prelude_module_name)) {
+      std::vector<Module::FunctionDecl> ambient;
+      for (const auto& function : prelude->functions()) {
+        if (function.operator_symbol() == symbol &&
+            function.operator_fixity() == fixity) {
+          ambient.push_back(function);
+        }
+      }
+      append_unshadowed(result, ambient);
     }
   }
   return result;
@@ -174,16 +230,6 @@ call_candidate(const Module::FunctionDecl& function,
     }
   }
   return result;
-}
-
-bool is_bootstrap_call(std::string_view name) {
-  return name == "ceildiv" || name == "min" || name == "max";
-}
-
-bool is_bootstrap_operator(std::string_view symbol) {
-  constexpr std::array<std::string_view, 5> values{
-      "+", "-", "*", "/", "//"};
-  return std::find(values.begin(), values.end(), symbol) != values.end();
 }
 
 }  // namespace joggle::detail

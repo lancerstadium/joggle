@@ -1,6 +1,6 @@
 joggle 1;
 
-module prelude@1.0.0 {
+module prelude@1.1.0 {
   interface scalar: type {
     storage_bits: int;
   }
@@ -62,4 +62,44 @@ module prelude@1.0.0 {
     storage_bits = 64;
   }
   type index() : integer, unsigned_integer, index_type;
+
+  fn positive(value: int) -> int as +;
+  fn positive(value: real) -> real as +;
+  fn negative(value: int) -> int as -;
+  fn negative(value: real) -> real as -;
+  fn add(lhs: int, rhs: int) -> int as +;
+  fn add(lhs: real, rhs: real) -> real as +;
+  fn subtract(lhs: int, rhs: int) -> int as -;
+  fn subtract(lhs: real, rhs: real) -> real as -;
+  fn multiply(lhs: int, rhs: int) -> int as *;
+  fn multiply(lhs: real, rhs: real) -> real as *;
+  fn divide(lhs: int, rhs: int) -> int as /;
+  fn divide(lhs: real, rhs: real) -> real as /;
+  fn floor_divide(lhs: int, rhs: int) -> int as //;
+  fn floor_divide(lhs: real, rhs: real) -> real as //;
+  fn remainder(lhs: int, rhs: int) -> int as %;
+  fn less(lhs: int, rhs: int) -> bool as <;
+  fn less(lhs: real, rhs: real) -> bool as <;
+  fn less_equal(lhs: int, rhs: int) -> bool as <=;
+  fn less_equal(lhs: real, rhs: real) -> bool as <=;
+  fn greater(lhs: int, rhs: int) -> bool as >;
+  fn greater(lhs: real, rhs: real) -> bool as >;
+  fn greater_equal(lhs: int, rhs: int) -> bool as >=;
+  fn greater_equal(lhs: real, rhs: real) -> bool as >=;
+  fn equal(lhs: int, rhs: int) -> bool as ==;
+  fn equal(lhs: real, rhs: real) -> bool as ==;
+  fn equal(lhs: bool, rhs: bool) -> bool as ==;
+  fn equal(lhs: string, rhs: string) -> bool as ==;
+  fn not_equal(lhs: int, rhs: int) -> bool as !=;
+  fn not_equal(lhs: real, rhs: real) -> bool as !=;
+  fn not_equal(lhs: bool, rhs: bool) -> bool as !=;
+  fn not_equal(lhs: string, rhs: string) -> bool as !=;
+  fn logical_not(value: bool) -> bool as !;
+  fn logical_and(lhs: bool, rhs: bool) -> bool as &&;
+  fn logical_or(lhs: bool, rhs: bool) -> bool as ||;
+  fn ceildiv(lhs: int, rhs: int) -> int;
+  fn min(lhs: int, rhs: int) -> int;
+  fn min(lhs: real, rhs: real) -> real;
+  fn max(lhs: int, rhs: int) -> int;
+  fn max(lhs: real, rhs: real) -> real;
 }

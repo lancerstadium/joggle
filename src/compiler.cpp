@@ -2,6 +2,7 @@
 
 #include "call_resolution.h"
 #include "prelude.h"
+#include "prelude_runtime.h"
 #include "domain.h"
 #include "execution.h"
 #include "expression_syntax.h"
@@ -550,6 +551,7 @@ Compiler::Compiler(EvaluationLimits limits) : state_(std::make_unique<State>()) 
                               state_->diagnostics, "<prelude>");
   if (prelude) {
     add_module(std::move(*prelude), false, std::nullopt);
+    bind_prelude_primitives();
   }
 }
 Compiler::~Compiler() = default;
@@ -1144,37 +1146,12 @@ bool Compiler::link() {
                  std::string(declaration) + "'");
           return;
         }
-        if (domain->element != detail::ValueKind::Integer &&
-            domain->element != detail::ValueKind::Real) {
-          report("operator '" + expression.text +
-                 "' has no matching declaration in compile-time definition '" +
-                 std::string(declaration) + "'");
-          return;
-        }
-        for (const auto& argument : expression.arguments) {
-          self(self, argument, expected, variables, declaration, location);
-        }
+        report("operator '" + expression.text +
+               "' has no matching declaration in compile-time definition '" +
+               std::string(declaration) + "'");
         return;
       }
       if (expression.kind == Kind::Call) {
-        const bool kernel_call = expression.text == "ceildiv" ||
-                                 expression.text == "min" ||
-                                 expression.text == "max";
-        if (kernel_call) {
-          if (domain->element != detail::ValueKind::Integer ||
-              expression.arguments.size() != 2U) {
-            report("ill-typed kernel call '" + expression.text +
-                   "' in compile-time definition '" +
-                   std::string(declaration) + "'");
-            return;
-          }
-          for (const auto& argument : expression.arguments) {
-            self(self, argument,
-                 detail::domain_expression(detail::ValueKind::Integer),
-                 variables, declaration, location);
-          }
-          return;
-        }
         std::vector<detail::CallCandidate> candidates;
         for (const auto& function :
              detail::visible_functions(*this, name, expression.text)) {
@@ -1589,17 +1566,10 @@ bool Compiler::link() {
                              std::string(declaration.name()) + "'");
             return;
           }
-          if (domain->element != detail::ValueKind::Integer &&
-              domain->element != detail::ValueKind::Real) {
-            report_operation("operator '" + expression.text +
-                             "' has no matching declaration in operation '" +
-                             name + "." +
-                             std::string(declaration.name()) + "'");
-            return;
-          }
-          for (const auto& argument : expression.arguments) {
-            self(self, argument, expected);
-          }
+          report_operation("operator '" + expression.text +
+                           "' has no matching declaration in operation '" +
+                           name + "." + std::string(declaration.name()) +
+                           "'");
           return;
         }
         if (expression.kind == Kind::Reference) {
@@ -1655,24 +1625,6 @@ bool Compiler::link() {
           }
         }
         if (expression.kind == Kind::Call) {
-          const bool integer_call = expression.text == "ceildiv" ||
-                                    expression.text == "min" ||
-                                    expression.text == "max";
-          if (integer_call) {
-            if (domain->element != detail::ValueKind::Integer ||
-                expression.arguments.size() != 2U) {
-              report_operation("ill-typed kernel call '" + expression.text +
-                               "' in operation '" + name + "." +
-                               std::string(declaration.name()) + "'");
-              return;
-            }
-            for (const auto& argument : expression.arguments) {
-              self(self, argument,
-                   detail::domain_expression(detail::ValueKind::Integer));
-            }
-            return;
-          }
-
           std::vector<detail::CallCandidate> candidates;
           for (const auto& function :
                detail::visible_functions(*this, name, expression.text)) {
@@ -1905,27 +1857,28 @@ bool Compiler::link() {
     bool valid = true;
     const auto walk = [&](const auto& walk_self,
                           const Module::Expression& expression) -> void {
+      std::vector<Module::FunctionDecl> targets;
       if (expression.kind == Module::Expression::Kind::Call &&
-          expression.text != "ceildiv" && expression.text != "min" &&
-          expression.text != "max" && owner != state_->modules.end()) {
-        const std::size_t dot = expression.text.find('.');
-        const std::string module_name =
-            dot == std::string::npos
-                ? std::string(owner->second.name())
-                : std::string(resolve_prefix(
-                      owner->second,
-                      std::string_view(expression.text).substr(0, dot)));
-        const std::string local =
-            dot == std::string::npos ? expression.text
-                                     : expression.text.substr(dot + 1U);
-        const auto dependency = state_->modules.find(module_name);
-        const auto target =
-            dependency == state_->modules.end()
-                ? std::optional<Module::FunctionDecl>{}
-                : dependency->second.function(local);
-        if (target && !self(self, *target, location)) {
-          valid = false;
-        }
+          owner != state_->modules.end()) {
+        targets = detail::visible_functions(*this, owner->second.name(),
+                                            expression.text);
+      } else if (owner != state_->modules.end() &&
+                 (expression.kind == Module::Expression::Kind::Prefix ||
+                  expression.kind == Module::Expression::Kind::Infix ||
+                  expression.kind == Module::Expression::Kind::Postfix)) {
+        const auto fixity =
+            expression.kind == Module::Expression::Kind::Prefix
+                ? Module::FunctionDecl::Fixity::Prefix
+            : expression.kind == Module::Expression::Kind::Postfix
+                ? Module::FunctionDecl::Fixity::Postfix
+                : Module::FunctionDecl::Fixity::Infix;
+        targets = detail::visible_operators(*this, owner->second.name(),
+                                            expression.text, fixity);
+      }
+      if (targets.size() == 1U &&
+          targets.front().form() == Module::FunctionDecl::Form::Body &&
+          !self(self, targets.front(), location)) {
+        valid = false;
       }
       for (const auto& argument : expression.arguments) {
         walk_self(walk_self, argument);
@@ -2831,6 +2784,52 @@ void Compiler::bind_native(Module::FunctionDecl schema, NativeFunction function,
     state_->diagnostics.report("compiler function '" +
                                symbol.qualified_name() +
                                "' already has a binding");
+  }
+}
+
+void Compiler::bind_prelude_primitives() {
+  const auto found = state_->modules.find(detail::prelude_module_name);
+  if (found == state_->modules.end()) {
+    return;
+  }
+  for (const Module::FunctionDecl& function : found->second.functions()) {
+    if (!detail::is_prelude_primitive(function)) {
+      continue;
+    }
+    NativeFunction implementation =
+        [function](Compiler&, std::span<detail::ExecutionValue> arguments,
+                   Diagnostics& diagnostics)
+        -> std::optional<detail::ExecutionValues> {
+      std::vector<detail::ParameterValue> values;
+      values.reserve(arguments.size());
+      for (const auto& argument : arguments) {
+        auto value = detail::parameter_value(argument);
+        if (!value) {
+          diagnostics.report("Prelude primitive '" +
+                             function.symbol().qualified_name() +
+                             "' received an unsupported value");
+          return std::nullopt;
+        }
+        values.push_back(std::move(*value));
+      }
+      auto result = detail::evaluate_prelude_primitive(
+          function, values, diagnostics);
+      if (!result || function.results().size() != 1U) {
+        return std::nullopt;
+      }
+      auto encoded = detail::execution_value(*result, function.results().front());
+      if (!encoded) {
+        diagnostics.report("Prelude primitive '" +
+                           function.symbol().qualified_name() +
+                           "' produced an unsupported value");
+        return std::nullopt;
+      }
+      detail::ExecutionValues results;
+      results.push_back(std::move(*encoded));
+      return results;
+    };
+    bind_native(function, std::move(implementation),
+                HostEvaluation::Hermetic);
   }
 }
 

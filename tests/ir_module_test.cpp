@@ -98,7 +98,7 @@ module program_defs@1.0.0 {
   bool ok = true;
   ok &= expect(
       dependencies ==
-          std::vector<joggle::ir::Dependency>{{"prelude", {1, 0, 0}},
+          std::vector<joggle::ir::Dependency>{{"prelude", {1, 1, 0}},
                                               {"program_defs", {1, 0, 0}}},
       "an executable Module reports exact schema dependencies");
   ok &= expect(parsed && reparsed == text,

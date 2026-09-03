@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdlib>
 #include <cstdint>
 #include <fstream>
@@ -6,6 +7,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <joggle/joggle.h>
 
@@ -151,6 +153,149 @@ module native_test@1.0.0 {
                "Prelude types retain their compact source spelling");
   ok &= expect(compiler.modules().size() == 1U,
                "the ambient Prelude is not a package dependency");
+
+  joggle::Compiler primitives;
+  primitives.add(R"(
+joggle 1;
+module primitive_test@1.0.0 {
+  fn fold<S: list<int>>(values: S) -> int {
+    total = 0;
+    for value in S {
+      if value > 0 && value != 2 {
+        total = total + ceildiv(value, 2);
+      }
+    }
+    return total;
+  }
+
+  fn predicate(lhs: int, rhs: int) -> bool {
+    return !(lhs >= rhs) || lhs == rhs;
+  }
+
+  fn real_math(lhs: real, rhs: real) -> real {
+    return min(lhs + rhs, max(lhs, rhs)) // 1.0;
+  }
+}
+)",
+                 "primitive-test.joggle");
+  const bool primitives_linked = primitives.link();
+  const auto folded =
+      primitives_linked
+          ? primitives.run<std::int64_t>(
+                "primitive_test.fold",
+                std::vector<std::int64_t>{0, 1, 2, 3, 8})
+          : std::nullopt;
+  const auto predicate =
+      primitives_linked
+          ? primitives.run<bool>("primitive_test.predicate",
+                                 std::int64_t{3}, std::int64_t{4})
+          : std::nullopt;
+  const auto real_math =
+      primitives_linked
+          ? primitives.run<double>("primitive_test.real_math", 2.5, 4.0)
+          : std::nullopt;
+  ok &= expect(primitives_linked && folded == std::optional<std::int64_t>{7} &&
+                   predicate == std::optional<bool>{true} &&
+                   real_math == std::optional<double>{4.0},
+               "Prelude fn primitives drive generic for, compile-time "
+               "control, arithmetic, comparisons, and logic");
+
+  joggle::Compiler shadowing;
+  shadowing.add(R"(
+joggle 1;
+module shadowing@1.0.0 {
+  fn ceildiv(lhs: int, rhs: int) -> int {
+    return 99;
+  }
+  fn custom_add(lhs: int, rhs: int) -> int as + {
+    return lhs - rhs;
+  }
+  fn local_call(lhs: int, rhs: int) -> int {
+    return ceildiv(lhs, rhs);
+  }
+  fn local_operator(lhs: int, rhs: int) -> int {
+    return lhs + rhs;
+  }
+  fn standard_call(lhs: int, rhs: int) -> int {
+    return prelude.ceildiv(lhs, rhs);
+  }
+}
+)",
+                "shadowing.joggle");
+  const bool shadowing_linked = shadowing.link();
+  const auto local_call =
+      shadowing_linked
+          ? shadowing.run<std::int64_t>("shadowing.local_call",
+                                       std::int64_t{7}, std::int64_t{3})
+          : std::nullopt;
+  const auto local_operator =
+      shadowing_linked
+          ? shadowing.run<std::int64_t>("shadowing.local_operator",
+                                       std::int64_t{7}, std::int64_t{3})
+          : std::nullopt;
+  const auto standard_call =
+      shadowing_linked
+          ? shadowing.run<std::int64_t>("shadowing.standard_call",
+                                       std::int64_t{7}, std::int64_t{3})
+          : std::nullopt;
+  ok &= expect(shadowing_linked &&
+                   local_call == std::optional<std::int64_t>{99} &&
+                   local_operator == std::optional<std::int64_t>{4} &&
+                   standard_call == std::optional<std::int64_t>{3},
+               "local names and signatures shadow ambient Prelude fn while "
+               "explicit qualification remains available");
+
+  joggle::Compiler invalid_arithmetic;
+  invalid_arithmetic.add(R"(
+joggle 1;
+module invalid_arithmetic@1.0.0 {
+  fn divide_by_zero() -> int {
+    return 1 / 0;
+  }
+}
+)",
+                         "invalid-arithmetic.joggle");
+  const bool invalid_linked = invalid_arithmetic.link();
+  const auto invalid_result =
+      invalid_linked
+          ? invalid_arithmetic.run<std::int64_t>(
+                "invalid_arithmetic.divide_by_zero")
+          : std::nullopt;
+  const bool reports_division_by_zero = std::any_of(
+      invalid_arithmetic.diagnostics().entries().begin(),
+      invalid_arithmetic.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("compile-time division by zero") !=
+               std::string::npos;
+      });
+  ok &= expect(invalid_linked && !invalid_result && reports_division_by_zero,
+               "Prelude primitive failures preserve deterministic diagnostics");
+
+  joggle::Compiler overflowing;
+  overflowing.add(R"(
+joggle 1;
+module overflowing@1.0.0 {
+  fn add_past_i64() -> int {
+    return 9223372036854775807 + 1;
+  }
+}
+)",
+                  "overflowing.joggle");
+  const bool overflowing_linked = overflowing.link();
+  const auto overflowing_result =
+      overflowing_linked
+          ? overflowing.run<std::int64_t>("overflowing.add_past_i64")
+          : std::nullopt;
+  const bool reports_overflow = std::any_of(
+      overflowing.diagnostics().entries().begin(),
+      overflowing.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("compile-time integer arithmetic "
+                                       "overflow") != std::string::npos;
+      });
+  ok &= expect(overflowing_linked && !overflowing_result && reports_overflow,
+               "Prelude integer primitives reject overflow deterministically");
+
   const auto unknown = compiler.make("i33");
   ok &= expect(!unknown, "unknown Prelude type spellings are rejected");
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;

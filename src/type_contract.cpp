@@ -6,14 +6,13 @@
 #include "expression_syntax.h"
 #include "module_internal.h"
 #include "prelude.h"
+#include "prelude_runtime.h"
 #include "type_internal.h"
 
 #include <algorithm>
 #include <array>
 #include <charconv>
-#include <cmath>
 #include <functional>
-#include <limits>
 #include <locale>
 #include <sstream>
 #include <string>
@@ -61,82 +60,6 @@ known_domain(const Module::Expression& expression, const Bindings& bindings) {
   }
   if (expression.kind == Kind::String) {
     return domain_expression(ValueKind::String);
-  }
-  return std::nullopt;
-}
-
-std::optional<std::int64_t> checked_add(std::int64_t left,
-                                        std::int64_t right) {
-  constexpr auto minimum = std::numeric_limits<std::int64_t>::min();
-  constexpr auto maximum = std::numeric_limits<std::int64_t>::max();
-  if ((right > 0 && left > maximum - right) ||
-      (right < 0 && left < minimum - right)) {
-    return std::nullopt;
-  }
-  return left + right;
-}
-
-std::optional<std::int64_t> checked_subtract(std::int64_t left,
-                                             std::int64_t right) {
-  constexpr auto minimum = std::numeric_limits<std::int64_t>::min();
-  constexpr auto maximum = std::numeric_limits<std::int64_t>::max();
-  if ((right > 0 && left < minimum + right) ||
-      (right < 0 && left > maximum + right)) {
-    return std::nullopt;
-  }
-  return left - right;
-}
-
-std::uint64_t magnitude(std::int64_t value) {
-  return value < 0 ? static_cast<std::uint64_t>(-(value + 1)) + 1U
-                   : static_cast<std::uint64_t>(value);
-}
-
-std::optional<std::int64_t> checked_multiply(std::int64_t left,
-                                             std::int64_t right) {
-  const bool negative = (left < 0) != (right < 0);
-  const std::uint64_t left_magnitude = magnitude(left);
-  const std::uint64_t right_magnitude = magnitude(right);
-  constexpr std::uint64_t negative_limit = std::uint64_t{1} << 63U;
-  constexpr std::uint64_t positive_limit =
-      static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
-  const std::uint64_t limit = negative ? negative_limit : positive_limit;
-  if (right_magnitude != 0U &&
-      left_magnitude > limit / right_magnitude) {
-    return std::nullopt;
-  }
-  const std::uint64_t product = left_magnitude * right_magnitude;
-  if (!negative) {
-    return static_cast<std::int64_t>(product);
-  }
-  if (product == negative_limit) {
-    return std::numeric_limits<std::int64_t>::min();
-  }
-  return -static_cast<std::int64_t>(product);
-}
-
-std::optional<std::int64_t>
-checked_integer_binary(std::string_view symbol, std::int64_t left,
-                       std::int64_t right) {
-  if (symbol == "+") {
-    return checked_add(left, right);
-  }
-  if (symbol == "-") {
-    return checked_subtract(left, right);
-  }
-  if (symbol == "*") {
-    return checked_multiply(left, right);
-  }
-  if (symbol == "/" || symbol == "//") {
-    if (right == 0 ||
-        (left == std::numeric_limits<std::int64_t>::min() && right == -1)) {
-      return std::nullopt;
-    }
-    std::int64_t quotient = left / right;
-    if (symbol == "//" && left % right != 0 && (left < 0) != (right < 0)) {
-      --quotient;
-    }
-    return quotient;
   }
   return std::nullopt;
 }
@@ -280,7 +203,15 @@ Environment environment(std::span<const Module> modules,
                     Module::FunctionDecl::Fixity fixity) {
             return visible_operators(modules, owner, symbol, fixity);
           },
-          {}, {}, false, {}};
+          [](const Module::FunctionDecl& function) {
+            return is_prelude_primitive(function);
+          },
+          [&diagnostics](Module::FunctionDecl function,
+                         std::span<const ParameterValue> arguments) {
+            return evaluate_prelude_primitive(function, arguments,
+                                              diagnostics);
+          },
+          false, {}};
 }
 
 class Solver {
@@ -753,7 +684,8 @@ private:
              "' is guarded and cannot execute under Residual control");
       return std::nullopt;
     }
-    if (environment_.evaluate) {
+    if (environment_.evaluate &&
+        (!environment_.can_evaluate || environment_.can_evaluate(function))) {
       return environment_.evaluate(function, values);
     }
 
@@ -952,115 +884,10 @@ private:
         }
         return evaluate_function(function, values, arguments);
       }
-      if (domain->element != ValueKind::Integer &&
-          domain->element != ValueKind::Real) {
-        report("operator expression is not defined for this compiler domain");
-        return std::nullopt;
-      }
-      auto left = evaluate(expression.arguments.front(), expected, bindings);
-      if (!left) {
-        return std::nullopt;
-      }
-      if (expression.kind != Kind::Infix) {
-        if (expression.kind != Kind::Prefix || expression.text != "-") {
-          report("no matching compile-time operator '" + expression.text +
-                 "'");
-          return std::nullopt;
-        }
-        if (const auto* integer = left->as_i64()) {
-          if (*integer == std::numeric_limits<std::int64_t>::min()) {
-            report("compile-time integer arithmetic overflow");
-            return std::nullopt;
-          }
-          return ParameterValue(-*integer);
-        }
-        if (const auto* real = left->as_f64()) {
-          const double value = -*real;
-          if (std::isfinite(value)) {
-            return ParameterValue(value);
-          }
-        }
-        report("compile-time floating-point arithmetic is not finite");
-        return std::nullopt;
-      }
-      auto right = evaluate(expression.arguments[1], expected, bindings);
-      if (!right) {
-        return std::nullopt;
-      }
-      if (const auto* left_integer = left->as_i64()) {
-        const auto* right_integer = right->as_i64();
-        const auto value =
-            right_integer
-                ? checked_integer_binary(expression.text, *left_integer,
-                                         *right_integer)
-                : std::nullopt;
-        if (value) {
-          return ParameterValue(*value);
-        }
-        report((expression.text == "/" || expression.text == "//") &&
-                       right_integer &&
-                       *right_integer == 0
-                   ? "compile-time division by zero"
-                   : "compile-time integer arithmetic overflow");
-        return std::nullopt;
-      }
-      const auto* left_real = left->as_f64();
-      const auto* right_real = right->as_f64();
-      if (left_real == nullptr || right_real == nullptr ||
-          ((expression.text == "/" || expression.text == "//") &&
-           *right_real == 0.0)) {
-        report((expression.text == "/" || expression.text == "//") &&
-                       right_real &&
-                       *right_real == 0.0
-                   ? "compile-time division by zero"
-                   : "compile-time arithmetic arguments have different kinds");
-        return std::nullopt;
-      }
-      const double value = expression.text == "+"   ? *left_real + *right_real
-                           : expression.text == "-" ? *left_real - *right_real
-                           : expression.text == "*" ? *left_real * *right_real
-                           : expression.text == "/" ? *left_real / *right_real
-                           : expression.text == "//"
-                               ? std::floor(*left_real / *right_real)
-                               : std::numeric_limits<double>::quiet_NaN();
-      if (!std::isfinite(value)) {
-        report("compile-time floating-point arithmetic is not finite");
-        return std::nullopt;
-      }
-      return ParameterValue(value);
+      report("no matching compile-time operator '" + expression.text + "'");
+      return std::nullopt;
     }
     if (expression.kind == Kind::Call) {
-      const bool kernel_call =
-          expression.text == "ceildiv" || expression.text == "min" ||
-          expression.text == "max";
-      if (kernel_call) {
-        if (domain->element != ValueKind::Integer ||
-            expression.arguments.size() != 2U) {
-          report("ill-typed kernel call '" + expression.text + "'");
-          return std::nullopt;
-        }
-        auto left = evaluate(expression.arguments[0], expected, bindings);
-        auto right = evaluate(expression.arguments[1], expected, bindings);
-        const auto* left_integer = left ? left->as_i64() : nullptr;
-        const auto* right_integer = right ? right->as_i64() : nullptr;
-        if (left_integer == nullptr || right_integer == nullptr) {
-          return std::nullopt;
-        }
-        if (expression.text == "min") {
-          return ParameterValue(std::min(*left_integer, *right_integer));
-        }
-        if (expression.text == "max") {
-          return ParameterValue(std::max(*left_integer, *right_integer));
-        }
-        if (*left_integer < 0 || *right_integer <= 0) {
-          report(
-              "ceildiv requires a non-negative dividend and positive divisor");
-          return std::nullopt;
-        }
-        return ParameterValue(*left_integer / *right_integer +
-                              (*left_integer % *right_integer != 0 ? 1 : 0));
-      }
-
       std::vector<CallCandidate> candidates;
       for (const auto& function :
            environment_.functions(scope_, expression.text)) {
@@ -1313,10 +1140,6 @@ private:
       Module::ParameterDecl expected{
           "computed", domain_expression(ValueKind::Integer), false,
           std::nullopt};
-      const bool kernel_call = expression.kind == Kind::Call &&
-                               (expression.text == "ceildiv" ||
-                                expression.text == "min" ||
-                                expression.text == "max");
       if (field_generic != generic_end) {
         const auto interface =
             field_generic->constraint
@@ -1341,7 +1164,7 @@ private:
           report("derived parameter does not match the type parameter");
           return false;
         }
-      } else if (expression.kind == Kind::Call && !kernel_call) {
+      } else if (expression.kind == Kind::Call) {
         const std::size_t receiver_dot = expression.text.find('.');
         const auto generic =
             receiver_dot == std::string::npos

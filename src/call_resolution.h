@@ -37,7 +37,4 @@ std::optional<CallCandidate>
 call_candidate(const Module::FunctionDecl& function,
                const Module::Expression& expression);
 
-bool is_bootstrap_call(std::string_view name);
-bool is_bootstrap_operator(std::string_view symbol);
-
 }  // namespace joggle::detail

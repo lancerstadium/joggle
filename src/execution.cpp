@@ -752,14 +752,13 @@ bool verify_body_calls(Compiler& compiler,
     using Kind = Module::Expression::Kind;
     const Module::Expression& expression = syntax.value;
     if (expression.kind == Kind::Call) {
-      const bool bootstrap = is_bootstrap_call(expression.text);
       const auto declarations = visible_functions(
           compiler, function.symbol().module_name(), expression.text);
       const bool shaped = std::any_of(
           declarations.begin(), declarations.end(), [&](const auto& current) {
             return call_candidate(current, expression).has_value();
           });
-      if (!bootstrap && !shaped) {
+      if (!shaped) {
         report("no visible overload of '" + expression.text +
                    "' accepts this call shape",
                syntax.range);
@@ -779,10 +778,7 @@ bool verify_body_calls(Compiler& compiler,
           declarations.begin(), declarations.end(), [&](const auto& current) {
             return call_candidate(current, expression).has_value();
           });
-      const bool bootstrap_operator =
-          is_bootstrap_operator(expression.text);
-      if ((!declarations.empty() && !shaped) ||
-          (declarations.empty() && !bootstrap_operator)) {
+      if (!shaped) {
         report("no visible function defines operator '" + expression.text +
                    "' with this fixity and arity",
                syntax.range);

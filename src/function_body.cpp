@@ -1473,12 +1473,6 @@ private:
       return known_result(expression.arguments[1], range);
     }
     if (expression.kind == Kind::Call) {
-      if (expression.text == "ceildiv" || expression.text == "min" ||
-          expression.text == "max") {
-        return Module::ParameterDecl{
-            "result", detail::domain_expression(detail::ValueKind::Integer),
-            false, std::nullopt};
-      }
       std::vector<Module::ParameterDecl> matches;
       for (const auto& function : visible_functions(expression.text)) {
         auto candidate = detail::call_candidate(function, expression);
