@@ -327,6 +327,12 @@ std::optional<Value> ir_value(Compiler& compiler, const StagedValue& value) {
                  : std::optional<Value>{};
 }
 
+std::optional<bool> known_boolean(const StagedValue& value) {
+  const ExecutionValue* known = value.known_value();
+  const bool* boolean = known ? std::get_if<bool>(known) : nullptr;
+  return boolean ? std::optional<bool>{*boolean} : std::nullopt;
+}
+
 std::optional<ExecutionValue>
 execution_value(const ParameterValue& value,
                 const Module::ParameterDecl& parameter) {

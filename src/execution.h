@@ -66,6 +66,7 @@ std::optional<Type> execution_type(Compiler& compiler,
 std::optional<StagedValue> stage(Compiler& compiler, ExecutionValue value);
 std::optional<StagedValue> stage(Value value);
 std::optional<Value> ir_value(Compiler& compiler, const StagedValue& value);
+std::optional<bool> known_boolean(const StagedValue& value);
 
 std::optional<ExecutionValue>
 execution_value(const ParameterValue& value,

@@ -412,9 +412,8 @@ private:
           "condition", domain_expression(ValueKind::Boolean), false,
           std::nullopt};
       auto value = evaluate(expression.arguments[0], range, &condition);
-      const ExecutionValue* known = value ? value->known_value() : nullptr;
-      const bool* selected = known ? std::get_if<bool>(known) : nullptr;
-      if (selected == nullptr) {
+      const auto selected = value ? known_boolean(*value) : std::nullopt;
+      if (!selected) {
         report("compiler if condition must be bool", range);
         return std::nullopt;
       }
@@ -512,9 +511,8 @@ private:
             std::nullopt};
         auto value = evaluate(statement.expression.value,
                               statement.expression.range, &condition);
-        const ExecutionValue* known = value ? value->known_value() : nullptr;
-        const bool* selected = known ? std::get_if<bool>(known) : nullptr;
-        if (selected == nullptr) {
+        const auto selected = value ? known_boolean(*value) : std::nullopt;
+        if (!selected) {
           report("compiler if condition must be bool", statement.range);
           return {Control::Error, std::nullopt};
         }
@@ -534,9 +532,8 @@ private:
               std::nullopt};
           auto value = evaluate(statement.expression.value,
                                 statement.expression.range, &condition);
-          const ExecutionValue* known = value ? value->known_value() : nullptr;
-          const bool* selected = known ? std::get_if<bool>(known) : nullptr;
-          if (selected == nullptr) {
+          const auto selected = value ? known_boolean(*value) : std::nullopt;
+          if (!selected) {
             report("compiler while condition must be bool", statement.range);
             return {Control::Error, std::nullopt};
           }

@@ -137,6 +137,11 @@ exactly one such function and emit its ordinary call. A compile-time-only
 object needs no literal function; it becomes an error only if the program tries
 to place it in residual code.
 
+The implementation preserves this boundary literally: Known locals and call
+arguments stay as staged compiler values. They are not wrapped in temporary IR
+Values merely for bookkeeping. Conversion to a Function-owned Value happens
+only when an argument, result, or edge is actually retained in Residual IR.
+
 This makes constant folding, specialization, compile-time execution, and IR
 construction one operation rather than four unrelated passes. It also gives
 cloud/edge specialization a precise boundary: cloud-known model, device, and

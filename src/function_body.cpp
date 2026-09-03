@@ -825,7 +825,7 @@ class Instantiator {
   };
 
   struct PendingArgument {
-    std::optional<Value> value;
+    std::optional<detail::StagedValue> value;
     std::string function;
 
     bool is_function() const { return !function.empty(); }
@@ -1348,7 +1348,7 @@ private:
               false, std::nullopt};
         }
       }
-      auto value = lookup(expression.text);
+      auto value = lookup_staged(expression.text);
       auto value_domain = value ? detail::type_domain(value->type())
                                 : std::nullopt;
       return value_domain
@@ -1442,7 +1442,8 @@ private:
     return std::nullopt;
   }
 
-  std::optional<Value> evaluate_known(const detail::ExpressionSyntax& syntax) {
+  std::optional<detail::StagedValue>
+  evaluate_known(const detail::ExpressionSyntax& syntax) {
     auto expected = known_result(syntax.value, syntax.range);
     if (!expected) {
       report("cannot determine the type required by compile-time evaluation",
@@ -1452,11 +1453,10 @@ private:
     auto payload = detail::evaluate_known_expression(
         compiler_, owner_, syntax.value, *expected, locals_.known_bindings(),
         diagnostics_, source(syntax.range), residual_control_depth_ == 0U);
-    auto type = payload ? detail::domain_type(compiler_, expected->domain)
-                        : std::nullopt;
-    return payload && type
-               ? compiler_.known(std::move(*type), std::move(*payload))
-               : std::optional<Value>{};
+    auto value = payload ? detail::execution_value(*payload, *expected)
+                         : std::optional<detail::ExecutionValue>{};
+    return value ? detail::stage(compiler_, std::move(*value))
+                 : std::optional<detail::StagedValue>{};
   }
 
   std::optional<Type> type(const detail::ExpressionSyntax& syntax) {
@@ -1476,9 +1476,16 @@ private:
   }
 
   std::optional<Value> lookup(std::string_view name) const {
-    const detail::StagedValue* value = locals_.find(name);
+    auto value = lookup_staged(name);
     return value ? detail::ir_value(compiler_, *value)
                  : std::optional<Value>{};
+  }
+
+  std::optional<detail::StagedValue>
+  lookup_staged(std::string_view name) const {
+    const detail::StagedValue* value = locals_.find(name);
+    return value ? std::optional<detail::StagedValue>{*value}
+                 : std::nullopt;
   }
 
   bool declared_local(std::string_view name) const {
@@ -1525,10 +1532,13 @@ private:
       auto& arguments = result.arguments[index];
       if (arguments.empty() && parameters[index].default_value) {
         const auto payload = detail::parameter_default(parameters[index]);
-        auto type = detail::domain_type(compiler_, parameters[index].domain);
-        auto value = payload && type
-                         ? compiler_.known(std::move(*type), *payload)
-                         : std::optional<Value>{};
+        auto execution = payload
+                             ? detail::execution_value(*payload,
+                                                       parameters[index])
+                             : std::optional<detail::ExecutionValue>{};
+        auto value = execution
+                         ? detail::stage(compiler_, std::move(*execution))
+                         : std::optional<detail::StagedValue>{};
         if (!value) {
           reject("cannot construct default argument '" +
                  parameters[index].name + "'");
@@ -1555,8 +1565,10 @@ private:
                "' must be one Known value");
         return std::nullopt;
       }
-      const auto payload = detail::FunctionAccess::known_value(
-          *arguments.front().value);
+      const detail::ExecutionValue* known =
+          arguments.front().value->known_value();
+      const auto payload = known ? detail::parameter_value(*known)
+                                 : std::optional<ParameterValue>{};
       if (!payload || !detail::matches_parameter(parameters[index], *payload)) {
         reject("argument '" + parameters[index].name +
                "' has an incompatible compiler domain");
@@ -1746,13 +1758,18 @@ private:
         return;
       }
     }
+    bind_staged(binding, std::move(staged));
+  }
+
+  void bind_staged(const detail::BindingSyntax& binding,
+                   std::optional<detail::StagedValue> value) {
     if (!binding.rebind) {
-      if (!locals_.define(binding.name, std::move(staged))) {
+      if (!locals_.define(binding.name, std::move(value))) {
         report("a local value may only be defined once", binding.range);
       }
       return;
     }
-    if (locals_.assign(binding.name, std::move(staged))) {
+    if (locals_.assign(binding.name, std::move(value))) {
       return;
     }
     report("cannot rebind undefined local value '" + binding.name + "'",
@@ -1911,7 +1928,8 @@ private:
                                 Block block) {
     if (known_result(statement.expression.value, statement.expression.range)) {
       auto condition = evaluate_known(statement.expression);
-      const auto selected = condition ? condition->get<bool>() : std::nullopt;
+      const auto selected =
+          condition ? detail::known_boolean(*condition) : std::nullopt;
       if (!selected) {
         report("Known if condition must have type bool",
                statement.expression.range);
@@ -2080,7 +2098,8 @@ private:
         pending.pop_back();
         restore(active);
         auto condition = evaluate_known(statement.expression);
-        const auto selected = condition ? condition->get<bool>() : std::nullopt;
+        const auto selected =
+            condition ? detail::known_boolean(*condition) : std::nullopt;
         if (!selected) {
           report("Known while condition must have type bool",
                  statement.expression.range);
@@ -2371,7 +2390,8 @@ private:
         expression.arguments[0], statement.expression.range};
     if (known_result(condition_syntax.value, condition_syntax.range)) {
       auto condition = evaluate_known(condition_syntax);
-      const auto selected = condition ? condition->get<bool>() : std::nullopt;
+      const auto selected =
+          condition ? detail::known_boolean(*condition) : std::nullopt;
       if (!selected) {
         report("Known if condition must have type bool",
                condition_syntax.range);
@@ -2460,12 +2480,17 @@ private:
       if (value) {
         auto expected = expected_type(statement.bindings.front());
         if (expected && value->type() != *expected) {
-          value = materialize(*value, *expected, block, statement.range);
-        }
-        if (value) {
-          bind(statement.bindings.front(), std::move(*value));
+          auto ir = detail::ir_value(compiler_, *value);
+          auto materialized = ir ? materialize(*ir, *expected, block,
+                                               statement.range)
+                                 : std::optional<Value>{};
+          if (materialized) {
+            bind(statement.bindings.front(), std::move(*materialized));
+          } else {
+            invalidate(statement.bindings);
+          }
         } else {
-          invalidate(statement.bindings);
+          bind_staged(statement.bindings.front(), std::move(value));
         }
       } else {
         invalidate(statement.bindings);
@@ -2497,7 +2522,7 @@ private:
       if ((argument_expression.kind == Kind::Reference ||
            argument_expression.kind == Kind::Variable) &&
           argument_expression.arguments.empty()) {
-        argument.value = lookup(argument_expression.text);
+        argument.value = lookup_staged(argument_expression.text);
         if (!argument.value && declared_local(argument_expression.text)) {
           invalidate_results();
           return;
@@ -2506,7 +2531,9 @@ private:
             !visible_functions(argument_expression.text).empty()) {
           argument.function = argument_expression.text;
         } else if (!argument.value) {
-          argument.value = use(argument_syntax);
+          auto used = use(argument_syntax);
+          argument.value = used ? detail::stage(std::move(*used))
+                                : std::optional<detail::StagedValue>{};
         }
       } else {
         argument.value = evaluate_known(argument_syntax);
@@ -2593,9 +2620,11 @@ private:
       }
       for (PendingArgument& argument : plan.arguments[index]) {
         if (argument.is_function()) {
-          argument.value = function_reference(
+          auto reference = function_reference(
               argument.function, statement.expression.range,
               plan.partial_types.arguments[argument_index]);
+          argument.value = reference ? detail::stage(std::move(*reference))
+                                     : std::optional<detail::StagedValue>{};
           unresolved = !argument.value || unresolved;
         }
         ++argument_index;
@@ -2613,7 +2642,14 @@ private:
           invalidate_results();
           return;
         }
-        call_arguments.push_back(*argument.value);
+        auto value = detail::ir_value(compiler_, *argument.value);
+        if (!value) {
+          report("call argument cannot enter Residual IR",
+                 statement.expression.range);
+          invalidate_results();
+          return;
+        }
+        call_arguments.push_back(std::move(*value));
       }
     }
     Instruction operation = edit_->append(
