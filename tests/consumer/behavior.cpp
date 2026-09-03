@@ -13,10 +13,13 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
   }
 
   compiler.bind(*convert, [keep = *keep, converted = *converted](
-                              joggle::ir::Function& function,
-                              joggle::Diagnostics& diagnostics) {
-    return joggle::ir::replace_calls(function, keep, converted, diagnostics)
-        .has_value();
+                              joggle::ir::Function function,
+                              joggle::Diagnostics& diagnostics)
+                              -> std::optional<joggle::ir::Function> {
+    if (!joggle::ir::replace_calls(function, keep, converted, diagnostics)) {
+      return std::nullopt;
+    }
+    return function;
   });
   return true;
 }

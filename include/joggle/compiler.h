@@ -96,13 +96,7 @@ template <typename T> ExecutionValue store_execution_value(T&& value) {
 template <typename T> ExecutionValue store_execution_input(T&& value) {
   using Value = std::remove_cvref_t<T>;
   if constexpr (std::is_same_v<Value, ir::Function>) {
-    static_assert(std::is_lvalue_reference_v<T>,
-                  "a Function compiler input must be an lvalue");
-    static_assert(!std::is_const_v<std::remove_reference_t<T>>,
-                  "compiler-function invocation requires a non-const Function "
-                  "handle");
-    return {std::shared_ptr<ir::Function>(std::addressof(value),
-                                          [](ir::Function*) {})};
+    return {std::make_shared<ir::Function>(std::forward<T>(value))};
   } else if constexpr (is_builtin_host_value<Value>) {
     return {Value(std::forward<T>(value))};
   } else {
@@ -115,7 +109,11 @@ template <typename T> decltype(auto) execution_argument(ExecutionValue& value) {
   using Value = std::remove_cvref_t<T>;
   if constexpr (std::is_same_v<Value, ir::Function>) {
     auto& function = *std::get<std::shared_ptr<ir::Function>>(value);
-    return static_cast<T>(function);
+    if constexpr (std::is_reference_v<T>) {
+      return static_cast<T>(function);
+    } else {
+      return function;
+    }
   } else if constexpr (is_builtin_host_value<Value>) {
     auto& stored = std::get<Value>(value);
     return static_cast<T>(stored);
@@ -264,7 +262,7 @@ template <typename Function, typename Arguments, std::size_t Offset,
 std::optional<ExecutionValues>
 invoke_typed_function(Function& function, Compiler& compiler,
                       std::span<ExecutionValue> arguments,
-                      Diagnostics& diagnostics, bool function_transform,
+                      Diagnostics& diagnostics,
                       std::index_sequence<Indices...>) {
   using Traits = CallableTraits<Function>;
   using Produced = typename Traits::result;
@@ -299,13 +297,6 @@ invoke_typed_function(Function& function, Compiler& compiler,
     return ExecutionValues{};
   } else {
     auto produced = invoke();
-    if constexpr (std::is_same_v<std::remove_cvref_t<Produced>, bool>) {
-      if (function_transform) {
-        return produced ? std::optional<ExecutionValues>{ExecutionValues{
-                              arguments.front()}}
-                        : std::nullopt;
-      }
-    }
     using Value = std::remove_cvref_t<Produced>;
     if constexpr (OptionalValue<Value>::value) {
       if (!produced) {
@@ -662,23 +653,10 @@ public:
       constexpr std::size_t offset = with_compiler ? 1U : 0U;
       const auto argument_types = []<std::size_t... Indices>(
                                       std::index_sequence<Indices...>) {
-        static_assert(
-            ((!std::is_same_v<std::remove_cvref_t<std::tuple_element_t<
-                                  offset + Indices, Arguments>>,
-                              joggle::ir::Function> ||
-              std::is_reference_v<
-                  std::tuple_element_t<offset + Indices, Arguments>>) &&
-             ...),
-            "a Function compiler input must be Function& or const Function&");
         return std::array<std::string_view, sizeof...(Indices)>{
             detail::host_type_name<
                 std::tuple_element_t<offset + Indices, Arguments>>()...};
       }(std::make_index_sequence<argument_count>{});
-      const bool function_transform =
-          schema.inputs().size() == 1U &&
-          detail::has_domain(schema.inputs().front(), "function") &&
-          schema.results().size() == 1U &&
-          detail::has_domain(schema.results().front(), "function");
       using Produced = std::remove_cvref_t<typename Traits::result>;
       std::vector<std::string_view> result_types;
       if constexpr (!std::is_void_v<Produced>) {
@@ -686,22 +664,13 @@ public:
             std::conditional_t<detail::OptionalValue<Produced>::value,
                                typename detail::OptionalValue<Produced>::type,
                                Produced>;
-        if constexpr (std::is_same_v<Produced, bool>) {
-          result_types =
-              function_transform
-                  ? std::vector<std::string_view>{detail::host_type_name<
-                        joggle::ir::Function>()}
-                  : detail::execution_result_types<Value>();
-        } else {
-          result_types = detail::execution_result_types<Value>();
-        }
+        result_types = detail::execution_result_types<Value>();
       }
       if (!check_binding_signature(schema, argument_types, result_types)) {
         return;
       }
       NativeFunction binding = [callable =
-                                    Callable(std::forward<Function>(function)),
-                                function_transform](
+                                    Callable(std::forward<Function>(function))](
                                    Compiler& compiler,
                                    std::span<detail::ExecutionValue> arguments,
                                    Diagnostics& diagnostics) mutable {
@@ -712,7 +681,7 @@ public:
         }
         return detail::invoke_typed_function<Callable, Arguments, offset,
                                              with_compiler, with_diagnostics>(
-            callable, compiler, arguments, diagnostics, function_transform,
+            callable, compiler, arguments, diagnostics,
             std::make_index_sequence<argument_count>{});
       };
       bind_native(std::move(schema), std::move(binding), evaluation);

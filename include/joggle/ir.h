@@ -199,10 +199,12 @@ public:
   };
 
   ~Function();
+  // Function is a copy-on-write IR value. Copies share a committed Revision;
+  // edit() detaches the edited copy before exposing mutable operations.
+  Function(const Function& other);
+  Function& operator=(const Function& other);
   Function(Function&&) noexcept;
   Function& operator=(Function&&) noexcept;
-  Function(const Function&) = delete;
-  Function& operator=(const Function&) = delete;
 
   std::vector<Value> arguments() const;
   std::optional<Module::Function> declaration() const;

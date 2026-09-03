@@ -67,8 +67,9 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
   compiler.bind(
       *rewrite,
       [keep = *keep, replacement = *replacement](
-          joggle::ir::Function& function,
-          joggle::Diagnostics& edit_diagnostics) {
+          joggle::ir::Function function,
+          joggle::Diagnostics& edit_diagnostics)
+          -> std::optional<joggle::ir::Function> {
         const auto instructions = function.instructions();
         auto edit = function.edit();
         for (const auto& instruction : instructions) {
@@ -76,7 +77,10 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
             edit.replace(instruction, replacement);
           }
         }
-        return edit.commit(edit_diagnostics);
+        if (!edit.commit(edit_diagnostics)) {
+          return std::nullopt;
+        }
+        return function;
       });
   return true;
 }
@@ -86,9 +90,11 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
 JOGGLE_EXPORT_BEHAVIOR(bind)
 ```
 
-The callback is an ordinary binding for the declared `rewrite` function. It
-edits `joggle::ir::Function` transactionally; no pass base class, generated
-wrapper, Graph object, or Region API is involved.
+The callback is an ordinary binding for the declared `rewrite` function. Its
+C++ input and output match the declared `function -> function` signature. The
+input is an isolated value, and the returned Function is published only after
+its edit commits; no pass base class, generated wrapper, Graph object, or
+Region API is involved.
 
 ## 4. Build and validate behavior
 

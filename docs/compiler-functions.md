@@ -39,11 +39,11 @@ materialized bodies:
 - a materialized member body is `joggle::ir::Function`, an editable CFG inside
   that Module.
 
-`module` values use copy-on-write Function storage. A native
-`module -> module` function receives an isolated value and publishes it only
-when invocation succeeds. A native body transform edits through
-`joggle::ir::Function::Edit`; `commit` verifies the candidate and rolls back
-failure.
+`module` and `function` values use copy-on-write storage. A native transform
+receives an isolated value and returns the declared result; an empty
+`std::optional` reports failure. A Function transform edits its value through
+`joggle::ir::Function::Edit`, whose `commit` verifies the candidate. The caller
+publishes the returned value only after the complete invocation succeeds.
 
 Analyses and emitted artifacts remain extension-owned. For example, a Module
 declares `estimate`, `schedule`, or `object`, and its behavior registers the

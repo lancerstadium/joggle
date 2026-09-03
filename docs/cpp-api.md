@@ -18,7 +18,7 @@ edits are explicit transactions.
 | `joggle::Module` | Versioned symbol scope and multi-Function IR owner |
 | `joggle::Module::Function` | Named callable member and canonical signature |
 | `joggle::Type`, `joggle::Attribute` | Immutable schema instances |
-| `joggle::ir::Function` | Optional materialized CFG body of a Module Function |
+| `joggle::ir::Function` | Copy-on-write materialized CFG value of a Module Function |
 | `joggle::ir::Block` | CFG node owned by a Function |
 | `joggle::ir::Instruction` | Declared call owned by a Block |
 | `joggle::ir::Value` | Typed Known or Residual value handle |
@@ -135,6 +135,10 @@ if (!edit.commit(diagnostics)) {
 types are inferred from declaration contracts when possible. Explicit result
 types constrain result-only generics. Dropping an uncommitted edit, or failing
 commit, restores the prior Function.
+
+`ir::Function` copies share an immutable revision until one copy starts an
+edit. This makes read-only analysis handoff constant-time while preserving
+value semantics for `function -> function` transformations.
 
 Construct control flow with sibling Blocks and typed edges:
 

@@ -369,8 +369,9 @@ module pipeline@1.0.0 {
         return {static_cast<std::byte>(current.instructions().size())};
       });
   compiler.bind(*canonicalize, [arith_cast_decl](
-                                   joggle::ir::Function& current,
-                                   joggle::Diagnostics& diagnostics) {
+                                   joggle::ir::Function current,
+                                   joggle::Diagnostics& diagnostics)
+                                   -> std::optional<joggle::ir::Function> {
     auto edit = current.edit();
     for (const joggle::ir::Instruction& instruction : current.instructions()) {
       if (instruction.callee() != *arith_cast_decl) {
@@ -379,7 +380,10 @@ module pipeline@1.0.0 {
       edit.replace(instruction.result(0), instruction.arguments().front());
       edit.erase(instruction);
     }
-    return edit.commit(diagnostics);
+    if (!edit.commit(diagnostics)) {
+      return std::nullopt;
+    }
+    return current;
   });
   bool consumed = false;
   compiler.bind(*consume, [&](const joggle::Bytes&) { consumed = true; });
@@ -431,9 +435,9 @@ module pipeline@1.0.0 {
       joggle::HostEvaluation::Hermetic);
   ok &= expect(
       compiler.invocable<joggle::Module, joggle::Module>(*module_identity) &&
-          compiler.invocable<joggle::ir::Function, joggle::ir::Function&>(
+          compiler.invocable<joggle::ir::Function, joggle::ir::Function>(
               *clean) &&
-          !compiler.invocable<joggle::Module, joggle::ir::Function&>(*clean) &&
+          !compiler.invocable<joggle::Module, joggle::ir::Function>(*clean) &&
           compiler.invocable<std::tuple<std::int64_t, bool>, std::int64_t>(
               *divide) &&
           !compiler.invocable<std::int64_t, std::int64_t>(*divide) &&
@@ -607,6 +611,12 @@ module pipeline@1.0.0 {
   ok &= expect(canonicalize->form() ==
                    joggle::Module::Function::Form::External,
                "a native transformation uses an ordinary function declaration");
+  const auto input_revision = function->revision();
+  auto cleaned = compiler.run<joggle::ir::Function>(*clean, *function);
+  ok &= expect(cleaned && cleaned->instructions().empty() &&
+                   function->revision() == input_revision &&
+                   !function->instructions().empty(),
+               "a typed Function transform returns an isolated COW value");
   ok &= expect(compiler.run(*function, *clean),
                "an imported transformation composes through an ordinary fn");
   ok &= expect(function->instructions().empty(),
@@ -684,9 +694,10 @@ module pipeline@1.0.0 {
   }
   guarded_compiler.bind(
       *guarded_touch,
-      [&](joggle::Compiler&, joggle::ir::Function&, joggle::Diagnostics&) {
+      [&](joggle::Compiler&, joggle::ir::Function function,
+          joggle::Diagnostics&) {
         transform_called = true;
-        return true;
+        return function;
       });
   ok &= expect(!guarded_compiler.run(*guarded_function, "guarded.touch") &&
                    !transform_called && !guarded_compiler.ok(),
@@ -706,10 +717,11 @@ module pipeline@1.0.0 {
     if (!noop) {
       return EXIT_FAILURE;
     }
-    named_compiler.bind(*noop, [&](joggle::Compiler&, joggle::ir::Function&,
+    named_compiler.bind(*noop, [&](joggle::Compiler&,
+                                   joggle::ir::Function function,
                                    joggle::Diagnostics&) {
       named_called = true;
-      return true;
+      return function;
     });
   }
   const bool unqualified_run = named_linked && named_function &&
@@ -770,11 +782,15 @@ module transactional@1.0.0 {
     return EXIT_FAILURE;
   }
   transactional.bind(*mutate,
-                     [token = *token](joggle::ir::Function& current,
-                                      joggle::Diagnostics& diagnostics) {
+                     [token = *token](joggle::ir::Function current,
+                                      joggle::Diagnostics& diagnostics)
+                         -> std::optional<joggle::ir::Function> {
                        auto edit = current.edit();
                        edit.append(token);
-                       return edit.commit(diagnostics);
+                       if (!edit.commit(diagnostics)) {
+                         return std::nullopt;
+                       }
+                       return current;
                      });
   transactional.bind(
       *reject, [](const joggle::ir::Function&) -> std::optional<joggle::Bytes> {
@@ -802,6 +818,23 @@ module transactional@1.0.0 {
   ok &= expect(!binding_mismatch.ok(),
                "C++ compiler-function binding is checked against its "
                "declared type");
+
+  joggle::Compiler legacy_transform;
+  legacy_transform.add("joggle 1; module legacy_transform@1.0.0 { "
+                       "fn rewrite(input: function) -> function; }",
+                       "legacy-transform.joggle");
+  const bool legacy_linked = legacy_transform.link();
+  const auto legacy_module = legacy_transform.module("legacy_transform");
+  const auto legacy_rewrite =
+      legacy_module ? legacy_module->function("rewrite") : std::nullopt;
+  if (!legacy_linked || !legacy_rewrite) {
+    return EXIT_FAILURE;
+  }
+  legacy_transform.bind(*legacy_rewrite,
+                        [](joggle::ir::Function&) { return true; });
+  ok &= expect(!legacy_transform.ok(),
+               "a bool(Function&) callback cannot impersonate a declared "
+               "function -> function result");
 
   joggle::Compiler represented;
   represented.add(R"(

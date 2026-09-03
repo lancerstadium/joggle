@@ -81,8 +81,10 @@ int main() {
   compiler.bind(*cast_schema, same_type);
   compiler.bind(*marker_schema, same_type);
   compiler.bind(*canonicalize_schema, [cast_schema](
-                                          joggle::ir::Function& function,
-                                          joggle::Diagnostics& diagnostics) {
+                                          joggle::ir::Function function,
+                                          joggle::Diagnostics& diagnostics)
+                                          -> std::optional<
+                                              joggle::ir::Function> {
     auto edit = function.edit();
     for (const joggle::ir::Instruction& instruction : function.instructions()) {
       if (instruction.callee() != *cast_schema) {
@@ -91,7 +93,10 @@ int main() {
       edit.replace(instruction.result(0), instruction.arguments().front());
       edit.erase(instruction);
     }
-    return edit.commit(diagnostics);
+    if (!edit.commit(diagnostics)) {
+      return std::nullopt;
+    }
+    return function;
   });
 
   std::size_t query_runs = 0;
@@ -101,8 +106,9 @@ int main() {
   };
 
   compiler.bind(
-      *cleanup_schema, [&compute_nodes](joggle::ir::Function& function,
-                                        joggle::Diagnostics& diagnostics) {
+      *cleanup_schema, [&compute_nodes](joggle::ir::Function function,
+                                       joggle::Diagnostics& diagnostics)
+                           -> std::optional<joggle::ir::Function> {
         static_cast<void>(compute_nodes(function));
         const auto operations = function.instructions();
         const bool has_marker =
@@ -111,7 +117,7 @@ int main() {
                           return instruction.callee().name() == "marker";
                         });
         if (!has_marker) {
-          return true;
+          return function;
         }
         auto edit = function.edit();
         for (const joggle::ir::Instruction& instruction : operations) {
@@ -121,7 +127,10 @@ int main() {
           edit.replace(instruction.result(0), instruction.arguments()[0]);
           edit.erase(instruction);
         }
-        return edit.commit(diagnostics);
+        if (!edit.commit(diagnostics)) {
+          return std::nullopt;
+        }
+        return function;
       });
 
   const auto integer = compiler.make(*integer_schema, 8);
@@ -155,16 +164,17 @@ int main() {
              "function-local analysis executes explicitly without a side API");
 
   compiler.bind(*abort_schema,
-                [marker_schema, integer](joggle::Compiler&,
-                                         joggle::ir::Function& current,
-                                         joggle::Diagnostics& diagnostics) {
+                [marker_schema](joggle::Compiler&,
+                                joggle::ir::Function current,
+                                joggle::Diagnostics& diagnostics)
+                    -> std::optional<joggle::ir::Function> {
                   const auto producer = current.instructions().front();
                   auto edit = current.edit();
                   edit.append(*marker_schema, {producer.result(0)});
                   if (!edit.commit(diagnostics)) {
-                    return false;
+                    return std::nullopt;
                   }
-                  return false;
+                  return std::nullopt;
                 });
   ok &= expect(!compiler.run(*function, *abort_schema),
                "a failing compiler function reports failure");

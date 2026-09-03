@@ -2822,23 +2822,18 @@ Compiler::execute(Module::Function declaration,
 
 bool Compiler::run(ir::Function& function, Module::Function transform) {
   const Module::Symbol symbol = transform.symbol();
-  const bool function_transform =
-      transform.inputs().size() == 1U &&
-      parameter_domain(transform.inputs().front()) ==
-          detail::Domain{detail::ValueKind::Function, false} &&
-      transform.results().size() == 1U &&
-      parameter_domain(transform.results().front()) ==
-          detail::Domain{detail::ValueKind::Function, false};
-  if (!function_transform) {
+  if (!invocable<ir::Function, ir::Function>(transform)) {
     state_->diagnostics.report(
-        "compiler function '" + symbol.qualified_name() +
-        "' is not a function -> function transformation");
+        "function '" + symbol.qualified_name() +
+        "' does not have signature function -> function");
     return false;
   }
-  std::vector<detail::ExecutionValue> arguments;
-  arguments.push_back(
-      {std::shared_ptr<ir::Function>(&function, [](ir::Function*) {})});
-  return execute(std::move(transform), std::move(arguments)).has_value();
+  auto transformed = run<ir::Function>(std::move(transform), function);
+  if (!transformed) {
+    return false;
+  }
+  function = std::move(*transformed);
+  return true;
 }
 
 bool Compiler::run(ir::Function& function, std::string_view transform) {

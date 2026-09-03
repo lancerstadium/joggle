@@ -1724,6 +1724,33 @@ Function::Function(std::vector<Module> modules)
 }
 
 Function::~Function() = default;
+
+Function::Function(const Function& other)
+    : function_(std::make_shared<FunctionIdentity>()) {
+  if (!other.function_ || other.function_->editing) {
+    throw std::logic_error(
+        "cannot copy a moved-from function or one with an active edit");
+  }
+  function_->state = other.function_->state;
+  function_->next_id = other.function_->next_id;
+}
+
+Function& Function::operator=(const Function& other) {
+  if (this == &other) {
+    return *this;
+  }
+  if (!other.function_ || (function_ && function_->editing) ||
+      other.function_->editing) {
+    throw std::logic_error(
+        "cannot copy a moved-from function or one with an active edit");
+  }
+  auto identity = std::make_shared<FunctionIdentity>();
+  identity->state = other.function_->state;
+  identity->next_id = other.function_->next_id;
+  function_ = std::move(identity);
+  return *this;
+}
+
 Function::Function(Function&&) noexcept = default;
 Function& Function::operator=(Function&&) noexcept = default;
 

@@ -358,7 +358,7 @@ std::optional<Transform> transform(joggle::Compiler& compiler,
   if (compiler.invocable<joggle::Module, joggle::Module>(*function)) {
     return Transform{*function, TransformKind::Module};
   }
-  if (compiler.invocable<joggle::ir::Function, joggle::ir::Function&>(
+  if (compiler.invocable<joggle::ir::Function, joggle::ir::Function>(
           *function)) {
     return Transform{*function, TransformKind::Function};
   }

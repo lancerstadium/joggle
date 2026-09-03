@@ -99,6 +99,23 @@ int main() {
                    !add->result(0).is_block_argument(),
                "instruction results retain their inferred type");
 
+  auto copied = *function;
+  const auto shared_revision = copied.revision();
+  {
+    auto edit = copied.edit();
+    edit.erase(copied.instructions().back());
+    joggle::Diagnostics diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  ok &= expect(shared_revision == function->revision() &&
+                   copied.revision() != function->revision() &&
+                   copied.instructions().size() == 1U &&
+                   function->instructions().size() == 2U,
+               "Function copies share a revision and detach on edit");
+
   const auto known_seven = compiler.known(*i32, std::int64_t{7});
   auto mixed = compiler.body();
   if (!known_seven || !mixed) {

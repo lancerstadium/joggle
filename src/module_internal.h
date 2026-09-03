@@ -63,7 +63,7 @@ ir_results(const Module::Function& function) {
 }
 
 // True when a body can be instantiated without caller-supplied Known values
-// or module-type context. Package validation uses this concrete default
+// or module-type context. Module validation uses this concrete default
 // specialization in addition to declaration-level generic checking.
 bool has_default_specialization(const Module::Function& function);
 
