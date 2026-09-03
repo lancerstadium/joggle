@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include <joggle/joggle.h>
@@ -615,8 +616,12 @@ module pipeline@1.0.0 {
                    function->revision() == input_revision &&
                    !function->instructions().empty(),
                "a typed Function transform returns an isolated COW value");
-  ok &= expect(compiler.run(*function, *clean),
+  auto recomposed = compiler.run<joggle::ir::Function>(*clean, *function);
+  ok &= expect(recomposed.has_value(),
                "an imported transformation composes through an ordinary fn");
+  if (recomposed) {
+    function = std::move(recomposed);
+  }
   ok &= expect(function->instructions().empty(),
                "the native transformation removes redundant casts");
 
@@ -705,8 +710,9 @@ module pipeline@1.0.0 {
                           transform_called = true;
                           return function;
                         });
-  ok &= expect(!guarded_compiler.run(*guarded_function, "guarded.touch") &&
-                   !transform_called && !guarded_compiler.ok(),
+  const auto guarded_result = guarded_compiler.run<joggle::ir::Function>(
+      "guarded.touch", *guarded_function);
+  ok &= expect(!guarded_result && !transform_called && !guarded_compiler.ok(),
                "a compiler function does not execute on a Function rejected "
                "by bound domain semantics");
 
@@ -730,15 +736,17 @@ module pipeline@1.0.0 {
                           return function;
                         });
   }
-  const bool unqualified_run = named_linked && named_function &&
-                               named_compiler.run(*named_function, "noop");
+  const auto unqualified_result =
+      named_linked && named_function
+          ? named_compiler.run<joggle::ir::Function>("noop", *named_function)
+          : std::optional<joggle::ir::Function>{};
   const auto named_diagnostics = named_compiler.diagnostics().entries();
-  ok &=
-      expect(!unqualified_run && !named_called && !named_diagnostics.empty() &&
-                 named_diagnostics.back().message.find("module.member") !=
-                     std::string::npos,
-             "compiler-function lookup requires one unambiguous qualified "
-             "member name");
+  ok &= expect(!unqualified_result && !named_called &&
+                   !named_diagnostics.empty() &&
+                   named_diagnostics.back().message.find("module.member") !=
+                       std::string::npos,
+               "compiler-function lookup requires one unambiguous qualified "
+               "member name");
 
   joggle::Compiler incompatible;
   incompatible.add(R"(

@@ -2847,27 +2847,6 @@ Compiler::execute(Module::FunctionDecl declaration,
   return result;
 }
 
-bool Compiler::run(ir::Function& function, Module::FunctionDecl transform) {
-  const Module::Symbol symbol = transform.symbol();
-  if (!invocable<ir::Function, ir::Function>(transform)) {
-    state_->diagnostics.report(
-        "function '" + symbol.qualified_name() +
-        "' does not have signature function -> function");
-    return false;
-  }
-  auto transformed = run<ir::Function>(std::move(transform), function);
-  if (!transformed) {
-    return false;
-  }
-  function = std::move(*transformed);
-  return true;
-}
-
-bool Compiler::run(ir::Function& function, std::string_view transform) {
-  const auto declaration = lookup(transform);
-  return declaration && run(function, *declaration);
-}
-
 const Diagnostics& Compiler::diagnostics() const { return state_->diagnostics; }
 
 }  // namespace joggle

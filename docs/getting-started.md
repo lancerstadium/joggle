@@ -137,10 +137,14 @@ if (!compiler.link() ||
 }
 
 auto function = compiler.materialize("example.main");
-if (!function || !compiler.run(*function, "example.rewrite")) {
+auto rewritten = function ? compiler.run<joggle::ir::Function>(
+                                "example.rewrite", *function)
+                          : std::nullopt;
+if (!rewritten) {
   compiler.diagnostics().print(std::cerr);
   return 1;
 }
+function = std::move(rewritten);
 ```
 
 Command-line pipelines expose one portable file boundary:

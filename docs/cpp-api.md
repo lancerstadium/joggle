@@ -301,10 +301,10 @@ tools that receive a qualified name; the same handle is passed to `run`.
 Declared inputs bind by value or `const&`, never by mutable lvalue reference.
 A transformation returns its changed artifact instead of creating an
 undeclared in-place output.
-A Function transform can return a new value through
-`run<joggle::ir::Function>`; the convenience
-`compiler.run(function, transform)` publishes that value back to `function`
-only after successful verification.
+Function transforms, Module transforms, analyses, loaders, and emitters all
+use the same `run<Result>(declaration, arguments...)` operation. Assigning a
+returned artifact is an ordinary C++ choice rather than a transformation-only
+Compiler API.
 
 Semantic hooks use `compiler.verify(declaration, callback)`. This is distinct
 from `bind`: verification augments the invariant of a Type, Attribute, or

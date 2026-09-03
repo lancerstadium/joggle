@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <string_view>
 
 #include <joggle/joggle.h>
@@ -40,10 +41,13 @@ int main(int argc, char** argv) {
   const auto value = positive ? compiler.make(*positive, std::int64_t{7})
                               : std::optional<joggle::Type>{};
   auto function = compiler.create_function();
+  const auto transformed = function ? compiler.run<joggle::ir::Function>(
+                                          "behavior_plugin.noop", *function)
+                                    : std::nullopt;
   bool ok = true;
   ok &= expect(value.has_value(),
                "the loaded behavior refines type construction");
-  ok &= expect(function && compiler.run(*function, "behavior_plugin.noop"),
+  ok &= expect(transformed.has_value(),
                "the loaded behavior implements a bodyless compiler function");
   ok &= expect(compiler.load_behavior("behavior_plugin", argv[2]),
                "loading the same exact behavior is idempotent");

@@ -676,8 +676,6 @@ public:
 
   bool verify(const ir::Function& function);
   bool verify(const Module& module);
-  bool run(ir::Function& function, Module::FunctionDecl transform);
-  bool run(ir::Function& function, std::string_view transform);
 
   template <typename Result = void, typename... Arguments>
   bool invocable(const Module::FunctionDecl& function) const {

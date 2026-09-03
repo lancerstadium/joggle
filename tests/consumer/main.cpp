@@ -1,5 +1,7 @@
 #include <filesystem>
 #include <iostream>
+#include <optional>
+#include <utility>
 
 #include <joggle/joggle.h>
 
@@ -27,10 +29,15 @@ int main(int argc, char** argv) {
   }
 
   auto function = compiler.materialize("external.main");
-  if (!function || !compiler.run(*function, "external.convert")) {
+  auto transformed =
+      function
+          ? compiler.run<joggle::ir::Function>("external.convert", *function)
+          : std::nullopt;
+  if (!transformed) {
     compiler.diagnostics().print(std::cerr);
     return 1;
   }
+  function = std::move(transformed);
   const auto operations = function->instructions();
   if (operations.size() != 1U || operations.front().callee() != *converted) {
     compiler.diagnostics().print(std::cerr);

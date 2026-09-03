@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string_view>
+#include <utility>
 
 #include <joggle/joggle.h>
 
@@ -157,8 +158,12 @@ int main() {
 
   bool ok = true;
   ok &= expect(compiler.verify(*function), "native Instruction verification");
-  ok &= expect(compiler.run(*function, *optimize_schema),
-               "composed native transformations run");
+  auto optimized =
+      compiler.run<joggle::ir::Function>(*optimize_schema, *function);
+  ok &= expect(optimized.has_value(), "composed native transformations run");
+  if (optimized) {
+    function = std::move(optimized);
+  }
   ok &= expect(function->instructions().size() == 1U,
                "a compiler function transforms through Function::Edit");
   ok &=
@@ -177,8 +182,9 @@ int main() {
                   }
                   return std::nullopt;
                 });
-  ok &= expect(!compiler.run(*function, *abort_schema),
-               "a failing compiler function reports failure");
+  const auto aborted =
+      compiler.run<joggle::ir::Function>(*abort_schema, *function);
+  ok &= expect(!aborted, "a failing compiler function reports failure");
   ok &= expect(function->instructions().size() == 1U,
                "function-level checkpoint restores committed inner edits");
 
