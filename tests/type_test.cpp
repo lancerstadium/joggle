@@ -43,7 +43,7 @@ int main() {
   if (!integer_schema || !label_schema) {
     return EXIT_FAILURE;
   }
-  compiler.bind(*integer_schema, [](const joggle::Type&) { return true; });
+  compiler.verify(*integer_schema, [](const joggle::Type&) { return true; });
 
   const auto first = compiler.make(*integer_schema, 8);
   const auto second = compiler.make(*integer_schema, std::int64_t{8});

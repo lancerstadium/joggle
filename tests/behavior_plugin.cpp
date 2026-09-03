@@ -12,10 +12,11 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
     diagnostics.report("test behavior does not match its linked schema");
     return false;
   }
-  compiler.bind(*positive, [](const joggle::Type& type, joggle::Diagnostics&) {
-    const auto value = type.get<std::int64_t>("value");
-    return value && *value > 0;
-  });
+  compiler.verify(
+      *positive, [](const joggle::Type& type, joggle::Diagnostics&) {
+        const auto value = type.get<std::int64_t>("value");
+        return value && *value > 0;
+      });
   compiler.bind(*noop,
                 [](joggle::Compiler&, joggle::ir::Function function,
                    joggle::Diagnostics&) { return function; });

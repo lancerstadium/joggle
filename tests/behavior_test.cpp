@@ -55,15 +55,16 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  compiler.bind(*integer_schema,
-                [](const joggle::Type& type, joggle::Diagnostics& diagnostics) {
-                  const auto width = type.get<std::int64_t>("width");
-                  if (!width || *width <= 0) {
-                    diagnostics.report("integer width must be positive");
-                    return false;
-                  }
-                  return true;
-                });
+  compiler.verify(
+      *integer_schema,
+      [](const joggle::Type& type, joggle::Diagnostics& diagnostics) {
+        const auto width = type.get<std::int64_t>("width");
+        if (!width || *width <= 0) {
+          diagnostics.report("integer width must be positive");
+          return false;
+        }
+        return true;
+      });
   const auto same_type = [](const joggle::ir::Instruction& instruction,
                             joggle::Diagnostics& diagnostics) {
     const auto arguments = instruction.arguments();
@@ -77,9 +78,9 @@ int main() {
     }
     return true;
   };
-  compiler.bind(*add_schema, same_type);
-  compiler.bind(*cast_schema, same_type);
-  compiler.bind(*marker_schema, same_type);
+  compiler.verify(*add_schema, same_type);
+  compiler.verify(*cast_schema, same_type);
+  compiler.verify(*marker_schema, same_type);
   compiler.bind(*canonicalize_schema, [cast_schema](
                                           joggle::ir::Function function,
                                           joggle::Diagnostics& diagnostics)
@@ -192,11 +193,11 @@ int main() {
   if (!invalid_integer) {
     return EXIT_FAILURE;
   }
-  invalid.bind(*invalid_integer,
-               [](const joggle::Type& type, joggle::Diagnostics&) {
-                 const auto width = type.get<std::int64_t>("width");
-                 return width && *width > 0;
-               });
+  invalid.verify(*invalid_integer,
+                 [](const joggle::Type& type, joggle::Diagnostics&) {
+                   const auto width = type.get<std::int64_t>("width");
+                   return width && *width > 0;
+                 });
   ok &= expect(!invalid.make(*invalid_integer, 0) && !invalid.ok(),
                "type verifier rejection is diagnosed");
 
@@ -211,11 +212,11 @@ int main() {
   if (!reported_integer) {
     return EXIT_FAILURE;
   }
-  reported.bind(*reported_integer,
-                [](const joggle::Type&, joggle::Diagnostics& diagnostics) {
-                  diagnostics.report("reported verifier failure");
-                  return true;
-                });
+  reported.verify(*reported_integer,
+                  [](const joggle::Type&, joggle::Diagnostics& diagnostics) {
+                    diagnostics.report("reported verifier failure");
+                    return true;
+                  });
   ok &= expect(
       !reported.make(*reported_integer, 8, false) && !reported.ok(),
       "a verifier diagnostic rejects construction even if it returns true");

@@ -61,8 +61,9 @@ int main() {
       !callable_schema || !other_schema) {
     return EXIT_FAILURE;
   }
-  compiler.bind(*integer_schema,
-                [](const joggle::Type&, joggle::Diagnostics&) { return true; });
+  compiler.verify(
+      *integer_schema,
+      [](const joggle::Type&, joggle::Diagnostics&) { return true; });
   const auto integer = compiler.make(*integer_schema, std::int64_t{8});
   const auto other = compiler.make(*other_schema);
   const auto boolean = compiler.make("i1");

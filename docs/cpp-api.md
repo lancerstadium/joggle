@@ -264,8 +264,15 @@ The tuple is a positional boundary mapping, not a Joggle wrapper object.
 `invocable<Result, Args...>` checks the entire reflected C++ signature.
 `lookup("module.function")` reflects one unique linked Function member for
 tools that receive a qualified name; the same handle is passed to `run`.
-A mutable Function transform can also be invoked with
-`compiler.run(function, transform)`.
+A Function transform can return a new value through
+`run<joggle::ir::Function>`; the convenience
+`compiler.run(function, transform)` publishes that value back to `function`
+only after successful verification.
+
+Semantic hooks use `compiler.verify(declaration, callback)`. This is distinct
+from `bind`: verification augments the invariant of a Type, Attribute, or
+residual Instruction, while binding implements a declared `fn` and must match
+its complete signature.
 
 See [Extensions](extensions.md) for representations, verifiers, interface
 methods, and behavior libraries.

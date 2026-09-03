@@ -11,7 +11,7 @@ bool bind(joggle::Compiler& compiler, const joggle::Module& module,
     diagnostics.report("test behavior does not match its linked schema");
     return false;
   }
-  compiler.bind(
+  compiler.verify(
       *integer,
       [](const joggle::Type& type, joggle::Diagnostics& type_diagnostics) {
         const auto width = type.get<std::int64_t>("width");

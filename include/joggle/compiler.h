@@ -601,17 +601,25 @@ public:
   }
 
   template <typename Function>
-  void bind(Module::TypeDecl schema, Function&& function) {
+  void verify(Module::TypeDecl schema, Function&& function) {
     bind_typed_verifier<Type>(std::move(schema),
                               std::forward<Function>(function));
   }
 
   template <typename Function>
-  void bind(Module::AttributeDecl schema, Function&& function) {
+  void verify(Module::AttributeDecl schema, Function&& function) {
     bind_typed_verifier<Attribute>(std::move(schema),
                                    std::forward<Function>(function));
   }
 
+  template <typename Function>
+  void verify(Module::Function schema, Function&& function) {
+    bind_typed_verifier<ir::Instruction>(std::move(schema),
+                                         std::forward<Function>(function));
+  }
+
+  // Binds an implementation whose C++ input and result types match the
+  // declared fn. Semantic validators use verify() instead.
   template <typename Function>
   void bind(Module::Function schema, Function&& function,
             HostEvaluation evaluation = HostEvaluation::Guarded) {
@@ -619,73 +627,59 @@ public:
     using Traits = detail::CallableTraits<Callable>;
     using Arguments = typename Traits::arguments;
     constexpr std::size_t arity = Traits::arity;
-    constexpr bool instruction_verifier = [] {
+    constexpr bool with_compiler = [] {
       if constexpr (arity == 0U) {
         return false;
       } else {
-        return std::is_same_v<
-            std::remove_cvref_t<std::tuple_element_t<0, Arguments>>,
-            ir::Instruction>;
+        return std::is_same_v<std::tuple_element_t<0, Arguments>, Compiler&>;
       }
     }();
-    if constexpr (instruction_verifier) {
-      bind_typed_verifier<ir::Instruction>(std::move(schema),
-                                           std::forward<Function>(function));
-    } else {
-      constexpr bool with_compiler = [] {
-        if constexpr (arity == 0U) {
-          return false;
-        } else {
-          return std::is_same_v<std::tuple_element_t<0, Arguments>, Compiler&>;
-        }
-      }();
-      constexpr bool with_diagnostics = [] {
-        if constexpr (arity == 0U) {
-          return false;
-        } else {
-          return std::is_same_v<std::tuple_element_t<arity - 1U, Arguments>,
-                                Diagnostics&>;
-        }
-      }();
-      constexpr std::size_t argument_count =
-          arity - static_cast<std::size_t>(with_compiler) -
-          static_cast<std::size_t>(with_diagnostics);
-      constexpr std::size_t offset = with_compiler ? 1U : 0U;
-      const auto argument_types = []<std::size_t... Indices>(
-                                      std::index_sequence<Indices...>) {
-        return std::array<std::string_view, sizeof...(Indices)>{
-            detail::host_type_name<
-                std::tuple_element_t<offset + Indices, Arguments>>()...};
-      }(std::make_index_sequence<argument_count>{});
-      using Produced = std::remove_cvref_t<typename Traits::result>;
-      std::vector<std::string_view> result_types;
-      if constexpr (!std::is_void_v<Produced>) {
-        using Value =
-            std::conditional_t<detail::OptionalValue<Produced>::value,
-                               typename detail::OptionalValue<Produced>::type,
-                               Produced>;
-        result_types = detail::execution_result_types<Value>();
+    constexpr bool with_diagnostics = [] {
+      if constexpr (arity == 0U) {
+        return false;
+      } else {
+        return std::is_same_v<std::tuple_element_t<arity - 1U, Arguments>,
+                              Diagnostics&>;
       }
-      if (!check_binding_signature(schema, argument_types, result_types)) {
-        return;
-      }
-      NativeFunction binding = [callable =
-                                    Callable(std::forward<Function>(function))](
-                                   Compiler& compiler,
-                                   std::span<detail::ExecutionValue> arguments,
-                                   Diagnostics& diagnostics) mutable {
-        if (arguments.size() != argument_count) {
-          diagnostics.report(
-              "compiler-function binding received the wrong argument count");
-          return std::optional<detail::ExecutionValues>{};
-        }
-        return detail::invoke_typed_function<Callable, Arguments, offset,
-                                             with_compiler, with_diagnostics>(
-            callable, compiler, arguments, diagnostics,
-            std::make_index_sequence<argument_count>{});
-      };
-      bind_native(std::move(schema), std::move(binding), evaluation);
+    }();
+    constexpr std::size_t argument_count =
+        arity - static_cast<std::size_t>(with_compiler) -
+        static_cast<std::size_t>(with_diagnostics);
+    constexpr std::size_t offset = with_compiler ? 1U : 0U;
+    const auto argument_types = []<std::size_t... Indices>(
+                                    std::index_sequence<Indices...>) {
+      return std::array<std::string_view, sizeof...(Indices)>{
+          detail::host_type_name<
+              std::tuple_element_t<offset + Indices, Arguments>>()...};
+    }(std::make_index_sequence<argument_count>{});
+    using Produced = std::remove_cvref_t<typename Traits::result>;
+    std::vector<std::string_view> result_types;
+    if constexpr (!std::is_void_v<Produced>) {
+      using Value =
+          std::conditional_t<detail::OptionalValue<Produced>::value,
+                             typename detail::OptionalValue<Produced>::type,
+                             Produced>;
+      result_types = detail::execution_result_types<Value>();
     }
+    if (!check_binding_signature(schema, argument_types, result_types)) {
+      return;
+    }
+    NativeFunction binding = [callable =
+                                  Callable(std::forward<Function>(function))](
+                                 Compiler& compiler,
+                                 std::span<detail::ExecutionValue> arguments,
+                                 Diagnostics& diagnostics) mutable {
+      if (arguments.size() != argument_count) {
+        diagnostics.report("function binding received the wrong argument "
+                           "count");
+        return std::optional<detail::ExecutionValues>{};
+      }
+      return detail::invoke_typed_function<Callable, Arguments, offset,
+                                           with_compiler, with_diagnostics>(
+          callable, compiler, arguments, diagnostics,
+          std::make_index_sequence<argument_count>{});
+    };
+    bind_native(std::move(schema), std::move(binding), evaluation);
   }
 
   bool verify(const ir::Function& function);

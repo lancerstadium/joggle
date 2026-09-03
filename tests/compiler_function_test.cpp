@@ -681,7 +681,7 @@ module pipeline@1.0.0 {
       return EXIT_FAILURE;
     }
   }
-  guarded_compiler.bind(
+  guarded_compiler.verify(
       *guarded_identity,
       [](const joggle::ir::Instruction&, joggle::Diagnostics& diagnostics) {
         diagnostics.report("guarded compiler-function input rejected");

@@ -121,11 +121,14 @@ use the public registration mechanism and require no core class.
 
 ## Verifiers and interface behavior
 
-Binding a callable whose first argument is `const joggle::Type&`,
-`const joggle::Attribute&`, or `const joggle::ir::Instruction&` attaches a
-declaration verifier. It may return `bool` and optionally accept Diagnostics.
-Core verification always checks ownership, arity, types, CFG structure, SSA,
-and declaration contracts before extension verifiers run.
+`compiler.verify(declaration, callback)` attaches semantic checks to a Type,
+Attribute, or residual Instruction declaration. The callback receives
+`const joggle::Type&`, `const joggle::Attribute&`, or
+`const joggle::ir::Instruction&`; it returns `bool` and may accept Diagnostics
+last. This explicit API keeps `bind` reserved for implementations whose C++
+inputs and outputs match a declared `fn`. There is no verifier declaration kind
+or trait class. Core verification always checks ownership, arity, types, CFG
+structure, SSA, and declaration contracts before extension verifiers run.
 
 Interface methods are bound against a reflected method declaration and called
 on an Attribute or Instruction. Type-interface fields are different: they are
