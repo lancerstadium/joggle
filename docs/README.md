@@ -16,6 +16,8 @@ of the project; none is a migration log.
 - [C++ API](cpp-api.md) documents the in-process library surface.
 - [Module repository](module-repository.md) specifies installation,
   resolution, and lock files.
+- [ONNX extension](../extensions/onnx/README.md) documents the optional typed
+  importer and its deliberately bounded semantic profile.
 
 The checked-in declarations in [`modules`](../modules) and executable examples
 in [`examples`](../examples) are part of the reference. If prose and behavior

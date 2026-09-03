@@ -4,6 +4,7 @@ project(Joggle VERSION 0.1.0 LANGUAGES CXX)
 
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 option(JOGGLE_BUILD_TESTS "Build Joggle tests" ON)
+option(JOGGLE_BUILD_ONNX "Build the optional ONNX import Module" OFF)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -314,4 +315,8 @@ if(JOGGLE_BUILD_TESTS)
       -DJOGGLE_BEHAVIOR_LOADER=$<TARGET_FILE:joggle_behavior_loader_test>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/module_repository_cli.cmake
   )
+endif()
+
+if(JOGGLE_BUILD_ONNX)
+  add_subdirectory(extensions/onnx)
 endif()

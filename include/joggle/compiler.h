@@ -89,7 +89,8 @@ template <typename T> ExecutionValue store_execution_value(T&& value) {
     return {Value(std::forward<T>(value))};
   } else {
     return {HostValue{std::string(host_type_name<Value>()),
-                      std::make_shared<Value>(std::forward<T>(value))}};
+                      std::make_shared<Value>(std::forward<T>(value)),
+                      std::nullopt}};
   }
 }
 

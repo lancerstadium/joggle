@@ -90,6 +90,15 @@ bridge them in either direction. Prelude's `module` type carries an entire
 `joggle::Module` through ordinary compiler functions; it is not another
 installable vocabulary.
 
+## Optional extensions
+
+[`extensions/onnx`](extensions/onnx) provides an optional, typed ONNX import
+Module. It accepts model bytes and returns an ordinary Joggle Module together
+with detached, content-addressed tensor resources. Protobuf remains isolated
+to the extension and is not a dependency of the core library. The first exact
+profile targets the official opset-18 ResNet-18 model; unsupported ONNX
+semantics are rejected rather than approximated.
+
 ## Documentation
 
 Start at the [documentation index](docs/README.md). The
