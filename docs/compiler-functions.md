@@ -44,6 +44,9 @@ receives an isolated value and returns the declared result; an empty
 `std::optional` reports failure. A Function transform edits its value through
 `joggle::ir::Function::Edit`, whose `commit` verifies the candidate. The caller
 publishes the returned value only after the complete invocation succeeds.
+Every typed call validates materialized Function bodies at both its input and
+output boundary; repeated references to the same immutable revision are checked
+once per invocation.
 
 Analyses and emitted artifacts remain extension-owned. For example, a Module
 declares `estimate`, `schedule`, or `object`, and its behavior registers the

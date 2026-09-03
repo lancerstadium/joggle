@@ -143,6 +143,12 @@ creates that COW value boundary once; it does not eagerly deep-copy a second
 checkpoint. A successful edit detaches, while a failed pipeline simply does
 not publish its private value.
 
+`compiler.verify(function)` validates one body against the linked declaration
+environment. `compiler.verify(module)` validates every materialized Function in
+the Module. Typed invocation performs the same validation at Function and
+Module input/output boundaries, so an analysis or emitter never receives an
+unverified artifact.
+
 Construct control flow with sibling Blocks and typed edges:
 
 ```cpp
@@ -288,6 +294,9 @@ The tuple is a positional boundary mapping, not a Joggle wrapper object.
 `invocable<Result, Args...>` checks the entire reflected C++ signature.
 `lookup("module.function")` reflects one unique linked Function member for
 tools that receive a qualified name; the same handle is passed to `run`.
+Declared inputs bind by value or `const&`, never by mutable lvalue reference.
+A transformation returns its changed artifact instead of creating an
+undeclared in-place output.
 A Function transform can return a new value through
 `run<joggle::ir::Function>`; the convenience
 `compiler.run(function, transform)` publishes that value back to `function`

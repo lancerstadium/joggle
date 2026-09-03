@@ -85,9 +85,15 @@ execution failure when empty. No result-wrapper class is generated.
 A binding may optionally receive `joggle::Compiler&` first and
 `joggle::Diagnostics&` last. `ir::Function` and `Module` are copy-on-write
 values: a transformation accepts and returns them by value, while a read-only
-analysis may accept `const&`. The C++ result therefore matches the declared
-result instead of using a hidden success convention. Signature mismatches are
-reported when binding, not deferred to invocation.
+analysis may accept `const&`. Ordinary `fn` inputs cannot bind to mutable
+lvalue references because that would introduce an undeclared in-place result.
+The C++ result therefore matches the declared result instead of using a hidden
+success convention. Signature mismatches are reported when binding, not
+deferred to invocation.
+
+Before a binding receives a `Function` or `Module`, the compiler validates its
+materialized IR against the linked contracts and extension verifiers. Returned
+artifacts are checked again before they can flow to the next typed function.
 
 Bindings default to guarded host evaluation. Use the explicit
 `HostEvaluation` policy only when the implementation's determinism and effects

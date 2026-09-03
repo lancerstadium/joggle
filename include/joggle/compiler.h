@@ -636,6 +636,13 @@ public:
     constexpr std::size_t offset = with_compiler ? 1U : 0U;
     const auto argument_types = []<std::size_t... Indices>(
                                     std::index_sequence<Indices...>) {
+      static_assert(
+          ((!std::is_lvalue_reference_v<
+                std::tuple_element_t<offset + Indices, Arguments>> ||
+            std::is_const_v<std::remove_reference_t<
+                std::tuple_element_t<offset + Indices, Arguments>>>) &&
+           ...),
+          "fn inputs must be values or const references");
       return std::array<std::string_view, sizeof...(Indices)>{
           detail::host_type_name<
               std::tuple_element_t<offset + Indices, Arguments>>()...};
@@ -671,6 +678,7 @@ public:
   }
 
   bool verify(const ir::Function& function);
+  bool verify(const Module& module);
   bool run(ir::Function& function, Module::Function transform);
   bool run(ir::Function& function, std::string_view transform);
 

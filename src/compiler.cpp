@@ -2510,6 +2510,35 @@ bool Compiler::verify(const ir::Function& function) {
   return valid;
 }
 
+bool Compiler::verify(const Module& module) {
+  if (!state_->linked) {
+    state_->diagnostics.report(
+        "cannot verify a Module before the compiler is linked");
+    return false;
+  }
+  bool valid = true;
+  std::vector<ir::Function::Revision> verified;
+  for (const Module::Function& member : module.functions()) {
+    const ir::Function* body = member.body();
+    if (body == nullptr) {
+      continue;
+    }
+    const auto revision = body->revision();
+    if (std::find(verified.begin(), verified.end(), revision) !=
+        verified.end()) {
+      continue;
+    }
+    if (!verify(*body)) {
+      state_->diagnostics.report("Module function '" +
+                                 std::string(member.name()) + "' is invalid");
+      valid = false;
+    } else {
+      verified.push_back(revision);
+    }
+  }
+  return valid;
+}
+
 bool Compiler::check_run_signature(const Module::Function& schema,
                                    std::span<const std::string_view> inputs,
                                    std::span<const std::string_view> results) {
@@ -2587,39 +2616,50 @@ Compiler::execute(Module::Function declaration,
         "cannot run a compiler function before the compiler is linked");
     return std::nullopt;
   }
-  if (arguments.size() != declaration.inputs().size()) {
-    state_->diagnostics.report("compiler function '" +
-                               declaration.symbol().qualified_name() +
-                               "' received the wrong argument count");
-    return std::nullopt;
-  }
-  for (auto& argument : arguments) {
-    if (!project_host_value(argument)) {
-      return std::nullopt;
+  const std::size_t before = state_->diagnostics.size();
+  std::vector<ir::Function::Revision> verified_functions;
+  const auto verify_function = [&](const ir::Function& function) {
+    const auto revision = function.revision();
+    if (std::find(verified_functions.begin(), verified_functions.end(),
+                  revision) != verified_functions.end()) {
+      return true;
     }
-  }
-  for (std::size_t index = 0; index < arguments.size(); ++index) {
-    if (!accepts_host_type(declaration, declaration.inputs()[index],
-                           detail::execution_value_type(arguments[index]))) {
-      state_->diagnostics.report("compiler function '" +
-                                 declaration.symbol().qualified_name() +
-                                 "' received an argument with the wrong type");
-      return std::nullopt;
+    if (!verify(function)) {
+      return false;
     }
-  }
-  if (!check_host_values(declaration, arguments)) {
-    return std::nullopt;
-  }
-
-  for (detail::ExecutionValue& argument : arguments) {
-    if (detail::execution_value_type(argument) == typeid(ir::Function).name()) {
-      auto function = std::get<std::shared_ptr<ir::Function>>(argument);
-      if (!verify(*function)) {
-        return std::nullopt;
+    verified_functions.push_back(revision);
+    return true;
+  };
+  const auto verify_values = [&](std::span<const detail::ExecutionValue> values) {
+    for (const detail::ExecutionValue& value : values) {
+      if (const auto* function =
+              std::get_if<std::shared_ptr<ir::Function>>(&value)) {
+        if (!*function || !verify_function(**function)) {
+          return false;
+        }
+        continue;
+      }
+      const auto* host = std::get_if<detail::HostValue>(&value);
+      if (host == nullptr || host->cpp_type != detail::host_type_name<Module>()) {
+        continue;
+      }
+      if (!host->storage) {
+        state_->diagnostics.report("Module value has no storage");
+        return false;
+      }
+      const auto& module = *static_cast<const Module*>(host->storage.get());
+      for (const Module::Function& member : module.functions()) {
+        const ir::Function* body = member.body();
+        if (body != nullptr && !verify_function(*body)) {
+          state_->diagnostics.report(
+              "Module function '" + std::string(member.name()) +
+              "' is invalid");
+          return false;
+        }
       }
     }
-  }
-  const std::size_t before = state_->diagnostics.size();
+    return true;
+  };
   std::size_t steps = 0;
   std::size_t depth = 0;
   const auto execute = [&](const auto& self,
@@ -2669,6 +2709,9 @@ Compiler::execute(Module::Function declaration,
       }
     }
     if (!check_host_values(current, values)) {
+      return std::nullopt;
+    }
+    if (!verify_values(values)) {
       return std::nullopt;
     }
     switch (current.form()) {
@@ -2738,6 +2781,9 @@ Compiler::execute(Module::Function declaration,
       if (!check_host_values(current, values, *execution)) {
         return std::nullopt;
       }
+      if (!verify_values(*execution)) {
+        return std::nullopt;
+      }
       return execution;
     }
     case Module::Function::Form::Body: {
@@ -2783,6 +2829,9 @@ Compiler::execute(Module::Function declaration,
       if (!check_host_values(current, values, *evaluated)) {
         return std::nullopt;
       }
+      if (!verify_values(*evaluated)) {
+        return std::nullopt;
+      }
       return evaluated;
     }
     }
@@ -2791,14 +2840,6 @@ Compiler::execute(Module::Function declaration,
 
   auto result = execute(execute, declaration, std::move(arguments));
   bool valid = result.has_value() && state_->diagnostics.size() == before;
-  if (valid) {
-    for (const auto& value : *result) {
-      if (detail::execution_value_type(value) == typeid(ir::Function).name()) {
-        valid =
-            verify(*std::get<std::shared_ptr<ir::Function>>(value)) && valid;
-      }
-    }
-  }
   if (!valid) {
     return std::nullopt;
   }

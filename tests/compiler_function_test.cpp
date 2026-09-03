@@ -782,7 +782,7 @@ module transactional@1.0.0 {
     return EXIT_FAILURE;
   }
   transactional.bind(*mutate,
-                     [token = *token](joggle::ir::Function& current,
+                     [token = *token](joggle::ir::Function current,
                                       joggle::Diagnostics& diagnostics)
                          -> std::optional<joggle::ir::Function> {
                        auto edit = current.edit();
@@ -831,9 +831,9 @@ module transactional@1.0.0 {
     return EXIT_FAILURE;
   }
   legacy_transform.bind(*legacy_rewrite,
-                        [](joggle::ir::Function&) { return true; });
+                        [](const joggle::ir::Function&) { return true; });
   ok &= expect(!legacy_transform.ok(),
-               "a bool(Function&) callback cannot impersonate a declared "
+               "a bool-returning callback cannot impersonate a declared "
                "function -> function result");
 
   joggle::Compiler represented;
@@ -1017,6 +1017,87 @@ module lists@1.0.0 {
                    empty_sum == std::optional<std::int64_t>{0},
                "list domains bind to ordinary std::vector values, including "
                "empty lists");
+
+  joggle::Compiler module_validation;
+  module_validation.add(R"(
+joggle 1;
+module module_validation@1.0.0 {
+  type word();
+  fn forbidden(input: word) -> word;
+  fn identity(input: module) -> module;
+  fn produce() -> module;
+}
+)",
+                        "module-validation.joggle");
+  const bool module_validation_linked = module_validation.link();
+  const auto validation_module = module_validation.module("module_validation");
+  const auto validation_word =
+      validation_module ? validation_module->type("word") : std::nullopt;
+  const auto forbidden = validation_module
+                             ? validation_module->function("forbidden")
+                             : std::nullopt;
+  const auto validation_identity = validation_module
+                                       ? validation_module->function("identity")
+                                       : std::nullopt;
+  const auto module_produce = validation_module
+                                  ? validation_module->function("produce")
+                                  : std::nullopt;
+  auto invalid_body = module_validation.body();
+  if (!module_validation_linked || !validation_word || !forbidden ||
+      !validation_identity || !module_produce || !invalid_body) {
+    module_validation.diagnostics().print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  const auto word = module_validation.make(*validation_word);
+  joggle::Diagnostics invalid_body_diagnostics;
+  if (!word) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = invalid_body->edit();
+    const auto input = edit.argument(*word);
+    const auto call = edit.append(*forbidden, {input});
+    edit.ret(invalid_body->entry(), {call.value()});
+    if (!edit.commit(invalid_body_diagnostics)) {
+      invalid_body_diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  joggle::Module invalid_module("invalid_artifact", {1, 0, 0});
+  if (!invalid_module.insert("main", std::move(*invalid_body),
+                             invalid_body_diagnostics)) {
+    invalid_body_diagnostics.print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  module_validation.verify(
+      *forbidden,
+      [](const joggle::ir::Instruction&, joggle::Diagnostics& diagnostics) {
+        diagnostics.report("forbidden call reached a Module boundary");
+        return false;
+      });
+  const bool public_module_valid = module_validation.verify(invalid_module);
+  bool identity_called = false;
+  module_validation.bind(*validation_identity, [&](joggle::Module input) {
+    identity_called = true;
+    return input;
+  });
+  module_validation.bind(*module_produce,
+                         [invalid_module] { return invalid_module; });
+  const auto rejected_module_input = module_validation.run<joggle::Module>(
+      *validation_identity, invalid_module);
+  const auto rejected_module_output =
+      module_validation.run<joggle::Module>(*module_produce);
+  const bool reports_invalid_member = std::any_of(
+      module_validation.diagnostics().entries().begin(),
+      module_validation.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("Module function 'main' is invalid") !=
+               std::string::npos;
+      });
+  ok &= expect(!public_module_valid && !rejected_module_input &&
+                   !rejected_module_output && !identity_called &&
+                   reports_invalid_member,
+               "typed Module boundaries verify every materialized Function");
 
   joggle::Compiler bounded({16U, 8U});
   bounded.add(R"(
