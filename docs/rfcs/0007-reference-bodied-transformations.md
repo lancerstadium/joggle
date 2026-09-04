@@ -1,6 +1,6 @@
 # RFC 0007: Reference-bodied transformations
 
-Status: implementation gates 1--6 complete
+Status: implementation gates 1--7 complete
 
 ## Purpose
 
@@ -130,9 +130,10 @@ rebuild it deterministically. No runtime search is mandatory.
    `seq`, `Strategy`, or `Result` abstraction is required. Repetition,
    alternatives, and search remain deferred until a real optimization needs
    them.
-7. [ ] Design one installable packed-format module only after gates 1--6.
+7. [x] Add the installable `bitpack` Module and prove a representation-changing
+   i4x8/u32 Function through the idempotent logical projection in RFC 0008.
 8. [ ] Add bounded variant enumeration and measured selection only after the
-   format path is executable.
+   physical format path has bit-accurate execution evidence.
 
 No target hierarchy, code emitter, machine-capacity model, or scheduling DSL is
 implemented before gates 1--5 establish this semantic boundary.

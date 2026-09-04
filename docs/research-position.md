@@ -40,12 +40,15 @@ The implementation already demonstrates:
 8. the complete 117-call source Function and 91-call transformed Function are
    definitionally equivalent, with shared-DAG normalization memoized by the
    existing `Value` identities; and
-9. Module bundles preserve and verify all imported data through public
+9. `bitpack` maps an i4 tensor Function to exact i4x8/u32 physical shapes and
+   format-aware source functions, then proves whole-Function equivalence under
+   an idempotent logical Type projection; and
+10. Module bundles preserve and verify all imported data through public
    `check`, `run`, `install`, and `lock` workflows.
 
 These are infrastructure results. They do not establish general mathematical
 equivalence of user rewrites, competitive kernels, support for a physical
-format, or publication-level novelty.
+format at run time, or publication-level novelty.
 
 ## What the closest systems already solve
 
@@ -67,6 +70,9 @@ Joggle must not claim novelty for user-controlled scheduling alone.
   movement, thread mapping, layout, tensorization, and pipelines.
 - Astra separates legal-variant enumeration from measured selection across a
   repetitive DNN workload, avoiding a monolithic performance model.
+- MLIR Quant represents expressed/storage scalar relationships and
+  quantization parameters; TVM BYODT uses runtime scalar type and lowering
+  registries and explicitly excludes block formats in its published scope.
 
 Their relevant boundaries are also precise. Lift/RISE use a fixed family of
 low-level hardware patterns. TensorIR's block signatures and transformations
@@ -158,3 +164,5 @@ an importer, or a synthetic emitter is insufficient for either venue.
 - [TensorIR: An Abstraction for Automatic Tensorized Program Optimization](https://arxiv.org/abs/2207.04296)
 - [TileLang: Bridge Programmability and Performance in Modern Neural Kernels](https://proceedings.iclr.cc/paper_files/paper/2026/hash/76fb92288bf90360c527efb0d1c2aba6-Abstract-Conference.html)
 - [Astra: Exploiting Predictability to Optimize Deep Learning](https://www.microsoft.com/en-us/research/publication/astra-exploiting-predictability-to-optimize-deep-learning/)
+- [MLIR Quant dialect](https://mlir.llvm.org/docs/Dialects/QuantDialect/)
+- [TVM Bring Your Own Datatypes](https://tvm.apache.org/2020/09/26/bring-your-own-datatypes)

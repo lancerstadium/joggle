@@ -74,7 +74,8 @@ ctest --test-dir build --output-on-failure
 ```
 
 The repository ships `tensor@1.0.0`, a small target-independent semantic
-Module; `fusion@1.0.0`, a reference-bodied Conv/ReLU transformation; and an
+Module; `fusion@1.0.0`, a reference-bodied Conv/ReLU transformation;
+`bitpack@1.0.0`, a checked logical-to-physical format experiment; and an
 optional, Protobuf-backed `onnx@1.0.0` inference importer. The real-model path
 imports the hash-pinned ONNX Model Zoo SqueezeNet 1.1 artifact into ordinary
 typed Functions and fuses all 26 Conv/ReLU pairs through a source-defined
@@ -91,8 +92,10 @@ differential evidence are documented explicitly.
 - [Module design](docs/modules.md)
 - [Tensor module](docs/tensor.md)
 - [Fusion module](docs/fusion.md)
+- [Bitpack module](docs/bitpack.md)
 - [ONNX inference import](docs/onnx.md)
 - [Repository and reproducibility](docs/module-repository.md)
 - [Research position](docs/research-position.md)
 - [Accepted core-language RFC](docs/rfcs/0001-core-language.md)
 - [Reference-bodied transformation RFC](docs/rfcs/0007-reference-bodied-transformations.md)
+- [Logical representation RFC](docs/rfcs/0008-logical-representation.md)

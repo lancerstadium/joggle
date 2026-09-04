@@ -18,6 +18,8 @@ of the project; none is a migration log.
   vocabulary and its implemented evidence boundary.
 - [Fusion module](fusion.md) documents the first installable,
   reference-bodied real-model transformation.
+- [Bitpack module](bitpack.md) documents logical projection and the first
+  checked cross-element physical format.
 - [ONNX inference import](onnx.md) documents the optional, transactionally
   checked real-model importer and its exact support boundary.
 - [C++ API](cpp-api.md) documents the in-process library surface.
@@ -34,7 +36,8 @@ of the project; none is a migration log.
   persistence for Module-owned bytes without another ownership object; and
   [reference-bodied transformation RFC](rfcs/0007-reference-bodied-transformations.md)
   defines the semantic-correctness boundary and next composition gates for
-  user kernels.
+  user kernels; [logical representation RFC](rfcs/0008-logical-representation.md)
+  defines representation-changing equivalence and its current trust boundary.
 
 The repository contains the compiler core, the first static tensor semantic
 Module, and a narrow ONNX IR 3/opset 7 inference importer. It does not claim

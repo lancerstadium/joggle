@@ -96,6 +96,21 @@ set_target_properties(joggle_fusion_native PROPERTIES
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/fusion"
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/fusion")
 
+joggle_module(joggle_bitpack_native
+  SOURCE modules/bitpack/module.joggle
+  NATIVE modules/bitpack/native.cpp)
+if(MSVC)
+  target_compile_options(joggle_bitpack_native PRIVATE /W4 /WX)
+else()
+  target_compile_options(joggle_bitpack_native PRIVATE
+    -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
+endif()
+set_target_properties(joggle_bitpack_native PROPERTIES
+  PREFIX ""
+  OUTPUT_NAME "native"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/bitpack"
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/bitpack")
+
 set(JOGGLE_SQUEEZENET_MODEL
   "${CMAKE_CURRENT_BINARY_DIR}/models/squeezenet1.1-7.onnx"
   CACHE FILEPATH "Build-cache path for the audited SqueezeNet model")
@@ -180,11 +195,16 @@ install(FILES modules/tensor/module.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/tensor)
 install(FILES modules/fusion/module.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/fusion)
+install(FILES modules/bitpack/module.joggle
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/bitpack)
 install(FILES modules/onnx/module.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/onnx)
 install(TARGETS joggle_fusion_native
   LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/fusion
   RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/fusion)
+install(TARGETS joggle_bitpack_native
+  LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/bitpack
+  RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/bitpack)
 install(EXPORT JoggleTargets
   FILE JoggleTargets.cmake
   NAMESPACE joggle::
@@ -225,6 +245,8 @@ if(JOGGLE_BUILD_TESTS)
     "${CMAKE_CURRENT_SOURCE_DIR}/modules/tensor/module.joggle")
   set(JOGGLE_FUSION_MODULE
     "${CMAKE_CURRENT_SOURCE_DIR}/modules/fusion/module.joggle")
+  set(JOGGLE_BITPACK_MODULE
+    "${CMAKE_CURRENT_SOURCE_DIR}/modules/bitpack/module.joggle")
 
   joggle_module(joggle_compiler_test_native
     SOURCE tests/fixtures/compiler_test.joggle
@@ -263,6 +285,15 @@ if(JOGGLE_BUILD_TESTS)
     JOGGLE_FUSION_NATIVE="$<TARGET_FILE:joggle_fusion_native>"
   )
   add_test(NAME fusion COMMAND joggle_fusion_test)
+
+  add_executable(joggle_bitpack_test tests/bitpack_test.cpp)
+  target_link_libraries(joggle_bitpack_test PRIVATE joggle::joggle)
+  target_compile_definitions(joggle_bitpack_test PRIVATE
+    JOGGLE_TENSOR_MODULE="${JOGGLE_TENSOR_MODULE}"
+    JOGGLE_BITPACK_MODULE="${JOGGLE_BITPACK_MODULE}"
+    JOGGLE_BITPACK_NATIVE="$<TARGET_FILE:joggle_bitpack_native>"
+  )
+  add_test(NAME bitpack COMMAND joggle_bitpack_test)
 
   add_executable(joggle_ir_test tests/ir_test.cpp)
   target_link_libraries(joggle_ir_test PRIVATE joggle::joggle)

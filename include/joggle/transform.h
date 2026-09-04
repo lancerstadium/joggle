@@ -56,6 +56,17 @@ bool equivalent(Compiler& compiler, const Function& left,
                 const Function& right, Diagnostics& diagnostics,
                 std::size_t max_expansions = 256U);
 
+// Proves the same relation after mapping every observed value Type through an
+// idempotent logical projection. This is intended for representation-changing
+// modules: the module owns the projection, while source bodies still account
+// for every changed call. A missing or non-idempotent projection fails closed.
+using TypeProjection =
+    std::function<std::optional<Type>(const Type&)>;
+bool equivalent(Compiler& compiler, const Function& left,
+                const Function& right, const TypeProjection& project,
+                Diagnostics& diagnostics,
+                std::size_t max_expansions = 256U);
+
 // Checks definitional equivalence before performing the existing atomic typed
 // replacement. A failed proof publishes no edit.
 std::optional<std::size_t>

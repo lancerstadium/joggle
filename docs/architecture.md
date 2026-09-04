@@ -118,7 +118,8 @@ The core imposes no lowering direction or fixed hardware hierarchy.
 ## Near-term implementation order
 
 The core-language, tensor, ONNX, lossless-bundle, reference-body equivalence,
-and first real-model fusion gates are complete. The SqueezeNet pipeline needed
-ordinary `fn`/`@call` sequencing and a module-local bounded sweep, but no public
-strategy or pass object. The next gate in RFC 0007 is one installable packed
-format; measured selection remains later.
+real-model fusion, and first packed-format gates are complete. The SqueezeNet
+pipeline needed ordinary `fn`/`@call` sequencing and a module-local bounded
+sweep, but no public strategy object. The bitpack path adds an idempotent
+logical Type projection rather than a Format base class. Bit-accurate physical
+execution is the next evidence gate; measured selection remains later.

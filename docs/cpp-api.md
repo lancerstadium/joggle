@@ -127,6 +127,13 @@ mismatch before opening an edit. The overload without `Compiler&` is the
 low-level structural primitive: it preserves IR invariants but does not claim
 the two expressions compute the same value.
 
+Representation modules may call the `equivalent` overload taking a
+`TypeProjection`. The callback maps each physical Type to its logical Type and
+must be total and idempotent; otherwise equivalence fails. Only Type
+observation is projected. Source bodies must still reduce changed calls to the
+same exact declarations, so the callback cannot bless opaque physical
+instructions. See [RFC 0008](rfcs/0008-logical-representation.md).
+
 ## Bind native functions
 
 ```cpp

@@ -22,11 +22,13 @@ int main() {
 joggle 1;
 module semantics@1.0.0 {
   type word();
+  type represented(logical: type);
 
   fn primitive(input: word, axis: int) -> word;
   fn other(input: word, axis: int) -> word;
   fn interleaved(axis: int, input: word, scale: int) -> word;
   fn combine(lhs: word, rhs: word) -> word;
+  fn step<T>(input: T) -> T;
   fn replace(input: function, before: function, after: function) -> function;
 
   fn wrapped(input: word, axis: int) -> word {
@@ -83,6 +85,14 @@ module semantics@1.0.0 {
     return combine(value, value);
   }
 
+  fn logical(input: word) -> word {
+    return step(input);
+  }
+
+  fn physical(input: represented<word>) -> represented<word> {
+    return step(input);
+  }
+
   fn subject(input: word) -> word {
     return primitive(primitive(input, 1), 2);
   }
@@ -107,6 +117,15 @@ module semantics@1.0.0 {
   }
   const auto semantics = compiler.module("semantics");
   if (!semantics) {
+    return EXIT_FAILURE;
+  }
+  const auto word_decl = semantics->type("word");
+  const auto represented_decl = semantics->type("represented");
+  const auto word = word_decl ? compiler.make(*word_decl) : std::nullopt;
+  const auto represented = represented_decl && word
+                               ? compiler.make(*represented_decl, *word)
+                               : std::nullopt;
+  if (!word_decl || !represented_decl || !word || !represented) {
     return EXIT_FAILURE;
   }
   std::optional<joggle::Function> staged_replacement;
@@ -139,11 +158,14 @@ module semantics@1.0.0 {
       compiler.materialize("semantics.shared_direct");
   const auto shared_indirect =
       compiler.materialize("semantics.shared_indirect");
+  const auto logical = compiler.materialize("semantics.logical");
+  const auto physical = compiler.materialize("semantics.physical");
   auto subject = compiler.materialize("semantics.subject");
   const auto staged_subject = compiler.materialize("semantics.subject");
   if (!direct || !wrapped || !wrong_property || !wrong_callee || !recursive ||
       !interleaved_direct || !interleaved_indirect || !subject ||
-      !shared_direct || !shared_indirect || !staged_subject) {
+      !shared_direct || !shared_indirect || !logical || !physical ||
+      !staged_subject) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -194,6 +216,35 @@ module semantics@1.0.0 {
                "shared DAG values are normalized once rather than expanded "
                "as a tree");
 
+  joggle::Diagnostics exact_representation_diagnostics;
+  ok &= expect(!joggle::equivalent(compiler, *logical, *physical,
+                                   exact_representation_diagnostics),
+               "exact equivalence rejects different physical signatures");
+  const joggle::TypeProjection logical_type = [](const joggle::Type& type) {
+    if (type.schema().symbol().module_name() == "semantics" &&
+        type.schema().symbol().local_name() == "represented") {
+      return type.get<joggle::Type>("logical");
+    }
+    return std::optional<joggle::Type>{type};
+  };
+  joggle::Diagnostics projected_diagnostics;
+  ok &= expect(joggle::equivalent(compiler, *logical, *physical,
+                                  logical_type, projected_diagnostics) &&
+                   projected_diagnostics.ok(),
+               "an idempotent logical projection proves representation-"
+               "changing equivalence");
+  const joggle::TypeProjection toggling_type =
+      [word, represented](const joggle::Type& type) {
+        return std::optional<joggle::Type>{type == *word ? *represented
+                                                        : *word};
+      };
+  joggle::Diagnostics non_idempotent_diagnostics;
+  ok &= expect(!joggle::equivalent(compiler, *logical, *physical,
+                                   toggling_type,
+                                   non_idempotent_diagnostics) &&
+                   !non_idempotent_diagnostics.ok(),
+               "a non-idempotent representation projection fails closed");
+
   const auto revision = subject->revision();
   joggle::Diagnostics rejected_diagnostics;
   const auto rejected = joggle::replace(
@@ -237,6 +288,9 @@ module semantics@1.0.0 {
     recursion_diagnostics.print(std::cerr);
     interleaved_diagnostics.print(std::cerr);
     shared_dag_diagnostics.print(std::cerr);
+    exact_representation_diagnostics.print(std::cerr);
+    projected_diagnostics.print(std::cerr);
+    non_idempotent_diagnostics.print(std::cerr);
     rejected_diagnostics.print(std::cerr);
     replacement_diagnostics.print(std::cerr);
     limit_diagnostics.print(std::cerr);
