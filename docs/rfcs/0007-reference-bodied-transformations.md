@@ -1,6 +1,6 @@
 # RFC 0007: Reference-bodied transformations
 
-Status: implementation gates 1--9 complete
+Status: implementation gates 1--10 complete
 
 ## Purpose
 
@@ -139,7 +139,11 @@ rebuild it deterministically. No runtime search is mandatory.
 9. [x] Add `qconv` as a normal source-bodied QDQ Conv seam and transform all 26
    eligible expressions in the official model. Whole-Function equivalence,
    shared-DAG preservation, provenance, and dependency closure are checked.
-10. [ ] Add bounded variant enumeration and measured selection only after the
+10. [x] Add generic reference-body outlining. An extension supplies only an
+    eligible root and exact call arguments; the core instantiates the normal
+    source body, locks hole bindings, proves equivalence, preserves shared DAGs,
+    repeats to a bound, and publishes Function or Module updates atomically.
+11. [ ] Add bounded variant enumeration and measured selection only after the
    physical format path has bit-accurate execution evidence.
 
 No target hierarchy, code emitter, machine-capacity model, or scheduling DSL is

@@ -61,8 +61,11 @@ The implementation already demonstrates:
     ordinary generic function and transforms all 26 eligible official-model
     regions; the whole Function is definitionally equivalent, changes from
     399 to 303 calls/constants, and derives its semantic dependencies from IR;
-    and
-15. Module bundles preserve and verify all imported data through public
+15. generic reference-body outlining reduces a transformation extension to
+    eligibility plus argument mapping while the core owns concrete
+    instantiation, exact binding checks, proof, bounded traversal, shared-DAG
+    handling, and atomic Function or Module publication; and
+16. Module bundles preserve and verify all imported data through public
    `check`, `run`, `install`, and `lock` workflows.
 
 These are infrastructure results. The tensor QDQ calls remain opaque program

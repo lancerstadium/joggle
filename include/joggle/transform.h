@@ -79,6 +79,24 @@ replace(Compiler& compiler, Module& module, const Function& before,
         const Function& after, Diagnostics& diagnostics,
         std::size_t max_expansions = 256U);
 
+// Outlines selected pure expressions as calls to one ordinary source-bodied
+// function. The selector returns the concrete call arguments in declaration
+// order for an eligible root Op, or nullopt to skip it. Joggle instantiates the
+// reference body, proves definitional equivalence, preserves shared ancestors,
+// and publishes the complete bounded sweep atomically.
+using OutlineArguments = std::function<std::optional<std::vector<Value>>(
+    const Function&, const Op&)>;
+
+std::optional<std::size_t>
+outline(Compiler& compiler, Function& function,
+        Module::FunctionDecl reference, const OutlineArguments& select,
+        Diagnostics& diagnostics, std::size_t max_expansions = 256U);
+
+std::optional<std::size_t>
+outline(Compiler& compiler, Module& module,
+        Module::FunctionDecl reference, const OutlineArguments& select,
+        Diagnostics& diagnostics, std::size_t max_expansions = 256U);
+
 namespace transform_detail {
 
 template <typename Rule>

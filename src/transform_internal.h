@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -26,6 +27,7 @@ match_expressions(const Function& subject, const Function& pattern,
 
 std::optional<std::size_t>
 replace_expressions(Function& subject, const Function& before,
-                    const Function& after, Diagnostics& diagnostics);
+                    const Function& after, Diagnostics& diagnostics,
+                    std::span<const Value> allowed_roots = {});
 
 }  // namespace joggle::detail

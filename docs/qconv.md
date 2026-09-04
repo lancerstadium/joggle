@@ -33,10 +33,11 @@ fn run(input: module) -> module;
 ```
 
 `@qconv.run` recognizes only the typed storage and axis profile above. It also
-requires the floating Conv result to feed only the output Quantize. For every
-candidate it builds concrete before/after expression Functions, expands the
-source body through the bounded equivalence checker, and uses the existing
-atomic replacement transaction. Unsupported expressions remain unchanged.
+requires the floating Conv result to feed only the output Quantize. Its native
+selector returns the 15 semantic arguments of `qconv.conv`; the general
+`joggle::outline` primitive constructs and instantiates the call, locks those
+arguments to the selected SSA values, proves equivalence, and performs the
+bounded atomic sweep. Unsupported expressions remain unchanged.
 
 Pure shared ancestors are preserved by the general replacement primitive. If
 two Conv branches consume one activation Dequantize, the first replacement

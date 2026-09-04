@@ -96,6 +96,14 @@ the existing atomic structural replacement opens an edit. `replace` is not
 reserved syntax, and the lambdas remain verified Functions over the same IR
 rather than a second rewrite declaration or pattern representation.
 
+For a generic reference-bodied operation, native code may use
+`joggle::outline`. Its selector returns the concrete arguments of that normal
+function for one eligible root call. The core then instantiates the reference
+body, checks the selector's exact SSA bindings, proves equivalence, preserves
+shared ancestors, repeats to a structural bound, and publishes once. This
+keeps operator-specific legality in its Module while removing duplicated
+template construction, matching, proof, sweep, and Module-update code.
+
 ## Recursive specialization
 
 `Compiler::specialize` expands source-defined calls until a caller-provided
