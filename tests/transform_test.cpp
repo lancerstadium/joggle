@@ -116,6 +116,10 @@ module mapping@1.0.0 {
     return converted(input);
   }
 
+  fn alternate_replacement(input: alternate) -> alternate {
+    return identity(input);
+  }
+
   fn double_keep(input: word) -> word {
     return keep(keep(input));
   }
@@ -179,6 +183,8 @@ module foreign@1.0.0 {
   auto reference_b = compiler.materialize("mapping.reference_b");
   auto unused_hole = compiler.materialize("mapping.unused_hole");
   auto replacement = compiler.materialize("mapping.replacement");
+  auto alternate_replacement =
+      compiler.materialize("mapping.alternate_replacement");
   auto double_keep = compiler.materialize("mapping.double_keep");
   auto triple_keep = compiler.materialize("mapping.triple_keep");
   auto foreign_replacement = compiler.materialize("foreign.replacement");
@@ -189,7 +195,8 @@ module foreign@1.0.0 {
       !effect_template || !multi_call_template || !chain || !repeated ||
       !different || !distinct_calls || !shared_call || !axis_one || !axis_two ||
       !reference_a || !reference_b || !unused_hole || !replacement ||
-      !double_keep || !triple_keep || !foreign_replacement) {
+      !alternate_replacement || !double_keep || !triple_keep ||
+      !foreign_replacement) {
     return EXIT_FAILURE;
   }
 
@@ -400,6 +407,16 @@ module foreign@1.0.0 {
                    incompatible_subject.revision() == incompatible_revision,
                "an incompatible after signature publishes no Function edit");
 
+  joggle::Function wrong_type_subject = *chain;
+  const auto wrong_type_revision = wrong_type_subject.revision();
+  joggle::Diagnostics wrong_type_replace_diagnostics;
+  const auto wrong_type_replace =
+      joggle::replace(wrong_type_subject, *chain, *alternate_replacement,
+                      wrong_type_replace_diagnostics);
+  ok &= expect(!wrong_type_replace && !wrong_type_replace_diagnostics.ok() &&
+                   wrong_type_subject.revision() == wrong_type_revision,
+               "replacement rejects a hole type mismatch without publishing");
+
   joggle::Function overlap_subject = *triple_keep;
   joggle::Diagnostics overlap_replace_diagnostics;
   const auto overlap_replace = joggle::replace(
@@ -424,6 +441,25 @@ module foreign@1.0.0 {
                    foreign_subject.ops().front().callee() == *foreign_external,
                "replacement extends the verified Function module closure for "
                "a newly cloned call");
+
+  const std::string replacement_text =
+      joggle::format(replacement_subject, "optimized");
+  joggle::Compiler replacement_roundtrip;
+  replacement_roundtrip.add(*schema);
+  replacement_roundtrip.add("joggle 1;\nmodule replacement_roundtrip@1.0.0 {\n"
+                            "  import mapping@1;\n" +
+                                replacement_text + "}\n",
+                            "replacement-roundtrip.joggle");
+  const bool replacement_roundtrip_linked = replacement_roundtrip.link();
+  const auto replacement_roundtrip_function =
+      replacement_roundtrip_linked
+          ? replacement_roundtrip.materialize(
+                "replacement_roundtrip.optimized")
+          : std::nullopt;
+  ok &= expect(replacement_roundtrip_function &&
+                   joggle::format(*replacement_roundtrip_function,
+                                  "optimized") == replacement_text,
+               "a replaced Function has canonical round-trippable source");
 
   joggle::Module expression_module("expression_module", {1, 0, 0});
   joggle::Diagnostics expression_module_insert_diagnostics;
@@ -459,6 +495,34 @@ module foreign@1.0.0 {
                    !expression_module_failure_diagnostics.ok() &&
                    expression_module.digest() == expression_module_digest,
                "whole-Module replacement failure publishes no partial value");
+
+  joggle::Module rollback_module("rollback_module", {1, 0, 0});
+  joggle::Diagnostics rollback_insert_diagnostics;
+  if (!rollback_module.insert("first", joggle::Function{*chain},
+                              rollback_insert_diagnostics) ||
+      !rollback_module.insert("second", joggle::Function{*chain},
+                              rollback_insert_diagnostics)) {
+    rollback_insert_diagnostics.print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  const auto rollback_second = rollback_module.function("second");
+  const std::string rollback_digest(rollback_module.digest());
+  bool rollback_preserved = false;
+  if (rollback_second) {
+    joggle::Function* busy = rollback_module.body(*rollback_second);
+    if (busy) {
+      auto pending = busy->edit();
+      joggle::Diagnostics rollback_diagnostics;
+      const auto rolled_back = joggle::replace(
+          rollback_module, *chain, *replacement, rollback_diagnostics);
+      rollback_preserved =
+          !rolled_back && !rollback_diagnostics.ok() &&
+          rollback_module.digest() == rollback_digest;
+    }
+  }
+  ok &= expect(rollback_preserved,
+               "a later member failure publishes no earlier Module "
+               "replacement");
 
   const auto first_revision = first->revision();
   joggle::Diagnostics no_op_diagnostics;

@@ -1,6 +1,6 @@
 # RFC 0003: Typed expression replacement
 
-Status: accepted for implementation
+Status: implemented
 
 ## Purpose
 
@@ -166,7 +166,7 @@ on a private `Module` snapshot and publishes only after every member succeeds.
    atomically.
 6. [complete] Expose Function and Module C++ overloads and bind them from a
    normal transformation module.
-7. Add fusion, no-match, overlap, wrong-type, escaping-use, effect rejection,
-   rollback, formatting, and source `@replace` end-to-end tests.
+7. [complete] Add fusion, no-match, overlap, wrong-type, escaping-use, effect
+   rejection, rollback, formatting, and source `@replace` end-to-end tests.
 
 No transform module is added before gates 1--5 pass at the C++ level.
