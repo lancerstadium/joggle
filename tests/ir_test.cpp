@@ -38,7 +38,7 @@ int main() {
   )",
                "control.joggle");
   if (!compiler.link()) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 
@@ -66,8 +66,8 @@ int main() {
       !other_schema || !memory_schema) {
     return EXIT_FAILURE;
   }
-  compiler.verify(*integer_schema, [](const joggle::Type&,
-                                      joggle::Diagnostics&) { return true; });
+  compiler.verify(*integer_schema,
+                  [](const joggle::Type&, joggle::Diag&) { return true; });
   const auto integer = compiler.make(*integer_schema, std::int64_t{8});
   const auto other = compiler.make(*other_schema);
   const auto boolean = compiler.make("i1");
@@ -90,7 +90,7 @@ int main() {
     add = edit.append(*add_schema, {lhs, rhs});
     edit.locate(*add, imported_location);
     edit.append(*cast_schema, {add->result(0)});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
@@ -114,7 +114,7 @@ int main() {
   {
     auto edit = copied.edit();
     edit.erase(copied.ops().back());
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
@@ -135,7 +135,7 @@ int main() {
     const auto input = edit.argument(*i32);
     const auto sum = edit.append(*add_i32_schema, {*known_seven, input});
     edit.ret(mixed->entry(), {sum.result(0)});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
@@ -160,7 +160,7 @@ int main() {
     const auto input = edit.argument(*i32);
     const auto value = edit.append(*configure_schema, {input});
     edit.ret(configured->entry(), {value.value()});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
@@ -194,7 +194,7 @@ int main() {
     callback = edit.reference(*callback_schema, *callable);
     applied = edit.append(*apply_schema, {input, *callback});
     edit.ret(higher_order->entry(), {applied->result(0)});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
@@ -229,7 +229,7 @@ int main() {
     auto edit = inline_body->edit();
     const auto input = edit.argument(*i32);
     edit.ret(inline_body->entry(), {input});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
@@ -246,7 +246,7 @@ int main() {
     inline_callable = edit.callable(*inline_body, *callable);
     const auto result = edit.append(*apply_schema, {input, *inline_callable});
     edit.ret(inline_higher_order->entry(), {result.result(0)});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
@@ -291,7 +291,7 @@ int main() {
   {
     auto edit = fn->edit();
     inserted = edit.insert(*add, *cast_schema, {fn->arguments()[0]});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
@@ -304,7 +304,7 @@ int main() {
   {
     auto edit = fn->edit();
     add = edit.replace(*add, *add_schema);
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
@@ -333,7 +333,7 @@ int main() {
     first_cast = edit.append(*cast_schema, {add->result(0)});
     second_cast = edit.append(*cast_schema, {first_cast->result(0)});
     edit.ret(fn->entry(), {first_cast->result(0)});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
@@ -343,7 +343,7 @@ int main() {
     auto edit = fn->edit();
     edit.replace(first_cast->result(0), add->result(0));
     edit.erase(*first_cast);
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
@@ -370,7 +370,7 @@ int main() {
     queried_second = edit.append(*add_i32_schema,
                                  {queried_first->result(0), *queried_input});
     edit.ret(queried->entry(), {queried_second->result(0)});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
@@ -409,7 +409,7 @@ int main() {
     edit.branch(inconsistent_returns->entry(), condition, left, {}, right, {});
     edit.ret(left, {integer_value});
     edit.ret(right, {other_value});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     ok &= expect(!edit.commit(diagnostics) && !diagnostics.ok(),
                  "all returns of an anonymous fn share one signature");
   }
@@ -423,7 +423,7 @@ int main() {
     const auto lhs = edit.argument(*integer);
     const auto rhs = edit.argument(*other);
     edit.append(*add_schema, {lhs, rhs}, {*integer});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     ok &= expect(!edit.commit(diagnostics) && !diagnostics.ok() &&
                      invalid->arguments().empty() && invalid->ops().empty(),
                  "a type-invalid edit rolls the complete transaction back");
@@ -451,7 +451,7 @@ int main() {
     edit.jump(*left, *merge, {*branch_lhs});
     edit.jump(*right, *merge, {*branch_rhs});
     edit.ret(*merge, {merge->arguments().front()});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
@@ -505,7 +505,7 @@ int main() {
     edit.jump(yes, merge_effect, {yes_next.result(0)});
     edit.jump(no, merge_effect, {no_next.result(0)});
     edit.ret(merge_effect, {merge_effect.arguments().front()});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
@@ -525,11 +525,11 @@ int main() {
     const auto first = edit.append(*advance_schema, {token});
     static_cast<void>(edit.append(*advance_schema, {token}));
     edit.ret(duplicated_effect->entry(), {first.result(0)});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     const bool committed = edit.commit(diagnostics);
     const bool reports_multiple_use = std::any_of(
-        diagnostics.entries().begin(), diagnostics.entries().end(),
-        [](const joggle::Diagnostic& diagnostic) {
+        diagnostics.issues().begin(), diagnostics.issues().end(),
+        [](const joggle::Issue& diagnostic) {
           return diagnostic.message.find("more than one consuming use") !=
                  std::string::npos;
         });
@@ -552,11 +552,11 @@ int main() {
                 {token, token}, no, {token, token});
     edit.ret(yes, {yes.arguments().front()});
     edit.ret(no, {no.arguments().front()});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     const bool committed = edit.commit(diagnostics);
     const bool reports_repeated_branch =
-        std::any_of(diagnostics.entries().begin(), diagnostics.entries().end(),
-                    [](const joggle::Diagnostic& diagnostic) {
+        std::any_of(diagnostics.issues().begin(), diagnostics.issues().end(),
+                    [](const joggle::Issue& diagnostic) {
                       return diagnostic.message.find("branch path repeats") !=
                              std::string::npos;
                     });
@@ -577,7 +577,7 @@ int main() {
     edit.jump(target, target, {target.arguments().front()});
     edit.branch(invalid_edge->entry(), condition, target, {wrong}, target,
                 {wrong});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     ok &= expect(!edit.commit(diagnostics) && !diagnostics.ok() &&
                      invalid_edge->blks().size() == 1U,
                  "edge type errors reject and roll back the whole CFG edit");
@@ -600,7 +600,7 @@ int main() {
     edit.append(right, *cast_schema, {produced.result(0)});
     edit.jump(right, merge_block);
     edit.ret(merge_block);
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     ok &= expect(!edit.commit(diagnostics) && !diagnostics.ok() &&
                      invalid_dominance->blks().size() == 1U,
                  "a sibling block cannot consume another sibling's result");

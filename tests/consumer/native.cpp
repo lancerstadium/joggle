@@ -3,7 +3,7 @@
 namespace {
 
 void bind(joggle::Compiler& compiler, const joggle::Mod& mod,
-          joggle::Diagnostics& diagnostics) {
+          joggle::Diag& diagnostics) {
   const auto keep = mod.fn("keep");
   const auto converted = mod.fn("converted");
   if (!keep || !converted) {
@@ -15,7 +15,7 @@ void bind(joggle::Compiler& compiler, const joggle::Mod& mod,
       mod, "convert",
       [keep = *keep, converted = *converted](
           joggle::Fn fn,
-          joggle::Diagnostics& diagnostics) -> std::optional<joggle::Fn> {
+          joggle::Diag& diagnostics) -> std::optional<joggle::Fn> {
         if (!joggle::replace_calls(fn, keep, converted, diagnostics)) {
           return std::nullopt;
         }
@@ -26,6 +26,6 @@ void bind(joggle::Compiler& compiler, const joggle::Mod& mod,
 }  // namespace
 
 void joggle_mod(joggle::Compiler& compiler, const joggle::Mod& mod,
-                joggle::Diagnostics& diagnostics) {
+                joggle::Diag& diagnostics) {
   bind(compiler, mod, diagnostics);
 }

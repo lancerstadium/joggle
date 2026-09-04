@@ -4,7 +4,7 @@
 #include "prelude.h"
 #include "syntax_lexer.h"
 
-#include "joggle/diagnostic.h"
+#include "joggle/diag.h"
 
 #include <algorithm>
 #include <string>
@@ -17,7 +17,7 @@ constexpr int generic_argument_precedence = 41;
 
 class ExprParser {
 public:
-  ExprParser(Lexer& lexer, Token& current, Diagnostics& diagnostics,
+  ExprParser(Lexer& lexer, Token& current, Diag& diagnostics,
              std::string_view source,
              std::span<const Mod::FnDecl::GenericDecl> variables)
       : lexer_(lexer), current_(current), diagnostics_(diagnostics),
@@ -400,7 +400,7 @@ private:
 
   Lexer& lexer_;
   Token& current_;
-  Diagnostics& diagnostics_;
+  Diag& diagnostics_;
   std::string_view source_;
   std::span<const Mod::FnDecl::GenericDecl> variables_;
   std::vector<std::string> lambda_variables_;
@@ -408,8 +408,8 @@ private:
 
 }  // namespace
 
-Mod::Expr parse_expression(Lexer& lexer, Token& current,
-                           Diagnostics& diagnostics, std::string_view source,
+Mod::Expr parse_expression(Lexer& lexer, Token& current, Diag& diagnostics,
+                           std::string_view source,
                            std::span<const Mod::FnDecl::GenericDecl> variables,
                            int minimum_precedence) {
   return ExprParser(lexer, current, diagnostics, source, variables)

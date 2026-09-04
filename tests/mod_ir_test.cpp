@@ -69,7 +69,7 @@ mod mod_defs@1.0.0 {
   auto callback_value = compiler.create_fn();
   if (!main || !choose || !inline_user || !callback_decl || !callable ||
       !callback_value) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 
@@ -77,7 +77,7 @@ mod mod_defs@1.0.0 {
     auto edit = callback_value->edit();
     const auto reference = edit.reference(*callback_decl, *callable);
     edit.ret(callback_value->entry(), {reference});
-    joggle::Diagnostics callback_diagnostics;
+    joggle::Diag callback_diagnostics;
     if (!edit.commit(callback_diagnostics)) {
       callback_diagnostics.print(std::cerr);
       return EXIT_FAILURE;
@@ -85,7 +85,7 @@ mod mod_defs@1.0.0 {
   }
 
   joggle::Mod mod("compiled_mod", {2, 3, 4});
-  joggle::Diagnostics diagnostics;
+  joggle::Diag diagnostics;
   if (!mod.insert("main", std::move(*main), diagnostics) ||
       !mod.insert("choose", std::move(*choose), diagnostics) ||
       !mod.insert("inline_user", std::move(*inline_user), diagnostics) ||
@@ -106,7 +106,7 @@ mod mod_defs@1.0.0 {
   const auto dependencies = mod.dependencies();
   const auto materialized_main = mod.fn("main");
   const std::string text = joggle::format(mod);
-  joggle::Diagnostics parse_diagnostics;
+  joggle::Diag parse_diagnostics;
   const auto parsed =
       joggle::parse_mod(text, parse_diagnostics, "compiled-mod.joggle");
   const std::string reparsed = parsed ? joggle::format(*parsed) : std::string{};
@@ -174,7 +174,7 @@ mod mod_defs@1.0.0 {
       replay_linked ? replay.materialize("compiled_mod.inline_user")
                     : std::nullopt;
   if (!replay_main || !replay_choose || !replay_callback || !replay_inline) {
-    replay.diagnostics().print(std::cerr);
+    replay.diag().print(std::cerr);
   }
   ok &= expect(replay_main && replay_main->ops().size() == 1U &&
                    replay_choose && replay_choose->blks().size() == 4U &&
@@ -194,7 +194,7 @@ mod mod_defs@1.0.0 {
   auto local_callee = compiler.materialize("mod_defs.main");
   auto local_caller = compiler.materialize("mod_defs.forward");
   joggle::Mod local("local_link", {1, 0, 0});
-  joggle::Diagnostics local_diagnostics;
+  joggle::Diag local_diagnostics;
   if (!local_callee || !local_caller ||
       !local.insert("callee", std::move(*local_callee), local_diagnostics) ||
       !local.insert("caller", std::move(*local_caller), local_diagnostics)) {
@@ -217,7 +217,7 @@ mod mod_defs@1.0.0 {
     }
   }
   const std::string local_text = joggle::format(local);
-  joggle::Diagnostics local_parse_diagnostics;
+  joggle::Diag local_parse_diagnostics;
   const auto local_reparsed = joggle::parse_mod(
       local_text, local_parse_diagnostics, "local-link.joggle");
   ok &= expect(compiler.verify(local) && local_reparsed &&
@@ -229,12 +229,12 @@ mod mod_defs@1.0.0 {
 
   auto mixed_main = compiler.materialize("mod_defs.main");
   joggle::Mod mixed = *definitions;
-  joggle::Diagnostics mixed_diagnostics;
+  joggle::Diag mixed_diagnostics;
   const bool mixed_inserted =
       mixed_main &&
       mixed.insert("compiled_main", std::move(*mixed_main), mixed_diagnostics);
   const std::string mixed_text = mixed_inserted ? joggle::format(mixed) : "";
-  joggle::Diagnostics mixed_parse_diagnostics;
+  joggle::Diag mixed_parse_diagnostics;
   const auto mixed_reparsed =
       mixed_inserted ? joggle::parse_mod(mixed_text, mixed_parse_diagnostics,
                                          "mixed-mod.joggle")
@@ -251,7 +251,7 @@ mod mod_defs@1.0.0 {
   auto overloaded_main = compiler.materialize("mod_defs.main");
   auto overloaded_choose = compiler.materialize("mod_defs.choose");
   joggle::Mod overloaded("overloaded", {1, 0, 0});
-  joggle::Diagnostics overloaded_diagnostics;
+  joggle::Diag overloaded_diagnostics;
   if (!overloaded_main || !overloaded_choose ||
       !overloaded.insert("run", std::move(*overloaded_main),
                          overloaded_diagnostics) ||
@@ -273,7 +273,7 @@ mod mod_defs@1.0.0 {
   const auto* branched_body =
       branched != run_overloads.end() ? overloaded.body(*branched) : nullptr;
   const std::string overloaded_text = joggle::format(overloaded);
-  joggle::Diagnostics overloaded_parse_diagnostics;
+  joggle::Diag overloaded_parse_diagnostics;
   const auto overloaded_reparsed = joggle::parse_mod(
       overloaded_text, overloaded_parse_diagnostics, "overloaded.joggle");
   ok &= expect(

@@ -112,7 +112,7 @@ mod semantics@1.0.0 {
 )",
                "semantics.joggle");
   if (!compiler.link()) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto semantics = compiler.mod("semantics");
@@ -129,19 +129,18 @@ mod semantics@1.0.0 {
     return EXIT_FAILURE;
   }
   std::optional<joggle::Fn> staged_replacement;
-  compiler.bind(
-      *semantics, "replace",
-      [&](joggle::Compiler& active, joggle::Fn input, const joggle::Fn& before,
-          const joggle::Fn& after,
-          joggle::Diagnostics& diagnostics) -> std::optional<joggle::Fn> {
-        const auto changed =
-            joggle::replace(active, input, before, after, diagnostics);
-        if (changed) {
-          staged_replacement = input;
-        }
-        return changed ? std::optional<joggle::Fn>{std::move(input)}
-                       : std::nullopt;
-      });
+  compiler.bind(*semantics, "replace",
+                [&](joggle::Compiler& active, joggle::Fn input,
+                    const joggle::Fn& before, const joggle::Fn& after,
+                    joggle::Diag& diagnostics) -> std::optional<joggle::Fn> {
+                  const auto changed = joggle::replace(active, input, before,
+                                                       after, diagnostics);
+                  if (changed) {
+                    staged_replacement = input;
+                  }
+                  return changed ? std::optional<joggle::Fn>{std::move(input)}
+                                 : std::nullopt;
+                });
 
   const auto direct = compiler.materialize("semantics.direct");
   const auto wrapped = compiler.materialize("semantics.through_wrapper");
@@ -163,42 +162,42 @@ mod semantics@1.0.0 {
       !interleaved_direct || !interleaved_indirect || !subject ||
       !shared_direct || !shared_indirect || !logical || !physical ||
       !staged_subject) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto staged_apply =
       compiler.run<joggle::Fn>("semantics.pipeline", *staged_subject);
   if (!staged_apply) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 
   bool ok = true;
-  joggle::Diagnostics equivalent_diagnostics;
+  joggle::Diag equivalent_diagnostics;
   ok &= expect(
       joggle::equivalent(compiler, *direct, *wrapped, equivalent_diagnostics) &&
           equivalent_diagnostics.ok(),
       "nested source bodies normalize to their reference meaning");
 
-  joggle::Diagnostics property_diagnostics;
+  joggle::Diag property_diagnostics;
   ok &= expect(!joggle::equivalent(compiler, *direct, *wrong_property,
                                    property_diagnostics) &&
                    !property_diagnostics.ok(),
                "Known properties remain part of opaque call identity");
 
-  joggle::Diagnostics callee_diagnostics;
+  joggle::Diag callee_diagnostics;
   ok &= expect(!joggle::equivalent(compiler, *direct, *wrong_callee,
                                    callee_diagnostics) &&
                    !callee_diagnostics.ok(),
                "opaque overload identity remains semantic");
 
-  joggle::Diagnostics recursion_diagnostics;
+  joggle::Diag recursion_diagnostics;
   ok &= expect(!joggle::equivalent(compiler, *direct, *recursive,
                                    recursion_diagnostics) &&
                    !recursion_diagnostics.ok(),
                "recursive reference semantics fail closed");
 
-  joggle::Diagnostics interleaved_diagnostics;
+  joggle::Diag interleaved_diagnostics;
   ok &= expect(joggle::equivalent(compiler, *interleaved_direct,
                                   *interleaved_indirect,
                                   interleaved_diagnostics) &&
@@ -206,27 +205,27 @@ mod semantics@1.0.0 {
                "source expansion maps Residual operands independently of "
                "interleaved Known properties");
 
-  joggle::Diagnostics shared_dag_diagnostics;
+  joggle::Diag shared_dag_diagnostics;
   ok &= expect(joggle::equivalent(compiler, *shared_direct, *shared_indirect,
                                   shared_dag_diagnostics, 1U) &&
                    shared_dag_diagnostics.ok(),
                "shared DAG values are normalized once rather than expanded "
                "as a tree");
 
-  joggle::Diagnostics exact_representation_diagnostics;
+  joggle::Diag exact_representation_diagnostics;
   ok &= expect(!joggle::equivalent(compiler, *logical, *physical,
                                    exact_representation_diagnostics),
                "exact equivalence rejects different physical signatures");
 
   const auto revision = subject->revision();
-  joggle::Diagnostics rejected_diagnostics;
+  joggle::Diag rejected_diagnostics;
   const auto rejected = joggle::replace(compiler, *subject, *direct,
                                         *wrong_property, rejected_diagnostics);
   ok &= expect(!rejected && !rejected_diagnostics.ok() &&
                    subject->revision() == revision,
                "an unproved replacement publishes no edit");
 
-  joggle::Diagnostics replacement_diagnostics;
+  joggle::Diag replacement_diagnostics;
   const auto replaced = joggle::replace(compiler, *subject, *direct, *wrapped,
                                         replacement_diagnostics);
   ok &= expect(replaced && *replaced == 1U && replacement_diagnostics.ok() &&
@@ -240,19 +239,19 @@ mod semantics@1.0.0 {
                "compiler Fn values and typed lambdas compose through "
                "ordinary explicitly staged source fns");
 
-  joggle::Diagnostics limit_diagnostics;
+  joggle::Diag limit_diagnostics;
   ok &= expect(
       !joggle::equivalent(compiler, *direct, *wrapped, limit_diagnostics, 1U) &&
           !limit_diagnostics.ok(),
       "source expansion obeys an explicit bound");
 
-  joggle::Diagnostics exact_limit_diagnostics;
+  joggle::Diag exact_limit_diagnostics;
   ok &= expect(joggle::equivalent(compiler, *direct, *wrapped,
                                   exact_limit_diagnostics, 4U) &&
                    exact_limit_diagnostics.ok(),
                "each source call consumes exactly one expansion step");
 
-  ok &= expect(compiler.diagnostics().ok(),
+  ok &= expect(compiler.diag().ok(),
                "local equivalence failures do not poison compiler state");
   if (!ok) {
     equivalent_diagnostics.print(std::cerr);
@@ -266,7 +265,7 @@ mod semantics@1.0.0 {
     replacement_diagnostics.print(std::cerr);
     limit_diagnostics.print(std::cerr);
     exact_limit_diagnostics.print(std::cerr);
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
   }
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -87,7 +87,7 @@ using EvaluateCallArgument = std::function<std::optional<ExecVal>(
 std::optional<ExecVals> execute_call(
     Compiler& compiler, std::string_view owner, const Mod::Expr& expression,
     SourceRange call_site, std::size_t result_count,
-    std::span<const Mod::ParamDecl> expected_results, Diagnostics& diagnostics,
+    std::span<const Mod::ParamDecl> expected_results, Diag& diagnostics,
     const EvaluateCallArgument& evaluate, const ExecuteFn& execute,
     std::span<const Mod::FnDecl> declarations = {});
 
@@ -95,10 +95,10 @@ std::optional<ExecVals>
 execute_body(Compiler& compiler, const Mod::FnDecl& fn, const FnBody& body,
              std::span<const ExecVal> arguments,
              Compiler::EvaluationLimits limits, std::size_t& steps,
-             bool under_residual_control, Diagnostics& diagnostics,
+             bool under_residual_control, Diag& diagnostics,
              const ExecuteFn& execute);
 
 bool verify_body_calls(Compiler& compiler, const Mod::FnDecl& fn,
-                       const FnBody& body, Diagnostics& diagnostics);
+                       const FnBody& body, Diag& diagnostics);
 
 }  // namespace joggle::detail

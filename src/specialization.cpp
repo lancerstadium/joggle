@@ -17,7 +17,7 @@ class Specializer {
 public:
   Specializer(Compiler& compiler, const Mod& input,
               const std::function<bool(const Mod::FnDecl&)>& boundary,
-              Diagnostics& diagnostics)
+              Diag& diagnostics)
       : compiler_(compiler), input_(input), boundary_(boundary),
         diagnostics_(diagnostics), output_(input) {}
 
@@ -170,7 +170,7 @@ private:
   Compiler& compiler_;
   const Mod& input_;
   const std::function<bool(const Mod::FnDecl&)>& boundary_;
-  Diagnostics& diagnostics_;
+  Diag& diagnostics_;
   Mod output_;
   std::set<std::string> active_;
   std::unordered_map<std::string, Replacement> generated_;
@@ -182,7 +182,7 @@ private:
 std::optional<Mod>
 Compiler::specialize(const Mod& mod,
                      const std::function<bool(const Mod::FnDecl&)>& boundary,
-                     Diagnostics& diagnostics) {
+                     Diag& diagnostics) {
   if (!boundary) {
     diagnostics.report("specialization needs an accepted-call boundary");
     return std::nullopt;

@@ -27,7 +27,7 @@ public:
   BodyEvaluator(Compiler& compiler, const Mod::FnDecl& fn, const FnBody& body,
                 std::span<const ExecVal> arguments,
                 Compiler::EvaluationLimits limits, std::size_t& steps,
-                bool under_residual_control, Diagnostics& diagnostics,
+                bool under_residual_control, Diag& diagnostics,
                 const ExecuteFn& execute)
       : compiler_(compiler), fn_(fn), body_(body), limits_(limits),
         steps_(steps), under_residual_control_(under_residual_control),
@@ -637,7 +637,7 @@ private:
   Compiler::EvaluationLimits limits_;
   std::size_t& steps_;
   bool under_residual_control_ = false;
-  Diagnostics& diagnostics_;
+  Diag& diagnostics_;
   const ExecuteFn& execute_;
   Locals locals_;
 };
@@ -647,7 +647,7 @@ private:
 std::optional<ExecVals> execute_call(
     Compiler& compiler, std::string_view owner, const Mod::Expr& expression,
     SourceRange call_site, std::size_t result_count,
-    std::span<const Mod::ParamDecl> expected_results, Diagnostics& diagnostics,
+    std::span<const Mod::ParamDecl> expected_results, Diag& diagnostics,
     const EvaluateCallArgument& evaluate, const ExecuteFn& execute,
     std::span<const Mod::FnDecl> declarations) {
   const auto report = [&](std::string message) {
@@ -766,7 +766,7 @@ std::optional<ExecVals>
 execute_body(Compiler& compiler, const Mod::FnDecl& fn, const FnBody& body,
              std::span<const ExecVal> arguments,
              Compiler::EvaluationLimits limits, std::size_t& steps,
-             bool under_residual_control, Diagnostics& diagnostics,
+             bool under_residual_control, Diag& diagnostics,
              const ExecuteFn& execute) {
   if (body.blocks.size() != 1U || body.blocks.front().terminator) {
     diagnostics.report(
@@ -780,7 +780,7 @@ execute_body(Compiler& compiler, const Mod::FnDecl& fn, const FnBody& body,
 }
 
 bool verify_body_calls(Compiler& compiler, const Mod::FnDecl& fn,
-                       const FnBody& body, Diagnostics& diagnostics) {
+                       const FnBody& body, Diag& diagnostics) {
   const std::size_t before = diagnostics.size();
   const auto report = [&](std::string message, SyntaxRange range) {
     diagnostics.report(std::move(message),

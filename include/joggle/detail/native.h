@@ -6,7 +6,7 @@
 namespace joggle {
 
 class Compiler;
-class Diagnostics;
+class Diag;
 class Mod;
 
 namespace detail {
@@ -32,7 +32,7 @@ inline constexpr const char* native_target = "unknown-target";
 #endif
 
 struct NativeLibrary {
-  using Load = void (*)(Compiler&, const Mod&, Diagnostics&);
+  using Load = void (*)(Compiler&, const Mod&, Diag&);
 
   constexpr explicit NativeLibrary(Load fn)
       : abi(native_abi), size(sizeof(NativeLibrary)),

@@ -86,25 +86,23 @@ int main(int argc, char** argv) {
 
   joggle::Compiler malformed;
   if (!load(malformed, argv[1], argv[2], argv[3])) {
-    malformed.diagnostics().print(std::cerr);
+    malformed.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto rejected = malformed.run<joggle::Mod>(
       "onnx.read", joggle::Bytes{std::byte{0x7f}}, std::string{"bad"});
   joggle::Compiler malformed_again;
   if (!load(malformed_again, argv[1], argv[2], argv[3])) {
-    malformed_again.diagnostics().print(std::cerr);
+    malformed_again.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto rejected_again = malformed_again.run<joggle::Mod>(
       "onnx.read", joggle::Bytes{std::byte{0x7f}}, std::string{"bad"});
-  const auto malformed_message =
-      malformed.diagnostics().entries().back().message;
+  const auto malformed_message = malformed.diag().issues().back().message;
   bool ok = expect(
       !rejected && !rejected_again &&
           malformed_message.find("valid ModelProto") != std::string::npos &&
-          malformed_message ==
-              malformed_again.diagnostics().entries().back().message,
+          malformed_message == malformed_again.diag().issues().back().message,
       "malformed Protobuf input is rejected transactionally");
 
   if (argc == 4) {
@@ -115,13 +113,13 @@ int main(int argc, char** argv) {
 
   joggle::Compiler compiler;
   if (!load(compiler, argv[1], argv[2], argv[3])) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto model =
       compiler.run<joggle::Mod>("onnx.read", bytes, std::string{"squeezenet"});
   if (!model) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto repeated =

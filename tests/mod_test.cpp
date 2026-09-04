@@ -22,7 +22,7 @@ int main() {
   std::ostringstream text;
   text << input.rdbuf();
 
-  joggle::Diagnostics diagnostics;
+  joggle::Diag diagnostics;
   auto mod = joggle::parse_mod(text.str(), diagnostics, JOGGLE_TEST_MOD);
   if (!mod) {
     diagnostics.print(std::cerr);
@@ -34,41 +34,41 @@ int main() {
   ok &= expect(mod->digest().size() == 64U, "SHA-256 digest width");
 
   const auto rejects_language_version = [](std::uint32_t version) {
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     const auto parsed = joggle::parse_mod(
         "joggle " + std::to_string(version) + "; mod versioned@1.0.0 {}",
         diagnostics, "language-version.joggle");
     return !parsed && !diagnostics.ok() &&
-           diagnostics.entries().front().message.find(
+           diagnostics.issues().front().message.find(
                "unsupported Joggle language version") != std::string::npos &&
-           diagnostics.entries().front().source &&
-           diagnostics.entries().front().source->begin.line == 1U;
+           diagnostics.issues().front().source &&
+           diagnostics.issues().front().source->begin.line == 1U;
   };
   ok &= expect(rejects_language_version(0U) && rejects_language_version(2U),
                "unknown language versions are rejected before Mod use");
 
-  joggle::Diagnostics legacy_graph_diagnostics;
+  joggle::Diag legacy_graph_diagnostics;
   const auto legacy_graph = joggle::parse_mod(
       "joggle 1; mod legacy@1.0.0 { graph main() { return; } }",
       legacy_graph_diagnostics, "legacy-graph.joggle");
   ok &= expect(!legacy_graph && !legacy_graph_diagnostics.ok(),
                "graph is not a source-level member declaration");
 
-  joggle::Diagnostics legacy_op_diagnostics;
+  joggle::Diag legacy_op_diagnostics;
   const auto legacy_op = joggle::parse_mod(
       "joggle 1; mod legacy@1.0.0 { op add(lhs: i32) -> i32; }",
       legacy_op_diagnostics, "legacy-op.joggle");
   ok &= expect(!legacy_op && !legacy_op_diagnostics.ok(),
                "op is not a source-level member declaration");
 
-  joggle::Diagnostics legacy_pass_diagnostics;
+  joggle::Diag legacy_pass_diagnostics;
   const auto legacy_pass =
       joggle::parse_mod("joggle 1; mod legacy@1.0.0 { pass optimize; }",
                         legacy_pass_diagnostics, "legacy-pass.joggle");
   ok &= expect(!legacy_pass && !legacy_pass_diagnostics.ok(),
                "pass is not a source-level member declaration");
 
-  joggle::Diagnostics operator_alias_diagnostics;
+  joggle::Diag operator_alias_diagnostics;
   const auto operator_alias =
       joggle::parse_mod("joggle 1; mod legacy@1.0.0 { "
                         "fn add(lhs: int, rhs: int) -> int as +; }",
@@ -123,7 +123,7 @@ int main() {
   const std::string canonical = joggle::format(*mod);
   ok &= expect(canonical == text.str(),
                "the compiler fixture is canonical source");
-  joggle::Diagnostics canonical_diagnostics;
+  joggle::Diag canonical_diagnostics;
   auto reparsed =
       joggle::parse_mod(canonical, canonical_diagnostics, "canonical.joggle");
   ok &= expect(reparsed && joggle::format(*reparsed) == canonical,
@@ -133,7 +133,7 @@ int main() {
   const auto reparsed_integer =
       reparsed ? reparsed->type("integer") : std::nullopt;
 
-  joggle::Diagnostics surface_diagnostics;
+  joggle::Diag surface_diagnostics;
   const auto surface = joggle::parse_mod(R"(
     joggle 1;
     mod surface@2.3.4 {
@@ -172,7 +172,7 @@ int main() {
   const auto pipeline_position = position("fn pipeline");
   const auto collect_position = position("fn collect");
   const auto identity_position = position("fn identity");
-  joggle::Diagnostics surface_roundtrip_diagnostics;
+  joggle::Diag surface_roundtrip_diagnostics;
   const auto surface_roundtrip = joggle::parse_mod(
       surface_text, surface_roundtrip_diagnostics, "surface-canonical.joggle");
   ok &= expect(
@@ -185,7 +185,7 @@ int main() {
           surface_roundtrip->digest() == surface->digest(),
       "the complete DSL surface has one canonical member order and digest");
 
-  joggle::Diagnostics compiler_generic_diagnostics;
+  joggle::Diag compiler_generic_diagnostics;
   const auto compiler_generic = joggle::parse_mod(
       R"(
     joggle 1;
@@ -209,7 +209,7 @@ int main() {
       "compiler-value generics bind inputs without creating a "
       "parallel port signature");
 
-  joggle::Diagnostics trivia_diagnostics;
+  joggle::Diag trivia_diagnostics;
   const std::string with_trivia =
       "\n# source location and comments are not identity\n" + text.str() +
       "\n# trailing repository note\n";
@@ -224,7 +224,7 @@ int main() {
                "whitespace, comments, and source paths do not affect "
                "canonical identity");
 
-  joggle::Diagnostics conflicting_identity_diagnostics;
+  joggle::Diag conflicting_identity_diagnostics;
   const auto conflicting_identity = joggle::parse_mod(
       R"(
     joggle 1;
@@ -244,7 +244,7 @@ int main() {
                "versioned declaration identity is stable while a declaration "
                "digest detects incompatible same-version Mods");
 
-  joggle::Diagnostics first_fn_diagnostics;
+  joggle::Diag first_fn_diagnostics;
   const auto first_fn_mod =
       joggle::parse_mod(R"(
     joggle 1;
@@ -257,7 +257,7 @@ int main() {
     }
   )",
                         first_fn_diagnostics, "first-fn.joggle");
-  joggle::Diagnostics second_fn_diagnostics;
+  joggle::Diag second_fn_diagnostics;
   const auto second_fn_mod = joggle::parse_mod(
       R"(
     joggle 1;
@@ -286,7 +286,7 @@ int main() {
                "fn body changes alter artifact identity without changing the "
                "declared surface");
 
-  joggle::Diagnostics list_diagnostics;
+  joggle::Diag list_diagnostics;
   auto list_mod = joggle::parse_mod(R"(
     joggle 1;
     mod shaped@1.0.0 {
@@ -301,7 +301,7 @@ int main() {
                            joggle::Mod::Expr::reference("int")),
                "list-valued schema parameter");
 
-  joggle::Diagnostics numeric_diagnostics;
+  joggle::Diag numeric_diagnostics;
   auto numeric_mod = joggle::parse_mod(R"(
     joggle 1;
     mod numeric@1.2.3 {
@@ -342,7 +342,7 @@ int main() {
       linked_client ? linked_client->fn("inference") : std::nullopt;
   ok &= expect(inference.has_value(), "generic fns need no marker API");
 
-  joggle::Diagnostics duplicate_alias_diagnostics;
+  joggle::Diag duplicate_alias_diagnostics;
   const auto duplicate_alias =
       joggle::parse_mod(R"(
     joggle 1;
@@ -355,7 +355,7 @@ int main() {
   ok &= expect(!duplicate_alias && !duplicate_alias_diagnostics.ok(),
                "duplicate import prefixes are rejected");
 
-  joggle::Diagnostics mod_alias_diagnostics;
+  joggle::Diag mod_alias_diagnostics;
   const auto mod_alias =
       joggle::parse_mod(R"(
     joggle 1;
@@ -367,15 +367,15 @@ int main() {
   ok &= expect(!mod_alias && !mod_alias_diagnostics.ok(),
                "an import prefix cannot shadow its mod");
 
-  joggle::Diagnostics invalid_diagnostics;
+  joggle::Diag invalid_diagnostics;
   auto invalid =
       joggle::parse_mod("joggle 1; mod broken@1.0.0 { op add { inputs 2; } }",
                         invalid_diagnostics, "broken.joggle");
   ok &= expect(!invalid && !invalid_diagnostics.ok() &&
-                   invalid_diagnostics.entries().front().source.has_value(),
+                   invalid_diagnostics.issues().front().source.has_value(),
                "old clause grammar is rejected with a source diagnostic");
 
-  joggle::Diagnostics removed_interface_diagnostics;
+  joggle::Diag removed_interface_diagnostics;
   auto removed_interface = joggle::parse_mod(R"(
     joggle 1;
     mod removed_interface@1.0.0 {
@@ -387,7 +387,7 @@ int main() {
   ok &= expect(!removed_interface && !removed_interface_diagnostics.ok(),
                "interface is not a source-level declaration");
 
-  joggle::Diagnostics removed_attribute_diagnostics;
+  joggle::Diag removed_attribute_diagnostics;
   auto removed_attribute = joggle::parse_mod(R"(
     joggle 1;
     mod removed_attribute@1.0.0 {
@@ -399,7 +399,7 @@ int main() {
   ok &= expect(!removed_attribute && !removed_attribute_diagnostics.ok(),
                "attr is not a source-level declaration");
 
-  joggle::Diagnostics legacy_rewrite_diagnostics;
+  joggle::Diag legacy_rewrite_diagnostics;
   auto legacy_rewrite =
       joggle::parse_mod(R"(
     joggle 1;
@@ -417,7 +417,7 @@ int main() {
   ok &= expect(!legacy_rewrite && !legacy_rewrite_diagnostics.ok(),
                "the removed core rewrite sublanguage is rejected");
 
-  joggle::Diagnostics removed_analysis_diagnostics;
+  joggle::Diag removed_analysis_diagnostics;
   auto removed_analysis = joggle::parse_mod(
       R"(
     joggle 1;
@@ -429,7 +429,7 @@ int main() {
   ok &= expect(!removed_analysis && !removed_analysis_diagnostics.ok(),
                "removed analysis declaration is rejected");
 
-  joggle::Diagnostics removed_require_diagnostics;
+  joggle::Diag removed_require_diagnostics;
   auto removed_require = joggle::parse_mod(
       R"(
     joggle 1;
@@ -441,7 +441,7 @@ int main() {
   ok &= expect(!removed_require && !removed_require_diagnostics.ok(),
                "removed require declaration is rejected");
 
-  joggle::Diagnostics value_name_diagnostics;
+  joggle::Diag value_name_diagnostics;
   const auto value_name =
       joggle::parse_mod(R"(
     joggle 1;
@@ -468,7 +468,7 @@ int main() {
   )",
                "fn-cycle.joggle");
   const bool fn_cycle_linked = fn_cycle.link();
-  const auto fn_cycle_diagnostics = fn_cycle.diagnostics().entries();
+  const auto fn_cycle_diagnostics = fn_cycle.diag().issues();
   ok &= expect(!fn_cycle_linked && !fn_cycle_diagnostics.empty() &&
                    fn_cycle_diagnostics.back().source &&
                    fn_cycle_diagnostics.back().source->source ==
@@ -484,7 +484,7 @@ int main() {
     }
   )",
               "app.joggle");
-  ok &= expect(!missing.link() && !missing.diagnostics().ok(),
+  ok &= expect(!missing.link() && !missing.diag().ok(),
                "missing import is diagnosed");
 
   joggle::Compiler invalid_contract;
@@ -504,7 +504,7 @@ int main() {
   )",
                        "invalid-contract.joggle");
   const bool contract_linked = invalid_contract.link();
-  const auto contract_diagnostics = invalid_contract.diagnostics().entries();
+  const auto contract_diagnostics = invalid_contract.diag().issues();
   ok &= expect(!contract_linked && !contract_diagnostics.empty() &&
                    contract_diagnostics.back().source &&
                    contract_diagnostics.back().source->source ==
@@ -512,7 +512,7 @@ int main() {
                    contract_diagnostics.back().source->begin.line == 5U,
                "linking validates imported type expressions in op contracts");
 
-  joggle::Diagnostics compiler_variadic_diagnostics;
+  joggle::Diag compiler_variadic_diagnostics;
   const auto compiler_variadic = joggle::parse_mod(
       R"(
     joggle 1;

@@ -108,7 +108,7 @@ joggle::Compiler compiler;
 compiler.search(mod_root);
 compiler.load("root.joggle");
 if (!compiler.link()) {
-  compiler.diagnostics().print(std::cerr);
+  compiler.diag().print(std::cerr);
 }
 ```
 

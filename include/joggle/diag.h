@@ -1,7 +1,7 @@
 #pragma once
 
-#include <iosfwd>
 #include <cstddef>
+#include <iosfwd>
 #include <optional>
 #include <span>
 #include <string>
@@ -10,7 +10,7 @@
 namespace joggle {
 
 namespace detail {
-struct DiagnosticAccess;
+struct DiagAccess;
 }
 
 struct SourcePosition {
@@ -28,27 +28,27 @@ struct SourceRange {
   auto operator<=>(const SourceRange&) const = default;
 };
 
-struct Diagnostic {
+struct Issue {
   std::string message;
   std::optional<SourceRange> source;
   std::vector<std::string> notes;
 };
 
-class Diagnostics {
+class Diag {
 public:
-  void report(Diagnostic diagnostic);
+  void report(Issue issue);
   void report(std::string message,
               std::optional<SourceRange> source = std::nullopt);
 
-  bool ok() const { return entries_.empty(); }
-  std::size_t size() const { return entries_.size(); }
-  std::span<const Diagnostic> entries() const { return entries_; }
+  bool ok() const { return issues_.empty(); }
+  std::size_t size() const { return issues_.size(); }
+  std::span<const Issue> issues() const { return issues_; }
   void print(std::ostream& output) const;
-  void clear() { entries_.clear(); }
+  void clear() { issues_.clear(); }
 
 private:
-  std::vector<Diagnostic> entries_;
-  friend struct detail::DiagnosticAccess;
+  std::vector<Issue> issues_;
+  friend struct detail::DiagAccess;
 };
 
 }  // namespace joggle

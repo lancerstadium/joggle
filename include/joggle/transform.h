@@ -11,7 +11,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "joggle/diagnostic.h"
+#include "joggle/diag.h"
 #include "joggle/ir.h"
 #include "joggle/mod.h"
 
@@ -25,12 +25,12 @@ std::optional<Fn>
 clone(Compiler& compiler, const Fn& source,
       const std::function<std::optional<Type>(const Val&)>& map_value_type,
       const std::function<std::optional<Mod::FnDecl>(const Op&)>& map_callee,
-      Diagnostics& diagnostics);
+      Diag& diagnostics);
 
 std::optional<Fn>
 clone(Compiler& compiler, const Fn& source,
       const std::function<std::optional<Type>(const Val&)>& map_value_type,
-      Diagnostics& diagnostics);
+      Diag& diagnostics);
 
 // Structurally replaces every maximal non-overlapping occurrence of before
 // with after in one transaction. This low-level overload checks types, data
@@ -38,36 +38,35 @@ clone(Compiler& compiler, const Fn& source,
 // should normally use the Compiler& overload below. Zero is a successful
 // no-op.
 std::optional<std::size_t> replace(Fn& fn, const Fn& before, const Fn& after,
-                                   Diagnostics& diagnostics);
+                                   Diag& diagnostics);
 
 // Applies the same replacement to every materialized member on a private
 // Mod value and publishes only when all member transactions succeed.
 std::optional<std::size_t> replace(Mod& mod, const Fn& before, const Fn& after,
-                                   Diagnostics& diagnostics);
+                                   Diag& diagnostics);
 
 // Proves conservative definitional equivalence by recursively expanding
 // eligible source-bodied calls in two pure expression Fns. Opaque calls
 // remain exact-identity leaves. No secondary normalization IR is introduced,
 // and the input Fns are not mutated.
 bool equivalent(Compiler& compiler, const Fn& left, const Fn& right,
-                Diagnostics& diagnostics, std::size_t max_expansions = 256U);
+                Diag& diagnostics, std::size_t max_expansions = 256U);
 
 // Checks definitional equivalence before performing the existing atomic typed
 // replacement. A failed proof publishes no edit.
 std::optional<std::size_t> replace(Compiler& compiler, Fn& fn, const Fn& before,
-                                   const Fn& after, Diagnostics& diagnostics,
+                                   const Fn& after, Diag& diagnostics,
                                    std::size_t max_expansions = 256U);
 
 std::optional<std::size_t> replace(Compiler& compiler, Mod& mod,
                                    const Fn& before, const Fn& after,
-                                   Diagnostics& diagnostics,
+                                   Diag& diagnostics,
                                    std::size_t max_expansions = 256U);
 
 namespace transform_detail {
 
 template <typename Rule>
-std::optional<std::size_t> rewrite_fn(Fn& fn, Rule& rule,
-                                      Diagnostics& diagnostics) {
+std::optional<std::size_t> rewrite_fn(Fn& fn, Rule& rule, Diag& diagnostics) {
   const std::size_t before = diagnostics.size();
   try {
     const auto ops = fn.ops();
@@ -100,14 +99,12 @@ std::optional<std::size_t> rewrite_fn(Fn& fn, Rule& rule,
 }  // namespace transform_detail
 
 // Applies one lambda to the committed Ops present at the start of a
-// sweep. The lambda receives (Op, Fn::Edit, Diagnostics) and
+// sweep. The lambda receives (Op, Fn::Edit, Diag) and
 // returns true only when it changed the IR. All edits commit together; an
 // exception, diagnostic, or failed verification restores the prior Fn.
 template <typename Rule>
-std::optional<std::size_t> rewrite(Fn& fn, Rule&& rule,
-                                   Diagnostics& diagnostics) {
-  using Changed =
-      std::invoke_result_t<Rule&, const Op&, Fn::Edit&, Diagnostics&>;
+std::optional<std::size_t> rewrite(Fn& fn, Rule&& rule, Diag& diagnostics) {
+  using Changed = std::invoke_result_t<Rule&, const Op&, Fn::Edit&, Diag&>;
   static_assert(std::is_convertible_v<Changed, bool>,
                 "a rewrite lambda must return bool");
   return transform_detail::rewrite_fn(fn, rule, diagnostics);
@@ -116,10 +113,8 @@ std::optional<std::size_t> rewrite(Fn& fn, Rule&& rule,
 // Applies the same rule to every materialized Fn on a private Mod
 // value. The Mod is published only if every Fn rewrite succeeds.
 template <typename Rule>
-std::optional<std::size_t> rewrite(Mod& mod, Rule&& rule,
-                                   Diagnostics& diagnostics) {
-  using Changed =
-      std::invoke_result_t<Rule&, const Op&, Fn::Edit&, Diagnostics&>;
+std::optional<std::size_t> rewrite(Mod& mod, Rule&& rule, Diag& diagnostics) {
+  using Changed = std::invoke_result_t<Rule&, const Op&, Fn::Edit&, Diag&>;
   static_assert(std::is_convertible_v<Changed, bool>,
                 "a rewrite lambda must return bool");
 
@@ -156,7 +151,7 @@ namespace transform_detail {
 template <typename Subject, typename Rule>
 std::optional<std::size_t> rewrite_to_fixpoint(Subject& subject, Rule& rule,
                                                std::size_t max_iterations,
-                                               Diagnostics& diagnostics) {
+                                               Diag& diagnostics) {
   if (max_iterations == 0U) {
     diagnostics.report("a fixed-point rewrite needs at least one iteration");
     return std::nullopt;
@@ -192,9 +187,8 @@ std::optional<std::size_t> rewrite_to_fixpoint(Subject& subject, Rule& rule,
 template <typename Rule>
 std::optional<std::size_t> rewrite_to_fixpoint(Fn& fn, Rule&& rule,
                                                std::size_t max_iterations,
-                                               Diagnostics& diagnostics) {
-  using Changed =
-      std::invoke_result_t<Rule&, const Op&, Fn::Edit&, Diagnostics&>;
+                                               Diag& diagnostics) {
+  using Changed = std::invoke_result_t<Rule&, const Op&, Fn::Edit&, Diag&>;
   static_assert(std::is_convertible_v<Changed, bool>,
                 "a rewrite lambda must return bool");
   return transform_detail::rewrite_to_fixpoint(fn, rule, max_iterations,
@@ -204,9 +198,8 @@ std::optional<std::size_t> rewrite_to_fixpoint(Fn& fn, Rule&& rule,
 template <typename Rule>
 std::optional<std::size_t> rewrite_to_fixpoint(Mod& mod, Rule&& rule,
                                                std::size_t max_iterations,
-                                               Diagnostics& diagnostics) {
-  using Changed =
-      std::invoke_result_t<Rule&, const Op&, Fn::Edit&, Diagnostics&>;
+                                               Diag& diagnostics) {
+  using Changed = std::invoke_result_t<Rule&, const Op&, Fn::Edit&, Diag&>;
   static_assert(std::is_convertible_v<Changed, bool>,
                 "a rewrite lambda must return bool");
   return transform_detail::rewrite_to_fixpoint(mod, rule, max_iterations,
@@ -216,7 +209,7 @@ std::optional<std::size_t> rewrite_to_fixpoint(Mod& mod, Rule&& rule,
 namespace transform_detail {
 
 template <typename Legal>
-bool legal(const Fn& fn, Legal& predicate, Diagnostics& diagnostics,
+bool legal(const Fn& fn, Legal& predicate, Diag& diagnostics,
            std::string_view member = {}) {
   try {
     for (const Op& op : fn.ops()) {
@@ -244,7 +237,7 @@ bool legal(const Fn& fn, Legal& predicate, Diagnostics& diagnostics,
 }
 
 template <typename Legal>
-bool legal(const Mod& mod, Legal& predicate, Diagnostics& diagnostics) {
+bool legal(const Mod& mod, Legal& predicate, Diag& diagnostics) {
   for (const joggle::Mod::FnDecl& member : mod.fns()) {
     const Fn* fn = member.body();
     if (fn != nullptr && !legal(*fn, predicate, diagnostics, member.name())) {
@@ -260,7 +253,7 @@ bool legal(const Mod& mod, Legal& predicate, Diagnostics& diagnostics) {
 // Op satisfies the caller's legality predicate.
 template <typename Rule, typename Legal>
 std::optional<std::size_t> convert(Fn& fn, Rule&& rule, Legal&& legal,
-                                   Diagnostics& diagnostics) {
+                                   Diag& diagnostics) {
   using Accepted = std::invoke_result_t<Legal&, const Op&>;
   static_assert(std::is_convertible_v<Accepted, bool>,
                 "a conversion legality predicate must return bool");
@@ -280,7 +273,7 @@ std::optional<std::size_t> convert(Fn& fn, Rule&& rule, Legal&& legal,
 // the final legality check are atomic at the Mod boundary.
 template <typename Rule, typename Legal>
 std::optional<std::size_t> convert(Mod& mod, Rule&& rule, Legal&& legal,
-                                   Diagnostics& diagnostics) {
+                                   Diag& diagnostics) {
   using Accepted = std::invoke_result_t<Legal&, const Op&>;
   static_assert(std::is_convertible_v<Accepted, bool>,
                 "a conversion legality predicate must return bool");
@@ -302,7 +295,7 @@ std::optional<std::size_t> convert(Mod& mod, Rule&& rule, Legal&& legal,
 // successful no-op.
 template <typename Mapper>
 std::optional<std::size_t> map_calls(Fn& fn, Mapper&& mapper,
-                                     Diagnostics& diagnostics) {
+                                     Diag& diagnostics) {
   using Mapped = std::invoke_result_t<Mapper&, const Op&>;
   static_assert(
       std::is_convertible_v<Mapped, std::optional<joggle::Mod::FnDecl>>,
@@ -311,7 +304,7 @@ std::optional<std::size_t> map_calls(Fn& fn, Mapper&& mapper,
 
   return rewrite(
       fn,
-      [&](const Op& op, Fn::Edit& edit, Diagnostics&) {
+      [&](const Op& op, Fn::Edit& edit, Diag&) {
         std::optional<joggle::Mod::FnDecl> replacement =
             std::invoke(mapper, op);
         if (!replacement || *replacement == op.callee()) {
@@ -326,7 +319,7 @@ std::optional<std::size_t> map_calls(Fn& fn, Mapper&& mapper,
 // Applies the same convenience mapping through the Mod rewrite transaction.
 template <typename Mapper>
 std::optional<std::size_t> map_calls(Mod& mod, Mapper&& mapper,
-                                     Diagnostics& diagnostics) {
+                                     Diag& diagnostics) {
   using Mapped = std::invoke_result_t<Mapper&, const Op&>;
   static_assert(
       std::is_convertible_v<Mapped, std::optional<joggle::Mod::FnDecl>>,
@@ -335,7 +328,7 @@ std::optional<std::size_t> map_calls(Mod& mod, Mapper&& mapper,
 
   return rewrite(
       mod,
-      [&](const Op& op, Fn::Edit& edit, Diagnostics&) {
+      [&](const Op& op, Fn::Edit& edit, Diag&) {
         std::optional<joggle::Mod::FnDecl> replacement =
             std::invoke(mapper, op);
         if (!replacement || *replacement == op.callee()) {
@@ -350,7 +343,7 @@ std::optional<std::size_t> map_calls(Mod& mod, Mapper&& mapper,
 inline std::optional<std::size_t> replace_calls(Fn& fn,
                                                 const joggle::Mod::FnDecl& from,
                                                 const joggle::Mod::FnDecl& to,
-                                                Diagnostics& diagnostics) {
+                                                Diag& diagnostics) {
   return map_calls(
       fn,
       [&](const Op& op) -> std::optional<joggle::Mod::FnDecl> {
@@ -363,7 +356,7 @@ inline std::optional<std::size_t> replace_calls(Fn& fn,
 inline std::optional<std::size_t> replace_calls(Mod& mod,
                                                 const joggle::Mod::FnDecl& from,
                                                 const joggle::Mod::FnDecl& to,
-                                                Diagnostics& diagnostics) {
+                                                Diag& diagnostics) {
   return map_calls(
       mod,
       [&](const Op& op) -> std::optional<joggle::Mod::FnDecl> {

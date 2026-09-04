@@ -35,7 +35,7 @@ add_library(joggle
   src/prelude.cpp
   "${CMAKE_CURRENT_BINARY_DIR}/generated/prelude_source.cpp"
   src/compiler.cpp
-  src/diagnostic.cpp
+  src/diag.cpp
   src/domain.cpp
   src/equivalence.cpp
   src/execution.cpp

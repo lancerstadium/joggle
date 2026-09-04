@@ -140,7 +140,7 @@ The low-level operation is intentionally value-oriented:
 ```cpp
 std::optional<std::size_t> replace(
     Fn& subject, const Fn& before, const Fn& after,
-    Diagnostics& diagnostics);
+    Diag& diagnostics);
 ```
 
 It returns the number of committed matches. Zero is a successful no-op and

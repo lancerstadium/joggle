@@ -29,7 +29,7 @@ bool is_removal(const std::filesystem::path& path) {
 
 std::optional<std::filesystem::path>
 create_staging_directory(const std::filesystem::path& parent,
-                         Diagnostics& diagnostics) {
+                         Diag& diagnostics) {
   std::error_code error;
   std::filesystem::create_directories(parent, error);
   if (error) {
@@ -86,7 +86,7 @@ bool valid_data_digest(std::string_view digest) {
 }
 
 std::optional<Bytes> read_data_file(const std::filesystem::path& path,
-                                    Diagnostics& diagnostics) {
+                                    Diag& diagnostics) {
   std::ifstream input(path, std::ios::binary);
   if (!input) {
     diagnostics.report("cannot open Mod data '" + path.string() + "'");
@@ -108,7 +108,7 @@ std::optional<Bytes> read_data_file(const std::filesystem::path& path,
 }
 
 bool load_mod_data(const std::filesystem::path& identity, Mod& mod,
-                   Diagnostics& diagnostics) {
+                   Diag& diagnostics) {
   const std::filesystem::path directory = identity / "data";
   std::error_code error;
   if (!std::filesystem::exists(directory, error)) {
@@ -159,7 +159,7 @@ bool load_mod_data(const std::filesystem::path& identity, Mod& mod,
 }
 
 bool write_mod_data(const std::filesystem::path& identity, const Mod& mod,
-                    Diagnostics& diagnostics) {
+                    Diag& diagnostics) {
   const auto names = mod.data();
   if (names.empty()) {
     return true;
@@ -207,7 +207,7 @@ bool write_mod_data(const std::filesystem::path& identity, const Mod& mod,
 
 std::optional<InstalledMod> read_installed(const std::filesystem::path& root,
                                            const std::filesystem::path& source,
-                                           Diagnostics& diagnostics) {
+                                           Diag& diagnostics) {
   std::ifstream input(source, std::ios::binary);
   if (!input) {
     diagnostics.report("cannot open installed mod '" + source.string() + "'");
@@ -276,7 +276,7 @@ bool empty_directory(const std::filesystem::path& path) {
 }
 
 std::optional<std::string> file_digest(const std::filesystem::path& path,
-                                       Diagnostics& diagnostics) {
+                                       Diag& diagnostics) {
   std::ifstream input(path, std::ios::binary);
   if (!input) {
     diagnostics.report("cannot open native library '" + path.string() + "'");
@@ -292,7 +292,7 @@ std::optional<std::string> file_digest(const std::filesystem::path& path,
 }
 
 bool native_matches(const std::filesystem::path& destination,
-                    std::string_view expected, Diagnostics& diagnostics) {
+                    std::string_view expected, Diag& diagnostics) {
   std::error_code error;
   if (!std::filesystem::is_regular_file(destination, error) || error) {
     diagnostics.report("installed native is missing its library: '" +
@@ -309,8 +309,7 @@ bool native_matches(const std::filesystem::path& destination,
 }
 
 bool install_native(const std::filesystem::path& identity,
-                    const std::filesystem::path& source,
-                    Diagnostics& diagnostics) {
+                    const std::filesystem::path& source, Diag& diagnostics) {
   const auto digest = file_digest(source, diagnostics);
   if (!digest) {
     return false;
@@ -408,8 +407,7 @@ std::string_view native_file_name() {
 }
 
 std::vector<std::filesystem::path>
-native_candidates(const std::filesystem::path& mod_source,
-                  Diagnostics& diagnostics) {
+native_candidates(const std::filesystem::path& mod_source, Diag& diagnostics) {
   std::vector<std::filesystem::path> result;
   const std::filesystem::path identity = mod_source.parent_path();
   const std::filesystem::path adjacent =
@@ -471,12 +469,12 @@ native_candidates(const std::filesystem::path& mod_source,
 }
 
 std::optional<std::string> native_digest(const std::filesystem::path& library,
-                                         Diagnostics& diagnostics) {
+                                         Diag& diagnostics) {
   return file_digest(library, diagnostics);
 }
 
 std::vector<InstalledMod> installed_mods(const std::filesystem::path& root,
-                                         Diagnostics& diagnostics) {
+                                         Diag& diagnostics) {
   std::vector<InstalledMod> result;
   std::error_code error;
   if (!std::filesystem::exists(root, error)) {
@@ -524,7 +522,7 @@ std::vector<InstalledMod> installed_mods(const std::filesystem::path& root,
 
 std::optional<InstalledMod>
 resolve_mod(std::span<const std::filesystem::path> roots, std::string_view name,
-            VersionRange range, Diagnostics& diagnostics) {
+            VersionRange range, Diag& diagnostics) {
   std::vector<InstalledMod> candidates;
   for (const std::filesystem::path& root : roots) {
     auto installed = installed_mods(root, diagnostics);
@@ -562,8 +560,7 @@ resolve_mod(std::span<const std::filesystem::path> roots, std::string_view name,
 
 std::optional<InstalledMod>
 resolve_mod(std::span<const std::filesystem::path> roots, std::string_view name,
-            Version version, std::string_view digest,
-            Diagnostics& diagnostics) {
+            Version version, std::string_view digest, Diag& diagnostics) {
   std::optional<InstalledMod> result;
   for (const std::filesystem::path& root : roots) {
     auto installed = installed_mods(root, diagnostics);
@@ -582,8 +579,7 @@ resolve_mod(std::span<const std::filesystem::path> roots, std::string_view name,
 
 std::optional<std::filesystem::path>
 install_mod(const std::filesystem::path& root, const Mod& mod,
-            Diagnostics& diagnostics,
-            std::optional<std::filesystem::path> native) {
+            Diag& diagnostics, std::optional<std::filesystem::path> native) {
   const std::filesystem::path version =
       root / std::string(mod.name()) / to_string(mod.version());
   std::error_code error;
@@ -691,7 +687,7 @@ install_mod(const std::filesystem::path& root, const Mod& mod,
 }
 
 std::optional<Mod> read_mod_bundle(const std::filesystem::path& directory,
-                                   Diagnostics& diagnostics) {
+                                   Diag& diagnostics) {
   std::error_code error;
   const auto status = std::filesystem::symlink_status(directory, error);
   if (error || !std::filesystem::is_directory(status) ||
@@ -723,7 +719,7 @@ std::optional<Mod> read_mod_bundle(const std::filesystem::path& directory,
 
 std::optional<std::filesystem::path>
 write_mod_bundle(const std::filesystem::path& directory, const Mod& mod,
-                 Diagnostics& diagnostics) {
+                 Diag& diagnostics) {
   std::error_code error;
   if (std::filesystem::exists(directory, error)) {
     diagnostics.report("Mod bundle destination already exists: '" +
@@ -770,7 +766,7 @@ write_mod_bundle(const std::filesystem::path& directory, const Mod& mod,
 }
 
 bool remove_mod(const std::filesystem::path& root, std::string_view name,
-                Version version, Diagnostics& diagnostics) {
+                Version version, Diag& diagnostics) {
   const std::filesystem::path mod_directory = root / std::string(name);
   const std::string version_text = to_string(version);
   const std::filesystem::path target = mod_directory / version_text;

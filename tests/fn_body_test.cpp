@@ -121,7 +121,7 @@ int main() {
   joggle::Compiler compiler;
   const auto fn = load_fn(compiler, source);
   if (!fn) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 
@@ -271,7 +271,7 @@ int main() {
           ? inline_roundtrip.materialize("inline_artifact.compiled_inline")
           : std::nullopt;
   if (!replayed_inline) {
-    inline_roundtrip.diagnostics().print(std::cerr);
+    inline_roundtrip.diag().print(std::cerr);
   }
   ok &= expect(inline_text.find("=>") != std::string::npos && replayed_inline &&
                    inline_roundtrip.verify(*replayed_inline),
@@ -306,21 +306,21 @@ mod invalid_lambda@1.0.0 {
           ? invalid_lambda.materialize("invalid_lambda.mismatched")
           : std::nullopt;
   const bool reports_capture = std::any_of(
-      invalid_lambda.diagnostics().entries().begin(),
-      invalid_lambda.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      invalid_lambda.diag().issues().begin(),
+      invalid_lambda.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("undefined local value 'input'") !=
                std::string::npos;
       });
   const bool reports_mismatch = std::any_of(
-      invalid_lambda.diagnostics().entries().begin(),
-      invalid_lambda.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      invalid_lambda.diag().issues().begin(),
+      invalid_lambda.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("inline fn") != std::string::npos &&
                diagnostic.message.find("does not match") != std::string::npos;
       });
   if (captured || mismatched || !reports_capture || !reports_mismatch) {
-    invalid_lambda.diagnostics().print(std::cerr);
+    invalid_lambda.diag().print(std::cerr);
   }
   ok &= expect(invalid_lambda_linked && !captured && !mismatched &&
                    reports_capture && reports_mismatch,
@@ -348,9 +348,9 @@ mod ambiguous_lambda@1.0.0 {
           ? ambiguous_lambda.materialize("ambiguous_lambda.use")
           : std::nullopt;
   const bool reports_lambda_ambiguity =
-      std::any_of(ambiguous_lambda.diagnostics().entries().begin(),
-                  ambiguous_lambda.diagnostics().entries().end(),
-                  [](const joggle::Diagnostic& diagnostic) {
+      std::any_of(ambiguous_lambda.diag().issues().begin(),
+                  ambiguous_lambda.diag().issues().end(),
+                  [](const joggle::Issue& diagnostic) {
                     return diagnostic.message.find("ambiguous between") !=
                            std::string::npos;
                   });
@@ -358,7 +358,7 @@ mod ambiguous_lambda@1.0.0 {
                "a lambda remains ambiguous when annotations and surrounding "
                "result context cannot select one overload");
 
-  joggle::Diagnostics duplicate_lambda_diagnostics;
+  joggle::Diag duplicate_lambda_diagnostics;
   const auto duplicate_lambda = joggle::parse_mod(R"(
 joggle 1;
 mod duplicate_lambda@1.0.0 {
@@ -490,7 +490,7 @@ mod duplicate_lambda@1.0.0 {
       "a higher-order call propagates its inferred callable type "
       "into generic and overloaded fn arguments");
   const std::string mod_text = mod ? joggle::format(*mod) : "";
-  joggle::Diagnostics mod_roundtrip_diagnostics;
+  joggle::Diag mod_roundtrip_diagnostics;
   const auto mod_roundtrip = joggle::parse_mod(
       mod_text, mod_roundtrip_diagnostics, "logic-roundtrip.joggle");
   ok &= expect(mod_roundtrip &&
@@ -499,7 +499,7 @@ mod duplicate_lambda@1.0.0 {
                                  "-> (T) -> U;") != std::string::npos &&
                    joggle::format(*mod_roundtrip) == mod_text,
                "fn types format and parse canonically");
-  joggle::Diagnostics invalid_callback_diagnostics;
+  joggle::Diag invalid_callback_diagnostics;
   const auto invalid_callback = joggle::parse_mod(
       R"(
 joggle 1;
@@ -553,7 +553,7 @@ mod invalid_callback@1.0.0 {
   }
   ok &= expect(rejected_fn_name, "Fn formatting rejects a non-DSL member name");
 
-  joggle::Diagnostics roundtrip_diagnostics;
+  joggle::Diag roundtrip_diagnostics;
   const std::string canonical = joggle::format(*mod);
   const auto roundtrip =
       joggle::parse_mod(canonical, roundtrip_diagnostics, "canonical.joggle");
@@ -686,10 +686,10 @@ mod cfg@1.0.0 {
   }
 }
 )";
-  joggle::Diagnostics cfg_diagnostics;
+  joggle::Diag cfg_diagnostics;
   const auto cfg = joggle::parse_mod(cfg_source, cfg_diagnostics, "cfg.joggle");
   const std::string cfg_canonical = cfg ? joggle::format(*cfg) : std::string{};
-  joggle::Diagnostics cfg_roundtrip_diagnostics;
+  joggle::Diag cfg_roundtrip_diagnostics;
   const auto cfg_roundtrip =
       cfg ? joggle::parse_mod(cfg_canonical, cfg_roundtrip_diagnostics,
                               "cfg-canonical.joggle")
@@ -929,9 +929,9 @@ mod invalid_effect_source@1.0.0 {
           ? invalid_effect_source.materialize("invalid_effect_source.invalid")
           : std::nullopt;
   const bool reports_effect_reuse = std::any_of(
-      invalid_effect_source.diagnostics().entries().begin(),
-      invalid_effect_source.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      invalid_effect_source.diag().issues().begin(),
+      invalid_effect_source.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("more than one consuming use") !=
                std::string::npos;
       });
@@ -940,7 +940,7 @@ mod invalid_effect_source@1.0.0 {
                "source materialization rejects reusing one effect token on "
                "the same control-flow path");
 
-  joggle::Diagnostics incomplete_return_diagnostics;
+  joggle::Diag incomplete_return_diagnostics;
   const auto incomplete_return = joggle::parse_mod(
       R"(
 joggle 1;
@@ -955,16 +955,16 @@ mod incomplete_return@1.0.0 {
 )",
       incomplete_return_diagnostics, "incomplete-return.joggle");
   const bool reports_incomplete_return = std::any_of(
-      incomplete_return_diagnostics.entries().begin(),
-      incomplete_return_diagnostics.entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      incomplete_return_diagnostics.issues().begin(),
+      incomplete_return_diagnostics.issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("path that does not return") !=
                std::string::npos;
       });
   ok &= expect(!incomplete_return && reports_incomplete_return,
                "structured fns reject a fallthrough path");
 
-  joggle::Diagnostics unreachable_statement_diagnostics;
+  joggle::Diag unreachable_statement_diagnostics;
   const auto unreachable_statement = joggle::parse_mod(
       R"(
 joggle 1;
@@ -981,9 +981,9 @@ mod unreachable_statement@1.0.0 {
 )",
       unreachable_statement_diagnostics, "unreachable-statement.joggle");
   const bool reports_unreachable_statement =
-      std::any_of(unreachable_statement_diagnostics.entries().begin(),
-                  unreachable_statement_diagnostics.entries().end(),
-                  [](const joggle::Diagnostic& diagnostic) {
+      std::any_of(unreachable_statement_diagnostics.issues().begin(),
+                  unreachable_statement_diagnostics.issues().end(),
+                  [](const joggle::Issue& diagnostic) {
                     return diagnostic.message.find("unreachable statement") !=
                            std::string::npos;
                   });
@@ -1006,9 +1006,9 @@ mod missing_literal@1.0.0 {
           ? missing_literal.materialize("missing_literal.choose")
           : std::optional<joggle::Fn>{};
   const bool reports_missing_literal =
-      std::any_of(missing_literal.diagnostics().entries().begin(),
-                  missing_literal.diagnostics().entries().end(),
-                  [](const joggle::Diagnostic& diagnostic) {
+      std::any_of(missing_literal.diag().issues().begin(),
+                  missing_literal.diag().issues().end(),
+                  [](const joggle::Issue& diagnostic) {
                     return diagnostic.message.find("no visible literal fn") !=
                            std::string::npos;
                   });
@@ -1049,9 +1049,9 @@ mod ambiguous_literal@1.0.0 {
           ? ambiguous_literal.materialize("ambiguous_literal.choose")
           : std::optional<joggle::Fn>{};
   const bool reports_ambiguous_literal = std::any_of(
-      ambiguous_literal.diagnostics().entries().begin(),
-      ambiguous_literal.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      ambiguous_literal.diag().issues().begin(),
+      ambiguous_literal.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("more than one visible literal fn") !=
                std::string::npos;
       });
@@ -1146,12 +1146,12 @@ mod loops@1.0.0 {
   }
 }
 )";
-  joggle::Diagnostics loop_parse_diagnostics;
+  joggle::Diag loop_parse_diagnostics;
   const auto loop_mod =
       joggle::parse_mod(loop_source, loop_parse_diagnostics, "loops.joggle");
   const std::string loop_canonical =
       loop_mod ? joggle::format(*loop_mod) : std::string{};
-  joggle::Diagnostics loop_roundtrip_diagnostics;
+  joggle::Diag loop_roundtrip_diagnostics;
   const auto loop_roundtrip =
       loop_mod ? joggle::parse_mod(loop_canonical, loop_roundtrip_diagnostics,
                                    "loops-canonical.joggle")
@@ -1237,7 +1237,7 @@ mod loops@1.0.0 {
       "Known break and continue execute as compiler control without "
       "entering the residual CFG");
 
-  joggle::Diagnostics outside_loop_diagnostics;
+  joggle::Diag outside_loop_diagnostics;
   const auto outside_loop =
       joggle::parse_mod(R"(
 joggle 1;
@@ -1249,9 +1249,9 @@ mod outside_loop@1.0.0 {
 )",
                         outside_loop_diagnostics, "outside-loop.joggle");
   const bool reports_outside_loop = std::any_of(
-      outside_loop_diagnostics.entries().begin(),
-      outside_loop_diagnostics.entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      outside_loop_diagnostics.issues().begin(),
+      outside_loop_diagnostics.issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("only valid inside a structured loop") !=
                std::string::npos;
       });
@@ -1363,7 +1363,7 @@ mod cyclic_mixed_loop@1.0.0 {
                                           {*initial_phase})
           : std::optional<joggle::Fn>{};
   if (!cyclic_mixed_loop_fn) {
-    cyclic_mixed_loop.diagnostics().print(std::cerr);
+    cyclic_mixed_loop.diag().print(std::cerr);
   }
   std::vector<bool> cyclic_bool_literals;
   std::vector<std::int64_t> cyclic_integer_literals;
@@ -1489,19 +1489,18 @@ mod bounded_loop@1.0.0 {
       bounded_loop_linked
           ? bounded_loop.materialize("bounded_loop.never_finishes")
           : std::optional<joggle::Fn>{};
-  const bool reports_loop_limit =
-      std::any_of(bounded_loop.diagnostics().entries().begin(),
-                  bounded_loop.diagnostics().entries().end(),
-                  [](const joggle::Diagnostic& diagnostic) {
-                    return diagnostic.message.find(
-                               "compile-time while iteration limit exceeded") !=
-                           std::string::npos;
-                  });
+  const bool reports_loop_limit = std::any_of(
+      bounded_loop.diag().issues().begin(), bounded_loop.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
+        return diagnostic.message.find(
+                   "compile-time while iteration limit exceeded") !=
+               std::string::npos;
+      });
   ok &= expect(bounded_loop_linked && !never_finishes && reports_loop_limit,
                "Known loops fail deterministically when their evaluation "
                "budget is exhausted");
 
-  joggle::Diagnostics invalid_cfg_diagnostics;
+  joggle::Diag invalid_cfg_diagnostics;
   const auto invalid_cfg =
       joggle::parse_mod(R"(
 joggle 1;
@@ -1517,16 +1516,16 @@ mod invalid_cfg@1.0.0 {
 )",
                         invalid_cfg_diagnostics, "invalid-cfg.joggle");
   ok &= expect(!invalid_cfg && !invalid_cfg_diagnostics.ok() &&
-                   std::any_of(invalid_cfg_diagnostics.entries().begin(),
-                               invalid_cfg_diagnostics.entries().end(),
-                               [](const joggle::Diagnostic& diagnostic) {
+                   std::any_of(invalid_cfg_diagnostics.issues().begin(),
+                               invalid_cfg_diagnostics.issues().end(),
+                               [](const joggle::Issue& diagnostic) {
                                  return diagnostic.message.find(
                                             "edge provides 0") !=
                                         std::string::npos;
                                }),
                "CFG verification rejects a block-edge arity mismatch");
 
-  joggle::Diagnostics legacy_diagnostics;
+  joggle::Diag legacy_diagnostics;
   const auto legacy =
       joggle::parse_mod("joggle 1; mod legacy@1.0.0 { op old(body: region); }",
                         legacy_diagnostics, "legacy.joggle");
@@ -1546,7 +1545,7 @@ mod logic@1.0.0 {
 )";
   joggle::Compiler invalid;
   const auto invalid_fn = load_fn(invalid, undefined);
-  const auto invalid_diagnostics = invalid.diagnostics().entries();
+  const auto invalid_diagnostics = invalid.diag().issues();
   ok &=
       expect(!invalid_fn && !invalid.ok() && !invalid_diagnostics.empty() &&
                  invalid_diagnostics.front().source.has_value() &&
@@ -1574,7 +1573,7 @@ mod logic@1.0.0 {
   const auto unqualified_fn = unqualified_linked
                                   ? unqualified.materialize("main")
                                   : std::optional<joggle::Fn>{};
-  const auto unqualified_diagnostics = unqualified.diagnostics().entries();
+  const auto unqualified_diagnostics = unqualified.diag().issues();
   ok &= expect(!unqualified_fn && !unqualified_diagnostics.empty() &&
                    unqualified_diagnostics.back().message.find("mod.member") !=
                        std::string::npos,
@@ -1721,7 +1720,7 @@ mod dependent@1.0.0 {
     auto edit = inconsistent_fn->edit();
     const auto value = edit.append(*inconsistent_input, {*width7}, {*word8});
     edit.ret(inconsistent_fn->entry(), {value.result(0)});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     inconsistent_rejected = !edit.commit(diagnostics) && !diagnostics.ok();
   }
   ok &= expect(inconsistent_rejected && inconsistent_fn->arguments().empty() &&
@@ -1747,7 +1746,7 @@ mod dependent@1.0.0 {
     auto edit = defaulted_fn->edit();
     const auto value = edit.append(*defaulted_input);
     edit.ret(defaulted_fn->entry(), {value.result(0)});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       return EXIT_FAILURE;
     }
@@ -1775,7 +1774,7 @@ mod dependent@1.0.0 {
     }
     const auto value = edit.append(*named_input, {*width}).value();
     edit.ret(named_fn->entry(), {value});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       return EXIT_FAILURE;
     }
@@ -1983,7 +1982,7 @@ mod computed@1.0.0 {
       !compile_time_host_fn || !host_double || !main_width || !packed_width ||
       !aligned_width || !compile_time_operator_width ||
       !compile_time_branch_width || !compile_time_host_width) {
-    computed.diagnostics().print(std::cerr);
+    computed.diag().print(std::cerr);
   }
   ok &= expect(
       computed_fn && packed_fn && aligned_fn && sum_fn && quotient_fn &&
@@ -2059,7 +2058,7 @@ mod projected@1.0.0 {
   const std::string format_text =
       format_mod ? joggle::format(*format_mod) : std::string{};
   if (!encode13 || !align13) {
-    projected.diagnostics().print(std::cerr);
+    projected.diag().print(std::cerr);
   }
   ok &= expect(
       encode13 && align13 &&
@@ -2104,13 +2103,12 @@ mod missing_field@1.0.0 {
   const auto missing_field_fn =
       missing_field_linked ? missing_field.materialize("missing_field.main")
                            : std::nullopt;
-  const bool reports_missing_field =
-      std::any_of(missing_field.diagnostics().entries().begin(),
-                  missing_field.diagnostics().entries().end(),
-                  [](const joggle::Diagnostic& diagnostic) {
-                    return diagnostic.message.find(
-                               "has no derived parameter") != std::string::npos;
-                  });
+  const bool reports_missing_field = std::any_of(
+      missing_field.diag().issues().begin(),
+      missing_field.diag().issues().end(), [](const joggle::Issue& diagnostic) {
+        return diagnostic.message.find("has no derived parameter") !=
+               std::string::npos;
+      });
   ok &=
       expect(missing_field_linked && !missing_field_fn && reports_missing_field,
              "generic computed fields are checked against the bound type");
@@ -2125,7 +2123,7 @@ mod ill_typed_field@1.0.0 {
 }
 )",
                       "ill-typed-field.joggle");
-  ok &= expect(!ill_typed_field.link() && !ill_typed_field.diagnostics().ok(),
+  ok &= expect(!ill_typed_field.link() && !ill_typed_field.diag().ok(),
                "computed fields are checked against their declared domains");
 
   joggle::Compiler recursive_fn;
@@ -2143,9 +2141,8 @@ mod recursive_fn@1.0.0 {
                    "recursive-fn.joggle");
   const bool recursive_linked = recursive_fn.link();
   const bool reports_fn_cycle = std::any_of(
-      recursive_fn.diagnostics().entries().begin(),
-      recursive_fn.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      recursive_fn.diag().issues().begin(), recursive_fn.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("pure fn cycle") != std::string::npos;
       });
   ok &= expect(!recursive_linked && reports_fn_cycle,
@@ -2191,7 +2188,7 @@ mod imported_fn@1.0.0 {
                 .get<std::int64_t>("width")
           : std::optional<std::int64_t>{};
   if (!imported_fn_fn || !imported_width) {
-    imported_fn.diagnostics().print(std::cerr);
+    imported_fn.diag().print(std::cerr);
   }
   ok &= expect(imported_fn_fn && imported_width && *imported_width == 16,
                "imported pure fns resolve in their declaring mod");
@@ -2222,7 +2219,7 @@ mod imported_operator@1.0.0 {
           ? imported_operator.materialize("imported_operator.main")
           : std::nullopt;
   if (!imported_operator_fn) {
-    imported_operator.diagnostics().print(std::cerr);
+    imported_operator.diag().print(std::cerr);
   }
   ok &=
       expect(imported_operator_fn && imported_operator_fn->ops().size() == 1U &&
@@ -2255,9 +2252,9 @@ mod ambiguous_operator@1.0.0 {
           ? ambiguous_operator.materialize("ambiguous_operator.main")
           : std::nullopt;
   const bool reports_operator_ambiguity = std::any_of(
-      ambiguous_operator.diagnostics().entries().begin(),
-      ambiguous_operator.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      ambiguous_operator.diag().issues().begin(),
+      ambiguous_operator.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("duplicate fn overload '+'") !=
                std::string::npos;
       });
@@ -2283,9 +2280,9 @@ mod unsafe_expression@1.0.0 {
       unsafe_linked ? unsafe_expression.materialize("unsafe_expression.main")
                     : std::nullopt;
   const bool reports_division_by_zero = std::any_of(
-      unsafe_expression.diagnostics().entries().begin(),
-      unsafe_expression.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      unsafe_expression.diag().issues().begin(),
+      unsafe_expression.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("division by zero") != std::string::npos;
       });
   ok &= expect(unsafe_linked && !unsafe_fn && reports_division_by_zero,
@@ -2307,13 +2304,12 @@ mod dynamic_at@1.0.0 {
   const auto dynamic_at_fn = dynamic_at_linked
                                  ? dynamic_at.materialize("dynamic_at.invalid")
                                  : std::nullopt;
-  const bool reports_dynamic_at =
-      std::any_of(dynamic_at.diagnostics().entries().begin(),
-                  dynamic_at.diagnostics().entries().end(),
-                  [](const joggle::Diagnostic& diagnostic) {
-                    return diagnostic.message.find("compile-time evaluation") !=
-                           std::string::npos;
-                  });
+  const bool reports_dynamic_at = std::any_of(
+      dynamic_at.diag().issues().begin(), dynamic_at.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
+        return diagnostic.message.find("compile-time evaluation") !=
+               std::string::npos;
+      });
   ok &= expect(dynamic_at_linked && !dynamic_at_fn && reports_dynamic_at,
                "@ rejects a Residual value instead of changing its stage");
 
@@ -2345,9 +2341,8 @@ mod guarded_host@1.0.0 {
           ? guarded_host.materialize("guarded_host.invalid")
           : std::nullopt;
   const bool reports_guarded_host = std::any_of(
-      guarded_host.diagnostics().entries().begin(),
-      guarded_host.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      guarded_host.diag().issues().begin(), guarded_host.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find(
                    "guarded and cannot execute under Residual control") !=
                std::string::npos;
@@ -2414,7 +2409,7 @@ mod list_evaluation@1.0.0 {
   const std::string list_evaluation_text =
       list_evaluation_mod ? joggle::format(*list_evaluation_mod)
                           : std::string{};
-  joggle::Diagnostics list_evaluation_roundtrip_diagnostics;
+  joggle::Diag list_evaluation_roundtrip_diagnostics;
   const auto list_evaluation_roundtrip =
       list_evaluation_mod
           ? joggle::parse_mod(list_evaluation_text,
@@ -2441,7 +2436,7 @@ mod list_evaluation@1.0.0 {
                          ? list_evaluation.materialize("list_evaluation.empty")
                          : std::nullopt;
   if (!populated || !empty) {
-    list_evaluation.diagnostics().print(std::cerr);
+    list_evaluation.diag().print(std::cerr);
   }
   const auto populated_width =
       populated ? populated->result_types().front().get<std::int64_t>("width")
@@ -2545,13 +2540,13 @@ mod staged_control@1.0.0 {
   }
 }
 )";
-  joggle::Diagnostics staged_control_parse_diagnostics;
+  joggle::Diag staged_control_parse_diagnostics;
   const auto staged_control_mod =
       joggle::parse_mod(staged_control_source, staged_control_parse_diagnostics,
                         "staged-control.joggle");
   const std::string staged_control_text =
       staged_control_mod ? joggle::format(*staged_control_mod) : std::string{};
-  joggle::Diagnostics staged_control_roundtrip_diagnostics;
+  joggle::Diag staged_control_roundtrip_diagnostics;
   const auto staged_control_roundtrip =
       staged_control_mod
           ? joggle::parse_mod(staged_control_text,
@@ -2659,7 +2654,7 @@ mod staged_control@1.0.0 {
           : std::nullopt;
   if (!staged_control_linked || !specialized || !pipeline || !residual_count ||
       !empty_residual_count || !residual_control || !materialized_index) {
-    staged_control.diagnostics().print(std::cerr);
+    staged_control.diag().print(std::cerr);
   }
   ok &= expect(
       staged_control_mod && staged_control_roundtrip &&
@@ -2763,7 +2758,7 @@ mod explicit_staging@1.0.0 {
           ? explicit_staging.materialize("explicit_staging.staged")
           : std::nullopt;
   if (!staged) {
-    explicit_staging.diagnostics().print(std::cerr);
+    explicit_staging.diag().print(std::cerr);
   }
   ok &= expect(explicit_staging_linked && staged &&
                    explicit_staging.verify(*staged) &&
@@ -2776,7 +2771,7 @@ mod explicit_staging@1.0.0 {
           ? explicit_staging.materialize("explicit_staging.staged_lambda")
           : std::nullopt;
   if (!staged_lambda || inspected_lambda_ops != 1U) {
-    explicit_staging.diagnostics().print(std::cerr);
+    explicit_staging.diag().print(std::cerr);
   }
   ok &= expect(staged_lambda && explicit_staging.verify(*staged_lambda) &&
                    staged_lambda->ops().size() == 1U &&
@@ -2801,9 +2796,9 @@ mod explicit_staging@1.0.0 {
                 "explicit_staging.staged_lambda_capture")
           : std::nullopt;
   const bool reports_staged_capture = std::any_of(
-      explicit_staging.diagnostics().entries().begin(),
-      explicit_staging.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      explicit_staging.diag().issues().begin(),
+      explicit_staging.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("undefined local value 'input'") !=
                std::string::npos;
       });
@@ -2817,14 +2812,14 @@ mod explicit_staging@1.0.0 {
           ? explicit_staging.materialize("explicit_staging.missing_stage")
           : std::nullopt;
   const bool reports_missing_stage = std::any_of(
-      explicit_staging.diagnostics().entries().begin(),
-      explicit_staging.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      explicit_staging.diag().issues().begin(),
+      explicit_staging.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("requires explicit @ evaluation") !=
                std::string::npos;
       });
   if (missing_stage || !reports_missing_stage) {
-    explicit_staging.diagnostics().print(std::cerr);
+    explicit_staging.diag().print(std::cerr);
   }
   ok &= expect(!missing_stage && reports_missing_stage && evaluations == 1U,
                "an ordinary compiler-domain call neither evaluates nor "
@@ -2846,14 +2841,13 @@ mod bounded@1.0.0 {
   const bool bounded_linked = bounded.link();
   const auto bounded_fn =
       bounded_linked ? bounded.materialize("bounded.main") : std::nullopt;
-  const bool reports_step_limit =
-      std::any_of(bounded.diagnostics().entries().begin(),
-                  bounded.diagnostics().entries().end(),
-                  [](const joggle::Diagnostic& diagnostic) {
-                    return diagnostic.message.find(
-                               "compile-time evaluation step limit exceeded") !=
-                           std::string::npos;
-                  });
+  const bool reports_step_limit = std::any_of(
+      bounded.diag().issues().begin(), bounded.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
+        return diagnostic.message.find(
+                   "compile-time evaluation step limit exceeded") !=
+               std::string::npos;
+      });
   ok &= expect(bounded.evaluation_limits().steps == limits.steps &&
                    bounded.evaluation_limits().depth == limits.depth &&
                    bounded_linked && !bounded_fn && reports_step_limit,

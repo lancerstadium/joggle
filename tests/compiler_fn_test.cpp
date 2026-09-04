@@ -210,13 +210,13 @@ mod pipeline@1.0.0 {
 )",
                "pipeline.joggle");
   if (!compiler.link()) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto test_ir = compiler.mod("test_ir");
   const auto pipeline = compiler.mod("pipeline");
   if (!test_ir || !compiler.load_native("test_ir", JOGGLE_TEST_NATIVE)) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto integer_decl = test_ir ? test_ir->type("integer") : std::nullopt;
@@ -328,7 +328,7 @@ mod pipeline@1.0.0 {
   const auto integer = compiler.make(*integer_decl, std::int64_t{8});
   auto fn = compiler.create_fn();
   if (!integer || !fn) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   auto edit = fn->edit();
@@ -336,7 +336,7 @@ mod pipeline@1.0.0 {
   const auto first = edit.append(*arith_cast_decl, {input});
   const auto second = edit.append(*arith_cast_decl, {first.result(0)});
   edit.append(*arith_cast_decl, {second.result(0)});
-  joggle::Diagnostics edit_diagnostics;
+  joggle::Diag edit_diagnostics;
   if (!edit.commit(edit_diagnostics)) {
     edit_diagnostics.print(std::cerr);
     return EXIT_FAILURE;
@@ -373,23 +373,22 @@ mod pipeline@1.0.0 {
   compiler.bind(*emit, [](const joggle::Fn& current) -> joggle::Bytes {
     return {static_cast<std::byte>(current.ops().size())};
   });
-  compiler.bind(
-      *canonicalize,
-      [arith_cast_decl](joggle::Fn current, joggle::Diagnostics& diagnostics)
-          -> std::optional<joggle::Fn> {
-        auto edit = current.edit();
-        for (const joggle::Op& op : current.ops()) {
-          if (op.callee() != *arith_cast_decl) {
-            continue;
-          }
-          edit.replace(op.result(0), op.arguments().front());
-          edit.erase(op);
-        }
-        if (!edit.commit(diagnostics)) {
-          return std::nullopt;
-        }
-        return current;
-      });
+  compiler.bind(*canonicalize,
+                [arith_cast_decl](joggle::Fn current, joggle::Diag& diagnostics)
+                    -> std::optional<joggle::Fn> {
+                  auto edit = current.edit();
+                  for (const joggle::Op& op : current.ops()) {
+                    if (op.callee() != *arith_cast_decl) {
+                      continue;
+                    }
+                    edit.replace(op.result(0), op.arguments().front());
+                    edit.erase(op);
+                  }
+                  if (!edit.commit(diagnostics)) {
+                    return std::nullopt;
+                  }
+                  return current;
+                });
   bool consumed = false;
   compiler.bind(*consume, [&](const joggle::Bytes&) { consumed = true; });
   std::size_t append_calls = 0;
@@ -576,7 +575,7 @@ mod pipeline@1.0.0 {
       "evaluation and residual calls share overloads, named "
       "arguments, defaults, variadics, multi-results, and single "
       "evaluation");
-  joggle::Diagnostics signature_diagnostics;
+  joggle::Diag signature_diagnostics;
   const std::string signature_text = joggle::format(*pipeline);
   const auto signature_roundtrip = joggle::parse_mod(
       signature_text, signature_diagnostics, "pipeline-canonical.joggle");
@@ -613,7 +612,7 @@ mod pipeline@1.0.0 {
 
   joggle::Mod mod("compiler_pipeline", {1, 0, 0});
   auto mod_main = compiler.create_fn();
-  joggle::Diagnostics mod_diagnostics;
+  joggle::Diag mod_diagnostics;
   if (!mod_main || !mod.insert("main", std::move(*mod_main), mod_diagnostics)) {
     return EXIT_FAILURE;
   }
@@ -651,7 +650,7 @@ mod pipeline@1.0.0 {
   auto* attached_body = attached_main ? mod.body(*attached_main) : nullptr;
   const auto attached_revision =
       attached_body ? std::optional{attached_body->revision()} : std::nullopt;
-  joggle::Diagnostics attached_signature_diagnostics;
+  joggle::Diag attached_signature_diagnostics;
   bool changed_signature = false;
   if (attached_body && i32) {
     auto edit = attached_body->edit();
@@ -741,14 +740,13 @@ mod source_model@1.0.0 {
     auto edit = guarded_fn->edit();
     const auto input = edit.argument(*guarded_a);
     edit.append(*guarded_identity, {input});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       return EXIT_FAILURE;
     }
   }
   guarded_compiler.verify(
-      *guarded_identity,
-      [](const joggle::Op&, joggle::Diagnostics& diagnostics) {
+      *guarded_identity, [](const joggle::Op&, joggle::Diag& diagnostics) {
         diagnostics.report("guarded compiler-fn input rejected");
         return false;
       });
@@ -757,11 +755,11 @@ mod source_model@1.0.0 {
   if (!guarded_touch) {
     return EXIT_FAILURE;
   }
-  guarded_compiler.bind(*guarded_touch, [&](joggle::Compiler&, joggle::Fn fn,
-                                            joggle::Diagnostics&) {
-    transform_called = true;
-    return fn;
-  });
+  guarded_compiler.bind(*guarded_touch,
+                        [&](joggle::Compiler&, joggle::Fn fn, joggle::Diag&) {
+                          transform_called = true;
+                          return fn;
+                        });
   const auto guarded_result =
       guarded_compiler.run<joggle::Fn>("guarded.touch", *guarded_fn);
   ok &= expect(!guarded_result && !transform_called && !guarded_compiler.ok(),
@@ -781,17 +779,17 @@ mod source_model@1.0.0 {
     if (!noop) {
       return EXIT_FAILURE;
     }
-    named_compiler.bind(
-        *noop, [&](joggle::Compiler&, joggle::Fn fn, joggle::Diagnostics&) {
-          named_called = true;
-          return fn;
-        });
+    named_compiler.bind(*noop,
+                        [&](joggle::Compiler&, joggle::Fn fn, joggle::Diag&) {
+                          named_called = true;
+                          return fn;
+                        });
   }
   const auto unqualified_result =
       named_linked && named_fn
           ? named_compiler.run<joggle::Fn>("noop", *named_fn)
           : std::optional<joggle::Fn>{};
-  const auto named_diagnostics = named_compiler.diagnostics().entries();
+  const auto named_diagnostics = named_compiler.diag().issues();
   ok &= expect(!unqualified_result && !named_called &&
                    !named_diagnostics.empty() &&
                    named_diagnostics.back().message.find("mod.member") !=
@@ -827,9 +825,9 @@ mod mismatched_overload@1.0.0 {
                               "mismatched_overload.choose", std::int64_t{1})
                         : std::optional<bool>{};
   const bool reports_mismatched_invocation = std::any_of(
-      mismatched_overload.diagnostics().entries().begin(),
-      mismatched_overload.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      mismatched_overload.diag().issues().begin(),
+      mismatched_overload.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("matches the C++ invocation") !=
                std::string::npos;
       });
@@ -883,8 +881,8 @@ mod transactional@1.0.0 {
   }
   transactional.bind(
       *mutate,
-      [token = *token](joggle::Fn current, joggle::Diagnostics& diagnostics)
-          -> std::optional<joggle::Fn> {
+      [token = *token](joggle::Fn current,
+                       joggle::Diag& diagnostics) -> std::optional<joggle::Fn> {
         auto edit = current.edit();
         edit.append(token);
         if (!edit.commit(diagnostics)) {
@@ -923,12 +921,12 @@ mod short_circuit@1.0.0 {
   const auto short_pipeline =
       short_circuit_mod ? short_circuit_mod->fn("pipeline") : std::nullopt;
   if (!short_circuit_linked || !report || !short_observe || !short_pipeline) {
-    short_circuit.diagnostics().print(std::cerr);
+    short_circuit.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   bool observed_after_failure = false;
   short_circuit.bind(*report,
-                     [](joggle::Bytes input, joggle::Diagnostics& diagnostics) {
+                     [](joggle::Bytes input, joggle::Diag& diagnostics) {
                        diagnostics.report("native fn rejected its input");
                        return input;
                      });
@@ -939,9 +937,8 @@ mod short_circuit@1.0.0 {
   const auto short_result =
       short_circuit.run<joggle::Bytes>(*short_pipeline, joggle::Bytes(3));
   const bool reports_native_failure = std::any_of(
-      short_circuit.diagnostics().entries().begin(),
-      short_circuit.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      short_circuit.diag().issues().begin(),
+      short_circuit.diag().issues().end(), [](const joggle::Issue& diagnostic) {
         return diagnostic.message == "native fn rejected its input" &&
                !diagnostic.notes.empty() &&
                diagnostic.notes.back().find(
@@ -1012,7 +1009,7 @@ mod represented@1.0.0 {
   if (!represented_linked || !target_type || !estimate_type || !measure ||
       !analyze || !represented.represent<Target>(*target_type) ||
       !represented.represent<Estimate>(*estimate_type)) {
-    represented.diagnostics().print(std::cerr);
+    represented.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   represented.bind(*measure, [](const Target& target) {
@@ -1020,7 +1017,7 @@ mod represented@1.0.0 {
   });
   const auto estimate = represented.run<Estimate>(*analyze, Target{32});
   if (!estimate || !represented.ok()) {
-    represented.diagnostics().print(std::cerr);
+    represented.diag().print(std::cerr);
   }
   ok &= expect(estimate && estimate->cycles == 32 && represented.ok(),
                "Mod types can use ordinary registered C++ values through "
@@ -1040,9 +1037,9 @@ mod represented@1.0.0 {
       missing_projection_linked && missing_projection_type &&
       !missing_projection.represent<Target>(*missing_projection_type);
   const bool reports_projection =
-      std::any_of(missing_projection.diagnostics().entries().begin(),
-                  missing_projection.diagnostics().entries().end(),
-                  [](const joggle::Diagnostic& diagnostic) {
+      std::any_of(missing_projection.diag().issues().begin(),
+                  missing_projection.diag().issues().end(),
+                  [](const joggle::Issue& diagnostic) {
                     return diagnostic.message.find("needs a projection") !=
                            std::string::npos;
                   });
@@ -1095,7 +1092,7 @@ mod parameterized_host@1.0.0 {
             ++estimate_projections;
             return std::tuple{estimate.cycles};
           })) {
-    parameterized_host.diagnostics().print(std::cerr);
+    parameterized_host.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   parameterized_host.bind(*parameterized_measure, [](const Target& target) {
@@ -1141,7 +1138,7 @@ mod lists@1.0.0 {
   const auto reverse = lists_mod ? lists_mod->fn("reverse") : std::nullopt;
   const auto sum = lists_mod ? lists_mod->fn("sum") : std::nullopt;
   if (!lists_linked || !reverse || !sum) {
-    lists.diagnostics().print(std::cerr);
+    lists.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   lists.bind(*reverse, [](std::vector<std::int64_t> values) {
@@ -1188,11 +1185,11 @@ mod mod_validation@1.0.0 {
   auto invalid_body = mod_validation.create_fn();
   if (!mod_validation_linked || !validation_word || !forbidden ||
       !validation_identity || !mod_produce || !invalid_body) {
-    mod_validation.diagnostics().print(std::cerr);
+    mod_validation.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto word = mod_validation.make(*validation_word);
-  joggle::Diagnostics invalid_body_diagnostics;
+  joggle::Diag invalid_body_diagnostics;
   if (!word) {
     return EXIT_FAILURE;
   }
@@ -1213,7 +1210,7 @@ mod mod_validation@1.0.0 {
     return EXIT_FAILURE;
   }
   mod_validation.verify(
-      *forbidden, [](const joggle::Op&, joggle::Diagnostics& diagnostics) {
+      *forbidden, [](const joggle::Op&, joggle::Diag& diagnostics) {
         diagnostics.report("forbidden call reached a Mod boundary");
         return false;
       });
@@ -1229,9 +1226,9 @@ mod mod_validation@1.0.0 {
   const auto rejected_mod_output =
       mod_validation.run<joggle::Mod>(*mod_produce);
   const bool reports_invalid_member =
-      std::any_of(mod_validation.diagnostics().entries().begin(),
-                  mod_validation.diagnostics().entries().end(),
-                  [](const joggle::Diagnostic& diagnostic) {
+      std::any_of(mod_validation.diag().issues().begin(),
+                  mod_validation.diag().issues().end(),
+                  [](const joggle::Issue& diagnostic) {
                     return diagnostic.message.find(
                                "Mod fn 'main' is invalid") != std::string::npos;
                   });
@@ -1259,9 +1256,8 @@ mod bounded@1.0.0 {
                             ? bounded.run<joggle::Bytes>(*spin, joggle::Bytes{})
                             : std::optional<joggle::Bytes>{};
   const bool reports_budget = std::any_of(
-      bounded.diagnostics().entries().begin(),
-      bounded.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      bounded.diag().issues().begin(), bounded.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("step limit") != std::string::npos;
       });
   ok &= expect(!spinning && reports_budget,
@@ -1283,9 +1279,8 @@ mod unchecked_arm@1.0.0 {
                     "unchecked-arm.joggle");
   const bool unchecked_linked = unchecked_arm.link();
   const bool reports_unselected_call = std::any_of(
-      unchecked_arm.diagnostics().entries().begin(),
-      unchecked_arm.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      unchecked_arm.diag().issues().begin(),
+      unchecked_arm.diag().issues().end(), [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("no visible overload of 'missing'") !=
                std::string::npos;
       });

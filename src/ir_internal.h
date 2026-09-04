@@ -30,19 +30,18 @@ struct FnAccess {
   static std::optional<SourceRange> location(const Op& op);
   static std::optional<ParamVal> known_value(const Val& value);
   static std::size_t argument_parameter(const Op& op, std::size_t argument);
-  static bool verify_structure(const Fn& fn, Diagnostics& diagnostics);
-  static bool verify_contracts(const Fn& fn, Diagnostics& diagnostics);
+  static bool verify_structure(const Fn& fn, Diag& diagnostics);
+  static bool verify_contracts(const Fn& fn, Diag& diagnostics);
   static bool verify_contracts(const Fn& fn, Compiler& compiler,
-                               Diagnostics& diagnostics);
+                               Diag& diagnostics);
   static void declare(Fn& fn, Mod::FnDecl declaration,
                       std::vector<Type> argument_types,
                       std::vector<Type> result_types);
   static void define(Fn& fn, std::vector<Type> argument_types,
                      std::vector<Type> result_types);
   static bool attach(Fn& fn, Mod::FnDecl declaration, Mod owner,
-                     Diagnostics& diagnostics);
-  static bool commit(Fn::Edit& edit, Compiler& compiler,
-                     Diagnostics& diagnostics);
+                     Diag& diagnostics);
+  static bool commit(Fn::Edit& edit, Compiler& compiler, Diag& diagnostics);
 };
 
 }  // namespace joggle::detail

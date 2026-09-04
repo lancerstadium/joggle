@@ -36,7 +36,7 @@ int main() {
   )",
                "testing.joggle");
   if (!compiler.link()) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 
@@ -58,17 +58,16 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  compiler.verify(*integer_schema, [](const joggle::Type& type,
-                                      joggle::Diagnostics& diagnostics) {
-    const auto width = type.get<std::int64_t>("width");
-    if (!width || *width <= 0) {
-      diagnostics.report("integer width must be positive");
-      return false;
-    }
-    return true;
-  });
-  const auto same_type = [](const joggle::Op& op,
-                            joggle::Diagnostics& diagnostics) {
+  compiler.verify(*integer_schema,
+                  [](const joggle::Type& type, joggle::Diag& diagnostics) {
+                    const auto width = type.get<std::int64_t>("width");
+                    if (!width || *width <= 0) {
+                      diagnostics.report("integer width must be positive");
+                      return false;
+                    }
+                    return true;
+                  });
+  const auto same_type = [](const joggle::Op& op, joggle::Diag& diagnostics) {
     const auto arguments = op.arguments();
     const auto results = op.results();
     if (results.empty() ||
@@ -84,7 +83,7 @@ int main() {
   compiler.verify(*cast_schema, same_type);
   compiler.verify(*marker_schema, same_type);
   compiler.bind(*canonicalize_schema,
-                [cast_schema](joggle::Fn fn, joggle::Diagnostics& diagnostics)
+                [cast_schema](joggle::Fn fn, joggle::Diag& diagnostics)
                     -> std::optional<joggle::Fn> {
                   auto edit = fn.edit();
                   for (const joggle::Op& op : fn.ops()) {
@@ -108,8 +107,8 @@ int main() {
 
   compiler.bind(
       *cleanup_schema,
-      [&compute_nodes](joggle::Fn fn, joggle::Diagnostics& diagnostics)
-          -> std::optional<joggle::Fn> {
+      [&compute_nodes](joggle::Fn fn,
+                       joggle::Diag& diagnostics) -> std::optional<joggle::Fn> {
         static_cast<void>(compute_nodes(fn));
         const auto operations = fn.ops();
         const bool has_marker = std::any_of(
@@ -136,7 +135,7 @@ int main() {
   const auto integer = compiler.make(*integer_schema, 8);
   auto fn = compiler.create_fn();
   if (!integer || !fn) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   {
@@ -146,7 +145,7 @@ int main() {
     const auto add = edit.append(*add_schema, {lhs, rhs});
     const auto cast = edit.append(*cast_schema, {add.result(0)});
     edit.append(*marker_schema, {cast.result(0)});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
@@ -165,18 +164,18 @@ int main() {
   ok &= expect(query_runs == 1U,
                "fn-local analysis executes explicitly without a side API");
 
-  compiler.bind(*abort_schema,
-                [marker_schema](joggle::Compiler&, joggle::Fn current,
-                                joggle::Diagnostics& diagnostics)
-                    -> std::optional<joggle::Fn> {
-                  const auto producer = current.ops().front();
-                  auto edit = current.edit();
-                  edit.append(*marker_schema, {producer.result(0)});
-                  if (!edit.commit(diagnostics)) {
-                    return std::nullopt;
-                  }
-                  return std::nullopt;
-                });
+  compiler.bind(
+      *abort_schema,
+      [marker_schema](joggle::Compiler&, joggle::Fn current,
+                      joggle::Diag& diagnostics) -> std::optional<joggle::Fn> {
+        const auto producer = current.ops().front();
+        auto edit = current.edit();
+        edit.append(*marker_schema, {producer.result(0)});
+        if (!edit.commit(diagnostics)) {
+          return std::nullopt;
+        }
+        return std::nullopt;
+      });
   const auto aborted = compiler.run<joggle::Fn>(*abort_schema, *fn);
   ok &= expect(!aborted, "a failing compiler fn reports failure");
   ok &= expect(fn->ops().size() == 1U,
@@ -193,11 +192,10 @@ int main() {
   if (!invalid_integer) {
     return EXIT_FAILURE;
   }
-  invalid.verify(*invalid_integer,
-                 [](const joggle::Type& type, joggle::Diagnostics&) {
-                   const auto width = type.get<std::int64_t>("width");
-                   return width && *width > 0;
-                 });
+  invalid.verify(*invalid_integer, [](const joggle::Type& type, joggle::Diag&) {
+    const auto width = type.get<std::int64_t>("width");
+    return width && *width > 0;
+  });
   ok &= expect(!invalid.make(*invalid_integer, 0) && !invalid.ok(),
                "type verifier rejection is diagnosed");
 
@@ -213,7 +211,7 @@ int main() {
     return EXIT_FAILURE;
   }
   reported.verify(*reported_integer,
-                  [](const joggle::Type&, joggle::Diagnostics& diagnostics) {
+                  [](const joggle::Type&, joggle::Diag& diagnostics) {
                     diagnostics.report("reported verifier failure");
                     return true;
                   });
@@ -249,7 +247,7 @@ mod throwing@1.0.0 {
   const auto throwing_fn = throwing.materialize("throwing.use");
   if (!throwing_linked || !throwing_integer || !throwing_cast ||
       !throwing_tag || !existing_integer || !throwing_fn) {
-    throwing.diagnostics().print(std::cerr);
+    throwing.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   throwing.verify(*throwing_integer, [](const joggle::Type&) -> bool {
@@ -262,23 +260,23 @@ mod throwing@1.0.0 {
   const auto rejected_type = throwing.make(*throwing_integer, 16);
   const auto rejected_metadata = throwing.make(*throwing_tag, 1);
   const bool rejected_fn = throwing.verify(*throwing_fn);
-  const auto& throwing_diagnostics = throwing.diagnostics().entries();
+  const auto& throwing_diagnostics = throwing.diag().issues();
   const auto thrown_diagnostics = std::count_if(
       throwing_diagnostics.begin(), throwing_diagnostics.end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("semantic verifier for") !=
                    std::string::npos &&
                diagnostic.message.find("threw") != std::string::npos;
       });
   const bool reports_unknown_exception =
       std::any_of(throwing_diagnostics.begin(), throwing_diagnostics.end(),
-                  [](const joggle::Diagnostic& diagnostic) {
+                  [](const joggle::Issue& diagnostic) {
                     return diagnostic.message.find("unknown exception") !=
                            std::string::npos;
                   });
   const bool locates_op_exception =
       std::any_of(throwing_diagnostics.begin(), throwing_diagnostics.end(),
-                  [](const joggle::Diagnostic& diagnostic) {
+                  [](const joggle::Issue& diagnostic) {
                     return diagnostic.message.find("Op verifier exception") !=
                                std::string::npos &&
                            diagnostic.source.has_value();

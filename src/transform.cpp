@@ -14,7 +14,7 @@ namespace joggle {
 namespace detail {
 
 bool validate_expression_template(const Fn& fn, std::string_view role,
-                                  Diagnostics& diagnostics) {
+                                  Diag& diagnostics) {
   const auto reject = [&](std::string reason) {
     diagnostics.report(std::string(role) + " expression template " + reason);
     return false;
@@ -208,8 +208,7 @@ bool terminator_uses(const Fn& fn, const Val& value) {
 }  // namespace
 
 std::optional<std::vector<ExprMatch>>
-match_expressions(const Fn& subject, const Fn& pattern,
-                  Diagnostics& diagnostics) {
+match_expressions(const Fn& subject, const Fn& pattern, Diag& diagnostics) {
   if (!validate_expression_template(pattern, "before", diagnostics)) {
     return std::nullopt;
   }
@@ -260,8 +259,7 @@ match_expressions(const Fn& subject, const Fn& pattern,
 
 std::optional<std::size_t>
 replace_expressions(Fn& subject, const Fn& before, const Fn& after,
-                    Diagnostics& diagnostics,
-                    std::span<const Val> allowed_roots) {
+                    Diag& diagnostics, std::span<const Val> allowed_roots) {
   if (!validate_expression_template(before, "before", diagnostics) ||
       !validate_expression_template(after, "after", diagnostics)) {
     return std::nullopt;
@@ -455,7 +453,7 @@ std::optional<Fn>
 clone(Compiler& compiler, const Fn& source,
       const std::function<std::optional<Type>(const Val&)>& map_value_type,
       const std::function<std::optional<Mod::FnDecl>(const Op&)>& map_callee,
-      Diagnostics& diagnostics) {
+      Diag& diagnostics) {
   try {
     auto destination = compiler.create_fn();
     if (!destination) {
@@ -653,7 +651,7 @@ clone(Compiler& compiler, const Fn& source,
 std::optional<Fn>
 clone(Compiler& compiler, const Fn& source,
       const std::function<std::optional<Type>(const Val&)>& map_value_type,
-      Diagnostics& diagnostics) {
+      Diag& diagnostics) {
   return clone(
       compiler, source, map_value_type,
       [](const Op& op) -> std::optional<Mod::FnDecl> { return op.callee(); },
@@ -661,12 +659,12 @@ clone(Compiler& compiler, const Fn& source,
 }
 
 std::optional<std::size_t> replace(Fn& fn, const Fn& before, const Fn& after,
-                                   Diagnostics& diagnostics) {
+                                   Diag& diagnostics) {
   return detail::replace_expressions(fn, before, after, diagnostics);
 }
 
 std::optional<std::size_t> replace(Mod& mod, const Fn& before, const Fn& after,
-                                   Diagnostics& diagnostics) {
+                                   Diag& diagnostics) {
   try {
     Mod candidate = mod;
     std::size_t changed = 0;

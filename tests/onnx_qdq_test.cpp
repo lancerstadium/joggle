@@ -53,12 +53,12 @@ int main(int argc, char** argv) {
   missing_quant.load(argv[1]);
   missing_quant.load(argv[3]);
   if (!missing_quant.link() || !missing_quant.load_native("onnx", argv[4])) {
-    missing_quant.diagnostics().print(std::cerr);
+    missing_quant.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto rejected = missing_quant.run<joggle::Mod>(
       "onnx.read", bytes, std::string{"missing_quant"});
-  const auto missing_entries = missing_quant.diagnostics().entries();
+  const auto missing_entries = missing_quant.diag().issues();
   const bool names_quant = std::any_of(
       missing_entries.begin(), missing_entries.end(), [](const auto& entry) {
         return entry.message.find("quant Mod") != std::string::npos;
@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
   const bool rejects_missing_quant =
       !rejected && !missing_quant.ok() && names_quant;
   if (!rejects_missing_quant) {
-    missing_quant.diagnostics().print(std::cerr);
+    missing_quant.diag().print(std::cerr);
   }
   ok &= expect(rejects_missing_quant,
                "QDQ import fails closed when its quant Mod is absent");
@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
   compiler.load(argv[2]);
   compiler.load(argv[3]);
   if (!compiler.link() || !compiler.load_native("onnx", argv[4])) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto model = compiler.run<joggle::Mod>("onnx.read", bytes,
@@ -84,7 +84,7 @@ int main(int argc, char** argv) {
   const auto repeated = compiler.run<joggle::Mod>(
       "onnx.read", bytes, std::string{"squeezenet_qdq"});
   if (!model || !repeated) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto main = model->fn("main");
@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
   ok &= expect(has_dependency("quant") && has_dependency("tensor"),
                "the generated Mod derives both semantic dependencies");
   if (!ok) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
   }
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

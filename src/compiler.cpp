@@ -2,7 +2,7 @@
 
 #include "call_resolution.h"
 #include "declaration_check.h"
-#include "diagnostic_internal.h"
+#include "diag_internal.h"
 #include "domain.h"
 #include "execution.h"
 #include "expr_syntax.h"
@@ -63,7 +63,7 @@ public:
   }
 
   static std::optional<DynamicLibrary> open(const std::filesystem::path& path,
-                                            Diagnostics& diagnostics) {
+                                            Diag& diagnostics) {
     DynamicLibrary result;
 #if defined(_WIN32)
     result.handle_ = LoadLibraryW(path.c_str());
@@ -142,9 +142,9 @@ bool belongs_to(const Mods& mods, const ParamVal& value) {
 
 template <typename Subject, typename Verifier>
 bool invoke_verifier(Verifier& verifier, const Subject& subject,
-                     std::string description, Diagnostics& diagnostics,
+                     std::string description, Diag& diagnostics,
                      std::optional<SourceRange> location = std::nullopt) {
-  Diagnostics reported;
+  Diag reported;
   bool accepted = false;
   try {
     accepted = verifier(subject, reported);
@@ -159,8 +159,8 @@ bool invoke_verifier(Verifier& verifier, const Subject& subject,
     reported.report("semantic verifier rejected " + description);
   }
   const bool valid = accepted && reported.ok();
-  for (const Diagnostic& entry : reported.entries()) {
-    Diagnostic diagnostic = entry;
+  for (const Issue& entry : reported.issues()) {
+    Issue diagnostic = entry;
     if (!diagnostic.source && location) {
       diagnostic.source = location;
     }
@@ -357,7 +357,7 @@ struct Compiler::State {
     NativeFn callable;
     HostEvaluation evaluation = HostEvaluation::Guarded;
   };
-  Diagnostics diagnostics;
+  Diag diagnostics;
   std::map<std::string, Mod, std::less<>> mods;
   std::map<std::string, std::filesystem::path, std::less<>> mod_sources;
   std::set<std::string, std::less<>> explicit_mods;
@@ -1422,8 +1422,7 @@ std::optional<Fn> Compiler::materialize(const Op& call) {
   return materialize(call, state_->diagnostics);
 }
 
-std::optional<Fn> Compiler::materialize(const Op& call,
-                                        Diagnostics& diagnostics) {
+std::optional<Fn> Compiler::materialize(const Op& call, Diag& diagnostics) {
   if (!state_->linked) {
     diagnostics.report("cannot construct a fn before the compiler is "
                        "linked");
@@ -1869,7 +1868,7 @@ void Compiler::bind_prelude_primitives() {
     }
     NativeFn implementation =
         [fn](Compiler& compiler, std::span<detail::ExecVal> arguments,
-             Diagnostics& diagnostics) -> std::optional<detail::ExecVals> {
+             Diag& diagnostics) -> std::optional<detail::ExecVals> {
       std::vector<detail::ParamVal> values;
       values.reserve(arguments.size());
       for (const auto& argument : arguments) {
@@ -2315,8 +2314,8 @@ Compiler::execute(Mod::FnDecl declaration,
                         std::to_string(call_site.begin.line) + ":" +
                         std::to_string(call_site.begin.column);
               }
-              detail::DiagnosticAccess::note_since(
-                  state_->diagnostics, call_diagnostics, std::move(note));
+              detail::DiagAccess::note_since(state_->diagnostics,
+                                             call_diagnostics, std::move(note));
             }
             return result;
           };
@@ -2362,6 +2361,6 @@ Compiler::execute(Mod::FnDecl declaration,
   return result;
 }
 
-const Diagnostics& Compiler::diagnostics() const { return state_->diagnostics; }
+const Diag& Compiler::diag() const { return state_->diagnostics; }
 
 }  // namespace joggle

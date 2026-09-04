@@ -35,8 +35,7 @@ std::optional<std::size_t> position(const std::vector<Val>& values,
 
 class Normalizer {
 public:
-  Normalizer(Compiler& compiler, std::size_t max_expansions,
-             Diagnostics& diagnostics)
+  Normalizer(Compiler& compiler, std::size_t max_expansions, Diag& diagnostics)
       : compiler_(compiler), max_expansions_(max_expansions),
         diagnostics_(diagnostics) {}
 
@@ -149,19 +148,19 @@ private:
         return std::nullopt;
       }
       ++expansions_;
-      Diagnostics materialization;
+      Diag materialization;
       auto body = compiler_.materialize(op, materialization);
       if (!body) {
         diagnostics_.report("cannot instantiate reference body for '" +
                             callee.symbol().qualified_name() + "'");
-        for (const auto& entry : materialization.entries()) {
+        for (const auto& entry : materialization.issues()) {
           diagnostics_.report(entry.message, entry.source);
         }
         active_.erase(identity);
         return std::nullopt;
       }
 
-      Diagnostics eligibility;
+      Diag eligibility;
       const bool expression = detail::validate_expression_template(
           *body, "reference body", eligibility);
       if (expression) {
@@ -194,7 +193,7 @@ private:
 
   Compiler& compiler_;
   std::size_t max_expansions_ = 0;
-  Diagnostics& diagnostics_;
+  Diag& diagnostics_;
   std::size_t expansions_ = 0;
   std::set<std::string> active_;
   std::vector<std::pair<Val, std::string>> memo_;
@@ -225,7 +224,7 @@ bool same_signature(const Fn& left, const Fn& right) {
 }  // namespace
 
 bool equivalent(Compiler& compiler, const Fn& left, const Fn& right,
-                Diagnostics& diagnostics, std::size_t max_expansions) {
+                Diag& diagnostics, std::size_t max_expansions) {
   if (max_expansions == 0U) {
     diagnostics.report("equivalence needs a positive expansion limit");
     return false;
@@ -259,7 +258,7 @@ bool equivalent(Compiler& compiler, const Fn& left, const Fn& right,
 }
 
 std::optional<std::size_t> replace(Compiler& compiler, Fn& fn, const Fn& before,
-                                   const Fn& after, Diagnostics& diagnostics,
+                                   const Fn& after, Diag& diagnostics,
                                    std::size_t max_expansions) {
   if (!equivalent(compiler, before, after, diagnostics, max_expansions)) {
     return std::nullopt;
@@ -269,7 +268,7 @@ std::optional<std::size_t> replace(Compiler& compiler, Fn& fn, const Fn& before,
 
 std::optional<std::size_t> replace(Compiler& compiler, Mod& mod,
                                    const Fn& before, const Fn& after,
-                                   Diagnostics& diagnostics,
+                                   Diag& diagnostics,
                                    std::size_t max_expansions) {
   if (!equivalent(compiler, before, after, diagnostics, max_expansions)) {
     return std::nullopt;

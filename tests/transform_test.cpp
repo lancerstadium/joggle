@@ -142,7 +142,7 @@ mod foreign@1.0.0 {
 )",
                "foreign.joggle");
   if (!compiler.link()) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 
@@ -200,42 +200,42 @@ mod foreign@1.0.0 {
   }
 
   bool ok = true;
-  joggle::Diagnostics valid_template_diagnostics;
+  joggle::Diag valid_template_diagnostics;
   ok &= expect(joggle::detail::validate_expression_template(
                    *expanded, "before", valid_template_diagnostics) &&
                    valid_template_diagnostics.ok(),
                "one pure returned call is a valid expression template");
 
-  joggle::Diagnostics result_template_diagnostics;
+  joggle::Diag result_template_diagnostics;
   ok &= expect(!joggle::detail::validate_expression_template(
                    *pair, "before", result_template_diagnostics) &&
                    !result_template_diagnostics.ok() &&
-                   result_template_diagnostics.entries().front().message.find(
+                   result_template_diagnostics.issues().front().message.find(
                        "exactly one result") != std::string::npos,
                "an expression template rejects multiple fn results");
 
-  joggle::Diagnostics effect_template_diagnostics;
+  joggle::Diag effect_template_diagnostics;
   ok &= expect(!joggle::detail::validate_expression_template(
                    *effect_template, "before", effect_template_diagnostics) &&
                    !effect_template_diagnostics.ok() &&
-                   effect_template_diagnostics.entries().front().message.find(
+                   effect_template_diagnostics.issues().front().message.find(
                        "effect token") != std::string::npos,
                "the first expression matcher rejects effectful templates");
 
-  joggle::Diagnostics multi_call_template_diagnostics;
+  joggle::Diag multi_call_template_diagnostics;
   ok &= expect(
       !joggle::detail::validate_expression_template(
           *multi_call_template, "before", multi_call_template_diagnostics) &&
           !multi_call_template_diagnostics.ok() &&
-          multi_call_template_diagnostics.entries().front().message.find(
+          multi_call_template_diagnostics.issues().front().message.find(
               "call with multiple results") != std::string::npos,
       "an expression DAG rejects calls whose result has tuple semantics");
 
-  joggle::Diagnostics inline_template_diagnostics;
+  joggle::Diag inline_template_diagnostics;
   ok &= expect(!joggle::detail::validate_expression_template(
                    *with_inline, "before", inline_template_diagnostics) &&
                    !inline_template_diagnostics.ok() &&
-                   inline_template_diagnostics.entries().front().message.find(
+                   inline_template_diagnostics.issues().front().message.find(
                        "nested inline fn") != std::string::npos,
                "an expression template has no nested callable body");
 
@@ -249,29 +249,29 @@ mod foreign@1.0.0 {
     const auto root = edit.append(*keep, {input});
     static_cast<void>(edit.append(*other, {input}));
     edit.ret(dead_template->entry(), {root.value()});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
     }
   }
-  joggle::Diagnostics dead_template_diagnostics;
+  joggle::Diag dead_template_diagnostics;
   ok &= expect(!joggle::detail::validate_expression_template(
                    *dead_template, "before", dead_template_diagnostics) &&
                    !dead_template_diagnostics.ok() &&
-                   dead_template_diagnostics.entries().front().message.find(
+                   dead_template_diagnostics.issues().front().message.find(
                        "outside its returned expression") != std::string::npos,
                "a template is one rooted DAG and contains no dead call");
 
-  joggle::Diagnostics unused_hole_diagnostics;
+  joggle::Diag unused_hole_diagnostics;
   ok &= expect(!joggle::detail::validate_expression_template(
                    *unused_hole, "before", unused_hole_diagnostics) &&
                    !unused_hole_diagnostics.ok() &&
-                   unused_hole_diagnostics.entries().front().message.find(
+                   unused_hole_diagnostics.issues().front().message.find(
                        "unused hole") != std::string::npos,
                "every declared template hole must be reachable from the root");
 
-  joggle::Diagnostics chain_match_diagnostics;
+  joggle::Diag chain_match_diagnostics;
   const auto chain_matches = joggle::detail::match_expressions(
       *chain, *chain, chain_match_diagnostics);
   ok &= expect(chain_matches && chain_matches->size() == 1U &&
@@ -297,13 +297,13 @@ mod foreign@1.0.0 {
     const auto second_inner = edit.append(*keep, {input});
     second_chain_root = edit.append(*other, {second_inner.value()}).value();
     edit.ret(two_chains->entry(), {*second_chain_root});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
     }
   }
-  joggle::Diagnostics ordered_match_diagnostics;
+  joggle::Diag ordered_match_diagnostics;
   const auto ordered_matches = joggle::detail::match_expressions(
       *two_chains, *chain, ordered_match_diagnostics);
   ok &= expect(ordered_matches && ordered_matches->size() == 2U &&
@@ -313,10 +313,10 @@ mod foreign@1.0.0 {
                    (*ordered_matches)[1].root == *second_chain_root,
                "candidates are reported in committed Fn order");
 
-  joggle::Diagnostics repeated_match_diagnostics;
+  joggle::Diag repeated_match_diagnostics;
   const auto repeated_matches = joggle::detail::match_expressions(
       *repeated, *repeated, repeated_match_diagnostics);
-  joggle::Diagnostics unequal_match_diagnostics;
+  joggle::Diag unequal_match_diagnostics;
   const auto unequal_matches = joggle::detail::match_expressions(
       *different, *repeated, unequal_match_diagnostics);
   ok &= expect(repeated_matches && repeated_matches->size() == 1U &&
@@ -326,7 +326,7 @@ mod foreign@1.0.0 {
                    unequal_match_diagnostics.ok(),
                "a repeated hole is an SSA equality constraint");
 
-  joggle::Diagnostics injective_match_diagnostics;
+  joggle::Diag injective_match_diagnostics;
   const auto injective_matches = joggle::detail::match_expressions(
       *shared_call, *distinct_calls, injective_match_diagnostics);
   ok &= expect(injective_matches && injective_matches->empty() &&
@@ -334,10 +334,10 @@ mod foreign@1.0.0 {
                "two distinct template calls cannot collapse onto one subject "
                "call");
 
-  joggle::Diagnostics known_match_diagnostics;
+  joggle::Diag known_match_diagnostics;
   const auto known_matches = joggle::detail::match_expressions(
       *axis_two, *axis_one, known_match_diagnostics);
-  joggle::Diagnostics reference_match_diagnostics;
+  joggle::Diag reference_match_diagnostics;
   const auto reference_matches = joggle::detail::match_expressions(
       *reference_b, *reference_a, reference_match_diagnostics);
   ok &= expect(known_matches && known_matches->empty() && reference_matches &&
@@ -357,19 +357,19 @@ mod foreign@1.0.0 {
     const auto root = edit.append(*other, {inner.value()});
     static_cast<void>(edit.append(*binary, {inner.value(), input}));
     edit.ret(escaping->entry(), {root.value()});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
     }
   }
-  joggle::Diagnostics closure_match_diagnostics;
+  joggle::Diag closure_match_diagnostics;
   const auto closure_matches = joggle::detail::match_expressions(
       *escaping, *chain, closure_match_diagnostics);
   ok &= expect(closure_matches && closure_matches->size() == 1U &&
                    closure_match_diagnostics.ok(),
                "a pure expression may match through a shared DAG ancestor");
-  joggle::Diagnostics shared_replace_diagnostics;
+  joggle::Diag shared_replace_diagnostics;
   const auto shared_replaced = joggle::replace(*escaping, *chain, *replacement,
                                                shared_replace_diagnostics);
   const auto shared_ops = escaping->ops();
@@ -394,16 +394,16 @@ mod foreign@1.0.0 {
     const auto right = edit.append(*other, {shared.value()});
     const auto joined = edit.append(*binary, {left.value(), right.value()});
     edit.ret(shared_branches->entry(), {joined.value()});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
     }
   }
-  joggle::Diagnostics first_branch_diagnostics;
+  joggle::Diag first_branch_diagnostics;
   const auto first_branch = joggle::replace(
       *shared_branches, *chain, *replacement, first_branch_diagnostics);
-  joggle::Diagnostics second_branch_diagnostics;
+  joggle::Diag second_branch_diagnostics;
   const auto second_branch = joggle::replace(
       *shared_branches, *chain, *replacement, second_branch_diagnostics);
   const auto branch_ops = shared_branches->ops();
@@ -423,7 +423,7 @@ mod foreign@1.0.0 {
                                           .front()
                                           .defining_op()
                                           ->location();
-  joggle::Diagnostics expression_replace_diagnostics;
+  joggle::Diag expression_replace_diagnostics;
   const auto expression_replaced =
       joggle::replace(replacement_subject, *chain, *replacement,
                       expression_replace_diagnostics);
@@ -442,7 +442,7 @@ mod foreign@1.0.0 {
 
   joggle::Fn no_match_subject = *axis_two;
   const auto no_match_revision = no_match_subject.revision();
-  joggle::Diagnostics expression_no_match_diagnostics;
+  joggle::Diag expression_no_match_diagnostics;
   const auto expression_no_match =
       joggle::replace(no_match_subject, *axis_one, *replacement,
                       expression_no_match_diagnostics);
@@ -453,7 +453,7 @@ mod foreign@1.0.0 {
 
   joggle::Fn incompatible_subject = *chain;
   const auto incompatible_revision = incompatible_subject.revision();
-  joggle::Diagnostics incompatible_replace_diagnostics;
+  joggle::Diag incompatible_replace_diagnostics;
   const auto incompatible_replace = joggle::replace(
       incompatible_subject, *chain, *pair, incompatible_replace_diagnostics);
   ok &=
@@ -463,7 +463,7 @@ mod foreign@1.0.0 {
 
   joggle::Fn wrong_type_subject = *chain;
   const auto wrong_type_revision = wrong_type_subject.revision();
-  joggle::Diagnostics wrong_type_replace_diagnostics;
+  joggle::Diag wrong_type_replace_diagnostics;
   const auto wrong_type_replace =
       joggle::replace(wrong_type_subject, *chain, *alternate_replacement,
                       wrong_type_replace_diagnostics);
@@ -472,7 +472,7 @@ mod foreign@1.0.0 {
                "replacement rejects a hole type mismatch without publishing");
 
   joggle::Fn overlap_subject = *triple_keep;
-  joggle::Diagnostics overlap_replace_diagnostics;
+  joggle::Diag overlap_replace_diagnostics;
   const auto overlap_replace = joggle::replace(
       overlap_subject, *double_keep, *replacement, overlap_replace_diagnostics);
   ok &= expect(overlap_replace && *overlap_replace == 1U &&
@@ -484,7 +484,7 @@ mod foreign@1.0.0 {
                "non-overlapping match");
 
   joggle::Fn foreign_subject = *chain;
-  joggle::Diagnostics foreign_replace_diagnostics;
+  joggle::Diag foreign_replace_diagnostics;
   const auto foreign_replace =
       joggle::replace(foreign_subject, *chain, *foreign_replacement,
                       foreign_replace_diagnostics);
@@ -514,7 +514,7 @@ mod foreign@1.0.0 {
                "a replaced Fn has canonical round-trippable source");
 
   joggle::Mod expression_mod("expression_mod", {1, 0, 0});
-  joggle::Diagnostics expression_mod_insert_diagnostics;
+  joggle::Diag expression_mod_insert_diagnostics;
   if (!expression_mod.insert("first", joggle::Fn{*chain},
                              expression_mod_insert_diagnostics) ||
       !expression_mod.insert("second", joggle::Fn{*chain},
@@ -522,7 +522,7 @@ mod foreign@1.0.0 {
     expression_mod_insert_diagnostics.print(std::cerr);
     return EXIT_FAILURE;
   }
-  joggle::Diagnostics expression_mod_diagnostics;
+  joggle::Diag expression_mod_diagnostics;
   const auto expression_mod_replaced = joggle::replace(
       expression_mod, *chain, *replacement, expression_mod_diagnostics);
   const auto expression_mod_first = expression_mod.fn("first");
@@ -537,7 +537,7 @@ mod foreign@1.0.0 {
       "whole-Mod expression replacement publishes all changed members");
 
   const std::string expression_mod_digest(expression_mod.digest());
-  joggle::Diagnostics expression_mod_failure_diagnostics;
+  joggle::Diag expression_mod_failure_diagnostics;
   const auto expression_mod_failure = joggle::replace(
       expression_mod, *chain, *pair, expression_mod_failure_diagnostics);
   ok &= expect(!expression_mod_failure &&
@@ -546,7 +546,7 @@ mod foreign@1.0.0 {
                "whole-Mod replacement failure publishes no partial value");
 
   joggle::Mod rollback_mod("rollback_mod", {1, 0, 0});
-  joggle::Diagnostics rollback_insert_diagnostics;
+  joggle::Diag rollback_insert_diagnostics;
   if (!rollback_mod.insert("first", joggle::Fn{*chain},
                            rollback_insert_diagnostics) ||
       !rollback_mod.insert("second", joggle::Fn{*chain},
@@ -561,7 +561,7 @@ mod foreign@1.0.0 {
     joggle::Fn* busy = rollback_mod.body(*rollback_second);
     if (busy) {
       auto pending = busy->edit();
-      joggle::Diagnostics rollback_diagnostics;
+      joggle::Diag rollback_diagnostics;
       const auto rolled_back = joggle::replace(
           rollback_mod, *chain, *replacement, rollback_diagnostics);
       rollback_preserved = !rolled_back && !rollback_diagnostics.ok() &&
@@ -573,7 +573,7 @@ mod foreign@1.0.0 {
                "replacement");
 
   const auto first_revision = first->revision();
-  joggle::Diagnostics no_op_diagnostics;
+  joggle::Diag no_op_diagnostics;
   const auto no_op = joggle::map_calls(
       *first,
       [](const joggle::Op&) -> std::optional<joggle::Mod::FnDecl> {
@@ -585,19 +585,17 @@ mod foreign@1.0.0 {
                    first->ops().front().callee() == *keep,
                "a no-op mapping preserves the Fn revision");
 
-  joggle::Diagnostics no_op_rewrite_diagnostics;
+  joggle::Diag no_op_rewrite_diagnostics;
   const auto no_op_rewrite = joggle::rewrite(
       *first,
-      [](const joggle::Op&, joggle::Fn::Edit&, joggle::Diagnostics&) {
-        return false;
-      },
+      [](const joggle::Op&, joggle::Fn::Edit&, joggle::Diag&) { return false; },
       no_op_rewrite_diagnostics);
   ok &= expect(no_op_rewrite && *no_op_rewrite == 0U &&
                    no_op_rewrite_diagnostics.ok() &&
                    first->revision() == first_revision,
                "a no-op rewrite preserves the Fn revision");
 
-  joggle::Diagnostics replace_diagnostics;
+  joggle::Diag replace_diagnostics;
   const auto replaced =
       joggle::replace_calls(*first, *keep, *converted, replace_diagnostics);
   ok &= expect(replaced && *replaced == 1U && replace_diagnostics.ok() &&
@@ -606,10 +604,10 @@ mod foreign@1.0.0 {
                "a committed replacement advances the Fn revision");
 
   const auto expanded_revision = expanded->revision();
-  joggle::Diagnostics rewrite_diagnostics;
+  joggle::Diag rewrite_diagnostics;
   const auto rewritten = joggle::rewrite(
       *expanded,
-      [&](const joggle::Op& op, joggle::Fn::Edit& edit, joggle::Diagnostics&) {
+      [&](const joggle::Op& op, joggle::Fn::Edit& edit, joggle::Diag&) {
         if (op.callee() != *keep) {
           return false;
         }
@@ -630,10 +628,10 @@ mod foreign@1.0.0 {
                "one lambda transactionally expands a call into multiple Ops");
 
   const auto convertible_revision = convertible->revision();
-  joggle::Diagnostics conversion_diagnostics;
+  joggle::Diag conversion_diagnostics;
   const auto conversion = joggle::convert(
       *convertible,
-      [&](const joggle::Op& op, joggle::Fn::Edit& edit, joggle::Diagnostics&) {
+      [&](const joggle::Op& op, joggle::Fn::Edit& edit, joggle::Diag&) {
         if (op.callee() != *keep) {
           return false;
         }
@@ -648,7 +646,7 @@ mod foreign@1.0.0 {
                "conversion publishes a rewritten legal Fn");
 
   const auto staged_rewrite = [&](const joggle::Op& op, joggle::Fn::Edit& edit,
-                                  joggle::Diagnostics&) {
+                                  joggle::Diag&) {
     if (op.callee() == *keep) {
       edit.replace(op, *converted);
       return true;
@@ -659,7 +657,7 @@ mod foreign@1.0.0 {
     }
     return false;
   };
-  joggle::Diagnostics fixedpoint_diagnostics;
+  joggle::Diag fixedpoint_diagnostics;
   const auto fixedpoint_changes = joggle::rewrite_to_fixpoint(
       *fixedpoint, staged_rewrite, 3U, fixedpoint_diagnostics);
   ok &= expect(fixedpoint_changes && *fixedpoint_changes == 2U &&
@@ -668,10 +666,10 @@ mod foreign@1.0.0 {
                "bounded sweeps process calls inserted by an earlier sweep");
 
   const auto oscillating_revision = oscillating->revision();
-  joggle::Diagnostics oscillating_diagnostics;
+  joggle::Diag oscillating_diagnostics;
   const auto oscillating_result = joggle::rewrite_to_fixpoint(
       *oscillating,
-      [&](const joggle::Op& op, joggle::Fn::Edit& edit, joggle::Diagnostics&) {
+      [&](const joggle::Op& op, joggle::Fn::Edit& edit, joggle::Diag&) {
         if (op.callee() == *keep) {
           edit.replace(op, *converted);
         } else {
@@ -687,7 +685,7 @@ mod foreign@1.0.0 {
 
   const std::string before_invalid = joggle::format(*second, "second");
   const auto before_invalid_revision = second->revision();
-  joggle::Diagnostics invalid_diagnostics;
+  joggle::Diag invalid_diagnostics;
   const auto invalid =
       joggle::replace_calls(*second, *other, *binary, invalid_diagnostics);
   ok &= expect(!invalid && !invalid_diagnostics.ok() &&
@@ -698,7 +696,7 @@ mod foreign@1.0.0 {
   auto mod_first = compiler.materialize("mapping.first");
   auto mod_second = compiler.materialize("mapping.second");
   joggle::Mod mod("mapping_result", {1, 0, 0});
-  joggle::Diagnostics insertion_diagnostics;
+  joggle::Diag insertion_diagnostics;
   if (!mod_first || !mod_second ||
       !mod.insert("first", std::move(*mod_first), insertion_diagnostics) ||
       !mod.insert("second", std::move(*mod_second), insertion_diagnostics)) {
@@ -718,7 +716,7 @@ mod foreign@1.0.0 {
   const std::string original_declaration_digest(mod.declaration_digest());
 
   joggle::Mod fixedpoint_mod = mod;
-  joggle::Diagnostics fixedpoint_mod_diagnostics;
+  joggle::Diag fixedpoint_mod_diagnostics;
   const auto fixedpoint_mod_changes = joggle::rewrite_to_fixpoint(
       fixedpoint_mod, staged_rewrite, 3U, fixedpoint_mod_diagnostics);
   const auto fixedpoint_first = fixedpoint_mod.fn("first");
@@ -729,7 +727,7 @@ mod foreign@1.0.0 {
                    mod.digest() == original_digest,
                "fixed-point Mod rewriting publishes one final value");
 
-  joggle::Diagnostics mod_no_op_diagnostics;
+  joggle::Diag mod_no_op_diagnostics;
   const auto mod_no_op = joggle::map_calls(
       mod,
       [](const joggle::Op&) -> std::optional<joggle::Mod::FnDecl> {
@@ -742,10 +740,10 @@ mod foreign@1.0.0 {
                    read_body("second") == original_second,
                "a no-op Mod mapping preserves shared Fn storage");
 
-  joggle::Diagnostics mod_failure_diagnostics;
+  joggle::Diag mod_failure_diagnostics;
   const auto mod_failure = joggle::convert(
       mod,
-      [&](const joggle::Op& op, joggle::Fn::Edit& edit, joggle::Diagnostics&) {
+      [&](const joggle::Op& op, joggle::Fn::Edit& edit, joggle::Diag&) {
         if (op.callee() == *keep) {
           edit.replace(op, *converted);
           return true;
@@ -757,7 +755,7 @@ mod foreign@1.0.0 {
   const auto* unchanged_first = read_body("first");
   const auto* unchanged_second = read_body("second");
   ok &= expect(!mod_failure && !mod_failure_diagnostics.ok() &&
-                   mod_failure_diagnostics.entries().front().message.find(
+                   mod_failure_diagnostics.issues().front().message.find(
                        "fn 'second'") != std::string::npos &&
                    mod.digest() == original_digest &&
                    unchanged_first != nullptr && unchanged_second != nullptr &&
@@ -765,7 +763,7 @@ mod foreign@1.0.0 {
                    unchanged_second->ops().front().callee() == *other,
                "an illegal whole-Mod conversion publishes no partial edits");
 
-  joggle::Diagnostics mod_success_diagnostics;
+  joggle::Diag mod_success_diagnostics;
   const auto mod_success =
       joggle::replace_calls(mod, *keep, *converted, mod_success_diagnostics);
   const auto* mapped_first = read_body("first");
@@ -803,20 +801,20 @@ mod foreign@1.0.0 {
     edit.jump(yes, merge, {converted_value.value()});
     edit.jump(no, merge, {input});
     edit.ret(merge, {merge.arguments().front()});
-    joggle::Diagnostics diagnostics;
+    joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
     }
   }
-  joggle::Diagnostics cfg_template_diagnostics;
+  joggle::Diag cfg_template_diagnostics;
   ok &= expect(!joggle::detail::validate_expression_template(
                    *cfg, "before", cfg_template_diagnostics) &&
                    !cfg_template_diagnostics.ok() &&
-                   cfg_template_diagnostics.entries().front().message.find(
+                   cfg_template_diagnostics.issues().front().message.find(
                        "one entry block") != std::string::npos,
                "an expression template rejects branches and merges");
-  joggle::Diagnostics clone_diagnostics;
+  joggle::Diag clone_diagnostics;
   const auto cloned = joggle::clone(
       compiler, *cfg,
       [&](const joggle::Val& value) -> std::optional<joggle::Type> {
@@ -835,7 +833,7 @@ mod foreign@1.0.0 {
           cloned->result_types() == std::vector<joggle::Type>{*alternate},
       "clone preserves arbitrary CFG while mapping types and generic Ops");
 
-  joggle::Diagnostics inline_clone_diagnostics;
+  joggle::Diag inline_clone_diagnostics;
   const auto inline_clone = joggle::clone(
       compiler, *with_inline,
       [](const joggle::Val& value) -> std::optional<joggle::Type> {
@@ -899,7 +897,7 @@ mod staged_replace@1.0.0 {
     staged_replace.bind(
         *staged_replace_decl,
         [](joggle::Fn input, const joggle::Fn& before, const joggle::Fn& after,
-           joggle::Diagnostics& diagnostics) -> std::optional<joggle::Fn> {
+           joggle::Diag& diagnostics) -> std::optional<joggle::Fn> {
           const auto count = joggle::replace(input, before, after, diagnostics);
           return count ? std::optional<joggle::Fn>{std::move(input)}
                        : std::nullopt;
@@ -923,7 +921,7 @@ mod staged_replace@1.0.0 {
           ? staged_replace.materialize("staged_replace.optimize")
           : std::nullopt;
   if (!staged_optimized || !staged_replace.ok()) {
-    staged_replace.diagnostics().print(std::cerr);
+    staged_replace.diag().print(std::cerr);
   }
   ok &= expect(
       staged_replace_linked && staged_replace_decl && staged_optimize_decl &&

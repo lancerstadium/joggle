@@ -6,7 +6,7 @@
 #include "prelude_runtime.h"
 #include "compiler_internal.h"
 
-#include "diagnostic_internal.h"
+#include "diag_internal.h"
 #include "domain.h"
 #include "execution.h"
 #include "ir_internal.h"
@@ -45,7 +45,7 @@ using Lexer = detail::Lexer;
 
 class SyntaxParser {
 public:
-  SyntaxParser(Lexer& lexer, Token& current, Diagnostics& diagnostics,
+  SyntaxParser(Lexer& lexer, Token& current, Diag& diagnostics,
                std::string source,
                std::span<const Mod::FnDecl::GenericDecl> variables)
       : lexer_(lexer), diagnostics_(diagnostics), source_(std::move(source)),
@@ -450,7 +450,7 @@ private:
   }
 
   Lexer& lexer_;
-  Diagnostics& diagnostics_;
+  Diag& diagnostics_;
   std::string source_;
   std::size_t initial_diagnostics_ = 0;
   Token& current_;
@@ -890,7 +890,7 @@ class Instantiator {
 
 public:
   Instantiator(Compiler& compiler, Mod::FnDecl fn, const detail::FnBody& body,
-               Diagnostics& diagnostics, std::vector<Val> known_arguments,
+               Diag& diagnostics, std::vector<Val> known_arguments,
                detail::KnownBindings bindings)
       : compiler_(compiler), declaration_(std::move(fn)), body_(body),
         owner_(declaration_->symbol().mod_name()), diagnostics_(diagnostics),
@@ -899,7 +899,7 @@ public:
         supplied_bindings_(std::move(bindings)) {}
 
   Instantiator(Compiler& compiler, std::string owner,
-               const detail::FnBody& body, Diagnostics& diagnostics,
+               const detail::FnBody& body, Diag& diagnostics,
                std::vector<std::pair<std::string, Type>> arguments,
                std::optional<std::vector<Type>> results)
       : compiler_(compiler), body_(body), owner_(std::move(owner)),
@@ -1651,7 +1651,7 @@ private:
             std::span<const PendingArgument> supplied,
             std::span<const std::optional<Type>> expected,
             detail::SyntaxRange range, bool allow_guarded_evaluation,
-            Diagnostics* errors = nullptr) {
+            Diag* errors = nullptr) {
     const auto reject = [&](std::string message) {
       if (errors) {
         errors->report(std::move(message), source(range));
@@ -1721,7 +1721,7 @@ private:
       result.known_arguments[known_index++] = *payload;
     }
 
-    Diagnostics attempt;
+    Diag attempt;
     auto types = detail::resolve_partial_call_types(
         compiler_, fn, argument_types, result.known_arguments, expected,
         errors ? *errors : attempt, source(range), allow_guarded_evaluation);
@@ -1771,7 +1771,7 @@ private:
     for (const Type& result : *results) {
       expected.emplace_back(result);
     }
-    Diagnostics attempt;
+    Diag attempt;
     const auto resolved = detail::resolve_call_types(
         compiler_, fn, *inputs, {}, expected, attempt, source(range));
     return resolved && resolved->results == *results;
@@ -2043,7 +2043,7 @@ private:
             detail::value_results(candidate).size() != 1U) {
           continue;
         }
-        Diagnostics candidate_diagnostics;
+        Diag candidate_diagnostics;
         const std::array<std::optional<ParamVal>, 1> known{payload};
         const std::array<std::optional<Type>, 1> expected{target};
         if (detail::resolve_call_types(compiler_, candidate, {}, known,
@@ -3542,7 +3542,7 @@ private:
   std::optional<Mod::FnDecl> declaration_;
   const detail::FnBody& body_;
   std::string owner_;
-  Diagnostics& diagnostics_;
+  Diag& diagnostics_;
   std::size_t initial_diagnostics_ = 0;
   std::optional<Fn> fn_;
   std::optional<Fn::Edit> edit_;
@@ -3962,7 +3962,7 @@ private:
 
 namespace detail {
 
-bool verify_fn_body(const FnBody& body, Diagnostics& diagnostics) {
+bool verify_fn_body(const FnBody& body, Diag& diagnostics) {
   const std::size_t initial_diagnostics = diagnostics.size();
   const auto locate = [&](SyntaxRange range) -> std::optional<SourceRange> {
     if (body.source.empty()) {
@@ -4151,7 +4151,7 @@ bool verify_fn_body(const FnBody& body, Diagnostics& diagnostics) {
 }
 
 std::optional<FnBody>
-parse_fn_body(Lexer& lexer, Token& current, Diagnostics& diagnostics,
+parse_fn_body(Lexer& lexer, Token& current, Diag& diagnostics,
               std::string source,
               std::span<const Mod::FnDecl::GenericDecl> variables) {
   return SyntaxParser(lexer, current, diagnostics, std::move(source), variables)
@@ -4172,7 +4172,7 @@ FnSyntax materialized_fn_syntax(const Fn& fn, std::string_view name,
 }
 
 std::optional<Fn> instantiate_fn(Compiler& compiler, Mod::FnDecl fn,
-                                 const FnBody& body, Diagnostics& diagnostics,
+                                 const FnBody& body, Diag& diagnostics,
                                  std::vector<Val> known_arguments,
                                  KnownBindings bindings) {
   return Instantiator(compiler, std::move(fn), body, diagnostics,
@@ -4183,7 +4183,7 @@ std::optional<Fn> instantiate_fn(Compiler& compiler, Mod::FnDecl fn,
 std::optional<Fn>
 instantiate_lambda(Compiler& compiler, std::string_view owner,
                    const Mod::Expr& expression, const SourceRange& source,
-                   Diagnostics& diagnostics, const KnownBindings& bindings,
+                   Diag& diagnostics, const KnownBindings& bindings,
                    std::optional<std::vector<Type>> expected_inputs,
                    std::optional<std::vector<Type>> expected_results,
                    bool allow_guarded_evaluation) {

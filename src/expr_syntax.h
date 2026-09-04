@@ -9,7 +9,7 @@
 
 namespace joggle {
 
-class Diagnostics;
+class Diag;
 
 namespace detail {
 
@@ -24,7 +24,7 @@ struct CallableTypeView {
 std::optional<CallableTypeView> callable_type(const Mod::Expr& expression);
 
 Mod::Expr
-parse_expression(Lexer& lexer, Token& current, Diagnostics& diagnostics,
+parse_expression(Lexer& lexer, Token& current, Diag& diagnostics,
                  std::string_view source,
                  std::span<const Mod::FnDecl::GenericDecl> variables = {},
                  int minimum_precedence = 0);

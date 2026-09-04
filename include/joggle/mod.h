@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "joggle/diagnostic.h"
+#include "joggle/diag.h"
 
 namespace joggle {
 
@@ -256,7 +256,7 @@ public:
   // body() is absent for external and not-yet-materialized declarations.
   // Mutable body lookup uses the complete declaration rather than an
   // overload-ambiguous name and detaches only that body.
-  bool insert(std::string name, Fn fn, Diagnostics& diagnostics);
+  bool insert(std::string name, Fn fn, Diag& diagnostics);
   Fn* body(FnDecl declaration);
   std::vector<Dependency> dependencies() const;
   bool operator==(const Mod& other) const;
@@ -274,12 +274,11 @@ private:
 
   friend class Compiler;
   friend struct detail::ModAccess;
-  friend std::optional<Mod> parse_mod(std::string_view, Diagnostics&,
-                                      std::string);
+  friend std::optional<Mod> parse_mod(std::string_view, Diag&, std::string);
   friend std::string format(const Mod&);
 };
 
-std::optional<Mod> parse_mod(std::string_view text, Diagnostics& diagnostics,
+std::optional<Mod> parse_mod(std::string_view text, Diag& diagnostics,
                              std::string source = "<memory>");
 std::string format(const Mod& mod);
 std::string to_string(Version version);

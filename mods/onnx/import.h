@@ -9,6 +9,6 @@ namespace joggle_onnx {
 
 std::optional<joggle::Mod> read(joggle::Compiler& compiler,
                                 const joggle::Bytes& input, std::string name,
-                                joggle::Diagnostics& diagnostics);
+                                joggle::Diag& diagnostics);
 
 }  // namespace joggle_onnx

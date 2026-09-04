@@ -146,7 +146,7 @@ Environment environment(Compiler& compiler, bool allow_host_evaluation = true) {
       CompilerAccess::limits(compiler)};
 }
 
-Environment environment(std::span<const Mod> mods, Diagnostics& diagnostics) {
+Environment environment(std::span<const Mod> mods, Diag& diagnostics) {
   const auto find = [mods](std::string_view name) -> std::optional<Mod> {
     const auto mod =
         std::find_if(mods.begin(), mods.end(),
@@ -189,19 +189,19 @@ Environment environment(std::span<const Mod> mods, Diagnostics& diagnostics) {
 
 class Solver {
 public:
-  Solver(Environment environment, const Mod::FnDecl& schema,
-         Diagnostics& diagnostics, std::optional<SourceRange> source)
+  Solver(Environment environment, const Mod::FnDecl& schema, Diag& diagnostics,
+         std::optional<SourceRange> source)
       : limits_(environment.limits), environment_(std::move(environment)),
         schema_(&schema), diagnostics_(diagnostics), source_(std::move(source)),
         contract_(&FnTypeAccess::get(schema)),
         scope_(schema.symbol().mod_name()) {}
 
   Solver(Environment environment, const Mod::TypeDecl& schema,
-         Diagnostics& diagnostics)
+         Diag& diagnostics)
       : limits_(environment.limits), environment_(std::move(environment)),
         diagnostics_(diagnostics), scope_(schema.symbol().mod_name()) {}
 
-  Solver(Environment environment, std::string scope, Diagnostics& diagnostics,
+  Solver(Environment environment, std::string scope, Diag& diagnostics,
          std::optional<SourceRange> source)
       : limits_(environment.limits), environment_(std::move(environment)),
         diagnostics_(diagnostics), source_(std::move(source)),
@@ -1117,7 +1117,7 @@ private:
   std::size_t depth_ = 0;
   bool budget_reported_ = false;
   const Mod::FnDecl* schema_ = nullptr;
-  Diagnostics& diagnostics_;
+  Diag& diagnostics_;
   std::optional<SourceRange> source_;
   const FnTypeContract* contract_ = nullptr;
   const std::vector<GenericDefinition> empty_generics_;
@@ -1130,7 +1130,7 @@ private:
 std::optional<ParamVal> evaluate_known_expression(
     Compiler& compiler, std::string_view scope, const Mod::Expr& expression,
     const Mod::ParamDecl& expected, const KnownBindings& bindings,
-    Diagnostics& diagnostics, std::optional<SourceRange> source,
+    Diag& diagnostics, std::optional<SourceRange> source,
     bool allow_host_evaluation) {
   return Solver(environment(compiler, allow_host_evaluation),
                 std::string(scope), diagnostics, std::move(source))
@@ -1142,7 +1142,7 @@ infer_call_types(Compiler& compiler, const Mod::FnDecl& schema,
                  std::span<const Type> arguments,
                  std::span<const std::optional<ParamVal>> known_arguments,
                  std::span<const std::optional<Type>> expected_results,
-                 Diagnostics& diagnostics, std::optional<SourceRange> source) {
+                 Diag& diagnostics, std::optional<SourceRange> source) {
   auto resolved =
       resolve_call_types(compiler, schema, arguments, known_arguments,
                          expected_results, diagnostics, std::move(source));
@@ -1156,7 +1156,7 @@ infer_call_types(std::span<const Mod> mods, const Mod::FnDecl& schema,
                  std::span<const Type> arguments,
                  std::span<const std::optional<ParamVal>> known_arguments,
                  std::span<const std::optional<Type>> expected_results,
-                 Diagnostics& diagnostics, std::optional<SourceRange> source) {
+                 Diag& diagnostics, std::optional<SourceRange> source) {
   auto resolved =
       resolve_call_types(mods, schema, arguments, known_arguments,
                          expected_results, diagnostics, std::move(source));
@@ -1170,8 +1170,7 @@ resolve_call_types(Compiler& compiler, const Mod::FnDecl& schema,
                    std::span<const Type> arguments,
                    std::span<const std::optional<ParamVal>> known_arguments,
                    std::span<const std::optional<Type>> expected_results,
-                   Diagnostics& diagnostics,
-                   std::optional<SourceRange> source) {
+                   Diag& diagnostics, std::optional<SourceRange> source) {
   return Solver(environment(compiler), schema, diagnostics, std::move(source))
       .infer(arguments, known_arguments, expected_results);
 }
@@ -1180,9 +1179,8 @@ std::optional<CallTypes> resolve_partial_call_types(
     Compiler& compiler, const Mod::FnDecl& schema,
     std::span<const std::optional<Type>> arguments,
     std::span<const std::optional<ParamVal>> known_arguments,
-    std::span<const std::optional<Type>> expected_results,
-    Diagnostics& diagnostics, std::optional<SourceRange> source,
-    bool allow_host_evaluation) {
+    std::span<const std::optional<Type>> expected_results, Diag& diagnostics,
+    std::optional<SourceRange> source, bool allow_host_evaluation) {
   return Solver(environment(compiler, allow_host_evaluation), schema,
                 diagnostics, std::move(source))
       .infer_partial(arguments, known_arguments, expected_results);
@@ -1193,8 +1191,7 @@ resolve_call_types(std::span<const Mod> mods, const Mod::FnDecl& schema,
                    std::span<const Type> arguments,
                    std::span<const std::optional<ParamVal>> known_arguments,
                    std::span<const std::optional<Type>> expected_results,
-                   Diagnostics& diagnostics,
-                   std::optional<SourceRange> source) {
+                   Diag& diagnostics, std::optional<SourceRange> source) {
   return Solver(environment(mods, diagnostics), schema, diagnostics,
                 std::move(source))
       .infer(arguments, known_arguments, expected_results);
@@ -1203,14 +1200,14 @@ resolve_call_types(std::span<const Mod> mods, const Mod::FnDecl& schema,
 std::optional<std::vector<ParamVal>>
 resolve_derived_parameters(Compiler& compiler, const Mod::TypeDecl& schema,
                            std::span<const ParamVal> parameters,
-                           Diagnostics& diagnostics) {
+                           Diag& diagnostics) {
   return Solver(environment(compiler), schema, diagnostics)
       .derive(schema, parameters);
 }
 
 std::optional<std::vector<ParamVal>> resolve_derived_parameters(
     std::span<const Mod> mods, const Mod::TypeDecl& schema,
-    std::span<const ParamVal> parameters, Diagnostics& diagnostics) {
+    std::span<const ParamVal> parameters, Diag& diagnostics) {
   return Solver(environment(mods, diagnostics), schema, diagnostics)
       .derive(schema, parameters);
 }

@@ -53,7 +53,7 @@ Create `native.cpp`:
 #include <joggle/joggle.h>
 
 void joggle_mod(joggle::Compiler& compiler, const joggle::Mod& mod,
-                   joggle::Diagnostics& diagnostics) {
+                   joggle::Diag& diagnostics) {
   const auto keep = mod.fn("keep");
   const auto replacement = mod.fn("replacement");
   if (!keep || !replacement) {
@@ -65,7 +65,7 @@ void joggle_mod(joggle::Compiler& compiler, const joggle::Mod& mod,
       mod, "rewrite",
       [keep = *keep, replacement = *replacement](
           joggle::Fn fn,
-          joggle::Diagnostics& edit_diagnostics)
+          joggle::Diag& edit_diagnostics)
           -> std::optional<joggle::Fn> {
         const auto ops = fn.ops();
         auto edit = fn.edit();
@@ -126,7 +126,7 @@ joggle::Compiler compiler;
 compiler.load("example.joggle");
 if (!compiler.link() ||
     !compiler.load_native("example", "build/example_native.dylib")) {
-  compiler.diagnostics().print(std::cerr);
+  compiler.diag().print(std::cerr);
   return 1;
 }
 
@@ -135,7 +135,7 @@ auto rewritten = fn ? compiler.run<joggle::Fn>(
                                 "example.rewrite", *fn)
                           : std::nullopt;
 if (!rewritten) {
-  compiler.diagnostics().print(std::cerr);
+  compiler.diag().print(std::cerr);
   return 1;
 }
 fn = std::move(rewritten);

@@ -59,19 +59,19 @@ mod opaque_model@1.0.0 {
 )",
                "opaque-model.joggle");
   if (!compiler.link()) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 
   const auto source = compiler.materialize("source_model.main");
   const auto opaque = compiler.materialize("opaque_model.main");
-  joggle::Diagnostics diagnostics;
+  joggle::Diag diagnostics;
   joggle::Mod program("program", {1, 0, 0});
   joggle::Mod bad_program("bad_program", {1, 0, 0});
   if (!source || !opaque || !program.insert("main", *source, diagnostics) ||
       !bad_program.insert("main", *opaque, diagnostics)) {
     diagnostics.print(std::cerr);
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 
@@ -80,7 +80,7 @@ mod opaque_model@1.0.0 {
   };
   const auto specialized = compiler.specialize(program, boundary, diagnostics);
   const auto repeated = compiler.specialize(program, boundary, diagnostics);
-  joggle::Diagnostics rejected_diagnostics;
+  joggle::Diag rejected_diagnostics;
   const auto rejected =
       compiler.specialize(bad_program, boundary, rejected_diagnostics);
 
@@ -112,7 +112,7 @@ mod opaque_model@1.0.0 {
   if (!ok) {
     diagnostics.print(std::cerr);
     rejected_diagnostics.print(std::cerr);
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
   }
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

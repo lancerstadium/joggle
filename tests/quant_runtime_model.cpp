@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
   joggle::Compiler compiler;
   compiler.load(argv[1]);
   if (!compiler.link() || !compiler.load_native("quant", argv[2])) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto i8 = compiler.make("i8");
@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
           : std::nullopt;
   if (!quantized || !dequantized || !write_bytes(argv[4], *quantized) ||
       !write_bytes(argv[5], *dequantized)) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 

@@ -7,13 +7,13 @@
 #include <vector>
 
 #include "execution.h"
-#include "joggle/diagnostic.h"
+#include "joggle/diag.h"
 #include "joggle/ir.h"
 
 namespace joggle {
 
 class Compiler;
-class Diagnostics;
+class Diag;
 
 namespace detail {
 
@@ -120,21 +120,21 @@ struct FnSyntax {
 };
 
 std::optional<FnBody>
-parse_fn_body(Lexer& lexer, Token& current, Diagnostics& diagnostics,
+parse_fn_body(Lexer& lexer, Token& current, Diag& diagnostics,
               std::string source,
               std::span<const Mod::FnDecl::GenericDecl> variables = {});
-bool verify_fn_body(const FnBody& body, Diagnostics& diagnostics);
+bool verify_fn_body(const FnBody& body, Diag& diagnostics);
 std::string format_fn_body(const FnBody& body, std::size_t indent = 0);
 std::string format_fn_syntax(const FnSyntax& fn, std::size_t indent = 0);
 FnSyntax materialized_fn_syntax(const Fn& fn, std::string_view name,
                                 bool qualify_types = false);
 std::optional<Fn> instantiate_fn(Compiler& compiler, Mod::FnDecl fn,
-                                 const FnBody& body, Diagnostics& diagnostics,
+                                 const FnBody& body, Diag& diagnostics,
                                  std::vector<Val> known_arguments = {},
                                  KnownBindings bindings = {});
 std::optional<Fn> instantiate_lambda(
     Compiler& compiler, std::string_view owner, const Mod::Expr& expression,
-    const SourceRange& source, Diagnostics& diagnostics,
+    const SourceRange& source, Diag& diagnostics,
     const KnownBindings& bindings = {},
     std::optional<std::vector<Type>> expected_inputs = std::nullopt,
     std::optional<std::vector<Type>> expected_results = std::nullopt,

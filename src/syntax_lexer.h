@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-#include "joggle/diagnostic.h"
+#include "joggle/diag.h"
 
 namespace joggle::detail {
 

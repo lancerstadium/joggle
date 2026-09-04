@@ -46,7 +46,7 @@ void usage(std::ostream& output) {
 }
 
 std::optional<std::string> read(const std::filesystem::path& path,
-                                joggle::Diagnostics& diagnostics) {
+                                joggle::Diag& diagnostics) {
   std::ifstream input(path, std::ios::binary);
   if (!input) {
     diagnostics.report("cannot open '" + path.string() + "'");
@@ -67,7 +67,7 @@ struct ModInput {
 };
 
 std::optional<ModInput> read_mod_input(const std::filesystem::path& path,
-                                       joggle::Diagnostics& diagnostics) {
+                                       joggle::Diag& diagnostics) {
   std::error_code error;
   if (std::filesystem::is_directory(path, error) && !error) {
     auto mod = joggle::detail::read_mod_bundle(path, diagnostics);
@@ -95,7 +95,7 @@ struct ExactMod {
 };
 
 std::optional<ExactMod> exact_mod(std::string_view request,
-                                  joggle::Diagnostics& diagnostics) {
+                                  joggle::Diag& diagnostics) {
   const std::string source = "joggle 1; mod " + std::string(request) + " {}";
   auto mod = joggle::parse_mod(source, diagnostics, "<mod request>");
   if (!mod) {
@@ -116,7 +116,7 @@ struct Options {
 };
 
 std::optional<Options> options(int argc, char** argv,
-                               joggle::Diagnostics& diagnostics) {
+                               joggle::Diag& diagnostics) {
   Options result;
   for (int index = 2; index < argc; ++index) {
     const std::string_view argument(argv[index]);
@@ -213,7 +213,7 @@ private:
 
 std::optional<std::filesystem::path>
 pending_directory(const std::filesystem::path& target,
-                  joggle::Diagnostics& diagnostics) {
+                  joggle::Diag& diagnostics) {
   const std::filesystem::path parent =
       target.has_parent_path() ? target.parent_path() : ".";
   const std::string prefix = "." + target.filename().string() + ".joggle-";
@@ -237,8 +237,7 @@ pending_directory(const std::filesystem::path& target,
 }
 
 bool publish(const std::filesystem::path& source,
-             const std::filesystem::path& target,
-             joggle::Diagnostics& diagnostics) {
+             const std::filesystem::path& target, joggle::Diag& diagnostics) {
 #if defined(_WIN32)
   if (MoveFileExW(source.c_str(), target.c_str(),
                   MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0) {
@@ -259,8 +258,7 @@ bool publish(const std::filesystem::path& source,
 }
 
 bool write(const std::filesystem::path& requested,
-           std::span<const std::byte> content,
-           joggle::Diagnostics& diagnostics) {
+           std::span<const std::byte> content, joggle::Diag& diagnostics) {
   std::filesystem::path target = requested;
   std::error_code error;
   const auto requested_status = std::filesystem::symlink_status(target, error);
@@ -334,13 +332,13 @@ bool write(const std::filesystem::path& requested,
 }
 
 bool write(const std::filesystem::path& requested, std::string_view text,
-           joggle::Diagnostics& diagnostics) {
+           joggle::Diag& diagnostics) {
   return write(requested, std::as_bytes(std::span(text.data(), text.size())),
                diagnostics);
 }
 
 std::optional<joggle::Bytes> read_bytes(const std::filesystem::path& path,
-                                        joggle::Diagnostics& diagnostics) {
+                                        joggle::Diag& diagnostics) {
   auto content = read(path, diagnostics);
   if (!content) {
     return std::nullopt;
@@ -354,7 +352,7 @@ std::optional<joggle::Bytes> read_bytes(const std::filesystem::path& path,
 }
 
 bool write_stdout(std::span<const std::byte> content,
-                  joggle::Diagnostics& diagnostics) {
+                  joggle::Diag& diagnostics) {
   if (content.size() >
       static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max())) {
     diagnostics.report("output is too large for standard output");
@@ -375,12 +373,12 @@ bool write_stdout(std::span<const std::byte> content,
   return true;
 }
 
-int fail(const joggle::Diagnostics& diagnostics) {
+int fail(const joggle::Diag& diagnostics) {
   diagnostics.print(std::cerr);
   return EXIT_FAILURE;
 }
 
-int usage_error(joggle::Diagnostics& diagnostics, std::string message) {
+int usage_error(joggle::Diag& diagnostics, std::string message) {
   diagnostics.report(std::move(message));
   diagnostics.print(std::cerr);
   usage(std::cerr);
@@ -434,7 +432,7 @@ int main(int argc, char** argv) {
     return EXIT_SUCCESS;
   }
 
-  joggle::Diagnostics diagnostics;
+  joggle::Diag diagnostics;
   constexpr std::array<std::string_view, 7> commands{
       "check", "fmt", "run", "install", "uninstall", "list", "lock"};
   if (std::find(commands.begin(), commands.end(), command) == commands.end()) {
@@ -504,11 +502,11 @@ int main(int argc, char** argv) {
       joggle::Compiler compiler;
       if (!validate_mod(compiler, input->mod, parsed.root, parsed.native,
                         parsed.with)) {
-        return fail(compiler.diagnostics());
+        return fail(compiler.diag());
       }
       const auto linked = compiler.mod(input->mod.name());
       if (!linked) {
-        return fail(compiler.diagnostics());
+        return fail(compiler.diag());
       }
       std::cout << linked->name() << '@' << joggle::to_string(linked->version())
                 << '#' << linked->digest() << '\n';
@@ -546,7 +544,7 @@ int main(int argc, char** argv) {
 
     joggle::Compiler compiler;
     if (!link(compiler)) {
-      return fail(compiler.diagnostics());
+      return fail(compiler.diag());
     }
 
     const std::string fn_name =
@@ -555,7 +553,7 @@ int main(int argc, char** argv) {
             : parsed.positional[1];
     auto fn = compiler.lookup(fn_name);
     if (!fn) {
-      return fail(compiler.diagnostics());
+      return fail(compiler.diag());
     }
 
     const bool bytes_to_bytes =
@@ -582,7 +580,7 @@ int main(int argc, char** argv) {
       }
       joggle::Compiler with_input;
       if (!link(with_input, &parsed_input->mod)) {
-        return fail(with_input.diagnostics());
+        return fail(with_input.diag());
       }
       compiler = std::move(with_input);
       fn = compiler.lookup(fn_name);
@@ -590,7 +588,7 @@ int main(int argc, char** argv) {
       mod_input = linked_input ? compiler.materialize(*linked_input)
                                : std::optional<joggle::Mod>{};
       if (!fn || !mod_input) {
-        return fail(compiler.diagnostics());
+        return fail(compiler.diag());
       }
     } else {
       byte_input = read_bytes(input_path, diagnostics);
@@ -601,7 +599,7 @@ int main(int argc, char** argv) {
 
     if (parsed.native &&
         !compiler.load_native(root->mod.name(), *parsed.native)) {
-      return fail(compiler.diagnostics());
+      return fail(compiler.diag());
     }
     for (const std::string& request : parsed.loaded_natives) {
       const std::size_t separator = request.find('=');
@@ -614,7 +612,7 @@ int main(int argc, char** argv) {
               ? compiler.load_native(mod)
               : compiler.load_native(mod, request.substr(separator + 1U));
       if (!loaded) {
-        return fail(compiler.diagnostics());
+        return fail(compiler.diag());
       }
     }
 
@@ -624,7 +622,7 @@ int main(int argc, char** argv) {
               ? compiler.run<joggle::Bytes>(*fn, std::move(*byte_input))
               : compiler.run<joggle::Bytes>(*fn, std::move(*mod_input));
       if (!output) {
-        return fail(compiler.diagnostics());
+        return fail(compiler.diag());
       }
       if (parsed.output) {
         if (!write(*parsed.output, std::span<const std::byte>(*output),
@@ -642,7 +640,7 @@ int main(int argc, char** argv) {
                       ? compiler.run<joggle::Mod>(*fn, std::move(*byte_input))
                       : compiler.run<joggle::Mod>(*fn, std::move(*mod_input));
     if (!output) {
-      return fail(compiler.diagnostics());
+      return fail(compiler.diag());
     }
     if (!output->data().empty()) {
       if (!parsed.output) {
@@ -687,7 +685,7 @@ int main(int argc, char** argv) {
     }
     joggle::Compiler compiler;
     if (!validate_mod(compiler, input->mod, parsed.root, parsed.native)) {
-      return fail(compiler.diagnostics());
+      return fail(compiler.diag());
     }
     auto installed = joggle::detail::install_mod(parsed.root, input->mod,
                                                  diagnostics, parsed.native);
@@ -782,7 +780,7 @@ int main(int argc, char** argv) {
     }
     joggle::Compiler compiler;
     if (!validate_mod(compiler, root->mod, parsed.root, std::nullopt)) {
-      return fail(compiler.diagnostics());
+      return fail(compiler.diag());
     }
     std::ostringstream lock;
     lock << "joggle-lock 1;\n"

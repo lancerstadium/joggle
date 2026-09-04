@@ -157,7 +157,7 @@ bool primitive_name(std::string_view name) {
 
 const std::string& prelude_declaration_digest() {
   static const std::string value = [] {
-    Diagnostics diagnostics;
+    Diag diagnostics;
     auto mod =
         parse_mod(prelude_mod_source(), diagnostics, "<embedded-prelude>");
     if (!mod) {
@@ -179,7 +179,7 @@ bool is_prelude_primitive(const Mod::FnDecl& fn) {
 std::optional<ParamVal>
 evaluate_prelude_primitive(const Mod::FnDecl& fn,
                            std::span<const ParamVal> arguments,
-                           Diagnostics& diagnostics, std::size_t element_limit,
+                           Diag& diagnostics, std::size_t element_limit,
                            std::optional<SourceRange> source) {
   const auto fail = [&](std::string message) -> std::optional<ParamVal> {
     diagnostics.report(std::move(message), source);

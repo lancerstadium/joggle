@@ -65,7 +65,7 @@ public:
     advance();
   }
 
-  std::optional<ParsedMod> parse(Diagnostics& output) {
+  std::optional<ParsedMod> parse(Diag& output) {
     expect_name("joggle");
     const auto language = integer();
     if (language && *language != 1U) {
@@ -104,7 +104,7 @@ public:
     validate();
 
     if (!ok()) {
-      for (const Diagnostic& diagnostic : diagnostics_.entries()) {
+      for (const Issue& diagnostic : diagnostics_.issues()) {
         output.report(diagnostic);
       }
       return std::nullopt;
@@ -1172,7 +1172,7 @@ private:
   std::string source_;
   Token current_;
   ParsedMod mod_;
-  Diagnostics diagnostics_;
+  Diag diagnostics_;
 };
 
 std::string symbol_kind_name(Mod::SymbolKind kind) {
@@ -1968,7 +1968,7 @@ detail::ModAccess::declaration_source(const Mod& mod, Mod::SymbolKind kind,
   return std::nullopt;
 }
 
-std::optional<Mod> parse_mod(std::string_view text, Diagnostics& diagnostics,
+std::optional<Mod> parse_mod(std::string_view text, Diag& diagnostics,
                              std::string source) {
   auto parsed = Parser(text, std::move(source)).parse(diagnostics);
   if (!parsed) {

@@ -30,7 +30,7 @@ int main() {
   )",
                "testing.joggle");
   if (!compiler.link()) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 
@@ -91,7 +91,7 @@ int main() {
   )",
              "shaped.joggle");
   if (!shaped.link()) {
-    shaped.diagnostics().print(std::cerr);
+    shaped.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto shaped_mod = shaped.mod("shaped");

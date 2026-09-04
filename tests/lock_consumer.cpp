@@ -13,7 +13,7 @@ int main(int argc, char** argv) {
   compiler.lock(argv[2]);
   compiler.load(argv[3]);
   if (!compiler.link()) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const std::size_t expected =

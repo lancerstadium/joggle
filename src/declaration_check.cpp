@@ -65,7 +65,7 @@ class ExprCheck {
 public:
   ExprCheck(const Compiler& compiler, const Mod& scope,
             std::span<const Mod::FnDecl::GenericDecl> generics,
-            std::span<const Mod::ParamDecl> locals, Diagnostics& diagnostics,
+            std::span<const Mod::ParamDecl> locals, Diag& diagnostics,
             std::optional<SourceRange> source, std::string_view subject)
       : compiler_(compiler), scope_(scope), generics_(generics),
         locals_(locals), diagnostics_(diagnostics), source_(std::move(source)),
@@ -350,7 +350,7 @@ private:
   const Mod& scope_;
   std::span<const Mod::FnDecl::GenericDecl> generics_;
   std::span<const Mod::ParamDecl> locals_;
-  Diagnostics& diagnostics_;
+  Diag& diagnostics_;
   std::optional<SourceRange> source_;
   std::string subject_;
 };
@@ -361,7 +361,7 @@ bool check_declaration_expression(
     const Compiler& compiler, const Mod& scope, const Mod::Expr& expression,
     const Mod::Expr& expected,
     std::span<const Mod::FnDecl::GenericDecl> generics,
-    std::span<const Mod::ParamDecl> locals, Diagnostics& diagnostics,
+    std::span<const Mod::ParamDecl> locals, Diag& diagnostics,
     std::optional<SourceRange> source, std::string_view subject) {
   return ExprCheck(compiler, scope, generics, locals, diagnostics,
                    std::move(source), subject)

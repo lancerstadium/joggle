@@ -284,14 +284,14 @@ int main(int argc, char** argv) {
   }
   compiler.load(argv[onnx_index]);
   if (!compiler.link() || !compiler.load_native("onnx", argv[native_index])) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto bytes = read_bytes(argv[model_index]);
   const auto model = compiler.run<joggle::Mod>(
       "onnx.read", bytes, std::string{"squeezenet_roundtrip"});
   if (!model || !emit(*model, argv[output_index])) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;

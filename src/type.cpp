@@ -131,7 +131,7 @@ detail::parameter_default(const Mod::ParamDecl& schema) {
 
 std::optional<std::vector<ParamVal>> detail::validate_parameters(
     std::string_view owner, std::span<const Mod::ParamDecl> schema,
-    std::span<const ParamVal> provided, Diagnostics& diagnostics) {
+    std::span<const ParamVal> provided, Diag& diagnostics) {
   if (provided.size() > schema.size()) {
     diagnostics.report("'" + std::string(owner) + "' expects at most " +
                        std::to_string(schema.size()) + " parameters, but " +

@@ -381,7 +381,7 @@ bool matches_fn_reference(const FnState& fn, const ValData& value) {
   for (const Type& result : *results) {
     expected.emplace_back(result);
   }
-  Diagnostics diagnostics;
+  Diag diagnostics;
   const auto resolved = detail::resolve_call_types(
       mods, *value.reference, *inputs, {}, expected, diagnostics);
   return resolved && resolved->results == *results;
@@ -430,13 +430,13 @@ bool matches_inline_fn(const FnState& owner, const ValData& value) {
       }
     }
   }
-  Diagnostics diagnostics;
+  Diag diagnostics;
   return detail::FnAccess::verify_structure(*value.inline_fn, diagnostics);
 }
 
 bool verify_op(const FnState& fn, std::uint64_t id, const OpData& op,
                const std::unordered_map<std::uint64_t, BlkSet>& dom,
-               Diagnostics& diagnostics) {
+               Diag& diagnostics) {
   bool valid = true;
   const std::string name(op.schema.symbol().qualified_name());
   if (!owns(fn, op.schema.symbol())) {
@@ -523,7 +523,7 @@ bool verify_op(const FnState& fn, std::uint64_t id, const OpData& op,
   return valid;
 }
 
-bool verify_effect_uses(const FnState& fn, Diagnostics& diagnostics) {
+bool verify_effect_uses(const FnState& fn, Diag& diagnostics) {
   bool valid = true;
   std::unordered_map<std::uint64_t, std::size_t> uses;
   const auto effect = [&](std::uint64_t id) {
@@ -591,7 +591,7 @@ bool verify_effect_uses(const FnState& fn, Diagnostics& diagnostics) {
   return valid;
 }
 
-bool verify_fn(const FnState& fn, Diagnostics& diagnostics) {
+bool verify_fn(const FnState& fn, Diag& diagnostics) {
   bool valid = true;
   if (fn.block_order.empty() || fn.block_order.front() != fn.entry ||
       !contains(fn.blocks, fn.entry)) {
@@ -807,7 +807,7 @@ bool verify_fn(const FnState& fn, Diagnostics& diagnostics) {
 }
 
 template <typename Resolve>
-bool verify_op_contracts(const FnState& fn, Diagnostics& diagnostics,
+bool verify_op_contracts(const FnState& fn, Diag& diagnostics,
                          Resolve&& resolve) {
   bool valid = true;
   for (const std::uint64_t block_id : fn.block_order) {
@@ -866,7 +866,7 @@ bool verify_op_contracts(const FnState& fn, Diagnostics& diagnostics,
   return valid;
 }
 
-bool verify_op_contracts(const FnState& fn, Diagnostics& diagnostics) {
+bool verify_op_contracts(const FnState& fn, Diag& diagnostics) {
   std::vector<Mod> mods;
   mods.reserve(fn.mods.size());
   for (const auto& [name, mod] : fn.mods) {
@@ -877,7 +877,7 @@ bool verify_op_contracts(const FnState& fn, Diagnostics& diagnostics) {
       fn, diagnostics,
       [&](const Mod::FnDecl& schema, std::span<const Type> arguments,
           std::span<const std::optional<ParamVal>> known_arguments,
-          std::span<const std::optional<Type>> results, Diagnostics& reported,
+          std::span<const std::optional<Type>> results, Diag& reported,
           std::optional<SourceRange> location) {
         return resolve_call_types(mods, schema, arguments, known_arguments,
                                   results, reported, std::move(location));
@@ -885,12 +885,12 @@ bool verify_op_contracts(const FnState& fn, Diagnostics& diagnostics) {
 }
 
 bool verify_op_contracts(const FnState& fn, Compiler& compiler,
-                         Diagnostics& diagnostics) {
+                         Diag& diagnostics) {
   return verify_op_contracts(
       fn, diagnostics,
       [&](const Mod::FnDecl& schema, std::span<const Type> arguments,
           std::span<const std::optional<ParamVal>> known_arguments,
-          std::span<const std::optional<Type>> results, Diagnostics& reported,
+          std::span<const std::optional<Type>> results, Diag& reported,
           std::optional<SourceRange> location) {
         return resolve_call_types(compiler, schema, arguments, known_arguments,
                                   results, reported, std::move(location));
@@ -928,16 +928,16 @@ void check_same_fn(const std::shared_ptr<FnIdentity>& fn, const Val& value,
 
 namespace joggle::detail {
 
-bool FnAccess::verify_structure(const Fn& fn, Diagnostics& diagnostics) {
+bool FnAccess::verify_structure(const Fn& fn, Diag& diagnostics) {
   return verify_fn(*fn.fn_->state, diagnostics);
 }
 
-bool FnAccess::verify_contracts(const Fn& fn, Diagnostics& diagnostics) {
+bool FnAccess::verify_contracts(const Fn& fn, Diag& diagnostics) {
   return verify_op_contracts(*fn.fn_->state, diagnostics);
 }
 
 bool FnAccess::verify_contracts(const Fn& fn, Compiler& compiler,
-                                Diagnostics& diagnostics) {
+                                Diag& diagnostics) {
   return verify_op_contracts(*fn.fn_->state, compiler, diagnostics);
 }
 
@@ -999,7 +999,7 @@ void FnAccess::define(Fn& fn, std::vector<Type> argument_types,
 }
 
 bool FnAccess::attach(Fn& fn, Mod::FnDecl declaration, Mod owner,
-                      Diagnostics& diagnostics) {
+                      Diag& diagnostics) {
   if (!fn.fn_ || fn.fn_->editing) {
     throw std::logic_error(
         "cannot attach a moved-from fn or one with an active edit");
@@ -1029,8 +1029,7 @@ bool FnAccess::attach(Fn& fn, Mod::FnDecl declaration, Mod owner,
   return true;
 }
 
-bool FnAccess::commit(Fn::Edit& edit, Compiler& compiler,
-                      Diagnostics& diagnostics) {
+bool FnAccess::commit(Fn::Edit& edit, Compiler& compiler, Diag& diagnostics) {
   if (!edit.state_ || !edit.state_->active) {
     throw std::logic_error("fn edit is no longer active");
   }
@@ -1661,14 +1660,14 @@ Op Fn::Edit::add(Blk block, std::optional<Op> before, Mod::FnDecl schema,
       static_cast<void>(name);
       mods.push_back(mod);
     }
-    Diagnostics diagnostics;
+    Diag diagnostics;
     auto inferred = detail::infer_call_types(
         mods, schema, argument_types, inference_known, expected, diagnostics);
     if (!inferred) {
       std::string message = "cannot infer results for op '" +
                             schema.symbol().qualified_name() + "'";
-      if (!diagnostics.entries().empty()) {
-        message += ": " + diagnostics.entries().front().message;
+      if (!diagnostics.issues().empty()) {
+        message += ": " + diagnostics.issues().front().message;
       }
       throw std::invalid_argument(std::move(message));
     }
@@ -1909,7 +1908,7 @@ void Fn::Edit::erase(Op op) {
   state.ops.erase(op_id);
 }
 
-bool Fn::Edit::commit(Diagnostics& diagnostics) {
+bool Fn::Edit::commit(Diag& diagnostics) {
   if (!state_ || !state_->active) {
     throw std::logic_error("fn edit is no longer active");
   }

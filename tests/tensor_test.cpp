@@ -140,7 +140,7 @@ bool expect(bool condition, std::string_view message) {
 void register_tensor_verifier(joggle::Compiler& compiler,
                               const joggle::Mod::TypeDecl& tensor) {
   compiler.verify(
-      tensor, [](const joggle::Type& type, joggle::Diagnostics& diagnostics) {
+      tensor, [](const joggle::Type& type, joggle::Diag& diagnostics) {
         const auto element = type.get<joggle::Type>("element");
         const auto shape = type.get<std::vector<std::int64_t>>("shape");
         if (!element || !shape) {
@@ -189,7 +189,7 @@ int main() {
   if (!tensor || !slice || !tensor_mod || !f32 || !fire_decl || !pattern_decl ||
       !fused_decl || !wrong_decl || !conv_relu_decl || !relu_decl ||
       !concat_decl) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 
@@ -199,7 +199,7 @@ int main() {
   auto fused = compiler.materialize(*fused_decl);
   auto wrong = compiler.materialize(*wrong_decl);
   if (!scalar || !fire || !pattern || !fused || !wrong || !compiler.ok()) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 
@@ -235,7 +235,7 @@ int main() {
 
   joggle::Fn rejected_fire = *fire;
   const auto rejected_revision = rejected_fire.revision();
-  joggle::Diagnostics rejected_replacement_diagnostics;
+  joggle::Diag rejected_replacement_diagnostics;
   const auto rejected_replacement =
       joggle::replace(compiler, rejected_fire, *pattern, *wrong,
                       rejected_replacement_diagnostics);
@@ -245,7 +245,7 @@ int main() {
              "a type-correct tensor kernel with different reference "
              "semantics is rejected without mutation");
 
-  joggle::Diagnostics replacement_diagnostics;
+  joggle::Diag replacement_diagnostics;
   const auto replacements = joggle::replace(compiler, *fire, *pattern, *fused,
                                             replacement_diagnostics);
   const auto fused_ops = fire->ops();
@@ -277,7 +277,7 @@ int main() {
                             ? roundtrip.materialize("artifact.fire_optimized")
                             : std::nullopt;
   if (!replayed) {
-    roundtrip.diagnostics().print(std::cerr);
+    roundtrip.diag().print(std::cerr);
   }
   ok &= expect(replayed &&
                    joggle::format(*replayed, "fire_optimized") == canonical,

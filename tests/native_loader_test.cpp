@@ -28,12 +28,12 @@ int main(int argc, char** argv) {
   }
   compiler.load(argv[1]);
   if (!compiler.link()) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto mod = compiler.mod("native_plugin");
   if (!mod || !compiler.load_native("native_plugin", argv[2])) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 
@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
   const bool adjacent_loaded =
       adjacent_linked && adjacent.load_native("native_plugin");
   if (!adjacent_loaded) {
-    adjacent.diagnostics().print(std::cerr);
+    adjacent.diag().print(std::cerr);
   }
   ok &= expect(adjacent_loaded,
                "a Mod-adjacent platform library is discovered directly");

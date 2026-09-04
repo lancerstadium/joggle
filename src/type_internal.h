@@ -7,7 +7,7 @@
 #include <variant>
 #include <vector>
 
-#include "joggle/diagnostic.h"
+#include "joggle/diag.h"
 #include "joggle/type.h"
 
 namespace joggle::detail {
@@ -37,8 +37,9 @@ struct TypeAccess {
 
 bool matches_parameter(const Mod::ParamDecl& schema, const ParamVal& value);
 std::optional<ParamVal> parameter_default(const Mod::ParamDecl& schema);
-std::optional<std::vector<ParamVal>> validate_parameters(
-    std::string_view owner, std::span<const Mod::ParamDecl> schema,
-    std::span<const ParamVal> provided, Diagnostics& diagnostics);
+std::optional<std::vector<ParamVal>>
+validate_parameters(std::string_view owner,
+                    std::span<const Mod::ParamDecl> schema,
+                    std::span<const ParamVal> provided, Diag& diagnostics);
 
 }  // namespace joggle::detail

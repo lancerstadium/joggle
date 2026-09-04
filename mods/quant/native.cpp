@@ -24,13 +24,13 @@ enum class Storage {
   I32,
 };
 
-bool fail(joggle::Diagnostics& diagnostics, std::string message) {
+bool fail(joggle::Diag& diagnostics, std::string message) {
   diagnostics.report("quant reference: " + std::move(message));
   return false;
 }
 
 std::optional<Storage> storage(const joggle::Type& type, bool quantizing,
-                               joggle::Diagnostics& diagnostics) {
+                               joggle::Diag& diagnostics) {
   const auto symbol = type.schema().symbol();
   if (symbol.mod_name() != "prelude") {
     fail(diagnostics, "storage must be a Prelude integer Type");
@@ -51,7 +51,7 @@ std::optional<Storage> storage(const joggle::Type& type, bool quantizing,
 }
 
 std::optional<std::size_t> element_count(const Shape& shape,
-                                         joggle::Diagnostics& diagnostics) {
+                                         joggle::Diag& diagnostics) {
   std::size_t count = 1;
   for (const auto dimension : shape) {
     if (dimension < 0) {
@@ -71,7 +71,7 @@ std::optional<std::size_t> element_count(const Shape& shape,
 }
 
 std::optional<std::size_t> byte_count(std::size_t elements, std::size_t width,
-                                      joggle::Diagnostics& diagnostics) {
+                                      joggle::Diag& diagnostics) {
   if (elements > std::numeric_limits<std::size_t>::max() / width) {
     fail(diagnostics, "tensor byte count overflows");
     return std::nullopt;
@@ -92,7 +92,7 @@ struct Parameters {
 
 std::optional<Parameters> parameters(const Reals& scales, const Integers& zeros,
                                      const Shape& shape, std::int64_t axis,
-                                     joggle::Diagnostics& diagnostics) {
+                                     joggle::Diag& diagnostics) {
   if (scales.empty() || scales.size() != zeros.size()) {
     fail(diagnostics, "scale and zero lists must have the same non-zero size");
     return std::nullopt;
@@ -148,7 +148,7 @@ std::optional<Parameters> parameters(const Reals& scales, const Integers& zeros,
 }
 
 bool zeros_fit(const Integers& zeros, Storage format, bool quantizing,
-               joggle::Diagnostics& diagnostics) {
+               joggle::Diag& diagnostics) {
   const auto in_range = [format](std::int64_t value) {
     switch (format) {
     case Storage::U8:
@@ -202,7 +202,7 @@ std::int64_t round_even(float value) {
 std::optional<joggle::Bytes>
 quantize(const joggle::Bytes& input, const Reals& scales, const Integers& zeros,
          const Shape& shape, std::int64_t axis,
-         const joggle::Type& storage_type, joggle::Diagnostics& diagnostics) {
+         const joggle::Type& storage_type, joggle::Diag& diagnostics) {
   const auto format = storage(storage_type, true, diagnostics);
   const auto elements = element_count(shape, diagnostics);
   const auto expected =
@@ -269,7 +269,7 @@ std::int64_t read_integer(const joggle::Bytes& input, std::size_t index,
 std::optional<joggle::Bytes>
 dequantize(const joggle::Bytes& input, const Reals& scales,
            const Integers& zeros, const Shape& shape, std::int64_t axis,
-           const joggle::Type& storage_type, joggle::Diagnostics& diagnostics) {
+           const joggle::Type& storage_type, joggle::Diag& diagnostics) {
   const auto format = storage(storage_type, false, diagnostics);
   const auto elements = element_count(shape, diagnostics);
   const auto width = format && *format == Storage::I32 ? 4U : 1U;
@@ -304,7 +304,7 @@ dequantize(const joggle::Bytes& input, const Reals& scales,
 }  // namespace
 
 void joggle_mod(joggle::Compiler& compiler, const joggle::Mod& mod,
-                joggle::Diagnostics&) {
+                joggle::Diag&) {
   compiler.bind(mod, "quantize", quantize);
   compiler.bind(mod, "dequantize", dequantize);
 }

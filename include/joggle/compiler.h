@@ -17,7 +17,7 @@
 #include <variant>
 #include <vector>
 
-#include "joggle/diagnostic.h"
+#include "joggle/diag.h"
 #include "joggle/ir.h"
 #include "joggle/mod.h"
 #include "joggle/type.h"
@@ -245,7 +245,7 @@ template <typename T>
 inline constexpr bool valid_fn_result = !std::is_reference_v<T>;
 
 // The C++ spelling of an ordinary fn implementation. Compiler& and
-// Diagnostics& are host services rather than declared arguments, so the same
+// Diag& are host services rather than declared arguments, so the same
 // traits drive both overload selection and type-erased invocation.
 template <typename Implementation> struct FnBinding {
   using Callable = std::decay_t<Implementation>;
@@ -263,8 +263,7 @@ template <typename Implementation> struct FnBinding {
     if constexpr (arity == 0U) {
       return false;
     } else {
-      return std::is_same_v<std::tuple_element_t<arity - 1U, Arguments>,
-                            Diagnostics&>;
+      return std::is_same_v<std::tuple_element_t<arity - 1U, Arguments>, Diag&>;
     }
   }();
   static constexpr std::size_t argument_count =
@@ -295,15 +294,15 @@ template <typename Implementation> struct FnBinding {
 };
 
 template <typename Callable, typename Arguments, std::size_t Offset,
-          bool WithCompiler, bool WithDiagnostics, std::size_t... Indices>
+          bool WithCompiler, bool WithDiag, std::size_t... Indices>
 std::optional<ExecVals> invoke_typed_fn(Callable& callable, Compiler& compiler,
                                         std::span<ExecVal> arguments,
-                                        Diagnostics& diagnostics,
+                                        Diag& diagnostics,
                                         std::index_sequence<Indices...>) {
   using Traits = CallableTraits<Callable>;
   using Produced = typename Traits::result;
   const auto invoke = [&]() -> Produced {
-    if constexpr (WithCompiler && WithDiagnostics) {
+    if constexpr (WithCompiler && WithDiag) {
       return std::invoke(
           callable, compiler,
           execution_argument<std::tuple_element_t<Offset + Indices, Arguments>>(
@@ -314,7 +313,7 @@ std::optional<ExecVals> invoke_typed_fn(Callable& callable, Compiler& compiler,
           callable, compiler,
           execution_argument<std::tuple_element_t<Offset + Indices, Arguments>>(
               arguments[Indices])...);
-    } else if constexpr (WithDiagnostics) {
+    } else if constexpr (WithDiag) {
       return std::invoke(
           callable,
           execution_argument<std::tuple_element_t<Offset + Indices, Arguments>>(
@@ -350,9 +349,9 @@ std::optional<ExecVals> invoke_typed_fn(Callable& callable, Compiler& compiler,
 class Compiler {
 private:
   template <typename Subject>
-  using VerifierFn = std::function<bool(const Subject&, Diagnostics&)>;
+  using VerifierFn = std::function<bool(const Subject&, Diag&)>;
   using NativeFn = std::function<std::optional<detail::ExecVals>(
-      Compiler&, std::span<detail::ExecVal>, Diagnostics&)>;
+      Compiler&, std::span<detail::ExecVal>, Diag&)>;
   using RepresentationProjector = std::function<std::optional<Type>(
       Compiler&, const Mod::TypeDecl&, const void*)>;
 
@@ -481,7 +480,7 @@ public:
   // Specializes a source-defined callee from one already typed call. Concrete
   // operand, property, and result types recover the call's generic bindings.
   std::optional<Fn> materialize(const Op& call);
-  std::optional<Fn> materialize(const Op& call, Diagnostics& diagnostics);
+  std::optional<Fn> materialize(const Op& call, Diag& diagnostics);
 
   // Recursively specializes source-defined calls until every remaining call
   // is accepted by boundary. The returned Mod owns each concrete
@@ -491,7 +490,7 @@ public:
   std::optional<Mod>
   specialize(const Mod& mod,
              const std::function<bool(const Mod::FnDecl&)>& boundary,
-             Diagnostics& diagnostics);
+             Diag& diagnostics);
 
   template <typename Callable>
   void verify(Mod::TypeDecl schema, Callable&& callable) {
@@ -541,7 +540,7 @@ public:
     NativeFn binding =
         [callable = Callable(std::forward<Implementation>(implementation))](
             Compiler& compiler, std::span<detail::ExecVal> arguments,
-            Diagnostics& diagnostics) mutable {
+            Diag& diagnostics) mutable {
           if (arguments.size() != argument_count) {
             diagnostics.report("fn binding received the wrong argument "
                                "count");
@@ -609,7 +608,7 @@ public:
     }
     return run<Result>(*declaration, std::forward<Arguments>(arguments)...);
   }
-  const Diagnostics& diagnostics() const;
+  const Diag& diag() const;
 
 private:
   std::optional<Val> make_known(Type type, detail::ParamVal value);
@@ -664,9 +663,9 @@ private:
     using Callable = std::decay_t<Implementation>;
     VerifierFn<Subject> verifier =
         [callable = Callable(std::forward<Implementation>(implementation))](
-            const Subject& value, Diagnostics& diagnostics) mutable {
+            const Subject& value, Diag& diagnostics) mutable {
           if constexpr (std::is_invocable_r_v<bool, Callable&, const Subject&,
-                                              Diagnostics&>) {
+                                              Diag&>) {
             return std::invoke(callable, value, diagnostics);
           } else if constexpr (std::is_invocable_r_v<bool, Callable&,
                                                      const Subject&>) {
@@ -675,7 +674,7 @@ private:
             static_assert(
                 std::is_invocable_r_v<bool, Callable&, const Subject&>,
                 "a verifier binding must accept its subject, with an optional "
-                "Diagnostics& last, and return bool");
+                "Diag& last, and return bool");
             return false;
           }
         };

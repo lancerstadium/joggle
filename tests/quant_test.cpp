@@ -92,7 +92,7 @@ template <typename Invoke> bool rejects(Invoke&& invoke) {
 int main() {
   joggle::Compiler compiler;
   if (!load(compiler, true)) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto u8 = compiler.make("u8");
@@ -178,7 +178,7 @@ int main() {
                "invalid scales, axes, zero points, and NaNs fail closed");
 
   if (!ok) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
   }
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

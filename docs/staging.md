@@ -35,7 +35,7 @@ source and implemented through `Compiler::bind`:
 ```cpp
 compiler.bind(mod, "optimize",
               [](joggle::Mod input, const joggle::Type& policy,
-                 joggle::Diagnostics& diagnostics)
+                 joggle::Diag& diagnostics)
                   -> std::optional<joggle::Mod> {
                 return optimize(std::move(input), policy, diagnostics);
               });

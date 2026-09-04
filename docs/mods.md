@@ -87,7 +87,7 @@ A bodyless `fn` may be implemented by C++:
 ```cpp
 void joggle_mod(joggle::Compiler& compiler,
                    const joggle::Mod& mod,
-                   joggle::Diagnostics& diagnostics) {
+                   joggle::Diag& diagnostics) {
   compiler.bind(mod, "read",
                 [](const joggle::Bytes& input)
                     -> std::optional<joggle::Mod> {

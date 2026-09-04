@@ -26,7 +26,7 @@ int main() {
   std::ifstream prelude_input(JOGGLE_PRELUDE_MOD);
   std::ostringstream prelude_text;
   prelude_text << prelude_input.rdbuf();
-  joggle::Diagnostics prelude_diagnostics;
+  joggle::Diag prelude_diagnostics;
   const auto source_prelude = joggle::parse_mod(
       prelude_text.str(), prelude_diagnostics, JOGGLE_PRELUDE_MOD);
 
@@ -68,7 +68,7 @@ mod native_test@1.0.0 {
 )",
                "native-test.joggle");
   if (!compiler.link()) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 
@@ -357,9 +357,9 @@ mod invalid_arithmetic@1.0.0 {
                                         "invalid_arithmetic.divide_by_zero")
                                   : std::nullopt;
   const bool reports_division_by_zero = std::any_of(
-      invalid_arithmetic.diagnostics().entries().begin(),
-      invalid_arithmetic.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      invalid_arithmetic.diag().issues().begin(),
+      invalid_arithmetic.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("compile-time division by zero") !=
                std::string::npos;
       });
@@ -382,9 +382,8 @@ mod overflowing@1.0.0 {
           ? overflowing.run<std::int64_t>("overflowing.add_past_i64")
           : std::nullopt;
   const bool reports_overflow = std::any_of(
-      overflowing.diagnostics().entries().begin(),
-      overflowing.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      overflowing.diag().issues().begin(), overflowing.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("compile-time integer arithmetic "
                                        "overflow") != std::string::npos;
       });
@@ -407,9 +406,8 @@ mod invalid_range@1.0.0 {
                                  "invalid_range.zero_step")
                            : std::nullopt;
   const bool reports_zero_step = std::any_of(
-      invalid_range.diagnostics().entries().begin(),
-      invalid_range.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      invalid_range.diag().issues().begin(),
+      invalid_range.diag().issues().end(), [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("range step cannot be zero") !=
                std::string::npos;
       });
@@ -433,9 +431,8 @@ mod bounded_range@1.0.0 {
           ? bounded_range.run<std::vector<std::int64_t>>("bounded_range.expand")
           : std::nullopt;
   const bool reports_range_limit = std::any_of(
-      bounded_range.diagnostics().entries().begin(),
-      bounded_range.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      bounded_range.diag().issues().begin(),
+      bounded_range.diag().issues().end(), [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find(
                    "range exceeds the compiler evaluation step limit") !=
                std::string::npos;
@@ -461,9 +458,8 @@ mod invalid_list@1.0.0 {
           ? invalid_list.run<std::int64_t>("invalid_list.out_of_bounds")
           : std::nullopt;
   const bool reports_list_bounds = std::any_of(
-      invalid_list.diagnostics().entries().begin(),
-      invalid_list.diagnostics().entries().end(),
-      [](const joggle::Diagnostic& diagnostic) {
+      invalid_list.diag().issues().begin(), invalid_list.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
         return diagnostic.message.find("list index is out of bounds") !=
                std::string::npos;
       });

@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-#include "joggle/diagnostic.h"
+#include "joggle/diag.h"
 #include "joggle/mod.h"
 #include "joggle/type.h"
 
@@ -198,7 +198,7 @@ public:
     void replace(Op op, std::vector<Val> results);
     void erase(Op op);
 
-    bool commit(Diagnostics& diagnostics);
+    bool commit(Diag& diagnostics);
 
   private:
     explicit Edit(std::shared_ptr<detail::FnIdentity> fn);

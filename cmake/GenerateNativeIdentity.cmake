@@ -29,7 +29,7 @@ set(identity "${name}@${version}#${digest}")
 file(WRITE "${JOGGLE_OUTPUT}"
   "#include <joggle/detail/native.h>\n\n"
   "void joggle_mod(joggle::Compiler&, const joggle::Mod&, "
-  "joggle::Diagnostics&);\n\n"
+  "joggle::Diag&);\n\n"
   "namespace joggle::detail {\n"
   "const char native_mod_identity[] = \"${identity}\";\n"
   "}\n\n"

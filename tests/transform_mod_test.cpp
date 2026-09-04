@@ -54,7 +54,7 @@ int main() {
   compiler.add(source, "transform-fixture.joggle");
   if (!compiler.link() ||
       !compiler.load_native("transform", JOGGLE_TRANSFORM_NATIVE)) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 
@@ -64,12 +64,12 @@ int main() {
       model ? compiler.run<joggle::Fn>("transform_fixture.optimize", *model)
             : std::nullopt;
   if (!model || !wrapped || !optimized) {
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 
   const auto calls = optimized->ops();
-  joggle::Diagnostics equivalence;
+  joggle::Diag equivalence;
   bool ok = true;
   ok &= expect(calls.size() == 1U &&
                    calls.front().callee().symbol().mod_name() ==
@@ -82,7 +82,7 @@ int main() {
   ok &= expect(compiler.verify(*optimized),
                "the transformed Fn remains valid executable IR");
 
-  joggle::Diagnostics mod_diagnostics;
+  joggle::Diag mod_diagnostics;
   auto subject = joggle::parse_mod("joggle 1; mod transform_subject@1.0.0 {}",
                                    mod_diagnostics, "transform-subject.joggle");
   if (!subject ||
@@ -105,7 +105,7 @@ int main() {
                "snapshot");
   if (!ok) {
     equivalence.print(std::cerr);
-    compiler.diagnostics().print(std::cerr);
+    compiler.diag().print(std::cerr);
   }
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

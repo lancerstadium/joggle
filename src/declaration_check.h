@@ -12,7 +12,7 @@ bool check_declaration_expression(
     const Compiler& compiler, const Mod& scope, const Mod::Expr& expression,
     const Mod::Expr& expected,
     std::span<const Mod::FnDecl::GenericDecl> generics,
-    std::span<const Mod::ParamDecl> locals, Diagnostics& diagnostics,
+    std::span<const Mod::ParamDecl> locals, Diag& diagnostics,
     std::optional<SourceRange> source, std::string_view subject);
 
 }  // namespace joggle::detail

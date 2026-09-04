@@ -55,7 +55,7 @@ struct Schema {
   joggle::Type integer_list;
 };
 
-bool fail(joggle::Diagnostics& diagnostics, std::string message) {
+bool fail(joggle::Diag& diagnostics, std::string message) {
   diagnostics.report("onnx.read: " + std::move(message));
   return false;
 }
@@ -105,9 +105,8 @@ void append_u64(joggle::Bytes& output, std::uint64_t value) {
   }
 }
 
-std::optional<Initializer>
-decode_initializer(const onnx::TensorProto& tensor,
-                   joggle::Diagnostics& diagnostics) {
+std::optional<Initializer> decode_initializer(const onnx::TensorProto& tensor,
+                                              joggle::Diag& diagnostics) {
   Initializer result;
   result.element = tensor.data_type();
   result.shape.assign(tensor.dims().begin(), tensor.dims().end());
@@ -279,8 +278,7 @@ decode_initializer(const onnx::TensorProto& tensor,
 }
 
 std::optional<std::pair<std::int32_t, Shape>>
-value_type(const onnx::ValueInfoProto& value,
-           joggle::Diagnostics& diagnostics) {
+value_type(const onnx::ValueInfoProto& value, joggle::Diag& diagnostics) {
   if (!value.has_type() || !value.type().has_tensor_type()) {
     fail(diagnostics, "value '" + value.name() + "' is not a typed tensor");
     return std::nullopt;
@@ -315,7 +313,7 @@ overload(const joggle::Mod& mod, std::string_view name, std::size_t inputs) {
 }
 
 std::optional<Schema> load_schema(joggle::Compiler& compiler, bool needs_quant,
-                                  joggle::Diagnostics& diagnostics) {
+                                  joggle::Diag& diagnostics) {
   const auto mod = compiler.mod("tensor");
   const auto quant = compiler.mod("quant");
   const auto integer = compiler.make("int");
@@ -422,7 +420,7 @@ std::optional<joggle::Val> known(joggle::Compiler& compiler,
 
 std::optional<std::map<std::string, const onnx::AttributeProto*>>
 attributes(const onnx::NodeProto& node, const std::set<std::string>& allowed,
-           joggle::Diagnostics& diagnostics) {
+           joggle::Diag& diagnostics) {
   std::map<std::string, const onnx::AttributeProto*> result;
   for (const auto& attribute : node.attribute()) {
     if (!allowed.contains(attribute.name())) {
@@ -442,8 +440,7 @@ attributes(const onnx::NodeProto& node, const std::set<std::string>& allowed,
 
 std::optional<std::int64_t> integer_attribute(
     const std::map<std::string, const onnx::AttributeProto*>& attrs,
-    std::string_view name, std::int64_t fallback,
-    joggle::Diagnostics& diagnostics) {
+    std::string_view name, std::int64_t fallback, joggle::Diag& diagnostics) {
   const auto found = attrs.find(std::string(name));
   if (found == attrs.end()) {
     return fallback;
@@ -458,7 +455,7 @@ std::optional<std::int64_t> integer_attribute(
 
 std::optional<Shape> integers_attribute(
     const std::map<std::string, const onnx::AttributeProto*>& attrs,
-    std::string_view name, Shape fallback, joggle::Diagnostics& diagnostics) {
+    std::string_view name, Shape fallback, joggle::Diag& diagnostics) {
   const auto found = attrs.find(std::string(name));
   if (found == attrs.end()) {
     return fallback;
@@ -472,8 +469,7 @@ std::optional<Shape> integers_attribute(
 
 std::optional<std::string> string_attribute(
     const std::map<std::string, const onnx::AttributeProto*>& attrs,
-    std::string_view name, std::string fallback,
-    joggle::Diagnostics& diagnostics) {
+    std::string_view name, std::string fallback, joggle::Diag& diagnostics) {
   const auto found = attrs.find(std::string(name));
   if (found == attrs.end()) {
     return fallback;
@@ -501,7 +497,7 @@ bool nonnegative_pads(const Shape& values) {
 std::optional<Shape> spatial_shape(const Shape& input, const Shape& kernel,
                                    const Shape& strides, const Shape& pads,
                                    const Shape& dilations,
-                                   joggle::Diagnostics& diagnostics,
+                                   joggle::Diag& diagnostics,
                                    std::string_view operation) {
   if (input.size() != 4 || !positive_pair(kernel) || !positive_pair(strides) ||
       !positive_pair(dilations) || !nonnegative_pads(pads)) {
@@ -542,7 +538,7 @@ joggle::SourceRange location(const onnx::GraphProto& graph,
 }
 
 std::optional<Shape> reshape_shape(const Shape& input, const Shape& requested,
-                                   joggle::Diagnostics& diagnostics) {
+                                   joggle::Diag& diagnostics) {
   const auto input_count = element_count(input);
   if (!input_count) {
     fail(diagnostics, "Reshape input has invalid element count");
@@ -600,7 +596,7 @@ enum class Profile {
 };
 
 std::optional<Profile> profile(const onnx::ModelProto& source,
-                               joggle::Diagnostics& diagnostics) {
+                               joggle::Diag& diagnostics) {
   std::optional<std::int64_t> standard;
   for (const auto& imported : source.opset_import()) {
     if (imported.domain().empty() || imported.domain() == "ai.onnx") {
@@ -626,7 +622,7 @@ std::optional<Profile> profile(const onnx::ModelProto& source,
 
 std::optional<joggle::Mod> read(joggle::Compiler& compiler,
                                 const joggle::Bytes& input, std::string name,
-                                joggle::Diagnostics& diagnostics) {
+                                joggle::Diag& diagnostics) {
   if (!valid_identifier(name)) {
     fail(diagnostics, "mod name '" + name + "' is not an identifier");
     return std::nullopt;

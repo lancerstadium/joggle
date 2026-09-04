@@ -166,7 +166,7 @@ detail::FnDef definition(const Fn& fn, std::string_view name) {
 
 }  // namespace
 
-bool Mod::insert(std::string name, Fn fn, Diagnostics& diagnostics) {
+bool Mod::insert(std::string name, Fn fn, Diag& diagnostics) {
   if (!valid_name(name)) {
     diagnostics.report("Mod fn name '" + name + "' is invalid");
     return false;

@@ -13,10 +13,10 @@ links and executes mods.
 ## Parse and inspect a mod
 
 ```cpp
-joggle::Diagnostics diagnostics;
-auto mod = joggle::parse_mod(source, diagnostics, "model.joggle");
+joggle::Diag diag;
+auto mod = joggle::parse_mod(source, diag, "model.joggle");
 if (!mod) {
-  diagnostics.print(std::cerr);
+  diag.print(std::cerr);
   return;
 }
 
@@ -39,7 +39,7 @@ joggle::Compiler compiler;
 compiler.search(repository_root);
 compiler.load("driver.joggle");
 if (!compiler.link()) {
-  compiler.diagnostics().print(std::cerr);
+  compiler.diag().print(std::cerr);
   return;
 }
 ```
@@ -138,7 +138,7 @@ compiler.bind(mod, "parse",
 ```
 
 The callable's C++ signature selects and validates the source overload.
-Optional `Compiler&` and `Diagnostics&` service parameters are not source
+Optional `Compiler&` and `Diag&` service parameters are not source
 ports. Bindings can return `void`, one supported value, a tuple for multiple
 results, or `std::optional<T>` to report failure.
 
@@ -161,7 +161,7 @@ native implementations use the same overload resolution.
 
 ```cpp
 compiler.verify(*schema, [](const joggle::Type& type,
-                            joggle::Diagnostics& diagnostics) {
+                            joggle::Diag& diagnostics) {
   const auto width = type.get<std::int64_t>("width");
   if (!width || *width <= 0) {
     diagnostics.report("width must be positive");
@@ -180,7 +180,7 @@ an optional projection maps a host value to its concrete Joggle `Type`.
 ```cpp
 void joggle_mod(joggle::Compiler& compiler,
                    const joggle::Mod& mod,
-                   joggle::Diagnostics& diagnostics) {
+                   joggle::Diag& diagnostics) {
   // bind fns and verifiers
 }
 ```
