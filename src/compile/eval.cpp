@@ -1,7 +1,7 @@
 #include "compile/eval.h"
 
 #include "sema/call.h"
-#include "compile/core.h"
+#include "compile/compiler.h"
 #include "lang/fn.h"
 #include "ir/mod.h"
 #include "ir/type.h"

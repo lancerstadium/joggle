@@ -1,7 +1,7 @@
 #include "sema/infer.h"
 
 #include "sema/call.h"
-#include "compile/core.h"
+#include "compile/compiler.h"
 #include "sema/domain.h"
 #include "lang/expr.h"
 #include "ir/mod.h"
