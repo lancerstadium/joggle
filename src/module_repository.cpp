@@ -1,6 +1,6 @@
 #include "module_repository.h"
 
-#include "joggle/native.h"
+#include "joggle/detail/native.h"
 #include "joggle/digest.h"
 
 #include <algorithm>

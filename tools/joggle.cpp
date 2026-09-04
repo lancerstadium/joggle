@@ -15,7 +15,7 @@
 #include <vector>
 
 #include <joggle/joggle.h>
-#include <joggle/native.h>
+#include <joggle/detail/native.h>
 
 #include "module_internal.h"
 #include "module_repository.h"

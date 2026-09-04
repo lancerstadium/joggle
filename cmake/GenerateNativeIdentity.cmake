@@ -27,7 +27,7 @@ string(SHA256 digest "${canonical}")
 set(identity "${name}@${version}#${digest}")
 
 file(WRITE "${JOGGLE_OUTPUT}"
-  "#include <joggle/native.h>\n\n"
+  "#include <joggle/detail/native.h>\n\n"
   "void joggle_module(joggle::Compiler&, const joggle::Module&, "
   "joggle::Diagnostics&);\n\n"
   "namespace joggle::detail {\n"
