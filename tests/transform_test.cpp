@@ -373,14 +373,20 @@ module foreign@1.0.0 {
                "an internal match result cannot escape to an unmatched call");
 
   joggle::Function replacement_subject = *chain;
+  const auto replaced_root_location =
+      replacement_subject.entry().terminator().returned().front().defining_op()
+          ->location();
   joggle::Diagnostics expression_replace_diagnostics;
   const auto expression_replaced = joggle::replace(
       replacement_subject, *chain, *replacement,
       expression_replace_diagnostics);
   ok &= expect(expression_replaced && *expression_replaced == 1U &&
                    expression_replace_diagnostics.ok() &&
+                   replaced_root_location.has_value() &&
                    replacement_subject.ops().size() == 1U &&
                    replacement_subject.ops().front().callee() == *converted &&
+                   replacement_subject.ops().front().location() ==
+                       replaced_root_location &&
                    replacement_subject.entry().terminator().returned().front() ==
                        replacement_subject.ops().front().value(),
                "replacement clones the after DAG and removes the matched DAG "
@@ -822,10 +828,14 @@ module foreign@1.0.0 {
           ? cloned_arguments.back().inline_function()
           : std::optional<joggle::Function>{};
   ok &= expect(inline_clone && inline_clone_diagnostics.ok() && cloned_body &&
+                   with_inline->ops().front().location().has_value() &&
                    cloned_body->ops().size() == 1U &&
                    cloned_body->ops().front().callee() == *keep &&
+                   inline_clone->ops().front().location() ==
+                       with_inline->ops().front().location() &&
                    compiler.verify(*inline_clone),
-               "clone preserves and verifies an inline callable body");
+               "clone preserves source provenance and verifies an inline "
+               "callable body");
 
   joggle::Compiler staged_replace;
   staged_replace.add(R"(

@@ -85,6 +85,8 @@ public:
   std::vector<Value> results() const;
   Value value() const;
   Value result(std::size_t index) const;
+  // Optional frontend provenance used for diagnostics, not call semantics.
+  std::optional<SourceRange> location() const;
 
   template <typename T>
   std::optional<T> property(std::string_view name) const {
@@ -191,6 +193,8 @@ public:
     void branch(Block block, Value condition, Block true_target,
                 std::vector<Value> true_arguments, Block false_target,
                 std::vector<Value> false_arguments);
+    // Attaches diagnostic provenance within this transaction.
+    void locate(Op op, SourceRange source);
     void replace(Value from, Value to);
     Op replace(Op op, Module::FunctionDecl schema);
     // Replaces every result position and erases the old Op. An empty

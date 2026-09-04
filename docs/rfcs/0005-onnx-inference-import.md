@@ -1,0 +1,112 @@
+# RFC 0005: ONNX inference import
+
+Status: implementation gate 1 complete
+
+## Purpose
+
+The first ONNX path must prove that an external model can become an ordinary
+Joggle `Module` without adding a frontend class, graph container, pass kind, or
+ONNX operation hierarchy to compiler core. The contract is deliberately an
+inference importer rather than a claim of general ONNX coverage.
+
+```joggle
+joggle 1;
+
+module onnx@1.0.0 {
+  import tensor@1;
+  fn read(input: bytes, name: string = "model") -> module;
+}
+```
+
+`read` is a normal explicitly staged compiler function. `name` supplies a
+valid deterministic name for the returned Module; a file path is not hidden in
+the byte value or native binding.
+
+## Reference artifact
+
+The first vertical slice is the ONNX Model Zoo SqueezeNet 1.1 artifact:
+
+| Field | Audited value |
+| --- | --- |
+| Repository | `onnxmodelzoo/squeezenet1.1-7` |
+| File | `squeezenet1.1-7.onnx` |
+| SHA-256 | `1eeff551a67ae8d565ca33b572fc4b66e3ef357b0eb2863bb9ff47a918cc4088` |
+| Size | 4,956,208 bytes |
+| ONNX IR / opset | IR 3 / `ai.onnx` 7 |
+| Graph | `main`, 66 nodes, 53 initializers, no `value_info` |
+| Input / output | `f32[1,3,224,224]` / `f32[1,1000]` |
+
+The model was decoded with the official ONNX 1.19.0 `onnx.proto`. Its node
+multiset is Conv 26, Relu 26, Concat 8, MaxPool 3, AveragePool 1, Dropout 1,
+and Reshape 1. A downloader must verify the exact hash above; tests never
+silently accept a moving model URL.
+
+Primary sources:
+
+- <https://github.com/onnx/models/tree/main/validated/vision/classification/squeezenet>
+- <https://huggingface.co/onnxmodelzoo/squeezenet1.1-7/blob/main/squeezenet1.1-7.onnx>
+- <https://onnx.ai/onnx/repo-docs/IR.html>
+
+## Import semantics
+
+The importer supports one static, dense, float32 inference graph. It rejects
+unknown domains, opsets other than 7, subgraphs, functions, sparse values,
+external tensor data, symbolic or absent dimensions, multiple graph outputs,
+and unsupported attributes before publishing a Module.
+
+IR 3 lists initializers among graph inputs. This importer intentionally freezes
+every initializer; only graph inputs without a matching initializer become
+Function arguments. Each initializer is decoded to canonical element bytes,
+stored with `Module::store`, and materialized through
+`tensor.constant(content: string)`. The original ONNX bytes are also retained
+as immutable Module data.
+
+The model contains no intermediate type information, so the importer performs
+checked static shape propagation for its supported operators. It verifies the
+inferred output against the declared graph output before committing the
+Function.
+
+Mapping rules are semantic rather than textual:
+
+- Conv verifies `kernel_shape` against the weight Type, then records strides,
+  pads, dilations, and group in the tensor call;
+- Relu, MaxPool, AveragePool, and two-input Concat map directly;
+- Dropout-7 with one output is an identity in inference mode and adds no tensor
+  call;
+- Reshape-5 requires a constant int64 shape input, resolves `0` and one `-1`
+  for its result Type, and retains the original shape list as the call property.
+
+## Provenance
+
+Frontend names are diagnostic provenance, not tensor semantics. `Op` exposes
+its existing optional `SourceRange`, and `Function::Edit` may attach one. The
+ONNX importer uses the source string for graph, node, and output names and the
+range coordinates for deterministic node ordinals. Clone preserves a source
+location; expression replacement transfers the matched root location to newly
+created calls. No `name` parameter is added to every tensor function.
+
+Locations are excluded from canonical semantic formatting and Module identity.
+The original ONNX payload remains the lossless source record. Persisting
+Module-owned binary data through the repository is a separate bundle gate and
+must be solved before an imported model is advertised as installable.
+
+## Dependency boundary
+
+Compiler core remains dependency-free. The optional ONNX native Module uses
+the system Protobuf runtime and generates bindings from a vendored, hash-pinned
+official `onnx.proto`; generated C++ is build output, not checked-in API. A
+build without Protobuf still builds and installs Joggle core and tensor.
+
+## Implementation gates
+
+- [x] Expose and preserve ordinary Op source locations through public editing,
+  clone, and expression replacement.
+- [ ] Add the `onnx` source Module, pinned schema provenance, optional Protobuf
+  native target, and hash-checking model fetch command.
+- [ ] Parse and reject unsupported ModelProto structure transactionally.
+- [ ] Import the exact reference model with one input, one output, 52 tensor
+  constants, 65 semantic calls, and output Type `f32[1,1000]`.
+- [ ] Verify initializer digests, call properties, every propagated shape,
+  source locations, and deterministic failure diagnostics.
+- [ ] Differentially validate deterministic inputs against ONNX Runtime before
+  calling the path an ONNX frontend.

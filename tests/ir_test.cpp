@@ -86,11 +86,14 @@ int main() {
   }
 
   std::optional<joggle::Op> add;
+  const joggle::SourceRange imported_location{
+      "model.onnx#node/add", {7, 1}, {7, 2}};
   {
     auto edit = function->edit();
     const auto lhs = edit.argument(*integer);
     const auto rhs = edit.argument(*integer);
     add = edit.append(*add_schema, {lhs, rhs});
+    edit.locate(*add, imported_location);
     edit.append(*cast_schema, {add->result(0)});
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -109,8 +112,10 @@ int main() {
              "a Function owns one ordered op view across its blocks");
   ok &= expect(add && add->value().type() == *integer &&
                    !add->result(0).is_function_argument() &&
-                   !add->result(0).is_block_argument(),
-               "op results retain their inferred type");
+                   !add->result(0).is_block_argument() &&
+                   add->location() ==
+                       std::optional<joggle::SourceRange>{imported_location},
+               "op results retain their inferred type and frontend source");
 
   auto copied = *function;
   const auto shared_revision = copied.revision();

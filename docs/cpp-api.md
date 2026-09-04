@@ -78,7 +78,7 @@ if (!function) {
 }
 
 auto edit = function->edit();
-// append, insert, replace, or erase calls in the isolated edit
+// append, insert, locate, replace, or erase calls in the isolated edit
 if (!edit.commit(diagnostics)) {
   diagnostics.print(std::cerr);
 }
@@ -88,6 +88,11 @@ Function edits are transactional. A commit verifies ownership, CFG, dominance,
 call signatures, and result types before publishing. `Module::insert` installs
 a materialized function under a new declaration; `Module::body` returns a
 mutable copy-on-write body for an exact declaration.
+
+`edit.locate(op, source_range)` attaches frontend provenance to a call, and
+`op.location()` reads it. Locations improve diagnostics and survive cloning or
+typed replacement, but they are not semantic properties and do not change
+canonical Module identity.
 
 Function values remain ordinary typed `Value`s. A declared reference is built
 with `edit.reference(declaration, callable_type)` and inspected with

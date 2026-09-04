@@ -28,6 +28,12 @@ An `Op` is a call to an exact `Module::FunctionDecl`. Inputs and results are
 checked against the selected overload. Operator syntax in source resolves to
 the same function identity as named calls.
 
+An Op may carry an optional `SourceRange`. Parsers and import Modules use it
+for diagnostics and source provenance; it is not a semantic attribute, tensor
+property, or part of canonical Module identity. Public Function edits may
+attach a range, clone preserves it, and expression replacement transfers the
+matched root range to new calls.
+
 ## Blocks and control flow
 
 A `Function` contains ordered blocks. Blocks own arguments and operations and

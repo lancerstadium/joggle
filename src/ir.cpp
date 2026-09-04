@@ -144,21 +144,12 @@ Value FunctionAccess::restore(std::shared_ptr<FunctionIdentity> function,
 void FunctionAccess::locate(Function::Edit& edit,
                             const Op& op,
                             SourceRange source) {
-  if (op.function_ != edit.state_->function || !op.valid()) {
-    throw std::invalid_argument(
-        "op does not belong to this function edit");
-  }
-  edit.state_->function->state->ops.at(id(op)).location =
-      std::move(source);
+  edit.locate(op, std::move(source));
 }
 
 std::optional<SourceRange>
 FunctionAccess::location(const Op& op) {
-  if (!op.valid()) {
-    return std::nullopt;
-  }
-  return op.function_->state->ops.at(op.id_)
-      .location;
+  return op.location();
 }
 
 std::optional<ParameterValue> FunctionAccess::known_value(const Value& value) {
@@ -1368,6 +1359,13 @@ Value Op::result(std::size_t index) const {
   return Value(function_, found->second.results[index]);
 }
 
+std::optional<SourceRange> Op::location() const {
+  if (!valid()) {
+    return std::nullopt;
+  }
+  return function_->state->ops.at(id_).location;
+}
+
 std::optional<Value> Op::argument(std::string_view name) const {
   const auto found = function_->state->ops.find(id_);
   if (found == function_->state->ops.end()) {
@@ -1870,6 +1868,14 @@ void Function::Edit::branch(Block block, Value condition, Block true_target,
       {},
       {{detail::FunctionAccess::id(true_target), ids(true_arguments)},
        {detail::FunctionAccess::id(false_target), ids(false_arguments)}}};
+}
+
+void Function::Edit::locate(Op op, SourceRange source) {
+  if (!state_ || !state_->active || op.function_ != state_->function ||
+      !op.valid()) {
+    throw std::invalid_argument("op does not belong to this function edit");
+  }
+  state_->function->state->ops.at(op.id_).location = std::move(source);
 }
 
 void Function::Edit::replace(Value from, Value to) {

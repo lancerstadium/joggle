@@ -24,7 +24,9 @@ of the project; none is a migration log.
   lambdas without synthetic declarations; [expression replacement
   RFC](rfcs/0003-expression-replacement.md) defines typed matching and explicit
   effect safety without a pattern IR; [tensor RFC](rfcs/0004-tensor-module.md)
-  defines the first real-model vertical slice.
+  defines the first real-model vertical slice; [ONNX inference
+  RFC](rfcs/0005-onnx-inference-import.md) freezes the audited importer
+  contract.
 
 The repository contains the compiler core and the first static tensor semantic
 Module. It does not yet claim an ONNX frontend or target backend.

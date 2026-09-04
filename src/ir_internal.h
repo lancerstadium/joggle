@@ -12,8 +12,8 @@ namespace joggle::detail {
 struct FunctionIdentity;
 struct FunctionState;
 
-// Internal access shared by the parser and compiler. Source provenance is
-// deliberately not part of the public function-editing surface.
+// Internal access shared by the parser and compiler. Public edits expose the
+// same source-location field without exposing Function storage.
 struct FunctionAccess {
   static const std::shared_ptr<FunctionIdentity>& owner(const Value& value);
   static const std::shared_ptr<FunctionIdentity>&

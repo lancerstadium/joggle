@@ -376,6 +376,9 @@ replace_expressions(Function& subject, const Function& before,
         }
         const Op cloned = edit.insert(*insertion, call.callee(),
                                       std::move(arguments), result_types);
+        if (const auto location = insertion->location()) {
+          edit.locate(cloned, *location);
+        }
         const auto original_results = call.results();
         const auto cloned_results = cloned.results();
         for (std::size_t index = 0; index < original_results.size(); ++index) {
@@ -555,6 +558,9 @@ std::optional<Function> clone(
         const Op converted = edit.append(*target_block, *callee,
                                          std::move(arguments),
                                          std::move(result_types));
+        if (const auto location = op.location()) {
+          edit.locate(converted, *location);
+        }
         const auto source_results = op.results();
         const auto target_results = converted.results();
         for (std::size_t result = 0; result < source_results.size(); ++result) {
