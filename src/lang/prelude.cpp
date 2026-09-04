@@ -1,7 +1,5 @@
 #include "lang/prelude.h"
 
-#include "lang/prelude.h"
-
 #include <algorithm>
 #include <array>
 #include <cmath>

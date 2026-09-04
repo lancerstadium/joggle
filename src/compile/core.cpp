@@ -13,7 +13,6 @@
 #include "ir/mod.h"
 #include "pkg/repo.h"
 #include "lang/prelude.h"
-#include "lang/prelude.h"
 #include "sema/infer.h"
 #include "ir/type.h"
 

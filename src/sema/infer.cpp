@@ -6,7 +6,6 @@
 #include "lang/expr.h"
 #include "ir/mod.h"
 #include "lang/prelude.h"
-#include "lang/prelude.h"
 #include "ir/type.h"
 
 #include <algorithm>

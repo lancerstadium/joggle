@@ -40,6 +40,7 @@ add_library(joggle
   "${CMAKE_CURRENT_BINARY_DIR}/generated/prelude.cpp"
   src/ir/type.cpp
   src/ir/fn.cpp
+  src/ir/mod.cpp
   src/ir/attach.cpp
   src/sema/domain.cpp
   src/sema/call.cpp

@@ -3,7 +3,6 @@
 #include "sema/call.h"
 #include "lang/expr.h"
 #include "lang/prelude.h"
-#include "lang/prelude.h"
 #include "compile/core.h"
 
 #include "base/diag.h"
