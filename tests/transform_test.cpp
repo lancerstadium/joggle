@@ -111,9 +111,32 @@ module mapping@1.0.0 {
   fn unused_hole(input: word, unused: word) -> word {
     return keep(input);
   }
+
+  fn replacement(input: word) -> word {
+    return converted(input);
+  }
+
+  fn double_keep(input: word) -> word {
+    return keep(keep(input));
+  }
+
+  fn triple_keep(input: word) -> word {
+    return keep(keep(keep(input)));
+  }
 }
 )",
                "mapping.joggle");
+  compiler.add(R"(
+joggle 1;
+module foreign@1.0.0 {
+  import mapping@1;
+  fn external(input: mapping.word) -> mapping.word;
+  fn replacement(input: mapping.word) -> mapping.word {
+    return external(input);
+  }
+}
+)",
+               "foreign.joggle");
   if (!compiler.link()) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -127,6 +150,9 @@ module mapping@1.0.0 {
   const auto identity = schema ? schema->function("identity") : std::nullopt;
   const auto word_type = schema ? schema->type("word") : std::nullopt;
   const auto alternate_type = schema ? schema->type("alternate") : std::nullopt;
+  const auto foreign_module = compiler.module("foreign");
+  const auto foreign_external =
+      foreign_module ? foreign_module->function("external") : std::nullopt;
   const auto word = word_type ? compiler.make(*word_type) : std::nullopt;
   const auto alternate =
       alternate_type ? compiler.make(*alternate_type) : std::nullopt;
@@ -152,12 +178,18 @@ module mapping@1.0.0 {
   auto reference_a = compiler.materialize("mapping.reference_a");
   auto reference_b = compiler.materialize("mapping.reference_b");
   auto unused_hole = compiler.materialize("mapping.unused_hole");
-  if (!keep || !converted || !other || !binary || !identity || !word ||
+  auto replacement = compiler.materialize("mapping.replacement");
+  auto double_keep = compiler.materialize("mapping.double_keep");
+  auto triple_keep = compiler.materialize("mapping.triple_keep");
+  auto foreign_replacement = compiler.materialize("foreign.replacement");
+  if (!keep || !converted || !other || !binary || !identity ||
+      !foreign_external || !word ||
       !alternate || !i1 || !first || !second || !expanded || !convertible ||
       !fixedpoint || !oscillating || !with_inline || !pair ||
       !effect_template || !multi_call_template || !chain || !repeated ||
       !different || !distinct_calls || !shared_call || !axis_one || !axis_two ||
-      !reference_a || !reference_b || !unused_hole) {
+      !reference_a || !reference_b || !unused_hole || !replacement ||
+      !double_keep || !triple_keep || !foreign_replacement) {
     return EXIT_FAILURE;
   }
 
@@ -332,6 +364,66 @@ module mapping@1.0.0 {
   ok &= expect(closure_matches && closure_matches->empty() &&
                    closure_match_diagnostics.ok(),
                "an internal match result cannot escape to an unmatched call");
+
+  joggle::Function replacement_subject = *chain;
+  joggle::Diagnostics expression_replace_diagnostics;
+  const auto expression_replaced = joggle::detail::replace_expressions(
+      replacement_subject, *chain, *replacement,
+      expression_replace_diagnostics);
+  ok &= expect(expression_replaced && *expression_replaced == 1U &&
+                   expression_replace_diagnostics.ok() &&
+                   replacement_subject.ops().size() == 1U &&
+                   replacement_subject.ops().front().callee() == *converted &&
+                   replacement_subject.entry().terminator().returned().front() ==
+                       replacement_subject.ops().front().value(),
+               "replacement clones the after DAG and removes the matched DAG "
+               "in one transaction");
+
+  joggle::Function no_match_subject = *axis_two;
+  const auto no_match_revision = no_match_subject.revision();
+  joggle::Diagnostics expression_no_match_diagnostics;
+  const auto expression_no_match = joggle::detail::replace_expressions(
+      no_match_subject, *axis_one, *replacement,
+      expression_no_match_diagnostics);
+  ok &= expect(expression_no_match && *expression_no_match == 0U &&
+                   expression_no_match_diagnostics.ok() &&
+                   no_match_subject.revision() == no_match_revision,
+               "a successful expression no-op preserves Function revision");
+
+  joggle::Function incompatible_subject = *chain;
+  const auto incompatible_revision = incompatible_subject.revision();
+  joggle::Diagnostics incompatible_replace_diagnostics;
+  const auto incompatible_replace = joggle::detail::replace_expressions(
+      incompatible_subject, *chain, *pair, incompatible_replace_diagnostics);
+  ok &= expect(!incompatible_replace &&
+                   !incompatible_replace_diagnostics.ok() &&
+                   incompatible_subject.revision() == incompatible_revision,
+               "an incompatible after signature publishes no Function edit");
+
+  joggle::Function overlap_subject = *triple_keep;
+  joggle::Diagnostics overlap_replace_diagnostics;
+  const auto overlap_replace = joggle::detail::replace_expressions(
+      overlap_subject, *double_keep, *replacement,
+      overlap_replace_diagnostics);
+  ok &= expect(overlap_replace && *overlap_replace == 1U &&
+                   overlap_replace_diagnostics.ok() &&
+                   overlap_subject.ops().size() == 2U &&
+                   overlap_subject.ops()[0].callee() == *converted &&
+                   overlap_subject.ops()[1].callee() == *keep,
+               "overlapping candidates select the first maximal "
+               "non-overlapping match");
+
+  joggle::Function foreign_subject = *chain;
+  joggle::Diagnostics foreign_replace_diagnostics;
+  const auto foreign_replace = joggle::detail::replace_expressions(
+      foreign_subject, *chain, *foreign_replacement,
+      foreign_replace_diagnostics);
+  ok &= expect(foreign_replace && *foreign_replace == 1U &&
+                   foreign_replace_diagnostics.ok() &&
+                   foreign_subject.ops().size() == 1U &&
+                   foreign_subject.ops().front().callee() == *foreign_external,
+               "replacement extends the verified Function module closure for "
+               "a newly cloned call");
 
   const auto first_revision = first->revision();
   joggle::Diagnostics no_op_diagnostics;

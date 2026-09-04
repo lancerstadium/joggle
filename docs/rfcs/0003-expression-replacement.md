@@ -120,6 +120,12 @@ use declaration identity. Pattern-call mapping is injective. Accepted calls
 are returned in Function order only when every non-root result has no
 terminator or unmatched-call use.
 
+Replacement first chooses a maximal non-overlapping match set in that order.
+It then clones every `after` DAG before changing any root, replaces all roots,
+erases claimed calls in reverse Function order, and commits once. This permits
+adjacent matches to share boundary values while retaining normal
+`Function::Edit` rollback and module-closure verification.
+
 ## C++ primitive
 
 The low-level operation is intentionally value-oriented:
@@ -156,7 +162,8 @@ on a private `Module` snapshot and publishes only after every member succeeds.
 3. [complete] Validate token-free, single-block expression templates.
 4. [complete] Implement deterministic typed DAG matching with repeated-hole
    equality and internal-use closure checks.
-5. Clone replacement DAGs through one `Function::Edit` and commit atomically.
+5. [complete] Clone replacement DAGs through one `Function::Edit` and commit
+   atomically.
 6. Expose Function and Module C++ overloads and bind them from a normal
    transformation module.
 7. Add fusion, no-match, overlap, wrong-type, escaping-use, effect rejection,

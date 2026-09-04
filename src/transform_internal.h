@@ -24,4 +24,8 @@ std::optional<std::vector<ExpressionMatch>>
 match_expressions(const Function& subject, const Function& pattern,
                   Diagnostics& diagnostics);
 
+std::optional<std::size_t>
+replace_expressions(Function& subject, const Function& before,
+                    const Function& after, Diagnostics& diagnostics);
+
 }  // namespace joggle::detail

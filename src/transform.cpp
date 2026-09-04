@@ -281,6 +281,138 @@ match_expressions(const Function& subject, const Function& pattern,
   return std::nullopt;
 }
 
+std::optional<std::size_t>
+replace_expressions(Function& subject, const Function& before,
+                    const Function& after, Diagnostics& diagnostics) {
+  if (!validate_expression_template(before, "before", diagnostics) ||
+      !validate_expression_template(after, "after", diagnostics)) {
+    return std::nullopt;
+  }
+  const auto before_arguments = before.arguments();
+  const auto after_arguments = after.arguments();
+  if (before_arguments.size() != after_arguments.size() ||
+      before.result_types() != after.result_types()) {
+    diagnostics.report(
+        "before and after expression templates have different signatures");
+    return std::nullopt;
+  }
+  for (std::size_t index = 0; index < before_arguments.size(); ++index) {
+    if (before_arguments[index].type() != after_arguments[index].type()) {
+      diagnostics.report(
+          "before and after expression templates have different signatures");
+      return std::nullopt;
+    }
+  }
+
+  auto matches = match_expressions(subject, before, diagnostics);
+  if (!matches) {
+    return std::nullopt;
+  }
+  std::vector<ExpressionMatch> selected;
+  std::vector<Op> claimed;
+  for (const ExpressionMatch& match : *matches) {
+    const bool overlaps = std::any_of(
+        match.calls.begin(), match.calls.end(), [&](const Op& call) {
+          return std::find(claimed.begin(), claimed.end(), call) !=
+                 claimed.end();
+        });
+    if (overlaps) {
+      continue;
+    }
+    selected.push_back(match);
+    claimed.insert(claimed.end(), match.calls.begin(), match.calls.end());
+  }
+  if (selected.empty()) {
+    return 0U;
+  }
+
+  try {
+    auto edit = subject.edit();
+    const auto after_calls = after.ops();
+    const Value after_root = after.entry().terminator().returned().front();
+    std::vector<std::pair<Value, Value>> roots;
+    for (const ExpressionMatch& match : selected) {
+      std::vector<std::pair<Value, Value>> values;
+      for (std::size_t index = 0; index < after_arguments.size(); ++index) {
+        values.emplace_back(after_arguments[index], match.bindings[index]);
+      }
+      const auto map_value = [&](const Value& value) -> std::optional<Value> {
+        if (value.known()) {
+          return value;
+        }
+        const auto mapped = std::find_if(
+            values.begin(), values.end(), [&](const auto& item) {
+              return item.first == value;
+            });
+        if (mapped != values.end()) {
+          return mapped->second;
+        }
+        if (const auto reference = value.referenced_function()) {
+          const Value cloned = edit.reference(*reference, value.type());
+          values.emplace_back(value, cloned);
+          return cloned;
+        }
+        return std::nullopt;
+      };
+
+      const auto insertion = match.root.defining_op();
+      if (!insertion) {
+        diagnostics.report("matched expression root is not a call result");
+        return std::nullopt;
+      }
+      for (const Op& call : after_calls) {
+        std::vector<Value> arguments;
+        for (const Value& argument : call.arguments()) {
+          const auto mapped = map_value(argument);
+          if (!mapped) {
+            diagnostics.report("replacement expression lost a value mapping");
+            return std::nullopt;
+          }
+          arguments.push_back(*mapped);
+        }
+        std::vector<Type> result_types;
+        for (const Value& result : call.results()) {
+          result_types.push_back(result.type());
+        }
+        const Op cloned = edit.insert(*insertion, call.callee(),
+                                      std::move(arguments), result_types);
+        const auto original_results = call.results();
+        const auto cloned_results = cloned.results();
+        for (std::size_t index = 0; index < original_results.size(); ++index) {
+          values.emplace_back(original_results[index], cloned_results[index]);
+        }
+      }
+      const auto replacement = map_value(after_root);
+      if (!replacement) {
+        diagnostics.report("replacement expression has no mapped root");
+        return std::nullopt;
+      }
+      roots.emplace_back(match.root, *replacement);
+    }
+
+    for (const auto& [root, replacement] : roots) {
+      edit.replace(root, replacement);
+    }
+    const auto subject_calls = subject.ops();
+    for (auto call = subject_calls.rbegin(); call != subject_calls.rend();
+         ++call) {
+      if (std::find(claimed.begin(), claimed.end(), *call) != claimed.end()) {
+        edit.erase(*call);
+      }
+    }
+    return edit.commit(diagnostics)
+               ? std::optional<std::size_t>{selected.size()}
+               : std::nullopt;
+  } catch (const std::exception& error) {
+    diagnostics.report("expression replacement failed: " +
+                       std::string(error.what()));
+  } catch (...) {
+    diagnostics.report(
+        "expression replacement failed with an unknown exception");
+  }
+  return std::nullopt;
+}
+
 }  // namespace detail
 namespace {
 
