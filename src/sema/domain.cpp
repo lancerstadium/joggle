@@ -1,4 +1,4 @@
-#include "domain.h"
+#include "sema/domain.h"
 
 #include <array>
 #include <charconv>

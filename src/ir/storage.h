@@ -7,8 +7,8 @@
 #include <utility>
 #include <vector>
 
-#include "fn_body.h"
-#include "mod_internal.h"
+#include "lang/fn.h"
+#include "ir/mod.h"
 
 namespace joggle::detail {
 

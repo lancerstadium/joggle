@@ -26,32 +26,32 @@ if(NOT JOGGLE_PRELUDE_DELIMITER EQUAL -1)
     "language/prelude.joggle contains the reserved embed delimiter")
 endif()
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
-configure_file(src/prelude_source.cpp.in
-  "${CMAKE_CURRENT_BINARY_DIR}/generated/prelude_source.cpp" @ONLY)
+configure_file(src/lang/prelude.in
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/prelude.cpp" @ONLY)
 
 add_library(joggle
-  src/call_resolution.cpp
-  src/declaration_check.cpp
-  src/prelude.cpp
-  "${CMAKE_CURRENT_BINARY_DIR}/generated/prelude_source.cpp"
-  src/compiler.cpp
-  src/diag.cpp
-  src/domain.cpp
-  src/equivalence.cpp
-  src/execution.cpp
-  src/exec_val.cpp
-  src/expr_syntax.cpp
-  src/ir.cpp
-  src/mod_ir.cpp
-  src/fn_body.cpp
-  src/mod.cpp
-  src/repository.cpp
-  src/sha256.cpp
-  src/specialization.cpp
-  src/syntax_lexer.cpp
-  src/type.cpp
-  src/type_contract.cpp
-  src/transform.cpp
+  src/base/diag.cpp
+  src/base/digest.cpp
+  src/lang/lex.cpp
+  src/lang/expr.cpp
+  src/lang/fn.cpp
+  src/lang/mod.cpp
+  src/lang/prelude.cpp
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/prelude.cpp"
+  src/ir/type.cpp
+  src/ir/fn.cpp
+  src/ir/attach.cpp
+  src/sema/domain.cpp
+  src/sema/call.cpp
+  src/sema/check.cpp
+  src/sema/infer.cpp
+  src/compile/core.cpp
+  src/compile/eval.cpp
+  src/compile/val.cpp
+  src/transform/rewrite.cpp
+  src/transform/equal.cpp
+  src/transform/specialize.cpp
+  src/pkg/repo.cpp
 )
 add_library(joggle::joggle ALIAS joggle)
 set_target_properties(joggle PROPERTIES
@@ -77,6 +77,8 @@ target_include_directories(joggle PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
+target_include_directories(joggle PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(joggle PRIVATE ${CMAKE_DL_LIBS})
 
 include(cmake/JoggleMod.cmake)

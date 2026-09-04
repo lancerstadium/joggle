@@ -1,11 +1,11 @@
 #include "joggle/ir.h"
 
-#include "ir_internal.h"
-#include "domain.h"
-#include "mod_internal.h"
-#include "prelude.h"
-#include "type_contract.h"
-#include "type_internal.h"
+#include "ir/fn.h"
+#include "sema/domain.h"
+#include "ir/mod.h"
+#include "lang/prelude.h"
+#include "sema/infer.h"
+#include "ir/type.h"
 
 #include <algorithm>
 #include <iterator>

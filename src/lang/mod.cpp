@@ -1,14 +1,14 @@
 #include "joggle/mod.h"
 #include "joggle/ir.h"
 
-#include "domain.h"
-#include "expr_syntax.h"
-#include "prelude.h"
-#include "fn_body.h"
-#include "mod_internal.h"
-#include "mod_storage.h"
+#include "sema/domain.h"
+#include "lang/expr.h"
+#include "lang/prelude.h"
+#include "lang/fn.h"
+#include "ir/mod.h"
+#include "ir/storage.h"
 #include "joggle/digest.h"
-#include "syntax_lexer.h"
+#include "lang/lex.h"
 
 #include <algorithm>
 #include <charconv>

@@ -17,8 +17,8 @@
 #include <joggle/joggle.h>
 #include <joggle/detail/native.h>
 
-#include "mod_internal.h"
-#include "repository.h"
+#include "ir/mod.h"
+#include "pkg/repo.h"
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN

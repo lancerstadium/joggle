@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "domain.h"
+#include "sema/domain.h"
 #include "joggle/compiler.h"
 
 namespace joggle::detail {

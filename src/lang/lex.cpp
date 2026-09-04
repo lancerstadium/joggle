@@ -1,4 +1,4 @@
-#include "syntax_lexer.h"
+#include "lang/lex.h"
 
 #include <cctype>
 #include <utility>

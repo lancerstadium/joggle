@@ -1,7 +1,7 @@
 #include "joggle/transform.h"
 
-#include "ir_internal.h"
-#include "transform_internal.h"
+#include "ir/fn.h"
+#include "transform/match.h"
 
 #include "joggle/compiler.h"
 

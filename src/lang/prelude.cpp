@@ -1,6 +1,6 @@
-#include "prelude.h"
+#include "lang/prelude.h"
 
-#include "prelude_runtime.h"
+#include "lang/runtime.h"
 
 #include <algorithm>
 #include <array>

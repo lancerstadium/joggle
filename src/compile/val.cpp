@@ -1,8 +1,8 @@
-#include "execution.h"
+#include "compile/eval.h"
 
-#include "ir_internal.h"
-#include "prelude.h"
-#include "type_internal.h"
+#include "ir/fn.h"
+#include "lang/prelude.h"
+#include "ir/type.h"
 
 #include <algorithm>
 #include <stdexcept>

@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-#include "execution.h"
+#include "compile/eval.h"
 #include "joggle/diag.h"
 #include "joggle/ir.h"
 

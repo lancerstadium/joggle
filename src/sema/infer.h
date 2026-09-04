@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-#include "execution.h"
+#include "compile/eval.h"
 
 namespace joggle::detail {
 

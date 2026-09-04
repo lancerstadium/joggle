@@ -29,6 +29,26 @@ There is no second Program, Graph, Package, Attribute, Pass, Target, or Result
 owner. A model graph is a `Mod` containing fns. Metadata is a normal
 `Type`. A transformation is a fn from one compiler value to another.
 
+## Source layout
+
+Implementation files are grouped by ownership rather than compilation phase
+names embedded in filenames:
+
+| Directory | Owns |
+| --- | --- |
+| `src/base` | diagnostics and content digests |
+| `src/lang` | lexing, source syntax, formatting, and the Prelude |
+| `src/ir` | `Type`, `Mod`, `Fn`, `Blk`, `Op`, and `Val` storage |
+| `src/sema` | domains, call resolution, inference, and validation |
+| `src/compile` | linking, staging, native binding, and evaluation |
+| `src/transform` | rewriting, equivalence, and specialization |
+| `src/pkg` | installed-mod repository operations |
+
+These directories are not public namespaces, libraries, dialects, or runtime
+components. Joggle still builds one compiler library. Their purpose is to let
+short filenames such as `call.cpp`, `infer.cpp`, and `eval.cpp` communicate a
+single responsibility without suffixes such as `_internal` or `_contract`.
+
 ## Mod snapshots
 
 Parsing creates a `Mod`. Materialization attaches editable `Fn`

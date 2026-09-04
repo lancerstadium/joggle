@@ -1,4 +1,4 @@
-#include "repository.h"
+#include "pkg/repo.h"
 
 #include "joggle/detail/native.h"
 #include "joggle/digest.h"

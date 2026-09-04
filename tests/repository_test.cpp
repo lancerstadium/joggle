@@ -8,7 +8,7 @@
 #include <joggle/detail/native.h>
 #include <joggle/joggle.h>
 
-#include "repository.h"
+#include "pkg/repo.h"
 
 namespace {
 

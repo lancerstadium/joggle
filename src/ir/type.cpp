@@ -1,8 +1,8 @@
 #include "joggle/type.h"
 
-#include "domain.h"
+#include "sema/domain.h"
 #include "joggle/digest.h"
-#include "type_internal.h"
+#include "ir/type.h"
 
 #include <algorithm>
 #include <bit>

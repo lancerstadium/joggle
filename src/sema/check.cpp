@@ -1,10 +1,10 @@
-#include "declaration_check.h"
+#include "sema/check.h"
 
-#include "call_resolution.h"
-#include "domain.h"
-#include "expr_syntax.h"
-#include "mod_internal.h"
-#include "prelude.h"
+#include "sema/call.h"
+#include "sema/domain.h"
+#include "lang/expr.h"
+#include "ir/mod.h"
+#include "lang/prelude.h"
 
 #include <algorithm>
 #include <string>

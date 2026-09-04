@@ -1,8 +1,8 @@
-#include "expr_syntax.h"
+#include "lang/expr.h"
 
-#include "domain.h"
-#include "prelude.h"
-#include "syntax_lexer.h"
+#include "sema/domain.h"
+#include "lang/prelude.h"
+#include "lang/lex.h"
 
 #include "joggle/diag.h"
 

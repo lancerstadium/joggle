@@ -1,11 +1,11 @@
-#include "execution.h"
+#include "compile/eval.h"
 
-#include "call_resolution.h"
-#include "compiler_internal.h"
-#include "fn_body.h"
-#include "mod_internal.h"
-#include "type_internal.h"
-#include "type_contract.h"
+#include "sema/call.h"
+#include "compile/core.h"
+#include "lang/fn.h"
+#include "ir/mod.h"
+#include "ir/type.h"
+#include "sema/infer.h"
 
 #include <algorithm>
 #include <charconv>

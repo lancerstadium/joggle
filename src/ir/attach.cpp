@@ -1,10 +1,10 @@
 #include "joggle/mod.h"
 
-#include "ir_internal.h"
-#include "mod_storage.h"
-#include "prelude.h"
+#include "ir/fn.h"
+#include "ir/storage.h"
+#include "lang/prelude.h"
 #include "joggle/digest.h"
-#include "type_internal.h"
+#include "ir/type.h"
 
 #include <algorithm>
 #include <cctype>

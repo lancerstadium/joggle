@@ -1,13 +1,13 @@
-#include "type_contract.h"
+#include "sema/infer.h"
 
-#include "call_resolution.h"
-#include "compiler_internal.h"
-#include "domain.h"
-#include "expr_syntax.h"
-#include "mod_internal.h"
-#include "prelude.h"
-#include "prelude_runtime.h"
-#include "type_internal.h"
+#include "sema/call.h"
+#include "compile/core.h"
+#include "sema/domain.h"
+#include "lang/expr.h"
+#include "ir/mod.h"
+#include "lang/prelude.h"
+#include "lang/runtime.h"
+#include "ir/type.h"
 
 #include <algorithm>
 #include <array>

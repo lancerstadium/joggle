@@ -1,6 +1,6 @@
-#include "call_resolution.h"
+#include "sema/call.h"
 
-#include "prelude.h"
+#include "lang/prelude.h"
 
 #include <algorithm>
 
