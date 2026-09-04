@@ -41,7 +41,7 @@ void bind(joggle::Compiler& compiler, const joggle::Mod& mod,
 #if defined(JOGGLE_TEST_NATIVE_FAIL)
   compiler.bind(
       mod, "cached", [](std::int64_t value) { return value + 100; },
-      joggle::HostEvaluation::Hermetic);
+      joggle::HostEval::Hermetic);
   const auto integer = compiler.make("int");
   const auto one = integer ? compiler.known(*integer, std::int64_t{1})
                            : std::optional<joggle::Val>{};
@@ -59,7 +59,7 @@ void bind(joggle::Compiler& compiler, const joggle::Mod& mod,
 #else
   compiler.bind(
       mod, "cached", [](std::int64_t value) { return value + 1; },
-      joggle::HostEvaluation::Hermetic);
+      joggle::HostEval::Hermetic);
 #endif
   compiler.bind(
       mod, "noop",

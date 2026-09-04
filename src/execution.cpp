@@ -25,10 +25,9 @@ class BodyEvaluator {
 
 public:
   BodyEvaluator(Compiler& compiler, const Mod::FnDecl& fn, const FnBody& body,
-                std::span<const ExecVal> arguments,
-                Compiler::EvaluationLimits limits, std::size_t& steps,
-                bool under_residual_control, Diag& diagnostics,
-                const ExecuteFn& execute)
+                std::span<const ExecVal> arguments, Compiler::Limits limits,
+                std::size_t& steps, bool under_residual_control,
+                Diag& diagnostics, const ExecuteFn& execute)
       : compiler_(compiler), fn_(fn), body_(body), limits_(limits),
         steps_(steps), under_residual_control_(under_residual_control),
         diagnostics_(diagnostics), execute_(execute) {
@@ -85,7 +84,7 @@ public:
 private:
   void report(std::string message, SyntaxRange range) {
     diagnostics_.report(std::move(message),
-                        SourceRange{body_.source, range.begin, range.end});
+                        Loc{body_.source, range.begin, range.end});
   }
 
   bool step(SyntaxRange range) {
@@ -204,8 +203,7 @@ private:
     auto value = evaluate_known_expression(
         compiler_, fn_.symbol().mod_name(), expression, expected,
         locals_.known_bindings(), diagnostics_,
-        SourceRange{body_.source, range.begin, range.end},
-        !under_residual_control_);
+        Loc{body_.source, range.begin, range.end}, !under_residual_control_);
     auto result = value ? exec_val(*value, expected) : std::optional<ExecVal>{};
     return result ? known(std::move(*result), range)
                   : std::optional<StagedVal>{};
@@ -246,7 +244,7 @@ private:
               std::size_t result_count,
               std::span<const Mod::ParamDecl> expected_results = {},
               std::vector<Mod::FnDecl> declarations = {}) {
-    const SourceRange call_site{body_.source, range.begin, range.end};
+    const Loc call_site{body_.source, range.begin, range.end};
     auto results = execute_call(
         compiler_, fn_.symbol().mod_name(), expression, call_site, result_count,
         expected_results, diagnostics_,
@@ -344,7 +342,7 @@ private:
       }
       auto fn = instantiate_lambda(
           compiler_, fn_.symbol().mod_name(), expression,
-          SourceRange{body_.source, range.begin, range.end}, diagnostics_,
+          Loc{body_.source, range.begin, range.end}, diagnostics_,
           locals_.known_bindings(), std::nullopt, std::nullopt,
           !under_residual_control_);
       return fn ? known(store_exec_val(std::move(*fn)), range) : std::nullopt;
@@ -441,8 +439,7 @@ private:
     auto value = evaluate_known_expression(
         compiler_, fn_.symbol().mod_name(), binding.type->value, expected_type,
         locals_.known_bindings(), diagnostics_,
-        SourceRange{body_.source, binding.type->range.begin,
-                    binding.type->range.end},
+        Loc{body_.source, binding.type->range.begin, binding.type->range.end},
         !under_residual_control_);
     const Type* type = value ? value->as_type() : nullptr;
     auto domain = type ? type_domain(*type) : std::nullopt;
@@ -634,7 +631,7 @@ private:
   Compiler& compiler_;
   Mod::FnDecl fn_;
   const FnBody& body_;
-  Compiler::EvaluationLimits limits_;
+  Compiler::Limits limits_;
   std::size_t& steps_;
   bool under_residual_control_ = false;
   Diag& diagnostics_;
@@ -646,7 +643,7 @@ private:
 
 std::optional<ExecVals> execute_call(
     Compiler& compiler, std::string_view owner, const Mod::Expr& expression,
-    SourceRange call_site, std::size_t result_count,
+    Loc call_site, std::size_t result_count,
     std::span<const Mod::ParamDecl> expected_results, Diag& diagnostics,
     const EvaluateCallArgument& evaluate, const ExecuteFn& execute,
     std::span<const Mod::FnDecl> declarations) {
@@ -764,9 +761,8 @@ std::optional<ExecVals> execute_call(
 
 std::optional<ExecVals>
 execute_body(Compiler& compiler, const Mod::FnDecl& fn, const FnBody& body,
-             std::span<const ExecVal> arguments,
-             Compiler::EvaluationLimits limits, std::size_t& steps,
-             bool under_residual_control, Diag& diagnostics,
+             std::span<const ExecVal> arguments, Compiler::Limits limits,
+             std::size_t& steps, bool under_residual_control, Diag& diagnostics,
              const ExecuteFn& execute) {
   if (body.blocks.size() != 1U || body.blocks.front().terminator) {
     diagnostics.report(
@@ -784,7 +780,7 @@ bool verify_body_calls(Compiler& compiler, const Mod::FnDecl& fn,
   const std::size_t before = diagnostics.size();
   const auto report = [&](std::string message, SyntaxRange range) {
     diagnostics.report(std::move(message),
-                       SourceRange{body.source, range.begin, range.end});
+                       Loc{body.source, range.begin, range.end});
   };
   const auto verify_expression = [&](const auto& self,
                                      const ExprSyntax& syntax) -> void {

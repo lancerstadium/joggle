@@ -114,7 +114,7 @@ struct Environment {
   EvaluationCheck can_evaluate;
   Evaluator evaluate;
   bool require_hermetic_host_evaluation = false;
-  Compiler::EvaluationLimits limits;
+  Compiler::Limits limits;
 };
 
 Environment environment(Compiler& compiler, bool allow_host_evaluation = true) {
@@ -179,7 +179,7 @@ Environment environment(std::span<const Mod> mods, Diag& diagnostics) {
           },
           [](const Mod::FnDecl& fn) { return is_prelude_primitive(fn); },
           [&diagnostics](Mod::FnDecl fn, std::span<const ParamVal> arguments) {
-            const Compiler::EvaluationLimits limits;
+            const Compiler::Limits limits;
             return evaluate_prelude_primitive(fn, arguments, diagnostics,
                                               limits.steps);
           },
@@ -190,7 +190,7 @@ Environment environment(std::span<const Mod> mods, Diag& diagnostics) {
 class Solver {
 public:
   Solver(Environment environment, const Mod::FnDecl& schema, Diag& diagnostics,
-         std::optional<SourceRange> source)
+         std::optional<Loc> source)
       : limits_(environment.limits), environment_(std::move(environment)),
         schema_(&schema), diagnostics_(diagnostics), source_(std::move(source)),
         contract_(&FnTypeAccess::get(schema)),
@@ -202,7 +202,7 @@ public:
         diagnostics_(diagnostics), scope_(schema.symbol().mod_name()) {}
 
   Solver(Environment environment, std::string scope, Diag& diagnostics,
-         std::optional<SourceRange> source)
+         std::optional<Loc> source)
       : limits_(environment.limits), environment_(std::move(environment)),
         diagnostics_(diagnostics), source_(std::move(source)),
         scope_(std::move(scope)) {}
@@ -1111,14 +1111,14 @@ private:
     return false;
   }
 
-  Compiler::EvaluationLimits limits_;
+  Compiler::Limits limits_;
   Environment environment_;
   std::size_t steps_ = 0;
   std::size_t depth_ = 0;
   bool budget_reported_ = false;
   const Mod::FnDecl* schema_ = nullptr;
   Diag& diagnostics_;
-  std::optional<SourceRange> source_;
+  std::optional<Loc> source_;
   const FnTypeContract* contract_ = nullptr;
   const std::vector<GenericDefinition> empty_generics_;
   std::string scope_;
@@ -1130,8 +1130,7 @@ private:
 std::optional<ParamVal> evaluate_known_expression(
     Compiler& compiler, std::string_view scope, const Mod::Expr& expression,
     const Mod::ParamDecl& expected, const KnownBindings& bindings,
-    Diag& diagnostics, std::optional<SourceRange> source,
-    bool allow_host_evaluation) {
+    Diag& diagnostics, std::optional<Loc> source, bool allow_host_evaluation) {
   return Solver(environment(compiler, allow_host_evaluation),
                 std::string(scope), diagnostics, std::move(source))
       .evaluate_known(expression, expected, bindings);
@@ -1142,7 +1141,7 @@ infer_call_types(Compiler& compiler, const Mod::FnDecl& schema,
                  std::span<const Type> arguments,
                  std::span<const std::optional<ParamVal>> known_arguments,
                  std::span<const std::optional<Type>> expected_results,
-                 Diag& diagnostics, std::optional<SourceRange> source) {
+                 Diag& diagnostics, std::optional<Loc> source) {
   auto resolved =
       resolve_call_types(compiler, schema, arguments, known_arguments,
                          expected_results, diagnostics, std::move(source));
@@ -1156,7 +1155,7 @@ infer_call_types(std::span<const Mod> mods, const Mod::FnDecl& schema,
                  std::span<const Type> arguments,
                  std::span<const std::optional<ParamVal>> known_arguments,
                  std::span<const std::optional<Type>> expected_results,
-                 Diag& diagnostics, std::optional<SourceRange> source) {
+                 Diag& diagnostics, std::optional<Loc> source) {
   auto resolved =
       resolve_call_types(mods, schema, arguments, known_arguments,
                          expected_results, diagnostics, std::move(source));
@@ -1170,7 +1169,7 @@ resolve_call_types(Compiler& compiler, const Mod::FnDecl& schema,
                    std::span<const Type> arguments,
                    std::span<const std::optional<ParamVal>> known_arguments,
                    std::span<const std::optional<Type>> expected_results,
-                   Diag& diagnostics, std::optional<SourceRange> source) {
+                   Diag& diagnostics, std::optional<Loc> source) {
   return Solver(environment(compiler), schema, diagnostics, std::move(source))
       .infer(arguments, known_arguments, expected_results);
 }
@@ -1180,7 +1179,7 @@ std::optional<CallTypes> resolve_partial_call_types(
     std::span<const std::optional<Type>> arguments,
     std::span<const std::optional<ParamVal>> known_arguments,
     std::span<const std::optional<Type>> expected_results, Diag& diagnostics,
-    std::optional<SourceRange> source, bool allow_host_evaluation) {
+    std::optional<Loc> source, bool allow_host_evaluation) {
   return Solver(environment(compiler, allow_host_evaluation), schema,
                 diagnostics, std::move(source))
       .infer_partial(arguments, known_arguments, expected_results);
@@ -1191,7 +1190,7 @@ resolve_call_types(std::span<const Mod> mods, const Mod::FnDecl& schema,
                    std::span<const Type> arguments,
                    std::span<const std::optional<ParamVal>> known_arguments,
                    std::span<const std::optional<Type>> expected_results,
-                   Diag& diagnostics, std::optional<SourceRange> source) {
+                   Diag& diagnostics, std::optional<Loc> source) {
   return Solver(environment(mods, diagnostics), schema, diagnostics,
                 std::move(source))
       .infer(arguments, known_arguments, expected_results);

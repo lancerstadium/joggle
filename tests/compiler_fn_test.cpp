@@ -432,7 +432,7 @@ mod pipeline@1.0.0 {
         ++width_evaluations;
         return value;
       },
-      joggle::HostEvaluation::Hermetic);
+      joggle::HostEval::Hermetic);
   ok &= expect(
       compiler.invocable<joggle::Mod, joggle::Mod>(*mod_identity) &&
           compiler.invocable<joggle::Fn, joggle::Fn>(*clean) &&

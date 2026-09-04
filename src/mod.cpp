@@ -38,7 +38,7 @@ struct ParsedMod {
   std::string name;
   Version version;
   std::vector<Mod::Import> imports;
-  std::vector<SourceRange> import_sources;
+  std::vector<Loc> import_sources;
   std::vector<TypeDefinition> types;
   std::vector<FnDef> fns;
 };
@@ -86,7 +86,7 @@ public:
 
     while (!is(TokenKind::RightBrace) && !is(TokenKind::End) && ok()) {
       if (is_name("import")) {
-        const SourcePosition begin = current_.begin;
+        const Loc::Pos begin = current_.begin;
         advance();
         parse_import(begin);
       } else if (match_name("type")) {
@@ -188,7 +188,7 @@ private:
       std::string result;
       do {
         result += current_.text;
-        const SourcePosition end = current_.end;
+        const Loc::Pos end = current_.end;
         advance();
         if (current_.begin != end) {
           break;
@@ -246,11 +246,11 @@ private:
       error("a caret range needs a complete semantic version");
       return std::nullopt;
     }
-    const VersionRangeKind kind =
-        caret                  ? VersionRangeKind::Caret
-        : parsed->size() == 1U ? VersionRangeKind::Major
-        : parsed->size() == 2U ? VersionRangeKind::Minor
-                               : VersionRangeKind::Exact;
+    const VersionRange::Kind kind =
+        caret                  ? VersionRange::Kind::Caret
+        : parsed->size() == 1U ? VersionRange::Kind::Major
+        : parsed->size() == 2U ? VersionRange::Kind::Minor
+                               : VersionRange::Kind::Exact;
     return VersionRange{kind, version};
   }
 
@@ -538,7 +538,7 @@ private:
     return result;
   }
 
-  void parse_import(SourcePosition begin) {
+  void parse_import(Loc::Pos begin) {
     auto import_name = name("an imported mod name");
     expect(TokenKind::At, "'@'");
     auto versions = version_range();
@@ -546,19 +546,19 @@ private:
     if (match_name("as")) {
       alias = name("an import alias");
     }
-    const SourcePosition end = current_.end;
+    const Loc::Pos end = current_.end;
     expect(TokenKind::Semicolon, "';'");
     if (import_name && versions) {
       std::string stored_alias =
           alias && *alias != *import_name ? std::move(*alias) : std::string{};
       mod_.imports.push_back(
           {std::move(*import_name), *versions, std::move(stored_alias)});
-      mod_.import_sources.push_back(SourceRange{source_, begin, end});
+      mod_.import_sources.push_back(Loc{source_, begin, end});
     }
   }
 
   void parse_type() {
-    const SourcePosition begin = current_.begin;
+    const Loc::Pos begin = current_.begin;
     auto definition_name = name("a type name");
     auto definition_parameters = parameters(false, true);
     std::vector<Mod::TypeDecl::DerivedParamDecl> derived_parameters;
@@ -587,15 +587,14 @@ private:
       expect(TokenKind::RightBrace, "'}'");
     }
     if (definition_name) {
-      mod_.types.push_back({std::move(*definition_name),
-                            std::move(definition_parameters),
-                            std::move(derived_parameters),
-                            SourceRange{source_, begin, current_.begin}});
+      mod_.types.push_back(
+          {std::move(*definition_name), std::move(definition_parameters),
+           std::move(derived_parameters), Loc{source_, begin, current_.begin}});
     }
   }
 
   void parse_fn() {
-    const SourcePosition begin = current_.begin;
+    const Loc::Pos begin = current_.begin;
 
     std::optional<Mod::FnDecl::Fixity> declared_fixity;
     expect_name("fn");
@@ -726,7 +725,7 @@ private:
       error("expected ';' or a fn body");
     }
     if (!definition.name.empty()) {
-      definition.source = SourceRange{source_, begin, current_.begin};
+      definition.source = Loc{source_, begin, current_.begin};
       mod_.fns.push_back(std::move(definition));
     }
   }
@@ -749,8 +748,7 @@ private:
   }
 
   void validate_parameters(const std::vector<Parameter>& values,
-                           std::string_view owner,
-                           std::optional<SourceRange> source,
+                           std::string_view owner, std::optional<Loc> source,
                            bool allow_value_ports = false) {
     if (!unique_parameter_names(values)) {
       error("duplicate parameter in '" + std::string(owner) + "'", source);
@@ -770,7 +768,7 @@ private:
 
   void validate_declaration_expression(
       std::span<const ParsedMod::GenericDefinition> variables,
-      std::string_view owner, std::optional<SourceRange> source,
+      std::string_view owner, std::optional<Loc> source,
       const ParsedMod::TypeExpr& expression, const Mod::Expr& expected) {
     const auto report = [&](std::string message) {
       error(std::move(message), source);
@@ -977,7 +975,7 @@ private:
   }
 
   bool reference_is_visible(std::string_view reference, std::string_view kind,
-                            std::optional<SourceRange> source = std::nullopt) {
+                            std::optional<Loc> source = std::nullopt) {
     const std::size_t dot = reference.find('.');
     if (dot == std::string_view::npos) {
       return true;
@@ -1003,7 +1001,7 @@ private:
     std::unordered_set<std::string_view> import_prefixes;
     for (std::size_t index = 0; index < mod_.imports.size(); ++index) {
       const Mod::Import& import = mod_.imports[index];
-      const SourceRange& source = mod_.import_sources[index];
+      const Loc& source = mod_.import_sources[index];
       if (!import_names.insert(import.name).second) {
         error("duplicate import '" + import.name + "'", source);
       }
@@ -1153,14 +1151,14 @@ private:
 
   void error(std::string message) {
     diagnostics_.report(std::move(message),
-                        SourceRange{source_, current_.begin, current_.end});
+                        Loc{source_, current_.begin, current_.end});
   }
 
-  void error(std::string message, SourceRange source) {
+  void error(std::string message, Loc source) {
     diagnostics_.report(std::move(message), std::move(source));
   }
 
-  void error(std::string message, std::optional<SourceRange> source) {
+  void error(std::string message, std::optional<Loc> source) {
     if (source) {
       error(std::move(message), std::move(*source));
     } else {
@@ -1175,11 +1173,11 @@ private:
   Diag diagnostics_;
 };
 
-std::string symbol_kind_name(Mod::SymbolKind kind) {
+std::string symbol_kind_name(Mod::Symbol::Kind kind) {
   switch (kind) {
-  case Mod::SymbolKind::Type:
+  case Mod::Symbol::Kind::Type:
     return "type";
-  case Mod::SymbolKind::Fn:
+  case Mod::Symbol::Kind::Fn:
     return "fn";
   }
   return "invalid";
@@ -1406,18 +1404,18 @@ find_definition(const std::vector<Definition>& values, std::string_view name) {
 Version upper_bound(VersionRange range) {
   Version upper = range.base;
   switch (range.kind) {
-  case VersionRangeKind::Exact:
+  case VersionRange::Kind::Exact:
     return upper;
-  case VersionRangeKind::Major:
+  case VersionRange::Kind::Major:
     ++upper.major;
     upper.minor = 0;
     upper.patch = 0;
     return upper;
-  case VersionRangeKind::Minor:
+  case VersionRange::Kind::Minor:
     ++upper.minor;
     upper.patch = 0;
     return upper;
-  case VersionRangeKind::Caret:
+  case VersionRange::Kind::Caret:
     if (upper.major != 0U) {
       ++upper.major;
       upper.minor = 0;
@@ -1436,14 +1434,14 @@ Version upper_bound(VersionRange range) {
 }  // namespace
 
 bool VersionRange::contains(Version candidate) const {
-  if (kind == VersionRangeKind::Exact) {
+  if (kind == VersionRange::Kind::Exact) {
     return candidate == base;
   }
   return candidate >= base && candidate < upper_bound(*this);
 }
 
 Mod::Symbol::Symbol(std::string mod_name, Version mod_version,
-                    std::string declaration_digest, SymbolKind kind,
+                    std::string declaration_digest, Symbol::Kind kind,
                     std::string local_name, std::string discriminator)
     : mod_name_(std::move(mod_name)), mod_version_(mod_version),
       declaration_digest_(std::move(declaration_digest)), kind_(kind),
@@ -1488,7 +1486,7 @@ Mod::TypeDecl::derived_parameters() const {
 
 Mod::Symbol Mod::TypeDecl::symbol() const {
   return {storage_->name, storage_->version, storage_->declaration_digest,
-          SymbolKind::Type, storage_->types[index_].name};
+          Symbol::Kind::Type, storage_->types[index_].name};
 }
 
 bool Mod::TypeDecl::operator==(const TypeDecl& other) const {
@@ -1644,9 +1642,12 @@ std::string Mod::FnDecl::signature() const {
 }
 
 Mod::Symbol Mod::FnDecl::symbol() const {
-  return {
-      storage_->name, storage_->version,          storage_->declaration_digest,
-      SymbolKind::Fn, storage_->fns[index_].name, signature()};
+  return {storage_->name,
+          storage_->version,
+          storage_->declaration_digest,
+          Symbol::Kind::Fn,
+          storage_->fns[index_].name,
+          signature()};
 }
 
 bool Mod::FnDecl::operator==(const FnDecl& other) const {
@@ -1754,9 +1755,11 @@ Mod Mod::declaration_view(const std::shared_ptr<const Storage>& storage) {
         [&](const Import& import) { return import.name == dependency.name; });
     if (found == declarations->imports.end()) {
       declarations->imports.push_back(
-          {dependency.name, {VersionRangeKind::Exact, dependency.version}, {}});
+          {dependency.name,
+           {VersionRange::Kind::Exact, dependency.version},
+           {}});
     } else if (found->alias.empty()) {
-      found->version = {VersionRangeKind::Exact, dependency.version};
+      found->version = {VersionRange::Kind::Exact, dependency.version};
     }
   }
   for (detail::FnMember& member : declarations->fns) {
@@ -1856,15 +1859,15 @@ std::vector<Mod::FnDecl> Mod::overloads(std::string_view name) const {
   return result;
 }
 
-std::optional<Mod::Symbol> Mod::symbol(SymbolKind kind,
+std::optional<Mod::Symbol> Mod::symbol(Symbol::Kind kind,
                                        std::string_view name) const {
-  if (kind == SymbolKind::Fn) {
+  if (kind == Symbol::Kind::Fn) {
     const auto declarations = overloads(name);
     return declarations.size() == 1U
                ? std::optional<Symbol>{declarations.front().symbol()}
                : std::nullopt;
   }
-  const bool exists = kind == SymbolKind::Type && type(name).has_value();
+  const bool exists = kind == Symbol::Kind::Type && type(name).has_value();
   if (!exists) {
     return std::nullopt;
   }
@@ -1875,14 +1878,14 @@ std::optional<Mod::Symbol> Mod::symbol(SymbolKind kind,
 std::vector<Mod::Symbol> Mod::members() const {
   std::vector<Symbol> result;
   result.reserve(storage_->types.size() + storage_->fns.size());
-  const auto append = [&](SymbolKind kind, const auto& definitions) {
+  const auto append = [&](Symbol::Kind kind, const auto& definitions) {
     for (const auto& definition : definitions) {
       result.push_back(Symbol(std::string(storage_->name), storage_->version,
                               storage_->declaration_digest, kind,
                               std::string(definition.name)));
     }
   };
-  append(SymbolKind::Type, storage_->types);
+  append(Symbol::Kind::Type, storage_->types);
   for (std::size_t index = 0; index < storage_->fns.size(); ++index) {
     if (storage_->fns[index].declaration) {
       result.push_back(FnDecl(storage_, index).symbol());
@@ -1937,32 +1940,32 @@ detail::ModAccess::body(const Mod& mod, const Mod::FnDecl& fn) {
   return std::shared_ptr<const detail::FnBody>(mod.storage_, &*body);
 }
 
-std::optional<SourceRange> detail::ModAccess::import_source(const Mod& mod,
-                                                            std::size_t index) {
+std::optional<Loc> detail::ModAccess::import_source(const Mod& mod,
+                                                    std::size_t index) {
   if (index >= mod.storage_->import_sources.size()) {
     return std::nullopt;
   }
   return mod.storage_->import_sources[index];
 }
 
-std::optional<SourceRange>
-detail::ModAccess::declaration_source(const Mod& mod, Mod::SymbolKind kind,
+std::optional<Loc>
+detail::ModAccess::declaration_source(const Mod& mod, Mod::Symbol::Kind kind,
                                       std::string_view name) {
   const auto find_source = [&](const auto& definitions) {
     const auto index = find_definition(definitions, name);
-    return index ? definitions[*index].source : std::optional<SourceRange>{};
+    return index ? definitions[*index].source : std::optional<Loc>{};
   };
   switch (kind) {
-  case Mod::SymbolKind::Type:
+  case Mod::Symbol::Kind::Type:
     return find_source(mod.storage_->types);
-  case Mod::SymbolKind::Fn: {
+  case Mod::Symbol::Kind::Fn: {
     const auto found =
         std::find_if(mod.storage_->fns.begin(), mod.storage_->fns.end(),
                      [&](const detail::FnMember& fn) {
                        return fn.declaration && fn.name == name;
                      });
     return found != mod.storage_->fns.end() ? found->declaration->source
-                                            : std::optional<SourceRange>{};
+                                            : std::optional<Loc>{};
   }
   }
   return std::nullopt;
@@ -1998,15 +2001,15 @@ std::string to_string(Version version) {
 
 std::string to_string(VersionRange range) {
   std::string result;
-  if (range.kind == VersionRangeKind::Caret) {
+  if (range.kind == VersionRange::Kind::Caret) {
     result += '^';
   }
   result += std::to_string(range.base.major);
-  if (range.kind == VersionRangeKind::Major) {
+  if (range.kind == VersionRange::Kind::Major) {
     return result;
   }
   result += "." + std::to_string(range.base.minor);
-  if (range.kind == VersionRangeKind::Minor) {
+  if (range.kind == VersionRange::Kind::Minor) {
     return result;
   }
   return result + "." + std::to_string(range.base.patch);
@@ -2027,10 +2030,11 @@ std::string format(const Mod& mod) {
           return import.name == dependency.name;
         });
     if (found == imports.end()) {
-      imports.push_back(
-          {dependency.name, {VersionRangeKind::Exact, dependency.version}, {}});
+      imports.push_back({dependency.name,
+                         {VersionRange::Kind::Exact, dependency.version},
+                         {}});
     } else if (found->alias.empty()) {
-      found->version = {VersionRangeKind::Exact, dependency.version};
+      found->version = {VersionRange::Kind::Exact, dependency.version};
     }
   }
   std::sort(imports.begin(), imports.end(),

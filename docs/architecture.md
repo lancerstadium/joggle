@@ -21,7 +21,7 @@ and output writers are library vocabulary rather than core subclasses.
 These six high-frequency IR atoms use one compact vocabulary everywhere:
 `Mod`, `Fn`, `Val`, `Expr`, `Blk`, and `Op`. Their public accessors use the
 same stems (`mod`, `fn`, `blk`, and their plurals). Descriptive roles such as
-`TypeDecl`, `Terminator`, and `SourceRange` keep full words. Diagnostics use
+`TypeDecl`, `Term`, and `Loc` keep full words. Diagnostics use
 `Diag` for the collector and `Issue` for one reported item; Joggle does not
 abbreviate every identifier indiscriminately.
 

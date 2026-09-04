@@ -54,7 +54,7 @@ struct OpData {
   std::uint64_t parent = 0;
   std::vector<StoredArgument> arguments;
   std::vector<std::uint64_t> results;
-  std::optional<SourceRange> location;
+  std::optional<Loc> location;
 };
 
 struct EdgeData {
@@ -62,8 +62,8 @@ struct EdgeData {
   std::vector<std::uint64_t> arguments;
 };
 
-struct TerminatorData {
-  Terminator::Kind kind = Terminator::Kind::Return;
+struct TermData {
+  Term::Kind kind = Term::Kind::Return;
   std::optional<std::uint64_t> condition;
   std::vector<std::uint64_t> returned;
   std::vector<EdgeData> successors;
@@ -72,7 +72,7 @@ struct TerminatorData {
 struct BlkData {
   std::vector<std::uint64_t> arguments;
   std::vector<std::uint64_t> ops;
-  std::optional<TerminatorData> terminator;
+  std::optional<TermData> terminator;
 };
 
 struct FnState {
@@ -135,13 +135,11 @@ Val FnAccess::restore(std::shared_ptr<FnIdentity> fn, std::uint64_t id,
   }
   return Val(std::move(fn), id);
 }
-void FnAccess::locate(Fn::Edit& edit, const Op& op, SourceRange source) {
+void FnAccess::locate(Fn::Edit& edit, const Op& op, Loc source) {
   edit.locate(op, std::move(source));
 }
 
-std::optional<SourceRange> FnAccess::location(const Op& op) {
-  return op.location();
-}
+std::optional<Loc> FnAccess::location(const Op& op) { return op.location(); }
 
 std::optional<ParamVal> FnAccess::known_value(const Val& value) {
   return value.known_value();
@@ -550,11 +548,11 @@ bool verify_effect_uses(const FnState& fn, Diag& diagnostics) {
     if (!block.terminator) {
       continue;
     }
-    const detail::TerminatorData& terminator = *block.terminator;
+    const detail::TermData& terminator = *block.terminator;
     for (const std::uint64_t returned : terminator.returned) {
       consume(returned);
     }
-    if (terminator.kind != Terminator::Kind::Branch) {
+    if (terminator.kind != Term::Kind::Branch) {
       for (const detail::EdgeData& edge : terminator.successors) {
         for (const std::uint64_t argument : edge.arguments) {
           consume(argument);
@@ -710,13 +708,13 @@ bool verify_fn(const FnState& fn, Diag& diagnostics) {
     if (block == fn.blocks.end() || !block->second.terminator) {
       continue;
     }
-    const detail::TerminatorData& terminator = *block->second.terminator;
+    const detail::TermData& terminator = *block->second.terminator;
     const std::size_t expected_successors =
-        terminator.kind == Terminator::Kind::Return
+        terminator.kind == Term::Kind::Return
             ? 0U
-            : (terminator.kind == Terminator::Kind::Jump ? 1U : 2U);
+            : (terminator.kind == Term::Kind::Jump ? 1U : 2U);
     if (terminator.successors.size() != expected_successors ||
-        (terminator.kind == Terminator::Kind::Branch) !=
+        (terminator.kind == Term::Kind::Branch) !=
             terminator.condition.has_value()) {
       diagnostics.report("block has a malformed terminator");
       valid = false;
@@ -745,7 +743,7 @@ bool verify_fn(const FnState& fn, Diag& diagnostics) {
     for (const std::uint64_t value : terminator.returned) {
       verify_use(value);
     }
-    if (terminator.kind == Terminator::Kind::Return) {
+    if (terminator.kind == Term::Kind::Return) {
       std::vector<Type> returned_types;
       returned_types.reserve(terminator.returned.size());
       for (const std::uint64_t value : terminator.returned) {
@@ -878,7 +876,7 @@ bool verify_op_contracts(const FnState& fn, Diag& diagnostics) {
       [&](const Mod::FnDecl& schema, std::span<const Type> arguments,
           std::span<const std::optional<ParamVal>> known_arguments,
           std::span<const std::optional<Type>> results, Diag& reported,
-          std::optional<SourceRange> location) {
+          std::optional<Loc> location) {
         return resolve_call_types(mods, schema, arguments, known_arguments,
                                   results, reported, std::move(location));
       });
@@ -891,7 +889,7 @@ bool verify_op_contracts(const FnState& fn, Compiler& compiler,
       [&](const Mod::FnDecl& schema, std::span<const Type> arguments,
           std::span<const std::optional<ParamVal>> known_arguments,
           std::span<const std::optional<Type>> results, Diag& reported,
-          std::optional<SourceRange> location) {
+          std::optional<Loc> location) {
         return resolve_call_types(compiler, schema, arguments, known_arguments,
                                   results, reported, std::move(location));
       });
@@ -1293,7 +1291,7 @@ Val Op::result(std::size_t index) const {
   return Val(fn_, found->second.results[index]);
 }
 
-std::optional<SourceRange> Op::location() const {
+std::optional<Loc> Op::location() const {
   if (!valid()) {
     return std::nullopt;
   }
@@ -1326,10 +1324,10 @@ std::optional<Val> Op::argument(std::string_view name) const {
                                    argument->value.known);
 }
 
-Terminator::Terminator(std::shared_ptr<FnIdentity> fn, std::uint64_t block)
+Term::Term(std::shared_ptr<FnIdentity> fn, std::uint64_t block)
     : fn_(std::move(fn)), block_(block) {}
 
-bool Terminator::valid() const {
+bool Term::valid() const {
   if (!fn_) {
     return false;
   }
@@ -1338,7 +1336,7 @@ bool Terminator::valid() const {
          block->second.terminator.has_value();
 }
 
-Terminator::Kind Terminator::kind() const {
+Term::Kind Term::kind() const {
   const auto block = fn_->state->blocks.find(block_);
   if (block == fn_->state->blocks.end() || !block->second.terminator) {
     throw std::logic_error("terminator is no longer valid");
@@ -1346,7 +1344,7 @@ Terminator::Kind Terminator::kind() const {
   return block->second.terminator->kind;
 }
 
-std::optional<Val> Terminator::condition() const {
+std::optional<Val> Term::condition() const {
   const auto block = fn_->state->blocks.find(block_);
   if (block == fn_->state->blocks.end() || !block->second.terminator) {
     throw std::logic_error("terminator is no longer valid");
@@ -1355,7 +1353,7 @@ std::optional<Val> Terminator::condition() const {
   return condition ? std::optional<Val>{Val(fn_, *condition)} : std::nullopt;
 }
 
-std::vector<Val> Terminator::returned() const {
+std::vector<Val> Term::returned() const {
   const auto block = fn_->state->blocks.find(block_);
   if (block == fn_->state->blocks.end() || !block->second.terminator) {
     throw std::logic_error("terminator is no longer valid");
@@ -1368,7 +1366,7 @@ std::vector<Val> Terminator::returned() const {
   return values;
 }
 
-std::size_t Terminator::successor_count() const {
+std::size_t Term::successor_count() const {
   const auto block = fn_->state->blocks.find(block_);
   if (block == fn_->state->blocks.end() || !block->second.terminator) {
     throw std::logic_error("terminator is no longer valid");
@@ -1376,7 +1374,7 @@ std::size_t Terminator::successor_count() const {
   return block->second.terminator->successors.size();
 }
 
-Blk Terminator::successor(std::size_t index) const {
+Blk Term::successor(std::size_t index) const {
   const auto block = fn_->state->blocks.find(block_);
   if (block == fn_->state->blocks.end() || !block->second.terminator ||
       index >= block->second.terminator->successors.size()) {
@@ -1385,7 +1383,7 @@ Blk Terminator::successor(std::size_t index) const {
   return Blk(fn_, block->second.terminator->successors[index].target);
 }
 
-std::vector<Val> Terminator::arguments(std::size_t successor) const {
+std::vector<Val> Term::arguments(std::size_t successor) const {
   const auto block = fn_->state->blocks.find(block_);
   if (block == fn_->state->blocks.end() || !block->second.terminator ||
       successor >= block->second.terminator->successors.size()) {
@@ -1434,11 +1432,11 @@ std::vector<Op> Blk::ops() const {
   return ops;
 }
 
-Terminator Blk::terminator() const {
+Term Blk::terminator() const {
   if (!valid()) {
     throw std::logic_error("block is no longer valid");
   }
-  return Terminator(fn_, id_);
+  return Term(fn_, id_);
 }
 
 Fn::Edit::Edit(std::shared_ptr<FnIdentity> fn)
@@ -1560,7 +1558,7 @@ Op Fn::Edit::add(Blk block, std::optional<Op> before, Mod::FnDecl schema,
   const std::uint64_t block_id = detail::FnAccess::id(block);
   const auto location =
       before ? state_->fn->state->ops.at(detail::FnAccess::id(*before)).location
-             : std::optional<SourceRange>{};
+             : std::optional<Loc>{};
   const auto parameters = schema.inputs();
   std::vector<detail::StoredArgument> argument_ids;
   argument_ids.reserve(std::max(arguments.size(), parameters.size()));
@@ -1716,8 +1714,8 @@ void Fn::Edit::ret(Blk block, std::vector<Val> values) {
   }
   auto& terminator =
       state_->fn->state->blocks.at(detail::FnAccess::id(block)).terminator;
-  terminator = detail::TerminatorData{
-      Terminator::Kind::Return, std::nullopt, std::move(ids), {}};
+  terminator =
+      detail::TermData{Term::Kind::Return, std::nullopt, std::move(ids), {}};
 }
 
 void Fn::Edit::jump(Blk block, Blk target, std::vector<Val> arguments) {
@@ -1736,10 +1734,10 @@ void Fn::Edit::jump(Blk block, Blk target, std::vector<Val> arguments) {
   auto& terminator =
       state_->fn->state->blocks.at(detail::FnAccess::id(block)).terminator;
   terminator =
-      detail::TerminatorData{Terminator::Kind::Jump,
-                             std::nullopt,
-                             {},
-                             {{detail::FnAccess::id(target), std::move(ids)}}};
+      detail::TermData{Term::Kind::Jump,
+                       std::nullopt,
+                       {},
+                       {{detail::FnAccess::id(target), std::move(ids)}}};
 }
 
 void Fn::Edit::branch(Blk block, Val condition, Blk true_target,
@@ -1768,15 +1766,15 @@ void Fn::Edit::branch(Blk block, Val condition, Blk true_target,
   };
   auto& terminator =
       state_->fn->state->blocks.at(detail::FnAccess::id(block)).terminator;
-  terminator = detail::TerminatorData{
-      Terminator::Kind::Branch,
+  terminator = detail::TermData{
+      Term::Kind::Branch,
       detail::FnAccess::id(condition),
       {},
       {{detail::FnAccess::id(true_target), ids(true_arguments)},
        {detail::FnAccess::id(false_target), ids(false_arguments)}}};
 }
 
-void Fn::Edit::locate(Op op, SourceRange source) {
+void Fn::Edit::locate(Op op, Loc source) {
   if (!state_ || !state_->active || op.fn_ != state_->fn || !op.valid()) {
     throw std::invalid_argument("op does not belong to this fn edit");
   }
@@ -1932,7 +1930,7 @@ Fn::Fn(std::vector<Mod> mods) : fn_(std::make_shared<FnIdentity>()) {
   }
   fn_->state->entry = fn_->next_id++;
   detail::BlkData entry;
-  entry.terminator = detail::TerminatorData{};
+  entry.terminator = detail::TermData{};
   fn_->state->blocks.emplace(fn_->state->entry, std::move(entry));
   fn_->state->block_order.push_back(fn_->state->entry);
 }
@@ -1986,8 +1984,7 @@ std::vector<Type> Fn::result_types() const {
   }
   for (const std::uint64_t block_id : fn_->state->block_order) {
     const auto& block = fn_->state->blocks.at(block_id);
-    if (!block.terminator ||
-        block.terminator->kind != Terminator::Kind::Return) {
+    if (!block.terminator || block.terminator->kind != Term::Kind::Return) {
       continue;
     }
     std::vector<Type> result;

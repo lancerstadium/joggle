@@ -143,7 +143,7 @@ bool belongs_to(const Mods& mods, const ParamVal& value) {
 template <typename Subject, typename Verifier>
 bool invoke_verifier(Verifier& verifier, const Subject& subject,
                      std::string description, Diag& diagnostics,
-                     std::optional<SourceRange> location = std::nullopt) {
+                     std::optional<Loc> location = std::nullopt) {
   Diag reported;
   bool accepted = false;
   try {
@@ -355,7 +355,7 @@ struct Compiler::State {
   };
   struct BoundFn {
     NativeFn callable;
-    HostEvaluation evaluation = HostEvaluation::Guarded;
+    HostEval evaluation = HostEval::Guarded;
   };
   Diag diagnostics;
   std::map<std::string, Mod, std::less<>> mods;
@@ -374,14 +374,13 @@ struct Compiler::State {
   std::map<std::string, HostRepresentation, std::less<>> host_types;
   std::map<std::string, std::string, std::less<>> host_representations;
   std::set<std::string, std::less<>> constructing_types;
-  EvaluationLimits evaluation_limits;
+  Limits evaluation_limits;
   bool linked = false;
 };
 
-Compiler::Compiler() : Compiler(EvaluationLimits{}) {}
+Compiler::Compiler() : Compiler(Limits{}) {}
 
-Compiler::Compiler(EvaluationLimits limits)
-    : state_(std::make_unique<State>()) {
+Compiler::Compiler(Limits limits) : state_(std::make_unique<State>()) {
   state_->evaluation_limits = limits;
   auto prelude =
       parse_mod(detail::prelude_mod_source(), state_->diagnostics, "<prelude>");
@@ -512,9 +511,9 @@ void Compiler::lock(const std::filesystem::path& path) {
     }
     const auto report = [&](std::string message) {
       state_->diagnostics.report(std::move(message),
-                                 SourceRange{path.string(),
-                                             {line_number, 1},
-                                             {line_number, line.size() + 1U}});
+                                 Loc{path.string(),
+                                     {line_number, 1},
+                                     {line_number, line.size() + 1U}});
     };
     if (!header) {
       if (text != "joggle-lock 1;") {
@@ -633,7 +632,7 @@ bool Compiler::link() {
     loaded = false;
     struct MissingImport {
       Mod::Import import;
-      std::optional<SourceRange> source;
+      std::optional<Loc> source;
     };
     std::vector<MissingImport> missing;
     for (const auto& [name, mod] : state_->mods) {
@@ -802,7 +801,7 @@ bool Compiler::link() {
 
     for (const Mod::TypeDecl& type : mod.types()) {
       const auto location = detail::ModAccess::declaration_source(
-          mod, Mod::SymbolKind::Type, type.name());
+          mod, Mod::Symbol::Kind::Type, type.name());
       for (const auto& derived : type.derived_parameters()) {
         detail::check_declaration_expression(
             *this, mod, derived.value, derived.domain, {}, type.parameters(),
@@ -814,7 +813,7 @@ bool Compiler::link() {
 
     for (const Mod::FnDecl& fn : mod.fns()) {
       const auto location = detail::ModAccess::declaration_source(
-          mod, Mod::SymbolKind::Fn, fn.name());
+          mod, Mod::Symbol::Kind::Fn, fn.name());
       const auto body = detail::ModAccess::body(mod, fn);
       if (body) {
         detail::verify_body_calls(*this, fn, *body, state_->diagnostics);
@@ -829,7 +828,7 @@ bool Compiler::link() {
         continue;
       }
       const auto location = detail::ModAccess::declaration_source(
-          mod, Mod::SymbolKind::Fn, fn.name());
+          mod, Mod::Symbol::Kind::Fn, fn.name());
       const auto inputs = detail::compiler_inputs(fn);
       const auto results = detail::compiler_results(fn);
       detail::check_declaration_expression(
@@ -843,7 +842,7 @@ bool Compiler::link() {
         continue;
       }
       const auto fn_source = detail::ModAccess::declaration_source(
-          mod, Mod::SymbolKind::Fn, declaration.name());
+          mod, Mod::Symbol::Kind::Fn, declaration.name());
       const auto report_fn = [&](std::string message) {
         state_->diagnostics.report(std::move(message), fn_source);
       };
@@ -886,7 +885,7 @@ bool Compiler::link() {
   std::unordered_map<std::string, Visit> visits;
   std::vector<std::string> stack;
   const auto visit = [&](const auto& self, const Mod& mod,
-                         std::optional<SourceRange> incoming) -> bool {
+                         std::optional<Loc> incoming) -> bool {
     const std::string name(mod.name());
     Visit& state = visits[name];
     if (state == Visit::Complete) {
@@ -931,7 +930,7 @@ bool Compiler::link() {
   visits.clear();
   stack.clear();
   const auto visit_fn = [&](const auto& self, const Mod::FnDecl& fn,
-                            std::optional<SourceRange> incoming) -> bool {
+                            std::optional<Loc> incoming) -> bool {
     const std::string identity(fn.symbol().qualified_name());
     Visit& state = visits[identity];
     if (state == Visit::Complete) {
@@ -955,9 +954,9 @@ bool Compiler::link() {
     const auto owner = state_->mods.find(fn.symbol().mod_name());
     const auto location =
         owner == state_->mods.end()
-            ? std::optional<SourceRange>{}
+            ? std::optional<Loc>{}
             : detail::ModAccess::declaration_source(
-                  owner->second, Mod::SymbolKind::Fn, fn.name());
+                  owner->second, Mod::Symbol::Kind::Fn, fn.name());
     bool valid = true;
     const auto walk = [&](const auto& walk_self,
                           const Mod::Expr& expression) -> void {
@@ -1012,7 +1011,7 @@ bool Compiler::ok() const { return state_->diagnostics.ok(); }
 
 bool Compiler::linked() const { return state_->linked; }
 
-Compiler::EvaluationLimits Compiler::evaluation_limits() const {
+Compiler::Limits Compiler::evaluation_limits() const {
   return state_->evaluation_limits;
 }
 
@@ -1116,7 +1115,7 @@ bool Compiler::load_native(const Mod& mod,
   static_assert(sizeof(detail::NativeEntry) == sizeof(address));
   detail::NativeEntry entry = nullptr;
   std::memcpy(&entry, &address, sizeof(entry));
-  const detail::NativeLibrary* native = nullptr;
+  const detail::NativeLib* native = nullptr;
   try {
     native = entry();
   } catch (const std::exception& exception) {
@@ -1129,7 +1128,7 @@ bool Compiler::load_native(const Mod& mod,
     return false;
   }
   if (native == nullptr || native->abi != detail::native_abi ||
-      native->size < sizeof(detail::NativeLibrary) ||
+      native->size < sizeof(detail::NativeLib) ||
       native->mod_identity == nullptr || native->target == nullptr ||
       native->load == nullptr) {
     state_->diagnostics.report("native library '" + library.string() +
@@ -1384,7 +1383,7 @@ std::optional<Fn> Compiler::materialize(Mod::Symbol symbol,
         "cannot construct a fn before the compiler is linked");
     return std::nullopt;
   }
-  if (symbol.kind() != Mod::SymbolKind::Fn) {
+  if (symbol.kind() != Mod::Symbol::Kind::Fn) {
     state_->diagnostics.report("symbol '" + symbol.qualified_name() +
                                "' is not a fn");
     return std::nullopt;
@@ -1810,7 +1809,7 @@ Compiler::lookup_run(std::string_view name,
 }
 
 void Compiler::bind_native(Mod::FnDecl schema, NativeFn fn,
-                           HostEvaluation evaluation) {
+                           HostEval evaluation) {
   const Mod::Symbol symbol = schema.symbol();
   const auto owner = state_->mods.find(symbol.mod_name());
   if (owner == state_->mods.end() ||
@@ -1897,7 +1896,7 @@ void Compiler::bind_prelude_primitives() {
       results.push_back(std::move(*encoded));
       return results;
     };
-    bind_native(fn, std::move(implementation), HostEvaluation::Hermetic);
+    bind_native(fn, std::move(implementation), HostEval::Hermetic);
   }
 }
 
@@ -1909,7 +1908,7 @@ bool Compiler::can_evaluate_binding(const Mod::FnDecl& fn,
   const auto binding = state_->bindings.find(fn.symbol().stable_name());
   return binding != state_->bindings.end() &&
          (!under_residual_control ||
-          binding->second.evaluation == HostEvaluation::Hermetic);
+          binding->second.evaluation == HostEval::Hermetic);
 }
 
 std::optional<detail::ParamVal>
@@ -1927,7 +1926,7 @@ Compiler::evaluate_binding(Mod::FnDecl fn,
   if (fn.form() == Mod::FnDecl::Form::External) {
     const auto binding = state_->bindings.find(fn.symbol().stable_name());
     if (binding != state_->bindings.end() &&
-        binding->second.evaluation == HostEvaluation::Hermetic) {
+        binding->second.evaluation == HostEval::Hermetic) {
       cache_key = fn.symbol().stable_name();
       for (const auto& argument : arguments) {
         const std::string value = argument.canonical();
@@ -2227,7 +2226,7 @@ Compiler::execute(Mod::FnDecl declaration,
         return std::nullopt;
       }
       if (under_residual_control &&
-          binding->second.evaluation != HostEvaluation::Hermetic) {
+          binding->second.evaluation != HostEval::Hermetic) {
         state_->diagnostics.report(
             "host implementation of fn '" + current.symbol().qualified_name() +
             "' is guarded and cannot execute under Residual control");
@@ -2302,7 +2301,7 @@ Compiler::execute(Mod::FnDecl declaration,
       }
       const detail::ExecuteFn invoke =
           [&](Mod::FnDecl fn, std::vector<detail::ExecVal> arguments,
-              SourceRange call_site) {
+              Loc call_site) {
             const std::size_t call_diagnostics = state_->diagnostics.size();
             auto result = self(self, fn, std::move(arguments));
             if (!result && state_->diagnostics.size() > call_diagnostics) {

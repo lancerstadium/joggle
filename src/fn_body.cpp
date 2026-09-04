@@ -57,7 +57,7 @@ public:
   }
 
   std::optional<detail::FnBody> parse() {
-    const SourcePosition begin = current_.begin;
+    const Loc::Pos begin = current_.begin;
     detail::FnBody body;
     body.source = source_;
     expect(TokenKind::LeftBrace, "'{'");
@@ -163,7 +163,7 @@ private:
   std::optional<std::string> local_name() { return name("a local value name"); }
 
   detail::ExprSyntax expression() {
-    const SourcePosition begin = current_.begin;
+    const Loc::Pos begin = current_.begin;
     auto value = detail::parse_expression(lexer_, current_, diagnostics_,
                                           source_, variables_);
     return {std::move(value), {begin, current_.begin}};
@@ -199,7 +199,7 @@ private:
 
   detail::SuccessorSyntax parse_successor() {
     detail::SuccessorSyntax successor;
-    const SourcePosition begin = current_.begin;
+    const Loc::Pos begin = current_.begin;
     if (auto target = name("a successor block name")) {
       successor.target = std::move(*target);
     }
@@ -214,21 +214,21 @@ private:
     return successor;
   }
 
-  detail::TerminatorSyntax parse_terminator() {
-    detail::TerminatorSyntax terminator;
-    const SourcePosition begin = current_.begin;
+  detail::TermSyntax parse_terminator() {
+    detail::TermSyntax terminator;
+    const Loc::Pos begin = current_.begin;
     if (match_name("return")) {
-      terminator.kind = detail::TerminatorSyntax::Kind::Return;
+      terminator.kind = detail::TermSyntax::Kind::Return;
       if (!is(TokenKind::Semicolon)) {
         do {
           terminator.values.push_back(expression());
         } while (match(TokenKind::Comma));
       }
     } else if (match_name("jump")) {
-      terminator.kind = detail::TerminatorSyntax::Kind::Jump;
+      terminator.kind = detail::TermSyntax::Kind::Jump;
       terminator.successors.push_back(parse_successor());
     } else if (match_name("branch")) {
-      terminator.kind = detail::TerminatorSyntax::Kind::Branch;
+      terminator.kind = detail::TermSyntax::Kind::Branch;
       terminator.condition = expression();
       expect(TokenKind::Comma, "','");
       terminator.successors.push_back(parse_successor());
@@ -244,7 +244,7 @@ private:
 
   detail::BlkSyntax parse_block() {
     detail::BlkSyntax block;
-    const SourcePosition begin = current_.begin;
+    const Loc::Pos begin = current_.begin;
     if (auto block_name = name("a block name")) {
       block.name = std::move(*block_name);
     }
@@ -252,7 +252,7 @@ private:
     if (!match(TokenKind::RightParen)) {
       do {
         detail::BlkArgSyntax argument;
-        const SourcePosition argument_begin = current_.begin;
+        const Loc::Pos argument_begin = current_.begin;
         if (auto argument_name = local_name()) {
           argument.name = std::move(*argument_name);
         }
@@ -291,7 +291,7 @@ private:
 
   detail::StatementSyntax parse_statement() {
     detail::StatementSyntax statement;
-    const SourcePosition begin = current_.begin;
+    const Loc::Pos begin = current_.begin;
     if (is_name("break") || is_name("continue")) {
       const bool is_break = is_name("break");
       advance();
@@ -368,7 +368,7 @@ private:
     }
     if (match_name("for")) {
       statement.kind = detail::StatementSyntax::Kind::For;
-      const SourcePosition iterator_begin = current_.begin;
+      const Loc::Pos iterator_begin = current_.begin;
       if (auto iterator = local_name()) {
         statement.iterator =
             detail::BindingSyntax{std::move(*iterator),
@@ -408,7 +408,7 @@ private:
       return statement;
     }
     if (starts_binding()) {
-      auto add_binding = [&](std::string name, SourcePosition binding_begin) {
+      auto add_binding = [&](std::string name, Loc::Pos binding_begin) {
         detail::BindingSyntax binding;
         binding.name = std::move(name);
         binding.rebind = locals_.contains(binding.name);
@@ -422,12 +422,12 @@ private:
         }
         statement.bindings.push_back(std::move(binding));
       };
-      const SourcePosition first_begin = current_.begin;
+      const Loc::Pos first_begin = current_.begin;
       if (auto first = local_name()) {
         add_binding(std::move(*first), first_begin);
       }
       while (match(TokenKind::Comma)) {
-        const SourcePosition binding_begin = current_.begin;
+        const Loc::Pos binding_begin = current_.begin;
         if (auto binding = local_name()) {
           add_binding(std::move(*binding), binding_begin);
         }
@@ -446,7 +446,7 @@ private:
 
   void error(std::string message) {
     diagnostics_.report(std::move(message),
-                        SourceRange{source_, current_.begin, current_.end});
+                        Loc{source_, current_.begin, current_.end});
   }
 
   Lexer& lexer_;
@@ -454,7 +454,7 @@ private:
   std::string source_;
   std::size_t initial_diagnostics_ = 0;
   Token& current_;
-  SourcePosition previous_end_;
+  Loc::Pos previous_end_;
   std::vector<Mod::FnDecl::GenericDecl> variables_;
   std::unordered_set<std::string> locals_;
   std::size_t loop_depth_ = 0;
@@ -550,7 +550,7 @@ private:
                                body_->blocks.front().arguments.empty() &&
                                (!body_->blocks.front().terminator ||
                                 body_->blocks.front().terminator->kind ==
-                                    detail::TerminatorSyntax::Kind::Return);
+                                    detail::TermSyntax::Kind::Return);
     if (straight_line) {
       const detail::BlkSyntax& entry = body_->blocks.front();
       for (const auto& statement : entry.statements) {
@@ -598,24 +598,24 @@ private:
     output_ << ')';
   }
 
-  void write_terminator(const detail::TerminatorSyntax& terminator,
+  void write_terminator(const detail::TermSyntax& terminator,
                         std::size_t level) {
     output_ << spaces(level);
     switch (terminator.kind) {
-    case detail::TerminatorSyntax::Kind::Return:
+    case detail::TermSyntax::Kind::Return:
       output_ << "return";
       for (std::size_t index = 0; index < terminator.values.size(); ++index) {
         output_ << (index == 0U ? " " : ", ")
                 << detail::format_expression(terminator.values[index].value);
       }
       break;
-    case detail::TerminatorSyntax::Kind::Jump:
+    case detail::TermSyntax::Kind::Jump:
       output_ << "jump ";
       if (!terminator.successors.empty()) {
         write_successor(terminator.successors.front());
       }
       break;
-    case detail::TerminatorSyntax::Kind::Branch:
+    case detail::TermSyntax::Kind::Branch:
       output_ << "branch ";
       if (terminator.condition) {
         output_ << detail::format_expression(terminator.condition->value);
@@ -1028,7 +1028,7 @@ public:
     };
     for (const detail::BlkSyntax& block : body_.blocks) {
       if (block.terminator &&
-          block.terminator->kind == detail::TerminatorSyntax::Kind::Return &&
+          block.terminator->kind == detail::TermSyntax::Kind::Return &&
           block.terminator->values.size() == result_types_.size()) {
         for (std::size_t index = 0; index < block.terminator->values.size();
              ++index) {
@@ -1140,7 +1140,7 @@ public:
         report("fn path falls through without returning", block.range);
         continue;
       }
-      const detail::TerminatorSyntax& terminator = *block.terminator;
+      const detail::TermSyntax& terminator = *block.terminator;
       const auto target = [&](std::size_t index) -> std::optional<Blk> {
         if (index >= terminator.successors.size()) {
           return std::nullopt;
@@ -1156,7 +1156,7 @@ public:
       };
       for (const Path& active : current.next) {
         restore(active);
-        if (terminator.kind == detail::TerminatorSyntax::Kind::Return) {
+        if (terminator.kind == detail::TermSyntax::Kind::Return) {
           instantiate_return(terminator.values, terminator.range, active.block);
           continue;
         }
@@ -1170,7 +1170,7 @@ public:
           }
           edge_arguments.push_back(std::move(values));
         }
-        if (terminator.kind == detail::TerminatorSyntax::Kind::Jump) {
+        if (terminator.kind == detail::TermSyntax::Kind::Jump) {
           if (auto destination = target(0)) {
             edit_->jump(active.block, *destination,
                         edge_arguments.empty() ? std::vector<Val>{}
@@ -1368,7 +1368,7 @@ private:
 
   bool ok() const { return diagnostics_.size() == initial_diagnostics_; }
 
-  SourceRange source(detail::SyntaxRange range) const {
+  Loc source(detail::SyntaxRange range) const {
     return {body_.source, range.begin, range.end};
   }
 
@@ -1438,7 +1438,7 @@ private:
     return result;
   }
 
-  std::optional<Mod::SymbolKind>
+  std::optional<Mod::Symbol::Kind>
   declaration_kind(std::string_view reference) const {
     const bool prelude_type = detail::is_prelude_type(reference);
     const std::string qualified = prelude_type
@@ -1452,7 +1452,7 @@ private:
       return std::nullopt;
     }
     if (mod->type(local)) {
-      return Mod::SymbolKind::Type;
+      return Mod::Symbol::Kind::Type;
     }
     return std::nullopt;
   }
@@ -1469,7 +1469,7 @@ private:
         expression.kind == Kind::Reference) {
       if (!expression.arguments.empty()) {
         const auto kind = declaration_kind(expression.text);
-        if (kind == Mod::SymbolKind::Type) {
+        if (kind == Mod::Symbol::Kind::Type) {
           return Mod::ParamDecl{
               "result", detail::domain_expression(detail::ValKind::Type), false,
               std::nullopt};
@@ -3186,10 +3186,9 @@ private:
   void instantiate_evaluate_call(const detail::StatementSyntax& statement,
                                  const Mod::Expr& expression, Blk block) {
     const auto reject_results = [&] { invalidate(statement.bindings); };
-    const SourceRange call_site = source(statement.expression.range);
+    const Loc call_site = source(statement.expression.range);
     const detail::ExecuteFn execute =
-        [&](Mod::FnDecl fn, std::vector<detail::ExecVal> arguments,
-            SourceRange) {
+        [&](Mod::FnDecl fn, std::vector<detail::ExecVal> arguments, Loc) {
           return detail::CompilerAccess::execute(compiler_, std::move(fn),
                                                  std::move(arguments),
                                                  residual_control_depth_ != 0U);
@@ -3592,7 +3591,7 @@ public:
           remember_fn(argument);
         }
       }
-      const Terminator terminator = block.terminator();
+      const Term terminator = block.terminator();
       if (const auto condition = terminator.condition()) {
         remember_fn(*condition);
       }
@@ -3921,18 +3920,18 @@ private:
     return result;
   }
 
-  detail::TerminatorSyntax convert(const Terminator& terminator) const {
-    detail::TerminatorSyntax result;
-    if (terminator.kind() == Terminator::Kind::Return) {
-      result.kind = detail::TerminatorSyntax::Kind::Return;
+  detail::TermSyntax convert(const Term& terminator) const {
+    detail::TermSyntax result;
+    if (terminator.kind() == Term::Kind::Return) {
+      result.kind = detail::TermSyntax::Kind::Return;
       for (const Val& value : terminator.returned()) {
         result.values.push_back({Mod::Expr::reference(use(value)), {}});
       }
       return result;
     }
-    result.kind = terminator.kind() == Terminator::Kind::Jump
-                      ? detail::TerminatorSyntax::Kind::Jump
-                      : detail::TerminatorSyntax::Kind::Branch;
+    result.kind = terminator.kind() == Term::Kind::Jump
+                      ? detail::TermSyntax::Kind::Jump
+                      : detail::TermSyntax::Kind::Branch;
     if (const auto condition = terminator.condition()) {
       result.condition =
           detail::ExprSyntax{Mod::Expr::reference(use(*condition)), {}};
@@ -3964,11 +3963,11 @@ namespace detail {
 
 bool verify_fn_body(const FnBody& body, Diag& diagnostics) {
   const std::size_t initial_diagnostics = diagnostics.size();
-  const auto locate = [&](SyntaxRange range) -> std::optional<SourceRange> {
+  const auto locate = [&](SyntaxRange range) -> std::optional<Loc> {
     if (body.source.empty()) {
       return std::nullopt;
     }
-    return SourceRange{body.source, range.begin, range.end};
+    return Loc{body.source, range.begin, range.end};
   };
   const auto report = [&](std::string message, SyntaxRange range) {
     diagnostics.report(std::move(message), locate(range));
@@ -4096,20 +4095,20 @@ bool verify_fn_body(const FnBody& body, Diag& diagnostics) {
       }
       continue;
     }
-    const TerminatorSyntax& terminator = *block.terminator;
+    const TermSyntax& terminator = *block.terminator;
     switch (terminator.kind) {
-    case TerminatorSyntax::Kind::Return:
+    case TermSyntax::Kind::Return:
       if (terminator.condition || !terminator.successors.empty()) {
         report("return cannot have a condition or successor", terminator.range);
       }
       break;
-    case TerminatorSyntax::Kind::Jump:
+    case TermSyntax::Kind::Jump:
       if (terminator.condition || !terminator.values.empty() ||
           terminator.successors.size() != 1U) {
         report("jump must have exactly one successor", terminator.range);
       }
       break;
-    case TerminatorSyntax::Kind::Branch:
+    case TermSyntax::Kind::Branch:
       if (!terminator.condition || !terminator.values.empty() ||
           terminator.successors.size() != 2U) {
         report("branch must have one condition and two successors",
@@ -4182,7 +4181,7 @@ std::optional<Fn> instantiate_fn(Compiler& compiler, Mod::FnDecl fn,
 
 std::optional<Fn>
 instantiate_lambda(Compiler& compiler, std::string_view owner,
-                   const Mod::Expr& expression, const SourceRange& source,
+                   const Mod::Expr& expression, const Loc& source,
                    Diag& diagnostics, const KnownBindings& bindings,
                    std::optional<std::vector<Type>> expected_inputs,
                    std::optional<std::vector<Type>> expected_results,

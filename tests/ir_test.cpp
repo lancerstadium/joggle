@@ -81,8 +81,7 @@ int main() {
   }
 
   std::optional<joggle::Op> add;
-  const joggle::SourceRange imported_location{
-      "model.onnx#node/add", {7, 1}, {7, 2}};
+  const joggle::Loc imported_location{"model.onnx#node/add", {7, 1}, {7, 2}};
   {
     auto edit = fn->edit();
     const auto lhs = edit.argument(*integer);
@@ -102,12 +101,11 @@ int main() {
   ok &= expect(fn->arguments().size() == 2U && fn->ops().size() == 2U &&
                    fn->ops() == fn->ops(),
                "a Fn owns one ordered op view across its blocks");
-  ok &=
-      expect(add && add->value().type() == *integer &&
-                 !add->result(0).is_fn_arg() && !add->result(0).is_blk_arg() &&
-                 add->location() ==
-                     std::optional<joggle::SourceRange>{imported_location},
-             "op results retain their inferred type and frontend source");
+  ok &= expect(
+      add && add->value().type() == *integer && !add->result(0).is_fn_arg() &&
+          !add->result(0).is_blk_arg() &&
+          add->location() == std::optional<joggle::Loc>{imported_location},
+      "op results retain their inferred type and frontend source");
 
   auto copied = *fn;
   const auto shared_revision = copied.revision();
@@ -458,13 +456,13 @@ int main() {
     }
   }
   const auto entry_terminator = branched->entry().terminator();
-  ok &= expect(
-      compiler.verify(*branched) && branched->blks().size() == 4U && merge &&
-          merge->arguments().front().is_blk_arg() &&
-          entry_terminator.kind() == joggle::Terminator::Kind::Branch &&
-          entry_terminator.successor_count() == 2U &&
-          merge->terminator().returned().front() == merge->arguments().front(),
-      "branches use sibling blocks and typed successor arguments");
+  ok &= expect(compiler.verify(*branched) && branched->blks().size() == 4U &&
+                   merge && merge->arguments().front().is_blk_arg() &&
+                   entry_terminator.kind() == joggle::Term::Kind::Branch &&
+                   entry_terminator.successor_count() == 2U &&
+                   merge->terminator().returned().front() ==
+                       merge->arguments().front(),
+               "branches use sibling blocks and typed successor arguments");
   const auto left_predecessors = branched->predecessors(*left);
   const auto merge_predecessors = branched->predecessors(*merge);
   ok &= expect(branched->predecessors(branched->entry()).empty() &&

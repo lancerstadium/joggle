@@ -34,10 +34,10 @@ struct Version {
   auto operator<=>(const Version&) const = default;
 };
 
-enum class VersionRangeKind { Exact, Major, Minor, Caret };
-
 struct VersionRange {
-  VersionRangeKind kind = VersionRangeKind::Exact;
+  enum class Kind { Exact, Major, Minor, Caret };
+
+  Kind kind = Kind::Exact;
   Version base;
 
   bool contains(Version candidate) const;
@@ -111,19 +111,16 @@ public:
     bool operator==(const ParamDecl&) const = default;
   };
 
-  enum class SymbolKind {
-    Type,
-    Fn,
-  };
-
   class Symbol {
   public:
+    enum class Kind { Type, Fn };
+
     std::string_view mod_name() const { return mod_name_; }
     Version mod_version() const { return mod_version_; }
     // Declaration provenance of the Mod snapshot that produced this Symbol.
     // Logical Symbol equality uses its versioned qualified declaration name.
     std::string_view declaration_digest() const { return declaration_digest_; }
-    SymbolKind kind() const { return kind_; }
+    Kind kind() const { return kind_; }
     std::string_view local_name() const { return local_name_; }
 
     std::string qualified_name() const;
@@ -132,13 +129,13 @@ public:
 
   private:
     Symbol(std::string mod_name, Version mod_version,
-           std::string declaration_digest, SymbolKind kind,
-           std::string local_name, std::string discriminator = {});
+           std::string declaration_digest, Kind kind, std::string local_name,
+           std::string discriminator = {});
 
     std::string mod_name_;
     Version mod_version_;
     std::string declaration_digest_;
-    SymbolKind kind_ = SymbolKind::Type;
+    Kind kind_ = Kind::Type;
     std::string local_name_;
     std::string discriminator_;
 
@@ -244,7 +241,7 @@ public:
   std::optional<TypeDecl> type(std::string_view name) const;
   std::optional<FnDecl> fn(std::string_view name) const;
   std::vector<FnDecl> overloads(std::string_view name) const;
-  std::optional<Symbol> symbol(SymbolKind kind, std::string_view name) const;
+  std::optional<Symbol> symbol(Symbol::Kind kind, std::string_view name) const;
   std::vector<Symbol> members() const;
   std::vector<TypeDecl> types() const;
   std::vector<FnDecl> fns() const;

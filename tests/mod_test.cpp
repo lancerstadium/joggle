@@ -93,7 +93,7 @@ int main() {
                    align->results().front().domain ==
                        joggle::Mod::Expr::reference("int") &&
                    align->form() == joggle::Mod::FnDecl::Form::Body &&
-                   align->symbol().kind() == joggle::Mod::SymbolKind::Fn,
+                   align->symbol().kind() == joggle::Mod::Symbol::Kind::Fn,
                "pure fn reflection");
   ok &= expect(
       add && add->inputs().size() == 2U && add->results().size() == 1U &&
@@ -272,11 +272,12 @@ int main() {
   )",
       second_fn_diagnostics, "second-fn.joggle");
   const auto first_fn_symbol =
-      first_fn_mod ? first_fn_mod->symbol(joggle::Mod::SymbolKind::Fn, "main")
+      first_fn_mod ? first_fn_mod->symbol(joggle::Mod::Symbol::Kind::Fn, "main")
                    : std::nullopt;
   const auto second_fn_symbol =
-      second_fn_mod ? second_fn_mod->symbol(joggle::Mod::SymbolKind::Fn, "main")
-                    : std::nullopt;
+      second_fn_mod
+          ? second_fn_mod->symbol(joggle::Mod::Symbol::Kind::Fn, "main")
+          : std::nullopt;
   ok &= expect(first_fn_mod && second_fn_mod && first_fn_symbol &&
                    second_fn_symbol &&
                    first_fn_mod->digest() != second_fn_mod->digest() &&

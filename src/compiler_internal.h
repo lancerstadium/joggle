@@ -8,7 +8,7 @@
 namespace joggle::detail {
 
 struct CompilerAccess {
-  static Compiler::EvaluationLimits limits(const Compiler& compiler) {
+  static Compiler::Limits limits(const Compiler& compiler) {
     return compiler.evaluation_limits();
   }
 

@@ -355,7 +355,7 @@ private:
     std::string result;
     do {
       result += current_.text;
-      const SourcePosition end = current_.end;
+      const Loc::Pos end = current_.end;
       advance();
       if (current_.begin != end) {
         break;
@@ -393,9 +393,8 @@ private:
   }
 
   void error(std::string message) {
-    diagnostics_.report(
-        std::move(message),
-        SourceRange{std::string(source_), current_.begin, current_.end});
+    diagnostics_.report(std::move(message), Loc{std::string(source_),
+                                                current_.begin, current_.end});
   }
 
   Lexer& lexer_;

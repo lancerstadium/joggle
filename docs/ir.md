@@ -28,7 +28,7 @@ An `Op` is a call to an exact `Mod::FnDecl`. Inputs and results are
 checked against the selected overload. Operator syntax in source resolves to
 the same fn identity as named calls.
 
-An Op may carry an optional `SourceRange`. Parsers and import Mods use it
+An Op may carry an optional `Loc`. Parsers and import Mods use it
 for diagnostics and source provenance; it is not a semantic attribute, tensor
 property, or part of canonical Mod identity. Public Fn edits may
 attach a range, clone preserves it, and expression replacement transfers the

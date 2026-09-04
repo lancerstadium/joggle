@@ -64,11 +64,10 @@ struct ModAccess {
   static std::shared_ptr<const FnBody> body(const Mod& mod, const Mod::FnDecl&);
   static const Mod::Expr* expression(const Mod::FnDecl& fn);
   static const Mod::Expr* returned_expression(const Mod::FnDecl& fn);
-  static std::optional<SourceRange> import_source(const Mod& mod,
-                                                  std::size_t index);
-  static std::optional<SourceRange> declaration_source(const Mod& mod,
-                                                       Mod::SymbolKind kind,
-                                                       std::string_view name);
+  static std::optional<Loc> import_source(const Mod& mod, std::size_t index);
+  static std::optional<Loc> declaration_source(const Mod& mod,
+                                               Mod::Symbol::Kind kind,
+                                               std::string_view name);
 };
 
 }  // namespace joggle::detail

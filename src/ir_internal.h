@@ -26,8 +26,8 @@ struct FnAccess {
   static Val restore(std::shared_ptr<FnIdentity> fn, std::uint64_t id,
                      std::shared_ptr<const KnownValStorage> known);
 
-  static void locate(Fn::Edit& edit, const Op& op, SourceRange source);
-  static std::optional<SourceRange> location(const Op& op);
+  static void locate(Fn::Edit& edit, const Op& op, Loc source);
+  static std::optional<Loc> location(const Op& op);
   static std::optional<ParamVal> known_value(const Val& value);
   static std::size_t argument_parameter(const Op& op, std::size_t argument);
   static bool verify_structure(const Fn& fn, Diag& diagnostics);

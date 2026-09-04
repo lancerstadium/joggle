@@ -96,7 +96,7 @@ unaccepted calls and recursive expansion fail with diagnostics.
 Compiler fns should return new values instead of mutating shared mod
 state. Mod snapshots are copy-on-write, fn edits are transactional,
 and binary payloads are content-addressed. Native bindings that may execute
-under residual control must opt into `HostEvaluation::Hermetic` only when they
+under residual control must opt into `HostEval::Hermetic` only when they
 are deterministic and free of observable host effects.
 
 ## Command-line boundary

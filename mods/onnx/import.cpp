@@ -527,9 +527,8 @@ std::optional<Shape> spatial_shape(const Shape& input, const Shape& kernel,
   return result;
 }
 
-joggle::SourceRange location(const onnx::GraphProto& graph,
-                             std::string_view kind, std::string_view name,
-                             std::size_t ordinal) {
+joggle::Loc location(const onnx::GraphProto& graph, std::string_view kind,
+                     std::string_view name, std::size_t ordinal) {
   const auto line = ordinal + 1;
   return {"onnx:" + graph.name() + "/" + std::string(kind) + "/" +
               std::string(name),

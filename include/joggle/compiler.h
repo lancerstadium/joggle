@@ -29,7 +29,7 @@ class Compiler;
 // Controls whether a native implementation may be evaluated while the
 // current source path is guarded by Residual control. Hermetic is an explicit
 // promise that evaluation is deterministic and has no observable host effect.
-enum class HostEvaluation { Guarded, Hermetic };
+enum class HostEval { Guarded, Hermetic };
 
 namespace detail {
 
@@ -356,13 +356,13 @@ private:
       Compiler&, const Mod::TypeDecl&, const void*)>;
 
 public:
-  struct EvaluationLimits {
+  struct Limits {
     std::size_t steps = 100000;
     std::size_t depth = 256;
   };
 
   Compiler();
-  explicit Compiler(EvaluationLimits limits);
+  explicit Compiler(Limits limits);
   ~Compiler();
   Compiler(Compiler&&) noexcept;
   Compiler& operator=(Compiler&&) noexcept;
@@ -381,7 +381,7 @@ public:
   bool link();
   bool ok() const;
   bool linked() const;
-  EvaluationLimits evaluation_limits() const;
+  Limits evaluation_limits() const;
 
   std::optional<Mod> mod(std::string_view name) const;
   std::vector<Mod> mods() const;
@@ -510,7 +510,7 @@ public:
   // callable's C++ signature selects an overload without a generated wrapper.
   template <typename Callable>
   void bind(const Mod& mod, std::string_view name, Callable&& callable,
-            HostEvaluation evaluation = HostEvaluation::Guarded) {
+            HostEval evaluation = HostEval::Guarded) {
     using Binding = detail::FnBinding<Callable>;
     const auto inputs = Binding::input_types();
     const auto results = Binding::result_types();
@@ -524,7 +524,7 @@ public:
   // reflects members for rewriting or when exact identity is intentional.
   template <typename Implementation>
   void bind(Mod::FnDecl schema, Implementation&& implementation,
-            HostEvaluation evaluation = HostEvaluation::Guarded) {
+            HostEval evaluation = HostEval::Guarded) {
     using Binding = detail::FnBinding<Implementation>;
     using Callable = typename Binding::Callable;
     using Arguments = typename Binding::Arguments;
@@ -625,7 +625,7 @@ private:
                          std::span<const detail::ExecVal> results = {});
   bool accepts_host_type(const Mod::FnDecl& fn, const Mod::ParamDecl& field,
                          std::string_view type) const;
-  void bind_native(Mod::FnDecl schema, NativeFn fn, HostEvaluation evaluation);
+  void bind_native(Mod::FnDecl schema, NativeFn fn, HostEval evaluation);
   void bind_prelude_mod();
   void bind_prelude_primitives();
   bool check_binding_signature(const Mod::FnDecl& schema,

@@ -511,7 +511,7 @@ mod invalid_callback@1.0.0 {
   ok &= expect(!invalid_callback && !invalid_callback_diagnostics.ok(),
                "types nested in callable signatures are name-resolved");
   const auto main_symbol =
-      mod ? mod->symbol(joggle::Mod::SymbolKind::Fn, "main") : std::nullopt;
+      mod ? mod->symbol(joggle::Mod::Symbol::Kind::Fn, "main") : std::nullopt;
   const auto reflected_fn =
       main_symbol ? compiler.materialize(*main_symbol) : std::nullopt;
   ok &= expect(reflected_fn && reflected_fn->ops().size() == 2U,
@@ -761,33 +761,32 @@ mod cfg@1.0.0 {
       cfg_materialized ? cfg_materialized->ops() : std::vector<joggle::Op>{};
   const auto early_literal_operations =
       cfg_early_literal ? cfg_early_literal->ops() : std::vector<joggle::Op>{};
-  ok &= expect(cfg_fn && cfg_structured && cfg_specialized && cfg_nested &&
-                   cfg_materialized && cfg_compiler.verify(*cfg_fn) &&
-                   cfg_compiler.verify(*cfg_structured) &&
-                   cfg_compiler.verify(*cfg_specialized) &&
-                   cfg_compiler.verify(*cfg_nested) &&
-                   cfg_compiler.verify(*cfg_materialized) &&
-                   cfg_fn->blks().size() == 4U &&
-                   cfg_structured->blks().size() == 4U &&
-                   cfg_specialized->blks().size() == 1U &&
-                   cfg_nested->blks().size() == 7U &&
-                   cfg_structured->ops().size() == 2U &&
-                   cfg_specialized->ops().size() == 1U &&
-                   cfg_nested->ops().size() == 3U &&
-                   cfg_specialized->entry().terminator().returned().front() ==
-                       cfg_specialized->ops().front().result(0) &&
-                   cfg_fn->entry().terminator().kind() ==
-                       joggle::Terminator::Kind::Branch &&
-                   cfg_structured->entry().terminator().kind() ==
-                       joggle::Terminator::Kind::Branch &&
-                   cfg_fn->blks().back().arguments().size() == 1U &&
-                   cfg_fn->blks().back().terminator().returned().front() ==
-                       cfg_fn->blks().back().arguments().front() &&
-                   cfg_ir.find("branch arg0, block1(), block2();") !=
-                       std::string::npos &&
-                   cfg_ir.find("block3(arg3: cfg.word):") != std::string::npos,
-               "explicit source blocks instantiate as Fn-owned CFG and "
-               "format without a nested ownership container");
+  ok &= expect(
+      cfg_fn && cfg_structured && cfg_specialized && cfg_nested &&
+          cfg_materialized && cfg_compiler.verify(*cfg_fn) &&
+          cfg_compiler.verify(*cfg_structured) &&
+          cfg_compiler.verify(*cfg_specialized) &&
+          cfg_compiler.verify(*cfg_nested) &&
+          cfg_compiler.verify(*cfg_materialized) &&
+          cfg_fn->blks().size() == 4U && cfg_structured->blks().size() == 4U &&
+          cfg_specialized->blks().size() == 1U &&
+          cfg_nested->blks().size() == 7U &&
+          cfg_structured->ops().size() == 2U &&
+          cfg_specialized->ops().size() == 1U &&
+          cfg_nested->ops().size() == 3U &&
+          cfg_specialized->entry().terminator().returned().front() ==
+              cfg_specialized->ops().front().result(0) &&
+          cfg_fn->entry().terminator().kind() == joggle::Term::Kind::Branch &&
+          cfg_structured->entry().terminator().kind() ==
+              joggle::Term::Kind::Branch &&
+          cfg_fn->blks().back().arguments().size() == 1U &&
+          cfg_fn->blks().back().terminator().returned().front() ==
+              cfg_fn->blks().back().arguments().front() &&
+          cfg_ir.find("branch arg0, block1(), block2();") !=
+              std::string::npos &&
+          cfg_ir.find("block3(arg3: cfg.word):") != std::string::npos,
+      "explicit source blocks instantiate as Fn-owned CFG and "
+      "format without a nested ownership container");
   ok &=
       expect(cfg_materialized && cfg_materialized->blks().size() == 4U &&
                  cfg_materialized->ops().size() == 2U &&
@@ -824,7 +823,7 @@ mod cfg@1.0.0 {
     const auto operations = cfg_effect_branch->ops();
     ok &= expect(
         blocks.size() == 4U && operations.size() == 2U &&
-            branch.kind() == joggle::Terminator::Kind::Branch &&
+            branch.kind() == joggle::Term::Kind::Branch &&
             branch.arguments(0) ==
                 std::vector<joggle::Val>{cfg_effect_branch->arguments()[1]} &&
             branch.arguments(1) ==
@@ -849,7 +848,7 @@ mod cfg@1.0.0 {
       const auto exit = blocks[3];
       const auto branch = header.terminator();
       valid_effect_loop =
-          branch.kind() == joggle::Terminator::Kind::Branch &&
+          branch.kind() == joggle::Term::Kind::Branch &&
           body.arguments().size() == 1U &&
           branch.arguments(0) == header.arguments() &&
           branch.arguments(1) == header.arguments() &&
@@ -1189,16 +1188,15 @@ mod loops@1.0.0 {
   const auto known_continue =
       loops_linked ? loop_compiler.materialize("loops.known_continue")
                    : std::optional<joggle::Fn>{};
-  ok &= expect(repeat && loop_compiler.verify(*repeat) &&
-                   repeat->blks().size() == 4U && repeat->ops().size() == 2U &&
-                   repeat->entry().terminator().kind() ==
-                       joggle::Terminator::Kind::Jump &&
-                   repeat->blks()[1].arguments().size() == 1U &&
-                   repeat->blks()[1].terminator().kind() ==
-                       joggle::Terminator::Kind::Branch &&
-                   repeat->blks()[3].arguments().size() == 1U,
-               "Residual loops carry rebinding through typed Blk "
-               "arguments");
+  ok &= expect(
+      repeat && loop_compiler.verify(*repeat) && repeat->blks().size() == 4U &&
+          repeat->ops().size() == 2U &&
+          repeat->entry().terminator().kind() == joggle::Term::Kind::Jump &&
+          repeat->blks()[1].arguments().size() == 1U &&
+          repeat->blks()[1].terminator().kind() == joggle::Term::Kind::Branch &&
+          repeat->blks()[3].arguments().size() == 1U,
+      "Residual loops carry rebinding through typed Blk "
+      "arguments");
   ok &= expect(count_from_zero && loop_compiler.verify(*count_from_zero) &&
                    count_from_zero->blks().size() == 4U &&
                    count_from_zero->ops().size() == 3U &&
@@ -1302,10 +1300,9 @@ mod mixed_loop_transfer@1.0.0 {
   const auto mixed_control_shape = [](const joggle::Fn& fn) {
     const auto blocks = fn.blks();
     return blocks.size() == 3U &&
-           blocks.front().terminator().kind() ==
-               joggle::Terminator::Kind::Branch &&
-           blocks[1].terminator().kind() == joggle::Terminator::Kind::Return &&
-           blocks[2].terminator().kind() == joggle::Terminator::Kind::Return;
+           blocks.front().terminator().kind() == joggle::Term::Kind::Branch &&
+           blocks[1].terminator().kind() == joggle::Term::Kind::Return &&
+           blocks[2].terminator().kind() == joggle::Term::Kind::Return;
   };
   std::vector<std::int64_t> mixed_break_literals;
   if (mixed_break) {
@@ -2373,7 +2370,7 @@ mod hermetic_host@1.0.0 {
   if (hermetic_evaluate) {
     hermetic_host.bind(
         *hermetic_evaluate, [](std::int64_t value) { return value; },
-        joggle::HostEvaluation::Hermetic);
+        joggle::HostEval::Hermetic);
   }
   const auto hermetic_host_fn =
       hermetic_host_linked && hermetic_evaluate
@@ -2825,7 +2822,7 @@ mod explicit_staging@1.0.0 {
                "an ordinary compiler-domain call neither evaluates nor "
                "silently changes stage");
 
-  const joggle::Compiler::EvaluationLimits limits{2, 64};
+  const joggle::Compiler::Limits limits{2, 64};
   joggle::Compiler bounded(limits);
   bounded.add(R"(
 joggle 1;

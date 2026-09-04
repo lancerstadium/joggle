@@ -93,7 +93,7 @@ void collect(DependencyMap& dependencies, const Fn& fn) {
         collect(dependencies, result);
       }
     }
-    const Terminator terminator = block.terminator();
+    const Term terminator = block.terminator();
     if (const auto condition = terminator.condition()) {
       collect(dependencies, *condition);
     }

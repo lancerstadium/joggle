@@ -142,7 +142,7 @@ Optional `Compiler&` and `Diag&` service parameters are not source
 ports. Bindings can return `void`, one supported value, a tuple for multiple
 results, or `std::optional<T>` to report failure.
 
-`HostEvaluation::Hermetic` is an explicit promise for deterministic,
+`HostEval::Hermetic` is an explicit promise for deterministic,
 side-effect-free host evaluation under residual control. Use the default
 guarded mode otherwise.
 

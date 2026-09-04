@@ -9,7 +9,7 @@ namespace joggle::detail {
 
 struct DiagAccess {
   static void attach_since(Diag& diagnostics, std::size_t first,
-                           const SourceRange& source) {
+                           const Loc& source) {
     for (std::size_t index = first; index < diagnostics.issues_.size();
          ++index) {
       if (!diagnostics.issues_[index].source) {

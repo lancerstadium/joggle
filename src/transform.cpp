@@ -22,7 +22,7 @@ bool validate_expression_template(const Fn& fn, std::string_view role,
   try {
     const auto blocks = fn.blks();
     if (blocks.size() != 1U || !blocks.front().is_entry() ||
-        blocks.front().terminator().kind() != Terminator::Kind::Return) {
+        blocks.front().terminator().kind() != Term::Kind::Return) {
       return reject("must contain one entry block ending in return");
     }
     const auto returned = blocks.front().terminator().returned();
@@ -187,7 +187,7 @@ bool match_value(const Val& pattern, const Val& subject,
 
 bool terminator_uses(const Fn& fn, const Val& value) {
   for (const Blk& block : fn.blks()) {
-    const Terminator terminator = block.terminator();
+    const Term terminator = block.terminator();
     const auto returned = terminator.returned();
     if (terminator.condition() == std::optional<Val>{value} ||
         std::find(returned.begin(), returned.end(), value) != returned.end()) {
@@ -584,8 +584,8 @@ clone(Compiler& compiler, const Fn& source,
 
     for (const Blk& source_block : source_blocks) {
       const Blk target_block = *mapped(blocks, source_block);
-      const Terminator terminator = source_block.terminator();
-      if (terminator.kind() == Terminator::Kind::Return) {
+      const Term terminator = source_block.terminator();
+      if (terminator.kind() == Term::Kind::Return) {
         std::vector<Val> returned;
         for (const Val& value : terminator.returned()) {
           const auto converted = convert_value(value);
@@ -595,7 +595,7 @@ clone(Compiler& compiler, const Fn& source,
           returned.push_back(*converted);
         }
         edit.ret(target_block, std::move(returned));
-      } else if (terminator.kind() == Terminator::Kind::Jump) {
+      } else if (terminator.kind() == Term::Kind::Jump) {
         std::vector<Val> arguments;
         for (const Val& value : terminator.arguments(0U)) {
           const auto converted = convert_value(value);

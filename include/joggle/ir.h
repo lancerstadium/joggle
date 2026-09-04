@@ -32,7 +32,7 @@ class Fn;
 class Blk;
 class Val;
 class Op;
-class Terminator;
+class Term;
 
 class Val {
 public:
@@ -65,7 +65,7 @@ private:
   friend class Fn;
   friend class Blk;
   friend class Op;
-  friend class Terminator;
+  friend class Term;
   friend struct joggle::detail::FnAccess;
 };
 
@@ -86,7 +86,7 @@ public:
   Val value() const;
   Val result(std::size_t index) const;
   // Optional frontend provenance used for diagnostics, not call semantics.
-  std::optional<SourceRange> location() const;
+  std::optional<Loc> location() const;
 
   template <typename T> std::optional<T> property(std::string_view name) const {
     const auto value = property(name);
@@ -104,11 +104,11 @@ private:
   friend class Val;
   friend class Blk;
   friend class Fn;
-  friend class Terminator;
+  friend class Term;
   friend struct joggle::detail::FnAccess;
 };
 
-class Terminator {
+class Term {
 public:
   enum class Kind { Return, Jump, Branch };
 
@@ -119,10 +119,10 @@ public:
   std::size_t successor_count() const;
   Blk successor(std::size_t index) const;
   std::vector<Val> arguments(std::size_t successor) const;
-  bool operator==(const Terminator&) const = default;
+  bool operator==(const Term&) const = default;
 
 private:
-  Terminator(std::shared_ptr<detail::FnIdentity> fn, std::uint64_t block);
+  Term(std::shared_ptr<detail::FnIdentity> fn, std::uint64_t block);
   std::shared_ptr<detail::FnIdentity> fn_;
   std::uint64_t block_ = 0;
 
@@ -136,7 +136,7 @@ public:
   bool is_entry() const;
   std::vector<Val> arguments() const;
   std::vector<Op> ops() const;
-  Terminator terminator() const;
+  Term terminator() const;
   bool operator==(const Blk&) const = default;
 
 private:
@@ -146,7 +146,7 @@ private:
 
   friend class Fn;
   friend class Op;
-  friend class Terminator;
+  friend class Term;
   friend struct joggle::detail::FnAccess;
 };
 
@@ -190,7 +190,7 @@ public:
                 std::vector<Val> true_arguments, Blk false_target,
                 std::vector<Val> false_arguments);
     // Attaches diagnostic provenance within this transaction.
-    void locate(Op op, SourceRange source);
+    void locate(Op op, Loc source);
     void replace(Val from, Val to);
     Op replace(Op op, Mod::FnDecl schema);
     // Replaces every result position and erases the old Op. An empty

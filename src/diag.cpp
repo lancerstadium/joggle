@@ -7,7 +7,7 @@ namespace joggle {
 
 void Diag::report(Issue issue) { issues_.push_back(std::move(issue)); }
 
-void Diag::report(std::string message, std::optional<SourceRange> source) {
+void Diag::report(std::string message, std::optional<Loc> source) {
   report(Issue{std::move(message), std::move(source), {}});
 }
 

@@ -31,11 +31,11 @@ inline constexpr const char* native_target = "linux-x86_64";
 inline constexpr const char* native_target = "unknown-target";
 #endif
 
-struct NativeLibrary {
+struct NativeLib {
   using Load = void (*)(Compiler&, const Mod&, Diag&);
 
-  constexpr explicit NativeLibrary(Load fn)
-      : abi(native_abi), size(sizeof(NativeLibrary)),
+  constexpr explicit NativeLib(Load fn)
+      : abi(native_abi), size(sizeof(NativeLib)),
         mod_identity(detail::native_mod_identity), target(native_target),
         load(fn) {}
 
@@ -46,7 +46,7 @@ struct NativeLibrary {
   Load load;
 };
 
-using NativeEntry = const NativeLibrary* (*)();
+using NativeEntry = const NativeLib* (*)();
 
 }  // namespace detail
 

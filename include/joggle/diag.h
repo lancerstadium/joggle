@@ -13,32 +13,31 @@ namespace detail {
 struct DiagAccess;
 }
 
-struct SourcePosition {
-  std::size_t line = 1;
-  std::size_t column = 1;
+struct Loc {
+  struct Pos {
+    std::size_t line = 1;
+    std::size_t column = 1;
 
-  auto operator<=>(const SourcePosition&) const = default;
-};
+    auto operator<=>(const Pos&) const = default;
+  };
 
-struct SourceRange {
   std::string source;
-  SourcePosition begin;
-  SourcePosition end;
+  Pos begin;
+  Pos end;
 
-  auto operator<=>(const SourceRange&) const = default;
+  auto operator<=>(const Loc&) const = default;
 };
 
 struct Issue {
   std::string message;
-  std::optional<SourceRange> source;
+  std::optional<Loc> source;
   std::vector<std::string> notes;
 };
 
 class Diag {
 public:
   void report(Issue issue);
-  void report(std::string message,
-              std::optional<SourceRange> source = std::nullopt);
+  void report(std::string message, std::optional<Loc> source = std::nullopt);
 
   bool ok() const { return issues_.empty(); }
   std::size_t size() const { return issues_.size(); }

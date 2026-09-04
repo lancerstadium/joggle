@@ -14,12 +14,12 @@ bool is_symbol_character(char value) {
 
 }  // namespace
 
-Lexer::Lexer(std::string_view input, SourcePosition origin)
+Lexer::Lexer(std::string_view input, Loc::Pos origin)
     : input_(input), line_(origin.line), column_(origin.column) {}
 
 Token Lexer::take() {
   skip_trivia();
-  const SourcePosition begin{line_, column_};
+  const Loc::Pos begin{line_, column_};
   if (offset_ == input_.size()) {
     return {TokenKind::End, {}, begin, begin};
   }
@@ -98,7 +98,7 @@ Token Lexer::take() {
   }
 }
 
-Token Lexer::symbol(SourcePosition begin) {
+Token Lexer::symbol(Loc::Pos begin) {
   // Keep symbol characters atomic. Parsers join adjacent characters only in
   // an operator-name or expression position, while `>>` still closes two
   // nested generic argument lists.
@@ -134,7 +134,7 @@ Token Lexer::symbol(SourcePosition begin) {
   return token(TokenKind::Operator, std::move(text), begin);
 }
 
-Token Lexer::number(SourcePosition begin) {
+Token Lexer::number(Loc::Pos begin) {
   std::string text;
   bool non_integer = false;
   while (offset_ < input_.size() &&
@@ -175,7 +175,7 @@ Token Lexer::number(SourcePosition begin) {
           {line_, column_}};
 }
 
-Token Lexer::string(SourcePosition begin) {
+Token Lexer::string(Loc::Pos begin) {
   advance();
   std::string text;
   while (offset_ < input_.size() && input_[offset_] != '"') {
@@ -215,12 +215,11 @@ Token Lexer::string(SourcePosition begin) {
   return {TokenKind::String, std::move(text), begin, {line_, column_}};
 }
 
-Token Lexer::token(TokenKind kind, std::string text,
-                   SourcePosition begin) const {
+Token Lexer::token(TokenKind kind, std::string text, Loc::Pos begin) const {
   return {kind, std::move(text), begin, {line_, column_}};
 }
 
-Token Lexer::invalid(std::string text, SourcePosition begin) const {
+Token Lexer::invalid(std::string text, Loc::Pos begin) const {
   return {TokenKind::Invalid, std::move(text), begin, {line_, column_}};
 }
 

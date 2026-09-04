@@ -16,7 +16,7 @@ struct TypeDefinition {
   std::string name;
   std::vector<Mod::ParamDecl> parameters;
   std::vector<Mod::TypeDecl::DerivedParamDecl> derived_parameters;
-  std::optional<SourceRange> source;
+  std::optional<Loc> source;
 };
 
 struct FnDef {
@@ -27,7 +27,7 @@ struct FnDef {
   FnTypeContract types;
   std::optional<Mod::FnDecl::Fixity> operator_fixity;
   std::optional<FnBody> body;
-  std::optional<SourceRange> source;
+  std::optional<Loc> source;
 };
 
 // One Mod owns one ordered fn-member table. A parsed member initially
@@ -48,7 +48,7 @@ struct joggle::Mod::Storage {
   mutable std::string digest;
   std::string declaration_digest;
   std::vector<Import> imports;
-  std::vector<SourceRange> import_sources;
+  std::vector<Loc> import_sources;
   std::vector<detail::TypeDefinition> types;
   std::vector<detail::FnMember> fns;
   std::map<std::string, std::shared_ptr<const Bytes>, std::less<>> data;

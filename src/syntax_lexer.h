@@ -45,23 +45,22 @@ enum class TokenKind {
 struct Token {
   TokenKind kind = TokenKind::Invalid;
   std::string text;
-  SourcePosition begin;
-  SourcePosition end;
+  Loc::Pos begin;
+  Loc::Pos end;
 };
 
 class Lexer {
 public:
-  explicit Lexer(std::string_view input,
-                 SourcePosition origin = SourcePosition{});
+  explicit Lexer(std::string_view input, Loc::Pos origin = Loc::Pos{});
 
   Token take();
 
 private:
-  Token number(SourcePosition begin);
-  Token string(SourcePosition begin);
-  Token symbol(SourcePosition begin);
-  Token token(TokenKind kind, std::string text, SourcePosition begin) const;
-  Token invalid(std::string text, SourcePosition begin) const;
+  Token number(Loc::Pos begin);
+  Token string(Loc::Pos begin);
+  Token symbol(Loc::Pos begin);
+  Token token(TokenKind kind, std::string text, Loc::Pos begin) const;
+  Token invalid(std::string text, Loc::Pos begin) const;
   void advance();
   void skip_trivia();
 

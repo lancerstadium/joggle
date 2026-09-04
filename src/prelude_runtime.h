@@ -16,6 +16,6 @@ std::optional<ParamVal>
 evaluate_prelude_primitive(const Mod::FnDecl& fn,
                            std::span<const ParamVal> arguments,
                            Diag& diagnostics, std::size_t element_limit,
-                           std::optional<SourceRange> source = std::nullopt);
+                           std::optional<Loc> source = std::nullopt);
 
 }  // namespace joggle::detail

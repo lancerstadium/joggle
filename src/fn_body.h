@@ -21,8 +21,8 @@ class Lexer;
 struct Token;
 
 struct SyntaxRange {
-  SourcePosition begin;
-  SourcePosition end;
+  Loc::Pos begin;
+  Loc::Pos end;
 };
 
 struct ValSyntax {
@@ -77,7 +77,7 @@ struct SuccessorSyntax {
   SyntaxRange range;
 };
 
-struct TerminatorSyntax {
+struct TermSyntax {
   enum class Kind { Return, Jump, Branch };
 
   Kind kind = Kind::Return;
@@ -95,7 +95,7 @@ struct BlkSyntax {
   std::vector<StatementSyntax> statements;
   // Structured source uses only `statements`, including return statements.
   // Explicit low-level Blks carry a terminator.
-  std::optional<TerminatorSyntax> terminator;
+  std::optional<TermSyntax> terminator;
   SyntaxRange range;
 };
 
@@ -134,8 +134,7 @@ std::optional<Fn> instantiate_fn(Compiler& compiler, Mod::FnDecl fn,
                                  KnownBindings bindings = {});
 std::optional<Fn> instantiate_lambda(
     Compiler& compiler, std::string_view owner, const Mod::Expr& expression,
-    const SourceRange& source, Diag& diagnostics,
-    const KnownBindings& bindings = {},
+    const Loc& source, Diag& diagnostics, const KnownBindings& bindings = {},
     std::optional<std::vector<Type>> expected_inputs = std::nullopt,
     std::optional<std::vector<Type>> expected_results = std::nullopt,
     bool allow_guarded_evaluation = true);
