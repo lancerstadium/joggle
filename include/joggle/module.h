@@ -70,6 +70,7 @@ public:
       Call,
       If,
       FunctionType,
+      Lambda,
       Evaluate,
       Prefix,
       Infix,
@@ -79,9 +80,9 @@ public:
     Kind kind = Kind::Number;
     std::string text;
     std::vector<Expression> arguments;
-    // Empty entries are positional. A non-empty entry labels the argument at
-    // the same index. Labels belong to calls; other expression kinds leave
-    // this vector empty.
+    // Empty call entries are positional. Lambda labels name parameters whose
+    // type expressions occupy the corresponding argument positions; the last
+    // lambda argument is its body.
     std::vector<std::string> labels;
 
     Expression() = default;

@@ -32,6 +32,7 @@ module mapping@1.0.0 {
   fn other(input: word) -> word;
   fn binary(lhs: word, rhs: word) -> word;
   fn identity<T>(input: T) -> T;
+  fn apply(input: word, body: (word) -> word) -> word;
 
   fn first(input: word) -> word {
     return keep(input);
@@ -43,6 +44,10 @@ module mapping@1.0.0 {
 
   fn expanded(input: word) -> word {
     return keep(input);
+  }
+
+  fn with_inline(input: word) -> word {
+    return apply(input, (value: word) => keep(value));
   }
 }
 )",
@@ -70,9 +75,10 @@ module mapping@1.0.0 {
   auto convertible = compiler.materialize("mapping.first");
   auto fixedpoint = compiler.materialize("mapping.expanded");
   auto oscillating = compiler.materialize("mapping.expanded");
+  auto with_inline = compiler.materialize("mapping.with_inline");
   if (!keep || !converted || !other || !binary || !identity || !word ||
       !alternate || !i1 || !first || !second || !expanded || !convertible ||
-      !fixedpoint || !oscillating) {
+      !fixedpoint || !oscillating || !with_inline) {
     return EXIT_FAILURE;
   }
 
@@ -351,6 +357,27 @@ module mapping@1.0.0 {
           cloned->ops().front().value().type() == *alternate &&
           cloned->result_types() == std::vector<joggle::Type>{*alternate},
       "clone preserves arbitrary CFG while mapping types and generic Ops");
+
+  joggle::Diagnostics inline_clone_diagnostics;
+  const auto inline_clone = joggle::clone(
+      compiler, *with_inline,
+      [](const joggle::Value& value) -> std::optional<joggle::Type> {
+        return value.type();
+      },
+      inline_clone_diagnostics);
+  const auto cloned_arguments =
+      inline_clone && inline_clone->ops().size() == 1U
+          ? inline_clone->ops().front().arguments()
+          : std::vector<joggle::Value>{};
+  const auto cloned_body =
+      cloned_arguments.size() == 2U
+          ? cloned_arguments.back().inline_function()
+          : std::optional<joggle::Function>{};
+  ok &= expect(inline_clone && inline_clone_diagnostics.ok() && cloned_body &&
+                   cloned_body->ops().size() == 1U &&
+                   cloned_body->ops().front().callee() == *keep &&
+                   compiler.verify(*inline_clone),
+               "clone preserves and verifies an inline callable body");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

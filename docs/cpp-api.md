@@ -89,6 +89,17 @@ call signatures, and result types before publishing. `Module::insert` installs
 a materialized function under a new declaration; `Module::body` returns a
 mutable copy-on-write body for an exact declaration.
 
+Function values remain ordinary typed `Value`s. A declared reference is built
+with `edit.reference(declaration, callable_type)` and inspected with
+`value.referenced_function()`. An anonymous, already verified body is built
+with `edit.callable(function, callable_type)` and inspected with
+`value.inline_function()`. The callable type must exactly match the body's
+inputs and results; no public lambda or region object is involved.
+The current source form has one expression and one result. Consequently,
+canonical formatting or `Module::insert` rejects a C++-constructed inline body
+that cannot be represented by that source form instead of emitting hidden
+declarations.
+
 ## Bind native functions
 
 ```cpp

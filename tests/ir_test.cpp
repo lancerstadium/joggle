@@ -213,6 +213,60 @@ int main() {
   ok &= expect(wrong_callable_rejected,
                "a function reference rejects a mismatched callable type");
 
+  auto inline_body = compiler.create_function();
+  if (!inline_body) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = inline_body->edit();
+    const auto input = edit.argument(*i32);
+    edit.ret(inline_body->entry(), {input});
+    joggle::Diagnostics diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  auto inline_higher_order = compiler.create_function();
+  std::optional<joggle::Value> inline_callable;
+  if (!inline_higher_order) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = inline_higher_order->edit();
+    const auto input = edit.argument(*i32);
+    inline_callable = edit.callable(*inline_body, *callable);
+    const auto result = edit.append(*apply_schema, {input, *inline_callable});
+    edit.ret(inline_higher_order->entry(), {result.result(0)});
+    joggle::Diagnostics diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  const auto recovered_inline =
+      inline_callable ? inline_callable->inline_function() : std::nullopt;
+  ok &= expect(inline_callable && !inline_callable->referenced_function() &&
+                   recovered_inline && !recovered_inline->declaration() &&
+                   recovered_inline->arguments().size() == 1U &&
+                   recovered_inline->result_types() ==
+                       std::vector<joggle::Type>{*i32} &&
+                   compiler.verify(*inline_higher_order),
+               "a typed inline Function is a callable Value without a "
+               "synthetic Module declaration");
+
+  bool wrong_inline_callable_rejected = false;
+  try {
+    auto edit = inline_higher_order->edit();
+    if (wrong_callable) {
+      static_cast<void>(edit.callable(*inline_body, *wrong_callable));
+    }
+  } catch (const std::invalid_argument&) {
+    wrong_inline_callable_rejected = true;
+  }
+  ok &= expect(wrong_inline_callable_rejected,
+               "an inline Function rejects a mismatched callable type");
+
   bool needs_explicit_result = false;
   try {
     auto edit = function->edit();

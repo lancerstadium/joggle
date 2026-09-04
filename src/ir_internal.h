@@ -44,6 +44,8 @@ struct FunctionAccess {
   static void declare(Function& function, Module::FunctionDecl declaration,
                       std::vector<Type> argument_types,
                       std::vector<Type> result_types);
+  static void define(Function& function, std::vector<Type> argument_types,
+                     std::vector<Type> result_types);
   static bool attach(Function& function, Module::FunctionDecl declaration,
                      Module owner, Diagnostics& diagnostics);
   static bool commit(Function::Edit& edit, Compiler& compiler,

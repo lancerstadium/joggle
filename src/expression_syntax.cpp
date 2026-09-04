@@ -138,9 +138,12 @@ private:
   }
 
   bool variable(std::string_view name) const {
-    return std::any_of(
-        variables_.begin(), variables_.end(),
-        [&](const auto& candidate) { return candidate.name == name; });
+    return std::any_of(variables_.begin(), variables_.end(),
+                       [&](const auto& candidate) {
+                         return candidate.name == name;
+                       }) ||
+           std::find(lambda_variables_.begin(), lambda_variables_.end(),
+                     name) != lambda_variables_.end();
   }
 
   Module::Expression primary() {
@@ -170,6 +173,42 @@ private:
       return result;
     }
     if (match(TokenKind::LeftParen)) {
+      const bool starts_lambda = [&] {
+        if (is(TokenKind::RightParen)) {
+          Lexer lookahead = lexer_;
+          return lookahead.take().kind == TokenKind::FatArrow;
+        }
+        if (!is(TokenKind::Name)) {
+          return false;
+        }
+        Lexer lookahead = lexer_;
+        return lookahead.take().kind == TokenKind::Colon;
+      }();
+      if (starts_lambda) {
+        result.kind = Kind::Lambda;
+        std::vector<std::string> parameters;
+        if (!match(TokenKind::RightParen)) {
+          do {
+            const std::string parameter = name("a lambda parameter");
+            expect(TokenKind::Colon, "':' after a lambda parameter");
+            if (std::find(parameters.begin(), parameters.end(), parameter) !=
+                parameters.end()) {
+              error("duplicate lambda parameter '" + parameter + "'");
+            }
+            result.labels.push_back(parameter);
+            parameters.push_back(parameter);
+            result.arguments.push_back(parse(0));
+          } while (match(TokenKind::Comma));
+          expect(TokenKind::RightParen, "')'");
+        }
+        expect(TokenKind::FatArrow, "'=>' after lambda parameters");
+        const std::size_t previous = lambda_variables_.size();
+        lambda_variables_.insert(lambda_variables_.end(), parameters.begin(),
+                                 parameters.end());
+        result.arguments.push_back(parse(0));
+        lambda_variables_.resize(previous);
+        return result;
+      }
       std::vector<Module::Expression> elements;
       if (!match(TokenKind::RightParen)) {
         do {
@@ -365,6 +404,7 @@ private:
   Diagnostics& diagnostics_;
   std::string_view source_;
   std::span<const Module::FunctionDecl::GenericDecl> variables_;
+  std::vector<std::string> lambda_variables_;
 };
 
 }  // namespace
@@ -456,6 +496,9 @@ int expression_precedence(const Module::Expression& expression) {
   if (expression.kind == Kind::FunctionType) {
     return 1;
   }
+  if (expression.kind == Kind::Lambda) {
+    return 2;
+  }
   if (expression.kind == Kind::Infix) {
     return formatted_operator_precedence(expression.text);
   }
@@ -539,6 +582,22 @@ std::string format_expression(const Module::Expression& expression,
       } else {
         result += "(" + write_types(signature->results) + ")";
       }
+    }
+  } else if (expression.kind == Kind::Lambda) {
+    result = "(";
+    const std::size_t parameter_count = expression.arguments.empty()
+                                            ? 0U
+                                            : expression.arguments.size() - 1U;
+    for (std::size_t index = 0; index < parameter_count; ++index) {
+      if (index != 0U) {
+        result += ", ";
+      }
+      result += expression.labels[index] + ": " +
+                format_expression(expression.arguments[index]);
+    }
+    result += ") => ";
+    if (!expression.arguments.empty()) {
+      result += format_expression(expression.arguments.back());
     }
   } else if (expression.kind == Kind::Evaluate) {
     const auto& operand = expression.arguments.front();

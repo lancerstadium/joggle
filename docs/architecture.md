@@ -72,9 +72,14 @@ commit does not publish a partially invalid body. The verifier checks ownership,
 dominance, terminators, call signatures, result types, and cross-module symbol
 provenance.
 
-The current edit API is the low-level substrate. Typed lambda matching and
-effect-safe replacement are later language gates; they will build on this IR
-without introducing an alternate graph representation.
+The edit API is the low-level substrate. A typed source lambda becomes an
+anonymous `Function` held by a callable `Value`; it uses the same calls, types,
+verification, cloning, and formatting as a named body. It is not a module
+declaration and does not introduce an alternate graph or pattern IR.
+
+The remaining higher-order gate is explicit compiler-time invocation of such
+function values. Effect-safe replacement follows only after that value path is
+complete.
 
 ## Extension boundary
 

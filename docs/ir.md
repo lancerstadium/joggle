@@ -7,9 +7,16 @@ values inside a function, while blocks and terminators provide control flow.
 ## Values
 
 Every `Value` has a `Type`. A value is a function input, block argument, call
-result, or known compiler value. Known payloads are immutable compiler-domain
-values: integers, reals, booleans, strings, types, bytes, functions, and their
-supported homogeneous lists.
+result, known compiler value, or callable literal. Known scalar payloads are
+immutable compiler-domain values: integers, reals, booleans, strings, types,
+bytes, and their supported homogeneous lists.
+
+A callable literal has the ordinary `prelude.callable<inputs, results>` type
+and stores either an exact declared-function reference or an anonymous
+`Function`. The anonymous body is verified IR, not retained parser syntax. It
+does not become a synthetic module member or participate in overload lookup;
+it is part of the owning function's structure, dependencies, formatting, and
+digest.
 
 Metadata is represented by a normal `Type` instance. This means a layout,
 numeric format, or policy uses the same construction, named-field access,
@@ -32,8 +39,9 @@ materializer lower structured syntax into this single representation.
 
 `Function::edit()` creates an isolated edit. Operations can be appended,
 inserted, replaced, or erased. `commit()` verifies the candidate and publishes
-it atomically. This supports low-level compiler implementation today and is
-the substrate for the planned typed-lambda replacement API.
+it atomically. Typed source lambdas materialize through the same function body
+engine and produce the same callable `Value` representation used by the C++
+edit API.
 
 ## Verification
 
@@ -46,6 +54,7 @@ Verification checks:
 - one valid terminator per block;
 - function result agreement;
 - declaration provenance across module snapshots.
+- callable type/body agreement and the inline body's module closure.
 
 ## Serialization
 

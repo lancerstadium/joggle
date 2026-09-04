@@ -98,6 +98,21 @@ std::optional<Function> clone(
         values.emplace_back(value, converted);
         return converted;
       }
+      const auto inline_function = value.inline_function();
+      const auto inline_type = inline_function ? convert_type(value)
+                                               : std::optional<Type>{};
+      if (inline_function && inline_type) {
+        auto converted_function = clone(compiler, *inline_function,
+                                        map_value_type, map_callee,
+                                        diagnostics);
+        if (!converted_function) {
+          return std::nullopt;
+        }
+        const Value converted =
+            edit.callable(std::move(*converted_function), *inline_type);
+        values.emplace_back(value, converted);
+        return converted;
+      }
       diagnostics.report("clone encountered a value before its definition");
       return std::nullopt;
     };

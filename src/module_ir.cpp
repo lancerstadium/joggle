@@ -40,6 +40,7 @@ void collect(DependencyMap& dependencies, const Module::Symbol& symbol) {
 }
 
 void collect(DependencyMap& dependencies, const detail::ParameterValue& value);
+void collect(DependencyMap& dependencies, const Function& function);
 
 void collect(DependencyMap& dependencies, const Type& type) {
   collect(dependencies, type.schema().symbol());
@@ -63,6 +64,9 @@ void collect(DependencyMap& dependencies, const Value& value) {
   collect(dependencies, value.type());
   if (const auto function = value.referenced_function()) {
     collect(dependencies, function->symbol());
+  }
+  if (const auto function = value.inline_function()) {
+    collect(dependencies, *function);
   }
   if (const auto known = detail::FunctionAccess::known_value(value)) {
     collect(dependencies, *known);

@@ -17,6 +17,9 @@ of the project; none is a migration log.
 - [C++ API](cpp-api.md) documents the in-process library surface.
 - [Module repository](module-repository.md) specifies installation,
   resolution, and lock files.
+- [Core language RFC](rfcs/0001-core-language.md) freezes the implementation
+  gates; [callable values RFC](rfcs/0002-callable-values.md) defines typed
+  lambdas without synthetic declarations.
 
 The repository currently contains only the compiler core. AI vocabulary and
 target Modules are being rebuilt against the rules in [Module design](modules.md)

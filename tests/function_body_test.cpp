@@ -54,6 +54,18 @@ module logic@1.0.0 {
     return apply(input, body);
   }
   fn callback(input: word<8>) -> word<16>;
+  fn apply_fixed(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
+  fn inline_callback(input: word<8>) -> word<16> {
+    return apply_fixed(input, (value: word<8>) => callback(value));
+  }
+  fn generic_inline_callback(input: word<8>) -> word<16> {
+    return apply(input, (value: word<8>) => callback(value));
+  }
+  fn choose(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
+  fn choose(input: word<8>, body: (word<16>) -> word<16>) -> word<16>;
+  fn overloaded_inline_callback(input: word<8>) -> word<16> {
+    return choose(input, (value: word<8>) => callback(value));
+  }
   fn callback_value(input: word<8>) -> word<16> {
     return apply(input, callback);
   }
@@ -123,6 +135,11 @@ int main() {
       default_configured_decl ? compiler.materialize(*default_configured_decl)
                               : std::nullopt;
   const auto callback_user = compiler.materialize("logic.callback_user");
+  const auto inline_callback = compiler.materialize("logic.inline_callback");
+  const auto generic_inline_callback =
+      compiler.materialize("logic.generic_inline_callback");
+  const auto overloaded_inline_callback =
+      compiler.materialize("logic.overloaded_inline_callback");
   const auto generic_body_user =
       compiler.materialize("logic.generic_body_user");
   const auto generic_body_call =
@@ -179,6 +196,164 @@ int main() {
                    callback_user->ops().size() == 1U,
                "function type syntax constructs a reflected callable type "
                "and participates in generic call inference");
+  const auto inline_ops =
+      inline_callback ? inline_callback->ops() : std::vector<joggle::Op>{};
+  const auto inline_arguments =
+      inline_ops.size() == 1U ? inline_ops.front().arguments()
+                              : std::vector<joggle::Value>{};
+  const auto inline_body =
+      inline_arguments.size() == 2U
+          ? inline_arguments.back().inline_function()
+          : std::optional<joggle::Function>{};
+  ok &= expect(inline_callback && inline_ops.size() == 1U &&
+                   inline_arguments.size() == 2U && inline_body &&
+                   !inline_arguments.back().referenced_function() &&
+                   inline_body->arguments().size() == 1U &&
+                   inline_body->ops().size() == 1U &&
+                   inline_body->ops().front().callee().name() == "callback",
+               "a typed lambda materializes through the ordinary expression "
+               "and callable Value path");
+  ok &= expect(generic_inline_callback &&
+                   generic_inline_callback->ops().size() == 1U &&
+                   generic_inline_callback->ops()
+                       .front()
+                       .arguments()
+                       .back()
+                       .inline_function(),
+               "lambda annotations and the surrounding result infer a "
+               "generic higher-order call");
+  const auto overloaded_inline_arguments =
+      overloaded_inline_callback &&
+              overloaded_inline_callback->ops().size() == 1U
+          ? overloaded_inline_callback->ops().front().arguments()
+          : std::vector<joggle::Value>{};
+  const auto overloaded_inline_body =
+      overloaded_inline_arguments.size() == 2U
+          ? overloaded_inline_arguments.back().inline_function()
+          : std::optional<joggle::Function>{};
+  ok &= expect(overloaded_inline_callback && overloaded_inline_body &&
+                   overloaded_inline_body->arguments().front().type().get<
+                       std::int64_t>("width") ==
+                       std::optional<std::int64_t>{8},
+               "lambda parameter annotations select a higher-order overload");
+  const std::string inline_text =
+      inline_callback ? joggle::format(*inline_callback, "compiled_inline")
+                      : std::string{};
+  joggle::Compiler inline_roundtrip;
+  inline_roundtrip.add(source, "logic.joggle");
+  inline_roundtrip.add("joggle 1;\nmodule inline_artifact@1.0.0 {\n"
+                       "  import logic@1;\n" +
+                           inline_text + "}\n",
+                       "inline-artifact.joggle");
+  const bool inline_roundtrip_linked = inline_roundtrip.link();
+  const auto replayed_inline =
+      inline_roundtrip_linked
+          ? inline_roundtrip.materialize("inline_artifact.compiled_inline")
+          : std::nullopt;
+  if (!replayed_inline) {
+    inline_roundtrip.diagnostics().print(std::cerr);
+  }
+  ok &= expect(inline_text.find("=>") != std::string::npos &&
+                   replayed_inline && inline_roundtrip.verify(*replayed_inline),
+               "typed lambda formatting is canonical and materializes after "
+               "a source round trip");
+
+  joggle::Compiler invalid_lambda;
+  invalid_lambda.add(R"(
+joggle 1;
+module invalid_lambda@1.0.0 {
+  type word(width: int);
+  fn apply(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
+  fn callback(input: word<8>) -> word<16>;
+
+  fn captures(input: word<8>) -> word<16> {
+    return apply(input, (value: word<8>) => callback(input));
+  }
+
+  fn mismatched(input: word<8>) -> word<16> {
+    return apply(input, (value: word<16>) => callback(value));
+  }
+}
+)",
+                     "invalid-lambda.joggle");
+  const bool invalid_lambda_linked = invalid_lambda.link();
+  const auto captured = invalid_lambda_linked
+                            ? invalid_lambda.materialize(
+                                  "invalid_lambda.captures")
+                            : std::nullopt;
+  const auto mismatched = invalid_lambda_linked
+                              ? invalid_lambda.materialize(
+                                    "invalid_lambda.mismatched")
+                              : std::nullopt;
+  const bool reports_capture = std::any_of(
+      invalid_lambda.diagnostics().entries().begin(),
+      invalid_lambda.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("undefined local value 'input'") !=
+               std::string::npos;
+      });
+  const bool reports_mismatch = std::any_of(
+      invalid_lambda.diagnostics().entries().begin(),
+      invalid_lambda.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("inline function") !=
+                   std::string::npos &&
+               diagnostic.message.find("does not match") != std::string::npos;
+      });
+  if (captured || mismatched || !reports_capture || !reports_mismatch) {
+    invalid_lambda.diagnostics().print(std::cerr);
+  }
+  ok &= expect(invalid_lambda_linked && !captured && !mismatched &&
+                   reports_capture && reports_mismatch,
+               "typed lambdas reject residual captures and mismatched "
+               "parameter annotations");
+
+  joggle::Compiler ambiguous_lambda;
+  ambiguous_lambda.add(R"(
+joggle 1;
+module ambiguous_lambda@1.0.0 {
+  type word(width: int);
+  fn callback(input: word<8>) -> word<16>;
+  fn choose(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
+  fn choose(input: word<8>, body: (word<8>) -> word<8>) -> word<16>;
+
+  fn use(input: word<8>) -> word<16> {
+    return choose(input, (value: word<8>) => callback(value));
+  }
+}
+)",
+                       "ambiguous-lambda.joggle");
+  const bool ambiguous_lambda_linked = ambiguous_lambda.link();
+  const auto ambiguous_lambda_body =
+      ambiguous_lambda_linked
+          ? ambiguous_lambda.materialize("ambiguous_lambda.use")
+          : std::nullopt;
+  const bool reports_lambda_ambiguity = std::any_of(
+      ambiguous_lambda.diagnostics().entries().begin(),
+      ambiguous_lambda.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("ambiguous between") !=
+               std::string::npos;
+      });
+  ok &= expect(!ambiguous_lambda_body && reports_lambda_ambiguity,
+               "a lambda remains ambiguous when annotations and surrounding "
+               "result context cannot select one overload");
+
+  joggle::Diagnostics duplicate_lambda_diagnostics;
+  const auto duplicate_lambda = joggle::parse_module(R"(
+joggle 1;
+module duplicate_lambda@1.0.0 {
+  type word();
+  fn apply(input: word, body: (word, word) -> word) -> word;
+  fn invalid(input: word) -> word {
+    return apply(input, (value: word, value: word) => value);
+  }
+}
+)",
+                                                        duplicate_lambda_diagnostics,
+                                                        "duplicate-lambda.joggle");
+  ok &= expect(!duplicate_lambda && !duplicate_lambda_diagnostics.ok(),
+               "duplicate lambda parameter names are rejected while parsing");
   ok &= expect(generic_body_user && generic_body_call && generic_body &&
                    compiler.verify(*generic_body) &&
                    generic_body->arguments().size() == 1U &&

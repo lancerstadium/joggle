@@ -27,6 +27,7 @@ module module_defs@1.0.0 {
   type word();
   fn source() -> word;
   fn callback(input: i32) -> i32;
+  fn apply(input: i32, body: (i32) -> i32) -> i32;
 
   fn main() -> word {
     value = source();
@@ -40,6 +41,10 @@ module module_defs@1.0.0 {
   fn choose(condition: i1, lhs: word, rhs: word) -> word {
     return if condition { lhs } else { rhs };
   }
+
+  fn inline_user(input: i32) -> i32 {
+    return apply(input, (value: i32) => callback(value));
+  }
 }
 )";
 
@@ -49,6 +54,8 @@ module module_defs@1.0.0 {
   auto main = linked ? compiler.materialize("module_defs.main") : std::nullopt;
   auto choose =
       linked ? compiler.materialize("module_defs.choose") : std::nullopt;
+  auto inline_user =
+      linked ? compiler.materialize("module_defs.inline_user") : std::nullopt;
   const auto definitions = compiler.module("module_defs");
   const auto prelude = compiler.module("prelude");
   const auto callback_decl =
@@ -61,7 +68,8 @@ module module_defs@1.0.0 {
                           std::vector<joggle::Type>{*i32})
           : std::optional<joggle::Type>{};
   auto callback_value = compiler.create_function();
-  if (!main || !choose || !callback_decl || !callable || !callback_value) {
+  if (!main || !choose || !inline_user || !callback_decl || !callable ||
+      !callback_value) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -81,6 +89,7 @@ module module_defs@1.0.0 {
   joggle::Diagnostics diagnostics;
   if (!module.insert("main", std::move(*main), diagnostics) ||
       !module.insert("choose", std::move(*choose), diagnostics) ||
+      !module.insert("inline_user", std::move(*inline_user), diagnostics) ||
       !module.insert("callback_value", std::move(*callback_value),
                      diagnostics)) {
     diagnostics.print(std::cerr);
@@ -123,7 +132,7 @@ module module_defs@1.0.0 {
                        joggle::Module::FunctionDecl::Form::Body &&
                    materialized_main->inputs().empty() &&
                    materialized_main->results().size() == 1U &&
-                   module.functions().size() == 3U,
+                   module.functions().size() == 4U,
                "a materialized member exposes the same canonical function "
                "signature instead of living in a second function table");
   ok &= expect(dependencies ==
@@ -166,13 +175,22 @@ module module_defs@1.0.0 {
   const auto replay_callback =
       replay_linked ? replay.materialize("compiled_module.callback_value")
                     : std::nullopt;
-  if (!replay_main || !replay_choose || !replay_callback) {
+  const auto replay_inline =
+      replay_linked ? replay.materialize("compiled_module.inline_user")
+                    : std::nullopt;
+  if (!replay_main || !replay_choose || !replay_callback || !replay_inline) {
     replay.diagnostics().print(std::cerr);
   }
   ok &= expect(replay_main && replay_main->ops().size() == 1U &&
-                   replay_choose && replay_choose->blocks().size() == 4U,
+                   replay_choose && replay_choose->blocks().size() == 4U &&
+                   replay_inline && replay_inline->ops().size() == 1U &&
+                   replay_inline->ops()
+                       .front()
+                       .arguments()
+                       .back()
+                       .inline_function(),
                "serialized data-flow and control-flow Functions link and "
-               "instantiate again");
+               "instantiate again, including inline callable bodies");
   const auto replay_returned =
       replay_callback ? replay_callback->entry().terminator().returned()
                       : std::vector<joggle::Value>{};

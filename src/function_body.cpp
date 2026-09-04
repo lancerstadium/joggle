@@ -880,8 +880,15 @@ class Instantiator {
   struct PendingArgument {
     std::optional<detail::StagedValue> value;
     std::string function;
+    std::optional<Module::Expression> inline_function;
+    std::optional<std::vector<Type>> inline_inputs;
 
     bool is_function() const { return !function.empty(); }
+    bool is_inline_function() const { return inline_function.has_value(); }
+    bool valid() const {
+      return value.has_value() || is_function() ||
+             (is_inline_function() && inline_inputs.has_value());
+    }
   };
 
   struct PendingCall {
@@ -897,18 +904,30 @@ public:
                std::vector<Value> known_arguments,
                detail::KnownBindings bindings)
       : compiler_(compiler), declaration_(std::move(function)), body_(body),
-        owner_(declaration_.symbol().module_name()), diagnostics_(diagnostics),
+        owner_(declaration_->symbol().module_name()), diagnostics_(diagnostics),
         initial_diagnostics_(diagnostics.size()),
         supplied_known_(std::move(known_arguments)),
         supplied_bindings_(std::move(bindings)) {}
 
+  Instantiator(Compiler& compiler, std::string owner,
+               const detail::FunctionBody& body, Diagnostics& diagnostics,
+               std::vector<std::pair<std::string, Type>> arguments,
+               std::vector<Type> results)
+      : compiler_(compiler), body_(body), owner_(std::move(owner)),
+        diagnostics_(diagnostics), initial_diagnostics_(diagnostics.size()),
+        inline_arguments_(std::move(arguments)),
+        inline_results_(std::move(results)) {}
+
   std::optional<Function> instantiate() {
+    if (!declaration_) {
+      return instantiate_inline();
+    }
     function_ = compiler_.create_function();
     if (!function_) {
       return std::nullopt;
     }
-    const auto& contract = detail::FunctionTypeAccess::get(declaration_);
-    const auto parameters = declaration_.inputs();
+    const auto& contract = detail::FunctionTypeAccess::get(*declaration_);
+    const auto parameters = declaration_->inputs();
     std::vector<std::optional<detail::StagedValue>> known_parameters(
         parameters.size());
     detail::KnownBindings bindings = supplied_bindings_;
@@ -989,7 +1008,7 @@ public:
     };
 
     result_types_.clear();
-    const auto results = detail::value_results(declaration_);
+    const auto results = detail::value_results(*declaration_);
     for (const auto& result : results) {
       if (auto result_type = resolve_type(result.domain, "result")) {
         result_types_.push_back(*result_type);
@@ -1051,12 +1070,12 @@ public:
         }
       }
     }
-    if (argument_types.size() != detail::value_inputs(declaration_).size() ||
+    if (argument_types.size() != detail::value_inputs(*declaration_).size() ||
         result_types_.size() != results.size()) {
       return std::nullopt;
     }
 
-    detail::FunctionAccess::declare(*function_, declaration_, argument_types,
+    detail::FunctionAccess::declare(*function_, *declaration_, argument_types,
                                     result_types_);
     edit_.emplace(function_->edit());
     locals_.push();
@@ -1070,7 +1089,7 @@ public:
                       body_.range);
       }
     }
-    for (const auto& generic : declaration_.generics()) {
+    for (const auto& generic : declaration_->generics()) {
       const auto found = bindings.find(generic.name);
       if (found == bindings.end() || locals_.contains(generic.name)) {
         continue;
@@ -1194,6 +1213,50 @@ public:
   }
 
 private:
+  std::optional<Function> instantiate_inline() {
+    if (body_.blocks.size() != 1U ||
+        body_.blocks.front().name != "entry" ||
+        body_.blocks.front().terminator) {
+      report("an inline function must have one structured entry body",
+             body_.range);
+      return std::nullopt;
+    }
+    function_ = compiler_.create_function();
+    if (!function_) {
+      return std::nullopt;
+    }
+    std::vector<Type> argument_types;
+    argument_types.reserve(inline_arguments_.size());
+    for (const auto& [name, type] : inline_arguments_) {
+      static_cast<void>(name);
+      argument_types.push_back(type);
+    }
+    result_types_ = inline_results_;
+    detail::FunctionAccess::define(*function_, argument_types, result_types_);
+    edit_.emplace(function_->edit());
+    locals_.push();
+    for (std::size_t index = 0; index < inline_arguments_.size(); ++index) {
+      define(inline_arguments_[index].first,
+             edit_->argument(argument_types[index]), body_.range);
+    }
+    blocks_.emplace("entry", function_->entry());
+    Flow flow =
+        instantiate_sequence(body_.blocks.front().statements, function_->entry());
+    if (!flow.next.empty()) {
+      report("inline function path falls through without returning",
+             body_.range);
+    }
+    if (!flow.breaks.empty() || !flow.continues.empty()) {
+      report("loop control escaped an inline function", body_.range);
+    }
+    if (!ok() ||
+        !detail::FunctionAccess::commit(*edit_, compiler_, diagnostics_)) {
+      return std::nullopt;
+    }
+    edit_.reset();
+    return compiler_.verify(*function_) ? std::move(function_) : std::nullopt;
+  }
+
   Path path(Block block) const {
     return {std::move(block), locals_, residual_control_depth_};
   }
@@ -1638,7 +1701,8 @@ private:
                  parameters[index].name + "'");
           return std::nullopt;
         }
-        arguments.push_back({std::move(*value), {}});
+        arguments.push_back(
+            {std::move(*value), {}, std::nullopt, std::nullopt});
       }
       if (arguments.empty() && !parameters[index].variadic) {
         reject("call is missing argument '" + parameters[index].name + "'");
@@ -1676,6 +1740,29 @@ private:
         errors ? *errors : attempt, source(range), allow_guarded_evaluation);
     if (!types || types->arguments.size() != argument_types.size()) {
       return std::nullopt;
+    }
+    std::size_t value_index = 0;
+    for (std::size_t index = 0; index < parameters.size(); ++index) {
+      if (!detail::is_value_port(parameters[index])) {
+        continue;
+      }
+      for (const PendingArgument& argument : result.arguments[index]) {
+        if (argument.is_inline_function()) {
+          const Type& callable = types->arguments[value_index];
+          const Module::Symbol schema = callable.schema().symbol();
+          const auto inputs = callable.get<std::vector<Type>>("inputs");
+          const auto results = callable.get<std::vector<Type>>("results");
+          if (schema.module_name() != detail::prelude_module_name ||
+              schema.local_name() != "callable" || !inputs || !results ||
+              results->size() != 1U || !argument.inline_inputs ||
+              *inputs != *argument.inline_inputs) {
+            reject("inline function does not match argument '" +
+                   parameters[index].name + "'");
+            return std::nullopt;
+          }
+        }
+        ++value_index;
+      }
     }
     result.partial_types = std::move(*types);
     return result;
@@ -1789,6 +1876,59 @@ private:
       return std::nullopt;
     }
     return edit_->reference(declaration, std::move(*type));
+  }
+
+  std::optional<Value> inline_function(const Module::Expression& expression,
+                                       const Type& callable,
+                                       detail::SyntaxRange range) {
+    using Kind = Module::Expression::Kind;
+    if (expression.kind != Kind::Lambda || expression.arguments.empty() ||
+        expression.labels.size() + 1U != expression.arguments.size()) {
+      report("malformed inline function", range);
+      return std::nullopt;
+    }
+    const Module::Symbol schema = callable.schema().symbol();
+    const auto inputs = callable.get<std::vector<Type>>("inputs");
+    const auto results = callable.get<std::vector<Type>>("results");
+    if (schema.module_name() != detail::prelude_module_name ||
+        schema.local_name() != "callable" || !inputs || !results ||
+        results->size() != 1U || inputs->size() != expression.labels.size()) {
+      report("inline function does not match its callable context", range);
+      return std::nullopt;
+    }
+    std::vector<std::pair<std::string, Type>> arguments;
+    arguments.reserve(inputs->size());
+    for (std::size_t index = 0; index < inputs->size(); ++index) {
+      auto annotation = type({expression.arguments[index], range});
+      if (!annotation || *annotation != (*inputs)[index]) {
+        report("inline function parameter '" + expression.labels[index] +
+                   "' does not match its callable context",
+               range);
+        return std::nullopt;
+      }
+      arguments.emplace_back(expression.labels[index], *annotation);
+    }
+
+    detail::FunctionBody body;
+    body.source = body_.source;
+    body.range = range;
+    detail::BlockSyntax entry;
+    entry.name = "entry";
+    entry.range = range;
+    detail::StatementSyntax returned;
+    returned.kind = detail::StatementSyntax::Kind::Return;
+    returned.range = range;
+    returned.values.push_back({expression.arguments.back(), range});
+    entry.statements.push_back(std::move(returned));
+    body.blocks.push_back(std::move(entry));
+
+    auto function = Instantiator(compiler_, owner_, body, diagnostics_,
+                                 std::move(arguments), *results)
+                        .instantiate();
+    if (!function) {
+      return std::nullopt;
+    }
+    return edit_->callable(std::move(*function), callable);
   }
 
   std::optional<Value> use(const detail::LocalUseSyntax& use) {
@@ -3016,6 +3156,23 @@ private:
     auto contextual_type = statement.bindings.size() == 1U
                                ? expected_type(statement.bindings.front())
                                : std::optional<Type>{};
+    if (expression_kind == Kind::Lambda) {
+      auto value = contextual_type
+                       ? inline_function(statement.expression.value,
+                                         *contextual_type,
+                                         statement.expression.range)
+                       : std::optional<Value>{};
+      if (!value || statement.bindings.size() != 1U) {
+        if (!contextual_type) {
+          report("inline function needs a callable type context",
+                 statement.expression.range);
+        }
+        invalidate(statement.bindings);
+        return;
+      }
+      bind(statement.bindings.front(), std::move(*value));
+      return;
+    }
     auto expected_domain = contextual_type
                                ? detail::type_domain(*contextual_type)
                                : std::optional<Module::Expression>{};
@@ -3078,7 +3235,28 @@ private:
       detail::ExpressionSyntax argument_syntax{argument_expression,
                                                statement.expression.range};
       PendingArgument argument;
-      if ((argument_expression.kind == Kind::Reference ||
+      if (argument_expression.kind == Kind::Lambda) {
+        argument.inline_function = argument_expression;
+        if (!argument_expression.arguments.empty() &&
+            argument_expression.labels.size() + 1U ==
+                argument_expression.arguments.size()) {
+          std::vector<Type> inputs;
+          inputs.reserve(argument_expression.labels.size());
+          bool valid = true;
+          for (std::size_t index = 0;
+               index < argument_expression.labels.size(); ++index) {
+            auto input = type({argument_expression.arguments[index],
+                               statement.expression.range});
+            valid = input.has_value() && valid;
+            if (input) {
+              inputs.push_back(std::move(*input));
+            }
+          }
+          if (valid) {
+            argument.inline_inputs = std::move(inputs);
+          }
+        }
+      } else if ((argument_expression.kind == Kind::Reference ||
            argument_expression.kind == Kind::Variable) &&
           argument_expression.arguments.empty()) {
         argument.value = lookup_staged(argument_expression.text);
@@ -3104,7 +3282,7 @@ private:
         argument.value = value ? detail::stage(std::move(*value))
                                : std::optional<detail::StagedValue>{};
       }
-      if (!argument.value && !argument.is_function()) {
+      if (!argument.valid()) {
         invalidate_results();
         return;
       }
@@ -3200,7 +3378,15 @@ private:
         continue;
       }
       for (PendingArgument& argument : plan.arguments[index]) {
-        if (argument.is_function()) {
+        if (argument.is_inline_function()) {
+          auto value = inline_function(
+              *argument.inline_function,
+              plan.partial_types.arguments[argument_index],
+              statement.expression.range);
+          argument.value = value ? detail::stage(std::move(*value))
+                                 : std::optional<detail::StagedValue>{};
+          unresolved = !argument.value || unresolved;
+        } else if (argument.is_function()) {
           auto reference =
               function_reference(argument.function, statement.expression.range,
                                  plan.partial_types.arguments[argument_index]);
@@ -3249,7 +3435,7 @@ private:
   }
 
   Compiler& compiler_;
-  Module::FunctionDecl declaration_;
+  std::optional<Module::FunctionDecl> declaration_;
   const detail::FunctionBody& body_;
   std::string owner_;
   Diagnostics& diagnostics_;
@@ -3266,6 +3452,8 @@ private:
   std::size_t loop_iterations_ = 0;
   std::vector<Value> supplied_known_;
   detail::KnownBindings supplied_bindings_;
+  std::vector<std::pair<std::string, Type>> inline_arguments_;
+  std::vector<Type> inline_results_;
 };
 
 class RuntimeSyntax {
@@ -3413,7 +3601,7 @@ private:
   }
 
   void remember_function(const Value& value) {
-    if (!value.referenced_function() ||
+    if ((!value.referenced_function() && !value.inline_function()) ||
         std::find(functions_.begin(), functions_.end(), value) !=
             functions_.end()) {
       return;
@@ -3424,16 +3612,110 @@ private:
 
   detail::StatementSyntax function_binding(const Value& value) const {
     const auto function = value.referenced_function();
-    if (!function) {
-      throw std::logic_error("function binding has no referenced function");
-    }
     detail::StatementSyntax statement;
     statement.kind = detail::StatementSyntax::Kind::Expression;
     statement.bindings.push_back(
         {use(value), type_expression(value.type()), {}});
-    statement.expression.value.kind = Module::Expression::Kind::Reference;
-    statement.expression.value.text = function->symbol().qualified_name();
+    if (function) {
+      statement.expression.value.kind = Module::Expression::Kind::Reference;
+      statement.expression.value.text = function->symbol().qualified_name();
+      return statement;
+    }
+    const auto body = value.inline_function();
+    const auto lambda = body ? inline_expression(*body)
+                             : std::optional<Module::Expression>{};
+    if (!lambda) {
+      throw std::logic_error(
+          "inline function cannot be represented as one expression");
+    }
+    statement.expression.value = *lambda;
     return statement;
+  }
+
+  std::optional<Module::Expression>
+  inline_expression(const Function& function) const {
+    using Kind = Module::Expression::Kind;
+    const auto blocks = function.blocks();
+    const auto returned = blocks.size() == 1U
+                              ? blocks.front().terminator().returned()
+                              : std::vector<Value>{};
+    if (returned.size() != 1U || !blocks.front().arguments().empty()) {
+      return std::nullopt;
+    }
+    const auto arguments = function.arguments();
+    std::vector<std::string> names;
+    names.reserve(arguments.size());
+    for (std::size_t index = 0; index < arguments.size(); ++index) {
+      names.push_back("arg" + std::to_string(index));
+    }
+    std::function<std::optional<Module::Expression>(const Value&)> build =
+        [&](const Value& current) -> std::optional<Module::Expression> {
+      const auto argument =
+          std::find(arguments.begin(), arguments.end(), current);
+      if (argument != arguments.end()) {
+        return Module::Expression{
+            Kind::Variable,
+            names[static_cast<std::size_t>(
+                std::distance(arguments.begin(), argument))],
+            {}};
+      }
+      if (const auto reference = current.referenced_function()) {
+        return Module::Expression::reference(
+            std::string(reference->symbol().qualified_name()));
+      }
+      if (current.inline_function()) {
+        return std::nullopt;
+      }
+      if (current.known()) {
+        const auto payload = detail::FunctionAccess::known_value(current);
+        return payload ? std::optional<Module::Expression>{
+                             expression(value(*payload))}
+                       : std::nullopt;
+      }
+      const auto producer = current.defining_op();
+      if (!producer || producer->results().size() != 1U ||
+          producer->result(0) != current || current.users().size() > 1U) {
+        return std::nullopt;
+      }
+      Module::Expression result;
+      result.kind = Kind::Call;
+      result.text = producer->callee().symbol().qualified_name();
+      for (const Value& operand : producer->arguments()) {
+        auto built = build(operand);
+        if (!built) {
+          return std::nullopt;
+        }
+        result.arguments.push_back(std::move(*built));
+        result.labels.emplace_back();
+      }
+      const auto fixity = producer->callee().operator_fixity();
+      if (fixity && detail::compiler_inputs(producer->callee()).empty() &&
+          ((fixity == Module::FunctionDecl::Fixity::Infix &&
+            result.arguments.size() == 2U) ||
+           (fixity != Module::FunctionDecl::Fixity::Infix &&
+            result.arguments.size() == 1U))) {
+        result.text = std::string(producer->callee().name());
+        result.labels.clear();
+        result.kind = fixity == Module::FunctionDecl::Fixity::Prefix
+                          ? Kind::Prefix
+                      : fixity == Module::FunctionDecl::Fixity::Infix
+                          ? Kind::Infix
+                          : Kind::Postfix;
+      }
+      return result;
+    };
+    auto body = build(returned.front());
+    if (!body) {
+      return std::nullopt;
+    }
+    Module::Expression lambda;
+    lambda.kind = Kind::Lambda;
+    lambda.labels = std::move(names);
+    for (const Value& argument : arguments) {
+      lambda.arguments.push_back(expression(value(argument.type())));
+    }
+    lambda.arguments.push_back(std::move(*body));
+    return lambda;
   }
 
   std::string use(const Value& value) const {

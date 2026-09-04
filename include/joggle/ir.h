@@ -46,6 +46,7 @@ public:
   bool is_function_argument() const;
   bool is_block_argument() const;
   std::optional<Module::FunctionDecl> referenced_function() const;
+  std::optional<Function> inline_function() const;
   std::optional<Op> defining_op() const;
   // Direct Op users of this Residual value in Function order. Known values do
   // not retain one owning Function and therefore return an empty list.
@@ -173,6 +174,7 @@ public:
 
     Value argument(Type type);
     Value reference(Module::FunctionDecl function, Type type);
+    Value callable(Function function, Type type);
     Block block(std::vector<Type> argument_types = {});
     // Straight-line convenience: append to the entry Block.
     Op append(Module::FunctionDecl schema, std::vector<Value> arguments = {},

@@ -22,7 +22,8 @@ struct ValueData {
     FunctionArgument,
     BlockArgument,
     OpResult,
-    FunctionReference
+    FunctionReference,
+    InlineFunction,
   };
 
   Type type;
@@ -30,6 +31,7 @@ struct ValueData {
   std::uint64_t owner = 0;
   std::size_t index = 0;
   std::optional<Module::FunctionDecl> reference;
+  std::shared_ptr<Function> inline_function;
 };
 
 struct KnownValueStorage {
@@ -75,7 +77,7 @@ struct BlockData {
 
 struct FunctionState {
   struct Signature {
-    Module::FunctionDecl declaration;
+    std::optional<Module::FunctionDecl> declaration;
     std::vector<Type> arguments;
     std::vector<Type> results;
   };
@@ -358,6 +360,9 @@ bool definition_dominates(
   if (definition.origin == ValueData::Origin::FunctionReference) {
     return definition.reference.has_value();
   }
+  if (definition.origin == ValueData::Origin::InlineFunction) {
+    return static_cast<bool>(definition.inline_function);
+  }
   if (definition.origin == ValueData::Origin::BlockArgument) {
     const auto owner = function.blocks.find(definition.owner);
     return owner != function.blocks.end() &&
@@ -413,6 +418,55 @@ bool matches_function_reference(const FunctionState& function,
   const auto resolved = detail::resolve_call_types(
       modules, *value.reference, *inputs, {}, expected, diagnostics);
   return resolved && resolved->results == *results;
+}
+
+bool matches_inline_function(const FunctionState& owner,
+                             const ValueData& value) {
+  if (value.origin != ValueData::Origin::InlineFunction ||
+      !value.inline_function || !owns(owner, value.type)) {
+    return false;
+  }
+  const Module::Symbol schema = value.type.schema().symbol();
+  const auto inputs = value.type.get<std::vector<Type>>("inputs");
+  const auto results = value.type.get<std::vector<Type>>("results");
+  if (schema.module_name() != detail::prelude_module_name ||
+      schema.local_name() != "callable" || !inputs || !results) {
+    return false;
+  }
+  const auto arguments = value.inline_function->arguments();
+  if (arguments.size() != inputs->size() ||
+      value.inline_function->result_types() != *results) {
+    return false;
+  }
+  for (std::size_t index = 0; index < arguments.size(); ++index) {
+    if (arguments[index].type() != (*inputs)[index] ||
+        !owns(owner, arguments[index].type())) {
+      return false;
+    }
+  }
+  for (const Type& result : *results) {
+    if (!owns(owner, result)) {
+      return false;
+    }
+  }
+  for (const Op& op : value.inline_function->ops()) {
+    if (!owns(owner, op.callee().symbol())) {
+      return false;
+    }
+    for (const Value& argument : op.arguments()) {
+      if (!owns(owner, argument.type())) {
+        return false;
+      }
+    }
+    for (const Value& result : op.results()) {
+      if (!owns(owner, result.type())) {
+        return false;
+      }
+    }
+  }
+  Diagnostics diagnostics;
+  return detail::FunctionAccess::verify_structure(*value.inline_function,
+                                                   diagnostics);
 }
 
 bool verify_op(const FunctionState& function, std::uint64_t id,
@@ -529,8 +583,13 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
         diagnostics.report("function contains an invalid function reference");
         valid = false;
       }
-    } else if (value.reference) {
-      diagnostics.report("non-function value contains a function reference");
+    } else if (value.origin == ValueData::Origin::InlineFunction) {
+      if (!matches_inline_function(function, value)) {
+        diagnostics.report("function contains an invalid inline function");
+        valid = false;
+      }
+    } else if (value.reference || value.inline_function) {
+      diagnostics.report("non-callable value contains a callable payload");
       valid = false;
     }
   }
@@ -595,7 +654,8 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
   }
 
   if (function.signature) {
-    if (!owns(function, function.signature->declaration.symbol())) {
+    if (function.signature->declaration &&
+        !owns(function, function.signature->declaration->symbol())) {
       diagnostics.report("function declaration is outside its module closure");
       valid = false;
     }
@@ -902,6 +962,32 @@ void FunctionAccess::declare(Function& function,
                                              std::move(result_types)};
 }
 
+void FunctionAccess::define(Function& function,
+                            std::vector<Type> argument_types,
+                            std::vector<Type> result_types) {
+  auto& identity = function.function_;
+  auto& state = *identity->state;
+  if (identity->editing || state.signature) {
+    throw std::logic_error("function signature is already fixed");
+  }
+  if (!state.arguments.empty() || state.blocks.size() != 1U ||
+      !state.ops.empty()) {
+    throw std::logic_error("function signature must be fixed before its body");
+  }
+  const bool owned_arguments =
+      std::all_of(argument_types.begin(), argument_types.end(),
+                  [&](const Type& type) { return owns(state, type); });
+  const bool owned_results =
+      std::all_of(result_types.begin(), result_types.end(),
+                  [&](const Type& type) { return owns(state, type); });
+  if (!owned_arguments || !owned_results) {
+    throw std::invalid_argument(
+        "function signature references a type outside its module closure");
+  }
+  state.signature = FunctionState::Signature{
+      std::nullopt, std::move(argument_types), std::move(result_types)};
+}
+
 bool FunctionAccess::attach(Function& function,
                             Module::FunctionDecl declaration, Module owner,
                             Diagnostics& diagnostics) {
@@ -1057,6 +1143,18 @@ std::optional<Module::FunctionDecl> Value::referenced_function() const {
   return found != function_->state->values.end() &&
                  found->second.origin == ValueData::Origin::FunctionReference
              ? found->second.reference
+             : std::nullopt;
+}
+
+std::optional<Function> Value::inline_function() const {
+  if (!function_) {
+    return std::nullopt;
+  }
+  const auto found = function_->state->values.find(id_);
+  return found != function_->state->values.end() &&
+                 found->second.origin == ValueData::Origin::InlineFunction &&
+                 found->second.inline_function
+             ? std::optional<Function>{*found->second.inline_function}
              : std::nullopt;
 }
 
@@ -1380,7 +1478,7 @@ Value Function::Edit::argument(Type type) {
   const std::size_t index = state_->function->state->arguments.size();
   state_->function->state->values.emplace(
       id, ValueData{std::move(type), ValueData::Origin::FunctionArgument, 0,
-                    index, std::nullopt});
+                    index, std::nullopt, nullptr});
   state_->function->state->arguments.push_back(id);
   return Function::make_value(state_->function, id);
 }
@@ -1396,10 +1494,26 @@ Value Function::Edit::reference(Module::FunctionDecl function, Type type) {
   }
   detail::ValueData data{std::move(type),
                          detail::ValueData::Origin::FunctionReference, 0, 0,
-                         std::move(function)};
+                         std::move(function), nullptr};
   if (!matches_function_reference(*state_->function->state, data)) {
     throw std::invalid_argument(
         "function reference type does not match its declaration");
+  }
+  const std::uint64_t id = state_->function->next_id++;
+  state_->function->state->values.emplace(id, std::move(data));
+  return Function::make_value(state_->function, id);
+}
+
+Value Function::Edit::callable(Function function, Type type) {
+  if (!state_ || !state_->active) {
+    throw std::logic_error("cannot edit an inactive function");
+  }
+  detail::ValueData data{
+      std::move(type), detail::ValueData::Origin::InlineFunction, 0, 0,
+      std::nullopt, std::make_shared<Function>(std::move(function))};
+  if (!matches_inline_function(*state_->function->state, data)) {
+    throw std::invalid_argument(
+        "inline function type does not match its body");
   }
   const std::uint64_t id = state_->function->next_id++;
   state_->function->state->values.emplace(id, std::move(data));
@@ -1415,7 +1529,7 @@ Block Function::Edit::block(std::vector<Type> argument_types) {
     state_->function->state->values.emplace(
         value_id, ValueData{std::move(argument_types[index]),
                             ValueData::Origin::BlockArgument, block_id, index,
-                            std::nullopt});
+                            std::nullopt, nullptr});
     data.arguments.push_back(value_id);
   }
   state_->function->state->blocks.emplace(block_id, std::move(data));
@@ -1581,7 +1695,7 @@ Op Function::Edit::add(Block block, std::optional<Op> before,
     state_->function->state->values.emplace(
         result, ValueData{std::move(result_types[index]),
                           ValueData::Origin::OpResult, id, index,
-                          std::nullopt});
+                          std::nullopt, nullptr});
     results.push_back(result);
   }
   state_->function->state->ops.emplace(
@@ -1886,8 +2000,7 @@ std::vector<Value> Function::arguments() const {
 
 std::optional<Module::FunctionDecl> Function::declaration() const {
   return function_->state->signature
-             ? std::optional<Module::FunctionDecl>{function_->state->signature
-                                                       ->declaration}
+             ? function_->state->signature->declaration
              : std::nullopt;
 }
 

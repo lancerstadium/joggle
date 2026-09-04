@@ -1264,6 +1264,8 @@ int type_expression_precedence(const detail::TypeExpression& expression) {
   switch (expression.kind) {
   case Kind::FunctionType:
     return 1;
+  case Kind::Lambda:
+    return 2;
   case Kind::If:
     return 5;
   case Kind::Infix:

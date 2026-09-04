@@ -98,7 +98,7 @@ an earlier gate.
 3. Explicit staging: make `@` the only stage switch and test residual calls
    with fully known operands. **Complete.**
 4. Higher-order core: add typed function values and typed lambdas without a
-   second expression grammar.
+   second expression grammar. See RFC 0002.
 5. Effect-safe replacement: implement checked expression matching and atomic
    replacement.
 6. Tensor module: define real tensor types and operations outside the core.

@@ -90,6 +90,26 @@ Named and positional call arguments may not be mixed ambiguously:
 cast(input = value, result = i16)
 ```
 
+Function types and capture-free lambdas use the same expression language:
+
+```joggle
+fn apply<T, U>(input: T, body: (T) -> U) -> U;
+
+fn widened(input: i8) -> i16 {
+  return apply(input, (value: i8) => extend(value));
+}
+```
+
+Lambda parameter annotations are required. The expected function type checks
+the annotations and supplies the result context, so generic higher-order calls
+use ordinary overload inference. Parameter annotations participate in overload
+selection; the body is checked only after one overload is selected, so calls
+whose annotations and surrounding result cannot distinguish two candidates
+remain explicitly ambiguous. The body is a normal expression and may call
+normal named or symbolic functions. Capturing an outer run-time local is
+currently rejected; it will not silently create an environment object or a
+hidden module declaration.
+
 ## Symbolic functions
 
 Operators are functions whose symbol is their real name:
@@ -141,6 +161,11 @@ program computation even when all of its operands are Known. A call that
 produces a compiler-domain result without `@` is rejected instead of being
 silently executed.
 
+A lambda constructs a function value. Passing it to an ordinary call remains
+run-time IR. Passing function values through `@` is reserved by the language
+but not implemented yet; the compiler diagnoses that boundary instead of
+encoding a function through scalar metadata.
+
 ## Canonical form and identity
 
 `joggle fmt` emits canonical source. Canonical formatting determines module
@@ -163,6 +188,8 @@ function   := "fn" ("postfix")? (name | "(" symbol ")")
 generics   := "<" generic ("," generic)* ">"
 generic    := name (":" expression)?
 results    := ("->" expression | "->" "(" parameters? ")")?
+lambda     := "(" (name ":" expression
+              ("," name ":" expression)*)? ")" "=>" expression
 ```
 
 The formatter is the normative spelling for details not captured by this
