@@ -16,8 +16,8 @@ of the project; none is a migration log.
 - [Module design](modules.md) defines the extension and dependency model.
 - [Tensor module](tensor.md) records the first target-independent AI
   vocabulary and its implemented evidence boundary.
-- [Quant module](quant.md) records the ordinary-function QDQ boundary and its
-  current semantic trust limit.
+- [Quant module](quant.md) records the ordinary-function QDQ boundary, its
+  executable affine oracle, and the remaining transformation trust limit.
 - [Fusion module](fusion.md) documents the first installable,
   reference-bodied real-model transformation.
 - [Bitpack module](bitpack.md) documents logical projection and the first

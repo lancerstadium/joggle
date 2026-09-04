@@ -74,7 +74,8 @@ ctest --test-dir build --output-on-failure
 ```
 
 The repository ships `tensor@1.0.0`, a small target-independent semantic
-Module; `quant@1.0.0`, an affine QDQ boundary; `fusion@1.0.0`, a
+Module; `quant@1.1.0`, an affine QDQ boundary with a bit-exact reference
+oracle; `fusion@1.0.0`, a
 reference-bodied Conv/ReLU transformation; `bitpack@1.0.0`, a checked
 logical-to-physical format experiment; and an optional, Protobuf-backed
 `onnx@1.0.0` inference importer. The real-model paths import hash-pinned FLOAT

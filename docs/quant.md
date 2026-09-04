@@ -1,6 +1,6 @@
 # Quant module
 
-`quant@1.0.0` is a small semantic boundary for affine tensor quantization:
+`quant@1.1.0` is a small semantic boundary for affine tensor quantization:
 
 ```joggle
 fn quantize<X, S, Z, Y>(input: X, scale: S, zero: Z, axis: int = 1) -> Y;
@@ -18,23 +18,68 @@ The first consumer is the ONNX IR 7/opset 13 QDQ profile. Its importer checks
 static shapes, FLOAT scales, matching scale/zero shapes, scalar or one-axis
 broadcasting, compatible storage Types, and valid per-axis indices before
 constructing a call. The official QDQ SqueezeNet model supplies u8 activations,
-i8 weights,
-i32 biases, and f32 expressed tensors through these two declarations.
+i8 weights, i32 biases, and f32 expressed tensors through these declarations.
+
+## Executable reference
+
+Version 1.1 adds compiler-time overloads of the same two function names:
+
+```joggle
+fn quantize(
+  input: bytes,
+  scale: list<real>,
+  zero: list<int>,
+  shape: list<int>,
+  axis: int,
+  storage: type
+) -> bytes;
+
+fn dequantize(
+  input: bytes,
+  scale: list<real>,
+  zero: list<int>,
+  shape: list<int>,
+  axis: int,
+  storage: type
+) -> bytes;
+```
+
+They are selected only by an explicit compiler-time call such as
+`@quantize(...)`; they do not execute a residual tensor call implicitly.
+Quantize input and dequantize output are little-endian f32 bytes. Storage is
+u8 or i8 for quantization and u8, i8, or i32 for dequantization. Shape is the
+logical row-major shape. One scale/zero pair means per-tensor quantization;
+otherwise the list length must equal the selected axis extent.
+
+The implementation fixes f32 division, round-to-nearest-even independently of
+the host rounding mode, saturation, two's-complement storage, negative axes,
+and f32 dequantization. Positive finite f32 scales are required. Quantization
+rejects NaN because ONNX does not assign it a portable integer result; positive
+and negative infinity saturate. The i32 dequantization overload requires a
+zero point of zero.
+
+Tests cover positive and negative halfway values, both saturation limits,
+per-axis broadcasting, negative axes, i32 bias values, malformed inputs, and
+repeated execution. A separately generated standard opset 13 QDQ graph is run
+by ONNX Runtime with optimization disabled; its i8 output and dequantized f32
+bit patterns exactly match the Joggle oracle.
 
 ## Current trust boundary
 
-Both functions are deliberately bodyless program semantics in version 1.
-They preserve the standard QDQ boundary exactly and can be emitted or executed
-by a consumer that implements it, but the current equivalence checker will not
-expand through them. Consequently Joggle does not yet claim that a rewrite
-which changes or removes a QDQ boundary is proved correct.
+The tensor overloads remain deliberately bodyless program semantics. They
+preserve the standard QDQ boundary exactly and can be emitted or executed by a
+consumer that implements it, but the current equivalence checker will not
+expand through them. The bytes overloads make numerical tests reproducible;
+they do not silently grant a tensor rewrite semantic equivalence. Consequently
+Joggle does not yet claim that a rewrite which changes or removes a QDQ
+boundary is proved correct.
 
-The next semantic gate is a portable, executable affine reference body (or an
-equally explicit checked definition) covering rounding, saturation,
-broadcasting, and per-axis behavior. Until that exists, format optimization
-must treat `quantize` and `dequantize` as opaque calls. This limitation is
-intentional: successful ONNX Runtime differential execution is evidence for
-the importer, not a substitute for transformation correctness.
+The next semantic gate is one source-grounded integer-kernel replacement that
+uses this oracle for bit-exact differential tests and still passes the existing
+effect and equivalence checks. Until then, format optimization must treat the
+tensor `quantize` and `dequantize` calls as opaque. Successful ONNX Runtime
+differential execution is evidence for the numerical contract, not a
+substitute for transformation correctness.
 
 The operator contract follows the standard ONNX
 [QuantizeLinear](https://onnx.ai/onnx/operators/onnx__QuantizeLinear.html) and

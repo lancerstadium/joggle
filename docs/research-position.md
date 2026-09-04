@@ -49,13 +49,19 @@ The implementation already demonstrates:
 11. a second hash-pinned Model Zoo model exercises standard QDQ inference: its
     228 f32/u8/i8/i32 constants, 130 affine quantization boundaries, and 41
     tensor calls import without a vendor operation, and reconstruction through
-    ONNX Runtime is exactly equal (`max_abs=0`, `mean_abs=0`); and
-12. Module bundles preserve and verify all imported data through public
+    ONNX Runtime is exactly equal (`max_abs=0`, `mean_abs=0`);
+12. `quant@1.1` defines a deterministic f32 affine oracle with explicit
+    nearest-even rounding, saturation, signed storage, and per-axis indexing;
+    an independent opset 13 ONNX Runtime graph matches its i8 and f32 output
+    bits exactly; and
+13. Module bundles preserve and verify all imported data through public
    `check`, `run`, `install`, and `lock` workflows.
 
-These are infrastructure results. The QDQ calls are still opaque program
-semantics, so the result does not establish correctness of transformations
-through quantization boundaries. It also does not establish general
+These are infrastructure results. The tensor QDQ calls are still opaque
+program semantics; the bytes oracle specifies testable numerics but does not
+make those calls definitionally transparent. The result therefore does not
+establish correctness of transformations through quantization boundaries. It
+also does not establish general
 mathematical equivalence of user rewrites, competitive kernels, support for a
 physical format at run time, or publication-level novelty.
 

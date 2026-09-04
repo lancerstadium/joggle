@@ -1,6 +1,6 @@
 # RFC 0009: QDQ as an ordinary semantic Module
 
-Status: external-model import and differential gate implemented
+Status: external-model import and executable affine-oracle gates implemented
 
 ## Problem
 
@@ -12,7 +12,7 @@ semantics, and physical storage optimization.
 
 ## Decision
 
-`quant@1.0.0` declares only two ordinary program functions:
+`quant@1.1.0` declares two ordinary program functions:
 
 ```joggle
 fn quantize<X, S, Z, Y>(input: X, scale: S, zero: Z, axis: int = 1) -> Y;
@@ -24,6 +24,13 @@ per-tensor or per-axis parameterization without a privileged quantization
 object. The ONNX compiler function maps a checked IR 7/opset 13 QDQ graph to
 these calls plus the existing tensor vocabulary. A generated model derives
 its `quant` and `tensor` dependencies from the Function itself.
+
+The same names have six-argument compiler-time overloads over bytes, f32
+scales, integer zero points, logical shape, axis, and storage Type. They are a
+deterministic numerical oracle, not a second operation kind. Their wire format
+is explicit little-endian f32 or integer storage, and their implementation
+fixes nearest-even rounding, saturation, per-axis row-major indexing, negative
+axes, and i32 zero-point constraints.
 
 The importer supports one exact QDQ profile. It does not silently accept all
 opset 13 models. It validates static value metadata, dense inline constants,
@@ -54,7 +61,9 @@ payloads and both semantic dependencies. Omitting `quant` fails with a
 deterministic diagnostic.
 
 This proves the frontend mapping and dependency composition. It does not prove
-rewrites through QDQ calls: version 1 leaves them bodyless, so equivalence
-fails closed at those boundaries. The next gate is a portable affine reference
-definition with explicit rounding, saturation, and broadcasting, followed by
-one source-grounded integer kernel replacement.
+rewrites through tensor QDQ calls: they remain bodyless, so equivalence fails
+closed at those boundaries. The compiler-time affine overloads now match a
+standard opset 13 QDQ micrograph in ONNX Runtime for i8 and f32 outputs at the
+bit level, including halfway values and per-axis broadcasting. The next gate
+is one source-grounded integer-kernel replacement checked structurally,
+semantically, and against this numerical oracle.

@@ -92,7 +92,7 @@ string(FIND "${lock_text}" "root ${JOGGLE_MODEL_NAME}@1.0.0#" root_position)
 string(FIND "${lock_text}" "module tensor@1.0.0#" tensor_position)
 set(quant_position 0)
 if(DEFINED JOGGLE_QUANT_MODULE)
-  string(FIND "${lock_text}" "module quant@1.0.0#" quant_position)
+  string(FIND "${lock_text}" "module quant@1.1.0#" quant_position)
 endif()
 if(root_position EQUAL -1 OR tensor_position EQUAL -1 OR
    quant_position EQUAL -1)

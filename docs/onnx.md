@@ -122,6 +122,12 @@ shape `[1,1000,1,1]`, `max_abs=0`, and `mean_abs=0`.
 The reconstruction executable is test-only. It is not a public ONNX emitter,
 Module function, compiler-core category, or second production graph.
 
+The separate `quant_runtime` test does not reconstruct SqueezeNet. It builds a
+small standard opset 13 QDQ graph containing positive and negative halfway
+values and negative-axis per-channel parameters. ONNX Runtime's i8 output and
+dequantized f32 bit patterns must exactly match the executable `quant@1.1`
+reference overloads, and both runs must be deterministic.
+
 ## Lossless CLI workflow
 
 A driver may call `@onnx.read` and write the returned Module to a bundle:
