@@ -69,5 +69,17 @@ module bitpack@1.0.0 {
   fn softmax<T>(input: T, axis: int) -> T {
     return t.softmax(input, axis);
   }
+  fn encode(
+    values: list<int>,
+    element: type,
+    storage: type,
+    order: string = "lsb"
+  ) -> bytes;
+  fn decode(
+    input: bytes,
+    element: type,
+    storage: type,
+    order: string = "lsb"
+  ) -> list<int>;
   fn run(input: function, storage: type, axis: int, order: string = "lsb") -> function;
 }

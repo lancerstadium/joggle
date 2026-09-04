@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <bit>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -21,6 +23,133 @@ bool named(const joggle::Type& type, std::string_view module,
 
 std::optional<std::int64_t> bits(const joggle::Type& type) {
   return type.get<std::int64_t>("storage_bits");
+}
+
+struct Encoding {
+  std::uint32_t element_bits = 0;
+  std::uint32_t word_bits = 0;
+  std::uint32_t lanes = 0;
+  bool is_signed = false;
+  bool most_significant_first = false;
+};
+
+std::optional<Encoding>
+encoding(const joggle::Type& element, const joggle::Type& storage,
+         std::string_view order, joggle::Diagnostics& diagnostics) {
+  const auto element_bits = bits(element);
+  const auto word_bits = bits(storage);
+  const auto is_signed = element.get<bool>("signed");
+  if (!named(element, "bitpack", "integer") || !element_bits || !word_bits ||
+      !is_signed || *element_bits <= 0 || *element_bits > 64 ||
+      *word_bits <= 0 || *word_bits > 64 || *word_bits % 8 != 0 ||
+      *word_bits % *element_bits != 0 ||
+      (!*is_signed && *element_bits == 64) ||
+      (order != "lsb" && order != "msb")) {
+    diagnostics.report(
+        "bitpack encoding needs a 1..64-bit signed or 1..63-bit unsigned "
+        "integer, byte-aligned storage, exact divisibility, and lsb or msb "
+        "lane order");
+    return std::nullopt;
+  }
+  return Encoding{static_cast<std::uint32_t>(*element_bits),
+                  static_cast<std::uint32_t>(*word_bits),
+                  static_cast<std::uint32_t>(*word_bits / *element_bits),
+                  *is_signed, order == "msb"};
+}
+
+std::uint64_t mask(std::uint32_t width) {
+  return width == 64U ? std::numeric_limits<std::uint64_t>::max()
+                      : (std::uint64_t{1} << width) - 1U;
+}
+
+std::optional<joggle::Bytes>
+encode(const std::vector<std::int64_t>& values,
+       const joggle::Type& element, const joggle::Type& storage,
+       std::string order, joggle::Diagnostics& diagnostics) {
+  const auto format = encoding(element, storage, order, diagnostics);
+  if (!format || values.size() % format->lanes != 0U) {
+    if (format) {
+      diagnostics.report(
+          "bitpack.encode needs a whole number of storage words");
+    }
+    return std::nullopt;
+  }
+  const std::uint64_t lane_mask = mask(format->element_bits);
+  const std::int64_t signed_min =
+      format->element_bits == 64U
+          ? std::numeric_limits<std::int64_t>::min()
+          : -(std::int64_t{1} << (format->element_bits - 1U));
+  const std::int64_t signed_max =
+      format->element_bits == 64U
+          ? std::numeric_limits<std::int64_t>::max()
+          : (std::int64_t{1} << (format->element_bits - 1U)) - 1;
+  joggle::Bytes result;
+  result.reserve(values.size() / format->lanes * (format->word_bits / 8U));
+  for (std::size_t first = 0; first < values.size();
+       first += format->lanes) {
+    std::uint64_t word = 0;
+    for (std::uint32_t lane = 0; lane < format->lanes; ++lane) {
+      const std::int64_t value = values[first + lane];
+      const bool in_range = format->is_signed
+                                ? value >= signed_min && value <= signed_max
+                                : value >= 0 &&
+                                      static_cast<std::uint64_t>(value) <=
+                                          lane_mask;
+      if (!in_range) {
+        diagnostics.report("bitpack.encode value is outside its element "
+                           "format");
+        return std::nullopt;
+      }
+      const std::uint32_t physical =
+          format->most_significant_first ? format->lanes - 1U - lane : lane;
+      word |= (static_cast<std::uint64_t>(value) & lane_mask)
+              << (physical * format->element_bits);
+    }
+    for (std::uint32_t byte = 0; byte < format->word_bits / 8U; ++byte) {
+      result.push_back(static_cast<std::byte>((word >> (byte * 8U)) & 0xffU));
+    }
+  }
+  return result;
+}
+
+std::optional<std::vector<std::int64_t>>
+decode(const joggle::Bytes& input, const joggle::Type& element,
+       const joggle::Type& storage, std::string order,
+       joggle::Diagnostics& diagnostics) {
+  const auto format = encoding(element, storage, order, diagnostics);
+  const std::size_t word_bytes =
+      format ? static_cast<std::size_t>(format->word_bits / 8U) : 0U;
+  if (!format || input.size() % word_bytes != 0U) {
+    if (format) {
+      diagnostics.report("bitpack.decode input ends inside a storage word");
+    }
+    return std::nullopt;
+  }
+  const std::uint64_t lane_mask = mask(format->element_bits);
+  const std::uint64_t sign =
+      std::uint64_t{1} << (format->element_bits - 1U);
+  std::vector<std::int64_t> result;
+  result.reserve(input.size() / word_bytes * format->lanes);
+  for (std::size_t first = 0; first < input.size(); first += word_bytes) {
+    std::uint64_t word = 0;
+    for (std::size_t byte = 0; byte < word_bytes; ++byte) {
+      word |= static_cast<std::uint64_t>(
+                  std::to_integer<unsigned char>(input[first + byte]))
+              << (byte * 8U);
+    }
+    for (std::uint32_t lane = 0; lane < format->lanes; ++lane) {
+      const std::uint32_t physical =
+          format->most_significant_first ? format->lanes - 1U - lane : lane;
+      std::uint64_t value =
+          (word >> (physical * format->element_bits)) & lane_mask;
+      if (format->is_signed && format->element_bits < 64U &&
+          (value & sign) != 0U) {
+        value |= ~lane_mask;
+      }
+      result.push_back(std::bit_cast<std::int64_t>(value));
+    }
+  }
+  return result;
 }
 
 bool verify_integer(const joggle::Type& type,
@@ -185,6 +314,8 @@ void joggle_module(joggle::Compiler& compiler, const joggle::Module& module,
   }
   compiler.verify(*integer, verify_integer);
   compiler.verify(*packed, verify_packed);
+  compiler.bind(module, "encode", encode);
+  compiler.bind(module, "decode", decode);
   compiler.bind(
       module, "run",
       [module](joggle::Compiler& active, joggle::Function input,

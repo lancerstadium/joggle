@@ -1,6 +1,6 @@
 # RFC 0008: Logical projection for physical representations
 
-Status: first packed-format gate implemented
+Status: reference codec gate implemented
 
 ## Problem
 
@@ -79,10 +79,13 @@ publishes the result only after projected whole-Function equivalence succeeds.
 - the transformation is transactional and fails when any Type, call, or proof
   is unsupported.
 
-It does not prove a lossy f32-to-i4 quantizer, the implementation of an
-encoder/decoder, bit-accurate hardware execution, or performance. Those need
-separate numerical and execution evidence. Variant search remains deferred
-until at least one physical implementation runs.
+It does not prove a lossy f32-to-i4 quantizer, packed tensor arithmetic,
+bit-accurate hardware execution, or performance. The Module now contains a
+deterministic reference codec for complete, byte-aligned storage words. Exact
+LSB/MSB and signed two's-complement vectors establish the concrete
+representation independently of logical projection, but do not establish an
+optimized implementation. Variant search remains deferred until at least one
+physical implementation runs.
 
 ## Relation to prior systems
 
@@ -105,7 +108,8 @@ current implementation establishes feasibility, not superiority.
 2. [x] Define and verify exact, padding-free packed tensors.
 3. [x] Transform a multi-operation i4 Function to i4x8/u32 physical storage.
 4. [x] Prove the complete representation-changing Function equivalent.
-5. [ ] Add bit-accurate pack/unpack execution and differential tests.
+5. [x] Add bit-accurate pack/unpack reference execution and exhaustive i4
+   domain vectors.
 6. [ ] Extend an externally maintained quantized inference model.
 7. [ ] Measure integration cost and compile-time scaling against a registry-
    based custom datatype path.

@@ -1,7 +1,10 @@
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <initializer_list>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -29,6 +32,16 @@ module bitpack_fixture@1.0.0 {
   fn pack(input: function) -> function {
     return @bp.run(input, u32, 1, "lsb");
   }
+
+  fn roundtrip(values: list<int>) -> list<int> {
+    encoded = @bp.encode(values, bp.integer<4>, u32, "lsb");
+    return @bp.decode(encoded, bp.integer<4>, u32, "lsb");
+  }
+
+  fn roundtrip_signed(values: list<int>) -> list<int> {
+    encoded = @bp.encode(values, bp.integer<4, true>, u32, "msb");
+    return @bp.decode(encoded, bp.integer<4, true>, u32, "msb");
+  }
 }
 )";
 
@@ -37,6 +50,15 @@ bool expect(bool condition, std::string_view message) {
     std::cerr << "test failure: " << message << '\n';
   }
   return condition;
+}
+
+bool bytes_equal(const std::optional<joggle::Bytes>& actual,
+                 std::initializer_list<unsigned int> expected) {
+  return actual && actual->size() == expected.size() &&
+         std::equal(actual->begin(), actual->end(), expected.begin(),
+                    [](std::byte lhs, unsigned int rhs) {
+                      return std::to_integer<unsigned int>(lhs) == rhs;
+                    });
 }
 
 }  // namespace
@@ -60,7 +82,54 @@ int main() {
     return EXIT_FAILURE;
   }
 
+  const std::vector<std::int64_t> values{0, 1, 2,  3,  4,  5,  6,  7,
+                                         8, 9, 10, 11, 12, 13, 14, 15};
+  const auto decoded = compiler.run<std::vector<std::int64_t>>(
+      "bitpack_fixture.roundtrip", values);
+  const auto bitpack_module = compiler.module("bitpack");
+  const auto integer = bitpack_module ? bitpack_module->type("integer")
+                                      : std::nullopt;
+  const auto i4 = integer ? compiler.make(*integer, std::int64_t{4}, false)
+                          : std::nullopt;
+  const auto signed_i4 =
+      integer ? compiler.make(*integer, std::int64_t{4}, true) : std::nullopt;
+  const auto u32 = compiler.make("u32");
+  const auto encoded = i4 && u32
+                           ? compiler.run<joggle::Bytes>(
+                                 "bitpack.encode", values, *i4, *u32,
+                                 std::string{"lsb"})
+                           : std::nullopt;
+  const auto msb_encoded = i4 && u32
+                               ? compiler.run<joggle::Bytes>(
+                                     "bitpack.encode", values, *i4, *u32,
+                                     std::string{"msb"})
+                               : std::nullopt;
+  const std::vector<std::int64_t> signed_values{-8, -7, -6, -5, -4, -3,
+                                                 -2, -1, 0,  1,  2,  3,
+                                                 4,  5,  6,  7};
+  const auto signed_decoded = compiler.run<std::vector<std::int64_t>>(
+      "bitpack_fixture.roundtrip_signed", signed_values);
+  const auto signed_encoded = signed_i4 && u32
+                                  ? compiler.run<joggle::Bytes>(
+                                        "bitpack.encode", signed_values,
+                                        *signed_i4, *u32, std::string{"msb"})
+                                  : std::nullopt;
+
   bool ok = true;
+  ok &= expect(decoded == values &&
+                   bytes_equal(encoded, {0x10U, 0x32U, 0x54U, 0x76U, 0x98U,
+                                         0xbaU, 0xdcU, 0xfeU}),
+               "source staging round-trips every unsigned i4 value");
+  ok &= expect(bytes_equal(msb_encoded,
+                           {0x67U, 0x45U, 0x23U, 0x01U, 0xefU, 0xcdU, 0xabU,
+                            0x89U}),
+               "msb lane order is distinct from little-endian word order");
+  ok &= expect(
+      signed_decoded == signed_values && signed_encoded &&
+          bytes_equal(signed_encoded,
+                      {0xefU, 0xcdU, 0xabU, 0x89U, 0x67U, 0x45U, 0x23U,
+                       0x01U}),
+      "every signed i4 value uses two's complement and staged decoding");
   const auto arguments = transformed->arguments();
   const auto result = transformed->result_types();
   const auto input_storage = arguments.empty()
@@ -114,8 +183,14 @@ int main() {
                                            *bad_storage, std::int64_t{1},
                                            std::int64_t{8}, std::string{"lsb"})
                            : std::nullopt;
-  ok &= expect(!invalid && !compiler.ok(),
-               "the format verifier rejects a lane/storage width mismatch");
+  const std::vector<std::int64_t> out_of_range{0, 1, 2, 3, 4, 5, 6, 16};
+  const auto invalid_encoding =
+      i4 && u32 ? compiler.run<joggle::Bytes>(
+                      "bitpack.encode", out_of_range, *i4, *u32,
+                      std::string{"lsb"})
+                : std::nullopt;
+  ok &= expect(!invalid && !invalid_encoding && !compiler.ok(),
+               "format and value-domain violations both fail closed");
   if (!ok) {
     equivalence.print(std::cerr);
     compiler.diagnostics().print(std::cerr);

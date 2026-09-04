@@ -42,8 +42,11 @@ The implementation already demonstrates:
    existing `Value` identities; and
 9. `bitpack` maps an i4 tensor Function to exact i4x8/u32 physical shapes and
    format-aware source functions, then proves whole-Function equivalence under
-   an idempotent logical Type projection; and
-10. Module bundles preserve and verify all imported data through public
+   an idempotent logical Type projection;
+10. the same independent Module defines a compiler-side reference codec, with
+    exhaustive i4 LSB/MSB and signed two's-complement vectors separating
+    physical byte semantics from the logical-equivalence proof; and
+11. Module bundles preserve and verify all imported data through public
    `check`, `run`, `install`, and `lock` workflows.
 
 These are infrastructure results. They do not establish general mathematical
