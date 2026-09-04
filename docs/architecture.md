@@ -48,8 +48,9 @@ These directories are not public namespaces, libraries, dialects, or runtime
 components. Joggle still builds one compiler library. Their purpose is to let
 short filenames such as `call.cpp`, `infer.cpp`, and `eval.cpp` communicate a
 single responsibility without suffixes such as `_internal` or `_contract`.
-In particular, `lang/mod.cpp` owns the textual Mod grammar and formatter,
-while `ir/mod.cpp` owns the in-memory Mod object and its identity semantics.
+In particular, `lang/mod.cpp` owns the textual Mod grammar, `lang/print.cpp`
+owns canonical printing, and `ir/mod.cpp` owns the in-memory Mod object and
+its identity semantics.
 Likewise, `lang/fn.cpp` owns fn parsing and printing, `lang/check.cpp` checks
 source-body structure, and `compile/body.cpp` specializes a valid source body
 into typed `Fn` IR.

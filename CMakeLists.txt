@@ -37,6 +37,7 @@ add_library(joggle
   src/lang/fn.cpp
   src/lang/check.cpp
   src/lang/mod.cpp
+  src/lang/print.cpp
   src/lang/prelude.cpp
   "${CMAKE_CURRENT_BINARY_DIR}/generated/prelude.cpp"
   src/ir/type.cpp
