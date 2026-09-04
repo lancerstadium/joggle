@@ -54,16 +54,28 @@ host target and binary digest:
 <module-identity>/native/<target>/<binary-sha256>/native.<suffix>
 ```
 
+Module-owned immutable bytes are stored without a manifest:
+
+```text
+<module-identity>/data/<payload-sha256>
+```
+
+Each lowercase filename is verified against its exact bytes and restored
+through `Module::store`. The reconstructed Module digest must still equal the
+identity directory, so missing, additional, renamed, symlinked, or modified
+payloads invalidate the installation. A source-only Module has no `data`
+directory.
+
 The suffix is platform-specific. Installing the same identity is idempotent.
 A different digest for the same name and exact version is rejected instead of
 silently replacing content. A second native digest for the same Module and
 target is likewise rejected.
 
-Install validates the complete closure before publishing. Module text and
-native are assembled in a hidden same-filesystem staging directory and
-become visible atomically. Uninstall first removes the exact version from the
-visible namespace, then reclaims storage. Resolution therefore never observes
-a partial Module release.
+Install validates the complete closure before publishing. Module text,
+Module-owned data, and native are assembled in a hidden same-filesystem staging
+directory and become visible atomically. Uninstall first removes the exact
+version from the visible namespace, then reclaims storage. Resolution therefore
+never observes a partial Module release.
 
 ## Resolution
 

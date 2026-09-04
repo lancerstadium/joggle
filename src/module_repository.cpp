@@ -4,8 +4,10 @@
 #include "joggle/digest.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -74,6 +76,139 @@ private:
   bool published_ = false;
 };
 
+bool valid_data_digest(std::string_view digest) {
+  return digest.size() == 64U &&
+         std::all_of(digest.begin(), digest.end(), [](char value) {
+           const auto character = static_cast<unsigned char>(value);
+           return std::isdigit(character) != 0 ||
+                  (value >= 'a' && value <= 'f');
+         });
+}
+
+std::optional<Bytes> read_data_file(const std::filesystem::path& path,
+                                    Diagnostics& diagnostics) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    diagnostics.report("cannot open Module data '" + path.string() + "'");
+    return std::nullopt;
+  }
+  std::ostringstream content;
+  content << input.rdbuf();
+  if (!input.eof() && input.fail()) {
+    diagnostics.report("cannot read Module data '" + path.string() + "'");
+    return std::nullopt;
+  }
+  const std::string bytes = content.str();
+  Bytes result;
+  result.reserve(bytes.size());
+  for (const char value : bytes) {
+    result.push_back(
+        static_cast<std::byte>(static_cast<unsigned char>(value)));
+  }
+  return result;
+}
+
+bool load_module_data(const std::filesystem::path& identity, Module& module,
+                      Diagnostics& diagnostics) {
+  const std::filesystem::path directory = identity / "data";
+  std::error_code error;
+  if (!std::filesystem::exists(directory, error)) {
+    if (error) {
+      diagnostics.report("cannot inspect Module data directory '" +
+                         directory.string() + "': " + error.message());
+      return false;
+    }
+    return true;
+  }
+  if (!std::filesystem::is_directory(directory, error) || error) {
+    diagnostics.report("Module data path is not a directory: '" +
+                       directory.string() + "'");
+    return false;
+  }
+  for (std::filesystem::directory_iterator current(directory, error), end;
+       current != end && !error; current.increment(error)) {
+    const auto status = current->symlink_status(error);
+    if (error || !std::filesystem::is_regular_file(status) ||
+        std::filesystem::is_symlink(status)) {
+      diagnostics.report("invalid entry in Module data directory '" +
+                         current->path().string() + "'");
+      return false;
+    }
+    const std::string expected = current->path().filename().string();
+    if (!valid_data_digest(expected)) {
+      diagnostics.report("invalid Module data filename '" +
+                         current->path().string() + "'");
+      return false;
+    }
+    auto bytes = read_data_file(current->path(), diagnostics);
+    if (!bytes) {
+      return false;
+    }
+    const std::string actual = module.store(std::move(*bytes));
+    if (actual != "sha256:" + expected) {
+      diagnostics.report("Module data content does not match its filename: '" +
+                         current->path().string() + "'");
+      return false;
+    }
+  }
+  if (error) {
+    diagnostics.report("cannot inspect Module data directory '" +
+                       directory.string() + "': " + error.message());
+    return false;
+  }
+  return true;
+}
+
+bool write_module_data(const std::filesystem::path& identity,
+                       const Module& module, Diagnostics& diagnostics) {
+  const auto names = module.data();
+  if (names.empty()) {
+    return true;
+  }
+  const std::filesystem::path directory = identity / "data";
+  std::error_code error;
+  if (!std::filesystem::create_directory(directory, error) || error) {
+    diagnostics.report("cannot create Module data directory '" +
+                       directory.string() + "': " + error.message());
+    return false;
+  }
+  for (const std::string& name : names) {
+    constexpr std::string_view prefix = "sha256:";
+    if (!std::string_view(name).starts_with(prefix) ||
+        !valid_data_digest(std::string_view(name).substr(prefix.size()))) {
+      diagnostics.report("Module contains an invalid data name '" + name +
+                         "'");
+      return false;
+    }
+    const auto content = module.data(name);
+    if (!content ||
+        content->size() >
+            static_cast<std::size_t>(
+                std::numeric_limits<std::streamsize>::max())) {
+      diagnostics.report("Module data '" + name + "' cannot be written");
+      return false;
+    }
+    const std::filesystem::path destination =
+        directory / name.substr(prefix.size());
+    std::ofstream output(destination,
+                         std::ios::binary | std::ios::trunc);
+    if (!output) {
+      diagnostics.report("cannot write Module data '" +
+                         destination.string() + "'");
+      return false;
+    }
+    output.write(reinterpret_cast<const char*>(content->data()),
+                 static_cast<std::streamsize>(content->size()));
+    output.close();
+    if (!output) {
+      diagnostics.report("cannot finish Module data '" +
+                         destination.string() + "'");
+      return false;
+    }
+  }
+  return true;
+}
+
 std::optional<InstalledModule>
 read_installed(const std::filesystem::path& root,
                const std::filesystem::path& source, Diagnostics& diagnostics) {
@@ -110,11 +245,12 @@ read_installed(const std::filesystem::path& root,
     return std::nullopt;
   }
   ++component;
-  if (component == relative.end() || component->string() != module->digest()) {
-    diagnostics.report("installed module path does not match its digest: '" +
+  if (component == relative.end()) {
+    diagnostics.report("installed module path has no digest: '" +
                        source.string() + "'");
     return std::nullopt;
   }
+  const std::string expected_digest = component->string();
   ++component;
   if (component == relative.end() || component->string() != "module.joggle") {
     diagnostics.report("invalid installed module filename: '" +
@@ -125,6 +261,14 @@ read_installed(const std::filesystem::path& root,
   if (component != relative.end()) {
     diagnostics.report("invalid installed module path: '" + source.string() +
                        "'");
+    return std::nullopt;
+  }
+  if (!load_module_data(source.parent_path(), *module, diagnostics)) {
+    return std::nullopt;
+  }
+  if (expected_digest != module->digest()) {
+    diagnostics.report("installed module path does not match its digest: '" +
+                       source.string() + "'");
     return std::nullopt;
   }
   return InstalledModule{std::move(*module), source};
@@ -523,6 +667,9 @@ install_module(const std::filesystem::path& root, const Module& module,
   if (!output) {
     diagnostics.report("cannot finish installed module '" +
                        staged_module.string() + "'");
+    return std::nullopt;
+  }
+  if (!write_module_data(staging.path(), module, diagnostics)) {
     return std::nullopt;
   }
   if (native && !install_native(staging.path(), *native, diagnostics)) {

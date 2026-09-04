@@ -86,9 +86,10 @@ location; expression replacement transfers the matched root location to newly
 created calls. No `name` parameter is added to every tensor function.
 
 Locations are excluded from canonical semantic formatting and Module identity.
-The original ONNX payload remains the lossless source record. Persisting
-Module-owned binary data through the repository is a separate bundle gate and
-must be solved before an imported model is advertised as installable.
+The original ONNX payload remains the lossless source record. The repository
+now preserves Module-owned binary data; lossless external CLI bundle I/O is
+tracked separately by RFC 0006 before imported models are advertised as
+installable through the public workflow.
 
 ## Dependency boundary
 

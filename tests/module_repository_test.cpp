@@ -67,7 +67,7 @@ int main() {
     return EXIT_FAILURE;
   }
   joggle::Diagnostics second_parse_diagnostics;
-  const auto second =
+  auto second =
       joggle::parse_module(R"(
     joggle 1;
     module atomic@2.0.0 {
@@ -79,6 +79,9 @@ int main() {
     second_parse_diagnostics.print(std::cerr);
     return EXIT_FAILURE;
   }
+  const joggle::Bytes second_payload{
+      std::byte{0x00}, std::byte{0x10}, std::byte{0x20}, std::byte{0xff}};
+  const std::string second_data = second->store(second_payload);
 
   bool ok = true;
   joggle::Diagnostics failed_install;
@@ -133,6 +136,14 @@ int main() {
       root.path(), *second, second_install_diagnostics);
   ok &= expect(second_installed && second_install_diagnostics.ok(),
                "a second version can coexist under the same module name");
+  const std::filesystem::path second_data_path =
+      second_installed
+          ? second_installed->parent_path() / "data" /
+                second_data.substr(std::string_view("sha256:").size())
+          : std::filesystem::path{};
+  ok &= expect(second_installed &&
+                   std::filesystem::is_regular_file(second_data_path),
+               "Module-owned data is installed beside canonical source");
 
   if (installed) {
     const std::filesystem::path abandoned_native =
@@ -177,6 +188,19 @@ int main() {
                      !missing_remove_diagnostics.ok() && second_installed &&
                      std::filesystem::exists(*second_installed),
                  "a missing exact version fails without changing siblings");
+
+    ok &= expect(write(second_data_path, "corrupt"),
+                 "corrupt installed Module data fixture");
+    joggle::Diagnostics corrupt_data_diagnostics;
+    const auto corrupt =
+        joggle::detail::installed_modules(root.path(), corrupt_data_diagnostics);
+    ok &= expect(corrupt.empty() && !corrupt_data_diagnostics.ok(),
+                 "installed Module data is verified against its filename");
+    joggle::Diagnostics corrupt_reinstall_diagnostics;
+    const auto corrupt_reinstall = joggle::detail::install_module(
+        root.path(), *second, corrupt_reinstall_diagnostics);
+    ok &= expect(!corrupt_reinstall && !corrupt_reinstall_diagnostics.ok(),
+                 "idempotent install rejects corrupt Module-owned data");
   }
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;

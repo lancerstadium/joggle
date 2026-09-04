@@ -28,7 +28,8 @@ of the project; none is a migration log.
   effect safety without a pattern IR; [tensor RFC](rfcs/0004-tensor-module.md)
   defines the first real-model vertical slice; [ONNX inference
   RFC](rfcs/0005-onnx-inference-import.md) freezes the audited importer
-  contract.
+  contract; [Module bundle RFC](rfcs/0006-module-bundles.md) defines lossless
+  persistence for Module-owned bytes without another ownership object.
 
 The repository contains the compiler core, the first static tensor semantic
 Module, and a narrow ONNX IR 3/opset 7 inference importer. It does not claim

@@ -38,8 +38,9 @@ quantization annotations, subgraphs, training data, custom domains, unknown
 attributes, and unsupported operators are rejected before a Module is
 returned. Shape propagation checks the declared graph output.
 
-This is not a general ONNX compatibility claim. Bundle persistence for
-Module-owned bytes remains a separate implementation gate.
+This is not a general ONNX compatibility claim. The repository now preserves
+Module-owned bytes, while lossless CLI bundle export remains a separate gate
+in [RFC 0006](rfcs/0006-module-bundles.md).
 
 ## Optional build
 
