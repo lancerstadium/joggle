@@ -19,7 +19,9 @@ of the project; none is a migration log.
   resolution, and lock files.
 - [Core language RFC](rfcs/0001-core-language.md) freezes the implementation
   gates; [callable values RFC](rfcs/0002-callable-values.md) defines typed
-  lambdas without synthetic declarations.
+  lambdas without synthetic declarations; [expression replacement
+  RFC](rfcs/0003-expression-replacement.md) defines typed matching and explicit
+  effect safety without a pattern IR.
 
 The repository currently contains only the compiler core. AI vocabulary and
 target Modules are being rebuilt against the rules in [Module design](modules.md)

@@ -39,6 +39,7 @@ module native_test@1.0.0 {
     storage_bits: int = bits;
   }
   type word(width: int);
+  type memory();
 
   fn identity<T>(input: T) -> T;
   fn encode<T>(input: T) -> word<T.storage_bits>;
@@ -79,6 +80,16 @@ module native_test@1.0.0 {
   const auto embedded_prelude = compiler.module("prelude");
   const auto list_schema =
       embedded_prelude ? embedded_prelude->type("list") : std::nullopt;
+  const auto effect_schema =
+      embedded_prelude ? embedded_prelude->type("effect") : std::nullopt;
+  const auto native_module = compiler.module("native_test");
+  const auto memory_schema =
+      native_module ? native_module->type("memory") : std::nullopt;
+  const auto memory = memory_schema ? compiler.make(*memory_schema)
+                                    : std::optional<joggle::Type>{};
+  const auto memory_effect = effect_schema && memory
+                                 ? compiler.make(*effect_schema, *memory)
+                                 : std::optional<joggle::Type>{};
   const auto integer_list =
       list_schema && integer_value_type
           ? compiler.make(*list_schema, *integer_value_type)
@@ -102,12 +113,13 @@ module native_test@1.0.0 {
                "the installed Prelude source is the embedded authority");
   ok &= expect(
       i32 && u32 && f32 && integer_value_type && type_value_type &&
-          integer_list &&
+          integer_list && memory_effect &&
           integer_value_type->schema().symbol().qualified_name() ==
               "prelude.int" &&
           type_value_type->schema().symbol().qualified_name() ==
               "prelude.type" &&
           integer_list->get<joggle::Type>("element") == integer_value_type &&
+          memory_effect->get<joggle::Type>("domain") == memory &&
           i32->schema().symbol().qualified_name() == "prelude.i32" &&
           u32->schema().symbol().qualified_name() == "prelude.u32" &&
           f32->schema().symbol().qualified_name() == "prelude.f32" &&

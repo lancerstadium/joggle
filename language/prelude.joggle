@@ -1,6 +1,6 @@
 joggle 1;
 
-module prelude@3.0.0 {
+module prelude@4.0.0 {
   type type();
   type int();
   type real();
@@ -10,6 +10,7 @@ module prelude@3.0.0 {
   type function();
   type module();
   type callable(inputs: list<type>, results: list<type>);
+  type effect(domain: type);
   type list(element: type);
   type i1() {
     storage_bits: int = 1;

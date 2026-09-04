@@ -100,7 +100,7 @@ an earlier gate.
 4. Higher-order core: add typed function values and typed lambdas without a
    second expression grammar. **Complete; see RFC 0002.**
 5. Effect-safe replacement: implement checked expression matching and atomic
-   replacement.
+   replacement. **In progress; see RFC 0003.**
 6. Tensor module: define real tensor types and operations outside the core.
 7. ONNX module: load unmodified ONNX model-zoo artifacts through an ordinary
    compile-time function.
