@@ -157,6 +157,7 @@ if(JOGGLE_BUILD_TESTS)
 
   add_executable(joggle_transform_test tests/transform_test.cpp)
   target_link_libraries(joggle_transform_test PRIVATE joggle::joggle)
+  target_include_directories(joggle_transform_test PRIVATE src)
   add_test(NAME transform COMMAND joggle_transform_test)
 
   add_executable(joggle_specialization_test tests/specialization_test.cpp)

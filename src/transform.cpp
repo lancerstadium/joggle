@@ -1,5 +1,8 @@
 #include "joggle/transform.h"
 
+#include "prelude.h"
+#include "transform_internal.h"
+
 #include "joggle/compiler.h"
 
 #include <algorithm>
@@ -8,6 +11,92 @@
 #include <utility>
 
 namespace joggle {
+namespace detail {
+
+bool validate_expression_template(const Function& function,
+                                  std::string_view role,
+                                  Diagnostics& diagnostics) {
+  const auto reject = [&](std::string reason) {
+    diagnostics.report(std::string(role) + " expression template " + reason);
+    return false;
+  };
+  try {
+    const auto blocks = function.blocks();
+    if (blocks.size() != 1U || !blocks.front().is_entry() ||
+        blocks.front().terminator().kind() != Terminator::Kind::Return) {
+      return reject("must contain one entry block ending in return");
+    }
+    const auto returned = blocks.front().terminator().returned();
+    const auto result_types = function.result_types();
+    if (result_types.size() != 1U || returned.size() != 1U) {
+      return reject("must have exactly one result");
+    }
+
+    const auto holes = function.arguments();
+    const auto effect = [](const Value& value) {
+      return is_effect_type(value.type());
+    };
+    if (std::any_of(holes.begin(), holes.end(), effect) ||
+        is_effect_type(result_types.front())) {
+      return reject("cannot expose an effect token");
+    }
+
+    const auto ops = function.ops();
+    for (const Op& op : ops) {
+      const auto arguments = op.arguments();
+      const auto results = op.results();
+      if (results.size() != 1U) {
+        return reject("cannot contain a call with multiple results");
+      }
+      if (std::any_of(arguments.begin(), arguments.end(), effect) ||
+          effect(results.front())) {
+        return reject("cannot contain an effect token");
+      }
+      for (const Value& argument : arguments) {
+        if (argument.inline_function()) {
+          return reject("cannot contain a nested inline function");
+        }
+      }
+    }
+
+    std::vector<Op> reachable;
+    std::vector<Value> pending{returned.front()};
+    while (!pending.empty()) {
+      const Value value = pending.back();
+      pending.pop_back();
+      if (value.known() || value.referenced_function() ||
+          std::find(holes.begin(), holes.end(), value) != holes.end()) {
+        continue;
+      }
+      const auto producer = std::find_if(
+          ops.begin(), ops.end(), [&](const Op& op) {
+            const auto results = op.results();
+            return std::find(results.begin(), results.end(), value) !=
+                   results.end();
+          });
+      if (producer == ops.end()) {
+        return reject("contains a captured residual value");
+      }
+      if (std::find(reachable.begin(), reachable.end(), *producer) !=
+          reachable.end()) {
+        continue;
+      }
+      reachable.push_back(*producer);
+      const auto arguments = producer->arguments();
+      pending.insert(pending.end(), arguments.begin(), arguments.end());
+    }
+    if (reachable.size() != ops.size()) {
+      return reject("contains a call outside its returned expression");
+    }
+    return true;
+  } catch (const std::exception& error) {
+    return reject("validation failed: " + std::string(error.what()));
+  } catch (...) {
+    return reject("validation failed with an unknown exception");
+  }
+}
+
+}  // namespace detail
 namespace {
 
 template <typename From, typename To>

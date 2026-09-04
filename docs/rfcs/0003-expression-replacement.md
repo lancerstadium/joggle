@@ -106,6 +106,12 @@ The first matcher accepts only token-free expression lambdas. The boundary
 rule above already defines the later token-aware extension and prevents the
 initial implementation from silently rewriting stateful computation.
 
+Template validation walks backward from the returned value. Function
+arguments are holes; Known values and function references are leaves; every
+call must have one result and be reachable from the root. This rejects dead
+calls, nested inline functions, effects, CFG structure, and tuple-like calls
+before matching begins, without retaining a second pattern representation.
+
 ## C++ primitive
 
 The low-level operation is intentionally value-oriented:
@@ -139,7 +145,7 @@ on a private `Module` snapshot and publishes only after every member succeeds.
    adding a new declaration category.
 2. [complete] Enforce affine token use and add branch/merge positive and
    negative tests.
-3. Validate token-free, single-block expression templates.
+3. [complete] Validate token-free, single-block expression templates.
 4. Implement deterministic typed DAG matching with repeated-hole equality and
    internal-use closure checks.
 5. Clone replacement DAGs through one `Function::Edit` and commit atomically.

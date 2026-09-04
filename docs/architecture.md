@@ -81,7 +81,7 @@ Explicit compiler-time calls pass typed lambdas as verified `Function`
 execution values and may return them for later `@` calls. This path shares
 compiler-call shaping, overload filtering, default handling, and execution
 with source-defined compiler functions; it does not encode functions as scalar
-metadata. Effect-safe replacement is the next language gate.
+metadata. Typed expression matching is the next transformation gate.
 
 Residual effects use the ordinary `effect<domain>` Prelude type. Tokens flow
 through calls and CFG edges as normal SSA values, and the verifier prevents

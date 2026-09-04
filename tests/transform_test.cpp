@@ -7,6 +7,8 @@
 
 #include <joggle/joggle.h>
 
+#include "transform_internal.h"
+
 namespace {
 
 bool expect(bool condition, std::string_view message) {
@@ -26,6 +28,7 @@ joggle 1;
 module mapping@1.0.0 {
   type word();
   type alternate();
+  type memory();
 
   fn keep(input: word) -> word;
   fn converted(input: word) -> word;
@@ -33,6 +36,8 @@ module mapping@1.0.0 {
   fn binary(lhs: word, rhs: word) -> word;
   fn identity<T>(input: T) -> T;
   fn apply(input: word, body: (word) -> word) -> word;
+  fn advance(token: effect<memory>) -> effect<memory>;
+  fn split(input: word) -> (word, word);
 
   fn first(input: word) -> word {
     return keep(input);
@@ -48,6 +53,19 @@ module mapping@1.0.0 {
 
   fn with_inline(input: word) -> word {
     return apply(input, (value: word) => keep(value));
+  }
+
+  fn pair(input: word) -> (word, word) {
+    return input, input;
+  }
+
+  fn effect_template(token: effect<memory>) -> effect<memory> {
+    return advance(token);
+  }
+
+  fn multi_call_template(input: word) -> word {
+    first, second = split(input);
+    return first;
   }
 }
 )",
@@ -76,13 +94,81 @@ module mapping@1.0.0 {
   auto fixedpoint = compiler.materialize("mapping.expanded");
   auto oscillating = compiler.materialize("mapping.expanded");
   auto with_inline = compiler.materialize("mapping.with_inline");
+  auto pair = compiler.materialize("mapping.pair");
+  auto effect_template = compiler.materialize("mapping.effect_template");
+  auto multi_call_template =
+      compiler.materialize("mapping.multi_call_template");
   if (!keep || !converted || !other || !binary || !identity || !word ||
       !alternate || !i1 || !first || !second || !expanded || !convertible ||
-      !fixedpoint || !oscillating || !with_inline) {
+      !fixedpoint || !oscillating || !with_inline || !pair ||
+      !effect_template || !multi_call_template) {
     return EXIT_FAILURE;
   }
 
   bool ok = true;
+  joggle::Diagnostics valid_template_diagnostics;
+  ok &= expect(joggle::detail::validate_expression_template(
+                   *expanded, "before", valid_template_diagnostics) &&
+                   valid_template_diagnostics.ok(),
+               "one pure returned call is a valid expression template");
+
+  joggle::Diagnostics result_template_diagnostics;
+  ok &= expect(!joggle::detail::validate_expression_template(
+                   *pair, "before", result_template_diagnostics) &&
+                   !result_template_diagnostics.ok() &&
+                   result_template_diagnostics.entries().front().message.find(
+                       "exactly one result") != std::string::npos,
+               "an expression template rejects multiple function results");
+
+  joggle::Diagnostics effect_template_diagnostics;
+  ok &= expect(!joggle::detail::validate_expression_template(
+                   *effect_template, "before", effect_template_diagnostics) &&
+                   !effect_template_diagnostics.ok() &&
+                   effect_template_diagnostics.entries().front().message.find(
+                       "effect token") != std::string::npos,
+               "the first expression matcher rejects effectful templates");
+
+  joggle::Diagnostics multi_call_template_diagnostics;
+  ok &= expect(
+      !joggle::detail::validate_expression_template(
+          *multi_call_template, "before", multi_call_template_diagnostics) &&
+          !multi_call_template_diagnostics.ok() &&
+          multi_call_template_diagnostics.entries().front().message.find(
+              "call with multiple results") != std::string::npos,
+      "an expression DAG rejects calls whose result has tuple semantics");
+
+  joggle::Diagnostics inline_template_diagnostics;
+  ok &= expect(!joggle::detail::validate_expression_template(
+                   *with_inline, "before", inline_template_diagnostics) &&
+                   !inline_template_diagnostics.ok() &&
+                   inline_template_diagnostics.entries().front().message.find(
+                       "nested inline function") != std::string::npos,
+               "an expression template has no nested callable body");
+
+  auto dead_template = compiler.create_function();
+  if (!dead_template) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = dead_template->edit();
+    const auto input = edit.argument(*word);
+    const auto root = edit.append(*keep, {input});
+    static_cast<void>(edit.append(*other, {input}));
+    edit.ret(dead_template->entry(), {root.value()});
+    joggle::Diagnostics diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  joggle::Diagnostics dead_template_diagnostics;
+  ok &= expect(!joggle::detail::validate_expression_template(
+                   *dead_template, "before", dead_template_diagnostics) &&
+                   !dead_template_diagnostics.ok() &&
+                   dead_template_diagnostics.entries().front().message.find(
+                       "outside its returned expression") != std::string::npos,
+               "a template is one rooted DAG and contains no dead call");
+
   const auto first_revision = first->revision();
   joggle::Diagnostics no_op_diagnostics;
   const auto no_op = joggle::map_calls(
@@ -339,6 +425,13 @@ module mapping@1.0.0 {
       return EXIT_FAILURE;
     }
   }
+  joggle::Diagnostics cfg_template_diagnostics;
+  ok &= expect(!joggle::detail::validate_expression_template(
+                   *cfg, "before", cfg_template_diagnostics) &&
+                   !cfg_template_diagnostics.ok() &&
+                   cfg_template_diagnostics.entries().front().message.find(
+                       "one entry block") != std::string::npos,
+               "an expression template rejects branches and merges");
   joggle::Diagnostics clone_diagnostics;
   const auto cloned = joggle::clone(
       compiler, *cfg,
