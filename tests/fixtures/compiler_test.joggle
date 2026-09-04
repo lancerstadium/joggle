@@ -1,6 +1,6 @@
 joggle 1;
 
-module test_ir@1.0.0 {
+mod test_ir@1.0.0 {
   type integer(width: int, signed: bool = false) {
     storage_bits: int = width;
     is_signed: bool = signed;
@@ -11,5 +11,5 @@ module test_ir@1.0.0 {
   }
   fn cast<T>(input: T) -> T;
   fn (+)<T>(lhs: T, rhs: T) -> T;
-  fn canonicalize(input: function) -> function;
+  fn canonicalize(input: fn) -> fn;
 }

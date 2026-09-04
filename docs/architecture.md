@@ -1,7 +1,7 @@
 # Architecture
 
 Joggle is a C++ compiler substrate with one source owner and one extension
-mechanism. The owner is `Module`; the extension mechanism is ordinary typed
+mechanism. The owner is `Mod`; the extension mechanism is ordinary typed
 `fn` declarations. Tensor operators, importers, transformations, measurements,
 and output writers are library vocabulary rather than core subclasses.
 
@@ -9,32 +9,40 @@ and output writers are library vocabulary rather than core subclasses.
 
 | Object | Responsibility |
 | --- | --- |
-| `Module` | versioned declarations, imports, function bodies, immutable data |
+| `Mod` | versioned declarations, imports, fn bodies, immutable data |
 | `Type` | immutable instance of a `type` declaration |
-| `Function` | editable typed CFG/SSA body |
-| `Op` | one call in a `Function` |
-| `Value` | typed function argument, result, or known compiler value |
+| `Fn` | editable typed CFG/SSA body |
+| `Expr` | immutable declaration-language expression inside a `Mod` |
+| `Blk` | basic block inside a `Fn` |
+| `Op` | one call in a `Fn` |
+| `Val` | typed fn argument, result, or known compiler value |
 | `Compiler` | dependency linking, overload resolution, staging, bindings |
 
+These six high-frequency IR atoms use one compact vocabulary everywhere:
+`Mod`, `Fn`, `Val`, `Expr`, `Blk`, and `Op`. Their public accessors use the
+same stems (`mod`, `fn`, `blk`, and their plurals). Descriptive roles such as
+`TypeDecl`, `Terminator`, `Diagnostics`, and `SourceRange` keep full words;
+Joggle does not abbreviate every identifier indiscriminately.
+
 There is no second Program, Graph, Package, Attribute, Pass, Target, or Result
-owner. A model graph is a `Module` containing functions. Metadata is a normal
-`Type`. A transformation is a function from one compiler value to another.
+owner. A model graph is a `Mod` containing fns. Metadata is a normal
+`Type`. A transformation is a fn from one compiler value to another.
 
-## Module snapshots
+## Mod snapshots
 
-Parsing creates a `Module`. Materialization attaches editable `Function`
-bodies to declarations in a new `Module` snapshot. Committed edits use
+Parsing creates a `Mod`. Materialization attaches editable `Fn`
+bodies to declarations in a new `Mod` snapshot. Committed edits use
 copy-on-write storage, so earlier snapshots remain valid.
 
-`Module::digest()` identifies the complete canonical snapshot, including
-materialized bodies and stored data. `Module::declaration_digest()` identifies
+`Mod::digest()` identifies the complete canonical snapshot, including
+materialized bodies and stored data. `Mod::declaration_digest()` identifies
 the imports and declarations with bodies erased. Symbols retain the latter as
 provenance so a declaration from another compiler snapshot cannot be used by
 accident.
 
 ## Declarations
 
-The public declaration forms are `import`, `type`, and `fn` inside a module.
+The public declaration forms are `import`, `type`, and `fn` inside a mod.
 `type` covers both run-time value types and compile-time descriptions:
 
 ```joggle
@@ -57,35 +65,35 @@ fields are checked when referenced.
 
 Ordinary calls are program calls. `@call(...)` requests compiler-time
 execution. Both resolve the same overload and use the same declaration
-identity; staging does not create a second kind of function.
+identity; staging does not create a second kind of fn.
 
 The explicit-`@` rule is enforced during materialization. A compiler-domain
 call without `@` is diagnosed, and an ordinary program call remains in IR even
 when its inputs are Known.
 
-Native C++ bodies are optional implementations of bodyless functions. Their
+Native C++ bodies are optional implementations of bodyless fns. Their
 signatures are checked against the source declaration when bound. The source
-module remains authoritative; no generated declaration header is required.
+mod remains authoritative; no generated declaration header is required.
 
-## Editable functions
+## Editable fns
 
-A `Function` owns blocks, block arguments, calls, returns, and typed values.
+A `Fn` owns blocks, block arguments, calls, returns, and typed values.
 Edits are transactional: append, insert, replace, erase, then commit. A failed
 commit does not publish a partially invalid body. The verifier checks ownership,
-dominance, terminators, call signatures, result types, and cross-module symbol
+dominance, terminators, call signatures, result types, and cross-mod symbol
 provenance.
 
 The edit API is the low-level substrate. A typed source lambda becomes an
-anonymous `Function` held by a callable `Value`; it uses the same calls, types,
-verification, cloning, and formatting as a named body. It is not a module
+anonymous `Fn` held by a callable `Val`; it uses the same calls, types,
+verification, cloning, and formatting as a named body. It is not a mod
 declaration and does not introduce an alternate graph or pattern IR.
 
-Explicit compiler-time calls pass typed lambdas as verified `Function`
+Explicit compiler-time calls pass typed lambdas as verified `Fn`
 execution values and may return them for later `@` calls. This path shares
 compiler-call shaping, overload filtering, default handling, and execution
-with source-defined compiler functions; it does not encode functions as scalar
+with source-defined compiler fns; it does not encode fns as scalar
 metadata. Typed expression matching and bounded source-body equivalence reuse
-these same verified Functions and create no normalization IR.
+these same verified Fns and create no normalization IR.
 
 Residual effects use the ordinary `effect<domain>` Prelude type. Tokens flow
 through calls and CFG edges as normal SSA values, and the verifier prevents
@@ -99,32 +107,32 @@ purity registry or effect annotation attached to `fn`.
 
 An extension normally contains:
 
-1. one `.joggle` module declaring its types and functions;
+1. one `.joggle` mod declaring its types and fns;
 2. optional source bodies for portable behavior;
 3. an optional native library for host-only parsing, analysis, or file output.
 
 Composition is explicit in source:
 
 ```joggle
-fn prepare(input: bytes, policy: type) -> module {
+fn prepare(input: bytes, policy: type) -> mod {
   model = @read(input);
   return @optimize(model, policy);
 }
 ```
 
-Names such as `read` and `optimize` are module APIs, not magic hooks.
+Names such as `read` and `optimize` are mod APIs, not magic hooks.
 The core imposes no lowering direction or fixed hardware hierarchy.
 
 ## Near-term implementation order
 
 The implemented path currently ends at the core language, tensor and quant
-semantics, typed transformations, ONNX import, and lossless Module bundles.
-`transform.replace` edits actual Function SSA/CFG structure transactionally.
-Moving an expression behind another source function is merely function
+semantics, typed transformations, ONNX import, and lossless Mod bundles.
+`transform.replace` edits actual Fn SSA/CFG structure transactionally.
+Moving an expression behind another source fn is merely fn
 factoring, not executable kernel fusion.
 
 Kernel scheduling, physical layouts, packed formats, storage planning, and
-target emission remain intentionally absent until one normal function body can
+target emission remain intentionally absent until one normal fn body can
 express and verify a concrete executable implementation. The compiler must not
-simulate progress by copying the tensor vocabulary into a format Module or by
+simulate progress by copying the tensor vocabulary into a format Mod or by
 renaming a reference expression as a fused operation.

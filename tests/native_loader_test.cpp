@@ -31,24 +31,23 @@ int main(int argc, char** argv) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
-  const auto module = compiler.module("native_plugin");
-  if (!module || !compiler.load_native("native_plugin", argv[2])) {
+  const auto mod = compiler.mod("native_plugin");
+  if (!mod || !compiler.load_native("native_plugin", argv[2])) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
 
-  const auto positive = module->type("positive");
+  const auto positive = mod->type("positive");
   const auto value = positive ? compiler.make(*positive, std::int64_t{7})
                               : std::optional<joggle::Type>{};
-  auto function = compiler.create_function();
+  auto fn = compiler.create_fn();
   const auto transformed =
-      function ? compiler.run<joggle::Function>("native_plugin.noop", *function)
-               : std::nullopt;
+      fn ? compiler.run<joggle::Fn>("native_plugin.noop", *fn) : std::nullopt;
   bool ok = true;
   ok &=
       expect(value.has_value(), "the loaded native refines type construction");
   ok &= expect(transformed.has_value(),
-               "the loaded native implements a bodyless compiler function");
+               "the loaded native implements a bodyless compiler fn");
   ok &= expect(compiler.load_native("native_plugin", argv[2]),
                "loading the same exact native is idempotent");
 
@@ -61,19 +60,19 @@ int main(int argc, char** argv) {
     adjacent.diagnostics().print(std::cerr);
   }
   ok &= expect(adjacent_loaded,
-               "a Module-adjacent platform library is discovered directly");
+               "a Mod-adjacent platform library is discovered directly");
   ok &= expect(!adjacent.load_native("missing") && !adjacent.ok(),
-               "native loading resolves one linked Module name");
+               "native loading resolves one linked Mod name");
 
   joggle::Compiler rollback;
   rollback.load(argv[1]);
   const bool linked = rollback.link();
-  const auto rollback_module = rollback.module("native_plugin");
+  const auto rollback_mod = rollback.mod("native_plugin");
   const bool rejected =
-      rollback_module && !rollback.load_native("native_plugin", argv[3]);
-  const auto rollback_type = rollback_module
-                                 ? rollback_module->type("positive")
-                                 : std::optional<joggle::Module::TypeDecl>{};
+      rollback_mod && !rollback.load_native("native_plugin", argv[3]);
+  const auto rollback_type = rollback_mod
+                                 ? rollback_mod->type("positive")
+                                 : std::optional<joggle::Mod::TypeDecl>{};
   const auto negative = rollback_type
                             ? rollback.make(*rollback_type, std::int64_t{-1})
                             : std::optional<joggle::Type>{};
@@ -82,10 +81,10 @@ int main(int argc, char** argv) {
   const auto integer =
       recovered ? rollback.make("int") : std::optional<joggle::Type>{};
   const auto one = integer ? rollback.known(*integer, std::int64_t{1})
-                           : std::optional<joggle::Value>{};
+                           : std::optional<joggle::Val>{};
   const auto probe =
       one ? rollback.materialize("native_plugin.cache_probe", {*one})
-          : std::optional<joggle::Function>{};
+          : std::optional<joggle::Fn>{};
   const auto cached =
       probe && !probe->arguments().empty()
           ? probe->arguments().front().type().get<std::int64_t>("value")

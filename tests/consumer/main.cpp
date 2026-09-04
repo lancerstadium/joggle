@@ -16,34 +16,33 @@ int main(int argc, char** argv) {
     compiler.diagnostics().print(std::cerr);
     return 1;
   }
-  const auto module = compiler.module("external");
-  if (!module) {
+  const auto mod = compiler.mod("external");
+  if (!mod) {
     compiler.diagnostics().print(std::cerr);
     return 1;
   }
-  const auto make = module->function("make");
-  const auto converted = module->function("converted");
+  const auto make = mod->fn("make");
+  const auto converted = mod->fn("converted");
   if (!make || !converted || !compiler.load_native("external")) {
     compiler.diagnostics().print(std::cerr);
     return 1;
   }
 
-  auto function = compiler.materialize("external.main");
+  auto fn = compiler.materialize("external.main");
   auto transformed =
-      function ? compiler.run<joggle::Function>("external.convert", *function)
-               : std::nullopt;
+      fn ? compiler.run<joggle::Fn>("external.convert", *fn) : std::nullopt;
   if (!transformed) {
     compiler.diagnostics().print(std::cerr);
     return 1;
   }
-  function = std::move(transformed);
-  const auto operations = function->ops();
+  fn = std::move(transformed);
+  const auto operations = fn->ops();
   if (operations.size() != 1U || operations.front().callee() != *converted) {
     compiler.diagnostics().print(std::cerr);
     return 1;
   }
 
-  auto constructed = compiler.create_function();
+  auto constructed = compiler.create_fn();
   const auto int_type = compiler.make("int");
   const auto bits12 =
       int_type ? compiler.known(*int_type, std::int64_t{12}) : std::nullopt;

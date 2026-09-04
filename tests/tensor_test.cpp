@@ -14,7 +14,7 @@ namespace {
 constexpr std::string_view fire_source = R"(
 joggle 1;
 
-module squeezenet_slice@1.0.0 {
+mod squeezenet_slice@1.0.0 {
   import tensor@1 as t;
 
   fn conv_relu(
@@ -138,7 +138,7 @@ bool expect(bool condition, std::string_view message) {
 }
 
 void register_tensor_verifier(joggle::Compiler& compiler,
-                              const joggle::Module::TypeDecl& tensor) {
+                              const joggle::Mod::TypeDecl& tensor) {
   compiler.verify(
       tensor, [](const joggle::Type& type, joggle::Diagnostics& diagnostics) {
         const auto element = type.get<joggle::Type>("element");
@@ -148,9 +148,7 @@ void register_tensor_verifier(joggle::Compiler& compiler,
           return false;
         }
         if (std::any_of(shape->begin(), shape->end(),
-                        [](std::int64_t dimension) {
-                          return dimension < 0;
-                        })) {
+                        [](std::int64_t dimension) { return dimension < 0; })) {
           diagnostics.report("static tensor dimensions must be non-negative");
           return false;
         }
@@ -158,16 +156,15 @@ void register_tensor_verifier(joggle::Compiler& compiler,
       });
 }
 
-std::optional<joggle::Module::TypeDecl>
+std::optional<joggle::Mod::TypeDecl>
 load_tensor_slice(joggle::Compiler& compiler) {
-  compiler.load(JOGGLE_TENSOR_MODULE);
+  compiler.load(JOGGLE_TENSOR_MOD);
   compiler.add(fire_source, "squeezenet-slice.joggle");
   if (!compiler.link()) {
     return std::nullopt;
   }
-  const auto tensor_module = compiler.module("tensor");
-  const auto tensor = tensor_module ? tensor_module->type("tensor")
-                                    : std::nullopt;
+  const auto tensor_mod = compiler.mod("tensor");
+  const auto tensor = tensor_mod ? tensor_mod->type("tensor") : std::nullopt;
   if (tensor) {
     register_tensor_verifier(compiler, *tensor);
   }
@@ -179,32 +176,24 @@ load_tensor_slice(joggle::Compiler& compiler) {
 int main() {
   joggle::Compiler compiler;
   const auto tensor = load_tensor_slice(compiler);
-  const auto slice = compiler.module("squeezenet_slice");
-  const auto tensor_module = compiler.module("tensor");
+  const auto slice = compiler.mod("squeezenet_slice");
+  const auto tensor_mod = compiler.mod("tensor");
   const auto f32 = compiler.make("f32");
-  const auto fire_decl = slice ? slice->function("fire") : std::nullopt;
-  const auto pattern_decl =
-      slice ? slice->function("squeeze_pattern") : std::nullopt;
-  const auto fused_decl =
-      slice ? slice->function("squeeze_fused") : std::nullopt;
-  const auto wrong_decl =
-      slice ? slice->function("squeeze_wrong") : std::nullopt;
-  const auto conv_relu_decl =
-      slice ? slice->function("conv_relu") : std::nullopt;
-  const auto relu_decl = tensor_module ? tensor_module->function("relu")
-                                       : std::nullopt;
-  const auto concat_decl = tensor_module ? tensor_module->function("concat")
-                                         : std::nullopt;
-  if (!tensor || !slice || !tensor_module || !f32 || !fire_decl ||
-      !pattern_decl || !fused_decl || !wrong_decl || !conv_relu_decl ||
-      !relu_decl ||
+  const auto fire_decl = slice ? slice->fn("fire") : std::nullopt;
+  const auto pattern_decl = slice ? slice->fn("squeeze_pattern") : std::nullopt;
+  const auto fused_decl = slice ? slice->fn("squeeze_fused") : std::nullopt;
+  const auto wrong_decl = slice ? slice->fn("squeeze_wrong") : std::nullopt;
+  const auto conv_relu_decl = slice ? slice->fn("conv_relu") : std::nullopt;
+  const auto relu_decl = tensor_mod ? tensor_mod->fn("relu") : std::nullopt;
+  const auto concat_decl = tensor_mod ? tensor_mod->fn("concat") : std::nullopt;
+  if (!tensor || !slice || !tensor_mod || !f32 || !fire_decl || !pattern_decl ||
+      !fused_decl || !wrong_decl || !conv_relu_decl || !relu_decl ||
       !concat_decl) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
 
-  const auto scalar = compiler.make(*tensor, *f32,
-                                    std::vector<std::int64_t>{});
+  const auto scalar = compiler.make(*tensor, *f32, std::vector<std::int64_t>{});
   auto fire = compiler.materialize(*fire_decl);
   auto pattern = compiler.materialize(*pattern_decl);
   auto fused = compiler.materialize(*fused_decl);
@@ -221,7 +210,7 @@ int main() {
                    std::vector<std::int64_t>{},
                "rank-zero static tensors remain valid tensor types");
   ok &= expect(fire_ops.size() == 7U &&
-                   fire_ops[0].callee().symbol().module_name() == "tensor" &&
+                   fire_ops[0].callee().symbol().mod_name() == "tensor" &&
                    fire_ops[0].callee().symbol().local_name() == "conv" &&
                    fire_ops[1].callee() == *relu_decl &&
                    fire_ops.back().callee() == *concat_decl,
@@ -237,71 +226,70 @@ int main() {
               std::vector<std::int64_t>({1, 1, 1, 1}) &&
           fire_ops.back().property<std::int64_t>("axis") == 1,
       "compiler-domain tensor arguments become typed immutable properties");
-  ok &= expect(result.size() == 1U &&
-                   result.front().type().get<std::vector<std::int64_t>>(
-                       "shape") ==
-                       std::vector<std::int64_t>({1, 128, 55, 55}) &&
-                   compiler.verify(*fire),
-               "the Fire block keeps its explicit semantic output type");
+  ok &=
+      expect(result.size() == 1U &&
+                 result.front().type().get<std::vector<std::int64_t>>(
+                     "shape") == std::vector<std::int64_t>({1, 128, 55, 55}) &&
+                 compiler.verify(*fire),
+             "the Fire block keeps its explicit semantic output type");
 
-  joggle::Function rejected_fire = *fire;
+  joggle::Fn rejected_fire = *fire;
   const auto rejected_revision = rejected_fire.revision();
   joggle::Diagnostics rejected_replacement_diagnostics;
-  const auto rejected_replacement = joggle::replace(
-      compiler, rejected_fire, *pattern, *wrong,
-      rejected_replacement_diagnostics);
-  ok &= expect(!rejected_replacement &&
-                   !rejected_replacement_diagnostics.ok() &&
-                   rejected_fire.revision() == rejected_revision,
-               "a type-correct tensor kernel with different reference "
-               "semantics is rejected without mutation");
+  const auto rejected_replacement =
+      joggle::replace(compiler, rejected_fire, *pattern, *wrong,
+                      rejected_replacement_diagnostics);
+  ok &=
+      expect(!rejected_replacement && !rejected_replacement_diagnostics.ok() &&
+                 rejected_fire.revision() == rejected_revision,
+             "a type-correct tensor kernel with different reference "
+             "semantics is rejected without mutation");
 
   joggle::Diagnostics replacement_diagnostics;
-  const auto replacements = joggle::replace(
-      compiler, *fire, *pattern, *fused, replacement_diagnostics);
+  const auto replacements = joggle::replace(compiler, *fire, *pattern, *fused,
+                                            replacement_diagnostics);
   const auto fused_ops = fire->ops();
   ok &= expect(replacements && *replacements == 1U &&
                    replacement_diagnostics.ok() && fused_ops.size() == 6U &&
                    fused_ops.front().callee() == *conv_relu_decl &&
                    compiler.verify(*fire),
                "an extension-local kernel fuses one shape-specific Conv/Relu "
-               "pair without changing the tensor module");
+               "pair without changing the tensor mod");
 
   const std::string canonical = joggle::format(*fire, "fire_optimized");
   joggle::Compiler roundtrip;
-  roundtrip.add(*tensor_module);
+  roundtrip.add(*tensor_mod);
   roundtrip.add(*slice);
-  roundtrip.add("joggle 1;\nmodule artifact@1.0.0 {\n"
+  roundtrip.add("joggle 1;\nmod artifact@1.0.0 {\n"
                 "  import tensor@1;\n"
                 "  import squeezenet_slice@1;\n" +
                     canonical + "}\n",
                 "artifact.joggle");
   const bool roundtrip_linked = roundtrip.link();
-  const auto roundtrip_tensor_module = roundtrip.module("tensor");
-  const auto roundtrip_tensor = roundtrip_tensor_module
-                                    ? roundtrip_tensor_module->type("tensor")
+  const auto roundtrip_tensor_mod = roundtrip.mod("tensor");
+  const auto roundtrip_tensor = roundtrip_tensor_mod
+                                    ? roundtrip_tensor_mod->type("tensor")
                                     : std::nullopt;
   if (roundtrip_tensor) {
     register_tensor_verifier(roundtrip, *roundtrip_tensor);
   }
-  const auto replayed =
-      roundtrip_linked && roundtrip_tensor
-          ? roundtrip.materialize("artifact.fire_optimized")
-          : std::nullopt;
+  const auto replayed = roundtrip_linked && roundtrip_tensor
+                            ? roundtrip.materialize("artifact.fire_optimized")
+                            : std::nullopt;
   if (!replayed) {
     roundtrip.diagnostics().print(std::cerr);
   }
   ok &= expect(replayed &&
                    joggle::format(*replayed, "fire_optimized") == canonical,
-               "a transformed tensor Function has canonical round-trippable "
+               "a transformed tensor Fn has canonical round-trippable "
                "source");
 
   joggle::Compiler invalid;
-  invalid.load(JOGGLE_TENSOR_MODULE);
+  invalid.load(JOGGLE_TENSOR_MOD);
   const bool invalid_linked = invalid.link();
-  const auto invalid_module = invalid.module("tensor");
+  const auto invalid_mod = invalid.mod("tensor");
   const auto invalid_tensor =
-      invalid_module ? invalid_module->type("tensor") : std::nullopt;
+      invalid_mod ? invalid_mod->type("tensor") : std::nullopt;
   const auto invalid_f32 = invalid.make("f32");
   if (invalid_tensor) {
     register_tensor_verifier(invalid, *invalid_tensor);

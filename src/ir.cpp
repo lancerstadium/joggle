@@ -2,7 +2,7 @@
 
 #include "ir_internal.h"
 #include "domain.h"
-#include "module_internal.h"
+#include "mod_internal.h"
 #include "prelude.h"
 #include "type_contract.h"
 #include "type_internal.h"
@@ -17,40 +17,40 @@
 
 namespace joggle::detail {
 
-struct ValueData {
+struct ValData {
   enum class Origin {
-    FunctionArgument,
-    BlockArgument,
+    FnArg,
+    BlkArg,
     OpResult,
-    FunctionReference,
-    InlineFunction,
+    FnRef,
+    InlineFn,
   };
 
   Type type;
-  Origin origin = Origin::FunctionArgument;
+  Origin origin = Origin::FnArg;
   std::uint64_t owner = 0;
   std::size_t index = 0;
-  std::optional<Module::FunctionDecl> reference;
-  std::shared_ptr<Function> inline_function;
+  std::optional<Mod::FnDecl> reference;
+  std::shared_ptr<Fn> inline_fn;
 };
 
-struct KnownValueStorage {
+struct KnownValStorage {
   Type type;
-  ParameterValue value;
+  ParamVal value;
 };
 
-struct StoredValue {
+struct StoredVal {
   std::uint64_t id = 0;
-  std::shared_ptr<const KnownValueStorage> known;
+  std::shared_ptr<const KnownValStorage> known;
 };
 
 struct StoredArgument {
   std::size_t parameter = 0;
-  StoredValue value;
+  StoredVal value;
 };
 
 struct OpData {
-  Module::FunctionDecl schema;
+  Mod::FnDecl schema;
   std::uint64_t parent = 0;
   std::vector<StoredArgument> arguments;
   std::vector<std::uint64_t> results;
@@ -69,103 +69,90 @@ struct TerminatorData {
   std::vector<EdgeData> successors;
 };
 
-struct BlockData {
+struct BlkData {
   std::vector<std::uint64_t> arguments;
   std::vector<std::uint64_t> ops;
   std::optional<TerminatorData> terminator;
 };
 
-struct FunctionState {
+struct FnState {
   struct Signature {
-    std::optional<Module::FunctionDecl> declaration;
+    std::optional<Mod::FnDecl> declaration;
     std::vector<Type> arguments;
     std::vector<Type> results;
   };
 
-  std::map<std::string, Module, std::less<>> modules;
-  std::unordered_map<std::uint64_t, ValueData> values;
+  std::map<std::string, Mod, std::less<>> mods;
+  std::unordered_map<std::uint64_t, ValData> values;
   std::unordered_map<std::uint64_t, OpData> ops;
   std::vector<std::uint64_t> arguments;
-  std::unordered_map<std::uint64_t, BlockData> blocks;
+  std::unordered_map<std::uint64_t, BlkData> blocks;
   std::vector<std::uint64_t> block_order;
   std::uint64_t entry = 0;
   std::optional<Signature> signature;
 };
 
-struct FunctionIdentity {
-  std::shared_ptr<FunctionState> state;
+struct FnIdentity {
+  std::shared_ptr<FnState> state;
   std::uint64_t next_id = 1;
   bool editing = false;
 };
 
-struct FunctionEditState {
-  std::shared_ptr<FunctionIdentity> function;
-  std::shared_ptr<FunctionState> backup;
+struct FnEditState {
+  std::shared_ptr<FnIdentity> fn;
+  std::shared_ptr<FnState> backup;
   bool active = true;
 };
 
-const std::shared_ptr<FunctionIdentity>&
-FunctionAccess::owner(const Value& value) {
-  return value.function_;
+const std::shared_ptr<FnIdentity>& FnAccess::owner(const Val& value) {
+  return value.fn_;
 }
 
-const std::shared_ptr<FunctionIdentity>&
-FunctionAccess::owner(const Op& op) {
-  return op.function_;
+const std::shared_ptr<FnIdentity>& FnAccess::owner(const Op& op) {
+  return op.fn_;
 }
 
-const std::shared_ptr<FunctionIdentity>&
-FunctionAccess::owner(const Block& block) {
-  return block.function_;
+const std::shared_ptr<FnIdentity>& FnAccess::owner(const Blk& block) {
+  return block.fn_;
 }
 
-const std::shared_ptr<const KnownValueStorage>&
-FunctionAccess::known(const Value& value) {
+const std::shared_ptr<const KnownValStorage>&
+FnAccess::known(const Val& value) {
   return value.known_;
 }
 
-std::uint64_t FunctionAccess::id(const Value& value) { return value.id_; }
-std::uint64_t FunctionAccess::id(const Op& op) {
-  return op.id_;
-}
-std::uint64_t FunctionAccess::id(const Block& block) { return block.id_; }
+std::uint64_t FnAccess::id(const Val& value) { return value.id_; }
+std::uint64_t FnAccess::id(const Op& op) { return op.id_; }
+std::uint64_t FnAccess::id(const Blk& block) { return block.id_; }
 
-Value FunctionAccess::restore(std::shared_ptr<FunctionIdentity> function,
-                              std::uint64_t id,
-                              std::shared_ptr<const KnownValueStorage> known) {
+Val FnAccess::restore(std::shared_ptr<FnIdentity> fn, std::uint64_t id,
+                      std::shared_ptr<const KnownValStorage> known) {
   if (known) {
-    Value value(std::move(function), 0);
-    value.function_.reset();
+    Val value(std::move(fn), 0);
+    value.fn_.reset();
     value.known_ = std::move(known);
     return value;
   }
-  return Value(std::move(function), id);
+  return Val(std::move(fn), id);
 }
-void FunctionAccess::locate(Function::Edit& edit,
-                            const Op& op,
-                            SourceRange source) {
+void FnAccess::locate(Fn::Edit& edit, const Op& op, SourceRange source) {
   edit.locate(op, std::move(source));
 }
 
-std::optional<SourceRange>
-FunctionAccess::location(const Op& op) {
+std::optional<SourceRange> FnAccess::location(const Op& op) {
   return op.location();
 }
 
-std::optional<ParameterValue> FunctionAccess::known_value(const Value& value) {
+std::optional<ParamVal> FnAccess::known_value(const Val& value) {
   return value.known_value();
 }
 
-std::size_t FunctionAccess::argument_parameter(const Op& op,
-                                               std::size_t argument) {
+std::size_t FnAccess::argument_parameter(const Op& op, std::size_t argument) {
   if (!op.valid() ||
-      argument >= op.function_->state->ops.at(op.id_)
-                      .arguments.size()) {
+      argument >= op.fn_->state->ops.at(op.id_).arguments.size()) {
     throw std::out_of_range("op argument index is out of range");
   }
-  return op.function_->state->ops.at(op.id_)
-      .arguments[argument]
-      .parameter;
+  return op.fn_->state->ops.at(op.id_).arguments[argument].parameter;
 }
 
 }  // namespace joggle::detail
@@ -174,57 +161,54 @@ namespace joggle {
 
 namespace {
 
-using detail::FunctionIdentity;
-using detail::FunctionState;
+using detail::FnIdentity;
+using detail::FnState;
 using detail::OpData;
-using detail::ParameterValue;
-using detail::ValueData;
+using detail::ParamVal;
+using detail::ValData;
 
 template <typename Map> bool contains(const Map& map, std::uint64_t id) {
   return map.find(id) != map.end();
 }
 
-bool owns(const FunctionState& function, const Module::Symbol& symbol) {
-  const auto module = function.modules.find(symbol.module_name());
-  return module != function.modules.end() &&
-         module->second.version() == symbol.module_version();
+bool owns(const FnState& fn, const Mod::Symbol& symbol) {
+  const auto mod = fn.mods.find(symbol.mod_name());
+  return mod != fn.mods.end() && mod->second.version() == symbol.mod_version();
 }
 
-bool owns(const FunctionState& function, const ParameterValue& value);
+bool owns(const FnState& fn, const ParamVal& value);
 
-bool owns(const FunctionState& function, const Type& type) {
-  if (!owns(function, type.schema().symbol())) {
+bool owns(const FnState& fn, const Type& type) {
+  if (!owns(fn, type.schema().symbol())) {
     return false;
   }
   const auto parameters = detail::TypeAccess::parameters(type);
-  return std::all_of(
-      parameters.begin(), parameters.end(),
-      [&](const ParameterValue& value) { return owns(function, value); });
+  return std::all_of(parameters.begin(), parameters.end(),
+                     [&](const ParamVal& value) { return owns(fn, value); });
 }
 
-bool owns(const FunctionState& function, const ParameterValue& value) {
+bool owns(const FnState& fn, const ParamVal& value) {
   if (const Type* type = value.as_type()) {
-    return owns(function, *type);
+    return owns(fn, *type);
   }
-  if (value.kind() == ParameterValue::Kind::List) {
+  if (value.kind() == ParamVal::Kind::List) {
     return std::all_of(
         value.elements().begin(), value.elements().end(),
-        [&](const ParameterValue& element) { return owns(function, element); });
+        [&](const ParamVal& element) { return owns(fn, element); });
   }
   return true;
 }
 
-bool matches(const Module::ParameterDecl& schema, const ParameterValue& value);
+bool matches(const Mod::ParamDecl& schema, const ParamVal& value);
 
-std::optional<Type>
-reflected_parameter_type(const FunctionState& function,
-                         const Module::Expression& expression) {
+std::optional<Type> reflected_parameter_type(const FnState& fn,
+                                             const Mod::Expr& expression) {
   const auto domain = detail::kernel_domain(expression);
   if (!domain) {
     return std::nullopt;
   }
-  const auto prelude = function.modules.find(detail::prelude_module_name);
-  if (prelude == function.modules.end()) {
+  const auto prelude = fn.mods.find(detail::prelude_mod_name);
+  if (prelude == fn.mods.end()) {
     return std::nullopt;
   }
   const std::string_view name = domain->list
@@ -234,10 +218,9 @@ reflected_parameter_type(const FunctionState& function,
   if (!declaration) {
     return std::nullopt;
   }
-  std::vector<ParameterValue> parameters;
+  std::vector<ParamVal> parameters;
   if (domain->list) {
-    auto element =
-        reflected_parameter_type(function, expression.arguments.front());
+    auto element = reflected_parameter_type(fn, expression.arguments.front());
     if (!element) {
       return std::nullopt;
     }
@@ -246,23 +229,22 @@ reflected_parameter_type(const FunctionState& function,
   return detail::TypeAccess::make(*declaration, std::move(parameters));
 }
 
-std::shared_ptr<const detail::KnownValueStorage>
-make_known(const FunctionState& function,
-           const Module::ParameterDecl& parameter, ParameterValue value) {
-  auto type = reflected_parameter_type(function, parameter.domain);
-  if (!type || !matches(parameter, value) || !owns(function, *type) ||
-      !owns(function, value)) {
+std::shared_ptr<const detail::KnownValStorage>
+make_known(const FnState& fn, const Mod::ParamDecl& parameter, ParamVal value) {
+  auto type = reflected_parameter_type(fn, parameter.domain);
+  if (!type || !matches(parameter, value) || !owns(fn, *type) ||
+      !owns(fn, value)) {
     return {};
   }
-  return std::make_shared<const detail::KnownValueStorage>(
-      detail::KnownValueStorage{std::move(*type), std::move(value)});
+  return std::make_shared<const detail::KnownValStorage>(
+      detail::KnownValStorage{std::move(*type), std::move(value)});
 }
 
-bool matches(const Module::ParameterDecl& schema, const ParameterValue& value) {
+bool matches(const Mod::ParamDecl& schema, const ParamVal& value) {
   return detail::matches_parameter(schema, value);
 }
 
-bool accepts_count(std::span<const Module::ParameterDecl> parameters,
+bool accepts_count(std::span<const Mod::ParamDecl> parameters,
                    std::size_t count) {
   std::size_t minimum = 0;
   bool variadic = false;
@@ -276,18 +258,17 @@ bool accepts_count(std::span<const Module::ParameterDecl> parameters,
   return variadic ? count >= minimum : count == minimum;
 }
 
-std::optional<std::size_t> op_position(const FunctionState& function,
-                                                std::uint64_t op) {
-  const auto item = function.ops.find(op);
-  if (item == function.ops.end()) {
+std::optional<std::size_t> op_position(const FnState& fn, std::uint64_t op) {
+  const auto item = fn.ops.find(op);
+  if (item == fn.ops.end()) {
     return std::nullopt;
   }
-  const auto owner = function.blocks.find(item->second.parent);
-  if (owner == function.blocks.end()) {
+  const auto owner = fn.blocks.find(item->second.parent);
+  if (owner == fn.blocks.end()) {
     return std::nullopt;
   }
-  const auto found = std::find(owner->second.ops.begin(),
-                               owner->second.ops.end(), op);
+  const auto found =
+      std::find(owner->second.ops.begin(), owner->second.ops.end(), op);
   if (found == owner->second.ops.end()) {
     return std::nullopt;
   }
@@ -295,14 +276,13 @@ std::optional<std::size_t> op_position(const FunctionState& function,
       std::distance(owner->second.ops.begin(), found));
 }
 
-using BlockSet = std::unordered_set<std::uint64_t>;
+using BlkSet = std::unordered_set<std::uint64_t>;
 
-std::unordered_map<std::uint64_t, BlockSet>
-dominators(const FunctionState& function) {
+std::unordered_map<std::uint64_t, BlkSet> dominators(const FnState& fn) {
   std::unordered_map<std::uint64_t, std::vector<std::uint64_t>> predecessors;
-  for (const std::uint64_t block_id : function.block_order) {
+  for (const std::uint64_t block_id : fn.block_order) {
     predecessors.try_emplace(block_id);
-    const auto& block = function.blocks.at(block_id);
+    const auto& block = fn.blocks.at(block_id);
     if (!block.terminator) {
       continue;
     }
@@ -311,21 +291,21 @@ dominators(const FunctionState& function) {
     }
   }
 
-  const BlockSet all(function.block_order.begin(), function.block_order.end());
-  std::unordered_map<std::uint64_t, BlockSet> result;
-  for (const std::uint64_t block : function.block_order) {
-    result.emplace(block, block == function.entry ? BlockSet{block} : all);
+  const BlkSet all(fn.block_order.begin(), fn.block_order.end());
+  std::unordered_map<std::uint64_t, BlkSet> result;
+  for (const std::uint64_t block : fn.block_order) {
+    result.emplace(block, block == fn.entry ? BlkSet{block} : all);
   }
   bool changed = true;
   while (changed) {
     changed = false;
-    for (const std::uint64_t block : function.block_order) {
-      if (block == function.entry || predecessors[block].empty()) {
+    for (const std::uint64_t block : fn.block_order) {
+      if (block == fn.entry || predecessors[block].empty()) {
         continue;
       }
-      BlockSet next = result.at(predecessors[block].front());
+      BlkSet next = result.at(predecessors[block].front());
       for (std::size_t index = 1; index < predecessors[block].size(); ++index) {
-        const BlockSet& other = result.at(predecessors[block][index]);
+        const BlkSet& other = result.at(predecessors[block][index]);
         for (auto item = next.begin(); item != next.end();) {
           item = other.contains(*item) ? std::next(item) : next.erase(item);
         }
@@ -341,64 +321,60 @@ dominators(const FunctionState& function) {
 }
 
 bool definition_dominates(
-    const FunctionState& function, const ValueData& definition,
-    std::uint64_t user_block, std::optional<std::uint64_t> user_op,
-    const std::unordered_map<std::uint64_t, BlockSet>& dom) {
-  if (definition.origin == ValueData::Origin::FunctionArgument) {
-    return definition.owner == 0 &&
-           definition.index < function.arguments.size();
+    const FnState& fn, const ValData& definition, std::uint64_t user_block,
+    std::optional<std::uint64_t> user_op,
+    const std::unordered_map<std::uint64_t, BlkSet>& dom) {
+  if (definition.origin == ValData::Origin::FnArg) {
+    return definition.owner == 0 && definition.index < fn.arguments.size();
   }
-  if (definition.origin == ValueData::Origin::FunctionReference) {
+  if (definition.origin == ValData::Origin::FnRef) {
     return definition.reference.has_value();
   }
-  if (definition.origin == ValueData::Origin::InlineFunction) {
-    return static_cast<bool>(definition.inline_function);
+  if (definition.origin == ValData::Origin::InlineFn) {
+    return static_cast<bool>(definition.inline_fn);
   }
-  if (definition.origin == ValueData::Origin::BlockArgument) {
-    const auto owner = function.blocks.find(definition.owner);
-    return owner != function.blocks.end() &&
+  if (definition.origin == ValData::Origin::BlkArg) {
+    const auto owner = fn.blocks.find(definition.owner);
+    return owner != fn.blocks.end() &&
            definition.index < owner->second.arguments.size() &&
            dom.at(user_block).contains(definition.owner);
   }
-  const auto producer = function.ops.find(definition.owner);
-  if (producer == function.ops.end()) {
+  const auto producer = fn.ops.find(definition.owner);
+  if (producer == fn.ops.end()) {
     return false;
   }
   if (producer->second.parent != user_block) {
     return dom.at(user_block).contains(producer->second.parent);
   }
   if (!user_op) {
-    return op_position(function, definition.owner).has_value();
+    return op_position(fn, definition.owner).has_value();
   }
-  const auto producer_position =
-      op_position(function, definition.owner);
-  const auto user_position = op_position(function, *user_op);
+  const auto producer_position = op_position(fn, definition.owner);
+  const auto user_position = op_position(fn, *user_op);
   return producer_position && user_position &&
          *producer_position < *user_position;
 }
 
-bool matches_function_reference(const FunctionState& function,
-                                const ValueData& value) {
-  if (value.origin != ValueData::Origin::FunctionReference ||
-      !value.reference || !owns(function, value.reference->symbol()) ||
-      !owns(function, value.type)) {
+bool matches_fn_reference(const FnState& fn, const ValData& value) {
+  if (value.origin != ValData::Origin::FnRef || !value.reference ||
+      !owns(fn, value.reference->symbol()) || !owns(fn, value.type)) {
     return false;
   }
-  const Module::Symbol type = value.type.schema().symbol();
+  const Mod::Symbol type = value.type.schema().symbol();
   const auto inputs = value.type.get<std::vector<Type>>("inputs");
   const auto results = value.type.get<std::vector<Type>>("results");
-  if (type.module_name() != detail::prelude_module_name ||
+  if (type.mod_name() != detail::prelude_mod_name ||
       type.local_name() != "callable" || !inputs || !results ||
       !detail::compiler_inputs(*value.reference).empty() ||
       !detail::compiler_results(*value.reference).empty()) {
     return false;
   }
 
-  std::vector<Module> modules;
-  modules.reserve(function.modules.size());
-  for (const auto& [name, module] : function.modules) {
+  std::vector<Mod> mods;
+  mods.reserve(fn.mods.size());
+  for (const auto& [name, mod] : fn.mods) {
     static_cast<void>(name);
-    modules.push_back(module);
+    mods.push_back(mod);
   }
   std::vector<std::optional<Type>> expected;
   expected.reserve(results->size());
@@ -407,26 +383,25 @@ bool matches_function_reference(const FunctionState& function,
   }
   Diagnostics diagnostics;
   const auto resolved = detail::resolve_call_types(
-      modules, *value.reference, *inputs, {}, expected, diagnostics);
+      mods, *value.reference, *inputs, {}, expected, diagnostics);
   return resolved && resolved->results == *results;
 }
 
-bool matches_inline_function(const FunctionState& owner,
-                             const ValueData& value) {
-  if (value.origin != ValueData::Origin::InlineFunction ||
-      !value.inline_function || !owns(owner, value.type)) {
+bool matches_inline_fn(const FnState& owner, const ValData& value) {
+  if (value.origin != ValData::Origin::InlineFn || !value.inline_fn ||
+      !owns(owner, value.type)) {
     return false;
   }
-  const Module::Symbol schema = value.type.schema().symbol();
+  const Mod::Symbol schema = value.type.schema().symbol();
   const auto inputs = value.type.get<std::vector<Type>>("inputs");
   const auto results = value.type.get<std::vector<Type>>("results");
-  if (schema.module_name() != detail::prelude_module_name ||
+  if (schema.mod_name() != detail::prelude_mod_name ||
       schema.local_name() != "callable" || !inputs || !results) {
     return false;
   }
-  const auto arguments = value.inline_function->arguments();
+  const auto arguments = value.inline_fn->arguments();
   if (arguments.size() != inputs->size() ||
-      value.inline_function->result_types() != *results) {
+      value.inline_fn->result_types() != *results) {
     return false;
   }
   for (std::size_t index = 0; index < arguments.size(); ++index) {
@@ -440,45 +415,40 @@ bool matches_inline_function(const FunctionState& owner,
       return false;
     }
   }
-  for (const Op& op : value.inline_function->ops()) {
+  for (const Op& op : value.inline_fn->ops()) {
     if (!owns(owner, op.callee().symbol())) {
       return false;
     }
-    for (const Value& argument : op.arguments()) {
+    for (const Val& argument : op.arguments()) {
       if (!owns(owner, argument.type())) {
         return false;
       }
     }
-    for (const Value& result : op.results()) {
+    for (const Val& result : op.results()) {
       if (!owns(owner, result.type())) {
         return false;
       }
     }
   }
   Diagnostics diagnostics;
-  return detail::FunctionAccess::verify_structure(*value.inline_function,
-                                                   diagnostics);
+  return detail::FnAccess::verify_structure(*value.inline_fn, diagnostics);
 }
 
-bool verify_op(const FunctionState& function, std::uint64_t id,
-                        const OpData& op,
-                        const std::unordered_map<std::uint64_t, BlockSet>& dom,
-                        Diagnostics& diagnostics) {
+bool verify_op(const FnState& fn, std::uint64_t id, const OpData& op,
+               const std::unordered_map<std::uint64_t, BlkSet>& dom,
+               Diagnostics& diagnostics) {
   bool valid = true;
   const std::string name(op.schema.symbol().qualified_name());
-  if (!owns(function, op.schema.symbol())) {
-    diagnostics.report("op '" + name +
-                       "' is outside the function's module closure");
+  if (!owns(fn, op.schema.symbol())) {
+    diagnostics.report("op '" + name + "' is outside the fn's mod closure");
     valid = false;
   }
-  if (!contains(function.blocks, op.parent)) {
+  if (!contains(fn.blocks, op.parent)) {
     diagnostics.report("op '" + name + "' has no parent block");
     valid = false;
   }
-  if (!accepts_count(detail::value_results(op.schema),
-                     op.results.size())) {
-    diagnostics.report("op '" + name +
-                       "' has the wrong number of results");
+  if (!accepts_count(detail::value_results(op.schema), op.results.size())) {
+    diagnostics.report("op '" + name + "' has the wrong number of results");
     valid = false;
   }
 
@@ -489,33 +459,30 @@ bool verify_op(const FunctionState& function, std::uint64_t id,
     const detail::StoredArgument& stored = op.arguments[index];
     if (stored.parameter >= parameters.size() ||
         (index != 0U && stored.parameter < previous_parameter)) {
-      diagnostics.report("op '" + name +
-                         "' has a malformed argument order");
+      diagnostics.report("op '" + name + "' has a malformed argument order");
       valid = false;
       continue;
     }
     previous_parameter = stored.parameter;
     ++counts[stored.parameter];
-    const Module::ParameterDecl& parameter = parameters[stored.parameter];
+    const Mod::ParamDecl& parameter = parameters[stored.parameter];
     if (!parameter.variadic && counts[stored.parameter] > 1U) {
       diagnostics.report("op '" + name + "' repeats argument '" +
                          parameter.name + "'");
       valid = false;
     }
-    const detail::StoredValue& argument = stored.value;
+    const detail::StoredVal& argument = stored.value;
     if (argument.known) {
       if (detail::is_effect_type(argument.known->type)) {
         diagnostics.report("effect argument '" + parameter.name +
                            "' cannot be Known");
         valid = false;
       }
-      if (!owns(function, argument.known->type) ||
-          !owns(function, argument.known->value) ||
+      if (!owns(fn, argument.known->type) || !owns(fn, argument.known->value) ||
           (!detail::is_value_port(parameter) &&
            !matches(parameter, argument.known->value))) {
-        diagnostics.report("argument " + std::to_string(index) +
-                           " of op '" + name +
-                           "' has an invalid Known value");
+        diagnostics.report("argument " + std::to_string(index) + " of op '" +
+                           name + "' has an invalid Known value");
         valid = false;
       }
       continue;
@@ -526,16 +493,14 @@ bool verify_op(const FunctionState& function, std::uint64_t id,
       valid = false;
       continue;
     }
-    const auto value = function.values.find(argument.id);
-    if (value == function.values.end()) {
+    const auto value = fn.values.find(argument.id);
+    if (value == fn.values.end()) {
       diagnostics.report("op '" + name + "' has an invalid argument");
       valid = false;
-    } else if (contains(function.blocks, op.parent) &&
-               !definition_dominates(function, value->second,
-                                     op.parent, id, dom)) {
-      diagnostics.report("argument " + std::to_string(index) +
-                         " of op '" + name +
-                         "' is not dominated by its definition");
+    } else if (contains(fn.blocks, op.parent) &&
+               !definition_dominates(fn, value->second, op.parent, id, dom)) {
+      diagnostics.report("argument " + std::to_string(index) + " of op '" +
+                         name + "' is not dominated by its definition");
       valid = false;
     }
   }
@@ -547,10 +512,10 @@ bool verify_op(const FunctionState& function, std::uint64_t id,
     }
   }
   for (std::uint64_t result : op.results) {
-    const auto value = function.values.find(result);
-    if (value == function.values.end() ||
-        value->second.origin != ValueData::Origin::OpResult ||
-        value->second.owner != id || !owns(function, value->second.type)) {
+    const auto value = fn.values.find(result);
+    if (value == fn.values.end() ||
+        value->second.origin != ValData::Origin::OpResult ||
+        value->second.owner != id || !owns(fn, value->second.type)) {
       diagnostics.report("op '" + name + "' has an invalid result");
       valid = false;
     }
@@ -558,13 +523,12 @@ bool verify_op(const FunctionState& function, std::uint64_t id,
   return valid;
 }
 
-bool verify_effect_uses(const FunctionState& function,
-                        Diagnostics& diagnostics) {
+bool verify_effect_uses(const FnState& fn, Diagnostics& diagnostics) {
   bool valid = true;
   std::unordered_map<std::uint64_t, std::size_t> uses;
   const auto effect = [&](std::uint64_t id) {
-    const auto value = function.values.find(id);
-    return value != function.values.end() &&
+    const auto value = fn.values.find(id);
+    return value != fn.values.end() &&
            detail::is_effect_type(value->second.type);
   };
   const auto consume = [&](std::uint64_t id) {
@@ -573,7 +537,7 @@ bool verify_effect_uses(const FunctionState& function,
     }
   };
 
-  for (const auto& [id, op] : function.ops) {
+  for (const auto& [id, op] : fn.ops) {
     static_cast<void>(id);
     for (const detail::StoredArgument& argument : op.arguments) {
       if (!argument.value.known) {
@@ -581,7 +545,7 @@ bool verify_effect_uses(const FunctionState& function,
       }
     }
   }
-  for (const auto& [id, block] : function.blocks) {
+  for (const auto& [id, block] : fn.blocks) {
     static_cast<void>(id);
     if (!block.terminator) {
       continue;
@@ -607,8 +571,7 @@ bool verify_effect_uses(const FunctionState& function,
           continue;
         }
         if (!edge_uses.insert(argument).second) {
-          diagnostics.report(
-              "one branch path repeats the same effect token");
+          diagnostics.report("one branch path repeats the same effect token");
           valid = false;
         }
         branch_uses.insert(argument);
@@ -628,62 +591,60 @@ bool verify_effect_uses(const FunctionState& function,
   return valid;
 }
 
-bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
+bool verify_fn(const FnState& fn, Diagnostics& diagnostics) {
   bool valid = true;
-  if (function.block_order.empty() ||
-      function.block_order.front() != function.entry ||
-      !contains(function.blocks, function.entry)) {
-    diagnostics.report("function has no valid entry block");
+  if (fn.block_order.empty() || fn.block_order.front() != fn.entry ||
+      !contains(fn.blocks, fn.entry)) {
+    diagnostics.report("fn has no valid entry block");
     return false;
   }
   std::unordered_set<std::uint64_t> listed_ops;
   std::unordered_set<std::uint64_t> listed_blocks;
-  for (const auto& [id, value] : function.values) {
+  for (const auto& [id, value] : fn.values) {
     static_cast<void>(id);
-    if (!owns(function, value.type)) {
-      diagnostics.report("function contains a value with an invalid type");
+    if (!owns(fn, value.type)) {
+      diagnostics.report("fn contains a value with an invalid type");
       valid = false;
     }
-    if (value.origin == ValueData::Origin::FunctionReference) {
-      if (!matches_function_reference(function, value)) {
-        diagnostics.report("function contains an invalid function reference");
+    if (value.origin == ValData::Origin::FnRef) {
+      if (!matches_fn_reference(fn, value)) {
+        diagnostics.report("fn contains an invalid fn reference");
         valid = false;
       }
-    } else if (value.origin == ValueData::Origin::InlineFunction) {
-      if (!matches_inline_function(function, value)) {
-        diagnostics.report("function contains an invalid inline function");
+    } else if (value.origin == ValData::Origin::InlineFn) {
+      if (!matches_inline_fn(fn, value)) {
+        diagnostics.report("fn contains an invalid inline fn");
         valid = false;
       }
-    } else if (value.reference || value.inline_function) {
+    } else if (value.reference || value.inline_fn) {
       diagnostics.report("non-callable value contains a callable payload");
       valid = false;
     }
   }
-  for (std::size_t index = 0; index < function.arguments.size(); ++index) {
-    const auto value = function.values.find(function.arguments[index]);
-    if (value == function.values.end() ||
-        value->second.origin != ValueData::Origin::FunctionArgument ||
+  for (std::size_t index = 0; index < fn.arguments.size(); ++index) {
+    const auto value = fn.values.find(fn.arguments[index]);
+    if (value == fn.values.end() ||
+        value->second.origin != ValData::Origin::FnArg ||
         value->second.owner != 0 || value->second.index != index ||
-        !owns(function, value->second.type)) {
-      diagnostics.report("function has an invalid argument");
+        !owns(fn, value->second.type)) {
+      diagnostics.report("fn has an invalid argument");
       valid = false;
     }
   }
-  for (const std::uint64_t block_id : function.block_order) {
-    const auto block = function.blocks.find(block_id);
-    if (block == function.blocks.end() ||
-        !listed_blocks.insert(block_id).second) {
-      diagnostics.report("function has an invalid block order");
+  for (const std::uint64_t block_id : fn.block_order) {
+    const auto block = fn.blocks.find(block_id);
+    if (block == fn.blocks.end() || !listed_blocks.insert(block_id).second) {
+      diagnostics.report("fn has an invalid block order");
       valid = false;
       continue;
     }
     for (std::size_t index = 0; index < block->second.arguments.size();
          ++index) {
-      const auto value = function.values.find(block->second.arguments[index]);
-      if (value == function.values.end() ||
-          value->second.origin != ValueData::Origin::BlockArgument ||
+      const auto value = fn.values.find(block->second.arguments[index]);
+      if (value == fn.values.end() ||
+          value->second.origin != ValData::Origin::BlkArg ||
           value->second.owner != block_id || value->second.index != index ||
-          !owns(function, value->second.type)) {
+          !owns(fn, value->second.type)) {
         diagnostics.report("block has an invalid argument");
         valid = false;
       }
@@ -693,64 +654,60 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
       valid = false;
     }
     for (const std::uint64_t id : block->second.ops) {
-      const auto op = function.ops.find(id);
-      if (op == function.ops.end() ||
-          op->second.parent != block_id ||
+      const auto op = fn.ops.find(id);
+      if (op == fn.ops.end() || op->second.parent != block_id ||
           !listed_ops.insert(id).second) {
         diagnostics.report("block has an invalid op order");
         valid = false;
       }
     }
   }
-  for (const auto& [id, block] : function.blocks) {
+  for (const auto& [id, block] : fn.blocks) {
     static_cast<void>(block);
     if (!listed_blocks.contains(id)) {
-      diagnostics.report("function contains an unordered block");
+      diagnostics.report("fn contains an unordered block");
       valid = false;
     }
   }
-  const auto dom = dominators(function);
-  for (const auto& [id, op] : function.ops) {
+  const auto dom = dominators(fn);
+  for (const auto& [id, op] : fn.ops) {
     if (!listed_ops.contains(id)) {
-      diagnostics.report("function contains an unordered op");
+      diagnostics.report("fn contains an unordered op");
       valid = false;
     }
-    valid = verify_op(function, id, op, dom, diagnostics) &&
-            valid;
+    valid = verify_op(fn, id, op, dom, diagnostics) && valid;
   }
 
-  if (function.signature) {
-    if (function.signature->declaration &&
-        !owns(function, function.signature->declaration->symbol())) {
-      diagnostics.report("function declaration is outside its module closure");
+  if (fn.signature) {
+    if (fn.signature->declaration &&
+        !owns(fn, fn.signature->declaration->symbol())) {
+      diagnostics.report("fn declaration is outside its mod closure");
       valid = false;
     }
-    if (function.arguments.size() != function.signature->arguments.size()) {
-      diagnostics.report(
-          "function argument count does not match its signature");
+    if (fn.arguments.size() != fn.signature->arguments.size()) {
+      diagnostics.report("fn argument count does not match its signature");
       valid = false;
     }
-    const std::size_t count = std::min(function.arguments.size(),
-                                       function.signature->arguments.size());
+    const std::size_t count =
+        std::min(fn.arguments.size(), fn.signature->arguments.size());
     for (std::size_t index = 0; index < count; ++index) {
-      const auto value = function.values.find(function.arguments[index]);
-      if (value != function.values.end() &&
-          value->second.type != function.signature->arguments[index]) {
-        diagnostics.report(
-            "function argument type does not match its signature");
+      const auto value = fn.values.find(fn.arguments[index]);
+      if (value != fn.values.end() &&
+          value->second.type != fn.signature->arguments[index]) {
+        diagnostics.report("fn argument type does not match its signature");
         valid = false;
       }
     }
   }
 
   std::optional<std::vector<Type>> inferred_results;
-  std::unordered_set<std::uint64_t> reachable{function.entry};
-  std::vector<std::uint64_t> pending{function.entry};
+  std::unordered_set<std::uint64_t> reachable{fn.entry};
+  std::vector<std::uint64_t> pending{fn.entry};
   while (!pending.empty()) {
     const std::uint64_t block_id = pending.back();
     pending.pop_back();
-    const auto block = function.blocks.find(block_id);
-    if (block == function.blocks.end() || !block->second.terminator) {
+    const auto block = fn.blocks.find(block_id);
+    if (block == fn.blocks.end() || !block->second.terminator) {
       continue;
     }
     const detail::TerminatorData& terminator = *block->second.terminator;
@@ -765,9 +722,9 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
       valid = false;
     }
     const auto verify_use = [&](std::uint64_t id) {
-      const auto value = function.values.find(id);
-      if (value == function.values.end() ||
-          !definition_dominates(function, value->second, block_id, std::nullopt,
+      const auto value = fn.values.find(id);
+      if (value == fn.values.end() ||
+          !definition_dominates(fn, value->second, block_id, std::nullopt,
                                 dom)) {
         diagnostics.report("terminator uses a value that does not dominate it");
         valid = false;
@@ -775,10 +732,10 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
     };
     if (terminator.condition) {
       verify_use(*terminator.condition);
-      const auto condition = function.values.find(*terminator.condition);
-      if (condition != function.values.end()) {
-        const Module::Symbol symbol = condition->second.type.schema().symbol();
-        if (symbol.module_name() != detail::prelude_module_name ||
+      const auto condition = fn.values.find(*terminator.condition);
+      if (condition != fn.values.end()) {
+        const Mod::Symbol symbol = condition->second.type.schema().symbol();
+        if (symbol.mod_name() != detail::prelude_mod_name ||
             symbol.local_name() != "i1") {
           diagnostics.report("branch condition must have type i1");
           valid = false;
@@ -792,14 +749,14 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
       std::vector<Type> returned_types;
       returned_types.reserve(terminator.returned.size());
       for (const std::uint64_t value : terminator.returned) {
-        const auto found = function.values.find(value);
-        if (found != function.values.end()) {
+        const auto found = fn.values.find(value);
+        if (found != fn.values.end()) {
           returned_types.push_back(found->second.type);
         }
       }
       const std::vector<Type>* expected = nullptr;
-      if (function.signature) {
-        expected = &function.signature->results;
+      if (fn.signature) {
+        expected = &fn.signature->results;
       } else if (!inferred_results) {
         inferred_results = returned_types;
         expected = &*inferred_results;
@@ -807,13 +764,13 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
         expected = &*inferred_results;
       }
       if (returned_types != *expected) {
-        diagnostics.report("function return types do not match its signature");
+        diagnostics.report("fn return types do not match its signature");
         valid = false;
       }
     }
     for (const detail::EdgeData& edge : terminator.successors) {
-      const auto target = function.blocks.find(edge.target);
-      if (target == function.blocks.end()) {
+      const auto target = fn.blocks.find(edge.target);
+      if (target == fn.blocks.end()) {
         diagnostics.report("terminator has an invalid successor");
         valid = false;
         continue;
@@ -826,11 +783,9 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
           std::min(edge.arguments.size(), target->second.arguments.size());
       for (std::size_t index = 0; index < count; ++index) {
         verify_use(edge.arguments[index]);
-        const auto argument = function.values.find(edge.arguments[index]);
-        const auto parameter =
-            function.values.find(target->second.arguments[index]);
-        if (argument != function.values.end() &&
-            parameter != function.values.end() &&
+        const auto argument = fn.values.find(edge.arguments[index]);
+        const auto parameter = fn.values.find(target->second.arguments[index]);
+        if (argument != fn.values.end() && parameter != fn.values.end() &&
             argument->second.type != parameter->second.type) {
           diagnostics.report("successor edge argument has the wrong type");
           valid = false;
@@ -841,29 +796,27 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
       }
     }
   }
-  for (const std::uint64_t block : function.block_order) {
+  for (const std::uint64_t block : fn.block_order) {
     if (!reachable.contains(block)) {
-      diagnostics.report("function contains an unreachable block");
+      diagnostics.report("fn contains an unreachable block");
       valid = false;
     }
   }
-  valid = verify_effect_uses(function, diagnostics) && valid;
+  valid = verify_effect_uses(fn, diagnostics) && valid;
   return valid;
 }
 
 template <typename Resolve>
-bool verify_op_contracts(const FunctionState& function,
-                                  Diagnostics& diagnostics, Resolve&& resolve) {
+bool verify_op_contracts(const FnState& fn, Diagnostics& diagnostics,
+                         Resolve&& resolve) {
   bool valid = true;
-  for (const std::uint64_t block_id : function.block_order) {
-    for (const std::uint64_t op_id :
-         function.blocks.at(block_id).ops) {
-      const OpData& op =
-          function.ops.at(op_id);
-      const Module::FunctionDecl schema = op.schema;
+  for (const std::uint64_t block_id : fn.block_order) {
+    for (const std::uint64_t op_id : fn.blocks.at(block_id).ops) {
+      const OpData& op = fn.ops.at(op_id);
+      const Mod::FnDecl schema = op.schema;
 
       std::vector<Type> arguments;
-      std::vector<std::optional<ParameterValue>> known_arguments;
+      std::vector<std::optional<ParamVal>> known_arguments;
       known_arguments.reserve(detail::compiler_inputs(schema).size());
       for (std::size_t index = 0; index < schema.inputs().size(); ++index) {
         if (!detail::is_value_port(schema.inputs()[index])) {
@@ -881,13 +834,13 @@ bool verify_op_contracts(const FunctionState& function,
         if (stored.parameter >= schema.inputs().size()) {
           continue;
         }
-        const detail::StoredValue& argument = stored.value;
+        const detail::StoredVal& argument = stored.value;
         if (detail::is_value_port(schema.inputs()[stored.parameter])) {
           if (argument.known) {
             arguments.push_back(argument.known->type);
           } else {
-            const auto value = function.values.find(argument.id);
-            if (value != function.values.end()) {
+            const auto value = fn.values.find(argument.id);
+            if (value != fn.values.end()) {
               arguments.push_back(value->second.type);
             }
           }
@@ -900,7 +853,7 @@ bool verify_op_contracts(const FunctionState& function,
       std::vector<std::optional<Type>> results;
       results.reserve(op.results.size());
       for (const std::uint64_t result : op.results) {
-        results.push_back(function.values.at(result).type);
+        results.push_back(fn.values.at(result).type);
       }
 
       auto resolved = resolve(schema, arguments, known_arguments, results,
@@ -913,32 +866,30 @@ bool verify_op_contracts(const FunctionState& function,
   return valid;
 }
 
-bool verify_op_contracts(const FunctionState& function,
-                                  Diagnostics& diagnostics) {
-  std::vector<Module> modules;
-  modules.reserve(function.modules.size());
-  for (const auto& [name, module] : function.modules) {
+bool verify_op_contracts(const FnState& fn, Diagnostics& diagnostics) {
+  std::vector<Mod> mods;
+  mods.reserve(fn.mods.size());
+  for (const auto& [name, mod] : fn.mods) {
     static_cast<void>(name);
-    modules.push_back(module);
+    mods.push_back(mod);
   }
   return verify_op_contracts(
-      function, diagnostics,
-      [&](const Module::FunctionDecl& schema, std::span<const Type> arguments,
-          std::span<const std::optional<ParameterValue>> known_arguments,
+      fn, diagnostics,
+      [&](const Mod::FnDecl& schema, std::span<const Type> arguments,
+          std::span<const std::optional<ParamVal>> known_arguments,
           std::span<const std::optional<Type>> results, Diagnostics& reported,
           std::optional<SourceRange> location) {
-        return resolve_call_types(modules, schema, arguments, known_arguments,
+        return resolve_call_types(mods, schema, arguments, known_arguments,
                                   results, reported, std::move(location));
       });
 }
 
-bool verify_op_contracts(const FunctionState& function,
-                                  Compiler& compiler,
-                                  Diagnostics& diagnostics) {
+bool verify_op_contracts(const FnState& fn, Compiler& compiler,
+                         Diagnostics& diagnostics) {
   return verify_op_contracts(
-      function, diagnostics,
-      [&](const Module::FunctionDecl& schema, std::span<const Type> arguments,
-          std::span<const std::optional<ParameterValue>> known_arguments,
+      fn, diagnostics,
+      [&](const Mod::FnDecl& schema, std::span<const Type> arguments,
+          std::span<const std::optional<ParamVal>> known_arguments,
           std::span<const std::optional<Type>> results, Diagnostics& reported,
           std::optional<SourceRange> location) {
         return resolve_call_types(compiler, schema, arguments, known_arguments,
@@ -947,28 +898,27 @@ bool verify_op_contracts(const FunctionState& function,
 }
 
 template <typename Handle>
-void check_same_function(const std::shared_ptr<FunctionIdentity>& function,
-                         const Handle& handle, std::string_view kind) {
-  if (detail::FunctionAccess::owner(handle) != function || !handle.valid()) {
+void check_same_fn(const std::shared_ptr<FnIdentity>& fn, const Handle& handle,
+                   std::string_view kind) {
+  if (detail::FnAccess::owner(handle) != fn || !handle.valid()) {
     throw std::invalid_argument(std::string(kind) +
-                                " does not belong to this function edit");
+                                " does not belong to this fn edit");
   }
 }
 
-void check_same_function(const std::shared_ptr<FunctionIdentity>& function,
-                         const Value& value, std::string_view kind) {
-  const auto& known = detail::FunctionAccess::known(value);
+void check_same_fn(const std::shared_ptr<FnIdentity>& fn, const Val& value,
+                   std::string_view kind) {
+  const auto& known = detail::FnAccess::known(value);
   if (known) {
-    if (!owns(*function->state, known->type) ||
-        !owns(*function->state, known->value)) {
+    if (!owns(*fn->state, known->type) || !owns(*fn->state, known->value)) {
       throw std::invalid_argument(std::string(kind) +
-                                  " is outside this function's module closure");
+                                  " is outside this fn's mod closure");
     }
     return;
   }
-  if (detail::FunctionAccess::owner(value) != function || !value.valid()) {
+  if (detail::FnAccess::owner(value) != fn || !value.valid()) {
     throw std::invalid_argument(std::string(kind) +
-                                " does not belong to this function edit");
+                                " does not belong to this fn edit");
   }
 }
 
@@ -978,41 +928,35 @@ void check_same_function(const std::shared_ptr<FunctionIdentity>& function,
 
 namespace joggle::detail {
 
-bool FunctionAccess::verify_structure(const Function& function,
-                                      Diagnostics& diagnostics) {
-  return verify_function(*function.function_->state, diagnostics);
+bool FnAccess::verify_structure(const Fn& fn, Diagnostics& diagnostics) {
+  return verify_fn(*fn.fn_->state, diagnostics);
 }
 
-bool FunctionAccess::verify_contracts(const Function& function,
-                                      Diagnostics& diagnostics) {
-  return verify_op_contracts(*function.function_->state, diagnostics);
+bool FnAccess::verify_contracts(const Fn& fn, Diagnostics& diagnostics) {
+  return verify_op_contracts(*fn.fn_->state, diagnostics);
 }
 
-bool FunctionAccess::verify_contracts(const Function& function,
-                                      Compiler& compiler,
-                                      Diagnostics& diagnostics) {
-  return verify_op_contracts(*function.function_->state, compiler,
-                                      diagnostics);
+bool FnAccess::verify_contracts(const Fn& fn, Compiler& compiler,
+                                Diagnostics& diagnostics) {
+  return verify_op_contracts(*fn.fn_->state, compiler, diagnostics);
 }
 
-void FunctionAccess::declare(Function& function,
-                             Module::FunctionDecl declaration,
-                             std::vector<Type> argument_types,
-                             std::vector<Type> result_types) {
-  auto& identity = function.function_;
+void FnAccess::declare(Fn& fn, Mod::FnDecl declaration,
+                       std::vector<Type> argument_types,
+                       std::vector<Type> result_types) {
+  auto& identity = fn.fn_;
   auto& state = *identity->state;
   if (identity->editing || state.signature) {
-    throw std::logic_error("function signature is already fixed");
+    throw std::logic_error("fn signature is already fixed");
   }
   if (!state.arguments.empty() || state.blocks.size() != 1U ||
       !state.ops.empty()) {
-    throw std::logic_error("function signature must be fixed before its body");
+    throw std::logic_error("fn signature must be fixed before its body");
   }
   if (!owns(state, declaration.symbol()) ||
       value_inputs(declaration).size() != argument_types.size() ||
       value_results(declaration).size() != result_types.size()) {
-    throw std::invalid_argument(
-        "function signature does not match its declaration");
+    throw std::invalid_argument("fn signature does not match its declaration");
   }
   const bool owned_arguments =
       std::all_of(argument_types.begin(), argument_types.end(),
@@ -1022,24 +966,23 @@ void FunctionAccess::declare(Function& function,
                   [&](const Type& type) { return owns(state, type); });
   if (!owned_arguments || !owned_results) {
     throw std::invalid_argument(
-        "function signature references a type outside its module closure");
+        "fn signature references a type outside its mod closure");
   }
-  state.signature = FunctionState::Signature{std::move(declaration),
-                                             std::move(argument_types),
-                                             std::move(result_types)};
+  state.signature =
+      FnState::Signature{std::move(declaration), std::move(argument_types),
+                         std::move(result_types)};
 }
 
-void FunctionAccess::define(Function& function,
-                            std::vector<Type> argument_types,
-                            std::vector<Type> result_types) {
-  auto& identity = function.function_;
+void FnAccess::define(Fn& fn, std::vector<Type> argument_types,
+                      std::vector<Type> result_types) {
+  auto& identity = fn.fn_;
   auto& state = *identity->state;
   if (identity->editing || state.signature) {
-    throw std::logic_error("function signature is already fixed");
+    throw std::logic_error("fn signature is already fixed");
   }
   if (!state.arguments.empty() || state.blocks.size() != 1U ||
       !state.ops.empty()) {
-    throw std::logic_error("function signature must be fixed before its body");
+    throw std::logic_error("fn signature must be fixed before its body");
   }
   const bool owned_arguments =
       std::all_of(argument_types.begin(), argument_types.end(),
@@ -1049,60 +992,58 @@ void FunctionAccess::define(Function& function,
                   [&](const Type& type) { return owns(state, type); });
   if (!owned_arguments || !owned_results) {
     throw std::invalid_argument(
-        "function signature references a type outside its module closure");
+        "fn signature references a type outside its mod closure");
   }
-  state.signature = FunctionState::Signature{
-      std::nullopt, std::move(argument_types), std::move(result_types)};
+  state.signature = FnState::Signature{std::nullopt, std::move(argument_types),
+                                       std::move(result_types)};
 }
 
-bool FunctionAccess::attach(Function& function,
-                            Module::FunctionDecl declaration, Module owner,
-                            Diagnostics& diagnostics) {
-  if (!function.function_ || function.function_->editing) {
+bool FnAccess::attach(Fn& fn, Mod::FnDecl declaration, Mod owner,
+                      Diagnostics& diagnostics) {
+  if (!fn.fn_ || fn.fn_->editing) {
     throw std::logic_error(
-        "cannot attach a moved-from function or one with an active edit");
+        "cannot attach a moved-from fn or one with an active edit");
   }
-  Function candidate = function;
-  auto state = std::make_shared<FunctionState>(*candidate.function_->state);
-  state->modules.insert_or_assign(std::string(owner.name()), std::move(owner));
+  Fn candidate = fn;
+  auto state = std::make_shared<FnState>(*candidate.fn_->state);
+  state->mods.insert_or_assign(std::string(owner.name()), std::move(owner));
 
   std::vector<Type> arguments;
   arguments.reserve(state->arguments.size());
   for (const std::uint64_t argument : state->arguments) {
     const auto found = state->values.find(argument);
     if (found == state->values.end()) {
-      diagnostics.report("cannot attach a malformed Function to a Module");
+      diagnostics.report("cannot attach a malformed Fn to a Mod");
       return false;
     }
     arguments.push_back(found->second.type);
   }
-  std::vector<Type> results = function.result_types();
-  state->signature = FunctionState::Signature{
+  std::vector<Type> results = fn.result_types();
+  state->signature = FnState::Signature{
       std::move(declaration), std::move(arguments), std::move(results)};
-  candidate.function_->state = std::move(state);
-  if (!verify_function(*candidate.function_->state, diagnostics)) {
+  candidate.fn_->state = std::move(state);
+  if (!verify_fn(*candidate.fn_->state, diagnostics)) {
     return false;
   }
-  function = std::move(candidate);
+  fn = std::move(candidate);
   return true;
 }
 
-bool FunctionAccess::commit(Function::Edit& edit, Compiler& compiler,
-                            Diagnostics& diagnostics) {
+bool FnAccess::commit(Fn::Edit& edit, Compiler& compiler,
+                      Diagnostics& diagnostics) {
   if (!edit.state_ || !edit.state_->active) {
-    throw std::logic_error("function edit is no longer active");
+    throw std::logic_error("fn edit is no longer active");
   }
-  if (!verify_function(*edit.state_->function->state, diagnostics) ||
-      !verify_op_contracts(*edit.state_->function->state, compiler,
-                                    diagnostics)) {
-    edit.state_->function->state = std::move(edit.state_->backup);
-    edit.state_->function->editing = false;
+  if (!verify_fn(*edit.state_->fn->state, diagnostics) ||
+      !verify_op_contracts(*edit.state_->fn->state, compiler, diagnostics)) {
+    edit.state_->fn->state = std::move(edit.state_->backup);
+    edit.state_->fn->editing = false;
     edit.state_->active = false;
     return false;
   }
   edit.state_->active = false;
   edit.state_->backup.reset();
-  edit.state_->function->editing = false;
+  edit.state_->fn->editing = false;
   return true;
 }
 
@@ -1110,195 +1051,190 @@ bool FunctionAccess::commit(Function::Edit& edit, Compiler& compiler,
 
 namespace joggle {
 
-Function::Revision::Revision(std::shared_ptr<const FunctionState> state)
+Fn::Revision::Revision(std::shared_ptr<const FnState> state)
     : state_(std::move(state)) {}
 
-Value::Value(std::shared_ptr<FunctionIdentity> function, std::uint64_t id)
-    : function_(std::move(function)), id_(id) {}
+Val::Val(std::shared_ptr<FnIdentity> fn, std::uint64_t id)
+    : fn_(std::move(fn)), id_(id) {}
 
-Value::Value(Type type, ParameterValue value)
-    : known_(std::make_shared<const detail::KnownValueStorage>(
-          detail::KnownValueStorage{std::move(type), std::move(value)})) {}
+Val::Val(Type type, ParamVal value)
+    : known_(std::make_shared<const detail::KnownValStorage>(
+          detail::KnownValStorage{std::move(type), std::move(value)})) {}
 
-bool Value::valid() const {
-  return known_ || (function_ && contains(function_->state->values, id_));
+bool Val::valid() const {
+  return known_ || (fn_ && contains(fn_->state->values, id_));
 }
 
-bool Value::known() const { return static_cast<bool>(known_); }
+bool Val::known() const { return static_cast<bool>(known_); }
 
-Type Value::type() const {
+Type Val::type() const {
   if (known_) {
     return known_->type;
   }
-  const auto found = function_->state->values.find(id_);
-  if (found == function_->state->values.end()) {
+  const auto found = fn_->state->values.find(id_);
+  if (found == fn_->state->values.end()) {
     throw std::logic_error("value is no longer valid");
   }
   return found->second.type;
 }
 
-std::optional<ParameterValue> Value::known_value() const {
-  return known_ ? std::optional<ParameterValue>{known_->value} : std::nullopt;
+std::optional<ParamVal> Val::known_value() const {
+  return known_ ? std::optional<ParamVal>{known_->value} : std::nullopt;
 }
 
-bool Value::operator==(const Value& other) const {
+bool Val::operator==(const Val& other) const {
   if (known_ || other.known_) {
     return known_ && other.known_ && known_->type == other.known_->type &&
            known_->value == other.known_->value;
   }
-  return function_ == other.function_ && id_ == other.id_;
+  return fn_ == other.fn_ && id_ == other.id_;
 }
 
-bool Value::is_function_argument() const {
-  if (!function_) {
+bool Val::is_fn_arg() const {
+  if (!fn_) {
     return false;
   }
-  const auto found = function_->state->values.find(id_);
-  return found != function_->state->values.end() &&
-         found->second.origin == ValueData::Origin::FunctionArgument;
+  const auto found = fn_->state->values.find(id_);
+  return found != fn_->state->values.end() &&
+         found->second.origin == ValData::Origin::FnArg;
 }
 
-bool Value::is_block_argument() const {
-  if (!function_) {
+bool Val::is_blk_arg() const {
+  if (!fn_) {
     return false;
   }
-  const auto found = function_->state->values.find(id_);
-  return found != function_->state->values.end() &&
-         found->second.origin == ValueData::Origin::BlockArgument;
+  const auto found = fn_->state->values.find(id_);
+  return found != fn_->state->values.end() &&
+         found->second.origin == ValData::Origin::BlkArg;
 }
 
-std::optional<Op> Value::defining_op() const {
-  if (!function_) {
+std::optional<Op> Val::defining_op() const {
+  if (!fn_) {
     return std::nullopt;
   }
-  const auto found = function_->state->values.find(id_);
-  if (found == function_->state->values.end() ||
-      found->second.origin != ValueData::Origin::OpResult) {
+  const auto found = fn_->state->values.find(id_);
+  if (found == fn_->state->values.end() ||
+      found->second.origin != ValData::Origin::OpResult) {
     return std::nullopt;
   }
-  return Op(function_, found->second.owner);
+  return Op(fn_, found->second.owner);
 }
 
-std::vector<Op> Value::users() const {
+std::vector<Op> Val::users() const {
   if (!valid() || known()) {
     return {};
   }
   std::vector<Op> result;
-  for (const std::uint64_t block : function_->state->block_order) {
-    for (const std::uint64_t op_id : function_->state->blocks.at(block).ops) {
-      const auto& op = function_->state->ops.at(op_id);
+  for (const std::uint64_t block : fn_->state->block_order) {
+    for (const std::uint64_t op_id : fn_->state->blocks.at(block).ops) {
+      const auto& op = fn_->state->ops.at(op_id);
       const bool consumes = std::any_of(
           op.arguments.begin(), op.arguments.end(),
           [&](const detail::StoredArgument& argument) {
-            return detail::FunctionAccess::restore(function_, argument.value.id,
-                                                   argument.value.known) ==
-                   *this;
+            return detail::FnAccess::restore(fn_, argument.value.id,
+                                             argument.value.known) == *this;
           });
       if (consumes) {
-        result.push_back(Op(function_, op_id));
+        result.push_back(Op(fn_, op_id));
       }
     }
   }
   return result;
 }
 
-std::optional<Module::FunctionDecl> Value::referenced_function() const {
-  if (!function_) {
+std::optional<Mod::FnDecl> Val::referenced_fn() const {
+  if (!fn_) {
     return std::nullopt;
   }
-  const auto found = function_->state->values.find(id_);
-  return found != function_->state->values.end() &&
-                 found->second.origin == ValueData::Origin::FunctionReference
+  const auto found = fn_->state->values.find(id_);
+  return found != fn_->state->values.end() &&
+                 found->second.origin == ValData::Origin::FnRef
              ? found->second.reference
              : std::nullopt;
 }
 
-std::optional<Function> Value::inline_function() const {
-  if (!function_) {
+std::optional<Fn> Val::inline_fn() const {
+  if (!fn_) {
     return std::nullopt;
   }
-  const auto found = function_->state->values.find(id_);
-  return found != function_->state->values.end() &&
-                 found->second.origin == ValueData::Origin::InlineFunction &&
-                 found->second.inline_function
-             ? std::optional<Function>{*found->second.inline_function}
+  const auto found = fn_->state->values.find(id_);
+  return found != fn_->state->values.end() &&
+                 found->second.origin == ValData::Origin::InlineFn &&
+                 found->second.inline_fn
+             ? std::optional<Fn>{*found->second.inline_fn}
              : std::nullopt;
 }
 
-Op::Op(std::shared_ptr<FunctionIdentity> function, std::uint64_t id)
-    : function_(std::move(function)), id_(id) {}
+Op::Op(std::shared_ptr<FnIdentity> fn, std::uint64_t id)
+    : fn_(std::move(fn)), id_(id) {}
 
-bool Op::valid() const {
-  return function_ && contains(function_->state->ops, id_);
-}
+bool Op::valid() const { return fn_ && contains(fn_->state->ops, id_); }
 
-Module::FunctionDecl Op::callee() const {
-  const auto found = function_->state->ops.find(id_);
-  if (found == function_->state->ops.end()) {
+Mod::FnDecl Op::callee() const {
+  const auto found = fn_->state->ops.find(id_);
+  if (found == fn_->state->ops.end()) {
     throw std::logic_error("op is no longer valid");
   }
   return found->second.schema;
 }
 
-Block Op::parent() const {
-  const auto found = function_->state->ops.find(id_);
-  if (found == function_->state->ops.end() ||
-      !contains(function_->state->blocks, found->second.parent)) {
+Blk Op::parent() const {
+  const auto found = fn_->state->ops.find(id_);
+  if (found == fn_->state->ops.end() ||
+      !contains(fn_->state->blocks, found->second.parent)) {
     throw std::logic_error("op has no valid parent block");
   }
-  return Block(function_, found->second.parent);
+  return Blk(fn_, found->second.parent);
 }
 
-std::vector<Value> Op::arguments() const {
-  const auto found = function_->state->ops.find(id_);
-  if (found == function_->state->ops.end()) {
+std::vector<Val> Op::arguments() const {
+  const auto found = fn_->state->ops.find(id_);
+  if (found == fn_->state->ops.end()) {
     throw std::logic_error("op is no longer valid");
   }
-  std::vector<Value> values;
+  std::vector<Val> values;
   values.reserve(found->second.arguments.size());
   for (const detail::StoredArgument& argument : found->second.arguments) {
-    const detail::StoredValue& value = argument.value;
-    values.push_back(
-        detail::FunctionAccess::restore(function_, value.id, value.known));
+    const detail::StoredVal& value = argument.value;
+    values.push_back(detail::FnAccess::restore(fn_, value.id, value.known));
   }
   return values;
 }
 
-std::vector<Value> Op::operands() const {
-  const auto found = function_->state->ops.find(id_);
-  if (found == function_->state->ops.end()) {
+std::vector<Val> Op::operands() const {
+  const auto found = fn_->state->ops.find(id_);
+  if (found == fn_->state->ops.end()) {
     throw std::logic_error("op is no longer valid");
   }
   const auto parameters = found->second.schema.inputs();
-  std::vector<Value> values;
+  std::vector<Val> values;
   for (const detail::StoredArgument& argument : found->second.arguments) {
     if (detail::is_value_port(parameters[argument.parameter])) {
-      values.push_back(detail::FunctionAccess::restore(
-          function_, argument.value.id, argument.value.known));
+      values.push_back(detail::FnAccess::restore(fn_, argument.value.id,
+                                                 argument.value.known));
     }
   }
   return values;
 }
 
-std::vector<std::pair<std::string, Value>> Op::properties() const {
-  const auto found = function_->state->ops.find(id_);
-  if (found == function_->state->ops.end()) {
+std::vector<std::pair<std::string, Val>> Op::properties() const {
+  const auto found = fn_->state->ops.find(id_);
+  if (found == fn_->state->ops.end()) {
     throw std::logic_error("op is no longer valid");
   }
   const auto parameters = found->second.schema.inputs();
-  std::vector<std::pair<std::string, Value>> values;
+  std::vector<std::pair<std::string, Val>> values;
   for (const detail::StoredArgument& argument : found->second.arguments) {
     if (!detail::is_value_port(parameters[argument.parameter])) {
-      values.emplace_back(
-          parameters[argument.parameter].name,
-          detail::FunctionAccess::restore(function_, argument.value.id,
-                                          argument.value.known));
+      values.emplace_back(parameters[argument.parameter].name,
+                          detail::FnAccess::restore(fn_, argument.value.id,
+                                                    argument.value.known));
     }
   }
   return values;
 }
 
-std::optional<Value> Op::operand(std::string_view name) const {
+std::optional<Val> Op::operand(std::string_view name) const {
   const auto value = argument(name);
   if (!value) {
     return std::nullopt;
@@ -1306,13 +1242,13 @@ std::optional<Value> Op::operand(std::string_view name) const {
   const auto parameters = callee().inputs();
   const auto parameter = std::find_if(
       parameters.begin(), parameters.end(),
-      [&](const Module::ParameterDecl& candidate) { return candidate.name == name; });
+      [&](const Mod::ParamDecl& candidate) { return candidate.name == name; });
   return parameter != parameters.end() && detail::is_value_port(*parameter)
              ? value
              : std::nullopt;
 }
 
-std::optional<Value> Op::property(std::string_view name) const {
+std::optional<Val> Op::property(std::string_view name) const {
   const auto value = argument(name);
   if (!value) {
     return std::nullopt;
@@ -1320,63 +1256,60 @@ std::optional<Value> Op::property(std::string_view name) const {
   const auto parameters = callee().inputs();
   const auto parameter = std::find_if(
       parameters.begin(), parameters.end(),
-      [&](const Module::ParameterDecl& candidate) { return candidate.name == name; });
+      [&](const Mod::ParamDecl& candidate) { return candidate.name == name; });
   return parameter != parameters.end() && !detail::is_value_port(*parameter)
              ? value
              : std::nullopt;
 }
 
-std::vector<Value> Op::results() const {
-  const auto found = function_->state->ops.find(id_);
-  if (found == function_->state->ops.end()) {
+std::vector<Val> Op::results() const {
+  const auto found = fn_->state->ops.find(id_);
+  if (found == fn_->state->ops.end()) {
     throw std::logic_error("op is no longer valid");
   }
-  std::vector<Value> values;
+  std::vector<Val> values;
   values.reserve(found->second.results.size());
   for (std::uint64_t value : found->second.results) {
-    values.push_back(Value(function_, value));
+    values.push_back(Val(fn_, value));
   }
   return values;
 }
 
-Value Op::value() const {
-  const auto found = function_->state->ops.find(id_);
-  if (found == function_->state->ops.end()) {
+Val Op::value() const {
+  const auto found = fn_->state->ops.find(id_);
+  if (found == fn_->state->ops.end()) {
     throw std::logic_error("op is no longer valid");
   }
   if (found->second.results.size() != 1U) {
     throw std::logic_error("op does not have exactly one value");
   }
-  return Value(function_, found->second.results.front());
+  return Val(fn_, found->second.results.front());
 }
 
-Value Op::result(std::size_t index) const {
-  const auto found = function_->state->ops.find(id_);
-  if (found == function_->state->ops.end() ||
-      index >= found->second.results.size()) {
+Val Op::result(std::size_t index) const {
+  const auto found = fn_->state->ops.find(id_);
+  if (found == fn_->state->ops.end() || index >= found->second.results.size()) {
     throw std::out_of_range("op result index is out of range");
   }
-  return Value(function_, found->second.results[index]);
+  return Val(fn_, found->second.results[index]);
 }
 
 std::optional<SourceRange> Op::location() const {
   if (!valid()) {
     return std::nullopt;
   }
-  return function_->state->ops.at(id_).location;
+  return fn_->state->ops.at(id_).location;
 }
 
-std::optional<Value> Op::argument(std::string_view name) const {
-  const auto found = function_->state->ops.find(id_);
-  if (found == function_->state->ops.end()) {
+std::optional<Val> Op::argument(std::string_view name) const {
+  const auto found = fn_->state->ops.find(id_);
+  if (found == fn_->state->ops.end()) {
     return std::nullopt;
   }
   const auto parameters = found->second.schema.inputs();
-  const auto parameter =
-      std::find_if(parameters.begin(), parameters.end(),
-                   [&](const Module::ParameterDecl& candidate) {
-                     return candidate.name == name;
-                   });
+  const auto parameter = std::find_if(
+      parameters.begin(), parameters.end(),
+      [&](const Mod::ParamDecl& candidate) { return candidate.name == name; });
   if (parameter == parameters.end()) {
     return std::nullopt;
   }
@@ -1390,269 +1323,252 @@ std::optional<Value> Op::argument(std::string_view name) const {
   if (argument == found->second.arguments.end()) {
     return std::nullopt;
   }
-  return detail::FunctionAccess::restore(function_, argument->value.id,
-                                         argument->value.known);
+  return detail::FnAccess::restore(fn_, argument->value.id,
+                                   argument->value.known);
 }
 
-Terminator::Terminator(std::shared_ptr<FunctionIdentity> function,
-                       std::uint64_t block)
-    : function_(std::move(function)), block_(block) {}
+Terminator::Terminator(std::shared_ptr<FnIdentity> fn, std::uint64_t block)
+    : fn_(std::move(fn)), block_(block) {}
 
 bool Terminator::valid() const {
-  if (!function_) {
+  if (!fn_) {
     return false;
   }
-  const auto block = function_->state->blocks.find(block_);
-  return block != function_->state->blocks.end() &&
+  const auto block = fn_->state->blocks.find(block_);
+  return block != fn_->state->blocks.end() &&
          block->second.terminator.has_value();
 }
 
 Terminator::Kind Terminator::kind() const {
-  const auto block = function_->state->blocks.find(block_);
-  if (block == function_->state->blocks.end() || !block->second.terminator) {
+  const auto block = fn_->state->blocks.find(block_);
+  if (block == fn_->state->blocks.end() || !block->second.terminator) {
     throw std::logic_error("terminator is no longer valid");
   }
   return block->second.terminator->kind;
 }
 
-std::optional<Value> Terminator::condition() const {
-  const auto block = function_->state->blocks.find(block_);
-  if (block == function_->state->blocks.end() || !block->second.terminator) {
+std::optional<Val> Terminator::condition() const {
+  const auto block = fn_->state->blocks.find(block_);
+  if (block == fn_->state->blocks.end() || !block->second.terminator) {
     throw std::logic_error("terminator is no longer valid");
   }
   const auto condition = block->second.terminator->condition;
-  return condition ? std::optional<Value>{Value(function_, *condition)}
-                   : std::nullopt;
+  return condition ? std::optional<Val>{Val(fn_, *condition)} : std::nullopt;
 }
 
-std::vector<Value> Terminator::returned() const {
-  const auto block = function_->state->blocks.find(block_);
-  if (block == function_->state->blocks.end() || !block->second.terminator) {
+std::vector<Val> Terminator::returned() const {
+  const auto block = fn_->state->blocks.find(block_);
+  if (block == fn_->state->blocks.end() || !block->second.terminator) {
     throw std::logic_error("terminator is no longer valid");
   }
-  std::vector<Value> values;
+  std::vector<Val> values;
   values.reserve(block->second.terminator->returned.size());
   for (const std::uint64_t value : block->second.terminator->returned) {
-    values.push_back(Value(function_, value));
+    values.push_back(Val(fn_, value));
   }
   return values;
 }
 
 std::size_t Terminator::successor_count() const {
-  const auto block = function_->state->blocks.find(block_);
-  if (block == function_->state->blocks.end() || !block->second.terminator) {
+  const auto block = fn_->state->blocks.find(block_);
+  if (block == fn_->state->blocks.end() || !block->second.terminator) {
     throw std::logic_error("terminator is no longer valid");
   }
   return block->second.terminator->successors.size();
 }
 
-Block Terminator::successor(std::size_t index) const {
-  const auto block = function_->state->blocks.find(block_);
-  if (block == function_->state->blocks.end() || !block->second.terminator ||
+Blk Terminator::successor(std::size_t index) const {
+  const auto block = fn_->state->blocks.find(block_);
+  if (block == fn_->state->blocks.end() || !block->second.terminator ||
       index >= block->second.terminator->successors.size()) {
     throw std::out_of_range("terminator successor index is out of range");
   }
-  return Block(function_, block->second.terminator->successors[index].target);
+  return Blk(fn_, block->second.terminator->successors[index].target);
 }
 
-std::vector<Value> Terminator::arguments(std::size_t successor) const {
-  const auto block = function_->state->blocks.find(block_);
-  if (block == function_->state->blocks.end() || !block->second.terminator ||
+std::vector<Val> Terminator::arguments(std::size_t successor) const {
+  const auto block = fn_->state->blocks.find(block_);
+  if (block == fn_->state->blocks.end() || !block->second.terminator ||
       successor >= block->second.terminator->successors.size()) {
     throw std::out_of_range("terminator successor index is out of range");
   }
-  std::vector<Value> values;
+  std::vector<Val> values;
   const auto& arguments =
       block->second.terminator->successors[successor].arguments;
   values.reserve(arguments.size());
   for (const std::uint64_t value : arguments) {
-    values.push_back(Value(function_, value));
+    values.push_back(Val(fn_, value));
   }
   return values;
 }
 
-Block::Block(std::shared_ptr<FunctionIdentity> function, std::uint64_t id)
-    : function_(std::move(function)), id_(id) {}
+Blk::Blk(std::shared_ptr<FnIdentity> fn, std::uint64_t id)
+    : fn_(std::move(fn)), id_(id) {}
 
-bool Block::valid() const {
-  return function_ && contains(function_->state->blocks, id_);
-}
+bool Blk::valid() const { return fn_ && contains(fn_->state->blocks, id_); }
 
-bool Block::is_entry() const {
-  return valid() && function_->state->entry == id_;
-}
+bool Blk::is_entry() const { return valid() && fn_->state->entry == id_; }
 
-std::vector<Value> Block::arguments() const {
-  const auto found = function_->state->blocks.find(id_);
-  if (found == function_->state->blocks.end()) {
+std::vector<Val> Blk::arguments() const {
+  const auto found = fn_->state->blocks.find(id_);
+  if (found == fn_->state->blocks.end()) {
     throw std::logic_error("block is no longer valid");
   }
-  std::vector<Value> values;
+  std::vector<Val> values;
   values.reserve(found->second.arguments.size());
   for (const std::uint64_t value : found->second.arguments) {
-    values.push_back(Value(function_, value));
+    values.push_back(Val(fn_, value));
   }
   return values;
 }
 
-std::vector<Op> Block::ops() const {
-  const auto found = function_->state->blocks.find(id_);
-  if (found == function_->state->blocks.end()) {
+std::vector<Op> Blk::ops() const {
+  const auto found = fn_->state->blocks.find(id_);
+  if (found == fn_->state->blocks.end()) {
     throw std::logic_error("block is no longer valid");
   }
   std::vector<Op> ops;
   ops.reserve(found->second.ops.size());
   for (const std::uint64_t op : found->second.ops) {
-    ops.push_back(Op(function_, op));
+    ops.push_back(Op(fn_, op));
   }
   return ops;
 }
 
-Terminator Block::terminator() const {
+Terminator Blk::terminator() const {
   if (!valid()) {
     throw std::logic_error("block is no longer valid");
   }
-  return Terminator(function_, id_);
+  return Terminator(fn_, id_);
 }
 
-Function::Edit::Edit(std::shared_ptr<FunctionIdentity> function)
-    : state_(std::make_unique<detail::FunctionEditState>()) {
-  if (function->editing) {
-    throw std::logic_error("a function already has an active edit");
+Fn::Edit::Edit(std::shared_ptr<FnIdentity> fn)
+    : state_(std::make_unique<detail::FnEditState>()) {
+  if (fn->editing) {
+    throw std::logic_error("a fn already has an active edit");
   }
-  function->editing = true;
-  state_->function = std::move(function);
-  state_->backup = state_->function->state;
-  state_->function->state = std::make_shared<FunctionState>(*state_->backup);
+  fn->editing = true;
+  state_->fn = std::move(fn);
+  state_->backup = state_->fn->state;
+  state_->fn->state = std::make_shared<FnState>(*state_->backup);
 }
 
-Function::Edit::~Edit() {
+Fn::Edit::~Edit() {
   if (state_ && state_->active) {
-    state_->function->state = std::move(state_->backup);
-    state_->function->editing = false;
+    state_->fn->state = std::move(state_->backup);
+    state_->fn->editing = false;
   }
 }
 
-Function::Edit::Edit(Edit&&) noexcept = default;
+Fn::Edit::Edit(Edit&&) noexcept = default;
 
-Function::Edit& Function::Edit::operator=(Edit&& other) noexcept {
+Fn::Edit& Fn::Edit::operator=(Edit&& other) noexcept {
   if (this == &other) {
     return *this;
   }
   if (state_ && state_->active) {
-    state_->function->state = std::move(state_->backup);
-    state_->function->editing = false;
+    state_->fn->state = std::move(state_->backup);
+    state_->fn->editing = false;
   }
   state_ = std::move(other.state_);
   return *this;
 }
 
-Value Function::Edit::argument(Type type) {
-  const std::uint64_t id = state_->function->next_id++;
-  const std::size_t index = state_->function->state->arguments.size();
-  state_->function->state->values.emplace(
-      id, ValueData{std::move(type), ValueData::Origin::FunctionArgument, 0,
-                    index, std::nullopt, nullptr});
-  state_->function->state->arguments.push_back(id);
-  return Function::make_value(state_->function, id);
+Val Fn::Edit::argument(Type type) {
+  const std::uint64_t id = state_->fn->next_id++;
+  const std::size_t index = state_->fn->state->arguments.size();
+  state_->fn->state->values.emplace(id, ValData{std::move(type),
+                                                ValData::Origin::FnArg, 0,
+                                                index, std::nullopt, nullptr});
+  state_->fn->state->arguments.push_back(id);
+  return Fn::make_value(state_->fn, id);
 }
 
-Value Function::Edit::reference(Module::FunctionDecl function, Type type) {
+Val Fn::Edit::reference(Mod::FnDecl fn, Type type) {
   if (!state_ || !state_->active) {
-    throw std::logic_error("cannot edit an inactive function");
+    throw std::logic_error("cannot edit an inactive fn");
   }
-  if (!owns(*state_->function->state, function.symbol()) ||
-      !owns(*state_->function->state, type)) {
+  if (!owns(*state_->fn->state, fn.symbol()) ||
+      !owns(*state_->fn->state, type)) {
+    throw std::invalid_argument("referenced fn is outside the mod closure");
+  }
+  detail::ValData data{
+      std::move(type), detail::ValData::Origin::FnRef, 0, 0, std::move(fn),
+      nullptr};
+  if (!matches_fn_reference(*state_->fn->state, data)) {
     throw std::invalid_argument(
-        "referenced function is outside the module closure");
+        "fn reference type does not match its declaration");
   }
-  detail::ValueData data{std::move(type),
-                         detail::ValueData::Origin::FunctionReference, 0, 0,
-                         std::move(function), nullptr};
-  if (!matches_function_reference(*state_->function->state, data)) {
-    throw std::invalid_argument(
-        "function reference type does not match its declaration");
-  }
-  const std::uint64_t id = state_->function->next_id++;
-  state_->function->state->values.emplace(id, std::move(data));
-  return Function::make_value(state_->function, id);
+  const std::uint64_t id = state_->fn->next_id++;
+  state_->fn->state->values.emplace(id, std::move(data));
+  return Fn::make_value(state_->fn, id);
 }
 
-Value Function::Edit::callable(Function function, Type type) {
+Val Fn::Edit::callable(Fn fn, Type type) {
   if (!state_ || !state_->active) {
-    throw std::logic_error("cannot edit an inactive function");
+    throw std::logic_error("cannot edit an inactive fn");
   }
-  detail::ValueData data{
-      std::move(type), detail::ValueData::Origin::InlineFunction, 0, 0,
-      std::nullopt, std::make_shared<Function>(std::move(function))};
-  if (!matches_inline_function(*state_->function->state, data)) {
-    throw std::invalid_argument(
-        "inline function type does not match its body");
+  detail::ValData data{
+      std::move(type), detail::ValData::Origin::InlineFn,  0, 0,
+      std::nullopt,    std::make_shared<Fn>(std::move(fn))};
+  if (!matches_inline_fn(*state_->fn->state, data)) {
+    throw std::invalid_argument("inline fn type does not match its body");
   }
-  const std::uint64_t id = state_->function->next_id++;
-  state_->function->state->values.emplace(id, std::move(data));
-  return Function::make_value(state_->function, id);
+  const std::uint64_t id = state_->fn->next_id++;
+  state_->fn->state->values.emplace(id, std::move(data));
+  return Fn::make_value(state_->fn, id);
 }
 
-Block Function::Edit::block(std::vector<Type> argument_types) {
-  const std::uint64_t block_id = state_->function->next_id++;
-  detail::BlockData data;
+Blk Fn::Edit::blk(std::vector<Type> argument_types) {
+  const std::uint64_t block_id = state_->fn->next_id++;
+  detail::BlkData data;
   data.arguments.reserve(argument_types.size());
   for (std::size_t index = 0; index < argument_types.size(); ++index) {
-    const std::uint64_t value_id = state_->function->next_id++;
-    state_->function->state->values.emplace(
-        value_id, ValueData{std::move(argument_types[index]),
-                            ValueData::Origin::BlockArgument, block_id, index,
-                            std::nullopt, nullptr});
+    const std::uint64_t value_id = state_->fn->next_id++;
+    state_->fn->state->values.emplace(value_id,
+                                      ValData{std::move(argument_types[index]),
+                                              ValData::Origin::BlkArg, block_id,
+                                              index, std::nullopt, nullptr});
     data.arguments.push_back(value_id);
   }
-  state_->function->state->blocks.emplace(block_id, std::move(data));
-  state_->function->state->block_order.push_back(block_id);
-  return Function::make_block(state_->function, block_id);
+  state_->fn->state->blocks.emplace(block_id, std::move(data));
+  state_->fn->state->block_order.push_back(block_id);
+  return Fn::make_blk(state_->fn, block_id);
 }
 
-Op Function::Edit::append(Module::FunctionDecl schema,
-                                   std::vector<Value> arguments,
-                                   std::vector<Type> result_types) {
-  return add(
-      Function::make_block(state_->function, state_->function->state->entry),
-      std::nullopt, std::move(schema), std::move(arguments),
-      std::move(result_types));
+Op Fn::Edit::append(Mod::FnDecl schema, std::vector<Val> arguments,
+                    std::vector<Type> result_types) {
+  return add(Fn::make_blk(state_->fn, state_->fn->state->entry), std::nullopt,
+             std::move(schema), std::move(arguments), std::move(result_types));
 }
 
-Op Function::Edit::append(Block block, Module::FunctionDecl schema,
-                                   std::vector<Value> arguments,
-                                   std::vector<Type> result_types) {
+Op Fn::Edit::append(Blk block, Mod::FnDecl schema, std::vector<Val> arguments,
+                    std::vector<Type> result_types) {
   return add(std::move(block), std::nullopt, std::move(schema),
              std::move(arguments), std::move(result_types));
 }
 
-Op Function::Edit::insert(Op before,
-                                   Module::FunctionDecl schema,
-                                   std::vector<Value> arguments,
-                                   std::vector<Type> result_types) {
-  check_same_function(state_->function, before, "insertion point");
+Op Fn::Edit::insert(Op before, Mod::FnDecl schema, std::vector<Val> arguments,
+                    std::vector<Type> result_types) {
+  check_same_fn(state_->fn, before, "insertion point");
   return add(before.parent(), before, std::move(schema), std::move(arguments),
              std::move(result_types));
 }
 
-Op Function::Edit::add(Block block, std::optional<Op> before,
-                                Module::FunctionDecl schema,
-                                std::vector<Value> arguments,
-                                std::vector<Type> result_types) {
-  check_same_function(state_->function, block, "block");
-  const std::uint64_t block_id = detail::FunctionAccess::id(block);
-  const auto location = before ? state_->function->state->ops
-                                     .at(detail::FunctionAccess::id(*before))
-                                     .location
-                               : std::optional<SourceRange>{};
+Op Fn::Edit::add(Blk block, std::optional<Op> before, Mod::FnDecl schema,
+                 std::vector<Val> arguments, std::vector<Type> result_types) {
+  check_same_fn(state_->fn, block, "block");
+  const std::uint64_t block_id = detail::FnAccess::id(block);
+  const auto location =
+      before ? state_->fn->state->ops.at(detail::FnAccess::id(*before)).location
+             : std::optional<SourceRange>{};
   const auto parameters = schema.inputs();
   std::vector<detail::StoredArgument> argument_ids;
   argument_ids.reserve(std::max(arguments.size(), parameters.size()));
   std::size_t supplied = 0;
   for (std::size_t parameter_index = 0; parameter_index < parameters.size();
        ++parameter_index) {
-    const Module::ParameterDecl& parameter = parameters[parameter_index];
+    const Mod::ParamDecl& parameter = parameters[parameter_index];
     std::size_t count = parameter.variadic ? arguments.size() - supplied : 1U;
     bool use_default = false;
     if (!parameter.variadic && parameter.default_value) {
@@ -1667,27 +1583,27 @@ Op Function::Edit::add(Block block, std::optional<Op> before,
     }
     if (use_default) {
       auto value = detail::parameter_default(parameter);
-      auto known = value ? make_known(*state_->function->state, parameter,
-                                      std::move(*value))
-                         : nullptr;
+      auto known =
+          value ? make_known(*state_->fn->state, parameter, std::move(*value))
+                : nullptr;
       if (!known) {
         throw std::invalid_argument("cannot construct default argument '" +
                                     parameter.name + "' for op '" +
                                     schema.symbol().qualified_name() + "'");
       }
       argument_ids.push_back(
-          {parameter_index, detail::StoredValue{0, std::move(known)}});
+          {parameter_index, detail::StoredVal{0, std::move(known)}});
       continue;
     }
     if (supplied + count > arguments.size()) {
-      throw std::invalid_argument(
-          "op '" + schema.symbol().qualified_name() +
-          "' is missing argument '" + parameter.name + "'");
+      throw std::invalid_argument("op '" + schema.symbol().qualified_name() +
+                                  "' is missing argument '" + parameter.name +
+                                  "'");
     }
     for (std::size_t item = 0; item < count; ++item) {
-      const Value& argument = arguments[supplied++];
-      check_same_function(state_->function, argument, "argument");
-      const auto& known = detail::FunctionAccess::known(argument);
+      const Val& argument = arguments[supplied++];
+      check_same_fn(state_->fn, argument, "argument");
+      const auto& known = detail::FnAccess::known(argument);
       if (!detail::is_value_port(parameter) &&
           (!known || !matches(parameter, known->value))) {
         throw std::invalid_argument("argument '" + parameter.name +
@@ -1697,12 +1613,11 @@ Op Function::Edit::add(Block block, std::optional<Op> before,
       }
       argument_ids.push_back(
           {parameter_index,
-           detail::StoredValue{detail::FunctionAccess::id(argument), known}});
+           detail::StoredVal{detail::FnAccess::id(argument), known}});
     }
   }
   if (supplied != arguments.size()) {
-    throw std::invalid_argument("op '" +
-                                schema.symbol().qualified_name() +
+    throw std::invalid_argument("op '" + schema.symbol().qualified_name() +
                                 "' has too many arguments");
   }
 
@@ -1710,7 +1625,7 @@ Op Function::Edit::add(Block block, std::optional<Op> before,
     std::vector<Type> argument_types;
     std::vector<std::optional<Type>> expected(
         detail::value_results(schema).size());
-    std::vector<std::optional<ParameterValue>> inference_known;
+    std::vector<std::optional<ParamVal>> inference_known;
     inference_known.reserve(detail::compiler_inputs(schema).size());
     std::size_t current_parameter = 0;
     for (std::size_t parameter_index = 0; parameter_index < parameters.size();
@@ -1723,8 +1638,8 @@ Op Function::Edit::add(Block block, std::optional<Op> before,
                          });
         inference_known.push_back(
             item == argument_ids.end() || !item->value.known
-                ? std::optional<ParameterValue>{}
-                : std::optional<ParameterValue>{item->value.known->value});
+                ? std::optional<ParamVal>{}
+                : std::optional<ParamVal>{item->value.known->value});
         continue;
       }
       while (current_parameter < argument_ids.size() &&
@@ -1733,24 +1648,22 @@ Op Function::Edit::add(Block block, std::optional<Op> before,
       }
       while (current_parameter < argument_ids.size() &&
              argument_ids[current_parameter].parameter == parameter_index) {
-        const detail::StoredValue& argument =
+        const detail::StoredVal& argument =
             argument_ids[current_parameter++].value;
         argument_types.push_back(
-            argument.known
-                ? argument.known->type
-                : state_->function->state->values.at(argument.id).type);
+            argument.known ? argument.known->type
+                           : state_->fn->state->values.at(argument.id).type);
       }
     }
-    std::vector<Module> modules;
-    modules.reserve(state_->function->state->modules.size());
-    for (const auto& [name, module] : state_->function->state->modules) {
+    std::vector<Mod> mods;
+    mods.reserve(state_->fn->state->mods.size());
+    for (const auto& [name, mod] : state_->fn->state->mods) {
       static_cast<void>(name);
-      modules.push_back(module);
+      mods.push_back(mod);
     }
     Diagnostics diagnostics;
-    auto inferred =
-        detail::infer_call_types(modules, schema, argument_types,
-                                 inference_known, expected, diagnostics);
+    auto inferred = detail::infer_call_types(
+        mods, schema, argument_types, inference_known, expected, diagnostics);
     if (!inferred) {
       std::string message = "cannot infer results for op '" +
                             schema.symbol().qualified_name() + "'";
@@ -1761,136 +1674,129 @@ Op Function::Edit::add(Block block, std::optional<Op> before,
     }
     result_types = std::move(*inferred);
   }
-  const std::uint64_t id = state_->function->next_id++;
+  const std::uint64_t id = state_->fn->next_id++;
   std::vector<std::uint64_t> results;
   results.reserve(result_types.size());
   for (std::size_t index = 0; index < result_types.size(); ++index) {
-    const std::uint64_t result = state_->function->next_id++;
-    state_->function->state->values.emplace(
-        result, ValueData{std::move(result_types[index]),
-                          ValueData::Origin::OpResult, id, index,
-                          std::nullopt, nullptr});
+    const std::uint64_t result = state_->fn->next_id++;
+    state_->fn->state->values.emplace(result,
+                                      ValData{std::move(result_types[index]),
+                                              ValData::Origin::OpResult, id,
+                                              index, std::nullopt, nullptr});
     results.push_back(result);
   }
-  state_->function->state->ops.emplace(
-      id, OpData{std::move(schema), block_id, std::move(argument_ids),
-                          std::move(results), location});
-  auto& op_order =
-      state_->function->state->blocks.at(block_id).ops;
+  state_->fn->state->ops.emplace(id, OpData{std::move(schema), block_id,
+                                            std::move(argument_ids),
+                                            std::move(results), location});
+  auto& op_order = state_->fn->state->blocks.at(block_id).ops;
   if (before) {
-    const std::uint64_t before_id = detail::FunctionAccess::id(*before);
-    const auto position = std::find(op_order.begin(),
-                                    op_order.end(), before_id);
+    const std::uint64_t before_id = detail::FnAccess::id(*before);
+    const auto position =
+        std::find(op_order.begin(), op_order.end(), before_id);
     if (position == op_order.end()) {
-      throw std::invalid_argument("insertion point is not in this function");
+      throw std::invalid_argument("insertion point is not in this fn");
     }
     op_order.insert(position, id);
   } else {
     op_order.push_back(id);
   }
-  return Function::make_op(state_->function, id);
+  return Fn::make_op(state_->fn, id);
 }
 
-void Function::Edit::ret(Block block, std::vector<Value> values) {
-  check_same_function(state_->function, block, "return block");
+void Fn::Edit::ret(Blk block, std::vector<Val> values) {
+  check_same_fn(state_->fn, block, "return block");
   std::vector<std::uint64_t> ids;
   ids.reserve(values.size());
-  for (const Value& value : values) {
-    check_same_function(state_->function, value, "return value");
+  for (const Val& value : values) {
+    check_same_fn(state_->fn, value, "return value");
     if (value.known()) {
       throw std::invalid_argument(
           "a Known value must be materialized before it is returned");
     }
-    ids.push_back(detail::FunctionAccess::id(value));
+    ids.push_back(detail::FnAccess::id(value));
   }
   auto& terminator =
-      state_->function->state->blocks.at(detail::FunctionAccess::id(block))
-          .terminator;
+      state_->fn->state->blocks.at(detail::FnAccess::id(block)).terminator;
   terminator = detail::TerminatorData{
       Terminator::Kind::Return, std::nullopt, std::move(ids), {}};
 }
 
-void Function::Edit::jump(Block block, Block target,
-                          std::vector<Value> arguments) {
-  check_same_function(state_->function, block, "jump block");
-  check_same_function(state_->function, target, "jump target");
+void Fn::Edit::jump(Blk block, Blk target, std::vector<Val> arguments) {
+  check_same_fn(state_->fn, block, "jump block");
+  check_same_fn(state_->fn, target, "jump target");
   std::vector<std::uint64_t> ids;
   ids.reserve(arguments.size());
-  for (const Value& value : arguments) {
-    check_same_function(state_->function, value, "jump argument");
+  for (const Val& value : arguments) {
+    check_same_fn(state_->fn, value, "jump argument");
     if (value.known()) {
       throw std::invalid_argument(
           "a Known value must be materialized before it crosses an edge");
     }
-    ids.push_back(detail::FunctionAccess::id(value));
+    ids.push_back(detail::FnAccess::id(value));
   }
   auto& terminator =
-      state_->function->state->blocks.at(detail::FunctionAccess::id(block))
-          .terminator;
-  terminator = detail::TerminatorData{
-      Terminator::Kind::Jump,
-      std::nullopt,
-      {},
-      {{detail::FunctionAccess::id(target), std::move(ids)}}};
+      state_->fn->state->blocks.at(detail::FnAccess::id(block)).terminator;
+  terminator =
+      detail::TerminatorData{Terminator::Kind::Jump,
+                             std::nullopt,
+                             {},
+                             {{detail::FnAccess::id(target), std::move(ids)}}};
 }
 
-void Function::Edit::branch(Block block, Value condition, Block true_target,
-                            std::vector<Value> true_arguments,
-                            Block false_target,
-                            std::vector<Value> false_arguments) {
-  check_same_function(state_->function, block, "branch block");
-  check_same_function(state_->function, condition, "branch condition");
+void Fn::Edit::branch(Blk block, Val condition, Blk true_target,
+                      std::vector<Val> true_arguments, Blk false_target,
+                      std::vector<Val> false_arguments) {
+  check_same_fn(state_->fn, block, "branch block");
+  check_same_fn(state_->fn, condition, "branch condition");
   if (condition.known()) {
     throw std::invalid_argument(
         "a Known branch condition must be specialized before IR construction");
   }
-  check_same_function(state_->function, true_target, "true target");
-  check_same_function(state_->function, false_target, "false target");
-  const auto ids = [&](std::span<const Value> values) {
+  check_same_fn(state_->fn, true_target, "true target");
+  check_same_fn(state_->fn, false_target, "false target");
+  const auto ids = [&](std::span<const Val> values) {
     std::vector<std::uint64_t> result;
     result.reserve(values.size());
-    for (const Value& value : values) {
-      check_same_function(state_->function, value, "branch argument");
+    for (const Val& value : values) {
+      check_same_fn(state_->fn, value, "branch argument");
       if (value.known()) {
         throw std::invalid_argument(
             "a Known value must be materialized before it crosses an edge");
       }
-      result.push_back(detail::FunctionAccess::id(value));
+      result.push_back(detail::FnAccess::id(value));
     }
     return result;
   };
   auto& terminator =
-      state_->function->state->blocks.at(detail::FunctionAccess::id(block))
-          .terminator;
+      state_->fn->state->blocks.at(detail::FnAccess::id(block)).terminator;
   terminator = detail::TerminatorData{
       Terminator::Kind::Branch,
-      detail::FunctionAccess::id(condition),
+      detail::FnAccess::id(condition),
       {},
-      {{detail::FunctionAccess::id(true_target), ids(true_arguments)},
-       {detail::FunctionAccess::id(false_target), ids(false_arguments)}}};
+      {{detail::FnAccess::id(true_target), ids(true_arguments)},
+       {detail::FnAccess::id(false_target), ids(false_arguments)}}};
 }
 
-void Function::Edit::locate(Op op, SourceRange source) {
-  if (!state_ || !state_->active || op.function_ != state_->function ||
-      !op.valid()) {
-    throw std::invalid_argument("op does not belong to this function edit");
+void Fn::Edit::locate(Op op, SourceRange source) {
+  if (!state_ || !state_->active || op.fn_ != state_->fn || !op.valid()) {
+    throw std::invalid_argument("op does not belong to this fn edit");
   }
-  state_->function->state->ops.at(op.id_).location = std::move(source);
+  state_->fn->state->ops.at(op.id_).location = std::move(source);
 }
 
-void Function::Edit::replace(Value from, Value to) {
-  check_same_function(state_->function, from, "source value");
-  check_same_function(state_->function, to, "replacement value");
+void Fn::Edit::replace(Val from, Val to) {
+  check_same_fn(state_->fn, from, "source value");
+  check_same_fn(state_->fn, to, "replacement value");
   if (from.known() || to.known()) {
     throw std::invalid_argument(
-        "Known values are immutable and cannot cross a Function boundary");
+        "Known values are immutable and cannot cross a Fn boundary");
   }
   if (from.type() != to.type()) {
     throw std::invalid_argument("replacement value has a different type");
   }
-  const std::uint64_t from_id = detail::FunctionAccess::id(from);
-  const std::uint64_t to_id = detail::FunctionAccess::id(to);
-  for (auto& [id, op] : state_->function->state->ops) {
+  const std::uint64_t from_id = detail::FnAccess::id(from);
+  const std::uint64_t to_id = detail::FnAccess::id(to);
+  for (auto& [id, op] : state_->fn->state->ops) {
     static_cast<void>(id);
     for (detail::StoredArgument& argument : op.arguments) {
       if (!argument.value.known && argument.value.id == from_id) {
@@ -1898,7 +1804,7 @@ void Function::Edit::replace(Value from, Value to) {
       }
     }
   }
-  for (auto& [id, block] : state_->function->state->blocks) {
+  for (auto& [id, block] : state_->fn->state->blocks) {
     static_cast<void>(id);
     if (!block.terminator) {
       continue;
@@ -1915,16 +1821,15 @@ void Function::Edit::replace(Value from, Value to) {
   }
 }
 
-Op Function::Edit::replace(Op op,
-                                    Module::FunctionDecl schema) {
-  check_same_function(state_->function, op, "op");
+Op Fn::Edit::replace(Op op, Mod::FnDecl schema) {
+  check_same_fn(state_->fn, op, "op");
   std::vector<Type> result_types;
   result_types.reserve(op.results().size());
-  for (const Value& result : op.results()) {
+  for (const Val& result : op.results()) {
     result_types.push_back(result.type());
   }
-  const Op replacement = insert(op, std::move(schema),
-                                         op.arguments(), result_types);
+  const Op replacement =
+      insert(op, std::move(schema), op.arguments(), result_types);
   for (std::size_t index = 0; index < result_types.size(); ++index) {
     replace(op.result(index), replacement.result(index));
   }
@@ -1932,9 +1837,8 @@ Op Function::Edit::replace(Op op,
   return replacement;
 }
 
-void Function::Edit::replace(Op op,
-                             std::vector<Value> results) {
-  check_same_function(state_->function, op, "op");
+void Fn::Edit::replace(Op op, std::vector<Val> results) {
+  check_same_fn(state_->fn, op, "op");
   const auto previous = op.results();
   if (previous.size() != results.size()) {
     throw std::invalid_argument(
@@ -1942,10 +1846,9 @@ void Function::Edit::replace(Op op,
   }
   for (std::size_t index = 0; index < results.size(); ++index) {
     if (results[index].known()) {
-      throw std::invalid_argument(
-          "a Known value cannot replace an Op result");
+      throw std::invalid_argument("a Known value cannot replace an Op result");
     }
-    check_same_function(state_->function, results[index], "replacement value");
+    check_same_fn(state_->fn, results[index], "replacement value");
     if (previous[index].type() != results[index].type()) {
       throw std::invalid_argument(
           "replacement result has a different type at position " +
@@ -1958,10 +1861,10 @@ void Function::Edit::replace(Op op,
   erase(op);
 }
 
-void Function::Edit::erase(Op op) {
-  check_same_function(state_->function, op, "op");
-  auto& state = *state_->function->state;
-  const std::uint64_t op_id = detail::FunctionAccess::id(op);
+void Fn::Edit::erase(Op op) {
+  check_same_fn(state_->fn, op, "op");
+  auto& state = *state_->fn->state;
+  const std::uint64_t op_id = detail::FnAccess::id(op);
   const auto found = state.ops.find(op_id);
   std::unordered_set<std::uint64_t> values;
   values.insert(found->second.results.begin(), found->second.results.end());
@@ -1995,103 +1898,95 @@ void Function::Edit::erase(Op op) {
                     [&](const detail::EdgeData& edge) {
                       return live(edge.arguments);
                     })) {
-      throw std::invalid_argument(
-          "op still has a live terminator use");
+      throw std::invalid_argument("op still has a live terminator use");
     }
   }
   auto& ops = state.blocks.at(found->second.parent).ops;
-  ops.erase(
-      std::remove(ops.begin(), ops.end(), op_id),
-      ops.end());
+  ops.erase(std::remove(ops.begin(), ops.end(), op_id), ops.end());
   for (const std::uint64_t value : values) {
     state.values.erase(value);
   }
   state.ops.erase(op_id);
 }
 
-bool Function::Edit::commit(Diagnostics& diagnostics) {
+bool Fn::Edit::commit(Diagnostics& diagnostics) {
   if (!state_ || !state_->active) {
-    throw std::logic_error("function edit is no longer active");
+    throw std::logic_error("fn edit is no longer active");
   }
-  if (!verify_function(*state_->function->state, diagnostics) ||
-      !verify_op_contracts(*state_->function->state, diagnostics)) {
-    state_->function->state = std::move(state_->backup);
-    state_->function->editing = false;
+  if (!verify_fn(*state_->fn->state, diagnostics) ||
+      !verify_op_contracts(*state_->fn->state, diagnostics)) {
+    state_->fn->state = std::move(state_->backup);
+    state_->fn->editing = false;
     state_->active = false;
     return false;
   }
   state_->active = false;
   state_->backup.reset();
-  state_->function->editing = false;
+  state_->fn->editing = false;
   return true;
 }
 
-Function::Function(std::vector<Module> modules)
-    : function_(std::make_shared<FunctionIdentity>()) {
-  function_->state = std::make_shared<FunctionState>();
-  for (Module& module : modules) {
-    function_->state->modules.emplace(std::string(module.name()),
-                                      std::move(module));
+Fn::Fn(std::vector<Mod> mods) : fn_(std::make_shared<FnIdentity>()) {
+  fn_->state = std::make_shared<FnState>();
+  for (Mod& mod : mods) {
+    fn_->state->mods.emplace(std::string(mod.name()), std::move(mod));
   }
-  function_->state->entry = function_->next_id++;
-  detail::BlockData entry;
+  fn_->state->entry = fn_->next_id++;
+  detail::BlkData entry;
   entry.terminator = detail::TerminatorData{};
-  function_->state->blocks.emplace(function_->state->entry, std::move(entry));
-  function_->state->block_order.push_back(function_->state->entry);
+  fn_->state->blocks.emplace(fn_->state->entry, std::move(entry));
+  fn_->state->block_order.push_back(fn_->state->entry);
 }
 
-Function::~Function() = default;
+Fn::~Fn() = default;
 
-Function::Function(const Function& other)
-    : function_(std::make_shared<FunctionIdentity>()) {
-  if (!other.function_ || other.function_->editing) {
+Fn::Fn(const Fn& other) : fn_(std::make_shared<FnIdentity>()) {
+  if (!other.fn_ || other.fn_->editing) {
     throw std::logic_error(
-        "cannot copy a moved-from function or one with an active edit");
+        "cannot copy a moved-from fn or one with an active edit");
   }
-  function_->state = other.function_->state;
-  function_->next_id = other.function_->next_id;
+  fn_->state = other.fn_->state;
+  fn_->next_id = other.fn_->next_id;
 }
 
-Function& Function::operator=(const Function& other) {
+Fn& Fn::operator=(const Fn& other) {
   if (this == &other) {
     return *this;
   }
-  if (!other.function_ || (function_ && function_->editing) ||
-      other.function_->editing) {
+  if (!other.fn_ || (fn_ && fn_->editing) || other.fn_->editing) {
     throw std::logic_error(
-        "cannot copy a moved-from function or one with an active edit");
+        "cannot copy a moved-from fn or one with an active edit");
   }
-  auto identity = std::make_shared<FunctionIdentity>();
-  identity->state = other.function_->state;
-  identity->next_id = other.function_->next_id;
-  function_ = std::move(identity);
+  auto identity = std::make_shared<FnIdentity>();
+  identity->state = other.fn_->state;
+  identity->next_id = other.fn_->next_id;
+  fn_ = std::move(identity);
   return *this;
 }
 
-Function::Function(Function&&) noexcept = default;
-Function& Function::operator=(Function&&) noexcept = default;
+Fn::Fn(Fn&&) noexcept = default;
+Fn& Fn::operator=(Fn&&) noexcept = default;
 
-std::vector<Value> Function::arguments() const {
-  std::vector<Value> result;
-  result.reserve(function_->state->arguments.size());
-  for (const std::uint64_t value : function_->state->arguments) {
-    result.push_back(make_value(function_, value));
+std::vector<Val> Fn::arguments() const {
+  std::vector<Val> result;
+  result.reserve(fn_->state->arguments.size());
+  for (const std::uint64_t value : fn_->state->arguments) {
+    result.push_back(make_value(fn_, value));
   }
   return result;
 }
 
-std::optional<Module::FunctionDecl> Function::declaration() const {
-  return function_->state->signature
-             ? function_->state->signature->declaration
-             : std::nullopt;
+std::optional<Mod::FnDecl> Fn::declaration() const {
+  return fn_->state->signature ? fn_->state->signature->declaration
+                               : std::nullopt;
 }
 
-std::vector<Type> Function::result_types() const {
-  if (function_->state->signature) {
-    return function_->state->signature->results;
+std::vector<Type> Fn::result_types() const {
+  if (fn_->state->signature) {
+    return fn_->state->signature->results;
   }
-  for (const std::uint64_t block_id : function_->state->block_order) {
-    const auto& block = function_->state->blocks.at(block_id);
+  for (const std::uint64_t block_id : fn_->state->block_order) {
+    const auto& block = fn_->state->blocks.at(block_id);
     if (!block.terminator ||
         block.terminator->kind != Terminator::Kind::Return) {
       continue;
@@ -2099,45 +1994,42 @@ std::vector<Type> Function::result_types() const {
     std::vector<Type> result;
     result.reserve(block.terminator->returned.size());
     for (const std::uint64_t value : block.terminator->returned) {
-      result.push_back(function_->state->values.at(value).type);
+      result.push_back(fn_->state->values.at(value).type);
     }
     return result;
   }
   return {};
 }
 
-Block Function::entry() const {
-  return make_block(function_, function_->state->entry);
-}
+Blk Fn::entry() const { return make_blk(fn_, fn_->state->entry); }
 
-std::vector<Block> Function::blocks() const {
-  std::vector<Block> result;
-  result.reserve(function_->state->block_order.size());
-  for (const std::uint64_t block : function_->state->block_order) {
-    result.push_back(make_block(function_, block));
+std::vector<Blk> Fn::blks() const {
+  std::vector<Blk> result;
+  result.reserve(fn_->state->block_order.size());
+  for (const std::uint64_t block : fn_->state->block_order) {
+    result.push_back(make_blk(fn_, block));
   }
   return result;
 }
 
-std::vector<Op> Function::ops() const {
+std::vector<Op> Fn::ops() const {
   std::vector<Op> result;
-  result.reserve(function_->state->ops.size());
-  for (const std::uint64_t block : function_->state->block_order) {
-    for (const std::uint64_t op :
-         function_->state->blocks.at(block).ops) {
-      result.push_back(make_op(function_, op));
+  result.reserve(fn_->state->ops.size());
+  for (const std::uint64_t block : fn_->state->block_order) {
+    for (const std::uint64_t op : fn_->state->blocks.at(block).ops) {
+      result.push_back(make_op(fn_, op));
     }
   }
   return result;
 }
 
-std::vector<Block> Function::predecessors(Block block) const {
-  if (block.function_ != function_ || !block.valid()) {
-    throw std::invalid_argument("predecessor query block is outside function");
+std::vector<Blk> Fn::predecessors(Blk block) const {
+  if (block.fn_ != fn_ || !block.valid()) {
+    throw std::invalid_argument("predecessor query block is outside fn");
   }
-  std::vector<Block> result;
-  for (const std::uint64_t candidate : function_->state->block_order) {
-    const auto& data = function_->state->blocks.at(candidate);
+  std::vector<Blk> result;
+  for (const std::uint64_t candidate : fn_->state->block_order) {
+    const auto& data = fn_->state->blocks.at(candidate);
     if (!data.terminator) {
       continue;
     }
@@ -2145,49 +2037,45 @@ std::vector<Block> Function::predecessors(Block block) const {
         data.terminator->successors.begin(), data.terminator->successors.end(),
         [&](const detail::EdgeData& edge) { return edge.target == block.id_; });
     if (reaches) {
-      result.push_back(make_block(function_, candidate));
+      result.push_back(make_blk(fn_, candidate));
     }
   }
   return result;
 }
 
-std::vector<Op> Function::users(Value value) const {
-  if (!value.valid() || (!value.known() && value.function_ != function_) ||
-      (value.known() &&
-       (!owns(*function_->state, ParameterValue(value.type())) ||
-        !owns(*function_->state, *value.known_value())))) {
-    throw std::invalid_argument("use query value is outside function");
+std::vector<Op> Fn::users(Val value) const {
+  if (!value.valid() || (!value.known() && value.fn_ != fn_) ||
+      (value.known() && (!owns(*fn_->state, ParamVal(value.type())) ||
+                         !owns(*fn_->state, *value.known_value())))) {
+    throw std::invalid_argument("use query value is outside fn");
   }
   std::vector<Op> result;
-  for (const std::uint64_t block : function_->state->block_order) {
-    for (const std::uint64_t op_id :
-         function_->state->blocks.at(block).ops) {
-      const auto& op =
-          function_->state->ops.at(op_id);
+  for (const std::uint64_t block : fn_->state->block_order) {
+    for (const std::uint64_t op_id : fn_->state->blocks.at(block).ops) {
+      const auto& op = fn_->state->ops.at(op_id);
       const bool consumes = std::any_of(
           op.arguments.begin(), op.arguments.end(),
           [&](const detail::StoredArgument& argument) {
-            return detail::FunctionAccess::restore(function_, argument.value.id,
-                                                   argument.value.known) ==
-                   value;
+            return detail::FnAccess::restore(fn_, argument.value.id,
+                                             argument.value.known) == value;
           });
       if (consumes) {
-        result.push_back(make_op(function_, op_id));
+        result.push_back(make_op(fn_, op_id));
       }
     }
   }
   return result;
 }
 
-bool Function::has_uses(Value value) const {
+bool Fn::has_uses(Val value) const {
   if (!users(value).empty()) {
     return true;
   }
   if (value.known()) {
     return false;
   }
-  for (const std::uint64_t block : function_->state->block_order) {
-    const auto& terminator = function_->state->blocks.at(block).terminator;
+  for (const std::uint64_t block : fn_->state->block_order) {
+    const auto& terminator = fn_->state->blocks.at(block).terminator;
     if (!terminator) {
       continue;
     }
@@ -2206,60 +2094,52 @@ bool Function::has_uses(Value value) const {
   return false;
 }
 
-bool Function::dominates(Block dominator, Block block) const {
-  if (dominator.function_ != function_ || block.function_ != function_ ||
-      !dominator.valid() || !block.valid()) {
-    throw std::invalid_argument("dominance query block is outside function");
+bool Fn::dominates(Blk dominator, Blk block) const {
+  if (dominator.fn_ != fn_ || block.fn_ != fn_ || !dominator.valid() ||
+      !block.valid()) {
+    throw std::invalid_argument("dominance query block is outside fn");
   }
-  const auto relation = dominators(*function_->state);
+  const auto relation = dominators(*fn_->state);
   return relation.at(block.id_).contains(dominator.id_);
 }
 
-bool Function::dominates(Value definition, Op op) const {
-  if (!definition.valid() || !op.valid() ||
-      op.function_ != function_ ||
-      (!definition.known() && definition.function_ != function_)) {
-    throw std::invalid_argument("dominance query value is outside function");
+bool Fn::dominates(Val definition, Op op) const {
+  if (!definition.valid() || !op.valid() || op.fn_ != fn_ ||
+      (!definition.known() && definition.fn_ != fn_)) {
+    throw std::invalid_argument("dominance query value is outside fn");
   }
   if (definition.known()) {
-    return owns(*function_->state, ParameterValue(definition.type())) &&
-           owns(*function_->state, *definition.known_value());
+    return owns(*fn_->state, ParamVal(definition.type())) &&
+           owns(*fn_->state, *definition.known_value());
   }
-  const auto found = function_->state->values.find(definition.id_);
-  const auto user = function_->state->ops.find(op.id_);
-  if (found == function_->state->values.end() ||
-      user == function_->state->ops.end()) {
+  const auto found = fn_->state->values.find(definition.id_);
+  const auto user = fn_->state->ops.find(op.id_);
+  if (found == fn_->state->values.end() || user == fn_->state->ops.end()) {
     return false;
   }
-  const auto relation = dominators(*function_->state);
-  return definition_dominates(*function_->state, found->second,
-                              user->second.parent, op.id_, relation);
+  const auto relation = dominators(*fn_->state);
+  return definition_dominates(*fn_->state, found->second, user->second.parent,
+                              op.id_, relation);
 }
 
-Function::Revision Function::revision() const {
-  return Revision(function_->state);
+Fn::Revision Fn::revision() const { return Revision(fn_->state); }
+
+Fn::Edit Fn::edit() { return Edit(fn_); }
+
+bool Fn::accepts(const Mod::Symbol& symbol) const {
+  return owns(*fn_->state, symbol);
 }
 
-Function::Edit Function::edit() { return Edit(function_); }
-
-bool Function::accepts(const Module::Symbol& symbol) const {
-  return owns(*function_->state, symbol);
+Val Fn::make_value(std::shared_ptr<FnIdentity> fn, std::uint64_t id) {
+  return Val(std::move(fn), id);
 }
 
-Value Function::make_value(std::shared_ptr<FunctionIdentity> function,
-                           std::uint64_t id) {
-  return Value(std::move(function), id);
+Op Fn::make_op(std::shared_ptr<FnIdentity> fn, std::uint64_t id) {
+  return Op(std::move(fn), id);
 }
 
-Op
-Function::make_op(std::shared_ptr<FunctionIdentity> function,
-                           std::uint64_t id) {
-  return Op(std::move(function), id);
-}
-
-Block Function::make_block(std::shared_ptr<FunctionIdentity> function,
-                           std::uint64_t id) {
-  return Block(std::move(function), id);
+Blk Fn::make_blk(std::shared_ptr<FnIdentity> fn, std::uint64_t id) {
+  return Blk(std::move(fn), id);
 }
 
 }  // namespace joggle

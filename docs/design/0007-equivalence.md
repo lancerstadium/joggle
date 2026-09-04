@@ -4,9 +4,9 @@ Status: accepted
 
 ## Purpose
 
-Joggle now has typed Function values, atomic expression replacement, a tensor
-Module, and a real ONNX path. The next gate is not a schedule object or a fixed
-kernel IR. It is a correctness boundary for user-defined optimized functions.
+Joggle now has typed Fn values, atomic expression replacement, a tensor
+Mod, and a real ONNX path. The next gate is not a schedule object or a fixed
+kernel IR. It is a correctness boundary for user-defined optimized fns.
 
 Today `replace` proves type, data-flow, ownership, and effect safety. It cannot
 prove that two pure expressions compute the same value. Consequently, replacing
@@ -32,10 +32,10 @@ optimized kernel implementation. Concrete realization later needs an
 executable body whose structure differs for a justified reason; it must not
 attach a second hidden meaning to this declaration.
 
-A transformation remains an ordinary explicitly staged function:
+A transformation remains an ordinary explicitly staged fn:
 
 ```joggle
-fn factor(input: function) -> function {
+fn factor(input: fn) -> fn {
   return @transform.replace(
     input,
     (x: value) => step(step(x)),
@@ -66,15 +66,15 @@ reassociation, SMT reasoning, and empirical testing are outside this first
 proof relation. Failure produces a diagnostic and publishes no edit.
 
 This relation establishes definitional equivalence, not general mathematical
-equivalence. A future proof provider may be an ordinary compiler function, but
+equivalence. A future proof provider may be an ordinary compiler fn, but
 the core will not add `law`, `trait`, `verify`, or `require` declarations.
 
 ## Location and composition
 
 Typed lambdas identify semantic shapes; users do not name loop handles,
-anchors, blocks, or string cursors. Ordinary higher-order functions compose
+anchors, blocks, or string cursors. Ordinary higher-order fns compose
 transformations. Repetition, choice, traversal, and search are library
-functions over `function` values rather than keywords or a `Schedule` class.
+fns over `fn` values rather than keywords or a `Schedule` class.
 
 The implementation must preserve diagnostics explaining three distinct
 outcomes: no match, an unsafe structural match, and an unproved semantic
@@ -82,14 +82,14 @@ replacement. It must not encode success/failure as a public `Result` wrapper.
 
 ## Formats and implementation choice
 
-This record does not introduce a device model. A later format Module will use
+This record does not introduce a device model. A later format Mod will use
 ordinary parameterized `type` declarations for values and ordinary `fn`
 declarations for conversions and computations. Its first obligation is a
 portable reference meaning that participates in the same equivalence relation.
 
 After correctness composition works, candidate generation may return ordinary
-Function values. Measurement and selection remain separate explicitly staged
-functions. A selected Function, its inputs' static properties, and any profile
+Fn values. Measurement and selection remain separate explicitly staged
+fns. A selected Fn, its inputs' static properties, and any profile
 record must be content-addressed so an edge deployment can lock one choice and
 rebuild it deterministically. No runtime search is mandatory.
 
@@ -109,16 +109,16 @@ rebuild it deterministically. No runtime search is mandatory.
 ## Implementation gates
 
 1. [x] Add bounded source-body normalization for token-free expression
-   Functions without adding a second IR.
+   Fns without adding a second IR.
 2. [x] Add an equivalence query with stable mismatch diagnostics and tests for
    recursion, opaque leaves, properties, and overload identity.
 3. [x] Compose equivalence checking with atomic expression replacement.
 4. [x] Replace a bodyless declaration with a source-bodied transparent
    composite and prove the positive and negative cases without calling it an
    executable fusion.
-5. [x] Expose the primitive through an ordinary module function and exercise it
-   from source with `@`. The installable `transform@1.0.0` Module accepts typed
-   lambda Functions directly and has Function and Module overloads.
+5. [x] Expose the primitive through an ordinary mod fn and exercise it
+   from source with `@`. The installable `transform@1.0.0` Mod accepts typed
+   lambda Fns directly and has Fn and Mod overloads.
 6. [x] Compose transformations through ordinary `fn`/`@call` sequencing. No
    public `seq`, `Strategy`, or `Result` abstraction is required.
 7. [x] Preserve shared pure DAG ancestors during replacement without adding a

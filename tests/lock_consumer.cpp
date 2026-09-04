@@ -18,5 +18,5 @@ int main(int argc, char** argv) {
   }
   const std::size_t expected =
       argc == 5 ? static_cast<std::size_t>(std::stoul(argv[4])) : 2U;
-  return compiler.modules().size() == expected ? EXIT_SUCCESS : EXIT_FAILURE;
+  return compiler.mods().size() == expected ? EXIT_SUCCESS : EXIT_FAILURE;
 }

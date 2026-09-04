@@ -26,8 +26,7 @@ joggle::Bytes read_bytes(const char* path) {
   joggle::Bytes result;
   result.reserve(characters.size());
   for (const char value : characters) {
-    result.push_back(
-        static_cast<std::byte>(static_cast<unsigned char>(value)));
+    result.push_back(static_cast<std::byte>(static_cast<unsigned char>(value)));
   }
   return result;
 }
@@ -70,9 +69,9 @@ bool tensor_info(onnx::ValueInfoProto& info, std::string name,
   return true;
 }
 
-std::string lookup(
-    const std::vector<std::pair<joggle::Value, std::string>>& names,
-    const joggle::Value& value) {
+std::string
+lookup(const std::vector<std::pair<joggle::Val, std::string>>& names,
+       const joggle::Val& value) {
   for (const auto& [candidate, name] : names) {
     if (candidate == value) {
       return name;
@@ -88,8 +87,7 @@ void add_int(onnx::NodeProto& node, std::string name, std::int64_t value) {
   attribute->set_i(value);
 }
 
-void add_ints(onnx::NodeProto& node, std::string name,
-              const Shape& values) {
+void add_ints(onnx::NodeProto& node, std::string name, const Shape& values) {
   auto* attribute = node.add_attribute();
   attribute->set_name(std::move(name));
   attribute->set_type(onnx::AttributeProto_AttributeType_INTS);
@@ -98,17 +96,17 @@ void add_ints(onnx::NodeProto& node, std::string name,
   }
 }
 
-bool emit(const joggle::Module& module, const char* path) {
-  const auto main = module.function("main");
-  const auto function = main ? main->body() : nullptr;
-  if (!function || function->arguments().size() != 1U) {
+bool emit(const joggle::Mod& mod, const char* path) {
+  const auto main = mod.fn("main");
+  const auto fn = main ? main->body() : nullptr;
+  if (!fn || fn->arguments().size() != 1U) {
     return false;
   }
 
-  const auto operations = function->ops();
-  const bool qdq = std::any_of(
-      operations.begin(), operations.end(), [](const auto& op) {
-        return op.callee().symbol().module_name() == "quant";
+  const auto operations = fn->ops();
+  const bool qdq =
+      std::any_of(operations.begin(), operations.end(), [](const auto& op) {
+        return op.callee().symbol().mod_name() == "quant";
       });
   onnx::ModelProto model;
   model.set_ir_version(qdq ? 7 : onnx::IR_VERSION_2017_11_3);
@@ -119,8 +117,8 @@ bool emit(const joggle::Module& module, const char* path) {
   auto* graph = model.mutable_graph();
   graph->set_name("joggle_roundtrip");
 
-  std::vector<std::pair<joggle::Value, std::string>> names;
-  const auto argument = function->arguments().front();
+  std::vector<std::pair<joggle::Val, std::string>> names;
+  const auto argument = fn->arguments().front();
   if (!tensor_info(*graph->add_input(), "input", argument.type())) {
     return false;
   }
@@ -131,10 +129,10 @@ bool emit(const joggle::Module& module, const char* path) {
   for (const auto& op : operations) {
     const auto symbol = op.callee().symbol();
     const auto callee = symbol.local_name();
-    const auto callee_module = symbol.module_name();
+    const auto callee_mod = symbol.mod_name();
     if (callee == "constant") {
       const auto digest = op.property<std::string>("content");
-      const auto data = digest ? module.data(*digest) : std::nullopt;
+      const auto data = digest ? mod.data(*digest) : std::nullopt;
       const auto shape = op.value().type().get<Shape>("shape");
       const auto element = op.value().type().get<joggle::Type>("element");
       const auto code = element ? onnx_element(*element) : std::nullopt;
@@ -148,10 +146,9 @@ bool emit(const joggle::Module& module, const char* path) {
       for (const auto dimension : *shape) {
         initializer->add_dims(dimension);
       }
-      initializer->set_raw_data(
-          reinterpret_cast<const char*>(data->data()), data->size());
-      if (!qdq &&
-          !tensor_info(*graph->add_input(), name, op.value().type())) {
+      initializer->set_raw_data(reinterpret_cast<const char*>(data->data()),
+                                data->size());
+      if (!qdq && !tensor_info(*graph->add_input(), name, op.value().type())) {
         return false;
       }
       names.emplace_back(op.value(), name);
@@ -160,10 +157,10 @@ bool emit(const joggle::Module& module, const char* path) {
 
     auto* node = graph->add_node();
     node->set_name("call_" + std::to_string(call_index));
-    if (callee_module == "quant" &&
+    if (callee_mod == "quant" &&
         (callee == "quantize" || callee == "dequantize")) {
       node->set_op_type(callee == "quantize" ? "QuantizeLinear"
-                                               : "DequantizeLinear");
+                                             : "DequantizeLinear");
       const auto axis = op.property<std::int64_t>("axis");
       if (!axis) {
         return false;
@@ -255,7 +252,7 @@ bool emit(const joggle::Module& module, const char* path) {
     names.emplace_back(op.value(), output);
   }
 
-  const auto returned = function->entry().terminator().returned();
+  const auto returned = fn->entry().terminator().returned();
   if (returned.size() != 1U) {
     return false;
   }
@@ -286,15 +283,13 @@ int main(int argc, char** argv) {
     compiler.load(argv[2]);
   }
   compiler.load(argv[onnx_index]);
-  if (!compiler.link() ||
-      !compiler.load_native("onnx", argv[native_index])) {
+  if (!compiler.link() || !compiler.load_native("onnx", argv[native_index])) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto bytes = read_bytes(argv[model_index]);
-  const auto model =
-      compiler.run<joggle::Module>("onnx.read", bytes,
-                                   std::string{"squeezenet_roundtrip"});
+  const auto model = compiler.run<joggle::Mod>(
+      "onnx.read", bytes, std::string{"squeezenet_roundtrip"});
   if (!model || !emit(*model, argv[output_index])) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;

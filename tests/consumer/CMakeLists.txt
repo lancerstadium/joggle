@@ -4,8 +4,8 @@ project(JoggleConsumer LANGUAGES CXX)
 
 find_package(Joggle CONFIG REQUIRED)
 
-joggle_module(joggle_consumer_native
-  SOURCE module.joggle
+joggle_mod(joggle_consumer_native
+  SOURCE mod.joggle
   NATIVE native.cpp
 )
 set_target_properties(joggle_consumer_native PROPERTIES

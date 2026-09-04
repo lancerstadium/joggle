@@ -7,50 +7,48 @@
 
 namespace joggle::detail {
 
-std::string_view domain_name(ValueKind kind) {
+std::string_view domain_name(ValKind kind) {
   switch (kind) {
-  case ValueKind::Integer:
+  case ValKind::Integer:
     return "int";
-  case ValueKind::Real:
+  case ValKind::Real:
     return "real";
-  case ValueKind::Boolean:
+  case ValKind::Boolean:
     return "bool";
-  case ValueKind::String:
+  case ValKind::String:
     return "string";
-  case ValueKind::Type:
+  case ValKind::Type:
     return "type";
-  case ValueKind::Function:
-    return "function";
-  case ValueKind::Bytes:
+  case ValKind::Fn:
+    return "fn";
+  case ValKind::Bytes:
     return "bytes";
   }
   return {};
 }
 
-Module::Expression domain_expression(ValueKind kind, bool list) {
-  auto element = Module::Expression::reference(std::string(domain_name(kind)));
-  return list ? Module::Expression::list_domain(std::move(element))
-              : std::move(element);
+Mod::Expr domain_expression(ValKind kind, bool list) {
+  auto element = Mod::Expr::reference(std::string(domain_name(kind)));
+  return list ? Mod::Expr::list_domain(std::move(element)) : std::move(element);
 }
 
-std::optional<Domain> kernel_domain(const Module::Expression& expression) {
-  const Module::Expression* element = &expression;
+std::optional<Domain> kernel_domain(const Mod::Expr& expression) {
+  const Mod::Expr* element = &expression;
   bool list = false;
-  if (expression.kind == Module::Expression::Kind::Reference &&
+  if (expression.kind == Mod::Expr::Kind::Reference &&
       expression.text == "list" && expression.arguments.size() == 1U) {
     list = true;
     element = &expression.arguments.front();
   }
-  if (element->kind != Module::Expression::Kind::Reference ||
+  if (element->kind != Mod::Expr::Kind::Reference ||
       !element->arguments.empty()) {
     return std::nullopt;
   }
   constexpr std::array kinds{
-      ValueKind::Integer, ValueKind::Real,      ValueKind::Boolean,
-      ValueKind::String, ValueKind::Type, ValueKind::Function,
-      ValueKind::Bytes,
+      ValKind::Integer, ValKind::Real, ValKind::Boolean, ValKind::String,
+      ValKind::Type,    ValKind::Fn,   ValKind::Bytes,
   };
-  for (const ValueKind kind : kinds) {
+  for (const ValKind kind : kinds) {
     if (element->text == domain_name(kind)) {
       return Domain{kind, list};
     }
@@ -58,16 +56,14 @@ std::optional<Domain> kernel_domain(const Module::Expression& expression) {
   return std::nullopt;
 }
 
-bool is_domain(const Module::Expression& expression, ValueKind kind,
-               bool list) {
+bool is_domain(const Mod::Expr& expression, ValKind kind, bool list) {
   return kernel_domain(expression) == Domain{kind, list};
 }
 
 std::optional<std::string> canonical_real(double value) {
   char text[64];
-  const auto formatted =
-      std::to_chars(text, text + sizeof(text), value,
-                    std::chars_format::general);
+  const auto formatted = std::to_chars(text, text + sizeof(text), value,
+                                       std::chars_format::general);
   return formatted.ec == std::errc{}
              ? std::optional<std::string>{std::string(text, formatted.ptr)}
              : std::nullopt;

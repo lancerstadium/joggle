@@ -1,21 +1,21 @@
 # Joggle
 
 Joggle is a small C++ compiler substrate for AI software/hardware co-design.
-It provides one versioned `Module` abstraction, one typed `fn` declaration,
+It provides one versioned `Mod` abstraction, one typed `fn` declaration,
 staged Known/Residual execution, editable CFG/SSA bodies, and installable native
 implementations.
 
 The project deliberately does not prescribe a graph hierarchy, lowering
 ladder, target base class, pass registry, kernel object, device model, or
 deployment container. AI vocabularies and hardware experiments are installable
-Modules rather than compiler-core categories.
+Mods rather than compiler-core categories.
 
 ## Source model
 
 ```joggle
 joggle 1;
 
-module example@1.0.0 {
+mod example@1.0.0 {
   type word(width: int);
 
   fn (+)(lhs: word<8>, rhs: word<8>) -> word<8>;
@@ -31,28 +31,28 @@ requests compile-time execution; an ordinary call remains a program call even
 when its operands happen to be known. This explicit-staging rule is implemented
 and covered by both positive and negative materialization tests.
 
-A `Module` owns declarations, materialized Function bodies, imports, and
+A `Mod` owns declarations, materialized Fn bodies, imports, and
 content-addressed immutable data. There is no second Program, Graph, Package,
-or Artifact owner. Source-only Modules remain one text file; a Module with
-owned weights uses a lossless directory bundle containing `module.joggle` and
+or Artifact owner. Source-only Mods remain one text file; a Mod with
+owned weights uses a lossless directory bundle containing `mod.joggle` and
 `data/<sha256>`, accepted directly by `check`, `run`, `install`, and
 `lock`.
 
 ## Compiler extension model
 
-An extension consists of one `.joggle` Module and, only when required, one
-native library implementing bodyless compiler functions. The source Module is
+An extension consists of one `.joggle` Mod and, only when required, one
+native library implementing bodyless compiler fns. The source Mod is
 the schema authority; no generated declaration header is required.
 
-Whole-module import, conversion, optimization, analysis, simulation, and file
-output remain ordinary functions:
+Whole-mod import, conversion, optimization, analysis, simulation, and file
+output remain ordinary fns:
 
 ```joggle
-fn read(input: bytes) -> module;
-fn optimize(input: module, policy: type) -> module;
-fn inspect(input: module) -> bytes;
+fn read(input: bytes) -> mod;
+fn optimize(input: mod, policy: type) -> mod;
+fn inspect(input: mod) -> bytes;
 
-fn prepare(input: bytes, policy: type) -> module {
+fn prepare(input: bytes, policy: type) -> mod {
   model = @read(input);
   return @optimize(model, policy);
 }
@@ -62,7 +62,7 @@ The user controls composition in source. Joggle does not discover magic pass
 names or force a universal sequence of intermediate forms.
 
 `Compiler::specialize` recursively materializes source-defined calls until a
-caller-supplied predicate accepts every remaining Function. It is one reusable
+caller-supplied predicate accepts every remaining Fn. It is one reusable
 transformation primitive, not a prescribed target boundary or lowering ladder.
 
 ## Build
@@ -74,11 +74,11 @@ ctest --test-dir build --output-on-failure
 ```
 
 The repository ships `tensor@1.0.0`, a small target-independent semantic
-Module; `transform@1.0.0`, the typed-lambda semantic replacement surface;
+Mod; `transform@1.0.0`, the typed-lambda semantic replacement surface;
 `quant@1.1.0`, an affine QDQ boundary with a bit-exact reference
 oracle; and an optional, Protobuf-backed
 `onnx@1.0.0` inference importer. The real-model paths import hash-pinned FLOAT
-and QDQ SqueezeNet artifacts into ordinary typed Functions. Both have exact
+and QDQ SqueezeNet artifacts into ordinary typed Fns. Both have exact
 ONNX Runtime differential evidence.
 
 ## Documentation
@@ -87,4 +87,4 @@ ONNX Runtime differential evidence.
 - [Getting started](docs/getting-started.md)
 - [Language](docs/language.md)
 - [Architecture](docs/architecture.md)
-- [Modules](docs/modules.md)
+- [Mods](docs/mods.md)

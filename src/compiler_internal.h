@@ -13,36 +13,33 @@ struct CompilerAccess {
   }
 
   static std::optional<Type> make(Compiler& compiler,
-                                  const Module::TypeDecl& schema,
-                                  std::span<const ParameterValue> parameters) {
+                                  const Mod::TypeDecl& schema,
+                                  std::span<const ParamVal> parameters) {
     return compiler.make(schema, parameters);
   }
 
-  static std::optional<ParameterValue>
-  evaluate(Compiler& compiler, Module::FunctionDecl function,
-           std::span<const ParameterValue> arguments,
-           bool under_residual_control) {
-    return compiler.evaluate_binding(std::move(function), arguments,
+  static std::optional<ParamVal> evaluate(Compiler& compiler, Mod::FnDecl fn,
+                                          std::span<const ParamVal> arguments,
+                                          bool under_residual_control) {
+    return compiler.evaluate_binding(std::move(fn), arguments,
                                      under_residual_control);
   }
 
-  static bool can_evaluate(const Compiler& compiler,
-                           const Module::FunctionDecl& function,
+  static bool can_evaluate(const Compiler& compiler, const Mod::FnDecl& fn,
                            bool under_residual_control) {
-    return compiler.can_evaluate_binding(function, under_residual_control);
+    return compiler.can_evaluate_binding(fn, under_residual_control);
   }
 
-  static bool accepts(Compiler& compiler, const Module::FunctionDecl& function,
-                      const Module::ParameterDecl& parameter,
+  static bool accepts(Compiler& compiler, const Mod::FnDecl& fn,
+                      const Mod::ParamDecl& parameter,
                       std::string_view cpp_type) {
-    return compiler.accepts_host_type(function, parameter, cpp_type);
+    return compiler.accepts_host_type(fn, parameter, cpp_type);
   }
 
-  static std::optional<ExecutionValues>
-  execute(Compiler& compiler, Module::FunctionDecl function,
-          std::vector<ExecutionValue> arguments,
-          bool under_residual_control) {
-    return compiler.execute(std::move(function), std::move(arguments),
+  static std::optional<ExecVals> execute(Compiler& compiler, Mod::FnDecl fn,
+                                         std::vector<ExecVal> arguments,
+                                         bool under_residual_control) {
+    return compiler.execute(std::move(fn), std::move(arguments),
                             under_residual_control);
   }
 };

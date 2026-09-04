@@ -17,10 +17,10 @@ joggle::Bytes bytes(std::string_view text) {
   return result;
 }
 
-std::optional<joggle::Module> mark(joggle::Compiler& compiler,
-                                   joggle::Module input, std::string name,
-                                   joggle::Diagnostics& diagnostics) {
-  auto marker = compiler.create_function();
+std::optional<joggle::Mod> mark(joggle::Compiler& compiler, joggle::Mod input,
+                                std::string name,
+                                joggle::Diagnostics& diagnostics) {
+  auto marker = compiler.create_fn();
   if (!marker ||
       !input.insert(std::move(name), std::move(*marker), diagnostics)) {
     return std::nullopt;
@@ -28,9 +28,9 @@ std::optional<joggle::Module> mark(joggle::Compiler& compiler,
   return input;
 }
 
-void bind(joggle::Compiler& compiler, const joggle::Module& module,
+void bind(joggle::Compiler& compiler, const joggle::Mod& mod,
           joggle::Diagnostics& diagnostics) {
-  const auto positive = module.type("positive");
+  const auto positive = mod.type("positive");
   if (!positive) {
     diagnostics.report("test native does not match its linked schema");
     return;
@@ -42,14 +42,14 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
                   });
 #if defined(JOGGLE_TEST_NATIVE_FAIL)
   compiler.bind(
-      module, "cached", [](std::int64_t value) { return value + 100; },
+      mod, "cached", [](std::int64_t value) { return value + 100; },
       joggle::HostEvaluation::Hermetic);
   const auto integer = compiler.make("int");
   const auto one = integer ? compiler.known(*integer, std::int64_t{1})
-                           : std::optional<joggle::Value>{};
+                           : std::optional<joggle::Val>{};
   const auto probe =
       one ? compiler.materialize("native_plugin.cache_probe", {*one})
-          : std::optional<joggle::Function>{};
+          : std::optional<joggle::Fn>{};
   const auto cached =
       probe && !probe->arguments().empty()
           ? probe->arguments().front().type().get<std::int64_t>("value")
@@ -60,49 +60,50 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
   }
 #else
   compiler.bind(
-      module, "cached", [](std::int64_t value) { return value + 1; },
+      mod, "cached", [](std::int64_t value) { return value + 1; },
       joggle::HostEvaluation::Hermetic);
 #endif
-  compiler.bind(module, "noop",
-                [](joggle::Compiler&, joggle::Function function,
-                   joggle::Diagnostics&) { return function; });
-  compiler.bind(module, "reverse", [](joggle::Bytes input) {
+  compiler.bind(mod, "noop",
+                [](joggle::Compiler&, joggle::Fn fn, joggle::Diagnostics&) {
+                  return fn;
+                });
+  compiler.bind(mod, "reverse", [](joggle::Bytes input) {
     std::reverse(input.begin(), input.end());
     return input;
   });
-  compiler.bind(module, "read_model",
-                [](joggle::Compiler& current, const joggle::Bytes& input,
-                   joggle::Diagnostics& model_diagnostics)
-                    -> std::optional<joggle::Module> {
-                  joggle::Module model("loaded_model", {1, 0, 0});
-                  static_cast<void>(model.store(input));
-                  auto main = current.create_function();
-                  if (!main || !model.insert("main", std::move(*main),
-                                             model_diagnostics)) {
-                    return std::nullopt;
-                  }
-                  return model;
-                });
-  compiler.bind(module, "normalize_model",
-                [](joggle::Compiler& current, joggle::Module input,
+  compiler.bind(
+      mod, "read_model",
+      [](joggle::Compiler& current, const joggle::Bytes& input,
+         joggle::Diagnostics& model_diagnostics) -> std::optional<joggle::Mod> {
+        joggle::Mod model("loaded_model", {1, 0, 0});
+        static_cast<void>(model.store(input));
+        auto main = current.create_fn();
+        if (!main ||
+            !model.insert("main", std::move(*main), model_diagnostics)) {
+          return std::nullopt;
+        }
+        return model;
+      });
+  compiler.bind(mod, "normalize_model",
+                [](joggle::Compiler& current, joggle::Mod input,
                    joggle::Diagnostics& transform_diagnostics) {
                   return mark(current, std::move(input), "normalized",
                               transform_diagnostics);
                 });
-  compiler.bind(module, "specialize_model",
-                [](joggle::Compiler& current, joggle::Module input,
+  compiler.bind(mod, "specialize_model",
+                [](joggle::Compiler& current, joggle::Mod input,
                    joggle::Diagnostics& transform_diagnostics) {
                   return mark(current, std::move(input), "specialized",
                               transform_diagnostics);
                 });
-  compiler.bind(module, "reject_model",
-                [](joggle::Module, joggle::Diagnostics& transform_diagnostics)
-                    -> std::optional<joggle::Module> {
+  compiler.bind(mod, "reject_model",
+                [](joggle::Mod, joggle::Diagnostics& transform_diagnostics)
+                    -> std::optional<joggle::Mod> {
                   transform_diagnostics.report(
                       "test transform requested rejection");
                   return std::nullopt;
                 });
-  compiler.bind(module, "emit_model", [](const joggle::Module& model) {
+  compiler.bind(mod, "emit_model", [](const joggle::Mod& model) {
     return bytes(joggle::format(model));
   });
 #if defined(JOGGLE_TEST_NATIVE_FAIL)
@@ -112,7 +113,7 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
 
 }  // namespace
 
-void joggle_module(joggle::Compiler& compiler, const joggle::Module& module,
-                   joggle::Diagnostics& diagnostics) {
-  bind(compiler, module, diagnostics);
+void joggle_mod(joggle::Compiler& compiler, const joggle::Mod& mod,
+                joggle::Diagnostics& diagnostics) {
+  bind(compiler, mod, diagnostics);
 }

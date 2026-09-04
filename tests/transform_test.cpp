@@ -25,7 +25,7 @@ int main() {
   compiler.add(R"(
 joggle 1;
 
-module mapping@1.0.0 {
+mod mapping@1.0.0 {
   type word();
   type alternate();
   type memory();
@@ -132,7 +132,7 @@ module mapping@1.0.0 {
                "mapping.joggle");
   compiler.add(R"(
 joggle 1;
-module foreign@1.0.0 {
+mod foreign@1.0.0 {
   import mapping@1;
   fn external(input: mapping.word) -> mapping.word;
   fn replacement(input: mapping.word) -> mapping.word {
@@ -146,17 +146,17 @@ module foreign@1.0.0 {
     return EXIT_FAILURE;
   }
 
-  const auto schema = compiler.module("mapping");
-  const auto keep = schema ? schema->function("keep") : std::nullopt;
-  const auto converted = schema ? schema->function("converted") : std::nullopt;
-  const auto other = schema ? schema->function("other") : std::nullopt;
-  const auto binary = schema ? schema->function("binary") : std::nullopt;
-  const auto identity = schema ? schema->function("identity") : std::nullopt;
+  const auto schema = compiler.mod("mapping");
+  const auto keep = schema ? schema->fn("keep") : std::nullopt;
+  const auto converted = schema ? schema->fn("converted") : std::nullopt;
+  const auto other = schema ? schema->fn("other") : std::nullopt;
+  const auto binary = schema ? schema->fn("binary") : std::nullopt;
+  const auto identity = schema ? schema->fn("identity") : std::nullopt;
   const auto word_type = schema ? schema->type("word") : std::nullopt;
   const auto alternate_type = schema ? schema->type("alternate") : std::nullopt;
-  const auto foreign_module = compiler.module("foreign");
+  const auto foreign_mod = compiler.mod("foreign");
   const auto foreign_external =
-      foreign_module ? foreign_module->function("external") : std::nullopt;
+      foreign_mod ? foreign_mod->fn("external") : std::nullopt;
   const auto word = word_type ? compiler.make(*word_type) : std::nullopt;
   const auto alternate =
       alternate_type ? compiler.make(*alternate_type) : std::nullopt;
@@ -189,13 +189,12 @@ module foreign@1.0.0 {
   auto triple_keep = compiler.materialize("mapping.triple_keep");
   auto foreign_replacement = compiler.materialize("foreign.replacement");
   if (!keep || !converted || !other || !binary || !identity ||
-      !foreign_external || !word ||
-      !alternate || !i1 || !first || !second || !expanded || !convertible ||
-      !fixedpoint || !oscillating || !with_inline || !pair ||
-      !effect_template || !multi_call_template || !chain || !repeated ||
-      !different || !distinct_calls || !shared_call || !axis_one || !axis_two ||
-      !reference_a || !reference_b || !unused_hole || !replacement ||
-      !alternate_replacement || !double_keep || !triple_keep ||
+      !foreign_external || !word || !alternate || !i1 || !first || !second ||
+      !expanded || !convertible || !fixedpoint || !oscillating ||
+      !with_inline || !pair || !effect_template || !multi_call_template ||
+      !chain || !repeated || !different || !distinct_calls || !shared_call ||
+      !axis_one || !axis_two || !reference_a || !reference_b || !unused_hole ||
+      !replacement || !alternate_replacement || !double_keep || !triple_keep ||
       !foreign_replacement) {
     return EXIT_FAILURE;
   }
@@ -213,7 +212,7 @@ module foreign@1.0.0 {
                    !result_template_diagnostics.ok() &&
                    result_template_diagnostics.entries().front().message.find(
                        "exactly one result") != std::string::npos,
-               "an expression template rejects multiple function results");
+               "an expression template rejects multiple fn results");
 
   joggle::Diagnostics effect_template_diagnostics;
   ok &= expect(!joggle::detail::validate_expression_template(
@@ -237,10 +236,10 @@ module foreign@1.0.0 {
                    *with_inline, "before", inline_template_diagnostics) &&
                    !inline_template_diagnostics.ok() &&
                    inline_template_diagnostics.entries().front().message.find(
-                       "nested inline function") != std::string::npos,
+                       "nested inline fn") != std::string::npos,
                "an expression template has no nested callable body");
 
-  auto dead_template = compiler.create_function();
+  auto dead_template = compiler.create_fn();
   if (!dead_template) {
     return EXIT_FAILURE;
   }
@@ -281,15 +280,15 @@ module foreign@1.0.0 {
                    chain_matches->front().calls == chain->ops() &&
                    chain_matches->front().root ==
                        chain->entry().terminator().returned().front(),
-               "typed DAG matching binds holes and records calls in Function "
+               "typed DAG matching binds holes and records calls in Fn "
                "order");
 
-  auto two_chains = compiler.create_function();
+  auto two_chains = compiler.create_fn();
   if (!two_chains) {
     return EXIT_FAILURE;
   }
-  std::optional<joggle::Value> first_chain_root;
-  std::optional<joggle::Value> second_chain_root;
+  std::optional<joggle::Val> first_chain_root;
+  std::optional<joggle::Val> second_chain_root;
   {
     auto edit = two_chains->edit();
     const auto input = edit.argument(*word);
@@ -312,7 +311,7 @@ module foreign@1.0.0 {
                    second_chain_root &&
                    (*ordered_matches)[0].root == *first_chain_root &&
                    (*ordered_matches)[1].root == *second_chain_root,
-               "candidates are reported in committed Function order");
+               "candidates are reported in committed Fn order");
 
   joggle::Diagnostics repeated_match_diagnostics;
   const auto repeated_matches = joggle::detail::match_expressions(
@@ -341,14 +340,13 @@ module foreign@1.0.0 {
   joggle::Diagnostics reference_match_diagnostics;
   const auto reference_matches = joggle::detail::match_expressions(
       *reference_b, *reference_a, reference_match_diagnostics);
-  ok &= expect(known_matches && known_matches->empty() &&
-                   reference_matches && reference_matches->empty() &&
-                   known_match_diagnostics.ok() &&
+  ok &= expect(known_matches && known_matches->empty() && reference_matches &&
+                   reference_matches->empty() && known_match_diagnostics.ok() &&
                    reference_match_diagnostics.ok(),
-               "Known properties compare canonically and function references "
+               "Known properties compare canonically and fn references "
                "compare by declaration identity");
 
-  auto escaping = compiler.create_function();
+  auto escaping = compiler.create_fn();
   if (!escaping) {
     return EXIT_FAILURE;
   }
@@ -372,8 +370,8 @@ module foreign@1.0.0 {
                    closure_match_diagnostics.ok(),
                "a pure expression may match through a shared DAG ancestor");
   joggle::Diagnostics shared_replace_diagnostics;
-  const auto shared_replaced = joggle::replace(
-      *escaping, *chain, *replacement, shared_replace_diagnostics);
+  const auto shared_replaced = joggle::replace(*escaping, *chain, *replacement,
+                                               shared_replace_diagnostics);
   const auto shared_ops = escaping->ops();
   ok &= expect(shared_replaced && *shared_replaced == 1U &&
                    shared_replace_diagnostics.ok() && shared_ops.size() == 3U &&
@@ -384,7 +382,7 @@ module foreign@1.0.0 {
                        shared_ops[1].value(),
                "replacement preserves a shared ancestor and its outside user");
 
-  auto shared_branches = compiler.create_function();
+  auto shared_branches = compiler.create_fn();
   if (!shared_branches) {
     return EXIT_FAILURE;
   }
@@ -418,48 +416,52 @@ module foreign@1.0.0 {
                "repeated replacement consumes both branches sharing one "
                "ancestor");
 
-  joggle::Function replacement_subject = *chain;
-  const auto replaced_root_location =
-      replacement_subject.entry().terminator().returned().front().defining_op()
-          ->location();
+  joggle::Fn replacement_subject = *chain;
+  const auto replaced_root_location = replacement_subject.entry()
+                                          .terminator()
+                                          .returned()
+                                          .front()
+                                          .defining_op()
+                                          ->location();
   joggle::Diagnostics expression_replace_diagnostics;
-  const auto expression_replaced = joggle::replace(
-      replacement_subject, *chain, *replacement,
-      expression_replace_diagnostics);
-  ok &= expect(expression_replaced && *expression_replaced == 1U &&
-                   expression_replace_diagnostics.ok() &&
-                   replaced_root_location.has_value() &&
-                   replacement_subject.ops().size() == 1U &&
-                   replacement_subject.ops().front().callee() == *converted &&
-                   replacement_subject.ops().front().location() ==
-                       replaced_root_location &&
-                   replacement_subject.entry().terminator().returned().front() ==
-                       replacement_subject.ops().front().value(),
-               "replacement clones the after DAG and removes the matched DAG "
-               "in one transaction");
+  const auto expression_replaced =
+      joggle::replace(replacement_subject, *chain, *replacement,
+                      expression_replace_diagnostics);
+  ok &=
+      expect(expression_replaced && *expression_replaced == 1U &&
+                 expression_replace_diagnostics.ok() &&
+                 replaced_root_location.has_value() &&
+                 replacement_subject.ops().size() == 1U &&
+                 replacement_subject.ops().front().callee() == *converted &&
+                 replacement_subject.ops().front().location() ==
+                     replaced_root_location &&
+                 replacement_subject.entry().terminator().returned().front() ==
+                     replacement_subject.ops().front().value(),
+             "replacement clones the after DAG and removes the matched DAG "
+             "in one transaction");
 
-  joggle::Function no_match_subject = *axis_two;
+  joggle::Fn no_match_subject = *axis_two;
   const auto no_match_revision = no_match_subject.revision();
   joggle::Diagnostics expression_no_match_diagnostics;
-  const auto expression_no_match = joggle::replace(
-      no_match_subject, *axis_one, *replacement,
-      expression_no_match_diagnostics);
+  const auto expression_no_match =
+      joggle::replace(no_match_subject, *axis_one, *replacement,
+                      expression_no_match_diagnostics);
   ok &= expect(expression_no_match && *expression_no_match == 0U &&
                    expression_no_match_diagnostics.ok() &&
                    no_match_subject.revision() == no_match_revision,
-               "a successful expression no-op preserves Function revision");
+               "a successful expression no-op preserves Fn revision");
 
-  joggle::Function incompatible_subject = *chain;
+  joggle::Fn incompatible_subject = *chain;
   const auto incompatible_revision = incompatible_subject.revision();
   joggle::Diagnostics incompatible_replace_diagnostics;
   const auto incompatible_replace = joggle::replace(
       incompatible_subject, *chain, *pair, incompatible_replace_diagnostics);
-  ok &= expect(!incompatible_replace &&
-                   !incompatible_replace_diagnostics.ok() &&
-                   incompatible_subject.revision() == incompatible_revision,
-               "an incompatible after signature publishes no Function edit");
+  ok &=
+      expect(!incompatible_replace && !incompatible_replace_diagnostics.ok() &&
+                 incompatible_subject.revision() == incompatible_revision,
+             "an incompatible after signature publishes no Fn edit");
 
-  joggle::Function wrong_type_subject = *chain;
+  joggle::Fn wrong_type_subject = *chain;
   const auto wrong_type_revision = wrong_type_subject.revision();
   joggle::Diagnostics wrong_type_replace_diagnostics;
   const auto wrong_type_replace =
@@ -469,11 +471,10 @@ module foreign@1.0.0 {
                    wrong_type_subject.revision() == wrong_type_revision,
                "replacement rejects a hole type mismatch without publishing");
 
-  joggle::Function overlap_subject = *triple_keep;
+  joggle::Fn overlap_subject = *triple_keep;
   joggle::Diagnostics overlap_replace_diagnostics;
   const auto overlap_replace = joggle::replace(
-      overlap_subject, *double_keep, *replacement,
-      overlap_replace_diagnostics);
+      overlap_subject, *double_keep, *replacement, overlap_replace_diagnostics);
   ok &= expect(overlap_replace && *overlap_replace == 1U &&
                    overlap_replace_diagnostics.ok() &&
                    overlap_subject.ops().size() == 2U &&
@@ -482,124 +483,119 @@ module foreign@1.0.0 {
                "overlapping candidates select the first maximal "
                "non-overlapping match");
 
-  joggle::Function foreign_subject = *chain;
+  joggle::Fn foreign_subject = *chain;
   joggle::Diagnostics foreign_replace_diagnostics;
-  const auto foreign_replace = joggle::replace(
-      foreign_subject, *chain, *foreign_replacement,
-      foreign_replace_diagnostics);
+  const auto foreign_replace =
+      joggle::replace(foreign_subject, *chain, *foreign_replacement,
+                      foreign_replace_diagnostics);
   ok &= expect(foreign_replace && *foreign_replace == 1U &&
                    foreign_replace_diagnostics.ok() &&
                    foreign_subject.ops().size() == 1U &&
                    foreign_subject.ops().front().callee() == *foreign_external,
-               "replacement extends the verified Function module closure for "
+               "replacement extends the verified Fn mod closure for "
                "a newly cloned call");
 
   const std::string replacement_text =
       joggle::format(replacement_subject, "optimized");
   joggle::Compiler replacement_roundtrip;
   replacement_roundtrip.add(*schema);
-  replacement_roundtrip.add("joggle 1;\nmodule replacement_roundtrip@1.0.0 {\n"
+  replacement_roundtrip.add("joggle 1;\nmod replacement_roundtrip@1.0.0 {\n"
                             "  import mapping@1;\n" +
                                 replacement_text + "}\n",
                             "replacement-roundtrip.joggle");
   const bool replacement_roundtrip_linked = replacement_roundtrip.link();
-  const auto replacement_roundtrip_function =
+  const auto replacement_roundtrip_fn =
       replacement_roundtrip_linked
-          ? replacement_roundtrip.materialize(
-                "replacement_roundtrip.optimized")
+          ? replacement_roundtrip.materialize("replacement_roundtrip.optimized")
           : std::nullopt;
-  ok &= expect(replacement_roundtrip_function &&
-                   joggle::format(*replacement_roundtrip_function,
-                                  "optimized") == replacement_text,
-               "a replaced Function has canonical round-trippable source");
+  ok &= expect(replacement_roundtrip_fn &&
+                   joggle::format(*replacement_roundtrip_fn, "optimized") ==
+                       replacement_text,
+               "a replaced Fn has canonical round-trippable source");
 
-  joggle::Module expression_module("expression_module", {1, 0, 0});
-  joggle::Diagnostics expression_module_insert_diagnostics;
-  if (!expression_module.insert("first", joggle::Function{*chain},
-                                expression_module_insert_diagnostics) ||
-      !expression_module.insert("second", joggle::Function{*chain},
-                                expression_module_insert_diagnostics)) {
-    expression_module_insert_diagnostics.print(std::cerr);
+  joggle::Mod expression_mod("expression_mod", {1, 0, 0});
+  joggle::Diagnostics expression_mod_insert_diagnostics;
+  if (!expression_mod.insert("first", joggle::Fn{*chain},
+                             expression_mod_insert_diagnostics) ||
+      !expression_mod.insert("second", joggle::Fn{*chain},
+                             expression_mod_insert_diagnostics)) {
+    expression_mod_insert_diagnostics.print(std::cerr);
     return EXIT_FAILURE;
   }
-  joggle::Diagnostics expression_module_diagnostics;
-  const auto expression_module_replaced = joggle::replace(
-      expression_module, *chain, *replacement, expression_module_diagnostics);
-  const auto expression_module_first = expression_module.function("first");
-  const auto expression_module_second = expression_module.function("second");
+  joggle::Diagnostics expression_mod_diagnostics;
+  const auto expression_mod_replaced = joggle::replace(
+      expression_mod, *chain, *replacement, expression_mod_diagnostics);
+  const auto expression_mod_first = expression_mod.fn("first");
+  const auto expression_mod_second = expression_mod.fn("second");
   ok &= expect(
-      expression_module_replaced && *expression_module_replaced == 2U &&
-          expression_module_diagnostics.ok() && expression_module_first &&
-          expression_module_second && expression_module_first->body() &&
-          expression_module_second->body() &&
-          expression_module_first->body()->ops().front().callee() ==
-              *converted &&
-          expression_module_second->body()->ops().front().callee() ==
-              *converted,
-      "whole-Module expression replacement publishes all changed members");
+      expression_mod_replaced && *expression_mod_replaced == 2U &&
+          expression_mod_diagnostics.ok() && expression_mod_first &&
+          expression_mod_second && expression_mod_first->body() &&
+          expression_mod_second->body() &&
+          expression_mod_first->body()->ops().front().callee() == *converted &&
+          expression_mod_second->body()->ops().front().callee() == *converted,
+      "whole-Mod expression replacement publishes all changed members");
 
-  const std::string expression_module_digest(expression_module.digest());
-  joggle::Diagnostics expression_module_failure_diagnostics;
-  const auto expression_module_failure = joggle::replace(
-      expression_module, *chain, *pair,
-      expression_module_failure_diagnostics);
-  ok &= expect(!expression_module_failure &&
-                   !expression_module_failure_diagnostics.ok() &&
-                   expression_module.digest() == expression_module_digest,
-               "whole-Module replacement failure publishes no partial value");
+  const std::string expression_mod_digest(expression_mod.digest());
+  joggle::Diagnostics expression_mod_failure_diagnostics;
+  const auto expression_mod_failure = joggle::replace(
+      expression_mod, *chain, *pair, expression_mod_failure_diagnostics);
+  ok &= expect(!expression_mod_failure &&
+                   !expression_mod_failure_diagnostics.ok() &&
+                   expression_mod.digest() == expression_mod_digest,
+               "whole-Mod replacement failure publishes no partial value");
 
-  joggle::Module rollback_module("rollback_module", {1, 0, 0});
+  joggle::Mod rollback_mod("rollback_mod", {1, 0, 0});
   joggle::Diagnostics rollback_insert_diagnostics;
-  if (!rollback_module.insert("first", joggle::Function{*chain},
-                              rollback_insert_diagnostics) ||
-      !rollback_module.insert("second", joggle::Function{*chain},
-                              rollback_insert_diagnostics)) {
+  if (!rollback_mod.insert("first", joggle::Fn{*chain},
+                           rollback_insert_diagnostics) ||
+      !rollback_mod.insert("second", joggle::Fn{*chain},
+                           rollback_insert_diagnostics)) {
     rollback_insert_diagnostics.print(std::cerr);
     return EXIT_FAILURE;
   }
-  const auto rollback_second = rollback_module.function("second");
-  const std::string rollback_digest(rollback_module.digest());
+  const auto rollback_second = rollback_mod.fn("second");
+  const std::string rollback_digest(rollback_mod.digest());
   bool rollback_preserved = false;
   if (rollback_second) {
-    joggle::Function* busy = rollback_module.body(*rollback_second);
+    joggle::Fn* busy = rollback_mod.body(*rollback_second);
     if (busy) {
       auto pending = busy->edit();
       joggle::Diagnostics rollback_diagnostics;
       const auto rolled_back = joggle::replace(
-          rollback_module, *chain, *replacement, rollback_diagnostics);
-      rollback_preserved =
-          !rolled_back && !rollback_diagnostics.ok() &&
-          rollback_module.digest() == rollback_digest;
+          rollback_mod, *chain, *replacement, rollback_diagnostics);
+      rollback_preserved = !rolled_back && !rollback_diagnostics.ok() &&
+                           rollback_mod.digest() == rollback_digest;
     }
   }
   ok &= expect(rollback_preserved,
-               "a later member failure publishes no earlier Module "
+               "a later member failure publishes no earlier Mod "
                "replacement");
 
   const auto first_revision = first->revision();
   joggle::Diagnostics no_op_diagnostics;
   const auto no_op = joggle::map_calls(
       *first,
-      [](const joggle::Op&)
-          -> std::optional<joggle::Module::FunctionDecl> {
+      [](const joggle::Op&) -> std::optional<joggle::Mod::FnDecl> {
         return std::nullopt;
       },
       no_op_diagnostics);
   ok &= expect(no_op && *no_op == 0U && no_op_diagnostics.ok() &&
                    first->revision() == first_revision &&
                    first->ops().front().callee() == *keep,
-               "a no-op mapping preserves the Function revision");
+               "a no-op mapping preserves the Fn revision");
 
   joggle::Diagnostics no_op_rewrite_diagnostics;
   const auto no_op_rewrite = joggle::rewrite(
       *first,
-      [](const joggle::Op&, joggle::Function::Edit&,
-         joggle::Diagnostics&) { return false; },
+      [](const joggle::Op&, joggle::Fn::Edit&, joggle::Diagnostics&) {
+        return false;
+      },
       no_op_rewrite_diagnostics);
   ok &= expect(no_op_rewrite && *no_op_rewrite == 0U &&
                    no_op_rewrite_diagnostics.ok() &&
                    first->revision() == first_revision,
-               "a no-op rewrite preserves the Function revision");
+               "a no-op rewrite preserves the Fn revision");
 
   joggle::Diagnostics replace_diagnostics;
   const auto replaced =
@@ -607,59 +603,51 @@ module foreign@1.0.0 {
   ok &= expect(replaced && *replaced == 1U && replace_diagnostics.ok() &&
                    first->revision() != first_revision &&
                    first->ops().front().callee() == *converted,
-               "a committed replacement advances the Function revision");
+               "a committed replacement advances the Fn revision");
 
   const auto expanded_revision = expanded->revision();
   joggle::Diagnostics rewrite_diagnostics;
   const auto rewritten = joggle::rewrite(
       *expanded,
-      [&](const joggle::Op& op, joggle::Function::Edit& edit,
-          joggle::Diagnostics&) {
+      [&](const joggle::Op& op, joggle::Fn::Edit& edit, joggle::Diagnostics&) {
         if (op.callee() != *keep) {
           return false;
         }
-        const auto first_step =
-            edit.insert(op, *converted, op.arguments());
-        const auto second_step =
-            edit.insert(op, *other, {first_step.value()});
+        const auto first_step = edit.insert(op, *converted, op.arguments());
+        const auto second_step = edit.insert(op, *other, {first_step.value()});
         edit.replace(op, {second_step.value()});
         return true;
       },
       rewrite_diagnostics);
   const auto expanded_ops = expanded->ops();
-  ok &= expect(
-      rewritten && *rewritten == 1U && rewrite_diagnostics.ok() &&
-          expanded->revision() != expanded_revision &&
-          expanded_ops.size() == 2U &&
-          expanded_ops[0].callee() == *converted &&
-          expanded_ops[1].callee() == *other &&
-          expanded->entry().terminator().returned().front() ==
-              expanded_ops[1].value(),
-      "one lambda transactionally expands a call into multiple Ops");
+  ok &= expect(rewritten && *rewritten == 1U && rewrite_diagnostics.ok() &&
+                   expanded->revision() != expanded_revision &&
+                   expanded_ops.size() == 2U &&
+                   expanded_ops[0].callee() == *converted &&
+                   expanded_ops[1].callee() == *other &&
+                   expanded->entry().terminator().returned().front() ==
+                       expanded_ops[1].value(),
+               "one lambda transactionally expands a call into multiple Ops");
 
   const auto convertible_revision = convertible->revision();
   joggle::Diagnostics conversion_diagnostics;
   const auto conversion = joggle::convert(
       *convertible,
-      [&](const joggle::Op& op, joggle::Function::Edit& edit,
-          joggle::Diagnostics&) {
+      [&](const joggle::Op& op, joggle::Fn::Edit& edit, joggle::Diagnostics&) {
         if (op.callee() != *keep) {
           return false;
         }
         edit.replace(op, *converted);
         return true;
       },
-      [&](const joggle::Op& op) {
-        return op.callee() != *keep;
-      },
+      [&](const joggle::Op& op) { return op.callee() != *keep; },
       conversion_diagnostics);
   ok &= expect(conversion && *conversion == 1U && conversion_diagnostics.ok() &&
                    convertible->revision() != convertible_revision &&
                    convertible->ops().front().callee() == *converted,
-               "conversion publishes a rewritten legal Function");
+               "conversion publishes a rewritten legal Fn");
 
-  const auto staged_rewrite = [&](const joggle::Op& op,
-                                  joggle::Function::Edit& edit,
+  const auto staged_rewrite = [&](const joggle::Op& op, joggle::Fn::Edit& edit,
                                   joggle::Diagnostics&) {
     if (op.callee() == *keep) {
       edit.replace(op, *converted);
@@ -683,8 +671,7 @@ module foreign@1.0.0 {
   joggle::Diagnostics oscillating_diagnostics;
   const auto oscillating_result = joggle::rewrite_to_fixpoint(
       *oscillating,
-      [&](const joggle::Op& op, joggle::Function::Edit& edit,
-          joggle::Diagnostics&) {
+      [&](const joggle::Op& op, joggle::Fn::Edit& edit, joggle::Diagnostics&) {
         if (op.callee() == *keep) {
           edit.replace(op, *converted);
         } else {
@@ -708,109 +695,99 @@ module foreign@1.0.0 {
                    joggle::format(*second, "second") == before_invalid,
                "an invalid replacement restores content and revision");
 
-  auto module_first = compiler.materialize("mapping.first");
-  auto module_second = compiler.materialize("mapping.second");
-  joggle::Module module("mapping_result", {1, 0, 0});
+  auto mod_first = compiler.materialize("mapping.first");
+  auto mod_second = compiler.materialize("mapping.second");
+  joggle::Mod mod("mapping_result", {1, 0, 0});
   joggle::Diagnostics insertion_diagnostics;
-  if (!module_first || !module_second ||
-      !module.insert("first", std::move(*module_first),
-                     insertion_diagnostics) ||
-      !module.insert("second", std::move(*module_second),
-                     insertion_diagnostics)) {
+  if (!mod_first || !mod_second ||
+      !mod.insert("first", std::move(*mod_first), insertion_diagnostics) ||
+      !mod.insert("second", std::move(*mod_second), insertion_diagnostics)) {
     insertion_diagnostics.print(std::cerr);
     return EXIT_FAILURE;
   }
 
   const auto read_body = [&](std::string_view name) {
-    const auto function =
-        static_cast<const joggle::Module&>(module).function(name);
-    return function ? function->body() : nullptr;
+    const auto fn = static_cast<const joggle::Mod&>(mod).fn(name);
+    return fn ? fn->body() : nullptr;
   };
   const auto* original_first = read_body("first");
   const auto* original_second = read_body("second");
   const auto original_first_revision = original_first->revision();
   const auto original_second_revision = original_second->revision();
-  const std::string original_digest(module.digest());
-  const std::string original_declaration_digest(module.declaration_digest());
+  const std::string original_digest(mod.digest());
+  const std::string original_declaration_digest(mod.declaration_digest());
 
-  joggle::Module fixedpoint_module = module;
-  joggle::Diagnostics fixedpoint_module_diagnostics;
-  const auto fixedpoint_module_changes = joggle::rewrite_to_fixpoint(
-      fixedpoint_module, staged_rewrite, 3U, fixedpoint_module_diagnostics);
-  const auto fixedpoint_first = fixedpoint_module.function("first");
-  ok &= expect(fixedpoint_module_changes && *fixedpoint_module_changes == 2U &&
-                   fixedpoint_module_diagnostics.ok() && fixedpoint_first &&
+  joggle::Mod fixedpoint_mod = mod;
+  joggle::Diagnostics fixedpoint_mod_diagnostics;
+  const auto fixedpoint_mod_changes = joggle::rewrite_to_fixpoint(
+      fixedpoint_mod, staged_rewrite, 3U, fixedpoint_mod_diagnostics);
+  const auto fixedpoint_first = fixedpoint_mod.fn("first");
+  ok &= expect(fixedpoint_mod_changes && *fixedpoint_mod_changes == 2U &&
+                   fixedpoint_mod_diagnostics.ok() && fixedpoint_first &&
                    fixedpoint_first->body() != nullptr &&
-                   fixedpoint_first->body()->ops().front().callee() ==
-                       *other &&
-                   module.digest() == original_digest,
-               "fixed-point Module rewriting publishes one final value");
+                   fixedpoint_first->body()->ops().front().callee() == *other &&
+                   mod.digest() == original_digest,
+               "fixed-point Mod rewriting publishes one final value");
 
-  joggle::Diagnostics module_no_op_diagnostics;
-  const auto module_no_op = joggle::map_calls(
-      module,
-      [](const joggle::Op&)
-          -> std::optional<joggle::Module::FunctionDecl> {
+  joggle::Diagnostics mod_no_op_diagnostics;
+  const auto mod_no_op = joggle::map_calls(
+      mod,
+      [](const joggle::Op&) -> std::optional<joggle::Mod::FnDecl> {
         return std::nullopt;
       },
-      module_no_op_diagnostics);
-  ok &= expect(module_no_op && *module_no_op == 0U &&
-                   module_no_op_diagnostics.ok() &&
-                   module.digest() == original_digest &&
+      mod_no_op_diagnostics);
+  ok &= expect(mod_no_op && *mod_no_op == 0U && mod_no_op_diagnostics.ok() &&
+                   mod.digest() == original_digest &&
                    read_body("first") == original_first &&
                    read_body("second") == original_second,
-               "a no-op Module mapping preserves shared Function storage");
+               "a no-op Mod mapping preserves shared Fn storage");
 
-  joggle::Diagnostics module_failure_diagnostics;
-  const auto module_failure = joggle::convert(
-      module,
-      [&](const joggle::Op& op, joggle::Function::Edit& edit,
-          joggle::Diagnostics&) {
+  joggle::Diagnostics mod_failure_diagnostics;
+  const auto mod_failure = joggle::convert(
+      mod,
+      [&](const joggle::Op& op, joggle::Fn::Edit& edit, joggle::Diagnostics&) {
         if (op.callee() == *keep) {
           edit.replace(op, *converted);
           return true;
         }
         return false;
       },
-      [&](const joggle::Op& op) {
-        return op.callee() != *other;
-      },
-      module_failure_diagnostics);
+      [&](const joggle::Op& op) { return op.callee() != *other; },
+      mod_failure_diagnostics);
   const auto* unchanged_first = read_body("first");
   const auto* unchanged_second = read_body("second");
-  ok &= expect(!module_failure && !module_failure_diagnostics.ok() &&
-                   module_failure_diagnostics.entries().front().message.find(
-                       "function 'second'") != std::string::npos &&
-                   module.digest() == original_digest &&
+  ok &= expect(!mod_failure && !mod_failure_diagnostics.ok() &&
+                   mod_failure_diagnostics.entries().front().message.find(
+                       "fn 'second'") != std::string::npos &&
+                   mod.digest() == original_digest &&
                    unchanged_first != nullptr && unchanged_second != nullptr &&
                    unchanged_first->ops().front().callee() == *keep &&
                    unchanged_second->ops().front().callee() == *other,
-               "an illegal whole-Module conversion publishes no partial edits");
+               "an illegal whole-Mod conversion publishes no partial edits");
 
-  joggle::Diagnostics module_success_diagnostics;
-  const auto module_success = joggle::replace_calls(module, *keep, *converted,
-                                                    module_success_diagnostics);
+  joggle::Diagnostics mod_success_diagnostics;
+  const auto mod_success =
+      joggle::replace_calls(mod, *keep, *converted, mod_success_diagnostics);
   const auto* mapped_first = read_body("first");
   const auto* preserved_second = read_body("second");
-  const auto mapped_declaration = module.function("first");
+  const auto mapped_declaration = mod.fn("first");
   const std::string mapped_declaration_digest =
       mapped_declaration
           ? std::string(mapped_declaration->symbol().declaration_digest())
           : std::string{};
-  ok &=
-      expect(module_success && *module_success == 1U &&
-                 module_success_diagnostics.ok() && mapped_first != nullptr &&
-                 module.digest() != original_digest &&
-                 module.declaration_digest() == original_declaration_digest &&
-                 mapped_declaration_digest == module.declaration_digest() &&
-                 mapped_first->revision() != original_first_revision &&
-                 mapped_first->ops().front().callee() == *converted &&
-                 preserved_second != nullptr &&
-                 preserved_second->revision() == original_second_revision,
-             "whole-Module replacement advances only changed revisions while "
-             "preserving declaration identity");
+  ok &= expect(mod_success && *mod_success == 1U &&
+                   mod_success_diagnostics.ok() && mapped_first != nullptr &&
+                   mod.digest() != original_digest &&
+                   mod.declaration_digest() == original_declaration_digest &&
+                   mapped_declaration_digest == mod.declaration_digest() &&
+                   mapped_first->revision() != original_first_revision &&
+                   mapped_first->ops().front().callee() == *converted &&
+                   preserved_second != nullptr &&
+                   preserved_second->revision() == original_second_revision,
+               "whole-Mod replacement advances only changed revisions while "
+               "preserving declaration identity");
 
-  auto cfg = compiler.create_function();
+  auto cfg = compiler.create_fn();
   if (!cfg) {
     return EXIT_FAILURE;
   }
@@ -818,9 +795,9 @@ module foreign@1.0.0 {
     auto edit = cfg->edit();
     const auto condition = edit.argument(*i1);
     const auto input = edit.argument(*word);
-    const auto yes = edit.block();
-    const auto no = edit.block();
-    const auto merge = edit.block({*word});
+    const auto yes = edit.blk();
+    const auto no = edit.blk();
+    const auto merge = edit.blk({*word});
     const auto converted_value = edit.append(yes, *identity, {input});
     edit.branch(cfg->entry(), condition, yes, {}, no, {});
     edit.jump(yes, merge, {converted_value.value()});
@@ -842,14 +819,14 @@ module foreign@1.0.0 {
   joggle::Diagnostics clone_diagnostics;
   const auto cloned = joggle::clone(
       compiler, *cfg,
-      [&](const joggle::Value& value) -> std::optional<joggle::Type> {
+      [&](const joggle::Val& value) -> std::optional<joggle::Type> {
         return value.type() == *word
                    ? std::optional<joggle::Type>{*alternate}
                    : std::optional<joggle::Type>{value.type()};
       },
       clone_diagnostics);
   ok &= expect(
-      cloned && clone_diagnostics.ok() && cloned->blocks().size() == 4U &&
+      cloned && clone_diagnostics.ok() && cloned->blks().size() == 4U &&
           cloned->arguments().size() == 2U &&
           cloned->arguments()[1].type() == *alternate &&
           cloned->ops().size() == 1U &&
@@ -861,18 +838,16 @@ module foreign@1.0.0 {
   joggle::Diagnostics inline_clone_diagnostics;
   const auto inline_clone = joggle::clone(
       compiler, *with_inline,
-      [](const joggle::Value& value) -> std::optional<joggle::Type> {
+      [](const joggle::Val& value) -> std::optional<joggle::Type> {
         return value.type();
       },
       inline_clone_diagnostics);
-  const auto cloned_arguments =
-      inline_clone && inline_clone->ops().size() == 1U
-          ? inline_clone->ops().front().arguments()
-          : std::vector<joggle::Value>{};
-  const auto cloned_body =
-      cloned_arguments.size() == 2U
-          ? cloned_arguments.back().inline_function()
-          : std::optional<joggle::Function>{};
+  const auto cloned_arguments = inline_clone && inline_clone->ops().size() == 1U
+                                    ? inline_clone->ops().front().arguments()
+                                    : std::vector<joggle::Val>{};
+  const auto cloned_body = cloned_arguments.size() == 2U
+                               ? cloned_arguments.back().inline_fn()
+                               : std::optional<joggle::Fn>{};
   ok &= expect(inline_clone && inline_clone_diagnostics.ok() && cloned_body &&
                    with_inline->ops().front().location().has_value() &&
                    cloned_body->ops().size() == 1U &&
@@ -886,13 +861,13 @@ module foreign@1.0.0 {
   joggle::Compiler staged_replace;
   staged_replace.add(R"(
 joggle 1;
-module staged_replace@1.0.0 {
+mod staged_replace@1.0.0 {
   type word();
   fn keep(input: word) -> word;
   fn other(input: word) -> word;
   fn converted(input: word) -> word;
-  fn replace(input: function, before: function, after: function) -> function;
-  fn inspect(input: function) -> int;
+  fn replace(input: fn, before: fn, after: fn) -> fn;
+  fn inspect(input: fn) -> int;
 
   fn subject(input: word) -> word {
     return other(keep(input));
@@ -911,41 +886,35 @@ module staged_replace@1.0.0 {
 )",
                      "staged-replace.joggle");
   const bool staged_replace_linked = staged_replace.link();
-  const auto staged_replace_module = staged_replace.module("staged_replace");
+  const auto staged_replace_mod = staged_replace.mod("staged_replace");
   const auto staged_replace_decl =
-      staged_replace_module ? staged_replace_module->function("replace")
-                            : std::nullopt;
+      staged_replace_mod ? staged_replace_mod->fn("replace") : std::nullopt;
   const auto staged_optimize_decl =
-      staged_replace_module ? staged_replace_module->function("optimize")
-                            : std::nullopt;
+      staged_replace_mod ? staged_replace_mod->fn("optimize") : std::nullopt;
   const auto staged_inspect_decl =
-      staged_replace_module ? staged_replace_module->function("inspect")
-                            : std::nullopt;
+      staged_replace_mod ? staged_replace_mod->fn("inspect") : std::nullopt;
   const auto staged_converted_decl =
-      staged_replace_module ? staged_replace_module->function("converted")
-                            : std::nullopt;
+      staged_replace_mod ? staged_replace_mod->fn("converted") : std::nullopt;
   if (staged_replace_decl) {
     staged_replace.bind(
         *staged_replace_decl,
-        [](joggle::Function input, const joggle::Function& before,
-           const joggle::Function& after, joggle::Diagnostics& diagnostics)
-            -> std::optional<joggle::Function> {
+        [](joggle::Fn input, const joggle::Fn& before, const joggle::Fn& after,
+           joggle::Diagnostics& diagnostics) -> std::optional<joggle::Fn> {
           const auto count = joggle::replace(input, before, after, diagnostics);
-          return count ? std::optional<joggle::Function>{std::move(input)}
+          return count ? std::optional<joggle::Fn>{std::move(input)}
                        : std::nullopt;
         });
   }
   std::size_t inspected_replacement_calls = 0;
-  std::optional<joggle::Module::FunctionDecl> inspected_replacement_callee;
+  std::optional<joggle::Mod::FnDecl> inspected_replacement_callee;
   if (staged_inspect_decl) {
     staged_replace.bind(
-        *staged_inspect_decl,
-        [&](const joggle::Function& function) -> std::int64_t {
-          inspected_replacement_calls = function.ops().size();
-          if (!function.ops().empty()) {
-            inspected_replacement_callee = function.ops().front().callee();
+        *staged_inspect_decl, [&](const joggle::Fn& fn) -> std::int64_t {
+          inspected_replacement_calls = fn.ops().size();
+          if (!fn.ops().empty()) {
+            inspected_replacement_callee = fn.ops().front().callee();
           }
-          return static_cast<std::int64_t>(function.ops().size());
+          return static_cast<std::int64_t>(fn.ops().size());
         });
   }
   const auto staged_optimized =
@@ -956,17 +925,15 @@ module staged_replace@1.0.0 {
   if (!staged_optimized || !staged_replace.ok()) {
     staged_replace.diagnostics().print(std::cerr);
   }
-  ok &= expect(staged_replace_linked && staged_replace_decl &&
-                   staged_optimize_decl && staged_inspect_decl &&
-                   staged_converted_decl &&
-                   staged_optimized && staged_replace.ok() &&
-                   staged_optimized->ops().size() == 1U &&
-                   staged_optimized->ops().front().callee() ==
-                       *staged_converted_decl &&
-                   inspected_replacement_calls == 1U &&
-                   inspected_replacement_callee == staged_converted_decl,
-               "an ordinary source fn invokes typed-lambda replacement "
-               "through explicit @ staging");
+  ok &= expect(
+      staged_replace_linked && staged_replace_decl && staged_optimize_decl &&
+          staged_inspect_decl && staged_converted_decl && staged_optimized &&
+          staged_replace.ok() && staged_optimized->ops().size() == 1U &&
+          staged_optimized->ops().front().callee() == *staged_converted_decl &&
+          inspected_replacement_calls == 1U &&
+          inspected_replacement_callee == staged_converted_decl,
+      "an ordinary source fn invokes typed-lambda replacement "
+      "through explicit @ staging");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

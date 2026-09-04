@@ -4,9 +4,9 @@
 
 namespace {
 
-void bind(joggle::Compiler& compiler, const joggle::Module& module,
+void bind(joggle::Compiler& compiler, const joggle::Mod& mod,
           joggle::Diagnostics& diagnostics) {
-  const auto integer = module.type("integer");
+  const auto integer = mod.type("integer");
   if (!integer) {
     diagnostics.report("test native does not match its linked schema");
     return;
@@ -25,7 +25,7 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
 
 }  // namespace
 
-void joggle_module(joggle::Compiler& compiler, const joggle::Module& module,
-                   joggle::Diagnostics& diagnostics) {
-  bind(compiler, module, diagnostics);
+void joggle_mod(joggle::Compiler& compiler, const joggle::Mod& mod,
+                joggle::Diagnostics& diagnostics) {
+  bind(compiler, mod, diagnostics);
 }

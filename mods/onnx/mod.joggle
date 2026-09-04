@@ -1,0 +1,7 @@
+joggle 1;
+
+mod onnx@1.0.0 {
+  import tensor@1;
+
+  fn read(input: bytes, name: string = "model") -> mod;
+}

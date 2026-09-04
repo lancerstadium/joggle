@@ -17,11 +17,11 @@
 namespace joggle {
 namespace {
 
-using detail::ParameterValue;
+using detail::ParamVal;
 
 template <typename T>
-std::shared_ptr<const detail::ParameterValueStorage> store(T value) {
-  return std::make_shared<const detail::ParameterValueStorage>(
+std::shared_ptr<const detail::ParamValStorage> store(T value) {
+  return std::make_shared<const detail::ParamValStorage>(
       detail::ParameterPayload{std::move(value)});
 }
 
@@ -30,60 +30,60 @@ std::string encode(std::string_view tag, std::string_view value) {
          std::string(value);
 }
 
-std::optional<ParameterValue::Kind> expected_kind(detail::ValueKind kind) {
+std::optional<ParamVal::Kind> expected_kind(detail::ValKind kind) {
   switch (kind) {
-  case detail::ValueKind::Integer:
-    return ParameterValue::Kind::I64;
-  case detail::ValueKind::Real:
-    return ParameterValue::Kind::F64;
-  case detail::ValueKind::Boolean:
-    return ParameterValue::Kind::Boolean;
-  case detail::ValueKind::String:
-    return ParameterValue::Kind::String;
-  case detail::ValueKind::Type:
-    return ParameterValue::Kind::Type;
-  case detail::ValueKind::Function:
-  case detail::ValueKind::Bytes:
+  case detail::ValKind::Integer:
+    return ParamVal::Kind::I64;
+  case detail::ValKind::Real:
+    return ParamVal::Kind::F64;
+  case detail::ValKind::Boolean:
+    return ParamVal::Kind::Boolean;
+  case detail::ValKind::String:
+    return ParamVal::Kind::String;
+  case detail::ValKind::Type:
+    return ParamVal::Kind::Type;
+  case detail::ValKind::Fn:
+  case detail::ValKind::Bytes:
     return std::nullopt;
   }
   return std::nullopt;
 }
 
-std::optional<ParameterValue>
-literal_value(const Module::Expression& expression, detail::ValueKind kind) {
-  using Kind = Module::Expression::Kind;
-  if (kind == detail::ValueKind::Integer && expression.kind == Kind::Number) {
+std::optional<ParamVal> literal_value(const Mod::Expr& expression,
+                                      detail::ValKind kind) {
+  using Kind = Mod::Expr::Kind;
+  if (kind == detail::ValKind::Integer && expression.kind == Kind::Number) {
     std::int64_t value = 0;
-    const auto result = std::from_chars(expression.text.data(),
-                                        expression.text.data() + expression.text.size(),
-                                        value);
+    const auto result =
+        std::from_chars(expression.text.data(),
+                        expression.text.data() + expression.text.size(), value);
     if (result.ec == std::errc{} &&
         result.ptr == expression.text.data() + expression.text.size()) {
-      return ParameterValue(value);
+      return ParamVal(value);
     }
   }
-  if (kind == detail::ValueKind::Real && expression.kind == Kind::Number) {
+  if (kind == detail::ValKind::Real && expression.kind == Kind::Number) {
     std::istringstream stream(expression.text);
     stream.imbue(std::locale::classic());
     double value = 0.0;
     stream >> value;
     if (stream && stream.eof() && std::isfinite(value)) {
-      return ParameterValue(value);
+      return ParamVal(value);
     }
   }
-  if (kind == detail::ValueKind::Boolean && expression.kind == Kind::Boolean) {
-    return ParameterValue(expression.text == "true");
+  if (kind == detail::ValKind::Boolean && expression.kind == Kind::Boolean) {
+    return ParamVal(expression.text == "true");
   }
-  if (kind == detail::ValueKind::String && expression.kind == Kind::String) {
-    return ParameterValue(expression.text);
+  if (kind == detail::ValKind::String && expression.kind == Kind::String) {
+    return ParamVal(expression.text);
   }
   return std::nullopt;
 }
 
-std::string instance_name(const Module::Symbol& schema,
-                          std::span<const ParameterValue> parameters) {
+std::string instance_name(const Mod::Symbol& schema,
+                          std::span<const ParamVal> parameters) {
   std::string encoding;
-  for (const ParameterValue& parameter : parameters) {
+  for (const ParamVal& parameter : parameters) {
     const std::string item = parameter.canonical();
     encoding += std::to_string(item.size()) + ":" + item;
   }
@@ -92,8 +92,8 @@ std::string instance_name(const Module::Symbol& schema,
 
 }  // namespace
 
-bool detail::matches_parameter(const Module::ParameterDecl& schema,
-                               const ParameterValue& value) {
+bool detail::matches_parameter(const Mod::ParamDecl& schema,
+                               const ParamVal& value) {
   const auto domain = kernel_domain(schema.domain);
   if (!domain) {
     return false;
@@ -104,22 +104,21 @@ bool detail::matches_parameter(const Module::ParameterDecl& schema,
   }
   if (!domain->list) {
     return value.kind() == *expected &&
-           (*expected != ParameterValue::Kind::F64 ||
-            std::isfinite(*value.as_f64()));
+           (*expected != ParamVal::Kind::F64 || std::isfinite(*value.as_f64()));
   }
-  if (value.kind() != ParameterValue::Kind::List) {
+  if (value.kind() != ParamVal::Kind::List) {
     return false;
   }
   return std::all_of(value.elements().begin(), value.elements().end(),
-                     [&](const ParameterValue& element) {
+                     [&](const ParamVal& element) {
                        return element.kind() == *expected &&
-                              (*expected != ParameterValue::Kind::F64 ||
+                              (*expected != ParamVal::Kind::F64 ||
                                std::isfinite(*element.as_f64()));
                      });
 }
 
-std::optional<ParameterValue>
-detail::parameter_default(const Module::ParameterDecl& schema) {
+std::optional<ParamVal>
+detail::parameter_default(const Mod::ParamDecl& schema) {
   if (!schema.default_value) {
     return std::nullopt;
   }
@@ -130,16 +129,16 @@ detail::parameter_default(const Module::ParameterDecl& schema) {
   return literal_value(*schema.default_value, domain->element);
 }
 
-std::optional<std::vector<ParameterValue>> detail::validate_parameters(
-    std::string_view owner, std::span<const Module::ParameterDecl> schema,
-    std::span<const ParameterValue> provided, Diagnostics& diagnostics) {
+std::optional<std::vector<ParamVal>> detail::validate_parameters(
+    std::string_view owner, std::span<const Mod::ParamDecl> schema,
+    std::span<const ParamVal> provided, Diagnostics& diagnostics) {
   if (provided.size() > schema.size()) {
     diagnostics.report("'" + std::string(owner) + "' expects at most " +
                        std::to_string(schema.size()) + " parameters, but " +
                        std::to_string(provided.size()) + " were provided");
     return std::nullopt;
   }
-  std::vector<ParameterValue> values(provided.begin(), provided.end());
+  std::vector<ParamVal> values(provided.begin(), provided.end());
   for (std::size_t index = 0; index < provided.size(); ++index) {
     if (!matches_parameter(schema[index], provided[index])) {
       diagnostics.report("parameter '" + schema[index].name + "' of '" +
@@ -165,21 +164,20 @@ std::optional<std::vector<ParameterValue>> detail::validate_parameters(
   return values;
 }
 
-Type detail::TypeAccess::make(Module::TypeDecl schema,
-                              std::vector<ParameterValue> parameters,
-                              std::vector<ParameterValue> derived_parameters) {
+Type detail::TypeAccess::make(Mod::TypeDecl schema,
+                              std::vector<ParamVal> parameters,
+                              std::vector<ParamVal> derived_parameters) {
   const std::string stable = instance_name(schema.symbol(), parameters);
   return Type(std::make_shared<const TypeStorage>(
       TypeStorage{std::move(schema), std::move(parameters),
                   std::move(derived_parameters), stable}));
 }
 
-std::span<const ParameterValue>
-detail::TypeAccess::parameters(const Type& type) {
+std::span<const ParamVal> detail::TypeAccess::parameters(const Type& type) {
   return type.parameters();
 }
 
-std::span<const ParameterValue>
+std::span<const ParamVal>
 detail::TypeAccess::derived_parameters(const Type& type) {
   return type.storage_->derived_parameters;
 }
@@ -187,13 +185,13 @@ detail::TypeAccess::derived_parameters(const Type& type) {
 Type::Type(std::shared_ptr<const detail::TypeStorage> storage)
     : storage_(std::move(storage)) {}
 
-Module::TypeDecl Type::schema() const { return storage_->schema; }
+Mod::TypeDecl Type::schema() const { return storage_->schema; }
 
-std::span<const ParameterValue> Type::parameters() const {
+std::span<const ParamVal> Type::parameters() const {
   return storage_->parameters;
 }
 
-std::span<const ParameterValue> Type::derived_parameters() const {
+std::span<const ParamVal> Type::derived_parameters() const {
   return storage_->derived_parameters;
 }
 
@@ -203,30 +201,26 @@ bool Type::operator==(const Type& other) const {
   return stable_name() == other.stable_name();
 }
 
-ParameterValue::ParameterValue(std::int64_t value) : storage_(store(value)) {}
+ParamVal::ParamVal(std::int64_t value) : storage_(store(value)) {}
 
-ParameterValue::ParameterValue(double value) : storage_(store(value)) {}
+ParamVal::ParamVal(double value) : storage_(store(value)) {}
 
-ParameterValue::ParameterValue(bool value) : storage_(store(value)) {}
+ParamVal::ParamVal(bool value) : storage_(store(value)) {}
 
-ParameterValue::ParameterValue(std::string value)
-    : storage_(store(std::move(value))) {}
+ParamVal::ParamVal(std::string value) : storage_(store(std::move(value))) {}
 
-ParameterValue::ParameterValue(const char* value)
-    : ParameterValue(std::string(value)) {}
+ParamVal::ParamVal(const char* value) : ParamVal(std::string(value)) {}
 
-ParameterValue::ParameterValue(Type value)
-    : storage_(store(std::move(value))) {}
+ParamVal::ParamVal(Type value) : storage_(store(std::move(value))) {}
 
-ParameterValue::ParameterValue(
-    std::shared_ptr<const detail::ParameterValueStorage> storage)
+ParamVal::ParamVal(std::shared_ptr<const detail::ParamValStorage> storage)
     : storage_(std::move(storage)) {}
 
-ParameterValue ParameterValue::list(std::vector<ParameterValue> values) {
-  return ParameterValue(store(std::move(values)));
+ParamVal ParamVal::list(std::vector<ParamVal> values) {
+  return ParamVal(store(std::move(values)));
 }
 
-ParameterValue::Kind ParameterValue::kind() const {
+ParamVal::Kind ParamVal::kind() const {
   if (std::holds_alternative<std::int64_t>(storage_->payload)) {
     return Kind::I64;
   }
@@ -245,33 +239,32 @@ ParameterValue::Kind ParameterValue::kind() const {
   return Kind::List;
 }
 
-std::span<const ParameterValue> ParameterValue::elements() const {
-  const auto* values =
-      std::get_if<std::vector<ParameterValue>>(&storage_->payload);
-  return values == nullptr ? std::span<const ParameterValue>{} : *values;
+std::span<const ParamVal> ParamVal::elements() const {
+  const auto* values = std::get_if<std::vector<ParamVal>>(&storage_->payload);
+  return values == nullptr ? std::span<const ParamVal>{} : *values;
 }
 
-const std::int64_t* ParameterValue::as_i64() const {
+const std::int64_t* ParamVal::as_i64() const {
   return std::get_if<std::int64_t>(&storage_->payload);
 }
 
-const double* ParameterValue::as_f64() const {
+const double* ParamVal::as_f64() const {
   return std::get_if<double>(&storage_->payload);
 }
 
-const bool* ParameterValue::as_bool() const {
+const bool* ParamVal::as_bool() const {
   return std::get_if<bool>(&storage_->payload);
 }
 
-const std::string* ParameterValue::as_string() const {
+const std::string* ParamVal::as_string() const {
   return std::get_if<std::string>(&storage_->payload);
 }
 
-const Type* ParameterValue::as_type() const {
+const Type* ParamVal::as_type() const {
   return std::get_if<Type>(&storage_->payload);
 }
 
-std::string ParameterValue::canonical() const {
+std::string ParamVal::canonical() const {
   return std::visit(
       [](const auto& value) -> std::string {
         using T = std::remove_cvref_t<decltype(value)>;
@@ -290,7 +283,7 @@ std::string ParameterValue::canonical() const {
           return encode("type", value.stable_name());
         } else {
           std::string result = "list:" + std::to_string(value.size()) + ":";
-          for (const ParameterValue& element : value) {
+          for (const ParamVal& element : value) {
             const std::string item = element.canonical();
             result += std::to_string(item.size()) + ":" + item;
           }
@@ -300,7 +293,7 @@ std::string ParameterValue::canonical() const {
       storage_->payload);
 }
 
-bool ParameterValue::operator==(const ParameterValue& other) const {
+bool ParamVal::operator==(const ParamVal& other) const {
   return canonical() == other.canonical();
 }
 

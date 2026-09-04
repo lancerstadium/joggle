@@ -21,18 +21,18 @@ deterministic deployment.
 
 The implementation already demonstrates:
 
-1. one `Module` owns declarations, editable CFG/SSA Functions, imports, and
+1. one `Mod` owns declarations, editable CFG/SSA Fns, imports, and
    content-addressed data;
 2. `@` is the only stage switch, while ordinary calls always remain program
    calls;
-3. typed capture-free lambdas are ordinary anonymous Functions rather than a
+3. typed capture-free lambdas are ordinary anonymous Fns rather than a
    pattern AST;
 4. typed expression replacement is atomic, rejects unsafe data-flow and effect
    boundaries, and now has a bounded definitional-equivalence overload for
-   source-bodied functions;
-5. a target-independent tensor Module and an optional ONNX Module import the
+   source-bodied fns;
+5. a target-independent tensor Mod and an optional ONNX Mod import the
    exact Model Zoo SqueezeNet 1.1 graph;
-6. the imported Function reconstructs an ONNX graph whose deterministic
+6. the imported Fn reconstructs an ONNX graph whose deterministic
    ONNX Runtime output is bit-identical to the original model;
 7. a second hash-pinned Model Zoo model exercises standard QDQ inference: its
    228 f32/u8/i8/i32 constants, 130 affine quantization boundaries, and 41
@@ -45,9 +45,9 @@ The implementation already demonstrates:
 9. typed replacement preserves pure shared DAG ancestors instead of rejecting
    or duplicating them, while rollback and exact repeated-hole equality remain
    checked;
-10. the installable `transform` Module exposes equivalence-checked replacement
-    directly as ordinary Function and Module overloads taking typed lambdas;
-11. Module bundles preserve and verify all imported data through public
+10. the installable `transform` Mod exposes equivalence-checked replacement
+    directly as ordinary Fn and Mod overloads taking typed lambdas;
+11. Mod bundles preserve and verify all imported data through public
    `check`, `run`, `install`, and `lock` workflows.
 
 These are infrastructure results. The tensor QDQ calls remain opaque program
@@ -89,35 +89,35 @@ source-level mechanism. Astra targets long-running training and cannot be
 transferred to resource-constrained inference without a bounded, cacheable
 selection protocol.
 
-## Hypothesis: one function model across abstraction levels
+## Hypothesis: one fn model across abstraction levels
 
 The next mechanism under test is deliberately smaller than another IR stack:
 
 1. A model, user operation, or executable kernel is an ordinary typed `fn`.
-2. Function bodies may use different imported vocabularies, but remain the
-   same `Function` representation and type system. No `Kernel` subclass or
+2. Fn bodies may use different imported vocabularies, but remain the
+   same `Fn` representation and type system. No `Kernel` subclass or
    fixed lowering ladder is added.
-3. A conversion or optimization is an explicitly staged function over
-   `function` or `module` values.
+3. A conversion or optimization is an explicitly staged fn over
+   `fn` or `mod` values.
 4. A portable reference and an implementation are separate ordinary
-   functions. Their relationship must be checked explicitly; a declaration
+   fns. Their relationship must be checked explicitly; a declaration
    never carries a hidden second body.
 5. Definitional equivalence remains the safe checker for transparent
    factoring. Real kernels require stronger, independently auditable evidence
    rather than weakening that checker.
-6. Physical formats are parameterized types and conversion functions, not
+6. Physical formats are parameterized types and conversion fns, not
    copies of the tensor operator vocabulary.
 7. Candidate enumeration, measurement, and selection are ordinary compiler
-   functions. Selection policy does not alter transformation correctness.
+   fns. Selection policy does not alter transformation correctness.
 
-Once a concrete implementation Function is chosen, emission must not silently
+Once a concrete implementation Fn is chosen, emission must not silently
 make new optimization decisions. This preserves the useful separation in
 RISE/Shine while keeping the extension surface uniform.
 
 ## Why this is not yet a contribution
 
-One Function representation may be too weak for both model graphs and useful
-kernel bodies, or may merely move a privileged registry into native functions.
+One Fn representation may be too weak for both model graphs and useful
+kernel bodies, or may merely move a privileged registry into native fns.
 User formats may still require compiler changes to represent storage. A
 model-wide optimization may not compose from kernel-local equivalences. These
 are open risks, not details to hide in implementation.
@@ -132,7 +132,7 @@ following without a new core declaration category:
 2. reject a type-correct but semantically different replacement;
 3. compose that kernel transformation with a model-scale structural pass;
 4. only after the kernel path works, add one independently installable low-bit
-   or packed format and its conversions without duplicating tensor functions;
+   or packed format and its conversions without duplicating tensor fns;
 5. import and transform externally maintained ONNX models, then compare
    numerically with a trusted runtime;
 6. produce and execute at least one useful edge implementation;
@@ -142,8 +142,8 @@ following without a new core declaration category:
    rebuilds, and diagnostic coverage.
 
 A later cloud/edge experiment may enumerate and benchmark variants away from
-the constrained device, then lock the selected Function and measurement record
-into a content-addressed Module bundle. Online selection is optional; repeated
+the constrained device, then lock the selected Fn and measurement record
+into a content-addressed Mod bundle. Online selection is optional; repeated
 deployment of the selected bundle must not require search.
 
 ## Kill criteria
@@ -165,8 +165,8 @@ an importer, or a synthetic emitter is insufficient for either venue.
 ## Primary literature
 
 - [Halide: Decoupling Algorithms from Schedules](https://people.csail.mit.edu/jrk/halide12/)
-- [Lift: A Functional Data-Parallel IR](https://lift-project.github.io/publications/2017/steuwer17LiftIR.pdf)
-- [Achieving High Performance the Functional Way](https://michel-steuwer.github.io/files/publications/2020/ICFP-2020.pdf)
+- [Lift: A Fnal Data-Parallel IR](https://lift-project.github.io/publications/2017/steuwer17LiftIR.pdf)
+- [Achieving High Performance the Fnal Way](https://michel-steuwer.github.io/files/publications/2020/ICFP-2020.pdf)
 - [Exocompilation for Productive Programming of Hardware Accelerators](https://people.csail.mit.edu/yuka/pdf/exo_pldi2022_full.pdf)
 - [TensorIR: An Abstraction for Automatic Tensorized Program Optimization](https://arxiv.org/abs/2207.04296)
 - [TileLang: Bridge Programmability and Performance in Modern Neural Kernels](https://proceedings.iclr.cc/paper_files/paper/2026/hash/76fb92288bf90360c527efb0d1c2aba6-Abstract-Conference.html)

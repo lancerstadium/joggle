@@ -12,22 +12,22 @@ without forcing those activities into unrelated framework classes.
 The core is intentionally smaller than a conventional multi-dialect compiler.
 It owns reusable language semantics and editable IR. Tensor vocabularies,
 hardware formats, scheduling policies, and file formats belong in installable
-modules.
+mods.
 
 ## Accepted surface
 
 A source file has four declaration forms:
 
 ```text
-module  import  type  fn
+mod  import  type  fn
 ```
 
-There is one owner (`Module`), one executable declaration (`fn`), and one type
+There is one owner (`Mod`), one executable declaration (`fn`), and one type
 declaration mechanism (`type`). There is no separate Program, Graph, Pass,
 Rule, Strategy, Schedule, Kernel, Target, Attribute, Interface, or Result
 object in the public language model.
 
-Symbolic functions use their symbol as their real name:
+Symbolic fns use their symbol as their real name:
 
 ```joggle
 fn (+)<T>(lhs: T, rhs: T) -> T;
@@ -44,13 +44,13 @@ source-level stage switch: it requests compile-time execution and must either
 produce a value or diagnose why it cannot. Merely knowing every argument does
 not silently change an ordinary call into compile-time execution.
 
-Compile-time functions are still `fn`; no `pass`, `analysis`, or macro
+Compile-time fns are still `fn`; no `pass`, `analysis`, or macro
 declaration is introduced. Their ability to run follows from the call site,
 their argument types, and the availability of a source or native body.
 
 ## Higher-order transformation
 
-Functions and typed lambdas are values. The first transformation primitive is
+Fns and typed lambdas are values. The first transformation primitive is
 expression replacement:
 
 ```joggle
@@ -70,20 +70,20 @@ objects into the basic API.
 ## Effects and legality
 
 Pure tensor values and mutable views are distinct types. Effects are inferred
-and checked from called functions. Reordering, duplication, deletion, and
+and checked from called fns. Reordering, duplication, deletion, and
 replacement are legal only when the involved effects permit them. Effect
 checking is a compiler invariant, not a marker interface authors must attach
 manually.
 
 ## Scheduling boundary
 
-A transformation policy is an ordinary compile-time function that transforms
-a module or a function. Its component transformations are module-defined
-functions; users do not construct a Schedule class. Correctness must be
+A transformation policy is an ordinary compile-time fn that transforms
+a mod or a fn. Its component transformations are mod-defined
+fns; users do not construct a Schedule class. Correctness must be
 independent of later candidate ranking or measurement. Design 0007 defines the
-first semantic-equivalence boundary for user-defined optimized functions.
+first semantic-equivalence boundary for user-defined optimized fns.
 
-No target or device hierarchy is part of this record. A target-specific module
+No target or device hierarchy is part of this record. A target-specific mod
 may define formats, memory spaces, operations, costs, and exporters using the
 same `type` and `fn` mechanisms after the language core is complete.
 
@@ -93,19 +93,19 @@ Work proceeds in this order. A later gate may not introduce placeholders for
 an earlier gate.
 
 1. One symbol identity: remove operator aliases and canonicalize direct
-   symbolic function declarations.
+   symbolic fn declarations.
 2. One declaration model: remove `interface`, `attr`, declaration constraints,
    and their C++ reflection/storage paths. **Complete.**
 3. Explicit staging: make `@` the only stage switch and test residual calls
    with fully known operands. **Complete.**
-4. Higher-order core: add typed function values and typed lambdas without a
+4. Higher-order core: add typed fn values and typed lambdas without a
    second expression grammar. **Complete; see Design 0002.**
 5. Effect-safe replacement: implement checked expression matching and atomic
    replacement. **Complete; see Design 0003.**
-6. Tensor module: define real tensor types and operations outside the core.
+6. Tensor mod: define real tensor types and operations outside the core.
    **Complete; see Design 0004.**
-7. ONNX module: load an unmodified ONNX model-zoo artifact through an ordinary
-   compile-time function. **Complete; see Designs 0005 and 0006.**
+7. ONNX mod: load an unmodified ONNX model-zoo artifact through an ordinary
+   compile-time fn. **Complete; see Designs 0005 and 0006.**
 8. Open transformation research: relate executable user kernels to portable
    semantics before adding transformation control, formats, or measured
    selection.
@@ -124,6 +124,6 @@ remain as dormant public files.
 The prospective systems contribution is not a new pass manager. It is a small,
 staged, overloadable language in which AI operations, compiler
 transformations, user-controlled schedules, and hardware-specific semantics
-compose through one typed function mechanism. The claim is publishable only if
+compose through one typed fn mechanism. The claim is publishable only if
 the implementation later demonstrates lower extension burden, safe
 transformation, and competitive compile/run-time behavior on real models.

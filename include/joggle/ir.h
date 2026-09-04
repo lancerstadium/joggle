@@ -1,7 +1,7 @@
 #pragma once
 
-// Executable intermediate representation. Module declarations, materialized
-// Functions, and their handles share the single public `joggle` namespace.
+// Executable intermediate representation. Mod declarations, materialized
+// Fns, and their handles share the single public `joggle` namespace.
 
 #include <cstddef>
 #include <cstdint>
@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "joggle/diagnostic.h"
-#include "joggle/module.h"
+#include "joggle/mod.h"
 #include "joggle/type.h"
 
 namespace joggle {
@@ -21,20 +21,20 @@ namespace joggle {
 class Compiler;
 
 namespace detail {
-struct FunctionIdentity;
-struct FunctionState;
-struct FunctionEditState;
-struct KnownValueStorage;
-struct FunctionAccess;
+struct FnIdentity;
+struct FnState;
+struct FnEditState;
+struct KnownValStorage;
+struct FnAccess;
 }  // namespace detail
 
-class Function;
-class Block;
-class Value;
+class Fn;
+class Blk;
+class Val;
 class Op;
 class Terminator;
 
-class Value {
+class Val {
 public:
   bool valid() const;
   bool known() const;
@@ -43,53 +43,52 @@ public:
     const auto value = known_value();
     return value ? detail::decode_parameter<T>(*value) : std::nullopt;
   }
-  bool is_function_argument() const;
-  bool is_block_argument() const;
-  std::optional<Module::FunctionDecl> referenced_function() const;
-  std::optional<Function> inline_function() const;
+  bool is_fn_arg() const;
+  bool is_blk_arg() const;
+  std::optional<Mod::FnDecl> referenced_fn() const;
+  std::optional<Fn> inline_fn() const;
   std::optional<Op> defining_op() const;
-  // Direct Op users of this Residual value in Function order. Known values do
-  // not retain one owning Function and therefore return an empty list.
+  // Direct Op users of this Residual value in Fn order. Known values do
+  // not retain one owning Fn and therefore return an empty list.
   std::vector<Op> users() const;
-  bool operator==(const Value&) const;
+  bool operator==(const Val&) const;
 
 private:
-  Value(std::shared_ptr<detail::FunctionIdentity> function, std::uint64_t id);
-  Value(Type type, detail::ParameterValue value);
-  std::optional<detail::ParameterValue> known_value() const;
-  std::shared_ptr<detail::FunctionIdentity> function_;
-  std::shared_ptr<const detail::KnownValueStorage> known_;
+  Val(std::shared_ptr<detail::FnIdentity> fn, std::uint64_t id);
+  Val(Type type, detail::ParamVal value);
+  std::optional<detail::ParamVal> known_value() const;
+  std::shared_ptr<detail::FnIdentity> fn_;
+  std::shared_ptr<const detail::KnownValStorage> known_;
   std::uint64_t id_ = 0;
 
   friend class joggle::Compiler;
-  friend class Function;
-  friend class Block;
+  friend class Fn;
+  friend class Blk;
   friend class Op;
   friend class Terminator;
-  friend struct joggle::detail::FunctionAccess;
+  friend struct joggle::detail::FnAccess;
 };
 
 class Op {
 public:
   bool valid() const;
-  Module::FunctionDecl callee() const;
-  Block parent() const;
+  Mod::FnDecl callee() const;
+  Blk parent() const;
   // Residual inputs are SSA edges. Known inputs are immutable properties.
   // Both are derived from the callee's single `fn` signature; an IR schema
   // never maintains a second operand/attribute declaration.
-  std::vector<Value> operands() const;
-  std::vector<std::pair<std::string, Value>> properties() const;
-  std::optional<Value> operand(std::string_view name) const;
-  std::optional<Value> property(std::string_view name) const;
-  std::vector<Value> arguments() const;
-  std::vector<Value> results() const;
-  Value value() const;
-  Value result(std::size_t index) const;
+  std::vector<Val> operands() const;
+  std::vector<std::pair<std::string, Val>> properties() const;
+  std::optional<Val> operand(std::string_view name) const;
+  std::optional<Val> property(std::string_view name) const;
+  std::vector<Val> arguments() const;
+  std::vector<Val> results() const;
+  Val value() const;
+  Val result(std::size_t index) const;
   // Optional frontend provenance used for diagnostics, not call semantics.
   std::optional<SourceRange> location() const;
 
-  template <typename T>
-  std::optional<T> property(std::string_view name) const {
+  template <typename T> std::optional<T> property(std::string_view name) const {
     const auto value = property(name);
     return value ? value->get<T>() : std::nullopt;
   }
@@ -97,16 +96,16 @@ public:
   bool operator==(const Op&) const = default;
 
 private:
-  std::optional<Value> argument(std::string_view name) const;
-  Op(std::shared_ptr<detail::FunctionIdentity> function, std::uint64_t id);
-  std::shared_ptr<detail::FunctionIdentity> function_;
+  std::optional<Val> argument(std::string_view name) const;
+  Op(std::shared_ptr<detail::FnIdentity> fn, std::uint64_t id);
+  std::shared_ptr<detail::FnIdentity> fn_;
   std::uint64_t id_ = 0;
 
-  friend class Value;
-  friend class Block;
-  friend class Function;
+  friend class Val;
+  friend class Blk;
+  friend class Fn;
   friend class Terminator;
-  friend struct joggle::detail::FunctionAccess;
+  friend struct joggle::detail::FnAccess;
 };
 
 class Terminator {
@@ -115,55 +114,54 @@ public:
 
   bool valid() const;
   Kind kind() const;
-  std::optional<Value> condition() const;
-  std::vector<Value> returned() const;
+  std::optional<Val> condition() const;
+  std::vector<Val> returned() const;
   std::size_t successor_count() const;
-  Block successor(std::size_t index) const;
-  std::vector<Value> arguments(std::size_t successor) const;
+  Blk successor(std::size_t index) const;
+  std::vector<Val> arguments(std::size_t successor) const;
   bool operator==(const Terminator&) const = default;
 
 private:
-  Terminator(std::shared_ptr<detail::FunctionIdentity> function,
-             std::uint64_t block);
-  std::shared_ptr<detail::FunctionIdentity> function_;
+  Terminator(std::shared_ptr<detail::FnIdentity> fn, std::uint64_t block);
+  std::shared_ptr<detail::FnIdentity> fn_;
   std::uint64_t block_ = 0;
 
-  friend class Block;
-  friend class Function;
+  friend class Blk;
+  friend class Fn;
 };
 
-class Block {
+class Blk {
 public:
   bool valid() const;
   bool is_entry() const;
-  std::vector<Value> arguments() const;
+  std::vector<Val> arguments() const;
   std::vector<Op> ops() const;
   Terminator terminator() const;
-  bool operator==(const Block&) const = default;
+  bool operator==(const Blk&) const = default;
 
 private:
-  Block(std::shared_ptr<detail::FunctionIdentity> function, std::uint64_t id);
-  std::shared_ptr<detail::FunctionIdentity> function_;
+  Blk(std::shared_ptr<detail::FnIdentity> fn, std::uint64_t id);
+  std::shared_ptr<detail::FnIdentity> fn_;
   std::uint64_t id_ = 0;
 
-  friend class Function;
+  friend class Fn;
   friend class Op;
   friend class Terminator;
-  friend struct joggle::detail::FunctionAccess;
+  friend struct joggle::detail::FnAccess;
 };
 
-class Function {
+class Fn {
 public:
-  // Opaque identity of one committed Function state. Analyses retain a
+  // Opaque identity of one committed Fn state. Analyses retain a
   // Revision and compare it with revision() before reusing cached data.
   class Revision {
   public:
     bool operator==(const Revision&) const = default;
 
   private:
-    explicit Revision(std::shared_ptr<const detail::FunctionState> state);
-    std::shared_ptr<const detail::FunctionState> state_;
-    friend class Function;
+    explicit Revision(std::shared_ptr<const detail::FnState> state);
+    std::shared_ptr<const detail::FnState> state_;
+    friend class Fn;
   };
 
   class Edit {
@@ -174,86 +172,81 @@ public:
     Edit(const Edit&) = delete;
     Edit& operator=(const Edit&) = delete;
 
-    Value argument(Type type);
-    Value reference(Module::FunctionDecl function, Type type);
-    Value callable(Function function, Type type);
-    Block block(std::vector<Type> argument_types = {});
-    // Straight-line convenience: append to the entry Block.
-    Op append(Module::FunctionDecl schema, std::vector<Value> arguments = {},
+    Val argument(Type type);
+    Val reference(Mod::FnDecl fn, Type type);
+    Val callable(Fn fn, Type type);
+    Blk blk(std::vector<Type> argument_types = {});
+    // Straight-line convenience: append to the entry Blk.
+    Op append(Mod::FnDecl schema, std::vector<Val> arguments = {},
               std::vector<Type> result_types = {});
-    Op append(Block block, Module::FunctionDecl schema,
-              std::vector<Value> arguments = {},
+    Op append(Blk block, Mod::FnDecl schema, std::vector<Val> arguments = {},
               std::vector<Type> result_types = {});
-    Op insert(Op before, Module::FunctionDecl schema,
-              std::vector<Value> arguments = {},
+    Op insert(Op before, Mod::FnDecl schema, std::vector<Val> arguments = {},
               std::vector<Type> result_types = {});
 
-    void ret(Block block, std::vector<Value> values = {});
-    void jump(Block block, Block target, std::vector<Value> arguments = {});
-    void branch(Block block, Value condition, Block true_target,
-                std::vector<Value> true_arguments, Block false_target,
-                std::vector<Value> false_arguments);
+    void ret(Blk block, std::vector<Val> values = {});
+    void jump(Blk block, Blk target, std::vector<Val> arguments = {});
+    void branch(Blk block, Val condition, Blk true_target,
+                std::vector<Val> true_arguments, Blk false_target,
+                std::vector<Val> false_arguments);
     // Attaches diagnostic provenance within this transaction.
     void locate(Op op, SourceRange source);
-    void replace(Value from, Value to);
-    Op replace(Op op, Module::FunctionDecl schema);
+    void replace(Val from, Val to);
+    Op replace(Op op, Mod::FnDecl schema);
     // Replaces every result position and erases the old Op. An empty
     // replacement erases a zero-result Op.
-    void replace(Op op, std::vector<Value> results);
+    void replace(Op op, std::vector<Val> results);
     void erase(Op op);
 
     bool commit(Diagnostics& diagnostics);
 
   private:
-    explicit Edit(std::shared_ptr<detail::FunctionIdentity> function);
-    Op add(Block block, std::optional<Op> before,
-                    Module::FunctionDecl schema, std::vector<Value> arguments,
-                    std::vector<Type> result_types);
-    std::unique_ptr<detail::FunctionEditState> state_;
-    friend class Function;
-    friend struct joggle::detail::FunctionAccess;
+    explicit Edit(std::shared_ptr<detail::FnIdentity> fn);
+    Op add(Blk block, std::optional<Op> before, Mod::FnDecl schema,
+           std::vector<Val> arguments, std::vector<Type> result_types);
+    std::unique_ptr<detail::FnEditState> state_;
+    friend class Fn;
+    friend struct joggle::detail::FnAccess;
   };
 
-  ~Function();
-  // Function is a copy-on-write IR value. Copies share a committed Revision;
+  ~Fn();
+  // Fn is a copy-on-write IR value. Copies share a committed Revision;
   // edit() detaches the edited copy before exposing mutable operations.
-  Function(const Function& other);
-  Function& operator=(const Function& other);
-  Function(Function&&) noexcept;
-  Function& operator=(Function&&) noexcept;
+  Fn(const Fn& other);
+  Fn& operator=(const Fn& other);
+  Fn(Fn&&) noexcept;
+  Fn& operator=(Fn&&) noexcept;
 
-  std::vector<Value> arguments() const;
-  std::optional<Module::FunctionDecl> declaration() const;
+  std::vector<Val> arguments() const;
+  std::optional<Mod::FnDecl> declaration() const;
   std::vector<Type> result_types() const;
-  Block entry() const;
-  std::vector<Block> blocks() const;
+  Blk entry() const;
+  std::vector<Blk> blks() const;
   std::vector<Op> ops() const;
-  // Reverse relations over this Function's existing IR. These queries do not
+  // Reverse relations over this Fn's existing IR. These queries do not
   // create or own a second graph representation.
-  std::vector<Block> predecessors(Block block) const;
-  std::vector<Op> users(Value value) const;
-  bool has_uses(Value value) const;
-  bool dominates(Block dominator, Block block) const;
-  bool dominates(Value definition, Op op) const;
+  std::vector<Blk> predecessors(Blk block) const;
+  std::vector<Op> users(Val value) const;
+  bool has_uses(Val value) const;
+  bool dominates(Blk dominator, Blk block) const;
+  bool dominates(Val definition, Op op) const;
   Revision revision() const;
   Edit edit();
 
 private:
-  explicit Function(std::vector<Module> modules);
-  bool accepts(const Module::Symbol& symbol) const;
-  static Value make_value(std::shared_ptr<detail::FunctionIdentity> function,
-                          std::uint64_t id);
-  static Op make_op(std::shared_ptr<detail::FunctionIdentity> function,
-                    std::uint64_t id);
-  static Block make_block(std::shared_ptr<detail::FunctionIdentity> function,
-                          std::uint64_t id);
-  std::shared_ptr<detail::FunctionIdentity> function_;
+  explicit Fn(std::vector<Mod> mods);
+  bool accepts(const Mod::Symbol& symbol) const;
+  static Val make_value(std::shared_ptr<detail::FnIdentity> fn,
+                        std::uint64_t id);
+  static Op make_op(std::shared_ptr<detail::FnIdentity> fn, std::uint64_t id);
+  static Blk make_blk(std::shared_ptr<detail::FnIdentity> fn, std::uint64_t id);
+  std::shared_ptr<detail::FnIdentity> fn_;
 
   friend class joggle::Compiler;
-  friend class joggle::Module;
-  friend struct joggle::detail::FunctionAccess;
+  friend class joggle::Mod;
+  friend struct joggle::detail::FnAccess;
 };
 
-std::string format(const Function& function, std::string_view name = "main");
+std::string format(const Fn& fn, std::string_view name = "main");
 
 }  // namespace joggle

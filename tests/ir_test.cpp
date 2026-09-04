@@ -22,10 +22,10 @@ bool expect(bool condition, std::string_view message) {
 
 int main() {
   joggle::Compiler compiler;
-  compiler.load(JOGGLE_TEST_MODULE);
+  compiler.load(JOGGLE_TEST_MOD);
   compiler.add(R"(
     joggle 1;
-    module control@1.0.0 {
+    mod control@1.0.0 {
       type other();
       type memory();
       fn source<T>() -> T;
@@ -42,33 +42,28 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  const auto test_ir = compiler.module("test_ir");
-  const auto control = compiler.module("control");
+  const auto test_ir = compiler.mod("test_ir");
+  const auto control = compiler.mod("control");
   const auto integer_schema = test_ir ? test_ir->type("integer") : std::nullopt;
-  const auto add_schema = test_ir ? test_ir->function("+") : std::nullopt;
-  const auto cast_schema = test_ir ? test_ir->function("cast") : std::nullopt;
-  const auto source_schema =
-      control ? control->function("source") : std::nullopt;
-  const auto add_i32_schema =
-      control ? control->function("add_i32") : std::nullopt;
+  const auto add_schema = test_ir ? test_ir->fn("+") : std::nullopt;
+  const auto cast_schema = test_ir ? test_ir->fn("cast") : std::nullopt;
+  const auto source_schema = control ? control->fn("source") : std::nullopt;
+  const auto add_i32_schema = control ? control->fn("add_i32") : std::nullopt;
   const auto configure_schema =
-      control ? control->function("configure") : std::nullopt;
-  const auto callback_schema =
-      control ? control->function("callback") : std::nullopt;
-  const auto apply_schema = control ? control->function("apply") : std::nullopt;
-  const auto advance_schema =
-      control ? control->function("advance") : std::nullopt;
-  const auto prelude = compiler.module("prelude");
+      control ? control->fn("configure") : std::nullopt;
+  const auto callback_schema = control ? control->fn("callback") : std::nullopt;
+  const auto apply_schema = control ? control->fn("apply") : std::nullopt;
+  const auto advance_schema = control ? control->fn("advance") : std::nullopt;
+  const auto prelude = compiler.mod("prelude");
   const auto callable_schema =
       prelude ? prelude->type("callable") : std::nullopt;
-  const auto effect_schema =
-      prelude ? prelude->type("effect") : std::nullopt;
+  const auto effect_schema = prelude ? prelude->type("effect") : std::nullopt;
   const auto other_schema = control ? control->type("other") : std::nullopt;
   const auto memory_schema = control ? control->type("memory") : std::nullopt;
   if (!integer_schema || !add_schema || !cast_schema || !source_schema ||
-      !add_i32_schema || !configure_schema || !callback_schema || !apply_schema ||
-      !advance_schema || !callable_schema || !effect_schema || !other_schema ||
-      !memory_schema) {
+      !add_i32_schema || !configure_schema || !callback_schema ||
+      !apply_schema || !advance_schema || !callable_schema || !effect_schema ||
+      !other_schema || !memory_schema) {
     return EXIT_FAILURE;
   }
   compiler.verify(*integer_schema, [](const joggle::Type&,
@@ -80,8 +75,8 @@ int main() {
   const auto memory = compiler.make(*memory_schema);
   const auto memory_effect =
       memory ? compiler.make(*effect_schema, *memory) : std::nullopt;
-  auto function = compiler.create_function();
-  if (!integer || !other || !boolean || !i32 || !memory_effect || !function) {
+  auto fn = compiler.create_fn();
+  if (!integer || !other || !boolean || !i32 || !memory_effect || !fn) {
     return EXIT_FAILURE;
   }
 
@@ -89,7 +84,7 @@ int main() {
   const joggle::SourceRange imported_location{
       "model.onnx#node/add", {7, 1}, {7, 2}};
   {
-    auto edit = function->edit();
+    auto edit = fn->edit();
     const auto lhs = edit.argument(*integer);
     const auto rhs = edit.argument(*integer);
     add = edit.append(*add_schema, {lhs, rhs});
@@ -103,21 +98,18 @@ int main() {
   }
 
   bool ok = true;
+  ok &= expect(compiler.verify(*fn), "a committed fn body verifies");
+  ok &= expect(fn->arguments().size() == 2U && fn->ops().size() == 2U &&
+                   fn->ops() == fn->ops(),
+               "a Fn owns one ordered op view across its blocks");
   ok &=
-      expect(compiler.verify(*function), "a committed function body verifies");
-  ok &=
-      expect(function->arguments().size() == 2U &&
-                 function->ops().size() == 2U &&
-                 function->ops() == function->ops(),
-             "a Function owns one ordered op view across its blocks");
-  ok &= expect(add && add->value().type() == *integer &&
-                   !add->result(0).is_function_argument() &&
-                   !add->result(0).is_block_argument() &&
-                   add->location() ==
-                       std::optional<joggle::SourceRange>{imported_location},
-               "op results retain their inferred type and frontend source");
+      expect(add && add->value().type() == *integer &&
+                 !add->result(0).is_fn_arg() && !add->result(0).is_blk_arg() &&
+                 add->location() ==
+                     std::optional<joggle::SourceRange>{imported_location},
+             "op results retain their inferred type and frontend source");
 
-  auto copied = *function;
+  auto copied = *fn;
   const auto shared_revision = copied.revision();
   {
     auto edit = copied.edit();
@@ -128,14 +120,13 @@ int main() {
       return EXIT_FAILURE;
     }
   }
-  ok &= expect(shared_revision == function->revision() &&
-                   copied.revision() != function->revision() &&
-                   copied.ops().size() == 1U &&
-                   function->ops().size() == 2U,
-               "Function copies share a revision and detach on edit");
+  ok &= expect(shared_revision == fn->revision() &&
+                   copied.revision() != fn->revision() &&
+                   copied.ops().size() == 1U && fn->ops().size() == 2U,
+               "Fn copies share a revision and detach on edit");
 
   const auto known_seven = compiler.known(*i32, std::int64_t{7});
-  auto mixed = compiler.create_function();
+  auto mixed = compiler.create_fn();
   if (!known_seven || !mixed) {
     return EXIT_FAILURE;
   }
@@ -160,7 +151,7 @@ int main() {
                  mixed->ops().front().properties().empty(),
              "Known literals on value ports remain SSA operands");
 
-  auto configured = compiler.create_function();
+  auto configured = compiler.create_fn();
   if (!configured) {
     return EXIT_FAILURE;
   }
@@ -177,24 +168,25 @@ int main() {
   }
   const auto configured_op = configured->ops().front();
   const auto configured_properties = configured_op.properties();
-  ok &= expect(configured_op.operands().size() == 1U &&
-                   configured_op.operand("input") ==
-                       std::optional<joggle::Value>{configured->arguments().front()} &&
-                   !configured_op.operand("axis") &&
-                   configured_properties.size() == 1U &&
-                   configured_properties.front().first == "axis" &&
-                   configured_op.property<std::int64_t>("axis") == 1 &&
-                   !configured_op.property("input"),
-               "compiler-domain inputs are named immutable Op properties");
+  ok &= expect(
+      configured_op.operands().size() == 1U &&
+          configured_op.operand("input") ==
+              std::optional<joggle::Val>{configured->arguments().front()} &&
+          !configured_op.operand("axis") &&
+          configured_properties.size() == 1U &&
+          configured_properties.front().first == "axis" &&
+          configured_op.property<std::int64_t>("axis") == 1 &&
+          !configured_op.property("input"),
+      "compiler-domain inputs are named immutable Op properties");
 
   const auto callable =
       compiler.make(*callable_schema, std::vector<joggle::Type>{*i32},
                     std::vector<joggle::Type>{*i32});
-  auto higher_order = compiler.create_function();
+  auto higher_order = compiler.create_fn();
   if (!callable || !higher_order) {
     return EXIT_FAILURE;
   }
-  std::optional<joggle::Value> callback;
+  std::optional<joggle::Val> callback;
   std::optional<joggle::Op> applied;
   {
     auto edit = higher_order->edit();
@@ -208,13 +200,12 @@ int main() {
       return EXIT_FAILURE;
     }
   }
-  ok &= expect(callback && applied && callback->referenced_function() &&
-                   callback->referenced_function()->symbol() ==
-                       callback_schema->symbol() &&
-                   higher_order->dominates(*callback, *applied) &&
-                   higher_order->users(*callback) ==
-                       std::vector<joggle::Op>{*applied},
-               "a typed function reference is a globally dominating value");
+  ok &= expect(
+      callback && applied && callback->referenced_fn() &&
+          callback->referenced_fn()->symbol() == callback_schema->symbol() &&
+          higher_order->dominates(*callback, *applied) &&
+          higher_order->users(*callback) == std::vector<joggle::Op>{*applied},
+      "a typed fn reference is a globally dominating value");
   bool wrong_callable_rejected = false;
   const auto wrong_callable =
       compiler.make(*callable_schema, std::vector<joggle::Type>{*boolean},
@@ -228,9 +219,9 @@ int main() {
     wrong_callable_rejected = true;
   }
   ok &= expect(wrong_callable_rejected,
-               "a function reference rejects a mismatched callable type");
+               "a fn reference rejects a mismatched callable type");
 
-  auto inline_body = compiler.create_function();
+  auto inline_body = compiler.create_fn();
   if (!inline_body) {
     return EXIT_FAILURE;
   }
@@ -244,8 +235,8 @@ int main() {
       return EXIT_FAILURE;
     }
   }
-  auto inline_higher_order = compiler.create_function();
-  std::optional<joggle::Value> inline_callable;
+  auto inline_higher_order = compiler.create_fn();
+  std::optional<joggle::Val> inline_callable;
   if (!inline_higher_order) {
     return EXIT_FAILURE;
   }
@@ -262,15 +253,15 @@ int main() {
     }
   }
   const auto recovered_inline =
-      inline_callable ? inline_callable->inline_function() : std::nullopt;
-  ok &= expect(inline_callable && !inline_callable->referenced_function() &&
+      inline_callable ? inline_callable->inline_fn() : std::nullopt;
+  ok &= expect(inline_callable && !inline_callable->referenced_fn() &&
                    recovered_inline && !recovered_inline->declaration() &&
                    recovered_inline->arguments().size() == 1U &&
                    recovered_inline->result_types() ==
                        std::vector<joggle::Type>{*i32} &&
                    compiler.verify(*inline_higher_order),
-               "a typed inline Function is a callable Value without a "
-               "synthetic Module declaration");
+               "a typed inline Fn is a callable Val without a "
+               "synthetic Mod declaration");
 
   bool wrong_inline_callable_rejected = false;
   try {
@@ -282,11 +273,11 @@ int main() {
     wrong_inline_callable_rejected = true;
   }
   ok &= expect(wrong_inline_callable_rejected,
-               "an inline Function rejects a mismatched callable type");
+               "an inline Fn rejects a mismatched callable type");
 
   bool needs_explicit_result = false;
   try {
-    auto edit = function->edit();
+    auto edit = fn->edit();
     edit.append(*source_schema);
   } catch (const std::invalid_argument& error) {
     needs_explicit_result =
@@ -298,20 +289,20 @@ int main() {
 
   std::optional<joggle::Op> inserted;
   {
-    auto edit = function->edit();
-    inserted = edit.insert(*add, *cast_schema, {function->arguments()[0]});
+    auto edit = fn->edit();
+    inserted = edit.insert(*add, *cast_schema, {fn->arguments()[0]});
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
       return EXIT_FAILURE;
     }
   }
-  ok &= expect(inserted && function->ops().front() == *inserted,
+  ok &= expect(inserted && fn->ops().front() == *inserted,
                "an edit inserts before an existing op");
 
   const joggle::Op original_add = *add;
   {
-    auto edit = function->edit();
+    auto edit = fn->edit();
     add = edit.replace(*add, *add_schema);
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -325,8 +316,8 @@ int main() {
 
   bool missing_argument_rejected = false;
   try {
-    auto edit = function->edit();
-    edit.append(*add_schema, {function->arguments()[0]}, {*integer});
+    auto edit = fn->edit();
+    edit.append(*add_schema, {fn->arguments()[0]}, {*integer});
   } catch (const std::invalid_argument& error) {
     missing_argument_rejected =
         std::string_view(error.what()).find("missing argument 'rhs'") !=
@@ -338,10 +329,10 @@ int main() {
   std::optional<joggle::Op> first_cast;
   std::optional<joggle::Op> second_cast;
   {
-    auto edit = function->edit();
+    auto edit = fn->edit();
     first_cast = edit.append(*cast_schema, {add->result(0)});
     second_cast = edit.append(*cast_schema, {first_cast->result(0)});
-    edit.ret(function->entry(), {first_cast->result(0)});
+    edit.ret(fn->entry(), {first_cast->result(0)});
     joggle::Diagnostics diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
@@ -349,7 +340,7 @@ int main() {
     }
   }
   {
-    auto edit = function->edit();
+    auto edit = fn->edit();
     edit.replace(first_cast->result(0), add->result(0));
     edit.erase(*first_cast);
     joggle::Diagnostics diagnostics;
@@ -358,14 +349,14 @@ int main() {
       return EXIT_FAILURE;
     }
   }
-  ok &= expect(first_cast && !first_cast->valid() && second_cast &&
-                   second_cast->arguments().front() == add->result(0) &&
-                   function->entry().terminator().returned().front() ==
-                       add->result(0),
-               "replace rewires op and boundary uses before erase");
+  ok &=
+      expect(first_cast && !first_cast->valid() && second_cast &&
+                 second_cast->arguments().front() == add->result(0) &&
+                 fn->entry().terminator().returned().front() == add->result(0),
+             "replace rewires op and boundary uses before erase");
 
-  auto queried = compiler.create_function();
-  std::optional<joggle::Value> queried_input;
+  auto queried = compiler.create_fn();
+  std::optional<joggle::Val> queried_input;
   std::optional<joggle::Op> queried_first;
   std::optional<joggle::Op> queried_second;
   if (!queried) {
@@ -387,13 +378,13 @@ int main() {
   }
   const auto input_users = queried->users(*queried_input);
   const auto first_users = queried->users(queried_first->result(0));
-  ok &= expect(
-      input_users.size() == 2U && input_users[0] == *queried_first &&
-          input_users[1] == *queried_second && first_users.size() == 1U &&
-          first_users.front() == *queried_second &&
-          queried_input->users() == input_users &&
-          queried_first->value().users() == first_users,
-      "use queries return each consuming op once in function order");
+  ok &= expect(input_users.size() == 2U && input_users[0] == *queried_first &&
+                   input_users[1] == *queried_second &&
+                   first_users.size() == 1U &&
+                   first_users.front() == *queried_second &&
+                   queried_input->users() == input_users &&
+                   queried_first->value().users() == first_users,
+               "use queries return each consuming op once in fn order");
   ok &= expect(queried->has_uses(queried_second->result(0)) &&
                    queried->users(queried_second->result(0)).empty(),
                "boundary uses count without pretending terminators are "
@@ -404,7 +395,7 @@ int main() {
           !queried->dominates(queried_second->result(0), *queried_first),
       "value dominance follows arguments, blocks, and op order");
 
-  auto inconsistent_returns = compiler.create_function();
+  auto inconsistent_returns = compiler.create_fn();
   if (!inconsistent_returns) {
     return EXIT_FAILURE;
   }
@@ -413,17 +404,17 @@ int main() {
     const auto condition = edit.argument(*boolean);
     const auto integer_value = edit.argument(*integer);
     const auto other_value = edit.argument(*other);
-    const auto left = edit.block();
-    const auto right = edit.block();
+    const auto left = edit.blk();
+    const auto right = edit.blk();
     edit.branch(inconsistent_returns->entry(), condition, left, {}, right, {});
     edit.ret(left, {integer_value});
     edit.ret(right, {other_value});
     joggle::Diagnostics diagnostics;
     ok &= expect(!edit.commit(diagnostics) && !diagnostics.ok(),
-                 "all returns of an anonymous function share one signature");
+                 "all returns of an anonymous fn share one signature");
   }
 
-  auto invalid = compiler.create_function();
+  auto invalid = compiler.create_fn();
   if (!invalid) {
     return EXIT_FAILURE;
   }
@@ -434,29 +425,28 @@ int main() {
     edit.append(*add_schema, {lhs, rhs}, {*integer});
     joggle::Diagnostics diagnostics;
     ok &= expect(!edit.commit(diagnostics) && !diagnostics.ok() &&
-                     invalid->arguments().empty() &&
-                     invalid->ops().empty(),
+                     invalid->arguments().empty() && invalid->ops().empty(),
                  "a type-invalid edit rolls the complete transaction back");
   }
 
-  auto branched = compiler.create_function();
+  auto branched = compiler.create_fn();
   if (!branched) {
     return EXIT_FAILURE;
   }
-  std::optional<joggle::Value> branch_condition;
-  std::optional<joggle::Value> branch_lhs;
-  std::optional<joggle::Value> branch_rhs;
-  std::optional<joggle::Block> left;
-  std::optional<joggle::Block> right;
-  std::optional<joggle::Block> merge;
+  std::optional<joggle::Val> branch_condition;
+  std::optional<joggle::Val> branch_lhs;
+  std::optional<joggle::Val> branch_rhs;
+  std::optional<joggle::Blk> left;
+  std::optional<joggle::Blk> right;
+  std::optional<joggle::Blk> merge;
   {
     auto edit = branched->edit();
     branch_condition = edit.argument(*boolean);
     branch_lhs = edit.argument(*integer);
     branch_rhs = edit.argument(*integer);
-    left = edit.block();
-    right = edit.block();
-    merge = edit.block({*integer});
+    left = edit.blk();
+    right = edit.blk();
+    merge = edit.blk({*integer});
     edit.branch(branched->entry(), *branch_condition, *left, {}, *right, {});
     edit.jump(*left, *merge, {*branch_lhs});
     edit.jump(*right, *merge, {*branch_rhs});
@@ -469,8 +459,8 @@ int main() {
   }
   const auto entry_terminator = branched->entry().terminator();
   ok &= expect(
-      compiler.verify(*branched) && branched->blocks().size() == 4U && merge &&
-          merge->arguments().front().is_block_argument() &&
+      compiler.verify(*branched) && branched->blks().size() == 4U && merge &&
+          merge->arguments().front().is_blk_arg() &&
           entry_terminator.kind() == joggle::Terminator::Kind::Branch &&
           entry_terminator.successor_count() == 2U &&
           merge->terminator().returned().front() == merge->arguments().front(),
@@ -483,11 +473,11 @@ int main() {
                    merge_predecessors.size() == 2U &&
                    merge_predecessors[0] == *left &&
                    merge_predecessors[1] == *right,
-               "predecessors expose control edges in function order");
+               "predecessors expose control edges in fn order");
   ok &= expect(branched->dominates(branched->entry(), *merge) &&
                    branched->dominates(*left, *left) &&
                    !branched->dominates(*left, *merge),
-               "block dominance is queried directly from a Function");
+               "block dominance is queried directly from a Fn");
   ok &=
       expect(branched->has_uses(*branch_condition) &&
                  branched->users(*branch_condition).empty() &&
@@ -496,7 +486,7 @@ int main() {
                  branched->has_uses(merge->arguments().front()),
              "branch, edge, and return operands are visible as boundary uses");
 
-  auto effect_cfg = compiler.create_function();
+  auto effect_cfg = compiler.create_fn();
   if (!effect_cfg) {
     return EXIT_FAILURE;
   }
@@ -504,9 +494,9 @@ int main() {
     auto edit = effect_cfg->edit();
     const auto condition = edit.argument(*boolean);
     const auto token = edit.argument(*memory_effect);
-    const auto yes = edit.block({*memory_effect});
-    const auto no = edit.block({*memory_effect});
-    const auto merge_effect = edit.block({*memory_effect});
+    const auto yes = edit.blk({*memory_effect});
+    const auto no = edit.blk({*memory_effect});
+    const auto merge_effect = edit.blk({*memory_effect});
     edit.branch(effect_cfg->entry(), condition, yes, {token}, no, {token});
     const auto yes_next =
         edit.append(yes, *advance_schema, {yes.arguments().front()});
@@ -521,12 +511,11 @@ int main() {
       return EXIT_FAILURE;
     }
   }
-  ok &= expect(compiler.verify(*effect_cfg) &&
-                   effect_cfg->blocks().size() == 4U,
+  ok &= expect(compiler.verify(*effect_cfg) && effect_cfg->blks().size() == 4U,
                "effect tokens may fork across exclusive branch edges and "
                "merge through a typed block argument");
 
-  auto duplicated_effect = compiler.create_function();
+  auto duplicated_effect = compiler.create_fn();
   if (!duplicated_effect) {
     return EXIT_FAILURE;
   }
@@ -549,7 +538,7 @@ int main() {
                  "one effect token cannot feed two calls on the same path");
   }
 
-  auto duplicated_branch_effect = compiler.create_function();
+  auto duplicated_branch_effect = compiler.create_fn();
   if (!duplicated_branch_effect) {
     return EXIT_FAILURE;
   }
@@ -557,26 +546,26 @@ int main() {
     auto edit = duplicated_branch_effect->edit();
     const auto condition = edit.argument(*boolean);
     const auto token = edit.argument(*memory_effect);
-    const auto yes = edit.block({*memory_effect, *memory_effect});
-    const auto no = edit.block({*memory_effect, *memory_effect});
+    const auto yes = edit.blk({*memory_effect, *memory_effect});
+    const auto no = edit.blk({*memory_effect, *memory_effect});
     edit.branch(duplicated_branch_effect->entry(), condition, yes,
                 {token, token}, no, {token, token});
     edit.ret(yes, {yes.arguments().front()});
     edit.ret(no, {no.arguments().front()});
     joggle::Diagnostics diagnostics;
     const bool committed = edit.commit(diagnostics);
-    const bool reports_repeated_branch = std::any_of(
-        diagnostics.entries().begin(), diagnostics.entries().end(),
-        [](const joggle::Diagnostic& diagnostic) {
-          return diagnostic.message.find("branch path repeats") !=
-                 std::string::npos;
-        });
+    const bool reports_repeated_branch =
+        std::any_of(diagnostics.entries().begin(), diagnostics.entries().end(),
+                    [](const joggle::Diagnostic& diagnostic) {
+                      return diagnostic.message.find("branch path repeats") !=
+                             std::string::npos;
+                    });
     ok &= expect(!committed && reports_repeated_branch &&
-                     duplicated_branch_effect->blocks().size() == 1U,
+                     duplicated_branch_effect->blks().size() == 1U,
                  "one branch path cannot duplicate an effect token");
   }
 
-  auto invalid_edge = compiler.create_function();
+  auto invalid_edge = compiler.create_fn();
   if (!invalid_edge) {
     return EXIT_FAILURE;
   }
@@ -584,17 +573,17 @@ int main() {
     auto edit = invalid_edge->edit();
     const auto condition = edit.argument(*boolean);
     const auto wrong = edit.argument(*other);
-    const auto target = edit.block({*integer});
+    const auto target = edit.blk({*integer});
     edit.jump(target, target, {target.arguments().front()});
     edit.branch(invalid_edge->entry(), condition, target, {wrong}, target,
                 {wrong});
     joggle::Diagnostics diagnostics;
     ok &= expect(!edit.commit(diagnostics) && !diagnostics.ok() &&
-                     invalid_edge->blocks().size() == 1U,
+                     invalid_edge->blks().size() == 1U,
                  "edge type errors reject and roll back the whole CFG edit");
   }
 
-  auto invalid_dominance = compiler.create_function();
+  auto invalid_dominance = compiler.create_fn();
   if (!invalid_dominance) {
     return EXIT_FAILURE;
   }
@@ -602,9 +591,9 @@ int main() {
     auto edit = invalid_dominance->edit();
     const auto condition = edit.argument(*boolean);
     const auto input = edit.argument(*integer);
-    const auto left = edit.block();
-    const auto right = edit.block();
-    const auto merge_block = edit.block();
+    const auto left = edit.blk();
+    const auto right = edit.blk();
+    const auto merge_block = edit.blk();
     edit.branch(invalid_dominance->entry(), condition, left, {}, right, {});
     const auto produced = edit.append(left, *cast_schema, {input});
     edit.jump(left, merge_block);
@@ -613,7 +602,7 @@ int main() {
     edit.ret(merge_block);
     joggle::Diagnostics diagnostics;
     ok &= expect(!edit.commit(diagnostics) && !diagnostics.ok() &&
-                     invalid_dominance->blocks().size() == 1U,
+                     invalid_dominance->blks().size() == 1U,
                  "a sibling block cannot consume another sibling's result");
   }
 

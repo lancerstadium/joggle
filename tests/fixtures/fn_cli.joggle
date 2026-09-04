@@ -1,0 +1,29 @@
+joggle 1;
+
+mod fn_cli@1.0.0 {
+  import native_plugin@1;
+
+  fn pipeline(input: bytes) -> bytes {
+    return native_plugin.reverse(input);
+  }
+  fn read_model(input: bytes) -> mod {
+    return native_plugin.read_model(input);
+  }
+  fn optimize_model(input: mod) -> mod {
+    normalized = native_plugin.normalize_model(input);
+    return native_plugin.specialize_model(normalized);
+  }
+  fn failing_model(input: mod) -> mod {
+    normalized = native_plugin.normalize_model(input);
+    return native_plugin.reject_model(normalized);
+  }
+  fn failing_entry(input: mod) -> mod {
+    return failing_model(input);
+  }
+  fn emit_model(input: mod) -> bytes {
+    return native_plugin.emit_model(input);
+  }
+  fn wrong_boundary(input: bytes) -> int {
+    return 1;
+  }
+}

@@ -13,27 +13,26 @@
 namespace joggle {
 namespace detail {
 
-bool validate_expression_template(const Function& function,
-                                  std::string_view role,
+bool validate_expression_template(const Fn& fn, std::string_view role,
                                   Diagnostics& diagnostics) {
   const auto reject = [&](std::string reason) {
     diagnostics.report(std::string(role) + " expression template " + reason);
     return false;
   };
   try {
-    const auto blocks = function.blocks();
+    const auto blocks = fn.blks();
     if (blocks.size() != 1U || !blocks.front().is_entry() ||
         blocks.front().terminator().kind() != Terminator::Kind::Return) {
       return reject("must contain one entry block ending in return");
     }
     const auto returned = blocks.front().terminator().returned();
-    const auto result_types = function.result_types();
+    const auto result_types = fn.result_types();
     if (result_types.size() != 1U || returned.size() != 1U) {
       return reject("must have exactly one result");
     }
 
-    const auto holes = function.arguments();
-    const auto effect = [](const Value& value) {
+    const auto holes = fn.arguments();
+    const auto effect = [](const Val& value) {
       return is_effect_type(value.type());
     };
     if (std::any_of(holes.begin(), holes.end(), effect) ||
@@ -41,7 +40,7 @@ bool validate_expression_template(const Function& function,
       return reject("cannot expose an effect token");
     }
 
-    const auto ops = function.ops();
+    const auto ops = fn.ops();
     for (const Op& op : ops) {
       const auto arguments = op.arguments();
       const auto results = op.results();
@@ -52,18 +51,18 @@ bool validate_expression_template(const Function& function,
           effect(results.front())) {
         return reject("cannot contain an effect token");
       }
-      for (const Value& argument : arguments) {
-        if (argument.inline_function()) {
-          return reject("cannot contain a nested inline function");
+      for (const Val& argument : arguments) {
+        if (argument.inline_fn()) {
+          return reject("cannot contain a nested inline fn");
         }
       }
     }
 
     std::vector<Op> reachable;
-    std::vector<Value> used_holes;
-    std::vector<Value> pending{returned.front()};
+    std::vector<Val> used_holes;
+    std::vector<Val> pending{returned.front()};
     while (!pending.empty()) {
-      const Value value = pending.back();
+      const Val value = pending.back();
       pending.pop_back();
       const auto hole = std::find(holes.begin(), holes.end(), value);
       if (hole != holes.end()) {
@@ -73,11 +72,11 @@ bool validate_expression_template(const Function& function,
         }
         continue;
       }
-      if (value.known() || value.referenced_function()) {
+      if (value.known() || value.referenced_fn()) {
         continue;
       }
-      const auto producer = std::find_if(
-          ops.begin(), ops.end(), [&](const Op& op) {
+      const auto producer =
+          std::find_if(ops.begin(), ops.end(), [&](const Op& op) {
             const auto results = op.results();
             return std::find(results.begin(), results.end(), value) !=
                    results.end();
@@ -110,12 +109,12 @@ bool validate_expression_template(const Function& function,
 namespace {
 
 struct MatchState {
-  std::vector<std::optional<Value>> holes;
+  std::vector<std::optional<Val>> holes;
   std::vector<std::pair<Op, Op>> calls;
 };
 
-std::optional<std::size_t> hole_index(const std::vector<Value>& holes,
-                                      const Value& value) {
+std::optional<std::size_t> hole_index(const std::vector<Val>& holes,
+                                      const Val& value) {
   const auto found = std::find(holes.begin(), holes.end(), value);
   if (found == holes.end()) {
     return std::nullopt;
@@ -123,8 +122,8 @@ std::optional<std::size_t> hole_index(const std::vector<Value>& holes,
   return static_cast<std::size_t>(found - holes.begin());
 }
 
-bool match_value(const Value& pattern, const Value& subject,
-                 const std::vector<Value>& holes, MatchState& state) {
+bool match_value(const Val& pattern, const Val& subject,
+                 const std::vector<Val>& holes, MatchState& state) {
   if (pattern.type() != subject.type()) {
     return false;
   }
@@ -138,8 +137,8 @@ bool match_value(const Value& pattern, const Value& subject,
   if (pattern.known()) {
     return pattern == subject;
   }
-  if (const auto reference = pattern.referenced_function()) {
-    return subject.referenced_function() == reference;
+  if (const auto reference = pattern.referenced_fn()) {
+    return subject.referenced_fn() == reference;
   }
 
   const auto pattern_call = pattern.defining_op();
@@ -161,10 +160,11 @@ bool match_value(const Value& pattern, const Value& subject,
           subject_result - subject_results.begin()) {
     return false;
   }
-  const auto existing = std::find_if(
-      state.calls.begin(), state.calls.end(), [&](const auto& mapping) {
-        return mapping.first == *pattern_call || mapping.second == *subject_call;
-      });
+  const auto existing = std::find_if(state.calls.begin(), state.calls.end(),
+                                     [&](const auto& mapping) {
+                                       return mapping.first == *pattern_call ||
+                                              mapping.second == *subject_call;
+                                     });
   if (existing != state.calls.end()) {
     return existing->first == *pattern_call &&
            existing->second == *subject_call;
@@ -185,11 +185,11 @@ bool match_value(const Value& pattern, const Value& subject,
   return true;
 }
 
-bool terminator_uses(const Function& function, const Value& value) {
-  for (const Block& block : function.blocks()) {
+bool terminator_uses(const Fn& fn, const Val& value) {
+  for (const Blk& block : fn.blks()) {
     const Terminator terminator = block.terminator();
     const auto returned = terminator.returned();
-    if (terminator.condition() == std::optional<Value>{value} ||
+    if (terminator.condition() == std::optional<Val>{value} ||
         std::find(returned.begin(), returned.end(), value) != returned.end()) {
       return true;
     }
@@ -207,21 +207,20 @@ bool terminator_uses(const Function& function, const Value& value) {
 
 }  // namespace
 
-std::optional<std::vector<ExpressionMatch>>
-match_expressions(const Function& subject, const Function& pattern,
+std::optional<std::vector<ExprMatch>>
+match_expressions(const Fn& subject, const Fn& pattern,
                   Diagnostics& diagnostics) {
   if (!validate_expression_template(pattern, "before", diagnostics)) {
     return std::nullopt;
   }
   try {
     const auto holes = pattern.arguments();
-    const Value pattern_root = pattern.entry().terminator().returned().front();
+    const Val pattern_root = pattern.entry().terminator().returned().front();
     const auto subject_calls = subject.ops();
-    std::vector<ExpressionMatch> matches;
+    std::vector<ExprMatch> matches;
     for (const Op& candidate : subject_calls) {
-      for (const Value& root : candidate.results()) {
-        MatchState state{
-            std::vector<std::optional<Value>>(holes.size()), {}};
+      for (const Val& root : candidate.results()) {
+        MatchState state{std::vector<std::optional<Val>>(holes.size()), {}};
         if (!match_value(pattern_root, root, holes, state)) {
           continue;
         }
@@ -234,7 +233,7 @@ match_expressions(const Function& subject, const Function& pattern,
             calls.push_back(call);
           }
         }
-        std::vector<Value> bindings;
+        std::vector<Val> bindings;
         bindings.reserve(state.holes.size());
         bool complete = true;
         for (const auto& binding : state.holes) {
@@ -260,9 +259,9 @@ match_expressions(const Function& subject, const Function& pattern,
 }
 
 std::optional<std::size_t>
-replace_expressions(Function& subject, const Function& before,
-                    const Function& after, Diagnostics& diagnostics,
-                    std::span<const Value> allowed_roots) {
+replace_expressions(Fn& subject, const Fn& before, const Fn& after,
+                    Diagnostics& diagnostics,
+                    std::span<const Val> allowed_roots) {
   if (!validate_expression_template(before, "before", diagnostics) ||
       !validate_expression_template(after, "after", diagnostics)) {
     return std::nullopt;
@@ -287,9 +286,9 @@ replace_expressions(Function& subject, const Function& before,
   if (!matches) {
     return std::nullopt;
   }
-  std::vector<ExpressionMatch> selected;
+  std::vector<ExprMatch> selected;
   std::vector<Op> claimed;
-  for (const ExpressionMatch& match : *matches) {
+  for (const ExprMatch& match : *matches) {
     if (!allowed_roots.empty() &&
         std::find(allowed_roots.begin(), allowed_roots.end(), match.root) ==
             allowed_roots.end()) {
@@ -313,17 +312,16 @@ replace_expressions(Function& subject, const Function& before,
   const auto claimed_call = [&](const Op& call) {
     return std::find(claimed.begin(), claimed.end(), call) != claimed.end();
   };
-  const auto replaced_root = [&](const Value& value) {
-    return std::any_of(selected.begin(), selected.end(),
-                       [&](const ExpressionMatch& match) {
-                         return match.root == value;
-                       });
+  const auto replaced_root = [&](const Val& value) {
+    return std::any_of(
+        selected.begin(), selected.end(),
+        [&](const ExprMatch& match) { return match.root == value; });
   };
   std::vector<Op> preserved;
   for (const Op& call : claimed) {
     const auto results = call.results();
-    const bool escapes = std::any_of(
-        results.begin(), results.end(), [&](const Value& result) {
+    const bool escapes =
+        std::any_of(results.begin(), results.end(), [&](const Val& result) {
           if (replaced_root(result)) {
             return false;
           }
@@ -338,7 +336,7 @@ replace_expressions(Function& subject, const Function& before,
     }
   }
   for (std::size_t index = 0; index < preserved.size(); ++index) {
-    for (const Value& argument : preserved[index].arguments()) {
+    for (const Val& argument : preserved[index].arguments()) {
       const auto producer = argument.defining_op();
       if (producer && claimed_call(*producer) &&
           std::find(preserved.begin(), preserved.end(), *producer) ==
@@ -351,26 +349,25 @@ replace_expressions(Function& subject, const Function& before,
   try {
     auto edit = subject.edit();
     const auto after_calls = after.ops();
-    const Value after_root = after.entry().terminator().returned().front();
-    std::vector<std::pair<Value, Value>> roots;
-    for (const ExpressionMatch& match : selected) {
-      std::vector<std::pair<Value, Value>> values;
+    const Val after_root = after.entry().terminator().returned().front();
+    std::vector<std::pair<Val, Val>> roots;
+    for (const ExprMatch& match : selected) {
+      std::vector<std::pair<Val, Val>> values;
       for (std::size_t index = 0; index < after_arguments.size(); ++index) {
         values.emplace_back(after_arguments[index], match.bindings[index]);
       }
-      const auto map_value = [&](const Value& value) -> std::optional<Value> {
+      const auto map_value = [&](const Val& value) -> std::optional<Val> {
         if (value.known()) {
           return value;
         }
-        const auto mapped = std::find_if(
-            values.begin(), values.end(), [&](const auto& item) {
-              return item.first == value;
-            });
+        const auto mapped =
+            std::find_if(values.begin(), values.end(),
+                         [&](const auto& item) { return item.first == value; });
         if (mapped != values.end()) {
           return mapped->second;
         }
-        if (const auto reference = value.referenced_function()) {
-          const Value cloned = edit.reference(*reference, value.type());
+        if (const auto reference = value.referenced_fn()) {
+          const Val cloned = edit.reference(*reference, value.type());
           values.emplace_back(value, cloned);
           return cloned;
         }
@@ -383,8 +380,8 @@ replace_expressions(Function& subject, const Function& before,
         return std::nullopt;
       }
       for (const Op& call : after_calls) {
-        std::vector<Value> arguments;
-        for (const Value& argument : call.arguments()) {
+        std::vector<Val> arguments;
+        for (const Val& argument : call.arguments()) {
           const auto mapped = map_value(argument);
           if (!mapped) {
             diagnostics.report("replacement expression lost a value mapping");
@@ -393,7 +390,7 @@ replace_expressions(Function& subject, const Function& before,
           arguments.push_back(*mapped);
         }
         std::vector<Type> result_types;
-        for (const Value& result : call.results()) {
+        for (const Val& result : call.results()) {
           result_types.push_back(result.type());
         }
         const Op cloned = edit.insert(*insertion, call.callee(),
@@ -421,9 +418,8 @@ replace_expressions(Function& subject, const Function& before,
     const auto subject_calls = subject.ops();
     for (auto call = subject_calls.rbegin(); call != subject_calls.rend();
          ++call) {
-      if (claimed_call(*call) &&
-          std::find(preserved.begin(), preserved.end(), *call) ==
-              preserved.end()) {
+      if (claimed_call(*call) && std::find(preserved.begin(), preserved.end(),
+                                           *call) == preserved.end()) {
         edit.erase(*call);
       }
     }
@@ -446,32 +442,30 @@ namespace {
 template <typename From, typename To>
 std::optional<To> mapped(const std::vector<std::pair<From, To>>& values,
                          const From& value) {
-  const auto found = std::find_if(values.begin(), values.end(),
-                                  [&](const auto& item) {
-                                    return item.first == value;
-                                  });
+  const auto found =
+      std::find_if(values.begin(), values.end(),
+                   [&](const auto& item) { return item.first == value; });
   return found == values.end() ? std::nullopt
                                : std::optional<To>{found->second};
 }
 
 }  // namespace
 
-std::optional<Function> clone(
-    Compiler& compiler, const Function& source,
-    const std::function<std::optional<Type>(const Value&)>& map_value_type,
-    const std::function<std::optional<Module::FunctionDecl>(const Op&)>&
-        map_callee,
-    Diagnostics& diagnostics) {
+std::optional<Fn>
+clone(Compiler& compiler, const Fn& source,
+      const std::function<std::optional<Type>(const Val&)>& map_value_type,
+      const std::function<std::optional<Mod::FnDecl>(const Op&)>& map_callee,
+      Diagnostics& diagnostics) {
   try {
-    auto destination = compiler.create_function();
+    auto destination = compiler.create_fn();
     if (!destination) {
       return std::nullopt;
     }
     auto edit = destination->edit();
-    std::vector<std::pair<Value, Value>> values;
-    std::vector<std::pair<Block, Block>> blocks;
+    std::vector<std::pair<Val, Val>> values;
+    std::vector<std::pair<Blk, Blk>> blocks;
 
-    const auto convert_type = [&](const Value& value) -> std::optional<Type> {
+    const auto convert_type = [&](const Val& value) -> std::optional<Type> {
       const auto converted = map_value_type(value);
       if (!converted) {
         diagnostics.report("clone has no mapping for type '" +
@@ -481,7 +475,7 @@ std::optional<Function> clone(
       return converted;
     };
 
-    for (const Value& argument : source.arguments()) {
+    for (const Val& argument : source.arguments()) {
       const auto type = convert_type(argument);
       if (!type) {
         return std::nullopt;
@@ -489,20 +483,20 @@ std::optional<Function> clone(
       values.emplace_back(argument, edit.argument(*type));
     }
 
-    const auto source_blocks = source.blocks();
+    const auto source_blocks = source.blks();
     for (std::size_t index = 0; index < source_blocks.size(); ++index) {
       std::vector<Type> argument_types;
-      for (const Value& argument : source_blocks[index].arguments()) {
+      for (const Val& argument : source_blocks[index].arguments()) {
         const auto type = convert_type(argument);
         if (!type) {
           return std::nullopt;
         }
         argument_types.push_back(*type);
       }
-      Block block = index == 0U ? destination->entry()
-                                : edit.block(std::move(argument_types));
+      Blk block = index == 0U ? destination->entry()
+                              : edit.blk(std::move(argument_types));
       if (index == 0U && !argument_types.empty()) {
-        diagnostics.report("clone encountered entry Block arguments");
+        diagnostics.report("clone encountered entry Blk arguments");
         return std::nullopt;
       }
       blocks.emplace_back(source_blocks[index], block);
@@ -515,34 +509,31 @@ std::optional<Function> clone(
       }
     }
 
-    const auto convert_value = [&](const Value& value)
-        -> std::optional<Value> {
+    const auto convert_value = [&](const Val& value) -> std::optional<Val> {
       if (value.known()) {
         return value;
       }
       if (const auto existing = mapped(values, value)) {
         return existing;
       }
-      const auto reference = value.referenced_function();
-      const auto type = reference ? convert_type(value)
-                                  : std::optional<Type>{};
+      const auto reference = value.referenced_fn();
+      const auto type = reference ? convert_type(value) : std::optional<Type>{};
       if (reference && type) {
-        const Value converted = edit.reference(*reference, *type);
+        const Val converted = edit.reference(*reference, *type);
         values.emplace_back(value, converted);
         return converted;
       }
-      const auto inline_function = value.inline_function();
-      const auto inline_type = inline_function ? convert_type(value)
-                                               : std::optional<Type>{};
-      if (inline_function && inline_type) {
-        auto converted_function = clone(compiler, *inline_function,
-                                        map_value_type, map_callee,
-                                        diagnostics);
-        if (!converted_function) {
+      const auto inline_fn = value.inline_fn();
+      const auto inline_type =
+          inline_fn ? convert_type(value) : std::optional<Type>{};
+      if (inline_fn && inline_type) {
+        auto converted_fn = clone(compiler, *inline_fn, map_value_type,
+                                  map_callee, diagnostics);
+        if (!converted_fn) {
           return std::nullopt;
         }
-        const Value converted =
-            edit.callable(std::move(*converted_function), *inline_type);
+        const Val converted =
+            edit.callable(std::move(*converted_fn), *inline_type);
         values.emplace_back(value, converted);
         return converted;
       }
@@ -550,10 +541,10 @@ std::optional<Function> clone(
       return std::nullopt;
     };
 
-    for (const Block& source_block : source_blocks) {
+    for (const Blk& source_block : source_blocks) {
       const auto target_block = mapped(blocks, source_block);
       if (!target_block) {
-        diagnostics.report("clone lost a Block mapping");
+        diagnostics.report("clone lost a Blk mapping");
         return std::nullopt;
       }
       for (const Op& op : source_block.ops()) {
@@ -563,8 +554,8 @@ std::optional<Function> clone(
                              op.callee().symbol().qualified_name() + "'");
           return std::nullopt;
         }
-        std::vector<Value> arguments;
-        for (const Value& argument : op.arguments()) {
+        std::vector<Val> arguments;
+        for (const Val& argument : op.arguments()) {
           const auto converted = convert_value(argument);
           if (!converted) {
             return std::nullopt;
@@ -572,16 +563,16 @@ std::optional<Function> clone(
           arguments.push_back(*converted);
         }
         std::vector<Type> result_types;
-        for (const Value& result : op.results()) {
+        for (const Val& result : op.results()) {
           const auto type = convert_type(result);
           if (!type) {
             return std::nullopt;
           }
           result_types.push_back(*type);
         }
-        const Op converted = edit.append(*target_block, *callee,
-                                         std::move(arguments),
-                                         std::move(result_types));
+        const Op converted =
+            edit.append(*target_block, *callee, std::move(arguments),
+                        std::move(result_types));
         if (const auto location = op.location()) {
           edit.locate(converted, *location);
         }
@@ -593,12 +584,12 @@ std::optional<Function> clone(
       }
     }
 
-    for (const Block& source_block : source_blocks) {
-      const Block target_block = *mapped(blocks, source_block);
+    for (const Blk& source_block : source_blocks) {
+      const Blk target_block = *mapped(blocks, source_block);
       const Terminator terminator = source_block.terminator();
       if (terminator.kind() == Terminator::Kind::Return) {
-        std::vector<Value> returned;
-        for (const Value& value : terminator.returned()) {
+        std::vector<Val> returned;
+        for (const Val& value : terminator.returned()) {
           const auto converted = convert_value(value);
           if (!converted) {
             return std::nullopt;
@@ -607,8 +598,8 @@ std::optional<Function> clone(
         }
         edit.ret(target_block, std::move(returned));
       } else if (terminator.kind() == Terminator::Kind::Jump) {
-        std::vector<Value> arguments;
-        for (const Value& value : terminator.arguments(0U)) {
+        std::vector<Val> arguments;
+        for (const Val& value : terminator.arguments(0U)) {
           const auto converted = convert_value(value);
           if (!converted) {
             return std::nullopt;
@@ -624,16 +615,16 @@ std::optional<Function> clone(
           return std::nullopt;
         }
         const auto converted_condition = convert_value(*condition);
-        std::vector<Value> true_arguments;
-        std::vector<Value> false_arguments;
-        for (const Value& value : terminator.arguments(0U)) {
+        std::vector<Val> true_arguments;
+        std::vector<Val> false_arguments;
+        for (const Val& value : terminator.arguments(0U)) {
           const auto converted = convert_value(value);
           if (!converted) {
             return std::nullopt;
           }
           true_arguments.push_back(*converted);
         }
-        for (const Value& value : terminator.arguments(1U)) {
+        for (const Val& value : terminator.arguments(1U)) {
           const auto converted = convert_value(value);
           if (!converted) {
             return std::nullopt;
@@ -659,46 +650,42 @@ std::optional<Function> clone(
   return std::nullopt;
 }
 
-std::optional<Function> clone(
-    Compiler& compiler, const Function& source,
-    const std::function<std::optional<Type>(const Value&)>& map_value_type,
-    Diagnostics& diagnostics) {
+std::optional<Fn>
+clone(Compiler& compiler, const Fn& source,
+      const std::function<std::optional<Type>(const Val&)>& map_value_type,
+      Diagnostics& diagnostics) {
   return clone(
       compiler, source, map_value_type,
-      [](const Op& op) -> std::optional<Module::FunctionDecl> {
-        return op.callee();
-      },
+      [](const Op& op) -> std::optional<Mod::FnDecl> { return op.callee(); },
       diagnostics);
 }
 
-std::optional<std::size_t> replace(Function& function, const Function& before,
-                                   const Function& after,
+std::optional<std::size_t> replace(Fn& fn, const Fn& before, const Fn& after,
                                    Diagnostics& diagnostics) {
-  return detail::replace_expressions(function, before, after, diagnostics);
+  return detail::replace_expressions(fn, before, after, diagnostics);
 }
 
-std::optional<std::size_t> replace(Module& module, const Function& before,
-                                   const Function& after,
+std::optional<std::size_t> replace(Mod& mod, const Fn& before, const Fn& after,
                                    Diagnostics& diagnostics) {
   try {
-    Module candidate = module;
+    Mod candidate = mod;
     std::size_t changed = 0;
-    for (const Module::FunctionDecl& member : module.functions()) {
-      const Function* source = member.body();
+    for (const Mod::FnDecl& member : mod.fns()) {
+      const Fn* source = member.body();
       if (source == nullptr) {
         continue;
       }
-      Function rewritten = *source;
+      Fn rewritten = *source;
       const auto count =
           detail::replace_expressions(rewritten, before, after, diagnostics);
       if (!count) {
         return std::nullopt;
       }
       if (*count != 0U) {
-        Function* destination = candidate.body(member);
+        Fn* destination = candidate.body(member);
         if (destination == nullptr) {
-          diagnostics.report("Module lost function '" +
-                             std::string(member.name()) + "'");
+          diagnostics.report("Mod lost fn '" + std::string(member.name()) +
+                             "'");
           return std::nullopt;
         }
         *destination = std::move(rewritten);
@@ -706,15 +693,15 @@ std::optional<std::size_t> replace(Module& module, const Function& before,
       changed += *count;
     }
     if (changed != 0U) {
-      module = std::move(candidate);
+      mod = std::move(candidate);
     }
     return changed;
   } catch (const std::exception& error) {
-    diagnostics.report("Module expression replacement failed: " +
+    diagnostics.report("Mod expression replacement failed: " +
                        std::string(error.what()));
   } catch (...) {
     diagnostics.report(
-        "Module expression replacement failed with an unknown exception");
+        "Mod expression replacement failed with an unknown exception");
   }
   return std::nullopt;
 }

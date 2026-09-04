@@ -21,10 +21,10 @@ bool expect(bool condition, std::string_view message) {
 
 int main() {
   joggle::Compiler compiler;
-  compiler.load(JOGGLE_TEST_MODULE);
+  compiler.load(JOGGLE_TEST_MOD);
   compiler.add(R"(
     joggle 1;
-    module testing@1.0.0 {
+    mod testing@1.0.0 {
       type label(name: string);
     }
   )",
@@ -34,10 +34,9 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  const auto test_ir = compiler.module("test_ir");
-  const auto testing = compiler.module("testing");
-  const auto integer_schema =
-      test_ir ? test_ir->type("integer") : std::nullopt;
+  const auto test_ir = compiler.mod("test_ir");
+  const auto testing = compiler.mod("testing");
+  const auto integer_schema = test_ir ? test_ir->type("integer") : std::nullopt;
   const auto label_schema = testing ? testing->type("label") : std::nullopt;
   if (!integer_schema || !label_schema) {
     return EXIT_FAILURE;
@@ -65,27 +64,27 @@ int main() {
   joggle::Compiler nonfinite;
   nonfinite.add(R"(
     joggle 1;
-    module numeric@1.0.0 {
+    mod numeric@1.0.0 {
       type scale(value: real);
     }
   )",
                 "numeric.joggle");
   const bool nonfinite_linked = nonfinite.link();
-  const auto numeric = nonfinite.module("numeric");
+  const auto numeric = nonfinite.mod("numeric");
   const auto scale = numeric ? numeric->type("scale") : std::nullopt;
   ok &= expect(
       nonfinite_linked && scale &&
           !nonfinite.make(*scale, std::numeric_limits<double>::infinity()),
       "C++ construction rejects values the text DSL cannot encode");
 
-  compiler.add("joggle 1; module late@1.0.0 {}", "late.joggle");
+  compiler.add("joggle 1; mod late@1.0.0 {}", "late.joggle");
   ok &= expect(!compiler.ok(), "linked compiler rejects schema mutation");
 
   joggle::Compiler shaped;
-  shaped.load(JOGGLE_TEST_MODULE);
+  shaped.load(JOGGLE_TEST_MOD);
   shaped.add(R"(
     joggle 1;
-    module shaped@1.0.0 {
+    mod shaped@1.0.0 {
       import test_ir@1;
       type tensor(element: type, shape: list<int>);
     }
@@ -95,9 +94,9 @@ int main() {
     shaped.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
-  const auto shaped_module = shaped.module("shaped");
+  const auto shaped_mod = shaped.mod("shaped");
   const auto tensor_schema =
-      shaped_module ? shaped_module->type("tensor") : std::nullopt;
+      shaped_mod ? shaped_mod->type("tensor") : std::nullopt;
   if (!tensor_schema || !first) {
     return EXIT_FAILURE;
   }

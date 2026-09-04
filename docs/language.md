@@ -1,22 +1,22 @@
 # Language
 
-Joggle source declares versioned modules, types, and functions. The language is
+Joggle source declares versioned mods, types, and fns. The language is
 small by design: domain libraries add AI operations and hardware vocabulary
 without adding declaration categories.
 
-## File and module
+## File and mod
 
 ```joggle
 joggle 1;
 
-module example@1.2.0 {
+mod example@1.2.0 {
   import tensor@^1.1 as t;
   type word(width: int);
   fn identity<T>(input: T) -> T;
 }
 ```
 
-The file header selects the language version. A file contains one module.
+The file header selects the language version. A file contains one mod.
 Imports accept exact (`1.2.3`), major (`1`), minor (`1.2`), and caret
 (`^1.2.3`) ranges. An optional `as` name changes only the source prefix.
 
@@ -30,14 +30,14 @@ Legacy declarations such as `interface`, `attr`, and `op` are errors.
 
 ## Compiler domains
 
-Declaration parameters and compiler-time function ports use these domains:
+Declaration parameters and compiler-time fn ports use these domains:
 
 ```text
-int  real  bool  string  type  bytes  function  module  list<D>
+int  real  bool  string  type  bytes  fn  mod  list<D>
 ```
 
 Fixed-width numeric names such as `i8`, `u32`, `f16`, `bf16`, and `f32` are
-ordinary Prelude types. A module may define additional numeric formats with
+ordinary Prelude types. A mod may define additional numeric formats with
 the same `type` mechanism.
 
 ## Types
@@ -83,7 +83,7 @@ calls on the same path is rejected transactionally.
 Structured Residual control carries every visible effect token automatically.
 `if` arms, `while` bodies, and typed `for` bodies therefore receive fresh block
 arguments without extra source syntax; merges, loop headers, latches, and exits
-continue the same explicit SSA chain in materialized Function IR. A call that
+continue the same explicit SSA chain in materialized Fn IR. A call that
 returns an updated token must still rebind or return it before the old token can
 be consumed again.
 
@@ -91,7 +91,7 @@ Calls with no effect-typed inputs or results are pure by the language
 contract. Residual external interaction must expose its ordering token;
 compiler-time host interaction remains behind explicit `@`.
 
-## Functions and overloads
+## Fns and overloads
 
 ```joggle
 fn cast<T, U>(input: T, result: U) -> U;
@@ -101,8 +101,8 @@ fn clamp(input: i8, low: i8, high: i8) -> i8 {
 }
 ```
 
-A semicolon declares an external function. Braces define a source body.
-Functions overload by their full typed signature. Results may be absent, one
+A semicolon declares an external fn. Braces define a source body.
+Fns overload by their full typed signature. Results may be absent, one
 value, or a parenthesized list.
 
 Generic parameters default to the `type` domain:
@@ -118,7 +118,7 @@ Named and positional call arguments may not be mixed ambiguously:
 cast(input = value, result = i16)
 ```
 
-Function types and capture-free lambdas use the same expression language:
+Fn types and capture-free lambdas use the same expression language:
 
 ```joggle
 fn apply<T, U>(input: T, body: (T) -> U) -> U;
@@ -128,19 +128,19 @@ fn widened(input: i8) -> i16 {
 }
 ```
 
-Lambda parameter annotations are required. The expected function type checks
+Lambda parameter annotations are required. The expected fn type checks
 the annotations and supplies the result context, so generic higher-order calls
 use ordinary overload inference. Parameter annotations participate in overload
 selection; the body is checked only after one overload is selected, so calls
 whose annotations and surrounding result cannot distinguish two candidates
 remain explicitly ambiguous. The body is a normal expression and may call
-normal named or symbolic functions. Capturing an outer run-time local is
+normal named or symbolic fns. Capturing an outer run-time local is
 currently rejected; it will not silently create an environment object or a
-hidden module declaration.
+hidden mod declaration.
 
-## Symbolic functions
+## Symbolic fns
 
-Operators are functions whose symbol is their real name:
+Operators are fns whose symbol is their real name:
 
 ```joggle
 fn (+)(lhs: word<8>, rhs: word<8>) -> word<8>;
@@ -149,11 +149,11 @@ fn postfix (!)(value: flag) -> flag;
 ```
 
 The parser determines prefix or infix form from arity; `postfix` is explicit.
-Symbolic and named functions share overload resolution, reflection, native
+Symbolic and named fns share overload resolution, reflection, native
 binding, serialization, and identity. Operator alias clauses do not exist.
 
 Supported expression symbols currently include unary `+ - !`, arithmetic
-`+ - * / // %`, comparisons, and boolean `&& ||`. A module can overload a
+`+ - * / // %`, comparisons, and boolean `&& ||`. A mod can overload a
 supported symbol for its own types.
 
 ## Statements and control flow
@@ -189,29 +189,29 @@ program computation even when all of its operands are Known. A call that
 produces a compiler-domain result without `@` is rejected instead of being
 silently executed.
 
-A lambda constructs a function value. Passing it to an ordinary call remains
-run-time IR. Passing it to a `function` parameter through `@` instead constructs
-a verified anonymous `Function` execution value. Compiler functions may return
-that value for a later explicit call. Function values never pass through the
+A lambda constructs a fn value. Passing it to an ordinary call remains
+run-time IR. Passing it to a `fn` parameter through `@` instead constructs
+a verified anonymous `Fn` execution value. Compiler fns may return
+that value for a later explicit call. Fn values never pass through the
 scalar metadata representation or its deterministic-value cache.
 
 ## Canonical form and identity
 
-`joggle fmt` emits canonical source. Canonical formatting determines module
-digests, lock identities, and native compatibility. `Module::digest()` covers
-the complete snapshot. `Module::declaration_digest()` erases function bodies
+`joggle fmt` emits canonical source. Canonical formatting determines mod
+digests, lock identities, and native compatibility. `Mod::digest()` covers
+the complete snapshot. `Mod::declaration_digest()` erases fn bodies
 and data so declaration provenance remains stable across body materialization.
 
 ## Grammar sketch
 
 ```text
-file       := "joggle" integer ";" module
-module     := "module" name "@" version "{" member* "}"
-member     := import | type | function
+file       := "joggle" integer ";" mod
+mod     := "mod" name "@" version "{" member* "}"
+member     := import | type | fn
 import     := "import" name "@" range ("as" name)? ";"
 type       := "type" name "(" parameters? ")"
               ("{" computed-field* "}" | ";")
-function   := "fn" ("postfix")? (name | "(" symbol ")")
+fn   := "fn" ("postfix")? (name | "(" symbol ")")
               generics? "(" parameters? ")" results
               (body | ";")
 generics   := "<" generic ("," generic)* ">"

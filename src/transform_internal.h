@@ -10,24 +10,23 @@
 
 namespace joggle::detail {
 
-bool validate_expression_template(const Function& function,
-                                  std::string_view role,
+bool validate_expression_template(const Fn& fn, std::string_view role,
                                   Diagnostics& diagnostics);
 
 // A transient view over subject handles. It owns no graph or pattern state.
-struct ExpressionMatch {
-  Value root;
-  std::vector<Value> bindings;
+struct ExprMatch {
+  Val root;
+  std::vector<Val> bindings;
   std::vector<Op> calls;
 };
 
-std::optional<std::vector<ExpressionMatch>>
-match_expressions(const Function& subject, const Function& pattern,
+std::optional<std::vector<ExprMatch>>
+match_expressions(const Fn& subject, const Fn& pattern,
                   Diagnostics& diagnostics);
 
 std::optional<std::size_t>
-replace_expressions(Function& subject, const Function& before,
-                    const Function& after, Diagnostics& diagnostics,
-                    std::span<const Value> allowed_roots = {});
+replace_expressions(Fn& subject, const Fn& before, const Fn& after,
+                    Diagnostics& diagnostics,
+                    std::span<const Val> allowed_roots = {});
 
 }  // namespace joggle::detail

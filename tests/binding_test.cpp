@@ -21,17 +21,17 @@ bool expect(bool condition, std::string_view message) {
 
 int main() {
   joggle::Compiler compiler;
-  compiler.load(JOGGLE_TEST_MODULE);
+  compiler.load(JOGGLE_TEST_MOD);
   compiler.add(R"(
     joggle 1;
-    module testing@1.0.0 {
+    mod testing@1.0.0 {
       import test_ir@1;
       fn marker<T>(input: T) -> T;
-      fn cleanup(input: function) -> function;
-      fn optimize(input: function) -> function {
+      fn cleanup(input: fn) -> fn;
+      fn optimize(input: fn) -> fn {
         return cleanup(test_ir.canonicalize(input));
       }
-      fn abort(input: function) -> function;
+      fn abort(input: fn) -> fn;
     }
   )",
                "testing.joggle");
@@ -40,19 +40,19 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  const auto test_ir = compiler.module("test_ir");
-  const auto testing = compiler.module("testing");
+  const auto test_ir = compiler.mod("test_ir");
+  const auto testing = compiler.mod("testing");
   if (!test_ir || !testing) {
     return EXIT_FAILURE;
   }
   const auto integer_schema = test_ir->type("integer");
-  const auto add_schema = test_ir->function("+");
-  const auto cast_schema = test_ir->function("cast");
-  const auto canonicalize_schema = test_ir->function("canonicalize");
-  const auto marker_schema = testing->function("marker");
-  const auto cleanup_schema = testing->function("cleanup");
-  const auto optimize_schema = testing->function("optimize");
-  const auto abort_schema = testing->function("abort");
+  const auto add_schema = test_ir->fn("+");
+  const auto cast_schema = test_ir->fn("cast");
+  const auto canonicalize_schema = test_ir->fn("canonicalize");
+  const auto marker_schema = testing->fn("marker");
+  const auto cleanup_schema = testing->fn("cleanup");
+  const auto optimize_schema = testing->fn("optimize");
+  const auto abort_schema = testing->fn("abort");
   if (!integer_schema || !add_schema || !cast_schema || !canonicalize_schema ||
       !marker_schema || !cleanup_schema || !optimize_schema || !abort_schema) {
     return EXIT_FAILURE;
@@ -83,45 +83,43 @@ int main() {
   compiler.verify(*add_schema, same_type);
   compiler.verify(*cast_schema, same_type);
   compiler.verify(*marker_schema, same_type);
-  compiler.bind(
-      *canonicalize_schema,
-      [cast_schema](joggle::Function function, joggle::Diagnostics& diagnostics)
-          -> std::optional<joggle::Function> {
-        auto edit = function.edit();
-        for (const joggle::Op& op : function.ops()) {
-          if (op.callee() != *cast_schema) {
-            continue;
-          }
-          edit.replace(op.result(0), op.arguments().front());
-          edit.erase(op);
-        }
-        if (!edit.commit(diagnostics)) {
-          return std::nullopt;
-        }
-        return function;
-      });
+  compiler.bind(*canonicalize_schema,
+                [cast_schema](joggle::Fn fn, joggle::Diagnostics& diagnostics)
+                    -> std::optional<joggle::Fn> {
+                  auto edit = fn.edit();
+                  for (const joggle::Op& op : fn.ops()) {
+                    if (op.callee() != *cast_schema) {
+                      continue;
+                    }
+                    edit.replace(op.result(0), op.arguments().front());
+                    edit.erase(op);
+                  }
+                  if (!edit.commit(diagnostics)) {
+                    return std::nullopt;
+                  }
+                  return fn;
+                });
 
   std::size_t query_runs = 0;
-  const auto compute_nodes = [&](const joggle::Function& function) {
+  const auto compute_nodes = [&](const joggle::Fn& fn) {
     ++query_runs;
-    return function.ops().size();
+    return fn.ops().size();
   };
 
   compiler.bind(
       *cleanup_schema,
-      [&compute_nodes](
-          joggle::Function function,
-          joggle::Diagnostics& diagnostics) -> std::optional<joggle::Function> {
-        static_cast<void>(compute_nodes(function));
-        const auto operations = function.ops();
+      [&compute_nodes](joggle::Fn fn, joggle::Diagnostics& diagnostics)
+          -> std::optional<joggle::Fn> {
+        static_cast<void>(compute_nodes(fn));
+        const auto operations = fn.ops();
         const bool has_marker = std::any_of(
             operations.begin(), operations.end(), [](const joggle::Op& op) {
               return op.callee().name() == "marker";
             });
         if (!has_marker) {
-          return function;
+          return fn;
         }
-        auto edit = function.edit();
+        auto edit = fn.edit();
         for (const joggle::Op& op : operations) {
           if (op.callee().name() != "marker") {
             continue;
@@ -132,17 +130,17 @@ int main() {
         if (!edit.commit(diagnostics)) {
           return std::nullopt;
         }
-        return function;
+        return fn;
       });
 
   const auto integer = compiler.make(*integer_schema, 8);
-  auto function = compiler.create_function();
-  if (!integer || !function) {
+  auto fn = compiler.create_fn();
+  if (!integer || !fn) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
   {
-    auto edit = function->edit();
+    auto edit = fn->edit();
     const auto lhs = edit.argument(*integer);
     const auto rhs = edit.argument(*integer);
     const auto add = edit.append(*add_schema, {lhs, rhs});
@@ -156,22 +154,21 @@ int main() {
   }
 
   bool ok = true;
-  ok &= expect(compiler.verify(*function), "bound Op verification");
-  auto optimized = compiler.run<joggle::Function>(*optimize_schema, *function);
+  ok &= expect(compiler.verify(*fn), "bound Op verification");
+  auto optimized = compiler.run<joggle::Fn>(*optimize_schema, *fn);
   ok &= expect(optimized.has_value(), "composed bound transformations run");
   if (optimized) {
-    function = std::move(optimized);
+    fn = std::move(optimized);
   }
-  ok &= expect(function->ops().size() == 1U,
-               "a compiler function transforms through Function::Edit");
-  ok &=
-      expect(query_runs == 1U,
-             "function-local analysis executes explicitly without a side API");
+  ok &= expect(fn->ops().size() == 1U,
+               "a compiler fn transforms through Fn::Edit");
+  ok &= expect(query_runs == 1U,
+               "fn-local analysis executes explicitly without a side API");
 
   compiler.bind(*abort_schema,
-                [marker_schema](joggle::Compiler&, joggle::Function current,
+                [marker_schema](joggle::Compiler&, joggle::Fn current,
                                 joggle::Diagnostics& diagnostics)
-                    -> std::optional<joggle::Function> {
+                    -> std::optional<joggle::Fn> {
                   const auto producer = current.ops().front();
                   auto edit = current.edit();
                   edit.append(*marker_schema, {producer.result(0)});
@@ -180,19 +177,19 @@ int main() {
                   }
                   return std::nullopt;
                 });
-  const auto aborted = compiler.run<joggle::Function>(*abort_schema, *function);
-  ok &= expect(!aborted, "a failing compiler function reports failure");
-  ok &= expect(function->ops().size() == 1U,
-               "function-level checkpoint restores committed inner edits");
+  const auto aborted = compiler.run<joggle::Fn>(*abort_schema, *fn);
+  ok &= expect(!aborted, "a failing compiler fn reports failure");
+  ok &= expect(fn->ops().size() == 1U,
+               "fn-level checkpoint restores committed inner edits");
 
   joggle::Compiler invalid;
-  invalid.load(JOGGLE_TEST_MODULE);
+  invalid.load(JOGGLE_TEST_MOD);
   if (!invalid.link()) {
     return EXIT_FAILURE;
   }
-  const auto invalid_module = invalid.module("test_ir");
+  const auto invalid_mod = invalid.mod("test_ir");
   const auto invalid_integer =
-      invalid_module ? invalid_module->type("integer") : std::nullopt;
+      invalid_mod ? invalid_mod->type("integer") : std::nullopt;
   if (!invalid_integer) {
     return EXIT_FAILURE;
   }
@@ -205,13 +202,13 @@ int main() {
                "type verifier rejection is diagnosed");
 
   joggle::Compiler reported;
-  reported.load(JOGGLE_TEST_MODULE);
+  reported.load(JOGGLE_TEST_MOD);
   if (!reported.link()) {
     return EXIT_FAILURE;
   }
-  const auto reported_module = reported.module("test_ir");
+  const auto reported_mod = reported.mod("test_ir");
   const auto reported_integer =
-      reported_module ? reported_module->type("integer") : std::nullopt;
+      reported_mod ? reported_mod->type("integer") : std::nullopt;
   if (!reported_integer) {
     return EXIT_FAILURE;
   }
@@ -225,10 +222,10 @@ int main() {
       "a verifier diagnostic rejects construction even if it returns true");
 
   joggle::Compiler throwing;
-  throwing.load(JOGGLE_TEST_MODULE);
+  throwing.load(JOGGLE_TEST_MOD);
   throwing.add(R"(
 joggle 1;
-module throwing@1.0.0 {
+mod throwing@1.0.0 {
   import test_ir@1;
   type tag(value: int);
   fn use(input: test_ir.integer<8>) -> test_ir.integer<8> {
@@ -238,20 +235,20 @@ module throwing@1.0.0 {
 )",
                "throwing.joggle");
   const bool throwing_linked = throwing.link();
-  const auto throwing_test_ir = throwing.module("test_ir");
-  const auto throwing_module = throwing.module("throwing");
+  const auto throwing_test_ir = throwing.mod("test_ir");
+  const auto throwing_mod = throwing.mod("throwing");
   const auto throwing_integer =
       throwing_test_ir ? throwing_test_ir->type("integer") : std::nullopt;
   const auto throwing_cast =
-      throwing_test_ir ? throwing_test_ir->function("cast") : std::nullopt;
+      throwing_test_ir ? throwing_test_ir->fn("cast") : std::nullopt;
   const auto throwing_tag =
-      throwing_module ? throwing_module->type("tag") : std::nullopt;
+      throwing_mod ? throwing_mod->type("tag") : std::nullopt;
   const auto existing_integer = throwing_integer
                                     ? throwing.make(*throwing_integer, 8)
                                     : std::optional<joggle::Type>{};
-  const auto throwing_function = throwing.materialize("throwing.use");
+  const auto throwing_fn = throwing.materialize("throwing.use");
   if (!throwing_linked || !throwing_integer || !throwing_cast ||
-      !throwing_tag || !existing_integer || !throwing_function) {
+      !throwing_tag || !existing_integer || !throwing_fn) {
     throwing.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -264,7 +261,7 @@ module throwing@1.0.0 {
   });
   const auto rejected_type = throwing.make(*throwing_integer, 16);
   const auto rejected_metadata = throwing.make(*throwing_tag, 1);
-  const bool rejected_function = throwing.verify(*throwing_function);
+  const bool rejected_fn = throwing.verify(*throwing_fn);
   const auto& throwing_diagnostics = throwing.diagnostics().entries();
   const auto thrown_diagnostics = std::count_if(
       throwing_diagnostics.begin(), throwing_diagnostics.end(),
@@ -286,7 +283,7 @@ module throwing@1.0.0 {
                                std::string::npos &&
                            diagnostic.source.has_value();
                   });
-  ok &= expect(!rejected_type && !rejected_metadata && !rejected_function &&
+  ok &= expect(!rejected_type && !rejected_metadata && !rejected_fn &&
                    thrown_diagnostics == 3 && reports_unknown_exception &&
                    locates_op_exception,
                "Type and Op verifier exceptions become "

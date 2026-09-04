@@ -16,19 +16,18 @@ namespace joggle::detail {
 
 bool is_prelude_type(std::string_view name) {
   constexpr std::array names{
-      std::string_view{"type"},   std::string_view{"int"},
-      std::string_view{"real"},   std::string_view{"bool"},
-      std::string_view{"string"}, std::string_view{"bytes"},
-      std::string_view{"function"},
-      std::string_view{"module"}, std::string_view{"callable"},
-      std::string_view{"effect"}, std::string_view{"list"},
-      std::string_view{"i1"},
-      std::string_view{"i8"},     std::string_view{"i16"},
-      std::string_view{"i32"},    std::string_view{"i64"},
-      std::string_view{"u8"},     std::string_view{"u16"},
-      std::string_view{"u32"},    std::string_view{"u64"},
-      std::string_view{"f16"},    std::string_view{"bf16"},
-      std::string_view{"f32"},    std::string_view{"f64"},
+      std::string_view{"type"},     std::string_view{"int"},
+      std::string_view{"real"},     std::string_view{"bool"},
+      std::string_view{"string"},   std::string_view{"bytes"},
+      std::string_view{"fn"},       std::string_view{"mod"},
+      std::string_view{"callable"}, std::string_view{"effect"},
+      std::string_view{"list"},     std::string_view{"i1"},
+      std::string_view{"i8"},       std::string_view{"i16"},
+      std::string_view{"i32"},      std::string_view{"i64"},
+      std::string_view{"u8"},       std::string_view{"u16"},
+      std::string_view{"u32"},      std::string_view{"u64"},
+      std::string_view{"f16"},      std::string_view{"bf16"},
+      std::string_view{"f32"},      std::string_view{"f64"},
       std::string_view{"index"},
   };
   for (const std::string_view candidate : names) {
@@ -40,8 +39,8 @@ bool is_prelude_type(std::string_view name) {
 }
 
 bool is_effect_type(const Type& type) {
-  const Module::Symbol symbol = type.schema().symbol();
-  return symbol.module_name() == prelude_module_name &&
+  const Mod::Symbol symbol = type.schema().symbol();
+  return symbol.mod_name() == prelude_mod_name &&
          symbol.local_name() == "effect" &&
          type.get<Type>("domain").has_value();
 }
@@ -141,17 +140,17 @@ integer_binary(std::string_view name, std::int64_t left, std::int64_t right) {
 
 bool primitive_name(std::string_view name) {
   constexpr std::array names{
-      std::string_view{"+"},       std::string_view{"-"},
-      std::string_view{"*"},       std::string_view{"/"},
-      std::string_view{"//"},      std::string_view{"%"},
-      std::string_view{"<"},       std::string_view{"<="},
-      std::string_view{">"},       std::string_view{">="},
-      std::string_view{"=="},      std::string_view{"!="},
-      std::string_view{"!"},       std::string_view{"&&"},
-      std::string_view{"||"},      std::string_view{"ceildiv"},
-      std::string_view{"min"},     std::string_view{"max"},
-      std::string_view{"range"},   std::string_view{"length"},
-      std::string_view{"at"},      std::string_view{"append"},
+      std::string_view{"+"},     std::string_view{"-"},
+      std::string_view{"*"},     std::string_view{"/"},
+      std::string_view{"//"},    std::string_view{"%"},
+      std::string_view{"<"},     std::string_view{"<="},
+      std::string_view{">"},     std::string_view{">="},
+      std::string_view{"=="},    std::string_view{"!="},
+      std::string_view{"!"},     std::string_view{"&&"},
+      std::string_view{"||"},    std::string_view{"ceildiv"},
+      std::string_view{"min"},   std::string_view{"max"},
+      std::string_view{"range"}, std::string_view{"length"},
+      std::string_view{"at"},    std::string_view{"append"},
   };
   return std::find(names.begin(), names.end(), name) != names.end();
 }
@@ -159,39 +158,39 @@ bool primitive_name(std::string_view name) {
 const std::string& prelude_declaration_digest() {
   static const std::string value = [] {
     Diagnostics diagnostics;
-    auto module = parse_module(prelude_module_source(), diagnostics,
-                               "<embedded-prelude>");
-    if (!module) {
-      throw std::logic_error("embedded Prelude is not a valid Module");
+    auto mod =
+        parse_mod(prelude_mod_source(), diagnostics, "<embedded-prelude>");
+    if (!mod) {
+      throw std::logic_error("embedded Prelude is not a valid Mod");
     }
-    return std::string(module->declaration_digest());
+    return std::string(mod->declaration_digest());
   }();
   return value;
 }
 
 }  // namespace
 
-bool is_prelude_primitive(const Module::FunctionDecl& function) {
-  return function.symbol().module_name() == prelude_module_name &&
-         function.symbol().declaration_digest() == prelude_declaration_digest() &&
-         primitive_name(function.name());
+bool is_prelude_primitive(const Mod::FnDecl& fn) {
+  return fn.symbol().mod_name() == prelude_mod_name &&
+         fn.symbol().declaration_digest() == prelude_declaration_digest() &&
+         primitive_name(fn.name());
 }
 
-std::optional<ParameterValue>
-evaluate_prelude_primitive(const Module::FunctionDecl& function,
-                           std::span<const ParameterValue> arguments,
+std::optional<ParamVal>
+evaluate_prelude_primitive(const Mod::FnDecl& fn,
+                           std::span<const ParamVal> arguments,
                            Diagnostics& diagnostics, std::size_t element_limit,
                            std::optional<SourceRange> source) {
-  const auto fail = [&](std::string message) -> std::optional<ParameterValue> {
+  const auto fail = [&](std::string message) -> std::optional<ParamVal> {
     diagnostics.report(std::move(message), source);
     return std::nullopt;
   };
-  if (!is_prelude_primitive(function)) {
-    return fail("function '" + function.symbol().qualified_name() +
+  if (!is_prelude_primitive(fn)) {
+    return fail("fn '" + fn.symbol().qualified_name() +
                 "' is not a Prelude primitive");
   }
 
-  const std::string_view name = function.name();
+  const std::string_view name = fn.name();
   if (name == "range") {
     if (arguments.empty() || arguments.size() > 3U) {
       return fail("Prelude range expects one, two, or three ints");
@@ -210,7 +209,7 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
     if (step == 0) {
       return fail("range step cannot be zero");
     }
-    std::vector<ParameterValue> result;
+    std::vector<ParamVal> result;
     std::int64_t current = start;
     while (step > 0 ? current < stop : current > stop) {
       if (result.size() >= element_limit) {
@@ -223,11 +222,10 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
       }
       current = *next;
     }
-    return ParameterValue::list(std::move(result));
+    return ParamVal::list(std::move(result));
   }
   if (name == "length") {
-    if (arguments.size() != 1U ||
-        arguments[0].kind() != ParameterValue::Kind::List) {
+    if (arguments.size() != 1U || arguments[0].kind() != ParamVal::Kind::List) {
       return fail("Prelude length expects one list");
     }
     const std::size_t size = arguments[0].elements().size();
@@ -235,13 +233,13 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
         static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
       return fail("list length does not fit in int");
     }
-    return ParameterValue(static_cast<std::int64_t>(size));
+    return ParamVal(static_cast<std::int64_t>(size));
   }
   if (name == "at") {
     const auto* index =
         arguments.size() == 2U ? arguments[1].as_i64() : nullptr;
-    if (arguments.size() != 2U ||
-        arguments[0].kind() != ParameterValue::Kind::List || index == nullptr) {
+    if (arguments.size() != 2U || arguments[0].kind() != ParamVal::Kind::List ||
+        index == nullptr) {
       return fail("Prelude at expects a list and an int index");
     }
     const auto elements = arguments[0].elements();
@@ -251,22 +249,21 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
     return elements[static_cast<std::size_t>(*index)];
   }
   if (name == "append") {
-    if (arguments.size() != 2U ||
-        arguments[0].kind() != ParameterValue::Kind::List) {
+    if (arguments.size() != 2U || arguments[0].kind() != ParamVal::Kind::List) {
       return fail("Prelude append expects a list and one value");
     }
     const auto elements = arguments[0].elements();
     if (elements.size() >= element_limit) {
       return fail("append exceeds the compiler evaluation step limit");
     }
-    std::vector<ParameterValue> result(elements.begin(), elements.end());
+    std::vector<ParamVal> result(elements.begin(), elements.end());
     result.push_back(arguments[1]);
-    return ParameterValue::list(std::move(result));
+    return ParamVal::list(std::move(result));
   }
   if (name == "!") {
     const bool* value =
         arguments.size() == 1U ? arguments[0].as_bool() : nullptr;
-    return value ? std::optional<ParameterValue>{ParameterValue(!*value)}
+    return value ? std::optional<ParamVal>{ParamVal(!*value)}
                  : fail("Prelude ! expects one bool");
   }
   if (name == "&&" || name == "||") {
@@ -277,7 +274,7 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
     if (left == nullptr || right == nullptr) {
       return fail("Prelude " + std::string(name) + " expects two bools");
     }
-    return ParameterValue(name == "&&" ? *left && *right : *left || *right);
+    return ParamVal(name == "&&" ? *left && *right : *left || *right);
   }
 
   if ((name == "+" || name == "-") && arguments.size() == 1U) {
@@ -285,16 +282,15 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
       return fail("Prelude " + std::string(name) + " expects one value");
     }
     if (const auto* integer = arguments[0].as_i64()) {
-      if (name == "-" &&
-          *integer == std::numeric_limits<std::int64_t>::min()) {
+      if (name == "-" && *integer == std::numeric_limits<std::int64_t>::min()) {
         return fail("compile-time integer arithmetic overflow");
       }
-      return ParameterValue(name == "-" ? -*integer : *integer);
+      return ParamVal(name == "-" ? -*integer : *integer);
     }
     if (const auto* real = arguments[0].as_f64()) {
       const double result = name == "-" ? -*real : *real;
       return std::isfinite(result)
-                 ? std::optional<ParameterValue>{ParameterValue(result)}
+                 ? std::optional<ParamVal>{ParamVal(result)}
                  : fail("compile-time floating-point arithmetic is not finite");
     }
     return fail("Prelude " + std::string(name) + " expects one int or real");
@@ -310,44 +306,43 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
                   " received values from different domains");
     }
     if (name == "<") {
-      return ParameterValue(*left < *right);
+      return ParamVal(*left < *right);
     }
     if (name == "<=") {
-      return ParameterValue(*left <= *right);
+      return ParamVal(*left <= *right);
     }
     if (name == ">") {
-      return ParameterValue(*left > *right);
+      return ParamVal(*left > *right);
     }
     if (name == ">=") {
-      return ParameterValue(*left >= *right);
+      return ParamVal(*left >= *right);
     }
     if (name == "==") {
-      return ParameterValue(*left == *right);
+      return ParamVal(*left == *right);
     }
     if (name == "!=") {
-      return ParameterValue(*left != *right);
+      return ParamVal(*left != *right);
     }
     if (name == "min") {
-      return ParameterValue(std::min(*left, *right));
+      return ParamVal(std::min(*left, *right));
     }
     if (name == "max") {
-      return ParameterValue(std::max(*left, *right));
+      return ParamVal(std::max(*left, *right));
     }
     if (name == "ceildiv") {
       if (*left < 0 || *right <= 0) {
         return fail(
             "ceildiv requires a non-negative dividend and positive divisor");
       }
-      return ParameterValue(*left / *right + (*left % *right != 0 ? 1 : 0));
+      return ParamVal(*left / *right + (*left % *right != 0 ? 1 : 0));
     }
     const auto result = integer_binary(name, *left, *right);
     if (result) {
-      return ParameterValue(*result);
+      return ParamVal(*result);
     }
-    return fail(
-        (name == "/" || name == "//" || name == "%") && *right == 0
-            ? "compile-time division by zero"
-            : "compile-time integer arithmetic overflow");
+    return fail((name == "/" || name == "//" || name == "%") && *right == 0
+                    ? "compile-time division by zero"
+                    : "compile-time integer arithmetic overflow");
   }
   if (const auto* left = arguments[0].as_f64()) {
     const auto* right = arguments[1].as_f64();
@@ -356,28 +351,28 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
                   " received values from different domains");
     }
     if (name == "<") {
-      return ParameterValue(*left < *right);
+      return ParamVal(*left < *right);
     }
     if (name == "<=") {
-      return ParameterValue(*left <= *right);
+      return ParamVal(*left <= *right);
     }
     if (name == ">") {
-      return ParameterValue(*left > *right);
+      return ParamVal(*left > *right);
     }
     if (name == ">=") {
-      return ParameterValue(*left >= *right);
+      return ParamVal(*left >= *right);
     }
     if (name == "==") {
-      return ParameterValue(*left == *right);
+      return ParamVal(*left == *right);
     }
     if (name == "!=") {
-      return ParameterValue(*left != *right);
+      return ParamVal(*left != *right);
     }
     if (name == "min") {
-      return ParameterValue(std::min(*left, *right));
+      return ParamVal(std::min(*left, *right));
     }
     if (name == "max") {
-      return ParameterValue(std::max(*left, *right));
+      return ParamVal(std::max(*left, *right));
     }
     if ((name == "/" || name == "//") && *right == 0.0) {
       return fail("compile-time division by zero");
@@ -390,21 +385,19 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
                               ? std::floor(*left / *right)
                               : std::numeric_limits<double>::quiet_NaN();
     return std::isfinite(result)
-               ? std::optional<ParameterValue>{ParameterValue(result)}
+               ? std::optional<ParamVal>{ParamVal(result)}
                : fail("compile-time floating-point arithmetic is not finite");
   }
   if (const auto* left = arguments[0].as_bool()) {
     const auto* right = arguments[1].as_bool();
     if (right != nullptr && (name == "==" || name == "!=")) {
-      return ParameterValue(name == "==" ? *left == *right
-                                         : *left != *right);
+      return ParamVal(name == "==" ? *left == *right : *left != *right);
     }
   }
   if (const auto* left = arguments[0].as_string()) {
     const auto* right = arguments[1].as_string();
     if (right != nullptr && (name == "==" || name == "!=")) {
-      return ParameterValue(name == "==" ? *left == *right
-                                         : *left != *right);
+      return ParamVal(name == "==" ? *left == *right : *left != *right);
     }
   }
   return fail("Prelude " + std::string(name) +

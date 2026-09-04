@@ -24,8 +24,8 @@ void field(std::string& output, std::string_view value) {
   output += value;
 }
 
-std::optional<std::size_t> position(const std::vector<Value>& values,
-                                    const Value& value) {
+std::optional<std::size_t> position(const std::vector<Val>& values,
+                                    const Val& value) {
   const auto found = std::find(values.begin(), values.end(), value);
   return found == values.end()
              ? std::nullopt
@@ -40,13 +40,12 @@ public:
       : compiler_(compiler), max_expansions_(max_expansions),
         diagnostics_(diagnostics) {}
 
-  std::optional<std::string> run(const Function& function,
-                                 std::string_view role) {
-    if (!detail::validate_expression_template(function, role, diagnostics_)) {
+  std::optional<std::string> run(const Fn& fn, std::string_view role) {
+    if (!detail::validate_expression_template(fn, role, diagnostics_)) {
       return std::nullopt;
     }
     std::vector<std::string> arguments;
-    const auto inputs = function.arguments();
+    const auto inputs = fn.arguments();
     arguments.reserve(inputs.size());
     for (std::size_t index = 0; index < inputs.size(); ++index) {
       std::string argument = "argument";
@@ -54,17 +53,16 @@ public:
       field(argument, inputs[index].type().stable_name());
       arguments.push_back(std::move(argument));
     }
-    return value(function.entry().terminator().returned().front(), inputs,
-                 arguments);
+    return value(fn.entry().terminator().returned().front(), inputs, arguments);
   }
 
 private:
-  std::optional<std::string>
-  value(const Value& current, const std::vector<Value>& parameters,
-        const std::vector<std::string>& arguments) {
-    const auto cached = std::find_if(
-        memo_.begin(), memo_.end(),
-        [&](const auto& entry) { return entry.first == current; });
+  std::optional<std::string> value(const Val& current,
+                                   const std::vector<Val>& parameters,
+                                   const std::vector<std::string>& arguments) {
+    const auto cached =
+        std::find_if(memo_.begin(), memo_.end(),
+                     [&](const auto& entry) { return entry.first == current; });
     if (cached != memo_.end()) {
       return cached->second;
     }
@@ -78,7 +76,7 @@ private:
       return remember(arguments[*index]);
     }
     if (current.known()) {
-      const auto known = detail::FunctionAccess::known_value(current);
+      const auto known = detail::FnAccess::known_value(current);
       if (!known) {
         diagnostics_.report("equivalence lost a Known value");
         return std::nullopt;
@@ -88,8 +86,8 @@ private:
       field(result, known->canonical());
       return remember(std::move(result));
     }
-    if (const auto reference = current.referenced_function()) {
-      std::string result = "function";
+    if (const auto reference = current.referenced_fn()) {
+      std::string result = "fn";
       field(result, current.type().stable_name());
       field(result, reference->symbol().stable_name());
       field(result, reference->signature());
@@ -103,14 +101,13 @@ private:
     return remember(call(*producer, current, parameters, arguments));
   }
 
-  std::optional<std::string>
-  call(const Op& op, const Value& selected,
-       const std::vector<Value>& parameters,
-       const std::vector<std::string>& arguments) {
-    std::vector<std::pair<Value, std::string>> normalized_arguments;
+  std::optional<std::string> call(const Op& op, const Val& selected,
+                                  const std::vector<Val>& parameters,
+                                  const std::vector<std::string>& arguments) {
+    std::vector<std::pair<Val, std::string>> normalized_arguments;
     const auto call_arguments = op.arguments();
     normalized_arguments.reserve(call_arguments.size());
-    for (const Value& argument : call_arguments) {
+    for (const Val& argument : call_arguments) {
       auto normalized = value(argument, parameters, arguments);
       if (!normalized) {
         return std::nullopt;
@@ -120,7 +117,7 @@ private:
     std::vector<std::string> residuals;
     const auto residual_arguments = op.operands();
     residuals.reserve(residual_arguments.size());
-    for (const Value& argument : residual_arguments) {
+    for (const Val& argument : residual_arguments) {
       const auto normalized = std::find_if(
           normalized_arguments.begin(), normalized_arguments.end(),
           [&](const auto& item) { return item.first == argument; });
@@ -139,11 +136,10 @@ private:
     }
 
     const auto callee = op.callee();
-    if (callee.form() == Module::FunctionDecl::Form::Body) {
+    if (callee.form() == Mod::FnDecl::Form::Body) {
       if (expansions_ == max_expansions_) {
         diagnostics_.report("equivalence expansion exceeded " +
-                            std::to_string(max_expansions_) +
-                            " source calls");
+                            std::to_string(max_expansions_) + " source calls");
         return std::nullopt;
       }
       const std::string identity = callee.symbol().stable_name();
@@ -177,9 +173,8 @@ private:
           active_.erase(identity);
           return std::nullopt;
         }
-        auto expanded = value(
-            body->entry().terminator().returned().front(), body_arguments,
-            residuals);
+        auto expanded = value(body->entry().terminator().returned().front(),
+                              body_arguments, residuals);
         active_.erase(identity);
         return expanded;
       }
@@ -202,10 +197,10 @@ private:
   Diagnostics& diagnostics_;
   std::size_t expansions_ = 0;
   std::set<std::string> active_;
-  std::vector<std::pair<Value, std::string>> memo_;
+  std::vector<std::pair<Val, std::string>> memo_;
 };
 
-bool same_signature(const Function& left, const Function& right) {
+bool same_signature(const Fn& left, const Fn& right) {
   const auto left_arguments = left.arguments();
   const auto right_arguments = right.arguments();
   if (left_arguments.size() != right_arguments.size() ||
@@ -229,16 +224,15 @@ bool same_signature(const Function& left, const Function& right) {
 
 }  // namespace
 
-bool equivalent(Compiler& compiler, const Function& left,
-                const Function& right, Diagnostics& diagnostics,
-                std::size_t max_expansions) {
+bool equivalent(Compiler& compiler, const Fn& left, const Fn& right,
+                Diagnostics& diagnostics, std::size_t max_expansions) {
   if (max_expansions == 0U) {
     diagnostics.report("equivalence needs a positive expansion limit");
     return false;
   }
   try {
     if (!same_signature(left, right)) {
-      diagnostics.report("equivalence functions have different signatures");
+      diagnostics.report("equivalence fns have different signatures");
       return false;
     }
     Normalizer left_normalizer(compiler, max_expansions, diagnostics);
@@ -252,7 +246,7 @@ bool equivalent(Compiler& compiler, const Function& left,
       return false;
     }
     if (*normalized_left != *normalized_right) {
-      diagnostics.report("functions are not definitionally equivalent");
+      diagnostics.report("fns are not definitionally equivalent");
       return false;
     }
     return true;
@@ -264,24 +258,23 @@ bool equivalent(Compiler& compiler, const Function& left,
   return false;
 }
 
-std::optional<std::size_t>
-replace(Compiler& compiler, Function& function, const Function& before,
-        const Function& after, Diagnostics& diagnostics,
-        std::size_t max_expansions) {
+std::optional<std::size_t> replace(Compiler& compiler, Fn& fn, const Fn& before,
+                                   const Fn& after, Diagnostics& diagnostics,
+                                   std::size_t max_expansions) {
   if (!equivalent(compiler, before, after, diagnostics, max_expansions)) {
     return std::nullopt;
   }
-  return replace(function, before, after, diagnostics);
+  return replace(fn, before, after, diagnostics);
 }
 
-std::optional<std::size_t>
-replace(Compiler& compiler, Module& module, const Function& before,
-        const Function& after, Diagnostics& diagnostics,
-        std::size_t max_expansions) {
+std::optional<std::size_t> replace(Compiler& compiler, Mod& mod,
+                                   const Fn& before, const Fn& after,
+                                   Diagnostics& diagnostics,
+                                   std::size_t max_expansions) {
   if (!equivalent(compiler, before, after, diagnostics, max_expansions)) {
     return std::nullopt;
   }
-  return replace(module, before, after, diagnostics);
+  return replace(mod, before, after, diagnostics);
 }
 
 }  // namespace joggle

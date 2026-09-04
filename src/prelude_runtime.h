@@ -5,16 +5,16 @@
 #include <span>
 
 #include "joggle/diagnostic.h"
-#include "joggle/module.h"
+#include "joggle/mod.h"
 #include "joggle/type.h"
 
 namespace joggle::detail {
 
-bool is_prelude_primitive(const Module::FunctionDecl& function);
+bool is_prelude_primitive(const Mod::FnDecl& fn);
 
-std::optional<ParameterValue>
-evaluate_prelude_primitive(const Module::FunctionDecl& function,
-                           std::span<const ParameterValue> arguments,
+std::optional<ParamVal>
+evaluate_prelude_primitive(const Mod::FnDecl& fn,
+                           std::span<const ParamVal> arguments,
                            Diagnostics& diagnostics, std::size_t element_limit,
                            std::optional<SourceRange> source = std::nullopt);
 

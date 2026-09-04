@@ -15,27 +15,27 @@ namespace {
 
 class Specializer {
 public:
-  Specializer(Compiler& compiler, const Module& input,
-              const std::function<bool(const Module::FunctionDecl&)>& boundary,
+  Specializer(Compiler& compiler, const Mod& input,
+              const std::function<bool(const Mod::FnDecl&)>& boundary,
               Diagnostics& diagnostics)
       : compiler_(compiler), input_(input), boundary_(boundary),
         diagnostics_(diagnostics), output_(input) {}
 
-  std::optional<Module> run() {
-    for (const auto& member : input_.functions()) {
-      const Function* source = member.body();
+  std::optional<Mod> run() {
+    for (const auto& member : input_.fns()) {
+      const Fn* source = member.body();
       if (source == nullptr) {
         continue;
       }
       const auto replacements = plan(*source);
-      Function* target = output_.body(member);
+      Fn* target = output_.body(member);
       if (!replacements || target == nullptr ||
           !apply(*target, *replacements)) {
         return std::nullopt;
       }
     }
     if (!compiler_.verify(output_)) {
-      diagnostics_.report("specialized Module failed verification");
+      diagnostics_.report("specialized Mod failed verification");
       return std::nullopt;
     }
     return std::move(output_);
@@ -49,14 +49,13 @@ private:
 
   using Plan = std::vector<std::optional<Replacement>>;
 
-  std::optional<Module::FunctionDecl>
-  declaration(const Replacement& replacement) const {
+  std::optional<Mod::FnDecl> declaration(const Replacement& replacement) const {
     for (const auto& candidate : output_.overloads(replacement.name)) {
       if (candidate.signature() == replacement.signature) {
         return candidate;
       }
     }
-    diagnostics_.report("specialization lost generated Function '" +
+    diagnostics_.report("specialization lost generated Fn '" +
                         replacement.name + "'");
     return std::nullopt;
   }
@@ -83,9 +82,8 @@ private:
       return known->second;
     }
     if (!active_.insert(key).second) {
-      diagnostics_.report(
-          "recursive source specialization at '" +
-          call.callee().symbol().qualified_name() + "'");
+      diagnostics_.report("recursive source specialization at '" +
+                          call.callee().symbol().qualified_name() + "'");
       return std::nullopt;
     }
 
@@ -105,8 +103,8 @@ private:
       return std::nullopt;
     }
 
-    const auto inserted = output_.function(name);
-    Function* generated = inserted ? output_.body(*inserted) : nullptr;
+    const auto inserted = output_.fn(name);
+    Fn* generated = inserted ? output_.body(*inserted) : nullptr;
     if (!inserted || generated == nullptr ||
         !apply(*generated, *replacements)) {
       active_.erase(key);
@@ -119,10 +117,10 @@ private:
     return replacement;
   }
 
-  std::optional<Plan> plan(const Function& function) {
+  std::optional<Plan> plan(const Fn& fn) {
     Plan result;
-    result.reserve(function.ops().size());
-    for (const Op& call : function.ops()) {
+    result.reserve(fn.ops().size());
+    for (const Op& call : fn.ops()) {
       auto replacement = specialize(call);
       if (!replacement) {
         return std::nullopt;
@@ -136,21 +134,19 @@ private:
     return result;
   }
 
-  bool apply(Function& function, const Plan& replacements) {
-    const auto calls = function.ops();
+  bool apply(Fn& fn, const Plan& replacements) {
+    const auto calls = fn.ops();
     if (calls.size() != replacements.size()) {
-      diagnostics_.report(
-          "specialization plan does not match its Function");
+      diagnostics_.report("specialization plan does not match its Fn");
       return false;
     }
-    if (std::none_of(replacements.begin(), replacements.end(),
-                     [](const auto& replacement) {
-                       return replacement.has_value();
-                     })) {
+    if (std::none_of(
+            replacements.begin(), replacements.end(),
+            [](const auto& replacement) { return replacement.has_value(); })) {
       return true;
     }
 
-    auto edit = function.edit();
+    auto edit = fn.edit();
     for (std::size_t index = 0; index < replacements.size(); ++index) {
       if (!replacements[index]) {
         continue;
@@ -161,21 +157,21 @@ private:
       }
       std::vector<Type> results;
       results.reserve(calls[index].results().size());
-      for (const Value& result : calls[index].results()) {
+      for (const Val& result : calls[index].results()) {
         results.push_back(result.type());
       }
-      const Op linked = edit.insert(calls[index], *callee,
-                                    calls[index].operands(), results);
+      const Op linked =
+          edit.insert(calls[index], *callee, calls[index].operands(), results);
       edit.replace(calls[index], linked.results());
     }
     return edit.commit(diagnostics_);
   }
 
   Compiler& compiler_;
-  const Module& input_;
-  const std::function<bool(const Module::FunctionDecl&)>& boundary_;
+  const Mod& input_;
+  const std::function<bool(const Mod::FnDecl&)>& boundary_;
   Diagnostics& diagnostics_;
-  Module output_;
+  Mod output_;
   std::set<std::string> active_;
   std::unordered_map<std::string, Replacement> generated_;
   std::size_t next_name_ = 0;
@@ -183,15 +179,15 @@ private:
 
 }  // namespace
 
-std::optional<Module> Compiler::specialize(
-    const Module& module,
-    const std::function<bool(const Module::FunctionDecl&)>& boundary,
-    Diagnostics& diagnostics) {
+std::optional<Mod>
+Compiler::specialize(const Mod& mod,
+                     const std::function<bool(const Mod::FnDecl&)>& boundary,
+                     Diagnostics& diagnostics) {
   if (!boundary) {
     diagnostics.report("specialization needs an accepted-call boundary");
     return std::nullopt;
   }
-  return Specializer(*this, module, boundary, diagnostics).run();
+  return Specializer(*this, mod, boundary, diagnostics).run();
 }
 
 }  // namespace joggle

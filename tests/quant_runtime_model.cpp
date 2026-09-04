@@ -67,8 +67,7 @@ int main(int argc, char** argv) {
   const Shape shape{2, 3};
   const Reals scales{1.0, 2.0, 0.5};
   const Integers zeros{0, 1, -1};
-  const std::vector<float> values{-2.5F, -3.0F, -0.25F,
-                                  2.5F,  3.0F,  0.25F};
+  const std::vector<float> values{-2.5F, -3.0F, -0.25F, 2.5F, 3.0F, 0.25F};
   const auto input = f32_bytes(values);
   const auto quantized =
       i8 ? compiler.run<joggle::Bytes>("quant.quantize", input, scales, zeros,
@@ -76,9 +75,8 @@ int main(int argc, char** argv) {
          : std::nullopt;
   const auto dequantized =
       quantized && i8
-          ? compiler.run<joggle::Bytes>("quant.dequantize", *quantized,
-                                        scales, zeros, shape,
-                                        std::int64_t{-1}, *i8)
+          ? compiler.run<joggle::Bytes>("quant.dequantize", *quantized, scales,
+                                        zeros, shape, std::int64_t{-1}, *i8)
           : std::nullopt;
   if (!quantized || !dequantized || !write_bytes(argv[4], *quantized) ||
       !write_bytes(argv[5], *dequantized)) {

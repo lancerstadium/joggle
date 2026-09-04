@@ -16,57 +16,59 @@ struct CallTypes {
   KnownBindings bindings;
 };
 
-std::optional<ParameterValue> evaluate_known_expression(
-    Compiler& compiler, std::string_view scope,
-    const Module::Expression& expression, const Module::ParameterDecl& expected,
-    const KnownBindings& bindings, Diagnostics& diagnostics,
-    std::optional<SourceRange> source = std::nullopt,
+std::optional<ParamVal> evaluate_known_expression(
+    Compiler& compiler, std::string_view scope, const Mod::Expr& expression,
+    const Mod::ParamDecl& expected, const KnownBindings& bindings,
+    Diagnostics& diagnostics, std::optional<SourceRange> source = std::nullopt,
     bool allow_host_evaluation = true);
 
-std::optional<std::vector<ParameterValue>>
-resolve_derived_parameters(Compiler& compiler, const Module::TypeDecl& schema,
-                           std::span<const ParameterValue> parameters,
+std::optional<std::vector<ParamVal>>
+resolve_derived_parameters(Compiler& compiler, const Mod::TypeDecl& schema,
+                           std::span<const ParamVal> parameters,
                            Diagnostics& diagnostics);
 
-std::optional<std::vector<ParameterValue>> resolve_derived_parameters(
-    std::span<const Module> modules, const Module::TypeDecl& schema,
-    std::span<const ParameterValue> parameters, Diagnostics& diagnostics);
+std::optional<std::vector<ParamVal>> resolve_derived_parameters(
+    std::span<const Mod> mods, const Mod::TypeDecl& schema,
+    std::span<const ParamVal> parameters, Diagnostics& diagnostics);
 
-std::optional<CallTypes> resolve_call_types(
-    Compiler& compiler, const Module::FunctionDecl& schema,
-    std::span<const Type> arguments,
-    std::span<const std::optional<ParameterValue>> known_arguments,
-    std::span<const std::optional<Type>> expected_results,
-    Diagnostics& diagnostics, std::optional<SourceRange> source = std::nullopt);
+std::optional<CallTypes>
+resolve_call_types(Compiler& compiler, const Mod::FnDecl& schema,
+                   std::span<const Type> arguments,
+                   std::span<const std::optional<ParamVal>> known_arguments,
+                   std::span<const std::optional<Type>> expected_results,
+                   Diagnostics& diagnostics,
+                   std::optional<SourceRange> source = std::nullopt);
 
 std::optional<CallTypes> resolve_partial_call_types(
-    Compiler& compiler, const Module::FunctionDecl& schema,
+    Compiler& compiler, const Mod::FnDecl& schema,
     std::span<const std::optional<Type>> arguments,
-    std::span<const std::optional<ParameterValue>> known_arguments,
+    std::span<const std::optional<ParamVal>> known_arguments,
     std::span<const std::optional<Type>> expected_results,
     Diagnostics& diagnostics, std::optional<SourceRange> source = std::nullopt,
     bool allow_host_evaluation = true);
 
-std::optional<CallTypes> resolve_call_types(
-    std::span<const Module> modules, const Module::FunctionDecl& schema,
-    std::span<const Type> arguments,
-    std::span<const std::optional<ParameterValue>> known_arguments,
-    std::span<const std::optional<Type>> expected_results,
-    Diagnostics& diagnostics, std::optional<SourceRange> source = std::nullopt);
+std::optional<CallTypes>
+resolve_call_types(std::span<const Mod> mods, const Mod::FnDecl& schema,
+                   std::span<const Type> arguments,
+                   std::span<const std::optional<ParamVal>> known_arguments,
+                   std::span<const std::optional<Type>> expected_results,
+                   Diagnostics& diagnostics,
+                   std::optional<SourceRange> source = std::nullopt);
 
 std::optional<std::vector<Type>>
-infer_call_types(Compiler& compiler, const Module::FunctionDecl& schema,
+infer_call_types(Compiler& compiler, const Mod::FnDecl& schema,
                  std::span<const Type> arguments,
-                 std::span<const std::optional<ParameterValue>> known_arguments,
+                 std::span<const std::optional<ParamVal>> known_arguments,
                  std::span<const std::optional<Type>> expected_results,
                  Diagnostics& diagnostics,
                  std::optional<SourceRange> source = std::nullopt);
 
-std::optional<std::vector<Type>> infer_call_types(
-    std::span<const Module> modules, const Module::FunctionDecl& schema,
-    std::span<const Type> arguments,
-    std::span<const std::optional<ParameterValue>> known_arguments,
-    std::span<const std::optional<Type>> expected_results,
-    Diagnostics& diagnostics, std::optional<SourceRange> source = std::nullopt);
+std::optional<std::vector<Type>>
+infer_call_types(std::span<const Mod> mods, const Mod::FnDecl& schema,
+                 std::span<const Type> arguments,
+                 std::span<const std::optional<ParamVal>> known_arguments,
+                 std::span<const std::optional<Type>> expected_results,
+                 Diagnostics& diagnostics,
+                 std::optional<SourceRange> source = std::nullopt);
 
 }  // namespace joggle::detail

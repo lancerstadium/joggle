@@ -1,14 +1,14 @@
 joggle 1;
 
-module prelude@4.0.0 {
+mod prelude@4.0.0 {
   type type();
   type int();
   type real();
   type bool();
   type string();
   type bytes();
-  type function();
-  type module();
+  type fn();
+  type mod();
   type callable(inputs: list<type>, results: list<type>);
   type effect(domain: type);
   type list(element: type);

@@ -21,7 +21,7 @@ using Shape = std::vector<std::int64_t>;
 constexpr std::string_view source = R"(
 joggle 1;
 
-module quant_fixture@1.0.0 {
+mod quant_fixture@1.0.0 {
   import quant@1 as q;
 
   fn roundtrip(input: bytes) -> bytes {
@@ -72,12 +72,11 @@ bool bytes_equal(const std::optional<joggle::Bytes>& actual,
 }
 
 bool load(joggle::Compiler& compiler, bool fixture = false) {
-  compiler.load(JOGGLE_QUANT_MODULE);
+  compiler.load(JOGGLE_QUANT_MOD);
   if (fixture) {
     compiler.add(source, "quant-fixture.joggle");
   }
-  return compiler.link() &&
-         compiler.load_native("quant", JOGGLE_QUANT_NATIVE);
+  return compiler.link() && compiler.load_native("quant", JOGGLE_QUANT_NATIVE);
 }
 
 template <typename Invoke> bool rejects(Invoke&& invoke) {
@@ -108,23 +107,19 @@ int main() {
       Reals{1.0}, Integers{0}, Shape{6}, std::int64_t{0}, *i8);
   const auto saturation = compiler.run<joggle::Bytes>(
       "quant.quantize",
-      f32_bytes({-std::numeric_limits<float>::infinity(), -1000.0F, -1.0F,
-                 0.0F, 1.0F, 1000.0F,
-                 std::numeric_limits<float>::infinity()}),
+      f32_bytes({-std::numeric_limits<float>::infinity(), -1000.0F, -1.0F, 0.0F,
+                 1.0F, 1000.0F, std::numeric_limits<float>::infinity()}),
       Reals{0.5}, Integers{128}, Shape{7}, std::int64_t{0}, *u8);
 
-  const auto per_axis_input =
-      f32_bytes({0.0F, 0.0F, 0.0F, 1.0F, 2.0F, 4.0F});
+  const auto per_axis_input = f32_bytes({0.0F, 0.0F, 0.0F, 1.0F, 2.0F, 4.0F});
   const auto per_axis = compiler.run<joggle::Bytes>(
       "quant.quantize", per_axis_input, Reals{0.5, 1.0, 2.0},
       Integers{0, 1, -1}, Shape{2, 3}, std::int64_t{-1}, *i8);
-  const auto per_axis_decoded = per_axis
-                                    ? compiler.run<joggle::Bytes>(
-                                          "quant.dequantize", *per_axis,
-                                          Reals{0.5, 1.0, 2.0},
-                                          Integers{0, 1, -1}, Shape{2, 3},
-                                          std::int64_t{-1}, *i8)
-                                    : std::nullopt;
+  const auto per_axis_decoded =
+      per_axis ? compiler.run<joggle::Bytes>(
+                     "quant.dequantize", *per_axis, Reals{0.5, 1.0, 2.0},
+                     Integers{0, 1, -1}, Shape{2, 3}, std::int64_t{-1}, *i8)
+               : std::nullopt;
   const auto i32_decoded = compiler.run<joggle::Bytes>(
       "quant.dequantize", i32_bytes({-2, 0, 3}), Reals{0.25}, Integers{0},
       Shape{3}, std::int64_t{0}, *i32);
@@ -135,18 +130,17 @@ int main() {
       Integers{0, 1, -1}, Shape{2, 3}, std::int64_t{-1}, *i8);
 
   bool ok = true;
-  ok &= expect(bytes_equal(ties, {0xfeU, 0xfeU, 0x00U, 0x00U, 0x02U,
-                                  0x02U}),
-               "quantize uses round-to-nearest-even for positive and negative ties");
+  ok &= expect(
+      bytes_equal(ties, {0xfeU, 0xfeU, 0x00U, 0x00U, 0x02U, 0x02U}),
+      "quantize uses round-to-nearest-even for positive and negative ties");
   ok &= expect(bytes_equal(saturation,
-                           {0x00U, 0x00U, 0x7eU, 0x80U, 0x82U, 0xffU,
-                            0xffU}),
+                           {0x00U, 0x00U, 0x7eU, 0x80U, 0x82U, 0xffU, 0xffU}),
                "u8 quantization saturates finite and infinite f32 values");
-  ok &= expect(bytes_equal(per_axis,
-                           {0x00U, 0x01U, 0xffU, 0x02U, 0x03U, 0x01U}) &&
-                   per_axis_decoded == per_axis_input && repeated == per_axis,
-               "negative-axis parameters broadcast in row-major order "
-               "deterministically");
+  ok &= expect(
+      bytes_equal(per_axis, {0x00U, 0x01U, 0xffU, 0x02U, 0x03U, 0x01U}) &&
+          per_axis_decoded == per_axis_input && repeated == per_axis,
+      "negative-axis parameters broadcast in row-major order "
+      "deterministically");
   ok &= expect(i32_decoded == f32_bytes({-0.5F, 0.0F, 0.75F}),
                "i32 dequantization uses a zero point of zero and f32 output");
   ok &= expect(staged == f32_bytes({-1.0F, 0.0F, 1.0F}),
@@ -160,10 +154,10 @@ int main() {
   });
   const bool rejects_bad_axis = rejects([&](joggle::Compiler& invalid) {
     const auto storage = invalid.make("i8");
-    return storage && invalid.run<joggle::Bytes>(
-                          "quant.quantize", f32_bytes({0.0F, 0.0F}),
-                          Reals{1.0, 1.0}, Integers{0, 0}, Shape{2},
-                          std::int64_t{1}, *storage);
+    return storage &&
+           invalid.run<joggle::Bytes>("quant.quantize", f32_bytes({0.0F, 0.0F}),
+                                      Reals{1.0, 1.0}, Integers{0, 0}, Shape{2},
+                                      std::int64_t{1}, *storage);
   });
   const bool rejects_i32_zero = rejects([&](joggle::Compiler& invalid) {
     const auto storage = invalid.make("i32");
@@ -173,11 +167,11 @@ int main() {
   });
   const bool rejects_nan = rejects([&](joggle::Compiler& invalid) {
     const auto storage = invalid.make("u8");
-    return storage && invalid.run<joggle::Bytes>(
-                          "quant.quantize",
-                          f32_bytes({std::numeric_limits<float>::quiet_NaN()}),
-                          Reals{1.0}, Integers{0}, Shape{1},
-                          std::int64_t{0}, *storage);
+    return storage &&
+           invalid.run<joggle::Bytes>(
+               "quant.quantize",
+               f32_bytes({std::numeric_limits<float>::quiet_NaN()}), Reals{1.0},
+               Integers{0}, Shape{1}, std::int64_t{0}, *storage);
   });
   ok &= expect(rejects_zero_scale && rejects_bad_axis && rejects_i32_zero &&
                    rejects_nan,

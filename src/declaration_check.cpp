@@ -2,8 +2,8 @@
 
 #include "call_resolution.h"
 #include "domain.h"
-#include "expression_syntax.h"
-#include "module_internal.h"
+#include "expr_syntax.h"
+#include "mod_internal.h"
 #include "prelude.h"
 
 #include <algorithm>
@@ -14,22 +14,22 @@
 namespace joggle::detail {
 namespace {
 
-std::string resolve_prefix(const Module& scope, std::string_view prefix) {
-  if (prefix == scope.name() || prefix == prelude_module_name) {
+std::string resolve_prefix(const Mod& scope, std::string_view prefix) {
+  if (prefix == scope.name() || prefix == prelude_mod_name) {
     return std::string(prefix);
   }
   const auto imported = std::find_if(
       scope.imports().begin(), scope.imports().end(),
-      [&](const Module::Import& value) { return value.prefix() == prefix; });
+      [&](const Mod::Import& value) { return value.prefix() == prefix; });
   return imported == scope.imports().end() ? std::string(prefix)
                                            : imported->name;
 }
 
-std::optional<Module::Expression>
-immediate_domain(const Module::Expression& expression,
-                 std::span<const Module::FunctionDecl::GenericDecl> generics,
-                 std::span<const Module::ParameterDecl> locals) {
-  using Kind = Module::Expression::Kind;
+std::optional<Mod::Expr>
+immediate_domain(const Mod::Expr& expression,
+                 std::span<const Mod::FnDecl::GenericDecl> generics,
+                 std::span<const Mod::ParamDecl> locals) {
+  using Kind = Mod::Expr::Kind;
   if (expression.kind == Kind::Variable) {
     const auto local =
         std::find_if(locals.begin(), locals.end(), [&](const auto& candidate) {
@@ -43,37 +43,35 @@ immediate_domain(const Module::Expression& expression,
           return candidate.name == expression.text;
         });
     return generic == generics.end()
-               ? std::optional<Module::Expression>{}
-               : std::optional<Module::Expression>{generic->domain};
+               ? std::optional<Mod::Expr>{}
+               : std::optional<Mod::Expr>{generic->domain};
   }
   if (expression.kind == Kind::Number) {
     return domain_expression(expression.text.find_first_of(".eE") ==
                                      std::string::npos
-                                 ? ValueKind::Integer
-                                 : ValueKind::Real);
+                                 ? ValKind::Integer
+                                 : ValKind::Real);
   }
   if (expression.kind == Kind::Boolean) {
-    return domain_expression(ValueKind::Boolean);
+    return domain_expression(ValKind::Boolean);
   }
   if (expression.kind == Kind::String) {
-    return domain_expression(ValueKind::String);
+    return domain_expression(ValKind::String);
   }
   return std::nullopt;
 }
 
-class ExpressionCheck {
+class ExprCheck {
 public:
-  ExpressionCheck(const Compiler& compiler, const Module& scope,
-                  std::span<const Module::FunctionDecl::GenericDecl> generics,
-                  std::span<const Module::ParameterDecl> locals,
-                  Diagnostics& diagnostics, std::optional<SourceRange> source,
-                  std::string_view subject)
+  ExprCheck(const Compiler& compiler, const Mod& scope,
+            std::span<const Mod::FnDecl::GenericDecl> generics,
+            std::span<const Mod::ParamDecl> locals, Diagnostics& diagnostics,
+            std::optional<SourceRange> source, std::string_view subject)
       : compiler_(compiler), scope_(scope), generics_(generics),
         locals_(locals), diagnostics_(diagnostics), source_(std::move(source)),
         subject_(subject) {}
 
-  bool run(const Module::Expression& expression,
-           const Module::Expression& expected) {
+  bool run(const Mod::Expr& expression, const Mod::Expr& expected) {
     const std::size_t before = diagnostics_.size();
     check(expression, expected);
     return diagnostics_.size() == before;
@@ -84,24 +82,23 @@ private:
     diagnostics_.report("in " + subject_ + ": " + std::move(message), source_);
   }
 
-  const Module::FunctionDecl::GenericDecl*
-  generic(std::string_view name) const {
+  const Mod::FnDecl::GenericDecl* generic(std::string_view name) const {
     const auto found = std::find_if(
         generics_.begin(), generics_.end(),
         [&](const auto& candidate) { return candidate.name == name; });
     return found == generics_.end() ? nullptr : &*found;
   }
 
-  const Module::ParameterDecl* local(std::string_view name) const {
+  const Mod::ParamDecl* local(std::string_view name) const {
     const auto found = std::find_if(
         locals_.begin(), locals_.end(),
         [&](const auto& candidate) { return candidate.name == name; });
     return found == locals_.end() ? nullptr : &*found;
   }
 
-  bool check_derived_field(const Module::Expression& expression,
-                           const Module::Expression& expected) {
-    if (expression.kind != Module::Expression::Kind::Reference ||
+  bool check_derived_field(const Mod::Expr& expression,
+                           const Mod::Expr& expected) {
+    if (expression.kind != Mod::Expr::Kind::Reference ||
         !expression.arguments.empty()) {
       return false;
     }
@@ -120,21 +117,20 @@ private:
     return true;
   }
 
-  void check(const Module::Expression& expression,
-             const Module::Expression& expected) {
-    using Kind = Module::Expression::Kind;
+  void check(const Mod::Expr& expression, const Mod::Expr& expected) {
+    using Kind = Mod::Expr::Kind;
     const auto domain = kernel_domain(expected);
     if (!domain) {
       report("unknown compiler domain");
       return;
     }
-    if (expression.kind == Kind::FunctionType) {
+    if (expression.kind == Kind::FnType) {
       const auto signature = callable_type(expression);
-      if (domain->list || domain->element != ValueKind::Type || !signature) {
-        report("malformed function type");
+      if (domain->list || domain->element != ValKind::Type || !signature) {
+        report("malformed fn type");
         return;
       }
-      const auto type_domain = domain_expression(ValueKind::Type);
+      const auto type_domain = domain_expression(ValKind::Type);
       for (const auto side : {signature->inputs, signature->results}) {
         for (const auto& element : side) {
           check(element, type_domain);
@@ -143,13 +139,13 @@ private:
       return;
     }
     if (expression.kind == Kind::Lambda) {
-      if (domain->list || domain->element != ValueKind::Function ||
+      if (domain->list || domain->element != ValKind::Fn ||
           expression.arguments.empty() ||
           expression.labels.size() + 1U != expression.arguments.size()) {
         report("lambda has the wrong compiler domain");
         return;
       }
-      const auto type_domain = domain_expression(ValueKind::Type);
+      const auto type_domain = domain_expression(ValKind::Type);
       for (std::size_t index = 0; index < expression.labels.size(); ++index) {
         check(expression.arguments[index], type_domain);
       }
@@ -179,7 +175,7 @@ private:
         report("malformed if expression");
         return;
       }
-      check(expression.arguments[0], domain_expression(ValueKind::Boolean));
+      check(expression.arguments[0], domain_expression(ValKind::Boolean));
       check(expression.arguments[1], expected);
       check(expression.arguments[2], expected);
       return;
@@ -211,12 +207,12 @@ private:
     if (expression.kind == Kind::Number || expression.kind == Kind::Boolean ||
         expression.kind == Kind::String) {
       const bool matches = (expression.kind == Kind::Number &&
-                            (domain->element == ValueKind::Integer ||
-                             domain->element == ValueKind::Real)) ||
+                            (domain->element == ValKind::Integer ||
+                             domain->element == ValKind::Real)) ||
                            (expression.kind == Kind::Boolean &&
-                            domain->element == ValueKind::Boolean) ||
+                            domain->element == ValKind::Boolean) ||
                            (expression.kind == Kind::String &&
-                            domain->element == ValueKind::String);
+                            domain->element == ValKind::String);
       if (!matches) {
         report("literal has the wrong domain");
       }
@@ -228,19 +224,17 @@ private:
     check_declaration_reference(expression, *domain);
   }
 
-  void check_operator(const Module::Expression& expression,
-                      const Module::Expression& expected) {
-    using Kind = Module::Expression::Kind;
+  void check_operator(const Mod::Expr& expression, const Mod::Expr& expected) {
+    using Kind = Mod::Expr::Kind;
     const std::size_t arity = expression.kind == Kind::Infix ? 2U : 1U;
     if (expression.arguments.size() != arity) {
       report("malformed operator expression");
       return;
     }
-    const auto fixity = expression.kind == Kind::Prefix
-                            ? Module::FunctionDecl::Fixity::Prefix
-                        : expression.kind == Kind::Postfix
-                            ? Module::FunctionDecl::Fixity::Postfix
-                            : Module::FunctionDecl::Fixity::Infix;
+    const auto fixity =
+        expression.kind == Kind::Prefix    ? Mod::FnDecl::Fixity::Prefix
+        : expression.kind == Kind::Postfix ? Mod::FnDecl::Fixity::Postfix
+                                           : Mod::FnDecl::Fixity::Infix;
     auto candidates = operator_candidates(
         compiler_, scope_.name(), expression.text, fixity, arity, expected);
     candidates.erase(
@@ -270,15 +264,14 @@ private:
     }
   }
 
-  void check_call(const Module::Expression& expression,
-                  const Module::Expression& expected) {
+  void check_call(const Mod::Expr& expression, const Mod::Expr& expected) {
     std::vector<CallCandidate> candidates;
-    for (const auto& function :
-         visible_functions(compiler_, scope_.name(), expression.text)) {
-      auto candidate = call_candidate(function, expression);
-      const auto results = compiler_results(function);
-      if (!candidate || !value_inputs(function).empty() ||
-          !value_results(function).empty() || results.size() != 1U ||
+    for (const auto& fn :
+         visible_fns(compiler_, scope_.name(), expression.text)) {
+      auto candidate = call_candidate(fn, expression);
+      const auto results = compiler_results(fn);
+      if (!candidate || !value_inputs(fn).empty() ||
+          !value_results(fn).empty() || results.size() != 1U ||
           results.front().domain != expected) {
         continue;
       }
@@ -288,7 +281,7 @@ private:
         const auto actual =
             immediate_domain(expression.arguments[index], generics_, locals_);
         if (actual &&
-            function.inputs()[candidate->parameters[index]].domain != *actual) {
+            fn.inputs()[candidate->parameters[index]].domain != *actual) {
           accepts = false;
           break;
         }
@@ -300,20 +293,19 @@ private:
     if (candidates.size() != 1U) {
       report(candidates.empty()
                  ? "call to '" + expression.text +
-                       "' has no matching compiler function"
+                       "' has no matching compiler fn"
                  : "call to '" + expression.text + "' is ambiguous");
       return;
     }
     const auto& selected = candidates.front();
     for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
       check(expression.arguments[index],
-            selected.function.inputs()[selected.parameters[index]].domain);
+            selected.fn.inputs()[selected.parameters[index]].domain);
     }
   }
 
-  void check_declaration_reference(const Module::Expression& expression,
-                                   Domain domain) {
-    if (domain.element != ValueKind::Type) {
+  void check_declaration_reference(const Mod::Expr& expression, Domain domain) {
+    if (domain.element != ValKind::Type) {
       report("reference '" + expression.text + "' has the wrong domain");
       return;
     }
@@ -327,18 +319,17 @@ private:
         dot == std::string::npos
             ? std::string_view(expression.text)
             : std::string_view(expression.text).substr(dot + 1U);
-    const auto module = compiler_.module(owner);
-    if (!module) {
-      report("reference uses missing Module '" + owner + "'");
+    const auto mod = compiler_.mod(owner);
+    if (!mod) {
+      report("reference uses missing Mod '" + owner + "'");
       return;
     }
-    const auto target = module->type(name);
+    const auto target = mod->type(name);
     if (!target) {
       report("unknown type '" + expression.text + "'");
       return;
     }
-    const std::span<const Module::ParameterDecl> parameters =
-        target->parameters();
+    const std::span<const Mod::ParamDecl> parameters = target->parameters();
     if (expression.arguments.size() > parameters.size()) {
       report("'" + expression.text + "' has too many arguments");
       return;
@@ -356,9 +347,9 @@ private:
   }
 
   const Compiler& compiler_;
-  const Module& scope_;
-  std::span<const Module::FunctionDecl::GenericDecl> generics_;
-  std::span<const Module::ParameterDecl> locals_;
+  const Mod& scope_;
+  std::span<const Mod::FnDecl::GenericDecl> generics_;
+  std::span<const Mod::ParamDecl> locals_;
   Diagnostics& diagnostics_;
   std::optional<SourceRange> source_;
   std::string subject_;
@@ -367,13 +358,13 @@ private:
 }  // namespace
 
 bool check_declaration_expression(
-    const Compiler& compiler, const Module& scope,
-    const Module::Expression& expression, const Module::Expression& expected,
-    std::span<const Module::FunctionDecl::GenericDecl> generics,
-    std::span<const Module::ParameterDecl> locals, Diagnostics& diagnostics,
+    const Compiler& compiler, const Mod& scope, const Mod::Expr& expression,
+    const Mod::Expr& expected,
+    std::span<const Mod::FnDecl::GenericDecl> generics,
+    std::span<const Mod::ParamDecl> locals, Diagnostics& diagnostics,
     std::optional<SourceRange> source, std::string_view subject) {
-  return ExpressionCheck(compiler, scope, generics, locals, diagnostics,
-                         std::move(source), subject)
+  return ExprCheck(compiler, scope, generics, locals, diagnostics,
+                   std::move(source), subject)
       .run(expression, expected);
 }
 

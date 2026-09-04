@@ -6,33 +6,33 @@ Include the umbrella header:
 #include <joggle/joggle.h>
 ```
 
-The API follows the language's ownership model. `Module` owns declarations and
+The API follows the language's ownership model. `Mod` owns declarations and
 materialized bodies, `Type` is an immutable declared value, and `Compiler`
-links and executes modules.
+links and executes mods.
 
-## Parse and inspect a module
+## Parse and inspect a mod
 
 ```cpp
 joggle::Diagnostics diagnostics;
-auto module = joggle::parse_module(source, diagnostics, "model.joggle");
-if (!module) {
+auto mod = joggle::parse_mod(source, diagnostics, "model.joggle");
+if (!mod) {
   diagnostics.print(std::cerr);
   return;
 }
 
-auto tensor = module->type("tensor");
-auto calls = module->overloads("conv2d");
-std::string canonical = joggle::format(*module);
+auto tensor = mod->type("tensor");
+auto calls = mod->overloads("conv2d");
+std::string canonical = joggle::format(*mod);
 ```
 
-Declaration handles are immutable views backed by their module snapshot.
-`Module::Symbol` supplies module name, version, kind, local name, qualified
+Declaration handles are immutable views backed by their mod snapshot.
+`Mod::Symbol` supplies mod name, version, kind, local name, qualified
 name, stable name, and declaration provenance.
 
 `digest()` identifies the whole snapshot. `declaration_digest()` identifies
 imports and declarations with bodies erased.
 
-## Link modules
+## Link mods
 
 ```cpp
 joggle::Compiler compiler;
@@ -44,15 +44,15 @@ if (!compiler.link()) {
 }
 ```
 
-`add(text)`, `add(module)`, and `load(path)` add roots. `search(path)` adds a
+`add(text)`, `add(mod)`, and `load(path)` add roots. `search(path)` adds a
 repository root. `lock(path)` requires exact locked dependencies. `link()`
 resolves one coherent closure and freezes it for execution.
 
 ## Construct types
 
 ```cpp
-auto module = compiler.module("tensor");
-auto schema = module ? module->type("integer") : std::nullopt;
+auto mod = compiler.mod("tensor");
+auto schema = mod ? mod->type("integer") : std::nullopt;
 auto i8 = schema ? compiler.make(*schema, 8, true)
                  : std::optional<joggle::Type>{};
 
@@ -64,44 +64,44 @@ if (i8) {
 
 Parameters accept C++ integers, floating-point values, booleans, strings,
 `Type`, and supported ranges of those values. Construction checks domains,
-defaults, computed fields, module ownership, and registered type verifiers.
+defaults, computed fields, mod ownership, and registered type verifiers.
 
 Compile-time metadata uses the same API: define a `type layout(...)`, obtain
 its `TypeDecl`, and call `make`.
 
-## Materialize and edit functions
+## Materialize and edit fns
 
 ```cpp
-auto function = compiler.materialize("model.main");
-if (!function) {
+auto fn = compiler.materialize("model.main");
+if (!fn) {
   return;
 }
 
-auto edit = function->edit();
+auto edit = fn->edit();
 // append, insert, locate, replace, or erase calls in the isolated edit
 if (!edit.commit(diagnostics)) {
   diagnostics.print(std::cerr);
 }
 ```
 
-Function edits are transactional. A commit verifies ownership, CFG, dominance,
-call signatures, and result types before publishing. `Module::insert` installs
-a materialized function under a new declaration; `Module::body` returns a
+Fn edits are transactional. A commit verifies ownership, CFG, dominance,
+call signatures, and result types before publishing. `Mod::insert` installs
+a materialized fn under a new declaration; `Mod::body` returns a
 mutable copy-on-write body for an exact declaration.
 
 `edit.locate(op, source_range)` attaches frontend provenance to a call, and
 `op.location()` reads it. Locations improve diagnostics and survive cloning or
 typed replacement, but they are not semantic properties and do not change
-canonical Module identity.
+canonical Mod identity.
 
-Function values remain ordinary typed `Value`s. A declared reference is built
+Fn values remain ordinary typed `Val`s. A declared reference is built
 with `edit.reference(declaration, callable_type)` and inspected with
-`value.referenced_function()`. An anonymous, already verified body is built
-with `edit.callable(function, callable_type)` and inspected with
-`value.inline_function()`. The callable type must exactly match the body's
+`value.referenced_fn()`. An anonymous, already verified body is built
+with `edit.callable(fn, callable_type)` and inspected with
+`value.inline_fn()`. The callable type must exactly match the body's
 inputs and results; no public lambda or region object is involved.
 The current source form has one expression and one result. Consequently,
-canonical formatting or `Module::insert` rejects a C++-constructed inline body
+canonical formatting or `Mod::insert` rejects a C++-constructed inline body
 that cannot be represented by that source form instead of emitting hidden
 declarations.
 
@@ -109,16 +109,16 @@ declarations.
 
 ```cpp
 auto changed =
-    joggle::replace(compiler, function, before, after, diagnostics);
+    joggle::replace(compiler, fn, before, after, diagnostics);
 ```
 
-`before` and `after` are ordinary single-expression `Function` values. Their
+`before` and `after` are ordinary single-expression `Fn` values. Their
 arguments are typed holes; repeated arguments require the same SSA value.
-Matching uses exact call declarations, canonical Known values, and function
+Matching uses exact call declarations, canonical Known values, and fn
 reference identity. All maximal non-overlapping matches are replaced in one
-transaction. The `Module&` overload applies the same operation on a private
-module snapshot and publishes only after every materialized member succeeds.
-Zero changes are a successful no-op and preserve revision or module identity.
+transaction. The `Mod&` overload applies the same operation on a private
+mod snapshot and publishes only after every materialized member succeeds.
+Zero changes are a successful no-op and preserve revision or mod identity.
 
 The `Compiler&` overload first proves conservative definitional equivalence.
 It recursively expands eligible pure source bodies with a fixed bound, keeps
@@ -127,12 +127,12 @@ mismatch before opening an edit. The overload without `Compiler&` is the
 low-level structural primitive: it preserves IR invariants but does not claim
 the two expressions compute the same value.
 
-## Bind native functions
+## Bind native fns
 
 ```cpp
-compiler.bind(module, "parse",
+compiler.bind(mod, "parse",
               [](const joggle::Bytes& bytes)
-                  -> std::optional<joggle::Module> {
+                  -> std::optional<joggle::Mod> {
                 return parse_external_format(bytes);
               });
 ```
@@ -146,10 +146,10 @@ results, or `std::optional<T>` to report failure.
 side-effect-free host evaluation under residual control. Use the default
 guarded mode otherwise.
 
-## Invoke compiler functions
+## Invoke compiler fns
 
 ```cpp
-auto optimized = compiler.run<joggle::Module>("passes.optimize", model);
+auto optimized = compiler.run<joggle::Mod>("passes.optimize", model);
 bool emitted = compiler.run<void>("driver.write", model, output_path);
 ```
 
@@ -171,24 +171,24 @@ compiler.verify(*schema, [](const joggle::Type& type,
 });
 ```
 
-Type and function verifiers strengthen declared invariants. `represent<T>`
+Type and fn verifiers strengthen declared invariants. `represent<T>`
 associates a C++ host type with a Joggle type declaration for native bindings;
 an optional projection maps a host value to its concrete Joggle `Type`.
 
-## Native module entry point
+## Native mod entry point
 
 ```cpp
-void joggle_module(joggle::Compiler& compiler,
-                   const joggle::Module& module,
+void joggle_mod(joggle::Compiler& compiler,
+                   const joggle::Mod& mod,
                    joggle::Diagnostics& diagnostics) {
-  // bind functions and verifiers
+  // bind fns and verifiers
 }
 ```
 
-Use the `joggle_module(...)` CMake helper to build the library. It embeds the
-canonical module identity in a hidden generated translation unit; it does not
+Use the `joggle_mod(...)` CMake helper to build the library. It embeds the
+canonical mod identity in a hidden generated translation unit; it does not
 generate declaration wrappers. `Compiler::load_native` rejects a library
-built for a different module declaration snapshot.
+built for a different mod declaration snapshot.
 
 See [Getting started](getting-started.md) for a complete extension and
 [IR model](ir.md) for editing semantics.

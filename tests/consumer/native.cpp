@@ -2,30 +2,30 @@
 
 namespace {
 
-void bind(joggle::Compiler& compiler, const joggle::Module& module,
+void bind(joggle::Compiler& compiler, const joggle::Mod& mod,
           joggle::Diagnostics& diagnostics) {
-  const auto keep = module.function("keep");
-  const auto converted = module.function("converted");
+  const auto keep = mod.fn("keep");
+  const auto converted = mod.fn("converted");
   if (!keep || !converted) {
-    diagnostics.report("external native does not match its Module");
+    diagnostics.report("external native does not match its Mod");
     return;
   }
 
   compiler.bind(
-      module, "convert",
+      mod, "convert",
       [keep = *keep, converted = *converted](
-          joggle::Function function,
-          joggle::Diagnostics& diagnostics) -> std::optional<joggle::Function> {
-        if (!joggle::replace_calls(function, keep, converted, diagnostics)) {
+          joggle::Fn fn,
+          joggle::Diagnostics& diagnostics) -> std::optional<joggle::Fn> {
+        if (!joggle::replace_calls(fn, keep, converted, diagnostics)) {
           return std::nullopt;
         }
-        return function;
+        return fn;
       });
 }
 
 }  // namespace
 
-void joggle_module(joggle::Compiler& compiler, const joggle::Module& module,
-                   joggle::Diagnostics& diagnostics) {
-  bind(compiler, module, diagnostics);
+void joggle_mod(joggle::Compiler& compiler, const joggle::Mod& mod,
+                joggle::Diagnostics& diagnostics) {
+  bind(compiler, mod, diagnostics);
 }

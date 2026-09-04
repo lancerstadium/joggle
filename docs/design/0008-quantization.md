@@ -12,18 +12,18 @@ semantics, and physical storage optimization.
 
 ## Decision
 
-`quant@1.1.0` declares two ordinary program functions:
+`quant@1.1.0` declares two ordinary program fns:
 
 ```joggle
 fn quantize<X, S, Z, Y>(input: X, scale: S, zero: Z, axis: int = 1) -> Y;
 fn dequantize<X, S, Z, Y>(input: X, scale: S, zero: Z, axis: int = 1) -> Y;
 ```
 
-Scale and zero point are normal tensor Values. Their Types and shapes state
+Scale and zero point are normal tensor Vals. Their Types and shapes state
 per-tensor or per-axis parameterization without a privileged quantization
-object. The ONNX compiler function maps a checked IR 7/opset 13 QDQ graph to
+object. The ONNX compiler fn maps a checked IR 7/opset 13 QDQ graph to
 these calls plus the existing tensor vocabulary. A generated model derives
-its `quant` and `tensor` dependencies from the Function itself.
+its `quant` and `tensor` dependencies from the Fn itself.
 
 The same names have six-argument compiler-time overloads over bytes, f32
 scales, integer zero points, logical shape, axis, and storage Type. They are a
@@ -54,7 +54,7 @@ by an importer special case.
 
 The hash-pinned Model Zoo SqueezeNet 1.0 QDQ graph imports as 228 typed
 constants, 39 quantize calls, 91 dequantize calls, and 41 ordinary tensor
-calls. A test-only reconstruction from the resulting Function and Module data
+calls. A test-only reconstruction from the resulting Fn and Mod data
 has exact ONNX Runtime output on a deterministic input (`max_abs=0`,
 `mean_abs=0`). Its install/check/lock bundle preserves all 148 deduplicated
 payloads and both semantic dependencies. Omitting `quant` fails with a
@@ -66,8 +66,8 @@ compiler-time affine overloads match a standard opset 13 QDQ micrograph in
 ONNX Runtime for i8 and f32 outputs at the bit level, including halfway values
 and per-axis broadcasting.
 
-No QDQ profile Module is part of the accepted design. A profile that only
+No QDQ profile Mod is part of the accepted design. A profile that only
 packages Dequantize, a normal tensor operation, and Quantize behind another
-function name adds no executable semantics. Integer kernels remain future
-ordinary functions that must carry a real implementation and be checked
+fn name adds no executable semantics. Integer kernels remain future
+ordinary fns that must carry a real implementation and be checked
 against the affine oracle and a trusted runtime.

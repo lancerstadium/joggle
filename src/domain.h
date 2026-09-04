@@ -4,32 +4,31 @@
 #include <string>
 #include <string_view>
 
-#include "joggle/module.h"
+#include "joggle/mod.h"
 
 namespace joggle::detail {
 
-enum class ValueKind {
+enum class ValKind {
   Integer,
   Real,
   Boolean,
   String,
   Type,
-  Function,
+  Fn,
   Bytes,
 };
 
 struct Domain {
-  ValueKind element = ValueKind::Integer;
+  ValKind element = ValKind::Integer;
   bool list = false;
 
   bool operator==(const Domain&) const = default;
 };
 
-std::string_view domain_name(ValueKind kind);
-Module::Expression domain_expression(ValueKind kind, bool list = false);
-std::optional<Domain> kernel_domain(const Module::Expression& expression);
-bool is_domain(const Module::Expression& expression, ValueKind kind,
-               bool list = false);
+std::string_view domain_name(ValKind kind);
+Mod::Expr domain_expression(ValKind kind, bool list = false);
+std::optional<Domain> kernel_domain(const Mod::Expr& expression);
+bool is_domain(const Mod::Expr& expression, ValKind kind, bool list = false);
 std::optional<std::string> canonical_real(double value);
 
 }  // namespace joggle::detail

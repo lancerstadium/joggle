@@ -30,8 +30,8 @@ endif()
 
 set(install_dir "${JOGGLE_BUILD_DIR}/test-${JOGGLE_INSTALL_CASE}-install")
 set(consumer_build "${JOGGLE_BUILD_DIR}/test-${JOGGLE_INSTALL_CASE}-consumer")
-set(module_root "${JOGGLE_BUILD_DIR}/test-${JOGGLE_INSTALL_CASE}-modules")
-file(REMOVE_RECURSE "${install_dir}" "${consumer_build}" "${module_root}")
+set(mod_root "${JOGGLE_BUILD_DIR}/test-${JOGGLE_INSTALL_CASE}-mods")
+file(REMOVE_RECURSE "${install_dir}" "${consumer_build}" "${mod_root}")
 
 execute_process(
   COMMAND "${CMAKE_COMMAND}" --install "${JOGGLE_BUILD_DIR}"
@@ -74,21 +74,21 @@ if(NOT installed_cli)
 endif()
 
 set(installed_tensor
-  "${install_dir}/share/joggle/modules/tensor/module.joggle")
+  "${install_dir}/share/joggle/mods/tensor/mod.joggle")
 if(NOT EXISTS "${installed_tensor}")
-  message(FATAL_ERROR "installed tensor Module was not found")
+  message(FATAL_ERROR "installed tensor Mod was not found")
 endif()
 execute_process(
   COMMAND "${installed_cli}" check "${installed_tensor}"
   RESULT_VARIABLE tensor_cli_result
 )
 if(NOT tensor_cli_result EQUAL 0)
-  message(FATAL_ERROR "installed tensor Module failed validation")
+  message(FATAL_ERROR "installed tensor Mod failed validation")
 endif()
 
 execute_process(
   COMMAND "${installed_cli}" check
-          "${JOGGLE_SOURCE_DIR}/tests/consumer/module.joggle"
+          "${JOGGLE_SOURCE_DIR}/tests/consumer/mod.joggle"
   RESULT_VARIABLE cli_result
 )
 if(NOT cli_result EQUAL 0)
@@ -120,8 +120,8 @@ set(rebuild_build
   "${JOGGLE_BUILD_DIR}/test-${JOGGLE_INSTALL_CASE}-rebuild-build")
 file(REMOVE_RECURSE "${rebuild_source}" "${rebuild_build}")
 file(MAKE_DIRECTORY "${rebuild_source}")
-file(COPY_FILE "${JOGGLE_SOURCE_DIR}/tests/consumer/module.joggle"
-  "${rebuild_source}/module.joggle")
+file(COPY_FILE "${JOGGLE_SOURCE_DIR}/tests/consumer/mod.joggle"
+  "${rebuild_source}/mod.joggle")
 file(COPY_FILE "${JOGGLE_SOURCE_DIR}/tests/native_rebuild_consumer/CMakeLists.txt"
   "${rebuild_source}/CMakeLists.txt")
 execute_process(
@@ -142,34 +142,34 @@ execute_process(
 if(NOT first_rebuild_result EQUAL 0)
   message(FATAL_ERROR "initial native rebuild test build failed")
 endif()
-set(identity_source "${rebuild_build}/rebuild_native_module_identity.cpp")
+set(identity_source "${rebuild_build}/rebuild_native_mod_identity.cpp")
 file(READ "${identity_source}" first_identity)
-file(READ "${rebuild_source}/module.joggle" changed_module)
-set(original_module "${changed_module}")
+file(READ "${rebuild_source}/mod.joggle" changed_mod)
+set(original_mod "${changed_mod}")
 string(REPLACE "  fn keep" "  type extra();\n\n  fn keep"
-  changed_module "${changed_module}")
-if(changed_module STREQUAL original_module)
-  message(FATAL_ERROR "native rebuild fixture did not change its Module")
+  changed_mod "${changed_mod}")
+if(changed_mod STREQUAL original_mod)
+  message(FATAL_ERROR "native rebuild fixture did not change its Mod")
 endif()
 execute_process(COMMAND "${CMAKE_COMMAND}" -E sleep 1)
-file(WRITE "${rebuild_source}/module.joggle" "${changed_module}")
+file(WRITE "${rebuild_source}/mod.joggle" "${changed_mod}")
 execute_process(
   COMMAND "${CMAKE_COMMAND}" --build "${rebuild_build}"
   RESULT_VARIABLE second_rebuild_result
 )
 if(NOT second_rebuild_result EQUAL 0)
-  message(FATAL_ERROR "native did not rebuild after its Module changed")
+  message(FATAL_ERROR "native did not rebuild after its Mod changed")
 endif()
 file(READ "${identity_source}" second_identity)
 if(first_identity STREQUAL second_identity)
   message(FATAL_ERROR
-    "native identity did not change after canonical Module content changed")
+    "native identity did not change after canonical Mod content changed")
 endif()
 file(READ "${rebuild_build}/native-path.txt" rebuilt_native)
 string(STRIP "${rebuilt_native}" rebuilt_native)
 execute_process(
   COMMAND "${installed_cli}" check
-          "${JOGGLE_SOURCE_DIR}/tests/consumer/module.joggle"
+          "${JOGGLE_SOURCE_DIR}/tests/consumer/mod.joggle"
           --native "${rebuilt_native}"
   RESULT_VARIABLE stale_native_result
   ERROR_VARIABLE stale_native_error
@@ -178,7 +178,7 @@ string(FIND "${stale_native_error}" "targets 'external@1.0.0#"
   stale_native_position)
 if(stale_native_result EQUAL 0 OR stale_native_position EQUAL -1)
   message(FATAL_ERROR
-    "native rebuilt for changed Module was accepted by the old Module:\n"
+    "native rebuilt for changed Mod was accepted by the old Mod:\n"
     "${stale_native_error}")
 endif()
 
@@ -188,19 +188,19 @@ file(READ "${consumer_build}/consumer-path.txt" consumer_path)
 string(STRIP "${consumer_path}" consumer_path)
 execute_process(
   COMMAND "${installed_cli}" install
-          "${JOGGLE_SOURCE_DIR}/tests/consumer/module.joggle"
-          --native "${native_path}" --root "${module_root}"
+          "${JOGGLE_SOURCE_DIR}/tests/consumer/mod.joggle"
+          --native "${native_path}" --root "${mod_root}"
   RESULT_VARIABLE install_result
-  OUTPUT_VARIABLE installed_module
+  OUTPUT_VARIABLE installed_mod
   ERROR_VARIABLE install_error
 )
 if(NOT install_result EQUAL 0)
-  message(FATAL_ERROR "external Module installation failed:\n${install_error}")
+  message(FATAL_ERROR "external Mod installation failed:\n${install_error}")
 endif()
-string(STRIP "${installed_module}" installed_module)
+string(STRIP "${installed_mod}" installed_mod)
 
 execute_process(
-  COMMAND "${consumer_path}" "${installed_module}" "${module_root}"
+  COMMAND "${consumer_path}" "${installed_mod}" "${mod_root}"
   RESULT_VARIABLE run_result
 )
 if(NOT run_result EQUAL 0)

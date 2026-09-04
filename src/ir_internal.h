@@ -9,46 +9,39 @@
 
 namespace joggle::detail {
 
-struct FunctionIdentity;
-struct FunctionState;
+struct FnIdentity;
+struct FnState;
 
 // Internal access shared by the parser and compiler. Public edits expose the
-// same source-location field without exposing Function storage.
-struct FunctionAccess {
-  static const std::shared_ptr<FunctionIdentity>& owner(const Value& value);
-  static const std::shared_ptr<FunctionIdentity>&
-  owner(const Op& op);
-  static const std::shared_ptr<FunctionIdentity>& owner(const Block& block);
-  static const std::shared_ptr<const KnownValueStorage>&
-  known(const Value& value);
+// same source-location field without exposing Fn storage.
+struct FnAccess {
+  static const std::shared_ptr<FnIdentity>& owner(const Val& value);
+  static const std::shared_ptr<FnIdentity>& owner(const Op& op);
+  static const std::shared_ptr<FnIdentity>& owner(const Blk& block);
+  static const std::shared_ptr<const KnownValStorage>& known(const Val& value);
 
-  static std::uint64_t id(const Value& value);
+  static std::uint64_t id(const Val& value);
   static std::uint64_t id(const Op& op);
-  static std::uint64_t id(const Block& block);
-  static Value restore(std::shared_ptr<FunctionIdentity> function,
-                       std::uint64_t id,
-                       std::shared_ptr<const KnownValueStorage> known);
+  static std::uint64_t id(const Blk& block);
+  static Val restore(std::shared_ptr<FnIdentity> fn, std::uint64_t id,
+                     std::shared_ptr<const KnownValStorage> known);
 
-  static void locate(Function::Edit& edit, const Op& op,
-                     SourceRange source);
+  static void locate(Fn::Edit& edit, const Op& op, SourceRange source);
   static std::optional<SourceRange> location(const Op& op);
-  static std::optional<ParameterValue> known_value(const Value& value);
-  static std::size_t argument_parameter(const Op& op,
-                                        std::size_t argument);
-  static bool verify_structure(const Function& function,
+  static std::optional<ParamVal> known_value(const Val& value);
+  static std::size_t argument_parameter(const Op& op, std::size_t argument);
+  static bool verify_structure(const Fn& fn, Diagnostics& diagnostics);
+  static bool verify_contracts(const Fn& fn, Diagnostics& diagnostics);
+  static bool verify_contracts(const Fn& fn, Compiler& compiler,
                                Diagnostics& diagnostics);
-  static bool verify_contracts(const Function& function,
-                               Diagnostics& diagnostics);
-  static bool verify_contracts(const Function& function, Compiler& compiler,
-                               Diagnostics& diagnostics);
-  static void declare(Function& function, Module::FunctionDecl declaration,
+  static void declare(Fn& fn, Mod::FnDecl declaration,
                       std::vector<Type> argument_types,
                       std::vector<Type> result_types);
-  static void define(Function& function, std::vector<Type> argument_types,
+  static void define(Fn& fn, std::vector<Type> argument_types,
                      std::vector<Type> result_types);
-  static bool attach(Function& function, Module::FunctionDecl declaration,
-                     Module owner, Diagnostics& diagnostics);
-  static bool commit(Function::Edit& edit, Compiler& compiler,
+  static bool attach(Fn& fn, Mod::FnDecl declaration, Mod owner,
+                     Diagnostics& diagnostics);
+  static bool commit(Fn::Edit& edit, Compiler& compiler,
                      Diagnostics& diagnostics);
 };
 

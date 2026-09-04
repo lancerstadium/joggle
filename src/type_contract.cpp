@@ -3,8 +3,8 @@
 #include "call_resolution.h"
 #include "compiler_internal.h"
 #include "domain.h"
-#include "expression_syntax.h"
-#include "module_internal.h"
+#include "expr_syntax.h"
+#include "mod_internal.h"
 #include "prelude.h"
 #include "prelude_runtime.h"
 #include "type_internal.h"
@@ -23,19 +23,19 @@ namespace {
 
 using Bindings = KnownBindings;
 
-std::optional<Module::Expression> value_domain(const ParameterValue& value) {
+std::optional<Mod::Expr> value_domain(const ParamVal& value) {
   switch (value.kind()) {
-  case ParameterValue::Kind::I64:
-    return domain_expression(ValueKind::Integer);
-  case ParameterValue::Kind::F64:
-    return domain_expression(ValueKind::Real);
-  case ParameterValue::Kind::Boolean:
-    return domain_expression(ValueKind::Boolean);
-  case ParameterValue::Kind::String:
-    return domain_expression(ValueKind::String);
-  case ParameterValue::Kind::Type:
-    return domain_expression(ValueKind::Type);
-  case ParameterValue::Kind::List: {
+  case ParamVal::Kind::I64:
+    return domain_expression(ValKind::Integer);
+  case ParamVal::Kind::F64:
+    return domain_expression(ValKind::Real);
+  case ParamVal::Kind::Boolean:
+    return domain_expression(ValKind::Boolean);
+  case ParamVal::Kind::String:
+    return domain_expression(ValKind::String);
+  case ParamVal::Kind::Type:
+    return domain_expression(ValKind::Type);
+  case ParamVal::Kind::List: {
     const auto elements = value.elements();
     if (elements.empty()) {
       return std::nullopt;
@@ -49,15 +49,15 @@ std::optional<Module::Expression> value_domain(const ParameterValue& value) {
         return std::nullopt;
       }
     }
-    return Module::Expression::list_domain(std::move(*element));
+    return Mod::Expr::list_domain(std::move(*element));
   }
   }
   return std::nullopt;
 }
 
-std::optional<Module::Expression>
-known_domain(const Module::Expression& expression, const Bindings& bindings) {
-  using Kind = Module::Expression::Kind;
+std::optional<Mod::Expr> known_domain(const Mod::Expr& expression,
+                                      const Bindings& bindings) {
+  using Kind = Mod::Expr::Kind;
   if (expression.kind == Kind::Variable ||
       (expression.kind == Kind::Reference && expression.arguments.empty())) {
     const auto value = bindings.find(expression.text);
@@ -72,14 +72,14 @@ known_domain(const Module::Expression& expression, const Bindings& bindings) {
   if (expression.kind == Kind::Number) {
     return domain_expression(expression.text.find_first_of(".eE") ==
                                      std::string::npos
-                                 ? ValueKind::Integer
-                                 : ValueKind::Real);
+                                 ? ValKind::Integer
+                                 : ValKind::Real);
   }
   if (expression.kind == Kind::Boolean) {
-    return domain_expression(ValueKind::Boolean);
+    return domain_expression(ValKind::Boolean);
   }
   if (expression.kind == Kind::String) {
-    return domain_expression(ValueKind::String);
+    return domain_expression(ValKind::String);
   }
   if (expression.kind == Kind::List && !expression.arguments.empty()) {
     auto element = known_domain(expression.arguments.front(), bindings);
@@ -92,24 +92,24 @@ known_domain(const Module::Expression& expression, const Bindings& bindings) {
         return std::nullopt;
       }
     }
-    return Module::Expression::list_domain(std::move(*element));
+    return Mod::Expr::list_domain(std::move(*element));
   }
   return std::nullopt;
 }
 
 struct Environment {
-  using Evaluator = std::function<std::optional<ParameterValue>(
-      Module::FunctionDecl, std::span<const ParameterValue>)>;
-  using EvaluationCheck = std::function<bool(const Module::FunctionDecl&)>;
-  using FunctionLookup = std::function<std::vector<Module::FunctionDecl>(
-      std::string_view, std::string_view)>;
-  using OperatorLookup = std::function<std::vector<Module::FunctionDecl>(
-      std::string_view, std::string_view, Module::FunctionDecl::Fixity)>;
-  std::function<std::optional<Module>(std::string_view)> module;
-  std::function<std::optional<Type>(const Module::TypeDecl&,
-                                    std::span<const ParameterValue>)>
+  using Evaluator = std::function<std::optional<ParamVal>(
+      Mod::FnDecl, std::span<const ParamVal>)>;
+  using EvaluationCheck = std::function<bool(const Mod::FnDecl&)>;
+  using FnLookup = std::function<std::vector<Mod::FnDecl>(std::string_view,
+                                                          std::string_view)>;
+  using OperatorLookup = std::function<std::vector<Mod::FnDecl>(
+      std::string_view, std::string_view, Mod::FnDecl::Fixity)>;
+  std::function<std::optional<Mod>(std::string_view)> mod;
+  std::function<std::optional<Type>(const Mod::TypeDecl&,
+                                    std::span<const ParamVal>)>
       type;
-  FunctionLookup functions;
+  FnLookup fns;
   OperatorLookup operators;
   EvaluationCheck can_evaluate;
   Evaluator evaluate;
@@ -118,95 +118,88 @@ struct Environment {
 };
 
 Environment environment(Compiler& compiler, bool allow_host_evaluation = true) {
-  return {[&](std::string_view name) { return compiler.module(name); },
-          [&](const Module::TypeDecl& schema,
-              std::span<const ParameterValue> parameters) {
-            return CompilerAccess::make(
-                compiler, schema, std::span<const ParameterValue>(parameters));
-          },
-          [&](std::string_view owner, std::string_view reference) {
-            return visible_functions(compiler, owner, reference);
-          },
-          [&](std::string_view owner, std::string_view symbol,
-              Module::FunctionDecl::Fixity fixity) {
-            return visible_operators(compiler, owner, symbol, fixity);
-          },
+  return {
+      [&](std::string_view name) { return compiler.mod(name); },
+      [&](const Mod::TypeDecl& schema, std::span<const ParamVal> parameters) {
+        return CompilerAccess::make(compiler, schema,
+                                    std::span<const ParamVal>(parameters));
+      },
+      [&](std::string_view owner, std::string_view reference) {
+        return visible_fns(compiler, owner, reference);
+      },
+      [&](std::string_view owner, std::string_view symbol,
+          Mod::FnDecl::Fixity fixity) {
+        return visible_operators(compiler, owner, symbol, fixity);
+      },
+      [&,
+       under_residual_control = !allow_host_evaluation](const Mod::FnDecl& fn) {
+        return CompilerAccess::can_evaluate(compiler, fn,
+                                            under_residual_control);
+      },
+      Environment::Evaluator{
           [&, under_residual_control = !allow_host_evaluation](
-              const Module::FunctionDecl& function) {
-            return CompilerAccess::can_evaluate(compiler, function,
-                                                under_residual_control);
-          },
-          Environment::Evaluator{
-              [&, under_residual_control = !allow_host_evaluation](
-                  Module::FunctionDecl function,
-                  std::span<const ParameterValue> arguments) {
-                return CompilerAccess::evaluate(compiler, std::move(function),
-                                                arguments,
-                                                under_residual_control);
-              }},
-          !allow_host_evaluation,
-          CompilerAccess::limits(compiler)};
+              Mod::FnDecl fn, std::span<const ParamVal> arguments) {
+            return CompilerAccess::evaluate(compiler, std::move(fn), arguments,
+                                            under_residual_control);
+          }},
+      !allow_host_evaluation,
+      CompilerAccess::limits(compiler)};
 }
 
-Environment environment(std::span<const Module> modules,
-                        Diagnostics& diagnostics) {
-  const auto find = [modules](std::string_view name) -> std::optional<Module> {
-    const auto module =
-        std::find_if(modules.begin(), modules.end(),
-                     [&](const Module& value) { return value.name() == name; });
-    return module == modules.end() ? std::nullopt
-                                   : std::optional<Module>{*module};
+Environment environment(std::span<const Mod> mods, Diagnostics& diagnostics) {
+  const auto find = [mods](std::string_view name) -> std::optional<Mod> {
+    const auto mod =
+        std::find_if(mods.begin(), mods.end(),
+                     [&](const Mod& value) { return value.name() == name; });
+    return mod == mods.end() ? std::nullopt : std::optional<Mod>{*mod};
   };
-  return {
-      find,
-      [modules, &diagnostics](
-          const Module::TypeDecl& schema,
-          std::span<const ParameterValue> parameters) -> std::optional<Type> {
-        auto values =
-            validate_parameters(schema.symbol().qualified_name(),
-                                schema.parameters(), parameters, diagnostics);
-        if (!values) {
-          return std::nullopt;
-        }
-        auto derived =
-            resolve_derived_parameters(modules, schema, *values, diagnostics);
-        return derived ? std::optional<Type>{TypeAccess::make(
+  return {find,
+          [mods, &diagnostics](
+              const Mod::TypeDecl& schema,
+              std::span<const ParamVal> parameters) -> std::optional<Type> {
+            auto values = validate_parameters(schema.symbol().qualified_name(),
+                                              schema.parameters(), parameters,
+                                              diagnostics);
+            if (!values) {
+              return std::nullopt;
+            }
+            auto derived =
+                resolve_derived_parameters(mods, schema, *values, diagnostics);
+            return derived
+                       ? std::optional<Type>{TypeAccess::make(
                              schema, std::move(*values), std::move(*derived))}
                        : std::nullopt;
-      },
-      [modules](std::string_view owner, std::string_view reference) {
-        return visible_functions(modules, owner, reference);
-      },
-      [modules](std::string_view owner, std::string_view symbol,
-                Module::FunctionDecl::Fixity fixity) {
-        return visible_operators(modules, owner, symbol, fixity);
-      },
-      [](const Module::FunctionDecl& function) {
-        return is_prelude_primitive(function);
-      },
-      [&diagnostics](Module::FunctionDecl function,
-                     std::span<const ParameterValue> arguments) {
-        const Compiler::EvaluationLimits limits;
-        return evaluate_prelude_primitive(function, arguments, diagnostics,
-                                          limits.steps);
-      },
-      false,
-      {}};
+          },
+          [mods](std::string_view owner, std::string_view reference) {
+            return visible_fns(mods, owner, reference);
+          },
+          [mods](std::string_view owner, std::string_view symbol,
+                 Mod::FnDecl::Fixity fixity) {
+            return visible_operators(mods, owner, symbol, fixity);
+          },
+          [](const Mod::FnDecl& fn) { return is_prelude_primitive(fn); },
+          [&diagnostics](Mod::FnDecl fn, std::span<const ParamVal> arguments) {
+            const Compiler::EvaluationLimits limits;
+            return evaluate_prelude_primitive(fn, arguments, diagnostics,
+                                              limits.steps);
+          },
+          false,
+          {}};
 }
 
 class Solver {
 public:
-  Solver(Environment environment, const Module::FunctionDecl& schema,
+  Solver(Environment environment, const Mod::FnDecl& schema,
          Diagnostics& diagnostics, std::optional<SourceRange> source)
       : limits_(environment.limits), environment_(std::move(environment)),
         schema_(&schema), diagnostics_(diagnostics), source_(std::move(source)),
-        contract_(&FunctionTypeAccess::get(schema)),
-        scope_(schema.symbol().module_name()) {}
+        contract_(&FnTypeAccess::get(schema)),
+        scope_(schema.symbol().mod_name()) {}
 
-  Solver(Environment environment, const Module::TypeDecl& schema,
+  Solver(Environment environment, const Mod::TypeDecl& schema,
          Diagnostics& diagnostics)
       : limits_(environment.limits), environment_(std::move(environment)),
-        diagnostics_(diagnostics), scope_(schema.symbol().module_name()) {}
+        diagnostics_(diagnostics), scope_(schema.symbol().mod_name()) {}
 
   Solver(Environment environment, std::string scope, Diagnostics& diagnostics,
          std::optional<SourceRange> source)
@@ -214,16 +207,15 @@ public:
         diagnostics_(diagnostics), source_(std::move(source)),
         scope_(std::move(scope)) {}
 
-  std::optional<ParameterValue>
-  evaluate_known(const Module::Expression& expression,
-                 const Module::ParameterDecl& expected,
-                 const Bindings& bindings) {
+  std::optional<ParamVal> evaluate_known(const Mod::Expr& expression,
+                                         const Mod::ParamDecl& expected,
+                                         const Bindings& bindings) {
     return evaluate(expression, expected, bindings);
   }
 
   std::optional<CallTypes>
   infer(std::span<const Type> arguments,
-        std::span<const std::optional<ParameterValue>> known_arguments,
+        std::span<const std::optional<ParamVal>> known_arguments,
         std::span<const std::optional<Type>> expected) {
     std::vector<std::optional<Type>> values;
     values.reserve(arguments.size());
@@ -235,17 +227,17 @@ public:
 
   std::optional<CallTypes>
   infer_partial(std::span<const std::optional<Type>> arguments,
-                std::span<const std::optional<ParameterValue>> known_arguments,
+                std::span<const std::optional<ParamVal>> known_arguments,
                 std::span<const std::optional<Type>> expected) {
     if (schema_ == nullptr || contract_ == nullptr) {
-      report("call solver has no function declaration");
+      report("call solver has no fn declaration");
       return std::nullopt;
     }
     const auto compiler_ports = compiler_inputs(*schema_);
     const auto input_ports = value_inputs(*schema_);
     const auto result_ports = value_results(*schema_);
     if (known_arguments.size() != compiler_ports.size()) {
-      report("call Known-argument map does not match its function");
+      report("call Known-argument map does not match its fn");
       return std::nullopt;
     }
     Bindings bindings;
@@ -254,18 +246,18 @@ public:
       const std::size_t count =
           input.variadic ? arguments.size() - argument : 1U;
       if (argument + count > arguments.size()) {
-        report("function call has too few arguments");
+        report("fn call has too few arguments");
         return std::nullopt;
       }
       for (std::size_t item = 0; item < count; ++item) {
         const auto& actual = arguments[argument++];
-        if (actual && !unify(input.domain, ParameterValue(*actual), bindings)) {
+        if (actual && !unify(input.domain, ParamVal(*actual), bindings)) {
           return std::nullopt;
         }
       }
     }
     if (argument != arguments.size()) {
-      report("function call has too many arguments");
+      report("fn call has too many arguments");
       return std::nullopt;
     }
     std::size_t known_index = 0;
@@ -275,20 +267,19 @@ public:
       if (is_value_port(input)) {
         continue;
       }
-      std::optional<ParameterValue> actual = known_arguments[known_index++];
+      std::optional<ParamVal> actual = known_arguments[known_index++];
       if (!actual && input.default_value) {
         actual = parameter_default(input);
       }
       if (!actual) {
         if (!contract_->bindings.empty() && contract_->bindings[input_index]) {
-          report("function call is missing Known argument '" + input.name +
-                 "'");
+          report("fn call is missing Known argument '" + input.name + "'");
           return std::nullopt;
         }
         continue;
       }
       if (!matches_parameter(input, *actual)) {
-        report("function call Known argument '" + input.name +
+        report("fn call Known argument '" + input.name +
                "' has the wrong domain");
         return std::nullopt;
       }
@@ -298,19 +289,18 @@ public:
       }
     }
     if (expected.size() != result_ports.size()) {
-      report("function call result count does not match its declaration");
+      report("fn call result count does not match its declaration");
       return std::nullopt;
     }
     for (std::size_t index = 0; index < expected.size(); ++index) {
-      if (expected[index] &&
-          !unify(result_ports[index].domain, ParameterValue(*expected[index]),
-                 bindings)) {
+      if (expected[index] && !unify(result_ports[index].domain,
+                                    ParamVal(*expected[index]), bindings)) {
         return std::nullopt;
       }
     }
 
-    const Module::ParameterDecl type_parameter{
-        "result", domain_expression(ValueKind::Type), false, std::nullopt};
+    const Mod::ParamDecl type_parameter{
+        "result", domain_expression(ValKind::Type), false, std::nullopt};
     CallTypes resolved;
     resolved.arguments.reserve(arguments.size());
     argument = 0;
@@ -342,9 +332,8 @@ public:
     return resolved;
   }
 
-  std::optional<std::vector<ParameterValue>>
-  derive(const Module::TypeDecl& schema,
-         std::span<const ParameterValue> parameters) {
+  std::optional<std::vector<ParamVal>>
+  derive(const Mod::TypeDecl& schema, std::span<const ParamVal> parameters) {
     if (parameters.size() != schema.parameters().size()) {
       report("type instance has an invalid parameter binding");
       return std::nullopt;
@@ -355,11 +344,11 @@ public:
           schema.parameters()[index].name,
           KnownBinding{parameters[index], schema.parameters()[index].domain});
     }
-    std::vector<ParameterValue> values;
+    std::vector<ParamVal> values;
     values.reserve(schema.derived_parameters().size());
     for (const auto& derived : schema.derived_parameters()) {
-      const Module::ParameterDecl field{derived.name, derived.domain, false,
-                                        std::nullopt};
+      const Mod::ParamDecl field{derived.name, derived.domain, false,
+                                 std::nullopt};
       auto value = evaluate(derived.value, field, bindings);
       if (!value) {
         return std::nullopt;
@@ -381,11 +370,11 @@ private:
     if (dot != std::string_view::npos) {
       const std::string_view prefix = reference.substr(0, dot);
       owner = prefix;
-      const auto scope = environment_.module(scope_);
+      const auto scope = environment_.mod(scope_);
       if (scope) {
         const auto imported =
             std::find_if(scope->imports().begin(), scope->imports().end(),
-                         [&](const Module::Import& import) {
+                         [&](const Mod::Import& import) {
                            return import.prefix() == prefix;
                          });
         if (imported != scope->imports().end()) {
@@ -395,18 +384,18 @@ private:
     }
     const std::string_view local =
         dot == std::string_view::npos ? reference : reference.substr(dot + 1U);
-    const auto module = environment_.module(owner);
-    if (!module) {
-      report("type contract references unknown module '" + std::string(owner) +
+    const auto mod = environment_.mod(owner);
+    if (!mod) {
+      report("type contract references unknown mod '" + std::string(owner) +
              "'");
       return std::nullopt;
     }
     std::optional<Declaration> result;
-    if constexpr (std::is_same_v<Declaration, Module::TypeDecl>) {
-      result = module->type(local);
+    if constexpr (std::is_same_v<Declaration, Mod::TypeDecl>) {
+      result = mod->type(local);
     } else {
-      static_assert(std::is_same_v<Declaration, Module::FunctionDecl>);
-      result = module->function(local);
+      static_assert(std::is_same_v<Declaration, Mod::FnDecl>);
+      result = mod->fn(local);
     }
     if (!result) {
       report("type contract references unknown declaration '" +
@@ -415,40 +404,39 @@ private:
     return result;
   }
 
-  std::optional<ParameterValue>
-  expression_literal(const TypeExpression& expression, ValueKind expected) {
-    using Kind = TypeExpression::Kind;
-    if (expected == ValueKind::Integer && expression.kind == Kind::Number) {
+  std::optional<ParamVal> expression_literal(const TypeExpr& expression,
+                                             ValKind expected) {
+    using Kind = TypeExpr::Kind;
+    if (expected == ValKind::Integer && expression.kind == Kind::Number) {
       std::int64_t value = 0;
       const auto parsed = std::from_chars(
           expression.text.data(),
           expression.text.data() + expression.text.size(), value);
       if (parsed.ec == std::errc{} &&
           parsed.ptr == expression.text.data() + expression.text.size()) {
-        return ParameterValue(value);
+        return ParamVal(value);
       }
-    } else if (expected == ValueKind::Real && expression.kind == Kind::Number) {
+    } else if (expected == ValKind::Real && expression.kind == Kind::Number) {
       double value = 0.0;
       std::istringstream input(expression.text);
       input.imbue(std::locale::classic());
       input >> value;
       if (input && input.peek() == std::char_traits<char>::eof()) {
-        return ParameterValue(value);
+        return ParamVal(value);
       }
-    } else if (expected == ValueKind::Boolean &&
+    } else if (expected == ValKind::Boolean &&
                expression.kind == Kind::Boolean) {
-      return ParameterValue(expression.text == "true");
-    } else if (expected == ValueKind::String &&
-               expression.kind == Kind::String) {
-      return ParameterValue(expression.text);
+      return ParamVal(expression.text == "true");
+    } else if (expected == ValKind::String && expression.kind == Kind::String) {
+      return ParamVal(expression.text);
     }
     report("type expression literal has the wrong kind");
     return std::nullopt;
   }
 
-  std::optional<ParameterValue> evaluate_derived_parameter(
+  std::optional<ParamVal> evaluate_derived_parameter(
       const GenericDefinition& generic, std::string_view field_name,
-      const Module::ParameterDecl& expected, const Bindings& bindings) {
+      const Mod::ParamDecl& expected, const Bindings& bindings) {
     const auto bound = bindings.find(generic.name);
     const Type* type =
         bound == bindings.end() ? nullptr : bound->second.value.as_type();
@@ -460,8 +448,7 @@ private:
     }
     const auto derived = std::find_if(
         type->schema().derived_parameters().begin(),
-        type->schema().derived_parameters().end(),
-        [&](const auto& candidate) {
+        type->schema().derived_parameters().end(), [&](const auto& candidate) {
           return candidate.name == field_name &&
                  candidate.domain == expected.domain;
         });
@@ -476,9 +463,8 @@ private:
         const auto index = static_cast<std::size_t>(
             std::distance(type->schema().parameters().begin(), parameter));
         const auto values = TypeAccess::parameters(*type);
-        return index < values.size()
-                   ? std::optional<ParameterValue>{values[index]}
-                   : std::nullopt;
+        return index < values.size() ? std::optional<ParamVal>{values[index]}
+                                     : std::nullopt;
       }
       report("type '" + type->schema().symbol().qualified_name() +
              "' has no derived parameter '" + std::string(field_name) + "'");
@@ -506,19 +492,20 @@ private:
     }
     calls_.push_back(identity);
     const std::string caller_scope = scope_;
-    scope_ = std::string(type->schema().symbol().module_name());
-    const Module::ParameterDecl field{derived->name, derived->domain, false,
-                                      std::nullopt};
+    scope_ = std::string(type->schema().symbol().mod_name());
+    const Mod::ParamDecl field{derived->name, derived->domain, false,
+                               std::nullopt};
     auto value = evaluate(derived->value, field, arguments);
     scope_ = caller_scope;
     calls_.pop_back();
     return value;
   }
 
-  std::vector<Module::FunctionDecl> operator_declarations(
-      std::string_view symbol, Module::FunctionDecl::Fixity fixity,
-      const Module::ParameterDecl& expected, std::size_t arity) {
-    std::vector<Module::FunctionDecl> result;
+  std::vector<Mod::FnDecl> operator_declarations(std::string_view symbol,
+                                                 Mod::FnDecl::Fixity fixity,
+                                                 const Mod::ParamDecl& expected,
+                                                 std::size_t arity) {
+    std::vector<Mod::FnDecl> result;
     for (const auto& candidate :
          environment_.operators(scope_, symbol, fixity)) {
       const auto known_inputs = compiler_inputs(candidate);
@@ -534,14 +521,13 @@ private:
     return result;
   }
 
-  std::optional<ParameterValue>
-  evaluate_function(const Module::FunctionDecl& function,
-                    std::span<const ParameterValue> values,
-                    const Bindings& arguments) {
-    const std::string identity = function.symbol().stable_name();
+  std::optional<ParamVal> evaluate_fn(const Mod::FnDecl& fn,
+                                      std::span<const ParamVal> values,
+                                      const Bindings& arguments) {
+    const std::string identity = fn.symbol().stable_name();
     if (std::find(calls_.begin(), calls_.end(), identity) != calls_.end()) {
-      report("recursive compile-time call to '" +
-             function.symbol().qualified_name() + "'");
+      report("recursive compile-time call to '" + fn.symbol().qualified_name() +
+             "'");
       return std::nullopt;
     }
     calls_.push_back(identity);
@@ -551,21 +537,20 @@ private:
     } guard{calls_};
 
     if (environment_.require_hermetic_host_evaluation &&
-        (!environment_.can_evaluate || !environment_.can_evaluate(function))) {
-      report("host implementation of function '" +
-             function.symbol().qualified_name() +
+        (!environment_.can_evaluate || !environment_.can_evaluate(fn))) {
+      report("host implementation of fn '" + fn.symbol().qualified_name() +
              "' is guarded and cannot execute under Residual control");
       return std::nullopt;
     }
     if (environment_.evaluate &&
-        (!environment_.can_evaluate || environment_.can_evaluate(function))) {
-      return environment_.evaluate(function, values);
+        (!environment_.can_evaluate || environment_.can_evaluate(fn))) {
+      return environment_.evaluate(fn, values);
     }
 
-    const Module::Expression* body = ModuleAccess::expression(function);
-    const auto results = compiler_results(function);
+    const Mod::Expr* body = ModAccess::expression(fn);
+    const auto results = compiler_results(fn);
     if (body == nullptr || results.size() != 1U) {
-      report("compile-time function '" + function.symbol().qualified_name() +
+      report("compile-time fn '" + fn.symbol().qualified_name() +
              "' has no available evaluator");
       return std::nullopt;
     }
@@ -574,13 +559,13 @@ private:
       std::string caller;
       ~ScopeGuard() { scope = std::move(caller); }
     } scope_guard{scope_, scope_};
-    scope_ = std::string(function.symbol().module_name());
+    scope_ = std::string(fn.symbol().mod_name());
     return evaluate(*body, results.front(), arguments);
   }
 
-  std::optional<ParameterValue> evaluate(const TypeExpression& expression,
-                                         const Module::ParameterDecl& expected,
-                                         const Bindings& bindings) {
+  std::optional<ParamVal> evaluate(const TypeExpr& expression,
+                                   const Mod::ParamDecl& expected,
+                                   const Bindings& bindings) {
     if (steps_ >= limits_.steps) {
       if (!budget_reported_) {
         report("compile-time evaluation step limit exceeded");
@@ -601,25 +586,25 @@ private:
       std::size_t& depth;
       ~DepthGuard() { --depth; }
     } guard{depth_};
-    using Kind = TypeExpression::Kind;
+    using Kind = TypeExpr::Kind;
     const auto domain = kernel_domain(expected.domain);
     if (!domain) {
       report("unknown parameter domain for '" + expected.name + "'");
       return std::nullopt;
     }
-    if (expression.kind == Kind::FunctionType) {
+    if (expression.kind == Kind::FnType) {
       const auto signature = callable_type(expression);
-      if (domain->list || domain->element != ValueKind::Type || !signature) {
-        report("malformed function type expression");
+      if (domain->list || domain->element != ValKind::Type || !signature) {
+        report("malformed fn type expression");
         return std::nullopt;
       }
-      const Module::ParameterDecl type_element{
-          "signature element", domain_expression(ValueKind::Type), false,
-          std::nullopt};
-      std::vector<ParameterValue> parameters;
+      const Mod::ParamDecl type_element{"signature element",
+                                        domain_expression(ValKind::Type), false,
+                                        std::nullopt};
+      std::vector<ParamVal> parameters;
       parameters.reserve(2U);
       for (const auto side : {signature->inputs, signature->results}) {
-        std::vector<ParameterValue> types;
+        std::vector<ParamVal> types;
         types.reserve(side.size());
         for (const auto& element : side) {
           auto type = evaluate(element, type_element, bindings);
@@ -628,13 +613,12 @@ private:
           }
           types.push_back(std::move(*type));
         }
-        parameters.push_back(ParameterValue::list(std::move(types)));
+        parameters.push_back(ParamVal::list(std::move(types)));
       }
-      auto callable = declaration<Module::TypeDecl>("prelude.callable");
+      auto callable = declaration<Mod::TypeDecl>("prelude.callable");
       auto value = callable ? environment_.type(*callable, parameters)
                             : std::optional<Type>{};
-      return value ? std::optional<ParameterValue>{ParameterValue(*value)}
-                   : std::nullopt;
+      return value ? std::optional<ParamVal>{ParamVal(*value)} : std::nullopt;
     }
     if (expression.kind == Kind::Variable) {
       const auto found = bindings.find(expression.text);
@@ -656,9 +640,9 @@ private:
         report("malformed compile-time if expression");
         return std::nullopt;
       }
-      const Module::ParameterDecl condition{
-          "condition", domain_expression(ValueKind::Boolean), false,
-          std::nullopt};
+      const Mod::ParamDecl condition{"condition",
+                                     domain_expression(ValKind::Boolean), false,
+                                     std::nullopt};
       auto selected = evaluate(expression.arguments[0], condition, bindings);
       const bool* value = selected ? selected->as_bool() : nullptr;
       if (value == nullptr) {
@@ -691,9 +675,9 @@ private:
         report("expected a list-valued type expression");
         return std::nullopt;
       }
-      Module::ParameterDecl element = expected;
+      Mod::ParamDecl element = expected;
       element.domain = domain_expression(domain->element);
-      std::vector<ParameterValue> values;
+      std::vector<ParamVal> values;
       for (const auto& argument : expression.arguments) {
         auto value = evaluate(argument, element, bindings);
         if (!value) {
@@ -701,7 +685,7 @@ private:
         }
         values.push_back(std::move(*value));
       }
-      return ParameterValue::list(std::move(values));
+      return ParamVal::list(std::move(values));
     }
     const bool operator_expression = expression.kind == Kind::Prefix ||
                                      expression.kind == Kind::Infix ||
@@ -712,16 +696,15 @@ private:
         report("malformed operator expression");
         return std::nullopt;
       }
-      const auto fixity = expression.kind == Kind::Prefix
-                              ? Module::FunctionDecl::Fixity::Prefix
-                          : expression.kind == Kind::Postfix
-                              ? Module::FunctionDecl::Fixity::Postfix
-                              : Module::FunctionDecl::Fixity::Infix;
+      const auto fixity =
+          expression.kind == Kind::Prefix    ? Mod::FnDecl::Fixity::Prefix
+          : expression.kind == Kind::Postfix ? Mod::FnDecl::Fixity::Postfix
+                                             : Mod::FnDecl::Fixity::Infix;
       auto overloads =
           operator_declarations(expression.text, fixity, expected, arity);
       overloads.erase(
           std::remove_if(overloads.begin(), overloads.end(),
-                         [&](const Module::FunctionDecl& candidate) {
+                         [&](const Mod::FnDecl& candidate) {
                            const auto inputs = compiler_inputs(candidate);
                            for (std::size_t index = 0; index < arity; ++index) {
                              const auto actual = known_domain(
@@ -738,11 +721,11 @@ private:
         return std::nullopt;
       }
       if (overloads.size() == 1U) {
-        const auto function = overloads.front();
+        const auto fn = overloads.front();
         Bindings arguments;
-        std::vector<ParameterValue> values;
+        std::vector<ParamVal> values;
         values.reserve(arity);
-        const auto inputs = compiler_inputs(function);
+        const auto inputs = compiler_inputs(fn);
         for (std::size_t index = 0; index < arity; ++index) {
           auto value =
               evaluate(expression.arguments[index], inputs[index], bindings);
@@ -754,19 +737,18 @@ private:
               inputs[index].name,
               KnownBinding{std::move(*value), inputs[index].domain});
         }
-        return evaluate_function(function, values, arguments);
+        return evaluate_fn(fn, values, arguments);
       }
       report("no matching compile-time operator '" + expression.text + "'");
       return std::nullopt;
     }
     if (expression.kind == Kind::Call) {
       std::vector<CallCandidate> candidates;
-      for (const auto& function :
-           environment_.functions(scope_, expression.text)) {
-        auto candidate = call_candidate(function, expression);
-        const auto results = compiler_results(function);
-        if (!candidate || !value_inputs(function).empty() ||
-            !value_results(function).empty() || results.size() != 1U ||
+      for (const auto& fn : environment_.fns(scope_, expression.text)) {
+        auto candidate = call_candidate(fn, expression);
+        const auto results = compiler_results(fn);
+        if (!candidate || !value_inputs(fn).empty() ||
+            !value_results(fn).empty() || results.size() != 1U ||
             results.front().domain != expected.domain) {
           continue;
         }
@@ -776,8 +758,7 @@ private:
           const auto actual =
               known_domain(expression.arguments[index], bindings);
           if (actual &&
-              function.inputs()[candidate->parameters[index]].domain !=
-                  *actual) {
+              fn.inputs()[candidate->parameters[index]].domain != *actual) {
             accepts_known_domains = false;
             break;
           }
@@ -792,18 +773,18 @@ private:
         return std::nullopt;
       }
 
-      std::vector<ParameterValue> supplied;
+      std::vector<ParamVal> supplied;
       supplied.reserve(expression.arguments.size());
       for (std::size_t index = 0; index < expression.arguments.size();
            ++index) {
         const auto& first = candidates.front();
         const auto& first_parameter =
-            first.function.inputs()[first.parameters[index]];
+            first.fn.inputs()[first.parameters[index]];
         const bool common = std::all_of(
             candidates.begin() + 1, candidates.end(),
             [&](const CallCandidate& current) {
-              return current.function.inputs()[current.parameters[index]]
-                         .domain == first_parameter.domain;
+              return current.fn.inputs()[current.parameters[index]].domain ==
+                     first_parameter.domain;
             });
         if (!common) {
           report("compile-time call to '" + expression.text +
@@ -824,7 +805,7 @@ private:
               [&](const CallCandidate& candidate) {
                 for (std::size_t index = 0; index < supplied.size(); ++index) {
                   const auto& parameter =
-                      candidate.function.inputs()[candidate.parameters[index]];
+                      candidate.fn.inputs()[candidate.parameters[index]];
                   if (!matches_parameter(parameter, supplied[index])) {
                     return true;
                   }
@@ -843,13 +824,13 @@ private:
       }
 
       const auto& selected = candidates.front();
-      const auto inputs = selected.function.inputs();
-      std::vector<std::optional<ParameterValue>> bound(inputs.size());
+      const auto inputs = selected.fn.inputs();
+      std::vector<std::optional<ParamVal>> bound(inputs.size());
       for (std::size_t index = 0; index < supplied.size(); ++index) {
         bound[selected.parameters[index]] = std::move(supplied[index]);
       }
       Bindings arguments;
-      std::vector<ParameterValue> values;
+      std::vector<ParamVal> values;
       values.reserve(inputs.size());
       for (std::size_t index = 0; index < inputs.size(); ++index) {
         if (!bound[index] && inputs[index].default_value) {
@@ -866,7 +847,7 @@ private:
             KnownBinding{std::move(*bound[index]), inputs[index].domain});
       }
 
-      return evaluate_function(selected.function, values, arguments);
+      return evaluate_fn(selected.fn, values, arguments);
     }
     if (expression.kind == Kind::Number || expression.kind == Kind::Boolean ||
         expression.kind == Kind::String) {
@@ -876,8 +857,8 @@ private:
       report("invalid type expression");
       return std::nullopt;
     }
-    if (domain->element == ValueKind::Type) {
-      auto target = declaration<Module::TypeDecl>(expression.text);
+    if (domain->element == ValKind::Type) {
+      auto target = declaration<Mod::TypeDecl>(expression.text);
       if (!target ||
           expression.arguments.size() > target->parameters().size()) {
         if (target) {
@@ -885,7 +866,7 @@ private:
         }
         return std::nullopt;
       }
-      std::vector<ParameterValue> parameters;
+      std::vector<ParamVal> parameters;
       for (std::size_t index = 0; index < expression.arguments.size();
            ++index) {
         auto value = evaluate(expression.arguments[index],
@@ -896,15 +877,14 @@ private:
         parameters.push_back(std::move(*value));
       }
       auto value = environment_.type(*target, parameters);
-      return value ? std::optional<ParameterValue>{ParameterValue(*value)}
-                   : std::nullopt;
+      return value ? std::optional<ParamVal>{ParamVal(*value)} : std::nullopt;
     }
     return expression_literal(expression, domain->element);
   }
 
-  bool unify(const TypeExpression& expression, const ParameterValue& actual,
+  bool unify(const TypeExpr& expression, const ParamVal& actual,
              Bindings& bindings) {
-    using Kind = TypeExpression::Kind;
+    using Kind = TypeExpr::Kind;
     if (expression.kind == Kind::Variable) {
       const auto [found, inserted] = bindings.emplace(
           expression.text, KnownBinding{actual, value_domain(actual)});
@@ -915,20 +895,20 @@ private:
       }
       return true;
     }
-    if (expression.kind == Kind::FunctionType) {
+    if (expression.kind == Kind::FnType) {
       const Type* callable = actual.as_type();
       const auto signature = callable_type(expression);
       if (callable == nullptr || !signature) {
-        report("function type does not match");
+        report("fn type does not match");
         return false;
       }
-      const Module::Symbol symbol = callable->schema().symbol();
+      const Mod::Symbol symbol = callable->schema().symbol();
       const auto parameters = TypeAccess::parameters(*callable);
-      if (symbol.module_name() != prelude_module_name ||
+      if (symbol.mod_name() != prelude_mod_name ||
           symbol.local_name() != "callable" || parameters.size() != 2U ||
-          parameters[0].kind() != ParameterValue::Kind::List ||
-          parameters[1].kind() != ParameterValue::Kind::List) {
-        report("function type does not match");
+          parameters[0].kind() != ParamVal::Kind::List ||
+          parameters[1].kind() != ParamVal::Kind::List) {
+        report("fn type does not match");
         return false;
       }
       bool valid = true;
@@ -937,7 +917,7 @@ private:
         const auto expected_types = expected_sides[side];
         const auto actual_types = parameters[side].elements();
         if (expected_types.size() != actual_types.size()) {
-          report("function type has the wrong arity");
+          report("fn type has the wrong arity");
           valid = false;
           continue;
         }
@@ -949,7 +929,7 @@ private:
       return valid;
     }
     if (expression.kind == Kind::List) {
-      if (actual.kind() != ParameterValue::Kind::List ||
+      if (actual.kind() != ParamVal::Kind::List ||
           actual.elements().size() != expression.arguments.size()) {
         report("list type pattern does not match");
         return false;
@@ -963,7 +943,7 @@ private:
       }
       return valid;
     }
-    const Module::Expression& computed_expression =
+    const Mod::Expr& computed_expression =
         expression.kind == Kind::Evaluate && expression.arguments.size() == 1U
             ? expression.arguments.front()
             : expression;
@@ -991,9 +971,8 @@ private:
                           computed_expression.kind == Kind::Infix ||
                           computed_expression.kind == Kind::Postfix;
     if (computed) {
-      Module::ParameterDecl expected{"computed",
-                                     domain_expression(ValueKind::Integer),
-                                     false, std::nullopt};
+      Mod::ParamDecl expected{"computed", domain_expression(ValKind::Integer),
+                              false, std::nullopt};
       if (field_generic != generic_end) {
         const auto actual_domain = value_domain(actual);
         if (!actual_domain) {
@@ -1019,12 +998,12 @@ private:
                                });
         if (generic == generic_end) {
           std::vector<CallCandidate> candidates;
-          for (const auto& function :
-               environment_.functions(scope_, computed_expression.text)) {
-            auto candidate = call_candidate(function, computed_expression);
-            const auto results = compiler_results(function);
-            if (!candidate || !value_inputs(function).empty() ||
-                !value_results(function).empty() || results.size() != 1U ||
+          for (const auto& fn :
+               environment_.fns(scope_, computed_expression.text)) {
+            auto candidate = call_candidate(fn, computed_expression);
+            const auto results = compiler_results(fn);
+            if (!candidate || !value_inputs(fn).empty() ||
+                !value_results(fn).empty() || results.size() != 1U ||
                 !matches_parameter(results.front(), actual)) {
               continue;
             }
@@ -1034,8 +1013,7 @@ private:
               const auto domain =
                   known_domain(computed_expression.arguments[index], bindings);
               if (domain &&
-                  function.inputs()[candidate->parameters[index]].domain !=
-                      *domain) {
+                  fn.inputs()[candidate->parameters[index]].domain != *domain) {
                 accepts = false;
                 break;
               }
@@ -1047,15 +1025,15 @@ private:
           if (candidates.size() != 1U) {
             return false;
           }
-          expected = compiler_results(candidates.front().function).front();
+          expected = compiler_results(candidates.front().fn).front();
         } else {
           report("type derived parameters do not take arguments");
           return false;
         }
       } else {
-        if (actual.kind() == ParameterValue::Kind::F64) {
-          expected.domain = domain_expression(ValueKind::Real);
-        } else if (actual.kind() != ParameterValue::Kind::I64) {
+        if (actual.kind() == ParamVal::Kind::F64) {
+          expected.domain = domain_expression(ValKind::Real);
+        } else if (actual.kind() != ParamVal::Kind::I64) {
           report("computed type pattern does not match a numeric parameter");
           return false;
         }
@@ -1071,22 +1049,22 @@ private:
     }
     if (expression.kind == Kind::Number || expression.kind == Kind::Boolean ||
         expression.kind == Kind::String) {
-      ValueKind expected = ValueKind::Integer;
+      ValKind expected = ValKind::Integer;
       switch (actual.kind()) {
-      case ParameterValue::Kind::I64:
-        expected = ValueKind::Integer;
+      case ParamVal::Kind::I64:
+        expected = ValKind::Integer;
         break;
-      case ParameterValue::Kind::F64:
-        expected = ValueKind::Real;
+      case ParamVal::Kind::F64:
+        expected = ValKind::Real;
         break;
-      case ParameterValue::Kind::Boolean:
-        expected = ValueKind::Boolean;
+      case ParamVal::Kind::Boolean:
+        expected = ValKind::Boolean;
         break;
-      case ParameterValue::Kind::String:
-        expected = ValueKind::String;
+      case ParamVal::Kind::String:
+        expected = ValKind::String;
         break;
-      case ParameterValue::Kind::Type:
-      case ParameterValue::Kind::List:
+      case ParamVal::Kind::Type:
+      case ParamVal::Kind::List:
         report("literal type pattern does not match");
         return false;
       }
@@ -1099,7 +1077,7 @@ private:
     }
     if (const Type* type = actual.as_type()) {
       const auto parameters = TypeAccess::parameters(*type);
-      auto target = declaration<Module::TypeDecl>(expression.text);
+      auto target = declaration<Mod::TypeDecl>(expression.text);
       if (!target || *target != type->schema()) {
         if (target) {
           report("type pattern '" + expression.text + "' does not match '" +
@@ -1122,7 +1100,7 @@ private:
            index < target->parameters().size(); ++index) {
         if (!target->parameters()[index].default_value ||
             parameter_default(target->parameters()[index]) !=
-                std::optional<ParameterValue>{parameters[index]}) {
+                std::optional<ParamVal>{parameters[index]}) {
           report("type pattern omits a non-default argument");
           valid = false;
         }
@@ -1138,10 +1116,10 @@ private:
   std::size_t steps_ = 0;
   std::size_t depth_ = 0;
   bool budget_reported_ = false;
-  const Module::FunctionDecl* schema_ = nullptr;
+  const Mod::FnDecl* schema_ = nullptr;
   Diagnostics& diagnostics_;
   std::optional<SourceRange> source_;
-  const FunctionTypeContract* contract_ = nullptr;
+  const FnTypeContract* contract_ = nullptr;
   const std::vector<GenericDefinition> empty_generics_;
   std::string scope_;
   std::vector<std::string> calls_;
@@ -1149,20 +1127,20 @@ private:
 
 }  // namespace
 
-std::optional<ParameterValue> evaluate_known_expression(
-    Compiler& compiler, std::string_view scope,
-    const Module::Expression& expression, const Module::ParameterDecl& expected,
-    const KnownBindings& bindings, Diagnostics& diagnostics,
-    std::optional<SourceRange> source, bool allow_host_evaluation) {
+std::optional<ParamVal> evaluate_known_expression(
+    Compiler& compiler, std::string_view scope, const Mod::Expr& expression,
+    const Mod::ParamDecl& expected, const KnownBindings& bindings,
+    Diagnostics& diagnostics, std::optional<SourceRange> source,
+    bool allow_host_evaluation) {
   return Solver(environment(compiler, allow_host_evaluation),
                 std::string(scope), diagnostics, std::move(source))
       .evaluate_known(expression, expected, bindings);
 }
 
 std::optional<std::vector<Type>>
-infer_call_types(Compiler& compiler, const Module::FunctionDecl& schema,
+infer_call_types(Compiler& compiler, const Mod::FnDecl& schema,
                  std::span<const Type> arguments,
-                 std::span<const std::optional<ParameterValue>> known_arguments,
+                 std::span<const std::optional<ParamVal>> known_arguments,
                  std::span<const std::optional<Type>> expected_results,
                  Diagnostics& diagnostics, std::optional<SourceRange> source) {
   auto resolved =
@@ -1174,34 +1152,34 @@ infer_call_types(Compiler& compiler, const Module::FunctionDecl& schema,
 }
 
 std::optional<std::vector<Type>>
-infer_call_types(std::span<const Module> modules,
-                 const Module::FunctionDecl& schema,
+infer_call_types(std::span<const Mod> mods, const Mod::FnDecl& schema,
                  std::span<const Type> arguments,
-                 std::span<const std::optional<ParameterValue>> known_arguments,
+                 std::span<const std::optional<ParamVal>> known_arguments,
                  std::span<const std::optional<Type>> expected_results,
                  Diagnostics& diagnostics, std::optional<SourceRange> source) {
   auto resolved =
-      resolve_call_types(modules, schema, arguments, known_arguments,
+      resolve_call_types(mods, schema, arguments, known_arguments,
                          expected_results, diagnostics, std::move(source));
   return resolved
              ? std::optional<std::vector<Type>>{std::move(resolved->results)}
              : std::nullopt;
 }
 
-std::optional<CallTypes> resolve_call_types(
-    Compiler& compiler, const Module::FunctionDecl& schema,
-    std::span<const Type> arguments,
-    std::span<const std::optional<ParameterValue>> known_arguments,
-    std::span<const std::optional<Type>> expected_results,
-    Diagnostics& diagnostics, std::optional<SourceRange> source) {
+std::optional<CallTypes>
+resolve_call_types(Compiler& compiler, const Mod::FnDecl& schema,
+                   std::span<const Type> arguments,
+                   std::span<const std::optional<ParamVal>> known_arguments,
+                   std::span<const std::optional<Type>> expected_results,
+                   Diagnostics& diagnostics,
+                   std::optional<SourceRange> source) {
   return Solver(environment(compiler), schema, diagnostics, std::move(source))
       .infer(arguments, known_arguments, expected_results);
 }
 
 std::optional<CallTypes> resolve_partial_call_types(
-    Compiler& compiler, const Module::FunctionDecl& schema,
+    Compiler& compiler, const Mod::FnDecl& schema,
     std::span<const std::optional<Type>> arguments,
-    std::span<const std::optional<ParameterValue>> known_arguments,
+    std::span<const std::optional<ParamVal>> known_arguments,
     std::span<const std::optional<Type>> expected_results,
     Diagnostics& diagnostics, std::optional<SourceRange> source,
     bool allow_host_evaluation) {
@@ -1210,29 +1188,30 @@ std::optional<CallTypes> resolve_partial_call_types(
       .infer_partial(arguments, known_arguments, expected_results);
 }
 
-std::optional<CallTypes> resolve_call_types(
-    std::span<const Module> modules, const Module::FunctionDecl& schema,
-    std::span<const Type> arguments,
-    std::span<const std::optional<ParameterValue>> known_arguments,
-    std::span<const std::optional<Type>> expected_results,
-    Diagnostics& diagnostics, std::optional<SourceRange> source) {
-  return Solver(environment(modules, diagnostics), schema, diagnostics,
+std::optional<CallTypes>
+resolve_call_types(std::span<const Mod> mods, const Mod::FnDecl& schema,
+                   std::span<const Type> arguments,
+                   std::span<const std::optional<ParamVal>> known_arguments,
+                   std::span<const std::optional<Type>> expected_results,
+                   Diagnostics& diagnostics,
+                   std::optional<SourceRange> source) {
+  return Solver(environment(mods, diagnostics), schema, diagnostics,
                 std::move(source))
       .infer(arguments, known_arguments, expected_results);
 }
 
-std::optional<std::vector<ParameterValue>>
-resolve_derived_parameters(Compiler& compiler, const Module::TypeDecl& schema,
-                           std::span<const ParameterValue> parameters,
+std::optional<std::vector<ParamVal>>
+resolve_derived_parameters(Compiler& compiler, const Mod::TypeDecl& schema,
+                           std::span<const ParamVal> parameters,
                            Diagnostics& diagnostics) {
   return Solver(environment(compiler), schema, diagnostics)
       .derive(schema, parameters);
 }
 
-std::optional<std::vector<ParameterValue>> resolve_derived_parameters(
-    std::span<const Module> modules, const Module::TypeDecl& schema,
-    std::span<const ParameterValue> parameters, Diagnostics& diagnostics) {
-  return Solver(environment(modules, diagnostics), schema, diagnostics)
+std::optional<std::vector<ParamVal>> resolve_derived_parameters(
+    std::span<const Mod> mods, const Mod::TypeDecl& schema,
+    std::span<const ParamVal> parameters, Diagnostics& diagnostics) {
+  return Solver(environment(mods, diagnostics), schema, diagnostics)
       .derive(schema, parameters);
 }
 

@@ -20,7 +20,7 @@ int main() {
   joggle::Compiler compiler;
   compiler.add(R"(
 joggle 1;
-module semantics@1.0.0 {
+mod semantics@1.0.0 {
   type word();
   type represented(logical: type);
 
@@ -29,7 +29,7 @@ module semantics@1.0.0 {
   fn interleaved(axis: int, input: word, scale: int) -> word;
   fn combine(lhs: word, rhs: word) -> word;
   fn step<T>(input: T) -> T;
-  fn replace(input: function, before: function, after: function) -> function;
+  fn replace(input: fn, before: fn, after: fn) -> fn;
 
   fn wrapped(input: word, axis: int) -> word {
     return primitive(input, axis);
@@ -97,7 +97,7 @@ module semantics@1.0.0 {
     return primitive(primitive(input, 1), 2);
   }
 
-  fn apply(input: function) -> function {
+  fn apply(input: fn) -> fn {
     return @replace(
       input,
       (x: word) => primitive(primitive(x, 1), 2),
@@ -105,7 +105,7 @@ module semantics@1.0.0 {
     );
   }
 
-  fn pipeline(input: function) -> function {
+  fn pipeline(input: fn) -> fn {
     return @apply(input);
   }
 }
@@ -115,7 +115,7 @@ module semantics@1.0.0 {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
-  const auto semantics = compiler.module("semantics");
+  const auto semantics = compiler.mod("semantics");
   if (!semantics) {
     return EXIT_FAILURE;
   }
@@ -128,34 +128,31 @@ module semantics@1.0.0 {
   if (!word_decl || !represented_decl || !word || !represented) {
     return EXIT_FAILURE;
   }
-  std::optional<joggle::Function> staged_replacement;
+  std::optional<joggle::Fn> staged_replacement;
   compiler.bind(
       *semantics, "replace",
-      [&](joggle::Compiler& active, joggle::Function input,
-          const joggle::Function& before, const joggle::Function& after,
-          joggle::Diagnostics& diagnostics)
-          -> std::optional<joggle::Function> {
-        const auto changed = joggle::replace(active, input, before, after,
-                                             diagnostics);
+      [&](joggle::Compiler& active, joggle::Fn input, const joggle::Fn& before,
+          const joggle::Fn& after,
+          joggle::Diagnostics& diagnostics) -> std::optional<joggle::Fn> {
+        const auto changed =
+            joggle::replace(active, input, before, after, diagnostics);
         if (changed) {
           staged_replacement = input;
         }
-        return changed ? std::optional<joggle::Function>{std::move(input)}
+        return changed ? std::optional<joggle::Fn>{std::move(input)}
                        : std::nullopt;
       });
 
   const auto direct = compiler.materialize("semantics.direct");
   const auto wrapped = compiler.materialize("semantics.through_wrapper");
-  const auto wrong_property =
-      compiler.materialize("semantics.wrong_property");
+  const auto wrong_property = compiler.materialize("semantics.wrong_property");
   const auto wrong_callee = compiler.materialize("semantics.wrong_callee");
   const auto recursive = compiler.materialize("semantics.recursive_use");
   const auto interleaved_direct =
       compiler.materialize("semantics.interleaved_direct");
   const auto interleaved_indirect =
       compiler.materialize("semantics.interleaved_indirect");
-  const auto shared_direct =
-      compiler.materialize("semantics.shared_direct");
+  const auto shared_direct = compiler.materialize("semantics.shared_direct");
   const auto shared_indirect =
       compiler.materialize("semantics.shared_indirect");
   const auto logical = compiler.materialize("semantics.logical");
@@ -170,7 +167,7 @@ module semantics@1.0.0 {
     return EXIT_FAILURE;
   }
   const auto staged_apply =
-      compiler.run<joggle::Function>("semantics.pipeline", *staged_subject);
+      compiler.run<joggle::Fn>("semantics.pipeline", *staged_subject);
   if (!staged_apply) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -178,10 +175,10 @@ module semantics@1.0.0 {
 
   bool ok = true;
   joggle::Diagnostics equivalent_diagnostics;
-  ok &= expect(joggle::equivalent(compiler, *direct, *wrapped,
-                                  equivalent_diagnostics) &&
-                   equivalent_diagnostics.ok(),
-               "nested source bodies normalize to their reference meaning");
+  ok &= expect(
+      joggle::equivalent(compiler, *direct, *wrapped, equivalent_diagnostics) &&
+          equivalent_diagnostics.ok(),
+      "nested source bodies normalize to their reference meaning");
 
   joggle::Diagnostics property_diagnostics;
   ok &= expect(!joggle::equivalent(compiler, *direct, *wrong_property,
@@ -223,15 +220,15 @@ module semantics@1.0.0 {
 
   const auto revision = subject->revision();
   joggle::Diagnostics rejected_diagnostics;
-  const auto rejected = joggle::replace(
-      compiler, *subject, *direct, *wrong_property, rejected_diagnostics);
+  const auto rejected = joggle::replace(compiler, *subject, *direct,
+                                        *wrong_property, rejected_diagnostics);
   ok &= expect(!rejected && !rejected_diagnostics.ok() &&
                    subject->revision() == revision,
                "an unproved replacement publishes no edit");
 
   joggle::Diagnostics replacement_diagnostics;
-  const auto replaced = joggle::replace(
-      compiler, *subject, *direct, *wrapped, replacement_diagnostics);
+  const auto replaced = joggle::replace(compiler, *subject, *direct, *wrapped,
+                                        replacement_diagnostics);
   ok &= expect(replaced && *replaced == 1U && replacement_diagnostics.ok() &&
                    subject->ops().size() == 1U &&
                    subject->ops().front().callee().name() == "twice",
@@ -240,14 +237,14 @@ module semantics@1.0.0 {
   ok &= expect(staged_replacement && staged_apply->ops().size() == 1U &&
                    staged_apply->ops().front().callee().name() == "twice" &&
                    staged_replacement->revision() == staged_apply->revision(),
-               "compiler Function values and typed lambdas compose through "
-               "ordinary explicitly staged source functions");
+               "compiler Fn values and typed lambdas compose through "
+               "ordinary explicitly staged source fns");
 
   joggle::Diagnostics limit_diagnostics;
-  ok &= expect(!joggle::equivalent(compiler, *direct, *wrapped,
-                                   limit_diagnostics, 1U) &&
-                   !limit_diagnostics.ok(),
-               "source expansion obeys an explicit bound");
+  ok &= expect(
+      !joggle::equivalent(compiler, *direct, *wrapped, limit_diagnostics, 1U) &&
+          !limit_diagnostics.ok(),
+      "source expansion obeys an explicit bound");
 
   joggle::Diagnostics exact_limit_diagnostics;
   ok &= expect(joggle::equivalent(compiler, *direct, *wrapped,

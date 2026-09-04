@@ -23,18 +23,18 @@ bool expect(bool condition, std::string_view message) {
 }  // namespace
 
 int main() {
-  std::ifstream prelude_input(JOGGLE_PRELUDE_MODULE);
+  std::ifstream prelude_input(JOGGLE_PRELUDE_MOD);
   std::ostringstream prelude_text;
   prelude_text << prelude_input.rdbuf();
   joggle::Diagnostics prelude_diagnostics;
-  const auto source_prelude = joggle::parse_module(
-      prelude_text.str(), prelude_diagnostics, JOGGLE_PRELUDE_MODULE);
+  const auto source_prelude = joggle::parse_mod(
+      prelude_text.str(), prelude_diagnostics, JOGGLE_PRELUDE_MOD);
 
   joggle::Compiler compiler;
   compiler.add(R"(
 joggle 1;
 
-module native_test@1.0.0 {
+mod native_test@1.0.0 {
   type packed(bits: int) {
     storage_bits: int = bits;
   }
@@ -77,14 +77,14 @@ module native_test@1.0.0 {
   const auto type_value_type = compiler.make("type");
   const auto u32 = compiler.make("u32");
   const auto f32 = compiler.make("f32");
-  const auto embedded_prelude = compiler.module("prelude");
+  const auto embedded_prelude = compiler.mod("prelude");
   const auto list_schema =
       embedded_prelude ? embedded_prelude->type("list") : std::nullopt;
   const auto effect_schema =
       embedded_prelude ? embedded_prelude->type("effect") : std::nullopt;
-  const auto native_module = compiler.module("native_test");
+  const auto native_mod = compiler.mod("native_test");
   const auto memory_schema =
-      native_module ? native_module->type("memory") : std::nullopt;
+      native_mod ? native_mod->type("memory") : std::nullopt;
   const auto memory = memory_schema ? compiler.make(*memory_schema)
                                     : std::optional<joggle::Type>{};
   const auto memory_effect = effect_schema && memory
@@ -129,13 +129,12 @@ module native_test@1.0.0 {
       "reflected Prelude declarations");
   ok &= expect(integers && floating && custom && native_width && custom_width,
                "native and user-defined computed-field types instantiate");
-  ok &=
-      expect(known_integer && same_known_integer && known_i32 &&
-                 known_integer->known() && !known_i32->is_function_argument() &&
-                 known_integer->type() == *integer_value_type &&
-                 known_integer->get<std::int64_t>() == 42 &&
-                 *known_integer == *same_known_integer,
-             "one Value model represents typed Known compiler values");
+  ok &= expect(known_integer && same_known_integer && known_i32 &&
+                   known_integer->known() && !known_i32->is_fn_arg() &&
+                   known_integer->type() == *integer_value_type &&
+                   known_integer->get<std::int64_t>() == 42 &&
+                   *known_integer == *same_known_integer,
+               "one Val model represents typed Known compiler values");
   const auto native_bits = native_width ? native_width->entry()
                                               .terminator()
                                               .returned()
@@ -159,13 +158,13 @@ module native_test@1.0.0 {
                    text.find("arg1: u32") != std::string::npos &&
                    text.find("prelude.i32") == std::string::npos,
                "Prelude types retain their compact source spelling");
-  ok &= expect(compiler.modules().size() == 1U,
+  ok &= expect(compiler.mods().size() == 1U,
                "the ambient Prelude is not a repository dependency");
 
   joggle::Compiler primitives;
   primitives.add(R"(
 joggle 1;
-module primitive_test@1.0.0 {
+mod primitive_test@1.0.0 {
   type word(width: int);
 
   fn identity<T>(input: T) -> T;
@@ -261,7 +260,7 @@ module primitive_test@1.0.0 {
           ? primitives.run<std::vector<std::int64_t>>(
                 "primitive_test.reverse", std::vector<std::int64_t>{2, 4, 6})
           : std::nullopt;
-  const auto primitive_module = primitives.module("primitive_test");
+  const auto primitive_mod = primitives.mod("primitive_test");
   const auto i8 = primitives.make("i8");
   const auto f16 = primitives.make("f16");
   const auto reversed_types = primitives_linked && i8 && f16
@@ -275,7 +274,7 @@ module primitive_test@1.0.0 {
                               std::vector<std::string>{}, std::string{"weight"})
                         : std::nullopt;
   const auto unroll_decl =
-      primitive_module ? primitive_module->function("unroll") : std::nullopt;
+      primitive_mod ? primitive_mod->fn("unroll") : std::nullopt;
   const auto integer_type = primitives.make("int");
   const auto count = integer_type
                          ? primitives.known(*integer_type, std::int64_t{3})
@@ -300,7 +299,7 @@ module primitive_test@1.0.0 {
   joggle::Compiler shadowing;
   shadowing.add(R"(
 joggle 1;
-module shadowing@1.0.0 {
+mod shadowing@1.0.0 {
   fn ceildiv(lhs: int, rhs: int) -> int {
     return 99;
   }
@@ -345,7 +344,7 @@ module shadowing@1.0.0 {
   joggle::Compiler invalid_arithmetic;
   invalid_arithmetic.add(R"(
 joggle 1;
-module invalid_arithmetic@1.0.0 {
+mod invalid_arithmetic@1.0.0 {
   fn divide_by_zero() -> int {
     return 1 / 0;
   }
@@ -370,7 +369,7 @@ module invalid_arithmetic@1.0.0 {
   joggle::Compiler overflowing;
   overflowing.add(R"(
 joggle 1;
-module overflowing@1.0.0 {
+mod overflowing@1.0.0 {
   fn add_past_i64() -> int {
     return 9223372036854775807 + 1;
   }
@@ -395,7 +394,7 @@ module overflowing@1.0.0 {
   joggle::Compiler invalid_range;
   invalid_range.add(R"(
 joggle 1;
-module invalid_range@1.0.0 {
+mod invalid_range@1.0.0 {
   fn zero_step() -> list<int> {
     return range(0, 4, 0);
   }
@@ -421,7 +420,7 @@ module invalid_range@1.0.0 {
   joggle::Compiler bounded_range({4, 64});
   bounded_range.add(R"(
 joggle 1;
-module bounded_range@1.0.0 {
+mod bounded_range@1.0.0 {
   fn expand() -> list<int> {
     return range(8);
   }
@@ -449,7 +448,7 @@ module bounded_range@1.0.0 {
   joggle::Compiler invalid_list;
   invalid_list.add(R"(
 joggle 1;
-module invalid_list@1.0.0 {
+mod invalid_list@1.0.0 {
   fn out_of_bounds() -> int {
     return at([4, 8], 2);
   }

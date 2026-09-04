@@ -7,8 +7,7 @@
 namespace joggle::detail {
 namespace {
 
-bool same_signature(const Module::FunctionDecl& left,
-                    const Module::FunctionDecl& right) {
+bool same_signature(const Mod::FnDecl& left, const Mod::FnDecl& right) {
   if (left.generics().size() != right.generics().size() ||
       left.inputs().size() != right.inputs().size() ||
       left.results().size() != right.results().size()) {
@@ -27,8 +26,8 @@ bool same_signature(const Module::FunctionDecl& left,
   return same_inputs && same_results;
 }
 
-void append_unshadowed(std::vector<Module::FunctionDecl>& destination,
-                       std::span<const Module::FunctionDecl> candidates) {
+void append_unshadowed(std::vector<Mod::FnDecl>& destination,
+                       std::span<const Mod::FnDecl> candidates) {
   for (const auto& candidate : candidates) {
     const bool shadowed = std::any_of(
         destination.begin(), destination.end(), [&](const auto& visible) {
@@ -41,38 +40,38 @@ void append_unshadowed(std::vector<Module::FunctionDecl>& destination,
 }
 
 template <typename Lookup>
-std::vector<Module::FunctionDecl>
-find_visible_functions(Lookup&& lookup, std::string_view owner,
-                       std::string_view reference) {
+std::vector<Mod::FnDecl> find_visible_fns(Lookup&& lookup,
+                                          std::string_view owner,
+                                          std::string_view reference) {
   const std::size_t dot = reference.find('.');
-  std::string module_name(owner);
+  std::string mod_name(owner);
   std::string_view local = reference;
   if (dot != std::string_view::npos) {
     const std::string_view prefix = reference.substr(0U, dot);
     local = reference.substr(dot + 1U);
-    if (prefix == prelude_module_name) {
-      module_name = std::string(prelude_module_name);
+    if (prefix == prelude_mod_name) {
+      mod_name = std::string(prelude_mod_name);
     }
-    if (prefix != owner && prefix != prelude_module_name) {
+    if (prefix != owner && prefix != prelude_mod_name) {
       const auto scope = lookup(owner);
       const auto imported =
           scope ? std::find_if(scope->imports().begin(), scope->imports().end(),
-                               [&](const Module::Import& import) {
+                               [&](const Mod::Import& import) {
                                  return import.prefix() == prefix;
                                })
-                : std::span<const Module::Import>::iterator{};
+                : std::span<const Mod::Import>::iterator{};
       if (!scope || imported == scope->imports().end()) {
         return {};
       }
-      module_name = imported->name;
+      mod_name = imported->name;
     }
   }
-  const auto module = lookup(module_name);
-  std::vector<Module::FunctionDecl> result =
-      module ? module->overloads(local) : std::vector<Module::FunctionDecl>{};
-  if (dot == std::string_view::npos && module_name != prelude_module_name &&
+  const auto mod = lookup(mod_name);
+  std::vector<Mod::FnDecl> result =
+      mod ? mod->overloads(local) : std::vector<Mod::FnDecl>{};
+  if (dot == std::string_view::npos && mod_name != prelude_mod_name &&
       result.empty()) {
-    if (const auto prelude = lookup(prelude_module_name)) {
+    if (const auto prelude = lookup(prelude_mod_name)) {
       result = prelude->overloads(local);
     }
   }
@@ -80,36 +79,33 @@ find_visible_functions(Lookup&& lookup, std::string_view owner,
 }
 
 template <typename Lookup>
-std::vector<Module::FunctionDecl>
+std::vector<Mod::FnDecl>
 find_visible_operators(Lookup&& lookup, std::string_view owner,
-                       std::string_view symbol,
-                       Module::FunctionDecl::Fixity fixity) {
-  std::vector<Module::FunctionDecl> result;
+                       std::string_view symbol, Mod::FnDecl::Fixity fixity) {
+  std::vector<Mod::FnDecl> result;
   const auto scope = lookup(owner);
   if (!scope) {
     return result;
   }
-  const auto append = [&](const Module& module) {
-    for (const auto& function : module.functions()) {
-      if (function.name() == symbol &&
-          function.operator_fixity() == fixity) {
-        result.push_back(function);
+  const auto append = [&](const Mod& mod) {
+    for (const auto& fn : mod.fns()) {
+      if (fn.name() == symbol && fn.operator_fixity() == fixity) {
+        result.push_back(fn);
       }
     }
   };
   append(*scope);
   for (const auto& import : scope->imports()) {
-    if (const auto module = lookup(import.name)) {
-      append(*module);
+    if (const auto mod = lookup(import.name)) {
+      append(*mod);
     }
   }
-  if (scope->name() != prelude_module_name) {
-    if (const auto prelude = lookup(prelude_module_name)) {
-      std::vector<Module::FunctionDecl> ambient;
-      for (const auto& function : prelude->functions()) {
-        if (function.name() == symbol &&
-            function.operator_fixity() == fixity) {
-          ambient.push_back(function);
+  if (scope->name() != prelude_mod_name) {
+    if (const auto prelude = lookup(prelude_mod_name)) {
+      std::vector<Mod::FnDecl> ambient;
+      for (const auto& fn : prelude->fns()) {
+        if (fn.name() == symbol && fn.operator_fixity() == fixity) {
+          ambient.push_back(fn);
         }
       }
       append_unshadowed(result, ambient);
@@ -120,57 +116,56 @@ find_visible_operators(Lookup&& lookup, std::string_view owner,
 
 }  // namespace
 
-std::vector<Module::FunctionDecl>
-visible_functions(const Compiler& compiler, std::string_view owner,
-                  std::string_view reference) {
-  return find_visible_functions(
-      [&](std::string_view name) { return compiler.module(name); }, owner,
+std::vector<Mod::FnDecl> visible_fns(const Compiler& compiler,
+                                     std::string_view owner,
+                                     std::string_view reference) {
+  return find_visible_fns(
+      [&](std::string_view name) { return compiler.mod(name); }, owner,
       reference);
 }
 
-std::vector<Module::FunctionDecl>
-visible_functions(std::span<const Module> modules, std::string_view owner,
-                  std::string_view reference) {
-  return find_visible_functions(
-      [&](std::string_view name) -> std::optional<Module> {
+std::vector<Mod::FnDecl> visible_fns(std::span<const Mod> mods,
+                                     std::string_view owner,
+                                     std::string_view reference) {
+  return find_visible_fns(
+      [&](std::string_view name) -> std::optional<Mod> {
         const auto found =
-            std::find_if(modules.begin(), modules.end(),
+            std::find_if(mods.begin(), mods.end(),
                          [&](const auto& item) { return item.name() == name; });
-        return found == modules.end() ? std::optional<Module>{}
-                                      : std::optional<Module>{*found};
+        return found == mods.end() ? std::optional<Mod>{}
+                                   : std::optional<Mod>{*found};
       },
       owner, reference);
 }
 
-std::vector<Module::FunctionDecl>
-visible_operators(const Compiler& compiler, std::string_view owner,
-                  std::string_view symbol,
-                  Module::FunctionDecl::Fixity fixity) {
+std::vector<Mod::FnDecl> visible_operators(const Compiler& compiler,
+                                           std::string_view owner,
+                                           std::string_view symbol,
+                                           Mod::FnDecl::Fixity fixity) {
   return find_visible_operators(
-      [&](std::string_view name) { return compiler.module(name); }, owner,
-      symbol, fixity);
+      [&](std::string_view name) { return compiler.mod(name); }, owner, symbol,
+      fixity);
 }
 
-std::vector<Module::FunctionDecl>
-visible_operators(std::span<const Module> modules, std::string_view owner,
-                  std::string_view symbol,
-                  Module::FunctionDecl::Fixity fixity) {
+std::vector<Mod::FnDecl> visible_operators(std::span<const Mod> mods,
+                                           std::string_view owner,
+                                           std::string_view symbol,
+                                           Mod::FnDecl::Fixity fixity) {
   return find_visible_operators(
-      [&](std::string_view name) -> std::optional<Module> {
+      [&](std::string_view name) -> std::optional<Mod> {
         const auto found =
-            std::find_if(modules.begin(), modules.end(),
+            std::find_if(mods.begin(), mods.end(),
                          [&](const auto& item) { return item.name() == name; });
-        return found == modules.end() ? std::optional<Module>{}
-                                      : std::optional<Module>{*found};
+        return found == mods.end() ? std::optional<Mod>{}
+                                   : std::optional<Mod>{*found};
       },
       owner, symbol, fixity);
 }
 
-std::vector<Module::FunctionDecl>
+std::vector<Mod::FnDecl>
 operator_candidates(const Compiler& compiler, std::string_view owner,
-                    std::string_view symbol,
-                    Module::FunctionDecl::Fixity fixity, std::size_t arity,
-                    const Module::Expression& result_domain) {
+                    std::string_view symbol, Mod::FnDecl::Fixity fixity,
+                    std::size_t arity, const Mod::Expr& result_domain) {
   auto result = visible_operators(compiler, owner, symbol, fixity);
   result.erase(std::remove_if(result.begin(), result.end(),
                               [&](const auto& candidate) {
@@ -183,11 +178,10 @@ operator_candidates(const Compiler& compiler, std::string_view owner,
   return result;
 }
 
-std::optional<CallCandidate>
-call_candidate(const Module::FunctionDecl& function,
-               const Module::Expression& expression) {
-  const auto parameters = function.inputs();
-  CallCandidate result{function, {}};
+std::optional<CallCandidate> call_candidate(const Mod::FnDecl& fn,
+                                            const Mod::Expr& expression) {
+  const auto parameters = fn.inputs();
+  CallCandidate result{fn, {}};
   result.parameters.reserve(expression.arguments.size());
   std::vector<bool> supplied(parameters.size(), false);
   std::size_t positional = 0;
@@ -197,11 +191,10 @@ call_candidate(const Module::FunctionDecl& function,
                                        : std::string_view{};
     std::size_t target = parameters.size();
     if (!label.empty()) {
-      const auto found =
-          std::find_if(parameters.begin(), parameters.end(),
-                       [&](const Module::ParameterDecl& parameter) {
-                         return parameter.name == label;
-                       });
+      const auto found = std::find_if(parameters.begin(), parameters.end(),
+                                      [&](const Mod::ParamDecl& parameter) {
+                                        return parameter.name == label;
+                                      });
       if (found != parameters.end()) {
         target =
             static_cast<std::size_t>(std::distance(parameters.begin(), found));

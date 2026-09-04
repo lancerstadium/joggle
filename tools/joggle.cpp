@@ -17,8 +17,8 @@
 #include <joggle/joggle.h>
 #include <joggle/detail/native.h>
 
-#include "module_internal.h"
-#include "module_repository.h"
+#include "mod_internal.h"
+#include "repository.h"
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -31,13 +31,13 @@ namespace {
 
 void usage(std::ostream& output) {
   output << "usage:\n"
-         << "  joggle check <module.joggle|bundle> [--with <module.joggle>] "
+         << "  joggle check <mod.joggle|bundle> [--with <mod.joggle>] "
             "[--native <library>] [--root <directory>]\n"
          << "  joggle fmt <file.joggle> [--write | -o <file>]\n"
-         << "  joggle run <module.joggle|bundle> <function> <input> "
-            "[--with <module.joggle>] [--load-native <module[=library]>] "
+         << "  joggle run <mod.joggle|bundle> <fn> <input> "
+            "[--with <mod.joggle>] [--load-native <mod[=library]>] "
             "[--native <library>] [--root <directory>] [-o <file>]\n"
-         << "  joggle install <module.joggle|bundle> [--native <library>] "
+         << "  joggle install <mod.joggle|bundle> [--native <library>] "
             "[--root <directory>]\n"
          << "  joggle uninstall <name@version> [--root <directory>]\n"
          << "  joggle list [--root <directory>]\n"
@@ -61,23 +61,22 @@ std::optional<std::string> read(const std::filesystem::path& path,
   return text.str();
 }
 
-struct ModuleInput {
-  joggle::Module module;
+struct ModInput {
+  joggle::Mod mod;
   std::filesystem::path source;
 };
 
-std::optional<ModuleInput>
-read_module_input(const std::filesystem::path& path,
-                  joggle::Diagnostics& diagnostics) {
+std::optional<ModInput> read_mod_input(const std::filesystem::path& path,
+                                       joggle::Diagnostics& diagnostics) {
   std::error_code error;
   if (std::filesystem::is_directory(path, error) && !error) {
-    auto module = joggle::detail::read_module_bundle(path, diagnostics);
-    return module ? std::optional<ModuleInput>{
-                        ModuleInput{std::move(*module), path / "module.joggle"}}
-                  : std::nullopt;
+    auto mod = joggle::detail::read_mod_bundle(path, diagnostics);
+    return mod ? std::optional<ModInput>{ModInput{std::move(*mod),
+                                                  path / "mod.joggle"}}
+               : std::nullopt;
   }
   if (error) {
-    diagnostics.report("cannot inspect Module input '" + path.string() +
+    diagnostics.report("cannot inspect Mod input '" + path.string() +
                        "': " + error.message());
     return std::nullopt;
   }
@@ -85,29 +84,28 @@ read_module_input(const std::filesystem::path& path,
   if (!source) {
     return std::nullopt;
   }
-  auto module = joggle::parse_module(*source, diagnostics, path.string());
-  return module ? std::optional<ModuleInput>{
-                      ModuleInput{std::move(*module), path}}
-                : std::nullopt;
+  auto mod = joggle::parse_mod(*source, diagnostics, path.string());
+  return mod ? std::optional<ModInput>{ModInput{std::move(*mod), path}}
+             : std::nullopt;
 }
 
-struct ExactModule {
+struct ExactMod {
   std::string name;
   joggle::Version version;
 };
 
-std::optional<ExactModule> exact_module(std::string_view request,
-                                        joggle::Diagnostics& diagnostics) {
-  const std::string source = "joggle 1; module " + std::string(request) + " {}";
-  auto module = joggle::parse_module(source, diagnostics, "<module request>");
-  if (!module) {
+std::optional<ExactMod> exact_mod(std::string_view request,
+                                  joggle::Diagnostics& diagnostics) {
+  const std::string source = "joggle 1; mod " + std::string(request) + " {}";
+  auto mod = joggle::parse_mod(source, diagnostics, "<mod request>");
+  if (!mod) {
     return std::nullopt;
   }
-  return ExactModule{std::string(module->name()), module->version()};
+  return ExactMod{std::string(mod->name()), mod->version()};
 }
 
 struct Options {
-  std::filesystem::path root = joggle::detail::default_module_root();
+  std::filesystem::path root = joggle::detail::default_mod_root();
   std::optional<std::filesystem::path> output;
   std::optional<std::filesystem::path> native;
   std::vector<std::filesystem::path> with;
@@ -169,14 +167,13 @@ std::optional<Options> options(int argc, char** argv,
       }
       result.native = std::filesystem::path(*library);
     } else if (argument == "--with") {
-      const auto file = value("--with needs a Module source file");
+      const auto file = value("--with needs a Mod source file");
       if (!file) {
         return std::nullopt;
       }
       result.with.emplace_back(*file);
     } else if (argument == "--load-native") {
-      const auto request =
-          value("--load-native needs module or module=library");
+      const auto request = value("--load-native needs mod or mod=library");
       if (!request) {
         return std::nullopt;
       }
@@ -390,33 +387,33 @@ int usage_error(joggle::Diagnostics& diagnostics, std::string message) {
   return EXIT_FAILURE;
 }
 
-bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
-                     const std::filesystem::path& root,
-                     const std::optional<std::filesystem::path>& native,
-                     std::span<const std::filesystem::path> with = {}) {
+bool validate_mod(joggle::Compiler& compiler, const joggle::Mod& mod,
+                  const std::filesystem::path& root,
+                  const std::optional<std::filesystem::path>& native,
+                  std::span<const std::filesystem::path> with = {}) {
   compiler.search(root);
-  compiler.add(module);
+  compiler.add(mod);
   for (const std::filesystem::path& path : with) {
     compiler.load(path);
   }
   if (!compiler.link()) {
     return false;
   }
-  const auto linked = compiler.module(module.name());
+  const auto linked = compiler.mod(mod.name());
   if (!linked) {
     return false;
   }
   if (native && !compiler.load_native(linked->name(), *native)) {
     return false;
   }
-  for (const joggle::Module& loaded : compiler.modules()) {
-    for (const joggle::Module::FunctionDecl& function : loaded.functions()) {
-      if (function.form() == joggle::Module::FunctionDecl::Form::Body &&
-          joggle::detail::ModuleAccess::expression(function) == nullptr &&
-          !joggle::detail::value_results(function).empty() &&
-          joggle::detail::compiler_results(function).empty() &&
-          joggle::detail::has_default_specialization(function) &&
-          !compiler.materialize(function.symbol())) {
+  for (const joggle::Mod& loaded : compiler.mods()) {
+    for (const joggle::Mod::FnDecl& fn : loaded.fns()) {
+      if (fn.form() == joggle::Mod::FnDecl::Form::Body &&
+          joggle::detail::ModAccess::expression(fn) == nullptr &&
+          !joggle::detail::value_results(fn).empty() &&
+          joggle::detail::compiler_results(fn).empty() &&
+          joggle::detail::has_default_specialization(fn) &&
+          !compiler.materialize(fn.symbol())) {
         return false;
       }
     }
@@ -452,8 +449,8 @@ int main(int argc, char** argv) {
 
   if (command == "check" || command == "fmt") {
     if (parsed.positional.size() != 1U) {
-      return usage_error(diagnostics, std::string(command) +
-                                          " expects one Module input");
+      return usage_error(diagnostics,
+                         std::string(command) + " expects one Mod input");
     }
     if (parsed.output && parsed.in_place) {
       return usage_error(diagnostics,
@@ -483,12 +480,11 @@ int main(int argc, char** argv) {
       if (!source) {
         return fail(diagnostics);
       }
-      auto module =
-          joggle::parse_module(*source, diagnostics, parsed.positional[0]);
-      if (!module) {
+      auto mod = joggle::parse_mod(*source, diagnostics, parsed.positional[0]);
+      if (!mod) {
         return fail(diagnostics);
       }
-      const std::string formatted = joggle::format(*module);
+      const std::string formatted = joggle::format(*mod);
       if (parsed.in_place) {
         if (!write(parsed.positional[0], formatted, diagnostics)) {
           return fail(diagnostics);
@@ -501,16 +497,16 @@ int main(int argc, char** argv) {
         std::cout << formatted;
       }
     } else {
-      auto input = read_module_input(parsed.positional[0], diagnostics);
+      auto input = read_mod_input(parsed.positional[0], diagnostics);
       if (!input) {
         return fail(diagnostics);
       }
       joggle::Compiler compiler;
-      if (!validate_module(compiler, input->module, parsed.root, parsed.native,
-                           parsed.with)) {
+      if (!validate_mod(compiler, input->mod, parsed.root, parsed.native,
+                        parsed.with)) {
         return fail(compiler.diagnostics());
       }
-      const auto linked = compiler.module(input->module.name());
+      const auto linked = compiler.mod(input->mod.name());
       if (!linked) {
         return fail(compiler.diagnostics());
       }
@@ -524,21 +520,21 @@ int main(int argc, char** argv) {
     if (parsed.positional.size() != 3U) {
       return usage_error(
           diagnostics,
-          "run expects a Module source file, function name, and input file");
+          "run expects a Mod source file, fn name, and input file");
     }
     if (parsed.in_place) {
       return usage_error(diagnostics, "run does not accept --write");
     }
     const std::filesystem::path root_path = parsed.positional.front();
-    auto root = read_module_input(root_path, diagnostics);
+    auto root = read_mod_input(root_path, diagnostics);
     if (!root) {
       return fail(diagnostics);
     }
 
     const auto link = [&](joggle::Compiler& target,
-                          const joggle::Module* input = nullptr) {
+                          const joggle::Mod* input = nullptr) {
       target.search(parsed.root);
-      target.add(root->module);
+      target.add(root->mod);
       for (const std::filesystem::path& path : parsed.with) {
         target.load(path);
       }
@@ -553,49 +549,47 @@ int main(int argc, char** argv) {
       return fail(compiler.diagnostics());
     }
 
-    const std::string function_name =
+    const std::string fn_name =
         parsed.positional[1].find('.') == std::string::npos
-            ? std::string(root->module.name()) + "." + parsed.positional[1]
+            ? std::string(root->mod.name()) + "." + parsed.positional[1]
             : parsed.positional[1];
-    auto function = compiler.lookup(function_name);
-    if (!function) {
+    auto fn = compiler.lookup(fn_name);
+    if (!fn) {
       return fail(compiler.diagnostics());
     }
 
     const bool bytes_to_bytes =
-        compiler.invocable<joggle::Bytes, joggle::Bytes>(*function);
-    const bool bytes_to_module =
-        compiler.invocable<joggle::Module, joggle::Bytes>(*function);
-    const bool module_to_bytes =
-        compiler.invocable<joggle::Bytes, joggle::Module>(*function);
-    const bool module_to_module =
-        compiler.invocable<joggle::Module, joggle::Module>(*function);
-    if (!bytes_to_bytes && !bytes_to_module && !module_to_bytes &&
-        !module_to_module) {
-      diagnostics.report("CLI function '" + function_name +
+        compiler.invocable<joggle::Bytes, joggle::Bytes>(*fn);
+    const bool bytes_to_mod =
+        compiler.invocable<joggle::Mod, joggle::Bytes>(*fn);
+    const bool mod_to_bytes =
+        compiler.invocable<joggle::Bytes, joggle::Mod>(*fn);
+    const bool mod_to_mod = compiler.invocable<joggle::Mod, joggle::Mod>(*fn);
+    if (!bytes_to_bytes && !bytes_to_mod && !mod_to_bytes && !mod_to_mod) {
+      diagnostics.report("CLI fn '" + fn_name +
                          "' must have signature bytes -> bytes, bytes -> "
-                         "module, module -> module, or module -> bytes");
+                         "mod, mod -> mod, or mod -> bytes");
       return fail(diagnostics);
     }
 
-    std::optional<joggle::Module> module_input;
+    std::optional<joggle::Mod> mod_input;
     std::optional<joggle::Bytes> byte_input;
     const std::filesystem::path input_path = parsed.positional[2];
-    if (module_to_bytes || module_to_module) {
-      auto parsed_input = read_module_input(input_path, diagnostics);
+    if (mod_to_bytes || mod_to_mod) {
+      auto parsed_input = read_mod_input(input_path, diagnostics);
       if (!parsed_input) {
         return fail(diagnostics);
       }
       joggle::Compiler with_input;
-      if (!link(with_input, &parsed_input->module)) {
+      if (!link(with_input, &parsed_input->mod)) {
         return fail(with_input.diagnostics());
       }
       compiler = std::move(with_input);
-      function = compiler.lookup(function_name);
-      const auto linked_input = compiler.module(parsed_input->module.name());
-      module_input = linked_input ? compiler.materialize(*linked_input)
-                                  : std::optional<joggle::Module>{};
-      if (!function || !module_input) {
+      fn = compiler.lookup(fn_name);
+      const auto linked_input = compiler.mod(parsed_input->mod.name());
+      mod_input = linked_input ? compiler.materialize(*linked_input)
+                               : std::optional<joggle::Mod>{};
+      if (!fn || !mod_input) {
         return fail(compiler.diagnostics());
       }
     } else {
@@ -606,30 +600,29 @@ int main(int argc, char** argv) {
     }
 
     if (parsed.native &&
-        !compiler.load_native(root->module.name(), *parsed.native)) {
+        !compiler.load_native(root->mod.name(), *parsed.native)) {
       return fail(compiler.diagnostics());
     }
     for (const std::string& request : parsed.loaded_natives) {
       const std::size_t separator = request.find('=');
-      const std::string_view module =
+      const std::string_view mod =
           separator == std::string::npos
               ? std::string_view(request)
               : std::string_view(request).substr(0U, separator);
       const bool loaded =
           separator == std::string::npos
-              ? compiler.load_native(module)
-              : compiler.load_native(module, request.substr(separator + 1U));
+              ? compiler.load_native(mod)
+              : compiler.load_native(mod, request.substr(separator + 1U));
       if (!loaded) {
         return fail(compiler.diagnostics());
       }
     }
 
-    if (bytes_to_bytes || module_to_bytes) {
+    if (bytes_to_bytes || mod_to_bytes) {
       auto output =
           bytes_to_bytes
-              ? compiler.run<joggle::Bytes>(*function, std::move(*byte_input))
-              : compiler.run<joggle::Bytes>(*function,
-                                            std::move(*module_input));
+              ? compiler.run<joggle::Bytes>(*fn, std::move(*byte_input))
+              : compiler.run<joggle::Bytes>(*fn, std::move(*mod_input));
       if (!output) {
         return fail(compiler.diagnostics());
       }
@@ -645,21 +638,19 @@ int main(int argc, char** argv) {
       return EXIT_SUCCESS;
     }
 
-    auto output =
-        bytes_to_module
-            ? compiler.run<joggle::Module>(*function, std::move(*byte_input))
-            : compiler.run<joggle::Module>(*function, std::move(*module_input));
+    auto output = bytes_to_mod
+                      ? compiler.run<joggle::Mod>(*fn, std::move(*byte_input))
+                      : compiler.run<joggle::Mod>(*fn, std::move(*mod_input));
     if (!output) {
       return fail(compiler.diagnostics());
     }
     if (!output->data().empty()) {
       if (!parsed.output) {
-        diagnostics.report(
-            "a data-bearing Module requires -o <bundle-directory>");
+        diagnostics.report("a data-bearing Mod requires -o <bundle-directory>");
         return fail(diagnostics);
       }
-      if (!joggle::detail::write_module_bundle(*parsed.output, *output,
-                                                diagnostics)) {
+      if (!joggle::detail::write_mod_bundle(*parsed.output, *output,
+                                            diagnostics)) {
         return fail(diagnostics);
       }
       return EXIT_SUCCESS;
@@ -676,7 +667,7 @@ int main(int argc, char** argv) {
 
   if (command == "install") {
     if (parsed.positional.size() != 1U) {
-      return usage_error(diagnostics, "install expects one Module input");
+      return usage_error(diagnostics, "install expects one Mod input");
     }
     if (parsed.output) {
       return usage_error(diagnostics, "install does not accept --output");
@@ -690,17 +681,16 @@ int main(int argc, char** argv) {
     if (!parsed.loaded_natives.empty()) {
       return usage_error(diagnostics, "install does not accept --load-native");
     }
-    auto input = read_module_input(parsed.positional[0], diagnostics);
+    auto input = read_mod_input(parsed.positional[0], diagnostics);
     if (!input) {
       return fail(diagnostics);
     }
     joggle::Compiler compiler;
-    if (!validate_module(compiler, input->module, parsed.root,
-                         parsed.native)) {
+    if (!validate_mod(compiler, input->mod, parsed.root, parsed.native)) {
       return fail(compiler.diagnostics());
     }
-    auto installed = joggle::detail::install_module(
-        parsed.root, input->module, diagnostics, parsed.native);
+    auto installed = joggle::detail::install_mod(parsed.root, input->mod,
+                                                 diagnostics, parsed.native);
     if (!installed) {
       return fail(diagnostics);
     }
@@ -729,14 +719,13 @@ int main(int argc, char** argv) {
       return usage_error(diagnostics,
                          "uninstall does not accept --load-native");
     }
-    auto module = exact_module(parsed.positional[0], diagnostics);
-    if (!module ||
-        !joggle::detail::remove_module(parsed.root, module->name,
-                                       module->version, diagnostics)) {
+    auto mod = exact_mod(parsed.positional[0], diagnostics);
+    if (!mod || !joggle::detail::remove_mod(parsed.root, mod->name,
+                                            mod->version, diagnostics)) {
       return fail(diagnostics);
     }
-    std::cout << "uninstalled " << module->name << '@'
-              << joggle::to_string(module->version) << '\n';
+    std::cout << "uninstalled " << mod->name << '@'
+              << joggle::to_string(mod->version) << '\n';
     return EXIT_SUCCESS;
   }
 
@@ -759,22 +748,21 @@ int main(int argc, char** argv) {
     if (!parsed.loaded_natives.empty()) {
       return usage_error(diagnostics, "list does not accept --load-native");
     }
-    const auto modules =
-        joggle::detail::installed_modules(parsed.root, diagnostics);
+    const auto mods = joggle::detail::installed_mods(parsed.root, diagnostics);
     if (!diagnostics.ok()) {
       return fail(diagnostics);
     }
-    for (const auto& installed : modules) {
-      std::cout << installed.module.name() << '@'
-                << joggle::to_string(installed.module.version()) << '#'
-                << installed.module.digest() << '\n';
+    for (const auto& installed : mods) {
+      std::cout << installed.mod.name() << '@'
+                << joggle::to_string(installed.mod.version()) << '#'
+                << installed.mod.digest() << '\n';
     }
     return EXIT_SUCCESS;
   }
 
   if (command == "lock") {
     if (parsed.positional.size() != 1U) {
-      return usage_error(diagnostics, "lock expects one root Module input");
+      return usage_error(diagnostics, "lock expects one root Mod input");
     }
     if (parsed.native) {
       return usage_error(diagnostics, "lock does not accept --native");
@@ -788,53 +776,50 @@ int main(int argc, char** argv) {
     if (!parsed.loaded_natives.empty()) {
       return usage_error(diagnostics, "lock does not accept --load-native");
     }
-    auto root = read_module_input(parsed.positional[0], diagnostics);
+    auto root = read_mod_input(parsed.positional[0], diagnostics);
     if (!root) {
       return fail(diagnostics);
     }
     joggle::Compiler compiler;
-    if (!validate_module(compiler, root->module, parsed.root, std::nullopt)) {
+    if (!validate_mod(compiler, root->mod, parsed.root, std::nullopt)) {
       return fail(compiler.diagnostics());
     }
     std::ostringstream lock;
     lock << "joggle-lock 1;\n"
-         << "root " << root->module.name() << '@'
-         << joggle::to_string(root->module.version()) << '#'
-         << root->module.digest() << ";\n";
-    for (const joggle::Module& module : compiler.modules()) {
-      if (module.name() == root->module.name() &&
-          module.version() == root->module.version() &&
-          module.digest() == root->module.digest()) {
+         << "root " << root->mod.name() << '@'
+         << joggle::to_string(root->mod.version()) << '#' << root->mod.digest()
+         << ";\n";
+    for (const joggle::Mod& mod : compiler.mods()) {
+      if (mod.name() == root->mod.name() &&
+          mod.version() == root->mod.version() &&
+          mod.digest() == root->mod.digest()) {
         continue;
       }
-      lock << "module " << module.name() << '@'
-           << joggle::to_string(module.version()) << '#' << module.digest()
-           << ";\n";
+      lock << "mod " << mod.name() << '@' << joggle::to_string(mod.version())
+           << '#' << mod.digest() << ";\n";
     }
-    for (const joggle::Module& module : compiler.modules()) {
+    for (const joggle::Mod& mod : compiler.mods()) {
       const std::array roots{parsed.root};
-      auto installed = joggle::detail::resolve_module(
-          roots, module.name(), module.version(), module.digest(), diagnostics);
+      auto installed = joggle::detail::resolve_mod(
+          roots, mod.name(), mod.version(), mod.digest(), diagnostics);
       if (!installed) {
         continue;
       }
       auto natives =
           joggle::detail::native_candidates(installed->source, diagnostics);
       if (natives.size() > 1U) {
-        diagnostics.report("cannot lock ambiguous native for module '" +
-                           std::string(module.name()) + "@" +
-                           joggle::to_string(module.version()) +
-                           "' and target '" + joggle::detail::native_target +
-                           "'");
+        diagnostics.report("cannot lock ambiguous native for mod '" +
+                           std::string(mod.name()) + "@" +
+                           joggle::to_string(mod.version()) + "' and target '" +
+                           joggle::detail::native_target + "'");
         continue;
       }
       for (const auto& native : natives) {
         const auto digest = joggle::detail::native_digest(native, diagnostics);
         if (digest) {
-          lock << "native " << module.name() << '@'
-               << joggle::to_string(module.version()) << '#' << module.digest()
-               << ' ' << joggle::detail::native_target << '#' << *digest
-               << ";\n";
+          lock << "native " << mod.name() << '@'
+               << joggle::to_string(mod.version()) << '#' << mod.digest() << ' '
+               << joggle::detail::native_target << '#' << *digest << ";\n";
         }
       }
     }

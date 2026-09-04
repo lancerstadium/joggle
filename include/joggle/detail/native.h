@@ -7,10 +7,10 @@ namespace joggle {
 
 class Compiler;
 class Diagnostics;
-class Module;
+class Mod;
 
 namespace detail {
-extern const char native_module_identity[];
+extern const char native_mod_identity[];
 
 inline constexpr std::uint32_t native_abi = 1;
 inline constexpr const char* native_entry = "joggle_native_v1";
@@ -32,16 +32,16 @@ inline constexpr const char* native_target = "unknown-target";
 #endif
 
 struct NativeLibrary {
-  using Load = void (*)(Compiler&, const Module&, Diagnostics&);
+  using Load = void (*)(Compiler&, const Mod&, Diagnostics&);
 
-  constexpr explicit NativeLibrary(Load function)
+  constexpr explicit NativeLibrary(Load fn)
       : abi(native_abi), size(sizeof(NativeLibrary)),
-        module_identity(detail::native_module_identity), target(native_target),
-        load(function) {}
+        mod_identity(detail::native_mod_identity), target(native_target),
+        load(fn) {}
 
   std::uint32_t abi;
   std::size_t size;
-  const char* module_identity;
+  const char* mod_identity;
   const char* target;
   Load load;
 };
