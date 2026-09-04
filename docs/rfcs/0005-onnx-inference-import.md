@@ -1,6 +1,6 @@
 # RFC 0005: ONNX inference import
 
-Status: implementation gates 1-4 complete
+Status: implementation gates 1-5 complete
 
 ## Purpose
 
@@ -106,7 +106,7 @@ build without Protobuf still builds and installs Joggle core and tensor.
 - [x] Parse and reject unsupported ModelProto structure transactionally.
 - [x] Import the exact reference model with one input, one output, 52 tensor
   constants, 65 semantic calls, and output Type `f32[1,1000]`.
-- [ ] Verify initializer digests, call properties, every propagated shape,
+- [x] Verify initializer digests, call properties, every propagated shape,
   source locations, and deterministic failure diagnostics.
 - [ ] Differentially validate deterministic inputs against ONNX Runtime before
   calling the path an ONNX frontend.

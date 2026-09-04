@@ -78,4 +78,6 @@ The exact audited model imports as:
 
 All 117 retained calls have deterministic ONNX source locations. The original
 model plus all 53 initializer payloads are retained as 54 distinct
-content-addressed Module data entries.
+content-addressed Module data entries. The test fixes the independently audited
+65-node call/shape sequence, operator properties and counts, every payload
+digest, the exact source digest, and repeated-import identity.

@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <joggle/joggle.h>
@@ -39,6 +40,76 @@ bool load(joggle::Compiler& compiler, const char* tensor, const char* onnx,
   return compiler.link() && compiler.load_native("onnx", native);
 }
 
+using ExpectedCall = std::pair<std::string_view, std::vector<std::int64_t>>;
+
+const std::vector<ExpectedCall> expected_calls{
+    {"conv", {1, 64, 111, 111}},
+    {"relu", {1, 64, 111, 111}},
+    {"max_pool", {1, 64, 55, 55}},
+    {"conv", {1, 16, 55, 55}},
+    {"relu", {1, 16, 55, 55}},
+    {"conv", {1, 64, 55, 55}},
+    {"relu", {1, 64, 55, 55}},
+    {"conv", {1, 64, 55, 55}},
+    {"relu", {1, 64, 55, 55}},
+    {"concat", {1, 128, 55, 55}},
+    {"conv", {1, 16, 55, 55}},
+    {"relu", {1, 16, 55, 55}},
+    {"conv", {1, 64, 55, 55}},
+    {"relu", {1, 64, 55, 55}},
+    {"conv", {1, 64, 55, 55}},
+    {"relu", {1, 64, 55, 55}},
+    {"concat", {1, 128, 55, 55}},
+    {"max_pool", {1, 128, 27, 27}},
+    {"conv", {1, 32, 27, 27}},
+    {"relu", {1, 32, 27, 27}},
+    {"conv", {1, 128, 27, 27}},
+    {"relu", {1, 128, 27, 27}},
+    {"conv", {1, 128, 27, 27}},
+    {"relu", {1, 128, 27, 27}},
+    {"concat", {1, 256, 27, 27}},
+    {"conv", {1, 32, 27, 27}},
+    {"relu", {1, 32, 27, 27}},
+    {"conv", {1, 128, 27, 27}},
+    {"relu", {1, 128, 27, 27}},
+    {"conv", {1, 128, 27, 27}},
+    {"relu", {1, 128, 27, 27}},
+    {"concat", {1, 256, 27, 27}},
+    {"max_pool", {1, 256, 13, 13}},
+    {"conv", {1, 48, 13, 13}},
+    {"relu", {1, 48, 13, 13}},
+    {"conv", {1, 192, 13, 13}},
+    {"relu", {1, 192, 13, 13}},
+    {"conv", {1, 192, 13, 13}},
+    {"relu", {1, 192, 13, 13}},
+    {"concat", {1, 384, 13, 13}},
+    {"conv", {1, 48, 13, 13}},
+    {"relu", {1, 48, 13, 13}},
+    {"conv", {1, 192, 13, 13}},
+    {"relu", {1, 192, 13, 13}},
+    {"conv", {1, 192, 13, 13}},
+    {"relu", {1, 192, 13, 13}},
+    {"concat", {1, 384, 13, 13}},
+    {"conv", {1, 64, 13, 13}},
+    {"relu", {1, 64, 13, 13}},
+    {"conv", {1, 256, 13, 13}},
+    {"relu", {1, 256, 13, 13}},
+    {"conv", {1, 256, 13, 13}},
+    {"relu", {1, 256, 13, 13}},
+    {"concat", {1, 512, 13, 13}},
+    {"conv", {1, 64, 13, 13}},
+    {"relu", {1, 64, 13, 13}},
+    {"conv", {1, 256, 13, 13}},
+    {"relu", {1, 256, 13, 13}},
+    {"conv", {1, 256, 13, 13}},
+    {"relu", {1, 256, 13, 13}},
+    {"concat", {1, 512, 13, 13}},
+    {"conv", {1, 1000, 13, 13}},
+    {"relu", {1, 1000, 13, 13}},
+    {"average_pool", {1, 1000, 1, 1}},
+    {"reshape", {1, 1000}},
+};
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -53,9 +124,23 @@ int main(int argc, char** argv) {
   }
   const auto rejected = malformed.run<joggle::Module>(
       "onnx.read", joggle::Bytes{std::byte{0x7f}}, std::string{"bad"});
-  bool ok = expect(!rejected && !malformed.diagnostics().ok() &&
-                       malformed.diagnostics().entries().back().message.find(
-                           "valid ModelProto") != std::string::npos,
+  joggle::Compiler malformed_again;
+  if (!load(malformed_again, argv[1], argv[2], argv[3])) {
+    malformed_again.diagnostics().print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  const auto rejected_again = malformed_again.run<joggle::Module>(
+      "onnx.read", joggle::Bytes{std::byte{0x7f}}, std::string{"bad"});
+  const auto malformed_message =
+      malformed.diagnostics().entries().back().message;
+  bool ok = expect(!rejected && !rejected_again &&
+                       malformed_message.find("valid ModelProto") !=
+                           std::string::npos &&
+                       malformed_message ==
+                           malformed_again.diagnostics()
+                               .entries()
+                               .back()
+                               .message,
                    "malformed Protobuf input is rejected transactionally");
 
   if (argc == 4) {
@@ -76,6 +161,11 @@ int main(int argc, char** argv) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
+  const auto repeated =
+      compiler.run<joggle::Module>("onnx.read", bytes,
+                                   std::string{"squeezenet"});
+  ok &= expect(repeated && repeated->digest() == model->digest(),
+               "the same bytes and name produce the same Module identity");
   const auto main = model->function("main");
   const auto body = main ? main->body() : nullptr;
   if (!body) {
@@ -115,6 +205,79 @@ int main(int argc, char** argv) {
                "every imported call retains deterministic provenance");
   ok &= expect(model->data().size() == 54U,
                "original model and all 53 initializers are retained");
+
+  bool data_digests_match = true;
+  bool source_digest_found = false;
+  for (const auto& digest : model->data()) {
+    const auto data = model->data(digest);
+    if (!data) {
+      data_digests_match = false;
+      continue;
+    }
+    const std::string_view view{
+        reinterpret_cast<const char*>(data->data()), data->size()};
+    data_digests_match &=
+        digest == "sha256:" + joggle::sha256(view);
+    source_digest_found |=
+        data->size() == 4956208U &&
+        joggle::sha256(view) ==
+            "1eeff551a67ae8d565ca33b572fc4b66e3ef357b0eb2863bb9ff47a918cc4088";
+  }
+  ok &= expect(data_digests_match && source_digest_found,
+               "every payload digest and the exact source-model digest match");
+
+  bool sequence_matches = ops.size() == constants + expected_calls.size();
+  std::size_t convs = 0;
+  std::size_t relus = 0;
+  std::size_t pools = 0;
+  std::size_t concats = 0;
+  for (std::size_t index = 0;
+       sequence_matches && index < expected_calls.size(); ++index) {
+    const auto& op = ops[constants + index];
+    const auto& expected = expected_calls[index];
+    sequence_matches &=
+        op.callee().symbol().local_name() == expected.first &&
+        op.value().type().get<std::vector<std::int64_t>>("shape") ==
+            expected.second &&
+        op.location() &&
+        op.location()->source.starts_with("onnx:main/node/");
+    if (expected.first == "conv") {
+      ++convs;
+      const auto strides =
+          op.property<std::vector<std::int64_t>>("strides");
+      const auto pads = op.property<std::vector<std::int64_t>>("pads");
+      const auto dilations =
+          op.property<std::vector<std::int64_t>>("dilations");
+      sequence_matches &=
+          strides && pads && dilations &&
+          (*strides == std::vector<std::int64_t>{1, 1} ||
+           *strides == std::vector<std::int64_t>{2, 2}) &&
+          (*pads == std::vector<std::int64_t>{0, 0, 0, 0} ||
+           *pads == std::vector<std::int64_t>{1, 1, 1, 1}) &&
+          *dilations == std::vector<std::int64_t>{1, 1} &&
+          op.property<std::int64_t>("group") == 1;
+    } else if (expected.first == "relu") {
+      ++relus;
+    } else if (expected.first == "max_pool" ||
+               expected.first == "average_pool") {
+      ++pools;
+      sequence_matches &=
+          op.property<bool>("ceil_mode") == false &&
+          op.property<std::vector<std::int64_t>>("pads") ==
+              std::vector<std::int64_t>({0, 0, 0, 0});
+    } else if (expected.first == "concat") {
+      ++concats;
+      sequence_matches &= op.property<std::int64_t>("axis") == 1;
+    } else if (expected.first == "reshape") {
+      sequence_matches &=
+          op.property<std::vector<std::int64_t>>("shape") ==
+          std::vector<std::int64_t>({0, -1});
+    }
+  }
+  ok &= expect(sequence_matches && convs == 26U && relus == 26U &&
+                   pools == 4U && concats == 8U,
+               "all 65 semantic calls, shapes, properties, and locations "
+               "match the independently audited graph");
   ok &= expect(compiler.verify(*model),
                "the imported Module satisfies ordinary IR verification");
 
