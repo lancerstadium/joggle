@@ -707,10 +707,27 @@ private:
   void parse_function() {
     const SourcePosition begin = current_.begin;
 
-    std::optional<std::string> declared_operator;
     std::optional<Module::FunctionDecl::Fixity> declared_fixity;
     expect_name("fn");
-    auto function_name = name("a function name");
+    if (match_name("prefix")) {
+      declared_fixity = Module::FunctionDecl::Fixity::Prefix;
+    } else if (match_name("infix")) {
+      declared_fixity = Module::FunctionDecl::Fixity::Infix;
+    } else if (match_name("postfix")) {
+      declared_fixity = Module::FunctionDecl::Fixity::Postfix;
+    }
+    const bool symbolic = is(TokenKind::LeftParen);
+    std::optional<std::string> function_name;
+    if (symbolic) {
+      advance();
+      function_name = operator_symbol();
+      expect(TokenKind::RightParen, "')'");
+    } else {
+      function_name = name("a function name");
+      if (declared_fixity) {
+        error("operator fixity requires a symbolic function name");
+      }
+    }
     auto generics = function_generics();
     std::vector<Parameter> inputs;
     std::vector<std::optional<ParsedModule::TypeExpression>> input_bindings;
@@ -766,16 +783,6 @@ private:
     if (match(TokenKind::Arrow)) {
       result_types = function_results(generics);
     }
-    if (match_name("as")) {
-      if (match_name("prefix")) {
-        declared_fixity = Module::FunctionDecl::Fixity::Prefix;
-      } else if (match_name("infix")) {
-        declared_fixity = Module::FunctionDecl::Fixity::Infix;
-      } else if (match_name("postfix")) {
-        declared_fixity = Module::FunctionDecl::Fixity::Postfix;
-      }
-      declared_operator = operator_symbol();
-    }
     auto interfaces = interface_list();
 
     ParsedModule::FunctionDefinition definition;
@@ -804,9 +811,8 @@ private:
            std::move(result_types[index]), false, std::nullopt});
     }
     definition.interfaces = std::move(interfaces);
-    definition.operator_symbol = std::move(declared_operator);
     definition.operator_fixity = declared_fixity;
-    if (definition.operator_symbol && !definition.operator_fixity) {
+    if (symbolic && !definition.operator_fixity) {
       const auto value_inputs = static_cast<std::size_t>(
           std::count_if(definition.inputs.begin(), definition.inputs.end(),
                         detail::is_value_port));
@@ -1071,7 +1077,7 @@ private:
                               : Module::FunctionDecl::Fixity::Infix;
       std::vector<const ParsedModule::FunctionDefinition*> candidates;
       for (const auto& candidate : module_.functions) {
-        if (candidate.operator_symbol == expression.text &&
+        if (candidate.name == expression.text &&
             candidate.operator_fixity == fixity &&
             candidate.inputs.size() == arity &&
             candidate.results.size() == 1U &&
@@ -1402,7 +1408,7 @@ private:
                                           expected);
         }
       }
-      if (function.operator_symbol) {
+      if (function.operator_fixity) {
         const auto module_values = static_cast<std::size_t>(
             std::count_if(function.inputs.begin(), function.inputs.end(),
                           detail::is_value_port));
@@ -2005,11 +2011,6 @@ bool detail::has_default_specialization(const Module::FunctionDecl& function) {
 
 std::span<const std::string> Module::FunctionDecl::interfaces() const {
   return storage_->functions[index_].declaration->interfaces;
-}
-
-std::optional<std::string_view> Module::FunctionDecl::operator_symbol() const {
-  const auto& value = storage_->functions[index_].declaration->operator_symbol;
-  return value ? std::optional<std::string_view>{*value} : std::nullopt;
 }
 
 std::optional<Module::FunctionDecl::Fixity>
@@ -2686,7 +2687,15 @@ std::string format(const Module& module) {
       continue;
     }
     const detail::FunctionDefinition& function = *member.declaration;
-    std::string head = "  fn " + function.name;
+    std::string head = "  fn ";
+    if (function.operator_fixity) {
+      if (function.operator_fixity == Module::FunctionDecl::Fixity::Postfix) {
+        head += "postfix ";
+      }
+      head += '(' + function.name + ')';
+    } else {
+      head += function.name;
+    }
     if (!function.generics.empty()) {
       std::vector<std::string> generics;
       generics.reserve(function.generics.size());
@@ -2751,13 +2760,6 @@ std::string format(const Module& module) {
       }
     }
     std::string suffix;
-    if (function.operator_symbol) {
-      suffix += " as ";
-      if (function.operator_fixity == Module::FunctionDecl::Fixity::Postfix) {
-        suffix += "postfix ";
-      }
-      suffix += *function.operator_symbol;
-    }
     if (!function.interfaces.empty()) {
       suffix += " : ";
       for (std::size_t index = 0; index < function.interfaces.size(); ++index) {

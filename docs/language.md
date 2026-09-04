@@ -88,7 +88,7 @@ fn name<generics>(inputs) -> results;
 Examples:
 
 ```joggle
-fn add<T: prelude.scalar>(lhs: T, rhs: T) -> T as +;
+fn (+)<T: prelude.scalar>(lhs: T, rhs: T) -> T;
 fn volume(shape: list<int>) -> int;
 
 fn align(value: int, multiple: int) -> int {
@@ -140,9 +140,9 @@ declares ordinary external functions and associates them with familiar
 operators:
 
 ```joggle
-fn add(lhs: int, rhs: int) -> int as +;
-fn less(lhs: int, rhs: int) -> bool as <;
-fn logical_and(lhs: bool, rhs: bool) -> bool as &&;
+fn (+)(lhs: int, rhs: int) -> int;
+fn (<)(lhs: int, rhs: int) -> bool;
+fn (&&)(lhs: bool, rhs: bool) -> bool;
 fn ceildiv(lhs: int, rhs: int) -> int;
 fn range(stop: int) -> list<int>;
 ```
@@ -165,7 +165,7 @@ Prelude operators are defaults, not privileged syntax. A Module can replace
 one signature with its own ordinary function:
 
 ```joggle
-fn difference_as_add(lhs: int, rhs: int) -> int as + {
+fn (+)(lhs: int, rhs: int) -> int {
   return lhs - rhs;
 }
 ```
@@ -197,7 +197,8 @@ output = conv2d(input, weight, stride_h: 2, stride_w: 2);
 
 Literals, lists, calls, member fields, function types, prefix/infix/postfix
 operators, and conditional expressions share one expression grammar. Operator
-precedence is syntactic; meaning comes from a visible `fn ... as symbol`
+precedence is syntactic; meaning comes from a visible symbolic function such as
+`fn (+)(lhs: T, rhs: T) -> T`
 declaration. Parenthesize comparisons inside generic arguments, for example
 `flag<(lanes >= 4)>`, to distinguish an operator from closing `>` tokens.
 An empty list needs a contextual compiler domain, which a local annotation,

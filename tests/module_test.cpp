@@ -69,11 +69,19 @@ int main() {
   ok &= expect(!legacy_pass && !legacy_pass_diagnostics.ok(),
                "pass is not a source-level member declaration");
 
+  joggle::Diagnostics operator_alias_diagnostics;
+  const auto operator_alias = joggle::parse_module(
+      "joggle 1; module legacy@1.0.0 { "
+      "fn add(lhs: int, rhs: int) -> int as +; }",
+      operator_alias_diagnostics, "operator-alias.joggle");
+  ok &= expect(!operator_alias && !operator_alias_diagnostics.ok(),
+               "symbolic functions cannot use a second alias identity");
+
   const auto integer = module->type("integer");
   const auto numeric_format = module->interface("numeric_format");
   const auto elementwise = module->interface("elementwise");
   const auto align = module->function("align");
-  const auto add = module->function("add");
+  const auto add = module->function("+");
   const auto canonicalize = module->function("canonicalize");
   ok &=
       expect(integer && integer->parameters().size() == 2U &&
@@ -109,7 +117,7 @@ int main() {
           add->results().front().domain == add->inputs().front().domain &&
           add->signature().find("static:") == std::string::npos &&
           add->signature().find("value:") == std::string::npos &&
-          add->operator_symbol() == std::string_view("+") &&
+          add->name() == std::string_view("+") &&
           add->operator_fixity() ==
               joggle::Module::FunctionDecl::Fixity::Infix &&
           add->interfaces().size() == 2U,

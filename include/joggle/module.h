@@ -248,7 +248,6 @@ public:
     std::span<const ParameterDecl> inputs() const;
     std::span<const ParameterDecl> results() const;
     std::span<const std::string> interfaces() const;
-    std::optional<std::string_view> operator_symbol() const;
     std::optional<Fixity> operator_fixity() const;
     Form form() const;
     const Function* body() const;

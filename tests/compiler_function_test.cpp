@@ -58,19 +58,19 @@ module pipeline@1.0.0 {
   fn choose_amount(value: int, amount: int = 2) -> int {
     return amount;
   }
-  fn add_offset(lhs: int, rhs: int) -> int as +;
-  fn less(lhs: int, rhs: int) -> bool as <;
-  fn text_less(lhs: string, rhs: string) -> bool as <;
-  fn less_equal(lhs: int, rhs: int) -> bool as <=;
-  fn greater(lhs: int, rhs: int) -> bool as >;
-  fn greater_equal(lhs: int, rhs: int) -> bool as >=;
-  fn equal(lhs: int, rhs: int) -> bool as ==;
-  fn not_equal(lhs: int, rhs: int) -> bool as !=;
-  fn logical_not(input: bool) -> bool as !;
-  fn logical_and(lhs: bool, rhs: bool) -> bool as && {
+  fn (+)(lhs: int, rhs: int) -> int;
+  fn (<)(lhs: int, rhs: int) -> bool;
+  fn (<)(lhs: string, rhs: string) -> bool;
+  fn (<=)(lhs: int, rhs: int) -> bool;
+  fn (>)(lhs: int, rhs: int) -> bool;
+  fn (>=)(lhs: int, rhs: int) -> bool;
+  fn (==)(lhs: int, rhs: int) -> bool;
+  fn (!=)(lhs: int, rhs: int) -> bool;
+  fn (!)(input: bool) -> bool;
+  fn (&&)(lhs: bool, rhs: bool) -> bool {
     return if lhs { rhs } else { false };
   }
-  fn logical_or(lhs: bool, rhs: bool) -> bool as || {
+  fn (||)(lhs: bool, rhs: bool) -> bool {
     return if lhs { true } else { rhs };
   }
   fn module_identity(input: module) -> module;
@@ -262,21 +262,32 @@ module pipeline@1.0.0 {
   const auto typed = pipeline ? pipeline->function("typed") : std::nullopt;
   const auto twice = pipeline ? pipeline->overloads("twice")
                               : std::vector<joggle::Module::FunctionDecl>{};
-  const auto add_offset =
-      pipeline ? pipeline->function("add_offset") : std::nullopt;
-  const auto less = pipeline ? pipeline->function("less") : std::nullopt;
-  const auto text_less =
-      pipeline ? pipeline->function("text_less") : std::nullopt;
-  const auto less_equal =
-      pipeline ? pipeline->function("less_equal") : std::nullopt;
-  const auto greater = pipeline ? pipeline->function("greater") : std::nullopt;
-  const auto greater_equal =
-      pipeline ? pipeline->function("greater_equal") : std::nullopt;
-  const auto equal = pipeline ? pipeline->function("equal") : std::nullopt;
-  const auto not_equal =
-      pipeline ? pipeline->function("not_equal") : std::nullopt;
-  const auto logical_not =
-      pipeline ? pipeline->function("logical_not") : std::nullopt;
+  const auto operator_with_input =
+      [&](std::string_view symbol, std::string_view input)
+      -> std::optional<joggle::Module::FunctionDecl> {
+    if (!pipeline) {
+      return std::nullopt;
+    }
+    const auto overloads = pipeline->overloads(symbol);
+    const auto found = std::find_if(
+        overloads.begin(), overloads.end(), [&](const auto& candidate) {
+          return !candidate.inputs().empty() &&
+                 candidate.inputs().front().domain ==
+                     joggle::Module::Expression::reference(std::string(input));
+        });
+    return found == overloads.end()
+               ? std::optional<joggle::Module::FunctionDecl>{}
+               : std::optional<joggle::Module::FunctionDecl>{*found};
+  };
+  const auto add_offset = operator_with_input("+", "int");
+  const auto less = operator_with_input("<", "int");
+  const auto text_less = operator_with_input("<", "string");
+  const auto less_equal = operator_with_input("<=", "int");
+  const auto greater = operator_with_input(">", "int");
+  const auto greater_equal = operator_with_input(">=", "int");
+  const auto equal = operator_with_input("==", "int");
+  const auto not_equal = operator_with_input("!=", "int");
+  const auto logical_not = operator_with_input("!", "bool");
   const auto earlier = pipeline ? pipeline->function("earlier") : std::nullopt;
   const auto invert = pipeline ? pipeline->function("invert") : std::nullopt;
   const auto ordered_typed =

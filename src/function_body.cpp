@@ -3525,16 +3525,15 @@ private:
         result.expression.value.labels.emplace_back();
       }
     }
-    const auto notation = op.callee().operator_symbol();
     const auto fixity = op.callee().operator_fixity();
     const bool valid_arity =
         fixity && ((*fixity == Module::FunctionDecl::Fixity::Infix &&
                     op.arguments().size() == 2U) ||
                    (*fixity != Module::FunctionDecl::Fixity::Infix &&
                     op.arguments().size() == 1U));
-    if (notation && valid_arity && result.bindings.size() == 1U &&
+    if (fixity && valid_arity && result.bindings.size() == 1U &&
         detail::compiler_inputs(op.callee()).empty()) {
-      result.expression.value.text = std::string(*notation);
+      result.expression.value.text = std::string(op.callee().name());
       if (*fixity == Module::FunctionDecl::Fixity::Prefix) {
         result.expression.value.kind = Module::Expression::Kind::Prefix;
       } else if (*fixity == Module::FunctionDecl::Fixity::Infix) {

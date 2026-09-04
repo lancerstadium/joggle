@@ -16,21 +16,21 @@ Modules rather than compiler-core categories.
 joggle 1;
 
 module example@1.0.0 {
-  interface primitive: fn;
   type word(width: int);
 
-  fn machine_add(lhs: word<8>, rhs: word<8>) -> word<8> : primitive;
+  fn (+)(lhs: word<8>, rhs: word<8>) -> word<8>;
 
   fn twice(input: word<8>) -> word<8> {
-    return machine_add(input, input);
+    return input + input;
   }
 }
 ```
 
-`fn` is used for residual computation and compiler-time work. Inputs known to
-the compiler execute immediately; values that remain unknown become typed Ops
-and SSA Values. Prefix `@` only asserts that an expression must finish during
-compilation.
+`fn` is used for residual computation and compiler-time work. Prefix `@`
+requests compile-time execution; an ordinary call remains a program call even
+when its operands happen to be known. This explicit-staging rule is accepted
+by RFC 0001 and is the next implementation gate; the current evaluator still
+contains eager-known behavior that is being removed.
 
 A `Module` owns declarations, materialized Function bodies, imports, and
 content-addressed immutable data. There is no second Program, Graph, Package,
@@ -88,3 +88,4 @@ and reviewed independently of compiler-core implementation details.
 - [Module design](docs/modules.md)
 - [Repository and reproducibility](docs/module-repository.md)
 - [Research position](docs/research-position.md)
+- [Accepted core-language RFC](docs/rfcs/0001-core-language.md)

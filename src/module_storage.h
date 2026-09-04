@@ -48,7 +48,6 @@ struct FunctionDefinition {
   std::vector<Module::ParameterDecl> results;
   FunctionTypeContract types;
   std::vector<std::string> interfaces;
-  std::optional<std::string> operator_symbol;
   std::optional<Module::FunctionDecl::Fixity> operator_fixity;
   std::optional<FunctionBody> body;
   std::optional<SourceRange> source;

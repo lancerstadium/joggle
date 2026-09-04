@@ -734,8 +734,8 @@ module loops@1.0.0 {
   fn source<T: type>() -> T;
   fn integer_literal<T: prelude.integer>(value: int) -> T : prelude.literal;
   fn less(lhs: i32, rhs: i32) -> i1;
-  fn counted_less(lhs: i32, rhs: i32) -> i1 as <;
-  fn counted_add(lhs: i32, rhs: i32) -> i32 as +;
+  fn (<)(lhs: i32, rhs: i32) -> i1;
+  fn (+)(lhs: i32, rhs: i32) -> i32;
   fn next(input: i32) -> i32;
 
   fn repeat(start: i32, limit: i32) -> i32 {
@@ -1516,7 +1516,7 @@ module computed@1.0.0 {
     return ceildiv(value, multiple) * multiple;
   }
 
-  fn combine(lhs: int, rhs: int) -> int as // {
+  fn (//)(lhs: int, rhs: int) -> int {
     return lhs + rhs;
   }
   fn guarded(value: int) -> int {
@@ -1527,9 +1527,9 @@ module computed@1.0.0 {
   fn packed<M: int, N: int>(rows: M, columns: N)
     -> word<ceildiv(M * N, 8)>;
   fn aligned<W: int>(input: word<W>) -> word<align(W, 8)>;
-  fn add<W: int>(lhs: word<W>, rhs: word<W>) -> word<W> as +;
-  fn floor_word<W: int>(lhs: word<W>, rhs: word<W>) -> word<W> as //;
-  fn host_double(value: int) -> int as postfix !;
+  fn (+)<W: int>(lhs: word<W>, rhs: word<W>) -> word<W>;
+  fn (//)<W: int>(lhs: word<W>, rhs: word<W>) -> word<W>;
+  fn postfix (!)(value: int) -> int;
   fn combined<W: int>(input: word<W>) -> word<@(W // 2)>;
   fn selected<W: int>(input: word<W>) -> word<@(guarded(W + 2))>;
   fn hosted<W: int>(input: word<W>) -> word<@(W!)>;
@@ -1580,7 +1580,7 @@ module computed@1.0.0 {
   const bool computed_linked = computed.link();
   const auto computed_module = computed.module("computed");
   const auto host_double =
-      computed_module ? computed_module->function("host_double") : std::nullopt;
+      computed_module ? computed_module->function("!") : std::nullopt;
   if (computed_linked && host_double) {
     computed.bind(*host_double, [](std::int64_t value) { return value * 2; });
   }
@@ -1692,10 +1692,9 @@ module computed@1.0.0 {
           *compile_time_operator_width == 8 &&
           *compile_time_branch_width == 8 && *compile_time_host_width == 14 &&
           sum_function->ops().size() == 1U &&
-          sum_function->ops().front().callee().name() == "add" &&
+          sum_function->ops().front().callee().name() == "+" &&
           quotient_function->ops().size() == 1U &&
-          quotient_function->ops().front().callee().name() ==
-              "floor_word" &&
+          quotient_function->ops().front().callee().name() == "//" &&
           computed_text.find("word<W + 1>") != std::string::npos &&
           computed_text.find("word<ceildiv(M * N, 8)>") != std::string::npos &&
           computed_text.find("word<align(W, 8)>") != std::string::npos &&
@@ -1912,7 +1911,7 @@ module imported_function@1.0.0 {
   imported_operator.add(R"(
 joggle 1;
 module native_arith@1.0.0 {
-  fn add<T: prelude.scalar>(lhs: T, rhs: T) -> T as +;
+  fn (+)<T: prelude.scalar>(lhs: T, rhs: T) -> T;
 }
 )",
                         "native-arith.joggle");
@@ -1942,7 +1941,7 @@ module imported_operator@1.0.0 {
                            .front()
                            .callee()
                            .symbol()
-                           .qualified_name() == "native_arith.add",
+                           .qualified_name() == "native_arith.+",
                "imported operator notation resolves for native SSA types");
 
   joggle::Compiler ambiguous_operator;
@@ -1951,8 +1950,8 @@ joggle 1;
 module ambiguous_operator@1.0.0 {
   type word(width: int);
 
-  fn first<W: int>(lhs: word<W>, rhs: word<W>) -> word<W> as +;
-  fn second<W: int>(lhs: word<W>, rhs: word<W>) -> word<W> as +;
+  fn (+)<W: int>(lhs: word<W>, rhs: word<W>) -> word<W>;
+  fn (+)<W: int>(lhs: word<W>, rhs: word<W>) -> word<W>;
 
   fn main(lhs: word<8>, rhs: word<8>) -> word<8> {
     result = lhs + rhs;
@@ -1970,12 +1969,12 @@ module ambiguous_operator@1.0.0 {
       ambiguous_operator.diagnostics().entries().begin(),
       ambiguous_operator.diagnostics().entries().end(),
       [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find("operator '+' is ambiguous") !=
+        return diagnostic.message.find("duplicate function overload '+'") !=
                std::string::npos;
       });
-  ok &= expect(ambiguous_operator_linked && !ambiguous_operator_function &&
+  ok &= expect(!ambiguous_operator_linked && !ambiguous_operator_function &&
                    reports_operator_ambiguity,
-               "operator resolution rejects ambiguity without priority order");
+               "identical symbolic overloads are rejected at declaration");
 
   joggle::Compiler unsafe_expression;
   unsafe_expression.add(R"(
@@ -2183,12 +2182,12 @@ module staged_control@1.0.0 {
   type word(width: int);
 
   fn identity<T: type>(input: T) -> T;
-  fn integer_add(lhs: int, rhs: int) -> int as +;
-  fn integer_less(lhs: int, rhs: int) -> bool as <;
-  fn integer_greater(lhs: int, rhs: int) -> bool as >;
+  fn (+)(lhs: int, rhs: int) -> int;
+  fn (<)(lhs: int, rhs: int) -> bool;
+  fn (>)(lhs: int, rhs: int) -> bool;
   fn integer_literal<T: prelude.integer>(value: int) -> T : prelude.literal;
-  fn index_add(lhs: index, rhs: index) -> index as +;
-  fn index_less(lhs: index, rhs: index) -> i1 as <;
+  fn (+)(lhs: index, rhs: index) -> index;
+  fn (<)(lhs: index, rhs: index) -> i1;
   fn touch(input: i32, position: index) -> i32;
 
   fn sum_shape<S: list<int>>(shape: S) -> int {
@@ -2280,12 +2279,26 @@ module staged_control@1.0.0 {
   staged_control.add(staged_control_source, "staged-control.joggle");
   const bool staged_control_linked = staged_control.link();
   const auto staged_module = staged_control.module("staged_control");
-  const auto integer_add =
-      staged_module ? staged_module->function("integer_add") : std::nullopt;
-  const auto integer_less =
-      staged_module ? staged_module->function("integer_less") : std::nullopt;
-  const auto integer_greater =
-      staged_module ? staged_module->function("integer_greater") : std::nullopt;
+  const auto staged_integer_operator =
+      [&](std::string_view symbol)
+      -> std::optional<joggle::Module::FunctionDecl> {
+    if (!staged_module) {
+      return std::nullopt;
+    }
+    const auto overloads = staged_module->overloads(symbol);
+    const auto found = std::find_if(
+        overloads.begin(), overloads.end(), [](const auto& candidate) {
+          return !candidate.inputs().empty() &&
+                 candidate.inputs().front().domain ==
+                     joggle::Module::Expression::reference("int");
+        });
+    return found == overloads.end()
+               ? std::optional<joggle::Module::FunctionDecl>{}
+               : std::optional<joggle::Module::FunctionDecl>{*found};
+  };
+  const auto integer_add = staged_integer_operator("+");
+  const auto integer_less = staged_integer_operator("<");
+  const auto integer_greater = staged_integer_operator(">");
   if (integer_add) {
     staged_control.bind(*integer_add, [](std::int64_t lhs, std::int64_t rhs) {
       return lhs + rhs;

@@ -91,7 +91,7 @@ find_visible_operators(Lookup&& lookup, std::string_view owner,
   }
   const auto append = [&](const Module& module) {
     for (const auto& function : module.functions()) {
-      if (function.operator_symbol() == symbol &&
+      if (function.name() == symbol &&
           function.operator_fixity() == fixity) {
         result.push_back(function);
       }
@@ -107,7 +107,7 @@ find_visible_operators(Lookup&& lookup, std::string_view owner,
     if (const auto prelude = lookup(prelude_module_name)) {
       std::vector<Module::FunctionDecl> ambient;
       for (const auto& function : prelude->functions()) {
-        if (function.operator_symbol() == symbol &&
+        if (function.name() == symbol &&
             function.operator_fixity() == fixity) {
           ambient.push_back(function);
         }

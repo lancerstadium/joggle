@@ -106,25 +106,24 @@ bool invalid_integer_division(std::int64_t left, std::int64_t right) {
 
 std::optional<std::int64_t>
 integer_binary(std::string_view name, std::int64_t left, std::int64_t right) {
-  if (name == "add") {
+  if (name == "+") {
     return checked_add(left, right);
   }
-  if (name == "subtract") {
+  if (name == "-") {
     return checked_subtract(left, right);
   }
-  if (name == "multiply") {
+  if (name == "*") {
     return checked_multiply(left, right);
   }
-  if (name == "divide" || name == "floor_divide" || name == "remainder") {
+  if (name == "/" || name == "//" || name == "%") {
     if (invalid_integer_division(left, right)) {
       return std::nullopt;
     }
-    if (name == "remainder") {
+    if (name == "%") {
       return left % right;
     }
     std::int64_t quotient = left / right;
-    if (name == "floor_divide" && left % right != 0 &&
-        (left < 0) != (right < 0)) {
+    if (name == "//" && left % right != 0 && (left < 0) != (right < 0)) {
       --quotient;
     }
     return quotient;
@@ -134,18 +133,17 @@ integer_binary(std::string_view name, std::int64_t left, std::int64_t right) {
 
 bool primitive_name(std::string_view name) {
   constexpr std::array names{
-      std::string_view{"positive"},     std::string_view{"negative"},
-      std::string_view{"add"},          std::string_view{"subtract"},
-      std::string_view{"multiply"},     std::string_view{"divide"},
-      std::string_view{"floor_divide"}, std::string_view{"remainder"},
-      std::string_view{"less"},         std::string_view{"less_equal"},
-      std::string_view{"greater"},      std::string_view{"greater_equal"},
-      std::string_view{"equal"},        std::string_view{"not_equal"},
-      std::string_view{"logical_not"},  std::string_view{"logical_and"},
-      std::string_view{"logical_or"},   std::string_view{"ceildiv"},
-      std::string_view{"min"},          std::string_view{"max"},
-      std::string_view{"range"},        std::string_view{"length"},
-      std::string_view{"at"},           std::string_view{"append"},
+      std::string_view{"+"},       std::string_view{"-"},
+      std::string_view{"*"},       std::string_view{"/"},
+      std::string_view{"//"},      std::string_view{"%"},
+      std::string_view{"<"},       std::string_view{"<="},
+      std::string_view{">"},       std::string_view{">="},
+      std::string_view{"=="},      std::string_view{"!="},
+      std::string_view{"!"},       std::string_view{"&&"},
+      std::string_view{"||"},      std::string_view{"ceildiv"},
+      std::string_view{"min"},     std::string_view{"max"},
+      std::string_view{"range"},   std::string_view{"length"},
+      std::string_view{"at"},      std::string_view{"append"},
   };
   return std::find(names.begin(), names.end(), name) != names.end();
 }
@@ -257,13 +255,13 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
     result.push_back(arguments[1]);
     return ParameterValue::list(std::move(result));
   }
-  if (name == "logical_not") {
+  if (name == "!") {
     const bool* value =
         arguments.size() == 1U ? arguments[0].as_bool() : nullptr;
     return value ? std::optional<ParameterValue>{ParameterValue(!*value)}
-                 : fail("Prelude logical_not expects one bool");
+                 : fail("Prelude ! expects one bool");
   }
-  if (name == "logical_and" || name == "logical_or") {
+  if (name == "&&" || name == "||") {
     const bool* left =
         arguments.size() == 2U ? arguments[0].as_bool() : nullptr;
     const bool* right =
@@ -271,23 +269,22 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
     if (left == nullptr || right == nullptr) {
       return fail("Prelude " + std::string(name) + " expects two bools");
     }
-    return ParameterValue(name == "logical_and" ? *left && *right
-                                                : *left || *right);
+    return ParameterValue(name == "&&" ? *left && *right : *left || *right);
   }
 
-  if (name == "positive" || name == "negative") {
+  if ((name == "+" || name == "-") && arguments.size() == 1U) {
     if (arguments.size() != 1U) {
       return fail("Prelude " + std::string(name) + " expects one value");
     }
     if (const auto* integer = arguments[0].as_i64()) {
-      if (name == "negative" &&
+      if (name == "-" &&
           *integer == std::numeric_limits<std::int64_t>::min()) {
         return fail("compile-time integer arithmetic overflow");
       }
-      return ParameterValue(name == "negative" ? -*integer : *integer);
+      return ParameterValue(name == "-" ? -*integer : *integer);
     }
     if (const auto* real = arguments[0].as_f64()) {
-      const double result = name == "negative" ? -*real : *real;
+      const double result = name == "-" ? -*real : *real;
       return std::isfinite(result)
                  ? std::optional<ParameterValue>{ParameterValue(result)}
                  : fail("compile-time floating-point arithmetic is not finite");
@@ -304,22 +301,22 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
       return fail("Prelude " + std::string(name) +
                   " received values from different domains");
     }
-    if (name == "less") {
+    if (name == "<") {
       return ParameterValue(*left < *right);
     }
-    if (name == "less_equal") {
+    if (name == "<=") {
       return ParameterValue(*left <= *right);
     }
-    if (name == "greater") {
+    if (name == ">") {
       return ParameterValue(*left > *right);
     }
-    if (name == "greater_equal") {
+    if (name == ">=") {
       return ParameterValue(*left >= *right);
     }
-    if (name == "equal") {
+    if (name == "==") {
       return ParameterValue(*left == *right);
     }
-    if (name == "not_equal") {
+    if (name == "!=") {
       return ParameterValue(*left != *right);
     }
     if (name == "min") {
@@ -340,8 +337,7 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
       return ParameterValue(*result);
     }
     return fail(
-        (name == "divide" || name == "floor_divide" || name == "remainder") &&
-                *right == 0
+        (name == "/" || name == "//" || name == "%") && *right == 0
             ? "compile-time division by zero"
             : "compile-time integer arithmetic overflow");
   }
@@ -351,22 +347,22 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
       return fail("Prelude " + std::string(name) +
                   " received values from different domains");
     }
-    if (name == "less") {
+    if (name == "<") {
       return ParameterValue(*left < *right);
     }
-    if (name == "less_equal") {
+    if (name == "<=") {
       return ParameterValue(*left <= *right);
     }
-    if (name == "greater") {
+    if (name == ">") {
       return ParameterValue(*left > *right);
     }
-    if (name == "greater_equal") {
+    if (name == ">=") {
       return ParameterValue(*left >= *right);
     }
-    if (name == "equal") {
+    if (name == "==") {
       return ParameterValue(*left == *right);
     }
-    if (name == "not_equal") {
+    if (name == "!=") {
       return ParameterValue(*left != *right);
     }
     if (name == "min") {
@@ -375,14 +371,14 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
     if (name == "max") {
       return ParameterValue(std::max(*left, *right));
     }
-    if ((name == "divide" || name == "floor_divide") && *right == 0.0) {
+    if ((name == "/" || name == "//") && *right == 0.0) {
       return fail("compile-time division by zero");
     }
-    const double result = name == "add"        ? *left + *right
-                          : name == "subtract" ? *left - *right
-                          : name == "multiply" ? *left * *right
-                          : name == "divide"   ? *left / *right
-                          : name == "floor_divide"
+    const double result = name == "+"   ? *left + *right
+                          : name == "-" ? *left - *right
+                          : name == "*" ? *left * *right
+                          : name == "/" ? *left / *right
+                          : name == "//"
                               ? std::floor(*left / *right)
                               : std::numeric_limits<double>::quiet_NaN();
     return std::isfinite(result)
@@ -391,16 +387,16 @@ evaluate_prelude_primitive(const Module::FunctionDecl& function,
   }
   if (const auto* left = arguments[0].as_bool()) {
     const auto* right = arguments[1].as_bool();
-    if (right != nullptr && (name == "equal" || name == "not_equal")) {
-      return ParameterValue(name == "equal" ? *left == *right
-                                            : *left != *right);
+    if (right != nullptr && (name == "==" || name == "!=")) {
+      return ParameterValue(name == "==" ? *left == *right
+                                         : *left != *right);
     }
   }
   if (const auto* left = arguments[0].as_string()) {
     const auto* right = arguments[1].as_string();
-    if (right != nullptr && (name == "equal" || name == "not_equal")) {
-      return ParameterValue(name == "equal" ? *left == *right
-                                            : *left != *right);
+    if (right != nullptr && (name == "==" || name == "!=")) {
+      return ParameterValue(name == "==" ? *left == *right
+                                         : *left != *right);
     }
   }
   return fail("Prelude " + std::string(name) +

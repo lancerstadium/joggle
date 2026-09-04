@@ -46,7 +46,7 @@ int main() {
     return EXIT_FAILURE;
   }
   const auto integer_schema = test_ir->type("integer");
-  const auto add_schema = test_ir->function("add");
+  const auto add_schema = test_ir->function("+");
   const auto cast_schema = test_ir->function("cast");
   const auto canonicalize_schema = test_ir->function("canonicalize");
   const auto marker_schema = testing->function("marker");

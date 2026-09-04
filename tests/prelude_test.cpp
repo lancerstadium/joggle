@@ -299,7 +299,7 @@ module shadowing@1.0.0 {
   fn ceildiv(lhs: int, rhs: int) -> int {
     return 99;
   }
-  fn custom_add(lhs: int, rhs: int) -> int as + {
+  fn (+)(lhs: int, rhs: int) -> int {
     return lhs - rhs;
   }
   fn local_call(lhs: int, rhs: int) -> int {

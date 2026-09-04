@@ -42,7 +42,7 @@ int main() {
   const auto test_ir = compiler.module("test_ir");
   const auto control = compiler.module("control");
   const auto integer_schema = test_ir ? test_ir->type("integer") : std::nullopt;
-  const auto add_schema = test_ir ? test_ir->function("add") : std::nullopt;
+  const auto add_schema = test_ir ? test_ir->function("+") : std::nullopt;
   const auto cast_schema = test_ir ? test_ir->function("cast") : std::nullopt;
   const auto source_schema =
       control ? control->function("source") : std::nullopt;
