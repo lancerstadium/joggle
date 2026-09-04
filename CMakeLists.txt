@@ -53,6 +53,7 @@ add_library(joggle
   src/compile/eval.cpp
   src/compile/link.cpp
   src/compile/native.cpp
+  src/compile/run.cpp
   src/compile/val.cpp
   src/transform/rewrite.cpp
   src/transform/equal.cpp
