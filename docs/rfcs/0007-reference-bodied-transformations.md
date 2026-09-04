@@ -1,6 +1,6 @@
 # RFC 0007: Reference-bodied transformations
 
-Status: implementation gates 1--5 complete; gate 6 prerequisite complete
+Status: implementation gates 1--6 complete
 
 ## Purpose
 
@@ -124,11 +124,12 @@ rebuild it deterministically. No runtime search is mandatory.
    source-bodied extension and prove the positive and negative cases.
 5. [x] Expose the primitive through an ordinary module function and exercise it
    from source with `@`.
-6. [ ] Design transformation combinators only after real fusion pipelines show
-   which control operations are necessary. Ordinary `fn`/`@call` sequencing
-   and first-class compiler `function` arguments are complete; no separate
-   `seq` abstraction is needed. Repetition, alternatives, or search remain
-   deferred until a real model requires them.
+6. [x] Derive transformation composition from the complete SqueezeNet fusion
+   pipeline. Ordinary `fn`/`@call` sequencing composes modules; the
+   transformation's own bounded sweep replaces every matching pair. No public
+   `seq`, `Strategy`, or `Result` abstraction is required. Repetition,
+   alternatives, and search remain deferred until a real optimization needs
+   them.
 7. [ ] Design one installable packed-format module only after gates 1--6.
 8. [ ] Add bounded variant enumeration and measured selection only after the
    format path is executable.

@@ -62,8 +62,20 @@ private:
   std::optional<std::string>
   value(const Value& current, const std::vector<Value>& parameters,
         const std::vector<std::string>& arguments) {
+    const auto cached = std::find_if(
+        memo_.begin(), memo_.end(),
+        [&](const auto& entry) { return entry.first == current; });
+    if (cached != memo_.end()) {
+      return cached->second;
+    }
+    const auto remember = [&](std::optional<std::string> result) {
+      if (result) {
+        memo_.emplace_back(current, *result);
+      }
+      return result;
+    };
     if (const auto index = position(parameters, current)) {
-      return arguments[*index];
+      return remember(arguments[*index]);
     }
     if (current.known()) {
       const auto known = detail::FunctionAccess::known_value(current);
@@ -74,21 +86,21 @@ private:
       std::string result = "known";
       field(result, current.type().stable_name());
       field(result, known->canonical());
-      return result;
+      return remember(std::move(result));
     }
     if (const auto reference = current.referenced_function()) {
       std::string result = "function";
       field(result, current.type().stable_name());
       field(result, reference->symbol().stable_name());
       field(result, reference->signature());
-      return result;
+      return remember(std::move(result));
     }
     const auto producer = current.defining_op();
     if (!producer) {
       diagnostics_.report("equivalence encountered an unbound value");
       return std::nullopt;
     }
-    return call(*producer, current, parameters, arguments);
+    return remember(call(*producer, current, parameters, arguments));
   }
 
   std::optional<std::string>
@@ -190,6 +202,7 @@ private:
   Diagnostics& diagnostics_;
   std::size_t expansions_ = 0;
   std::set<std::string> active_;
+  std::vector<std::pair<Value, std::string>> memo_;
 };
 
 bool same_signature(const Function& left, const Function& right) {

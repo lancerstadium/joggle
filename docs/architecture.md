@@ -117,7 +117,8 @@ The core imposes no lowering direction or fixed hardware hierarchy.
 
 ## Near-term implementation order
 
-The core-language, tensor, ONNX, lossless-bundle, and first reference-body
-equivalence gates are complete. The next binding plan remains RFC 0007:
-transformation combinators must be derived from real fusion pipelines before
-format or measured-selection vocabulary is designed.
+The core-language, tensor, ONNX, lossless-bundle, reference-body equivalence,
+and first real-model fusion gates are complete. The SqueezeNet pipeline needed
+ordinary `fn`/`@call` sequencing and a module-local bounded sweep, but no public
+strategy or pass object. The next gate in RFC 0007 is one installable packed
+format; measured selection remains later.

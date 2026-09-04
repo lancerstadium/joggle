@@ -16,6 +16,8 @@ of the project; none is a migration log.
 - [Module design](modules.md) defines the extension and dependency model.
 - [Tensor module](tensor.md) records the first target-independent AI
   vocabulary and its implemented evidence boundary.
+- [Fusion module](fusion.md) documents the first installable,
+  reference-bodied real-model transformation.
 - [ONNX inference import](onnx.md) documents the optional, transactionally
   checked real-model importer and its exact support boundary.
 - [C++ API](cpp-api.md) documents the in-process library surface.

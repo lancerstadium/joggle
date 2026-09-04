@@ -74,10 +74,12 @@ ctest --test-dir build --output-on-failure
 ```
 
 The repository ships `tensor@1.0.0`, a small target-independent semantic
-Module, and an optional, Protobuf-backed `onnx@1.0.0` inference importer. The
-first real-model boundary imports the hash-pinned ONNX Model Zoo SqueezeNet 1.1
-artifact into ordinary typed Functions. Its intentionally narrow support and
-exact ONNX Runtime differential evidence are documented explicitly.
+Module; `fusion@1.0.0`, a reference-bodied Conv/ReLU transformation; and an
+optional, Protobuf-backed `onnx@1.0.0` inference importer. The real-model path
+imports the hash-pinned ONNX Model Zoo SqueezeNet 1.1 artifact into ordinary
+typed Functions and fuses all 26 Conv/ReLU pairs through a source-defined
+compiler pipeline. Its intentionally narrow support and exact ONNX Runtime
+differential evidence are documented explicitly.
 
 ## Documentation
 
@@ -88,6 +90,7 @@ exact ONNX Runtime differential evidence are documented explicitly.
 - [C++ API](docs/cpp-api.md)
 - [Module design](docs/modules.md)
 - [Tensor module](docs/tensor.md)
+- [Fusion module](docs/fusion.md)
 - [ONNX inference import](docs/onnx.md)
 - [Repository and reproducibility](docs/module-repository.md)
 - [Research position](docs/research-position.md)

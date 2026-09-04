@@ -81,6 +81,21 @@ target_link_libraries(joggle PRIVATE ${CMAKE_DL_LIBS})
 
 include(cmake/JoggleModule.cmake)
 
+joggle_module(joggle_fusion_native
+  SOURCE modules/fusion/module.joggle
+  NATIVE modules/fusion/native.cpp)
+if(MSVC)
+  target_compile_options(joggle_fusion_native PRIVATE /W4 /WX)
+else()
+  target_compile_options(joggle_fusion_native PRIVATE
+    -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
+endif()
+set_target_properties(joggle_fusion_native PROPERTIES
+  PREFIX ""
+  OUTPUT_NAME "native"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/fusion"
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/fusion")
+
 set(JOGGLE_SQUEEZENET_MODEL
   "${CMAKE_CURRENT_BINARY_DIR}/models/squeezenet1.1-7.onnx"
   CACHE FILEPATH "Build-cache path for the audited SqueezeNet model")
@@ -163,8 +178,13 @@ install(FILES language/prelude.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/language)
 install(FILES modules/tensor/module.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/tensor)
+install(FILES modules/fusion/module.joggle
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/fusion)
 install(FILES modules/onnx/module.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/onnx)
+install(TARGETS joggle_fusion_native
+  LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/fusion
+  RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/fusion)
 install(EXPORT JoggleTargets
   FILE JoggleTargets.cmake
   NAMESPACE joggle::
@@ -203,6 +223,8 @@ if(JOGGLE_BUILD_TESTS)
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/compiler_test.joggle")
   set(JOGGLE_TENSOR_MODULE
     "${CMAKE_CURRENT_SOURCE_DIR}/modules/tensor/module.joggle")
+  set(JOGGLE_FUSION_MODULE
+    "${CMAKE_CURRENT_SOURCE_DIR}/modules/fusion/module.joggle")
 
   joggle_module(joggle_compiler_test_native
     SOURCE tests/fixtures/compiler_test.joggle
@@ -232,6 +254,15 @@ if(JOGGLE_BUILD_TESTS)
     JOGGLE_TENSOR_MODULE="${JOGGLE_TENSOR_MODULE}"
   )
   add_test(NAME tensor COMMAND joggle_tensor_test)
+
+  add_executable(joggle_fusion_test tests/fusion_test.cpp)
+  target_link_libraries(joggle_fusion_test PRIVATE joggle::joggle)
+  target_compile_definitions(joggle_fusion_test PRIVATE
+    JOGGLE_TENSOR_MODULE="${JOGGLE_TENSOR_MODULE}"
+    JOGGLE_FUSION_MODULE="${JOGGLE_FUSION_MODULE}"
+    JOGGLE_FUSION_NATIVE="$<TARGET_FILE:joggle_fusion_native>"
+  )
+  add_test(NAME fusion COMMAND joggle_fusion_test)
 
   add_executable(joggle_ir_test tests/ir_test.cpp)
   target_link_libraries(joggle_ir_test PRIVATE joggle::joggle)
@@ -372,6 +403,19 @@ if(JOGGLE_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/modules/onnx/module.joggle
         $<TARGET_FILE:joggle_onnx_native>
         ${JOGGLE_ONNX_TEST_MODEL})
+
+    if(NOT JOGGLE_ONNX_TEST_MODEL STREQUAL "")
+      add_executable(joggle_onnx_fusion_test tests/onnx_fusion_test.cpp)
+      target_link_libraries(joggle_onnx_fusion_test PRIVATE joggle::joggle)
+      add_test(NAME onnx_fusion
+        COMMAND joggle_onnx_fusion_test
+          ${JOGGLE_TENSOR_MODULE}
+          ${JOGGLE_FUSION_MODULE}
+          $<TARGET_FILE:joggle_fusion_native>
+          ${CMAKE_CURRENT_SOURCE_DIR}/modules/onnx/module.joggle
+          $<TARGET_FILE:joggle_onnx_native>
+          ${JOGGLE_ONNX_TEST_MODEL})
+    endif()
 
     if(NOT JOGGLE_ONNX_TEST_MODEL STREQUAL "")
       add_test(NAME onnx_bundle_cli

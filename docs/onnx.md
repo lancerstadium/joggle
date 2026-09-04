@@ -53,7 +53,7 @@ cmake -S . -B build \
   -DJOGGLE_ONNX_TEST_MODEL="$PWD/build/models/squeezenet1.1-7.onnx"
 cmake --build build --target joggle_fetch_squeezenet
 cmake --build build
-ctest --test-dir build -R '^onnx$' --output-on-failure
+ctest --test-dir build -R '^(onnx|onnx_fusion)$' --output-on-failure
 ```
 
 The fetch target downloads the ONNX Model Zoo SqueezeNet 1.1 model from commit
@@ -125,3 +125,9 @@ model plus all 53 initializer payloads are retained as 54 distinct
 content-addressed Module data entries. The test fixes the independently audited
 65-node call/shape sequence, operator properties and counts, every payload
 digest, the exact source digest, and repeated-import identity.
+
+The separate `onnx_fusion` test composes import and the installable
+[`fusion@1.0.0`](fusion.md) Module in ordinary source. It proves all 26
+Conv/ReLU replacements locally and then checks whole-Function definitional
+equivalence: 117 calls become 91 calls (52 constants, 26 fused calls, and 13
+other semantic calls), with deterministic source provenance retained.

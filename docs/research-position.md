@@ -33,8 +33,14 @@ The implementation already demonstrates:
 5. a target-independent tensor Module and an optional ONNX Module import the
    exact Model Zoo SqueezeNet 1.1 graph;
 6. the imported Function reconstructs an ONNX graph whose deterministic
-   ONNX Runtime output is bit-identical to the original model; and
-7. Module bundles preserve and verify all imported data through public
+   ONNX Runtime output is bit-identical to the original model;
+7. an installable `fusion` Module gives a generic Conv/ReLU function its
+   portable source meaning, composes `@onnx.read` and `@fusion.run` in source,
+   and safely replaces all 26 pairs in the official model;
+8. the complete 117-call source Function and 91-call transformed Function are
+   definitionally equivalent, with shared-DAG normalization memoized by the
+   existing `Value` identities; and
+9. Module bundles preserve and verify all imported data through public
    `check`, `run`, `install`, and `lock` workflows.
 
 These are infrastructure results. They do not establish general mathematical

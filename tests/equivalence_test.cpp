@@ -26,6 +26,7 @@ module semantics@1.0.0 {
   fn primitive(input: word, axis: int) -> word;
   fn other(input: word, axis: int) -> word;
   fn interleaved(axis: int, input: word, scale: int) -> word;
+  fn combine(lhs: word, rhs: word) -> word;
   fn replace(input: function, before: function, after: function) -> function;
 
   fn wrapped(input: word, axis: int) -> word {
@@ -70,6 +71,16 @@ module semantics@1.0.0 {
 
   fn interleaved_indirect(input: word) -> word {
     return interleaved_wrapper(3, input, 7);
+  }
+
+  fn shared_direct(input: word) -> word {
+    value: word = primitive(input, 1);
+    return combine(value, value);
+  }
+
+  fn shared_indirect(input: word) -> word {
+    value: word = wrapped(input, 1);
+    return combine(value, value);
   }
 
   fn subject(input: word) -> word {
@@ -124,11 +135,15 @@ module semantics@1.0.0 {
       compiler.materialize("semantics.interleaved_direct");
   const auto interleaved_indirect =
       compiler.materialize("semantics.interleaved_indirect");
+  const auto shared_direct =
+      compiler.materialize("semantics.shared_direct");
+  const auto shared_indirect =
+      compiler.materialize("semantics.shared_indirect");
   auto subject = compiler.materialize("semantics.subject");
   const auto staged_subject = compiler.materialize("semantics.subject");
   if (!direct || !wrapped || !wrong_property || !wrong_callee || !recursive ||
       !interleaved_direct || !interleaved_indirect || !subject ||
-      !staged_subject) {
+      !shared_direct || !shared_indirect || !staged_subject) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -172,6 +187,13 @@ module semantics@1.0.0 {
                "source expansion maps Residual operands independently of "
                "interleaved Known properties");
 
+  joggle::Diagnostics shared_dag_diagnostics;
+  ok &= expect(joggle::equivalent(compiler, *shared_direct, *shared_indirect,
+                                  shared_dag_diagnostics, 1U) &&
+                   shared_dag_diagnostics.ok(),
+               "shared DAG values are normalized once rather than expanded "
+               "as a tree");
+
   const auto revision = subject->revision();
   joggle::Diagnostics rejected_diagnostics;
   const auto rejected = joggle::replace(
@@ -214,6 +236,7 @@ module semantics@1.0.0 {
     callee_diagnostics.print(std::cerr);
     recursion_diagnostics.print(std::cerr);
     interleaved_diagnostics.print(std::cerr);
+    shared_dag_diagnostics.print(std::cerr);
     rejected_diagnostics.print(std::cerr);
     replacement_diagnostics.print(std::cerr);
     limit_diagnostics.print(std::cerr);
