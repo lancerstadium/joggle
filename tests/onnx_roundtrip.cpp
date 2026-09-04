@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -31,16 +32,38 @@ joggle::Bytes read_bytes(const char* path) {
   return result;
 }
 
+std::optional<std::int32_t> onnx_element(const joggle::Type& type) {
+  const auto schema = type.schema();
+  const auto name = schema.name();
+  if (name == "f32") {
+    return onnx::TensorProto_DataType_FLOAT;
+  }
+  if (name == "u8") {
+    return onnx::TensorProto_DataType_UINT8;
+  }
+  if (name == "i8") {
+    return onnx::TensorProto_DataType_INT8;
+  }
+  if (name == "i32") {
+    return onnx::TensorProto_DataType_INT32;
+  }
+  if (name == "i64") {
+    return onnx::TensorProto_DataType_INT64;
+  }
+  return std::nullopt;
+}
+
 bool tensor_info(onnx::ValueInfoProto& info, std::string name,
                  const joggle::Type& type) {
   const auto element = type.get<joggle::Type>("element");
   const auto shape = type.get<Shape>("shape");
-  if (!element || !shape || element->schema().name() != "f32") {
+  const auto code = element ? onnx_element(*element) : std::nullopt;
+  if (!code || !shape) {
     return false;
   }
   info.set_name(std::move(name));
   auto* tensor = info.mutable_type()->mutable_tensor_type();
-  tensor->set_elem_type(onnx::TensorProto_DataType_FLOAT);
+  tensor->set_elem_type(*code);
   for (const auto dimension : *shape) {
     tensor->mutable_shape()->add_dim()->set_dim_value(dimension);
   }
@@ -82,12 +105,17 @@ bool emit(const joggle::Module& module, const char* path) {
     return false;
   }
 
+  const auto operations = function->ops();
+  const bool qdq = std::any_of(
+      operations.begin(), operations.end(), [](const auto& op) {
+        return op.callee().symbol().module_name() == "quant";
+      });
   onnx::ModelProto model;
-  model.set_ir_version(onnx::IR_VERSION_2017_11_3);
+  model.set_ir_version(qdq ? 7 : onnx::IR_VERSION_2017_11_3);
   model.set_producer_name("joggle-onnx-roundtrip-test");
   auto* opset = model.add_opset_import();
   opset->set_domain("");
-  opset->set_version(7);
+  opset->set_version(qdq ? 13 : 7);
   auto* graph = model.mutable_graph();
   graph->set_name("joggle_roundtrip");
 
@@ -100,25 +128,30 @@ bool emit(const joggle::Module& module, const char* path) {
 
   std::size_t constant_index = 0;
   std::size_t call_index = 0;
-  for (const auto& op : function->ops()) {
-    const auto callee = op.callee().symbol().local_name();
+  for (const auto& op : operations) {
+    const auto symbol = op.callee().symbol();
+    const auto callee = symbol.local_name();
+    const auto callee_module = symbol.module_name();
     if (callee == "constant") {
       const auto digest = op.property<std::string>("content");
       const auto data = digest ? module.data(*digest) : std::nullopt;
       const auto shape = op.value().type().get<Shape>("shape");
-      if (!data || !shape) {
+      const auto element = op.value().type().get<joggle::Type>("element");
+      const auto code = element ? onnx_element(*element) : std::nullopt;
+      if (!data || !shape || !code) {
         return false;
       }
       const auto name = "constant_" + std::to_string(constant_index++);
       auto* initializer = graph->add_initializer();
       initializer->set_name(name);
-      initializer->set_data_type(onnx::TensorProto_DataType_FLOAT);
+      initializer->set_data_type(*code);
       for (const auto dimension : *shape) {
         initializer->add_dims(dimension);
       }
       initializer->set_raw_data(
           reinterpret_cast<const char*>(data->data()), data->size());
-      if (!tensor_info(*graph->add_input(), name, op.value().type())) {
+      if (!qdq &&
+          !tensor_info(*graph->add_input(), name, op.value().type())) {
         return false;
       }
       names.emplace_back(op.value(), name);
@@ -127,7 +160,16 @@ bool emit(const joggle::Module& module, const char* path) {
 
     auto* node = graph->add_node();
     node->set_name("call_" + std::to_string(call_index));
-    if (callee == "conv") {
+    if (callee_module == "quant" &&
+        (callee == "quantize" || callee == "dequantize")) {
+      node->set_op_type(callee == "quantize" ? "QuantizeLinear"
+                                               : "DequantizeLinear");
+      const auto axis = op.property<std::int64_t>("axis");
+      if (!axis) {
+        return false;
+      }
+      add_int(*node, "axis", *axis);
+    } else if (callee == "conv") {
       node->set_op_type("Conv");
       const auto strides = op.property<Shape>("strides");
       const auto pads = op.property<Shape>("pads");
@@ -166,6 +208,13 @@ bool emit(const joggle::Module& module, const char* path) {
       add_int(*node, "axis", *axis);
     } else if (callee == "reshape") {
       node->set_op_type("Reshape");
+    } else if (callee == "softmax") {
+      node->set_op_type("Softmax");
+      const auto axis = op.property<std::int64_t>("axis");
+      if (!axis) {
+        return false;
+      }
+      add_int(*node, "axis", *axis);
     } else {
       return false;
     }
@@ -190,12 +239,14 @@ bool emit(const joggle::Module& module, const char* path) {
       for (const auto dimension : *requested) {
         initializer->add_int64_data(dimension);
       }
-      auto* input = graph->add_input();
-      input->set_name(shape_name);
-      auto* tensor = input->mutable_type()->mutable_tensor_type();
-      tensor->set_elem_type(onnx::TensorProto_DataType_INT64);
-      tensor->mutable_shape()->add_dim()->set_dim_value(
-          static_cast<std::int64_t>(requested->size()));
+      if (!qdq) {
+        auto* input = graph->add_input();
+        input->set_name(shape_name);
+        auto* tensor = input->mutable_type()->mutable_tensor_type();
+        tensor->set_elem_type(onnx::TensorProto_DataType_INT64);
+        tensor->mutable_shape()->add_dim()->set_dim_value(
+            static_cast<std::int64_t>(requested->size()));
+      }
       node->add_input(shape_name);
     }
 
@@ -221,21 +272,30 @@ bool emit(const joggle::Module& module, const char* path) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 6) {
+  if (argc != 6 && argc != 7) {
     return EXIT_FAILURE;
   }
+  const bool qdq = argc == 7;
+  const int onnx_index = qdq ? 3 : 2;
+  const int native_index = qdq ? 4 : 3;
+  const int model_index = qdq ? 5 : 4;
+  const int output_index = qdq ? 6 : 5;
   joggle::Compiler compiler;
   compiler.load(argv[1]);
-  compiler.load(argv[2]);
-  if (!compiler.link() || !compiler.load_native("onnx", argv[3])) {
+  if (qdq) {
+    compiler.load(argv[2]);
+  }
+  compiler.load(argv[onnx_index]);
+  if (!compiler.link() ||
+      !compiler.load_native("onnx", argv[native_index])) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
-  const auto bytes = read_bytes(argv[4]);
+  const auto bytes = read_bytes(argv[model_index]);
   const auto model =
       compiler.run<joggle::Module>("onnx.read", bytes,
                                    std::string{"squeezenet_roundtrip"});
-  if (!model || !emit(*model, argv[5])) {
+  if (!model || !emit(*model, argv[output_index])) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }

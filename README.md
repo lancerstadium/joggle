@@ -74,13 +74,13 @@ ctest --test-dir build --output-on-failure
 ```
 
 The repository ships `tensor@1.0.0`, a small target-independent semantic
-Module; `fusion@1.0.0`, a reference-bodied Conv/ReLU transformation;
-`bitpack@1.0.0`, a checked logical-to-physical format experiment; and an
-optional, Protobuf-backed `onnx@1.0.0` inference importer. The real-model path
-imports the hash-pinned ONNX Model Zoo SqueezeNet 1.1 artifact into ordinary
-typed Functions and fuses all 26 Conv/ReLU pairs through a source-defined
-compiler pipeline. Its intentionally narrow support and exact ONNX Runtime
-differential evidence are documented explicitly.
+Module; `quant@1.0.0`, an affine QDQ boundary; `fusion@1.0.0`, a
+reference-bodied Conv/ReLU transformation; `bitpack@1.0.0`, a checked
+logical-to-physical format experiment; and an optional, Protobuf-backed
+`onnx@1.0.0` inference importer. The real-model paths import hash-pinned FLOAT
+and QDQ SqueezeNet artifacts into ordinary typed Functions. Both have exact
+ONNX Runtime differential evidence; the FLOAT graph also fuses all 26
+Conv/ReLU pairs through a source-defined compiler pipeline.
 
 ## Documentation
 
@@ -91,6 +91,7 @@ differential evidence are documented explicitly.
 - [C++ API](docs/cpp-api.md)
 - [Module design](docs/modules.md)
 - [Tensor module](docs/tensor.md)
+- [Quant module](docs/quant.md)
 - [Fusion module](docs/fusion.md)
 - [Bitpack module](docs/bitpack.md)
 - [ONNX inference import](docs/onnx.md)
@@ -99,3 +100,4 @@ differential evidence are documented explicitly.
 - [Accepted core-language RFC](docs/rfcs/0001-core-language.md)
 - [Reference-bodied transformation RFC](docs/rfcs/0007-reference-bodied-transformations.md)
 - [Logical representation RFC](docs/rfcs/0008-logical-representation.md)
+- [QDQ import RFC](docs/rfcs/0009-qdq-import.md)

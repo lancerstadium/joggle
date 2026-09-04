@@ -11,6 +11,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--emitter", required=True)
     parser.add_argument("--tensor", required=True)
+    parser.add_argument("--quant")
     parser.add_argument("--onnx", required=True)
     parser.add_argument("--native", required=True)
     parser.add_argument("--model", required=True)
@@ -28,17 +29,11 @@ def session(path):
 
 def main():
     args = parse_args()
-    subprocess.run(
-        [
-            args.emitter,
-            args.tensor,
-            args.onnx,
-            args.native,
-            args.model,
-            args.output,
-        ],
-        check=True,
-    )
+    command = [args.emitter, args.tensor]
+    if args.quant:
+        command.append(args.quant)
+    command.extend([args.onnx, args.native, args.model, args.output])
+    subprocess.run(command, check=True)
 
     original = session(args.model)
     roundtrip = session(args.output)

@@ -1,0 +1,6 @@
+joggle 1;
+
+module quant@1.0.0 {
+  fn quantize<X, S, Z, Y>(input: X, scale: S, zero: Z, axis: int = 1) -> Y;
+  fn dequantize<X, S, Z, Y>(input: X, scale: S, zero: Z, axis: int = 1) -> Y;
+}

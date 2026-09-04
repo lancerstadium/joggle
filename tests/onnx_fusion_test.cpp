@@ -85,8 +85,9 @@ int main(int argc, char** argv) {
   std::size_t convs = 0;
   std::size_t relus = 0;
   for (const joggle::Op& op : after->ops()) {
-    const auto owner = op.callee().symbol().module_name();
-    const auto name = op.callee().symbol().local_name();
+    const auto symbol = op.callee().symbol();
+    const auto owner = symbol.module_name();
+    const auto name = symbol.local_name();
     constants += static_cast<std::size_t>(owner == "tensor" &&
                                           name == "constant");
     convs += static_cast<std::size_t>(owner == "tensor" && name == "conv");

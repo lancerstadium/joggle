@@ -1,6 +1,6 @@
 # RFC 0005: ONNX inference import
 
-Status: implementation gates complete
+Status: FLOAT profile gates complete; QDQ extension is RFC 0009
 
 ## Purpose
 
@@ -49,7 +49,7 @@ Primary sources:
 
 ## Import semantics
 
-The importer supports one static, dense, float32 inference graph. It rejects
+The FLOAT profile supports one static, dense, float32 inference graph. It rejects
 unknown domains, opsets other than 7, subgraphs, functions, sparse values,
 external tensor data, symbolic or absent dimensions, multiple graph outputs,
 and unsupported attributes before publishing a Module.

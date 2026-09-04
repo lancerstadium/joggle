@@ -9,7 +9,7 @@ No companion manifest language or generated C++ header is required.
 ```joggle
 joggle 1;
 
-module quant@1.0.0 {
+module formats@1.0.0 {
   import tensor@1 as t;
 
   type format(bits: int, signed: bool = true) {
@@ -64,7 +64,7 @@ Users compose functions in source instead of registering a fixed pass list:
 fn prepare(input: bytes, policy: type) -> module {
   model = @onnx.read(input);
   folded = @fold_constants(model);
-  return @quant.optimize(folded, policy);
+  return @formats.optimize(folded, policy);
 }
 ```
 

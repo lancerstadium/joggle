@@ -110,6 +110,7 @@ current implementation establishes feasibility, not superiority.
 4. [x] Prove the complete representation-changing Function equivalent.
 5. [x] Add bit-accurate pack/unpack reference execution and exhaustive i4
    domain vectors.
-6. [ ] Extend an externally maintained quantized inference model.
+6. [x] Import and differentially execute the hash-pinned ONNX Model Zoo QDQ
+   SqueezeNet through independent `quant` and `tensor` Modules.
 7. [ ] Measure integration cost and compile-time scaling against a registry-
    based custom datatype path.

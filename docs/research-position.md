@@ -39,19 +39,25 @@ The implementation already demonstrates:
    and safely replaces all 26 pairs in the official model;
 8. the complete 117-call source Function and 91-call transformed Function are
    definitionally equivalent, with shared-DAG normalization memoized by the
-   existing `Value` identities; and
+   existing `Value` identities;
 9. `bitpack` maps an i4 tensor Function to exact i4x8/u32 physical shapes and
    format-aware source functions, then proves whole-Function equivalence under
    an idempotent logical Type projection;
 10. the same independent Module defines a compiler-side reference codec, with
     exhaustive i4 LSB/MSB and signed two's-complement vectors separating
-    physical byte semantics from the logical-equivalence proof; and
-11. Module bundles preserve and verify all imported data through public
+    physical byte semantics from the logical-equivalence proof;
+11. a second hash-pinned Model Zoo model exercises standard QDQ inference: its
+    228 f32/u8/i8/i32 constants, 130 affine quantization boundaries, and 41
+    tensor calls import without a vendor operation, and reconstruction through
+    ONNX Runtime is exactly equal (`max_abs=0`, `mean_abs=0`); and
+12. Module bundles preserve and verify all imported data through public
    `check`, `run`, `install`, and `lock` workflows.
 
-These are infrastructure results. They do not establish general mathematical
-equivalence of user rewrites, competitive kernels, support for a physical
-format at run time, or publication-level novelty.
+These are infrastructure results. The QDQ calls are still opaque program
+semantics, so the result does not establish correctness of transformations
+through quantization boundaries. It also does not establish general
+mathematical equivalence of user rewrites, competitive kernels, support for a
+physical format at run time, or publication-level novelty.
 
 ## What the closest systems already solve
 

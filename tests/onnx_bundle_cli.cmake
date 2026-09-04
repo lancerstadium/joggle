@@ -8,19 +8,26 @@ endforeach()
 file(REMOVE_RECURSE "${JOGGLE_BUNDLE_TEST_DIR}")
 file(MAKE_DIRECTORY "${JOGGLE_BUNDLE_TEST_DIR}")
 set(driver "${JOGGLE_BUNDLE_TEST_DIR}/driver.joggle")
-set(bundle "${JOGGLE_BUNDLE_TEST_DIR}/squeezenet")
+if(NOT DEFINED JOGGLE_MODEL_NAME)
+  set(JOGGLE_MODEL_NAME squeezenet)
+endif()
+set(bundle "${JOGGLE_BUNDLE_TEST_DIR}/${JOGGLE_MODEL_NAME}")
 set(root "${JOGGLE_BUNDLE_TEST_DIR}/modules")
 set(lock "${JOGGLE_BUNDLE_TEST_DIR}/joggle.lock")
-file(WRITE "${driver}" [=[joggle 1;
+set(optional_import "")
+if(DEFINED JOGGLE_QUANT_MODULE)
+  set(optional_import "  import quant@1;\n")
+endif()
+file(WRITE "${driver}" "joggle 1;
 
 module onnx_bundle_test@1.0.0 {
   import onnx@1;
-
+${optional_import}
   fn read(input: bytes) -> module {
-    return @onnx.read(input, "squeezenet");
+    return @onnx.read(input, \"${JOGGLE_MODEL_NAME}\");
   }
 }
-]=])
+")
 
 function(expect_success label)
   execute_process(
@@ -34,10 +41,14 @@ function(expect_success label)
   set(command_output "${output}" PARENT_SCOPE)
 endfunction()
 
+set(with_modules --with "${JOGGLE_TENSOR_MODULE}")
+if(DEFINED JOGGLE_QUANT_MODULE)
+  list(APPEND with_modules --with "${JOGGLE_QUANT_MODULE}")
+endif()
+list(APPEND with_modules --with "${JOGGLE_ONNX_MODULE}")
 expect_success("import reference model"
   "${JOGGLE_CLI}" run "${driver}" read "${JOGGLE_ONNX_MODEL}"
-  --with "${JOGGLE_TENSOR_MODULE}"
-  --with "${JOGGLE_ONNX_MODULE}"
+  ${with_modules}
   --load-native "onnx=${JOGGLE_ONNX_NATIVE}"
   -o "${bundle}")
 
@@ -46,13 +57,19 @@ if(NOT EXISTS "${bundle}/module.joggle")
 endif()
 file(GLOB payloads "${bundle}/data/*")
 list(LENGTH payloads payload_count)
-if(NOT payload_count EQUAL 54)
+if(DEFINED JOGGLE_EXPECTED_PAYLOADS AND
+   NOT payload_count EQUAL JOGGLE_EXPECTED_PAYLOADS)
   message(FATAL_ERROR
-    "ONNX bundle has ${payload_count} payloads instead of 54")
+    "ONNX bundle has ${payload_count} payloads instead of "
+    "${JOGGLE_EXPECTED_PAYLOADS}")
 endif()
 
 expect_success("install tensor dependency"
   "${JOGGLE_CLI}" install "${JOGGLE_TENSOR_MODULE}" --root "${root}")
+if(DEFINED JOGGLE_QUANT_MODULE)
+  expect_success("install quant dependency"
+    "${JOGGLE_CLI}" install "${JOGGLE_QUANT_MODULE}" --root "${root}")
+endif()
 expect_success("check imported bundle"
   "${JOGGLE_CLI}" check "${bundle}" --root "${root}")
 expect_success("install imported bundle"
@@ -61,7 +78,7 @@ string(STRIP "${command_output}" installed_source)
 get_filename_component(installed_identity "${installed_source}" DIRECTORY)
 file(GLOB installed_payloads "${installed_identity}/data/*")
 list(LENGTH installed_payloads installed_payload_count)
-if(NOT installed_payload_count EQUAL 54)
+if(NOT installed_payload_count EQUAL payload_count)
   message(FATAL_ERROR "installed ONNX Module lost payloads")
 endif()
 
@@ -71,8 +88,13 @@ expect_success("lock installed identity bundle"
   "${JOGGLE_CLI}" lock "${installed_identity}" --root "${root}"
   -o "${lock}")
 file(READ "${lock}" lock_text)
-string(FIND "${lock_text}" "root squeezenet@1.0.0#" root_position)
+string(FIND "${lock_text}" "root ${JOGGLE_MODEL_NAME}@1.0.0#" root_position)
 string(FIND "${lock_text}" "module tensor@1.0.0#" tensor_position)
-if(root_position EQUAL -1 OR tensor_position EQUAL -1)
+set(quant_position 0)
+if(DEFINED JOGGLE_QUANT_MODULE)
+  string(FIND "${lock_text}" "module quant@1.0.0#" quant_position)
+endif()
+if(root_position EQUAL -1 OR tensor_position EQUAL -1 OR
+   quant_position EQUAL -1)
   message(FATAL_ERROR "installed ONNX Module lock is incomplete")
 endif()

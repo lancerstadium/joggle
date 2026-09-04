@@ -16,6 +16,8 @@ of the project; none is a migration log.
 - [Module design](modules.md) defines the extension and dependency model.
 - [Tensor module](tensor.md) records the first target-independent AI
   vocabulary and its implemented evidence boundary.
+- [Quant module](quant.md) records the ordinary-function QDQ boundary and its
+  current semantic trust limit.
 - [Fusion module](fusion.md) documents the first installable,
   reference-bodied real-model transformation.
 - [Bitpack module](bitpack.md) documents logical projection and the first
@@ -37,9 +39,11 @@ of the project; none is a migration log.
   [reference-bodied transformation RFC](rfcs/0007-reference-bodied-transformations.md)
   defines the semantic-correctness boundary and next composition gates for
   user kernels; [logical representation RFC](rfcs/0008-logical-representation.md)
-  defines representation-changing equivalence and its current trust boundary.
+  defines representation-changing equivalence and its current trust boundary;
+  and [QDQ import RFC](rfcs/0009-qdq-import.md) defines quantization as an
+  ordinary semantic Module and freezes its proof boundary.
 
-The repository contains the compiler core, the first static tensor semantic
-Module, and a narrow ONNX IR 3/opset 7 inference importer. It does not claim
-general ONNX coverage or a target backend; the supported reference model does
-have exact differential ONNX Runtime evidence.
+The repository contains the compiler core, static tensor and quant semantic
+Modules, and two narrow ONNX profiles: IR 3/opset 7 FLOAT and IR 7/opset 13
+QDQ. It does not claim general ONNX coverage or a target backend; both audited
+reference models have exact differential ONNX Runtime evidence.

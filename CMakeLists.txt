@@ -114,13 +114,32 @@ set_target_properties(joggle_bitpack_native PROPERTIES
 set(JOGGLE_SQUEEZENET_MODEL
   "${CMAKE_CURRENT_BINARY_DIR}/models/squeezenet1.1-7.onnx"
   CACHE FILEPATH "Build-cache path for the audited SqueezeNet model")
+set(JOGGLE_SQUEEZENET_QDQ_MODEL
+  "${CMAKE_CURRENT_BINARY_DIR}/models/squeezenet1.0-13-qdq.onnx"
+  CACHE FILEPATH "Build-cache path for the audited QDQ SqueezeNet model")
 set(JOGGLE_ONNX_TEST_MODEL "" CACHE FILEPATH
   "Optional local path to the audited SqueezeNet model for ONNX tests")
+set(JOGGLE_ONNX_QDQ_TEST_MODEL "" CACHE FILEPATH
+  "Optional local path to the audited QDQ SqueezeNet model for ONNX tests")
+set(JOGGLE_MODEL_ZOO_ROOT
+  "https://media.githubusercontent.com/media/onnx/models/4c46cd00fbdb7cd30b6c1c17ab54f2e1f4f7b177/validated/vision/classification/squeezenet/model")
 add_custom_target(joggle_fetch_squeezenet
   COMMAND ${CMAKE_COMMAND}
     "-DJOGGLE_MODEL_OUTPUT=${JOGGLE_SQUEEZENET_MODEL}"
-    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchSqueezenet.cmake"
+    "-DJOGGLE_MODEL_URL=${JOGGLE_MODEL_ZOO_ROOT}/squeezenet1.1-7.onnx"
+    "-DJOGGLE_MODEL_SHA256=1eeff551a67ae8d565ca33b572fc4b66e3ef357b0eb2863bb9ff47a918cc4088"
+    "-DJOGGLE_MODEL_NAME=SqueezeNet 1.1 opset 7"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchModel.cmake"
   COMMENT "Fetch the hash-pinned ONNX Model Zoo SqueezeNet model"
+  VERBATIM)
+add_custom_target(joggle_fetch_squeezenet_qdq
+  COMMAND ${CMAKE_COMMAND}
+    "-DJOGGLE_MODEL_OUTPUT=${JOGGLE_SQUEEZENET_QDQ_MODEL}"
+    "-DJOGGLE_MODEL_URL=${JOGGLE_MODEL_ZOO_ROOT}/squeezenet1.0-13-qdq.onnx"
+    "-DJOGGLE_MODEL_SHA256=4a567dd7542ef440890d57268fabf47211174c593d7a1837bd7f16a1067169e7"
+    "-DJOGGLE_MODEL_NAME=SqueezeNet 1.0 QDQ opset 13"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchModel.cmake"
+  COMMENT "Fetch the hash-pinned ONNX Model Zoo QDQ SqueezeNet model"
   VERBATIM)
 
 if(JOGGLE_BUILD_ONNX)
@@ -193,6 +212,8 @@ install(FILES language/prelude.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/language)
 install(FILES modules/tensor/module.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/tensor)
+install(FILES modules/quant/module.joggle
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/quant)
 install(FILES modules/fusion/module.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/fusion)
 install(FILES modules/bitpack/module.joggle
@@ -243,6 +264,8 @@ if(JOGGLE_BUILD_TESTS)
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/compiler_test.joggle")
   set(JOGGLE_TENSOR_MODULE
     "${CMAKE_CURRENT_SOURCE_DIR}/modules/tensor/module.joggle")
+  set(JOGGLE_QUANT_MODULE
+    "${CMAKE_CURRENT_SOURCE_DIR}/modules/quant/module.joggle")
   set(JOGGLE_FUSION_MODULE
     "${CMAKE_CURRENT_SOURCE_DIR}/modules/fusion/module.joggle")
   set(JOGGLE_BITPACK_MODULE
@@ -448,6 +471,18 @@ if(JOGGLE_BUILD_TESTS)
           ${JOGGLE_ONNX_TEST_MODEL})
     endif()
 
+    if(NOT JOGGLE_ONNX_QDQ_TEST_MODEL STREQUAL "")
+      add_executable(joggle_onnx_qdq_test tests/onnx_qdq_test.cpp)
+      target_link_libraries(joggle_onnx_qdq_test PRIVATE joggle::joggle)
+      add_test(NAME onnx_qdq
+        COMMAND joggle_onnx_qdq_test
+          ${JOGGLE_TENSOR_MODULE}
+          ${JOGGLE_QUANT_MODULE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/modules/onnx/module.joggle
+          $<TARGET_FILE:joggle_onnx_native>
+          ${JOGGLE_ONNX_QDQ_TEST_MODEL})
+    endif()
+
     if(NOT JOGGLE_ONNX_TEST_MODEL STREQUAL "")
       add_test(NAME onnx_bundle_cli
         COMMAND ${CMAKE_COMMAND}
@@ -456,7 +491,23 @@ if(JOGGLE_BUILD_TESTS)
           -DJOGGLE_ONNX_MODULE=${CMAKE_CURRENT_SOURCE_DIR}/modules/onnx/module.joggle
           -DJOGGLE_ONNX_NATIVE=$<TARGET_FILE:joggle_onnx_native>
           -DJOGGLE_ONNX_MODEL=${JOGGLE_ONNX_TEST_MODEL}
+          -DJOGGLE_EXPECTED_PAYLOADS=54
           -DJOGGLE_BUNDLE_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/onnx-bundle-test
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/onnx_bundle_cli.cmake)
+    endif()
+
+    if(NOT JOGGLE_ONNX_QDQ_TEST_MODEL STREQUAL "")
+      add_test(NAME onnx_qdq_bundle_cli
+        COMMAND ${CMAKE_COMMAND}
+          -DJOGGLE_CLI=$<TARGET_FILE:joggle_cli>
+          -DJOGGLE_TENSOR_MODULE=${JOGGLE_TENSOR_MODULE}
+          -DJOGGLE_QUANT_MODULE=${JOGGLE_QUANT_MODULE}
+          -DJOGGLE_ONNX_MODULE=${CMAKE_CURRENT_SOURCE_DIR}/modules/onnx/module.joggle
+          -DJOGGLE_ONNX_NATIVE=$<TARGET_FILE:joggle_onnx_native>
+          -DJOGGLE_ONNX_MODEL=${JOGGLE_ONNX_QDQ_TEST_MODEL}
+          -DJOGGLE_MODEL_NAME=squeezenet_qdq
+          -DJOGGLE_EXPECTED_PAYLOADS=148
+          -DJOGGLE_BUNDLE_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/onnx-qdq-bundle-test
           -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/onnx_bundle_cli.cmake)
     endif()
 
@@ -484,6 +535,18 @@ if(JOGGLE_BUILD_TESTS)
           --native $<TARGET_FILE:joggle_onnx_native>
           --model ${JOGGLE_ONNX_TEST_MODEL}
           --output ${CMAKE_CURRENT_BINARY_DIR}/squeezenet-roundtrip.onnx)
+      if(NOT JOGGLE_ONNX_QDQ_TEST_MODEL STREQUAL "")
+        add_test(NAME onnx_qdq_runtime
+          COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/onnx_runtime_test.py
+            --emitter $<TARGET_FILE:joggle_onnx_roundtrip>
+            --tensor ${JOGGLE_TENSOR_MODULE}
+            --quant ${JOGGLE_QUANT_MODULE}
+            --onnx ${CMAKE_CURRENT_SOURCE_DIR}/modules/onnx/module.joggle
+            --native $<TARGET_FILE:joggle_onnx_native>
+            --model ${JOGGLE_ONNX_QDQ_TEST_MODEL}
+            --output ${CMAKE_CURRENT_BINARY_DIR}/squeezenet-qdq-roundtrip.onnx)
+      endif()
     endif()
   endif()
 endif()
