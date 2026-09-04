@@ -2,8 +2,8 @@
 
 Joggle is a C++ compiler substrate with one source owner and one extension
 mechanism. The owner is `Module`; the extension mechanism is ordinary typed
-`fn` declarations. Tensor operators, importers, transformations, cost models,
-and emitters are library vocabulary rather than core subclasses.
+`fn` declarations. Tensor operators, importers, transformations, measurements,
+and output writers are library vocabulary rather than core subclasses.
 
 ## Core objects
 
@@ -84,7 +84,8 @@ Explicit compiler-time calls pass typed lambdas as verified `Function`
 execution values and may return them for later `@` calls. This path shares
 compiler-call shaping, overload filtering, default handling, and execution
 with source-defined compiler functions; it does not encode functions as scalar
-metadata. Typed expression matching is the next transformation gate.
+metadata. Typed expression matching and bounded source-body equivalence reuse
+these same verified Functions and create no normalization IR.
 
 Residual effects use the ordinary `effect<domain>` Prelude type. Tokens flow
 through calls and CFG edges as normal SSA values, and the verifier prevents
@@ -100,24 +101,23 @@ An extension normally contains:
 
 1. one `.joggle` module declaring its types and functions;
 2. optional source bodies for portable behavior;
-3. an optional native library for host-only parsing, analysis, or emission.
+3. an optional native library for host-only parsing, analysis, or file output.
 
 Composition is explicit in source:
 
 ```joggle
-fn compile(input: bytes, machine: type) -> bytes {
+fn prepare(input: bytes, policy: type) -> module {
   model = @read(input);
-  optimized = @optimize(model, machine);
-  return @emit(optimized, machine);
+  return @optimize(model, policy);
 }
 ```
 
-Names such as `read`, `optimize`, and `emit` are module APIs, not magic hooks.
+Names such as `read` and `optimize` are module APIs, not magic hooks.
 The core imposes no lowering direction or fixed hardware hierarchy.
 
 ## Near-term implementation order
 
-The binding plan is RFC 0001: declaration unification, explicit staging,
-higher-order typed functions, effect-safe replacement, then real tensor and
-ONNX modules. Kernel scheduling and hardware-specific formats remain outside
-the core until that end-to-end path works.
+The core-language, tensor, ONNX, lossless-bundle, and first reference-body
+equivalence gates are complete. The next binding plan remains RFC 0007:
+transformation combinators must be derived from real fusion pipelines before
+format or measured-selection vocabulary is designed.

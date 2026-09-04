@@ -108,7 +108,8 @@ declarations.
 ## Replace typed expressions
 
 ```cpp
-auto changed = joggle::replace(function, before, after, diagnostics);
+auto changed =
+    joggle::replace(compiler, function, before, after, diagnostics);
 ```
 
 `before` and `after` are ordinary single-expression `Function` values. Their
@@ -118,6 +119,13 @@ reference identity. All maximal non-overlapping matches are replaced in one
 transaction. The `Module&` overload applies the same operation on a private
 module snapshot and publishes only after every materialized member succeeds.
 Zero changes are a successful no-op and preserve revision or module identity.
+
+The `Compiler&` overload first proves conservative definitional equivalence.
+It recursively expands eligible pure source bodies with a fixed bound, keeps
+bodyless calls as exact-identity leaves, and rejects recursion or a normalized
+mismatch before opening an edit. The overload without `Compiler&` is the
+low-level structural primitive: it preserves IR invariants but does not claim
+the two expressions compute the same value.
 
 ## Bind native functions
 

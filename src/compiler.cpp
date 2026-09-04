@@ -1443,13 +1443,18 @@ Compiler::materialize(Module::Symbol symbol,
 }
 
 std::optional<Function> Compiler::materialize(const Op& call) {
+  return materialize(call, state_->diagnostics);
+}
+
+std::optional<Function> Compiler::materialize(const Op& call,
+                                              Diagnostics& diagnostics) {
   if (!state_->linked) {
-    state_->diagnostics.report(
-        "cannot construct a function before the compiler is linked");
+    diagnostics.report("cannot construct a function before the compiler is "
+                       "linked");
     return std::nullopt;
   }
   if (!call.valid()) {
-    state_->diagnostics.report("cannot materialize an invalid call");
+    diagnostics.report("cannot materialize an invalid call");
     return std::nullopt;
   }
 
@@ -1458,8 +1463,8 @@ std::optional<Function> Compiler::materialize(const Op& call) {
   if (owner == state_->modules.end() ||
       owner->second.version() != callee.symbol().module_version() ||
       owner->second.declaration_digest() != callee.symbol().declaration_digest()) {
-    state_->diagnostics.report("function '" + callee.symbol().qualified_name() +
-                               "' is not in this compilation");
+    diagnostics.report("function '" + callee.symbol().qualified_name() +
+                       "' is not in this compilation");
     return std::nullopt;
   }
   const auto overloads = owner->second.overloads(callee.name());
@@ -1474,8 +1479,8 @@ std::optional<Function> Compiler::materialize(const Op& call) {
           ? std::shared_ptr<const detail::FunctionBody>{}
           : detail::ModuleAccess::body(owner->second, *declaration);
   if (!definition) {
-    state_->diagnostics.report("function '" + callee.symbol().qualified_name() +
-                               "' has no source body");
+    diagnostics.report("function '" + callee.symbol().qualified_name() +
+                       "' has no source body");
     return std::nullopt;
   }
 
@@ -1490,9 +1495,8 @@ std::optional<Function> Compiler::materialize(const Op& call) {
     const std::size_t parameter =
         detail::FunctionAccess::argument_parameter(call, index);
     if (parameter >= parameters.size()) {
-      state_->diagnostics.report("call to '" +
-                                 callee.symbol().qualified_name() +
-                                 "' has an invalid argument map");
+      diagnostics.report("call to '" + callee.symbol().qualified_name() +
+                         "' has an invalid argument map");
       return std::nullopt;
     }
     if (detail::is_value_port(parameters[parameter])) {
@@ -1501,8 +1505,8 @@ std::optional<Function> Compiler::materialize(const Op& call) {
     }
     const auto value = detail::FunctionAccess::known_value(argument);
     if (!value) {
-      state_->diagnostics.report("call property '" +
-                                 parameters[parameter].name + "' is not Known");
+      diagnostics.report("call property '" + parameters[parameter].name +
+                         "' is not Known");
       return std::nullopt;
     }
     known_values.push_back(argument);
@@ -1514,7 +1518,7 @@ std::optional<Function> Compiler::materialize(const Op& call) {
   }
   const auto specialization = detail::resolve_call_types(
       *this, *declaration, argument_types, known_arguments, expected_results,
-      state_->diagnostics, detail::FunctionAccess::location(call));
+      diagnostics, detail::FunctionAccess::location(call));
   if (!specialization) {
     return std::nullopt;
   }
@@ -1526,7 +1530,7 @@ std::optional<Function> Compiler::materialize(const Op& call) {
     }
   }
   return detail::instantiate_function(
-      *this, *declaration, *definition, state_->diagnostics,
+      *this, *declaration, *definition, diagnostics,
       std::move(known_values), std::move(generic_bindings));
 }
 

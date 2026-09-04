@@ -66,7 +66,7 @@ private:
       return Replacement{};
     }
 
-    const auto body = compiler_.materialize(call);
+    const auto body = compiler_.materialize(call, diagnostics_);
     if (!body) {
       diagnostics_.report(
           "call '" + call.callee().symbol().qualified_name() +

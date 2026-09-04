@@ -20,8 +20,8 @@ device. Those are separate Types introduced by later user Modules when an
 optimization needs them.
 
 The element is an ordinary Type. Joggle has no privileged numeric trait or
-closed format enumeration; an operation or target extension decides which
-element Types it accepts through normal verifiers.
+closed format enumeration; an importing module decides which element Types it
+accepts through normal verifiers.
 
 ## Calls and properties
 
@@ -56,7 +56,20 @@ The semantic module intentionally does not declare fused kernels. A user
 extension can declare its own call and replace a typed expression with it:
 
 ```joggle
-fn conv_relu(/* concrete typed inputs and properties */) -> output;
+fn conv_relu<X, W, B, Y>(
+  input: X,
+  weight: W,
+  bias: B,
+  strides: list<int>,
+  pads: list<int>,
+  dilations: list<int>,
+  group: int
+) -> Y {
+  convolved: Y = t.conv(
+    input, weight, bias, strides, pads, dilations, group
+  );
+  return t.relu(convolved);
+}
 ```
 
 The tensor integration test materializes a shape-complete SqueezeNet Fire
@@ -72,14 +85,20 @@ Implemented and tested:
 - static-shape validation through the general type-verifier API;
 - typed Conv, Relu, and Concat materialization for a Fire block;
 - preservation of convolution and concatenation properties;
-- extension-local typed fusion and canonical round-trip.
+- extension-local typed fusion and canonical round-trip;
+- a source-bodied fused kernel whose positive replacement is definitionally
+  proved and whose type-correct semantic mismatch is rejected atomically.
+
+The separate `onnx` Module now imports the exact pinned SqueezeNet 1.1 model,
+preserves its initializers and supported properties, and has exact differential
+ONNX Runtime evidence. This does not broaden `tensor` itself into an ONNX
+schema.
 
 Not yet claimed:
 
-- ONNX parsing or operator-set coverage;
-- initializer import fidelity;
-- numerical equivalence against ONNX Runtime;
-- dynamic shapes, layout, storage planning, scheduling, or target emission.
+- general ONNX operator-set coverage or dynamic shapes;
+- physical layout, packed formats, or storage planning;
+- executable hardware implementation and performance.
 
-Those claims require the remaining gates in
-[RFC 0004](rfcs/0004-tensor-module.md).
+The semantic transformation boundary is defined by
+[RFC 0007](rfcs/0007-reference-bodied-transformations.md).

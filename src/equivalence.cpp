@@ -1,0 +1,267 @@
+#include "joggle/transform.h"
+
+#include "ir_internal.h"
+#include "transform_internal.h"
+
+#include "joggle/compiler.h"
+
+#include <algorithm>
+#include <cstddef>
+#include <exception>
+#include <optional>
+#include <set>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+namespace joggle {
+namespace {
+
+void field(std::string& output, std::string_view value) {
+  output += std::to_string(value.size());
+  output += ':';
+  output += value;
+}
+
+std::optional<std::size_t> position(const std::vector<Value>& values,
+                                    const Value& value) {
+  const auto found = std::find(values.begin(), values.end(), value);
+  return found == values.end()
+             ? std::nullopt
+             : std::optional<std::size_t>{
+                   static_cast<std::size_t>(found - values.begin())};
+}
+
+class Normalizer {
+public:
+  Normalizer(Compiler& compiler, std::size_t max_expansions,
+             Diagnostics& diagnostics)
+      : compiler_(compiler), max_expansions_(max_expansions),
+        diagnostics_(diagnostics) {}
+
+  std::optional<std::string> run(const Function& function,
+                                 std::string_view role) {
+    if (!detail::validate_expression_template(function, role, diagnostics_)) {
+      return std::nullopt;
+    }
+    std::vector<std::string> arguments;
+    const auto inputs = function.arguments();
+    arguments.reserve(inputs.size());
+    for (std::size_t index = 0; index < inputs.size(); ++index) {
+      std::string argument = "argument";
+      field(argument, std::to_string(index));
+      field(argument, inputs[index].type().stable_name());
+      arguments.push_back(std::move(argument));
+    }
+    return value(function.entry().terminator().returned().front(), inputs,
+                 arguments);
+  }
+
+private:
+  std::optional<std::string>
+  value(const Value& current, const std::vector<Value>& parameters,
+        const std::vector<std::string>& arguments) {
+    if (const auto index = position(parameters, current)) {
+      return arguments[*index];
+    }
+    if (current.known()) {
+      const auto known = detail::FunctionAccess::known_value(current);
+      if (!known) {
+        diagnostics_.report("equivalence lost a Known value");
+        return std::nullopt;
+      }
+      std::string result = "known";
+      field(result, current.type().stable_name());
+      field(result, known->canonical());
+      return result;
+    }
+    if (const auto reference = current.referenced_function()) {
+      std::string result = "function";
+      field(result, current.type().stable_name());
+      field(result, reference->symbol().stable_name());
+      field(result, reference->signature());
+      return result;
+    }
+    const auto producer = current.defining_op();
+    if (!producer) {
+      diagnostics_.report("equivalence encountered an unbound value");
+      return std::nullopt;
+    }
+    return call(*producer, current, parameters, arguments);
+  }
+
+  std::optional<std::string>
+  call(const Op& op, const Value& selected,
+       const std::vector<Value>& parameters,
+       const std::vector<std::string>& arguments) {
+    std::vector<std::pair<Value, std::string>> normalized_arguments;
+    const auto call_arguments = op.arguments();
+    normalized_arguments.reserve(call_arguments.size());
+    for (const Value& argument : call_arguments) {
+      auto normalized = value(argument, parameters, arguments);
+      if (!normalized) {
+        return std::nullopt;
+      }
+      normalized_arguments.emplace_back(argument, std::move(*normalized));
+    }
+    std::vector<std::string> residuals;
+    const auto residual_arguments = op.operands();
+    residuals.reserve(residual_arguments.size());
+    for (const Value& argument : residual_arguments) {
+      const auto normalized = std::find_if(
+          normalized_arguments.begin(), normalized_arguments.end(),
+          [&](const auto& item) { return item.first == argument; });
+      if (normalized == normalized_arguments.end()) {
+        diagnostics_.report("equivalence lost a Residual call argument");
+        return std::nullopt;
+      }
+      residuals.push_back(normalized->second);
+    }
+
+    const auto results = op.results();
+    const auto result = position(results, selected);
+    if (!result) {
+      diagnostics_.report("equivalence lost a call result");
+      return std::nullopt;
+    }
+
+    const auto callee = op.callee();
+    if (callee.form() == Module::FunctionDecl::Form::Body) {
+      if (expansions_ == max_expansions_) {
+        diagnostics_.report("equivalence expansion exceeded " +
+                            std::to_string(max_expansions_) +
+                            " source calls");
+        return std::nullopt;
+      }
+      const std::string identity = callee.symbol().stable_name();
+      if (!active_.insert(identity).second) {
+        diagnostics_.report("recursive reference body at '" +
+                            callee.symbol().qualified_name() + "'");
+        return std::nullopt;
+      }
+      ++expansions_;
+      Diagnostics materialization;
+      auto body = compiler_.materialize(op, materialization);
+      if (!body) {
+        diagnostics_.report("cannot instantiate reference body for '" +
+                            callee.symbol().qualified_name() + "'");
+        for (const auto& entry : materialization.entries()) {
+          diagnostics_.report(entry.message, entry.source);
+        }
+        active_.erase(identity);
+        return std::nullopt;
+      }
+
+      Diagnostics eligibility;
+      const bool expression = detail::validate_expression_template(
+          *body, "reference body", eligibility);
+      if (expression) {
+        const auto body_arguments = body->arguments();
+        if (body_arguments.size() != residuals.size() ||
+            body->result_types().size() != 1U || *result != 0U) {
+          diagnostics_.report("reference body shape does not match call '" +
+                              callee.symbol().qualified_name() + "'");
+          active_.erase(identity);
+          return std::nullopt;
+        }
+        auto expanded = value(
+            body->entry().terminator().returned().front(), body_arguments,
+            residuals);
+        active_.erase(identity);
+        return expanded;
+      }
+      active_.erase(identity);
+    }
+
+    std::string leaf = "call";
+    field(leaf, callee.symbol().stable_name());
+    field(leaf, callee.signature());
+    field(leaf, std::to_string(*result));
+    field(leaf, selected.type().stable_name());
+    for (const auto& argument : normalized_arguments) {
+      field(leaf, argument.second);
+    }
+    return leaf;
+  }
+
+  Compiler& compiler_;
+  std::size_t max_expansions_ = 0;
+  Diagnostics& diagnostics_;
+  std::size_t expansions_ = 0;
+  std::set<std::string> active_;
+};
+
+bool same_signature(const Function& left, const Function& right) {
+  const auto left_arguments = left.arguments();
+  const auto right_arguments = right.arguments();
+  if (left_arguments.size() != right_arguments.size() ||
+      left.result_types() != right.result_types()) {
+    return false;
+  }
+  for (std::size_t index = 0; index < left_arguments.size(); ++index) {
+    if (left_arguments[index].type() != right_arguments[index].type()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace
+
+bool equivalent(Compiler& compiler, const Function& left,
+                const Function& right, Diagnostics& diagnostics,
+                std::size_t max_expansions) {
+  if (!same_signature(left, right)) {
+    diagnostics.report("equivalence functions have different signatures");
+    return false;
+  }
+  if (max_expansions == 0U) {
+    diagnostics.report("equivalence needs a positive expansion limit");
+    return false;
+  }
+  try {
+    Normalizer left_normalizer(compiler, max_expansions, diagnostics);
+    auto normalized_left = left_normalizer.run(left, "left");
+    if (!normalized_left) {
+      return false;
+    }
+    Normalizer right_normalizer(compiler, max_expansions, diagnostics);
+    auto normalized_right = right_normalizer.run(right, "right");
+    if (!normalized_right) {
+      return false;
+    }
+    if (*normalized_left != *normalized_right) {
+      diagnostics.report("functions are not definitionally equivalent");
+      return false;
+    }
+    return true;
+  } catch (const std::exception& error) {
+    diagnostics.report("equivalence failed: " + std::string(error.what()));
+  } catch (...) {
+    diagnostics.report("equivalence failed with an unknown exception");
+  }
+  return false;
+}
+
+std::optional<std::size_t>
+replace(Compiler& compiler, Function& function, const Function& before,
+        const Function& after, Diagnostics& diagnostics,
+        std::size_t max_expansions) {
+  if (!equivalent(compiler, before, after, diagnostics, max_expansions)) {
+    return std::nullopt;
+  }
+  return replace(function, before, after, diagnostics);
+}
+
+std::optional<std::size_t>
+replace(Compiler& compiler, Module& module, const Function& before,
+        const Function& after, Diagnostics& diagnostics,
+        std::size_t max_expansions) {
+  if (!equivalent(compiler, before, after, diagnostics, max_expansions)) {
+    return std::nullopt;
+  }
+  return replace(module, before, after, diagnostics);
+}
+
+}  // namespace joggle

@@ -44,29 +44,26 @@ An extension consists of one `.joggle` Module and, only when required, one
 native library implementing bodyless compiler functions. The source Module is
 the schema authority; no generated declaration header is required.
 
-Whole-module import, conversion, optimization, analysis, simulation, and
-emission remain ordinary functions:
+Whole-module import, conversion, optimization, analysis, simulation, and file
+output remain ordinary functions:
 
 ```joggle
 fn read(input: bytes) -> module;
 fn optimize(input: module, policy: type) -> module;
-fn estimate(input: module, machine: type) -> bytes;
-fn emit(input: module, machine: type) -> bytes;
+fn inspect(input: module) -> bytes;
 
-fn compile(input: bytes, machine: type) -> bytes {
+fn prepare(input: bytes, policy: type) -> module {
   model = @read(input);
-  optimized = @optimize(model, machine);
-  return @emit(optimized, machine);
+  return @optimize(model, policy);
 }
 ```
 
 The user controls composition in source. Joggle does not discover magic pass
-names or force a universal `graph -> tensor -> loop -> target` sequence.
+names or force a universal sequence of intermediate forms.
 
 `Compiler::specialize` recursively materializes source-defined calls until a
-caller-supplied predicate accepts every remaining Function. This lets a target
-declare its primitive capability boundary without maintaining a lowering entry
-for each source kernel.
+caller-supplied predicate accepts every remaining Function. It is one reusable
+transformation primitive, not a prescribed target boundary or lowering ladder.
 
 ## Build
 
@@ -95,3 +92,4 @@ exact ONNX Runtime differential evidence are documented explicitly.
 - [Repository and reproducibility](docs/module-repository.md)
 - [Research position](docs/research-position.md)
 - [Accepted core-language RFC](docs/rfcs/0001-core-language.md)
+- [Reference-bodied transformation RFC](docs/rfcs/0007-reference-bodied-transformations.md)

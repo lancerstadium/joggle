@@ -30,10 +30,10 @@ Only three member forms exist:
 - `type` defines an immutable parameterized compile-time value;
 - `fn` defines or declares callable behavior.
 
-Metadata, formats, policies, machine descriptions, and estimates are ordinary
-types. Import, conversion, analysis, optimization, simulation, and emission
-are ordinary functions. This keeps extensions composable without forcing
-authors to implement framework-specific base classes.
+Metadata, formats, policies, and estimates are ordinary types. Import,
+conversion, analysis, optimization, simulation, and output are ordinary
+functions. This keeps extensions composable without forcing authors to
+implement framework-specific base classes.
 
 ## Source authority and native implementation
 

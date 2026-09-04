@@ -1,6 +1,6 @@
 # RFC 0004: Static tensor semantic module
 
-Status: implementation gates 1--4 complete
+Status: implementation gates complete
 
 ## Purpose
 
@@ -50,14 +50,14 @@ model requires it.
 
 ## Transformation use
 
-Fused calls are not added to the semantic module. A user or target extension
+Fused calls are not added to the semantic module. A user extension
 may declare `conv_relu` and use ordinary typed lambdas with `@replace` to turn
 the semantic pair into that call. This directly tests whether a new kernel can
-be introduced without modifying tensor core or a global lowering table.
+be introduced without modifying tensor core or a global conversion table.
 
 ## ONNX boundary
 
-The later ONNX module will parse protobuf in a native compiler function and
+The ONNX module parses protobuf in a native compiler function and
 construct Functions using exact tensor declarations and explicit result Types.
 It must preserve initializers, attributes, graph inputs/outputs, and source
 names, reject unsupported dynamic or operator semantics, and differentially
@@ -71,9 +71,7 @@ is claimed.
   case.
 - [x] Materialize a typed SqueezeNet Fire block and round-trip canonical IR.
 - [x] Fuse its Conv/Relu pair through RFC 0003 using an extension-local call.
-- [ ] Import the maintained ONNX SqueezeNet 1.1 artifact with initializer and
+- [x] Import the maintained ONNX SqueezeNet 1.1 artifact with initializer and
   attribute fidelity.
-- [ ] Differentially validate outputs and record unsupported-model
+- [x] Differentially validate outputs and record unsupported-model
   diagnostics.
-
-Gates 5--6 are required before documentation calls this an ONNX frontend.

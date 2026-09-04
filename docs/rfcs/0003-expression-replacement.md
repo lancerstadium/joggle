@@ -2,6 +2,10 @@
 
 Status: implemented
 
+This RFC defines structural replacement safety. RFC 0007 adds conservative
+definitional-equivalence checking before this primitive is used by a normal
+compiler-facing module.
+
 ## Purpose
 
 Joggle needs a transformation surface suitable for fusion, canonicalization,

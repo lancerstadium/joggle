@@ -1,0 +1,215 @@
+#include <cstdlib>
+#include <iostream>
+#include <optional>
+#include <string_view>
+
+#include <joggle/joggle.h>
+
+namespace {
+
+bool expect(bool condition, std::string_view message) {
+  if (!condition) {
+    std::cerr << "FAIL: " << message << '\n';
+  }
+  return condition;
+}
+
+}  // namespace
+
+int main() {
+  joggle::Compiler compiler;
+  compiler.add(R"(
+joggle 1;
+module semantics@1.0.0 {
+  type word();
+
+  fn primitive(input: word, axis: int) -> word;
+  fn other(input: word, axis: int) -> word;
+  fn interleaved(axis: int, input: word, scale: int) -> word;
+  fn replace(input: function, before: function, after: function) -> function;
+
+  fn wrapped(input: word, axis: int) -> word {
+    return primitive(input, axis);
+  }
+
+  fn twice(input: word) -> word {
+    return wrapped(wrapped(input, 1), 2);
+  }
+
+  fn recursive(input: word) -> word {
+    return recursive(input);
+  }
+
+  fn interleaved_wrapper(axis: int, input: word, scale: int) -> word {
+    return interleaved(axis, input, scale);
+  }
+
+  fn direct(input: word) -> word {
+    return primitive(primitive(input, 1), 2);
+  }
+
+  fn through_wrapper(input: word) -> word {
+    return twice(input);
+  }
+
+  fn wrong_property(input: word) -> word {
+    return primitive(primitive(input, 1), 3);
+  }
+
+  fn wrong_callee(input: word) -> word {
+    return other(primitive(input, 1), 2);
+  }
+
+  fn recursive_use(input: word) -> word {
+    return recursive(input);
+  }
+
+  fn interleaved_direct(input: word) -> word {
+    return interleaved(3, input, 7);
+  }
+
+  fn interleaved_indirect(input: word) -> word {
+    return interleaved_wrapper(3, input, 7);
+  }
+
+  fn subject(input: word) -> word {
+    return primitive(primitive(input, 1), 2);
+  }
+
+  fn apply(input: word) -> word {
+    optimized = @replace(
+      (x: word) => primitive(primitive(x, 1), 2),
+      (x: word) => primitive(primitive(x, 1), 2),
+      (x: word) => twice(x)
+    );
+    return twice(input);
+  }
+}
+)",
+               "semantics.joggle");
+  if (!compiler.link()) {
+    compiler.diagnostics().print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  const auto semantics = compiler.module("semantics");
+  if (!semantics) {
+    return EXIT_FAILURE;
+  }
+  std::optional<joggle::Function> staged_replacement;
+  compiler.bind(
+      *semantics, "replace",
+      [&](joggle::Compiler& active, joggle::Function input,
+          const joggle::Function& before, const joggle::Function& after,
+          joggle::Diagnostics& diagnostics)
+          -> std::optional<joggle::Function> {
+        const auto changed = joggle::replace(active, input, before, after,
+                                             diagnostics);
+        if (changed) {
+          staged_replacement = input;
+        }
+        return changed ? std::optional<joggle::Function>{std::move(input)}
+                       : std::nullopt;
+      });
+
+  const auto direct = compiler.materialize("semantics.direct");
+  const auto wrapped = compiler.materialize("semantics.through_wrapper");
+  const auto wrong_property =
+      compiler.materialize("semantics.wrong_property");
+  const auto wrong_callee = compiler.materialize("semantics.wrong_callee");
+  const auto recursive = compiler.materialize("semantics.recursive_use");
+  const auto interleaved_direct =
+      compiler.materialize("semantics.interleaved_direct");
+  const auto interleaved_indirect =
+      compiler.materialize("semantics.interleaved_indirect");
+  auto subject = compiler.materialize("semantics.subject");
+  const auto staged_apply = compiler.materialize("semantics.apply");
+  if (!direct || !wrapped || !wrong_property || !wrong_callee || !recursive ||
+      !interleaved_direct || !interleaved_indirect || !subject ||
+      !staged_apply) {
+    compiler.diagnostics().print(std::cerr);
+    return EXIT_FAILURE;
+  }
+
+  bool ok = true;
+  joggle::Diagnostics equivalent_diagnostics;
+  ok &= expect(joggle::equivalent(compiler, *direct, *wrapped,
+                                  equivalent_diagnostics) &&
+                   equivalent_diagnostics.ok(),
+               "nested source bodies normalize to their reference meaning");
+
+  joggle::Diagnostics property_diagnostics;
+  ok &= expect(!joggle::equivalent(compiler, *direct, *wrong_property,
+                                   property_diagnostics) &&
+                   !property_diagnostics.ok(),
+               "Known properties remain part of opaque call identity");
+
+  joggle::Diagnostics callee_diagnostics;
+  ok &= expect(!joggle::equivalent(compiler, *direct, *wrong_callee,
+                                   callee_diagnostics) &&
+                   !callee_diagnostics.ok(),
+               "opaque overload identity remains semantic");
+
+  joggle::Diagnostics recursion_diagnostics;
+  ok &= expect(!joggle::equivalent(compiler, *direct, *recursive,
+                                   recursion_diagnostics) &&
+                   !recursion_diagnostics.ok(),
+               "recursive reference semantics fail closed");
+
+  joggle::Diagnostics interleaved_diagnostics;
+  ok &= expect(joggle::equivalent(compiler, *interleaved_direct,
+                                  *interleaved_indirect,
+                                  interleaved_diagnostics) &&
+                   interleaved_diagnostics.ok(),
+               "source expansion maps Residual operands independently of "
+               "interleaved Known properties");
+
+  const auto revision = subject->revision();
+  joggle::Diagnostics rejected_diagnostics;
+  const auto rejected = joggle::replace(
+      compiler, *subject, *direct, *wrong_property, rejected_diagnostics);
+  ok &= expect(!rejected && !rejected_diagnostics.ok() &&
+                   subject->revision() == revision,
+               "an unproved replacement publishes no edit");
+
+  joggle::Diagnostics replacement_diagnostics;
+  const auto replaced = joggle::replace(
+      compiler, *subject, *direct, *wrapped, replacement_diagnostics);
+  ok &= expect(replaced && *replaced == 1U && replacement_diagnostics.ok() &&
+                   subject->ops().size() == 1U &&
+                   subject->ops().front().callee().name() == "twice",
+               "a proved replacement commits atomically");
+
+  ok &= expect(staged_replacement && staged_replacement->ops().size() == 1U &&
+                   staged_replacement->ops().front().callee().name() ==
+                       "twice",
+               "an ordinary explicitly staged source function exposes the "
+               "proved replacement");
+
+  joggle::Diagnostics limit_diagnostics;
+  ok &= expect(!joggle::equivalent(compiler, *direct, *wrapped,
+                                   limit_diagnostics, 1U) &&
+                   !limit_diagnostics.ok(),
+               "source expansion obeys an explicit bound");
+
+  joggle::Diagnostics exact_limit_diagnostics;
+  ok &= expect(joggle::equivalent(compiler, *direct, *wrapped,
+                                  exact_limit_diagnostics, 4U) &&
+                   exact_limit_diagnostics.ok(),
+               "each source call consumes exactly one expansion step");
+
+  ok &= expect(compiler.diagnostics().ok(),
+               "local equivalence failures do not poison compiler state");
+  if (!ok) {
+    equivalent_diagnostics.print(std::cerr);
+    property_diagnostics.print(std::cerr);
+    callee_diagnostics.print(std::cerr);
+    recursion_diagnostics.print(std::cerr);
+    interleaved_diagnostics.print(std::cerr);
+    rejected_diagnostics.print(std::cerr);
+    replacement_diagnostics.print(std::cerr);
+    limit_diagnostics.print(std::cerr);
+    exact_limit_diagnostics.print(std::cerr);
+    compiler.diagnostics().print(std::cerr);
+  }
+  return ok ? EXIT_SUCCESS : EXIT_FAILURE;
+}

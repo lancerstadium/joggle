@@ -25,7 +25,23 @@ module squeezenet_slice@1.0.0 {
     pads: list<int>,
     dilations: list<int>,
     group: int
-  ) -> t.tensor<f32, [1, 16, 55, 55]>;
+  ) -> t.tensor<f32, [1, 16, 55, 55]> {
+    convolved: t.tensor<f32, [1, 16, 55, 55]> = t.conv(
+      input, weight, bias, strides, pads, dilations, group
+    );
+    return t.relu(convolved);
+  }
+
+  fn conv_relu_wrong(
+    input: t.tensor<f32, [1, 64, 55, 55]>,
+    weight: t.tensor<f32, [16, 64, 1, 1]>,
+    bias: t.tensor<f32, [16]>
+  ) -> t.tensor<f32, [1, 16, 55, 55]> {
+    convolved: t.tensor<f32, [1, 16, 55, 55]> = t.conv(
+      input, weight, bias, [1, 1], [0, 0, 0, 0], [1, 1], 2
+    );
+    return t.relu(convolved);
+  }
 
   fn fire(
     input: t.tensor<f32, [1, 64, 55, 55]>,
@@ -103,6 +119,14 @@ module squeezenet_slice@1.0.0 {
       1
     );
   }
+
+  fn squeeze_wrong(
+    input: t.tensor<f32, [1, 64, 55, 55]>,
+    weight: t.tensor<f32, [16, 64, 1, 1]>,
+    bias: t.tensor<f32, [16]>
+  ) -> t.tensor<f32, [1, 16, 55, 55]> {
+    return conv_relu_wrong(input, weight, bias);
+  }
 }
 )";
 
@@ -163,6 +187,8 @@ int main() {
       slice ? slice->function("squeeze_pattern") : std::nullopt;
   const auto fused_decl =
       slice ? slice->function("squeeze_fused") : std::nullopt;
+  const auto wrong_decl =
+      slice ? slice->function("squeeze_wrong") : std::nullopt;
   const auto conv_relu_decl =
       slice ? slice->function("conv_relu") : std::nullopt;
   const auto relu_decl = tensor_module ? tensor_module->function("relu")
@@ -170,7 +196,8 @@ int main() {
   const auto concat_decl = tensor_module ? tensor_module->function("concat")
                                          : std::nullopt;
   if (!tensor || !slice || !tensor_module || !f32 || !fire_decl ||
-      !pattern_decl || !fused_decl || !conv_relu_decl || !relu_decl ||
+      !pattern_decl || !fused_decl || !wrong_decl || !conv_relu_decl ||
+      !relu_decl ||
       !concat_decl) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -181,7 +208,8 @@ int main() {
   auto fire = compiler.materialize(*fire_decl);
   auto pattern = compiler.materialize(*pattern_decl);
   auto fused = compiler.materialize(*fused_decl);
-  if (!scalar || !fire || !pattern || !fused || !compiler.ok()) {
+  auto wrong = compiler.materialize(*wrong_decl);
+  if (!scalar || !fire || !pattern || !fused || !wrong || !compiler.ok()) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -216,9 +244,21 @@ int main() {
                    compiler.verify(*fire),
                "the Fire block keeps its explicit semantic output type");
 
+  joggle::Function rejected_fire = *fire;
+  const auto rejected_revision = rejected_fire.revision();
+  joggle::Diagnostics rejected_replacement_diagnostics;
+  const auto rejected_replacement = joggle::replace(
+      compiler, rejected_fire, *pattern, *wrong,
+      rejected_replacement_diagnostics);
+  ok &= expect(!rejected_replacement &&
+                   !rejected_replacement_diagnostics.ok() &&
+                   rejected_fire.revision() == rejected_revision,
+               "a type-correct tensor kernel with different reference "
+               "semantics is rejected without mutation");
+
   joggle::Diagnostics replacement_diagnostics;
-  const auto replacements =
-      joggle::replace(*fire, *pattern, *fused, replacement_diagnostics);
+  const auto replacements = joggle::replace(
+      compiler, *fire, *pattern, *fused, replacement_diagnostics);
   const auto fused_ops = fire->ops();
   ok &= expect(replacements && *replacements == 1U &&
                    replacement_diagnostics.ok() && fused_ops.size() == 6U &&

@@ -10,10 +10,10 @@ of the project; none is a migration log.
   transformations, and Module-owned data.
 - [Language](language.md) is the source-language reference.
 - [Compiler functions](compiler-functions.md) defines composition and the
-  reusable facilities required by transforms, analyses, and emitters.
+  reusable facilities required by transforms, analyses, and output functions.
 - [Research position](research-position.md) separates implemented evidence from
   the hypotheses, comparisons, and experiments required for publication.
-- [Module design](modules.md) defines the clean extension and target model.
+- [Module design](modules.md) defines the extension and dependency model.
 - [Tensor module](tensor.md) records the first target-independent AI
   vocabulary and its implemented evidence boundary.
 - [ONNX inference import](onnx.md) documents the optional, transactionally
@@ -29,7 +29,10 @@ of the project; none is a migration log.
   defines the first real-model vertical slice; [ONNX inference
   RFC](rfcs/0005-onnx-inference-import.md) freezes the audited importer
   contract; [Module bundle RFC](rfcs/0006-module-bundles.md) defines lossless
-  persistence for Module-owned bytes without another ownership object.
+  persistence for Module-owned bytes without another ownership object; and
+  [reference-bodied transformation RFC](rfcs/0007-reference-bodied-transformations.md)
+  defines the semantic-correctness boundary and next composition gates for
+  user kernels.
 
 The repository contains the compiler core, the first static tensor semantic
 Module, and a narrow ONNX IR 3/opset 7 inference importer. It does not claim

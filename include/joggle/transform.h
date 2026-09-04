@@ -33,9 +33,11 @@ std::optional<Function> clone(
     const std::function<std::optional<Type>(const Value&)>& map_value_type,
     Diagnostics& diagnostics);
 
-// Replaces every maximal non-overlapping occurrence of before with after in
-// one transaction. Both templates are ordinary typed Functions; no pattern IR
-// or retained source syntax is involved. Zero is a successful no-op.
+// Structurally replaces every maximal non-overlapping occurrence of before
+// with after in one transaction. This low-level overload checks types, data
+// flow, and effects but not semantic equivalence. Compiler-facing modules
+// should normally use the Compiler& overload below. Zero is a successful
+// no-op.
 std::optional<std::size_t> replace(Function& function, const Function& before,
                                    const Function& after,
                                    Diagnostics& diagnostics);
@@ -45,6 +47,26 @@ std::optional<std::size_t> replace(Function& function, const Function& before,
 std::optional<std::size_t> replace(Module& module, const Function& before,
                                    const Function& after,
                                    Diagnostics& diagnostics);
+
+// Proves conservative definitional equivalence by recursively expanding
+// eligible source-bodied calls in two pure expression Functions. Opaque calls
+// remain exact-identity leaves. No secondary normalization IR is introduced,
+// and the input Functions are not mutated.
+bool equivalent(Compiler& compiler, const Function& left,
+                const Function& right, Diagnostics& diagnostics,
+                std::size_t max_expansions = 256U);
+
+// Checks definitional equivalence before performing the existing atomic typed
+// replacement. A failed proof publishes no edit.
+std::optional<std::size_t>
+replace(Compiler& compiler, Function& function, const Function& before,
+        const Function& after, Diagnostics& diagnostics,
+        std::size_t max_expansions = 256U);
+
+std::optional<std::size_t>
+replace(Compiler& compiler, Module& module, const Function& before,
+        const Function& after, Diagnostics& diagnostics,
+        std::size_t max_expansions = 256U);
 
 namespace transform_detail {
 

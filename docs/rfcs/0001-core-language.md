@@ -1,6 +1,6 @@
 # RFC 0001: One staged language for compiler construction
 
-Status: accepted; gates 1--4 complete
+Status: accepted; gates 1--7 complete
 
 ## Purpose
 
@@ -77,10 +77,11 @@ manually.
 
 ## Scheduling boundary
 
-A schedule is an ordinary compile-time function that transforms a module or a
-function. It may call module-defined scheduling primitives. The compiler owns
-the trace of those calls so schedules can later be replayed, searched, or
-measured; users do not construct a Schedule class.
+A transformation policy is an ordinary compile-time function that transforms
+a module or a function. Its component transformations are module-defined
+functions; users do not construct a Schedule class. Correctness must be
+independent of later candidate ranking or measurement. RFC 0007 defines the
+first semantic-equivalence boundary for user-defined optimized functions.
 
 No target or device hierarchy is part of this RFC. A target-specific module
 may define formats, memory spaces, operations, costs, and exporters using the
@@ -100,11 +101,14 @@ an earlier gate.
 4. Higher-order core: add typed function values and typed lambdas without a
    second expression grammar. **Complete; see RFC 0002.**
 5. Effect-safe replacement: implement checked expression matching and atomic
-   replacement. **In progress; see RFC 0003.**
+   replacement. **Complete; see RFC 0003.**
 6. Tensor module: define real tensor types and operations outside the core.
-7. ONNX module: load unmodified ONNX model-zoo artifacts through an ordinary
-   compile-time function.
-8. Scheduling research: only after the preceding end-to-end path is usable.
+   **Complete; see RFC 0004.**
+7. ONNX module: load an unmodified ONNX model-zoo artifact through an ordinary
+   compile-time function. **Complete; see RFCs 0005 and 0006.**
+8. Open transformation research: prove semantics of source-bodied user kernels
+   before adding transformation control, formats, or measured selection.
+   **In progress; see RFC 0007.**
 
 ## Deletion policy
 

@@ -486,6 +486,8 @@ public:
   // Specializes a source-defined callee from one already typed call. Concrete
   // operand, property, and result types recover the call's generic bindings.
   std::optional<Function> materialize(const Op& call);
+  std::optional<Function> materialize(const Op& call,
+                                      Diagnostics& diagnostics);
 
   // Recursively specializes source-defined calls until every remaining call
   // is accepted by boundary. The returned Module owns each concrete

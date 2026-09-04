@@ -1,20 +1,17 @@
 # Compiler functions
 
 Joggle uses ordinary typed functions for compiler work. Importing a model,
-transforming IR, measuring it, and emitting bytes do not require separate pass
+transforming IR, inspecting it, and writing output do not require separate pass
 or backend classes.
 
 ```joggle
 fn read(input: bytes) -> module;
 fn optimize(input: module, policy: type) -> module;
-fn estimate(input: module, machine: type) -> bytes;
-fn emit(input: module, machine: type) -> bytes;
+fn inspect(input: module) -> bytes;
 
-fn compile(input: bytes, machine: type) -> bytes {
+fn prepare(input: bytes, policy: type) -> module {
   model = @read(input);
-  optimized = @optimize(model, machine);
-  report = @estimate(optimized, machine);
-  return @emit(optimized, machine);
+  return @optimize(model, policy);
 }
 ```
 
@@ -71,10 +68,13 @@ optimized = @replace(
 );
 ```
 
-A native module binds this declaration to the C++ `joggle::replace`
-primitive with `Compiler::bind`. `replace` is not reserved syntax, and the
-lambdas remain verified Functions over the same IR rather than a second
-rewrite declaration or pattern representation.
+A native module binds this declaration to the equivalence-checking C++
+`joggle::replace(Compiler&, ...)` overload with `Compiler::bind`. Eligible
+source bodies are expanded into a bounded canonical expression encoding;
+bodyless calls remain exact-identity leaves. A mismatch is diagnosed before
+the existing atomic structural replacement opens an edit. `replace` is not
+reserved syntax, and the lambdas remain verified Functions over the same IR
+rather than a second rewrite declaration or pattern representation.
 
 ## Recursive specialization
 

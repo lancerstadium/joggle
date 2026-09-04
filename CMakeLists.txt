@@ -37,6 +37,7 @@ add_library(joggle
   src/compiler.cpp
   src/diagnostic.cpp
   src/domain.cpp
+  src/equivalence.cpp
   src/execution.cpp
   src/execution_value.cpp
   src/expression_syntax.cpp
@@ -247,6 +248,10 @@ if(JOGGLE_BUILD_TESTS)
   target_link_libraries(joggle_transform_test PRIVATE joggle::joggle)
   target_include_directories(joggle_transform_test PRIVATE src)
   add_test(NAME transform COMMAND joggle_transform_test)
+
+  add_executable(joggle_equivalence_test tests/equivalence_test.cpp)
+  target_link_libraries(joggle_equivalence_test PRIVATE joggle::joggle)
+  add_test(NAME equivalence COMMAND joggle_equivalence_test)
 
   add_executable(joggle_specialization_test tests/specialization_test.cpp)
   target_link_libraries(joggle_specialization_test PRIVATE joggle::joggle)
