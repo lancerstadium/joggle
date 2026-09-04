@@ -48,6 +48,7 @@ add_library(joggle
   src/sema/call.cpp
   src/sema/check.cpp
   src/sema/infer.cpp
+  src/compile/bind.cpp
   src/compile/body.cpp
   src/compile/compiler.cpp
   src/compile/eval.cpp

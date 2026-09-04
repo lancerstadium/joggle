@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <filesystem>
 #include <map>
 #include <optional>
@@ -12,6 +13,25 @@
 #include "joggle/compiler.h"
 
 namespace joggle::detail {
+
+template <typename Mods>
+bool belongs_to(const Mods& mods, const ParamVal& value) {
+  const auto contains = [&](const Mod::Symbol& symbol) {
+    const auto owner = mods.find(symbol.mod_name());
+    return owner != mods.end() &&
+           owner->second.version() == symbol.mod_version() &&
+           owner->second.declaration_digest() == symbol.declaration_digest();
+  };
+  if (const Type* type = value.as_type()) {
+    return contains(type->schema().symbol());
+  }
+  if (value.kind() == ParamVal::Kind::List) {
+    return std::all_of(
+        value.elements().begin(), value.elements().end(),
+        [&](const ParamVal& element) { return belongs_to(mods, element); });
+  }
+  return true;
+}
 
 struct CompilerAccess {
   static Compiler::Limits limits(const Compiler& compiler) {
