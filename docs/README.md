@@ -17,7 +17,9 @@ of the project; none is a migration log.
 - [Tensor module](tensor.md) records the first target-independent AI
   vocabulary and its implemented evidence boundary.
 - [Quant module](quant.md) records the ordinary-function QDQ boundary, its
-  executable affine oracle, and the remaining transformation trust limit.
+  executable affine oracle, and the exact semantic trust boundary.
+- [QConv module](qconv.md) records the first source-grounded QDQ convolution
+  seam and its complete official-model transformation evidence.
 - [Fusion module](fusion.md) documents the first installable,
   reference-bodied real-model transformation.
 - [Bitpack module](bitpack.md) documents logical projection and the first

@@ -75,8 +75,9 @@ ctest --test-dir build --output-on-failure
 
 The repository ships `tensor@1.0.0`, a small target-independent semantic
 Module; `quant@1.1.0`, an affine QDQ boundary with a bit-exact reference
-oracle; `fusion@1.0.0`, a
-reference-bodied Conv/ReLU transformation; `bitpack@1.0.0`, a checked
+oracle; `fusion@1.0.0`, a reference-bodied Conv/ReLU transformation;
+`qconv@1.0.0`, a source-grounded NCHW QDQ convolution transformation;
+`bitpack@1.0.0`, a checked
 logical-to-physical format experiment; and an optional, Protobuf-backed
 `onnx@1.0.0` inference importer. The real-model paths import hash-pinned FLOAT
 and QDQ SqueezeNet artifacts into ordinary typed Functions. Both have exact
@@ -93,6 +94,7 @@ Conv/ReLU pairs through a source-defined compiler pipeline.
 - [Module design](docs/modules.md)
 - [Tensor module](docs/tensor.md)
 - [Quant module](docs/quant.md)
+- [QConv module](docs/qconv.md)
 - [Fusion module](docs/fusion.md)
 - [Bitpack module](docs/bitpack.md)
 - [ONNX inference import](docs/onnx.md)

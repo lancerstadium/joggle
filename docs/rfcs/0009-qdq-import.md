@@ -1,6 +1,6 @@
 # RFC 0009: QDQ as an ordinary semantic Module
 
-Status: external-model import and executable affine-oracle gates implemented
+Status: import, affine-oracle, and source-grounded QConv gates implemented
 
 ## Problem
 
@@ -60,10 +60,18 @@ has exact ONNX Runtime output on a deterministic input (`max_abs=0`,
 payloads and both semantic dependencies. Omitting `quant` fails with a
 deterministic diagnostic.
 
-This proves the frontend mapping and dependency composition. It does not prove
-rewrites through tensor QDQ calls: they remain bodyless, so equivalence fails
-closed at those boundaries. The compiler-time affine overloads now match a
-standard opset 13 QDQ micrograph in ONNX Runtime for i8 and f32 outputs at the
-bit level, including halfway values and per-axis broadcasting. The next gate
-is one source-grounded integer-kernel replacement checked structurally,
-semantically, and against this numerical oracle.
+This proves the frontend mapping and dependency composition. The tensor QDQ
+calls remain bodyless, so algebraic rewrites across them fail closed. The
+compiler-time affine overloads match a standard opset 13 QDQ micrograph in
+ONNX Runtime for i8 and f32 outputs at the bit level, including halfway values
+and per-axis broadcasting.
+
+`qconv@1.0.0` adds one ordinary source-bodied NCHW QDQ Conv function and normal
+`run(function|module)` compiler functions. Expanding that body reproduces the
+same opaque QDQ leaves, allowing all 26 Conv regions in the official model to
+be packaged behind a proved semantic seam. Eight shared activation
+Dequantizers cover 16 branch candidates and are neither cloned nor deleted
+early. The whole Function changes from 399 to 303 calls/constants and remains
+definitionally equivalent. This is not an integer implementation; the next
+gate is a concrete bit-accurate realization checked against the affine oracle
+and a trusted runtime.

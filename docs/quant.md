@@ -66,20 +66,20 @@ bit patterns exactly match the Joggle oracle.
 
 ## Current trust boundary
 
-The tensor overloads remain deliberately bodyless program semantics. They
-preserve the standard QDQ boundary exactly and can be emitted or executed by a
-consumer that implements it, but the current equivalence checker will not
-expand through them. The bytes overloads make numerical tests reproducible;
-they do not silently grant a tensor rewrite semantic equivalence. Consequently
-Joggle does not yet claim that a rewrite which changes or removes a QDQ
-boundary is proved correct.
+The tensor overloads remain deliberately bodyless program semantics. The
+equivalence checker therefore treats each exact QDQ call as an opaque leaf and
+does not infer algebraic identities across quantization boundaries. The bytes
+overloads make numerical tests reproducible; they do not silently grant such
+identities.
 
-The next semantic gate is one source-grounded integer-kernel replacement that
-uses this oracle for bit-exact differential tests and still passes the existing
-effect and equivalence checks. Until then, format optimization must treat the
-tensor `quantize` and `dequantize` calls as opaque. Successful ONNX Runtime
-differential execution is evidence for the numerical contract, not a
-substitute for transformation correctness.
+`qconv@1.0.0` now demonstrates the safe composition point. Its ordinary source
+body contains the exact three Dequantize, Conv, and Quantize expression, so
+expansion reproduces the same opaque leaves and proves that packaging this
+region behind `qconv.conv` is definitionally equivalent. This is not yet an
+integer realization. The next numerical gate is a concrete bit-accurate QConv
+implementation checked against this oracle and a trusted runtime. Successful
+ONNX Runtime differential execution remains evidence for the numerical
+contract, not a substitute for transformation correctness.
 
 The operator contract follows the standard ONNX
 [QuantizeLinear](https://onnx.ai/onnx/operators/onnx__QuantizeLinear.html) and

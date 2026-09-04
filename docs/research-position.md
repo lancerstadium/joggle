@@ -55,16 +55,20 @@ The implementation already demonstrates:
     an independent opset 13 ONNX Runtime graph matches its i8 and f32 output
     bits exactly;
 13. typed replacement preserves pure shared DAG ancestors instead of rejecting
-    or duplicating them, covering the 16 paired QDQ Conv branches that share
-    one activation Dequantize; and
-14. Module bundles preserve and verify all imported data through public
+    or duplicating them, covering 16 QDQ Conv branch candidates arranged in
+    eight pairs that share one activation Dequantize per pair;
+14. `qconv` defines the complete NCHW QDQ Conv reference expression as one
+    ordinary generic function and transforms all 26 eligible official-model
+    regions; the whole Function is definitionally equivalent, changes from
+    399 to 303 calls/constants, and derives its semantic dependencies from IR;
+    and
+15. Module bundles preserve and verify all imported data through public
    `check`, `run`, `install`, and `lock` workflows.
 
-These are infrastructure results. The tensor QDQ calls are still opaque
-program semantics; the bytes oracle specifies testable numerics but does not
-make those calls definitionally transparent. The result therefore does not
-establish correctness of transformations through quantization boundaries. It
-also does not establish general
+These are infrastructure results. The tensor QDQ calls remain opaque program
+semantics: QConv equivalence succeeds because its body reproduces the exact
+opaque calls, not because the compiler assumes an algebraic quantization law.
+The result therefore does not establish a concrete integer QConv, general
 mathematical equivalence of user rewrites, competitive kernels, support for a
 physical format at run time, or publication-level novelty.
 

@@ -1,6 +1,6 @@
 # RFC 0007: Reference-bodied transformations
 
-Status: implementation gates 1--7 complete
+Status: implementation gates 1--9 complete
 
 ## Purpose
 
@@ -133,10 +133,13 @@ rebuild it deterministically. No runtime search is mandatory.
 7. [x] Add the installable `bitpack` Module and prove a representation-changing
    i4x8/u32 Function through the idempotent logical projection in RFC 0008.
 8. [x] Preserve shared pure DAG ancestors during replacement. The official QDQ
-   model requires this because 16 of 26 Conv candidates share an activation
-   Dequantize across two branches; no new pattern or graph abstraction is
-   introduced.
-9. [ ] Add bounded variant enumeration and measured selection only after the
+   model requires this because 16 of 26 Conv candidates form eight pairs that
+   share one activation Dequantize per pair; no new pattern or graph
+   abstraction is introduced.
+9. [x] Add `qconv` as a normal source-bodied QDQ Conv seam and transform all 26
+   eligible expressions in the official model. Whole-Function equivalence,
+   shared-DAG preservation, provenance, and dependency closure are checked.
+10. [ ] Add bounded variant enumeration and measured selection only after the
    physical format path has bit-accurate execution evidence.
 
 No target hierarchy, code emitter, machine-capacity model, or scheduling DSL is
