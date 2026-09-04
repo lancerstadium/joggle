@@ -30,7 +30,8 @@ still an operand; a Known integer passed to an `int` input is a property. The
 same declaration therefore drives source calls, parsing, verification, C++
 construction, pattern matching, and native behavior.
 
-For example, `onnx.conv` has tensor operands and list/integer properties:
+For example, an extension may declare a convolution with value operands and
+compiler-known shape properties:
 
 ```joggle
 fn conv<X: type, W: type, Y: type>(
@@ -63,40 +64,29 @@ complete cloned Function once. Representation-changing passes therefore do
 not need a private straight-line graph copier.
 
 Joggle does not number IR levels. Vocabularies are Modules and conversions are
-explicit edges. The shipped ONNX path demonstrates this rule:
-
-```text
-bytes ──onnx.read──> onnx.* IR ──onnx.to_nn──> nn.* IR
-```
-
-Source-level fusion may run on `onnx.*`; portable inference fusion may run on
-`nn.*`; a project-specific tensor-to-storage conversion may produce its own
-memory or hardware vocabulary. These are all the same IR ownership model, so
-analyses and rewrite infrastructure remain reusable.
+explicit edges. A format-preserving representation, portable inference
+vocabulary, storage representation, and target instruction set may coexist in
+one Module or several Modules; the core does not prescribe that partition.
+They all use the same IR ownership model, so analyses and rewrite
+infrastructure remain reusable.
 
 ## Data and storage
 
 Large constants are not another graph and are not pass side channels.
 `Module::store` content-addresses immutable bytes, and constant Ops reference
 the returned name. Copies share payloads until a transformation publishes a
-new Module. `tensor.immutable_data` is the semantic interface used to discover
-constant-producing functions across vocabularies.
+new Module. An extension can declare an interface for constant-producing
+Functions when cross-vocabulary discovery is required.
 
-Tensor storage planning is intentionally a distinct representation problem:
-`tensor.ranked` describes values, while a storage Module describes allocation,
-layout, address space, and accesses. A storage pass consumes one Module and
-returns another; device capacity or scheduling policy belongs in explicit
-Module-declared inputs, not in the core IR. The `mem` vocabulary supplies open
-reference, layout, space, alias, and effect contracts rather than claiming that
-one memory model fits all accelerators.
+Storage planning is an extension-defined representation problem. A compiler
+function may introduce references, allocation, layout, address-space, or
+access Functions, but device capacity and scheduling policy remain explicit
+Module-declared inputs rather than core IR state.
 
 ## Current boundary
 
 The core supports multi-Block SSA, dominance, reverse-use queries,
-transactional edits, conversion legality, CFG-preserving clone, and
-Module-owned data. The shipped precision transformation now uses the same clone
-facility, but does not yet preserve calls between transformed Functions.
-Inserted Function declarations are immediately usable as local call targets,
-and Anchor uses that mechanism for target-owned semantic linking. General
-symbol-aware interprocedural cloning and a packed on-disk encoding for Module
-data remain explicit implementation milestones.
+transactional edits, conversion legality, CFG-preserving clone,
+boundary-relative source specialization, and Module-owned data. General
+symbol-aware interprocedural cloning and a repository encoding that stores
+Module data beside canonical source remain implementation milestones.

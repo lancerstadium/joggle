@@ -1,8 +1,5 @@
 @PACKAGE_INIT@
 
-set_and_check(Joggle_MODULE_DIR
-  "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_DATADIR@/joggle/modules")
-
 include("${CMAKE_CURRENT_LIST_DIR}/JoggleTargets.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/JoggleBehavior.cmake")
 

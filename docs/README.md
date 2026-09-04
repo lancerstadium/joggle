@@ -9,23 +9,15 @@ of the project; none is a migration log.
 - [Intermediate representation](ir.md) specifies Ops, SSA, properties,
   transformations, and Module-owned data.
 - [Language](language.md) is the source-language reference.
-- [Standard Modules](standard-modules.md) specifies Prelude and the shipped
-  `arith`, `tensor`, `nn`, and `mem` vocabularies.
 - [Compiler functions](compiler-functions.md) defines composition and the
   reusable facilities required by transforms, analyses, and emitters.
 - [Research position](research-position.md) separates implemented evidence from
   the hypotheses, comparisons, and experiments required for publication.
-- [Modules and native behavior](modules.md) covers packages, C++ behavior, and compiler
-  functions.
+- [Module design](modules.md) defines the clean extension and target model.
 - [C++ API](cpp-api.md) documents the in-process library surface.
 - [Module repository](module-repository.md) specifies installation,
   resolution, and lock files.
-- [ONNX Module](../modules/onnx/README.md) documents source-preserving import
-  and explicit conversion to NN IR.
-- [Precision Module](../modules/precision/README.md) documents the first
-  representation-changing transformation over Module-owned data.
 
-The checked-in declarations in [`modules`](../modules) and executable examples
-in [`examples`](../examples) are part of the reference. If prose and behavior
-disagree, tests and public headers describe the implemented release; please
-report the documentation mismatch.
+The repository currently contains only the compiler core. AI vocabulary and
+target Modules are being rebuilt against the rules in [Module design](modules.md)
+and are not part of the current release surface.

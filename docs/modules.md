@@ -1,216 +1,172 @@
-# Modules and native behavior
+# Module design
 
-A package consists of canonical Module source and, only when necessary, a
-platform-specific behavior library. Source owns declarations, signatures,
-interfaces, defaults, and dependent types. C++ supplies behavior that cannot
-or should not be written as a Joggle body.
+This document defines the replacement module model. It intentionally specifies
+composition rules before selecting AI vocabularies or hardware targets.
 
-## Organize by vocabulary
+## One installation unit
 
-A Module should own one coherent vocabulary, not one position in a global
-pipeline. Typical boundaries are a model format, tensor algebra, numeric
-format, target op family, layout system, simulator state, or emitted
-artifact.
+One extension has one versioned `.joggle` Module identity. It may additionally
+have a native library for host-only work, but that library implements the same
+Module and cannot introduce declarations of its own.
 
-Conversions belong to bridge Modules:
+```text
+extension/
+  module.joggle
+  native/          optional C++ implementation
+  tests/
+```
+
+The directory layout is conventional, not semantic. Installation, dependency
+resolution, locking, and native-library selection use the Module name, version,
+and digest.
+
+There is no separate dialect package, pass plugin, target descriptor package,
+runtime adapter, or Artifact package.
+
+## Public contents
+
+A Module has only the language's existing member forms:
+
+- `import` selects another Module;
+- `interface` states a structural contract;
+- `type` and `attr` define data carried by types and calls;
+- `fn` defines every callable operation.
+
+The same `fn` form covers four execution situations:
+
+| Situation | Declaration | Outcome |
+| --- | --- | --- |
+| source computation | body present, Residual inputs | materialized Function IR |
+| compiler computation | body present, Known inputs | evaluated value |
+| native compiler work | body absent, native binding, Known inputs | host-produced value |
+| primitive boundary | body absent, Residual inputs | retained typed Op |
+
+These are states of one declaration, not four extension APIs.
+
+## Interfaces are capabilities
+
+An interface is a named structural capability. It is useful for generic
+constraints and for asking whether a declaration belongs to an accepted target
+boundary.
 
 ```joggle
-module tensor_to_accel@1.0.0 {
-  import tensor@2.0.0;
-  import accel@1.0.0;
-
-  fn convert(input: module, target: accel.target) -> module;
+interface scalar: type {
+  storage_bits: int;
 }
+
+interface instruction: fn;
 ```
 
-This avoids baking a frontend/backend direction into either vocabulary. A
-different bridge may convert in the opposite direction or combine both with an
-analysis result.
+An interface is not a C++ trait class, verifier callback, rewrite hook, or pass
+registration. Ordinary authors implement it by listing the interface after a
+declaration and, for type fields, supplying source expressions.
 
-## Compiler functions are ordinary functions
+## Conversion and optimization
 
-The language has no separate pass declaration. A function becomes compiler
-work because its inputs and results have compiler representations:
+A conversion is an ordinary typed function. No direction is built into the
+core:
 
 ```joggle
-fn load(path: string) -> module;
-fn canonicalize(input: module) -> module;
-fn cost(input: module, target: target) -> estimate;
-fn emit(input: module) -> bytes;
+fn convert(input: module, format: type) -> module;
+```
 
-fn compile(path: string, target: target) -> bytes {
-  module = canonicalize(load(path));
-  return emit(module);
+Its implementation may use the C++ transactional rewrite utilities or a future
+source reflection library. The Module owns its policy and legality boundary.
+Joggle does not require the names `lower`, `legalize`, `schedule`, or `pass`.
+
+An end-user pipeline is also an ordinary source function, so its stages remain
+individually callable:
+
+```joggle
+fn compile(input: bytes, machine: type) -> bytes {
+  imported = @format.read(input);
+  selected = @target.select(imported, machine);
+  return @target.emit(selected, machine);
 }
 ```
 
-The same call rules compose module operations and compiler functions. A body
-can branch on Known configuration and use `for` over Known lists. Calls that
-depend on Residual module values remain in the executable IR.
+## Kernel definition and target closure
 
-## Bodies, primitives, and behavior
+A reusable kernel is a source-defined `fn`. It may call another source kernel
+and eventually reach bodyless primitives.
 
-There is one `fn` declaration and three execution outcomes, not three function
-kinds:
+A target emitter calls `Compiler::specialize` with a predicate describing the
+Functions it accepts. Unaccepted calls are recursively specialized from their
+concrete types and Known properties. The operation fails if an unaccepted call
+has no body.
 
-- A declaration with a body is evaluated as far as its Known inputs permit;
-  remaining value computation becomes a residual Function.
-- A bodyless declaration with value ports is an IR primitive. Calls remain as
-  typed Ops and need no host callback merely to exist in a Function.
-- A bodyless call whose inputs and results are all compiler domains must have a
-  native binding before it can execute. File decoding and host code generation
-  are typical examples.
+This creates a typed agreement:
 
-A target kernel can therefore be a normal body over bodyless target
-primitives. Native behavior is reserved for host work or transformations that
-cannot yet be expressed in source; it is not where target computation must be
-hidden. The `anchor` Module demonstrates the boundary: `load` and `store` are
-residual primitives, while `relu` and `add` have source bodies. Its whole-Module
-mapping, storage planning, analysis, and emission functions currently use the
-optional behavior library.
-
-Prelude declares `module`. The compiler automatically represents it as
-`joggle::Module`, which carries multiple named Functions through a
-pipeline. No repository import or manual representation registration is
-required.
-This is a whole-module value, not a second IR hierarchy.
-
-## Bind a function
-
-After linking, bind a local function name to a matching C++ callable:
-
-```cpp
-const auto module = compiler.module("metrics");
-if (module) {
-  compiler.bind(*module, "volume",
-                [](const std::vector<std::int64_t>& shape) {
-    std::int64_t result = 1;
-    for (std::int64_t dimension : shape) {
-      result *= dimension;
-    }
-    return result;
-  });
-}
+```text
+kernel author supplies source body
+                ×
+target author supplies accepted capability boundary
+                =
+closed target program or a diagnostic
 ```
 
-The callable signature selects an overload and is checked immediately. No
-wrapper, generated declaration header, or per-function adapter is needed.
-`Module::FunctionDecl` can still be reflected and passed directly when an
-implementation also needs the declaration as an IR rewrite target.
+Neither side registers operator names with the other or with the core.
 
-Supported compiler-domain mappings are `std::int64_t`, `double`, `bool`,
-`std::string`, `joggle::Type`, `joggle::Attribute`, `joggle::Bytes`, and
-homogeneous `std::vector<T>` forms. Whole-IR functions use
-`joggle::Function` or `joggle::Module`.
+## Target definition
 
-A no-result declaration binds to C++ `void`; one result binds to `T`; multiple
-results bind positionally to `std::tuple<Ts...>`. Returning
-`std::optional<T>` or `std::optional<std::tuple<Ts...>>` reports ordinary
-execution failure when empty. No result-wrapper class is generated.
+Joggle has no universal Target class. A hardware extension normally declares:
 
-A binding may optionally receive `joggle::Compiler&` first and
-`joggle::Diagnostics&` last. `Function` and `Module` are copy-on-write
-values: a transformation accepts and returns them by value, while a read-only
-analysis may accept `const&`. Ordinary `fn` inputs cannot bind to mutable
-lvalue or rvalue references because either would introduce an undeclared
-in-place result or consume shared host storage. A binding returns its declared
-result by value. The C++ result therefore matches the declared result instead
-of using a hidden success convention. Signature mismatches are reported when
-binding, not deferred to invocation.
+- one or more configuration types;
+- data formats and references needed by that hardware;
+- bodyless primitive Functions accepted by its emitter;
+- optional source kernels and compiler Functions;
+- one or more explicit `emit(...)->bytes` functions.
 
-Before a binding receives a `Function` or `Module`, the compiler validates its
-materialized IR against the linked contracts and Module verifiers. Returned
-artifacts are checked again before they can flow to the next typed function.
+Those are recommendations, not required fields. An FPGA experiment may emit
+RTL and metadata; a RISC-V experiment may emit an object and runtime data; a
+simulator-only Module may return a structured trace and define no emitter.
 
-Bindings default to guarded host evaluation. Use the explicit
-`HostEvaluation` policy only when the implementation's determinism and effects
-are understood; non-Hermetic work is never speculated under Residual control.
+The core never interprets these declarations or assumes a memory capacity,
+tile shape, stream model, ISA, or cycle model.
 
-## Register a host representation
+## Native implementation boundary
 
-Module-declared compiler types can use project-native C++ values without a
-generated wrapper:
+Native code is permitted only when source cannot express the operation, such
+as parsing ONNX protobuf, invoking an external code generator, or performing a
+large compiler analysis.
 
-```cpp
-struct Target {
-  std::int64_t lanes;
-  std::string architecture;
-};
+Native code binds existing bodyless `fn` declarations by canonical identity.
+It may use `Module`, `Function`, `Op`, `Value`, `Type`, `Attribute`, and
+`Diagnostics`; it must not create a parallel schema or hidden operation
+registry.
 
-compiler.represent<Target>(
-    *target_decl,
-    [](const Target& target) {
-      return std::tuple{target.lanes, target.architecture};
-    });
-```
+The current public API still calls this library "behavior". Renaming it to a
+native Module implementation is core cleanup, not a new extension concept.
 
-The projection order is the declaration's parameter order. The Module remains
-the type authority; registration only supplies storage and projection for host
-invocation. A host value is projected once when it first enters typed
-execution. Its concrete Joggle Type then travels with the value through nested
-source `fn` calls; the compiler does not repeat a project callback at every
-call edge.
+## Surface budget
 
-The core registers the Prelude `module` representation before linking.
-Extension-defined artifacts, cost estimates, schedules, and device descriptions
-use the public registration mechanism and require no core class.
+A public Module function must be useful to another Module or to an end user.
+Serialization helpers, debug reports, reference executors, test oracles, and
+container readers belong in private implementation libraries or tests.
 
-## Verifiers and interface behavior
+Before a Module is admitted to the future standard set, it must demonstrate:
 
-`compiler.verify(declaration, callback)` attaches semantic checks to a Type,
-Attribute, or residual Op declaration. The callback receives
-`const joggle::Type&`, `const joggle::Attribute&`, or
-`const joggle::Op&`; it returns `bool` and may accept Diagnostics
-last. This explicit API keeps `bind` reserved for implementations whose C++
-inputs and outputs match a declared `fn`. There is no verifier declaration kind
-or trait class. Verifier and interface-method exceptions become diagnostics;
-Module callbacks never throw through the Compiler API. Core verification
-always checks ownership, arity, types, CFG structure, SSA, and declaration
-contracts before Module verifiers run.
+1. a stable semantic boundary rather than a project-specific pipeline rung;
+2. at least two independent consumers or producers;
+3. no required change to compiler-core declarations;
+4. deterministic composition and failure diagnostics;
+5. an end-to-end test using an externally maintained model or workload.
 
-Interface methods are bound against a reflected method declaration and called
-on an Attribute or Op. Type-interface fields are different: they are
-declarative values computed by the type declaration and read with
-`Type::get<T>`; they are not dynamic callbacks.
+## Rebuild order
 
-## Behavior libraries
+The removed experimental Modules will not be recreated name-for-name. The new
+vertical slice will be built in this order:
 
-A behavior library exports one versioned descriptor:
+1. define one minimal shaped-value and callable semantic contract from actual
+   ONNX import requirements;
+2. implement ONNX as a format Module that produces that contract without
+   target knowledge;
+3. implement one small but executable edge target Module whose accepted
+   boundary is explicit;
+4. add one independently installable data-format or kernel extension;
+5. evaluate extension coupling, compilation, correctness, memory, and measured
+   execution against an appropriate established compiler.
 
-```cpp
-void bind(joggle::Compiler& compiler, const joggle::Module& module,
-          joggle::Diagnostics& diagnostics) {
-  // Reflect declarations and attach behavior.
-}
-
-JOGGLE_EXPORT_BEHAVIOR(bind)
-```
-
-Build it with:
-
-```cmake
-find_package(Joggle CONFIG REQUIRED)
-joggle_add_behavior(my_behavior
-  MODULE my_module.joggle
-  SOURCES behavior.cpp
-)
-```
-
-The descriptor records ABI, host target, and exact canonical Module identity.
-Loading rejects the wrong ABI, target, or Module digest before callbacks run.
-Binding is transactional: reporting any diagnostic rolls back every callback
-installed by the library and every Hermetic evaluation memoized while binding,
-so there is no second success-result convention.
-Behavior libraries contain implementations only; they cannot introduce hidden
-declarations.
-
-## Transformation discipline
-
-Edit Functions through `Function::Edit`. The edit is transactional: commit
-runs structural and semantic verification; a failed or abandoned edit restores
-the previous Function.
-
-Prefer declarations for concepts that must survive serialization. Prefer C++
-only for algorithms, external libraries, file formats, or host integration.
-Do not encode target policy in the core merely to make one Module easier;
-declare a target type and pass it explicitly through typed compiler functions.
+The names and exact boundaries of those Modules remain undecided until the
+first two use cases agree. This is deliberate: vocabulary should be extracted
+from demonstrated composition, not declared as a new fixed ladder in advance.

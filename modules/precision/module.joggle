@@ -1,5 +1,0 @@
-joggle 1;
-
-module precision@1.0.0 {
-  fn f32_to_f16(input: module) -> module;
-}

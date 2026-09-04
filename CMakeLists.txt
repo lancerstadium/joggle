@@ -161,40 +161,11 @@ if(JOGGLE_BUILD_TESTS)
 
   add_executable(joggle_specialization_test tests/specialization_test.cpp)
   target_link_libraries(joggle_specialization_test PRIVATE joggle::joggle)
-  target_compile_definitions(joggle_specialization_test PRIVATE
-    JOGGLE_ARITH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/arith/module.joggle")
   add_test(NAME specialization COMMAND joggle_specialization_test)
 
   add_executable(joggle_function_body_test tests/function_body_test.cpp)
   target_link_libraries(joggle_function_body_test PRIVATE joggle::joggle)
   add_test(NAME function_body COMMAND joggle_function_body_test)
-
-  add_executable(joggle_arith_test tests/arith_test.cpp)
-  target_link_libraries(joggle_arith_test PRIVATE joggle::joggle)
-  target_compile_definitions(joggle_arith_test PRIVATE
-    JOGGLE_ARITH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/arith/module.joggle"
-  )
-  add_test(NAME arith COMMAND joggle_arith_test)
-
-  add_executable(joggle_nn_test tests/nn_test.cpp)
-  target_link_libraries(joggle_nn_test PRIVATE joggle::joggle)
-  target_compile_definitions(joggle_nn_test PRIVATE
-    JOGGLE_ARITH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/arith/module.joggle"
-    JOGGLE_TENSOR_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/tensor/module.joggle"
-    JOGGLE_MEM_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/mem/module.joggle"
-    JOGGLE_NN_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/nn/module.joggle"
-    JOGGLE_RESNET_BLOCK="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/resnet18_basic_block.joggle"
-  )
-  add_test(NAME nn COMMAND joggle_nn_test)
-  add_test(NAME nn_cli
-    COMMAND $<TARGET_FILE:joggle_cli> check
-      ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/resnet18_basic_block.joggle
-      --with ${CMAKE_CURRENT_SOURCE_DIR}/modules/nn/module.joggle
-      --with ${CMAKE_CURRENT_SOURCE_DIR}/modules/tensor/module.joggle
-      --with ${CMAKE_CURRENT_SOURCE_DIR}/modules/arith/module.joggle
-  )
-
-  add_subdirectory(examples/nn_pipeline)
 
   add_test(NAME function_cli
     COMMAND $<TARGET_FILE:joggle_cli> check
@@ -302,5 +273,3 @@ if(JOGGLE_BUILD_TESTS)
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/module_repository_cli.cmake
   )
 endif()
-
-add_subdirectory(modules)
