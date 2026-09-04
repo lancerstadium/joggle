@@ -1,4 +1,4 @@
-# Tensor module
+# Tensor
 
 `tensor@1.0.0` is Joggle's first target-independent AI vocabulary. It is an
 ordinary source Module installed beside the language tools; it adds no tensor
@@ -89,4 +89,4 @@ Not yet claimed:
 - executable hardware implementation and performance.
 
 The semantic transformation boundary is defined by
-[RFC 0007](rfcs/0007-reference-bodied-transformations.md).
+[Design 0007](../design/0007-equivalence.md).

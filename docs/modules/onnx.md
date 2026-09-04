@@ -1,4 +1,4 @@
-# ONNX inference import
+# ONNX
 
 The optional `onnx@1.0.0` Module converts a deliberately narrow ONNX
 inference model into an ordinary Joggle `Module`:
@@ -62,7 +62,7 @@ and the declared graph output are checked for agreement.
 
 This is not a general ONNX compatibility claim. Module-owned bytes are
 preserved by the lossless CLI and repository bundle defined in
-[RFC 0006](rfcs/0006-module-bundles.md).
+[Design 0006](../design/0006-bundles.md).
 
 ## Optional build
 
@@ -184,5 +184,5 @@ reloads the model, verifies the same 148 payloads, and locks exact `quant` and
 `tensor` versions.
 
 The QDQ path deliberately stops at preserving the standard affine boundary.
-See [Quant module](quant.md) for why transformations may not yet rewrite
+See [Quantization](quant.md) for why transformations may not yet rewrite
 through those two opaque functions.

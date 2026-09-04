@@ -1,6 +1,6 @@
-# RFC 0002: Callable values and typed lambdas
+# Design 0002: Function values
 
-Status: implemented
+Status: accepted
 
 ## Problem
 
@@ -42,7 +42,7 @@ builder-only syntax.
 The first implementation is deliberately capture-free. A reference in the
 body resolves to a lambda parameter or module declaration; literals remain
 normal Known expressions. Referring to any outer local is a diagnostic.
-Capture semantics require a separate RFC because they affect ABI,
+Capture semantics require a separate design decision because they affect ABI,
 serialization, and transformation equality.
 
 ## One callable type
@@ -139,10 +139,10 @@ calls are not entered in the scalar hermetic-evaluation cache.
 This direct path is required for the later transformation API:
 
 ```joggle
-@replace(
+@transform.replace(
   model,
-  (x: tensor, w: tensor, b: tensor) => relu(conv2d(x, w) + b),
-  (x: tensor, w: tensor, b: tensor) => conv_bias_relu(x, w, b),
+  (x: value) => step(step(x)),
+  (x: value) => twice(x),
 )
 ```
 

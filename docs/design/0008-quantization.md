@@ -1,6 +1,6 @@
-# RFC 0009: QDQ as an ordinary semantic Module
+# Design 0008: Quantized ONNX import
 
-Status: import, affine-oracle, and transparent-composite gates implemented
+Status: accepted
 
 ## Problem
 
@@ -45,10 +45,10 @@ keeps quantization boundaries visible around normal Conv and tensor
 operations. QDQ therefore tests the extension mechanism without conflating it
 with a vendor operation or an integer-kernel selection policy.
 
-This decision does not make QOperator import impossible. A later Module may
-define source-grounded fused integer kernels and transform equivalent QDQ
-regions to them. That transformation must be justified by semantics and
-measurement, not by an importer special case.
+This decision does not make QOperator import impossible. A later library may
+define executable integer kernels and transform equivalent QDQ regions to
+them. That transformation must be justified by semantics and measurement, not
+by an importer special case.
 
 ## Evidence and boundary
 

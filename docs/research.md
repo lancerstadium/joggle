@@ -1,4 +1,4 @@
-# Research position
+# Research scope
 
 This is an evidence ledger, not a paper draft. It separates mechanisms already
 present in Joggle from the next research hypothesis and its falsification
@@ -23,7 +23,7 @@ The implementation already demonstrates:
 
 1. one `Module` owns declarations, editable CFG/SSA Functions, imports, and
    content-addressed data;
-2. `@call` is the only stage switch, while ordinary calls always remain program
+2. `@` is the only stage switch, while ordinary calls always remain program
    calls;
 3. typed capture-free lambdas are ordinary anonymous Functions rather than a
    pattern AST;
@@ -35,13 +35,13 @@ The implementation already demonstrates:
 6. the imported Function reconstructs an ONNX graph whose deterministic
    ONNX Runtime output is bit-identical to the original model;
 7. a second hash-pinned Model Zoo model exercises standard QDQ inference: its
-    228 f32/u8/i8/i32 constants, 130 affine quantization boundaries, and 41
-    tensor calls import without a vendor operation, and reconstruction through
-    ONNX Runtime is exactly equal (`max_abs=0`, `mean_abs=0`);
+   228 f32/u8/i8/i32 constants, 130 affine quantization boundaries, and 41
+   tensor calls import without a vendor operation, and reconstruction through
+   ONNX Runtime is exactly equal (`max_abs=0`, `mean_abs=0`);
 8. `quant@1.1` defines a deterministic f32 affine oracle with explicit
-    nearest-even rounding, saturation, signed storage, and per-axis indexing;
-    an independent opset 13 ONNX Runtime graph matches its i8 and f32 output
-    bits exactly;
+   nearest-even rounding, saturation, signed storage, and per-axis indexing;
+   an independent opset 13 ONNX Runtime graph matches its i8 and f32 output
+   bits exactly;
 9. typed replacement preserves pure shared DAG ancestors instead of rejecting
    or duplicating them, while rollback and exact repeated-hole equality remain
    checked;
@@ -89,40 +89,38 @@ source-level mechanism. Astra targets long-running training and cannot be
 transferred to resource-constrained inference without a bounded, cacheable
 selection protocol.
 
-## Hypothesis: reference-bodied extensions
+## Hypothesis: one function model across abstraction levels
 
-The next mechanism under test is a reference-bodied extension:
+The next mechanism under test is deliberately smaller than another IR stack:
 
-1. A user operation or optimized kernel is an ordinary typed `fn`.
-2. Its source body is its portable reference semantics, expressed using other
-   ordinary functions. No operation schema, implementation interface, kernel
-   class, or target registration is added.
-3. A transformation remains an explicitly staged function over `function` or
-   `module` values.
-4. A semantic replacement is accepted only when normalizing source bodies
-   proves the before and after expressions identical. Matching types and
-   preserving effects are necessary but not sufficient.
-5. Structural transformations are a separate class only internally: each
-   primitive must preserve a stated Function invariant for all inputs and be
-   independently checked. They are still exposed as ordinary functions.
-6. Selection policy composes transformations; it does not change their
-   correctness. Later, a compile-time function may enumerate equivalent
-   Function values and another function may measure or choose among them.
+1. A model, user operation, or executable kernel is an ordinary typed `fn`.
+2. Function bodies may use different imported vocabularies, but remain the
+   same `Function` representation and type system. No `Kernel` subclass or
+   fixed lowering ladder is added.
+3. A conversion or optimization is an explicitly staged function over
+   `function` or `module` values.
+4. A portable reference and an implementation are separate ordinary
+   functions. Their relationship must be checked explicitly; a declaration
+   never carries a hidden second body.
+5. Definitional equivalence remains the safe checker for transparent
+   factoring. Real kernels require stronger, independently auditable evidence
+   rather than weakening that checker.
+6. Physical formats are parameterized types and conversion functions, not
+   copies of the tensor operator vocabulary.
+7. Candidate enumeration, measurement, and selection are ordinary compiler
+   functions. Selection policy does not alter transformation correctness.
 
-This makes the semantic source body a candidate seam between a model operation
-and a future executable kernel. Factoring an expression into a call alone is
-explicitly not kernel fusion. It also keeps the key property of RISE/Shine:
-once a concrete
-implementation program is chosen, emission must not silently make new
-optimization decisions.
+Once a concrete implementation Function is chosen, emission must not silently
+make new optimization decisions. This preserves the useful separation in
+RISE/Shine while keeping the extension surface uniform.
 
 ## Why this is not yet a contribution
 
-Reference-body normalization may be too weak for important kernels, may expand
-programs excessively, or may merely move a privileged registry into native
-functions. User formats may still require compiler changes to represent
-storage. A model-wide optimization may not compose from kernel-local
-equivalences. These are open risks, not details to hide in implementation.
+One Function representation may be too weak for both model graphs and useful
+kernel bodies, or may merely move a privileged registry into native functions.
+User formats may still require compiler changes to represent storage. A
+model-wide optimization may not compose from kernel-local equivalences. These
+are open risks, not details to hide in implementation.
 
 ## Required experiments
 

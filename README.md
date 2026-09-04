@@ -83,18 +83,8 @@ ONNX Runtime differential evidence.
 
 ## Documentation
 
+- [Documentation index](docs/README.md)
+- [Getting started](docs/getting-started.md)
+- [Language](docs/language.md)
 - [Architecture](docs/architecture.md)
-- [Language reference](docs/language.md)
-- [IR model](docs/ir.md)
-- [Compiler functions](docs/compiler-functions.md)
-- [Transform module](docs/transform.md)
-- [C++ API](docs/cpp-api.md)
-- [Module design](docs/modules.md)
-- [Tensor module](docs/tensor.md)
-- [Quant module](docs/quant.md)
-- [ONNX inference import](docs/onnx.md)
-- [Repository and reproducibility](docs/module-repository.md)
-- [Research position](docs/research-position.md)
-- [Accepted core-language RFC](docs/rfcs/0001-core-language.md)
-- [Reference-bodied transformation RFC](docs/rfcs/0007-reference-bodied-transformations.md)
-- [QDQ import RFC](docs/rfcs/0009-qdq-import.md)
+- [Modules](docs/modules.md)

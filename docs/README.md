@@ -1,45 +1,41 @@
-# Joggle documentation
+# Documentation
 
-Joggle has one current documentation set. Each document owns a distinct part
-of the project; none is a migration log.
+The top level contains stable user and contributor references. `modules/`
+documents shipped libraries; `design/` records accepted implementation
+decisions.
 
-- [Getting started](getting-started.md) builds, checks, and runs one Module.
-- [Architecture](architecture.md) defines the compiler's scope and public
-  concepts.
-- [Intermediate representation](ir.md) specifies Ops, SSA, properties,
-  transformations, and Module-owned data.
-- [Language](language.md) is the source-language reference.
-- [Compiler functions](compiler-functions.md) defines composition and the
-  reusable facilities required by transforms, analyses, and output functions.
-- [Transform module](transform.md) documents direct typed-lambda semantic
-  replacement for Function and Module values.
-- [Research position](research-position.md) separates implemented evidence from
-  the hypotheses, comparisons, and experiments required for publication.
-- [Module design](modules.md) defines the extension and dependency model.
-- [Tensor module](tensor.md) records the first target-independent AI
-  vocabulary and its implemented evidence boundary.
-- [Quant module](quant.md) records the ordinary-function QDQ boundary, its
-  executable affine oracle, and the exact semantic trust boundary.
-- [ONNX inference import](onnx.md) documents the optional, transactionally
-  checked real-model importer and its exact support boundary.
-- [C++ API](cpp-api.md) documents the in-process library surface.
-- [Module repository](module-repository.md) specifies installation,
-  resolution, and lock files.
-- [Core language RFC](rfcs/0001-core-language.md) freezes the implementation
-  gates; [callable values RFC](rfcs/0002-callable-values.md) defines typed
-  lambdas without synthetic declarations; [expression replacement
-  RFC](rfcs/0003-expression-replacement.md) defines typed matching and explicit
-  effect safety without a pattern IR; [tensor RFC](rfcs/0004-tensor-module.md)
-  defines the first real-model vertical slice; [ONNX inference
-  RFC](rfcs/0005-onnx-inference-import.md) freezes the audited importer
-  contract; [Module bundle RFC](rfcs/0006-module-bundles.md) defines lossless
-  persistence for Module-owned bytes without another ownership object; and
-  [reference-bodied transformation RFC](rfcs/0007-reference-bodied-transformations.md)
-  defines the semantic-correctness boundary and next composition gates for
-  user kernels; and [QDQ import RFC](rfcs/0009-qdq-import.md) defines
-  quantization as an ordinary semantic Module and freezes its proof boundary.
+## Start
 
-The repository contains the compiler core, static tensor and quant semantic
-Modules, and two narrow ONNX profiles: IR 3/opset 7 FLOAT and IR 7/opset 13
-QDQ. It does not claim general ONNX coverage or a target backend; both audited
-reference models have exact differential ONNX Runtime evidence.
+- [Getting started](getting-started.md)
+- [Language](language.md)
+- [C++ API](api.md)
+
+## Compiler model
+
+- [Architecture](architecture.md)
+- [IR](ir.md)
+- [Staging](staging.md)
+- [Modules](modules.md)
+- [Repository](repository.md)
+
+## Shipped modules
+
+- [Tensor](modules/tensor.md)
+- [Quantization](modules/quant.md)
+- [Transform](modules/transform.md)
+- [ONNX](modules/onnx.md)
+
+## Design records
+
+- [0001 — Language core](design/0001-language.md)
+- [0002 — Function values](design/0002-functions.md)
+- [0003 — Expression rewriting](design/0003-rewrite.md)
+- [0004 — Tensor semantics](design/0004-tensor.md)
+- [0005 — ONNX import](design/0005-onnx.md)
+- [0006 — Module bundles](design/0006-bundles.md)
+- [0007 — Definitional equivalence](design/0007-equivalence.md)
+- [0008 — Quantized ONNX import](design/0008-quantization.md)
+
+Design records explain why current interfaces exist. They are not a second
+user manual or a migration log. [Research](research.md) separately tracks
+unimplemented hypotheses and publication gates.

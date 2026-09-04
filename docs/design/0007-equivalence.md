@@ -1,6 +1,6 @@
-# RFC 0007: Reference-bodied transformations
+# Design 0007: Definitional equivalence
 
-Status: implementation gates 1--7 complete
+Status: accepted
 
 ## Purpose
 
@@ -15,38 +15,31 @@ assertion by the extension author.
 
 ## Accepted source model
 
-An optimized function carries its reference semantics as its ordinary source
-body:
+An ordinary source body may provide a definition used by the conservative
+equivalence checker:
 
 ```joggle
-fn conv_then_relu(
-  input: tensor<f32, [1, 16, 32, 32]>,
-  weight: tensor<f32, [32, 16, 3, 3]>,
-  bias: tensor<f32, [32]>
-) -> tensor<f32, [1, 32, 30, 30]> {
-  return relu(conv(input, weight, bias, [1, 1], [0, 0, 0, 0],
-                   [1, 1], 1));
+type value();
+fn step(input: value) -> value;
+
+fn twice(input: value) -> value {
+  return step(step(input));
 }
 ```
 
-This is one normal `fn` body and therefore a transparent composite, not a fused
-kernel implementation. Concrete realization later needs an executable body
-whose structure differs for a justified reason; it must not attach a second
-hidden meaning to this declaration.
+This is one normal `fn` body and therefore a transparent definition, not an
+optimized kernel implementation. Concrete realization later needs an
+executable body whose structure differs for a justified reason; it must not
+attach a second hidden meaning to this declaration.
 
 A transformation remains an ordinary explicitly staged function:
 
 ```joggle
-fn factor_pair(input: function) -> function {
+fn factor(input: function) -> function {
   return @transform.replace(
     input,
-    (x: tensor<f32, [1, 16, 32, 32]>,
-     w: tensor<f32, [32, 16, 3, 3]>,
-     b: tensor<f32, [32]>) =>
-      relu(conv(x, w, b, [1, 1], [0, 0, 0, 0], [1, 1], 1)),
-    (x: tensor<f32, [1, 16, 32, 32]>,
-     w: tensor<f32, [32, 16, 3, 3]>,
-     b: tensor<f32, [32]>) => conv_then_relu(x, w, b)
+    (x: value) => step(step(x)),
+    (x: value) => twice(x)
   );
 }
 ```
@@ -89,7 +82,7 @@ replacement. It must not encode success/failure as a public `Result` wrapper.
 
 ## Formats and implementation choice
 
-This RFC does not introduce a device model. A later format Module will use
+This record does not introduce a device model. A later format Module will use
 ordinary parameterized `type` declarations for values and ordinary `fn`
 declarations for conversions and computations. Its first obligation is a
 portable reference meaning that participates in the same equivalence relation.

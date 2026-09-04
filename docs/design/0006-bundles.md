@@ -1,6 +1,6 @@
-# RFC 0006: Module bundles
+# Design 0006: Module bundles
 
-Status: implementation gates complete
+Status: accepted
 
 ## Problem
 

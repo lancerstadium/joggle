@@ -1,6 +1,6 @@
-# RFC 0001: One staged language for compiler construction
+# Design 0001: Language core
 
-Status: accepted; gates 1--7 complete
+Status: accepted
 
 ## Purpose
 
@@ -54,10 +54,10 @@ Functions and typed lambdas are values. The first transformation primitive is
 expression replacement:
 
 ```joggle
-@replace(
-  module,
-  (x: tensor, w: tensor, b: tensor) => relu(conv2d(x, w) + b),
-  (x: tensor, w: tensor, b: tensor) => conv_bias_relu(x, w, b),
+@transform.replace(
+  input,
+  (x: value) => step(step(x)),
+  (x: value) => twice(x),
 );
 ```
 
@@ -80,10 +80,10 @@ manually.
 A transformation policy is an ordinary compile-time function that transforms
 a module or a function. Its component transformations are module-defined
 functions; users do not construct a Schedule class. Correctness must be
-independent of later candidate ranking or measurement. RFC 0007 defines the
+independent of later candidate ranking or measurement. Design 0007 defines the
 first semantic-equivalence boundary for user-defined optimized functions.
 
-No target or device hierarchy is part of this RFC. A target-specific module
+No target or device hierarchy is part of this record. A target-specific module
 may define formats, memory spaces, operations, costs, and exporters using the
 same `type` and `fn` mechanisms after the language core is complete.
 
@@ -99,16 +99,17 @@ an earlier gate.
 3. Explicit staging: make `@` the only stage switch and test residual calls
    with fully known operands. **Complete.**
 4. Higher-order core: add typed function values and typed lambdas without a
-   second expression grammar. **Complete; see RFC 0002.**
+   second expression grammar. **Complete; see Design 0002.**
 5. Effect-safe replacement: implement checked expression matching and atomic
-   replacement. **Complete; see RFC 0003.**
+   replacement. **Complete; see Design 0003.**
 6. Tensor module: define real tensor types and operations outside the core.
-   **Complete; see RFC 0004.**
+   **Complete; see Design 0004.**
 7. ONNX module: load an unmodified ONNX model-zoo artifact through an ordinary
-   compile-time function. **Complete; see RFCs 0005 and 0006.**
-8. Open transformation research: prove semantics of source-bodied user kernels
-   before adding transformation control, formats, or measured selection.
-   **In progress; see RFC 0007.**
+   compile-time function. **Complete; see Designs 0005 and 0006.**
+8. Open transformation research: relate executable user kernels to portable
+   semantics before adding transformation control, formats, or measured
+   selection.
+   **In progress; see Design 0007.**
 
 ## Deletion policy
 

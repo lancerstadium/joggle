@@ -1,4 +1,4 @@
-# Transform module
+# Transform
 
 `transform@1.0.0` exposes typed semantic replacement through the same ordinary
 Module/function mechanism as every other compiler extension. It adds no source
@@ -24,18 +24,28 @@ Both `before` and `after` are normal typed Function values. Capture-free typed
 lambdas are the concise source form:
 
 ```joggle
-module optimize@1.0.0 {
+module factoring@1.0.0 {
   import transform@1;
+
+  type value();
+  fn step(input: value) -> value;
+
+  fn twice(input: value) -> value {
+    return step(step(input));
+  }
 
   fn run(input: function) -> function {
     return @transform.replace(
       input,
-      (x: tensor, w: tensor) => relu(conv(x, w)),
-      (x: tensor, w: tensor) => conv_relu(x, w)
+      (x: value) => step(step(x)),
+      (x: value) => twice(x)
     );
   }
 }
 ```
+
+Because `twice` expands to the first expression, this example demonstrates
+checked function factoring. It does not claim an optimized kernel.
 
 `@` is the only staging marker. Without it, `transform.replace` is an ordinary
 residual call rather than an implicitly executed compiler action.

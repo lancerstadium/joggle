@@ -20,7 +20,7 @@ There is no second Program, Graph, Package, Attribute, Pass, Target, or Result
 owner. A model graph is a `Module` containing functions. Metadata is a normal
 `Type`. A transformation is a function from one compiler value to another.
 
-## Source and IR are one module
+## Module snapshots
 
 Parsing creates a `Module`. Materialization attaches editable `Function`
 bodies to declarations in a new `Module` snapshot. Committed edits use
@@ -32,7 +32,7 @@ the imports and declarations with bodies erased. Symbols retain the latter as
 provenance so a declaration from another compiler snapshot cannot be used by
 accident.
 
-## One declaration plane
+## Declarations
 
 The public declaration forms are `import`, `type`, and `fn` inside a module.
 `type` covers both run-time value types and compile-time descriptions:
@@ -53,7 +53,7 @@ There is no separate attribute or capability declaration. Generic parameters
 bind directly to types or compiler domains, and a concrete type's computed
 fields are checked when referenced.
 
-## One call plane
+## Calls and staging
 
 Ordinary calls are program calls. `@call(...)` requests compiler-time
 execution. Both resolve the same overload and use the same declaration

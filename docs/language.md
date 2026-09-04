@@ -1,4 +1,4 @@
-# Language reference
+# Language
 
 Joggle source declares versioned modules, types, and functions. The language is
 small by design: domain libraries add AI operations and hardware vocabulary

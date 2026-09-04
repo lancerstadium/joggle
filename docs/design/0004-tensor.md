@@ -1,6 +1,6 @@
-# RFC 0004: Static tensor semantic module
+# Design 0004: Tensor semantics
 
-Status: implementation gates complete
+Status: accepted
 
 ## Purpose
 
@@ -50,10 +50,10 @@ model requires it.
 
 ## Transformation use
 
-Fused calls are not added to the semantic module. A user extension
-may declare `conv_relu` and use ordinary typed lambdas with `@replace` to turn
-the semantic pair into that call. This directly tests whether a new kernel can
-be introduced without modifying tensor core or a global conversion table.
+Implementation calls are not added to the semantic module. Transformations may
+match tensor expressions through ordinary typed lambdas, but replacing them
+with an executable kernel requires a real implementation body. Renaming a
+Conv/Relu pair is not accepted as fusion evidence.
 
 ## ONNX boundary
 
@@ -70,7 +70,8 @@ is claimed.
 - [x] Register and test static-shape tensor invariants without a core type
   case.
 - [x] Materialize a typed SqueezeNet Fire block and round-trip canonical IR.
-- [x] Fuse its Conv/Relu pair through RFC 0003 using an extension-local call.
+- [x] Exercise typed structural replacement on its Conv/Relu expression through
+  Design 0003 without claiming an executable fused kernel.
 - [x] Import the maintained ONNX SqueezeNet 1.1 artifact with initializer and
   attribute fidelity.
 - [x] Differentially validate outputs and record unsupported-model

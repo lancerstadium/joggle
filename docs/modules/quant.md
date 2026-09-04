@@ -1,4 +1,4 @@
-# Quant module
+# Quantization
 
 `quant@1.1.0` is a small semantic boundary for affine tensor quantization:
 

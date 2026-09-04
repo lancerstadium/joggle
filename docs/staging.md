@@ -1,4 +1,4 @@
-# Compiler functions
+# Staging
 
 Joggle uses ordinary typed functions for compiler work. Importing a model,
 transforming IR, inspecting it, and writing output do not require separate pass
@@ -18,7 +18,7 @@ fn prepare(input: bytes, policy: type) -> module {
 The names are conventional, not reserved. A library may expose small
 functions and a convenient composed pipeline. Users can call either.
 
-## Staging
+## Call semantics
 
 `@call(...)` requests compiler-time evaluation. The selected function may have
 a source body or a native C++ binding. Failure is diagnosed at the call site.
@@ -56,43 +56,27 @@ is materialized as a verified anonymous `Function`, passed directly to the
 compiler function, and may be returned for a later `@` call. It is not encoded
 as scalar metadata.
 
-Typed replacement is the same ordinary-function mechanism:
-
-```joggle
-import transform@1;
-
-optimized = @transform.replace(
-  input,
-  (x: tensor, w: tensor) => relu(conv2d(x, w)),
-  (x: tensor, w: tensor) => conv_relu(x, w)
-);
-```
-
 Transformations compose with the language's existing function call and local
 binding rules. There is no separate sequence object:
 
 ```joggle
-fn fuse(input: function) -> function {
-  return @transform.replace(input, before, after);
-}
-
 fn optimize(input: function) -> function {
-  fused = @fuse(input);
-  return @canonicalize(fused);
+  normalized = @canonicalize(input);
+  return @specialize(normalized);
 }
 ```
 
-Here `input`, `before`, `after`, and `fused` are ordinary compiler-domain
-`function` values. Typed lambdas use the same materializer whether they appear
-inside a residual higher-order call or as an argument to an explicitly staged
-compiler function. The compiler does not convert them through a pattern,
-strategy, or scalar metadata representation.
+Here `input` and `normalized` are ordinary compiler-domain `function` values.
+Typed lambdas use the same materializer whether they appear inside a residual
+higher-order call or as an argument to an explicitly staged compiler function.
+The compiler does not convert them through a pattern, strategy, or scalar
+metadata representation.
 
 The shipped `transform` Module binds this declaration to the
 equivalence-checking C++ `joggle::replace(Compiler&, ...)` overload with
-`Compiler::bind`. Eligible
-source bodies are expanded into a bounded canonical expression encoding;
-bodyless calls remain exact-identity leaves. A mismatch is diagnosed before
+`Compiler::bind`. Eligible source bodies are expanded into a bounded canonical
+expression encoding; bodyless calls remain exact-identity leaves. A mismatch
+is diagnosed before
 the existing atomic structural replacement opens an edit. `replace` is not
 reserved syntax, and the lambdas remain verified Functions over the same IR
 rather than a second rewrite declaration or pattern representation.

@@ -1,18 +1,19 @@
-# RFC 0003: Typed expression replacement
+# Design 0003: Expression rewriting
 
-Status: implemented
+Status: accepted
 
-This RFC defines structural replacement safety. RFC 0007 adds conservative
+This record defines structural replacement safety. Design 0007 adds conservative
 definitional-equivalence checking before this primitive is used by a normal
 compiler-facing module.
 
 ## Purpose
 
-Joggle needs a transformation surface suitable for fusion, canonicalization,
-and hardware-specific instruction selection without exposing cursor, anchor,
-region, pattern, or rewrite-object APIs. The transformation must reuse the
-typed `Function` values completed by RFC 0002 and must reject mutations whose
-data-flow or effect boundary is not preserved.
+Joggle needs a reusable structural replacement surface without exposing
+cursor, anchor, region, pattern, or rewrite-object APIs. The transformation
+must reuse the typed `Function` values completed by Design 0002 and must reject
+mutations whose data-flow or effect boundary is not preserved. Semantic uses
+such as canonicalization or instruction selection additionally require the
+equivalence boundary in Design 0007.
 
 ## Source surface
 
@@ -21,17 +22,16 @@ Replacement is an ordinary compiler function supplied by a module:
 ```joggle
 fn replace(input: function, before: function, after: function) -> function;
 
-optimized = @replace(
+optimized = @transform.replace(
   input,
-  (x: tensor, w: tensor, b: tensor) => relu(conv2d(x, w) + b),
-  (x: tensor, w: tensor, b: tensor) => conv_bias_relu(x, w, b),
+  (x: value) => step(step(x)),
+  (x: value) => twice(x),
 );
 ```
 
 `replace` is not a keyword. The two lambdas are the anonymous `Function`
-values defined by RFC 0002. A library may expose `replace_once`, `replace_all`,
-or a domain-specific transformation under any name while sharing the same C++
-primitive.
+values defined by Design 0002. A library may expose a domain-specific
+transformation under any name while sharing the same C++ primitive.
 
 ## Pattern meaning
 
@@ -67,8 +67,8 @@ A match is legal only when:
    tokens;
 6. every inserted call passes ordinary call-contract verification.
 
-Candidates are visited in deterministic Function order. `replace_all` accepts
-a maximal non-overlapping set: once a call belongs to an accepted match it
+Candidates are visited in deterministic Function order. `replace` accepts a
+maximal non-overlapping set: once a call belongs to an accepted match it
 cannot belong to a later match in the same transaction. The entire operation
 commits once. Any diagnostic, failed clone, or failed verification publishes
 nothing.

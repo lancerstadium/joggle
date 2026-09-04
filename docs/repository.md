@@ -1,4 +1,4 @@
-# Module repository and reproducibility
+# Repository
 
 A release is one serialized `joggle::Module`: one canonical source file, one
 semantic version, and one SHA-256 content identity. Release metadata belongs

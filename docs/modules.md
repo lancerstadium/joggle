@@ -1,4 +1,4 @@
-# Modules and extensions
+# Modules
 
 A Joggle `Module` is a versioned package. It is simultaneously a namespace,
 dependency and installation unit, declaration source, and container for
@@ -128,7 +128,7 @@ switch; known inputs alone never select host execution during materialization.
 Imports use exact, major, minor, or caret ranges. Linking chooses one version
 per module name, verifies the complete closure, and records exact dependencies
 in a materialized module. Repositories and lock files are described in
-[Module repository](module-repository.md).
+[Repository](repository.md).
 
 ## Design rules for new modules
 

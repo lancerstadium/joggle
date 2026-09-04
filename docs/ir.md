@@ -1,4 +1,4 @@
-# IR model
+# IR
 
 Joggle uses `Module` for whole-program state and `Function` for executable IR.
 There is no separate graph IR: dataflow is the def-use graph of calls and

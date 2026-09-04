@@ -165,6 +165,6 @@ when `-o` is absent.
 
 For installed discovery, call `compiler.search(root)` and the one-argument
 `load_native("example")`. See the
-[Module repository](module-repository.md) for repository and lock semantics,
+[Repository](repository.md) for repository and lock semantics,
 and [`tests/consumer`](../tests/consumer) for the tested installed-project
 example.
