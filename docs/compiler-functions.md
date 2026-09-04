@@ -57,9 +57,24 @@ constant folding, layout changes, and tensor-storage optimization.
 An explicit call may pass a typed lambda to a `function` parameter. The lambda
 is materialized as a verified anonymous `Function`, passed directly to the
 compiler function, and may be returned for a later `@` call. It is not encoded
-as scalar metadata. Typed matching and effect-safe replacement are the next
-language facilities; they remain ordinary compiler functions over the same
-`Module` and `Function` values, not a second rewrite declaration system.
+as scalar metadata.
+
+Typed replacement is the same ordinary-function mechanism:
+
+```joggle
+fn replace(input: function, before: function, after: function) -> function;
+
+optimized = @replace(
+  input,
+  (x: tensor, w: tensor) => relu(conv2d(x, w)),
+  (x: tensor, w: tensor) => conv_relu(x, w)
+);
+```
+
+A native module binds this declaration to the C++ `joggle::replace`
+primitive with `Compiler::bind`. `replace` is not reserved syntax, and the
+lambdas remain verified Functions over the same IR rather than a second
+rewrite declaration or pattern representation.
 
 ## Recursive specialization
 

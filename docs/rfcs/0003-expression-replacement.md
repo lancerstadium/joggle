@@ -164,8 +164,8 @@ on a private `Module` snapshot and publishes only after every member succeeds.
    equality and internal-use closure checks.
 5. [complete] Clone replacement DAGs through one `Function::Edit` and commit
    atomically.
-6. Expose Function and Module C++ overloads and bind them from a normal
-   transformation module.
+6. [complete] Expose Function and Module C++ overloads and bind them from a
+   normal transformation module.
 7. Add fusion, no-match, overlap, wrong-type, escaping-use, effect rejection,
    rollback, formatting, and source `@replace` end-to-end tests.
 

@@ -641,4 +641,43 @@ std::optional<Function> clone(
       diagnostics);
 }
 
+std::optional<std::size_t> replace(Function& function, const Function& before,
+                                   const Function& after,
+                                   Diagnostics& diagnostics) {
+  return detail::replace_expressions(function, before, after, diagnostics);
+}
+
+std::optional<std::size_t> replace(Module& module, const Function& before,
+                                   const Function& after,
+                                   Diagnostics& diagnostics) {
+  Module candidate = module;
+  std::size_t changed = 0;
+  for (const Module::FunctionDecl& member : module.functions()) {
+    const Function* source = member.body();
+    if (source == nullptr) {
+      continue;
+    }
+    Function rewritten = *source;
+    const auto count =
+        detail::replace_expressions(rewritten, before, after, diagnostics);
+    if (!count) {
+      return std::nullopt;
+    }
+    if (*count != 0U) {
+      Function* destination = candidate.body(member);
+      if (destination == nullptr) {
+        diagnostics.report("Module lost function '" +
+                           std::string(member.name()) + "'");
+        return std::nullopt;
+      }
+      *destination = std::move(rewritten);
+    }
+    changed += *count;
+  }
+  if (changed != 0U) {
+    module = std::move(candidate);
+  }
+  return changed;
+}
+
 }  // namespace joggle

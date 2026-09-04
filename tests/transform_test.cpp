@@ -367,7 +367,7 @@ module foreign@1.0.0 {
 
   joggle::Function replacement_subject = *chain;
   joggle::Diagnostics expression_replace_diagnostics;
-  const auto expression_replaced = joggle::detail::replace_expressions(
+  const auto expression_replaced = joggle::replace(
       replacement_subject, *chain, *replacement,
       expression_replace_diagnostics);
   ok &= expect(expression_replaced && *expression_replaced == 1U &&
@@ -382,7 +382,7 @@ module foreign@1.0.0 {
   joggle::Function no_match_subject = *axis_two;
   const auto no_match_revision = no_match_subject.revision();
   joggle::Diagnostics expression_no_match_diagnostics;
-  const auto expression_no_match = joggle::detail::replace_expressions(
+  const auto expression_no_match = joggle::replace(
       no_match_subject, *axis_one, *replacement,
       expression_no_match_diagnostics);
   ok &= expect(expression_no_match && *expression_no_match == 0U &&
@@ -393,7 +393,7 @@ module foreign@1.0.0 {
   joggle::Function incompatible_subject = *chain;
   const auto incompatible_revision = incompatible_subject.revision();
   joggle::Diagnostics incompatible_replace_diagnostics;
-  const auto incompatible_replace = joggle::detail::replace_expressions(
+  const auto incompatible_replace = joggle::replace(
       incompatible_subject, *chain, *pair, incompatible_replace_diagnostics);
   ok &= expect(!incompatible_replace &&
                    !incompatible_replace_diagnostics.ok() &&
@@ -402,7 +402,7 @@ module foreign@1.0.0 {
 
   joggle::Function overlap_subject = *triple_keep;
   joggle::Diagnostics overlap_replace_diagnostics;
-  const auto overlap_replace = joggle::detail::replace_expressions(
+  const auto overlap_replace = joggle::replace(
       overlap_subject, *double_keep, *replacement,
       overlap_replace_diagnostics);
   ok &= expect(overlap_replace && *overlap_replace == 1U &&
@@ -415,7 +415,7 @@ module foreign@1.0.0 {
 
   joggle::Function foreign_subject = *chain;
   joggle::Diagnostics foreign_replace_diagnostics;
-  const auto foreign_replace = joggle::detail::replace_expressions(
+  const auto foreign_replace = joggle::replace(
       foreign_subject, *chain, *foreign_replacement,
       foreign_replace_diagnostics);
   ok &= expect(foreign_replace && *foreign_replace == 1U &&
@@ -424,6 +424,41 @@ module foreign@1.0.0 {
                    foreign_subject.ops().front().callee() == *foreign_external,
                "replacement extends the verified Function module closure for "
                "a newly cloned call");
+
+  joggle::Module expression_module("expression_module", {1, 0, 0});
+  joggle::Diagnostics expression_module_insert_diagnostics;
+  if (!expression_module.insert("first", joggle::Function{*chain},
+                                expression_module_insert_diagnostics) ||
+      !expression_module.insert("second", joggle::Function{*chain},
+                                expression_module_insert_diagnostics)) {
+    expression_module_insert_diagnostics.print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  joggle::Diagnostics expression_module_diagnostics;
+  const auto expression_module_replaced = joggle::replace(
+      expression_module, *chain, *replacement, expression_module_diagnostics);
+  const auto expression_module_first = expression_module.function("first");
+  const auto expression_module_second = expression_module.function("second");
+  ok &= expect(
+      expression_module_replaced && *expression_module_replaced == 2U &&
+          expression_module_diagnostics.ok() && expression_module_first &&
+          expression_module_second && expression_module_first->body() &&
+          expression_module_second->body() &&
+          expression_module_first->body()->ops().front().callee() ==
+              *converted &&
+          expression_module_second->body()->ops().front().callee() ==
+              *converted,
+      "whole-Module expression replacement publishes all changed members");
+
+  const std::string expression_module_digest(expression_module.digest());
+  joggle::Diagnostics expression_module_failure_diagnostics;
+  const auto expression_module_failure = joggle::replace(
+      expression_module, *chain, *pair,
+      expression_module_failure_diagnostics);
+  ok &= expect(!expression_module_failure &&
+                   !expression_module_failure_diagnostics.ok() &&
+                   expression_module.digest() == expression_module_digest,
+               "whole-Module replacement failure publishes no partial value");
 
   const auto first_revision = first->revision();
   joggle::Diagnostics no_op_diagnostics;
@@ -727,6 +762,91 @@ module foreign@1.0.0 {
                    cloned_body->ops().front().callee() == *keep &&
                    compiler.verify(*inline_clone),
                "clone preserves and verifies an inline callable body");
+
+  joggle::Compiler staged_replace;
+  staged_replace.add(R"(
+joggle 1;
+module staged_replace@1.0.0 {
+  type word();
+  fn keep(input: word) -> word;
+  fn other(input: word) -> word;
+  fn converted(input: word) -> word;
+  fn replace(input: function, before: function, after: function) -> function;
+  fn inspect(input: function) -> int;
+
+  fn subject(input: word) -> word {
+    return other(keep(input));
+  }
+
+  fn optimize(input: word) -> word {
+    optimized = @replace(
+      (value: word) => other(keep(value)),
+      (value: word) => other(keep(value)),
+      (value: word) => converted(value)
+    );
+    count = @inspect(optimized);
+    return converted(input);
+  }
+}
+)",
+                     "staged-replace.joggle");
+  const bool staged_replace_linked = staged_replace.link();
+  const auto staged_replace_module = staged_replace.module("staged_replace");
+  const auto staged_replace_decl =
+      staged_replace_module ? staged_replace_module->function("replace")
+                            : std::nullopt;
+  const auto staged_optimize_decl =
+      staged_replace_module ? staged_replace_module->function("optimize")
+                            : std::nullopt;
+  const auto staged_inspect_decl =
+      staged_replace_module ? staged_replace_module->function("inspect")
+                            : std::nullopt;
+  const auto staged_converted_decl =
+      staged_replace_module ? staged_replace_module->function("converted")
+                            : std::nullopt;
+  if (staged_replace_decl) {
+    staged_replace.bind(
+        *staged_replace_decl,
+        [](joggle::Function input, const joggle::Function& before,
+           const joggle::Function& after, joggle::Diagnostics& diagnostics)
+            -> std::optional<joggle::Function> {
+          const auto count = joggle::replace(input, before, after, diagnostics);
+          return count ? std::optional<joggle::Function>{std::move(input)}
+                       : std::nullopt;
+        });
+  }
+  std::size_t inspected_replacement_calls = 0;
+  std::optional<joggle::Module::FunctionDecl> inspected_replacement_callee;
+  if (staged_inspect_decl) {
+    staged_replace.bind(
+        *staged_inspect_decl,
+        [&](const joggle::Function& function) -> std::int64_t {
+          inspected_replacement_calls = function.ops().size();
+          if (!function.ops().empty()) {
+            inspected_replacement_callee = function.ops().front().callee();
+          }
+          return static_cast<std::int64_t>(function.ops().size());
+        });
+  }
+  const auto staged_optimized =
+      staged_replace_linked && staged_optimize_decl && staged_replace_decl &&
+              staged_inspect_decl
+          ? staged_replace.materialize("staged_replace.optimize")
+          : std::nullopt;
+  if (!staged_optimized || !staged_replace.ok()) {
+    staged_replace.diagnostics().print(std::cerr);
+  }
+  ok &= expect(staged_replace_linked && staged_replace_decl &&
+                   staged_optimize_decl && staged_inspect_decl &&
+                   staged_converted_decl &&
+                   staged_optimized && staged_replace.ok() &&
+                   staged_optimized->ops().size() == 1U &&
+                   staged_optimized->ops().front().callee() ==
+                       *staged_converted_decl &&
+                   inspected_replacement_calls == 1U &&
+                   inspected_replacement_callee == staged_converted_decl,
+               "an ordinary source fn invokes typed-lambda replacement "
+               "through explicit @ staging");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

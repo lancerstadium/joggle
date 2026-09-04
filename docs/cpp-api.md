@@ -100,6 +100,20 @@ canonical formatting or `Module::insert` rejects a C++-constructed inline body
 that cannot be represented by that source form instead of emitting hidden
 declarations.
 
+## Replace typed expressions
+
+```cpp
+auto changed = joggle::replace(function, before, after, diagnostics);
+```
+
+`before` and `after` are ordinary single-expression `Function` values. Their
+arguments are typed holes; repeated arguments require the same SSA value.
+Matching uses exact call declarations, canonical Known values, and function
+reference identity. All maximal non-overlapping matches are replaced in one
+transaction. The `Module&` overload applies the same operation on a private
+module snapshot and publishes only after every materialized member succeeds.
+Zero changes are a successful no-op and preserve revision or module identity.
+
 ## Bind native functions
 
 ```cpp

@@ -33,6 +33,19 @@ std::optional<Function> clone(
     const std::function<std::optional<Type>(const Value&)>& map_value_type,
     Diagnostics& diagnostics);
 
+// Replaces every maximal non-overlapping occurrence of before with after in
+// one transaction. Both templates are ordinary typed Functions; no pattern IR
+// or retained source syntax is involved. Zero is a successful no-op.
+std::optional<std::size_t> replace(Function& function, const Function& before,
+                                   const Function& after,
+                                   Diagnostics& diagnostics);
+
+// Applies the same replacement to every materialized member on a private
+// Module value and publishes only when all member transactions succeed.
+std::optional<std::size_t> replace(Module& module, const Function& before,
+                                   const Function& after,
+                                   Diagnostics& diagnostics);
+
 namespace transform_detail {
 
 template <typename Rule>
