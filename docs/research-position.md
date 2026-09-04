@@ -40,7 +40,7 @@ current implementation can support.
 | End-to-end composition | The Anchor integration test imports the official opset-18 ResNet-18 ONNX model, converts it, maps target calls, fuses eligible epilogues, plans scratch storage, simulates a typed timeline, semantically links source kernels, and emits the resulting bundle with all immutable payloads. `unpack` verifies content identities and reconstructs the same Module in a fresh compilation. See [the ONNX integration test](../modules/anchor/tests/onnx_integration_test.cpp). | The packed artifact is deterministic and self-contained with respect to model data, but it is not machine code. |
 | Order independence case | The precision integration test applies f32-to-f16 before or after ONNX-to-NN conversion; both paths produce identical planned Modules, resources, and traces. See [the precision integration test](../modules/anchor/tests/precision_integration_test.cpp). | One commuting pair does not establish general pass-order independence. |
 | Deterministic analytical result | For `anchor.config<16, 4, 32, 16, 16777216, 4>`, the checked f32 baseline has 140 planned Ops, 49 events, 10,946,464 scratch bytes, and 29,453,374 modeled cycles. Nine fusions produce 122 Ops, 40 events, 7,735,200 bytes, and 29,161,690 modeled cycles. The f16 composition has 3,867,600 scratch bytes and 28,848,157 modeled cycles. | These are outputs of the declared analytical model. They are not measured latency, energy, numerical accuracy, or WCET. |
-| Source-kernel semantic linking | `anchor.bundle(module) -> module` recursively specializes concrete user function bodies, inserts each unique specialization locally, strips consumed Known arguments from its call edge, and admits leaves only through shared arithmetic, literal, allocation, memory, alias, and release interfaces. `anchor.emit` serializes this bundle. A separately installed four-element square kernel links without name registration; an otherwise identical opaque declaration fails. The full ResNet-18 bundle has one entry plus 35 specializations; the fused bundle has one entry plus 42. Their 49 and 40 roots respectively become local calls, while both retain all 42 immutable resources. See [the closure test](../modules/anchor/tests/kernel_test.cpp) and [the ONNX integration test](../modules/anchor/tests/onnx_integration_test.cpp). | Semantic linking proves that declared bodies reach an admitted primitive boundary and that emission carries them. The artifact is packed and reloadable, but its primitives still lack executable target code. |
+| Boundary-relative source specialization | `Compiler::specialize` recursively specializes concrete source bodies until every remaining call satisfies a caller-provided typed boundary. Concrete Known arguments are baked into local Functions, Residual operands remain SSA arguments, repeated specializations are shared, and an opaque unaccepted call fails closed. Anchor's emitter now uses this core mechanism with arithmetic, literal, allocation, memory-access, alias, release, immutable-data, and placement interfaces as its boundary. A separately installed square kernel requires no operator-name registration. See [the core test](../tests/specialization_test.cpp) and [the target closure test](../modules/anchor/tests/kernel_test.cpp). | This proves structural closure and deterministic specialization relative to one declared boundary. It does not yet prove executable target code or that the boundary is sufficient for a real device. |
 | Numerical differential case | A Module-defined `execute_f32(module, bytes) -> bytes` function evaluates the fused and planned target graph. [The numerical test](../modules/anchor/tests/numerical_test.cpp) compares all 1,000 ResNet-18 logits with an ONNX Runtime oracle generated from the same pinned model: maximum scaled error `2.58669e-06`, exact top-1 agreement, with a `1e-4` acceptance bound. | This proves one f32 model path on a host semantic executor. It does not prove f16 accuracy, broad operator coverage, physical layout execution, or target performance. |
 
 This evidence establishes a coherent vertical slice and a testable abstraction.
@@ -86,9 +86,10 @@ Joggle's thesis. The discriminating experiment is *source closure*: after a
 new kernel is installed, can the same typed declaration be specialized through
 its nested source bodies to a small admitted primitive boundary, with no new
 operator-name registry or opaque native implementation? The implemented
-semantic linker now answers that structural question for one custom kernel and
-the standard ResNet-18 path, and the artifact emitter carries its linked
-Functions. The next executable emitter must map only the admitted primitive
+boundary-relative specializer now answers that structural question for one
+custom kernel and the standard ResNet-18 path, and Anchor's emitter consumes
+its linked Functions. The next executable emitter must map only the admitted
+primitive
 boundary; reconstructing the high-level graph through another name-dispatch
 table would count as evidence against the thesis.
 
@@ -108,8 +109,9 @@ A defensible thesis, subject to the experiments below, is:
 
 Three contributions could support that thesis:
 
-1. A precise language and artifact model for Module identity, typed function
-   composition, Known/Residual staging, and Module-owned extension values.
+1. A precise Module model for identity, typed function composition,
+   Known/Residual staging, boundary-relative specialization, and
+   Module-owned data.
 2. A compiler implementation showing independently installable formats,
    operators, transformations, targets, simulations, and emitters in one
    standard-model path without a fixed dialect/pass/backend ladder.
@@ -211,10 +213,12 @@ target is insufficient for this route as well.
 The next implementation work should strengthen evidence, not add another core
 abstraction:
 
-1. make one executable emitter map the bundled Functions' admitted primitives,
-   then execute the already packed artifact and calibrate the Anchor timeline;
-2. extend differential correctness to every claimed format and model family;
-3. only then add bounded variant selection and measurement feedback as ordinary
+1. remove Anchor's public `bundle`, `unpack`, reporting, and reference-executor
+   functions; they are implementation or test facilities, not target API;
+2. make one executable emitter map specialized Functions' admitted primitives,
+   then run its target image and calibrate the analytical model;
+3. extend differential correctness to every claimed format and model family;
+4. only then add bounded variant selection and measurement feedback as ordinary
    Module-defined types and functions.
 
 Tile, stream, ISA, FPGA, runtime-feedback, and device-specific concepts remain

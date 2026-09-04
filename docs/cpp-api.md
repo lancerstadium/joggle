@@ -21,7 +21,7 @@ data inside that Module value. `Module::data(name)` returns a read-only span;
 
 | Type | Role |
 | --- | --- |
-| `joggle::Compiler` | Linked environment, behavior, execution, diagnostics |
+| `joggle::Compiler` | Linked environment, staging, execution, diagnostics |
 | `joggle::Module` | Versioned symbol scope and multi-Function IR owner |
 | `joggle::Module::FunctionDecl` | Named callable member and canonical signature |
 | `joggle::Type`, `joggle::Attribute` | Immutable schema instances |
@@ -185,7 +185,7 @@ not publish its private value.
 environment. `compiler.verify(module)` validates every materialized Function in
 the Module. Typed invocation performs the same validation at Function and
 Module input/output boundaries, so an analysis or emitter never receives an
-unverified artifact.
+unverified Module.
 
 Construct control flow with sibling Blocks and typed edges:
 
@@ -259,6 +259,29 @@ The result is a standalone Function ready for `Module::insert`. This is the
 primitive for tensor element, layout, or reference-type conversion; local
 many-to-one and one-to-many patterns still use `rewrite` before or after the
 clone.
+
+## Specialize to an accepted boundary
+
+`Compiler::specialize` recursively materializes source-defined calls until a
+caller predicate accepts every remaining call:
+
+```cpp
+auto closed = compiler.specialize(
+    module,
+    [&](const joggle::Module::FunctionDecl& function) {
+      return compiler.conforms(function, target_primitive);
+    },
+    diagnostics);
+```
+
+Concrete Known properties are baked into each generated local Function;
+Residual operands remain ordinary SSA arguments. Repeated concrete
+specializations are shared. The input Module is unchanged, and an opaque
+unaccepted call or recursive expansion returns `std::nullopt`.
+
+This utility is intended for emitters and other consumers that define a typed
+acceptance boundary. It does not register a target, assign a lowering level, or
+interpret Function names.
 
 ## Map calls transactionally
 

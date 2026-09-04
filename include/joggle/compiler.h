@@ -569,6 +569,16 @@ public:
   // operand, property, and result types recover the call's generic bindings.
   std::optional<Function> materialize(const Op& call);
 
+  // Recursively specializes source-defined calls until every remaining call
+  // is accepted by boundary. The returned Module owns each concrete
+  // specialization and the input Module is not modified. An unaccepted
+  // external call, recursive source expansion, or invalid rewrite fails the
+  // whole operation.
+  std::optional<Module> specialize(
+      const Module& module,
+      const std::function<bool(const Module::FunctionDecl&)>& boundary,
+      Diagnostics& diagnostics);
+
   bool conforms(const Module::TypeDecl& declaration,
                 const Module::InterfaceDecl& interface) const;
   bool conforms(const Module::AttributeDecl& declaration,

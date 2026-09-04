@@ -281,9 +281,17 @@ Bytes encode(std::string_view text) {
 
 std::optional<Module> kernel_bundle(Compiler& compiler, const Module& program,
                                     Diagnostics& diagnostics) {
-  auto closure = build(compiler, program, diagnostics);
-  return closure ? std::optional<Module>{std::move(closure->bundle)}
-                 : std::nullopt;
+  const auto schema = contracts(compiler, diagnostics);
+  if (!schema) {
+    return std::nullopt;
+  }
+  return compiler.specialize(
+      program,
+      [&](const Module::FunctionDecl& function) {
+        return administrative(compiler, function, *schema) ||
+               conforms(compiler, function, schema->primitives);
+      },
+      diagnostics);
 }
 
 std::optional<Bytes> kernel_report(Compiler& compiler, const Module& program,

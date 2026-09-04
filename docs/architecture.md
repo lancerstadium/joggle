@@ -5,6 +5,50 @@ and hardware. It is meant for experiments in data formats, operators,
 transformations, analysis, simulation, and emission where a fixed dialect
 ladder or target model would become the constraint.
 
+The design is intentionally asymmetric: Joggle standardizes how compiler
+extensions compose, but does not standardize what a target, schedule, tile,
+stream, or deployment image must contain. Those are vocabulary choices made by
+installable Modules.
+
+## User-visible product
+
+A user handles only three things:
+
+1. a `.joggle` Module containing declarations, source bodies, and pipeline
+   functions;
+2. imported Modules selected by semantic version;
+3. an optional native library for functions that need a file parser, an
+   external code generator, or another host facility.
+
+There is no public Artifact, Graph, Dialect, Pass, Kernel, Target base class,
+adapter, registry, or result wrapper. These words may describe what a function
+does, but they are not objects the user must construct. In particular, binary
+container encoding is an implementation detail of a target's `emit` function;
+`artifact.pack` is not a compiler stage or a Joggle language concept.
+
+The smallest complete pipeline is ordinary source:
+
+```joggle
+joggle 1;
+
+module deploy@1.0.0 {
+  import onnx@2.0.0;
+  import edge@1.0.0;
+
+  fn compile(input: bytes, target: type) -> bytes {
+    model = @onnx.read(input);
+    selected = @edge.select(model, target);
+    return @edge.emit(selected, target);
+  }
+}
+```
+
+`@` asserts that the call finishes during compilation. It does not select a
+second function kind. An expert can call `select` or another target-defined
+function directly, insert a new function between them, or replace the wrapper.
+The convenience pipeline and the controllable stages therefore use the same
+surface.
+
 ## Public model
 
 The source and C++ names correspond directly:
@@ -51,7 +95,7 @@ member can call it before a format-and-parse round trip; human-facing Function
 formatting still uses Prelude's concise type spellings.
 
 Module identity has two deliberately different hashes. `digest()` covers the
-complete canonical artifact and therefore changes when a body changes; release
+complete canonical Module and therefore changes when a body changes; release
 locks and native behavior use it. `interface_digest()` erases Function bodies
 and covers imports plus declarations; Compiler API boundaries use it when exact
 interface compatibility is required. Member Symbols themselves use a
@@ -69,6 +113,21 @@ The other public concepts are small:
   Module-declared schemas.
 - `fn` is the only callable declaration in source.
 
+The complete intended C++ ownership surface is:
+
+| Type | Responsibility |
+| --- | --- |
+| `Compiler` | load, link, stage, specialize, invoke, and verify Modules |
+| `Module` | own identity, imports, declarations, Function bodies, and immutable data |
+| `Type`, `Attribute` | immutable instances of Module declarations |
+| `Function` | one executable CFG and def-use graph |
+| `Block`, `Op`, `Value` | non-owning handles into a Function |
+| `Diagnostics` | explicit failure details at transactional boundaries |
+
+Everything else is either a nested declaration handle or an algorithm over
+these values. In particular, a transform helper does not own IR and a native
+library does not create another compiler context.
+
 Every `Op` is a typed call to one `fn` declaration. Its inputs have one schema,
 but two IR roles are derived from their declared domains:
 
@@ -83,10 +142,16 @@ second operator schema beside the language declaration.
 
 A Module also owns immutable binary data addressed as `sha256:<digest>`.
 `Module::store` deduplicates it and `Module::data` provides read-only views.
-Artifact identity covers the data names, while interface identity does not.
+Module identity covers the data names, while interface identity does not.
 This keeps model constants, rewritten IR, and their transactional publication
 inside one value without serializing megabytes into the textual body or
 threading a separate resource object through every compiler function.
+
+This ownership rule is also the serialization rule. An intermediate Module is
+stored together with its content-addressed data by the repository or cache. A
+target output is simply the `bytes` returned by that target's `emit`. Joggle
+does not insert a generic Artifact object between the two, and a pipeline never
+manually packs a Module plus resources.
 
 ## One extensibility mechanism
 
@@ -112,12 +177,26 @@ operand, property, and result types, then instantiates its ordinary source
 body. This keeps reusable generic operator implementations executable without
 a Kernel object, dialect registry, or parallel template API.
 
+`Compiler::specialize(module, boundary, diagnostics)` extends this rule to a
+whole program. `boundary` is a predicate over typed Function declarations. A
+call accepted by the predicate remains in the result; every other call must
+have a source body and is recursively specialized. Each concrete body is
+inserted into the returned Module and callers are rewritten to it. Expansion
+fails on an opaque unaccepted call, recursion, or invalid IR.
+
+This operation is the common mechanism behind target closure. A target emitter
+can accept calls by interface conformance—for example arithmetic, memory, and
+target instruction interfaces—without registering every high-level operator
+name. Adding a user kernel with an ordinary source body therefore changes no
+core registry and no target name table. The target still controls the final
+boundary; Joggle does not declare a universal instruction set.
+
 The CLI preserves the same rule. `joggle run` invokes one reflected function
 with a `bytes -> bytes`, `bytes -> module`, `module -> module`, or
 `module -> bytes` boundary; it does not accept an external list of specially
 classified passes. Module inputs are linked and materialized before the call,
 and Module outputs use canonical source. In-process users retain the full C++
-  type surface, including Module-owned artifacts.
+  type surface, including Module-owned data.
 
 This is also why Joggle does not prescribe tiles, streams, FPGA resources,
 RISC-V ops, devices, schedules, or cost models. A Module defines
@@ -200,14 +279,45 @@ undeclared operator token or a magic function name.
 
 Everything specific to an AI framework, model format, hardware target, numeric
 format, schedule, simulator, or emitter belongs in installable Modules and
-optional behavior libraries. This boundary keeps the core small while leaving
+optional native libraries. This boundary keeps the core small while leaving
 experiments inspectable and serializable.
 
 Prelude's `module` is represented by `joggle::Module`; its `function` value is
 the materialized `joggle::Function` body of a `Module::FunctionDecl`. These
-are the only core-owned host artifact mappings. Extension-owned schedules,
+are the only core-owned host mappings. Extension-owned schedules,
 estimates, traces, object files, or target descriptions use ordinary declared
 types and `Compiler::represent`.
+
+## Extension responsibilities
+
+An installable Module may contain any combination of four ordinary ingredients:
+
+- vocabulary: types, attributes, interfaces, and bodyless residual functions;
+- source semantics: generic `fn` bodies that specialize to a smaller
+  vocabulary;
+- compiler functions: `module -> module`, `module -> value`, or
+  `module -> bytes` functions;
+- an optional native implementation for host facilities not expressible in
+  source.
+
+These are not four package kinds. One Module can co-evolve them, while another
+Module can import two vocabularies and provide only conversions. Interfaces are
+structural semantic contracts used for generic constraints and conformance
+queries; they are not verifier classes or callbacks that every user must
+implement.
+
+A concrete target Module normally declares its own configuration type,
+primitive residual functions, source kernels, transformations, analyses, and
+emitter. The names are target API choices. Joggle neither requires a fixed
+`select/schedule/allocate/emit` ladder nor discovers those names through a
+registry. A source-defined `compile` function composes whichever functions the
+target actually needs.
+
+The current native-library API is still named "behavior" in C++ and CMake.
+That name leaks an internal implementation detail and will be replaced by
+"native module implementation" without adding a second package identity. The
+`.joggle` Module remains the schema authority; no generated declaration header
+is part of the design.
 
 ## Deliberate non-goals
 

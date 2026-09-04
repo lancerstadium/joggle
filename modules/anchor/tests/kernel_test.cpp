@@ -145,7 +145,7 @@ module opaque_kernel@1.0.0 {
                    bundled_body->ops().front().callee().symbol().module_name() ==
                        bundled->name() &&
                    bundled_body->ops().front().callee().name() ==
-                       "kernel_0_square" &&
+                       "specialized_0_square" &&
                    source_body->ops().front().callee().symbol().module_name() ==
                        "user_kernel" &&
                    bundled->digest() == bundled_again->digest() &&

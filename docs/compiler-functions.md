@@ -27,9 +27,9 @@ inventing `frontend`, `backend`, `lower`, or `pass` categories. A bridge Module
 may publish several conversions, and an optimizer may consume configuration or
 analysis values as normal typed arguments.
 
-## Artifact ownership
+## Module ownership
 
-The core exposes one top-level artifact, its function members, and optional
+The core exposes one top-level IR owner, its function members, and optional
 materialized bodies:
 
 - `module` / `joggle::Module` is the identity, symbol, import, and ownership
@@ -48,11 +48,10 @@ Every typed call validates materialized Function bodies at both its input and
 output boundary; repeated references to the same immutable revision are checked
 once per invocation.
 
-Analyses and emitted artifacts remain Module-owned. For example, a Module
-declares `estimate`, `schedule`, or `object`, and its behavior registers the
-corresponding C++ representation with `Compiler::represent<T>`. `bytes` is the
-portable boundary for file emission, but a package can retain a structured
-artifact between stages.
+An analysis may return an ordinary Module-declared type. An emitter returns
+`bytes`. Neither result introduces a second universal owner beside `Module`.
+The encoding of emitted bytes belongs to the emitter; a pipeline does not call
+a generic packer or carry an Artifact wrapper between functions.
 
 ## What the core guarantees now
 
@@ -152,6 +151,33 @@ target or lowering direction. The candidate Module is published only when all
 materialized Functions verify and every remaining Op is legal. The
 first illegal residual call is diagnosed with its Function context.
 
+## Source closure
+
+Conversion rewrites calls the target explicitly chooses to replace. Source
+closure handles the complementary case: a call already has a reusable source
+body and the target only needs it expanded to an accepted primitive boundary.
+
+```cpp
+auto closed = compiler.specialize(
+    module,
+    [&](const joggle::Module::FunctionDecl& function) {
+      return compiler.conforms(function, arithmetic_primitive) ||
+             compiler.conforms(function, memory_primitive) ||
+             compiler.conforms(function, target_instruction);
+    },
+    diagnostics);
+```
+
+Accepted calls remain untouched. Every other call is specialized from its
+concrete operands, properties, and result types, inserted as a local Function,
+and followed recursively. An opaque unaccepted call and recursive expansion
+fail closed. The algorithm is deterministic and does not mutate its input.
+
+This is deliberately not a lowering registry. A target chooses its accepted
+interfaces in its own emitter, while a kernel author supplies an ordinary
+generic `fn` body. The two meet through typed conformance rather than a table of
+operator names.
+
 ## Command-line boundary
 
 `joggle run module.joggle function input -o output` invokes one reflected
@@ -206,7 +232,7 @@ with the analysis implementation rather than a global compiler registry.
 
 ## What remains outside the core
 
-The following stay in Modules and behavior libraries:
+The following stay in Modules and optional native libraries:
 
 - ONNX or other format import;
 - quantization, layout, tiling, scheduling, and bufferization policy;

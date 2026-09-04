@@ -37,6 +37,7 @@ add_library(joggle
   src/module.cpp
   src/module_repository.cpp
   src/sha256.cpp
+  src/specialization.cpp
   src/syntax_lexer.cpp
   src/type.cpp
   src/type_contract.cpp
@@ -157,6 +158,12 @@ if(JOGGLE_BUILD_TESTS)
   add_executable(joggle_transform_test tests/transform_test.cpp)
   target_link_libraries(joggle_transform_test PRIVATE joggle::joggle)
   add_test(NAME transform COMMAND joggle_transform_test)
+
+  add_executable(joggle_specialization_test tests/specialization_test.cpp)
+  target_link_libraries(joggle_specialization_test PRIVATE joggle::joggle)
+  target_compile_definitions(joggle_specialization_test PRIVATE
+    JOGGLE_ARITH_MODULE="${CMAKE_CURRENT_SOURCE_DIR}/modules/arith/module.joggle")
+  add_test(NAME specialization COMMAND joggle_specialization_test)
 
   add_executable(joggle_function_body_test tests/function_body_test.cpp)
   target_link_libraries(joggle_function_body_test PRIVATE joggle::joggle)
