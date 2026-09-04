@@ -53,7 +53,9 @@ owns canonical printing, and `ir/mod.cpp` owns the in-memory Mod object and
 its identity semantics.
 Likewise, `lang/fn.cpp` owns fn parsing and printing, `lang/check.cpp` checks
 source-body structure, and `compile/body.cpp` specializes a valid source body
-into typed `Fn` IR.
+into typed `Fn` IR. Within the compiler owner, `compile/compiler.cpp`
+coordinates materialization and type construction, `compile/link.cpp` seals
+the Mod closure, and `compile/native.cpp` owns host-library loading.
 
 ## Mod snapshots
 

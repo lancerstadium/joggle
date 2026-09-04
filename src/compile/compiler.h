@@ -1,8 +1,14 @@
 #pragma once
 
+#include <filesystem>
+#include <map>
 #include <optional>
+#include <set>
 #include <span>
+#include <string>
+#include <vector>
 
+#include "compile/native.h"
 #include "joggle/compiler.h"
 
 namespace joggle::detail {
@@ -45,3 +51,46 @@ struct CompilerAccess {
 };
 
 }  // namespace joggle::detail
+
+struct joggle::Compiler::State {
+  struct LockedIdentity {
+    Version version;
+    std::string digest;
+    bool root = false;
+  };
+  struct LockedNative {
+    Version mod_version;
+    std::string mod_digest;
+    std::string target;
+    std::string digest;
+  };
+  struct HostRepresentation {
+    Mod::TypeDecl schema;
+    RepresentationProjector project;
+  };
+  struct BoundFn {
+    NativeFn callable;
+    HostEval evaluation = HostEval::Guarded;
+  };
+
+  Diag diagnostics;
+  std::map<std::string, Mod, std::less<>> mods;
+  std::map<std::string, std::filesystem::path, std::less<>> mod_sources;
+  std::set<std::string, std::less<>> explicit_mods;
+  std::vector<std::filesystem::path> search_paths;
+  std::map<std::string, LockedIdentity, std::less<>> locked_mods;
+  std::map<std::string, LockedNative, std::less<>> locked_natives;
+  bool has_lock = false;
+  std::vector<joggle::detail::Library> native_libraries;
+  std::set<std::string, std::less<>> loaded_natives;
+  std::map<std::string, VerifierFn<Type>, std::less<>> type_verifiers;
+  std::map<std::string, VerifierFn<Op>, std::less<>> op_verifiers;
+  std::map<std::string, BoundFn, std::less<>> bindings;
+  std::map<std::string, joggle::detail::ParamVal, std::less<>>
+      hermetic_evaluations;
+  std::map<std::string, HostRepresentation, std::less<>> host_types;
+  std::map<std::string, std::string, std::less<>> host_representations;
+  std::set<std::string, std::less<>> constructing_types;
+  Limits evaluation_limits;
+  bool linked = false;
+};
