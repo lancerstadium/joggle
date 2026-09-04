@@ -32,4 +32,5 @@ of the project; none is a migration log.
 
 The repository contains the compiler core, the first static tensor semantic
 Module, and a narrow ONNX IR 3/opset 7 inference importer. It does not claim
-general ONNX coverage, differential runtime equivalence, or a target backend.
+general ONNX coverage or a target backend; the supported reference model does
+have exact differential ONNX Runtime evidence.

@@ -77,7 +77,7 @@ The repository ships `tensor@1.0.0`, a small target-independent semantic
 Module, and an optional, Protobuf-backed `onnx@1.0.0` inference importer. The
 first real-model boundary imports the hash-pinned ONNX Model Zoo SqueezeNet 1.1
 artifact into ordinary typed Functions. Its intentionally narrow support and
-remaining differential-runtime gate are documented explicitly.
+exact ONNX Runtime differential evidence are documented explicitly.
 
 ## Documentation
 

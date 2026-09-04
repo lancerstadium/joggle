@@ -5,6 +5,14 @@ project(Joggle VERSION 0.1.0 LANGUAGES CXX)
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 option(JOGGLE_BUILD_TESTS "Build Joggle tests" ON)
 option(JOGGLE_BUILD_ONNX "Build the optional ONNX inference importer" OFF)
+option(JOGGLE_ONNX_RUNTIME_VALIDATION
+  "Differentially validate ONNX import with Python ONNX Runtime" OFF)
+
+if(JOGGLE_ONNX_RUNTIME_VALIDATION AND
+   (NOT JOGGLE_BUILD_ONNX OR NOT JOGGLE_BUILD_TESTS))
+  message(FATAL_ERROR
+    "JOGGLE_ONNX_RUNTIME_VALIDATION requires JOGGLE_BUILD_ONNX and tests")
+endif()
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -100,29 +108,33 @@ if(JOGGLE_BUILD_ONNX)
   endif()
   protobuf_generate_cpp(JOGGLE_ONNX_PROTO_SOURCES JOGGLE_ONNX_PROTO_HEADERS
     "${JOGGLE_ONNX_PROTO}")
+  add_library(joggle_onnx_proto STATIC ${JOGGLE_ONNX_PROTO_SOURCES})
+  set_target_properties(joggle_onnx_proto PROPERTIES
+    POSITION_INDEPENDENT_CODE ON)
+  target_compile_features(joggle_onnx_proto PUBLIC cxx_std_20)
+  target_include_directories(joggle_onnx_proto PUBLIC
+    "${CMAKE_CURRENT_BINARY_DIR}")
   joggle_module(joggle_onnx_native
     SOURCE modules/onnx/module.joggle
     NATIVE
       modules/onnx/native.cpp
-      modules/onnx/import.cpp
-      ${JOGGLE_ONNX_PROTO_SOURCES})
+      modules/onnx/import.cpp)
   target_include_directories(joggle_onnx_native PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}")
   if(TARGET PkgConfig::JOGGLE_PROTOBUF)
-    target_link_libraries(joggle_onnx_native PRIVATE
+    target_link_libraries(joggle_onnx_proto PUBLIC
       PkgConfig::JOGGLE_PROTOBUF)
   else()
-    target_link_libraries(joggle_onnx_native PRIVATE protobuf::libprotobuf)
+    target_link_libraries(joggle_onnx_proto PUBLIC protobuf::libprotobuf)
   endif()
+  target_link_libraries(joggle_onnx_native PRIVATE joggle_onnx_proto)
   if(MSVC)
     target_compile_options(joggle_onnx_native PRIVATE /W4 /WX)
-    set_source_files_properties(${JOGGLE_ONNX_PROTO_SOURCES} PROPERTIES
-      COMPILE_OPTIONS "/W0")
+    target_compile_options(joggle_onnx_proto PRIVATE /W0)
   else()
     target_compile_options(joggle_onnx_native PRIVATE
       -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
-    set_source_files_properties(${JOGGLE_ONNX_PROTO_SOURCES} PROPERTIES
-      COMPILE_OPTIONS "-w")
+    target_compile_options(joggle_onnx_proto PRIVATE -w)
   endif()
   set_target_properties(joggle_onnx_native PROPERTIES
     PREFIX ""
@@ -355,5 +367,31 @@ if(JOGGLE_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/modules/onnx/module.joggle
         $<TARGET_FILE:joggle_onnx_native>
         ${JOGGLE_ONNX_TEST_MODEL})
+
+    if(JOGGLE_ONNX_RUNTIME_VALIDATION)
+      if(JOGGLE_ONNX_TEST_MODEL STREQUAL "")
+        message(FATAL_ERROR
+          "runtime validation requires JOGGLE_ONNX_TEST_MODEL")
+      endif()
+      find_package(Python3 REQUIRED COMPONENTS Interpreter)
+      add_executable(joggle_onnx_roundtrip tests/onnx_roundtrip.cpp)
+      target_link_libraries(joggle_onnx_roundtrip PRIVATE
+        joggle::joggle joggle_onnx_proto)
+      if(MSVC)
+        target_compile_options(joggle_onnx_roundtrip PRIVATE /W4 /WX)
+      else()
+        target_compile_options(joggle_onnx_roundtrip PRIVATE
+          -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
+      endif()
+      add_test(NAME onnx_runtime
+        COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/onnx_runtime_test.py
+          --emitter $<TARGET_FILE:joggle_onnx_roundtrip>
+          --tensor ${JOGGLE_TENSOR_MODULE}
+          --onnx ${CMAKE_CURRENT_SOURCE_DIR}/modules/onnx/module.joggle
+          --native $<TARGET_FILE:joggle_onnx_native>
+          --model ${JOGGLE_ONNX_TEST_MODEL}
+          --output ${CMAKE_CURRENT_BINARY_DIR}/squeezenet-roundtrip.onnx)
+    endif()
   endif()
 endif()

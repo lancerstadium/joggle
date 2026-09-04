@@ -38,9 +38,8 @@ quantization annotations, subgraphs, training data, custom domains, unknown
 attributes, and unsupported operators are rejected before a Module is
 returned. Shape propagation checks the declared graph output.
 
-This is not a general ONNX compatibility claim. In particular, bundle
-persistence for Module-owned bytes and ONNX Runtime differential validation
-remain separate implementation gates.
+This is not a general ONNX compatibility claim. Bundle persistence for
+Module-owned bytes remains a separate implementation gate.
 
 ## Optional build
 
@@ -66,6 +65,30 @@ The native library is installed beside `module.joggle`, preserving the normal
 Module bundle layout. Generated Protobuf C++ remains in the build directory.
 The vendored schema provenance is recorded in
 `modules/onnx/third_party/README.md`.
+
+## Differential runtime validation
+
+The runtime test is opt-in because it needs Python, NumPy, and ONNX Runtime:
+
+```bash
+cmake -S . -B build-runtime \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DJOGGLE_BUILD_ONNX=ON \
+  -DJOGGLE_ONNX_RUNTIME_VALIDATION=ON \
+  -DJOGGLE_ONNX_TEST_MODEL="$PWD/build/models/squeezenet1.1-7.onnx"
+cmake --build build-runtime
+ctest --test-dir build-runtime -R '^onnx_runtime$' -V
+```
+
+The test reconstructs a standard ONNX graph from only the imported Joggle
+Function, call properties, result Types, and Module-owned initializer bytes.
+It then runs the original and reconstructed graphs through the ONNX Runtime CPU
+provider with graph optimization disabled. A fixed ramp input is used twice to
+check determinism. The audited run produced output shape `[1,1000]`,
+`max_abs=0`, and `mean_abs=0`.
+
+The reconstruction executable is test-only. It is not a public ONNX emitter,
+Module function, compiler-core category, or second production graph.
 
 ## Reference-model evidence
 
