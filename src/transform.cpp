@@ -60,12 +60,20 @@ bool validate_expression_template(const Function& function,
     }
 
     std::vector<Op> reachable;
+    std::vector<Value> used_holes;
     std::vector<Value> pending{returned.front()};
     while (!pending.empty()) {
       const Value value = pending.back();
       pending.pop_back();
-      if (value.known() || value.referenced_function() ||
-          std::find(holes.begin(), holes.end(), value) != holes.end()) {
+      const auto hole = std::find(holes.begin(), holes.end(), value);
+      if (hole != holes.end()) {
+        if (std::find(used_holes.begin(), used_holes.end(), value) ==
+            used_holes.end()) {
+          used_holes.push_back(value);
+        }
+        continue;
+      }
+      if (value.known() || value.referenced_function()) {
         continue;
       }
       const auto producer = std::find_if(
@@ -88,12 +96,189 @@ bool validate_expression_template(const Function& function,
     if (reachable.size() != ops.size()) {
       return reject("contains a call outside its returned expression");
     }
+    if (used_holes.size() != holes.size()) {
+      return reject("contains an unused hole");
+    }
     return true;
   } catch (const std::exception& error) {
     return reject("validation failed: " + std::string(error.what()));
   } catch (...) {
     return reject("validation failed with an unknown exception");
   }
+}
+
+namespace {
+
+struct MatchState {
+  std::vector<std::optional<Value>> holes;
+  std::vector<std::pair<Op, Op>> calls;
+};
+
+std::optional<std::size_t> hole_index(const std::vector<Value>& holes,
+                                      const Value& value) {
+  const auto found = std::find(holes.begin(), holes.end(), value);
+  if (found == holes.end()) {
+    return std::nullopt;
+  }
+  return static_cast<std::size_t>(found - holes.begin());
+}
+
+bool match_value(const Value& pattern, const Value& subject,
+                 const std::vector<Value>& holes, MatchState& state) {
+  if (pattern.type() != subject.type()) {
+    return false;
+  }
+  if (const auto index = hole_index(holes, pattern)) {
+    if (state.holes[*index]) {
+      return *state.holes[*index] == subject;
+    }
+    state.holes[*index] = subject;
+    return true;
+  }
+  if (pattern.known()) {
+    return pattern == subject;
+  }
+  if (const auto reference = pattern.referenced_function()) {
+    return subject.referenced_function() == reference;
+  }
+
+  const auto pattern_call = pattern.defining_op();
+  const auto subject_call = subject.defining_op();
+  if (!pattern_call || !subject_call ||
+      pattern_call->callee() != subject_call->callee()) {
+    return false;
+  }
+  const auto pattern_results = pattern_call->results();
+  const auto subject_results = subject_call->results();
+  const auto pattern_result =
+      std::find(pattern_results.begin(), pattern_results.end(), pattern);
+  const auto subject_result =
+      std::find(subject_results.begin(), subject_results.end(), subject);
+  if (pattern_results.size() != subject_results.size() ||
+      pattern_result == pattern_results.end() ||
+      subject_result == subject_results.end() ||
+      pattern_result - pattern_results.begin() !=
+          subject_result - subject_results.begin()) {
+    return false;
+  }
+  const auto existing = std::find_if(
+      state.calls.begin(), state.calls.end(), [&](const auto& mapping) {
+        return mapping.first == *pattern_call || mapping.second == *subject_call;
+      });
+  if (existing != state.calls.end()) {
+    return existing->first == *pattern_call &&
+           existing->second == *subject_call;
+  }
+  state.calls.emplace_back(*pattern_call, *subject_call);
+
+  const auto pattern_arguments = pattern_call->arguments();
+  const auto subject_arguments = subject_call->arguments();
+  if (pattern_arguments.size() != subject_arguments.size()) {
+    return false;
+  }
+  for (std::size_t index = 0; index < pattern_arguments.size(); ++index) {
+    if (!match_value(pattern_arguments[index], subject_arguments[index], holes,
+                     state)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool terminator_uses(const Function& function, const Value& value) {
+  for (const Block& block : function.blocks()) {
+    const Terminator terminator = block.terminator();
+    const auto returned = terminator.returned();
+    if (terminator.condition() == std::optional<Value>{value} ||
+        std::find(returned.begin(), returned.end(), value) != returned.end()) {
+      return true;
+    }
+    for (std::size_t successor = 0; successor < terminator.successor_count();
+         ++successor) {
+      const auto arguments = terminator.arguments(successor);
+      if (std::find(arguments.begin(), arguments.end(), value) !=
+          arguments.end()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool closed_match(const Function& subject, const Value& root,
+                  const std::vector<Op>& calls) {
+  for (const Op& call : calls) {
+    for (const Value& result : call.results()) {
+      if (result == root) {
+        continue;
+      }
+      const auto users = subject.users(result);
+      if (terminator_uses(subject, result) ||
+          std::any_of(users.begin(), users.end(), [&](const Op& user) {
+            return std::find(calls.begin(), calls.end(), user) == calls.end();
+          })) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+}  // namespace
+
+std::optional<std::vector<ExpressionMatch>>
+match_expressions(const Function& subject, const Function& pattern,
+                  Diagnostics& diagnostics) {
+  if (!validate_expression_template(pattern, "before", diagnostics)) {
+    return std::nullopt;
+  }
+  try {
+    const auto holes = pattern.arguments();
+    const Value pattern_root = pattern.entry().terminator().returned().front();
+    const auto subject_calls = subject.ops();
+    std::vector<ExpressionMatch> matches;
+    for (const Op& candidate : subject_calls) {
+      for (const Value& root : candidate.results()) {
+        MatchState state{
+            std::vector<std::optional<Value>>(holes.size()), {}};
+        if (!match_value(pattern_root, root, holes, state)) {
+          continue;
+        }
+        std::vector<Op> calls;
+        for (const Op& call : subject_calls) {
+          if (std::any_of(state.calls.begin(), state.calls.end(),
+                          [&](const auto& mapping) {
+                            return mapping.second == call;
+                          })) {
+            calls.push_back(call);
+          }
+        }
+        if (!closed_match(subject, root, calls)) {
+          continue;
+        }
+        std::vector<Value> bindings;
+        bindings.reserve(state.holes.size());
+        bool complete = true;
+        for (const auto& binding : state.holes) {
+          if (!binding) {
+            complete = false;
+            break;
+          }
+          bindings.push_back(*binding);
+        }
+        if (complete) {
+          matches.push_back({root, std::move(bindings), std::move(calls)});
+        }
+      }
+    }
+    return matches;
+  } catch (const std::exception& error) {
+    diagnostics.report("expression matching failed: " +
+                       std::string(error.what()));
+  } catch (...) {
+    diagnostics.report("expression matching failed with an unknown exception");
+  }
+  return std::nullopt;
 }
 
 }  // namespace detail

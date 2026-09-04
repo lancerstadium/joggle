@@ -38,6 +38,9 @@ module mapping@1.0.0 {
   fn apply(input: word, body: (word) -> word) -> word;
   fn advance(token: effect<memory>) -> effect<memory>;
   fn split(input: word) -> (word, word);
+  fn configured(input: word, axis: int) -> word;
+  fn callback_a(input: word) -> word;
+  fn callback_b(input: word) -> word;
 
   fn first(input: word) -> word {
     return keep(input);
@@ -66,6 +69,47 @@ module mapping@1.0.0 {
   fn multi_call_template(input: word) -> word {
     first, second = split(input);
     return first;
+  }
+
+  fn chain(input: word) -> word {
+    return other(keep(input));
+  }
+
+  fn repeated(input: word) -> word {
+    return binary(input, input);
+  }
+
+  fn different(lhs: word, rhs: word) -> word {
+    return binary(lhs, rhs);
+  }
+
+  fn distinct_calls(input: word) -> word {
+    return binary(keep(input), keep(input));
+  }
+
+  fn shared_call(input: word) -> word {
+    value = keep(input);
+    return binary(value, value);
+  }
+
+  fn axis_one(input: word) -> word {
+    return configured(input, 1);
+  }
+
+  fn axis_two(input: word) -> word {
+    return configured(input, 2);
+  }
+
+  fn reference_a(input: word) -> word {
+    return apply(input, callback_a);
+  }
+
+  fn reference_b(input: word) -> word {
+    return apply(input, callback_b);
+  }
+
+  fn unused_hole(input: word, unused: word) -> word {
+    return keep(input);
   }
 }
 )",
@@ -98,10 +142,22 @@ module mapping@1.0.0 {
   auto effect_template = compiler.materialize("mapping.effect_template");
   auto multi_call_template =
       compiler.materialize("mapping.multi_call_template");
+  auto chain = compiler.materialize("mapping.chain");
+  auto repeated = compiler.materialize("mapping.repeated");
+  auto different = compiler.materialize("mapping.different");
+  auto distinct_calls = compiler.materialize("mapping.distinct_calls");
+  auto shared_call = compiler.materialize("mapping.shared_call");
+  auto axis_one = compiler.materialize("mapping.axis_one");
+  auto axis_two = compiler.materialize("mapping.axis_two");
+  auto reference_a = compiler.materialize("mapping.reference_a");
+  auto reference_b = compiler.materialize("mapping.reference_b");
+  auto unused_hole = compiler.materialize("mapping.unused_hole");
   if (!keep || !converted || !other || !binary || !identity || !word ||
       !alternate || !i1 || !first || !second || !expanded || !convertible ||
       !fixedpoint || !oscillating || !with_inline || !pair ||
-      !effect_template || !multi_call_template) {
+      !effect_template || !multi_call_template || !chain || !repeated ||
+      !different || !distinct_calls || !shared_call || !axis_one || !axis_two ||
+      !reference_a || !reference_b || !unused_hole) {
     return EXIT_FAILURE;
   }
 
@@ -168,6 +224,114 @@ module mapping@1.0.0 {
                    dead_template_diagnostics.entries().front().message.find(
                        "outside its returned expression") != std::string::npos,
                "a template is one rooted DAG and contains no dead call");
+
+  joggle::Diagnostics unused_hole_diagnostics;
+  ok &= expect(!joggle::detail::validate_expression_template(
+                   *unused_hole, "before", unused_hole_diagnostics) &&
+                   !unused_hole_diagnostics.ok() &&
+                   unused_hole_diagnostics.entries().front().message.find(
+                       "unused hole") != std::string::npos,
+               "every declared template hole must be reachable from the root");
+
+  joggle::Diagnostics chain_match_diagnostics;
+  const auto chain_matches = joggle::detail::match_expressions(
+      *chain, *chain, chain_match_diagnostics);
+  ok &= expect(chain_matches && chain_matches->size() == 1U &&
+                   chain_match_diagnostics.ok() &&
+                   chain_matches->front().bindings == chain->arguments() &&
+                   chain_matches->front().calls == chain->ops() &&
+                   chain_matches->front().root ==
+                       chain->entry().terminator().returned().front(),
+               "typed DAG matching binds holes and records calls in Function "
+               "order");
+
+  auto two_chains = compiler.create_function();
+  if (!two_chains) {
+    return EXIT_FAILURE;
+  }
+  std::optional<joggle::Value> first_chain_root;
+  std::optional<joggle::Value> second_chain_root;
+  {
+    auto edit = two_chains->edit();
+    const auto input = edit.argument(*word);
+    const auto first_inner = edit.append(*keep, {input});
+    first_chain_root = edit.append(*other, {first_inner.value()}).value();
+    const auto second_inner = edit.append(*keep, {input});
+    second_chain_root = edit.append(*other, {second_inner.value()}).value();
+    edit.ret(two_chains->entry(), {*second_chain_root});
+    joggle::Diagnostics diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  joggle::Diagnostics ordered_match_diagnostics;
+  const auto ordered_matches = joggle::detail::match_expressions(
+      *two_chains, *chain, ordered_match_diagnostics);
+  ok &= expect(ordered_matches && ordered_matches->size() == 2U &&
+                   ordered_match_diagnostics.ok() && first_chain_root &&
+                   second_chain_root &&
+                   (*ordered_matches)[0].root == *first_chain_root &&
+                   (*ordered_matches)[1].root == *second_chain_root,
+               "candidates are reported in committed Function order");
+
+  joggle::Diagnostics repeated_match_diagnostics;
+  const auto repeated_matches = joggle::detail::match_expressions(
+      *repeated, *repeated, repeated_match_diagnostics);
+  joggle::Diagnostics unequal_match_diagnostics;
+  const auto unequal_matches = joggle::detail::match_expressions(
+      *different, *repeated, unequal_match_diagnostics);
+  ok &= expect(repeated_matches && repeated_matches->size() == 1U &&
+                   repeated_matches->front().bindings.size() == 1U &&
+                   unequal_matches && unequal_matches->empty() &&
+                   repeated_match_diagnostics.ok() &&
+                   unequal_match_diagnostics.ok(),
+               "a repeated hole is an SSA equality constraint");
+
+  joggle::Diagnostics injective_match_diagnostics;
+  const auto injective_matches = joggle::detail::match_expressions(
+      *shared_call, *distinct_calls, injective_match_diagnostics);
+  ok &= expect(injective_matches && injective_matches->empty() &&
+                   injective_match_diagnostics.ok(),
+               "two distinct template calls cannot collapse onto one subject "
+               "call");
+
+  joggle::Diagnostics known_match_diagnostics;
+  const auto known_matches = joggle::detail::match_expressions(
+      *axis_two, *axis_one, known_match_diagnostics);
+  joggle::Diagnostics reference_match_diagnostics;
+  const auto reference_matches = joggle::detail::match_expressions(
+      *reference_b, *reference_a, reference_match_diagnostics);
+  ok &= expect(known_matches && known_matches->empty() &&
+                   reference_matches && reference_matches->empty() &&
+                   known_match_diagnostics.ok() &&
+                   reference_match_diagnostics.ok(),
+               "Known properties compare canonically and function references "
+               "compare by declaration identity");
+
+  auto escaping = compiler.create_function();
+  if (!escaping) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = escaping->edit();
+    const auto input = edit.argument(*word);
+    const auto inner = edit.append(*keep, {input});
+    const auto root = edit.append(*other, {inner.value()});
+    static_cast<void>(edit.append(*binary, {inner.value(), input}));
+    edit.ret(escaping->entry(), {root.value()});
+    joggle::Diagnostics diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  joggle::Diagnostics closure_match_diagnostics;
+  const auto closure_matches = joggle::detail::match_expressions(
+      *escaping, *chain, closure_match_diagnostics);
+  ok &= expect(closure_matches && closure_matches->empty() &&
+                   closure_match_diagnostics.ok(),
+               "an internal match result cannot escape to an unmatched call");
 
   const auto first_revision = first->revision();
   joggle::Diagnostics no_op_diagnostics;

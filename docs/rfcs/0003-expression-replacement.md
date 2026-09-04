@@ -108,9 +108,17 @@ initial implementation from silently rewriting stateful computation.
 
 Template validation walks backward from the returned value. Function
 arguments are holes; Known values and function references are leaves; every
-call must have one result and be reachable from the root. This rejects dead
-calls, nested inline functions, effects, CFG structure, and tuple-like calls
-before matching begins, without retaining a second pattern representation.
+call and every hole must be reachable from the root, and each call must have
+one result. This rejects dead calls, unused holes, nested inline functions,
+effects, CFG structure, and tuple-like calls before matching begins, without
+retaining a second pattern representation.
+
+Matching recursively compares the existing typed Values and exact call
+declarations. Hole bindings use SSA equality, including repeated-hole
+constraints; Known values use their canonical equality; function references
+use declaration identity. Pattern-call mapping is injective. Accepted calls
+are returned in Function order only when every non-root result has no
+terminator or unmatched-call use.
 
 ## C++ primitive
 
@@ -146,8 +154,8 @@ on a private `Module` snapshot and publishes only after every member succeeds.
 2. [complete] Enforce affine token use and add branch/merge positive and
    negative tests.
 3. [complete] Validate token-free, single-block expression templates.
-4. Implement deterministic typed DAG matching with repeated-hole equality and
-   internal-use closure checks.
+4. [complete] Implement deterministic typed DAG matching with repeated-hole
+   equality and internal-use closure checks.
 5. Clone replacement DAGs through one `Function::Edit` and commit atomically.
 6. Expose Function and Module C++ overloads and bind them from a normal
    transformation module.
