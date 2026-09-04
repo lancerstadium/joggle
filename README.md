@@ -73,9 +73,11 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The repository also ships `tensor@1.0.0`, a small target-independent semantic
-Module derived from a typed SqueezeNet Fire-block use case. It is not yet an
-ONNX frontend: model import and differential runtime validation remain open.
+The repository ships `tensor@1.0.0`, a small target-independent semantic
+Module, and an optional, Protobuf-backed `onnx@1.0.0` inference importer. The
+first real-model boundary imports the hash-pinned ONNX Model Zoo SqueezeNet 1.1
+artifact into ordinary typed Functions. Its intentionally narrow support and
+remaining differential-runtime gate are documented explicitly.
 
 ## Documentation
 
@@ -86,6 +88,7 @@ ONNX frontend: model import and differential runtime validation remain open.
 - [C++ API](docs/cpp-api.md)
 - [Module design](docs/modules.md)
 - [Tensor module](docs/tensor.md)
+- [ONNX inference import](docs/onnx.md)
 - [Repository and reproducibility](docs/module-repository.md)
 - [Research position](docs/research-position.md)
 - [Accepted core-language RFC](docs/rfcs/0001-core-language.md)

@@ -4,6 +4,7 @@ project(Joggle VERSION 0.1.0 LANGUAGES CXX)
 
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 option(JOGGLE_BUILD_TESTS "Build Joggle tests" ON)
+option(JOGGLE_BUILD_ONNX "Build the optional ONNX inference importer" OFF)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -71,6 +72,68 @@ target_link_libraries(joggle PRIVATE ${CMAKE_DL_LIBS})
 
 include(cmake/JoggleModule.cmake)
 
+set(JOGGLE_SQUEEZENET_MODEL
+  "${CMAKE_CURRENT_BINARY_DIR}/models/squeezenet1.1-7.onnx"
+  CACHE FILEPATH "Build-cache path for the audited SqueezeNet model")
+set(JOGGLE_ONNX_TEST_MODEL "" CACHE FILEPATH
+  "Optional local path to the audited SqueezeNet model for ONNX tests")
+add_custom_target(joggle_fetch_squeezenet
+  COMMAND ${CMAKE_COMMAND}
+    "-DJOGGLE_MODEL_OUTPUT=${JOGGLE_SQUEEZENET_MODEL}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchSqueezenet.cmake"
+  COMMENT "Fetch the hash-pinned ONNX Model Zoo SqueezeNet model"
+  VERBATIM)
+
+if(JOGGLE_BUILD_ONNX)
+  find_package(Protobuf REQUIRED)
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(JOGGLE_PROTOBUF QUIET IMPORTED_TARGET protobuf)
+  endif()
+  set(JOGGLE_ONNX_PROTO
+    "${CMAKE_CURRENT_SOURCE_DIR}/modules/onnx/third_party/onnx.proto")
+  file(SHA256 "${JOGGLE_ONNX_PROTO}" JOGGLE_ONNX_PROTO_SHA256)
+  if(NOT JOGGLE_ONNX_PROTO_SHA256 STREQUAL
+      "58f844f7b19b30bc38c68a081faef1f131d6858fd2166b061c6bbb98f75f5d0e")
+    message(FATAL_ERROR
+      "vendored ONNX schema hash does not match its audited provenance")
+  endif()
+  protobuf_generate_cpp(JOGGLE_ONNX_PROTO_SOURCES JOGGLE_ONNX_PROTO_HEADERS
+    "${JOGGLE_ONNX_PROTO}")
+  joggle_module(joggle_onnx_native
+    SOURCE modules/onnx/module.joggle
+    NATIVE
+      modules/onnx/native.cpp
+      modules/onnx/import.cpp
+      ${JOGGLE_ONNX_PROTO_SOURCES})
+  target_include_directories(joggle_onnx_native PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}")
+  if(TARGET PkgConfig::JOGGLE_PROTOBUF)
+    target_link_libraries(joggle_onnx_native PRIVATE
+      PkgConfig::JOGGLE_PROTOBUF)
+  else()
+    target_link_libraries(joggle_onnx_native PRIVATE protobuf::libprotobuf)
+  endif()
+  if(MSVC)
+    target_compile_options(joggle_onnx_native PRIVATE /W4 /WX)
+    set_source_files_properties(${JOGGLE_ONNX_PROTO_SOURCES} PROPERTIES
+      COMPILE_OPTIONS "/W0")
+  else()
+    target_compile_options(joggle_onnx_native PRIVATE
+      -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
+    set_source_files_properties(${JOGGLE_ONNX_PROTO_SOURCES} PROPERTIES
+      COMPILE_OPTIONS "-w")
+  endif()
+  set_target_properties(joggle_onnx_native PROPERTIES
+    PREFIX ""
+    OUTPUT_NAME "native"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/onnx"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/onnx")
+  install(TARGETS joggle_onnx_native
+    LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/onnx
+    RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/onnx)
+endif()
+
 install(TARGETS joggle
   EXPORT JoggleTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -87,6 +150,8 @@ install(FILES language/prelude.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/language)
 install(FILES modules/tensor/module.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/tensor)
+install(FILES modules/onnx/module.joggle
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/onnx)
 install(EXPORT JoggleTargets
   FILE JoggleTargets.cmake
   NAMESPACE joggle::
@@ -280,4 +345,15 @@ if(JOGGLE_BUILD_TESTS)
       -DJOGGLE_NATIVE_LOADER=$<TARGET_FILE:joggle_native_loader_test>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/module_repository_cli.cmake
   )
+
+  if(JOGGLE_BUILD_ONNX)
+    add_executable(joggle_onnx_test tests/onnx_test.cpp)
+    target_link_libraries(joggle_onnx_test PRIVATE joggle::joggle)
+    add_test(NAME onnx
+      COMMAND joggle_onnx_test
+        ${JOGGLE_TENSOR_MODULE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/modules/onnx/module.joggle
+        $<TARGET_FILE:joggle_onnx_native>
+        ${JOGGLE_ONNX_TEST_MODEL})
+  endif()
 endif()

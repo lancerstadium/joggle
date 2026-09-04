@@ -16,6 +16,8 @@ of the project; none is a migration log.
 - [Module design](modules.md) defines the clean extension and target model.
 - [Tensor module](tensor.md) records the first target-independent AI
   vocabulary and its implemented evidence boundary.
+- [ONNX inference import](onnx.md) documents the optional, transactionally
+  checked real-model importer and its exact support boundary.
 - [C++ API](cpp-api.md) documents the in-process library surface.
 - [Module repository](module-repository.md) specifies installation,
   resolution, and lock files.
@@ -28,5 +30,6 @@ of the project; none is a migration log.
   RFC](rfcs/0005-onnx-inference-import.md) freezes the audited importer
   contract.
 
-The repository contains the compiler core and the first static tensor semantic
-Module. It does not yet claim an ONNX frontend or target backend.
+The repository contains the compiler core, the first static tensor semantic
+Module, and a narrow ONNX IR 3/opset 7 inference importer. It does not claim
+general ONNX coverage, differential runtime equivalence, or a target backend.
