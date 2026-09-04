@@ -85,6 +85,8 @@ install(TARGETS joggle_cli
 install(DIRECTORY include/joggle DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES language/prelude.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/language)
+install(FILES modules/tensor/module.joggle
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/tensor)
 install(EXPORT JoggleTargets
   FILE JoggleTargets.cmake
   NAMESPACE joggle::
@@ -121,6 +123,8 @@ if(JOGGLE_BUILD_TESTS)
   enable_testing()
   set(JOGGLE_TEST_MODULE
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/compiler_test.joggle")
+  set(JOGGLE_TENSOR_MODULE
+    "${CMAKE_CURRENT_SOURCE_DIR}/modules/tensor/module.joggle")
 
   joggle_module(joggle_compiler_test_native
     SOURCE tests/fixtures/compiler_test.joggle
@@ -143,6 +147,13 @@ if(JOGGLE_BUILD_TESTS)
     JOGGLE_TEST_MODULE="${JOGGLE_TEST_MODULE}"
   )
   add_test(NAME type COMMAND joggle_type_test)
+
+  add_executable(joggle_tensor_test tests/tensor_test.cpp)
+  target_link_libraries(joggle_tensor_test PRIVATE joggle::joggle)
+  target_compile_definitions(joggle_tensor_test PRIVATE
+    JOGGLE_TENSOR_MODULE="${JOGGLE_TENSOR_MODULE}"
+  )
+  add_test(NAME tensor COMMAND joggle_tensor_test)
 
   add_executable(joggle_ir_test tests/ir_test.cpp)
   target_link_libraries(joggle_ir_test PRIVATE joggle::joggle)

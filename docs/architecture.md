@@ -43,7 +43,10 @@ type word(width: int) {
 }
 
 type layout(order: list<int>);
-fn pack(input: tensor, order: layout<[0, 2, 1]>) -> tensor;
+fn pack<E, S: list<int>, O: list<int>>(
+  input: tensor<E, S>,
+  order: layout<O>
+) -> tensor<E, S>;
 ```
 
 There is no separate attribute or capability declaration. Generic parameters

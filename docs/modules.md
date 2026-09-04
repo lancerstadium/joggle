@@ -16,7 +16,10 @@ module quant@1.0.0 {
     storage_bits: int = bits;
   }
 
-  fn quantize<F>(input: t.tensor, scheme: F) -> t.tensor;
+  fn quantize<E, S: list<int>, F>(
+    input: t.tensor<E, S>,
+    scheme: F
+  ) -> t.tensor<E, S>;
   fn optimize(input: module, scheme: type) -> module;
 }
 ```

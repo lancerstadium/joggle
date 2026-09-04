@@ -14,6 +14,8 @@ of the project; none is a migration log.
 - [Research position](research-position.md) separates implemented evidence from
   the hypotheses, comparisons, and experiments required for publication.
 - [Module design](modules.md) defines the clean extension and target model.
+- [Tensor module](tensor.md) records the first target-independent AI
+  vocabulary and its implemented evidence boundary.
 - [C++ API](cpp-api.md) documents the in-process library surface.
 - [Module repository](module-repository.md) specifies installation,
   resolution, and lock files.
@@ -21,8 +23,8 @@ of the project; none is a migration log.
   gates; [callable values RFC](rfcs/0002-callable-values.md) defines typed
   lambdas without synthetic declarations; [expression replacement
   RFC](rfcs/0003-expression-replacement.md) defines typed matching and explicit
-  effect safety without a pattern IR.
+  effect safety without a pattern IR; [tensor RFC](rfcs/0004-tensor-module.md)
+  defines the first real-model vertical slice.
 
-The repository currently contains only the compiler core. AI vocabulary and
-target Modules are being rebuilt against the rules in [Module design](modules.md)
-and are not part of the current release surface.
+The repository contains the compiler core and the first static tensor semantic
+Module. It does not yet claim an ONNX frontend or target backend.

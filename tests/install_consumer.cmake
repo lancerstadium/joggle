@@ -73,6 +73,19 @@ if(NOT installed_cli)
   message(FATAL_ERROR "installed Joggle CLI was not found")
 endif()
 
+set(installed_tensor
+  "${install_dir}/share/joggle/modules/tensor/module.joggle")
+if(NOT EXISTS "${installed_tensor}")
+  message(FATAL_ERROR "installed tensor Module was not found")
+endif()
+execute_process(
+  COMMAND "${installed_cli}" check "${installed_tensor}"
+  RESULT_VARIABLE tensor_cli_result
+)
+if(NOT tensor_cli_result EQUAL 0)
+  message(FATAL_ERROR "installed tensor Module failed validation")
+endif()
+
 execute_process(
   COMMAND "${installed_cli}" check
           "${JOGGLE_SOURCE_DIR}/tests/consumer/module.joggle"

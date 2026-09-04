@@ -73,9 +73,9 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The repository currently ships only the compiler core. AI modules will return
-only after their public contracts have been derived from executable use cases
-and reviewed independently of compiler-core implementation details.
+The repository also ships `tensor@1.0.0`, a small target-independent semantic
+Module derived from a typed SqueezeNet Fire-block use case. It is not yet an
+ONNX frontend: model import and differential runtime validation remain open.
 
 ## Documentation
 
@@ -85,6 +85,7 @@ and reviewed independently of compiler-core implementation details.
 - [Compiler functions](docs/compiler-functions.md)
 - [C++ API](docs/cpp-api.md)
 - [Module design](docs/modules.md)
+- [Tensor module](docs/tensor.md)
 - [Repository and reproducibility](docs/module-repository.md)
 - [Research position](docs/research-position.md)
 - [Accepted core-language RFC](docs/rfcs/0001-core-language.md)

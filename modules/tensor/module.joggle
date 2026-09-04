@@ -1,0 +1,48 @@
+joggle 1;
+
+module tensor@1.0.0 {
+  type tensor(element: type, shape: list<int>);
+
+  fn constant<T>(content: string) -> T;
+
+  fn conv<X, W, Y>(
+    input: X,
+    weight: W,
+    strides: list<int>,
+    pads: list<int>,
+    dilations: list<int>,
+    group: int
+  ) -> Y;
+  fn conv<X, W, B, Y>(
+    input: X,
+    weight: W,
+    bias: B,
+    strides: list<int>,
+    pads: list<int>,
+    dilations: list<int>,
+    group: int
+  ) -> Y;
+
+  fn relu<T>(input: T) -> T;
+  fn max_pool<X, Y>(
+    input: X,
+    kernel: list<int>,
+    strides: list<int>,
+    pads: list<int>,
+    ceil_mode: bool
+  ) -> Y;
+  fn average_pool<X, Y>(
+    input: X,
+    kernel: list<int>,
+    strides: list<int>,
+    pads: list<int>,
+    ceil_mode: bool
+  ) -> Y;
+
+  fn concat<L, R, Y>(lhs: L, rhs: R, axis: int) -> Y;
+  fn reshape<X, Y>(input: X, shape: list<int>) -> Y;
+  fn softmax<T>(input: T, axis: int) -> T;
+
+  fn (+)<L, R, Y>(lhs: L, rhs: R) -> Y;
+  fn (*)<L, R, Y>(lhs: L, rhs: R) -> Y;
+}
