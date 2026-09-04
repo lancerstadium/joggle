@@ -6,7 +6,7 @@
 #include "lang/prelude.h"
 #include "lang/fn.h"
 #include "ir/mod.h"
-#include "ir/storage.h"
+#include "ir/mod.h"
 #include "joggle/digest.h"
 #include "lang/lex.h"
 

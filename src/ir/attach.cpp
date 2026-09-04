@@ -1,7 +1,7 @@
 #include "joggle/mod.h"
 
 #include "ir/fn.h"
-#include "ir/storage.h"
+#include "ir/mod.h"
 #include "lang/prelude.h"
 #include "joggle/digest.h"
 #include "ir/type.h"

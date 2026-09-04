@@ -12,9 +12,8 @@
 #include "joggle/mod.h"
 #include "ir/mod.h"
 #include "pkg/repo.h"
-#include "ir/storage.h"
 #include "lang/prelude.h"
-#include "lang/runtime.h"
+#include "lang/prelude.h"
 #include "sema/infer.h"
 #include "ir/type.h"
 
