@@ -162,9 +162,10 @@ produces a compiler-domain result without `@` is rejected instead of being
 silently executed.
 
 A lambda constructs a function value. Passing it to an ordinary call remains
-run-time IR. Passing function values through `@` is reserved by the language
-but not implemented yet; the compiler diagnoses that boundary instead of
-encoding a function through scalar metadata.
+run-time IR. Passing it to a `function` parameter through `@` instead constructs
+a verified anonymous `Function` execution value. Compiler functions may return
+that value for a later explicit call. Function values never pass through the
+scalar metadata representation or its deterministic-value cache.
 
 ## Canonical form and identity
 

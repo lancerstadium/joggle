@@ -912,7 +912,7 @@ public:
   Instantiator(Compiler& compiler, std::string owner,
                const detail::FunctionBody& body, Diagnostics& diagnostics,
                std::vector<std::pair<std::string, Type>> arguments,
-               std::vector<Type> results)
+               std::optional<std::vector<Type>> results)
       : compiler_(compiler), body_(body), owner_(std::move(owner)),
         diagnostics_(diagnostics), initial_diagnostics_(diagnostics.size()),
         inline_arguments_(std::move(arguments)),
@@ -1231,8 +1231,11 @@ private:
       static_cast<void>(name);
       argument_types.push_back(type);
     }
-    result_types_ = inline_results_;
-    detail::FunctionAccess::define(*function_, argument_types, result_types_);
+    if (inline_results_) {
+      result_types_ = *inline_results_;
+      detail::FunctionAccess::define(*function_, argument_types,
+                                     result_types_);
+    }
     edit_.emplace(function_->edit());
     locals_.push();
     for (std::size_t index = 0; index < inline_arguments_.size(); ++index) {
@@ -1240,14 +1243,32 @@ private:
              edit_->argument(argument_types[index]), body_.range);
     }
     blocks_.emplace("entry", function_->entry());
-    Flow flow =
-        instantiate_sequence(body_.blocks.front().statements, function_->entry());
-    if (!flow.next.empty()) {
-      report("inline function path falls through without returning",
-             body_.range);
-    }
-    if (!flow.breaks.empty() || !flow.continues.empty()) {
-      report("loop control escaped an inline function", body_.range);
+    if (!inline_results_) {
+      const auto& statements = body_.blocks.front().statements;
+      if (statements.size() != 1U ||
+          statements.front().kind != detail::StatementSyntax::Kind::Return ||
+          statements.front().values.size() != 1U) {
+        report("an inferred inline function must return one expression",
+               body_.range);
+        return std::nullopt;
+      }
+      const auto& returned = statements.front().values.front();
+      auto [tail, value] = instantiate_expression(
+          returned.value, returned.range, function_->entry());
+      if (!value) {
+        return std::nullopt;
+      }
+      edit_->ret(tail, {*value});
+    } else {
+      Flow flow = instantiate_sequence(body_.blocks.front().statements,
+                                       function_->entry());
+      if (!flow.next.empty()) {
+        report("inline function path falls through without returning",
+               body_.range);
+      }
+      if (!flow.breaks.empty() || !flow.continues.empty()) {
+        report("loop control escaped an inline function", body_.range);
+      }
     }
     if (!ok() ||
         !detail::FunctionAccess::commit(*edit_, compiler_, diagnostics_)) {
@@ -1878,29 +1899,28 @@ private:
     return edit_->reference(declaration, std::move(*type));
   }
 
-  std::optional<Value> inline_function(const Module::Expression& expression,
-                                       const Type& callable,
-                                       detail::SyntaxRange range) {
+  std::optional<Function> build_inline_function(
+      const Module::Expression& expression,
+      const std::vector<Type>* expected_inputs,
+      std::optional<std::vector<Type>> expected_results,
+      detail::SyntaxRange range) {
     using Kind = Module::Expression::Kind;
     if (expression.kind != Kind::Lambda || expression.arguments.empty() ||
         expression.labels.size() + 1U != expression.arguments.size()) {
       report("malformed inline function", range);
       return std::nullopt;
     }
-    const Module::Symbol schema = callable.schema().symbol();
-    const auto inputs = callable.get<std::vector<Type>>("inputs");
-    const auto results = callable.get<std::vector<Type>>("results");
-    if (schema.module_name() != detail::prelude_module_name ||
-        schema.local_name() != "callable" || !inputs || !results ||
-        results->size() != 1U || inputs->size() != expression.labels.size()) {
+    if (expected_inputs &&
+        expected_inputs->size() != expression.labels.size()) {
       report("inline function does not match its callable context", range);
       return std::nullopt;
     }
     std::vector<std::pair<std::string, Type>> arguments;
-    arguments.reserve(inputs->size());
-    for (std::size_t index = 0; index < inputs->size(); ++index) {
+    arguments.reserve(expression.labels.size());
+    for (std::size_t index = 0; index < expression.labels.size(); ++index) {
       auto annotation = type({expression.arguments[index], range});
-      if (!annotation || *annotation != (*inputs)[index]) {
+      if (!annotation ||
+          (expected_inputs && *annotation != (*expected_inputs)[index])) {
         report("inline function parameter '" + expression.labels[index] +
                    "' does not match its callable context",
                range);
@@ -1922,13 +1942,39 @@ private:
     entry.statements.push_back(std::move(returned));
     body.blocks.push_back(std::move(entry));
 
-    auto function = Instantiator(compiler_, owner_, body, diagnostics_,
-                                 std::move(arguments), *results)
-                        .instantiate();
+    return Instantiator(compiler_, owner_, body, diagnostics_,
+                        std::move(arguments), std::move(expected_results))
+        .instantiate();
+  }
+
+  std::optional<Value> inline_function(const Module::Expression& expression,
+                                       const Type& callable,
+                                       detail::SyntaxRange range) {
+    const Module::Symbol schema = callable.schema().symbol();
+    const auto inputs = callable.get<std::vector<Type>>("inputs");
+    const auto results = callable.get<std::vector<Type>>("results");
+    if (schema.module_name() != detail::prelude_module_name ||
+        schema.local_name() != "callable" || !inputs || !results ||
+        results->size() != 1U) {
+      report("inline function does not match its callable context", range);
+      return std::nullopt;
+    }
+    auto function = build_inline_function(expression, &*inputs, *results, range);
     if (!function) {
       return std::nullopt;
     }
     return edit_->callable(std::move(*function), callable);
+  }
+
+  std::optional<detail::ExecutionValue>
+  compiler_function(const Module::Expression& expression,
+                    detail::SyntaxRange range) {
+    auto function = build_inline_function(expression, nullptr, std::nullopt,
+                                          range);
+    return function
+               ? std::optional<detail::ExecutionValue>{
+                     detail::store_execution_value(std::move(*function))}
+               : std::nullopt;
   }
 
   std::optional<Value> use(const detail::LocalUseSyntax& use) {
@@ -3143,6 +3189,76 @@ private:
     return next(merge);
   }
 
+  void instantiate_evaluate_call(const detail::StatementSyntax& statement,
+                                 const Module::Expression& expression,
+                                 Block block) {
+    const auto reject_results = [&] { invalidate(statement.bindings); };
+    const SourceRange call_site = source(statement.expression.range);
+    const detail::ExecuteFunction execute =
+        [&](Module::FunctionDecl function,
+            std::vector<detail::ExecutionValue> arguments, SourceRange) {
+          return detail::CompilerAccess::execute(
+              compiler_, std::move(function), std::move(arguments),
+              residual_control_depth_ != 0U);
+        };
+    const detail::EvaluateCallArgument evaluate =
+        [&](const Module::Expression& argument,
+            const Module::ParameterDecl* expected)
+            -> std::optional<detail::ExecutionValue> {
+      if (argument.kind == Module::Expression::Kind::Lambda) {
+        return compiler_function(argument, statement.expression.range);
+      }
+      if ((argument.kind == Module::Expression::Kind::Reference ||
+           argument.kind == Module::Expression::Kind::Variable) &&
+          argument.arguments.empty()) {
+        const auto local = lookup_staged(argument.text);
+        const auto* known = local ? local->known_value() : nullptr;
+        if (known) {
+          return *known;
+        }
+      }
+      auto staged = evaluate_known(
+          {argument, statement.expression.range},
+          expected ? std::optional<Module::ParameterDecl>{*expected}
+                   : std::nullopt);
+      const auto* known = staged ? staged->known_value() : nullptr;
+      return known ? std::optional<detail::ExecutionValue>{*known}
+                   : std::nullopt;
+    };
+    auto results = detail::execute_call(
+        compiler_, owner_, expression, call_site, statement.bindings.size(),
+        {}, diagnostics_, evaluate, execute);
+    if (!results) {
+      reject_results();
+      return;
+    }
+    for (std::size_t index = 0; index < results->size(); ++index) {
+      auto value = detail::stage(compiler_, std::move((*results)[index]));
+      const auto expected = expected_type(statement.bindings[index]);
+      if (!value) {
+        report("explicit compiler call result does not match binding '" +
+                   statement.bindings[index].name + "'",
+               statement.bindings[index].range);
+        reject_results();
+        return;
+      }
+      if (expected && value->type() != *expected) {
+        const auto known = detail::ir_value(compiler_, *value);
+        auto converted =
+            known ? materialize(*known, *expected, block,
+                                statement.bindings[index].range)
+                  : std::optional<Value>{};
+        if (!converted) {
+          reject_results();
+          return;
+        }
+        bind(statement.bindings[index], std::move(*converted));
+        continue;
+      }
+      bind_staged(statement.bindings[index], std::move(*value));
+    }
+  }
+
   void instantiate_call(const detail::StatementSyntax& statement, Block block) {
     using Kind = Module::Expression::Kind;
     const Kind expression_kind = statement.expression.value.kind;
@@ -3156,6 +3272,12 @@ private:
     auto contextual_type = statement.bindings.size() == 1U
                                ? expected_type(statement.bindings.front())
                                : std::optional<Type>{};
+    if (require_known && statement.expression.value.arguments.size() == 1U &&
+        statement.expression.value.arguments.front().kind == Kind::Call) {
+      instantiate_evaluate_call(
+          statement, statement.expression.value.arguments.front(), block);
+      return;
+    }
     if (expression_kind == Kind::Lambda) {
       auto value = contextual_type
                        ? inline_function(statement.expression.value,
@@ -3453,7 +3575,7 @@ private:
   std::vector<Value> supplied_known_;
   detail::KnownBindings supplied_bindings_;
   std::vector<std::pair<std::string, Type>> inline_arguments_;
-  std::vector<Type> inline_results_;
+  std::optional<std::vector<Type>> inline_results_;
 };
 
 class RuntimeSyntax {

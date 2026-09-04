@@ -77,9 +77,11 @@ anonymous `Function` held by a callable `Value`; it uses the same calls, types,
 verification, cloning, and formatting as a named body. It is not a module
 declaration and does not introduce an alternate graph or pattern IR.
 
-The remaining higher-order gate is explicit compiler-time invocation of such
-function values. Effect-safe replacement follows only after that value path is
-complete.
+Explicit compiler-time calls pass typed lambdas as verified `Function`
+execution values and may return them for later `@` calls. This path shares
+compiler-call shaping, overload filtering, default handling, and execution
+with source-defined compiler functions; it does not encode functions as scalar
+metadata. Effect-safe replacement is the next language gate.
 
 ## Extension boundary
 

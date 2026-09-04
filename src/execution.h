@@ -84,6 +84,17 @@ std::optional<ParameterValue> parameter_value(const ExecutionValue& value);
 
 using ExecuteFunction = std::function<std::optional<ExecutionValues>(
     Module::FunctionDecl, std::vector<ExecutionValue>, SourceRange)>;
+using EvaluateCallArgument = std::function<std::optional<ExecutionValue>(
+    const Module::Expression&, const Module::ParameterDecl*)>;
+
+std::optional<ExecutionValues> execute_call(
+    Compiler& compiler, std::string_view owner,
+    const Module::Expression& expression, SourceRange call_site,
+    std::size_t result_count,
+    std::span<const Module::ParameterDecl> expected_results,
+    Diagnostics& diagnostics, const EvaluateCallArgument& evaluate,
+    const ExecuteFunction& execute,
+    std::span<const Module::FunctionDecl> declarations = {});
 
 std::optional<ExecutionValues>
 execute_body(Compiler& compiler, const Module::FunctionDecl& function,

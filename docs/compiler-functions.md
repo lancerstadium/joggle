@@ -54,8 +54,11 @@ transactional edit, inspect exact callees and typed operands, change calls,
 and commit after verification. This is the low-level substrate for fusion,
 constant folding, layout changes, and tensor-storage optimization.
 
-Typed lambda matching and effect-safe replacement are planned language
-facilities. They will be ordinary compile-time functions over the same
+An explicit call may pass a typed lambda to a `function` parameter. The lambda
+is materialized as a verified anonymous `Function`, passed directly to the
+compiler function, and may be returned for a later `@` call. It is not encoded
+as scalar metadata. Typed matching and effect-safe replacement are the next
+language facilities; they remain ordinary compiler functions over the same
 `Module` and `Function` values, not a second rewrite declaration system.
 
 ## Recursive specialization

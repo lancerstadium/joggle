@@ -37,6 +37,14 @@ struct CompilerAccess {
                       std::string_view cpp_type) {
     return compiler.accepts_host_type(function, parameter, cpp_type);
   }
+
+  static std::optional<ExecutionValues>
+  execute(Compiler& compiler, Module::FunctionDecl function,
+          std::vector<ExecutionValue> arguments,
+          bool under_residual_control) {
+    return compiler.execute(std::move(function), std::move(arguments),
+                            under_residual_control);
+  }
 };
 
 }  // namespace joggle::detail

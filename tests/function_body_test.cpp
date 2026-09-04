@@ -2598,8 +2598,12 @@ module staged_control@1.0.0 {
   explicit_staging.add(R"(
 joggle 1;
 module explicit_staging@1.0.0 {
+  type word();
   fn literal<T>(value: int) -> T;
   fn twice(value: int) -> int;
+  fn identity(input: word) -> word;
+  fn inspect(body: function) -> int;
+  fn keep_function(body: function) -> function;
 
   fn staged() -> i32 {
     value: i32 = @twice(2);
@@ -2610,6 +2614,22 @@ module explicit_staging@1.0.0 {
     value = twice(2);
     return;
   }
+
+  fn staged_lambda(input: word) -> word {
+    count = @inspect((value: word) => identity(value));
+    return identity(input);
+  }
+
+  fn staged_lambda_chain(input: word) -> word {
+    body = @keep_function((value: word) => identity(value));
+    count = @inspect(body);
+    return identity(input);
+  }
+
+  fn staged_lambda_capture(input: word) -> word {
+    count = @inspect((value: word) => identity(input));
+    return identity(input);
+  }
 }
 )",
                        "explicit-staging.joggle");
@@ -2619,12 +2639,35 @@ module explicit_staging@1.0.0 {
   const auto twice_decl =
       explicit_staging_module ? explicit_staging_module->function("twice")
                               : std::nullopt;
+  const auto inspect_decl =
+      explicit_staging_module ? explicit_staging_module->function("inspect")
+                              : std::nullopt;
+  const auto keep_function_decl =
+      explicit_staging_module
+          ? explicit_staging_module->function("keep_function")
+          : std::nullopt;
   std::size_t evaluations = 0;
   if (twice_decl) {
     explicit_staging.bind(*twice_decl, [&](std::int64_t value) {
       ++evaluations;
       return value * 2;
     });
+  }
+  std::size_t inspected_lambda_ops = 0;
+  std::size_t lambda_inspections = 0;
+  if (inspect_decl) {
+    explicit_staging.bind(
+        *inspect_decl,
+        [&](const joggle::Function& body) -> std::int64_t {
+          ++lambda_inspections;
+          inspected_lambda_ops = body.ops().size();
+          return static_cast<std::int64_t>(body.ops().size());
+        });
+  }
+  if (keep_function_decl) {
+    explicit_staging.bind(
+        *keep_function_decl,
+        [](const joggle::Function& body) -> joggle::Function { return body; });
   }
   const auto staged = explicit_staging_linked && twice_decl
                           ? explicit_staging.materialize(
@@ -2638,6 +2681,48 @@ module explicit_staging@1.0.0 {
                    staged->ops().size() == 1U && evaluations == 1U,
                "@ explicitly evaluates a compiler-domain call and "
                "materializes its result only at a Residual boundary");
+
+  const auto staged_lambda =
+      explicit_staging_linked && inspect_decl
+          ? explicit_staging.materialize("explicit_staging.staged_lambda")
+          : std::nullopt;
+  if (!staged_lambda || inspected_lambda_ops != 1U) {
+    explicit_staging.diagnostics().print(std::cerr);
+  }
+  ok &= expect(staged_lambda && explicit_staging.verify(*staged_lambda) &&
+                   staged_lambda->ops().size() == 1U &&
+                   inspected_lambda_ops == 1U && lambda_inspections == 1U,
+               "@ passes a typed lambda as a verified Function execution "
+               "value without scalar serialization");
+
+  const auto staged_lambda_chain =
+      explicit_staging_linked && inspect_decl && keep_function_decl
+          ? explicit_staging.materialize(
+                "explicit_staging.staged_lambda_chain")
+          : std::nullopt;
+  ok &= expect(staged_lambda_chain &&
+                   explicit_staging.verify(*staged_lambda_chain) &&
+                   staged_lambda_chain->ops().size() == 1U &&
+                   inspected_lambda_ops == 1U && lambda_inspections == 2U,
+               "@ results retain Function identity for a later explicit "
+               "compiler call");
+
+  const auto staged_lambda_capture =
+      explicit_staging_linked && inspect_decl
+          ? explicit_staging.materialize(
+                "explicit_staging.staged_lambda_capture")
+          : std::nullopt;
+  const bool reports_staged_capture = std::any_of(
+      explicit_staging.diagnostics().entries().begin(),
+      explicit_staging.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("undefined local value 'input'") !=
+               std::string::npos;
+      });
+  ok &= expect(!staged_lambda_capture && reports_staged_capture &&
+                   lambda_inspections == 2U,
+               "a compiler-time lambda cannot capture an outer Residual "
+               "value");
 
   const auto missing_stage =
       explicit_staging_linked

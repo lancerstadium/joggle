@@ -252,118 +252,22 @@ private:
               std::size_t result_count,
               std::span<const Module::ParameterDecl> expected_results = {},
               std::vector<Module::FunctionDecl> declarations = {}) {
-    if (declarations.empty()) {
-      declarations = visible_functions(
-          compiler_, function_.symbol().module_name(), expression.text);
-    }
-    std::vector<CallCandidate> candidates;
-    for (const auto& declaration : declarations) {
-      auto shaped = call_candidate(declaration, expression);
-      const bool expected_match =
-          expected_results.empty() ||
-          (expected_results.size() == declaration.results().size() &&
-           std::equal(expected_results.begin(), expected_results.end(),
-                      declaration.results().begin(),
-                      [](const auto& expected, const auto& declared) {
-                        return expected.domain == declared.domain;
-                      }));
-      if (!shaped || declaration.results().size() != result_count ||
-          !expected_match) {
-        continue;
-      }
-      candidates.push_back(std::move(*shaped));
-    }
-    if (candidates.empty()) {
-      report("no overload of '" + expression.text + "' accepts this call shape",
-             range);
-      return std::nullopt;
-    }
-
-    std::vector<ExecutionValue> supplied;
-    supplied.reserve(expression.arguments.size());
-    for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
-      const auto& first = candidates.front();
-      const auto& first_parameter =
-          first.function.inputs()[first.parameters[index]];
-      const bool common = std::all_of(
-          candidates.begin() + 1, candidates.end(),
-          [&](const CallCandidate& current) {
-            return current.function.inputs()[current.parameters[index]]
-                       .domain == first_parameter.domain;
-          });
-      auto value = evaluate(expression.arguments[index], range,
-                            common ? &first_parameter : nullptr);
-      const ExecutionValue* known = value ? value->known_value() : nullptr;
-      if (known == nullptr) {
-        if (value) {
-          report("compiler call argument is Residual", range);
-        }
-        return std::nullopt;
-      }
-      supplied.push_back(*known);
-    }
-
-    candidates.erase(
-        std::remove_if(
-            candidates.begin(), candidates.end(),
-            [&](const CallCandidate& current) {
-              for (std::size_t index = 0; index < supplied.size(); ++index) {
-                const auto& parameter =
-                    current.function.inputs()[current.parameters[index]];
-                if (!CompilerAccess::accepts(
-                        compiler_, current.function, parameter,
-                        execution_value_type(supplied[index]))) {
-                  return true;
-                }
-              }
-              return false;
-            }),
-        candidates.end());
-    if (candidates.empty()) {
-      report("no overload of '" + expression.text +
-                 "' accepts the evaluated argument types",
-             range);
-      return std::nullopt;
-    }
-    if (candidates.size() != 1U) {
-      std::string message =
-          "call to '" + expression.text + "' is ambiguous between";
-      for (const auto& current : candidates) {
-        message += " '" + current.function.symbol().qualified_name() + "'";
-      }
-      report(std::move(message), range);
-      return std::nullopt;
-    }
-
-    const CallCandidate& selected = candidates.front();
-    const auto parameters = selected.function.inputs();
-    std::vector<std::optional<ExecutionValue>> bound(parameters.size());
-    for (std::size_t index = 0; index < supplied.size(); ++index) {
-      bound[selected.parameters[index]] = std::move(supplied[index]);
-    }
-    std::vector<ExecutionValue> arguments;
-    arguments.reserve(parameters.size());
-    for (std::size_t index = 0; index < parameters.size(); ++index) {
-      if (!bound[index] && parameters[index].default_value) {
-        const auto value = parameter_default(parameters[index]);
-        bound[index] =
-            value ? execution_value(*value, parameters[index]) : std::nullopt;
-      }
-      if (!bound[index]) {
-        report("compiler call is missing argument '" + parameters[index].name +
-                   "'",
-               range);
-        return std::nullopt;
-      }
-      arguments.push_back(std::move(*bound[index]));
-    }
-    auto results = execute_(
-        selected.function, std::move(arguments),
-        SourceRange{body_.source, range.begin, range.end});
+    const SourceRange call_site{body_.source, range.begin, range.end};
+    auto results = execute_call(
+        compiler_, function_.symbol().module_name(), expression, call_site,
+        result_count, expected_results, diagnostics_,
+        [&](const Module::Expression& argument,
+            const Module::ParameterDecl* expected)
+            -> std::optional<ExecutionValue> {
+          auto value = evaluate(argument, range, expected);
+          const ExecutionValue* known = value ? value->known_value() : nullptr;
+          if (known == nullptr && value) {
+            report("compiler call argument is Residual", range);
+          }
+          return known ? std::optional<ExecutionValue>{*known} : std::nullopt;
+        },
+        execute_, declarations);
     if (!results || results->size() != result_count) {
-      if (results) {
-        report("compiler call returned the wrong number of values", range);
-      }
       return std::nullopt;
     }
     std::vector<StagedValue> staged;
@@ -737,6 +641,129 @@ private:
 };
 
 }  // namespace
+
+std::optional<ExecutionValues> execute_call(
+    Compiler& compiler, std::string_view owner,
+    const Module::Expression& expression, SourceRange call_site,
+    std::size_t result_count,
+    std::span<const Module::ParameterDecl> expected_results,
+    Diagnostics& diagnostics, const EvaluateCallArgument& evaluate,
+    const ExecuteFunction& execute,
+    std::span<const Module::FunctionDecl> declarations) {
+  const auto report = [&](std::string message) {
+    diagnostics.report(std::move(message), call_site);
+  };
+  std::vector<Module::FunctionDecl> visible;
+  if (declarations.empty()) {
+    visible = visible_functions(compiler, owner, expression.text);
+    declarations = visible;
+  }
+  std::vector<CallCandidate> candidates;
+  for (const auto& declaration : declarations) {
+    auto shaped = call_candidate(declaration, expression);
+    const bool expected_match =
+        expected_results.empty() ||
+        (expected_results.size() == declaration.results().size() &&
+         std::equal(expected_results.begin(), expected_results.end(),
+                    declaration.results().begin(),
+                    [](const auto& expected, const auto& declared) {
+                      return expected.domain == declared.domain;
+                    }));
+    if (shaped && declaration.results().size() == result_count &&
+        expected_match) {
+      candidates.push_back(std::move(*shaped));
+    }
+  }
+  if (candidates.empty()) {
+    report("no overload of '" + expression.text + "' accepts this call shape");
+    return std::nullopt;
+  }
+
+  std::vector<ExecutionValue> supplied;
+  supplied.reserve(expression.arguments.size());
+  for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
+    const auto& first = candidates.front();
+    const auto& first_parameter =
+        first.function.inputs()[first.parameters[index]];
+    const bool common = std::all_of(
+        candidates.begin() + 1, candidates.end(),
+        [&](const CallCandidate& current) {
+          return current.function.inputs()[current.parameters[index]].domain ==
+                 first_parameter.domain;
+        });
+    const std::size_t before = diagnostics.size();
+    auto value = evaluate(expression.arguments[index],
+                          common ? &first_parameter : nullptr);
+    if (!value) {
+      if (diagnostics.size() == before) {
+        report("compiler call argument is not Known");
+      }
+      return std::nullopt;
+    }
+    supplied.push_back(std::move(*value));
+  }
+
+  candidates.erase(
+      std::remove_if(
+          candidates.begin(), candidates.end(),
+          [&](const CallCandidate& candidate) {
+            for (std::size_t index = 0; index < supplied.size(); ++index) {
+              const auto& parameter =
+                  candidate.function.inputs()[candidate.parameters[index]];
+              if (!CompilerAccess::accepts(
+                      compiler, candidate.function, parameter,
+                      execution_value_type(supplied[index]))) {
+                return true;
+              }
+            }
+            return false;
+          }),
+      candidates.end());
+  if (candidates.empty()) {
+    report("no overload of '" + expression.text +
+           "' accepts the evaluated argument types");
+    return std::nullopt;
+  }
+  if (candidates.size() != 1U) {
+    std::string message =
+        "call to '" + expression.text + "' is ambiguous between";
+    for (const auto& candidate : candidates) {
+      message += " '" + candidate.function.symbol().qualified_name() + "'";
+    }
+    report(std::move(message));
+    return std::nullopt;
+  }
+
+  const CallCandidate& selected = candidates.front();
+  const auto parameters = selected.function.inputs();
+  std::vector<std::optional<ExecutionValue>> bound(parameters.size());
+  for (std::size_t index = 0; index < supplied.size(); ++index) {
+    bound[selected.parameters[index]] = std::move(supplied[index]);
+  }
+  std::vector<ExecutionValue> arguments;
+  arguments.reserve(parameters.size());
+  for (std::size_t index = 0; index < parameters.size(); ++index) {
+    if (!bound[index] && parameters[index].default_value) {
+      const auto value = parameter_default(parameters[index]);
+      bound[index] =
+          value ? execution_value(*value, parameters[index]) : std::nullopt;
+    }
+    if (!bound[index]) {
+      report("compiler call is missing argument '" + parameters[index].name +
+             "'");
+      return std::nullopt;
+    }
+    arguments.push_back(std::move(*bound[index]));
+  }
+  auto results = execute(selected.function, std::move(arguments), call_site);
+  if (!results || results->size() != result_count) {
+    if (results) {
+      report("compiler call returned the wrong number of values");
+    }
+    return std::nullopt;
+  }
+  return results;
+}
 
 std::optional<ExecutionValues>
 execute_body(Compiler& compiler, const Module::FunctionDecl& function,

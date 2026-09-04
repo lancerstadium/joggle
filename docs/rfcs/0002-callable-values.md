@@ -1,6 +1,6 @@
 # RFC 0002: Callable values and typed lambdas
 
-Status: implementation in progress; gates 1--4 complete
+Status: implementation in progress; gates 1--5 complete
 
 ## Problem
 
@@ -129,10 +129,14 @@ names, as it already does for materialized functions.
 A lambda expression constructs a callable value; it does not execute it.
 Passing it to an ordinary higher-order call leaves that call Residual.
 
-Passing a lambda through an explicitly evaluated compiler function is allowed
-only after the `@` call path accepts typed `Function` execution values without
-serializing them through scalar `ParameterValue`. This is required for the
-later transformation API:
+Passing a lambda to a compiler function whose parameter has the `function`
+domain constructs a verified anonymous `Function`. Explicit `@` invocation
+passes that object directly as an execution value; it is never serialized
+through scalar `ParameterValue`. A compiler function may return the same
+`Function`, which can be bound and passed to a later `@` call. Function-valued
+calls are not entered in the scalar hermetic-evaluation cache.
+
+This direct path is required for the later transformation API:
 
 ```joggle
 @replace(
@@ -153,7 +157,8 @@ The call remains one ordinary overload. `replace` is not a declaration form.
 3. [complete] Parse, validate, and canonically format capture-free typed
    lambdas.
 4. [complete] Materialize lambdas in ordinary higher-order calls.
-5. Extend explicit `@` invocation to pass typed `Function` values directly.
+5. [complete] Extend explicit `@` invocation to pass typed `Function` values
+   directly.
 6. Complete ownership, ambiguity, nested-callable, and negative-capture test
    coverage. Source round-trip and direct ownership checks already pass.
 
