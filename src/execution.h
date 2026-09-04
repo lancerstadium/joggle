@@ -56,6 +56,7 @@ public:
   bool contains(std::string_view name) const;
   StagedValue* find(std::string_view name);
   const StagedValue* find(std::string_view name) const;
+  std::vector<std::string> names() const;
   KnownBindings known_bindings() const;
 
 private:

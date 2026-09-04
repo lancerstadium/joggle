@@ -2197,6 +2197,17 @@ private:
     }
   }
 
+  void collect_effect_state(std::vector<std::string>& names,
+                            std::unordered_set<std::string>& seen) const {
+    for (const std::string& name : locals_.names()) {
+      const auto value = lookup_staged(name);
+      if (value && !value->known() && detail::is_effect_type(value->type()) &&
+          seen.insert(name).second) {
+        names.push_back(name);
+      }
+    }
+  }
+
   Flow instantiate_if_statement(const detail::StatementSyntax& statement,
                                 Block block) {
     if (known_result(statement.expression.value, statement.expression.range)) {
@@ -2220,6 +2231,7 @@ private:
     std::unordered_set<std::string> seen;
     collect_rebindings(statement.body, carried_names, seen);
     collect_rebindings(statement.otherwise, carried_names, seen);
+    collect_effect_state(carried_names, seen);
 
     auto [condition_tail, condition] = instantiate_expression(
         statement.expression.value, statement.expression.range, block);
@@ -2229,15 +2241,39 @@ private:
              statement.expression.range);
       return next(block);
     }
-    const Block yes = edit_->block();
-    const Block no = edit_->block();
-    edit_->branch(condition_tail, *condition, yes, {}, no, {});
+    std::vector<std::size_t> effect_carried;
+    std::vector<Type> effect_types;
+    std::vector<Value> effect_values;
+    for (std::size_t index = 0; index < carried_names.size(); ++index) {
+      const auto value = lookup_staged(carried_names[index]);
+      if (!value || value->known() ||
+          !detail::is_effect_type(value->type())) {
+        continue;
+      }
+      const auto residual = value->residual_value();
+      if (residual == nullptr) {
+        continue;
+      }
+      effect_carried.push_back(index);
+      effect_types.push_back(value->type());
+      effect_values.push_back(*residual);
+    }
+
+    const Block yes = edit_->block(effect_types);
+    const Block no = edit_->block(effect_types);
+    edit_->branch(condition_tail, *condition, yes, effect_values, no,
+                  effect_values);
 
     const detail::Locals incoming = locals_;
     const auto elaborate = [&](const std::vector<detail::StatementSyntax>& arm,
                                Block start) {
       locals_ = incoming;
       locals_.push();
+      const auto arguments = start.arguments();
+      for (std::size_t index = 0; index < effect_carried.size(); ++index) {
+        define(carried_names[effect_carried[index]], arguments[index],
+               statement.range);
+      }
       Flow flow = instantiate_sequence(arm, start);
       std::vector<std::optional<detail::StagedValue>> values;
       values.reserve(carried_names.size());
@@ -2365,6 +2401,7 @@ private:
     std::vector<std::string> carried_names;
     std::unordered_set<std::string> seen;
     collect_rebindings(statement.body, carried_names, seen);
+    collect_effect_state(carried_names, seen);
 
     if (known_result(statement.expression.value, statement.expression.range)) {
       struct StagedState {
@@ -2472,8 +2509,17 @@ private:
       return next(block);
     }
 
+    std::vector<std::size_t> effect_carried;
+    std::vector<Type> effect_types;
+    for (std::size_t index = 0; index < carried_types.size(); ++index) {
+      if (detail::is_effect_type(carried_types[index])) {
+        effect_carried.push_back(index);
+        effect_types.push_back(carried_types[index]);
+      }
+    }
+
     const Block header = edit_->block(carried_types);
-    const Block body = edit_->block();
+    const Block body = edit_->block(effect_types);
     const Block exit = edit_->block(carried_types);
     edit_->jump(block, header, initial);
 
@@ -2489,13 +2535,22 @@ private:
              statement.expression.range);
       return next(block);
     }
-    edit_->branch(condition_tail, *condition, body, {}, exit,
+    std::vector<Value> body_arguments;
+    body_arguments.reserve(effect_carried.size());
+    for (const std::size_t index : effect_carried) {
+      body_arguments.push_back(header.arguments()[index]);
+    }
+    edit_->branch(condition_tail, *condition, body, body_arguments, exit,
                   header.arguments());
 
     const std::size_t outer_scope_depth = locals_.depth();
     const std::size_t outer_residual_depth = residual_control_depth_;
     ++residual_control_depth_;
     locals_.push();
+    for (std::size_t index = 0; index < effect_carried.size(); ++index) {
+      define(carried_names[effect_carried[index]], body.arguments()[index],
+             statement.range);
+    }
     loops_.push_back({header, exit, carried_names, carried_types});
     Flow body_flow = instantiate_sequence(statement.body, body);
     loops_.pop_back();
@@ -2744,6 +2799,7 @@ private:
       std::vector<std::string> carried_names;
       std::unordered_set<std::string> seen;
       collect_rebindings(statement.body, carried_names, seen);
+      collect_effect_state(carried_names, seen);
       std::vector<Type> carried_types;
       std::vector<Value> initial;
       for (const std::string& name : carried_names) {
@@ -2800,8 +2856,16 @@ private:
       std::vector<Value> header_initial{*start};
       header_initial.insert(header_initial.end(), initial.begin(),
                             initial.end());
+      std::vector<std::size_t> effect_carried;
+      std::vector<Type> effect_types;
+      for (std::size_t index = 0; index < carried_types.size(); ++index) {
+        if (detail::is_effect_type(carried_types[index])) {
+          effect_carried.push_back(index);
+          effect_types.push_back(carried_types[index]);
+        }
+      }
       const Block header = edit_->block(header_types);
-      const Block body = edit_->block();
+      const Block body = edit_->block(effect_types);
       const Block exit = edit_->block(carried_types);
       edit_->jump(block, header, std::move(header_initial));
       const std::vector<Value> header_arguments = header.arguments();
@@ -2846,8 +2910,18 @@ private:
       }
       std::vector<Value> exit_values(header_arguments.begin() + 1,
                                      header_arguments.end());
-      edit_->branch(condition_tail, *condition, body, {}, exit,
+      std::vector<Value> body_values;
+      body_values.reserve(effect_carried.size());
+      for (const std::size_t index : effect_carried) {
+        body_values.push_back(header_arguments[index + 1U]);
+      }
+      edit_->branch(condition_tail, *condition, body, body_values, exit,
                     std::move(exit_values));
+
+      for (std::size_t index = 0; index < effect_carried.size(); ++index) {
+        define(carried_names[effect_carried[index]], body.arguments()[index],
+               statement.range);
+      }
 
       const detail::Locals loop_locals = locals_;
       loops_.push_back({});

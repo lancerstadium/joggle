@@ -63,6 +63,34 @@ layout<[0, 2, 3, 1]>
 There is no separate metadata value category. A layout, schedule policy,
 format, or machine description is a normal type instance.
 
+## Effects
+
+Residual side effects are ordered by ordinary SSA values:
+
+```joggle
+type memory();
+fn store(token: effect<memory>, address: index, value: i8)
+    -> effect<memory>;
+```
+
+`effect<domain>` is a normal parameterized Prelude type. It is never a Known
+value. One token may have at most one consuming use on an executed path. A
+branch may pass the same token to both mutually exclusive successors, while
+each successor receives its own block argument; later control-flow merges use
+another typed block argument. Repeating a token within one edge or feeding two
+calls on the same path is rejected transactionally.
+
+Structured Residual control carries every visible effect token automatically.
+`if` arms, `while` bodies, and typed `for` bodies therefore receive fresh block
+arguments without extra source syntax; merges, loop headers, latches, and exits
+continue the same explicit SSA chain in materialized Function IR. A call that
+returns an updated token must still rebind or return it before the old token can
+be consumed again.
+
+Calls with no effect-typed inputs or results are pure by the language
+contract. Residual external interaction must expose its ordering token;
+compiler-time host interaction remains behind explicit `@`.
+
 ## Functions and overloads
 
 ```joggle

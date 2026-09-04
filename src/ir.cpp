@@ -513,6 +513,11 @@ bool verify_op(const FunctionState& function, std::uint64_t id,
     }
     const detail::StoredValue& argument = stored.value;
     if (argument.known) {
+      if (detail::is_effect_type(argument.known->type)) {
+        diagnostics.report("effect argument '" + parameter.name +
+                           "' cannot be Known");
+        valid = false;
+      }
       if (!owns(function, argument.known->type) ||
           !owns(function, argument.known->value) ||
           (!detail::is_value_port(parameter) &&
@@ -556,6 +561,76 @@ bool verify_op(const FunctionState& function, std::uint64_t id,
         value->second.origin != ValueData::Origin::OpResult ||
         value->second.owner != id || !owns(function, value->second.type)) {
       diagnostics.report("op '" + name + "' has an invalid result");
+      valid = false;
+    }
+  }
+  return valid;
+}
+
+bool verify_effect_uses(const FunctionState& function,
+                        Diagnostics& diagnostics) {
+  bool valid = true;
+  std::unordered_map<std::uint64_t, std::size_t> uses;
+  const auto effect = [&](std::uint64_t id) {
+    const auto value = function.values.find(id);
+    return value != function.values.end() &&
+           detail::is_effect_type(value->second.type);
+  };
+  const auto consume = [&](std::uint64_t id) {
+    if (effect(id)) {
+      ++uses[id];
+    }
+  };
+
+  for (const auto& [id, op] : function.ops) {
+    static_cast<void>(id);
+    for (const detail::StoredArgument& argument : op.arguments) {
+      if (!argument.value.known) {
+        consume(argument.value.id);
+      }
+    }
+  }
+  for (const auto& [id, block] : function.blocks) {
+    static_cast<void>(id);
+    if (!block.terminator) {
+      continue;
+    }
+    const detail::TerminatorData& terminator = *block.terminator;
+    for (const std::uint64_t returned : terminator.returned) {
+      consume(returned);
+    }
+    if (terminator.kind != Terminator::Kind::Branch) {
+      for (const detail::EdgeData& edge : terminator.successors) {
+        for (const std::uint64_t argument : edge.arguments) {
+          consume(argument);
+        }
+      }
+      continue;
+    }
+
+    std::unordered_set<std::uint64_t> branch_uses;
+    for (const detail::EdgeData& edge : terminator.successors) {
+      std::unordered_set<std::uint64_t> edge_uses;
+      for (const std::uint64_t argument : edge.arguments) {
+        if (!effect(argument)) {
+          continue;
+        }
+        if (!edge_uses.insert(argument).second) {
+          diagnostics.report(
+              "one branch path repeats the same effect token");
+          valid = false;
+        }
+        branch_uses.insert(argument);
+      }
+    }
+    for (const std::uint64_t argument : branch_uses) {
+      ++uses[argument];
+    }
+  }
+  for (const auto& [id, count] : uses) {
+    static_cast<void>(id);
+    if (count > 1U) {
+      diagnostics.report("effect token has more than one consuming use");
       valid = false;
     }
   }
@@ -781,6 +856,7 @@ bool verify_function(const FunctionState& function, Diagnostics& diagnostics) {
       valid = false;
     }
   }
+  valid = verify_effect_uses(function, diagnostics) && valid;
   return valid;
 }
 

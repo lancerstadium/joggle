@@ -55,6 +55,7 @@ Verification checks:
 - function result agreement;
 - declaration provenance across module snapshots.
 - callable type/body agreement and the inline body's module closure.
+- affine use of `effect<domain>` values, including exclusive branch transfer.
 
 ## Serialization
 

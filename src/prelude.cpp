@@ -39,6 +39,13 @@ bool is_prelude_type(std::string_view name) {
   return false;
 }
 
+bool is_effect_type(const Type& type) {
+  const Module::Symbol symbol = type.schema().symbol();
+  return symbol.module_name() == prelude_module_name &&
+         symbol.local_name() == "effect" &&
+         type.get<Type>("domain").has_value();
+}
+
 std::string_view display_type_name(std::string_view qualified_name) {
   constexpr std::string_view prefix = "prelude.";
   if (qualified_name.starts_with(prefix)) {

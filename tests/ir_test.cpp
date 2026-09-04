@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -26,11 +27,13 @@ int main() {
     joggle 1;
     module control@1.0.0 {
       type other();
+      type memory();
       fn source<T>() -> T;
       fn add_i32(lhs: i32, rhs: i32) -> i32;
       fn configure(input: i32, axis: int = 1) -> i32;
       fn callback(input: i32) -> i32;
       fn apply(input: i32, body: (i32) -> i32) -> i32;
+      fn advance(token: effect<memory>) -> effect<memory>;
     }
   )",
                "control.joggle");
@@ -53,13 +56,19 @@ int main() {
   const auto callback_schema =
       control ? control->function("callback") : std::nullopt;
   const auto apply_schema = control ? control->function("apply") : std::nullopt;
+  const auto advance_schema =
+      control ? control->function("advance") : std::nullopt;
   const auto prelude = compiler.module("prelude");
   const auto callable_schema =
       prelude ? prelude->type("callable") : std::nullopt;
+  const auto effect_schema =
+      prelude ? prelude->type("effect") : std::nullopt;
   const auto other_schema = control ? control->type("other") : std::nullopt;
+  const auto memory_schema = control ? control->type("memory") : std::nullopt;
   if (!integer_schema || !add_schema || !cast_schema || !source_schema ||
       !add_i32_schema || !configure_schema || !callback_schema || !apply_schema ||
-      !callable_schema || !other_schema) {
+      !advance_schema || !callable_schema || !effect_schema || !other_schema ||
+      !memory_schema) {
     return EXIT_FAILURE;
   }
   compiler.verify(*integer_schema, [](const joggle::Type&,
@@ -68,8 +77,11 @@ int main() {
   const auto other = compiler.make(*other_schema);
   const auto boolean = compiler.make("i1");
   const auto i32 = compiler.make("i32");
+  const auto memory = compiler.make(*memory_schema);
+  const auto memory_effect =
+      memory ? compiler.make(*effect_schema, *memory) : std::nullopt;
   auto function = compiler.create_function();
-  if (!integer || !other || !boolean || !i32 || !function) {
+  if (!integer || !other || !boolean || !i32 || !memory_effect || !function) {
     return EXIT_FAILURE;
   }
 
@@ -478,6 +490,86 @@ int main() {
                  branched->users(*branch_lhs).empty() &&
                  branched->has_uses(merge->arguments().front()),
              "branch, edge, and return operands are visible as boundary uses");
+
+  auto effect_cfg = compiler.create_function();
+  if (!effect_cfg) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = effect_cfg->edit();
+    const auto condition = edit.argument(*boolean);
+    const auto token = edit.argument(*memory_effect);
+    const auto yes = edit.block({*memory_effect});
+    const auto no = edit.block({*memory_effect});
+    const auto merge_effect = edit.block({*memory_effect});
+    edit.branch(effect_cfg->entry(), condition, yes, {token}, no, {token});
+    const auto yes_next =
+        edit.append(yes, *advance_schema, {yes.arguments().front()});
+    const auto no_next =
+        edit.append(no, *advance_schema, {no.arguments().front()});
+    edit.jump(yes, merge_effect, {yes_next.result(0)});
+    edit.jump(no, merge_effect, {no_next.result(0)});
+    edit.ret(merge_effect, {merge_effect.arguments().front()});
+    joggle::Diagnostics diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  ok &= expect(compiler.verify(*effect_cfg) &&
+                   effect_cfg->blocks().size() == 4U,
+               "effect tokens may fork across exclusive branch edges and "
+               "merge through a typed block argument");
+
+  auto duplicated_effect = compiler.create_function();
+  if (!duplicated_effect) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = duplicated_effect->edit();
+    const auto token = edit.argument(*memory_effect);
+    const auto first = edit.append(*advance_schema, {token});
+    static_cast<void>(edit.append(*advance_schema, {token}));
+    edit.ret(duplicated_effect->entry(), {first.result(0)});
+    joggle::Diagnostics diagnostics;
+    const bool committed = edit.commit(diagnostics);
+    const bool reports_multiple_use = std::any_of(
+        diagnostics.entries().begin(), diagnostics.entries().end(),
+        [](const joggle::Diagnostic& diagnostic) {
+          return diagnostic.message.find("more than one consuming use") !=
+                 std::string::npos;
+        });
+    ok &= expect(!committed && reports_multiple_use &&
+                     duplicated_effect->ops().empty(),
+                 "one effect token cannot feed two calls on the same path");
+  }
+
+  auto duplicated_branch_effect = compiler.create_function();
+  if (!duplicated_branch_effect) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = duplicated_branch_effect->edit();
+    const auto condition = edit.argument(*boolean);
+    const auto token = edit.argument(*memory_effect);
+    const auto yes = edit.block({*memory_effect, *memory_effect});
+    const auto no = edit.block({*memory_effect, *memory_effect});
+    edit.branch(duplicated_branch_effect->entry(), condition, yes,
+                {token, token}, no, {token, token});
+    edit.ret(yes, {yes.arguments().front()});
+    edit.ret(no, {no.arguments().front()});
+    joggle::Diagnostics diagnostics;
+    const bool committed = edit.commit(diagnostics);
+    const bool reports_repeated_branch = std::any_of(
+        diagnostics.entries().begin(), diagnostics.entries().end(),
+        [](const joggle::Diagnostic& diagnostic) {
+          return diagnostic.message.find("branch path repeats") !=
+                 std::string::npos;
+        });
+    ok &= expect(!committed && reports_repeated_branch &&
+                     duplicated_branch_effect->blocks().size() == 1U,
+                 "one branch path cannot duplicate an effect token");
+  }
 
   auto invalid_edge = compiler.create_function();
   if (!invalid_edge) {

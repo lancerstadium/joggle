@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <typeinfo>
+#include <unordered_set>
 #include <utility>
 
 namespace joggle::detail {
@@ -122,6 +123,21 @@ const StagedValue* Locals::find(std::string_view name) const {
     }
   }
   return nullptr;
+}
+
+std::vector<std::string> Locals::names() const {
+  std::vector<std::string> names;
+  std::unordered_set<std::string> seen;
+  for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
+    for (const auto& [name, value] : *scope) {
+      if (!seen.insert(name).second || !value) {
+        continue;
+      }
+      names.push_back(name);
+    }
+  }
+  std::ranges::sort(names);
+  return names;
 }
 
 KnownBindings Locals::known_bindings() const {

@@ -83,6 +83,14 @@ compiler-call shaping, overload filtering, default handling, and execution
 with source-defined compiler functions; it does not encode functions as scalar
 metadata. Effect-safe replacement is the next language gate.
 
+Residual effects use the ordinary `effect<domain>` Prelude type. Tokens flow
+through calls and CFG edges as normal SSA values, and the verifier prevents
+more than one consumption on an executed path. Exclusive branch successors
+may each receive the incoming token and merge through a typed block argument.
+Structured Residual control inserts those block arguments for every visible
+effect token, including loop headers, bodies, latches, and exits. There is no
+purity registry or effect annotation attached to `fn`.
+
 ## Extension boundary
 
 An extension normally contains:

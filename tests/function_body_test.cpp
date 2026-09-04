@@ -581,8 +581,13 @@ module invalid_callback@1.0.0 {
 joggle 1;
 module cfg@1.0.0 {
   type word();
+  type memory();
   fn identity(input: word) -> word;
+  fn advance(token: effect<memory>) -> effect<memory>;
   fn literal<T>(value: int) -> T ;
+  fn (<)(lhs: i32, rhs: i32) -> i1;
+  fn (>)(lhs: i32, rhs: i32) -> i1;
+  fn (+)(lhs: i32, rhs: i32) -> i32;
   fn choose(condition: i1, lhs: word, rhs: word) -> word {
     entry():
       branch condition, left(), right();
@@ -637,6 +642,33 @@ module cfg@1.0.0 {
       value = identity(rhs);
     }
     return value;
+  }
+  fn effect_branch(condition: i1, token: effect<memory>) -> effect<memory> {
+    if condition {
+      token = advance(token);
+    } else {
+      token = advance(token);
+    }
+    return token;
+  }
+  fn effect_loop(condition: i1, token: effect<memory>) -> effect<memory> {
+    while condition {
+      token = advance(token);
+    }
+    return token;
+  }
+  fn effect_return(condition: i1, token: effect<memory>) -> effect<memory> {
+    if condition {
+      return advance(token);
+    } else {
+      return advance(token);
+    }
+  }
+  fn effect_for(token: effect<memory>) -> effect<memory> {
+    for item: i32 in @range(4) {
+      token = advance(token);
+    }
+    return token;
   }
   fn early_return(condition: i1, lhs: word, rhs: word) -> word {
     if condition {
@@ -721,6 +753,16 @@ module cfg@1.0.0 {
   const auto cfg_statement_without_else =
       cfg_linked ? cfg_compiler.materialize("cfg.statement_without_else")
                  : std::nullopt;
+  const auto cfg_effect_branch =
+      cfg_linked ? cfg_compiler.materialize("cfg.effect_branch")
+                 : std::nullopt;
+  const auto cfg_effect_loop =
+      cfg_linked ? cfg_compiler.materialize("cfg.effect_loop") : std::nullopt;
+  const auto cfg_effect_return =
+      cfg_linked ? cfg_compiler.materialize("cfg.effect_return")
+                 : std::nullopt;
+  const auto cfg_effect_for =
+      cfg_linked ? cfg_compiler.materialize("cfg.effect_for") : std::nullopt;
   const auto cfg_early_return =
       cfg_linked ? cfg_compiler.materialize("cfg.early_return") : std::nullopt;
   const auto cfg_early_return_both =
@@ -783,10 +825,12 @@ module cfg@1.0.0 {
       "before crossing Residual edges");
   ok &= expect(
       cfg_statement_branch && cfg_statement_specialized &&
-          cfg_statement_without_else &&
+          cfg_statement_without_else && cfg_effect_branch && cfg_effect_loop &&
+          cfg_effect_return && cfg_effect_for &&
           cfg_compiler.verify(*cfg_statement_branch) &&
           cfg_compiler.verify(*cfg_statement_specialized) &&
           cfg_compiler.verify(*cfg_statement_without_else) &&
+          cfg_compiler.verify(*cfg_effect_branch) &&
           cfg_statement_branch->blocks().size() == 4U &&
           cfg_statement_branch->ops().size() == 2U &&
           cfg_statement_branch->blocks().back().arguments().size() == 1U &&
@@ -797,6 +841,71 @@ module cfg@1.0.0 {
           cfg_statement_without_else->blocks().back().arguments().size() == 1U,
       "statement if specializes Known control and automatically "
       "merges outer rebindings under Residual control");
+  if (cfg_effect_branch) {
+    const auto blocks = cfg_effect_branch->blocks();
+    const auto branch = cfg_effect_branch->entry().terminator();
+    const auto operations = cfg_effect_branch->ops();
+    ok &= expect(
+        blocks.size() == 4U && operations.size() == 2U &&
+            branch.kind() == joggle::Terminator::Kind::Branch &&
+            branch.arguments(0) ==
+                std::vector<joggle::Value>{cfg_effect_branch->arguments()[1]} &&
+            branch.arguments(1) ==
+                std::vector<joggle::Value>{cfg_effect_branch->arguments()[1]} &&
+            blocks[1].arguments().size() == 1U &&
+            blocks[2].arguments().size() == 1U &&
+            operations[0].arguments() == blocks[1].arguments() &&
+            operations[1].arguments() == blocks[2].arguments() &&
+            blocks.back().arguments().size() == 1U &&
+            blocks.back().terminator().returned() == blocks.back().arguments(),
+        "Residual if transfers an effect token through each exclusive arm "
+        "and merges the successor tokens explicitly");
+  }
+  if (cfg_effect_loop) {
+    const auto blocks = cfg_effect_loop->blocks();
+    bool valid_effect_loop =
+        cfg_compiler.verify(*cfg_effect_loop) && blocks.size() == 4U &&
+        cfg_effect_loop->ops().size() == 1U;
+    if (valid_effect_loop) {
+      const auto header = blocks[1];
+      const auto body = blocks[2];
+      const auto exit = blocks[3];
+      const auto branch = header.terminator();
+      valid_effect_loop =
+          branch.kind() == joggle::Terminator::Kind::Branch &&
+          body.arguments().size() == 1U &&
+          branch.arguments(0) == header.arguments() &&
+          branch.arguments(1) == header.arguments() &&
+          cfg_effect_loop->ops().front().arguments() == body.arguments() &&
+          exit.arguments().size() == 1U &&
+          exit.terminator().returned() == exit.arguments();
+    }
+    ok &= expect(valid_effect_loop,
+                 "Residual while carries effect tokens through its header, "
+                 "body, backedge, and exit as explicit SSA arguments");
+  }
+  if (cfg_effect_return) {
+    const auto blocks = cfg_effect_return->blocks();
+    bool valid_effect_return =
+        cfg_compiler.verify(*cfg_effect_return) && blocks.size() == 3U &&
+        cfg_effect_return->ops().size() == 2U;
+    if (valid_effect_return) {
+      const auto branch = blocks.front().terminator();
+      valid_effect_return =
+          branch.arguments(0) ==
+              std::vector<joggle::Value>{cfg_effect_return->arguments()[1]} &&
+          branch.arguments(1) ==
+              std::vector<joggle::Value>{cfg_effect_return->arguments()[1]} &&
+          cfg_effect_return->ops()[0].arguments() == blocks[1].arguments() &&
+          cfg_effect_return->ops()[1].arguments() == blocks[2].arguments();
+    }
+    ok &= expect(valid_effect_return,
+                 "Residual branches carry visible effect state even when "
+                 "both arms return directly without rebinding a local");
+  }
+  ok &= expect(cfg_effect_for && cfg_compiler.verify(*cfg_effect_for),
+               "typed for carries visible effect state through its residual "
+               "header, body, latch, and exit");
   ok &= expect(
       cfg_early_return && cfg_early_return_both && cfg_specialized_return &&
           cfg_loop_return && cfg_early_literal &&
@@ -822,6 +931,37 @@ module cfg@1.0.0 {
                       }),
       "structured returns terminate only their selected control "
       "paths without a Region or synthetic merge");
+
+  joggle::Compiler invalid_effect_source;
+  invalid_effect_source.add(R"(
+joggle 1;
+module invalid_effect_source@1.0.0 {
+  type memory();
+  fn advance(token: effect<memory>) -> effect<memory>;
+  fn invalid(token: effect<memory>) -> effect<memory> {
+    first = advance(token);
+    second = advance(token);
+    return first;
+  }
+}
+)",
+                            "invalid-effect-source.joggle");
+  const bool invalid_effect_linked = invalid_effect_source.link();
+  const auto invalid_effect_function =
+      invalid_effect_linked
+          ? invalid_effect_source.materialize("invalid_effect_source.invalid")
+          : std::nullopt;
+  const bool reports_effect_reuse = std::any_of(
+      invalid_effect_source.diagnostics().entries().begin(),
+      invalid_effect_source.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("more than one consuming use") !=
+               std::string::npos;
+      });
+  ok &= expect(invalid_effect_linked && !invalid_effect_function &&
+                   reports_effect_reuse,
+               "source materialization rejects reusing one effect token on "
+               "the same control-flow path");
 
   joggle::Diagnostics incomplete_return_diagnostics;
   const auto incomplete_return = joggle::parse_module(

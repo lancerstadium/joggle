@@ -92,10 +92,15 @@ contract. External interaction in Residual IR must be represented by a token;
 compiler-time host interaction remains behind explicit `@` and is never part
 of an expression match.
 
-The verifier enforces linear effect flow: an effect token has at most one
-direct call user in a block, branch successors receive tokens explicitly, and
-merges use block arguments. This makes ordering visible in existing SSA/CFG
-instead of requiring a parallel effect table.
+The verifier enforces affine effect flow: each SSA token has at most one
+consuming site. A branch terminator may transfer the same token to mutually
+exclusive successors, which receive distinct block arguments; merges likewise
+use block arguments. This makes ordering visible in existing SSA/CFG instead
+of requiring a parallel effect table.
+
+Source materialization threads every visible effect token through Residual
+structured control. This covers direct returns as well as rebinding, and keeps
+`if`, `while`, and typed `for` on the same verifier-visible CFG contract.
 
 The first matcher accepts only token-free expression lambdas. The boundary
 rule above already defines the later token-aware extension and prevents the
@@ -132,7 +137,8 @@ on a private `Module` snapshot and publishes only after every member succeeds.
 
 1. [complete] Add `prelude.effect<domain>` and type-system recognition without
    adding a new declaration category.
-2. Enforce linear token use and add branch/merge positive and negative tests.
+2. [complete] Enforce affine token use and add branch/merge positive and
+   negative tests.
 3. Validate token-free, single-block expression templates.
 4. Implement deterministic typed DAG matching with repeated-hole equality and
    internal-use closure checks.
