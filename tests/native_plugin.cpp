@@ -71,10 +71,11 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
     return input;
   });
   compiler.bind(module, "read_model",
-                [](joggle::Compiler& current, const joggle::Bytes&,
+                [](joggle::Compiler& current, const joggle::Bytes& input,
                    joggle::Diagnostics& model_diagnostics)
                     -> std::optional<joggle::Module> {
                   joggle::Module model("loaded_model", {1, 0, 0});
+                  static_cast<void>(model.store(input));
                   auto main = current.create_function();
                   if (!main || !model.insert("main", std::move(*main),
                                              model_diagnostics)) {

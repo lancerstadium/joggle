@@ -42,6 +42,16 @@ install_module(const std::filesystem::path& root, const Module& module,
                Diagnostics& diagnostics,
                std::optional<std::filesystem::path> native = std::nullopt);
 
+// Lossless external representation for a data-bearing Module. The directory
+// contains canonical module.joggle and the same verified data layout used by
+// installed identities.
+std::optional<Module>
+read_module_bundle(const std::filesystem::path& directory,
+                   Diagnostics& diagnostics);
+std::optional<std::filesystem::path>
+write_module_bundle(const std::filesystem::path& directory,
+                    const Module& module, Diagnostics& diagnostics);
+
 bool remove_module(const std::filesystem::path& root, std::string_view name,
                    Version version, Diagnostics& diagnostics);
 

@@ -33,7 +33,10 @@ and covered by both positive and negative materialization tests.
 
 A `Module` owns declarations, materialized Function bodies, imports, and
 content-addressed immutable data. There is no second Program, Graph, Package,
-or Artifact owner.
+or Artifact owner. Source-only Modules remain one text file; a Module with
+owned weights uses a lossless directory bundle containing `module.joggle` and
+`data/<sha256>`, accepted directly by `check`, `run`, `install`, and
+`lock`.
 
 ## Compiler extension model
 

@@ -368,6 +368,18 @@ if(JOGGLE_BUILD_TESTS)
         $<TARGET_FILE:joggle_onnx_native>
         ${JOGGLE_ONNX_TEST_MODEL})
 
+    if(NOT JOGGLE_ONNX_TEST_MODEL STREQUAL "")
+      add_test(NAME onnx_bundle_cli
+        COMMAND ${CMAKE_COMMAND}
+          -DJOGGLE_CLI=$<TARGET_FILE:joggle_cli>
+          -DJOGGLE_TENSOR_MODULE=${JOGGLE_TENSOR_MODULE}
+          -DJOGGLE_ONNX_MODULE=${CMAKE_CURRENT_SOURCE_DIR}/modules/onnx/module.joggle
+          -DJOGGLE_ONNX_NATIVE=$<TARGET_FILE:joggle_onnx_native>
+          -DJOGGLE_ONNX_MODEL=${JOGGLE_ONNX_TEST_MODEL}
+          -DJOGGLE_BUNDLE_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/onnx-bundle-test
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/onnx_bundle_cli.cmake)
+    endif()
+
     if(JOGGLE_ONNX_RUNTIME_VALIDATION)
       if(JOGGLE_ONNX_TEST_MODEL STREQUAL "")
         message(FATAL_ERROR

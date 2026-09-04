@@ -1,6 +1,6 @@
 # RFC 0006: Module bundles
 
-Status: repository persistence gate complete
+Status: implementation gates complete
 
 ## Problem
 
@@ -37,22 +37,24 @@ Source, data, and an optional native library are written into the existing
 same-filesystem staging directory and published by one directory rename.
 Idempotent installation re-reads and verifies all three components.
 
-## External bundle boundary
+## External bundle
 
-The repository layout is an installed representation, not yet the user-facing
-transport syntax. A later gate will let CLI commands read and write one bundle
-directory containing `module.joggle` and `data`. Until that gate is complete,
-printing a data-bearing Module as source is not a lossless export.
+The CLI reads and writes one bundle directory containing `module.joggle` and
+`data`. A data-bearing Module returned by `joggle run` requires
+`-o <bundle-directory>`; stdout is rejected rather than silently discarding
+bytes. The destination must not already exist, and the complete directory is
+published atomically.
 
-The external bundle must reuse the same source and data rules. It must not add
-a second identity, archive format, manifest object, generated header, or
-special ONNX ownership path.
+Bundle directories are accepted by `check`, as module inputs to `run`, by
+`install`, and as lock roots. They reuse the repository source and data rules
+and add no second identity, archive format, manifest object, generated header,
+or special ONNX ownership path.
 
 ## Implementation gates
 
 - [x] Atomically persist and hydrate Module-owned data in the repository.
 - [x] Verify payload filenames, payload bytes, reconstructed Module identity,
   idempotent installation, and corruption failure.
-- [ ] Add lossless CLI directory-bundle input and output.
-- [ ] Install, resolve, and reload the imported SqueezeNet Module through the
+- [x] Add lossless CLI directory-bundle input and output.
+- [x] Install, resolve, and reload the imported SqueezeNet Module through the
   public CLI workflow.

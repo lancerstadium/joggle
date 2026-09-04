@@ -38,9 +38,9 @@ quantization annotations, subgraphs, training data, custom domains, unknown
 attributes, and unsupported operators are rejected before a Module is
 returned. Shape propagation checks the declared graph output.
 
-This is not a general ONNX compatibility claim. The repository now preserves
-Module-owned bytes, while lossless CLI bundle export remains a separate gate
-in [RFC 0006](rfcs/0006-module-bundles.md).
+This is not a general ONNX compatibility claim. Module-owned bytes are
+preserved by the lossless CLI and repository bundle defined in
+[RFC 0006](rfcs/0006-module-bundles.md).
 
 ## Optional build
 
@@ -90,6 +90,26 @@ check determinism. The audited run produced output shape `[1,1000]`,
 
 The reconstruction executable is test-only. It is not a public ONNX emitter,
 Module function, compiler-core category, or second production graph.
+
+## Lossless CLI workflow
+
+A driver may call `@onnx.read` and write the returned Module to a bundle:
+
+```bash
+joggle run driver.joggle read squeezenet1.1-7.onnx \
+  --with /path/to/tensor/module.joggle \
+  --with /path/to/onnx/module.joggle \
+  --load-native onnx=/path/to/onnx/native \
+  -o squeezenet-bundle
+
+joggle install /path/to/tensor/module.joggle
+joggle check squeezenet-bundle
+joggle install squeezenet-bundle
+```
+
+The real-model CLI test verifies 54 payload files, installs the dependency and
+model, reloads the installed identity as a bundle, and locks the exact
+SqueezeNet and tensor digests.
 
 ## Reference-model evidence
 

@@ -14,12 +14,12 @@ compatible.
 ## Commands
 
 ```bash
-joggle check module.joggle [--with dependency.joggle] [--native library]
+joggle check module.joggle|bundle [--with dependency.joggle] [--native library]
 joggle fmt module.joggle [--write | -o output.joggle]
-joggle install module.joggle [--native library]
+joggle install module.joggle|bundle [--native library]
 joggle uninstall name@1.2.3
 joggle list
-joggle lock root.joggle -o joggle.lock
+joggle lock root.joggle|bundle -o joggle.lock
 ```
 
 All repository commands accept `--root directory`. Without it, Joggle uses
@@ -38,6 +38,30 @@ runs registered verifiers.
 `fmt` produces canonical text. In-place and explicit-output writes stage a
 complete replacement beside the destination, preserve an existing file on
 failure, and preserve permission bits for in-place formatting.
+
+## External bundles
+
+Normal source-only Modules remain one `.joggle` file. When a compiler function
+returns a Module with owned data, `run` writes a directory bundle:
+
+```bash
+joggle run pipeline.joggle import model.onnx \
+  --load-native onnx=/path/to/native \
+  -o model-bundle
+
+joggle check model-bundle
+joggle install model-bundle
+```
+
+The directory contains `module.joggle` and `data/<payload-sha256>` and uses
+the same verification rules as an installed identity. A data-bearing result
+without `-o` is rejected, because canonical source alone would be lossy.
+Bundle publication is atomic and refuses to overwrite an existing path.
+
+`check`, module-valued `run` inputs, `install`, and `lock` accept a bundle
+directory directly. `fmt` remains a source-text operation. A native library
+is supplied independently with the existing `--native` or `--load-native`
+option; the bundle adds no manifest or platform-specific identity.
 
 ## Installed layout
 

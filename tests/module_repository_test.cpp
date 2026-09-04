@@ -54,6 +54,7 @@ bool write(const std::filesystem::path& path, std::string_view text) {
 
 int main() {
   TemporaryRoot root;
+  TemporaryRoot bundles;
   joggle::Diagnostics parse_diagnostics;
   const auto module = joggle::parse_module(R"(
     joggle 1;
@@ -84,6 +85,24 @@ int main() {
   const std::string second_data = second->store(second_payload);
 
   bool ok = true;
+  const std::filesystem::path bundle = bundles.path() / "external-bundle";
+  joggle::Diagnostics bundle_write_diagnostics;
+  const auto bundled = joggle::detail::write_module_bundle(
+      bundle, *second, bundle_write_diagnostics);
+  joggle::Diagnostics bundle_read_diagnostics;
+  const auto read_bundle =
+      bundled ? joggle::detail::read_module_bundle(bundle,
+                                                   bundle_read_diagnostics)
+              : std::optional<joggle::Module>{};
+  ok &= expect(bundled && bundle_write_diagnostics.ok() && read_bundle &&
+                   bundle_read_diagnostics.ok() && *read_bundle == *second,
+               "a directory bundle round-trips source and Module-owned data");
+  joggle::Diagnostics duplicate_bundle_diagnostics;
+  ok &= expect(!joggle::detail::write_module_bundle(
+                   bundle, *second, duplicate_bundle_diagnostics) &&
+                   !duplicate_bundle_diagnostics.ok(),
+               "bundle publication never overwrites an existing destination");
+
   joggle::Diagnostics failed_install;
   const auto failed = joggle::detail::install_module(
       root.path(), *module, failed_install, root.path() / "missing-native");

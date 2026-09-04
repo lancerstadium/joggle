@@ -31,17 +31,18 @@ namespace {
 
 void usage(std::ostream& output) {
   output << "usage:\n"
-         << "  joggle check <file.joggle> [--with <module.joggle>] "
+         << "  joggle check <module.joggle|bundle> [--with <module.joggle>] "
             "[--native <library>] [--root <directory>]\n"
          << "  joggle fmt <file.joggle> [--write | -o <file>]\n"
-         << "  joggle run <file.joggle> <function> <input> "
+         << "  joggle run <module.joggle|bundle> <function> <input> "
             "[--with <module.joggle>] [--load-native <module[=library]>] "
             "[--native <library>] [--root <directory>] [-o <file>]\n"
-         << "  joggle install <module.joggle> [--native <library>] "
+         << "  joggle install <module.joggle|bundle> [--native <library>] "
             "[--root <directory>]\n"
          << "  joggle uninstall <name@version> [--root <directory>]\n"
          << "  joggle list [--root <directory>]\n"
-         << "  joggle lock <root.joggle> [--root <directory>] [-o <file>]\n";
+         << "  joggle lock <root.joggle|bundle> [--root <directory>] "
+            "[-o <file>]\n";
 }
 
 std::optional<std::string> read(const std::filesystem::path& path,
@@ -58,6 +59,36 @@ std::optional<std::string> read(const std::filesystem::path& path,
     return std::nullopt;
   }
   return text.str();
+}
+
+struct ModuleInput {
+  joggle::Module module;
+  std::filesystem::path source;
+};
+
+std::optional<ModuleInput>
+read_module_input(const std::filesystem::path& path,
+                  joggle::Diagnostics& diagnostics) {
+  std::error_code error;
+  if (std::filesystem::is_directory(path, error) && !error) {
+    auto module = joggle::detail::read_module_bundle(path, diagnostics);
+    return module ? std::optional<ModuleInput>{
+                        ModuleInput{std::move(*module), path / "module.joggle"}}
+                  : std::nullopt;
+  }
+  if (error) {
+    diagnostics.report("cannot inspect Module input '" + path.string() +
+                       "': " + error.message());
+    return std::nullopt;
+  }
+  auto source = read(path, diagnostics);
+  if (!source) {
+    return std::nullopt;
+  }
+  auto module = joggle::parse_module(*source, diagnostics, path.string());
+  return module ? std::optional<ModuleInput>{
+                      ModuleInput{std::move(*module), path}}
+                : std::nullopt;
 }
 
 struct ExactModule {
@@ -122,7 +153,7 @@ std::optional<Options> options(int argc, char** argv,
         diagnostics.report("duplicate option '--output'");
         return std::nullopt;
       }
-      const auto file = value("--output needs a file");
+      const auto file = value("--output needs a path");
       if (!file) {
         return std::nullopt;
       }
@@ -360,13 +391,11 @@ int usage_error(joggle::Diagnostics& diagnostics, std::string message) {
 }
 
 bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
-                     std::string_view source,
-                     const std::filesystem::path& source_path,
                      const std::filesystem::path& root,
                      const std::optional<std::filesystem::path>& native,
                      std::span<const std::filesystem::path> with = {}) {
   compiler.search(root);
-  compiler.add(source, source_path.string());
+  compiler.add(module);
   for (const std::filesystem::path& path : with) {
     compiler.load(path);
   }
@@ -424,7 +453,7 @@ int main(int argc, char** argv) {
   if (command == "check" || command == "fmt") {
     if (parsed.positional.size() != 1U) {
       return usage_error(diagnostics, std::string(command) +
-                                          " expects one Module source file");
+                                          " expects one Module input");
     }
     if (parsed.output && parsed.in_place) {
       return usage_error(diagnostics,
@@ -449,16 +478,16 @@ int main(int argc, char** argv) {
       return usage_error(diagnostics, std::string(command) +
                                           " does not accept --load-native");
     }
-    auto source = read(parsed.positional[0], diagnostics);
-    if (!source) {
-      return fail(diagnostics);
-    }
-    auto module =
-        joggle::parse_module(*source, diagnostics, parsed.positional[0]);
-    if (!module) {
-      return fail(diagnostics);
-    }
     if (command == "fmt") {
+      auto source = read(parsed.positional[0], diagnostics);
+      if (!source) {
+        return fail(diagnostics);
+      }
+      auto module =
+          joggle::parse_module(*source, diagnostics, parsed.positional[0]);
+      if (!module) {
+        return fail(diagnostics);
+      }
       const std::string formatted = joggle::format(*module);
       if (parsed.in_place) {
         if (!write(parsed.positional[0], formatted, diagnostics)) {
@@ -472,12 +501,16 @@ int main(int argc, char** argv) {
         std::cout << formatted;
       }
     } else {
+      auto input = read_module_input(parsed.positional[0], diagnostics);
+      if (!input) {
+        return fail(diagnostics);
+      }
       joggle::Compiler compiler;
-      if (!validate_module(compiler, *module, *source, parsed.positional[0],
-                           parsed.root, parsed.native, parsed.with)) {
+      if (!validate_module(compiler, input->module, parsed.root, parsed.native,
+                           parsed.with)) {
         return fail(compiler.diagnostics());
       }
-      const auto linked = compiler.module(module->name());
+      const auto linked = compiler.module(input->module.name());
       if (!linked) {
         return fail(compiler.diagnostics());
       }
@@ -497,26 +530,20 @@ int main(int argc, char** argv) {
       return usage_error(diagnostics, "run does not accept --write");
     }
     const std::filesystem::path root_path = parsed.positional.front();
-    auto root_source = read(root_path, diagnostics);
-    if (!root_source) {
-      return fail(diagnostics);
-    }
-    auto root =
-        joggle::parse_module(*root_source, diagnostics, root_path.string());
+    auto root = read_module_input(root_path, diagnostics);
     if (!root) {
       return fail(diagnostics);
     }
 
     const auto link = [&](joggle::Compiler& target,
-                          const std::string* input_source = nullptr,
-                          const std::filesystem::path* input_path = nullptr) {
+                          const joggle::Module* input = nullptr) {
       target.search(parsed.root);
-      target.add(*root_source, root_path.string());
+      target.add(root->module);
       for (const std::filesystem::path& path : parsed.with) {
         target.load(path);
       }
-      if (input_source != nullptr && input_path != nullptr) {
-        target.add(*input_source, input_path->string());
+      if (input != nullptr) {
+        target.add(*input);
       }
       return target.link();
     };
@@ -528,7 +555,7 @@ int main(int argc, char** argv) {
 
     const std::string function_name =
         parsed.positional[1].find('.') == std::string::npos
-            ? std::string(root->name()) + "." + parsed.positional[1]
+            ? std::string(root->module.name()) + "." + parsed.positional[1]
             : parsed.positional[1];
     auto function = compiler.lookup(function_name);
     if (!function) {
@@ -555,22 +582,17 @@ int main(int argc, char** argv) {
     std::optional<joggle::Bytes> byte_input;
     const std::filesystem::path input_path = parsed.positional[2];
     if (module_to_bytes || module_to_module) {
-      auto input_source = read(input_path, diagnostics);
-      if (!input_source) {
-        return fail(diagnostics);
-      }
-      auto parsed_input =
-          joggle::parse_module(*input_source, diagnostics, input_path.string());
+      auto parsed_input = read_module_input(input_path, diagnostics);
       if (!parsed_input) {
         return fail(diagnostics);
       }
       joggle::Compiler with_input;
-      if (!link(with_input, &*input_source, &input_path)) {
+      if (!link(with_input, &parsed_input->module)) {
         return fail(with_input.diagnostics());
       }
       compiler = std::move(with_input);
       function = compiler.lookup(function_name);
-      const auto linked_input = compiler.module(parsed_input->name());
+      const auto linked_input = compiler.module(parsed_input->module.name());
       module_input = linked_input ? compiler.materialize(*linked_input)
                                   : std::optional<joggle::Module>{};
       if (!function || !module_input) {
@@ -583,7 +605,8 @@ int main(int argc, char** argv) {
       }
     }
 
-    if (parsed.native && !compiler.load_native(root->name(), *parsed.native)) {
+    if (parsed.native &&
+        !compiler.load_native(root->module.name(), *parsed.native)) {
       return fail(compiler.diagnostics());
     }
     for (const std::string& request : parsed.loaded_natives) {
@@ -629,12 +652,23 @@ int main(int argc, char** argv) {
     if (!output) {
       return fail(compiler.diagnostics());
     }
-    const std::string source = joggle::format(*output);
-    if (parsed.output) {
-      if (!write(*parsed.output, source, diagnostics)) {
+    if (!output->data().empty()) {
+      if (!parsed.output) {
+        diagnostics.report(
+            "a data-bearing Module requires -o <bundle-directory>");
         return fail(diagnostics);
       }
-    } else {
+      if (!joggle::detail::write_module_bundle(*parsed.output, *output,
+                                                diagnostics)) {
+        return fail(diagnostics);
+      }
+      return EXIT_SUCCESS;
+    }
+    const std::string source = joggle::format(*output);
+    if (parsed.output && !write(*parsed.output, source, diagnostics)) {
+      return fail(diagnostics);
+    }
+    if (!parsed.output) {
       std::cout << source;
     }
     return EXIT_SUCCESS;
@@ -642,7 +676,7 @@ int main(int argc, char** argv) {
 
   if (command == "install") {
     if (parsed.positional.size() != 1U) {
-      return usage_error(diagnostics, "install expects one Module source file");
+      return usage_error(diagnostics, "install expects one Module input");
     }
     if (parsed.output) {
       return usage_error(diagnostics, "install does not accept --output");
@@ -656,22 +690,17 @@ int main(int argc, char** argv) {
     if (!parsed.loaded_natives.empty()) {
       return usage_error(diagnostics, "install does not accept --load-native");
     }
-    auto source = read(parsed.positional[0], diagnostics);
-    if (!source) {
-      return fail(diagnostics);
-    }
-    auto module =
-        joggle::parse_module(*source, diagnostics, parsed.positional[0]);
-    if (!module) {
+    auto input = read_module_input(parsed.positional[0], diagnostics);
+    if (!input) {
       return fail(diagnostics);
     }
     joggle::Compiler compiler;
-    if (!validate_module(compiler, *module, *source, parsed.positional[0],
-                         parsed.root, parsed.native)) {
+    if (!validate_module(compiler, input->module, parsed.root,
+                         parsed.native)) {
       return fail(compiler.diagnostics());
     }
-    auto installed = joggle::detail::install_module(parsed.root, *module,
-                                                    diagnostics, parsed.native);
+    auto installed = joggle::detail::install_module(
+        parsed.root, input->module, diagnostics, parsed.native);
     if (!installed) {
       return fail(diagnostics);
     }
@@ -745,7 +774,7 @@ int main(int argc, char** argv) {
 
   if (command == "lock") {
     if (parsed.positional.size() != 1U) {
-      return usage_error(diagnostics, "lock expects one root Module source");
+      return usage_error(diagnostics, "lock expects one root Module input");
     }
     if (parsed.native) {
       return usage_error(diagnostics, "lock does not accept --native");
@@ -759,28 +788,23 @@ int main(int argc, char** argv) {
     if (!parsed.loaded_natives.empty()) {
       return usage_error(diagnostics, "lock does not accept --load-native");
     }
-    auto source = read(parsed.positional[0], diagnostics);
-    if (!source) {
-      return fail(diagnostics);
-    }
-    auto root =
-        joggle::parse_module(*source, diagnostics, parsed.positional[0]);
+    auto root = read_module_input(parsed.positional[0], diagnostics);
     if (!root) {
       return fail(diagnostics);
     }
     joggle::Compiler compiler;
-    if (!validate_module(compiler, *root, *source, parsed.positional[0],
-                         parsed.root, std::nullopt)) {
+    if (!validate_module(compiler, root->module, parsed.root, std::nullopt)) {
       return fail(compiler.diagnostics());
     }
     std::ostringstream lock;
     lock << "joggle-lock 1;\n"
-         << "root " << root->name() << '@' << joggle::to_string(root->version())
-         << '#' << root->digest() << ";\n";
+         << "root " << root->module.name() << '@'
+         << joggle::to_string(root->module.version()) << '#'
+         << root->module.digest() << ";\n";
     for (const joggle::Module& module : compiler.modules()) {
-      if (module.name() == root->name() &&
-          module.version() == root->version() &&
-          module.digest() == root->digest()) {
+      if (module.name() == root->module.name() &&
+          module.version() == root->module.version() &&
+          module.digest() == root->module.digest()) {
         continue;
       }
       lock << "module " << module.name() << '@'

@@ -11,7 +11,10 @@ set(model_input "${JOGGLE_OUTPUT}.model.joggle")
 set(model_output "${JOGGLE_OUTPUT}.optimized.joggle")
 set(model_emitted "${JOGGLE_OUTPUT}.emitted.joggle")
 set(loaded_output "${JOGGLE_OUTPUT}.loaded.joggle")
+set(loaded_emitted "${JOGGLE_OUTPUT}.loaded-emitted.joggle")
+set(bundle_root "${JOGGLE_OUTPUT}.bundle-modules")
 set(failed_output "${JOGGLE_OUTPUT}.failed.joggle")
+file(REMOVE_RECURSE "${loaded_output}" "${bundle_root}")
 file(WRITE "${model_input}" [=[joggle 1;
 
 module cli_model@1.0.0 {
@@ -72,12 +75,81 @@ execute_process(
 if(NOT load_result EQUAL 0)
   message(FATAL_ERROR "typed bytes -> module loader failed:\n${load_error}")
 endif()
-file(READ "${loaded_output}" loaded_source)
+file(READ "${loaded_output}/module.joggle" loaded_source)
 string(FIND "${loaded_source}" "module loaded_model@1.0.0" loaded_module)
 string(FIND "${loaded_source}" "fn main()" loaded_main)
 if(loaded_module EQUAL -1 OR loaded_main EQUAL -1)
   message(FATAL_ERROR
     "typed loader did not emit its Module result:\n${loaded_source}")
+endif()
+file(GLOB loaded_data "${loaded_output}/data/*")
+list(LENGTH loaded_data loaded_data_count)
+if(NOT loaded_data_count EQUAL 1)
+  message(FATAL_ERROR "typed loader did not emit one Module data payload")
+endif()
+list(GET loaded_data 0 loaded_data_file)
+get_filename_component(loaded_data_name "${loaded_data_file}" NAME)
+file(SHA256 "${loaded_data_file}" loaded_data_digest)
+if(NOT loaded_data_name STREQUAL loaded_data_digest)
+  message(FATAL_ERROR "bundle payload filename does not match its content")
+endif()
+
+execute_process(
+  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" read_model "${input}"
+          --with "${JOGGLE_DEPENDENCY}"
+          --load-native "native_plugin=${JOGGLE_NATIVE}"
+  RESULT_VARIABLE lost_data_result
+  ERROR_VARIABLE lost_data_error
+)
+string(FIND "${lost_data_error}"
+  "data-bearing Module requires -o <bundle-directory>" lost_data_position)
+if(lost_data_result EQUAL 0 OR lost_data_position EQUAL -1)
+  message(FATAL_ERROR
+    "run silently printed a data-bearing Module:\n${lost_data_error}")
+endif()
+
+execute_process(
+  COMMAND "${JOGGLE_CLI}" check "${loaded_output}"
+  RESULT_VARIABLE bundle_check_result
+  ERROR_VARIABLE bundle_check_error
+)
+if(NOT bundle_check_result EQUAL 0)
+  message(FATAL_ERROR
+    "lossless Module bundle check failed:\n${bundle_check_error}")
+endif()
+execute_process(
+  COMMAND "${JOGGLE_CLI}" install "${loaded_output}" --root "${bundle_root}"
+  RESULT_VARIABLE bundle_install_result
+  OUTPUT_VARIABLE bundle_install_output
+  ERROR_VARIABLE bundle_install_error
+)
+if(NOT bundle_install_result EQUAL 0)
+  message(FATAL_ERROR
+    "lossless Module bundle install failed:\n${bundle_install_error}")
+endif()
+string(STRIP "${bundle_install_output}" bundle_installed_source)
+get_filename_component(bundle_identity "${bundle_installed_source}" DIRECTORY)
+file(GLOB installed_data "${bundle_identity}/data/*")
+list(LENGTH installed_data installed_data_count)
+if(NOT installed_data_count EQUAL 1)
+  message(FATAL_ERROR "installed Module bundle lost its payload")
+endif()
+
+execute_process(
+  COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" emit_model
+          "${loaded_output}" --with "${JOGGLE_DEPENDENCY}"
+          --load-native "native_plugin=${JOGGLE_NATIVE}"
+          -o "${loaded_emitted}"
+  RESULT_VARIABLE bundle_input_result
+  ERROR_VARIABLE bundle_input_error
+)
+if(NOT bundle_input_result EQUAL 0)
+  message(FATAL_ERROR
+    "Module bundle input failed:\n${bundle_input_error}")
+endif()
+file(READ "${loaded_emitted}" loaded_emitted_source)
+if(NOT loaded_emitted_source STREQUAL loaded_source)
+  message(FATAL_ERROR "Module bundle input changed canonical source")
 endif()
 
 execute_process(

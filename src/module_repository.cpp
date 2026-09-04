@@ -699,6 +699,86 @@ install_module(const std::filesystem::path& root, const Module& module,
   return destination;
 }
 
+std::optional<Module>
+read_module_bundle(const std::filesystem::path& directory,
+                   Diagnostics& diagnostics) {
+  std::error_code error;
+  const auto status = std::filesystem::symlink_status(directory, error);
+  if (error || !std::filesystem::is_directory(status) ||
+      std::filesystem::is_symlink(status)) {
+    diagnostics.report("Module bundle is not a directory: '" +
+                       directory.string() + "'");
+    return std::nullopt;
+  }
+  const std::filesystem::path source = directory / "module.joggle";
+  std::ifstream input(source, std::ios::binary);
+  if (!input) {
+    diagnostics.report("cannot open Module bundle source '" + source.string() +
+                       "'");
+    return std::nullopt;
+  }
+  std::ostringstream text;
+  text << input.rdbuf();
+  if (!input.eof() && input.fail()) {
+    diagnostics.report("cannot read Module bundle source '" + source.string() +
+                       "'");
+    return std::nullopt;
+  }
+  auto module = parse_module(text.str(), diagnostics, source.string());
+  if (!module || !load_module_data(directory, *module, diagnostics)) {
+    return std::nullopt;
+  }
+  return module;
+}
+
+std::optional<std::filesystem::path>
+write_module_bundle(const std::filesystem::path& directory,
+                    const Module& module, Diagnostics& diagnostics) {
+  std::error_code error;
+  if (std::filesystem::exists(directory, error)) {
+    diagnostics.report("Module bundle destination already exists: '" +
+                       directory.string() + "'");
+    return std::nullopt;
+  }
+  if (error) {
+    diagnostics.report("cannot inspect Module bundle destination '" +
+                       directory.string() + "': " + error.message());
+    return std::nullopt;
+  }
+  const std::filesystem::path parent =
+      directory.has_parent_path() ? directory.parent_path() : ".";
+  auto staging_path = create_staging_directory(parent, diagnostics);
+  if (!staging_path) {
+    return std::nullopt;
+  }
+  StagingDirectory staging(std::move(*staging_path));
+  const std::filesystem::path source = staging.path() / "module.joggle";
+  std::ofstream output(source, std::ios::binary | std::ios::trunc);
+  if (!output) {
+    diagnostics.report("cannot write Module bundle source '" +
+                       source.string() + "'");
+    return std::nullopt;
+  }
+  output << format(module);
+  output.close();
+  if (!output) {
+    diagnostics.report("cannot finish Module bundle source '" +
+                       source.string() + "'");
+    return std::nullopt;
+  }
+  if (!write_module_data(staging.path(), module, diagnostics)) {
+    return std::nullopt;
+  }
+  std::filesystem::rename(staging.path(), directory, error);
+  if (error) {
+    diagnostics.report("cannot publish Module bundle '" + directory.string() +
+                       "': " + error.message());
+    return std::nullopt;
+  }
+  staging.published();
+  return directory / "module.joggle";
+}
+
 bool remove_module(const std::filesystem::path& root, std::string_view name,
                    Version version, Diagnostics& diagnostics) {
   const std::filesystem::path module_directory = root / std::string(name);
