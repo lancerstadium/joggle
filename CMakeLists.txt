@@ -81,6 +81,21 @@ target_link_libraries(joggle PRIVATE ${CMAKE_DL_LIBS})
 
 include(cmake/JoggleModule.cmake)
 
+joggle_module(joggle_transform_native
+  SOURCE modules/transform/module.joggle
+  NATIVE modules/transform/native.cpp)
+if(MSVC)
+  target_compile_options(joggle_transform_native PRIVATE /W4 /WX)
+else()
+  target_compile_options(joggle_transform_native PRIVATE
+    -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
+endif()
+set_target_properties(joggle_transform_native PROPERTIES
+  PREFIX ""
+  OUTPUT_NAME "native"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/transform"
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/transform")
+
 joggle_module(joggle_fusion_native
   SOURCE modules/fusion/module.joggle
   NATIVE modules/fusion/native.cpp)
@@ -126,20 +141,20 @@ set_target_properties(joggle_quant_native PROPERTIES
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/quant"
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/quant")
 
-joggle_module(joggle_qconv_native
-  SOURCE modules/qconv/module.joggle
-  NATIVE modules/qconv/native.cpp)
+joggle_module(joggle_qdq_native
+  SOURCE modules/qdq/module.joggle
+  NATIVE modules/qdq/native.cpp)
 if(MSVC)
-  target_compile_options(joggle_qconv_native PRIVATE /W4 /WX)
+  target_compile_options(joggle_qdq_native PRIVATE /W4 /WX)
 else()
-  target_compile_options(joggle_qconv_native PRIVATE
+  target_compile_options(joggle_qdq_native PRIVATE
     -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
 endif()
-set_target_properties(joggle_qconv_native PROPERTIES
+set_target_properties(joggle_qdq_native PROPERTIES
   PREFIX ""
   OUTPUT_NAME "native"
-  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/qconv"
-  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/qconv")
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/qdq"
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/qdq")
 
 set(JOGGLE_SQUEEZENET_MODEL
   "${CMAKE_CURRENT_BINARY_DIR}/models/squeezenet1.1-7.onnx"
@@ -242,10 +257,12 @@ install(FILES language/prelude.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/language)
 install(FILES modules/tensor/module.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/tensor)
+install(FILES modules/transform/module.joggle
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/transform)
 install(FILES modules/quant/module.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/quant)
-install(FILES modules/qconv/module.joggle
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/qconv)
+install(FILES modules/qdq/module.joggle
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/qdq)
 install(FILES modules/fusion/module.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/fusion)
 install(FILES modules/bitpack/module.joggle
@@ -255,15 +272,18 @@ install(FILES modules/onnx/module.joggle
 install(TARGETS joggle_fusion_native
   LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/fusion
   RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/fusion)
+install(TARGETS joggle_transform_native
+  LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/transform
+  RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/transform)
 install(TARGETS joggle_bitpack_native
   LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/bitpack
   RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/bitpack)
 install(TARGETS joggle_quant_native
   LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/quant
   RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/quant)
-install(TARGETS joggle_qconv_native
-  LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/qconv
-  RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/qconv)
+install(TARGETS joggle_qdq_native
+  LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/qdq
+  RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/qdq)
 install(EXPORT JoggleTargets
   FILE JoggleTargets.cmake
   NAMESPACE joggle::
@@ -302,10 +322,12 @@ if(JOGGLE_BUILD_TESTS)
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/compiler_test.joggle")
   set(JOGGLE_TENSOR_MODULE
     "${CMAKE_CURRENT_SOURCE_DIR}/modules/tensor/module.joggle")
+  set(JOGGLE_TRANSFORM_MODULE
+    "${CMAKE_CURRENT_SOURCE_DIR}/modules/transform/module.joggle")
   set(JOGGLE_QUANT_MODULE
     "${CMAKE_CURRENT_SOURCE_DIR}/modules/quant/module.joggle")
-  set(JOGGLE_QCONV_MODULE
-    "${CMAKE_CURRENT_SOURCE_DIR}/modules/qconv/module.joggle")
+  set(JOGGLE_QDQ_MODULE
+    "${CMAKE_CURRENT_SOURCE_DIR}/modules/qdq/module.joggle")
   set(JOGGLE_FUSION_MODULE
     "${CMAKE_CURRENT_SOURCE_DIR}/modules/fusion/module.joggle")
   set(JOGGLE_BITPACK_MODULE
@@ -367,16 +389,16 @@ if(JOGGLE_BUILD_TESTS)
   )
   add_test(NAME quant COMMAND joggle_quant_test)
 
-  add_executable(joggle_qconv_test tests/qconv_test.cpp)
-  target_link_libraries(joggle_qconv_test PRIVATE joggle::joggle)
-  add_dependencies(joggle_qconv_test joggle_qconv_native)
-  target_compile_definitions(joggle_qconv_test PRIVATE
+  add_executable(joggle_qdq_profile_test tests/qdq_profile_test.cpp)
+  target_link_libraries(joggle_qdq_profile_test PRIVATE joggle::joggle)
+  add_dependencies(joggle_qdq_profile_test joggle_qdq_native)
+  target_compile_definitions(joggle_qdq_profile_test PRIVATE
     JOGGLE_TENSOR_MODULE="${JOGGLE_TENSOR_MODULE}"
     JOGGLE_QUANT_MODULE="${JOGGLE_QUANT_MODULE}"
-    JOGGLE_QCONV_MODULE="${JOGGLE_QCONV_MODULE}"
-    JOGGLE_QCONV_NATIVE="$<TARGET_FILE:joggle_qconv_native>"
+    JOGGLE_QDQ_MODULE="${JOGGLE_QDQ_MODULE}"
+    JOGGLE_QDQ_NATIVE="$<TARGET_FILE:joggle_qdq_native>"
   )
-  add_test(NAME qconv COMMAND joggle_qconv_test)
+  add_test(NAME qdq_profile COMMAND joggle_qdq_profile_test)
 
   add_executable(joggle_ir_test tests/ir_test.cpp)
   target_link_libraries(joggle_ir_test PRIVATE joggle::joggle)
@@ -393,6 +415,16 @@ if(JOGGLE_BUILD_TESTS)
   target_link_libraries(joggle_transform_test PRIVATE joggle::joggle)
   target_include_directories(joggle_transform_test PRIVATE src)
   add_test(NAME transform COMMAND joggle_transform_test)
+
+  add_executable(joggle_transform_module_test
+    tests/transform_module_test.cpp)
+  target_link_libraries(joggle_transform_module_test PRIVATE joggle::joggle)
+  add_dependencies(joggle_transform_module_test joggle_transform_native)
+  target_compile_definitions(joggle_transform_module_test PRIVATE
+    JOGGLE_TRANSFORM_MODULE="${JOGGLE_TRANSFORM_MODULE}"
+    JOGGLE_TRANSFORM_NATIVE="$<TARGET_FILE:joggle_transform_native>"
+  )
+  add_test(NAME transform_module COMMAND joggle_transform_module_test)
 
   add_executable(joggle_equivalence_test tests/equivalence_test.cpp)
   target_link_libraries(joggle_equivalence_test PRIVATE joggle::joggle)
@@ -542,15 +574,16 @@ if(JOGGLE_BUILD_TESTS)
           $<TARGET_FILE:joggle_onnx_native>
           ${JOGGLE_ONNX_QDQ_TEST_MODEL})
 
-      add_executable(joggle_onnx_qconv_test tests/onnx_qconv_test.cpp)
-      target_link_libraries(joggle_onnx_qconv_test PRIVATE joggle::joggle)
-      add_dependencies(joggle_onnx_qconv_test joggle_qconv_native)
-      add_test(NAME onnx_qconv
-        COMMAND joggle_onnx_qconv_test
+      add_executable(joggle_onnx_qdq_profile_test
+        tests/onnx_qdq_profile_test.cpp)
+      target_link_libraries(joggle_onnx_qdq_profile_test PRIVATE joggle::joggle)
+      add_dependencies(joggle_onnx_qdq_profile_test joggle_qdq_native)
+      add_test(NAME onnx_qdq_profile
+        COMMAND joggle_onnx_qdq_profile_test
           ${JOGGLE_TENSOR_MODULE}
           ${JOGGLE_QUANT_MODULE}
-          ${JOGGLE_QCONV_MODULE}
-          $<TARGET_FILE:joggle_qconv_native>
+          ${JOGGLE_QDQ_MODULE}
+          $<TARGET_FILE:joggle_qdq_native>
           ${CMAKE_CURRENT_SOURCE_DIR}/modules/onnx/module.joggle
           $<TARGET_FILE:joggle_onnx_native>
           ${JOGGLE_ONNX_QDQ_TEST_MODEL})

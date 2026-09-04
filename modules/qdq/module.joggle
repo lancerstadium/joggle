@@ -1,10 +1,10 @@
 joggle 1;
 
-module qconv@1.0.0 {
+module qdq@1.0.0 {
   import quant@1 as q;
   import tensor@1 as t;
 
-  fn conv<
+  fn nchw_conv<
     X: list<int>, XQ: list<int>,
     W: list<int>, WQ: list<int>,
     B: list<int>, BQ: list<int>,

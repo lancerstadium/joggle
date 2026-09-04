@@ -57,23 +57,25 @@ The implementation already demonstrates:
 13. typed replacement preserves pure shared DAG ancestors instead of rejecting
     or duplicating them, covering 16 QDQ Conv branch candidates arranged in
     eight pairs that share one activation Dequantize per pair;
-14. `qconv` defines the complete NCHW QDQ Conv reference expression as one
-    ordinary generic function and transforms all 26 eligible official-model
-    regions; the whole Function is definitionally equivalent, changes from
-    399 to 303 calls/constants, and derives its semantic dependencies from IR;
-15. generic reference-body outlining reduces a transformation extension to
+14. `qdq` separates operator-independent affine semantics from transparent
+    composite profiles; its first ordinary `nchw_conv` function transforms all
+    26 eligible official-model regions, while whole-Function equivalence,
+    399-to-303 call reduction, and dependency derivation remain checked;
+15. the installable `transform` Module exposes equivalence-checked replacement
+    directly as ordinary Function and Module overloads taking typed lambdas;
+16. generic reference-body outlining reduces a transformation extension to
     eligibility plus argument mapping while the core owns concrete
     instantiation, exact binding checks, proof, bounded traversal, shared-DAG
     handling, and atomic Function or Module publication; and
-16. Module bundles preserve and verify all imported data through public
+17. Module bundles preserve and verify all imported data through public
    `check`, `run`, `install`, and `lock` workflows.
 
 These are infrastructure results. The tensor QDQ calls remain opaque program
-semantics: QConv equivalence succeeds because its body reproduces the exact
-opaque calls, not because the compiler assumes an algebraic quantization law.
-The result therefore does not establish a concrete integer QConv, general
-mathematical equivalence of user rewrites, competitive kernels, support for a
-physical format at run time, or publication-level novelty.
+semantics: QDQ-composite equivalence succeeds because its body reproduces the
+exact opaque calls, not because the compiler assumes an algebraic quantization
+law. The result therefore does not establish a concrete integer convolution,
+general mathematical equivalence of user rewrites, competitive kernels,
+support for a physical format at run time, or publication-level novelty.
 
 ## What the closest systems already solve
 

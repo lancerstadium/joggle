@@ -15,13 +15,13 @@ namespace {
 constexpr std::string_view pipeline_source = R"(
 joggle 1;
 
-module onnx_qconv_pipeline@1.0.0 {
+module onnx_qdq_profile_pipeline@1.0.0 {
   import onnx@1;
-  import qconv@1;
+  import qdq@1;
 
   fn compile(input: bytes, name: string) -> module {
     model = @onnx.read(input, name);
-    return @qconv.run(model);
+    return @qdq.run(model);
   }
 }
 )";
@@ -57,8 +57,8 @@ int main(int argc, char** argv) {
   compiler.load(argv[2]);
   compiler.load(argv[3]);
   compiler.load(argv[5]);
-  compiler.add(pipeline_source, "onnx-qconv-pipeline.joggle");
-  if (!compiler.link() || !compiler.load_native("qconv", argv[4]) ||
+  compiler.add(pipeline_source, "onnx-qdq-profile-pipeline.joggle");
+  if (!compiler.link() || !compiler.load_native("qdq", argv[4]) ||
       !compiler.load_native("onnx", argv[6])) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
@@ -66,10 +66,10 @@ int main(int argc, char** argv) {
 
   const auto bytes = read_bytes(argv[7]);
   const auto source = compiler.run<joggle::Module>(
-      "onnx.read", bytes, std::string{"squeezenet_qconv"});
+      "onnx.read", bytes, std::string{"squeezenet_qdq"});
   const auto optimized = compiler.run<joggle::Module>(
-      "onnx_qconv_pipeline.compile", bytes,
-      std::string{"squeezenet_qconv"});
+      "onnx_qdq_profile_pipeline.compile", bytes,
+      std::string{"squeezenet_qdq"});
   const auto source_main = source ? source->function("main") : std::nullopt;
   const auto optimized_main =
       optimized ? optimized->function("main") : std::nullopt;
@@ -82,8 +82,8 @@ int main(int argc, char** argv) {
   }
 
   std::size_t constants = 0;
-  std::size_t fused = 0;
-  std::size_t located_fused = 0;
+  std::size_t composites = 0;
+  std::size_t located_composites = 0;
   std::size_t quantize = 0;
   std::size_t dequantize = 0;
   std::size_t convolutions = 0;
@@ -99,19 +99,20 @@ int main(int argc, char** argv) {
                                            name == "dequantize");
     convolutions += static_cast<std::size_t>(owner == "tensor" &&
                                              name == "conv");
-    if (owner == "qconv" && name == "conv") {
-      ++fused;
-      located_fused += static_cast<std::size_t>(op.location().has_value());
+    if (owner == "qdq" && name == "nchw_conv") {
+      ++composites;
+      located_composites +=
+          static_cast<std::size_t>(op.location().has_value());
     }
   }
 
   bool ok = true;
   ok &= expect(before->ops().size() == 399U && after->ops().size() == 303U &&
-                   constants == 228U && fused == 26U &&
-                   located_fused == fused && quantize == 13U &&
+                   constants == 228U && composites == 26U &&
+                   located_composites == composites && quantize == 13U &&
                    dequantize == 21U && convolutions == 0U,
-               "all 26 QDQ Conv expressions fuse without duplicating the "
-               "eight activation dequantizers shared by 16 branches");
+               "all 26 eligible QDQ Conv regions become transparent "
+               "composites without duplicating shared dequantizers");
   joggle::Diagnostics equivalence;
   ok &= expect(joggle::equivalent(compiler, *before, *after, equivalence) &&
                    equivalence.ok(),
@@ -119,8 +120,8 @@ int main(int argc, char** argv) {
   ok &= expect(compiler.verify(*optimized),
                "the transformed QDQ model remains valid Module IR");
   const std::string canonical = joggle::format(*optimized);
-  ok &= expect(canonical.find("import qconv@1.0.0;") != std::string::npos,
-               "canonical output derives the qconv dependency from calls");
+  ok &= expect(canonical.find("import qdq@1.0.0;") != std::string::npos,
+               "canonical output derives the qdq dependency from calls");
   const auto dependencies = optimized->dependencies();
   const auto has_dependency = [&](std::string_view name) {
     return std::any_of(dependencies.begin(), dependencies.end(),
@@ -128,15 +129,16 @@ int main(int argc, char** argv) {
                          return dependency.name == name;
                        });
   };
-  ok &= expect(has_dependency("qconv") && has_dependency("quant") &&
+  ok &= expect(has_dependency("qdq") && has_dependency("quant") &&
                    has_dependency("tensor"),
                "the transformed Module retains the complete semantic "
                "dependency closure");
   if (!ok) {
     std::cerr << "before=" << before->ops().size()
               << " after=" << after->ops().size()
-              << " constants=" << constants << " qconv=" << fused
-              << " located=" << located_fused
+              << " constants=" << constants
+              << " composites=" << composites
+              << " located=" << located_composites
               << " quantize=" << quantize
               << " dequantize=" << dequantize
               << " conv=" << convolutions << '\n';

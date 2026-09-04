@@ -16,8 +16,8 @@ bool expect(bool condition, std::string_view message) {
 constexpr std::string_view source = R"(
 joggle 1;
 
-module qconv_fixture@1.0.0 {
-  import qconv@1;
+module qdq_fixture@1.0.0 {
+  import qdq@1;
   import quant@1 as q;
   import tensor@1 as t;
 
@@ -58,7 +58,7 @@ module qconv_fixture@1.0.0 {
   }
 
   fn optimize(input: function) -> function {
-    return @qconv.run(input);
+    return @qdq.run(input);
   }
 }
 )";
@@ -69,17 +69,17 @@ int main() {
   joggle::Compiler compiler;
   compiler.load(JOGGLE_TENSOR_MODULE);
   compiler.load(JOGGLE_QUANT_MODULE);
-  compiler.load(JOGGLE_QCONV_MODULE);
-  compiler.add(source, "qconv-fixture.joggle");
+  compiler.load(JOGGLE_QDQ_MODULE);
+  compiler.add(source, "qdq-fixture.joggle");
   if (!compiler.link() ||
-      !compiler.load_native("qconv", JOGGLE_QCONV_NATIVE)) {
+      !compiler.load_native("qdq", JOGGLE_QDQ_NATIVE)) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
 
-  const auto model = compiler.materialize("qconv_fixture.model");
+  const auto model = compiler.materialize("qdq_fixture.model");
   const auto optimized = model ? compiler.run<joggle::Function>(
-                                     "qconv_fixture.optimize", *model)
+                                     "qdq_fixture.optimize", *model)
                                : std::nullopt;
   if (!model || !optimized) {
     compiler.diagnostics().print(std::cerr);
@@ -90,13 +90,13 @@ int main() {
   joggle::Diagnostics equivalence;
   bool ok = true;
   ok &= expect(ops.size() == 1U &&
-                   ops.front().callee().symbol().module_name() == "qconv" &&
-                   ops.front().callee().symbol().local_name() == "conv",
-               "the QDQ Conv expression becomes one ordinary qconv call");
+                   ops.front().callee().symbol().module_name() == "qdq" &&
+                   ops.front().callee().symbol().local_name() == "nchw_conv",
+               "the QDQ Conv expression becomes one transparent composite");
   ok &= expect(joggle::equivalent(compiler, *model, *optimized,
                                   equivalence) &&
                    equivalence.ok(),
-               "the qconv source body proves the replacement meaning");
+               "the source body proves the composite meaning");
   ok &= expect(compiler.verify(*optimized),
                "the transformed Function remains verified IR");
   if (!ok) {

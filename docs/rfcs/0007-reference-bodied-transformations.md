@@ -123,7 +123,8 @@ rebuild it deterministically. No runtime search is mandatory.
 4. [x] Replace the tensor fusion fixture's bodyless fused declaration with a
    source-bodied extension and prove the positive and negative cases.
 5. [x] Expose the primitive through an ordinary module function and exercise it
-   from source with `@`.
+   from source with `@`. The installable `transform@1.0.0` Module accepts typed
+   lambda Functions directly and has Function and Module overloads.
 6. [x] Derive transformation composition from the complete SqueezeNet fusion
    pipeline. Ordinary `fn`/`@call` sequencing composes modules; the
    transformation's own bounded sweep replaces every matching pair. No public
@@ -136,9 +137,10 @@ rebuild it deterministically. No runtime search is mandatory.
    model requires this because 16 of 26 Conv candidates form eight pairs that
    share one activation Dequantize per pair; no new pattern or graph
    abstraction is introduced.
-9. [x] Add `qconv` as a normal source-bodied QDQ Conv seam and transform all 26
-   eligible expressions in the official model. Whole-Function equivalence,
-   shared-DAG preservation, provenance, and dependency closure are checked.
+9. [x] Add `qdq` as an operator-independent library of transparent composites.
+   Its first normal `nchw_conv` function transforms all 26 eligible expressions
+   in the official model. Whole-Function equivalence, shared-DAG preservation,
+   provenance, and dependency closure are checked.
 10. [x] Add generic reference-body outlining. An extension supplies only an
     eligible root and exact call arguments; the core instantiates the normal
     source body, locks hole bindings, proves equivalence, preserves shared DAGs,

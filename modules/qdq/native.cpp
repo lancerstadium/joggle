@@ -108,7 +108,7 @@ arguments(const joggle::Function& function, const joggle::Op& output) {
 
 std::optional<joggle::Module::FunctionDecl>
 reference(const joggle::Module& module) {
-  const auto overloads = module.overloads("conv");
+  const auto overloads = module.overloads("nchw_conv");
   const auto found = std::find_if(
       overloads.begin(), overloads.end(), [](const auto& current) {
         return current.inputs().size() == 15U;
@@ -124,7 +124,7 @@ std::optional<Subject> run(joggle::Compiler& compiler, Subject input,
                            joggle::Diagnostics& diagnostics) {
   const auto function = reference(module);
   if (!function) {
-    diagnostics.report("qconv.run cannot find its Conv semantic function");
+    diagnostics.report("qdq.run cannot find its NCHW Conv reference function");
     return std::nullopt;
   }
   const auto changed = joggle::outline(

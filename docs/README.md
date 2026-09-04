@@ -11,6 +11,8 @@ of the project; none is a migration log.
 - [Language](language.md) is the source-language reference.
 - [Compiler functions](compiler-functions.md) defines composition and the
   reusable facilities required by transforms, analyses, and output functions.
+- [Transform module](transform.md) documents direct typed-lambda semantic
+  replacement for Function and Module values.
 - [Research position](research-position.md) separates implemented evidence from
   the hypotheses, comparisons, and experiments required for publication.
 - [Module design](modules.md) defines the extension and dependency model.
@@ -18,8 +20,9 @@ of the project; none is a migration log.
   vocabulary and its implemented evidence boundary.
 - [Quant module](quant.md) records the ordinary-function QDQ boundary, its
   executable affine oracle, and the exact semantic trust boundary.
-- [QConv module](qconv.md) records the first source-grounded QDQ convolution
-  seam and its complete official-model transformation evidence.
+- [QDQ composite module](qdq.md) separates operator-independent quantization
+  from transparent, source-bodied composite profiles and records the complete
+  official-model transformation evidence.
 - [Fusion module](fusion.md) documents the first installable,
   reference-bodied real-model transformation.
 - [Bitpack module](bitpack.md) documents logical projection and the first

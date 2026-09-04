@@ -74,11 +74,12 @@ ctest --test-dir build --output-on-failure
 ```
 
 The repository ships `tensor@1.0.0`, a small target-independent semantic
-Module; `quant@1.1.0`, an affine QDQ boundary with a bit-exact reference
+Module; `transform@1.0.0`, the typed-lambda semantic replacement surface;
+`quant@1.1.0`, an affine QDQ boundary with a bit-exact reference
 oracle; `fusion@1.0.0`, a reference-bodied Conv/ReLU transformation;
-`qconv@1.0.0`, a source-grounded NCHW QDQ convolution transformation;
-`bitpack@1.0.0`, a checked
-logical-to-physical format experiment; and an optional, Protobuf-backed
+`qdq@1.0.0`, a library of transparent, source-bodied QDQ composites;
+`bitpack@1.0.0`, a checked logical-to-physical format experiment; and an
+optional, Protobuf-backed
 `onnx@1.0.0` inference importer. The real-model paths import hash-pinned FLOAT
 and QDQ SqueezeNet artifacts into ordinary typed Functions. Both have exact
 ONNX Runtime differential evidence; the FLOAT graph also fuses all 26
@@ -90,11 +91,12 @@ Conv/ReLU pairs through a source-defined compiler pipeline.
 - [Language reference](docs/language.md)
 - [IR model](docs/ir.md)
 - [Compiler functions](docs/compiler-functions.md)
+- [Transform module](docs/transform.md)
 - [C++ API](docs/cpp-api.md)
 - [Module design](docs/modules.md)
 - [Tensor module](docs/tensor.md)
 - [Quant module](docs/quant.md)
-- [QConv module](docs/qconv.md)
+- [QDQ composite module](docs/qdq.md)
 - [Fusion module](docs/fusion.md)
 - [Bitpack module](docs/bitpack.md)
 - [ONNX inference import](docs/onnx.md)

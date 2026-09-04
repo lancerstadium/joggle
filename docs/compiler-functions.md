@@ -59,9 +59,9 @@ as scalar metadata.
 Typed replacement is the same ordinary-function mechanism:
 
 ```joggle
-fn replace(input: function, before: function, after: function) -> function;
+import transform@1;
 
-optimized = @replace(
+optimized = @transform.replace(
   input,
   (x: tensor, w: tensor) => relu(conv2d(x, w)),
   (x: tensor, w: tensor) => conv_relu(x, w)
@@ -73,7 +73,7 @@ binding rules. There is no separate sequence object:
 
 ```joggle
 fn fuse(input: function) -> function {
-  return @replace(input, before, after);
+  return @transform.replace(input, before, after);
 }
 
 fn optimize(input: function) -> function {
@@ -88,7 +88,8 @@ inside a residual higher-order call or as an argument to an explicitly staged
 compiler function. The compiler does not convert them through a pattern,
 strategy, or scalar metadata representation.
 
-A native module binds this declaration to the equivalence-checking C++
+The shipped `transform` Module binds this declaration to the
+equivalence-checking C++
 `joggle::replace(Compiler&, ...)` overload with `Compiler::bind`. Eligible
 source bodies are expanded into a bounded canonical expression encoding;
 bodyless calls remain exact-identity leaves. A mismatch is diagnosed before
