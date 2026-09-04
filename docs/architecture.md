@@ -73,7 +73,7 @@ joggle::Module
 
 There is no second whole-IR or graph container. Parsing returns a `Module`;
 whole-module compiler functions consume and return that same type. A repository
-stores immutable Module releases and optional native behavior, but it introduces
+stores immutable Module releases and optional native implementations, but it introduces
 no language object or IR layer.
 
 Declarations and materialized bodies are two states inside the same Module,
@@ -96,7 +96,7 @@ formatting still uses Prelude's concise type spellings.
 
 Module identity has two deliberately different hashes. `digest()` covers the
 complete canonical Module and therefore changes when a body changes; release
-locks and native behavior use it. `interface_digest()` erases Function bodies
+locks and native implementations use it. `interface_digest()` erases Function bodies
 and covers imports plus declarations; Compiler API boundaries use it when exact
 interface compatibility is required. Member Symbols themselves use a
 versioned qualified declaration name. An optimizer can change executable
@@ -107,7 +107,7 @@ boundary.
 
 The other public concepts are small:
 
-- `joggle::Compiler` owns a linked declaration environment, behavior bindings,
+- `joggle::Compiler` owns a linked declaration environment, native bindings,
   diagnostics, and deterministic evaluation limits.
 - `joggle::Type` and `joggle::Attribute` are immutable instances of
   Module-declared schemas.
@@ -313,11 +313,10 @@ emitter. The names are target API choices. Joggle neither requires a fixed
 registry. A source-defined `compile` function composes whichever functions the
 target actually needs.
 
-The current native-library API is still named "behavior" in C++ and CMake.
-That name leaks an internal implementation detail and will be replaced by
-"native module implementation" without adding a second package identity. The
-`.joggle` Module remains the schema authority; no generated declaration header
-is part of the design.
+`joggle_module(SOURCE ... NATIVE ...)` builds an optional native
+implementation for one exact canonical Module. Its entry point and identity
+descriptor are generated in a private translation unit. The `.joggle` Module
+remains the schema authority and no declaration header is generated.
 
 ## Deliberate non-goals
 

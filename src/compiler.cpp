@@ -8,7 +8,7 @@
 #include "expression_syntax.h"
 #include "function_body.h"
 #include "ir_internal.h"
-#include "joggle/behavior.h"
+#include "joggle/native.h"
 #include "joggle/module.h"
 #include "module_internal.h"
 #include "module_repository.h"
@@ -68,8 +68,7 @@ public:
 #if defined(_WIN32)
     result.handle_ = LoadLibraryW(path.c_str());
     if (result.handle_ == nullptr) {
-      diagnostics.report("cannot load behavior library '" + path.string() +
-                         "'");
+      diagnostics.report("cannot load native library '" + path.string() + "'");
       return std::nullopt;
     }
 #else
@@ -77,7 +76,7 @@ public:
     if (result.handle_ == nullptr) {
       const char* message = dlerror();
       diagnostics.report(
-          "cannot load behavior library '" + path.string() +
+          "cannot load native library '" + path.string() +
           "': " + (message == nullptr ? "unknown error" : message));
       return std::nullopt;
     }
@@ -118,7 +117,7 @@ std::string module_identity(const Module& module) {
          std::string(module.digest());
 }
 
-std::string behavior_key(std::string_view module, std::string_view target) {
+std::string native_key(std::string_view module, std::string_view target) {
   return std::string(module) + "\n" + std::string(target);
 }
 
@@ -517,7 +516,7 @@ struct Compiler::State {
     std::string digest;
     bool root = false;
   };
-  struct LockedBehavior {
+  struct LockedNative {
     Version module_version;
     std::string module_digest;
     std::string target;
@@ -537,19 +536,17 @@ struct Compiler::State {
   std::set<std::string, std::less<>> explicit_modules;
   std::vector<std::filesystem::path> search_paths;
   std::map<std::string, LockedIdentity, std::less<>> locked_modules;
-  std::map<std::string, LockedBehavior, std::less<>> locked_behaviors;
+  std::map<std::string, LockedNative, std::less<>> locked_natives;
   bool has_lock = false;
-  std::vector<DynamicLibrary> behavior_libraries;
-  std::set<std::string, std::less<>> loaded_behaviors;
+  std::vector<DynamicLibrary> native_libraries;
+  std::set<std::string, std::less<>> loaded_natives;
   std::map<std::string, VerifierFunction<Type>, std::less<>> type_verifiers;
   std::map<std::string, VerifierFunction<Attribute>, std::less<>>
       attribute_verifiers;
-  std::map<std::string, VerifierFunction<Op>, std::less<>>
-      op_verifiers;
+  std::map<std::string, VerifierFunction<Op>, std::less<>> op_verifiers;
   std::map<std::string, MethodFunction<Attribute>, std::less<>>
       attribute_methods;
-  std::map<std::string, MethodFunction<Op>, std::less<>>
-      op_methods;
+  std::map<std::string, MethodFunction<Op>, std::less<>> op_methods;
   std::map<std::string, BoundFunction, std::less<>> bindings;
   std::map<std::string, detail::ParameterValue, std::less<>>
       hermetic_evaluations;
@@ -680,7 +677,7 @@ void Compiler::lock(const std::filesystem::path& path) {
   }
 
   std::map<std::string, State::LockedIdentity, std::less<>> locked;
-  std::map<std::string, State::LockedBehavior, std::less<>> locked_behavior;
+  std::map<std::string, State::LockedNative, std::less<>> locked_native;
   std::size_t roots = 0;
   std::size_t line_number = 0;
   bool header = false;
@@ -717,22 +714,22 @@ void Compiler::lock(const std::filesystem::path& path) {
     }
     const std::string_view kind = text.substr(0, space);
     const bool is_root = kind == "root";
-    const bool is_behavior = kind == "behavior";
-    if (!is_root && kind != "module" && !is_behavior) {
-      report("expected root, module, or behavior lock entry");
+    const bool is_native = kind == "native";
+    if (!is_root && kind != "module" && !is_native) {
+      report("expected root, module, or native lock entry");
       continue;
     }
     text.remove_prefix(space + 1U);
     std::string_view module_text = text;
-    std::string_view behavior_text;
-    if (is_behavior) {
+    std::string_view native_text;
+    if (is_native) {
       const std::size_t separator = text.find(' ');
       if (separator == std::string_view::npos) {
-        report("behavior lock entry needs target#digest");
+        report("native lock entry needs target#digest");
         continue;
       }
       module_text = text.substr(0, separator);
-      behavior_text = text.substr(separator + 1U);
+      native_text = text.substr(separator + 1U);
     }
     const std::size_t at = module_text.find('@');
     const std::size_t hash = module_text.find('#');
@@ -749,26 +746,26 @@ void Compiler::lock(const std::filesystem::path& path) {
       report("invalid locked module identity");
       continue;
     }
-    if (is_behavior) {
-      const std::size_t behavior_hash = behavior_text.find('#');
-      if (behavior_hash == std::string_view::npos) {
-        report("expected target#digest for behavior");
+    if (is_native) {
+      const std::size_t native_hash = native_text.find('#');
+      if (native_hash == std::string_view::npos) {
+        report("expected target#digest for native");
         continue;
       }
-      const std::string_view target = behavior_text.substr(0, behavior_hash);
-      const std::string_view behavior_digest =
-          behavior_text.substr(behavior_hash + 1U);
-      if (!target_identifier(target) || !digest(behavior_digest)) {
-        report("invalid locked behavior identity");
+      const std::string_view target = native_text.substr(0, native_hash);
+      const std::string_view native_digest =
+          native_text.substr(native_hash + 1U);
+      if (!target_identifier(target) || !digest(native_digest)) {
+        report("invalid locked native identity");
         continue;
       }
-      if (!locked_behavior
-               .emplace(behavior_key(name, target),
-                        State::LockedBehavior{
+      if (!locked_native
+               .emplace(native_key(name, target),
+                        State::LockedNative{
                             *version, std::string(module_digest),
-                            std::string(target), std::string(behavior_digest)})
+                            std::string(target), std::string(native_digest)})
                .second) {
-        report("duplicate locked behavior for '" + std::string(name) +
+        report("duplicate locked native for '" + std::string(name) +
                "' and target '" + std::string(target) + "'");
       }
       continue;
@@ -799,7 +796,7 @@ void Compiler::lock(const std::filesystem::path& path) {
     return;
   }
   state_->locked_modules = std::move(locked);
-  state_->locked_behaviors = std::move(locked_behavior);
+  state_->locked_natives = std::move(locked_native);
   state_->has_lock = true;
 }
 
@@ -908,19 +905,19 @@ bool Compiler::link() {
                                    "' is not part of the resolved closure");
       }
     }
-    for (const auto& [key, behavior] : state_->locked_behaviors) {
+    for (const auto& [key, native] : state_->locked_natives) {
       const std::size_t separator = key.find('\n');
       const std::string name = key.substr(0, separator);
       const auto module = state_->modules.find(name);
       if (module == state_->modules.end() ||
-          module->second.version() != behavior.module_version ||
-          module->second.digest() != behavior.module_digest) {
+          module->second.version() != native.module_version ||
+          module->second.digest() != native.module_digest) {
         state_->diagnostics.report(
-            "locked behavior references a different module identity for '" +
+            "locked native references a different module identity for '" +
             name + "'");
         continue;
       }
-      if (behavior.target != behavior_target) {
+      if (native.target != detail::native_target) {
         continue;
       }
 
@@ -928,15 +925,15 @@ bool Compiler::link() {
       const auto source = state_->module_sources.find(name);
       if (source != state_->module_sources.end()) {
         candidates =
-            detail::behavior_candidates(source->second, state_->diagnostics);
+            detail::native_candidates(source->second, state_->diagnostics);
       }
       if (candidates.empty() && !state_->search_paths.empty()) {
         auto installed = detail::resolve_module(
-            state_->search_paths, name, behavior.module_version,
-            behavior.module_digest, state_->diagnostics);
+            state_->search_paths, name, native.module_version,
+            native.module_digest, state_->diagnostics);
         if (installed) {
-          candidates = detail::behavior_candidates(installed->source,
-                                                   state_->diagnostics);
+          candidates =
+              detail::native_candidates(installed->source, state_->diagnostics);
           if (!candidates.empty()) {
             state_->module_sources.insert_or_assign(
                 name, std::filesystem::absolute(installed->source)
@@ -947,17 +944,16 @@ bool Compiler::link() {
       bool found = false;
       for (const auto& candidate : candidates) {
         const auto candidate_digest =
-            detail::behavior_digest(candidate, state_->diagnostics);
-        if (candidate_digest && *candidate_digest == behavior.digest) {
+            detail::native_digest(candidate, state_->diagnostics);
+        if (candidate_digest && *candidate_digest == native.digest) {
           found = true;
           break;
         }
       }
       if (!found) {
-        state_->diagnostics.report("locked behavior for '" + name +
-                                   "' and target '" + behavior.target +
-                                   "' is not installed with digest " +
-                                   behavior.digest);
+        state_->diagnostics.report(
+            "locked native for '" + name + "' and target '" + native.target +
+            "' is not installed with digest " + native.digest);
       }
     }
     if (!state_->diagnostics.ok()) {
@@ -1363,67 +1359,67 @@ std::vector<Module> Compiler::modules() const {
   return result;
 }
 
-bool Compiler::load_behavior(std::string_view module,
-                             const std::filesystem::path& library) {
+bool Compiler::load_native(std::string_view module,
+                           const std::filesystem::path& library) {
   if (!state_->linked) {
     state_->diagnostics.report(
-        "cannot load behavior before the compiler is linked");
+        "cannot load native before the compiler is linked");
     return false;
   }
   const auto found = state_->modules.find(module);
   if (found == state_->modules.end()) {
-    state_->diagnostics.report("behavior target module '" +
-                               std::string(module) + "' is not linked");
+    state_->diagnostics.report("native target module '" + std::string(module) +
+                               "' is not linked");
     return false;
   }
-  return load_behavior(found->second, library);
+  return load_native(found->second, library);
 }
 
-bool Compiler::load_behavior(std::string_view module) {
+bool Compiler::load_native(std::string_view module) {
   if (!state_->linked) {
     state_->diagnostics.report(
-        "cannot load behavior before the compiler is linked");
+        "cannot load native before the compiler is linked");
     return false;
   }
   const auto found = state_->modules.find(module);
   if (found == state_->modules.end()) {
-    state_->diagnostics.report("behavior target module '" +
-                               std::string(module) + "' is not linked");
+    state_->diagnostics.report("native target module '" + std::string(module) +
+                               "' is not linked");
     return false;
   }
-  return load_behavior(found->second);
+  return load_native(found->second);
 }
 
-bool Compiler::load_behavior(const Module& module,
-                             const std::filesystem::path& library) {
+bool Compiler::load_native(const Module& module,
+                           const std::filesystem::path& library) {
   if (!state_->linked) {
     state_->diagnostics.report(
-        "cannot load behavior before the compiler is linked");
+        "cannot load native before the compiler is linked");
     return false;
   }
   const auto loaded = state_->modules.find(module.name());
   if (loaded == state_->modules.end() ||
       loaded->second.version() != module.version() ||
       loaded->second.digest() != module.digest()) {
-    state_->diagnostics.report("behavior target '" + module_identity(module) +
+    state_->diagnostics.report("native target '" + module_identity(module) +
                                "' is not part of this compiler");
     return false;
   }
   const std::string identity = module_identity(module);
-  if (state_->loaded_behaviors.contains(identity)) {
+  if (state_->loaded_natives.contains(identity)) {
     return true;
   }
   if (state_->has_lock) {
-    const auto locked = state_->locked_behaviors.find(
-        behavior_key(module.name(), behavior_target));
-    if (locked == state_->locked_behaviors.end()) {
-      state_->diagnostics.report("behavior for '" + identity +
+    const auto locked = state_->locked_natives.find(
+        native_key(module.name(), detail::native_target));
+    if (locked == state_->locked_natives.end()) {
+      state_->diagnostics.report("native for '" + identity +
                                  "' is absent from the lock file");
       return false;
     }
-    const auto actual = detail::behavior_digest(library, state_->diagnostics);
+    const auto actual = detail::native_digest(library, state_->diagnostics);
     if (!actual || *actual != locked->second.digest) {
-      state_->diagnostics.report("behavior library '" + library.string() +
+      state_->diagnostics.report("native library '" + library.string() +
                                  "' does not match locked digest " +
                                  locked->second.digest);
       return false;
@@ -1434,45 +1430,45 @@ bool Compiler::load_behavior(const Module& module,
   if (!opened) {
     return false;
   }
-  void* address = opened->symbol(behavior_entry);
+  void* address = opened->symbol(detail::native_entry);
   if (address == nullptr) {
-    state_->diagnostics.report("behavior library '" + library.string() +
-                               "' does not export " + behavior_entry);
+    state_->diagnostics.report("native library '" + library.string() +
+                               "' does not export " + detail::native_entry);
     return false;
   }
-  static_assert(sizeof(BehaviorEntry) == sizeof(address));
-  BehaviorEntry entry = nullptr;
+  static_assert(sizeof(detail::NativeEntry) == sizeof(address));
+  detail::NativeEntry entry = nullptr;
   std::memcpy(&entry, &address, sizeof(entry));
-  const Behavior* behavior = nullptr;
+  const detail::NativeLibrary* native = nullptr;
   try {
-    behavior = entry();
+    native = entry();
   } catch (const std::exception& exception) {
-    state_->diagnostics.report("behavior entry in '" + library.string() +
+    state_->diagnostics.report("native entry in '" + library.string() +
                                "' threw: " + exception.what());
     return false;
   } catch (...) {
-    state_->diagnostics.report("behavior entry in '" + library.string() +
+    state_->diagnostics.report("native entry in '" + library.string() +
                                "' threw an unknown exception");
     return false;
   }
-  if (behavior == nullptr || behavior->abi != behavior_abi ||
-      behavior->size < sizeof(Behavior) ||
-      behavior->module_identity == nullptr || behavior->target == nullptr ||
-      behavior->bind == nullptr) {
-    state_->diagnostics.report("behavior library '" + library.string() +
+  if (native == nullptr || native->abi != detail::native_abi ||
+      native->size < sizeof(detail::NativeLibrary) ||
+      native->module_identity == nullptr || native->target == nullptr ||
+      native->load == nullptr) {
+    state_->diagnostics.report("native library '" + library.string() +
                                "' has an incompatible descriptor");
     return false;
   }
-  if (behavior->module_identity != identity) {
-    state_->diagnostics.report("behavior library '" + library.string() +
-                               "' targets '" + behavior->module_identity +
+  if (native->module_identity != identity) {
+    state_->diagnostics.report("native library '" + library.string() +
+                               "' targets '" + native->module_identity +
                                "', not '" + identity + "'");
     return false;
   }
-  if (behavior->target != std::string_view(behavior_target)) {
-    state_->diagnostics.report("behavior library '" + library.string() +
-                               "' targets '" + behavior->target +
-                               "', not host target '" + behavior_target + "'");
+  if (native->target != std::string_view(detail::native_target)) {
+    state_->diagnostics.report(
+        "native library '" + library.string() + "' targets '" + native->target +
+        "', not host target '" + detail::native_target + "'");
     return false;
   }
 
@@ -1487,12 +1483,12 @@ bool Compiler::load_behavior(const Module& module,
   auto host_representations = state_->host_representations;
   const std::size_t before = state_->diagnostics.size();
   try {
-    behavior->bind(*this, loaded->second, state_->diagnostics);
+    native->load(*this, loaded->second, state_->diagnostics);
   } catch (const std::exception& exception) {
-    state_->diagnostics.report("behavior binding for '" + identity +
+    state_->diagnostics.report("native binding for '" + identity +
                                "' threw: " + exception.what());
   } catch (...) {
-    state_->diagnostics.report("behavior binding for '" + identity +
+    state_->diagnostics.report("native binding for '" + identity +
                                "' threw an unknown exception");
   }
   if (state_->diagnostics.size() != before) {
@@ -1508,12 +1504,12 @@ bool Compiler::load_behavior(const Module& module,
     return false;
   }
 
-  state_->behavior_libraries.push_back(std::move(*opened));
-  state_->loaded_behaviors.insert(identity);
+  state_->native_libraries.push_back(std::move(*opened));
+  state_->loaded_natives.insert(identity);
   return true;
 }
 
-bool Compiler::load_behavior(const Module& module) {
+bool Compiler::load_native(const Module& module) {
   const auto source = state_->module_sources.find(module.name());
   if (source == state_->module_sources.end()) {
     state_->diagnostics.report("module '" + module_identity(module) +
@@ -1521,20 +1517,20 @@ bool Compiler::load_behavior(const Module& module) {
     return false;
   }
   auto candidates =
-      detail::behavior_candidates(source->second, state_->diagnostics);
+      detail::native_candidates(source->second, state_->diagnostics);
   if (candidates.empty()) {
     state_->diagnostics.report("module '" + module_identity(module) +
-                               "' has no behavior for target '" +
-                               behavior_target + "'");
+                               "' has no native for target '" +
+                               detail::native_target + "'");
     return false;
   }
   if (candidates.size() != 1U) {
     state_->diagnostics.report("module '" + module_identity(module) +
-                               "' has ambiguous behavior for target '" +
-                               behavior_target + "'");
+                               "' has ambiguous native for target '" +
+                               detail::native_target + "'");
     return false;
   }
-  return load_behavior(module, candidates.front());
+  return load_native(module, candidates.front());
 }
 
 std::optional<Type> Compiler::make(const Module::TypeDecl& schema,
@@ -1821,8 +1817,7 @@ std::optional<Function> Compiler::materialize(const Op& call) {
   if (owner == state_->modules.end() ||
       owner->second.version() != callee.symbol().module_version() ||
       owner->second.interface_digest() != callee.symbol().interface_digest()) {
-    state_->diagnostics.report("function '" +
-                               callee.symbol().qualified_name() +
+    state_->diagnostics.report("function '" + callee.symbol().qualified_name() +
                                "' is not in this compilation");
     return std::nullopt;
   }
@@ -1838,8 +1833,7 @@ std::optional<Function> Compiler::materialize(const Op& call) {
           ? std::shared_ptr<const detail::FunctionBody>{}
           : detail::ModuleAccess::body(owner->second, *declaration);
   if (!definition) {
-    state_->diagnostics.report("function '" +
-                               callee.symbol().qualified_name() +
+    state_->diagnostics.report("function '" + callee.symbol().qualified_name() +
                                "' has no source body");
     return std::nullopt;
   }
@@ -1866,8 +1860,8 @@ std::optional<Function> Compiler::materialize(const Op& call) {
     }
     const auto value = detail::FunctionAccess::known_value(argument);
     if (!value) {
-      state_->diagnostics.report("call property '" + parameters[parameter].name +
-                                 "' is not Known");
+      state_->diagnostics.report("call property '" +
+                                 parameters[parameter].name + "' is not Known");
       return std::nullopt;
     }
     known_values.push_back(argument);
@@ -1994,8 +1988,7 @@ Compiler::call(const Attribute& subject,
 }
 
 std::optional<ParameterValue>
-Compiler::call(const Op& subject,
-               Module::InterfaceDecl::MethodDecl method,
+Compiler::call(const Op& subject, Module::InterfaceDecl::MethodDecl method,
                std::span<const ParameterValue> parameters) {
   return evaluate_interface_method(
       state_->linked, subject, std::move(method), parameters,
@@ -2059,17 +2052,16 @@ void Compiler::bind_verifier(Module::FunctionDecl schema,
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
       owner->second.interface_digest() != symbol.interface_digest()) {
-    state_->diagnostics.report(
-        "cannot bind an Op verifier for function '" +
-        symbol.qualified_name() + "' outside this compiler");
+    state_->diagnostics.report("cannot bind an Op verifier for function '" +
+                               symbol.qualified_name() +
+                               "' outside this compiler");
     return;
   }
   if (!verifier) {
     state_->diagnostics.report("Op verifier binding is empty");
     return;
   }
-  if (!state_->op_verifiers
-           .emplace(symbol.stable_name(), std::move(verifier))
+  if (!state_->op_verifiers.emplace(symbol.stable_name(), std::move(verifier))
            .second) {
     state_->diagnostics.report("function '" + symbol.qualified_name() +
                                "' already has an Op verifier");
@@ -2299,19 +2291,17 @@ Compiler::resolve_host_overload(const Module& module, std::string_view name,
       continue;
     }
     if (match) {
-      state_->diagnostics.report(std::string(purpose) +
-                                 " is ambiguous for overloaded function '" +
-                                 std::string(module.name()) + "." +
-                                 std::string(name) + "'");
+      state_->diagnostics.report(
+          std::string(purpose) + " is ambiguous for overloaded function '" +
+          std::string(module.name()) + "." + std::string(name) + "'");
       return std::nullopt;
     }
     match = candidate;
   }
   if (!match) {
-    state_->diagnostics.report("no overload of function '" +
-                               std::string(module.name()) + "." +
-                               std::string(name) + "' matches the " +
-                               std::string(purpose));
+    state_->diagnostics.report(
+        "no overload of function '" + std::string(module.name()) + "." +
+        std::string(name) + "' matches the " + std::string(purpose));
   }
   return match;
 }
@@ -2513,7 +2503,7 @@ Compiler::evaluate_binding(Module::FunctionDecl function,
 std::optional<Module> Compiler::lookup_module(const Module& module) {
   if (!state_->linked) {
     state_->diagnostics.report(
-        "cannot bind behavior before the compiler is linked");
+        "cannot bind native before the compiler is linked");
     return std::nullopt;
   }
   const auto found = state_->modules.find(module.name());
@@ -2696,8 +2686,7 @@ Compiler::lookup_method(const Attribute& subject, std::string_view reference) {
 }
 
 std::optional<Module::InterfaceDecl::MethodDecl>
-Compiler::lookup_method(const Op& subject,
-                        std::string_view reference) {
+Compiler::lookup_method(const Op& subject, std::string_view reference) {
   return lookup_method(subject.callee(), reference);
 }
 
@@ -2717,8 +2706,7 @@ bool Compiler::verify(const Function& function) {
     const Module::FunctionDecl schema = op.callee();
     const Module::Symbol symbol = schema.symbol();
     const auto location = detail::FunctionAccess::location(op);
-    const auto verifier =
-        state_->op_verifiers.find(symbol.stable_name());
+    const auto verifier = state_->op_verifiers.find(symbol.stable_name());
     if (verifier != state_->op_verifiers.end() &&
         !invoke_verifier(verifier->second, op,
                          "call to '" + symbol.qualified_name() + "'",

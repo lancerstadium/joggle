@@ -17,12 +17,12 @@ struct InstalledModule {
 };
 
 std::filesystem::path default_module_root();
-std::string_view behavior_file_name();
+std::string_view native_file_name();
 std::vector<std::filesystem::path>
-behavior_candidates(const std::filesystem::path& module_source,
-                    Diagnostics& diagnostics);
-std::optional<std::string> behavior_digest(const std::filesystem::path& library,
-                                           Diagnostics& diagnostics);
+native_candidates(const std::filesystem::path& module_source,
+                  Diagnostics& diagnostics);
+std::optional<std::string> native_digest(const std::filesystem::path& library,
+                                         Diagnostics& diagnostics);
 
 std::vector<InstalledModule>
 installed_modules(const std::filesystem::path& root, Diagnostics& diagnostics);
@@ -40,7 +40,7 @@ resolve_module(std::span<const std::filesystem::path> roots,
 std::optional<std::filesystem::path>
 install_module(const std::filesystem::path& root, const Module& module,
                Diagnostics& diagnostics,
-               std::optional<std::filesystem::path> behavior = std::nullopt);
+               std::optional<std::filesystem::path> native = std::nullopt);
 
 bool remove_module(const std::filesystem::path& root, std::string_view name,
                    Version version, Diagnostics& diagnostics);

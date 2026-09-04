@@ -26,8 +26,9 @@ Before submitting a change:
 ## Compatibility
 
 The `joggle 1;` header versions the text language. Module semantic versions
-version Module schemas. Behavior libraries bind to the exact canonical
-Module digest and host ABI; changing a Module requires rebuilding its behavior.
+version Module schemas. Native libraries bind to the exact canonical
+Module digest and host ABI; changing a Module requires rebuilding its native
+library.
 
 Public C++ headers live in `include/joggle`. Implementation-only types stay in
 `src`. Do not add generated declaration headers or a second registration API;

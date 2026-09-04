@@ -215,7 +215,7 @@ module pipeline@1.0.0 {
   }
   const auto test_ir = compiler.module("test_ir");
   const auto pipeline = compiler.module("pipeline");
-  if (!test_ir || !compiler.load_behavior("test_ir", JOGGLE_TEST_BEHAVIOR)) {
+  if (!test_ir || !compiler.load_native("test_ir", JOGGLE_TEST_NATIVE)) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -370,24 +370,23 @@ module pipeline@1.0.0 {
   compiler.bind(*emit, [](const joggle::Function& current) -> joggle::Bytes {
     return {static_cast<std::byte>(current.ops().size())};
   });
-  compiler.bind(
-      *canonicalize,
-      [arith_cast_decl](
-          joggle::Function current,
-          joggle::Diagnostics& diagnostics) -> std::optional<joggle::Function> {
-        auto edit = current.edit();
-        for (const joggle::Op& op : current.ops()) {
-          if (op.callee() != *arith_cast_decl) {
-            continue;
-          }
-          edit.replace(op.result(0), op.arguments().front());
-          edit.erase(op);
-        }
-        if (!edit.commit(diagnostics)) {
-          return std::nullopt;
-        }
-        return current;
-      });
+  compiler.bind(*canonicalize,
+                [arith_cast_decl](joggle::Function current,
+                                  joggle::Diagnostics& diagnostics)
+                    -> std::optional<joggle::Function> {
+                  auto edit = current.edit();
+                  for (const joggle::Op& op : current.ops()) {
+                    if (op.callee() != *arith_cast_decl) {
+                      continue;
+                    }
+                    edit.replace(op.result(0), op.arguments().front());
+                    edit.erase(op);
+                  }
+                  if (!edit.commit(diagnostics)) {
+                    return std::nullopt;
+                  }
+                  return current;
+                });
   bool consumed = false;
   compiler.bind(*consume, [&](const joggle::Bytes&) { consumed = true; });
   std::size_t append_calls = 0;
@@ -487,28 +486,26 @@ module pipeline@1.0.0 {
                    consume_ok && consumed && reencoded->size() == 1U &&
                    reencoded->front() == std::byte{0},
                "read, analysis, transformation, and emission share typed run");
-  ok &= expect(selected_once && selected_once->size() == 1U && selected_twice &&
-                   selected_twice->size() == 2U && repeated &&
-                   repeated->size() == 3U && chosen && chosen->size() == 1U &&
-                   chosen->front() == std::byte{0x02} && broken &&
-                   broken->size() == 1U && continued &&
-                   continued->size() == 1U && append_calls == 8U &&
-                   overloaded == std::optional<std::int64_t>{12} &&
-                   named_integer_overload ==
-                       std::optional<std::int64_t>{12} &&
-                   named_string_overload ==
-                       std::optional<std::string>{"abab"} &&
-                   operated == std::optional<std::int64_t>{105} &&
-                   ordered == std::optional<std::int64_t>{7} &&
-                   inverted == std::optional<bool>{false} &&
-                   ascending == std::optional<bool>{true} &&
-                   descending == std::optional<bool>{true} &&
-                   equal_order == std::optional<bool>{false} && divided &&
-                   *divided == std::tuple<std::int64_t, bool>{4, true} &&
-                   observed_once && observed == std::optional<std::int64_t>{13},
-               "structured compiler functions execute selected branches, "
-               "loops, overloads, typed operators, zero-result calls, and "
-               "multi-result calls");
+  ok &= expect(
+      selected_once && selected_once->size() == 1U && selected_twice &&
+          selected_twice->size() == 2U && repeated && repeated->size() == 3U &&
+          chosen && chosen->size() == 1U &&
+          chosen->front() == std::byte{0x02} && broken &&
+          broken->size() == 1U && continued && continued->size() == 1U &&
+          append_calls == 8U && overloaded == std::optional<std::int64_t>{12} &&
+          named_integer_overload == std::optional<std::int64_t>{12} &&
+          named_string_overload == std::optional<std::string>{"abab"} &&
+          operated == std::optional<std::int64_t>{105} &&
+          ordered == std::optional<std::int64_t>{7} &&
+          inverted == std::optional<bool>{false} &&
+          ascending == std::optional<bool>{true} &&
+          descending == std::optional<bool>{true} &&
+          equal_order == std::optional<bool>{false} && divided &&
+          *divided == std::tuple<std::int64_t, bool>{4, true} &&
+          observed_once && observed == std::optional<std::int64_t>{13},
+      "structured compiler functions execute selected branches, "
+      "loops, overloads, typed operators, zero-result calls, and "
+      "multi-result calls");
   const auto typed_function = compiler.materialize(*typed);
   const auto ordered_typed_function = compiler.materialize(*ordered_typed);
   const auto relation_typed_function = compiler.materialize(*relation_typed);
@@ -579,14 +576,10 @@ module pipeline@1.0.0 {
                   .get<std::int64_t>() == std::optional<std::int64_t>{9} &&
           residual_variadic_function &&
           residual_variadic_function->ops().size() == 1U &&
-          residual_variadic_function->ops()
-                  .front()
-                  .arguments()
-                  .size() == 2U &&
+          residual_variadic_function->ops().front().arguments().size() == 2U &&
           residual_dependent_function &&
           residual_dependent_function->ops().size() == 1U &&
-          residual_dependent_function->ops().front().callee() ==
-              *width_copy &&
+          residual_dependent_function->ops().front().callee() == *width_copy &&
           relay_fork_function &&
           relay_fork_function->result_types().size() == 2U &&
           relay_fork_function->ops().size() == 1U &&
@@ -721,10 +714,9 @@ module source_model@1.0.0 {
       materialized_model ? materialized_model->function("count") : std::nullopt;
   const auto materialized_keep =
       materialized_model ? materialized_model->function("keep") : std::nullopt;
-  const auto materialized_calls =
-      materialized_main && materialized_main->body()
-          ? materialized_main->body()->ops()
-          : std::vector<joggle::Op>{};
+  const auto materialized_calls = materialized_main && materialized_main->body()
+                                      ? materialized_main->body()->ops()
+                                      : std::vector<joggle::Op>{};
   ok &=
       expect(source_model_linked && source_model_main &&
                  source_model_main->body() == nullptr && materialized_main &&
@@ -841,22 +833,21 @@ module mismatched_overload@1.0.0 {
       mismatched_overload.module("mismatched_overload");
   bool mismatched_called = false;
   if (mismatched_module) {
-    mismatched_overload.bind(
-        *mismatched_module, "choose", [&](std::int64_t input) {
-          mismatched_called = true;
-          return input;
-        });
-    mismatched_overload.bind(
-        *mismatched_module, "choose", [&](std::string input) {
-          mismatched_called = true;
-          return input;
-        });
+    mismatched_overload.bind(*mismatched_module, "choose",
+                             [&](std::int64_t input) {
+                               mismatched_called = true;
+                               return input;
+                             });
+    mismatched_overload.bind(*mismatched_module, "choose",
+                             [&](std::string input) {
+                               mismatched_called = true;
+                               return input;
+                             });
   }
   const auto mismatched_result =
-      mismatched_linked
-          ? mismatched_overload.run<bool>("mismatched_overload.choose",
-                                          std::int64_t{1})
-          : std::optional<bool>{};
+      mismatched_linked ? mismatched_overload.run<bool>(
+                              "mismatched_overload.choose", std::int64_t{1})
+                        : std::optional<bool>{};
   const bool reports_mismatched_invocation = std::any_of(
       mismatched_overload.diagnostics().entries().begin(),
       mismatched_overload.diagnostics().entries().end(),
@@ -965,11 +956,11 @@ module short_circuit@1.0.0 {
     return EXIT_FAILURE;
   }
   bool observed_after_failure = false;
-  short_circuit.bind(
-      *report, [](joggle::Bytes input, joggle::Diagnostics& diagnostics) {
-        diagnostics.report("native function rejected its input");
-        return input;
-      });
+  short_circuit.bind(*report,
+                     [](joggle::Bytes input, joggle::Diagnostics& diagnostics) {
+                       diagnostics.report("native function rejected its input");
+                       return input;
+                     });
   short_circuit.bind(*short_observe, [&](joggle::Bytes input) {
     observed_after_failure = true;
     return input;
@@ -983,13 +974,12 @@ module short_circuit@1.0.0 {
         return diagnostic.message == "native function rejected its input" &&
                !diagnostic.notes.empty() &&
                diagnostic.notes.back().find(
-                   "while calling 'short_circuit.report'") !=
-                   std::string::npos;
+                   "while calling 'short_circuit.report'") != std::string::npos;
       });
-  ok &= expect(!short_result && !observed_after_failure &&
-                   reports_native_failure,
-               "a diagnostic from a native function immediately stops its "
-               "enclosing typed sequence");
+  ok &=
+      expect(!short_result && !observed_after_failure && reports_native_failure,
+             "a diagnostic from a native function immediately stops its "
+             "enclosing typed sequence");
 
   joggle::Compiler binding_mismatch;
   binding_mismatch.add("joggle 1; module binding_mismatch@1.0.0 { "
@@ -1135,11 +1125,11 @@ module parameterized_host@1.0.0 {
   if (!parameterized_linked || !parameterized_target ||
       !parameterized_estimate || !parameterized_measure ||
       !parameterized_analyze || !fixed || !wrong ||
-      !parameterized_host.represent<Target>(
-          *parameterized_target, [&](const Target& target) {
-            ++target_projections;
-            return std::tuple{target.lanes};
-          }) ||
+      !parameterized_host.represent<Target>(*parameterized_target,
+                                            [&](const Target& target) {
+                                              ++target_projections;
+                                              return std::tuple{target.lanes};
+                                            }) ||
       !parameterized_host.represent<Estimate>(
           *parameterized_estimate, [&](const Estimate& estimate) {
             ++estimate_projections;
@@ -1265,11 +1255,11 @@ module module_validation@1.0.0 {
     invalid_body_diagnostics.print(std::cerr);
     return EXIT_FAILURE;
   }
-  module_validation.verify(*forbidden, [](const joggle::Op&,
-                                          joggle::Diagnostics& diagnostics) {
-    diagnostics.report("forbidden call reached a Module boundary");
-    return false;
-  });
+  module_validation.verify(
+      *forbidden, [](const joggle::Op&, joggle::Diagnostics& diagnostics) {
+        diagnostics.report("forbidden call reached a Module boundary");
+        return false;
+      });
   const bool public_module_valid = module_validation.verify(invalid_module);
   bool identity_called = false;
   module_validation.bind(*validation_identity, [&](joggle::Module input) {

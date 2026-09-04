@@ -15,6 +15,7 @@
 #include <vector>
 
 #include <joggle/joggle.h>
+#include <joggle/native.h>
 
 #include "module_internal.h"
 #include "module_repository.h"
@@ -31,12 +32,12 @@ namespace {
 void usage(std::ostream& output) {
   output << "usage:\n"
          << "  joggle check <file.joggle> [--with <module.joggle>] "
-            "[--behavior <library>] [--root <directory>]\n"
+            "[--native <library>] [--root <directory>]\n"
          << "  joggle fmt <file.joggle> [--write | -o <file>]\n"
          << "  joggle run <file.joggle> <function> <input> "
-            "[--with <module.joggle>] [--load-behavior <module[=library]>] "
-            "[--behavior <library>] [--root <directory>] [-o <file>]\n"
-         << "  joggle install <module.joggle> [--behavior <library>] "
+            "[--with <module.joggle>] [--load-native <module[=library]>] "
+            "[--native <library>] [--root <directory>] [-o <file>]\n"
+         << "  joggle install <module.joggle> [--native <library>] "
             "[--root <directory>]\n"
          << "  joggle uninstall <name@version> [--root <directory>]\n"
          << "  joggle list [--root <directory>]\n"
@@ -77,9 +78,9 @@ std::optional<ExactModule> exact_module(std::string_view request,
 struct Options {
   std::filesystem::path root = joggle::detail::default_module_root();
   std::optional<std::filesystem::path> output;
-  std::optional<std::filesystem::path> behavior;
+  std::optional<std::filesystem::path> native;
   std::vector<std::filesystem::path> with;
-  std::vector<std::string> loaded_behaviors;
+  std::vector<std::string> loaded_natives;
   bool root_explicit = false;
   bool in_place = false;
   std::vector<std::string> positional;
@@ -126,29 +127,29 @@ std::optional<Options> options(int argc, char** argv,
         return std::nullopt;
       }
       result.output = std::filesystem::path(*file);
-    } else if (argument == "--behavior") {
-      if (result.behavior) {
-        diagnostics.report("duplicate option '--behavior'");
+    } else if (argument == "--native") {
+      if (result.native) {
+        diagnostics.report("duplicate option '--native'");
         return std::nullopt;
       }
-      const auto library = value("--behavior needs a shared library");
+      const auto library = value("--native needs a shared library");
       if (!library) {
         return std::nullopt;
       }
-      result.behavior = std::filesystem::path(*library);
+      result.native = std::filesystem::path(*library);
     } else if (argument == "--with") {
       const auto file = value("--with needs a Module source file");
       if (!file) {
         return std::nullopt;
       }
       result.with.emplace_back(*file);
-    } else if (argument == "--load-behavior") {
+    } else if (argument == "--load-native") {
       const auto request =
-          value("--load-behavior needs module or module=library");
+          value("--load-native needs module or module=library");
       if (!request) {
         return std::nullopt;
       }
-      result.loaded_behaviors.emplace_back(*request);
+      result.loaded_natives.emplace_back(*request);
     } else if (argument == "-w" || argument == "--write") {
       if (result.in_place) {
         diagnostics.report("duplicate option '--write'");
@@ -362,7 +363,7 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
                      std::string_view source,
                      const std::filesystem::path& source_path,
                      const std::filesystem::path& root,
-                     const std::optional<std::filesystem::path>& behavior,
+                     const std::optional<std::filesystem::path>& native,
                      std::span<const std::filesystem::path> with = {}) {
   compiler.search(root);
   compiler.add(source, source_path.string());
@@ -376,7 +377,7 @@ bool validate_module(joggle::Compiler& compiler, const joggle::Module& module,
   if (!linked) {
     return false;
   }
-  if (behavior && !compiler.load_behavior(linked->name(), *behavior)) {
+  if (native && !compiler.load_native(linked->name(), *native)) {
     return false;
   }
   for (const joggle::Module& loaded : compiler.modules()) {
@@ -429,8 +430,8 @@ int main(int argc, char** argv) {
       return usage_error(diagnostics,
                          "--output and --write are mutually exclusive");
     }
-    if (command == "fmt" && parsed.behavior) {
-      return usage_error(diagnostics, "fmt does not accept --behavior");
+    if (command == "fmt" && parsed.native) {
+      return usage_error(diagnostics, "fmt does not accept --native");
     }
     if (command == "fmt" && parsed.root_explicit) {
       return usage_error(diagnostics, "fmt does not accept --root");
@@ -444,9 +445,9 @@ int main(int argc, char** argv) {
     if (command == "check" && parsed.in_place) {
       return usage_error(diagnostics, "check does not accept --write");
     }
-    if (!parsed.loaded_behaviors.empty()) {
+    if (!parsed.loaded_natives.empty()) {
       return usage_error(diagnostics, std::string(command) +
-                                          " does not accept --load-behavior");
+                                          " does not accept --load-native");
     }
     auto source = read(parsed.positional[0], diagnostics);
     if (!source) {
@@ -473,7 +474,7 @@ int main(int argc, char** argv) {
     } else {
       joggle::Compiler compiler;
       if (!validate_module(compiler, *module, *source, parsed.positional[0],
-                           parsed.root, parsed.behavior, parsed.with)) {
+                           parsed.root, parsed.native, parsed.with)) {
         return fail(compiler.diagnostics());
       }
       const auto linked = compiler.module(module->name());
@@ -582,11 +583,10 @@ int main(int argc, char** argv) {
       }
     }
 
-    if (parsed.behavior &&
-        !compiler.load_behavior(root->name(), *parsed.behavior)) {
+    if (parsed.native && !compiler.load_native(root->name(), *parsed.native)) {
       return fail(compiler.diagnostics());
     }
-    for (const std::string& request : parsed.loaded_behaviors) {
+    for (const std::string& request : parsed.loaded_natives) {
       const std::size_t separator = request.find('=');
       const std::string_view module =
           separator == std::string::npos
@@ -594,8 +594,8 @@ int main(int argc, char** argv) {
               : std::string_view(request).substr(0U, separator);
       const bool loaded =
           separator == std::string::npos
-              ? compiler.load_behavior(module)
-              : compiler.load_behavior(module, request.substr(separator + 1U));
+              ? compiler.load_native(module)
+              : compiler.load_native(module, request.substr(separator + 1U));
       if (!loaded) {
         return fail(compiler.diagnostics());
       }
@@ -653,9 +653,8 @@ int main(int argc, char** argv) {
     if (!parsed.with.empty()) {
       return usage_error(diagnostics, "install does not accept --with");
     }
-    if (!parsed.loaded_behaviors.empty()) {
-      return usage_error(diagnostics,
-                         "install does not accept --load-behavior");
+    if (!parsed.loaded_natives.empty()) {
+      return usage_error(diagnostics, "install does not accept --load-native");
     }
     auto source = read(parsed.positional[0], diagnostics);
     if (!source) {
@@ -668,11 +667,11 @@ int main(int argc, char** argv) {
     }
     joggle::Compiler compiler;
     if (!validate_module(compiler, *module, *source, parsed.positional[0],
-                         parsed.root, parsed.behavior)) {
+                         parsed.root, parsed.native)) {
       return fail(compiler.diagnostics());
     }
-    auto installed = joggle::detail::install_module(
-        parsed.root, *module, diagnostics, parsed.behavior);
+    auto installed = joggle::detail::install_module(parsed.root, *module,
+                                                    diagnostics, parsed.native);
     if (!installed) {
       return fail(diagnostics);
     }
@@ -688,8 +687,8 @@ int main(int argc, char** argv) {
     if (parsed.output) {
       return usage_error(diagnostics, "uninstall does not accept --output");
     }
-    if (parsed.behavior) {
-      return usage_error(diagnostics, "uninstall does not accept --behavior");
+    if (parsed.native) {
+      return usage_error(diagnostics, "uninstall does not accept --native");
     }
     if (parsed.in_place) {
       return usage_error(diagnostics, "uninstall does not accept --write");
@@ -697,9 +696,9 @@ int main(int argc, char** argv) {
     if (!parsed.with.empty()) {
       return usage_error(diagnostics, "uninstall does not accept --with");
     }
-    if (!parsed.loaded_behaviors.empty()) {
+    if (!parsed.loaded_natives.empty()) {
       return usage_error(diagnostics,
-                         "uninstall does not accept --load-behavior");
+                         "uninstall does not accept --load-native");
     }
     auto module = exact_module(parsed.positional[0], diagnostics);
     if (!module ||
@@ -719,8 +718,8 @@ int main(int argc, char** argv) {
     if (parsed.output) {
       return usage_error(diagnostics, "list does not accept --output");
     }
-    if (parsed.behavior) {
-      return usage_error(diagnostics, "list does not accept --behavior");
+    if (parsed.native) {
+      return usage_error(diagnostics, "list does not accept --native");
     }
     if (parsed.in_place) {
       return usage_error(diagnostics, "list does not accept --write");
@@ -728,8 +727,8 @@ int main(int argc, char** argv) {
     if (!parsed.with.empty()) {
       return usage_error(diagnostics, "list does not accept --with");
     }
-    if (!parsed.loaded_behaviors.empty()) {
-      return usage_error(diagnostics, "list does not accept --load-behavior");
+    if (!parsed.loaded_natives.empty()) {
+      return usage_error(diagnostics, "list does not accept --load-native");
     }
     const auto modules =
         joggle::detail::installed_modules(parsed.root, diagnostics);
@@ -748,8 +747,8 @@ int main(int argc, char** argv) {
     if (parsed.positional.size() != 1U) {
       return usage_error(diagnostics, "lock expects one root Module source");
     }
-    if (parsed.behavior) {
-      return usage_error(diagnostics, "lock does not accept --behavior");
+    if (parsed.native) {
+      return usage_error(diagnostics, "lock does not accept --native");
     }
     if (parsed.in_place) {
       return usage_error(diagnostics, "lock does not accept --write");
@@ -757,8 +756,8 @@ int main(int argc, char** argv) {
     if (!parsed.with.empty()) {
       return usage_error(diagnostics, "lock does not accept --with");
     }
-    if (!parsed.loaded_behaviors.empty()) {
-      return usage_error(diagnostics, "lock does not accept --load-behavior");
+    if (!parsed.loaded_natives.empty()) {
+      return usage_error(diagnostics, "lock does not accept --load-native");
     }
     auto source = read(parsed.positional[0], diagnostics);
     if (!source) {
@@ -795,22 +794,23 @@ int main(int argc, char** argv) {
       if (!installed) {
         continue;
       }
-      auto behaviors =
-          joggle::detail::behavior_candidates(installed->source, diagnostics);
-      if (behaviors.size() > 1U) {
-        diagnostics.report("cannot lock ambiguous behavior for module '" +
+      auto natives =
+          joggle::detail::native_candidates(installed->source, diagnostics);
+      if (natives.size() > 1U) {
+        diagnostics.report("cannot lock ambiguous native for module '" +
                            std::string(module.name()) + "@" +
                            joggle::to_string(module.version()) +
-                           "' and target '" + joggle::behavior_target + "'");
+                           "' and target '" + joggle::detail::native_target +
+                           "'");
         continue;
       }
-      for (const auto& behavior : behaviors) {
-        const auto digest =
-            joggle::detail::behavior_digest(behavior, diagnostics);
+      for (const auto& native : natives) {
+        const auto digest = joggle::detail::native_digest(native, diagnostics);
         if (digest) {
-          lock << "behavior " << module.name() << '@'
+          lock << "native " << module.name() << '@'
                << joggle::to_string(module.version()) << '#' << module.digest()
-               << ' ' << joggle::behavior_target << '#' << *digest << ";\n";
+               << ' ' << joggle::detail::native_target << '#' << *digest
+               << ";\n";
         }
       }
     }

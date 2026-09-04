@@ -17,12 +17,12 @@ joggle::Bytes bytes(std::string_view text) {
   return result;
 }
 
-std::optional<joggle::Module>
-mark(joggle::Compiler& compiler, joggle::Module input, std::string name,
-     joggle::Diagnostics& diagnostics) {
+std::optional<joggle::Module> mark(joggle::Compiler& compiler,
+                                   joggle::Module input, std::string name,
+                                   joggle::Diagnostics& diagnostics) {
   auto marker = compiler.create_function();
-  if (!marker || !input.insert(std::move(name), std::move(*marker),
-                               diagnostics)) {
+  if (!marker ||
+      !input.insert(std::move(name), std::move(*marker), diagnostics)) {
     return std::nullopt;
   }
   return input;
@@ -32,7 +32,7 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
   const auto positive = module.type("positive");
   if (!positive) {
-    diagnostics.report("test behavior does not match its linked schema");
+    diagnostics.report("test native does not match its linked schema");
     return;
   }
   compiler.verify(*positive,
@@ -40,23 +40,22 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
                     const auto value = type.get<std::int64_t>("value");
                     return value && *value > 0;
                   });
-#if defined(JOGGLE_TEST_BEHAVIOR_FAIL)
+#if defined(JOGGLE_TEST_NATIVE_FAIL)
   compiler.bind(
       module, "cached", [](std::int64_t value) { return value + 100; },
       joggle::HostEvaluation::Hermetic);
   const auto integer = compiler.make("int");
-  const auto one = integer
-                       ? compiler.known(*integer, std::int64_t{1})
-                       : std::optional<joggle::Value>{};
-  const auto probe = one ? compiler.materialize("behavior_plugin.cache_probe",
-                                                {*one})
-                         : std::optional<joggle::Function>{};
-  const auto cached = probe && !probe->arguments().empty()
-                          ? probe->arguments().front().type().get<std::int64_t>(
-                                "value")
-                          : std::optional<std::int64_t>{};
+  const auto one = integer ? compiler.known(*integer, std::int64_t{1})
+                           : std::optional<joggle::Value>{};
+  const auto probe =
+      one ? compiler.materialize("native_plugin.cache_probe", {*one})
+          : std::optional<joggle::Function>{};
+  const auto cached =
+      probe && !probe->arguments().empty()
+          ? probe->arguments().front().type().get<std::int64_t>("value")
+          : std::optional<std::int64_t>{};
   if (cached != std::optional<std::int64_t>{101}) {
-    diagnostics.report("failed behavior could not prime its evaluation cache");
+    diagnostics.report("failed native could not prime its evaluation cache");
     return;
   }
 #else
@@ -105,11 +104,14 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
   compiler.bind(module, "emit_model", [](const joggle::Module& model) {
     return bytes(joggle::format(model));
   });
-#if defined(JOGGLE_TEST_BEHAVIOR_FAIL)
-  diagnostics.report("test behavior requested failure");
+#if defined(JOGGLE_TEST_NATIVE_FAIL)
+  diagnostics.report("test native requested failure");
 #endif
 }
 
 }  // namespace
 
-JOGGLE_EXPORT_BEHAVIOR(bind)
+void joggle_module(joggle::Compiler& compiler, const joggle::Module& module,
+                   joggle::Diagnostics& diagnostics) {
+  bind(compiler, module, diagnostics);
+}

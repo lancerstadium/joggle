@@ -4,16 +4,16 @@ project(JoggleConsumer LANGUAGES CXX)
 
 find_package(Joggle CONFIG REQUIRED)
 
-joggle_add_behavior(joggle_consumer_behavior
-  MODULE module.joggle
-  SOURCES behavior.cpp
+joggle_module(joggle_consumer_native
+  SOURCE module.joggle
+  NATIVE native.cpp
 )
-set_target_properties(joggle_consumer_behavior PROPERTIES
+set_target_properties(joggle_consumer_native PROPERTIES
   PREFIX ""
-  OUTPUT_NAME "external_behavior"
+  OUTPUT_NAME "external_native"
 )
-file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/behavior-path.txt"
-  CONTENT "$<TARGET_FILE:joggle_consumer_behavior>")
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/native-path.txt"
+  CONTENT "$<TARGET_FILE:joggle_consumer_native>")
 
 add_executable(joggle_consumer main.cpp)
 target_link_libraries(joggle_consumer PRIVATE joggle::joggle)

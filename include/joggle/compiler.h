@@ -247,9 +247,8 @@ struct CallableTraits<Result (Owner::*)(Arguments...) const noexcept>
 
 template <typename T>
 inline constexpr bool valid_function_input =
-    !std::is_reference_v<T> ||
-    (std::is_lvalue_reference_v<T> &&
-     std::is_const_v<std::remove_reference_t<T>>);
+    !std::is_reference_v<T> || (std::is_lvalue_reference_v<T> &&
+                                std::is_const_v<std::remove_reference_t<T>>);
 
 template <typename T>
 inline constexpr bool valid_function_result = !std::is_reference_v<T>;
@@ -290,11 +289,10 @@ template <typename Function> struct FunctionBinding {
 
   static auto input_types() {
     return []<std::size_t... Indices>(std::index_sequence<Indices...>) {
-      static_assert(
-          (valid_function_input<
-               std::tuple_element_t<offset + Indices, Arguments>> &&
-           ...),
-          "fn inputs must be values or const references");
+      static_assert((valid_function_input<
+                         std::tuple_element_t<offset + Indices, Arguments>> &&
+                     ...),
+                    "fn inputs must be values or const references");
       return std::array<std::string_view, sizeof...(Indices)>{host_type_name<
           std::tuple_element_t<offset + Indices, Arguments>>()...};
     }(std::make_index_sequence<argument_count>{});
@@ -466,9 +464,9 @@ public:
   // be qualified as module.function; overloads remain explicit because this
   // lookup has no call arguments from which to infer a selection.
   std::optional<Module::FunctionDecl> lookup(std::string_view qualified);
-  bool load_behavior(std::string_view module,
-                     const std::filesystem::path& library);
-  bool load_behavior(std::string_view module);
+  bool load_native(std::string_view module,
+                   const std::filesystem::path& library);
+  bool load_native(std::string_view module);
 
   // Associates an ordinary C++ value type with a Module-declared type for
   // compiler-function invocation. The Module remains the schema authority.
@@ -574,10 +572,10 @@ public:
   // specialization and the input Module is not modified. An unaccepted
   // external call, recursive source expansion, or invalid rewrite fails the
   // whole operation.
-  std::optional<Module> specialize(
-      const Module& module,
-      const std::function<bool(const Module::FunctionDecl&)>& boundary,
-      Diagnostics& diagnostics);
+  std::optional<Module>
+  specialize(const Module& module,
+             const std::function<bool(const Module::FunctionDecl&)>& boundary,
+             Diagnostics& diagnostics);
 
   bool conforms(const Module::TypeDecl& declaration,
                 const Module::InterfaceDecl& interface) const;
@@ -613,7 +611,7 @@ public:
   void bind(Module::FunctionDecl declaration,
             Module::InterfaceDecl::MethodDecl method, Function&& function) {
     bind_inferred<Op>(std::move(declaration), std::move(method),
-                               std::forward<Function>(function));
+                      std::forward<Function>(function));
   }
 
   template <typename Function>
@@ -680,7 +678,7 @@ public:
   template <typename Function>
   void verify(Module::FunctionDecl schema, Function&& function) {
     bind_typed_verifier<Op>(std::move(schema),
-                                     std::forward<Function>(function));
+                            std::forward<Function>(function));
   }
 
   // Binds an implementation whose C++ input and result types match the
@@ -971,9 +969,8 @@ private:
   lookup_method(const Attribute& subject, std::string_view reference);
   std::optional<Module::InterfaceDecl::MethodDecl>
   lookup_method(const Op& subject, std::string_view reference);
-  bool load_behavior(const Module& module,
-                     const std::filesystem::path& library);
-  bool load_behavior(const Module& module);
+  bool load_native(const Module& module, const std::filesystem::path& library);
+  bool load_native(const Module& module);
   void add_module(Module module, bool explicit_module,
                   std::optional<std::filesystem::path> source);
 

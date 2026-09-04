@@ -1,6 +1,6 @@
 joggle 1;
 
-module behavior_plugin@1.0.0 {
+module native_plugin@1.0.0 {
   type positive(value: int);
 
   fn source() -> positive<1>;

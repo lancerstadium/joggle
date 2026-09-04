@@ -69,7 +69,7 @@ target_include_directories(joggle PUBLIC
 )
 target_link_libraries(joggle PRIVATE ${CMAKE_DL_LIBS})
 
-include(cmake/JoggleBehavior.cmake)
+include(cmake/JoggleModule.cmake)
 
 install(TARGETS joggle
   EXPORT JoggleTargets
@@ -104,8 +104,8 @@ write_basic_package_version_file(
 install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/JoggleConfig.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/JoggleConfigVersion.cmake
-  cmake/JoggleBehavior.cmake
-  cmake/GenerateBehaviorIdentity.cmake
+  cmake/JoggleModule.cmake
+  cmake/GenerateNativeIdentity.cmake
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Joggle
 )
 
@@ -122,12 +122,12 @@ if(JOGGLE_BUILD_TESTS)
   set(JOGGLE_TEST_MODULE
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/compiler_test.joggle")
 
-  joggle_add_behavior(joggle_compiler_test_behavior
-    MODULE tests/fixtures/compiler_test.joggle
-    SOURCES tests/compiler_test_behavior.cpp)
-  set_target_properties(joggle_compiler_test_behavior PROPERTIES
+  joggle_module(joggle_compiler_test_native
+    SOURCE tests/fixtures/compiler_test.joggle
+    NATIVE tests/compiler_test_native.cpp)
+  set_target_properties(joggle_compiler_test_native PROPERTIES
     PREFIX ""
-    OUTPUT_NAME "compiler_test_behavior"
+    OUTPUT_NAME "compiler_test_native"
   )
 
   add_executable(joggle_module_test tests/module_test.cpp)
@@ -170,49 +170,49 @@ if(JOGGLE_BUILD_TESTS)
   add_test(NAME function_cli
     COMMAND $<TARGET_FILE:joggle_cli> check
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/function_cli.joggle
-      --with ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/behavior_plugin.joggle
+      --with ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/native_plugin.joggle
   )
   add_test(NAME function_run_cli
     COMMAND ${CMAKE_COMMAND}
       -DJOGGLE_CLI=$<TARGET_FILE:joggle_cli>
       -DJOGGLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/function_cli.joggle
-      -DJOGGLE_DEPENDENCY=${CMAKE_CURRENT_BINARY_DIR}/behavior_plugin.joggle
+      -DJOGGLE_DEPENDENCY=${CMAKE_CURRENT_BINARY_DIR}/native_plugin.joggle
       -DJOGGLE_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/function_run_output.bin
-      -DJOGGLE_BEHAVIOR=$<TARGET_FILE:joggle_test_behavior>
+      -DJOGGLE_NATIVE=$<TARGET_FILE:joggle_test_native>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/function_run_cli.cmake
   )
 
-  add_executable(joggle_behavior_test tests/behavior_test.cpp)
-  target_link_libraries(joggle_behavior_test PRIVATE joggle::joggle)
-  target_compile_definitions(joggle_behavior_test PRIVATE
+  add_executable(joggle_binding_test tests/binding_test.cpp)
+  target_link_libraries(joggle_binding_test PRIVATE joggle::joggle)
+  target_compile_definitions(joggle_binding_test PRIVATE
     JOGGLE_TEST_MODULE="${JOGGLE_TEST_MODULE}"
   )
-  add_test(NAME behavior COMMAND joggle_behavior_test)
+  add_test(NAME binding COMMAND joggle_binding_test)
 
-  configure_file(tests/fixtures/behavior_plugin.joggle
-    ${CMAKE_CURRENT_BINARY_DIR}/behavior_plugin.joggle COPYONLY)
-  joggle_add_behavior(joggle_test_behavior
-    MODULE tests/fixtures/behavior_plugin.joggle
-    SOURCES tests/behavior_plugin.cpp)
-  set_target_properties(joggle_test_behavior PROPERTIES
+  configure_file(tests/fixtures/native_plugin.joggle
+    ${CMAKE_CURRENT_BINARY_DIR}/native_plugin.joggle COPYONLY)
+  joggle_module(joggle_test_native
+    SOURCE tests/fixtures/native_plugin.joggle
+    NATIVE tests/native_plugin.cpp)
+  set_target_properties(joggle_test_native PROPERTIES
     PREFIX ""
-    OUTPUT_NAME "behavior"
+    OUTPUT_NAME "native"
   )
-  joggle_add_behavior(joggle_test_behavior_failure
-    MODULE tests/fixtures/behavior_plugin.joggle
-    SOURCES tests/behavior_plugin.cpp)
-  target_compile_definitions(joggle_test_behavior_failure PRIVATE
-    JOGGLE_TEST_BEHAVIOR_FAIL=1)
-  set_target_properties(joggle_test_behavior_failure PROPERTIES
+  joggle_module(joggle_test_native_failure
+    SOURCE tests/fixtures/native_plugin.joggle
+    NATIVE tests/native_plugin.cpp)
+  target_compile_definitions(joggle_test_native_failure PRIVATE
+    JOGGLE_TEST_NATIVE_FAIL=1)
+  set_target_properties(joggle_test_native_failure PROPERTIES
     PREFIX ""
-    OUTPUT_NAME "behavior_failure"
+    OUTPUT_NAME "native_failure"
   )
-  add_executable(joggle_behavior_loader_test tests/behavior_loader_test.cpp)
-  target_link_libraries(joggle_behavior_loader_test PRIVATE joggle::joggle)
-  add_test(NAME behavior_loader COMMAND joggle_behavior_loader_test
-    ${CMAKE_CURRENT_BINARY_DIR}/behavior_plugin.joggle
-    $<TARGET_FILE:joggle_test_behavior>
-    $<TARGET_FILE:joggle_test_behavior_failure>
+  add_executable(joggle_native_loader_test tests/native_loader_test.cpp)
+  target_link_libraries(joggle_native_loader_test PRIVATE joggle::joggle)
+  add_test(NAME native_loader COMMAND joggle_native_loader_test
+    ${CMAKE_CURRENT_BINARY_DIR}/native_plugin.joggle
+    $<TARGET_FILE:joggle_test_native>
+    $<TARGET_FILE:joggle_test_native_failure>
   )
 
   add_executable(joggle_interface_test tests/interface_test.cpp)
@@ -229,7 +229,7 @@ if(JOGGLE_BUILD_TESTS)
   target_link_libraries(joggle_compiler_function_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_compiler_function_test PRIVATE
     JOGGLE_TEST_MODULE="${JOGGLE_TEST_MODULE}"
-    JOGGLE_TEST_BEHAVIOR="$<TARGET_FILE:joggle_compiler_test_behavior>"
+    JOGGLE_TEST_NATIVE="$<TARGET_FILE:joggle_compiler_test_native>"
   )
   add_test(NAME compiler_function COMMAND joggle_compiler_function_test)
 
@@ -266,10 +266,10 @@ if(JOGGLE_BUILD_TESTS)
       -DJOGGLE_CLI=$<TARGET_FILE:joggle_cli>
       -DJOGGLE_REPOSITORY_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/test-module-repository
       -DJOGGLE_LOCK_CONSUMER=$<TARGET_FILE:joggle_lock_consumer>
-      -DJOGGLE_BEHAVIOR_MODULE=${CMAKE_CURRENT_BINARY_DIR}/behavior_plugin.joggle
-      -DJOGGLE_BEHAVIOR_LIBRARY=$<TARGET_FILE:joggle_test_behavior>
-      -DJOGGLE_BEHAVIOR_FAILURE=$<TARGET_FILE:joggle_test_behavior_failure>
-      -DJOGGLE_BEHAVIOR_LOADER=$<TARGET_FILE:joggle_behavior_loader_test>
+      -DJOGGLE_NATIVE_MODULE=${CMAKE_CURRENT_BINARY_DIR}/native_plugin.joggle
+      -DJOGGLE_NATIVE_LIBRARY=$<TARGET_FILE:joggle_test_native>
+      -DJOGGLE_NATIVE_FAILURE=$<TARGET_FILE:joggle_test_native_failure>
+      -DJOGGLE_NATIVE_LOADER=$<TARGET_FILE:joggle_native_loader_test>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/module_repository_cli.cmake
   )
 endif()

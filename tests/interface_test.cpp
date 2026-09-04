@@ -64,8 +64,7 @@ int main() {
   const auto tag = tagged ? tagged->method("tag") : std::nullopt;
   const auto latency = costed ? costed->method("latency") : std::nullopt;
   const auto attribute_crash = tagged ? tagged->method("crash") : std::nullopt;
-  const auto op_crash =
-      costed ? costed->method("crash") : std::nullopt;
+  const auto op_crash = costed ? costed->method("crash") : std::nullopt;
   if (!scalar_decl || !label_decl || !work_decl || !metric || !tag ||
       !latency || !attribute_crash || !op_crash) {
     return EXIT_FAILURE;
@@ -108,11 +107,10 @@ int main() {
                "derived parameters share Type::get with identity parameters");
   ok &= expect(tag_result == std::optional<std::string>{"label"} &&
                    latency_result == std::optional<std::int64_t>{2},
-               "attribute and function-call behavior methods remain typed");
+               "attribute and function-call interface methods remain typed");
   const auto rejected_attribute_method =
       compiler.call<std::string>(*label, *attribute_crash);
-  const auto rejected_op_method =
-      compiler.call<std::int64_t>(work, *op_crash);
+  const auto rejected_op_method = compiler.call<std::int64_t>(work, *op_crash);
   const auto thrown_methods = std::count_if(
       compiler.diagnostics().entries().begin(),
       compiler.diagnostics().entries().end(),
@@ -180,16 +178,16 @@ module field_queries@1.0.0 {
   joggle::Compiler invalid_constraint;
   invalid_constraint.add(R"(
 joggle 1;
-module behavior_contracts@1.0.0 {
+module capability_contracts@1.0.0 {
   interface executable: fn;
 }
 )",
-                         "behavior-contracts.joggle");
+                         "capability-contracts.joggle");
   invalid_constraint.add(R"(
 joggle 1;
 module invalid_query@1.0.0 {
-  import behavior_contracts@1 as behavior;
-  fn invalid<T: behavior.executable>() -> int {
+  import capability_contracts@1 as caps;
+  fn invalid<T: caps.executable>() -> int {
     return 0;
   }
 }

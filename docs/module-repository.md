@@ -14,9 +14,9 @@ compatible.
 ## Commands
 
 ```bash
-joggle check module.joggle [--with dependency.joggle] [--behavior library]
+joggle check module.joggle [--with dependency.joggle] [--native library]
 joggle fmt module.joggle [--write | -o output.joggle]
-joggle install module.joggle [--behavior library]
+joggle install module.joggle [--native library]
 joggle uninstall name@1.2.3
 joggle list
 joggle lock root.joggle -o joggle.lock
@@ -32,7 +32,7 @@ caller-supplied Known generics is checked independently as far as its abstract
 environment permits, then fully type-checked at each concrete specialization;
 module validation does not invent representative generic values. Repeated
 `--with` options add uninstalled local dependencies without modifying a
-repository. `--behavior` additionally validates an exact behavior library and
+repository. `--native` additionally validates an exact native library and
 runs registered verifiers.
 
 `fmt` produces canonical text. In-place and explicit-output writes stage a
@@ -47,20 +47,20 @@ Canonical Module source is content-addressed beneath:
 <root>/<name>/<version>/<module-sha256>/module.joggle
 ```
 
-An optional behavior library is stored beneath the exact Module identity by
+An optional native library is stored beneath the exact Module identity by
 host target and binary digest:
 
 ```text
-<module-identity>/behavior/<target>/<binary-sha256>/behavior.<suffix>
+<module-identity>/native/<target>/<binary-sha256>/native.<suffix>
 ```
 
 The suffix is platform-specific. Installing the same identity is idempotent.
 A different digest for the same name and exact version is rejected instead of
-silently replacing content. A second behavior digest for the same Module and
+silently replacing content. A second native digest for the same Module and
 target is likewise rejected.
 
 Install validates the complete closure before publishing. Module text and
-behavior are assembled in a hidden same-filesystem staging directory and
+native are assembled in a hidden same-filesystem staging directory and
 become visible atomically. Uninstall first removes the exact version from the
 visible namespace, then reclaims storage. Resolution therefore never observes
 a partial Module release.
@@ -86,14 +86,14 @@ Module identity.
 
 ## Locks
 
-A lock records the exact root, dependency Modules, and target-specific behavior
+A lock records the exact root, dependency Modules, and target-specific native
 binaries:
 
 ```text
 joggle-lock 1;
 root model@1.0.0#<digest>;
 module tensor@1.0.0#<digest>;
-behavior tensor@1.0.0#<module-digest> macos-arm64#<binary-digest>;
+native tensor@1.0.0#<module-digest> macos-arm64#<binary-digest>;
 ```
 
 Generate and replay it explicitly:
@@ -111,10 +111,10 @@ compiler.link();
 ```
 
 Replay fails when the root differs, an entry is absent or unused, a locked
-version violates an import, a digest differs, or the required behavior for the
-host target is unavailable. With a lock active, behavior discovery must match
+version violates an import, a digest differs, or the required native for the
+host target is unavailable. With a lock active, native discovery must match
 its entry. A lock therefore selects executable content, not only source version
 ranges.
 
-Locks containing behavior are target-specific. Generate a lock for each target
+Locks containing native are target-specific. Generate a lock for each target
 instead of substituting another platform's binary.

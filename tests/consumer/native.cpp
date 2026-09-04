@@ -7,7 +7,7 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
   const auto keep = module.function("keep");
   const auto converted = module.function("converted");
   if (!keep || !converted) {
-    diagnostics.report("external behavior does not match its Module");
+    diagnostics.report("external native does not match its Module");
     return;
   }
 
@@ -25,4 +25,7 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
 
 }  // namespace
 
-JOGGLE_EXPORT_BEHAVIOR(bind)
+void joggle_module(joggle::Compiler& compiler, const joggle::Module& module,
+                   joggle::Diagnostics& diagnostics) {
+  bind(compiler, module, diagnostics);
+}

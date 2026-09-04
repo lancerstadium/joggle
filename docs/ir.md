@@ -28,7 +28,7 @@ schema. Joggle derives two views over the ordered call arguments:
 Knownness does not change the role. A Known value passed to an `i32` input is
 still an operand; a Known integer passed to an `int` input is a property. The
 same declaration therefore drives source calls, parsing, verification, C++
-construction, pattern matching, and native behavior.
+construction, pattern matching, and native implementations.
 
 For example, an extension may declare a convolution with value operands and
 compiler-known shape properties:

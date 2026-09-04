@@ -1,4 +1,4 @@
-foreach(required JOGGLE_CLI JOGGLE_SOURCE JOGGLE_DEPENDENCY JOGGLE_BEHAVIOR
+foreach(required JOGGLE_CLI JOGGLE_SOURCE JOGGLE_DEPENDENCY JOGGLE_NATIVE
                  JOGGLE_OUTPUT)
   if(NOT DEFINED ${required})
     message(FATAL_ERROR "${required} was not provided")
@@ -64,7 +64,7 @@ endif()
 execute_process(
   COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" read_model "${input}"
           --with "${JOGGLE_DEPENDENCY}"
-          --load-behavior "behavior_plugin=${JOGGLE_BEHAVIOR}"
+          --load-native "native_plugin=${JOGGLE_NATIVE}"
           -o "${loaded_output}"
   RESULT_VARIABLE load_result
   ERROR_VARIABLE load_error
@@ -83,7 +83,7 @@ endif()
 execute_process(
   COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" optimize_model
           "${model_input}" --with "${JOGGLE_DEPENDENCY}"
-          --load-behavior "behavior_plugin=${JOGGLE_BEHAVIOR}"
+          --load-native "native_plugin=${JOGGLE_NATIVE}"
           -o "${model_output}"
   RESULT_VARIABLE optimize_result
   ERROR_VARIABLE optimize_error
@@ -107,7 +107,7 @@ file(REMOVE "${failed_output}")
 execute_process(
   COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" failing_entry
           "${model_input}" --with "${JOGGLE_DEPENDENCY}"
-          --load-behavior "behavior_plugin=${JOGGLE_BEHAVIOR}"
+          --load-native "native_plugin=${JOGGLE_NATIVE}"
           -o "${failed_output}"
   RESULT_VARIABLE failing_result
   ERROR_VARIABLE failing_error
@@ -115,7 +115,7 @@ execute_process(
 string(FIND "${failing_error}" "test transform requested rejection"
   failing_position)
 string(FIND "${failing_error}"
-  "while calling 'behavior_plugin.reject_model' from 'function_cli.failing_model'"
+  "while calling 'native_plugin.reject_model' from 'function_cli.failing_model'"
   failing_inner_context)
 string(FIND "${failing_error}"
   "while calling 'function_cli.failing_model' from 'function_cli.failing_entry'"
@@ -130,7 +130,7 @@ endif()
 execute_process(
   COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" emit_model
           "${model_output}" --with "${JOGGLE_DEPENDENCY}"
-          --load-behavior "behavior_plugin=${JOGGLE_BEHAVIOR}"
+          --load-native "native_plugin=${JOGGLE_NATIVE}"
           -o "${model_emitted}"
   RESULT_VARIABLE emit_result
   ERROR_VARIABLE emit_error
@@ -147,7 +147,7 @@ endif()
 execute_process(
   COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" pipeline "${input}"
           --with "${JOGGLE_DEPENDENCY}"
-          --load-behavior "behavior_plugin=${JOGGLE_BEHAVIOR}"
+          --load-native "native_plugin=${JOGGLE_NATIVE}"
           -o "${JOGGLE_OUTPUT}"
   RESULT_VARIABLE file_result
   OUTPUT_VARIABLE file_stdout
@@ -168,7 +168,7 @@ endif()
 execute_process(
   COMMAND "${JOGGLE_CLI}" run "${JOGGLE_SOURCE}" function_cli.pipeline
           "${input}" --with "${JOGGLE_DEPENDENCY}"
-          --load-behavior "behavior_plugin=${JOGGLE_BEHAVIOR}"
+          --load-native "native_plugin=${JOGGLE_NATIVE}"
   RESULT_VARIABLE stdout_result
   OUTPUT_VARIABLE stdout_output
   ERROR_VARIABLE stdout_error

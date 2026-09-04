@@ -5,7 +5,7 @@
 #include <iostream>
 #include <string_view>
 
-#include <joggle/behavior.h>
+#include <joggle/native.h>
 #include <joggle/joggle.h>
 
 #include "module_repository.h"
@@ -83,15 +83,15 @@ int main() {
   bool ok = true;
   joggle::Diagnostics failed_install;
   const auto failed = joggle::detail::install_module(
-      root.path(), *module, failed_install, root.path() / "missing-behavior");
+      root.path(), *module, failed_install, root.path() / "missing-native");
   ok &= expect(!failed && !failed_install.ok(),
-               "a missing behavior makes installation fail");
+               "a missing native makes installation fail");
 
   joggle::Diagnostics after_failure;
   const auto initially_visible =
       joggle::detail::installed_modules(root.path(), after_failure);
   ok &= expect(after_failure.ok() && initially_visible.empty(),
-               "a failed behavior install publishes no module");
+               "a failed native install publishes no module");
 
   const std::filesystem::path version = root.path() / "atomic" / "1.0.0";
   const std::filesystem::path abandoned =
@@ -135,16 +135,16 @@ int main() {
                "a second version can coexist under the same module name");
 
   if (installed) {
-    const std::filesystem::path abandoned_behavior =
-        installed->parent_path() / "behavior" / joggle::behavior_target /
-        ".joggle-install-abandoned" / joggle::detail::behavior_file_name();
-    ok &= expect(write(abandoned_behavior, "unfinished"),
-                 "create an abandoned behavior staging fixture");
-    joggle::Diagnostics behavior_scan;
-    const auto behaviors =
-        joggle::detail::behavior_candidates(*installed, behavior_scan);
-    ok &= expect(behavior_scan.ok() && behaviors.empty(),
-                 "unfinished behavior staging is not discoverable");
+    const std::filesystem::path abandoned_native =
+        installed->parent_path() / "native" / joggle::detail::native_target /
+        ".joggle-install-abandoned" / joggle::detail::native_file_name();
+    ok &= expect(write(abandoned_native, "unfinished"),
+                 "create an abandoned native staging fixture");
+    joggle::Diagnostics native_scan;
+    const auto natives =
+        joggle::detail::native_candidates(*installed, native_scan);
+    ok &= expect(native_scan.ok() && natives.empty(),
+                 "unfinished native staging is not discoverable");
 
     ok &= expect(write(*installed, "not a module\n"),
                  "corrupt the installed module fixture");

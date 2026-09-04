@@ -1,6 +1,6 @@
 foreach(required JOGGLE_CLI JOGGLE_REPOSITORY_TEST_DIR JOGGLE_LOCK_CONSUMER
-                 JOGGLE_BEHAVIOR_MODULE JOGGLE_BEHAVIOR_LIBRARY
-                 JOGGLE_BEHAVIOR_FAILURE JOGGLE_BEHAVIOR_LOADER)
+                 JOGGLE_NATIVE_MODULE JOGGLE_NATIVE_LIBRARY
+                 JOGGLE_NATIVE_FAILURE JOGGLE_NATIVE_LOADER)
   if(NOT DEFINED ${required})
     message(FATAL_ERROR "${required} was not provided")
   endif()
@@ -10,7 +10,7 @@ file(REMOVE_RECURSE "${JOGGLE_REPOSITORY_TEST_DIR}")
 file(MAKE_DIRECTORY "${JOGGLE_REPOSITORY_TEST_DIR}")
 set(root "${JOGGLE_REPOSITORY_TEST_DIR}/modules")
 set(lock "${JOGGLE_REPOSITORY_TEST_DIR}/joggle.lock")
-set(behavior_lock "${JOGGLE_REPOSITORY_TEST_DIR}/behavior.lock")
+set(native_lock "${JOGGLE_REPOSITORY_TEST_DIR}/native.lock")
 
 function(expect_success label)
   execute_process(
@@ -156,26 +156,26 @@ endif()
 expect_success("consume locked closure"
   "${JOGGLE_LOCK_CONSUMER}" "${root}" "${lock}" "${leaf}" 2)
 
-expect_success("install behavior Module release"
-  "${JOGGLE_CLI}" install "${JOGGLE_BEHAVIOR_MODULE}"
-  --behavior "${JOGGLE_BEHAVIOR_LIBRARY}" --root "${root}")
-string(STRIP "${command_output}" installed_behavior_module)
-expect_success("load installed behavior"
-  "${JOGGLE_BEHAVIOR_LOADER}" "${installed_behavior_module}"
-  "${JOGGLE_BEHAVIOR_LIBRARY}" "${JOGGLE_BEHAVIOR_FAILURE}")
-expect_success("lock behavior Module release"
-  "${JOGGLE_CLI}" lock "${JOGGLE_BEHAVIOR_MODULE}" --root "${root}"
-  -o "${behavior_lock}")
-file(READ "${behavior_lock}" behavior_lock_text)
-string(FIND "${behavior_lock_text}"
-  "behavior behavior_plugin@1.0.0#" behavior_position)
-if(behavior_position EQUAL -1)
-  message(FATAL_ERROR "behavior lock entry is missing")
+expect_success("install native Module release"
+  "${JOGGLE_CLI}" install "${JOGGLE_NATIVE_MODULE}"
+  --native "${JOGGLE_NATIVE_LIBRARY}" --root "${root}")
+string(STRIP "${command_output}" installed_native_module)
+expect_success("load installed native"
+  "${JOGGLE_NATIVE_LOADER}" "${installed_native_module}"
+  "${JOGGLE_NATIVE_LIBRARY}" "${JOGGLE_NATIVE_FAILURE}")
+expect_success("lock native Module release"
+  "${JOGGLE_CLI}" lock "${JOGGLE_NATIVE_MODULE}" --root "${root}"
+  -o "${native_lock}")
+file(READ "${native_lock}" native_lock_text)
+string(FIND "${native_lock_text}"
+  "native native_plugin@1.0.0#" native_position)
+if(native_position EQUAL -1)
+  message(FATAL_ERROR "native lock entry is missing")
 endif()
-expect_success("replay locked behavior"
-  "${JOGGLE_BEHAVIOR_LOADER}" "${installed_behavior_module}"
-  "${JOGGLE_BEHAVIOR_LIBRARY}" "${JOGGLE_BEHAVIOR_FAILURE}"
-  "${root}" "${behavior_lock}")
+expect_success("replay locked native"
+  "${JOGGLE_NATIVE_LOADER}" "${installed_native_module}"
+  "${JOGGLE_NATIVE_LIBRARY}" "${JOGGLE_NATIVE_FAILURE}"
+  "${root}" "${native_lock}")
 
 set(conflict "${JOGGLE_REPOSITORY_TEST_DIR}/conflict.joggle")
 file(WRITE "${conflict}" [=[joggle 1;

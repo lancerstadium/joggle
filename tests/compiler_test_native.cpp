@@ -8,7 +8,7 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
           joggle::Diagnostics& diagnostics) {
   const auto integer = module.type("integer");
   if (!integer) {
-    diagnostics.report("test behavior does not match its linked schema");
+    diagnostics.report("test native does not match its linked schema");
     return;
   }
   compiler.verify(*integer, [](const joggle::Type& type,
@@ -25,4 +25,7 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
 
 }  // namespace
 
-JOGGLE_EXPORT_BEHAVIOR(bind)
+void joggle_module(joggle::Compiler& compiler, const joggle::Module& module,
+                   joggle::Diagnostics& diagnostics) {
+  bind(compiler, module, diagnostics);
+}

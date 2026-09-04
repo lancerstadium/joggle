@@ -1,6 +1,6 @@
 @PACKAGE_INIT@
 
 include("${CMAKE_CURRENT_LIST_DIR}/JoggleTargets.cmake")
-include("${CMAKE_CURRENT_LIST_DIR}/JoggleBehavior.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/JoggleModule.cmake")
 
 check_required_components(Joggle)

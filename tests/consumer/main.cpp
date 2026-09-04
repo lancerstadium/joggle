@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
   }
   const auto make = module->function("make");
   const auto converted = module->function("converted");
-  if (!make || !converted || !compiler.load_behavior("external")) {
+  if (!make || !converted || !compiler.load_native("external")) {
     compiler.diagnostics().print(std::cerr);
     return 1;
   }

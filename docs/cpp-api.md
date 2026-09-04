@@ -44,7 +44,8 @@ auto module = joggle::parse_module(text, diagnostics, "model.joggle");
 auto canonical = module ? joggle::format(*module) : std::string{};
 ```
 
-Use `Compiler` for imports, type checking, behavior, and execution:
+Use `Compiler` for imports, type checking, native implementations, and
+execution:
 
 ```cpp
 joggle::Compiler compiler({.steps = 100'000, .depth = 256});
@@ -65,7 +66,7 @@ environment. Diagnostics accumulate and retain source ranges.
 `add(module)` places an existing Module value into an unlinked Compiler
 without formatting it or writing a temporary file. Copies preserve
 content-addressed data and materialized bodies. This is the intended entry for
-an artifact decoder or an in-memory package resolver; the same identity and
+a binary decoder or an in-memory package resolver; the same identity and
 import-conflict checks apply as for source input.
 
 Reflect declarations through `compiler.module(name)` and the returned
@@ -172,7 +173,7 @@ auto axis = op.property<std::int64_t>("axis");
 The split follows declared input domains, not whether a particular Value is
 currently Known. Supplying a Known scalar to an `i32` port still creates an
 operand; an `int` port is a property. Passes therefore share the same schema as
-source calls and native behavior.
+source calls and native implementations.
 
 `Function` copies share an immutable revision until one copy starts an
 edit. This makes read-only analysis handoff constant-time while preserving
@@ -341,7 +342,7 @@ stale import list behind.
 
 `module.digest()` hashes the complete canonical artifact. It changes after a
 committed body transformation and is the identity used by repositories, locks,
-and behavior libraries. `module.interface_digest()` hashes imports and member
+and native libraries. `module.interface_digest()` hashes imports and member
 declarations with Function bodies erased, and Compiler boundaries use it for
 exact interface compatibility. A `Module::Symbol` has a versioned qualified
 logical name and retains the interface digest only as provenance. Existing
@@ -407,7 +408,7 @@ reference. Declared results return by value. A transformation returns its
 changed artifact instead of creating an undeclared in-place output.
 Function transforms, Module transforms, analyses, loaders, and emitters all
 use the same `run<Result>(declaration, arguments...)` operation. Assigning a
-returned artifact is an ordinary C++ choice rather than a transformation-only
+returned value is an ordinary C++ choice rather than a transformation-only
 Compiler API.
 
 Semantic hooks use `compiler.verify(declaration, callback)`. This is distinct
@@ -416,4 +417,4 @@ residual Op, while binding implements a declared `fn` and must match
 its complete signature.
 
 See [Modules](modules.md) for representations, verifiers, interface
-methods, and behavior libraries.
+methods, and native libraries.

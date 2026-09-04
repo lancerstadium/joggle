@@ -102,7 +102,7 @@ fn checked(value: int) -> (int, bool) {
 }
 ```
 
-A trailing `;` declares behavior supplied elsewhere or a function call that
+A trailing `;` declares a function implemented natively or a call that
 may remain Residual. Braces define a body. `as` associates prefix, infix, or
 postfix notation with the same function and overload set. Interfaces follow
 `:`.
@@ -440,6 +440,6 @@ format(parse(format(parse(source)))) = format(parse(source))
 ```
 
 Canonical source determines the complete Module artifact identity. Comments,
-file paths, host addresses, and behavior registration order do not affect its
+file paths, host addresses, and native binding order do not affect its
 digest. The interface digest is derived from the same canonical form after
 Function bodies are erased; imports and declarations remain significant.

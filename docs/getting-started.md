@@ -1,7 +1,7 @@
 # Getting started
 
 This guide creates one installable declaration Module and one optional C++
-behavior library. Joggle does not generate declaration headers: the `.joggle`
+native library. Joggle does not generate declaration headers: the `.joggle`
 file remains the schema authority.
 
 ## 1. Build Joggle
@@ -45,21 +45,19 @@ joggle fmt example.joggle --write
 Use repeated `--with dependency.joggle` options for local imports that are not
 installed yet.
 
-## 3. Bind behavior
+## 3. Implement native functions
 
-Create `behavior.cpp`:
+Create `native.cpp`:
 
 ```cpp
 #include <joggle/joggle.h>
 
-namespace {
-
-void bind(joggle::Compiler& compiler, const joggle::Module& module,
-          joggle::Diagnostics& diagnostics) {
+void joggle_module(joggle::Compiler& compiler, const joggle::Module& module,
+                   joggle::Diagnostics& diagnostics) {
   const auto keep = module.function("keep");
   const auto replacement = module.function("replacement");
   if (!keep || !replacement) {
-    diagnostics.report("example behavior does not match its Module");
+    diagnostics.report("example native does not match its Module");
     return;
   }
 
@@ -82,10 +80,6 @@ void bind(joggle::Compiler& compiler, const joggle::Module& module,
         return function;
       });
 }
-
-}  // namespace
-
-JOGGLE_EXPORT_BEHAVIOR(bind)
 ```
 
 The callable's C++ input and output select and check the declared
@@ -95,17 +89,17 @@ identity. The input is an isolated value, and the returned Function is
 published only after its edit commits; no pass base class, generated wrapper,
 Graph object, or Region API is involved.
 
-## 4. Build and validate behavior
+## 4. Build and validate native
 
 ```cmake
 cmake_minimum_required(VERSION 3.20)
-project(ExampleBehavior LANGUAGES CXX)
+project(ExampleNative LANGUAGES CXX)
 
 find_package(Joggle CONFIG REQUIRED)
 
-joggle_add_behavior(example_behavior
-  MODULE example.joggle
-  SOURCES behavior.cpp
+joggle_module(example_native
+  SOURCE example.joggle
+  NATIVE native.cpp
 )
 ```
 
@@ -114,12 +108,13 @@ Then build and validate the exact source/binary pair:
 ```bash
 cmake -S . -B build
 cmake --build build
-joggle check example.joggle --behavior build/example_behavior.dylib
+joggle check example.joggle --native build/example_native.dylib
 ```
 
 Use the platform suffix produced by CMake: `.so`, `.dylib`, or `.dll`.
-`joggle_add_behavior` embeds the canonical Module identity in a generated,
-hidden translation unit; Module code includes only the stable generic API.
+`joggle_module` embeds the canonical Module identity and native entry point in
+a generated, hidden translation unit. Authors write no export macro and Joggle
+generates no declaration header; `example.joggle` remains the only schema.
 
 ## 5. Run a compiler function
 
@@ -130,7 +125,7 @@ Function:
 joggle::Compiler compiler;
 compiler.load("example.joggle");
 if (!compiler.link() ||
-    !compiler.load_behavior("example", "build/example_behavior.dylib")) {
+    !compiler.load_native("example", "build/example_native.dylib")) {
   compiler.diagnostics().print(std::cerr);
   return 1;
 }
@@ -156,7 +151,7 @@ fn compile(input: bytes) -> bytes {
 
 ```bash
 joggle run driver.joggle compile model.onnx \
-  --behavior build/driver_behavior.dylib -o model.bin
+  --native build/driver_native.dylib -o model.bin
 ```
 
 This wrapper uses `bytes -> bytes`. The CLI also accepts `bytes -> module`,
@@ -167,7 +162,7 @@ output. Byte results are written byte-for-byte to `-o`, or to standard output
 when `-o` is absent.
 
 For installed discovery, call `compiler.search(root)` and the one-argument
-`load_behavior("example")`. See the
+`load_native("example")`. See the
 [Module repository](module-repository.md) for repository and lock semantics,
 and [`tests/consumer`](../tests/consumer) for the tested installed-project
 example.

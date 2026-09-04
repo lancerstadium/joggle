@@ -1,6 +1,5 @@
 #pragma once
 
-#include "joggle/behavior.h"
 #include "joggle/compiler.h"
 #include "joggle/diagnostic.h"
 #include "joggle/digest.h"

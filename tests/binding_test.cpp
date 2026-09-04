@@ -114,11 +114,10 @@ int main() {
           joggle::Diagnostics& diagnostics) -> std::optional<joggle::Function> {
         static_cast<void>(compute_nodes(function));
         const auto operations = function.ops();
-        const bool has_marker =
-            std::any_of(operations.begin(), operations.end(),
-                        [](const joggle::Op& op) {
-                          return op.callee().name() == "marker";
-                        });
+        const bool has_marker = std::any_of(
+            operations.begin(), operations.end(), [](const joggle::Op& op) {
+              return op.callee().name() == "marker";
+            });
         if (!has_marker) {
           return function;
         }
@@ -157,9 +156,9 @@ int main() {
   }
 
   bool ok = true;
-  ok &= expect(compiler.verify(*function), "native Op verification");
+  ok &= expect(compiler.verify(*function), "bound Op verification");
   auto optimized = compiler.run<joggle::Function>(*optimize_schema, *function);
-  ok &= expect(optimized.has_value(), "composed native transformations run");
+  ok &= expect(optimized.has_value(), "composed bound transformations run");
   if (optimized) {
     function = std::move(optimized);
   }
@@ -247,27 +246,23 @@ module throwing@1.0.0 {
       throwing_test_ir ? throwing_test_ir->function("cast") : std::nullopt;
   const auto throwing_tag =
       throwing_module ? throwing_module->attribute("tag") : std::nullopt;
-  const auto existing_integer =
-      throwing_integer ? throwing.make(*throwing_integer, 8)
-                       : std::optional<joggle::Type>{};
+  const auto existing_integer = throwing_integer
+                                    ? throwing.make(*throwing_integer, 8)
+                                    : std::optional<joggle::Type>{};
   const auto throwing_function = throwing.materialize("throwing.use");
   if (!throwing_linked || !throwing_integer || !throwing_cast ||
       !throwing_tag || !existing_integer || !throwing_function) {
     throwing.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
-  throwing.verify(*throwing_integer,
-                  [](const joggle::Type&) -> bool {
-                    throw std::runtime_error("type verifier exception");
-                  });
+  throwing.verify(*throwing_integer, [](const joggle::Type&) -> bool {
+    throw std::runtime_error("type verifier exception");
+  });
   throwing.verify(*throwing_tag,
-                  [](const joggle::Attribute&) -> bool {
-                    throw 1;
-                  });
-  throwing.verify(*throwing_cast,
-                  [](const joggle::Op&) -> bool {
-                    throw std::runtime_error("Op verifier exception");
-                  });
+                  [](const joggle::Attribute&) -> bool { throw 1; });
+  throwing.verify(*throwing_cast, [](const joggle::Op&) -> bool {
+    throw std::runtime_error("Op verifier exception");
+  });
   const auto rejected_type = throwing.make(*throwing_integer, 16);
   const auto rejected_attribute = throwing.make(*throwing_tag, 1);
   const bool rejected_function = throwing.verify(*throwing_function);
@@ -279,19 +274,19 @@ module throwing@1.0.0 {
                    std::string::npos &&
                diagnostic.message.find("threw") != std::string::npos;
       });
-  const bool reports_unknown_exception = std::any_of(
-      throwing_diagnostics.begin(), throwing_diagnostics.end(),
-      [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find("unknown exception") !=
-               std::string::npos;
-      });
-  const bool locates_op_exception = std::any_of(
-      throwing_diagnostics.begin(), throwing_diagnostics.end(),
-      [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find("Op verifier exception") !=
-                   std::string::npos &&
-               diagnostic.source.has_value();
-      });
+  const bool reports_unknown_exception =
+      std::any_of(throwing_diagnostics.begin(), throwing_diagnostics.end(),
+                  [](const joggle::Diagnostic& diagnostic) {
+                    return diagnostic.message.find("unknown exception") !=
+                           std::string::npos;
+                  });
+  const bool locates_op_exception =
+      std::any_of(throwing_diagnostics.begin(), throwing_diagnostics.end(),
+                  [](const joggle::Diagnostic& diagnostic) {
+                    return diagnostic.message.find("Op verifier exception") !=
+                               std::string::npos &&
+                           diagnostic.source.has_value();
+                  });
   ok &= expect(!rejected_type && !rejected_attribute && !rejected_function &&
                    thrown_diagnostics == 3 && reports_unknown_exception &&
                    locates_op_exception,

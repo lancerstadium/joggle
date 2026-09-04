@@ -109,34 +109,34 @@ file(REMOVE_RECURSE "${rebuild_source}" "${rebuild_build}")
 file(MAKE_DIRECTORY "${rebuild_source}")
 file(COPY_FILE "${JOGGLE_SOURCE_DIR}/tests/consumer/module.joggle"
   "${rebuild_source}/module.joggle")
-file(COPY_FILE "${JOGGLE_SOURCE_DIR}/tests/rebuild_consumer/CMakeLists.txt"
+file(COPY_FILE "${JOGGLE_SOURCE_DIR}/tests/native_rebuild_consumer/CMakeLists.txt"
   "${rebuild_source}/CMakeLists.txt")
 execute_process(
   COMMAND "${CMAKE_COMMAND}"
           -S "${rebuild_source}"
           -B "${rebuild_build}"
           -DCMAKE_PREFIX_PATH=${install_dir}
-          -DJOGGLE_BEHAVIOR_SOURCE=${JOGGLE_SOURCE_DIR}/tests/consumer/behavior.cpp
+          -DJOGGLE_NATIVE_SOURCE=${JOGGLE_SOURCE_DIR}/tests/consumer/native.cpp
   RESULT_VARIABLE rebuild_configure_result
 )
 if(NOT rebuild_configure_result EQUAL 0)
-  message(FATAL_ERROR "behavior rebuild test configuration failed")
+  message(FATAL_ERROR "native rebuild test configuration failed")
 endif()
 execute_process(
   COMMAND "${CMAKE_COMMAND}" --build "${rebuild_build}"
   RESULT_VARIABLE first_rebuild_result
 )
 if(NOT first_rebuild_result EQUAL 0)
-  message(FATAL_ERROR "initial behavior rebuild test build failed")
+  message(FATAL_ERROR "initial native rebuild test build failed")
 endif()
-set(identity_source "${rebuild_build}/rebuild_behavior_module_identity.cpp")
+set(identity_source "${rebuild_build}/rebuild_native_module_identity.cpp")
 file(READ "${identity_source}" first_identity)
 file(READ "${rebuild_source}/module.joggle" changed_module)
 set(original_module "${changed_module}")
 string(REPLACE "  fn keep" "  type extra();\n\n  fn keep"
   changed_module "${changed_module}")
 if(changed_module STREQUAL original_module)
-  message(FATAL_ERROR "behavior rebuild fixture did not change its Module")
+  message(FATAL_ERROR "native rebuild fixture did not change its Module")
 endif()
 execute_process(COMMAND "${CMAKE_COMMAND}" -E sleep 1)
 file(WRITE "${rebuild_source}/module.joggle" "${changed_module}")
@@ -145,38 +145,38 @@ execute_process(
   RESULT_VARIABLE second_rebuild_result
 )
 if(NOT second_rebuild_result EQUAL 0)
-  message(FATAL_ERROR "behavior did not rebuild after its Module changed")
+  message(FATAL_ERROR "native did not rebuild after its Module changed")
 endif()
 file(READ "${identity_source}" second_identity)
 if(first_identity STREQUAL second_identity)
   message(FATAL_ERROR
-    "behavior identity did not change after canonical Module content changed")
+    "native identity did not change after canonical Module content changed")
 endif()
-file(READ "${rebuild_build}/behavior-path.txt" rebuilt_behavior)
-string(STRIP "${rebuilt_behavior}" rebuilt_behavior)
+file(READ "${rebuild_build}/native-path.txt" rebuilt_native)
+string(STRIP "${rebuilt_native}" rebuilt_native)
 execute_process(
   COMMAND "${installed_cli}" check
           "${JOGGLE_SOURCE_DIR}/tests/consumer/module.joggle"
-          --behavior "${rebuilt_behavior}"
-  RESULT_VARIABLE stale_behavior_result
-  ERROR_VARIABLE stale_behavior_error
+          --native "${rebuilt_native}"
+  RESULT_VARIABLE stale_native_result
+  ERROR_VARIABLE stale_native_error
 )
-string(FIND "${stale_behavior_error}" "targets 'external@1.0.0#"
-  stale_behavior_position)
-if(stale_behavior_result EQUAL 0 OR stale_behavior_position EQUAL -1)
+string(FIND "${stale_native_error}" "targets 'external@1.0.0#"
+  stale_native_position)
+if(stale_native_result EQUAL 0 OR stale_native_position EQUAL -1)
   message(FATAL_ERROR
-    "behavior rebuilt for changed Module was accepted by the old Module:\n"
-    "${stale_behavior_error}")
+    "native rebuilt for changed Module was accepted by the old Module:\n"
+    "${stale_native_error}")
 endif()
 
-file(READ "${consumer_build}/behavior-path.txt" behavior_path)
-string(STRIP "${behavior_path}" behavior_path)
+file(READ "${consumer_build}/native-path.txt" native_path)
+string(STRIP "${native_path}" native_path)
 file(READ "${consumer_build}/consumer-path.txt" consumer_path)
 string(STRIP "${consumer_path}" consumer_path)
 execute_process(
   COMMAND "${installed_cli}" install
           "${JOGGLE_SOURCE_DIR}/tests/consumer/module.joggle"
-          --behavior "${behavior_path}" --root "${module_root}"
+          --native "${native_path}" --root "${module_root}"
   RESULT_VARIABLE install_result
   OUTPUT_VARIABLE installed_module
   ERROR_VARIABLE install_error

@@ -1,6 +1,6 @@
 #include "module_repository.h"
 
-#include "joggle/behavior.h"
+#include "joggle/native.h"
 #include "joggle/digest.h"
 
 #include <algorithm>
@@ -142,44 +142,43 @@ std::optional<std::string> file_digest(const std::filesystem::path& path,
                                        Diagnostics& diagnostics) {
   std::ifstream input(path, std::ios::binary);
   if (!input) {
-    diagnostics.report("cannot open behavior library '" + path.string() + "'");
+    diagnostics.report("cannot open native library '" + path.string() + "'");
     return std::nullopt;
   }
   std::ostringstream bytes;
   bytes << input.rdbuf();
   if (!input.eof() && input.fail()) {
-    diagnostics.report("cannot read behavior library '" + path.string() + "'");
+    diagnostics.report("cannot read native library '" + path.string() + "'");
     return std::nullopt;
   }
   return sha256(bytes.str());
 }
 
-bool behavior_matches(const std::filesystem::path& destination,
-                      std::string_view expected, Diagnostics& diagnostics) {
+bool native_matches(const std::filesystem::path& destination,
+                    std::string_view expected, Diagnostics& diagnostics) {
   std::error_code error;
   if (!std::filesystem::is_regular_file(destination, error) || error) {
-    diagnostics.report("installed behavior is missing its library: '" +
+    diagnostics.report("installed native is missing its library: '" +
                        destination.string() + "'");
     return false;
   }
   const auto actual = file_digest(destination, diagnostics);
   if (!actual || *actual != expected) {
-    diagnostics.report("installed behavior content does not match its path: '" +
+    diagnostics.report("installed native content does not match its path: '" +
                        destination.string() + "'");
     return false;
   }
   return true;
 }
 
-bool install_behavior(const std::filesystem::path& identity,
-                      const std::filesystem::path& source,
-                      Diagnostics& diagnostics) {
+bool install_native(const std::filesystem::path& identity,
+                    const std::filesystem::path& source,
+                    Diagnostics& diagnostics) {
   const auto digest = file_digest(source, diagnostics);
   if (!digest) {
     return false;
   }
-  const std::filesystem::path target_root =
-      identity / "behavior" / behavior_target;
+  const std::filesystem::path target_root = identity / "native" / native_target;
   std::error_code error;
   if (std::filesystem::exists(target_root, error)) {
     for (std::filesystem::directory_iterator current(target_root, error), end;
@@ -188,33 +187,32 @@ bool install_behavior(const std::filesystem::path& identity,
         continue;
       }
       if (!current->is_directory(error) || error) {
-        diagnostics.report("invalid entry in behavior installation '" +
+        diagnostics.report("invalid entry in native installation '" +
                            current->path().string() + "'");
         return false;
       }
       if (current->path().filename() != *digest) {
-        diagnostics.report("behavior for target '" +
-                           std::string(behavior_target) +
+        diagnostics.report("native for target '" + std::string(native_target) +
                            "' is already installed with another digest");
         return false;
       }
     }
     if (error) {
-      diagnostics.report("cannot inspect behavior installation '" +
+      diagnostics.report("cannot inspect native installation '" +
                          target_root.string() + "': " + error.message());
       return false;
     }
   }
   const std::filesystem::path destination =
-      target_root / *digest / std::string(behavior_file_name());
+      target_root / *digest / std::string(native_file_name());
   const bool destination_exists = std::filesystem::exists(destination, error);
   if (error) {
-    diagnostics.report("cannot inspect behavior installation '" +
+    diagnostics.report("cannot inspect native installation '" +
                        destination.string() + "': " + error.message());
     return false;
   }
   if (destination_exists) {
-    return behavior_matches(destination, *digest, diagnostics);
+    return native_matches(destination, *digest, diagnostics);
   }
   auto staging_path = create_staging_directory(target_root, diagnostics);
   if (!staging_path) {
@@ -222,11 +220,11 @@ bool install_behavior(const std::filesystem::path& identity,
   }
   StagingDirectory staging(std::move(*staging_path));
   const std::filesystem::path staged_library =
-      staging.path() / std::string(behavior_file_name());
+      staging.path() / std::string(native_file_name());
   if (!std::filesystem::copy_file(source, staged_library,
                                   std::filesystem::copy_options::none, error) ||
       error) {
-    diagnostics.report("cannot install behavior library at '" +
+    diagnostics.report("cannot install native library at '" +
                        staged_library.string() + "': " + error.message());
     return false;
   }
@@ -235,11 +233,11 @@ bool install_behavior(const std::filesystem::path& identity,
     const std::error_code publish_error = error;
     error.clear();
     if (std::filesystem::exists(destination, error) && !error) {
-      return behavior_matches(destination, *digest, diagnostics);
+      return native_matches(destination, *digest, diagnostics);
     }
-    diagnostics.report("cannot publish behavior installation '" +
-                       destination.parent_path().string() + "': " +
-                       publish_error.message());
+    diagnostics.report("cannot publish native installation '" +
+                       destination.parent_path().string() +
+                       "': " + publish_error.message());
     return false;
   }
   staging.published();
@@ -262,42 +260,41 @@ std::filesystem::path default_module_root() {
   return std::filesystem::current_path() / ".joggle" / "modules";
 }
 
-std::string_view behavior_file_name() {
+std::string_view native_file_name() {
 #if defined(_WIN32)
-  return "behavior.dll";
+  return "native.dll";
 #elif defined(__APPLE__)
-  return "behavior.dylib";
+  return "native.dylib";
 #else
-  return "behavior.so";
+  return "native.so";
 #endif
 }
 
 std::vector<std::filesystem::path>
-behavior_candidates(const std::filesystem::path& module_source,
-                    Diagnostics& diagnostics) {
+native_candidates(const std::filesystem::path& module_source,
+                  Diagnostics& diagnostics) {
   std::vector<std::filesystem::path> result;
   const std::filesystem::path identity = module_source.parent_path();
   const std::filesystem::path adjacent =
-      identity / std::string(behavior_file_name());
+      identity / std::string(native_file_name());
   std::error_code error;
   if (std::filesystem::exists(adjacent, error) && !error) {
     if (!std::filesystem::is_regular_file(adjacent, error) || error) {
-      diagnostics.report("behavior path is not a regular file: '" +
+      diagnostics.report("native path is not a regular file: '" +
                          adjacent.string() + "'");
       return result;
     }
     result.push_back(adjacent);
   } else if (error) {
-    diagnostics.report("cannot inspect behavior library '" + adjacent.string() +
+    diagnostics.report("cannot inspect native library '" + adjacent.string() +
                        "': " + error.message());
     return result;
   }
 
-  const std::filesystem::path target_root =
-      identity / "behavior" / behavior_target;
+  const std::filesystem::path target_root = identity / "native" / native_target;
   if (!std::filesystem::exists(target_root, error)) {
     if (error) {
-      diagnostics.report("cannot inspect behavior directory '" +
+      diagnostics.report("cannot inspect native directory '" +
                          target_root.string() + "': " + error.message());
     }
     return result;
@@ -308,37 +305,36 @@ behavior_candidates(const std::filesystem::path& module_source,
       continue;
     }
     if (!current->is_directory(error) || error) {
-      diagnostics.report("invalid entry in behavior installation '" +
+      diagnostics.report("invalid entry in native installation '" +
                          current->path().string() + "'");
       return result;
     }
     const std::string expected = current->path().filename().string();
     const std::filesystem::path library =
-        current->path() / std::string(behavior_file_name());
+        current->path() / std::string(native_file_name());
     if (!std::filesystem::is_regular_file(library, error) || error) {
-      diagnostics.report("installed behavior is missing its library: '" +
+      diagnostics.report("installed native is missing its library: '" +
                          library.string() + "'");
       return result;
     }
     const auto actual = file_digest(library, diagnostics);
     if (!actual || *actual != expected) {
-      diagnostics.report(
-          "installed behavior content does not match its path: '" +
-          library.string() + "'");
+      diagnostics.report("installed native content does not match its path: '" +
+                         library.string() + "'");
       return result;
     }
     result.push_back(library);
   }
   if (error) {
-    diagnostics.report("cannot inspect behavior directory '" +
+    diagnostics.report("cannot inspect native directory '" +
                        target_root.string() + "': " + error.message());
   }
   std::sort(result.begin(), result.end());
   return result;
 }
 
-std::optional<std::string> behavior_digest(const std::filesystem::path& library,
-                                           Diagnostics& diagnostics) {
+std::optional<std::string> native_digest(const std::filesystem::path& library,
+                                         Diagnostics& diagnostics) {
   return file_digest(library, diagnostics);
 }
 
@@ -452,7 +448,7 @@ resolve_module(std::span<const std::filesystem::path> roots,
 std::optional<std::filesystem::path>
 install_module(const std::filesystem::path& root, const Module& module,
                Diagnostics& diagnostics,
-               std::optional<std::filesystem::path> behavior) {
+               std::optional<std::filesystem::path> native) {
   const std::filesystem::path version =
       root / std::string(module.name()) / to_string(module.version());
   std::error_code error;
@@ -480,8 +476,7 @@ install_module(const std::filesystem::path& root, const Module& module,
       return std::nullopt;
     }
   }
-  const std::filesystem::path identity =
-      version / std::string(module.digest());
+  const std::filesystem::path identity = version / std::string(module.digest());
   const std::filesystem::path destination = identity / "module.joggle";
   const bool destination_exists = std::filesystem::exists(destination, error);
   if (error) {
@@ -496,8 +491,7 @@ install_module(const std::filesystem::path& root, const Module& module,
                          destination.string() + "'");
       return std::nullopt;
     }
-    if (behavior &&
-        !install_behavior(identity, *behavior, diagnostics)) {
+    if (native && !install_native(identity, *native, diagnostics)) {
       return std::nullopt;
     }
     return destination;
@@ -517,8 +511,7 @@ install_module(const std::filesystem::path& root, const Module& module,
     return std::nullopt;
   }
   StagingDirectory staging(std::move(*staging_path));
-  const std::filesystem::path staged_module =
-      staging.path() / "module.joggle";
+  const std::filesystem::path staged_module = staging.path() / "module.joggle";
   std::ofstream output(staged_module, std::ios::binary | std::ios::trunc);
   if (!output) {
     diagnostics.report("cannot write installed module '" +
@@ -532,8 +525,7 @@ install_module(const std::filesystem::path& root, const Module& module,
                        staged_module.string() + "'");
     return std::nullopt;
   }
-  if (behavior &&
-      !install_behavior(staging.path(), *behavior, diagnostics)) {
+  if (native && !install_native(staging.path(), *native, diagnostics)) {
     return std::nullopt;
   }
   std::filesystem::rename(staging.path(), identity, error);
@@ -547,7 +539,7 @@ install_module(const std::filesystem::path& root, const Module& module,
                            destination.string() + "'");
         return std::nullopt;
       }
-      if (behavior && !install_behavior(identity, *behavior, diagnostics)) {
+      if (native && !install_native(identity, *native, diagnostics)) {
         return std::nullopt;
       }
       return destination;
@@ -567,17 +559,16 @@ bool remove_module(const std::filesystem::path& root, std::string_view name,
   const std::filesystem::path target = module_directory / version_text;
   std::error_code error;
   if (!std::filesystem::is_directory(target, error) || error) {
-    diagnostics.report("module '" + std::string(name) + "@" +
-                       version_text + "' is not installed");
+    diagnostics.report("module '" + std::string(name) + "@" + version_text +
+                       "' is not installed");
     return false;
   }
 
   std::optional<std::filesystem::path> hidden;
   for (std::size_t attempt = 0; attempt < 4096U; ++attempt) {
     const std::filesystem::path candidate =
-        module_directory /
-        (std::string(removal_prefix) + version_text + "-" +
-         std::to_string(attempt));
+        module_directory / (std::string(removal_prefix) + version_text + "-" +
+                            std::to_string(attempt));
     error.clear();
     if (std::filesystem::exists(candidate, error)) {
       continue;

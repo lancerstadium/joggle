@@ -135,8 +135,9 @@ It may use `Module`, `Function`, `Op`, `Value`, `Type`, `Attribute`, and
 `Diagnostics`; it must not create a parallel schema or hidden operation
 registry.
 
-The current public API still calls this library "behavior". Renaming it to a
-native Module implementation is core cleanup, not a new extension concept.
+The build command `joggle_module(SOURCE ... NATIVE ...)` creates this optional
+implementation and binds it to the exact canonical Module identity. Platform
+ABI details are generated privately and are not part of the authoring API.
 
 ## Surface budget
 
