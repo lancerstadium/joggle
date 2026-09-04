@@ -1,6 +1,6 @@
 # RFC 0002: Callable values and typed lambdas
 
-Status: implementation in progress; gates 1--5 complete
+Status: implemented
 
 ## Problem
 
@@ -159,8 +159,8 @@ The call remains one ordinary overload. `replace` is not a declaration form.
 4. [complete] Materialize lambdas in ordinary higher-order calls.
 5. [complete] Extend explicit `@` invocation to pass typed `Function` values
    directly.
-6. Complete ownership, ambiguity, nested-callable, and negative-capture test
-   coverage. Source round-trip and direct ownership checks already pass.
+6. [complete] Add source round-trip, ownership, ambiguity, cloning,
+   nested-callable, and negative-capture coverage.
 
 Each gate must keep all existing tests passing. No rewrite API is introduced
 until callable values complete this sequence.

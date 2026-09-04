@@ -61,6 +61,15 @@ module logic@1.0.0 {
   fn generic_inline_callback(input: word<8>) -> word<16> {
     return apply(input, (value: word<8>) => callback(value));
   }
+  fn nested_inline_callback(input: word<8>) -> word<16> {
+    return apply_fixed(
+      input,
+      (outer: word<8>) => apply_fixed(
+        outer,
+        (inner: word<8>) => callback(inner)
+      )
+    );
+  }
   fn choose(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
   fn choose(input: word<8>, body: (word<16>) -> word<16>) -> word<16>;
   fn overloaded_inline_callback(input: word<8>) -> word<16> {
@@ -138,6 +147,8 @@ int main() {
   const auto inline_callback = compiler.materialize("logic.inline_callback");
   const auto generic_inline_callback =
       compiler.materialize("logic.generic_inline_callback");
+  const auto nested_inline_callback =
+      compiler.materialize("logic.nested_inline_callback");
   const auto overloaded_inline_callback =
       compiler.materialize("logic.overloaded_inline_callback");
   const auto generic_body_user =
@@ -236,9 +247,25 @@ int main() {
                        std::int64_t>("width") ==
                        std::optional<std::int64_t>{8},
                "lambda parameter annotations select a higher-order overload");
+  const auto nested_arguments =
+      nested_inline_callback && nested_inline_callback->ops().size() == 1U
+          ? nested_inline_callback->ops().front().arguments()
+          : std::vector<joggle::Value>{};
+  const auto nested_body =
+      nested_arguments.size() == 2U
+          ? nested_arguments.back().inline_function()
+          : std::optional<joggle::Function>{};
+  const auto nested_body_arguments =
+      nested_body && nested_body->ops().size() == 1U
+          ? nested_body->ops().front().arguments()
+          : std::vector<joggle::Value>{};
+  ok &= expect(nested_body && nested_body_arguments.size() == 2U &&
+                   nested_body_arguments.back().inline_function(),
+               "an inline Function may contain another typed callable value");
   const std::string inline_text =
-      inline_callback ? joggle::format(*inline_callback, "compiled_inline")
-                      : std::string{};
+      nested_inline_callback
+          ? joggle::format(*nested_inline_callback, "compiled_inline")
+          : std::string{};
   joggle::Compiler inline_roundtrip;
   inline_roundtrip.add(source, "logic.joggle");
   inline_roundtrip.add("joggle 1;\nmodule inline_artifact@1.0.0 {\n"

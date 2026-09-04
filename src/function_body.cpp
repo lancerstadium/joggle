@@ -3785,8 +3785,8 @@ private:
         return Module::Expression::reference(
             std::string(reference->symbol().qualified_name()));
       }
-      if (current.inline_function()) {
-        return std::nullopt;
+      if (const auto nested = current.inline_function()) {
+        return inline_expression(*nested);
       }
       if (current.known()) {
         const auto payload = detail::FunctionAccess::known_value(current);
