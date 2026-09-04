@@ -19,8 +19,6 @@ std::string_view domain_name(ValueKind kind) {
     return "string";
   case ValueKind::Type:
     return "type";
-  case ValueKind::Attribute:
-    return "attr";
   case ValueKind::Function:
     return "function";
   case ValueKind::Bytes:
@@ -49,8 +47,8 @@ std::optional<Domain> kernel_domain(const Module::Expression& expression) {
   }
   constexpr std::array kinds{
       ValueKind::Integer, ValueKind::Real,      ValueKind::Boolean,
-      ValueKind::String,  ValueKind::Type,      ValueKind::Attribute,
-      ValueKind::Function,   ValueKind::Bytes,
+      ValueKind::String, ValueKind::Type, ValueKind::Function,
+      ValueKind::Bytes,
   };
   for (const ValueKind kind : kinds) {
     if (element->text == domain_name(kind)) {

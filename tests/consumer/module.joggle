@@ -4,8 +4,8 @@ module external@1.0.0 {
   type scalar(bits: int);
 
   fn make<N: int>(bits: N) -> scalar<N>;
-  fn keep<T: type>(input: T) -> T;
-  fn converted<T: type>(input: T) -> T;
+  fn keep<T>(input: T) -> T;
+  fn converted<T>(input: T) -> T;
   fn convert(input: function) -> function;
   fn main(input: scalar<8>) -> scalar<8> {
     output = keep(input);

@@ -25,7 +25,7 @@ int main() {
   compiler.add(R"(
     joggle 1;
     module testing@1.0.0 {
-      attr label(name: string);
+      type label(name: string);
     }
   )",
                "testing.joggle");
@@ -38,8 +38,7 @@ int main() {
   const auto testing = compiler.module("testing");
   const auto integer_schema =
       test_ir ? test_ir->type("integer") : std::nullopt;
-  const auto label_schema =
-      testing ? testing->attribute("label") : std::nullopt;
+  const auto label_schema = testing ? testing->type("label") : std::nullopt;
   if (!integer_schema || !label_schema) {
     return EXIT_FAILURE;
   }
@@ -57,7 +56,7 @@ int main() {
   ok &= expect(first && first->stable_name().find("/type/integer/instance/") !=
                             std::string_view::npos,
                "type identity derives from the stable schema symbol");
-  ok &= expect(label.has_value(), "attribute construction");
+  ok &= expect(label.has_value(), "metadata type construction");
   ok &= expect(first && first->get<std::int64_t>("width") == 8 &&
                    first->get<bool>("signed") == false && label &&
                    label->get<std::string>("name") == "cpu",
@@ -67,13 +66,13 @@ int main() {
   nonfinite.add(R"(
     joggle 1;
     module numeric@1.0.0 {
-      attr scale(value: real);
+      type scale(value: real);
     }
   )",
                 "numeric.joggle");
   const bool nonfinite_linked = nonfinite.link();
   const auto numeric = nonfinite.module("numeric");
-  const auto scale = numeric ? numeric->attribute("scale") : std::nullopt;
+  const auto scale = numeric ? numeric->type("scale") : std::nullopt;
   ok &= expect(
       nonfinite_linked && scale &&
           !nonfinite.make(*scale, std::numeric_limits<double>::infinity()),

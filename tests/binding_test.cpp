@@ -26,7 +26,7 @@ int main() {
     joggle 1;
     module testing@1.0.0 {
       import test_ir@1;
-      fn marker<T: type>(input: T) -> T;
+      fn marker<T>(input: T) -> T;
       fn cleanup(input: function) -> function;
       fn optimize(input: function) -> function {
         return cleanup(test_ir.canonicalize(input));
@@ -230,7 +230,7 @@ int main() {
 joggle 1;
 module throwing@1.0.0 {
   import test_ir@1;
-  attr tag(value: int);
+  type tag(value: int);
   fn use(input: test_ir.integer<8>) -> test_ir.integer<8> {
     return test_ir.cast(input);
   }
@@ -245,7 +245,7 @@ module throwing@1.0.0 {
   const auto throwing_cast =
       throwing_test_ir ? throwing_test_ir->function("cast") : std::nullopt;
   const auto throwing_tag =
-      throwing_module ? throwing_module->attribute("tag") : std::nullopt;
+      throwing_module ? throwing_module->type("tag") : std::nullopt;
   const auto existing_integer = throwing_integer
                                     ? throwing.make(*throwing_integer, 8)
                                     : std::optional<joggle::Type>{};
@@ -258,13 +258,12 @@ module throwing@1.0.0 {
   throwing.verify(*throwing_integer, [](const joggle::Type&) -> bool {
     throw std::runtime_error("type verifier exception");
   });
-  throwing.verify(*throwing_tag,
-                  [](const joggle::Attribute&) -> bool { throw 1; });
+  throwing.verify(*throwing_tag, [](const joggle::Type&) -> bool { throw 1; });
   throwing.verify(*throwing_cast, [](const joggle::Op&) -> bool {
     throw std::runtime_error("Op verifier exception");
   });
   const auto rejected_type = throwing.make(*throwing_integer, 16);
-  const auto rejected_attribute = throwing.make(*throwing_tag, 1);
+  const auto rejected_metadata = throwing.make(*throwing_tag, 1);
   const bool rejected_function = throwing.verify(*throwing_function);
   const auto& throwing_diagnostics = throwing.diagnostics().entries();
   const auto thrown_diagnostics = std::count_if(
@@ -287,10 +286,10 @@ module throwing@1.0.0 {
                                std::string::npos &&
                            diagnostic.source.has_value();
                   });
-  ok &= expect(!rejected_type && !rejected_attribute && !rejected_function &&
+  ok &= expect(!rejected_type && !rejected_metadata && !rejected_function &&
                    thrown_diagnostics == 3 && reports_unknown_exception &&
                    locates_op_exception,
-               "Type, Attribute, and Op verifier exceptions become "
+               "Type and Op verifier exceptions become "
                "ordinary diagnostics");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;

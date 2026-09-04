@@ -1,92 +1,54 @@
-# Intermediate representation
+# IR model
 
-Joggle has one executable IR, not a graph object beside a low-level IR. A
-`Module` owns named Functions and immutable data. Each materialized `Function`
-owns Blocks, Ops, Values, and terminators. This representation is sufficient
-for acyclic neural networks, nested calls, and arbitrary control flow.
+Joggle uses `Module` for whole-program state and `Function` for executable IR.
+There is no separate graph IR: dataflow is the def-use graph of calls and
+values inside a function, while blocks and terminators provide control flow.
 
-```text
-Module
-├─ data[sha256:…] -> immutable bytes
-└─ Function
-   ├─ Block arguments
-   ├─ Op(callee, operands, properties) -> results
-   └─ return | jump | branch
-```
+## Values
 
-## Op schema
+Every `Value` has a `Type`. A value is a function input, block argument, call
+result, or known compiler value. Known payloads are immutable compiler-domain
+values: integers, reals, booleans, strings, types, bytes, functions, and their
+supported homogeneous lists.
 
-An Op is a residual call to a declared `fn`. The function signature is its only
-schema. Joggle derives two views over the ordered call arguments:
+Metadata is represented by a normal `Type` instance. This means a layout,
+numeric format, or policy uses the same construction, named-field access,
+identity, serialization, and list behavior as every other type.
 
-- `operands()` contains inputs whose declared types are IR value types. They
-  form SSA def-use edges.
-- `properties()` contains inputs in compiler domains such as `int`, `real`,
-  `string`, `type`, `attr`, and their lists. They are immutable and named by
-  the declaration.
+## Operations
 
-Knownness does not change the role. A Known value passed to an `i32` input is
-still an operand; a Known integer passed to an `int` input is a property. The
-same declaration therefore drives source calls, parsing, verification, C++
-construction, pattern matching, and native implementations.
+An `Op` is a call to an exact `Module::FunctionDecl`. Inputs and results are
+checked against the selected overload. Operator syntax in source resolves to
+the same function identity as named calls.
 
-For example, an extension may declare a convolution with value operands and
-compiler-known shape properties:
+## Blocks and control flow
 
-```joggle
-fn conv<X: type, W: type, Y: type>(
-  input: X,
-  weight: W,
-  strides: list<int>,
-  dilations: list<int>,
-  pads: list<int>,
-  group: int
-) -> Y;
-```
+A `Function` contains ordered blocks. Blocks own arguments and operations and
+end in a return or branch terminator. CFG structure is explicit in C++, while
+the source language offers structured `if` and `for` syntax. The parser and
+materializer lower structured syntax into this single representation.
 
-A fusion rule follows `Value::defining_op()` and `Value::users()`. A
-quantization or layout rule reads named properties. Neither needs to decode a
-flat argument list or keep a private copy of the operator definition.
+## Transactional editing
 
-## Transformations
+`Function::edit()` creates an isolated edit. Operations can be appended,
+inserted, replaced, or erased. `commit()` verifies the candidate and publishes
+it atomically. This supports low-level compiler implementation today and is
+the substrate for the planned typed-lambda replacement API.
 
-A transformation is an ordinary compiler function such as
-`fn fuse(module) -> module`. Its implementation can use `rewrite`,
-`rewrite_to_fixpoint`, or `convert`. These utilities edit a private copy,
-verify the complete result, and publish it only on success. `convert` adds a
-caller-defined legality check, so a conversion can be partial internally but
-cannot leak a mixed representation accidentally.
+## Verification
 
-`clone` reconstructs an arbitrary CFG while mapping each source Value's type
-and, optionally, callees. It preserves Known properties, Blocks, edges, Block
-arguments, function references, and result positions, then verifies the
-complete cloned Function once. Representation-changing passes therefore do
-not need a private straight-line graph copier.
+Verification checks:
 
-Joggle does not number IR levels. Vocabularies are Modules and conversions are
-explicit edges. A format-preserving representation, portable inference
-vocabulary, storage representation, and target instruction set may coexist in
-one Module or several Modules; the core does not prescribe that partition.
-They all use the same IR ownership model, so analyses and rewrite
-infrastructure remain reusable.
+- value, block, and declaration ownership;
+- call arity and type agreement;
+- dominance and use-before-definition;
+- block argument and branch agreement;
+- one valid terminator per block;
+- function result agreement;
+- declaration provenance across module snapshots.
 
-## Data and storage
+## Serialization
 
-Large constants are not another graph and are not pass side channels.
-`Module::store` content-addresses immutable bytes, and constant Ops reference
-the returned name. Copies share payloads until a transformation publishes a
-new Module. An extension can declare an interface for constant-producing
-Functions when cross-vocabulary discovery is required.
-
-Storage planning is an extension-defined representation problem. A compiler
-function may introduce references, allocation, layout, address-space, or
-access Functions, but device capacity and scheduling policy remain explicit
-Module-declared inputs rather than core IR state.
-
-## Current boundary
-
-The core supports multi-Block SSA, dominance, reverse-use queries,
-transactional edits, conversion legality, CFG-preserving clone,
-boundary-relative source specialization, and Module-owned data. General
-symbol-aware interprocedural cloning and a repository encoding that stores
-Module data beside canonical source remain implementation milestones.
+`format(module)` emits canonical Joggle source. Materialized functions are
+serialized in the same module, and immutable binary payloads are referenced by
+content digest. Re-parsing preserves the canonical module digest.

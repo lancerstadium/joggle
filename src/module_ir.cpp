@@ -49,19 +49,9 @@ void collect(DependencyMap& dependencies, const Type& type) {
   }
 }
 
-void collect(DependencyMap& dependencies, const Attribute& attribute) {
-  collect(dependencies, attribute.schema().symbol());
-  for (const detail::ParameterValue& parameter :
-       detail::TypeAccess::parameters(attribute)) {
-    collect(dependencies, parameter);
-  }
-}
-
 void collect(DependencyMap& dependencies, const detail::ParameterValue& value) {
   if (const Type* type = value.as_type()) {
     collect(dependencies, *type);
-  } else if (const Attribute* attribute = value.as_attribute()) {
-    collect(dependencies, *attribute);
   } else if (value.kind() == detail::ParameterValue::Kind::List) {
     for (const detail::ParameterValue& element : value.elements()) {
       collect(dependencies, element);
@@ -232,9 +222,9 @@ bool Module::insert(std::string name, Function function,
       return false;
     }
   }
-  next->interface_digest = Module::compute_interface_digest(next);
+  next->declaration_digest = Module::compute_declaration_digest(next);
   Module candidate(next);
-  Module owner = detail::ModuleAccess::interface_view(candidate);
+  Module owner = detail::ModuleAccess::declaration_view(candidate);
   const auto declarations = owner.overloads(inserted.name());
   const auto attached = std::find_if(
       declarations.begin(), declarations.end(), [&](const FunctionDecl& value) {

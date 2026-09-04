@@ -21,9 +21,7 @@ int main() {
   compiler.add(R"(
 joggle 1;
 module boundary@1.0.0 {
-  interface primitive: fn;
-
-  fn multiply(lhs: f32, rhs: f32) -> f32 : primitive;
+  fn multiply(lhs: f32, rhs: f32) -> f32;
 }
 )",
                "boundary.joggle");
@@ -67,13 +65,10 @@ module opaque_model@1.0.0 {
 
   const auto source = compiler.materialize("source_model.main");
   const auto opaque = compiler.materialize("opaque_model.main");
-  const auto target = compiler.module("boundary");
-  const auto primitive =
-      target ? target->interface("primitive") : std::nullopt;
   joggle::Diagnostics diagnostics;
   joggle::Module program("program", {1, 0, 0});
   joggle::Module bad_program("bad_program", {1, 0, 0});
-  if (!source || !opaque || !primitive ||
+  if (!source || !opaque ||
       !program.insert("main", *source, diagnostics) ||
       !bad_program.insert("main", *opaque, diagnostics)) {
     diagnostics.print(std::cerr);
@@ -82,7 +77,7 @@ module opaque_model@1.0.0 {
   }
 
   const auto boundary = [&](const joggle::Module::FunctionDecl& function) {
-    return compiler.conforms(function, *primitive);
+    return function.symbol().module_name() == "boundary";
   };
   const auto specialized =
       compiler.specialize(program, boundary, diagnostics);
@@ -110,8 +105,8 @@ module opaque_model@1.0.0 {
           main_body->ops().front().callee().symbol().module_name() ==
               specialized->name() &&
           generated_body && generated_body->ops().size() == 1U &&
-          compiler.conforms(generated_body->ops().front().callee(),
-                            *primitive) &&
+          generated_body->ops().front().callee().symbol().module_name() ==
+              "boundary" &&
           original_body &&
           original_body->ops().front().callee().symbol().module_name() ==
               "source_kernel" &&

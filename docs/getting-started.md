@@ -25,8 +25,8 @@ joggle 1;
 module example@1.0.0 {
   type word(width: int);
 
-  fn keep<T: type>(input: T) -> T;
-  fn replacement<T: type>(input: T) -> T;
+  fn keep<T>(input: T) -> T;
+  fn replacement<T>(input: T) -> T;
   fn rewrite(input: function) -> function;
 
   fn main(input: word<8>) -> word<8> {
@@ -145,7 +145,9 @@ Command-line pipelines expose one portable file boundary:
 
 ```joggle
 fn compile(input: bytes) -> bytes {
-  return emit(optimize(read(input)));
+  model = @read(input);
+  optimized = @optimize(model);
+  return @emit(optimized);
 }
 ```
 

@@ -131,9 +131,9 @@ module module_defs@1.0.0 {
                        {"module_defs", {1, 0, 0}}, {"prelude", {3, 0, 0}}},
                "an executable Module reports exact schema dependencies");
   ok &= expect(parsed && reparsed == text &&
-                   parsed->interface_digest() == module.interface_digest(),
+                   parsed->declaration_digest() == module.declaration_digest(),
                "a multi-Function Module serializes with stable artifact and "
-               "interface identities");
+               "declaration identities");
   ok &= expect(text.find("import module_defs@1.0.0;") != std::string::npos &&
                    text.find("import prelude") == std::string::npos &&
                    text.find("fn choose") < text.find("fn main"),

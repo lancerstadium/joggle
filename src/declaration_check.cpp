@@ -99,20 +99,6 @@ private:
     return found == locals_.end() ? nullptr : &*found;
   }
 
-  std::optional<Module::InterfaceDecl>
-  interface(std::string_view reference) const {
-    const std::size_t dot = reference.find('.');
-    const std::string owner =
-        dot == std::string_view::npos
-            ? std::string(scope_.name())
-            : resolve_prefix(scope_, reference.substr(0, dot));
-    const std::string_view name =
-        dot == std::string_view::npos ? reference : reference.substr(dot + 1U);
-    const auto module = compiler_.module(owner);
-    return module ? module->interface(name)
-                  : std::optional<Module::InterfaceDecl>{};
-  }
-
   bool check_derived_field(const Module::Expression& expression,
                            const Module::Expression& expected) {
     if (expression.kind != Module::Expression::Kind::Reference ||
@@ -128,26 +114,9 @@ private:
     if (parameter == nullptr) {
       return false;
     }
-    if (!parameter->constraint) {
-      report("generic '" + std::string(receiver) +
-             "' has no interface exposing field '" +
-             expression.text.substr(dot + 1U) + "'");
-      return true;
-    }
-    const auto contract = interface(*parameter->constraint);
-    const std::string_view field_name =
-        std::string_view(expression.text).substr(dot + 1U);
-    if (!contract) {
-      report("unknown interface '" + *parameter->constraint +
-             "' constraining generic '" + std::string(receiver) + "'");
-      return true;
-    }
-    const auto field = std::find_if(
-        contract->fields().begin(), contract->fields().end(),
-        [&](const auto& candidate) { return candidate.name == field_name; });
-    if (field == contract->fields().end() || field->domain != expected) {
-      report("unknown or ill-typed derived field '" + expression.text + "'");
-    }
+    // A generic type's computed fields are checked when the generic is bound
+    // to a concrete TypeDecl.
+    static_cast<void>(expected);
     return true;
   }
 
@@ -331,8 +300,7 @@ private:
 
   void check_declaration_reference(const Module::Expression& expression,
                                    Domain domain) {
-    if (domain.element != ValueKind::Type &&
-        domain.element != ValueKind::Attribute) {
+    if (domain.element != ValueKind::Type) {
       report("reference '" + expression.text + "' has the wrong domain");
       return;
     }
@@ -351,22 +319,13 @@ private:
       report("reference uses missing Module '" + owner + "'");
       return;
     }
-    std::span<const Module::ParameterDecl> parameters;
-    if (domain.element == ValueKind::Type) {
-      const auto target = module->type(name);
-      if (!target) {
-        report("unknown type '" + expression.text + "'");
-        return;
-      }
-      parameters = target->parameters();
-    } else {
-      const auto target = module->attribute(name);
-      if (!target) {
-        report("unknown attribute '" + expression.text + "'");
-        return;
-      }
-      parameters = target->parameters();
+    const auto target = module->type(name);
+    if (!target) {
+      report("unknown type '" + expression.text + "'");
+      return;
     }
+    const std::span<const Module::ParameterDecl> parameters =
+        target->parameters();
     if (expression.arguments.size() > parameters.size()) {
       report("'" + expression.text + "' has too many arguments");
       return;
@@ -393,44 +352,6 @@ private:
 };
 
 }  // namespace
-
-bool check_generic_constraints(
-    const Compiler& compiler, const Module& scope,
-    std::span<const Module::FunctionDecl::GenericDecl> generics,
-    Diagnostics& diagnostics, std::optional<SourceRange> source,
-    std::string_view subject) {
-  const std::size_t before = diagnostics.size();
-  for (const auto& generic : generics) {
-    if (!generic.constraint) {
-      continue;
-    }
-    const auto dot = generic.constraint->find('.');
-    const std::string owner =
-        dot == std::string::npos
-            ? std::string(scope.name())
-            : resolve_prefix(
-                  scope, std::string_view(*generic.constraint).substr(0, dot));
-    const std::string_view name =
-        dot == std::string::npos
-            ? std::string_view(*generic.constraint)
-            : std::string_view(*generic.constraint).substr(dot + 1U);
-    const auto module = compiler.module(owner);
-    const auto interface = module ? module->interface(name)
-                                  : std::optional<Module::InterfaceDecl>{};
-    const std::string prefix =
-        "in " + std::string(subject) + ": generic '" + generic.name + "' ";
-    if (!interface) {
-      diagnostics.report(prefix + "references unknown interface '" +
-                             *generic.constraint + "'",
-                         source);
-    } else if (interface->subject() != Module::SymbolKind::Type) {
-      diagnostics.report(prefix + "is constrained by non-type interface '" +
-                             *generic.constraint + "'",
-                         source);
-    }
-  }
-  return diagnostics.size() == before;
-}
 
 bool check_declaration_expression(
     const Compiler& compiler, const Module& scope,

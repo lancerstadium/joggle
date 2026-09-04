@@ -31,7 +31,7 @@ module mapping@1.0.0 {
   fn converted(input: word) -> word;
   fn other(input: word) -> word;
   fn binary(lhs: word, rhs: word) -> word;
-  fn identity<T: type>(input: T) -> T;
+  fn identity<T>(input: T) -> T;
 
   fn first(input: word) -> word {
     return keep(input);
@@ -232,7 +232,7 @@ module mapping@1.0.0 {
   const auto original_first_revision = original_first->revision();
   const auto original_second_revision = original_second->revision();
   const std::string original_digest(module.digest());
-  const std::string original_interface_digest(module.interface_digest());
+  const std::string original_declaration_digest(module.declaration_digest());
 
   joggle::Module fixedpoint_module = module;
   joggle::Diagnostics fixedpoint_module_diagnostics;
@@ -294,16 +294,16 @@ module mapping@1.0.0 {
   const auto* mapped_first = read_body("first");
   const auto* preserved_second = read_body("second");
   const auto mapped_declaration = module.function("first");
-  const std::string mapped_symbol_digest =
+  const std::string mapped_declaration_digest =
       mapped_declaration
-          ? std::string(mapped_declaration->symbol().interface_digest())
+          ? std::string(mapped_declaration->symbol().declaration_digest())
           : std::string{};
   ok &=
       expect(module_success && *module_success == 1U &&
                  module_success_diagnostics.ok() && mapped_first != nullptr &&
                  module.digest() != original_digest &&
-                 module.interface_digest() == original_interface_digest &&
-                 mapped_symbol_digest == module.interface_digest() &&
+                 module.declaration_digest() == original_declaration_digest &&
+                 mapped_declaration_digest == module.declaration_digest() &&
                  mapped_first->revision() != original_first_revision &&
                  mapped_first->ops().front().callee() == *converted &&
                  preserved_second != nullptr &&

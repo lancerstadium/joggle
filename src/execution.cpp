@@ -147,8 +147,6 @@ private:
         return typeid(std::string).name();
       case ValueKind::Type:
         return typeid(Type).name();
-      case ValueKind::Attribute:
-        return typeid(Attribute).name();
       case ValueKind::Bytes:
       case ValueKind::Function:
         return {};
@@ -198,13 +196,6 @@ private:
       TypeList result;
       for (auto& element : elements) {
         result.push_back(std::get<Type>(std::move(element)));
-      }
-      return known(ExecutionValue{std::move(result)}, range);
-    }
-    if (element_type == typeid(Attribute).name()) {
-      AttributeList result;
-      for (auto& element : elements) {
-        result.push_back(std::get<Attribute>(std::move(element)));
       }
       return known(ExecutionValue{std::move(result)}, range);
     }

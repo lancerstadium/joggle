@@ -1,327 +1,105 @@
 # Architecture
 
-Joggle is a lightweight compiler substrate for people co-designing AI software
-and hardware. It is meant for experiments in data formats, operators,
-transformations, analysis, simulation, and emission where a fixed dialect
-ladder or target model would become the constraint.
+Joggle is a C++ compiler substrate with one source owner and one extension
+mechanism. The owner is `Module`; the extension mechanism is ordinary typed
+`fn` declarations. Tensor operators, importers, transformations, cost models,
+and emitters are library vocabulary rather than core subclasses.
 
-The design is intentionally asymmetric: Joggle standardizes how compiler
-extensions compose, but does not standardize what a target, schedule, tile,
-stream, or deployment image must contain. Those are vocabulary choices made by
-installable Modules.
+## Core objects
 
-## User-visible product
+| Object | Responsibility |
+| --- | --- |
+| `Module` | versioned declarations, imports, function bodies, immutable data |
+| `Type` | immutable instance of a `type` declaration |
+| `Function` | editable typed CFG/SSA body |
+| `Op` | one call in a `Function` |
+| `Value` | typed function argument, result, or known compiler value |
+| `Compiler` | dependency linking, overload resolution, staging, bindings |
 
-A user handles only three things:
+There is no second Program, Graph, Package, Attribute, Pass, Target, or Result
+owner. A model graph is a `Module` containing functions. Metadata is a normal
+`Type`. A transformation is a function from one compiler value to another.
 
-1. a `.joggle` Module containing declarations, source bodies, and pipeline
-   functions;
-2. imported Modules selected by semantic version;
-3. an optional native library for functions that need a file parser, an
-   external code generator, or another host facility.
+## Source and IR are one module
 
-There is no public Artifact, Graph, Dialect, Pass, Kernel, Target base class,
-adapter, registry, or result wrapper. These words may describe what a function
-does, but they are not objects the user must construct. In particular, binary
-container encoding is an implementation detail of a target's `emit` function;
-`artifact.pack` is not a compiler stage or a Joggle language concept.
+Parsing creates a `Module`. Materialization attaches editable `Function`
+bodies to declarations in a new `Module` snapshot. Committed edits use
+copy-on-write storage, so earlier snapshots remain valid.
 
-The smallest complete pipeline is ordinary source:
+`Module::digest()` identifies the complete canonical snapshot, including
+materialized bodies and stored data. `Module::declaration_digest()` identifies
+the imports and declarations with bodies erased. Symbols retain the latter as
+provenance so a declaration from another compiler snapshot cannot be used by
+accident.
+
+## One declaration plane
+
+The public declaration forms are `import`, `type`, and `fn` inside a module.
+`type` covers both run-time value types and compile-time descriptions:
 
 ```joggle
-joggle 1;
+type word(width: int) {
+  storage_bits: int = width;
+}
 
-module deploy@1.0.0 {
-  import onnx@2.0.0;
-  import edge@1.0.0;
+type layout(order: list<int>);
+fn pack(input: tensor, order: layout<[0, 2, 1]>) -> tensor;
+```
 
-  fn compile(input: bytes, target: type) -> bytes {
-    model = @onnx.read(input);
-    selected = @edge.select(model, target);
-    return @edge.emit(selected, target);
-  }
+There is no separate attribute or capability declaration. Generic parameters
+bind directly to types or compiler domains, and a concrete type's computed
+fields are checked when referenced.
+
+## One call plane
+
+Ordinary calls are program calls. `@call(...)` requests compiler-time
+execution. Both resolve the same overload and use the same declaration
+identity; staging does not create a second kind of function.
+
+The explicit-`@` rule is accepted but not fully implemented yet. The current
+evaluator can still execute an ordinary call eagerly when all values are
+known. Removing that behavior is implementation gate 3 in RFC 0001.
+
+Native C++ bodies are optional implementations of bodyless functions. Their
+signatures are checked against the source declaration when bound. The source
+module remains authoritative; no generated declaration header is required.
+
+## Editable functions
+
+A `Function` owns blocks, block arguments, calls, returns, and typed values.
+Edits are transactional: append, insert, replace, erase, then commit. A failed
+commit does not publish a partially invalid body. The verifier checks ownership,
+dominance, terminators, call signatures, result types, and cross-module symbol
+provenance.
+
+The current edit API is the low-level substrate. Typed lambda matching and
+effect-safe replacement are later language gates; they will build on this IR
+without introducing an alternate graph representation.
+
+## Extension boundary
+
+An extension normally contains:
+
+1. one `.joggle` module declaring its types and functions;
+2. optional source bodies for portable behavior;
+3. an optional native library for host-only parsing, analysis, or emission.
+
+Composition is explicit in source:
+
+```joggle
+fn compile(input: bytes, machine: type) -> bytes {
+  model = @read(input);
+  optimized = @optimize(model, machine);
+  return @emit(optimized, machine);
 }
 ```
 
-`@` asserts that the call finishes during compilation. It does not select a
-second function kind. An expert can call `select` or another target-defined
-function directly, insert a new function between them, or replace the wrapper.
-The convenience pipeline and the controllable stages therefore use the same
-surface.
+Names such as `read`, `optimize`, and `emit` are module APIs, not magic hooks.
+The core imposes no lowering direction or fixed hardware hierarchy.
 
-## Public model
+## Near-term implementation order
 
-The source and C++ names correspond directly:
-
-| Source concept | C++ type | Meaning |
-| --- | --- | --- |
-| `module name@version { ... }` / `module` | `joggle::Module` | The single identity, symbol, import, and multi-Function IR owner |
-| `fn` / `function` | `joggle::Module::FunctionDecl` | One named callable member with a canonical signature |
-| materialized function body | `joggle::Function` | Optional executable CFG and def-use graph owned by that member |
-
-All executable IR ownership types share one namespace and one hierarchy:
-
-```text
-joggle::Module
-  └─ joggle::Module::FunctionDecl
-       └─ optional joggle::Function body
-            └─ joggle::Block
-                 ├─ joggle::Op
-                 ├─ joggle::Value
-                 └─ joggle::Terminator
-```
-
-There is no second whole-IR or graph container. Parsing returns a `Module`;
-whole-module compiler functions consume and return that same type. A repository
-stores immutable Module releases and optional native implementations, but it introduces
-no language object or IR layer.
-
-Declarations and materialized bodies are two states inside the same Module,
-not separate owners. `Module::function(name)` reflects the unique function
-member and its signature; `Module::body(declaration)` accesses its concrete
-editable CFG without guessing among overloads. `Compiler::materialize(...)`
-specializes a source definition into a `Function`, while
-`Compiler::create_function()` constructs an empty one. Generic specialization
-therefore creates a body, not another Module representation.
-
-`Module::insert` turns a standalone Function into a real member: it creates
-one declaration from the current argument and result types, attaches that
-declaration to the body, and freezes the signature. Later transactions may
-rewrite ops or control flow but cannot make the declaration and CFG
-silently drift apart. `Compiler::verify(module)` checks the attachment before
-validating each body against the linked environment. The stored declaration
-uses fully qualified type identities internally, so another materialized
-member can call it before a format-and-parse round trip; human-facing Function
-formatting still uses Prelude's concise type spellings.
-
-Module identity has two deliberately different hashes. `digest()` covers the
-complete canonical Module and therefore changes when a body changes; release
-locks and native implementations use it. `interface_digest()` erases Function bodies
-and covers imports plus declarations; Compiler API boundaries use it when exact
-interface compatibility is required. Member Symbols themselves use a
-versioned qualified declaration name. An optimizer can change executable
-content, and a Module can add another member, without renaming an unchanged
-tensor type or call signature. Incompatible reuse of the same Module version is
-still detected by its interface digest when a declaration crosses a Compiler
-boundary.
-
-The other public concepts are small:
-
-- `joggle::Compiler` owns a linked declaration environment, native bindings,
-  diagnostics, and deterministic evaluation limits.
-- `joggle::Type` and `joggle::Attribute` are immutable instances of
-  Module-declared schemas.
-- `fn` is the only callable declaration in source.
-
-The complete intended C++ ownership surface is:
-
-| Type | Responsibility |
-| --- | --- |
-| `Compiler` | load, link, stage, specialize, invoke, and verify Modules |
-| `Module` | own identity, imports, declarations, Function bodies, and immutable data |
-| `Type`, `Attribute` | immutable instances of Module declarations |
-| `Function` | one executable CFG and def-use graph |
-| `Block`, `Op`, `Value` | non-owning handles into a Function |
-| `Diagnostics` | explicit failure details at transactional boundaries |
-
-Everything else is either a nested declaration handle or an algorithm over
-these values. In particular, a transform helper does not own IR and a native
-library does not create another compiler context.
-
-Every `Op` is a typed call to one `fn` declaration. Its inputs have one schema,
-but two IR roles are derived from their declared domains:
-
-- value-domain inputs are SSA operands, even when a caller supplies a Known
-  literal while constructing the IR;
-- compiler-domain inputs are immutable named properties.
-
-`Op::operands()`, `Op::properties()`, and the named lookup methods expose this
-split directly. Consequently a fusion rule can traverse def-use edges while a
-layout or quantization rule reads stable properties, without inventing a
-second operator schema beside the language declaration.
-
-A Module also owns immutable binary data addressed as `sha256:<digest>`.
-`Module::store` deduplicates it and `Module::data` provides read-only views.
-Module identity covers the data names, while interface identity does not.
-This keeps model constants, rewritten IR, and their transactional publication
-inside one value without serializing megabytes into the textual body or
-threading a separate resource object through every compiler function.
-
-This ownership rule is also the serialization rule. An intermediate Module is
-stored together with its content-addressed data by the repository or cache. A
-target output is simply the `bytes` returned by that target's `emit`. Joggle
-does not insert a generic Artifact object between the two, and a pipeline never
-manually packs a Module plus resources.
-
-## One extensibility mechanism
-
-Loading, transforming, analysing, simulating, and emitting are roles of typed
-functions, not compiler subsystems or declaration kinds. For example:
-
-```joggle
-fn read_onnx(path: string) -> module;
-fn legalize(input: module, target: target) -> module;
-fn estimate(input: module, target: target) -> estimate;
-fn emit(input: module, target: target) -> bytes;
-```
-
-The signatures state what composes. A Module may define a body in Joggle, bind
-an external implementation in C++, or leave a function call Residual. The
-core has no `frontend`, `lower`, `analysis`, `pass`, or `backend` registry.
-Teams may use those words as project roles without making them language
-keywords.
-
-A typed Residual `Op` is also a complete specialization site. Materializing
-that call recovers only the callee's declared generic bindings from concrete
-operand, property, and result types, then instantiates its ordinary source
-body. This keeps reusable generic operator implementations executable without
-a Kernel object, dialect registry, or parallel template API.
-
-`Compiler::specialize(module, boundary, diagnostics)` extends this rule to a
-whole program. `boundary` is a predicate over typed Function declarations. A
-call accepted by the predicate remains in the result; every other call must
-have a source body and is recursively specialized. Each concrete body is
-inserted into the returned Module and callers are rewritten to it. Expansion
-fails on an opaque unaccepted call, recursion, or invalid IR.
-
-This operation is the common mechanism behind target closure. A target emitter
-can accept calls by interface conformance—for example arithmetic, memory, and
-target instruction interfaces—without registering every high-level operator
-name. Adding a user kernel with an ordinary source body therefore changes no
-core registry and no target name table. The target still controls the final
-boundary; Joggle does not declare a universal instruction set.
-
-The CLI preserves the same rule. `joggle run` invokes one reflected function
-with a `bytes -> bytes`, `bytes -> module`, `module -> module`, or
-`module -> bytes` boundary; it does not accept an external list of specially
-classified passes. Module inputs are linked and materialized before the call,
-and Module outputs use canonical source. In-process users retain the full C++
-  type surface, including Module-owned data.
-
-This is also why Joggle does not prescribe tiles, streams, FPGA resources,
-RISC-V ops, devices, schedules, or cost models. A Module defines
-the types and functions it needs. A bridge Module imports two vocabularies and
-owns conversions between them; neither vocabulary has to depend on the other.
-
-## Staged execution
-
-Every function invocation carries one typed value environment. Availability is
-orthogonal to type:
-
-- a Known value has a compiler payload;
-- a Residual value is represented by a `joggle::Value`.
-
-A function declaration stores one ordered input list and one ordered result
-list. Whether a port belongs to a compiler domain (`int`, `type`, `attr`, and
-so on) or denotes a module value is derived from its declared domain; no
-parallel static/value signature is stored. Known and Residual are execution
-states of those same typed ports, not declaration flags.
-
-Known locals retain both their declared domain and payload. In particular, an
-empty `list<string>` remains distinct from an empty `list<type>`, so ordinary
-overload resolution does not need payload tags, special list operations, or a
-second compile-time language.
-
-A body executes as far as its Known inputs permit. Remaining calls and control
-flow become IR. Prefix `@` asserts that an expression must finish as Known; it
-does not invoke another evaluator or another function kind.
-
-The same rule controls source flow:
-
-- Known `bool` selects `if` or advances `while` in the compiler;
-- Residual `i1` creates Blocks and typed edges;
-- `for item in values` requires a Known `list<D>` and deterministically expands
-  one iteration per element;
-- `for item: T in values` materializes a finite integer progression as a
-  fixed-size CFG whose iterator has module type `T`.
-
-Generic values bound by compiler inputs are ordinary Known locals. They can
-drive control flow and dependent type expressions without being wrapped in
-temporary IR Values.
-
-Integer-count loops use the same rule rather than a second loop form. The
-ordinary Hermetic Prelude overloads of `range` construct a Known `list<int>`.
-An untyped iterator expands when generic `N` is Known; an iterator annotated
-with a module type residualizes the same progression into header, body, latch,
-and exit Blocks. Literal, comparison, and increment semantics come from
-ordinary visible functions for that type. Range construction and compile-time
-expansion are bounded by the Compiler evaluation budget.
-
-Execution preserves the declared result sequence: zero results are empty, one
-result is one value, and multiple results remain positional values. The C++
-boundary maps those cases to `void`, `T`, and `std::tuple<Ts...>`; the IR and
-source evaluator do not invent a unit result or a separate result container.
-
-## One graph, no Graph object
-
-A Function already contains the nodes and relations needed by graph-shaped AI
-workloads. Its Blocks and terminators define the CFG; Ops and Values
-define def-use. `predecessors`, `users`, and `dominates` query those relations
-directly. Analyses may cache richer products, but they do not own a second
-module representation.
-
-Structured source is an authoring form over this IR. It is not a Region tree.
-Ops never own Blocks. Explicit Blocks remain available for arbitrary
-transformation output and exact serialization.
-
-## Trusted kernel and Module plane
-
-The kernel implements parsing, canonical formatting, module identity, release
-resolution, typed values, overload and dependent-type solving, staged
-execution, IR ownership, transactions, and verification. The ambient Prelude
-declares compiler domains, native scalar types, callable types, interfaces,
-the whole-module `module` type, and compiler-domain primitive functions. Its
-source is embedded from `language/prelude.joggle`, so source tooling and the
-runtime share one authority. Those primitives use the same `fn`
-resolution and execution path as Module functions; the kernel contributes
-only their deterministic Hermetic implementations. It never evaluates an
-undeclared operator token or a magic function name.
-
-Everything specific to an AI framework, model format, hardware target, numeric
-format, schedule, simulator, or emitter belongs in installable Modules and
-optional native libraries. This boundary keeps the core small while leaving
-experiments inspectable and serializable.
-
-Prelude's `module` is represented by `joggle::Module`; its `function` value is
-the materialized `joggle::Function` body of a `Module::FunctionDecl`. These
-are the only core-owned host mappings. Extension-owned schedules,
-estimates, traces, object files, or target descriptions use ordinary declared
-types and `Compiler::represent`.
-
-## Extension responsibilities
-
-An installable Module may contain any combination of four ordinary ingredients:
-
-- vocabulary: types, attributes, interfaces, and bodyless residual functions;
-- source semantics: generic `fn` bodies that specialize to a smaller
-  vocabulary;
-- compiler functions: `module -> module`, `module -> value`, or
-  `module -> bytes` functions;
-- an optional native implementation for host facilities not expressible in
-  source.
-
-These are not four package kinds. One Module can co-evolve them, while another
-Module can import two vocabularies and provide only conversions. Interfaces are
-structural semantic contracts used for generic constraints and conformance
-queries; they are not verifier classes or callbacks that every user must
-implement.
-
-A concrete target Module normally declares its own configuration type,
-primitive residual functions, source kernels, transformations, analyses, and
-emitter. The names are target API choices. Joggle neither requires a fixed
-`select/schedule/allocate/emit` ladder nor discovers those names through a
-registry. A source-defined `compile` function composes whichever functions the
-target actually needs.
-
-`joggle_module(SOURCE ... NATIVE ...)` builds an optional native
-implementation for one exact canonical Module. Its entry point and identity
-descriptor are generated in a private translation unit. The `.joggle` Module
-remains the schema authority and no declaration header is generated.
-
-## Deliberate non-goals
-
-Joggle currently does not try to be a complete general-purpose language, ship
-a universal optimizer, model every device, or replace mature code generators.
-It supplies a coherent point at which such components can be registered and
-composed. Closure literals and automatic capture lifting are not implemented;
-named Functions already work as typed callable values.
+The binding plan is RFC 0001: declaration unification, explicit staging,
+higher-order typed functions, effect-safe replacement, then real tensor and
+ONNX modules. Kernel scheduling and hardware-specific formats remain outside
+the core until that end-to-end path works.

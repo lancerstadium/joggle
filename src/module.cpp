@@ -30,9 +30,7 @@ using Parameter = Module::ParameterDecl;
 using ValueKind = detail::ValueKind;
 
 struct ParsedModule {
-  using InterfaceDefinition = detail::InterfaceDefinition;
   using TypeDefinition = detail::TypeDefinition;
-  using AttributeDefinition = detail::AttributeDefinition;
   using FunctionDefinition = detail::FunctionDefinition;
   using TypeExpression = detail::TypeExpression;
   using GenericDefinition = detail::GenericDefinition;
@@ -41,9 +39,7 @@ struct ParsedModule {
   Version version;
   std::vector<Module::Import> imports;
   std::vector<SourceRange> import_sources;
-  std::vector<InterfaceDefinition> interfaces;
   std::vector<TypeDefinition> types;
-  std::vector<AttributeDefinition> attributes;
   std::vector<FunctionDefinition> functions;
 };
 
@@ -94,16 +90,12 @@ public:
         const SourcePosition begin = current_.begin;
         advance();
         parse_import(begin);
-      } else if (match_name("interface")) {
-        parse_interface();
       } else if (match_name("type")) {
         parse_type();
-      } else if (match_name("attr")) {
-        parse_attribute();
       } else if (is_name("fn")) {
         parse_function();
       } else {
-        error("expected import, interface, type, attr, or fn");
+        error("expected import, type, or fn");
       }
     }
     expect(TokenKind::RightBrace, "'}'");
@@ -321,9 +313,6 @@ private:
     if (match_name("type")) {
       return ValueKind::Type;
     }
-    if (match_name("attr")) {
-      return ValueKind::Attribute;
-    }
     if (match_name("function")) {
       return ValueKind::Function;
     }
@@ -463,24 +452,15 @@ private:
     if (!match(TokenKind::Greater)) {
       do {
         auto generic_name = name("a type variable name");
-        expect(TokenKind::Colon, "':'");
-        std::optional<detail::Domain> domain;
-        std::optional<std::string> constraint;
-        const bool is_parameter_domain =
-            is_name("int") || is_name("real") || is_name("bool") ||
-            is_name("string") || is_name("type") || is_name("attr") ||
-            is_name("function") || is_name("bytes") || is_name("list");
-        if (is_parameter_domain) {
+        std::optional<detail::Domain> domain =
+            detail::Domain{ValueKind::Type, false};
+        if (match(TokenKind::Colon)) {
           domain = parameter_domain();
-        } else {
-          constraint = reference("a generic kind or type interface");
-          domain = detail::Domain{ValueKind::Type, false};
         }
         if (generic_name && domain) {
           result.push_back(
               {std::move(*generic_name),
-               detail::domain_expression(domain->element, domain->list),
-               std::move(constraint)});
+               detail::domain_expression(domain->element, domain->list)});
         }
       } while (match(TokenKind::Comma));
       expect(TokenKind::Greater, "'>'");
@@ -559,20 +539,6 @@ private:
     return result;
   }
 
-  std::vector<std::string> interface_list() {
-    std::vector<std::string> result;
-    if (!match(TokenKind::Colon)) {
-      return result;
-    }
-    do {
-      auto interface = reference("an interface name");
-      if (interface) {
-        result.push_back(std::move(*interface));
-      }
-    } while (match(TokenKind::Comma));
-    return result;
-  }
-
   void parse_import(SourcePosition begin) {
     auto import_name = name("an imported module name");
     expect(TokenKind::At, "'@'");
@@ -592,93 +558,31 @@ private:
     }
   }
 
-  void parse_interface() {
-    const SourcePosition begin = current_.begin;
-    auto interface_name = name("an interface name");
-    expect(TokenKind::Colon, "':'");
-    std::optional<Module::SymbolKind> subject;
-    if (match_name("type")) {
-      subject = Module::SymbolKind::Type;
-    } else if (match_name("attr")) {
-      subject = Module::SymbolKind::Attribute;
-    } else if (match_name("fn")) {
-      subject = Module::SymbolKind::Function;
-    } else {
-      error("expected type, attr, or fn after interface ':'");
-    }
-
-    ParsedModule::InterfaceDefinition definition;
-    if (interface_name) {
-      definition.name = std::move(*interface_name);
-    }
-    if (subject) {
-      definition.subject = *subject;
-    }
-    if (match(TokenKind::Semicolon)) {
-      if (!definition.name.empty()) {
-        definition.source = SourceRange{source_, begin, current_.begin};
-        module_.interfaces.push_back(std::move(definition));
-      }
-      return;
-    }
-
-    expect(TokenKind::LeftBrace, "'{'");
-    while (!is(TokenKind::RightBrace) && ok()) {
-      if (definition.subject == Module::SymbolKind::Type) {
-        auto field_name = name("a field name");
-        expect(TokenKind::Colon, "':'");
-        auto field_domain = parameter_domain();
-        expect(TokenKind::Semicolon, "';'");
-        if (field_name && field_domain) {
-          definition.fields.push_back(
-              {std::move(*field_name),
-               detail::domain_expression(field_domain->element,
-                                         field_domain->list),
-               false, std::nullopt});
-        }
-      } else {
-        auto method_name = name("a method name");
-        auto method_parameters = parameters(false, false);
-        expect(TokenKind::Arrow, "'->'");
-        auto result = parameter_domain();
-        expect(TokenKind::Semicolon, "';'");
-        if (method_name && result) {
-          definition.methods.push_back(
-              {std::move(*method_name),
-               std::move(method_parameters),
-               {{"result",
-                 detail::domain_expression(result->element, result->list),
-                 false, std::nullopt}}});
-        }
-      }
-    }
-    expect(TokenKind::RightBrace, "'}'");
-    if (!definition.name.empty()) {
-      definition.source = SourceRange{source_, begin, current_.begin};
-      module_.interfaces.push_back(std::move(definition));
-    }
-  }
-
   void parse_type() {
     const SourcePosition begin = current_.begin;
     auto definition_name = name("a type name");
     auto definition_parameters = parameters(false, true);
-    auto interfaces = interface_list();
     std::vector<Module::TypeDecl::DerivedParameterDecl> derived_parameters;
     if (!match(TokenKind::Semicolon)) {
       expect(TokenKind::LeftBrace, "'{'");
       while (!is(TokenKind::RightBrace) && ok()) {
         auto field = name("a derived parameter name");
+        expect(TokenKind::Colon, "':'");
+        auto field_domain = parameter_domain();
         expect(TokenKind::Equal, "'='");
         std::vector<ParsedModule::GenericDefinition> variables;
         variables.reserve(definition_parameters.size());
         for (const auto& parameter : definition_parameters) {
-          variables.push_back({parameter.name, parameter.domain, std::nullopt});
+          variables.push_back({parameter.name, parameter.domain});
         }
         auto body = type_expression(variables);
         expect(TokenKind::Semicolon, "';'");
-        if (field) {
-          derived_parameters.push_back({std::move(*field), std::move(body)});
+        if (field && field_domain) {
+          derived_parameters.push_back(
+              {std::move(*field),
+               detail::domain_expression(field_domain->element,
+                                         field_domain->list),
+               std::move(body)});
         }
       }
       expect(TokenKind::RightBrace, "'}'");
@@ -686,21 +590,8 @@ private:
     if (definition_name) {
       module_.types.push_back(
           {std::move(*definition_name), std::move(definition_parameters),
-           std::move(interfaces), std::move(derived_parameters),
+           std::move(derived_parameters),
            SourceRange{source_, begin, current_.begin}});
-    }
-  }
-
-  void parse_attribute() {
-    const SourcePosition begin = current_.begin;
-    auto definition_name = name("an attribute name");
-    auto definition_parameters = parameters(false, true);
-    auto interfaces = interface_list();
-    expect(TokenKind::Semicolon, "';'");
-    if (definition_name) {
-      module_.attributes.push_back(
-          {std::move(*definition_name), std::move(definition_parameters),
-           std::move(interfaces), SourceRange{source_, begin, current_.begin}});
     }
   }
 
@@ -783,8 +674,6 @@ private:
     if (match(TokenKind::Arrow)) {
       result_types = function_results(generics);
     }
-    auto interfaces = interface_list();
-
     ParsedModule::FunctionDefinition definition;
     if (function_name) {
       definition.name = std::move(*function_name);
@@ -810,7 +699,6 @@ private:
                                      : "result" + std::to_string(index),
            std::move(result_types[index]), false, std::nullopt});
     }
-    definition.interfaces = std::move(interfaces);
     definition.operator_fixity = declared_fixity;
     if (symbolic && !definition.operator_fixity) {
       const auto value_inputs = static_cast<std::size_t>(
@@ -829,7 +717,7 @@ private:
       std::vector<ParsedModule::GenericDefinition> variables =
           definition.generics;
       for (const auto& input : definition.inputs) {
-        variables.push_back({input.name, input.domain, std::nullopt});
+        variables.push_back({input.name, input.domain});
       }
       auto body = detail::parse_function_body(lexer_, current_, diagnostics_,
                                               source_, variables);
@@ -878,51 +766,6 @@ private:
       }
       if (values[index].variadic && index + 1U != values.size()) {
         error("variadic parameter must be last in '" + std::string(owner) + "'",
-              source);
-      }
-    }
-  }
-
-  void validate_interface_uses(const std::vector<std::string>& interfaces,
-                               Module::SymbolKind subject,
-                               std::string_view owner,
-                               std::optional<SourceRange> source) {
-    std::unordered_set<std::string> names;
-    for (const std::string& reference : interfaces) {
-      if (!names.insert(reference).second) {
-        error("duplicate interface '" + reference + "' on '" +
-                  std::string(owner) + "'",
-              source);
-        continue;
-      }
-      const std::size_t dot = reference.find('.');
-      if (dot != std::string::npos) {
-        const std::string_view module_name(reference.data(), dot);
-        if (module_name == detail::prelude_module_name) {
-          continue;
-        }
-        const bool imported =
-            std::any_of(module_.imports.begin(), module_.imports.end(),
-                        [&](const Module::Import& import) {
-                          return import.prefix() == module_name;
-                        });
-        if (module_name != module_.name && !imported) {
-          error("interface '" + reference +
-                    "' belongs to a module that is not imported",
-                source);
-        }
-        continue;
-      }
-      const auto found = std::find_if(
-          module_.interfaces.begin(), module_.interfaces.end(),
-          [&](const auto& interface) { return interface.name == reference; });
-      if (found == module_.interfaces.end()) {
-        error("unknown interface '" + reference + "' on '" +
-                  std::string(owner) + "'",
-              source);
-      } else if (found->subject != subject) {
-        error("interface '" + reference + "' cannot be implemented by '" +
-                  std::string(owner) + "'",
               source);
       }
     }
@@ -1012,51 +855,8 @@ private:
         const std::string_view receiver(expression.text.data(), field_dot);
         const auto* generic = find_generic(variables, receiver);
         if (generic != nullptr) {
-          if (!generic->constraint) {
-            report("generic '" + std::string(receiver) +
-                   "' has no interface exposing derived parameter '" +
-                   expression.text.substr(field_dot + 1U) + "' in " +
-                   std::string(owner));
-            return;
-          }
-          if (!reference_is_visible(*generic->constraint, "interface",
-                                    source)) {
-            return;
-          }
-          const std::size_t constraint_dot = generic->constraint->find('.');
-          const bool local =
-              constraint_dot == std::string::npos ||
-              generic->constraint->substr(0, constraint_dot) == module_.name;
-          if (!local) {
-            return;
-          }
-          const std::string_view interface_name =
-              constraint_dot == std::string::npos
-                  ? std::string_view(*generic->constraint)
-                  : std::string_view(*generic->constraint)
-                        .substr(constraint_dot + 1U);
-          const auto interface =
-              std::find_if(module_.interfaces.begin(), module_.interfaces.end(),
-                           [&](const auto& candidate) {
-                             return candidate.name == interface_name;
-                           });
-          const std::string_view field_name =
-              std::string_view(expression.text).substr(field_dot + 1U);
-          if (interface == module_.interfaces.end()) {
-            report("unknown interface '" + *generic->constraint +
-                   "' constraining '" + std::string(receiver) + "' in " +
-                   std::string(owner));
-            return;
-          }
-          const auto field =
-              std::find_if(interface->fields.begin(), interface->fields.end(),
-                           [&](const auto& candidate) {
-                             return candidate.name == field_name;
-                           });
-          if (field == interface->fields.end() || field->domain != expected) {
-            report("unknown or ill-typed derived parameter '" +
-                   expression.text + "' in " + std::string(owner));
-          }
+          // The concrete type bound to the generic owns and types this field.
+          // Resolution checks it once that binding is known.
           return;
         }
       }
@@ -1141,8 +941,7 @@ private:
     if (!reference_is_visible(expression.text, "type", source)) {
       return;
     }
-    if (domain->element != ValueKind::Type &&
-        domain->element != ValueKind::Attribute) {
+    if (domain->element != ValueKind::Type) {
       report("type expression reference has the wrong domain in " +
              std::string(owner));
       return;
@@ -1157,40 +956,28 @@ private:
         dot == std::string::npos
             ? std::string_view(expression.text)
             : std::string_view(expression.text).substr(dot + 1U);
-    if (domain->element == ValueKind::Type) {
-      const auto declaration = std::find_if(
-          module_.types.begin(), module_.types.end(),
-          [&](const auto& candidate) { return candidate.name == name; });
-      if (declaration == module_.types.end()) {
-        report("unknown type '" + expression.text + "' in " +
-               std::string(owner));
-        return;
-      }
-      if (expression.arguments.size() > declaration->parameters.size()) {
-        report("too many arguments for type '" + expression.text + "'");
-        return;
-      }
-      for (std::size_t index = 0; index < expression.arguments.size();
-           ++index) {
-        validate_declaration_expression(variables, owner, source,
-                                        expression.arguments[index],
-                                        declaration->parameters[index].domain);
-      }
-      for (std::size_t index = expression.arguments.size();
-           index < declaration->parameters.size(); ++index) {
-        if (!declaration->parameters[index].default_value) {
-          report("missing argument '" + declaration->parameters[index].name +
-                 "' for type '" + expression.text + "'");
-        }
-      }
+    const auto declaration = std::find_if(
+        module_.types.begin(), module_.types.end(),
+        [&](const auto& candidate) { return candidate.name == name; });
+    if (declaration == module_.types.end()) {
+      report("unknown type '" + expression.text + "' in " + std::string(owner));
       return;
     }
-    const auto declaration = std::find_if(
-        module_.attributes.begin(), module_.attributes.end(),
-        [&](const auto& candidate) { return candidate.name == name; });
-    if (declaration == module_.attributes.end()) {
-      report("unknown attribute '" + expression.text + "' in " +
-             std::string(owner));
+    if (expression.arguments.size() > declaration->parameters.size()) {
+      report("too many arguments for type '" + expression.text + "'");
+      return;
+    }
+    for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
+      validate_declaration_expression(variables, owner, source,
+                                      expression.arguments[index],
+                                      declaration->parameters[index].domain);
+    }
+    for (std::size_t index = expression.arguments.size();
+         index < declaration->parameters.size(); ++index) {
+      if (!declaration->parameters[index].default_value) {
+        report("missing argument '" + declaration->parameters[index].name +
+               "' for type '" + expression.text + "'");
+      }
     }
   }
 
@@ -1236,9 +1023,7 @@ private:
               source);
       }
     }
-    check_unique(module_.interfaces, "interface");
     check_unique(module_.types, "type");
-    check_unique(module_.attributes, "attribute");
     for (std::size_t left = 0; left < module_.functions.size(); ++left) {
       const auto& function = module_.functions[left];
       for (std::size_t right = left + 1U; right < module_.functions.size();
@@ -1266,23 +1051,8 @@ private:
         }
       }
     }
-    for (const auto& interface : module_.interfaces) {
-      validate_parameters(interface.fields, interface.name, interface.source);
-      check_unique(interface.fields,
-                   "field in interface '" + interface.name + "'");
-      check_unique(interface.methods,
-                   "method in interface '" + interface.name + "'");
-      for (const auto& method : interface.methods) {
-        validate_parameters(method.inputs, interface.name + "." + method.name,
-                            interface.source);
-        validate_parameters(method.results, interface.name + "." + method.name,
-                            interface.source);
-      }
-    }
     for (const auto& type : module_.types) {
       validate_parameters(type.parameters, type.name, type.source);
-      validate_interface_uses(type.interfaces, Module::SymbolKind::Type,
-                              type.name, type.source);
       std::unordered_set<std::string> derived_names;
       for (const auto& derived : type.derived_parameters) {
         if (!derived_names.insert(derived.name).second) {
@@ -1301,13 +1071,6 @@ private:
                 type.source);
         }
       }
-    }
-    for (const auto& attribute : module_.attributes) {
-      validate_parameters(attribute.parameters, attribute.name,
-                          attribute.source);
-      validate_interface_uses(attribute.interfaces,
-                              Module::SymbolKind::Attribute, attribute.name,
-                              attribute.source);
     }
     for (const auto& function : module_.functions) {
       validate_parameters(function.inputs, function.name, function.source,
@@ -1333,43 +1096,6 @@ private:
           error("duplicate type variable '" + generic.name + "' in '" +
                     function.name + "'",
                 function.source);
-        }
-        if (generic.constraint) {
-          if (!detail::is_domain(generic.domain, ValueKind::Type)) {
-            error("interface-constrained generic '" + generic.name + "' in '" +
-                      function.name + "' must bind one type",
-                  function.source);
-            continue;
-          }
-          if (!reference_is_visible(*generic.constraint, "interface",
-                                    function.source)) {
-            continue;
-          }
-          const std::size_t dot = generic.constraint->find('.');
-          const bool local = dot == std::string::npos ||
-                             generic.constraint->substr(0, dot) == module_.name;
-          if (local) {
-            const std::string_view local_name =
-                dot == std::string::npos
-                    ? std::string_view(*generic.constraint)
-                    : std::string_view(*generic.constraint).substr(dot + 1U);
-            const auto interface = std::find_if(
-                module_.interfaces.begin(), module_.interfaces.end(),
-                [&](const auto& candidate) {
-                  return candidate.name == local_name;
-                });
-            if (interface == module_.interfaces.end()) {
-              error("unknown type interface '" + *generic.constraint +
-                        "' constraining '" + generic.name + "' in '" +
-                        function.name + "'",
-                    function.source);
-            } else if (interface->subject != Module::SymbolKind::Type) {
-              error("interface '" + *generic.constraint + "' constraining '" +
-                        generic.name + "' in '" + function.name +
-                        "' is not a type interface",
-                    function.source);
-            }
-          }
         }
       }
       const auto type_domain = detail::domain_expression(ValueKind::Type);
@@ -1428,9 +1154,6 @@ private:
                 function.source);
         }
       }
-      validate_interface_uses(function.interfaces, Module::SymbolKind::Function,
-                              function.name, function.source);
-
       if (const Module::Expression* expression = body_expression(function.body);
           expression != nullptr && function.results.size() == 1U &&
           !detail::is_value_port(function.results.front()) &&
@@ -1441,7 +1164,7 @@ private:
         for (std::size_t index = 0; index < function.inputs.size(); ++index) {
           const auto& input = function.inputs[index];
           if (!detail::is_value_port(input)) {
-            variables.push_back({input.name, input.domain, std::nullopt});
+            variables.push_back({input.name, input.domain});
           }
         }
         validate_declaration_expression(variables, owner, function.source,
@@ -1477,28 +1200,10 @@ private:
 
 std::string symbol_kind_name(Module::SymbolKind kind) {
   switch (kind) {
-  case Module::SymbolKind::Interface:
-    return "interface";
   case Module::SymbolKind::Type:
     return "type";
-  case Module::SymbolKind::Attribute:
-    return "attr";
   case Module::SymbolKind::Function:
     return "fn";
-  }
-  return "invalid";
-}
-
-std::string subject_kind_name(Module::SymbolKind kind) {
-  switch (kind) {
-  case Module::SymbolKind::Type:
-    return "type";
-  case Module::SymbolKind::Attribute:
-    return "attr";
-  case Module::SymbolKind::Function:
-    return "fn";
-  case Module::SymbolKind::Interface:
-    break;
   }
   return "invalid";
 }
@@ -1759,10 +1464,10 @@ bool VersionRange::contains(Version candidate) const {
 }
 
 Module::Symbol::Symbol(std::string module_name, Version module_version,
-                       std::string interface_digest, SymbolKind kind,
+                       std::string declaration_digest, SymbolKind kind,
                        std::string local_name, std::string discriminator)
     : module_name_(std::move(module_name)), module_version_(module_version),
-      interface_digest_(std::move(interface_digest)), kind_(kind),
+      declaration_digest_(std::move(declaration_digest)), kind_(kind),
       local_name_(std::move(local_name)),
       discriminator_(std::move(discriminator)) {}
 
@@ -1786,91 +1491,6 @@ bool Module::Symbol::operator==(const Symbol& other) const {
          discriminator_ == other.discriminator_;
 }
 
-Module::InterfaceDecl::MethodDecl::MethodDecl(
-    std::shared_ptr<const Storage> storage, std::size_t interface_index,
-    std::size_t method_index)
-    : storage_(std::move(storage)), interface_index_(interface_index),
-      method_index_(method_index) {}
-
-std::string_view Module::InterfaceDecl::MethodDecl::name() const {
-  return storage_->interfaces[interface_index_].methods[method_index_].name;
-}
-
-std::span<const Module::ParameterDecl>
-Module::InterfaceDecl::MethodDecl::inputs() const {
-  return storage_->interfaces[interface_index_].methods[method_index_].inputs;
-}
-
-std::span<const Module::ParameterDecl>
-Module::InterfaceDecl::MethodDecl::results() const {
-  return storage_->interfaces[interface_index_].methods[method_index_].results;
-}
-
-Module::InterfaceDecl Module::InterfaceDecl::MethodDecl::owner() const {
-  return InterfaceDecl(storage_, interface_index_);
-}
-
-std::string Module::InterfaceDecl::MethodDecl::qualified_name() const {
-  return storage_->name + "." + storage_->interfaces[interface_index_].name +
-         "." + std::string(name());
-}
-
-std::string Module::InterfaceDecl::MethodDecl::stable_name() const {
-  return storage_->name + "@" + to_string(storage_->version) + "/interface/" +
-         storage_->interfaces[interface_index_].name + "/method/" +
-         std::string(name());
-}
-
-bool Module::InterfaceDecl::MethodDecl::operator==(
-    const MethodDecl& other) const {
-  return stable_name() == other.stable_name();
-}
-
-Module::InterfaceDecl::InterfaceDecl(std::shared_ptr<const Storage> storage,
-                                     std::size_t index)
-    : storage_(std::move(storage)), index_(index) {}
-
-std::string_view Module::InterfaceDecl::name() const {
-  return storage_->interfaces[index_].name;
-}
-
-Module::SymbolKind Module::InterfaceDecl::subject() const {
-  return storage_->interfaces[index_].subject;
-}
-
-std::span<const Module::ParameterDecl> Module::InterfaceDecl::fields() const {
-  return storage_->interfaces[index_].fields;
-}
-
-std::optional<Module::InterfaceDecl::MethodDecl>
-Module::InterfaceDecl::method(std::string_view name) const {
-  const auto index =
-      find_definition(storage_->interfaces[index_].methods, name);
-  return index ? std::optional<MethodDecl>{MethodDecl(storage_, index_, *index)}
-               : std::nullopt;
-}
-
-std::vector<Module::InterfaceDecl::MethodDecl>
-Module::InterfaceDecl::methods() const {
-  std::vector<MethodDecl> result;
-  const auto& methods = storage_->interfaces[index_].methods;
-  result.reserve(methods.size());
-  for (std::size_t method_index = 0; method_index < methods.size();
-       ++method_index) {
-    result.push_back(MethodDecl(storage_, index_, method_index));
-  }
-  return result;
-}
-
-Module::Symbol Module::InterfaceDecl::symbol() const {
-  return {storage_->name, storage_->version, storage_->interface_digest,
-          SymbolKind::Interface, storage_->interfaces[index_].name};
-}
-
-bool Module::InterfaceDecl::operator==(const InterfaceDecl& other) const {
-  return symbol() == other.symbol();
-}
-
 Module::TypeDecl::TypeDecl(std::shared_ptr<const Storage> storage,
                            std::size_t index)
     : storage_(std::move(storage)), index_(index) {}
@@ -1888,42 +1508,13 @@ Module::TypeDecl::derived_parameters() const {
   return storage_->types[index_].derived_parameters;
 }
 
-std::span<const std::string> Module::TypeDecl::interfaces() const {
-  return storage_->types[index_].interfaces;
-}
-
 Module::Symbol Module::TypeDecl::symbol() const {
-  return {storage_->name, storage_->version, storage_->interface_digest,
+  return {storage_->name, storage_->version, storage_->declaration_digest,
           SymbolKind::Type,
           storage_->types[index_].name};
 }
 
 bool Module::TypeDecl::operator==(const TypeDecl& other) const {
-  return symbol() == other.symbol();
-}
-
-Module::AttributeDecl::AttributeDecl(std::shared_ptr<const Storage> storage,
-                                     std::size_t index)
-    : storage_(std::move(storage)), index_(index) {}
-
-std::string_view Module::AttributeDecl::name() const {
-  return storage_->attributes[index_].name;
-}
-
-std::span<const Parameter> Module::AttributeDecl::parameters() const {
-  return storage_->attributes[index_].parameters;
-}
-
-std::span<const std::string> Module::AttributeDecl::interfaces() const {
-  return storage_->attributes[index_].interfaces;
-}
-
-Module::Symbol Module::AttributeDecl::symbol() const {
-  return {storage_->name, storage_->version, storage_->interface_digest,
-          SymbolKind::Attribute, storage_->attributes[index_].name};
-}
-
-bool Module::AttributeDecl::operator==(const AttributeDecl& other) const {
   return symbol() == other.symbol();
 }
 
@@ -2009,10 +1600,6 @@ bool detail::has_default_specialization(const Module::FunctionDecl& function) {
                      });
 }
 
-std::span<const std::string> Module::FunctionDecl::interfaces() const {
-  return storage_->functions[index_].declaration->interfaces;
-}
-
 std::optional<Module::FunctionDecl::Fixity>
 Module::FunctionDecl::operator_fixity() const {
   return storage_->functions[index_].declaration->operator_fixity;
@@ -2060,9 +1647,6 @@ std::string Module::FunctionDecl::signature() const {
         result += ',';
       }
       result += type_expression_text(generics()[index].domain);
-      if (generics()[index].constraint) {
-        result += ':' + *generics()[index].constraint;
-      }
     }
     result += '>';
   }
@@ -2095,7 +1679,7 @@ std::string Module::FunctionDecl::signature() const {
 Module::Symbol Module::FunctionDecl::symbol() const {
   return {storage_->name,
           storage_->version,
-          storage_->interface_digest,
+          storage_->declaration_digest,
           SymbolKind::Function,
           storage_->functions[index_].name,
           signature()};
@@ -2128,7 +1712,7 @@ Module::Module(std::string name, Version version) {
   storage->version = version;
   storage_ = storage;
   storage->digest = compute_digest(storage);
-  storage->interface_digest = compute_interface_digest(storage);
+  storage->declaration_digest = compute_declaration_digest(storage);
 }
 
 Module::Module(const Module& other) : storage_(other.storage_) {
@@ -2193,13 +1777,13 @@ Module::current_digest(const std::shared_ptr<const Storage>& storage) {
 }
 
 std::string
-Module::compute_interface_digest(const std::shared_ptr<const Storage>& storage) {
-  return std::string(interface_view(storage).digest());
+Module::compute_declaration_digest(const std::shared_ptr<const Storage>& storage) {
+  return std::string(declaration_view(storage).digest());
 }
 
 Module
-Module::interface_view(const std::shared_ptr<const Storage>& storage) {
-  auto interface = std::make_shared<Storage>(*storage);
+Module::declaration_view(const std::shared_ptr<const Storage>& storage) {
+  auto declarations = std::make_shared<Storage>(*storage);
   const Module source(storage);
   for (const Dependency& dependency : source.dependencies()) {
     if (dependency.name == detail::prelude_module_name ||
@@ -2207,10 +1791,10 @@ Module::interface_view(const std::shared_ptr<const Storage>& storage) {
       continue;
     }
     const auto found = std::find_if(
-        interface->imports.begin(), interface->imports.end(),
+        declarations->imports.begin(), declarations->imports.end(),
         [&](const Import& import) { return import.name == dependency.name; });
-    if (found == interface->imports.end()) {
-      interface->imports.push_back(
+    if (found == declarations->imports.end()) {
+      declarations->imports.push_back(
           {dependency.name,
            {VersionRangeKind::Exact, dependency.version},
            {}});
@@ -2218,34 +1802,34 @@ Module::interface_view(const std::shared_ptr<const Storage>& storage) {
       found->version = {VersionRangeKind::Exact, dependency.version};
     }
   }
-  for (detail::FunctionMember& member : interface->functions) {
+  for (detail::FunctionMember& member : declarations->functions) {
     if (member.declaration) {
       member.declaration->body.reset();
     }
     member.ir.reset();
   }
-  interface->data.clear();
-  std::vector<std::size_t> order(interface->functions.size());
+  declarations->data.clear();
+  std::vector<std::size_t> order(declarations->functions.size());
   for (std::size_t index = 0; index < order.size(); ++index) {
     order[index] = index;
   }
   std::sort(order.begin(), order.end(), [&](std::size_t left,
                                             std::size_t right) {
-    return FunctionDecl(interface, left).signature() <
-           FunctionDecl(interface, right).signature();
+    return FunctionDecl(declarations, left).signature() <
+           FunctionDecl(declarations, right).signature();
   });
   std::vector<detail::FunctionMember> functions;
   functions.reserve(order.size());
   for (const std::size_t index : order) {
-    functions.push_back(std::move(interface->functions[index]));
+    functions.push_back(std::move(declarations->functions[index]));
   }
-  interface->functions = std::move(functions);
-  interface->digest.clear();
-  interface->interface_digest.clear();
-  interface->digest_revisions.clear();
-  Module result(interface);
-  interface->digest = compute_digest(interface);
-  interface->interface_digest = interface->digest;
+  declarations->functions = std::move(functions);
+  declarations->digest.clear();
+  declarations->declaration_digest.clear();
+  declarations->digest_revisions.clear();
+  Module result(declarations);
+  declarations->digest = compute_digest(declarations);
+  declarations->declaration_digest = declarations->digest;
   return result;
 }
 
@@ -2253,8 +1837,8 @@ std::string_view Module::digest() const {
   return current_digest(storage_);
 }
 
-std::string_view Module::interface_digest() const {
-  return storage_->interface_digest;
+std::string_view Module::declaration_digest() const {
+  return storage_->declaration_digest;
 }
 
 std::span<const Module::Import> Module::imports() const {
@@ -2298,23 +1882,9 @@ std::vector<std::string> Module::data() const {
   return names;
 }
 
-std::optional<Module::InterfaceDecl>
-Module::interface(std::string_view name) const {
-  const auto index = find_definition(storage_->interfaces, name);
-  return index ? std::optional<InterfaceDecl>{InterfaceDecl(storage_, *index)}
-               : std::nullopt;
-}
-
 std::optional<Module::TypeDecl> Module::type(std::string_view name) const {
   const auto index = find_definition(storage_->types, name);
   return index ? std::optional<TypeDecl>{TypeDecl(storage_, *index)}
-               : std::nullopt;
-}
-
-std::optional<Module::AttributeDecl>
-Module::attribute(std::string_view name) const {
-  const auto index = find_definition(storage_->attributes, name);
-  return index ? std::optional<AttributeDecl>{AttributeDecl(storage_, *index)}
                : std::nullopt;
 }
 
@@ -2345,44 +1915,29 @@ std::optional<Module::Symbol> Module::symbol(SymbolKind kind,
                ? std::optional<Symbol>{declarations.front().symbol()}
                : std::nullopt;
   }
-  const bool exists =
-      (kind == SymbolKind::Interface && interface(name).has_value()) ||
-      (kind == SymbolKind::Type && type(name).has_value()) ||
-      (kind == SymbolKind::Attribute && attribute(name).has_value());
+  const bool exists = kind == SymbolKind::Type && type(name).has_value();
   if (!exists) {
     return std::nullopt;
   }
   return Symbol(std::string(storage_->name), storage_->version,
-                storage_->interface_digest, kind, std::string(name));
+                storage_->declaration_digest, kind, std::string(name));
 }
 
 std::vector<Module::Symbol> Module::members() const {
   std::vector<Symbol> result;
-  result.reserve(storage_->interfaces.size() + storage_->types.size() +
-                 storage_->attributes.size() + storage_->functions.size());
+  result.reserve(storage_->types.size() + storage_->functions.size());
   const auto append = [&](SymbolKind kind, const auto& definitions) {
     for (const auto& definition : definitions) {
       result.push_back(Symbol(std::string(storage_->name), storage_->version,
-                              storage_->interface_digest, kind,
+                              storage_->declaration_digest, kind,
                               std::string(definition.name)));
     }
   };
-  append(SymbolKind::Interface, storage_->interfaces);
   append(SymbolKind::Type, storage_->types);
-  append(SymbolKind::Attribute, storage_->attributes);
   for (std::size_t index = 0; index < storage_->functions.size(); ++index) {
     if (storage_->functions[index].declaration) {
       result.push_back(FunctionDecl(storage_, index).symbol());
     }
-  }
-  return result;
-}
-
-std::vector<Module::InterfaceDecl> Module::interfaces() const {
-  std::vector<InterfaceDecl> result;
-  result.reserve(storage_->interfaces.size());
-  for (std::size_t index = 0; index < storage_->interfaces.size(); ++index) {
-    result.push_back(InterfaceDecl(storage_, index));
   }
   return result;
 }
@@ -2392,15 +1947,6 @@ std::vector<Module::TypeDecl> Module::types() const {
   result.reserve(storage_->types.size());
   for (std::size_t index = 0; index < storage_->types.size(); ++index) {
     result.push_back(TypeDecl(storage_, index));
-  }
-  return result;
-}
-
-std::vector<Module::AttributeDecl> Module::attributes() const {
-  std::vector<AttributeDecl> result;
-  result.reserve(storage_->attributes.size());
-  for (std::size_t index = 0; index < storage_->attributes.size(); ++index) {
-    result.push_back(AttributeDecl(storage_, index));
   }
   return result;
 }
@@ -2421,8 +1967,8 @@ bool Module::operator==(const Module& other) const {
          digest() == other.digest();
 }
 
-Module detail::ModuleAccess::interface_view(const Module& module) {
-  return Module::interface_view(module.storage_);
+Module detail::ModuleAccess::declaration_view(const Module& module) {
+  return Module::declaration_view(module.storage_);
 }
 
 std::shared_ptr<const detail::FunctionBody>
@@ -2459,12 +2005,8 @@ std::optional<SourceRange> detail::ModuleAccess::declaration_source(
     return index ? definitions[*index].source : std::optional<SourceRange>{};
   };
   switch (kind) {
-  case Module::SymbolKind::Interface:
-    return find_source(module.storage_->interfaces);
   case Module::SymbolKind::Type:
     return find_source(module.storage_->types);
-  case Module::SymbolKind::Attribute:
-    return find_source(module.storage_->attributes);
   case Module::SymbolKind::Function: {
     const auto found = std::find_if(
         module.storage_->functions.begin(), module.storage_->functions.end(),
@@ -2491,9 +2033,7 @@ std::optional<Module> parse_module(std::string_view text,
   storage->version = parsed->version;
   storage->imports = std::move(parsed->imports);
   storage->import_sources = std::move(parsed->import_sources);
-  storage->interfaces = std::move(parsed->interfaces);
   storage->types = std::move(parsed->types);
-  storage->attributes = std::move(parsed->attributes);
   storage->functions.reserve(parsed->functions.size());
   for (detail::FunctionDefinition& function : parsed->functions) {
     std::string name = function.name;
@@ -2502,7 +2042,7 @@ std::optional<Module> parse_module(std::string_view text,
   }
   Module module(storage);
   storage->digest = Module::compute_digest(storage);
-  storage->interface_digest = Module::compute_interface_digest(storage);
+  storage->declaration_digest = Module::compute_declaration_digest(storage);
   return module;
 }
 
@@ -2561,30 +2101,6 @@ std::string format(const Module& module) {
     output << ";\n";
   }
 
-  const auto write_parameters = [&](std::span<const Parameter> parameters) {
-    output << '(';
-    for (std::size_t index = 0; index < parameters.size(); ++index) {
-      if (index != 0U) {
-        output << ", ";
-      }
-      output << parameter_text(parameters[index]);
-    }
-    output << ')';
-  };
-  const auto interfaces_text = [&](std::span<const std::string> interfaces) {
-    std::string text;
-    if (interfaces.empty()) {
-      return text;
-    }
-    text = " : ";
-    for (std::size_t index = 0; index < interfaces.size(); ++index) {
-      if (index != 0U) {
-        text += ", ";
-      }
-      text += interfaces[index];
-    }
-    return text;
-  };
   bool wrote_group = !imports.empty();
   const auto begin_group = [&](bool present) {
     if (!present) {
@@ -2595,29 +2111,7 @@ std::string format(const Module& module) {
     }
     wrote_group = true;
   };
-  begin_group(!module.storage_->interfaces.empty());
-  for (const auto& interface : module.storage_->interfaces) {
-    output << "  interface " << interface.name << ": "
-           << subject_kind_name(interface.subject);
-    if (interface.fields.empty() && interface.methods.empty()) {
-      output << ";\n";
-      continue;
-    }
-    output << " {\n";
-    for (const auto& field : interface.fields) {
-      output << "    " << field.name << ": "
-             << type_expression_text(field.domain) << ";\n";
-    }
-    for (const auto& method : interface.methods) {
-      output << "    " << method.name;
-      write_parameters(method.inputs);
-      const auto& output_field = method.results.front();
-      output << " -> " << type_expression_text(output_field.domain) << ";\n";
-    }
-    output << "  }\n";
-  }
-  begin_group(!module.storage_->types.empty() ||
-              !module.storage_->attributes.empty());
+  begin_group(!module.storage_->types.empty());
   for (const auto& type : module.storage_->types) {
     const std::string head = "  type " + type.name;
     std::string flat = head + '(';
@@ -2627,7 +2121,7 @@ std::string format(const Module& module) {
       }
       flat += parameter_text(type.parameters[index]);
     }
-    flat += ')' + interfaces_text(type.interfaces);
+    flat += ')';
     if (!type.derived_parameters.empty()) {
       if (flat.size() <= canonical_line_width || type.parameters.empty()) {
         output << flat << " {\n";
@@ -2640,10 +2134,12 @@ std::string format(const Module& module) {
           }
           output << '\n';
         }
-        output << "  )" << interfaces_text(type.interfaces) << " {\n";
+        output << "  ) {\n";
       }
       for (const auto& derived : type.derived_parameters) {
-        const std::string field_head = "    " + derived.name + " = ";
+        const std::string field_head =
+            "    " + derived.name + ": " +
+            type_expression_text(derived.domain) + " = ";
         const std::string value = type_expression_text(derived.value);
         if (field_head.size() + value.size() <= canonical_line_width) {
           output << field_head << value << ";\n";
@@ -2668,13 +2164,7 @@ std::string format(const Module& module) {
       }
       output << '\n';
     }
-    output << "  )" << interfaces_text(type.interfaces) << ";\n";
-  }
-  for (const auto& attribute : module.storage_->attributes) {
-    output << "  attr " << attribute.name;
-    write_parameters(attribute.parameters);
-    output << interfaces_text(attribute.interfaces);
-    output << ";\n";
+    output << "  );\n";
   }
   const bool has_declarations = std::any_of(
       module.storage_->functions.begin(), module.storage_->functions.end(),
@@ -2701,11 +2191,9 @@ std::string format(const Module& module) {
       generics.reserve(function.generics.size());
       for (std::size_t index = 0; index < function.generics.size(); ++index) {
         const auto& generic = function.generics[index];
-        std::string text = generic.name + ": ";
-        if (generic.constraint) {
-          text += *generic.constraint;
-        } else {
-          text += type_expression_text(generic.domain);
+        std::string text = generic.name;
+        if (generic.domain != Module::Expression::reference("type")) {
+          text += ": " + type_expression_text(generic.domain);
         }
         generics.push_back(std::move(text));
       }
@@ -2759,17 +2247,7 @@ std::string format(const Module& module) {
         result_text += ')';
       }
     }
-    std::string suffix;
-    if (!function.interfaces.empty()) {
-      suffix += " : ";
-      for (std::size_t index = 0; index < function.interfaces.size(); ++index) {
-        if (index != 0U) {
-          suffix += ", ";
-        }
-        suffix += function.interfaces[index];
-      }
-    }
-    const std::string tail = ")" + result_text + suffix;
+    const std::string tail = ")" + result_text;
     std::string flat = head + '(';
     for (std::size_t index = 0; index < inputs.size(); ++index) {
       if (index != 0U) {
@@ -2815,7 +2293,6 @@ std::string format(const Module& module) {
             output << "    )";
           }
         }
-        output << suffix;
       }
     }
     if (function.body) {

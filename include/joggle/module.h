@@ -111,9 +111,7 @@ public:
   };
 
   enum class SymbolKind {
-    Interface,
     Type,
-    Attribute,
     Function,
   };
 
@@ -121,9 +119,9 @@ public:
   public:
     std::string_view module_name() const { return module_name_; }
     Version module_version() const { return module_version_; }
-    // Interface provenance of the Module snapshot that produced this Symbol.
+    // Declaration provenance of the Module snapshot that produced this Symbol.
     // Logical Symbol equality uses its versioned qualified declaration name.
-    std::string_view interface_digest() const { return interface_digest_; }
+    std::string_view declaration_digest() const { return declaration_digest_; }
     SymbolKind kind() const { return kind_; }
     std::string_view local_name() const { return local_name_; }
 
@@ -133,66 +131,26 @@ public:
 
   private:
     Symbol(std::string module_name, Version module_version,
-           std::string interface_digest, SymbolKind kind,
+           std::string declaration_digest, SymbolKind kind,
            std::string local_name, std::string discriminator = {});
 
     std::string module_name_;
     Version module_version_;
-    std::string interface_digest_;
+    std::string declaration_digest_;
     SymbolKind kind_ = SymbolKind::Type;
     std::string local_name_;
     std::string discriminator_;
 
     friend class Module;
-    friend class InterfaceDecl;
     friend class TypeDecl;
-    friend class AttributeDecl;
     friend class FunctionDecl;
-  };
-
-  class InterfaceDecl {
-  public:
-    class MethodDecl {
-    public:
-      std::string_view name() const;
-      std::span<const ParameterDecl> inputs() const;
-      std::span<const ParameterDecl> results() const;
-      InterfaceDecl owner() const;
-      std::string qualified_name() const;
-      std::string stable_name() const;
-      bool operator==(const MethodDecl& other) const;
-
-    private:
-      MethodDecl(std::shared_ptr<const Storage> storage,
-                 std::size_t interface_index, std::size_t method_index);
-      std::shared_ptr<const Storage> storage_;
-      std::size_t interface_index_ = 0;
-      std::size_t method_index_ = 0;
-      friend class InterfaceDecl;
-    };
-
-    std::string_view name() const;
-    SymbolKind subject() const;
-    // Type interfaces expose compile-time fields. Their values are supplied
-    // declaratively by conforming type declarations and participate in type
-    // construction; they are not dynamically dispatched methods.
-    std::span<const ParameterDecl> fields() const;
-    std::optional<MethodDecl> method(std::string_view name) const;
-    std::vector<MethodDecl> methods() const;
-    Symbol symbol() const;
-    bool operator==(const InterfaceDecl& other) const;
-
-  private:
-    InterfaceDecl(std::shared_ptr<const Storage> storage, std::size_t index);
-    std::shared_ptr<const Storage> storage_;
-    std::size_t index_ = 0;
-    friend class Module;
   };
 
   class TypeDecl {
   public:
     struct DerivedParameterDecl {
       std::string name;
+      Expression domain = Expression::reference("int");
       Expression value;
 
       bool operator==(const DerivedParameterDecl&) const = default;
@@ -201,27 +159,11 @@ public:
     std::string_view name() const;
     std::span<const ParameterDecl> parameters() const;
     std::span<const DerivedParameterDecl> derived_parameters() const;
-    std::span<const std::string> interfaces() const;
     Symbol symbol() const;
     bool operator==(const TypeDecl& other) const;
 
   private:
     TypeDecl(std::shared_ptr<const Storage> storage, std::size_t index);
-    std::shared_ptr<const Storage> storage_;
-    std::size_t index_ = 0;
-    friend class Module;
-  };
-
-  class AttributeDecl {
-  public:
-    std::string_view name() const;
-    std::span<const ParameterDecl> parameters() const;
-    std::span<const std::string> interfaces() const;
-    Symbol symbol() const;
-    bool operator==(const AttributeDecl& other) const;
-
-  private:
-    AttributeDecl(std::shared_ptr<const Storage> storage, std::size_t index);
     std::shared_ptr<const Storage> storage_;
     std::size_t index_ = 0;
     friend class Module;
@@ -238,7 +180,6 @@ public:
     struct GenericDecl {
       std::string name;
       Expression domain = Expression::reference("type");
-      std::optional<std::string> constraint;
 
       bool operator==(const GenericDecl&) const = default;
     };
@@ -247,7 +188,6 @@ public:
     std::span<const GenericDecl> generics() const;
     std::span<const ParameterDecl> inputs() const;
     std::span<const ParameterDecl> results() const;
-    std::span<const std::string> interfaces() const;
     std::optional<Fixity> operator_fixity() const;
     Form form() const;
     const Function* body() const;
@@ -287,9 +227,9 @@ public:
   // body change this artifact identity.
   std::string_view digest() const;
   // SHA-256 of imports and declarations with Function bodies erased. Symbols
-  // retain it as provenance and Compiler boundaries use it for exact interface
+  // retain it as provenance and Compiler boundaries use it for exact declaration
   // compatibility. Logical Symbol names remain stable when members are added.
-  std::string_view interface_digest() const;
+  std::string_view declaration_digest() const;
   std::span<const Import> imports() const;
 
   // Large immutable payloads (for example model weights) travel with the
@@ -299,16 +239,12 @@ public:
   std::optional<std::span<const std::byte>> data(std::string_view name) const;
   std::vector<std::string> data() const;
 
-  std::optional<InterfaceDecl> interface(std::string_view name) const;
   std::optional<TypeDecl> type(std::string_view name) const;
-  std::optional<AttributeDecl> attribute(std::string_view name) const;
   std::optional<FunctionDecl> function(std::string_view name) const;
   std::vector<FunctionDecl> overloads(std::string_view name) const;
   std::optional<Symbol> symbol(SymbolKind kind, std::string_view name) const;
   std::vector<Symbol> members() const;
-  std::vector<InterfaceDecl> interfaces() const;
   std::vector<TypeDecl> types() const;
-  std::vector<AttributeDecl> attributes() const;
   std::vector<FunctionDecl> functions() const;
 
   // A FunctionDecl always occupies one Module member and has one canonical
@@ -330,9 +266,9 @@ private:
   static std::string
   compute_digest(const std::shared_ptr<const Storage>& storage);
   static std::string
-  compute_interface_digest(const std::shared_ptr<const Storage>& storage);
+  compute_declaration_digest(const std::shared_ptr<const Storage>& storage);
   static Module
-  interface_view(const std::shared_ptr<const Storage>& storage);
+  declaration_view(const std::shared_ptr<const Storage>& storage);
   std::shared_ptr<const Storage> storage_;
 
   friend class Compiler;

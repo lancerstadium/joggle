@@ -1,6 +1,6 @@
 # RFC 0001: One staged language for compiler construction
 
-Status: accepted; implementation in progress
+Status: accepted; gates 1-2 complete, gate 3 in progress
 
 ## Purpose
 
@@ -94,7 +94,7 @@ an earlier gate.
 1. One symbol identity: remove operator aliases and canonicalize direct
    symbolic function declarations.
 2. One declaration model: remove `interface`, `attr`, declaration constraints,
-   and their C++ reflection/storage paths.
+   and their C++ reflection/storage paths. **Complete.**
 3. Explicit staging: make `@` the only stage switch and test residual calls
    with fully known operands.
 4. Higher-order core: add typed function values and typed lambdas without a

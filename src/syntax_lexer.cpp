@@ -100,8 +100,8 @@ Token Lexer::take() {
 
 Token Lexer::symbol(SourcePosition begin) {
   // Keep symbol characters atomic. Parsers join adjacent characters only in
-  // an operator position. This lets `as //` denote one operator while `>>`
-  // still closes two nested generic argument lists.
+  // an operator-name or expression position, while `>>` still closes two
+  // nested generic argument lists.
   std::string text(1U, input_[offset_]);
   advance();
   if (text == "+") {

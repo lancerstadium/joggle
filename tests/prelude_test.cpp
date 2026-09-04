@@ -35,13 +35,13 @@ int main() {
 joggle 1;
 
 module native_test@1.0.0 {
-  type packed(bits: int) : prelude.scalar {
-    storage_bits = bits;
+  type packed(bits: int) {
+    storage_bits: int = bits;
   }
   type word(width: int);
 
-  fn identity<T: prelude.scalar>(input: T) -> T;
-  fn encode<T: prelude.scalar>(input: T) -> word<T.storage_bits>;
+  fn identity<T>(input: T) -> T;
+  fn encode<T>(input: T) -> word<T.storage_bits>;
 
   fn integers(x: i32, y: u32) -> i32 {
     result = identity(x);
@@ -96,12 +96,6 @@ module native_test@1.0.0 {
   const auto custom = compiler.materialize("native_test.custom");
   const auto native_width = compiler.materialize("native_test.native_width");
   const auto custom_width = compiler.materialize("native_test.custom_width");
-  const auto scalar =
-      embedded_prelude ? embedded_prelude->interface("scalar") : std::nullopt;
-  const auto storage_bits = scalar && !scalar->fields().empty()
-                                ? std::optional{scalar->fields().front()}
-                                : std::nullopt;
-
   bool ok = true;
   ok &= expect(source_prelude && embedded_prelude &&
                    source_prelude->digest() == embedded_prelude->digest(),
@@ -117,12 +111,12 @@ module native_test@1.0.0 {
           i32->schema().symbol().qualified_name() == "prelude.i32" &&
           u32->schema().symbol().qualified_name() == "prelude.u32" &&
           f32->schema().symbol().qualified_name() == "prelude.f32" &&
-          storage_bits && i32->schema().derived_parameters().size() == 1U &&
+          i32->schema().derived_parameters().size() == 1U &&
           i32->schema().derived_parameters().front().name == "storage_bits",
       "compiler values and fixed-width scalars use ordinary "
       "reflected Prelude declarations");
   ok &= expect(integers && floating && custom && native_width && custom_width,
-               "native and interface-conforming custom types instantiate");
+               "native and user-defined computed-field types instantiate");
   ok &=
       expect(known_integer && same_known_integer && known_i32 &&
                  known_integer->known() && !known_i32->is_function_argument() &&
@@ -146,8 +140,7 @@ module native_test@1.0.0 {
                                         : std::nullopt;
   ok &= expect(native_bits == std::optional<std::int64_t>{32} &&
                    custom_bits == std::optional<std::int64_t>{4},
-               "one interface field computes parameters for native and "
-               "custom scalar types");
+               "type-owned computed fields work for native and custom types");
   const std::string text =
       integers ? joggle::format(*integers, "integers") : std::string{};
   ok &= expect(text.find("arg0: i32") != std::string::npos &&
@@ -163,7 +156,7 @@ joggle 1;
 module primitive_test@1.0.0 {
   type word(width: int);
 
-  fn identity<T: type>(input: T) -> T;
+  fn identity<T>(input: T) -> T;
 
   fn fold<S: list<int>>(values: S) -> int {
     total = 0;

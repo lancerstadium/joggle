@@ -159,9 +159,6 @@ std::string_view execution_value_type(const ExecutionValue& value) {
   if (std::holds_alternative<Type>(value)) {
     return typeid(Type).name();
   }
-  if (std::holds_alternative<Attribute>(value)) {
-    return typeid(Attribute).name();
-  }
   if (std::holds_alternative<Bytes>(value)) {
     return typeid(Bytes).name();
   }
@@ -183,9 +180,6 @@ std::string_view execution_value_type(const ExecutionValue& value) {
   if (std::holds_alternative<TypeList>(value)) {
     return typeid(TypeList).name();
   }
-  if (std::holds_alternative<AttributeList>(value)) {
-    return typeid(AttributeList).name();
-  }
   if (const auto* host = std::get_if<HostValue>(&value)) {
     return host->cpp_type;
   }
@@ -202,8 +196,7 @@ list_elements(const ExecutionValue& value) {
                       std::is_same_v<Value, RealList> ||
                       std::is_same_v<Value, BooleanList> ||
                       std::is_same_v<Value, StringList> ||
-                      std::is_same_v<Value, TypeList> ||
-                      std::is_same_v<Value, AttributeList>) {
+                      std::is_same_v<Value, TypeList>) {
           std::vector<ExecutionValue> result;
           result.reserve(stored.size());
           for (const auto& element : stored) {
@@ -233,9 +226,6 @@ std::optional<Domain> cpp_value_domain(std::string_view type) {
   if (type == typeid(Type).name()) {
     return Domain{ValueKind::Type, false};
   }
-  if (type == typeid(Attribute).name()) {
-    return Domain{ValueKind::Attribute, false};
-  }
   if (type == typeid(Bytes).name()) {
     return Domain{ValueKind::Bytes, false};
   }
@@ -256,9 +246,6 @@ std::optional<Domain> cpp_value_domain(std::string_view type) {
   }
   if (type == typeid(TypeList).name()) {
     return Domain{ValueKind::Type, true};
-  }
-  if (type == typeid(AttributeList).name()) {
-    return Domain{ValueKind::Attribute, true};
   }
   return std::nullopt;
 }
@@ -406,8 +393,6 @@ execution_value(const ParameterValue& value,
       return list_execution_value<std::string>(value);
     case ValueKind::Type:
       return list_execution_value<Type>(value);
-    case ValueKind::Attribute:
-      return list_execution_value<Attribute>(value);
     case ValueKind::Function:
     case ValueKind::Bytes:
       return std::nullopt;
@@ -424,8 +409,6 @@ execution_value(const ParameterValue& value,
     return ExecutionValue{*value.as_string()};
   case ParameterValue::Kind::Type:
     return ExecutionValue{*value.as_type()};
-  case ParameterValue::Kind::Attribute:
-    return ExecutionValue{*value.as_attribute()};
   case ParameterValue::Kind::List:
     return std::nullopt;
   }
@@ -448,9 +431,6 @@ std::optional<ParameterValue> parameter_value(const ExecutionValue& value) {
   if (const auto* stored = std::get_if<Type>(&value)) {
     return ParameterValue(*stored);
   }
-  if (const auto* stored = std::get_if<Attribute>(&value)) {
-    return ParameterValue(*stored);
-  }
   if (const auto* stored = std::get_if<IntegerList>(&value)) {
     return list_parameter_value(*stored);
   }
@@ -464,9 +444,6 @@ std::optional<ParameterValue> parameter_value(const ExecutionValue& value) {
     return list_parameter_value(*stored);
   }
   if (const auto* stored = std::get_if<TypeList>(&value)) {
-    return list_parameter_value(*stored);
-  }
-  if (const auto* stored = std::get_if<AttributeList>(&value)) {
     return list_parameter_value(*stored);
   }
   return std::nullopt;

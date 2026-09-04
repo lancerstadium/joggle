@@ -18,20 +18,20 @@ joggle 1;
 module logic@1.0.0 {
   type word(width: int);
   type tensor(element: type, shape: list<int>);
-  attr payload(scale: real, labels: list<string>, element: type);
+  type payload(scale: real, labels: list<string>, element: type);
 
-  fn source<T: type>(name: string, meta: attr) -> T;
-  fn identity<T: type>(input: T) -> T;
-  fn generic_body<T: type>(input: T) -> T {
+  fn source<T>(name: string, meta: type) -> T;
+  fn identity<T>(input: T) -> T;
+  fn generic_body<T>(input: T) -> T {
     return identity(input);
   }
   fn generic_body_user(input: word<8>) -> word<8> {
     return generic_body(input);
   }
-  fn add<T: type>(lhs: T, rhs: T) -> T;
-  fn apply<T: type, U: type>(input: T, body: (T) -> U) -> U;
-  fn apply_same<T: type>(input: T, body: (T) -> T) -> T;
-  fn callback_factory<T: type, U: type>() -> (T) -> U;
+  fn add<T>(lhs: T, rhs: T) -> T;
+  fn apply<T, U>(input: T, body: (T) -> U) -> U;
+  fn apply_same<T>(input: T, body: (T) -> T) -> T;
+  fn callback_factory<T, U>() -> (T) -> U;
   fn main(lhs: tensor<word<8>, [2, 4]>) -> tensor<word<8>, [2, 4]> {
     input: tensor<word<8>, [2, 4]> = source(
       name = "input } // still a string",
@@ -57,7 +57,7 @@ module logic@1.0.0 {
   fn callback_value(input: word<8>) -> word<16> {
     return apply(input, callback);
   }
-  fn generic_callback<T: type>(input: T) -> T;
+  fn generic_callback<T>(input: T) -> T;
   fn generic_callback_value(input: word<8>) -> word<8> {
     body: (word<8>) -> word<8> = generic_callback;
     return apply_same(input, body);
@@ -305,7 +305,7 @@ int main() {
       module_text, module_roundtrip_diagnostics, "logic-roundtrip.joggle");
   ok &= expect(module_roundtrip &&
                    module_text.find("body: (T) -> U") != std::string::npos &&
-                   module_text.find("callback_factory<T: type, U: type>() "
+                   module_text.find("callback_factory<T, U>() "
                                     "-> (T) -> U;") != std::string::npos &&
                    joggle::format(*module_roundtrip) == module_text,
                "function types format and parse canonically");
@@ -380,7 +380,7 @@ joggle 1;
 module cfg@1.0.0 {
   type word();
   fn identity(input: word) -> word;
-  fn integer_literal<T: prelude.integer>(value: int) -> T : prelude.literal;
+  fn literal<T>(value: int) -> T ;
   fn choose(condition: i1, lhs: word, rhs: word) -> word {
     entry():
       branch condition, left(), right();
@@ -573,7 +573,7 @@ module cfg@1.0.0 {
           std::all_of(materialized_operations.begin(),
                       materialized_operations.end(),
                       [](const joggle::Op& op) {
-                        return op.callee().name() == "integer_literal";
+                        return op.callee().name() == "literal";
                       }) &&
           cfg_materialized->result_types().front() ==
               cfg_materialized->blocks().back().arguments().front().type(),
@@ -616,7 +616,7 @@ module cfg@1.0.0 {
           std::all_of(early_literal_operations.begin(),
                       early_literal_operations.end(),
                       [](const joggle::Op& op) {
-                        return op.callee().name() == "integer_literal";
+                        return op.callee().name() == "literal";
                       }),
       "structured returns terminate only their selected control "
       "paths without a Region or synthetic merge");
@@ -701,9 +701,23 @@ module missing_literal@1.0.0 {
   joggle::Compiler ambiguous_literal;
   ambiguous_literal.add(R"(
 joggle 1;
+module literal_a@1.0.0 {
+  fn literal<T>(value: int) -> T;
+}
+)",
+                        "literal-a.joggle");
+  ambiguous_literal.add(R"(
+joggle 1;
+module literal_b@1.0.0 {
+  fn literal<T>(value: int) -> T;
+}
+)",
+                        "literal-b.joggle");
+  ambiguous_literal.add(R"(
+joggle 1;
 module ambiguous_literal@1.0.0 {
-  fn first<T: prelude.integer>(value: int) -> T : prelude.literal;
-  fn second<T: prelude.integer>(value: int) -> T : prelude.literal;
+  import literal_a@1.0.0;
+  import literal_b@1.0.0;
   fn choose(condition: i1) -> i32 {
     return if condition { 1 } else { 2 };
   }
@@ -731,8 +745,8 @@ module ambiguous_literal@1.0.0 {
 joggle 1;
 module loops@1.0.0 {
   type word(width: int);
-  fn source<T: type>() -> T;
-  fn integer_literal<T: prelude.integer>(value: int) -> T : prelude.literal;
+  fn source<T>() -> T;
+  fn literal<T>(value: int) -> T ;
   fn less(lhs: i32, rhs: i32) -> i1;
   fn (<)(lhs: i32, rhs: i32) -> i1;
   fn (+)(lhs: i32, rhs: i32) -> i32;
@@ -873,7 +887,7 @@ module loops@1.0.0 {
                    count_from_zero->blocks().size() == 4U &&
                    count_from_zero->ops().size() == 3U &&
                    count_from_zero->ops().front().callee().name() ==
-                       "integer_literal",
+                       "literal",
                "a typed Known initializer materializes before becoming a "
                "Residual loop-carried value");
   ok &= expect(huge_counted_loop &&
@@ -935,7 +949,7 @@ module outside_loop@1.0.0 {
   mixed_loop_transfer.add(R"(
 joggle 1;
 module mixed_loop_transfer@1.0.0 {
-  fn integer_literal<T: prelude.integer>(value: int) -> T : prelude.literal;
+  fn literal<T>(value: int) -> T ;
 
   fn break_on(stop: i1) -> i32 {
     running = true;
@@ -1003,8 +1017,8 @@ module mixed_loop_transfer@1.0.0 {
   cyclic_mixed_loop.add(R"(
 joggle 1;
 module cyclic_mixed_loop@1.0.0 {
-  fn logical_literal<T: prelude.logical>(value: bool) -> T : prelude.literal;
-  fn integer_literal<T: prelude.integer>(value: int) -> T : prelude.literal;
+  fn literal<T>(value: bool) -> T ;
+  fn literal<T>(value: int) -> T ;
 
   fn rebuild<Start: int>(phase: Start, skip: i1) -> i32 {
     running = true;
@@ -1039,18 +1053,18 @@ module cyclic_mixed_loop@1.0.0 {
   if (!cyclic_mixed_loop_function) {
     cyclic_mixed_loop.diagnostics().print(std::cerr);
   }
-  std::vector<bool> cyclic_literals;
+  std::vector<bool> cyclic_bool_literals;
   std::vector<std::int64_t> cyclic_integer_literals;
   if (cyclic_mixed_loop_function) {
     for (const auto& op : cyclic_mixed_loop_function->ops()) {
       if (const auto value = op.property<bool>("value")) {
-        cyclic_literals.push_back(*value);
+        cyclic_bool_literals.push_back(*value);
       }
       if (const auto value = op.property<std::int64_t>("value")) {
         cyclic_integer_literals.push_back(*value);
       }
     }
-    std::sort(cyclic_literals.begin(), cyclic_literals.end());
+    std::sort(cyclic_bool_literals.begin(), cyclic_bool_literals.end());
     std::sort(cyclic_integer_literals.begin(), cyclic_integer_literals.end());
   }
   const auto has_backedge = [](const joggle::Function& function) {
@@ -1072,7 +1086,7 @@ module cyclic_mixed_loop@1.0.0 {
   ok &= expect(cyclic_mixed_loop_function &&
                    cyclic_mixed_loop.verify(*cyclic_mixed_loop_function) &&
                    has_backedge(*cyclic_mixed_loop_function) &&
-                   cyclic_literals.empty() &&
+                   cyclic_bool_literals.empty() &&
                    std::find(cyclic_integer_literals.begin(),
                              cyclic_integer_literals.end(),
                              0) != cyclic_integer_literals.end() &&
@@ -1212,7 +1226,7 @@ module invalid_cfg@1.0.0 {
 joggle 1;
 module logic@1.0.0 {
   type word(width: int);
-  fn add<T: type>(lhs: T, rhs: T) -> T;
+  fn add<T>(lhs: T, rhs: T) -> T;
   fn main() -> word<8> {
     sum: word<8> = add(missing, missing);
     return sum;
@@ -1263,7 +1277,7 @@ joggle 1;
 module mismatch@1.0.0 {
   type a();
   type b();
-  fn same<T: type>(lhs: T, rhs: T) -> T;
+  fn same<T>(lhs: T, rhs: T) -> T;
   fn main(lhs: a, rhs: b) -> a {
     result = same(lhs, rhs);
     return result;
@@ -1283,7 +1297,7 @@ module mismatch@1.0.0 {
 joggle 1;
 module return_inferred@1.0.0 {
   type a();
-  fn source<T: type>() -> T;
+  fn source<T>() -> T;
   fn main() -> a {
     result = source();
     return result;
@@ -1307,7 +1321,7 @@ module return_inferred@1.0.0 {
 joggle 1;
 module unbound@1.0.0 {
   type a();
-  fn source<T: type>() -> T;
+  fn source<T>() -> T;
   fn main() {
     result = source();
     return;
@@ -1711,14 +1725,9 @@ module computed@1.0.0 {
   projected.add(R"(
 joggle 1;
 module formats@1.0.0 {
-  interface numeric_format: type {
-    storage_bits: int;
-    is_signed: bool;
-  }
-
-  type packed(width: int, signed: bool = false) : numeric_format {
-    storage_bits = width;
-    is_signed = signed;
+  type packed(width: int, signed: bool = false) {
+    storage_bits: int = width;
+    is_signed: bool = signed;
   }
 
   fn align(value: int, multiple: int) -> int {
@@ -1733,9 +1742,9 @@ module projected@1.0.0 {
   import formats@1.0.0 as fmt;
 
   type word(width: int, signed: bool);
-  fn encode<T: fmt.numeric_format>(input: T)
+  fn encode<T>(input: T)
     -> word<T.storage_bits, T.is_signed>;
-  fn align<T: fmt.numeric_format>(input: T)
+  fn align<T>(input: T)
     -> word<fmt.align(T.storage_bits, 8), T.is_signed>;
 
   fn encode13(input: fmt.packed<13, true>) -> word<13, true> {
@@ -1783,7 +1792,7 @@ module projected@1.0.0 {
               std::optional<std::int64_t>{16} &&
           align13->entry().terminator().returned().front().type().get<bool>(
               "signed") == std::optional<bool>{true} &&
-          format_text.find("storage_bits = width;") != std::string::npos &&
+          format_text.find("storage_bits: int = width;") != std::string::npos &&
           format_text.find("fn align") != std::string::npos,
       "a type-derived parameter deterministically feeds imported "
       "generic result parameters");
@@ -1792,12 +1801,9 @@ module projected@1.0.0 {
   missing_field.add(R"(
 joggle 1;
 module missing_field@1.0.0 {
-  interface format: type {
-    storage_bits: int;
-  }
-  type opaque() : format;
+  type opaque();
   type word(width: int);
-  fn encode<T: format>(input: T) -> word<T.storage_bits>;
+  fn encode<T>(input: T) -> word<T.storage_bits>;
   fn main(input: opaque) -> word<8> {
     result = encode(input);
     return result;
@@ -1806,32 +1812,33 @@ module missing_field@1.0.0 {
 )",
                     "missing-field.joggle");
   const bool missing_field_linked = missing_field.link();
+  const auto missing_field_function =
+      missing_field_linked
+          ? missing_field.materialize("missing_field.main")
+          : std::nullopt;
   const bool reports_missing_field = std::any_of(
       missing_field.diagnostics().entries().begin(),
       missing_field.diagnostics().entries().end(),
       [](const joggle::Diagnostic& diagnostic) {
-        return diagnostic.message.find("does not define required parameter") !=
+        return diagnostic.message.find("has no derived parameter") !=
                std::string::npos;
       });
-  ok &= expect(!missing_field_linked && reports_missing_field,
-               "type interface fields are required during linking");
+  ok &= expect(missing_field_linked && !missing_field_function &&
+                   reports_missing_field,
+               "generic computed fields are checked against the bound type");
 
   joggle::Compiler ill_typed_field;
   ill_typed_field.add(R"(
 joggle 1;
 module ill_typed_field@1.0.0 {
-  interface format: type {
-    storage_bits: int;
-  }
-  type malformed() : format {
-    storage_bits = "wide";
+  type malformed() {
+    storage_bits: int = "wide";
   }
 }
 )",
                       "ill-typed-field.joggle");
   ok &= expect(!ill_typed_field.link() && !ill_typed_field.diagnostics().ok(),
-               "derived parameters are checked against interface field "
-               "domains during linking");
+               "computed fields are checked against their declared domains");
 
   joggle::Compiler recursive_function;
   recursive_function.add(R"(
@@ -1911,7 +1918,7 @@ module imported_function@1.0.0 {
   imported_operator.add(R"(
 joggle 1;
 module native_arith@1.0.0 {
-  fn (+)<T: prelude.scalar>(lhs: T, rhs: T) -> T;
+  fn (+)<T>(lhs: T, rhs: T) -> T;
 }
 )",
                         "native-arith.joggle");
@@ -2108,7 +2115,7 @@ joggle 1;
 module list_evaluation@1.0.0 {
   type word(width: int);
 
-  fn source<T: type>() -> T;
+  fn source<T>() -> T;
   fn sum(values: list<int>) -> int;
 
   fn populated() -> word<6> {
@@ -2181,11 +2188,11 @@ joggle 1;
 module staged_control@1.0.0 {
   type word(width: int);
 
-  fn identity<T: type>(input: T) -> T;
+  fn identity<T>(input: T) -> T;
   fn (+)(lhs: int, rhs: int) -> int;
   fn (<)(lhs: int, rhs: int) -> bool;
   fn (>)(lhs: int, rhs: int) -> bool;
-  fn integer_literal<T: prelude.integer>(value: int) -> T : prelude.literal;
+  fn literal<T>(value: int) -> T ;
   fn (+)(lhs: index, rhs: index) -> index;
   fn (<)(lhs: index, rhs: index) -> i1;
   fn touch(input: i32, position: index) -> i32;

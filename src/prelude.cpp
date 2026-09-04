@@ -18,8 +18,8 @@ bool is_prelude_type(std::string_view name) {
   constexpr std::array names{
       std::string_view{"type"},   std::string_view{"int"},
       std::string_view{"real"},   std::string_view{"bool"},
-      std::string_view{"string"}, std::string_view{"attr"},
-      std::string_view{"bytes"},  std::string_view{"function"},
+      std::string_view{"string"}, std::string_view{"bytes"},
+      std::string_view{"function"},
       std::string_view{"module"}, std::string_view{"callable"},
       std::string_view{"list"},   std::string_view{"i1"},
       std::string_view{"i8"},     std::string_view{"i16"},
@@ -148,7 +148,7 @@ bool primitive_name(std::string_view name) {
   return std::find(names.begin(), names.end(), name) != names.end();
 }
 
-const std::string& prelude_interface_digest() {
+const std::string& prelude_declaration_digest() {
   static const std::string value = [] {
     Diagnostics diagnostics;
     auto module = parse_module(prelude_module_source(), diagnostics,
@@ -156,7 +156,7 @@ const std::string& prelude_interface_digest() {
     if (!module) {
       throw std::logic_error("embedded Prelude is not a valid Module");
     }
-    return std::string(module->interface_digest());
+    return std::string(module->declaration_digest());
   }();
   return value;
 }
@@ -165,7 +165,7 @@ const std::string& prelude_interface_digest() {
 
 bool is_prelude_primitive(const Module::FunctionDecl& function) {
   return function.symbol().module_name() == prelude_module_name &&
-         function.symbol().interface_digest() == prelude_interface_digest() &&
+         function.symbol().declaration_digest() == prelude_declaration_digest() &&
          primitive_name(function.name());
 }
 

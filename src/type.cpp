@@ -42,8 +42,6 @@ std::optional<ParameterValue::Kind> expected_kind(detail::ValueKind kind) {
     return ParameterValue::Kind::String;
   case detail::ValueKind::Type:
     return ParameterValue::Kind::Type;
-  case detail::ValueKind::Attribute:
-    return ParameterValue::Kind::Attribute;
   case detail::ValueKind::Function:
   case detail::ValueKind::Bytes:
     return std::nullopt;
@@ -176,13 +174,6 @@ Type detail::TypeAccess::make(Module::TypeDecl schema,
                   std::move(derived_parameters), stable}));
 }
 
-Attribute detail::TypeAccess::make(Module::AttributeDecl schema,
-                                   std::vector<ParameterValue> parameters) {
-  const std::string stable = instance_name(schema.symbol(), parameters);
-  return Attribute(std::make_shared<const AttributeStorage>(
-      AttributeStorage{std::move(schema), std::move(parameters), stable}));
-}
-
 std::span<const ParameterValue>
 detail::TypeAccess::parameters(const Type& type) {
   return type.parameters();
@@ -191,11 +182,6 @@ detail::TypeAccess::parameters(const Type& type) {
 std::span<const ParameterValue>
 detail::TypeAccess::derived_parameters(const Type& type) {
   return type.storage_->derived_parameters;
-}
-
-std::span<const ParameterValue>
-detail::TypeAccess::parameters(const Attribute& attribute) {
-  return attribute.parameters();
 }
 
 Type::Type(std::shared_ptr<const detail::TypeStorage> storage)
@@ -217,23 +203,6 @@ bool Type::operator==(const Type& other) const {
   return stable_name() == other.stable_name();
 }
 
-Attribute::Attribute(std::shared_ptr<const detail::AttributeStorage> storage)
-    : storage_(std::move(storage)) {}
-
-Module::AttributeDecl Attribute::schema() const { return storage_->schema; }
-
-std::span<const ParameterValue> Attribute::parameters() const {
-  return storage_->parameters;
-}
-
-std::string_view Attribute::stable_name() const {
-  return storage_->stable_name;
-}
-
-bool Attribute::operator==(const Attribute& other) const {
-  return stable_name() == other.stable_name();
-}
-
 ParameterValue::ParameterValue(std::int64_t value) : storage_(store(value)) {}
 
 ParameterValue::ParameterValue(double value) : storage_(store(value)) {}
@@ -247,9 +216,6 @@ ParameterValue::ParameterValue(const char* value)
     : ParameterValue(std::string(value)) {}
 
 ParameterValue::ParameterValue(Type value)
-    : storage_(store(std::move(value))) {}
-
-ParameterValue::ParameterValue(Attribute value)
     : storage_(store(std::move(value))) {}
 
 ParameterValue::ParameterValue(
@@ -275,9 +241,6 @@ ParameterValue::Kind ParameterValue::kind() const {
   }
   if (std::holds_alternative<Type>(storage_->payload)) {
     return Kind::Type;
-  }
-  if (std::holds_alternative<Attribute>(storage_->payload)) {
-    return Kind::Attribute;
   }
   return Kind::List;
 }
@@ -308,10 +271,6 @@ const Type* ParameterValue::as_type() const {
   return std::get_if<Type>(&storage_->payload);
 }
 
-const Attribute* ParameterValue::as_attribute() const {
-  return std::get_if<Attribute>(&storage_->payload);
-}
-
 std::string ParameterValue::canonical() const {
   return std::visit(
       [](const auto& value) -> std::string {
@@ -329,8 +288,6 @@ std::string ParameterValue::canonical() const {
           return encode("string", value);
         } else if constexpr (std::is_same_v<T, Type>) {
           return encode("type", value.stable_name());
-        } else if constexpr (std::is_same_v<T, Attribute>) {
-          return encode("attr", value.stable_name());
         } else {
           std::string result = "list:" + std::to_string(value.size()) + ":";
           for (const ParameterValue& element : value) {

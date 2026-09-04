@@ -68,7 +68,7 @@ value_results(const Module::FunctionDecl& function) {
 bool has_default_specialization(const Module::FunctionDecl& function);
 
 struct ModuleAccess {
-  static Module interface_view(const Module& module);
+  static Module declaration_view(const Module& module);
   static std::shared_ptr<const FunctionBody> body(const Module& module,
                                                   const Module::FunctionDecl&);
   static const Module::Expression*

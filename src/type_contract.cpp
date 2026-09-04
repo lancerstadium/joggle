@@ -35,8 +35,6 @@ std::optional<Module::Expression> value_domain(const ParameterValue& value) {
     return domain_expression(ValueKind::String);
   case ParameterValue::Kind::Type:
     return domain_expression(ValueKind::Type);
-  case ParameterValue::Kind::Attribute:
-    return domain_expression(ValueKind::Attribute);
   case ParameterValue::Kind::List: {
     const auto elements = value.elements();
     if (elements.empty()) {
@@ -111,11 +109,6 @@ struct Environment {
   std::function<std::optional<Type>(const Module::TypeDecl&,
                                     std::span<const ParameterValue>)>
       type;
-  std::function<std::optional<Attribute>(const Module::AttributeDecl&,
-                                         std::span<const ParameterValue>)>
-      attribute;
-  std::function<bool(const Module::TypeDecl&, const Module::InterfaceDecl&)>
-      conforms;
   FunctionLookup functions;
   OperatorLookup operators;
   EvaluationCheck can_evaluate;
@@ -130,15 +123,6 @@ Environment environment(Compiler& compiler, bool allow_host_evaluation = true) {
               std::span<const ParameterValue> parameters) {
             return CompilerAccess::make(
                 compiler, schema, std::span<const ParameterValue>(parameters));
-          },
-          [&](const Module::AttributeDecl& schema,
-              std::span<const ParameterValue> parameters) {
-            return CompilerAccess::make(
-                compiler, schema, std::span<const ParameterValue>(parameters));
-          },
-          [&](const Module::TypeDecl& declaration,
-              const Module::InterfaceDecl& interface) {
-            return compiler.conforms(declaration, interface);
           },
           [&](std::string_view owner, std::string_view reference) {
             return visible_functions(compiler, owner, reference);
@@ -173,34 +157,6 @@ Environment environment(std::span<const Module> modules,
     return module == modules.end() ? std::nullopt
                                    : std::optional<Module>{*module};
   };
-  const auto conforms = [find](const Module::TypeDecl& declaration,
-                               const Module::InterfaceDecl& interface) {
-    const auto owner = find(declaration.symbol().module_name());
-    if (!owner) {
-      return false;
-    }
-    for (const std::string& reference : declaration.interfaces()) {
-      const std::size_t dot = reference.find('.');
-      std::string_view module_name = owner->name();
-      std::string_view local_name = reference;
-      if (dot != std::string::npos) {
-        const std::string_view prefix(reference.data(), dot);
-        local_name = std::string_view(reference).substr(dot + 1U);
-        const auto imported =
-            std::find_if(owner->imports().begin(), owner->imports().end(),
-                         [&](const Module::Import& import) {
-                           return import.prefix() == prefix;
-                         });
-        module_name =
-            imported == owner->imports().end() ? prefix : imported->name;
-      }
-      if (module_name == interface.symbol().module_name() &&
-          local_name == interface.name()) {
-        return true;
-      }
-    }
-    return false;
-  };
   return {
       find,
       [modules, &diagnostics](
@@ -218,17 +174,6 @@ Environment environment(std::span<const Module> modules,
                              schema, std::move(*values), std::move(*derived))}
                        : std::nullopt;
       },
-      [&diagnostics](const Module::AttributeDecl& schema,
-                     std::span<const ParameterValue> parameters)
-          -> std::optional<Attribute> {
-        auto values =
-            validate_parameters(schema.symbol().qualified_name(),
-                                schema.parameters(), parameters, diagnostics);
-        return values ? std::optional<Attribute>{TypeAccess::make(
-                            schema, std::move(*values))}
-                      : std::nullopt;
-      },
-      conforms,
       [modules](std::string_view owner, std::string_view reference) {
         return visible_functions(modules, owner, reference);
       },
@@ -413,28 +358,9 @@ public:
     std::vector<ParameterValue> values;
     values.reserve(schema.derived_parameters().size());
     for (const auto& derived : schema.derived_parameters()) {
-      std::vector<Module::ParameterDecl> matches;
-      for (const std::string& reference : schema.interfaces()) {
-        const auto interface = interface_declaration(reference);
-        if (!interface) {
-          return std::nullopt;
-        }
-        const auto field =
-            std::find_if(interface->fields().begin(), interface->fields().end(),
-                         [&](const auto& candidate) {
-                           return candidate.name == derived.name;
-                         });
-        if (field != interface->fields().end()) {
-          matches.push_back(*field);
-        }
-      }
-      if (matches.size() != 1U) {
-        report("derived parameter '" + derived.name + "' on type '" +
-               schema.symbol().qualified_name() +
-               "' does not resolve to exactly one interface field");
-        return std::nullopt;
-      }
-      auto value = evaluate(derived.value, matches.front(), bindings);
+      const Module::ParameterDecl field{derived.name, derived.domain, false,
+                                        std::nullopt};
+      auto value = evaluate(derived.value, field, bindings);
       if (!value) {
         return std::nullopt;
       }
@@ -478,80 +404,15 @@ private:
     std::optional<Declaration> result;
     if constexpr (std::is_same_v<Declaration, Module::TypeDecl>) {
       result = module->type(local);
-    } else if constexpr (std::is_same_v<Declaration, Module::FunctionDecl>) {
-      result = module->function(local);
     } else {
-      result = module->attribute(local);
+      static_assert(std::is_same_v<Declaration, Module::FunctionDecl>);
+      result = module->function(local);
     }
     if (!result) {
       report("type contract references unknown declaration '" +
              std::string(reference) + "'");
     }
     return result;
-  }
-
-  std::optional<Module::InterfaceDecl>
-  interface_declaration(std::string_view reference) {
-    const std::size_t dot = reference.find('.');
-    std::string_view owner = scope_;
-    if (dot != std::string_view::npos) {
-      const std::string_view prefix = reference.substr(0, dot);
-      owner = prefix;
-      const auto scope = environment_.module(scope_);
-      if (scope) {
-        const auto imported =
-            std::find_if(scope->imports().begin(), scope->imports().end(),
-                         [&](const Module::Import& import) {
-                           return import.prefix() == prefix;
-                         });
-        if (imported != scope->imports().end()) {
-          owner = imported->name;
-        }
-      }
-    }
-    const std::string_view local =
-        dot == std::string_view::npos ? reference : reference.substr(dot + 1U);
-    const auto module = environment_.module(owner);
-    if (!module) {
-      report("generic constraint references unknown module '" +
-             std::string(owner) + "'");
-      return std::nullopt;
-    }
-    const auto result = module->interface(local);
-    if (!result) {
-      report("generic constraint references unknown interface '" +
-             std::string(reference) + "'");
-    }
-    return result;
-  }
-
-  bool satisfies_constraint(std::string_view variable,
-                            const ParameterValue& actual) {
-    const auto generic = std::find_if(
-        contract_ ? contract_->generics.begin() : empty_generics_.begin(),
-        contract_ ? contract_->generics.end() : empty_generics_.end(),
-        [&](const GenericDefinition& candidate) {
-          return candidate.name == variable;
-        });
-    const auto generic_end =
-        contract_ ? contract_->generics.end() : empty_generics_.end();
-    if (generic == generic_end || !generic->constraint) {
-      return true;
-    }
-    const Type* type = actual.as_type();
-    const auto interface = interface_declaration(*generic->constraint);
-    if (type == nullptr || !interface ||
-        !environment_.conforms(type->schema(), *interface)) {
-      if (interface) {
-        report("type bound to '" + std::string(variable) +
-               "' as '" +
-               (type ? type->schema().symbol().qualified_name()
-                     : std::string{"<non-type>"}) +
-               "' does not implement interface '" + *generic->constraint + "'");
-      }
-      return false;
-    }
-    return true;
   }
 
   std::optional<ParameterValue>
@@ -588,12 +449,6 @@ private:
   std::optional<ParameterValue> evaluate_derived_parameter(
       const GenericDefinition& generic, std::string_view field_name,
       const Module::ParameterDecl& expected, const Bindings& bindings) {
-    if (!generic.constraint) {
-      report("generic '" + generic.name +
-             "' has no interface exposing derived parameter '" +
-             std::string(field_name) + "'");
-      return std::nullopt;
-    }
     const auto bound = bindings.find(generic.name);
     const Type* type =
         bound == bindings.end() ? nullptr : bound->second.value.as_type();
@@ -603,36 +458,19 @@ private:
              "' before its receiver type is inferred");
       return std::nullopt;
     }
-    const auto interface = interface_declaration(*generic.constraint);
-    const auto field =
-        interface ? std::find_if(interface->fields().begin(),
-                                 interface->fields().end(),
-                                 [&](const auto& candidate) {
-                                   return candidate.name == field_name;
-                                 })
-                  : std::span<const Module::ParameterDecl>::iterator{};
-    if (!interface || field == interface->fields().end() ||
-        field->domain != expected.domain) {
-      report("ill-typed derived parameter '" + generic.name + "." +
-             std::string(field_name) + "'");
-      return std::nullopt;
-    }
-    if (!environment_.conforms(type->schema(), *interface)) {
-      report("type bound to '" + generic.name +
-             "' does not implement interface '" + *generic.constraint + "'");
-      return std::nullopt;
-    }
-
     const auto derived = std::find_if(
         type->schema().derived_parameters().begin(),
         type->schema().derived_parameters().end(),
-        [&](const auto& candidate) { return candidate.name == field_name; });
+        [&](const auto& candidate) {
+          return candidate.name == field_name &&
+                 candidate.domain == expected.domain;
+        });
     if (derived == type->schema().derived_parameters().end()) {
       const auto parameter = std::find_if(
           type->schema().parameters().begin(),
           type->schema().parameters().end(), [&](const auto& candidate) {
             return candidate.name == field_name &&
-                   candidate.domain == field->domain;
+                   candidate.domain == expected.domain;
           });
       if (parameter != type->schema().parameters().end()) {
         const auto index = static_cast<std::size_t>(
@@ -669,7 +507,9 @@ private:
     calls_.push_back(identity);
     const std::string caller_scope = scope_;
     scope_ = std::string(type->schema().symbol().module_name());
-    auto value = evaluate(derived->value, *field, arguments);
+    const Module::ParameterDecl field{derived->name, derived->domain, false,
+                                      std::nullopt};
+    auto value = evaluate(derived->value, field, arguments);
     scope_ = caller_scope;
     calls_.pop_back();
     return value;
@@ -1059,29 +899,6 @@ private:
       return value ? std::optional<ParameterValue>{ParameterValue(*value)}
                    : std::nullopt;
     }
-    if (domain->element == ValueKind::Attribute) {
-      auto target = declaration<Module::AttributeDecl>(expression.text);
-      if (!target ||
-          expression.arguments.size() > target->parameters().size()) {
-        if (target) {
-          report("too many arguments for attribute '" + expression.text + "'");
-        }
-        return std::nullopt;
-      }
-      std::vector<ParameterValue> parameters;
-      for (std::size_t index = 0; index < expression.arguments.size();
-           ++index) {
-        auto value = evaluate(expression.arguments[index],
-                              target->parameters()[index], bindings);
-        if (!value) {
-          return std::nullopt;
-        }
-        parameters.push_back(std::move(*value));
-      }
-      auto value = environment_.attribute(*target, parameters);
-      return value ? std::optional<ParameterValue>{ParameterValue(*value)}
-                   : std::nullopt;
-    }
     return expression_literal(expression, domain->element);
   }
 
@@ -1089,9 +906,6 @@ private:
              Bindings& bindings) {
     using Kind = TypeExpression::Kind;
     if (expression.kind == Kind::Variable) {
-      if (!satisfies_constraint(expression.text, actual)) {
-        return false;
-      }
       const auto [found, inserted] = bindings.emplace(
           expression.text, KnownBinding{actual, value_domain(actual)});
       if (!inserted && found->second.value != actual) {
@@ -1181,29 +995,12 @@ private:
                                      domain_expression(ValueKind::Integer),
                                      false, std::nullopt};
       if (field_generic != generic_end) {
-        const auto interface =
-            field_generic->constraint
-                ? interface_declaration(*field_generic->constraint)
-                : std::optional<Module::InterfaceDecl>{};
-        const std::string_view field_name =
-            std::string_view(computed_expression.text).substr(field_dot + 1U);
-        const auto field =
-            interface ? std::find_if(interface->fields().begin(),
-                                     interface->fields().end(),
-                                     [&](const auto& candidate) {
-                                       return candidate.name == field_name;
-                                     })
-                      : std::span<const Module::ParameterDecl>::iterator{};
-        if (!interface || field == interface->fields().end()) {
-          report("unknown derived parameter '" + computed_expression.text +
-                 "'");
-          return false;
-        }
-        expected = *field;
-        if (!matches_parameter(expected, actual)) {
+        const auto actual_domain = value_domain(actual);
+        if (!actual_domain) {
           report("derived parameter does not match the type parameter");
           return false;
         }
+        expected.domain = *actual_domain;
       } else if (computed_expression.kind == Kind::Call) {
         const std::size_t receiver_dot = computed_expression.text.find('.');
         const auto generic =
@@ -1289,7 +1086,6 @@ private:
         expected = ValueKind::String;
         break;
       case ParameterValue::Kind::Type:
-      case ParameterValue::Kind::Attribute:
       case ParameterValue::Kind::List:
         report("literal type pattern does not match");
         return false;
@@ -1330,28 +1126,6 @@ private:
           report("type pattern omits a non-default argument");
           valid = false;
         }
-      }
-      return valid;
-    }
-    if (const Attribute* attribute = actual.as_attribute()) {
-      const auto parameters = TypeAccess::parameters(*attribute);
-      auto target = declaration<Module::AttributeDecl>(expression.text);
-      if (!target || *target != attribute->schema()) {
-        if (target) {
-          report("attribute pattern '" + expression.text + "' does not match");
-        }
-        return false;
-      }
-      if (expression.arguments.size() > parameters.size()) {
-        report("attribute pattern has too many arguments");
-        return false;
-      }
-      bool valid = true;
-      for (std::size_t index = 0; index < expression.arguments.size();
-           ++index) {
-        valid =
-            unify(expression.arguments[index], parameters[index], bindings) &&
-            valid;
       }
       return valid;
     }

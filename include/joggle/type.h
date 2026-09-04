@@ -20,7 +20,6 @@ class Compiler;
 namespace detail {
 class ParameterValue;
 struct TypeStorage;
-struct AttributeStorage;
 struct ParameterValueStorage;
 struct TypeAccess;
 template <typename T, typename Value>
@@ -49,32 +48,11 @@ private:
   friend std::optional<T> detail::get_parameter(const Value&, std::string_view);
 };
 
-class Attribute {
-public:
-  Module::AttributeDecl schema() const;
-  std::string_view stable_name() const;
-
-  template <typename T> std::optional<T> get(std::string_view name) const;
-
-  bool operator==(const Attribute& other) const;
-
-private:
-  std::span<const detail::ParameterValue> parameters() const;
-  explicit Attribute(std::shared_ptr<const detail::AttributeStorage> storage);
-  std::shared_ptr<const detail::AttributeStorage> storage_;
-
-  friend class Compiler;
-  friend class detail::ParameterValue;
-  friend struct detail::TypeAccess;
-  template <typename T, typename Value>
-  friend std::optional<T> detail::get_parameter(const Value&, std::string_view);
-};
-
 namespace detail {
 
 class ParameterValue {
 public:
-  enum class Kind { I64, F64, Boolean, String, Type, Attribute, List };
+  enum class Kind { I64, F64, Boolean, String, Type, List };
 
   ParameterValue(std::int64_t value);
   ParameterValue(double value);
@@ -82,7 +60,6 @@ public:
   ParameterValue(std::string value);
   ParameterValue(const char* value);
   ParameterValue(Type value);
-  ParameterValue(Attribute value);
 
   static ParameterValue list(std::vector<ParameterValue> values);
 
@@ -93,7 +70,6 @@ public:
   const bool* as_bool() const;
   const std::string* as_string() const;
   const Type* as_type() const;
-  const Attribute* as_attribute() const;
   std::string canonical() const;
   bool operator==(const ParameterValue& other) const;
 
@@ -146,9 +122,6 @@ std::optional<T> decode_parameter(const ParameterValue& value) {
   } else if constexpr (std::is_same_v<T, Type>) {
     const auto* decoded = value.as_type();
     return decoded ? std::optional<T>{*decoded} : std::nullopt;
-  } else if constexpr (std::is_same_v<T, Attribute>) {
-    const auto* decoded = value.as_attribute();
-    return decoded ? std::optional<T>{*decoded} : std::nullopt;
   } else if constexpr (is_vector<T>) {
     using Element = typename VectorElement<T>::type;
     if (value.kind() != ParameterValue::Kind::List) {
@@ -181,8 +154,6 @@ template <typename T> Module::ParameterDecl cpp_parameter() {
             std::nullopt};
   } else if constexpr (std::is_same_v<T, Type>) {
     return {"", Module::Expression::reference("type"), false, std::nullopt};
-  } else if constexpr (std::is_same_v<T, Attribute>) {
-    return {"", Module::Expression::reference("attr"), false, std::nullopt};
   } else if constexpr (is_vector<T>) {
     auto result = cpp_parameter<typename VectorElement<T>::type>();
     result.domain =
@@ -207,8 +178,7 @@ template <typename T> ParameterValue encode_parameter(T&& value) {
     return ParameterValue(std::forward<T>(value));
   } else if constexpr (std::is_convertible_v<T, std::string_view>) {
     return ParameterValue(std::string(std::string_view(value)));
-  } else if constexpr (std::is_same_v<Value, Type> ||
-                       std::is_same_v<Value, Attribute>) {
+  } else if constexpr (std::is_same_v<Value, Type>) {
     return ParameterValue(std::forward<T>(value));
   } else if constexpr (is_range<Value>) {
     std::vector<ParameterValue> elements;
@@ -247,11 +217,6 @@ std::optional<T> get_parameter(const Value& value, std::string_view name) {
 }  // namespace detail
 
 template <typename T> std::optional<T> Type::get(std::string_view name) const {
-  return detail::get_parameter<T>(*this, name);
-}
-
-template <typename T>
-std::optional<T> Attribute::get(std::string_view name) const {
   return detail::get_parameter<T>(*this, name);
 }
 

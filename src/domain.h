@@ -14,7 +14,6 @@ enum class ValueKind {
   Boolean,
   String,
   Type,
-  Attribute,
   Function,
   Bytes,
 };

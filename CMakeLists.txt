@@ -215,10 +215,6 @@ if(JOGGLE_BUILD_TESTS)
     $<TARGET_FILE:joggle_test_native_failure>
   )
 
-  add_executable(joggle_interface_test tests/interface_test.cpp)
-  target_link_libraries(joggle_interface_test PRIVATE joggle::joggle)
-  add_test(NAME interface COMMAND joggle_interface_test)
-
   add_executable(joggle_prelude_test tests/prelude_test.cpp)
   target_link_libraries(joggle_prelude_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_prelude_test PRIVATE

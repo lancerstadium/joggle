@@ -1,173 +1,95 @@
-# Module design
+# Modules and extensions
 
-This document defines the replacement module model. It intentionally specifies
-composition rules before selecting AI vocabularies or hardware targets.
+A Joggle extension is a versioned `Module`. The module is simultaneously the
+namespace, dependency unit, schema, and container for materialized functions.
+No companion manifest language or generated C++ header is required.
 
-## One installation unit
-
-One extension has one versioned `.joggle` Module identity. It may additionally
-have a native library for host-only work, but that library implements the same
-Module and cannot introduce declarations of its own.
-
-```text
-extension/
-  module.joggle
-  native/          optional C++ implementation
-  tests/
-```
-
-The directory layout is conventional, not semantic. Installation, dependency
-resolution, locking, and native-library selection use the Module name, version,
-and digest.
-
-There is no separate dialect package, pass plugin, target descriptor package,
-runtime adapter, or Artifact package.
-
-## Public contents
-
-A Module has only the language's existing member forms:
-
-- `import` selects another Module;
-- `interface` states a structural contract;
-- `type` and `attr` define data carried by types and calls;
-- `fn` defines every callable operation.
-
-The same `fn` form covers four execution situations:
-
-| Situation | Declaration | Outcome |
-| --- | --- | --- |
-| source computation | body present, Residual inputs | materialized Function IR |
-| compiler computation | body present, Known inputs | evaluated value |
-| native compiler work | body absent, native binding, Known inputs | host-produced value |
-| primitive boundary | body absent, Residual inputs | retained typed Op |
-
-These are states of one declaration, not four extension APIs.
-
-## Interfaces are capabilities
-
-An interface is a named structural capability. It is useful for generic
-constraints and for asking whether a declaration belongs to an accepted target
-boundary.
+## Declaration surface
 
 ```joggle
-interface scalar: type {
-  storage_bits: int;
-}
+joggle 1;
 
-interface instruction: fn;
-```
+module quant@1.0.0 {
+  import tensor@1 as t;
 
-An interface is not a C++ trait class, verifier callback, rewrite hook, or pass
-registration. Ordinary authors implement it by listing the interface after a
-declaration and, for type fields, supplying source expressions.
+  type format(bits: int, signed: bool = true) {
+    storage_bits: int = bits;
+  }
 
-## Conversion and optimization
-
-A conversion is an ordinary typed function. No direction is built into the
-core:
-
-```joggle
-fn convert(input: module, format: type) -> module;
-```
-
-Its implementation may use the C++ transactional rewrite utilities or a future
-source reflection library. The Module owns its policy and legality boundary.
-Joggle does not require the names `lower`, `legalize`, `schedule`, or `pass`.
-
-An end-user pipeline is also an ordinary source function, so its stages remain
-individually callable:
-
-```joggle
-fn compile(input: bytes, machine: type) -> bytes {
-  imported = @format.read(input);
-  selected = @target.select(imported, machine);
-  return @target.emit(selected, machine);
+  fn quantize<F>(input: t.tensor, scheme: F) -> t.tensor;
+  fn optimize(input: module, scheme: type) -> module;
 }
 ```
 
-## Kernel definition and target closure
+Only three member forms exist:
 
-A reusable kernel is a source-defined `fn`. It may call another source kernel
-and eventually reach bodyless primitives.
+- `import` names a versioned dependency and optional prefix;
+- `type` defines an immutable parameterized compile-time value;
+- `fn` defines or declares callable behavior.
 
-A target emitter calls `Compiler::specialize` with a predicate describing the
-Functions it accepts. Unaccepted calls are recursively specialized from their
-concrete types and Known properties. The operation fails if an unaccepted call
-has no body.
+Metadata, formats, policies, machine descriptions, and estimates are ordinary
+types. Import, conversion, analysis, optimization, simulation, and emission
+are ordinary functions. This keeps extensions composable without forcing
+authors to implement framework-specific base classes.
 
-This creates a typed agreement:
+## Source authority and native implementation
 
-```text
-kernel author supplies source body
-                ×
-target author supplies accepted capability boundary
-                =
-closed target program or a diagnostic
+A bodyless `fn` may be implemented by C++:
+
+```cpp
+void joggle_module(joggle::Compiler& compiler,
+                   const joggle::Module& module,
+                   joggle::Diagnostics& diagnostics) {
+  compiler.bind(module, "read",
+                [](const joggle::Bytes& input)
+                    -> std::optional<joggle::Module> {
+                  return decode(input);
+                });
+}
 ```
 
-Neither side registers operator names with the other or with the core.
+`Compiler::bind` selects a source overload using the C++ callable signature
+and rejects mismatches. C++ provides execution, not a parallel declaration
+system. Native libraries carry the module identity produced by the CMake
+helper and are rejected when their declaration digest does not match.
 
-## Target definition
+## User-defined pipelines
 
-Joggle has no universal Target class. A hardware extension normally declares:
+Users compose functions in source instead of registering a fixed pass list:
 
-- one or more configuration types;
-- data formats and references needed by that hardware;
-- bodyless primitive Functions accepted by its emitter;
-- optional source kernels and compiler Functions;
-- one or more explicit `emit(...)->bytes` functions.
+```joggle
+fn prepare(input: bytes, policy: type) -> module {
+  model = @onnx.read(input);
+  folded = @fold_constants(model);
+  return @quant.optimize(folded, policy);
+}
+```
 
-Those are recommendations, not required fields. An FPGA experiment may emit
-RTL and metadata; a RISC-V experiment may emit an object and runtime data; a
-simulator-only Module may return a structured trace and define no emitter.
+The names and order are ordinary application code. A module can expose a
+convenient pipeline while still allowing expert users to call each component.
 
-The core never interprets these declarations or assumes a memory capacity,
-tile shape, stream model, ISA, or cycle model.
+## Portable and host-only functions
 
-## Native implementation boundary
+A function with a source body can be materialized into IR. A bodyless function
+needs a native binding when invoked at compile time, or remains a residual call
+when used as program computation. The explicit staging semantics are being
+completed in RFC gate 3; until then, known ordinary calls may still be eagerly
+evaluated.
 
-Native code is permitted only when source cannot express the operation, such
-as parsing ONNX protobuf, invoking an external code generator, or performing a
-large compiler analysis.
+## Versioning and dependencies
 
-Native code binds existing bodyless `fn` declarations by canonical identity.
-It may use `Module`, `Function`, `Op`, `Value`, `Type`, `Attribute`, and
-`Diagnostics`; it must not create a parallel schema or hidden operation
-registry.
+Imports use exact, major, minor, or caret ranges. Linking chooses one version
+per module name, verifies the complete closure, and records exact dependencies
+in a materialized module. Repositories and lock files are described in
+[Module repository](module-repository.md).
 
-The build command `joggle_module(SOURCE ... NATIVE ...)` creates this optional
-implementation and binds it to the exact canonical Module identity. Platform
-ABI details are generated privately and are not part of the authoring API.
+## Design rules for new modules
 
-## Surface budget
-
-A public Module function must be useful to another Module or to an end user.
-Serialization helpers, debug reports, reference executors, test oracles, and
-container readers belong in private implementation libraries or tests.
-
-Before a Module is admitted to the future standard set, it must demonstrate:
-
-1. a stable semantic boundary rather than a project-specific pipeline rung;
-2. at least two independent consumers or producers;
-3. no required change to compiler-core declarations;
-4. deterministic composition and failure diagnostics;
-5. an end-to-end test using an externally maintained model or workload.
-
-## Rebuild order
-
-The removed experimental Modules will not be recreated name-for-name. The new
-vertical slice will be built in this order:
-
-1. define one minimal shaped-value and callable semantic contract from actual
-   ONNX import requirements;
-2. implement ONNX as a format Module that produces that contract without
-   target knowledge;
-3. implement one small but executable edge target Module whose accepted
-   boundary is explicit;
-4. add one independently installable data-format or kernel extension;
-5. evaluate extension coupling, compilation, correctness, memory, and measured
-   execution against an appropriate established compiler.
-
-The names and exact boundaries of those Modules remain undecided until the
-first two use cases agree. This is deliberate: vocabulary should be extracted
-from demonstrated composition, not declared as a new fixed ladder in advance.
+- Define only domain vocabulary that has an executable use case.
+- Prefer a small orthogonal type/function surface over workflow-specific nouns.
+- Keep file formats and hardware descriptions outside compiler core.
+- Use normal overloads for extensible behavior.
+- Return a `Module`, `Function`, `Type`, `bytes`, or another declared type;
+  never invent a second ownership container.
+- Add real-model tests before claiming a frontend or optimization module is
+  supported.

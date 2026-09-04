@@ -127,13 +127,10 @@ bool belongs_to(const Modules& modules, const ParameterValue& value) {
     const auto owner = modules.find(symbol.module_name());
     return owner != modules.end() &&
            owner->second.version() == symbol.module_version() &&
-           owner->second.interface_digest() == symbol.interface_digest();
+           owner->second.declaration_digest() == symbol.declaration_digest();
   };
   if (const Type* type = value.as_type()) {
     return contains(type->schema().symbol());
-  }
-  if (const Attribute* attribute = value.as_attribute()) {
-    return contains(attribute->schema().symbol());
   }
   if (value.kind() == ParameterValue::Kind::List) {
     return std::all_of(value.elements().begin(), value.elements().end(),
@@ -199,9 +196,6 @@ bool accepts_known_value(const Type& type, const ParameterValue& value) {
   }
   if (name == "type") {
     return value.kind() == ParameterValue::Kind::Type;
-  }
-  if (name == "attr") {
-    return value.kind() == ParameterValue::Kind::Attribute;
   }
   if (name != "list" || value.kind() != ParameterValue::Kind::List) {
     return false;
@@ -345,169 +339,6 @@ std::string_view resolve_prefix(const Module& module, std::string_view prefix) {
                                          : std::string_view(found->name);
 }
 
-template <typename Modules>
-bool conforms_to_interface(const Modules& modules,
-                           const Module::Symbol& declaration,
-                           std::span<const std::string> references,
-                           const Module::InterfaceDecl& interface,
-                           Module::SymbolKind subject) {
-  const auto declaration_module = modules.find(declaration.module_name());
-  const Module::Symbol interface_symbol = interface.symbol();
-  const auto interface_module = modules.find(interface_symbol.module_name());
-  if (declaration_module == modules.end() ||
-      declaration_module->second.version() != declaration.module_version() ||
-      declaration_module->second.interface_digest() !=
-          declaration.interface_digest() ||
-      interface_module == modules.end() ||
-      interface_module->second.version() != interface_symbol.module_version() ||
-      interface_module->second.interface_digest() !=
-          interface_symbol.interface_digest() ||
-      interface.subject() != subject) {
-    return false;
-  }
-  return std::any_of(
-      references.begin(), references.end(), [&](const std::string& reference) {
-        const std::size_t dot = reference.find('.');
-        const std::string_view owner =
-            dot == std::string::npos
-                ? declaration.module_name()
-                : resolve_prefix(declaration_module->second,
-                                 std::string_view(reference).substr(0, dot));
-        const std::string_view local =
-            dot == std::string::npos
-                ? std::string_view(reference)
-                : std::string_view(reference).substr(dot + 1U);
-        return owner == interface_symbol.module_name() &&
-               local == interface_symbol.local_name();
-      });
-}
-
-std::string
-method_binding_key(const Module::Symbol& declaration,
-                   const Module::InterfaceDecl::MethodDecl& method) {
-  return declaration.stable_name() + "/conforms/" + method.stable_name();
-}
-
-bool matches_method_result(const Module::InterfaceDecl::MethodDecl& method,
-                           const ParameterValue& value) {
-  return method.results().size() == 1U &&
-         detail::matches_parameter(method.results().front(), value);
-}
-
-template <typename Declaration, typename Function, typename BindingMap,
-          typename Conforms>
-void bind_interface_method(bool linked, Declaration declaration,
-                           Module::InterfaceDecl::MethodDecl method,
-                           Function function, BindingMap& bindings,
-                           Diagnostics& diagnostics, Conforms conforms,
-                           std::string_view subject_kind) {
-  if (!linked) {
-    diagnostics.report(
-        "cannot bind an interface method before the compiler is linked");
-    return;
-  }
-  if (!conforms(declaration, method.owner())) {
-    diagnostics.report(std::string(subject_kind) + " '" +
-                       declaration.symbol().qualified_name() +
-                       "' does not provide interface method '" +
-                       method.qualified_name() + "'");
-    return;
-  }
-  if (!function) {
-    diagnostics.report("interface method binding is empty");
-    return;
-  }
-  if (!bindings
-           .emplace(method_binding_key(declaration.symbol(), method),
-                    std::move(function))
-           .second) {
-    diagnostics.report("interface method '" + method.qualified_name() +
-                       "' is already bound for " + std::string(subject_kind) +
-                       " '" + declaration.symbol().qualified_name() + "'");
-  }
-}
-
-template <typename Subject, typename BindingMap, typename Conforms,
-          typename Modules>
-std::optional<ParameterValue>
-evaluate_interface_method(bool linked, const Subject& subject,
-                          Module::InterfaceDecl::MethodDecl method,
-                          std::span<const ParameterValue> parameters,
-                          const BindingMap& bindings, const Modules& modules,
-                          Diagnostics& diagnostics, Conforms conforms,
-                          std::string_view subject_kind) {
-  if constexpr (std::is_same_v<Subject, Op>) {
-    if (!subject.valid()) {
-      diagnostics.report("invalid Op used as an interface subject");
-      return std::nullopt;
-    }
-  }
-  const auto declaration = [&] {
-    if constexpr (std::is_same_v<Subject, Op>) {
-      return subject.callee();
-    } else {
-      return subject.schema();
-    }
-  }();
-  if (!linked || !conforms(declaration, method.owner())) {
-    diagnostics.report(std::string(subject_kind) + " '" +
-                       declaration.symbol().qualified_name() +
-                       "' does not provide interface method '" +
-                       method.qualified_name() + "'");
-    return std::nullopt;
-  }
-  auto arguments = detail::validate_parameters(
-      method.qualified_name(), method.inputs(), parameters, diagnostics);
-  if (!arguments) {
-    return std::nullopt;
-  }
-  const auto binding =
-      bindings.find(method_binding_key(declaration.symbol(), method));
-  if (binding == bindings.end()) {
-    diagnostics.report("interface method '" + method.qualified_name() +
-                       "' has no binding for " + std::string(subject_kind) +
-                       " '" + declaration.symbol().qualified_name() + "'");
-    return std::nullopt;
-  }
-  Diagnostics reported;
-  std::optional<ParameterValue> result;
-  try {
-    result = binding->second(subject, *arguments, reported);
-  } catch (const std::exception& exception) {
-    reported.report("interface method '" + method.qualified_name() +
-                    "' threw: " + exception.what());
-  } catch (...) {
-    reported.report("interface method '" + method.qualified_name() +
-                    "' threw an unknown exception");
-  }
-  if (!result && reported.ok()) {
-    reported.report("interface method '" + method.qualified_name() +
-                    "' did not produce a value");
-  }
-  std::optional<SourceRange> location;
-  if constexpr (std::is_same_v<Subject, Op>) {
-    location = detail::FunctionAccess::location(subject);
-  }
-  for (const Diagnostic& entry : reported.entries()) {
-    Diagnostic diagnostic = entry;
-    if (!diagnostic.source) {
-      diagnostic.source = location;
-    }
-    diagnostics.report(std::move(diagnostic));
-  }
-  if (!result || !reported.ok()) {
-    return std::nullopt;
-  }
-  if (!matches_method_result(method, *result) ||
-      !belongs_to(modules, *result)) {
-    diagnostics.report("interface method '" + method.qualified_name() +
-                       "' produced a value with the wrong kind or module "
-                       "identity");
-    return std::nullopt;
-  }
-  return result;
-}
-
 }  // namespace
 
 struct Compiler::State {
@@ -541,12 +372,7 @@ struct Compiler::State {
   std::vector<DynamicLibrary> native_libraries;
   std::set<std::string, std::less<>> loaded_natives;
   std::map<std::string, VerifierFunction<Type>, std::less<>> type_verifiers;
-  std::map<std::string, VerifierFunction<Attribute>, std::less<>>
-      attribute_verifiers;
   std::map<std::string, VerifierFunction<Op>, std::less<>> op_verifiers;
-  std::map<std::string, MethodFunction<Attribute>, std::less<>>
-      attribute_methods;
-  std::map<std::string, MethodFunction<Op>, std::less<>> op_methods;
   std::map<std::string, BoundFunction, std::less<>> bindings;
   std::map<std::string, detail::ParameterValue, std::less<>>
       hermetic_evaluations;
@@ -982,143 +808,12 @@ bool Compiler::link() {
       }
     }
 
-    const auto validate_interfaces =
-        [&](std::span<const std::string> references, Module::SymbolKind subject,
-            std::string_view declaration, std::optional<SourceRange> source) {
-          for (const std::string& reference : references) {
-            const std::size_t dot = reference.find('.');
-            const std::string owner =
-                dot == std::string::npos
-                    ? name
-                    : std::string(
-                          resolve_prefix(module, reference.substr(0, dot)));
-            const std::string local = dot == std::string::npos
-                                          ? reference
-                                          : reference.substr(dot + 1U);
-            const auto interface_module = state_->modules.find(owner);
-            if (interface_module == state_->modules.end()) {
-              state_->diagnostics.report(
-                  "declaration '" + name + "." + std::string(declaration) +
-                      "' conforms to interface from missing module '" + owner +
-                      "'",
-                  source);
-              continue;
-            }
-            const auto interface = interface_module->second.interface(local);
-            if (!interface) {
-              state_->diagnostics.report(
-                  "declaration '" + name + "." + std::string(declaration) +
-                      "' conforms to unknown interface '" + reference + "'",
-                  source);
-              continue;
-            }
-            if (interface->subject() != subject) {
-              state_->diagnostics.report(
-                  "declaration '" + name + "." + std::string(declaration) +
-                      "' conforms to interface '" + reference +
-                      "' for the wrong subject kind",
-                  source);
-            }
-          }
-        };
-    for (const Module::TypeDecl& declaration : module.types()) {
-      validate_interfaces(
-          declaration.interfaces(), Module::SymbolKind::Type,
-          declaration.name(),
-          detail::ModuleAccess::declaration_source(
-              module, Module::SymbolKind::Type, declaration.name()));
-    }
-    for (const Module::AttributeDecl& declaration : module.attributes()) {
-      validate_interfaces(
-          declaration.interfaces(), Module::SymbolKind::Attribute,
-          declaration.name(),
-          detail::ModuleAccess::declaration_source(
-              module, Module::SymbolKind::Attribute, declaration.name()));
-    }
-
     for (const Module::TypeDecl& type : module.types()) {
       const auto location = detail::ModuleAccess::declaration_source(
           module, Module::SymbolKind::Type, type.name());
-      std::vector<Module::ParameterDecl> required_fields;
-      for (const std::string& reference : type.interfaces()) {
-        const std::size_t dot = reference.find('.');
-        const std::string interface_owner =
-            dot == std::string::npos
-                ? name
-                : std::string(resolve_prefix(
-                      module, std::string_view(reference).substr(0, dot)));
-        const std::string local =
-            dot == std::string::npos ? reference : reference.substr(dot + 1U);
-        const auto source = state_->modules.find(interface_owner);
-        const auto interface = source == state_->modules.end()
-                                   ? std::optional<Module::InterfaceDecl>{}
-                                   : source->second.interface(local);
-        if (interface) {
-          required_fields.insert(required_fields.end(),
-                                 interface->fields().begin(),
-                                 interface->fields().end());
-        }
-      }
-      for (const auto& field : required_fields) {
-        const auto parameter =
-            std::find_if(type.parameters().begin(), type.parameters().end(),
-                         [&](const auto& candidate) {
-                           return candidate.name == field.name &&
-                                  candidate.domain == field.domain;
-                         });
-        const auto supplied = std::find_if(
-            type.derived_parameters().begin(), type.derived_parameters().end(),
-            [&](const auto& candidate) {
-              return candidate.name == field.name;
-            });
-        if (parameter == type.parameters().end() &&
-            supplied == type.derived_parameters().end()) {
-          state_->diagnostics.report(
-              "type '" + name + "." + std::string(type.name()) +
-                  "' does not define required parameter '" + field.name + "'",
-              location);
-        }
-      }
       for (const auto& derived : type.derived_parameters()) {
-        std::vector<Module::ParameterDecl> fields;
-        for (const std::string& reference : type.interfaces()) {
-          const std::size_t dot = reference.find('.');
-          const std::string interface_owner =
-              dot == std::string::npos
-                  ? name
-                  : std::string(resolve_prefix(
-                        module, std::string_view(reference).substr(0, dot)));
-          const std::string local =
-              dot == std::string::npos ? reference : reference.substr(dot + 1U);
-          const auto source = state_->modules.find(interface_owner);
-          const auto interface = source == state_->modules.end()
-                                     ? std::optional<Module::InterfaceDecl>{}
-                                     : source->second.interface(local);
-          if (interface) {
-            const auto field = std::find_if(
-                interface->fields().begin(), interface->fields().end(),
-                [&](const auto& candidate) {
-                  return candidate.name == derived.name;
-                });
-            if (field != interface->fields().end()) {
-              fields.push_back(*field);
-            }
-          }
-        }
-        if (fields.size() != 1U) {
-          state_->diagnostics.report(
-              fields.empty()
-                  ? "derived parameter '" + derived.name + "' on type '" +
-                        name + "." + std::string(type.name()) +
-                        "' is not declared by one of its interfaces"
-                  : "derived parameter '" + derived.name + "' on type '" +
-                        name + "." + std::string(type.name()) +
-                        "' is ambiguous across its interfaces",
-              location);
-          continue;
-        }
         detail::check_declaration_expression(
-            *this, module, derived.value, fields.front().domain, {},
+            *this, module, derived.value, derived.domain, {},
             type.parameters(), state_->diagnostics, location,
             "derived field '" + name + "." + std::string(type.name()) + "." +
                 derived.name + "'");
@@ -1128,11 +823,6 @@ bool Compiler::link() {
     for (const Module::FunctionDecl& function : module.functions()) {
       const auto location = detail::ModuleAccess::declaration_source(
           module, Module::SymbolKind::Function, function.name());
-      validate_interfaces(function.interfaces(), Module::SymbolKind::Function,
-                          function.name(), location);
-      detail::check_generic_constraints(
-          *this, module, function.generics(), state_->diagnostics, location,
-          "function '" + name + "." + std::string(function.name()) + "'");
       const auto body = detail::ModuleAccess::body(module, function);
       if (body) {
         detail::verify_body_calls(*this, function, *body, state_->diagnostics);
@@ -1473,10 +1163,7 @@ bool Compiler::load_native(const Module& module,
   }
 
   auto type_verifiers = state_->type_verifiers;
-  auto attribute_verifiers = state_->attribute_verifiers;
   auto op_verifiers = state_->op_verifiers;
-  auto attribute_methods = state_->attribute_methods;
-  auto op_methods = state_->op_methods;
   auto bindings = state_->bindings;
   auto hermetic_evaluations = state_->hermetic_evaluations;
   auto host_types = state_->host_types;
@@ -1493,10 +1180,7 @@ bool Compiler::load_native(const Module& module,
   }
   if (state_->diagnostics.size() != before) {
     state_->type_verifiers = std::move(type_verifiers);
-    state_->attribute_verifiers = std::move(attribute_verifiers);
     state_->op_verifiers = std::move(op_verifiers);
-    state_->attribute_methods = std::move(attribute_methods);
-    state_->op_methods = std::move(op_methods);
     state_->bindings = std::move(bindings);
     state_->hermetic_evaluations = std::move(hermetic_evaluations);
     state_->host_types = std::move(host_types);
@@ -1544,7 +1228,7 @@ std::optional<Type> Compiler::make(const Module::TypeDecl& schema,
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.interface_digest() != symbol.interface_digest()) {
+      owner->second.declaration_digest() != symbol.declaration_digest()) {
     state_->diagnostics.report("type schema '" + symbol.qualified_name() +
                                "' is not part of this compiler");
     return std::nullopt;
@@ -1629,49 +1313,6 @@ std::optional<Value> Compiler::make_known(Type type, ParameterValue value) {
     return std::nullopt;
   }
   return Value(std::move(type), std::move(value));
-}
-
-std::optional<Attribute>
-Compiler::make(const Module::AttributeDecl& schema,
-               std::span<const ParameterValue> parameters) {
-  if (!state_->linked) {
-    state_->diagnostics.report(
-        "cannot construct an attribute before the compiler is linked");
-    return std::nullopt;
-  }
-  const Module::Symbol symbol = schema.symbol();
-  const auto owner = state_->modules.find(symbol.module_name());
-  if (owner == state_->modules.end() ||
-      owner->second.version() != symbol.module_version() ||
-      owner->second.interface_digest() != symbol.interface_digest()) {
-    state_->diagnostics.report("attribute schema '" + symbol.qualified_name() +
-                               "' is not part of this compiler");
-    return std::nullopt;
-  }
-  auto values =
-      detail::validate_parameters(symbol.qualified_name(), schema.parameters(),
-                                  parameters, state_->diagnostics);
-  if (!values) {
-    return std::nullopt;
-  }
-  if (!std::all_of(values->begin(), values->end(),
-                   [&](const ParameterValue& value) {
-                     return belongs_to(state_->modules, value);
-                   })) {
-    state_->diagnostics.report(
-        "attribute '" + symbol.qualified_name() +
-        "' references a value outside this compiler's module closure");
-    return std::nullopt;
-  }
-  Attribute attribute = detail::TypeAccess::make(schema, std::move(*values));
-  const auto verifier = state_->attribute_verifiers.find(symbol.stable_name());
-  if (verifier != state_->attribute_verifiers.end() &&
-      !invoke_verifier(verifier->second, attribute,
-                       "attribute '" + symbol.qualified_name() + "'",
-                       state_->diagnostics)) {
-    return std::nullopt;
-  }
-  return attribute;
 }
 
 std::optional<Function> Compiler::create_function() {
@@ -1771,7 +1412,7 @@ Compiler::materialize(Module::Symbol symbol,
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.interface_digest() != symbol.interface_digest()) {
+      owner->second.declaration_digest() != symbol.declaration_digest()) {
     state_->diagnostics.report("function '" + symbol.qualified_name() +
                                "' is not in this compilation");
     return std::nullopt;
@@ -1816,7 +1457,7 @@ std::optional<Function> Compiler::materialize(const Op& call) {
   const auto owner = state_->modules.find(callee.symbol().module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != callee.symbol().module_version() ||
-      owner->second.interface_digest() != callee.symbol().interface_digest()) {
+      owner->second.declaration_digest() != callee.symbol().declaration_digest()) {
     state_->diagnostics.report("function '" + callee.symbol().qualified_name() +
                                "' is not in this compilation");
     return std::nullopt;
@@ -1889,123 +1530,13 @@ std::optional<Function> Compiler::materialize(const Op& call) {
       std::move(known_values), std::move(generic_bindings));
 }
 
-bool Compiler::conforms(const Module::TypeDecl& declaration,
-                        const Module::InterfaceDecl& interface) const {
-  return state_->linked &&
-         conforms_to_interface(state_->modules, declaration.symbol(),
-                               declaration.interfaces(), interface,
-                               Module::SymbolKind::Type);
-}
-
-bool Compiler::conforms(const Module::AttributeDecl& declaration,
-                        const Module::InterfaceDecl& interface) const {
-  return state_->linked &&
-         conforms_to_interface(state_->modules, declaration.symbol(),
-                               declaration.interfaces(), interface,
-                               Module::SymbolKind::Attribute);
-}
-
-bool Compiler::conforms(const Module::FunctionDecl& declaration,
-                        const Module::InterfaceDecl& interface) const {
-  return state_->linked &&
-         conforms_to_interface(state_->modules, declaration.symbol(),
-                               declaration.interfaces(), interface,
-                               Module::SymbolKind::Function);
-}
-
-bool Compiler::check_method_result(Module::InterfaceDecl::MethodDecl method,
-                                   const Module::ParameterDecl& result) {
-  if (method.results().size() == 1U &&
-      method.results().front().domain == result.domain) {
-    return true;
-  }
-  state_->diagnostics.report("typed result for interface method '" +
-                             method.qualified_name() +
-                             "' does not match its declaration");
-  return false;
-}
-
-bool Compiler::check_method_signature(
-    Module::InterfaceDecl::MethodDecl method,
-    std::span<const Module::ParameterDecl> parameters,
-    const Module::ParameterDecl& result) {
-  if (!check_method_result(method, result)) {
-    return false;
-  }
-  const auto declared = method.inputs();
-  if (declared.size() != parameters.size()) {
-    state_->diagnostics.report("typed binding for interface method '" +
-                               method.qualified_name() +
-                               "' has the wrong argument count");
-    return false;
-  }
-  for (std::size_t index = 0; index < declared.size(); ++index) {
-    if (declared[index].domain != parameters[index].domain) {
-      state_->diagnostics.report(
-          "typed binding for interface method '" + method.qualified_name() +
-          "' disagrees with argument " + std::to_string(index + 1U));
-      return false;
-    }
-  }
-  return true;
-}
-
-void Compiler::bind_method(Module::AttributeDecl declaration,
-                           Module::InterfaceDecl::MethodDecl method,
-                           MethodFunction<Attribute> function) {
-  bind_interface_method(
-      state_->linked, std::move(declaration), std::move(method),
-      std::move(function), state_->attribute_methods, state_->diagnostics,
-      [this](const auto& subject, const auto& interface) {
-        return conforms(subject, interface);
-      },
-      "attribute");
-}
-
-void Compiler::bind_method(Module::FunctionDecl declaration,
-                           Module::InterfaceDecl::MethodDecl method,
-                           MethodFunction<Op> function) {
-  bind_interface_method(
-      state_->linked, std::move(declaration), std::move(method),
-      std::move(function), state_->op_methods, state_->diagnostics,
-      [this](const auto& subject, const auto& interface) {
-        return conforms(subject, interface);
-      },
-      "function call");
-}
-
-std::optional<ParameterValue>
-Compiler::call(const Attribute& subject,
-               Module::InterfaceDecl::MethodDecl method,
-               std::span<const ParameterValue> parameters) {
-  return evaluate_interface_method(
-      state_->linked, subject, std::move(method), parameters,
-      state_->attribute_methods, state_->modules, state_->diagnostics,
-      [this](const auto& declaration, const auto& interface) {
-        return conforms(declaration, interface);
-      },
-      "attribute");
-}
-
-std::optional<ParameterValue>
-Compiler::call(const Op& subject, Module::InterfaceDecl::MethodDecl method,
-               std::span<const ParameterValue> parameters) {
-  return evaluate_interface_method(
-      state_->linked, subject, std::move(method), parameters,
-      state_->op_methods, state_->modules, state_->diagnostics,
-      [this](const auto& declaration, const auto& interface) {
-        return conforms(declaration, interface);
-      },
-      "function call");
-}
-
 void Compiler::bind_verifier(Module::TypeDecl schema,
                              VerifierFunction<Type> verifier) {
   const Module::Symbol symbol = schema.symbol();
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.interface_digest() != symbol.interface_digest()) {
+      owner->second.declaration_digest() != symbol.declaration_digest()) {
     state_->diagnostics.report("cannot bind type '" + symbol.qualified_name() +
                                "' outside this compiler");
     return;
@@ -2021,37 +1552,13 @@ void Compiler::bind_verifier(Module::TypeDecl schema,
   }
 }
 
-void Compiler::bind_verifier(Module::AttributeDecl schema,
-                             VerifierFunction<Attribute> verifier) {
-  const Module::Symbol symbol = schema.symbol();
-  const auto owner = state_->modules.find(symbol.module_name());
-  if (owner == state_->modules.end() ||
-      owner->second.version() != symbol.module_version() ||
-      owner->second.interface_digest() != symbol.interface_digest()) {
-    state_->diagnostics.report("cannot bind attribute '" +
-                               symbol.qualified_name() +
-                               "' outside this compiler");
-    return;
-  }
-  if (!verifier) {
-    state_->diagnostics.report("attribute verifier binding is empty");
-    return;
-  }
-  if (!state_->attribute_verifiers
-           .emplace(symbol.stable_name(), std::move(verifier))
-           .second) {
-    state_->diagnostics.report("attribute '" + symbol.qualified_name() +
-                               "' already has a verifier binding");
-  }
-}
-
 void Compiler::bind_verifier(Module::FunctionDecl schema,
                              VerifierFunction<Op> verifier) {
   const Module::Symbol symbol = schema.symbol();
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.interface_digest() != symbol.interface_digest()) {
+      owner->second.declaration_digest() != symbol.declaration_digest()) {
     state_->diagnostics.report("cannot bind an Op verifier for function '" +
                                symbol.qualified_name() +
                                "' outside this compiler");
@@ -2095,7 +1602,7 @@ bool Compiler::bind_representation(Module::TypeDecl schema,
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.interface_digest() != symbol.interface_digest()) {
+      owner->second.declaration_digest() != symbol.declaration_digest()) {
     state_->diagnostics.report("cannot represent type '" +
                                symbol.qualified_name() +
                                "' outside this compiler");
@@ -2337,7 +1844,7 @@ void Compiler::bind_native(Module::FunctionDecl schema, NativeFunction function,
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.interface_digest() != symbol.interface_digest()) {
+      owner->second.declaration_digest() != symbol.declaration_digest()) {
     state_->diagnostics.report("cannot bind compiler function '" +
                                symbol.qualified_name() +
                                "' outside this compiler");
@@ -2515,181 +2022,6 @@ std::optional<Module> Compiler::lookup_module(const Module& module) {
   return found->second;
 }
 
-std::optional<Module::InterfaceDecl::MethodDecl>
-Compiler::lookup_method(const Module& module, std::string_view reference,
-                        Module::SymbolKind subject) {
-  const auto scope = lookup_module(module);
-  if (!scope) {
-    return std::nullopt;
-  }
-  const std::size_t method_separator = reference.rfind('.');
-  if (method_separator == std::string_view::npos || method_separator == 0U ||
-      method_separator + 1U == reference.size()) {
-    state_->diagnostics.report("method '" + std::string(reference) +
-                               "' must be written as interface.method");
-    return std::nullopt;
-  }
-  const std::string_view interface_reference =
-      reference.substr(0U, method_separator);
-  const std::string_view method_name = reference.substr(method_separator + 1U);
-  const std::size_t interface_separator = interface_reference.find('.');
-  std::string_view owner_name = scope->name();
-  std::string_view interface_name = interface_reference;
-  if (interface_separator != std::string_view::npos) {
-    const std::string_view prefix =
-        interface_reference.substr(0U, interface_separator);
-    interface_name = interface_reference.substr(interface_separator + 1U);
-    const auto imported =
-        std::find_if(scope->imports().begin(), scope->imports().end(),
-                     [&](const Module::Import& import) {
-                       return import.prefix() == prefix;
-                     });
-    if (imported == scope->imports().end() ||
-        interface_name.find('.') != std::string_view::npos) {
-      state_->diagnostics.report("interface '" +
-                                 std::string(interface_reference) +
-                                 "' is not local or directly imported by '" +
-                                 std::string(scope->name()) + "'");
-      return std::nullopt;
-    }
-    owner_name = imported->name;
-  }
-  const auto owner = state_->modules.find(owner_name);
-  const auto interface = owner == state_->modules.end()
-                             ? std::optional<Module::InterfaceDecl>{}
-                             : owner->second.interface(interface_name);
-  if (!interface) {
-    state_->diagnostics.report("unknown interface '" +
-                               std::string(interface_reference) + "'");
-    return std::nullopt;
-  }
-  if (interface->subject() != subject) {
-    state_->diagnostics.report("interface '" +
-                               std::string(interface_reference) +
-                               "' has the wrong subject kind");
-    return std::nullopt;
-  }
-  const auto method = interface->method(method_name);
-  if (!method) {
-    state_->diagnostics.report(
-        "interface '" + std::string(interface_reference) +
-        "' has no method named '" + std::string(method_name) + "'");
-  }
-  return method;
-}
-
-std::optional<Module::InterfaceDecl::MethodDecl>
-Compiler::lookup_method(const Module& module, std::string_view declaration,
-                        std::span<const std::string> interfaces,
-                        std::string_view reference,
-                        Module::SymbolKind subject) {
-  if (reference.find('.') != std::string_view::npos) {
-    return lookup_method(module, reference, subject);
-  }
-  const auto scope = lookup_module(module);
-  if (!scope) {
-    return std::nullopt;
-  }
-
-  std::vector<Module::InterfaceDecl::MethodDecl> matches;
-  std::vector<std::string> owners;
-  for (const std::string& interface_reference : interfaces) {
-    const std::size_t separator = interface_reference.find('.');
-    std::string_view owner_name = scope->name();
-    std::string_view interface_name = interface_reference;
-    if (separator != std::string::npos) {
-      const std::string_view prefix =
-          std::string_view(interface_reference).substr(0U, separator);
-      interface_name =
-          std::string_view(interface_reference).substr(separator + 1U);
-      const auto imported =
-          std::find_if(scope->imports().begin(), scope->imports().end(),
-                       [&](const Module::Import& import) {
-                         return import.prefix() == prefix;
-                       });
-      if (imported == scope->imports().end()) {
-        continue;
-      }
-      owner_name = imported->name;
-    }
-    const auto owner = state_->modules.find(owner_name);
-    const auto interface = owner == state_->modules.end()
-                               ? std::optional<Module::InterfaceDecl>{}
-                               : owner->second.interface(interface_name);
-    if (!interface || interface->subject() != subject) {
-      continue;
-    }
-    if (const auto method = interface->method(reference)) {
-      matches.push_back(*method);
-      owners.push_back(interface_reference);
-    }
-  }
-
-  const std::string binding =
-      std::string(declaration) + "." + std::string(reference);
-  if (matches.empty()) {
-    state_->diagnostics.report("declaration '" + std::string(declaration) +
-                               "' has no interface method named '" +
-                               std::string(reference) + "'");
-    return std::nullopt;
-  }
-  if (matches.size() > 1U) {
-    std::string message =
-        "method binding '" + binding + "' is ambiguous; qualify it as one of";
-    for (const std::string& owner : owners) {
-      message += " '" + std::string(declaration) + "." + owner + "." +
-                 std::string(reference) + "'";
-    }
-    state_->diagnostics.report(std::move(message));
-    return std::nullopt;
-  }
-  return matches.front();
-}
-
-std::optional<Module::InterfaceDecl::MethodDecl>
-Compiler::lookup_method(Module::AttributeDecl declaration,
-                        std::string_view reference) {
-  const auto symbol = declaration.symbol();
-  const auto owner = state_->modules.find(symbol.module_name());
-  if (!state_->linked || owner == state_->modules.end() ||
-      owner->second.version() != symbol.module_version() ||
-      owner->second.interface_digest() != symbol.interface_digest()) {
-    state_->diagnostics.report("attribute '" + symbol.qualified_name() +
-                               "' is not in this compilation");
-    return std::nullopt;
-  }
-  return lookup_method(owner->second, declaration.name(),
-                       declaration.interfaces(), reference,
-                       Module::SymbolKind::Attribute);
-}
-
-std::optional<Module::InterfaceDecl::MethodDecl>
-Compiler::lookup_method(Module::FunctionDecl declaration,
-                        std::string_view reference) {
-  const auto symbol = declaration.symbol();
-  const auto owner = state_->modules.find(symbol.module_name());
-  if (!state_->linked || owner == state_->modules.end() ||
-      owner->second.version() != symbol.module_version() ||
-      owner->second.interface_digest() != symbol.interface_digest()) {
-    state_->diagnostics.report("function '" + symbol.qualified_name() +
-                               "' is not in this compilation");
-    return std::nullopt;
-  }
-  return lookup_method(owner->second, declaration.name(),
-                       declaration.interfaces(), reference,
-                       Module::SymbolKind::Function);
-}
-
-std::optional<Module::InterfaceDecl::MethodDecl>
-Compiler::lookup_method(const Attribute& subject, std::string_view reference) {
-  return lookup_method(subject.schema(), reference);
-}
-
-std::optional<Module::InterfaceDecl::MethodDecl>
-Compiler::lookup_method(const Op& subject, std::string_view reference) {
-  return lookup_method(subject.callee(), reference);
-}
-
 bool Compiler::verify(const Function& function) {
   if (!state_->linked) {
     state_->diagnostics.report(
@@ -2777,7 +2109,7 @@ bool Compiler::matches_run_signature(
   const auto owner = state_->modules.find(symbol.module_name());
   if (owner == state_->modules.end() ||
       owner->second.version() != symbol.module_version() ||
-      owner->second.interface_digest() != symbol.interface_digest()) {
+      owner->second.declaration_digest() != symbol.declaration_digest()) {
     return false;
   }
   const bool input_match =

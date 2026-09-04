@@ -78,7 +78,7 @@ module pipeline@1.0.0 {
   fn convert_word(input: test_ir.integer<16>) -> test_ir.integer<16>;
   fn configured_copy(input: test_ir.integer<8>, tag: int = 7)
       -> test_ir.integer<8>;
-  fn choose_first<T: type>(items: T...) -> T;
+  fn choose_first<T>(items: T...) -> T;
   fn compute_width(value: int) -> int;
   fn width_copy(input: test_ir.integer<8>)
       -> test_ir.integer<compute_width(8)>;
@@ -222,8 +222,6 @@ module pipeline@1.0.0 {
   const auto integer_decl = test_ir ? test_ir->type("integer") : std::nullopt;
   const auto arith_cast_decl =
       test_ir ? test_ir->function("cast") : std::nullopt;
-  const auto format_decl =
-      test_ir ? test_ir->interface("numeric_format") : std::nullopt;
   const auto canonicalize =
       test_ir ? test_ir->function("canonicalize") : std::nullopt;
   const auto clean = pipeline ? pipeline->function("clean") : std::nullopt;
@@ -317,7 +315,7 @@ module pipeline@1.0.0 {
   const auto fork = pipeline ? pipeline->function("fork") : std::nullopt;
   const auto relay_fork =
       pipeline ? pipeline->function("relay_fork") : std::nullopt;
-  if (!integer_decl || !arith_cast_decl || !format_decl || !canonicalize ||
+  if (!integer_decl || !arith_cast_decl || !canonicalize ||
       !clean || !read || !resolved_read || !emit || !inspect || !compile ||
       !consume || !module_identity || convert_words.size() != 2U ||
       !configured_copy || !compute_width || !width_copy || !residual_overload ||
@@ -735,8 +733,8 @@ module source_model@1.0.0 {
                  materialized_main->body()->ops().size() == 1U &&
                  materialized_keep && materialized_calls.size() == 1U &&
                  materialized_calls.front().callee() == *materialized_keep &&
-                 materialized_model->interface_digest() ==
-                     source_model->interface_digest() &&
+                 materialized_model->declaration_digest() ==
+                     source_model->declaration_digest() &&
                  materialized_model->digest() != source_model->digest() &&
                  materialized_count && materialized_count->body() == nullptr &&
                  source_model_main->body() == nullptr,
@@ -748,7 +746,7 @@ module source_model@1.0.0 {
     joggle 1;
     module guarded@1.0.0 {
       type a();
-      fn identity<T: type>(input: T) -> T;
+      fn identity<T>(input: T) -> T;
       fn touch(input: function) -> function;
     }
   )";

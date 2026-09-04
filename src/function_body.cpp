@@ -260,8 +260,7 @@ private:
         argument.type = expression();
         argument.range = {argument_begin, previous_end_};
         variables_.push_back({argument.name,
-                              Module::Expression::reference("type"),
-                              std::nullopt});
+                              Module::Expression::reference("type")});
         locals_.insert(argument.name);
         block.arguments.push_back(std::move(argument));
       } while (match(TokenKind::Comma));
@@ -393,8 +392,7 @@ private:
             {statement.iterator->name,
              statement.iterator->type
                  ? statement.iterator->type->value
-                 : Module::Expression::reference("type"),
-             std::nullopt});
+                 : Module::Expression::reference("type")});
       }
       ++loop_depth_;
       while (!is(TokenKind::RightBrace) && !is(TokenKind::End) && ok()) {
@@ -423,8 +421,7 @@ private:
         if (!binding.rebind) {
           locals_.insert(binding.name);
           variables_.push_back({binding.name,
-                                Module::Expression::reference("type"),
-                                std::nullopt});
+                                Module::Expression::reference("type")});
         }
         statement.bindings.push_back(std::move(binding));
       };
@@ -1249,10 +1246,12 @@ private:
         left->callee().symbol() != right->callee().symbol()) {
       return false;
     }
-    const auto prelude = compiler_.module(detail::prelude_module_name);
-    const auto literal = prelude ? prelude->interface("literal")
-                                 : std::optional<Module::InterfaceDecl>{};
-    if (!literal || !compiler_.conforms(left->callee(), *literal)) {
+    const auto callee = left->callee();
+    if (callee.name() != "literal" ||
+        detail::compiler_inputs(callee).size() != 1U ||
+        !detail::value_inputs(callee).empty() ||
+        !detail::compiler_results(callee).empty() ||
+        detail::value_results(callee).size() != 1U) {
       return false;
     }
     const auto left_results = left->results();
@@ -1364,18 +1363,12 @@ private:
     std::optional<Declaration> result;
     if constexpr (std::is_same_v<Declaration, Module::TypeDecl>) {
       result = module->type(local);
-    } else if constexpr (std::is_same_v<Declaration, Module::AttributeDecl>) {
-      result = module->attribute(local);
     } else {
       result = module->function(local);
     }
     if (!result) {
       constexpr std::string_view kind =
-          std::is_same_v<Declaration, Module::TypeDecl>
-              ? "type"
-              : (std::is_same_v<Declaration, Module::AttributeDecl>
-                     ? "attribute"
-                     : "function");
+          std::is_same_v<Declaration, Module::TypeDecl> ? "type" : "function";
       report("unknown " + std::string(kind) + " '" + std::string(reference) +
                  "'",
              range);
@@ -1400,9 +1393,6 @@ private:
     if (module->type(local)) {
       return Module::SymbolKind::Type;
     }
-    if (module->attribute(local)) {
-      return Module::SymbolKind::Attribute;
-    }
     return std::nullopt;
   }
 
@@ -1419,13 +1409,9 @@ private:
         expression.kind == Kind::Reference) {
       if (!expression.arguments.empty()) {
         const auto kind = declaration_kind(expression.text);
-        if (kind == Module::SymbolKind::Type ||
-            kind == Module::SymbolKind::Attribute) {
+        if (kind == Module::SymbolKind::Type) {
           return Module::ParameterDecl{
-              "result",
-              detail::domain_expression(kind == Module::SymbolKind::Type
-                                            ? detail::ValueKind::Type
-                                            : detail::ValueKind::Attribute),
+              "result", detail::domain_expression(detail::ValueKind::Type),
               false, std::nullopt};
         }
       }
@@ -1911,10 +1897,7 @@ private:
       return value;
     }
     const auto payload = detail::FunctionAccess::known_value(value);
-    const auto prelude = compiler_.module(detail::prelude_module_name);
-    const auto literal = prelude ? prelude->interface("literal")
-                                 : std::optional<Module::InterfaceDecl>{};
-    if (!payload || !literal) {
+    if (!payload) {
       report("no literal function is available for this Known value", range);
       return std::nullopt;
     }
@@ -1941,7 +1924,7 @@ private:
     std::vector<Module::FunctionDecl> matches;
     for (const Module& module : visible) {
       for (const auto& candidate : module.functions()) {
-        if (!compiler_.conforms(candidate, *literal) ||
+        if (candidate.name() != "literal" ||
             detail::compiler_inputs(candidate).size() != 1U ||
             !detail::value_inputs(candidate).empty() ||
             !detail::compiler_results(candidate).empty() ||
@@ -3355,19 +3338,6 @@ private:
     return result;
   }
 
-  detail::ValueSyntax value(const Attribute& attribute) const {
-    detail::ValueSyntax result;
-    result.kind = detail::ValueSyntax::Kind::Reference;
-    result.text = attribute.schema().symbol().qualified_name();
-    const auto parameters = detail::TypeAccess::parameters(attribute);
-    const std::size_t count =
-        visible_parameters(parameters, attribute.schema().parameters());
-    for (std::size_t index = 0; index < count; ++index) {
-      result.elements.push_back(value(parameters[index]));
-    }
-    return result;
-  }
-
   detail::ValueSyntax value(const ParameterValue& parameter) const {
     detail::ValueSyntax result;
     switch (parameter.kind()) {
@@ -3395,8 +3365,6 @@ private:
       break;
     case ParameterValue::Kind::Type:
       return value(*parameter.as_type());
-    case ParameterValue::Kind::Attribute:
-      return value(*parameter.as_attribute());
     case ParameterValue::Kind::List:
       result.kind = detail::ValueSyntax::Kind::List;
       for (const ParameterValue& element : parameter.elements()) {

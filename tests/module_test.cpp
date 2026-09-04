@@ -78,30 +78,17 @@ int main() {
                "symbolic functions cannot use a second alias identity");
 
   const auto integer = module->type("integer");
-  const auto numeric_format = module->interface("numeric_format");
-  const auto elementwise = module->interface("elementwise");
   const auto align = module->function("align");
   const auto add = module->function("+");
   const auto canonicalize = module->function("canonicalize");
   ok &=
       expect(integer && integer->parameters().size() == 2U &&
-                 integer->interfaces().size() == 1U &&
                  integer->derived_parameters().size() == 2U &&
                  integer->derived_parameters().front().name == "storage_bits" &&
                  integer->derived_parameters().front().value.kind ==
                      joggle::Module::Expression::Kind::Variable &&
                  integer->derived_parameters().front().value.text == "width",
              "integer schema");
-  ok &= expect(numeric_format &&
-                   numeric_format->subject() ==
-                       joggle::Module::SymbolKind::Type &&
-                   numeric_format->fields().size() == 2U &&
-                   numeric_format->fields().front().name == "storage_bits" &&
-                   numeric_format->fields().front().domain ==
-                       joggle::Module::Expression::reference("int"),
-               "interface field reflection");
-  ok &= expect(elementwise && elementwise->methods().empty(),
-               "marker interface reflection");
   ok &= expect(
       align && align->inputs().size() == 2U && align->results().size() == 1U &&
           align->results().front().domain ==
@@ -119,8 +106,7 @@ int main() {
           add->signature().find("value:") == std::string::npos &&
           add->name() == std::string_view("+") &&
           add->operator_fixity() ==
-              joggle::Module::FunctionDecl::Fixity::Infix &&
-          add->interfaces().size() == 2U,
+              joggle::Module::FunctionDecl::Fixity::Infix,
       "add signature");
   ok &= expect(canonicalize && canonicalize->form() ==
                                    joggle::Module::FunctionDecl::Form::External,
@@ -161,20 +147,18 @@ int main() {
         return @(external(input));
       }
       fn external(input: function) -> function;
-      fn collect<T: type>(items: T...) -> T : marker;
+      fn collect<T>(items: T...) -> T;
       fn identity(value: int) -> int {
         return value;
       }
-      attr meta(values: list<int>, element: type);
+      type meta(values: list<int>, element: type);
       type scalar(
         bits: int = 8,
         scale: real = -1.5e2,
         signed: bool = true,
         label: string = "line\n\"quoted\""
-      ) : metric;
-      interface marker: fn;
-      interface metric: type {
-        shape: list<int>;
+      ) {
+        shape: list<int> = [bits];
       }
       import dependency@^1.2.3 as dep;
     }
@@ -185,9 +169,8 @@ int main() {
     return surface_text.find(text);
   };
   const auto import_position = position("import dependency");
-  const auto interface_position = position("interface marker");
   const auto type_position = position("type scalar");
-  const auto attribute_position = position("attr meta");
+  const auto meta_position = position("type meta");
   const auto empty_position = position("fn empty");
   const auto pipeline_position = position("fn pipeline");
   const auto collect_position = position("fn collect");
@@ -196,10 +179,8 @@ int main() {
   const auto surface_roundtrip = joggle::parse_module(
       surface_text, surface_roundtrip_diagnostics, "surface-canonical.joggle");
   ok &= expect(
-      surface && import_position < interface_position &&
-          interface_position < type_position &&
-          type_position < attribute_position &&
-          attribute_position < empty_position &&
+      surface && import_position < meta_position &&
+          meta_position < type_position && type_position < empty_position &&
           empty_position < pipeline_position &&
           pipeline_position < collect_position &&
           collect_position < identity_position && surface_roundtrip &&
@@ -261,9 +242,9 @@ int main() {
   ok &= expect(reparsed_integer && conflicting_integer &&
                    *reparsed_integer == *integer &&
                    *conflicting_integer == *integer &&
-                   conflicting_identity->interface_digest() !=
-                       module->interface_digest(),
-               "versioned declaration identity is stable while an interface "
+                   conflicting_identity->declaration_digest() !=
+                       module->declaration_digest(),
+               "versioned declaration identity is stable while a declaration "
                "digest detects incompatible same-version Modules");
 
   joggle::Diagnostics first_function_diagnostics;
@@ -272,7 +253,7 @@ int main() {
     joggle 1;
     module function_identity@1.0.0 {
       type value();
-      fn identity<T: type>(input: T) -> T;
+      fn identity<T>(input: T) -> T;
       fn main(input: value) -> value {
         return input;
       }
@@ -285,7 +266,7 @@ int main() {
     joggle 1;
     module function_identity@1.0.0 {
       type value();
-      fn identity<T: type>(input: T) -> T;
+      fn identity<T>(input: T) -> T;
       fn main(input: value) -> value {
         output = identity(input);
         return output;
@@ -305,11 +286,11 @@ int main() {
       first_function_module && second_function_module &&
           first_function_symbol && second_function_symbol &&
           first_function_module->digest() != second_function_module->digest() &&
-          first_function_module->interface_digest() ==
-              second_function_module->interface_digest() &&
+          first_function_module->declaration_digest() ==
+              second_function_module->declaration_digest() &&
           *first_function_symbol == *second_function_symbol,
       "function body changes alter artifact identity without changing the "
-      "declared interface");
+      "declared surface");
 
   joggle::Diagnostics list_diagnostics;
   auto list_module = joggle::parse_module(R"(
@@ -331,12 +312,12 @@ int main() {
       joggle::parse_module(R"(
     joggle 1;
     module numeric@1.2.3 {
-      attr scale(value: real = -1.5e2);
+      type scale(value: real = -1.5e2);
     }
   )",
                            numeric_diagnostics, "numeric.joggle");
-  const auto scale =
-      numeric_module ? numeric_module->attribute("scale") : std::nullopt;
+  const auto scale = numeric_module ? numeric_module->type("scale")
+                                    : std::nullopt;
   ok &= expect(scale && scale->parameters().size() == 1U &&
                    scale->parameters().front().default_value &&
                    scale->parameters().front().default_value->kind ==
@@ -350,7 +331,7 @@ int main() {
     joggle 1;
     module client@1.0.0 {
       import test_ir@1 as math;
-      fn inference<T: type>(input: T) -> T : math.elementwise;
+      fn inference<T>(input: T) -> T;
       fn pipeline(input: function) -> function {
         return math.canonicalize(input);
       }
@@ -367,9 +348,7 @@ int main() {
                "an import alias is a local prefix for one module identity");
   const auto inference =
       linked_client ? linked_client->function("inference") : std::nullopt;
-  ok &= expect(inference && elementwise &&
-                   compiler.conforms(*inference, *elementwise),
-               "aliased cross-module interface implementation");
+  ok &= expect(inference.has_value(), "generic functions need no marker API");
 
   joggle::Diagnostics duplicate_alias_diagnostics;
   const auto duplicate_alias = joggle::parse_module(R"(
@@ -404,22 +383,31 @@ int main() {
                    invalid_diagnostics.entries().front().source.has_value(),
                "old clause grammar is rejected with a source diagnostic");
 
-  joggle::Diagnostics interface_diagnostics;
-  auto invalid_interface =
+  joggle::Diagnostics removed_interface_diagnostics;
+  auto removed_interface =
       joggle::parse_module(R"(
     joggle 1;
-    module broken_interface@1.0.0 {
-      type integer() : missing;
+    module removed_interface@1.0.0 {
+      interface marker: fn;
     }
   )",
-                           interface_diagnostics, "broken-interface.joggle");
-  ok &= expect(!invalid_interface && !interface_diagnostics.ok() &&
-                   interface_diagnostics.entries().back().source &&
-                   interface_diagnostics.entries().back().source->source ==
-                       "broken-interface.joggle" &&
-                   interface_diagnostics.entries().back().source->begin.line ==
-                       4U,
-               "unknown local interface is rejected");
+                           removed_interface_diagnostics,
+                           "removed-interface.joggle");
+  ok &= expect(!removed_interface && !removed_interface_diagnostics.ok(),
+               "interface is not a source-level declaration");
+
+  joggle::Diagnostics removed_attribute_diagnostics;
+  auto removed_attribute =
+      joggle::parse_module(R"(
+    joggle 1;
+    module removed_attribute@1.0.0 {
+      attr metadata(value: int);
+    }
+  )",
+                           removed_attribute_diagnostics,
+                           "removed-attribute.joggle");
+  ok &= expect(!removed_attribute && !removed_attribute_diagnostics.ok(),
+               "attr is not a source-level declaration");
 
   joggle::Diagnostics legacy_rewrite_diagnostics;
   auto legacy_rewrite =
@@ -427,7 +415,7 @@ int main() {
     joggle 1;
     module legacy_rewrite@1.0.0 {
       type integer();
-      fn identity<T: type>(input: T) -> T;
+      fn identity<T>(input: T) -> T;
       fn simplify(input: function) -> function {
         return rewrite(input) {
           identity($input) => $input;
@@ -475,31 +463,6 @@ int main() {
                            value_name_diagnostics, "value-name.joggle");
   ok &= expect(value_name && value_name_diagnostics.ok(),
                "value is an ordinary type name rather than dead syntax");
-
-  joggle::Diagnostics old_interface_diagnostics;
-  const auto old_interface =
-      joggle::parse_module(R"(
-    joggle 1;
-    module old_interface@1.0.0 {
-      interface type metric;
-    }
-  )",
-                           old_interface_diagnostics, "old-interface.joggle");
-  ok &= expect(!old_interface && !old_interface_diagnostics.ok(),
-               "the pre-name interface subject syntax is not retained");
-
-  joggle::Diagnostics wrong_interface_diagnostics;
-  const auto wrong_interface = joggle::parse_module(R"(
-    joggle 1;
-    module wrong_interface@1.0.0 {
-      interface elementwise: fn;
-      type scalar() : elementwise;
-    }
-  )",
-                                                    wrong_interface_diagnostics,
-                                                    "wrong-interface.joggle");
-  ok &= expect(!wrong_interface && !wrong_interface_diagnostics.ok(),
-               "an interface still constrains its declaration kind");
 
   joggle::Compiler function_cycle;
   function_cycle.add(R"(

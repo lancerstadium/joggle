@@ -26,7 +26,7 @@ int main() {
     joggle 1;
     module control@1.0.0 {
       type other();
-      fn source<T: type>() -> T;
+      fn source<T>() -> T;
       fn add_i32(lhs: i32, rhs: i32) -> i32;
       fn configure(input: i32, axis: int = 1) -> i32;
       fn callback(input: i32) -> i32;

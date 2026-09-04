@@ -209,21 +209,9 @@ bool owns(const FunctionState& function, const Type& type) {
       [&](const ParameterValue& value) { return owns(function, value); });
 }
 
-bool owns(const FunctionState& function, const Attribute& attribute) {
-  const auto parameters = detail::TypeAccess::parameters(attribute);
-  return owns(function, attribute.schema().symbol()) &&
-         std::all_of(parameters.begin(), parameters.end(),
-                     [&](const ParameterValue& value) {
-                       return owns(function, value);
-                     });
-}
-
 bool owns(const FunctionState& function, const ParameterValue& value) {
   if (const Type* type = value.as_type()) {
     return owns(function, *type);
-  }
-  if (const Attribute* attribute = value.as_attribute()) {
-    return owns(function, *attribute);
   }
   if (value.kind() == ParameterValue::Kind::List) {
     return std::all_of(
