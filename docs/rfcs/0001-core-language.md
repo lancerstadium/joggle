@@ -1,6 +1,6 @@
 # RFC 0001: One staged language for compiler construction
 
-Status: accepted; gates 1-2 complete, gate 3 in progress
+Status: accepted; gates 1-3 complete, gate 4 in progress
 
 ## Purpose
 
@@ -96,7 +96,7 @@ an earlier gate.
 2. One declaration model: remove `interface`, `attr`, declaration constraints,
    and their C++ reflection/storage paths. **Complete.**
 3. Explicit staging: make `@` the only stage switch and test residual calls
-   with fully known operands.
+   with fully known operands. **Complete.**
 4. Higher-order core: add typed function values and typed lambdas without a
    second expression grammar.
 5. Effect-safe replacement: implement checked expression matching and atomic

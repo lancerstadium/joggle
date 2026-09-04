@@ -2361,14 +2361,19 @@ private:
   CountedRangeProbe
   prelude_counted_range(const detail::ExpressionSyntax& syntax) {
     using Kind = Module::Expression::Kind;
-    if (syntax.value.kind != Kind::Call) {
+    const Module::Expression* expression = &syntax.value;
+    if (expression->kind == Kind::Evaluate &&
+        expression->arguments.size() == 1U) {
+      expression = &expression->arguments.front();
+    }
+    if (expression->kind != Kind::Call) {
       return {};
     }
 
     std::optional<Module::FunctionDecl> selected;
     std::optional<detail::CallCandidate> selected_call;
-    for (const auto& function : visible_functions(syntax.value.text)) {
-      const auto candidate = detail::call_candidate(function, syntax.value);
+    for (const auto& function : visible_functions(expression->text)) {
+      const auto candidate = detail::call_candidate(function, *expression);
       if (!candidate || !detail::is_prelude_primitive(function) ||
           function.name() != "range") {
         continue;
@@ -2384,10 +2389,10 @@ private:
     }
 
     std::array<std::int64_t, 3> arguments{0, 0, 1};
-    for (std::size_t index = 0; index < syntax.value.arguments.size();
+    for (std::size_t index = 0; index < expression->arguments.size();
          ++index) {
       const std::size_t parameter = selected_call->parameters[index];
-      auto value = evaluate_known({syntax.value.arguments[index], syntax.range},
+      auto value = evaluate_known({expression->arguments[index], syntax.range},
                                   selected->inputs()[parameter]);
       const auto* integer =
           value && value->known()
@@ -2399,7 +2404,7 @@ private:
       arguments[parameter] = *integer;
     }
 
-    const std::size_t count = syntax.value.arguments.size();
+    const std::size_t count = expression->arguments.size();
     const std::int64_t start = count == 1U ? 0 : arguments[0];
     const std::int64_t stop = count == 1U ? arguments[0] : arguments[1];
     const std::int64_t step = count == 3U ? arguments[2] : 1;
@@ -2999,20 +3004,27 @@ private:
   }
 
   void instantiate_call(const detail::StatementSyntax& statement, Block block) {
-    const bool require_known =
-        statement.expression.value.kind == Module::Expression::Kind::Evaluate;
+    using Kind = Module::Expression::Kind;
+    const Kind expression_kind = statement.expression.value.kind;
+    const bool require_known = expression_kind == Kind::Evaluate;
+    const bool implicit_value =
+        expression_kind == Kind::Number || expression_kind == Kind::Boolean ||
+        expression_kind == Kind::String || expression_kind == Kind::List ||
+        expression_kind == Kind::Reference ||
+        expression_kind == Kind::Variable ||
+        expression_kind == Kind::FunctionType;
     auto contextual_type = statement.bindings.size() == 1U
                                ? expected_type(statement.bindings.front())
                                : std::optional<Type>{};
     auto expected_domain = contextual_type
                                ? detail::type_domain(*contextual_type)
                                : std::optional<Module::Expression>{};
-    const bool can_evaluate =
-        statement.bindings.size() == 1U &&
+    const bool can_materialize_known =
+        implicit_value && statement.bindings.size() == 1U &&
         (expected_domain ||
          known_result(statement.expression.value, statement.expression.range)
              .has_value());
-    if (require_known || can_evaluate) {
+    if (require_known || can_materialize_known) {
       if (statement.bindings.size() != 1U) {
         report("compile-time evaluation must bind exactly one value",
                statement.range);
@@ -3047,7 +3059,6 @@ private:
     }
     const auto invalidate_results = [&] { invalidate(statement.bindings); };
     const Module::Expression& expression = statement.expression.value;
-    using Kind = Module::Expression::Kind;
     std::optional<Module::FunctionDecl::Fixity> fixity;
     if (expression.kind == Kind::Prefix) {
       fixity = Module::FunctionDecl::Fixity::Prefix;
@@ -3128,6 +3139,17 @@ private:
         fixity ? detail::visible_operators(compiler_, owner_, expression.text,
                                            *fixity)
                : visible_functions(expression.text);
+    if (!declarations.empty() &&
+        std::all_of(declarations.begin(), declarations.end(),
+                    [](const Module::FunctionDecl& declaration) {
+                      return !detail::compiler_results(declaration).empty();
+                    })) {
+      report("compiler-domain call '" + expression.text +
+                 "' requires explicit @ evaluation",
+             statement.expression.range);
+      invalidate_results();
+      return;
+    }
     std::vector<PendingCall> plans;
     const bool unique_declaration = declarations.size() == 1U;
     const std::size_t diagnostics_before_planning = diagnostics_.size();
@@ -3162,6 +3184,14 @@ private:
     }
 
     PendingCall plan = std::move(plans.front());
+    if (!detail::compiler_results(plan.function).empty()) {
+      report("compiler-domain call '" +
+                 plan.function.symbol().qualified_name() +
+                 "' requires explicit @ evaluation",
+             statement.expression.range);
+      invalidate_results();
+      return;
+    }
     const auto parameters = plan.function.inputs();
     std::size_t argument_index = 0;
     bool unresolved = false;

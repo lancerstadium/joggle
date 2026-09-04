@@ -27,9 +27,8 @@ functions and a convenient composed pipeline. Users can call either.
 a source body or a native C++ binding. Failure is diagnosed at the call site.
 An ordinary call denotes computation that remains in the program.
 
-This explicit distinction is the accepted design. The implementation still
-contains eager-known evaluation for some ordinary calls; RFC 0001 gate 3 is
-dedicated to removing it.
+This distinction is enforced during materialization. Known operands never
+cause an ordinary program call to invoke a host binding.
 
 ## Native binding
 

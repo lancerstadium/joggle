@@ -28,9 +28,8 @@ module example@1.0.0 {
 
 `fn` is used for residual computation and compiler-time work. Prefix `@`
 requests compile-time execution; an ordinary call remains a program call even
-when its operands happen to be known. This explicit-staging rule is accepted
-by RFC 0001 and is the next implementation gate; the current evaluator still
-contains eager-known behavior that is being removed.
+when its operands happen to be known. This explicit-staging rule is implemented
+and covered by both positive and negative materialization tests.
 
 A `Module` owns declarations, materialized Function bodies, imports, and
 content-addressed immutable data. There is no second Program, Graph, Package,

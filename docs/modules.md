@@ -72,9 +72,8 @@ convenient pipeline while still allowing expert users to call each component.
 
 A function with a source body can be materialized into IR. A bodyless function
 needs a native binding when invoked at compile time, or remains a residual call
-when used as program computation. The explicit staging semantics are being
-completed in RFC gate 3; until then, known ordinary calls may still be eagerly
-evaluated.
+when used as program computation. `@` is the explicit source-level stage
+switch; known inputs alone never select host execution during materialization.
 
 ## Versioning and dependencies
 

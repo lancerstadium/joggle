@@ -136,10 +136,10 @@ optimized = @optimize(model, policy);
 output = run_time_op(value);
 ```
 
-`@` is the accepted explicit request for compiler-time execution. An ordinary
-call denotes residual program computation. This rule is not fully implemented
-yet: the current evaluator can still eagerly run an ordinary call whose inputs
-are all known. RFC 0001 gate 3 removes that behavior.
+`@` requests compiler-time execution. An ordinary call denotes residual
+program computation even when all of its operands are Known. A call that
+produces a compiler-domain result without `@` is rejected instead of being
+silently executed.
 
 ## Canonical form and identity
 

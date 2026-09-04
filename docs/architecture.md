@@ -56,9 +56,9 @@ Ordinary calls are program calls. `@call(...)` requests compiler-time
 execution. Both resolve the same overload and use the same declaration
 identity; staging does not create a second kind of function.
 
-The explicit-`@` rule is accepted but not fully implemented yet. The current
-evaluator can still execute an ordinary call eagerly when all values are
-known. Removing that behavior is implementation gate 3 in RFC 0001.
+The explicit-`@` rule is enforced during materialization. A compiler-domain
+call without `@` is diagnosed, and an ordinary program call remains in IR even
+when its inputs are Known.
 
 Native C++ bodies are optional implementations of bodyless functions. Their
 signatures are checked against the source declaration when bound. The source

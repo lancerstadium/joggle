@@ -770,7 +770,7 @@ module loops@1.0.0 {
 
   fn huge_counted_loop(input: i32) -> i32 {
     current = input;
-    for offset: i32 in range(1000000000) {
+    for offset: i32 in @range(1000000000) {
       current = next(current);
       break;
     }
@@ -781,7 +781,7 @@ module loops@1.0.0 {
     count = 0;
     running = true;
     while running {
-      count = count + 1;
+      count = @(count + 1);
       running = false;
     }
     value: word<count> = source();
@@ -808,7 +808,7 @@ module loops@1.0.0 {
     running = true;
     count = 0;
     while running {
-      count = count + 1;
+      count = @(count + 1);
       break;
     }
     value: word<count> = source();
@@ -820,7 +820,7 @@ module loops@1.0.0 {
     count = 0;
     while running {
       running = false;
-      count = count + 1;
+      count = @(count + 1);
       continue;
     }
     value: word<count> = source();
@@ -1106,7 +1106,7 @@ module computed_cycle@1.0.0 {
 
   fn invalid(skip: i1) {
     running = true;
-    while condition(running) {
+    while @condition(running) {
       if skip {
         continue;
       }
@@ -1349,7 +1349,7 @@ module dependent@1.0.0 {
   fn double(value: int) -> int;
 
   fn inferred() {
-    aligned = align(3, 4);
+    aligned = @align(3, 4);
     width = @(if true { double(aligned) } else { 1 / 0 });
     value = input(width: width);
     return;
@@ -2041,7 +2041,7 @@ joggle 1;
 module guarded_host@1.0.0 {
   fn observe(value: int) -> int;
   fn invalid(condition: i1) {
-    selected = if condition { observe(1) } else { observe(2) };
+    selected = if condition { @observe(1) } else { @observe(2) };
     return;
   }
 }
@@ -2082,9 +2082,9 @@ module hermetic_host@1.0.0 {
   fn evaluate(value: int) -> int;
   fn valid(condition: i1) {
     if condition {
-      selected = evaluate(1);
+      selected = @evaluate(1);
     } else {
-      selected = evaluate(2);
+      selected = @evaluate(2);
     }
     return;
   }
@@ -2200,12 +2200,12 @@ module staged_control@1.0.0 {
   fn sum_shape<S: list<int>>(shape: S) -> int {
     total = 0;
     for dimension in S {
-      if dimension > 1 {
-        total = total + dimension;
+      if @(dimension > 1) {
+        total = @(total + dimension);
       } else {
         continue;
       }
-      if total > 10 {
+      if @(total > 10) {
         break;
       }
     }
@@ -2214,14 +2214,14 @@ module staged_control@1.0.0 {
 
   fn count<N: int>(limit: N) -> int {
     current = 0;
-    while current < N {
-      current = current + 1;
+    while @(current < N) {
+      current = @(current + 1);
     }
     return current;
   }
 
   fn specialize<N: int>(width: N, input: word<N>) -> word<N> {
-    if N > 4 {
+    if @(N > 4) {
       output = identity(input);
       return output;
     }
@@ -2231,7 +2231,7 @@ module staged_control@1.0.0 {
   fn pipeline<S: list<int>>(stages: S, input: word<8>) -> word<8> {
     current = input;
     for stage in S {
-      if stage > 0 {
+      if @(stage > 0) {
         current = identity(current);
       }
     }
@@ -2240,7 +2240,7 @@ module staged_control@1.0.0 {
 
   fn residual_count<N: int>(count: N, input: i32) -> i32 {
     current = input;
-    for position: index in range(N) {
+    for position: index in @range(N) {
       current = touch(current, position);
     }
     return current;
@@ -2249,7 +2249,7 @@ module staged_control@1.0.0 {
   fn residual_control<N: int>(count: N, input: i32, stop: i1, skip: i1)
       -> i32 {
     current = input;
-    for position: index in range(N) {
+    for position: index in @range(N) {
       if skip {
         continue;
       }
@@ -2397,7 +2397,7 @@ module staged_control@1.0.0 {
           staged_control_text.find("for dimension in S {") !=
               std::string::npos &&
           staged_control_text.find(
-              "for position: index in range(N) {") != std::string::npos &&
+              "for position: index in @range(N) {") != std::string::npos &&
           sum_shape == std::optional<std::int64_t>{14} &&
           count == std::optional<std::int64_t>{3} && specialized && pipeline &&
           residual_count && staged_control.verify(*residual_count) &&
@@ -2418,6 +2418,69 @@ module staged_control@1.0.0 {
           pipeline->ops().size() == 2U,
       "generic bindings are ordinary Known locals that drive if, while, for, "
       "dependent types, and deterministic residual expansion");
+
+  joggle::Compiler explicit_staging;
+  explicit_staging.add(R"(
+joggle 1;
+module explicit_staging@1.0.0 {
+  fn literal<T>(value: int) -> T;
+  fn twice(value: int) -> int;
+
+  fn staged() -> i32 {
+    value: i32 = @twice(2);
+    return value;
+  }
+
+  fn missing_stage() {
+    value = twice(2);
+    return;
+  }
+}
+)",
+                       "explicit-staging.joggle");
+  const bool explicit_staging_linked = explicit_staging.link();
+  const auto explicit_staging_module =
+      explicit_staging.module("explicit_staging");
+  const auto twice_decl =
+      explicit_staging_module ? explicit_staging_module->function("twice")
+                              : std::nullopt;
+  std::size_t evaluations = 0;
+  if (twice_decl) {
+    explicit_staging.bind(*twice_decl, [&](std::int64_t value) {
+      ++evaluations;
+      return value * 2;
+    });
+  }
+  const auto staged = explicit_staging_linked && twice_decl
+                          ? explicit_staging.materialize(
+                                "explicit_staging.staged")
+                          : std::nullopt;
+  if (!staged) {
+    explicit_staging.diagnostics().print(std::cerr);
+  }
+  ok &= expect(explicit_staging_linked && staged &&
+                   explicit_staging.verify(*staged) &&
+                   staged->ops().size() == 1U && evaluations == 1U,
+               "@ explicitly evaluates a compiler-domain call and "
+               "materializes its result only at a Residual boundary");
+
+  const auto missing_stage =
+      explicit_staging_linked
+          ? explicit_staging.materialize("explicit_staging.missing_stage")
+          : std::nullopt;
+  const bool reports_missing_stage = std::any_of(
+      explicit_staging.diagnostics().entries().begin(),
+      explicit_staging.diagnostics().entries().end(),
+      [](const joggle::Diagnostic& diagnostic) {
+        return diagnostic.message.find("requires explicit @ evaluation") !=
+               std::string::npos;
+      });
+  if (missing_stage || !reports_missing_stage) {
+    explicit_staging.diagnostics().print(std::cerr);
+  }
+  ok &= expect(!missing_stage && reports_missing_stage && evaluations == 1U,
+               "an ordinary compiler-domain call neither evaluates nor "
+               "silently changes stage");
 
   const joggle::Compiler::EvaluationLimits limits{2, 64};
   joggle::Compiler bounded(limits);
