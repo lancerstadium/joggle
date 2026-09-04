@@ -132,7 +132,11 @@ rebuild it deterministically. No runtime search is mandatory.
    them.
 7. [x] Add the installable `bitpack` Module and prove a representation-changing
    i4x8/u32 Function through the idempotent logical projection in RFC 0008.
-8. [ ] Add bounded variant enumeration and measured selection only after the
+8. [x] Preserve shared pure DAG ancestors during replacement. The official QDQ
+   model requires this because 16 of 26 Conv candidates share an activation
+   Dequantize across two branches; no new pattern or graph abstraction is
+   introduced.
+9. [ ] Add bounded variant enumeration and measured selection only after the
    physical format path has bit-accurate execution evidence.
 
 No target hierarchy, code emitter, machine-capacity model, or scheduling DSL is

@@ -53,8 +53,11 @@ The implementation already demonstrates:
 12. `quant@1.1` defines a deterministic f32 affine oracle with explicit
     nearest-even rounding, saturation, signed storage, and per-axis indexing;
     an independent opset 13 ONNX Runtime graph matches its i8 and f32 output
-    bits exactly; and
-13. Module bundles preserve and verify all imported data through public
+    bits exactly;
+13. typed replacement preserves pure shared DAG ancestors instead of rejecting
+    or duplicating them, covering the 16 paired QDQ Conv branches that share
+    one activation Dequantize; and
+14. Module bundles preserve and verify all imported data through public
    `check`, `run`, `install`, and `lock` workflows.
 
 These are infrastructure results. The tensor QDQ calls are still opaque

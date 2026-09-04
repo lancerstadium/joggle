@@ -205,25 +205,6 @@ bool terminator_uses(const Function& function, const Value& value) {
   return false;
 }
 
-bool closed_match(const Function& subject, const Value& root,
-                  const std::vector<Op>& calls) {
-  for (const Op& call : calls) {
-    for (const Value& result : call.results()) {
-      if (result == root) {
-        continue;
-      }
-      const auto users = subject.users(result);
-      if (terminator_uses(subject, result) ||
-          std::any_of(users.begin(), users.end(), [&](const Op& user) {
-            return std::find(calls.begin(), calls.end(), user) == calls.end();
-          })) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
 }  // namespace
 
 std::optional<std::vector<ExpressionMatch>>
@@ -252,9 +233,6 @@ match_expressions(const Function& subject, const Function& pattern,
                           })) {
             calls.push_back(call);
           }
-        }
-        if (!closed_match(subject, root, calls)) {
-          continue;
         }
         std::vector<Value> bindings;
         bindings.reserve(state.holes.size());
@@ -324,6 +302,44 @@ replace_expressions(Function& subject, const Function& before,
   }
   if (selected.empty()) {
     return 0U;
+  }
+
+  const auto claimed_call = [&](const Op& call) {
+    return std::find(claimed.begin(), claimed.end(), call) != claimed.end();
+  };
+  const auto replaced_root = [&](const Value& value) {
+    return std::any_of(selected.begin(), selected.end(),
+                       [&](const ExpressionMatch& match) {
+                         return match.root == value;
+                       });
+  };
+  std::vector<Op> preserved;
+  for (const Op& call : claimed) {
+    const auto results = call.results();
+    const bool escapes = std::any_of(
+        results.begin(), results.end(), [&](const Value& result) {
+          if (replaced_root(result)) {
+            return false;
+          }
+          const auto users = subject.users(result);
+          return terminator_uses(subject, result) ||
+                 std::any_of(users.begin(), users.end(), [&](const Op& user) {
+                   return !claimed_call(user);
+                 });
+        });
+    if (escapes) {
+      preserved.push_back(call);
+    }
+  }
+  for (std::size_t index = 0; index < preserved.size(); ++index) {
+    for (const Value& argument : preserved[index].arguments()) {
+      const auto producer = argument.defining_op();
+      if (producer && claimed_call(*producer) &&
+          std::find(preserved.begin(), preserved.end(), *producer) ==
+              preserved.end()) {
+        preserved.push_back(*producer);
+      }
+    }
   }
 
   try {
@@ -399,7 +415,9 @@ replace_expressions(Function& subject, const Function& before,
     const auto subject_calls = subject.ops();
     for (auto call = subject_calls.rbegin(); call != subject_calls.rend();
          ++call) {
-      if (std::find(claimed.begin(), claimed.end(), *call) != claimed.end()) {
+      if (claimed_call(*call) &&
+          std::find(preserved.begin(), preserved.end(), *call) ==
+              preserved.end()) {
         edit.erase(*call);
       }
     }

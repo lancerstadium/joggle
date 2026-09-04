@@ -59,9 +59,9 @@ operations.
 A match is legal only when:
 
 1. every pattern call and Known property matches exactly;
-2. every non-root result created inside the match is used only by another
-   matched call;
-3. the root may have arbitrary external users, all replaced transactionally;
+2. the root may have arbitrary external users, all replaced transactionally;
+3. a non-root matched result with an external user is preserved rather than
+   erased, along with any matched ancestors required by that user;
 4. the replacement result has the root's exact type;
 5. the matched and replacement expression boundaries carry the same effect
    tokens;
@@ -121,14 +121,17 @@ Matching recursively compares the existing typed Values and exact call
 declarations. Hole bindings use SSA equality, including repeated-hole
 constraints; Known values use their canonical equality; function references
 use declaration identity. Pattern-call mapping is injective. Accepted calls
-are returned in Function order only when every non-root result has no
-terminator or unmatched-call use.
+are returned in Function order even when a pure internal result also feeds an
+unmatched call.
 
 Replacement first chooses a maximal non-overlapping match set in that order.
 It then clones every `after` DAG before changing any root, replaces all roots,
-erases claimed calls in reverse Function order, and commits once. This permits
-adjacent matches to share boundary values while retaining normal
-`Function::Edit` rollback and module-closure verification.
+marks matched calls whose non-root results still escape, recursively preserves
+their matched producers, erases only the remaining claimed calls in reverse
+Function order, and commits once. Repeating the ordinary replacement function
+can therefore consume two branches that share an ancestor without duplicating
+or prematurely deleting it. Normal `Function::Edit` rollback and module-
+closure verification remain authoritative.
 
 ## C++ primitive
 
@@ -165,12 +168,12 @@ on a private `Module` snapshot and publishes only after every member succeeds.
    negative tests.
 3. [complete] Validate token-free, single-block expression templates.
 4. [complete] Implement deterministic typed DAG matching with repeated-hole
-   equality and internal-use closure checks.
+   equality and shared-ancestor preservation.
 5. [complete] Clone replacement DAGs through one `Function::Edit` and commit
    atomically.
 6. [complete] Expose Function and Module C++ overloads and bind them from a
    normal transformation module.
-7. [complete] Add fusion, no-match, overlap, wrong-type, escaping-use, effect
+7. [complete] Add fusion, no-match, overlap, wrong-type, shared-DAG, effect
    rejection, rollback, formatting, and source `@replace` end-to-end tests.
 
 No transform module is added before gates 1--5 pass at the C++ level.

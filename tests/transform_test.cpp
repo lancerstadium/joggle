@@ -368,9 +368,55 @@ module foreign@1.0.0 {
   joggle::Diagnostics closure_match_diagnostics;
   const auto closure_matches = joggle::detail::match_expressions(
       *escaping, *chain, closure_match_diagnostics);
-  ok &= expect(closure_matches && closure_matches->empty() &&
+  ok &= expect(closure_matches && closure_matches->size() == 1U &&
                    closure_match_diagnostics.ok(),
-               "an internal match result cannot escape to an unmatched call");
+               "a pure expression may match through a shared DAG ancestor");
+  joggle::Diagnostics shared_replace_diagnostics;
+  const auto shared_replaced = joggle::replace(
+      *escaping, *chain, *replacement, shared_replace_diagnostics);
+  const auto shared_ops = escaping->ops();
+  ok &= expect(shared_replaced && *shared_replaced == 1U &&
+                   shared_replace_diagnostics.ok() && shared_ops.size() == 3U &&
+                   shared_ops[0].callee() == *keep &&
+                   shared_ops[1].callee() == *converted &&
+                   shared_ops[2].callee() == *binary &&
+                   escaping->entry().terminator().returned().front() ==
+                       shared_ops[1].value(),
+               "replacement preserves a shared ancestor and its outside user");
+
+  auto shared_branches = compiler.create_function();
+  if (!shared_branches) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = shared_branches->edit();
+    const auto input = edit.argument(*word);
+    const auto shared = edit.append(*keep, {input});
+    const auto left = edit.append(*other, {shared.value()});
+    const auto right = edit.append(*other, {shared.value()});
+    const auto joined = edit.append(*binary, {left.value(), right.value()});
+    edit.ret(shared_branches->entry(), {joined.value()});
+    joggle::Diagnostics diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  joggle::Diagnostics first_branch_diagnostics;
+  const auto first_branch = joggle::replace(
+      *shared_branches, *chain, *replacement, first_branch_diagnostics);
+  joggle::Diagnostics second_branch_diagnostics;
+  const auto second_branch = joggle::replace(
+      *shared_branches, *chain, *replacement, second_branch_diagnostics);
+  const auto branch_ops = shared_branches->ops();
+  ok &= expect(first_branch && *first_branch == 1U && second_branch &&
+                   *second_branch == 1U && first_branch_diagnostics.ok() &&
+                   second_branch_diagnostics.ok() && branch_ops.size() == 3U &&
+                   branch_ops[0].callee() == *converted &&
+                   branch_ops[1].callee() == *converted &&
+                   branch_ops[2].callee() == *binary,
+               "repeated replacement consumes both branches sharing one "
+               "ancestor");
 
   joggle::Function replacement_subject = *chain;
   const auto replaced_root_location =
