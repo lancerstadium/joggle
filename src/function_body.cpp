@@ -1904,47 +1904,13 @@ private:
       const std::vector<Type>* expected_inputs,
       std::optional<std::vector<Type>> expected_results,
       detail::SyntaxRange range) {
-    using Kind = Module::Expression::Kind;
-    if (expression.kind != Kind::Lambda || expression.arguments.empty() ||
-        expression.labels.size() + 1U != expression.arguments.size()) {
-      report("malformed inline function", range);
-      return std::nullopt;
-    }
-    if (expected_inputs &&
-        expected_inputs->size() != expression.labels.size()) {
-      report("inline function does not match its callable context", range);
-      return std::nullopt;
-    }
-    std::vector<std::pair<std::string, Type>> arguments;
-    arguments.reserve(expression.labels.size());
-    for (std::size_t index = 0; index < expression.labels.size(); ++index) {
-      auto annotation = type({expression.arguments[index], range});
-      if (!annotation ||
-          (expected_inputs && *annotation != (*expected_inputs)[index])) {
-        report("inline function parameter '" + expression.labels[index] +
-                   "' does not match its callable context",
-               range);
-        return std::nullopt;
-      }
-      arguments.emplace_back(expression.labels[index], *annotation);
-    }
-
-    detail::FunctionBody body;
-    body.source = body_.source;
-    body.range = range;
-    detail::BlockSyntax entry;
-    entry.name = "entry";
-    entry.range = range;
-    detail::StatementSyntax returned;
-    returned.kind = detail::StatementSyntax::Kind::Return;
-    returned.range = range;
-    returned.values.push_back({expression.arguments.back(), range});
-    entry.statements.push_back(std::move(returned));
-    body.blocks.push_back(std::move(entry));
-
-    return Instantiator(compiler_, owner_, body, diagnostics_,
-                        std::move(arguments), std::move(expected_results))
-        .instantiate();
+    return detail::instantiate_lambda(
+        compiler_, owner_, expression, source(range), diagnostics_,
+        locals_.known_bindings(),
+        expected_inputs
+            ? std::optional<std::vector<Type>>{*expected_inputs}
+            : std::nullopt,
+        std::move(expected_results), residual_control_depth_ == 0U);
   }
 
   std::optional<Value> inline_function(const Module::Expression& expression,
@@ -4281,6 +4247,65 @@ instantiate_function(Compiler& compiler, Module::FunctionDecl function,
                      KnownBindings bindings) {
   return Instantiator(compiler, std::move(function), body, diagnostics,
                       std::move(known_arguments), std::move(bindings))
+      .instantiate();
+}
+
+std::optional<Function> instantiate_lambda(
+    Compiler& compiler, std::string_view owner,
+    const Module::Expression& expression, const SourceRange& source,
+    Diagnostics& diagnostics, const KnownBindings& bindings,
+    std::optional<std::vector<Type>> expected_inputs,
+    std::optional<std::vector<Type>> expected_results,
+    bool allow_guarded_evaluation) {
+  using Kind = Module::Expression::Kind;
+  const auto report = [&](std::string message) {
+    diagnostics.report(std::move(message), source);
+  };
+  if (expression.kind != Kind::Lambda || expression.arguments.empty() ||
+      expression.labels.size() + 1U != expression.arguments.size()) {
+    report("malformed inline function");
+    return std::nullopt;
+  }
+  if (expected_inputs &&
+      expected_inputs->size() != expression.labels.size()) {
+    report("inline function does not match its callable context");
+    return std::nullopt;
+  }
+
+  const Module::ParameterDecl expected_type{
+      "lambda parameter type", domain_expression(ValueKind::Type), false,
+      std::nullopt};
+  std::vector<std::pair<std::string, Type>> arguments;
+  arguments.reserve(expression.labels.size());
+  for (std::size_t index = 0; index < expression.labels.size(); ++index) {
+    auto value = evaluate_known_expression(
+        compiler, owner, expression.arguments[index], expected_type, bindings,
+        diagnostics, source, allow_guarded_evaluation);
+    const Type* annotation = value ? value->as_type() : nullptr;
+    if (annotation == nullptr ||
+        (expected_inputs && *annotation != (*expected_inputs)[index])) {
+      report("inline function parameter '" + expression.labels[index] +
+             "' does not match its callable context");
+      return std::nullopt;
+    }
+    arguments.emplace_back(expression.labels[index], *annotation);
+  }
+
+  FunctionBody body;
+  body.source = source.source;
+  body.range = {source.begin, source.end};
+  BlockSyntax entry;
+  entry.name = "entry";
+  entry.range = body.range;
+  StatementSyntax returned;
+  returned.kind = StatementSyntax::Kind::Return;
+  returned.range = body.range;
+  returned.values.push_back({expression.arguments.back(), body.range});
+  entry.statements.push_back(std::move(returned));
+  body.blocks.push_back(std::move(entry));
+
+  return Instantiator(compiler, std::string(owner), body, diagnostics,
+                      std::move(arguments), std::move(expected_results))
       .instantiate();
 }
 

@@ -135,6 +135,13 @@ instantiate_function(Compiler& compiler, Module::FunctionDecl function,
                      const FunctionBody& body, Diagnostics& diagnostics,
                      std::vector<Value> known_arguments = {},
                      KnownBindings bindings = {});
+std::optional<Function> instantiate_lambda(
+    Compiler& compiler, std::string_view owner,
+    const Module::Expression& expression, const SourceRange& source,
+    Diagnostics& diagnostics, const KnownBindings& bindings = {},
+    std::optional<std::vector<Type>> expected_inputs = std::nullopt,
+    std::optional<std::vector<Type>> expected_results = std::nullopt,
+    bool allow_guarded_evaluation = true);
 
 }  // namespace detail
 }  // namespace joggle

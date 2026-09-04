@@ -68,6 +68,26 @@ optimized = @replace(
 );
 ```
 
+Transformations compose with the language's existing function call and local
+binding rules. There is no separate sequence object:
+
+```joggle
+fn fuse(input: function) -> function {
+  return @replace(input, before, after);
+}
+
+fn optimize(input: function) -> function {
+  fused = @fuse(input);
+  return @canonicalize(fused);
+}
+```
+
+Here `input`, `before`, `after`, and `fused` are ordinary compiler-domain
+`function` values. Typed lambdas use the same materializer whether they appear
+inside a residual higher-order call or as an argument to an explicitly staged
+compiler function. The compiler does not convert them through a pattern,
+strategy, or scalar metadata representation.
+
 A native module binds this declaration to the equivalence-checking C++
 `joggle::replace(Compiler&, ...)` overload with `Compiler::bind`. Eligible
 source bodies are expanded into a bounded canonical expression encoding;

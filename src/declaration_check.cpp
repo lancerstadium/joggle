@@ -142,6 +142,19 @@ private:
       }
       return;
     }
+    if (expression.kind == Kind::Lambda) {
+      if (domain->list || domain->element != ValueKind::Function ||
+          expression.arguments.empty() ||
+          expression.labels.size() + 1U != expression.arguments.size()) {
+        report("lambda has the wrong compiler domain");
+        return;
+      }
+      const auto type_domain = domain_expression(ValueKind::Type);
+      for (std::size_t index = 0; index < expression.labels.size(); ++index) {
+        check(expression.arguments[index], type_domain);
+      }
+      return;
+    }
     if (expression.kind == Kind::Variable) {
       const auto* variable = local(expression.text);
       const auto* parameter = generic(expression.text);

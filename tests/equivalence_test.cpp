@@ -76,13 +76,16 @@ module semantics@1.0.0 {
     return primitive(primitive(input, 1), 2);
   }
 
-  fn apply(input: word) -> word {
-    optimized = @replace(
-      (x: word) => primitive(primitive(x, 1), 2),
+  fn apply(input: function) -> function {
+    return @replace(
+      input,
       (x: word) => primitive(primitive(x, 1), 2),
       (x: word) => twice(x)
     );
-    return twice(input);
+  }
+
+  fn pipeline(input: function) -> function {
+    return @apply(input);
   }
 }
 )",
@@ -122,10 +125,16 @@ module semantics@1.0.0 {
   const auto interleaved_indirect =
       compiler.materialize("semantics.interleaved_indirect");
   auto subject = compiler.materialize("semantics.subject");
-  const auto staged_apply = compiler.materialize("semantics.apply");
+  const auto staged_subject = compiler.materialize("semantics.subject");
   if (!direct || !wrapped || !wrong_property || !wrong_callee || !recursive ||
       !interleaved_direct || !interleaved_indirect || !subject ||
-      !staged_apply) {
+      !staged_subject) {
+    compiler.diagnostics().print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  const auto staged_apply =
+      compiler.run<joggle::Function>("semantics.pipeline", *staged_subject);
+  if (!staged_apply) {
     compiler.diagnostics().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -179,11 +188,11 @@ module semantics@1.0.0 {
                    subject->ops().front().callee().name() == "twice",
                "a proved replacement commits atomically");
 
-  ok &= expect(staged_replacement && staged_replacement->ops().size() == 1U &&
-                   staged_replacement->ops().front().callee().name() ==
-                       "twice",
-               "an ordinary explicitly staged source function exposes the "
-               "proved replacement");
+  ok &= expect(staged_replacement && staged_apply->ops().size() == 1U &&
+                   staged_apply->ops().front().callee().name() == "twice" &&
+                   staged_replacement->revision() == staged_apply->revision(),
+               "compiler Function values and typed lambdas compose through "
+               "ordinary explicitly staged source functions");
 
   joggle::Diagnostics limit_diagnostics;
   ok &= expect(!joggle::equivalent(compiler, *direct, *wrapped,

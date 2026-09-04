@@ -344,6 +344,23 @@ private:
     if (expression.kind == Kind::String) {
       return known(ExecutionValue{expression.text}, range);
     }
+    if (expression.kind == Kind::Lambda) {
+      const auto domain = expected == nullptr
+                              ? std::optional<Domain>{}
+                              : kernel_domain(expected->domain);
+      if (!domain || domain->list || domain->element != ValueKind::Function) {
+        report("compiler lambda needs a function context", range);
+        return std::nullopt;
+      }
+      auto function = instantiate_lambda(
+          compiler_, function_.symbol().module_name(), expression,
+          SourceRange{body_.source, range.begin, range.end}, diagnostics_,
+          locals_.known_bindings(), std::nullopt, std::nullopt,
+          !under_residual_control_);
+      return function
+                 ? known(store_execution_value(std::move(*function)), range)
+                 : std::nullopt;
+    }
     if (expression.kind == Kind::Evaluate) {
       if (expression.arguments.size() != 1U) {
         report("malformed compiler evaluation expression", range);

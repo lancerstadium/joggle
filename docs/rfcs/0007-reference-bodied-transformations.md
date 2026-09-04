@@ -1,6 +1,6 @@
 # RFC 0007: Reference-bodied transformations
 
-Status: implementation gates 1--5 complete
+Status: implementation gates 1--5 complete; gate 6 prerequisite complete
 
 ## Purpose
 
@@ -125,7 +125,10 @@ rebuild it deterministically. No runtime search is mandatory.
 5. [x] Expose the primitive through an ordinary module function and exercise it
    from source with `@`.
 6. [ ] Design transformation combinators only after real fusion pipelines show
-   which control operations are necessary.
+   which control operations are necessary. Ordinary `fn`/`@call` sequencing
+   and first-class compiler `function` arguments are complete; no separate
+   `seq` abstraction is needed. Repetition, alternatives, or search remain
+   deferred until a real model requires them.
 7. [ ] Design one installable packed-format module only after gates 1--6.
 8. [ ] Add bounded variant enumeration and measured selection only after the
    format path is executable.
