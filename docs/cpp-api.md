@@ -127,38 +127,6 @@ mismatch before opening an edit. The overload without `Compiler&` is the
 low-level structural primitive: it preserves IR invariants but does not claim
 the two expressions compute the same value.
 
-Representation modules may call the `equivalent` overload taking a
-`TypeProjection`. The callback maps each physical Type to its logical Type and
-must be total and idempotent; otherwise equivalence fails. Only Type
-observation is projected. Source bodies must still reduce changed calls to the
-same exact declarations, so the callback cannot bless opaque physical
-instructions. See [RFC 0008](rfcs/0008-logical-representation.md).
-
-## Outline reference-bodied calls
-
-```cpp
-auto changed = joggle::outline(
-    compiler, function, reference,
-    [](const joggle::Function& body, const joggle::Op& root)
-        -> std::optional<std::vector<joggle::Value>> {
-      // Return the reference function's concrete arguments, or skip root.
-    },
-    diagnostics);
-```
-
-`reference` is one ordinary source-bodied `FunctionDecl`. The selector owns
-only extension-specific applicability and argument mapping. For each selected
-root, `outline` constructs the concrete reference call, instantiates its source
-body, locks every typed hole to the selector-provided SSA value, proves
-definitional equivalence, and performs the existing shared-DAG-safe atomic
-replacement. A wrong root or argument mapping fails without publishing any
-earlier sweep. The `Module&` overload applies the same contract to every
-materialized member on a private Module snapshot.
-
-This is reverse inlining, not a pattern hierarchy. It centralizes the
-correctness and transaction machinery that reference-bodied extensions would
-otherwise duplicate while leaving their legality policy in the owning Module.
-
 ## Bind native functions
 
 ```cpp

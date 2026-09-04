@@ -58,18 +58,6 @@ transaction. The Module overload works on a private Module copy and publishes
 only when every materialized member succeeds. No partially transformed Module
 is observable.
 
-## Relation to outlining
-
-`transform.replace` is the direct user surface when concrete typed lambdas can
-state the before and after expressions. Transparent composites such as
-`qdq.nchw_conv` span many tensor shapes, so their native selector instead uses
-the C++ `joggle::outline` helper. That helper instantiates the ordinary
-reference body for each selected concrete call and then uses the same matcher,
-equivalence relation, shared-DAG handling, and transaction machinery.
-
-The distinction is about how a concrete expression is supplied, not two kinds
-of transformation or IR.
-
 ## Boundary
 
 Definitional equivalence is intentionally conservative. It does not prove

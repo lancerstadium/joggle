@@ -117,9 +117,14 @@ The core imposes no lowering direction or fixed hardware hierarchy.
 
 ## Near-term implementation order
 
-The core-language, tensor, ONNX, lossless-bundle, reference-body equivalence,
-real-model fusion, and first packed-format gates are complete. The SqueezeNet
-pipeline needed ordinary `fn`/`@call` sequencing and a module-local bounded
-sweep, but no public strategy object. The bitpack path adds an idempotent
-logical Type projection rather than a Format base class. Bit-accurate physical
-execution is the next evidence gate; measured selection remains later.
+The implemented path currently ends at the core language, tensor and quant
+semantics, typed transformations, ONNX import, and lossless Module bundles.
+`transform.replace` edits actual Function SSA/CFG structure transactionally.
+Moving an expression behind another source function is merely function
+factoring, not executable kernel fusion.
+
+Kernel scheduling, physical layouts, packed formats, storage planning, and
+target emission remain intentionally absent until one normal function body can
+express and verify a concrete executable implementation. The compiler must not
+simulate progress by copying the tensor vocabulary into a format Module or by
+renaming a reference expression as a fused operation.

@@ -152,8 +152,6 @@ module foreign@1.0.0 {
   const auto other = schema ? schema->function("other") : std::nullopt;
   const auto binary = schema ? schema->function("binary") : std::nullopt;
   const auto identity = schema ? schema->function("identity") : std::nullopt;
-  const auto chain_reference =
-      schema ? schema->function("chain") : std::nullopt;
   const auto word_type = schema ? schema->type("word") : std::nullopt;
   const auto alternate_type = schema ? schema->type("alternate") : std::nullopt;
   const auto foreign_module = compiler.module("foreign");
@@ -191,7 +189,6 @@ module foreign@1.0.0 {
   auto triple_keep = compiler.materialize("mapping.triple_keep");
   auto foreign_replacement = compiler.materialize("foreign.replacement");
   if (!keep || !converted || !other || !binary || !identity ||
-      !chain_reference ||
       !foreign_external || !word ||
       !alternate || !i1 || !first || !second || !expanded || !convertible ||
       !fixedpoint || !oscillating || !with_inline || !pair ||
@@ -420,53 +417,6 @@ module foreign@1.0.0 {
                    branch_ops[2].callee() == *binary,
                "repeated replacement consumes both branches sharing one "
                "ancestor");
-
-  joggle::Function outlined = *two_chains;
-  joggle::Diagnostics outline_diagnostics;
-  const auto outlined_count = joggle::outline(
-      compiler, outlined, *chain_reference,
-      [&](const joggle::Function& function, const joggle::Op& root)
-          -> std::optional<std::vector<joggle::Value>> {
-        const auto returned = function.entry().terminator().returned();
-        if (root.callee() != *other || returned.size() != 1U ||
-            returned.front() != root.value()) {
-          return std::nullopt;
-        }
-        const auto inner = root.arguments().front().defining_op();
-        if (!inner || inner->callee() != *keep) {
-          return std::nullopt;
-        }
-        return std::vector<joggle::Value>{inner->arguments().front()};
-      },
-      outline_diagnostics);
-  const auto outlined_ops = outlined.ops();
-  ok &= expect(outlined_count && *outlined_count == 1U &&
-                   outline_diagnostics.ok() && outlined_ops.size() == 3U &&
-                   outlined_ops[0].callee() == *keep &&
-                   outlined_ops[1].callee() == *other &&
-                   outlined_ops[2].callee() == *chain_reference &&
-                   outlined.entry().terminator().returned().front() ==
-                       outlined_ops[2].value(),
-               "outline folds only the selector-approved semantic root");
-
-  joggle::Function rejected_outline = *chain;
-  const auto rejected_outline_revision = rejected_outline.revision();
-  joggle::Diagnostics rejected_outline_diagnostics;
-  const auto rejected_outline_count = joggle::outline(
-      compiler, rejected_outline, *chain_reference,
-      [&](const joggle::Function&, const joggle::Op& root)
-          -> std::optional<std::vector<joggle::Value>> {
-        if (root.callee() != *other) {
-          return std::nullopt;
-        }
-        return std::vector<joggle::Value>{root.arguments().front()};
-      },
-      rejected_outline_diagnostics);
-  ok &= expect(!rejected_outline_count &&
-                   !rejected_outline_diagnostics.ok() &&
-                   rejected_outline.revision() == rejected_outline_revision,
-               "outline publishes nothing when a selected root does not "
-               "match the instantiated reference body");
 
   joggle::Function replacement_subject = *chain;
   const auto replaced_root_location =

@@ -33,46 +33,12 @@ std::optional<std::size_t> position(const std::vector<Value>& values,
                    static_cast<std::size_t>(found - values.begin())};
 }
 
-class Projection {
-public:
-  Projection(const TypeProjection& project, Diagnostics& diagnostics)
-      : project_(project), diagnostics_(diagnostics) {}
-
-  std::optional<std::string> operator()(const Type& type) {
-    const auto found = std::find_if(
-        cache_.begin(), cache_.end(),
-        [&](const auto& entry) { return entry.first == type; });
-    if (found != cache_.end()) {
-      return std::string(found->second.stable_name());
-    }
-    auto projected = project_(type);
-    if (!projected) {
-      diagnostics_.report("logical type projection rejected '" +
-                          std::string(type.stable_name()) + "'");
-      return std::nullopt;
-    }
-    auto repeated = project_(*projected);
-    if (!repeated || *repeated != *projected) {
-      diagnostics_.report("logical type projection is not idempotent for '" +
-                          std::string(type.stable_name()) + "'");
-      return std::nullopt;
-    }
-    cache_.emplace_back(type, *projected);
-    return std::string(projected->stable_name());
-  }
-
-private:
-  const TypeProjection& project_;
-  Diagnostics& diagnostics_;
-  std::vector<std::pair<Type, Type>> cache_;
-};
-
 class Normalizer {
 public:
   Normalizer(Compiler& compiler, std::size_t max_expansions,
-             Diagnostics& diagnostics, Projection& projection)
+             Diagnostics& diagnostics)
       : compiler_(compiler), max_expansions_(max_expansions),
-        diagnostics_(diagnostics), projection_(projection) {}
+        diagnostics_(diagnostics) {}
 
   std::optional<std::string> run(const Function& function,
                                  std::string_view role) {
@@ -83,13 +49,9 @@ public:
     const auto inputs = function.arguments();
     arguments.reserve(inputs.size());
     for (std::size_t index = 0; index < inputs.size(); ++index) {
-      auto type = projection_(inputs[index].type());
-      if (!type) {
-        return std::nullopt;
-      }
       std::string argument = "argument";
       field(argument, std::to_string(index));
-      field(argument, *type);
+      field(argument, inputs[index].type().stable_name());
       arguments.push_back(std::move(argument));
     }
     return value(function.entry().terminator().returned().front(), inputs,
@@ -121,22 +83,14 @@ private:
         diagnostics_.report("equivalence lost a Known value");
         return std::nullopt;
       }
-      auto type = projection_(current.type());
-      if (!type) {
-        return std::nullopt;
-      }
       std::string result = "known";
-      field(result, *type);
+      field(result, current.type().stable_name());
       field(result, known->canonical());
       return remember(std::move(result));
     }
     if (const auto reference = current.referenced_function()) {
-      auto type = projection_(current.type());
-      if (!type) {
-        return std::nullopt;
-      }
       std::string result = "function";
-      field(result, *type);
+      field(result, current.type().stable_name());
       field(result, reference->symbol().stable_name());
       field(result, reference->signature());
       return remember(std::move(result));
@@ -236,11 +190,7 @@ private:
     field(leaf, callee.symbol().stable_name());
     field(leaf, callee.signature());
     field(leaf, std::to_string(*result));
-    auto selected_type = projection_(selected.type());
-    if (!selected_type) {
-      return std::nullopt;
-    }
-    field(leaf, *selected_type);
+    field(leaf, selected.type().stable_name());
     for (const auto& argument : normalized_arguments) {
       field(leaf, argument.second);
     }
@@ -250,14 +200,12 @@ private:
   Compiler& compiler_;
   std::size_t max_expansions_ = 0;
   Diagnostics& diagnostics_;
-  Projection& projection_;
   std::size_t expansions_ = 0;
   std::set<std::string> active_;
   std::vector<std::pair<Value, std::string>> memo_;
 };
 
-bool same_signature(const Function& left, const Function& right,
-                    Projection& projection) {
+bool same_signature(const Function& left, const Function& right) {
   const auto left_arguments = left.arguments();
   const auto right_arguments = right.arguments();
   if (left_arguments.size() != right_arguments.size() ||
@@ -265,18 +213,14 @@ bool same_signature(const Function& left, const Function& right,
     return false;
   }
   for (std::size_t index = 0; index < left_arguments.size(); ++index) {
-    const auto lhs = projection(left_arguments[index].type());
-    const auto rhs = projection(right_arguments[index].type());
-    if (!lhs || !rhs || *lhs != *rhs) {
+    if (left_arguments[index].type() != right_arguments[index].type()) {
       return false;
     }
   }
   const auto left_results = left.result_types();
   const auto right_results = right.result_types();
   for (std::size_t index = 0; index < left_results.size(); ++index) {
-    const auto lhs = projection(left_results[index]);
-    const auto rhs = projection(right_results[index]);
-    if (!lhs || !rhs || *lhs != *rhs) {
+    if (left_results[index] != right_results[index]) {
       return false;
     }
   }
@@ -288,34 +232,21 @@ bool same_signature(const Function& left, const Function& right,
 bool equivalent(Compiler& compiler, const Function& left,
                 const Function& right, Diagnostics& diagnostics,
                 std::size_t max_expansions) {
-  const TypeProjection identity = [](const Type& type) {
-    return std::optional<Type>{type};
-  };
-  return equivalent(compiler, left, right, identity, diagnostics,
-                    max_expansions);
-}
-
-bool equivalent(Compiler& compiler, const Function& left,
-                const Function& right, const TypeProjection& project,
-                Diagnostics& diagnostics, std::size_t max_expansions) {
   if (max_expansions == 0U) {
     diagnostics.report("equivalence needs a positive expansion limit");
     return false;
   }
   try {
-    Projection projection(project, diagnostics);
-    if (!same_signature(left, right, projection)) {
+    if (!same_signature(left, right)) {
       diagnostics.report("equivalence functions have different signatures");
       return false;
     }
-    Normalizer left_normalizer(compiler, max_expansions, diagnostics,
-                               projection);
+    Normalizer left_normalizer(compiler, max_expansions, diagnostics);
     auto normalized_left = left_normalizer.run(left, "left");
     if (!normalized_left) {
       return false;
     }
-    Normalizer right_normalizer(compiler, max_expansions, diagnostics,
-                                projection);
+    Normalizer right_normalizer(compiler, max_expansions, diagnostics);
     auto normalized_right = right_normalizer.run(right, "right");
     if (!normalized_right) {
       return false;

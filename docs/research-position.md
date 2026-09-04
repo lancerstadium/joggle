@@ -34,48 +34,27 @@ The implementation already demonstrates:
    exact Model Zoo SqueezeNet 1.1 graph;
 6. the imported Function reconstructs an ONNX graph whose deterministic
    ONNX Runtime output is bit-identical to the original model;
-7. an installable `fusion` Module gives a generic Conv/ReLU function its
-   portable source meaning, composes `@onnx.read` and `@fusion.run` in source,
-   and safely replaces all 26 pairs in the official model;
-8. the complete 117-call source Function and 91-call transformed Function are
-   definitionally equivalent, with shared-DAG normalization memoized by the
-   existing `Value` identities;
-9. `bitpack` maps an i4 tensor Function to exact i4x8/u32 physical shapes and
-   format-aware source functions, then proves whole-Function equivalence under
-   an idempotent logical Type projection;
-10. the same independent Module defines a compiler-side reference codec, with
-    exhaustive i4 LSB/MSB and signed two's-complement vectors separating
-    physical byte semantics from the logical-equivalence proof;
-11. a second hash-pinned Model Zoo model exercises standard QDQ inference: its
+7. a second hash-pinned Model Zoo model exercises standard QDQ inference: its
     228 f32/u8/i8/i32 constants, 130 affine quantization boundaries, and 41
     tensor calls import without a vendor operation, and reconstruction through
     ONNX Runtime is exactly equal (`max_abs=0`, `mean_abs=0`);
-12. `quant@1.1` defines a deterministic f32 affine oracle with explicit
+8. `quant@1.1` defines a deterministic f32 affine oracle with explicit
     nearest-even rounding, saturation, signed storage, and per-axis indexing;
     an independent opset 13 ONNX Runtime graph matches its i8 and f32 output
     bits exactly;
-13. typed replacement preserves pure shared DAG ancestors instead of rejecting
-    or duplicating them, covering 16 QDQ Conv branch candidates arranged in
-    eight pairs that share one activation Dequantize per pair;
-14. `qdq` separates operator-independent affine semantics from transparent
-    composite profiles; its first ordinary `nchw_conv` function transforms all
-    26 eligible official-model regions, while whole-Function equivalence,
-    399-to-303 call reduction, and dependency derivation remain checked;
-15. the installable `transform` Module exposes equivalence-checked replacement
+9. typed replacement preserves pure shared DAG ancestors instead of rejecting
+   or duplicating them, while rollback and exact repeated-hole equality remain
+   checked;
+10. the installable `transform` Module exposes equivalence-checked replacement
     directly as ordinary Function and Module overloads taking typed lambdas;
-16. generic reference-body outlining reduces a transformation extension to
-    eligibility plus argument mapping while the core owns concrete
-    instantiation, exact binding checks, proof, bounded traversal, shared-DAG
-    handling, and atomic Function or Module publication; and
-17. Module bundles preserve and verify all imported data through public
+11. Module bundles preserve and verify all imported data through public
    `check`, `run`, `install`, and `lock` workflows.
 
 These are infrastructure results. The tensor QDQ calls remain opaque program
-semantics: QDQ-composite equivalence succeeds because its body reproduces the
-exact opaque calls, not because the compiler assumes an algebraic quantization
-law. The result therefore does not establish a concrete integer convolution,
-general mathematical equivalence of user rewrites, competitive kernels,
-support for a physical format at run time, or publication-level novelty.
+semantics, and no QDQ composite or integer kernel is claimed. The result does
+not establish general mathematical equivalence of user rewrites, competitive
+kernels, support for a physical format at run time, or publication-level
+novelty.
 
 ## What the closest systems already solve
 
@@ -130,10 +109,12 @@ The next mechanism under test is a reference-bodied extension:
    correctness. Later, a compile-time function may enumerate equivalent
    Function values and another function may measure or choose among them.
 
-This makes the semantic source body the common seam between a model operation,
-a fused kernel, and eventually a format conversion. It also keeps the key
-property of RISE/Shine: once a concrete implementation program is chosen,
-emission must not silently make new optimization decisions.
+This makes the semantic source body a candidate seam between a model operation
+and a future executable kernel. Factoring an expression into a call alone is
+explicitly not kernel fusion. It also keeps the key property of RISE/Shine:
+once a concrete
+implementation program is chosen, emission must not silently make new
+optimization decisions.
 
 ## Why this is not yet a contribution
 
@@ -148,11 +129,12 @@ equivalences. These are open risks, not details to hide in implementation.
 The hypothesis survives only if the same mechanism supports all of the
 following without a new core declaration category:
 
-1. define a fused tensor kernel with a portable source body;
+1. define an executable tensor kernel whose implementation structure differs
+   from its portable reference expression;
 2. reject a type-correct but semantically different replacement;
-3. compose fusion with at least one structural or layout transformation;
-4. add one independently installable low-bit or packed format and its
-   conversions;
+3. compose that kernel transformation with a model-scale structural pass;
+4. only after the kernel path works, add one independently installable low-bit
+   or packed format and its conversions without duplicating tensor functions;
 5. import and transform externally maintained ONNX models, then compare
    numerically with a trusted runtime;
 6. produce and execute at least one useful edge implementation;

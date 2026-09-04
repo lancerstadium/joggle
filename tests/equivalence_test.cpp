@@ -220,30 +220,6 @@ module semantics@1.0.0 {
   ok &= expect(!joggle::equivalent(compiler, *logical, *physical,
                                    exact_representation_diagnostics),
                "exact equivalence rejects different physical signatures");
-  const joggle::TypeProjection logical_type = [](const joggle::Type& type) {
-    if (type.schema().symbol().module_name() == "semantics" &&
-        type.schema().symbol().local_name() == "represented") {
-      return type.get<joggle::Type>("logical");
-    }
-    return std::optional<joggle::Type>{type};
-  };
-  joggle::Diagnostics projected_diagnostics;
-  ok &= expect(joggle::equivalent(compiler, *logical, *physical,
-                                  logical_type, projected_diagnostics) &&
-                   projected_diagnostics.ok(),
-               "an idempotent logical projection proves representation-"
-               "changing equivalence");
-  const joggle::TypeProjection toggling_type =
-      [word, represented](const joggle::Type& type) {
-        return std::optional<joggle::Type>{type == *word ? *represented
-                                                        : *word};
-      };
-  joggle::Diagnostics non_idempotent_diagnostics;
-  ok &= expect(!joggle::equivalent(compiler, *logical, *physical,
-                                   toggling_type,
-                                   non_idempotent_diagnostics) &&
-                   !non_idempotent_diagnostics.ok(),
-               "a non-idempotent representation projection fails closed");
 
   const auto revision = subject->revision();
   joggle::Diagnostics rejected_diagnostics;
@@ -289,8 +265,6 @@ module semantics@1.0.0 {
     interleaved_diagnostics.print(std::cerr);
     shared_dag_diagnostics.print(std::cerr);
     exact_representation_diagnostics.print(std::cerr);
-    projected_diagnostics.print(std::cerr);
-    non_idempotent_diagnostics.print(std::cerr);
     rejected_diagnostics.print(std::cerr);
     replacement_diagnostics.print(std::cerr);
     limit_diagnostics.print(std::cerr);

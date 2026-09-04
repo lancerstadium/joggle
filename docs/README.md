@@ -20,13 +20,6 @@ of the project; none is a migration log.
   vocabulary and its implemented evidence boundary.
 - [Quant module](quant.md) records the ordinary-function QDQ boundary, its
   executable affine oracle, and the exact semantic trust boundary.
-- [QDQ composite module](qdq.md) separates operator-independent quantization
-  from transparent, source-bodied composite profiles and records the complete
-  official-model transformation evidence.
-- [Fusion module](fusion.md) documents the first installable,
-  reference-bodied real-model transformation.
-- [Bitpack module](bitpack.md) documents logical projection and the first
-  checked cross-element physical format.
 - [ONNX inference import](onnx.md) documents the optional, transactionally
   checked real-model importer and its exact support boundary.
 - [C++ API](cpp-api.md) documents the in-process library surface.
@@ -43,10 +36,8 @@ of the project; none is a migration log.
   persistence for Module-owned bytes without another ownership object; and
   [reference-bodied transformation RFC](rfcs/0007-reference-bodied-transformations.md)
   defines the semantic-correctness boundary and next composition gates for
-  user kernels; [logical representation RFC](rfcs/0008-logical-representation.md)
-  defines representation-changing equivalence and its current trust boundary;
-  and [QDQ import RFC](rfcs/0009-qdq-import.md) defines quantization as an
-  ordinary semantic Module and freezes its proof boundary.
+  user kernels; and [QDQ import RFC](rfcs/0009-qdq-import.md) defines
+  quantization as an ordinary semantic Module and freezes its proof boundary.
 
 The repository contains the compiler core, static tensor and quant semantic
 Modules, and two narrow ONNX profiles: IR 3/opset 7 FLOAT and IR 7/opset 13

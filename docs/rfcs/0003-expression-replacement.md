@@ -173,7 +173,8 @@ on a private `Module` snapshot and publishes only after every member succeeds.
    atomically.
 6. [complete] Expose Function and Module C++ overloads and bind them from a
    normal transformation module.
-7. [complete] Add fusion, no-match, overlap, wrong-type, shared-DAG, effect
-   rejection, rollback, formatting, and source `@replace` end-to-end tests.
+7. [complete] Add positive replacement, no-match, overlap, wrong-type,
+   shared-DAG, effect rejection, rollback, formatting, and source
+   `@transform.replace` end-to-end tests.
 
 No transform module is added before gates 1--5 pass at the C++ level.

@@ -66,14 +66,8 @@ compiler-time affine overloads match a standard opset 13 QDQ micrograph in
 ONNX Runtime for i8 and f32 outputs at the bit level, including halfway values
 and per-axis broadcasting.
 
-`qdq@1.0.0` is an operator-independent library of transparent QDQ composites.
-Its first ordinary source-bodied function, `nchw_conv`, plus normal
-`run(function|module)` compiler functions reproduce the same opaque QDQ leaves,
-allowing all 26 Conv regions in the official model to be packaged behind a
-proved semantic seam. Eight shared activation
-Dequantizers cover 16 branch candidates and are neither cloned nor deleted
-early. The whole Function changes from 399 to 303 calls/constants and remains
-definitionally equivalent. Conv is evidence for the general composition
-mechanism, not the quantization abstraction. This is not an integer
-implementation; a later concrete realization must be checked against the
-affine oracle and a trusted runtime.
+No QDQ profile Module is part of the accepted design. A profile that only
+packages Dequantize, a normal tensor operation, and Quantize behind another
+function name adds no executable semantics. Integer kernels remain future
+ordinary functions that must carry a real implementation and be checked
+against the affine oracle and a trusted runtime.

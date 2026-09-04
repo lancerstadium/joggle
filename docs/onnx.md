@@ -77,7 +77,7 @@ cmake -S . -B build \
 cmake --build build --target joggle_fetch_squeezenet
 cmake --build build --target joggle_fetch_squeezenet_qdq
 cmake --build build
-ctest --test-dir build -R '^(onnx|onnx_qdq|onnx_fusion)$' --output-on-failure
+ctest --test-dir build -R '^(onnx|onnx_qdq)$' --output-on-failure
 ```
 
 The fetch target downloads the ONNX Model Zoo SqueezeNet 1.1 model from commit
@@ -186,9 +186,3 @@ reloads the model, verifies the same 148 payloads, and locks exact `quant` and
 The QDQ path deliberately stops at preserving the standard affine boundary.
 See [Quant module](quant.md) for why transformations may not yet rewrite
 through those two opaque functions.
-
-The separate `onnx_fusion` test composes import and the installable
-[`fusion@1.0.0`](fusion.md) Module in ordinary source. It proves all 26
-Conv/ReLU replacements locally and then checks whole-Function definitional
-equivalence: 117 calls become 91 calls (52 constants, 26 fused calls, and 13
-other semantic calls), with deterministic source provenance retained.

@@ -56,17 +56,6 @@ bool equivalent(Compiler& compiler, const Function& left,
                 const Function& right, Diagnostics& diagnostics,
                 std::size_t max_expansions = 256U);
 
-// Proves the same relation after mapping every observed value Type through an
-// idempotent logical projection. This is intended for representation-changing
-// modules: the module owns the projection, while source bodies still account
-// for every changed call. A missing or non-idempotent projection fails closed.
-using TypeProjection =
-    std::function<std::optional<Type>(const Type&)>;
-bool equivalent(Compiler& compiler, const Function& left,
-                const Function& right, const TypeProjection& project,
-                Diagnostics& diagnostics,
-                std::size_t max_expansions = 256U);
-
 // Checks definitional equivalence before performing the existing atomic typed
 // replacement. A failed proof publishes no edit.
 std::optional<std::size_t>
@@ -78,24 +67,6 @@ std::optional<std::size_t>
 replace(Compiler& compiler, Module& module, const Function& before,
         const Function& after, Diagnostics& diagnostics,
         std::size_t max_expansions = 256U);
-
-// Outlines selected pure expressions as calls to one ordinary source-bodied
-// function. The selector returns the concrete call arguments in declaration
-// order for an eligible root Op, or nullopt to skip it. Joggle instantiates the
-// reference body, proves definitional equivalence, preserves shared ancestors,
-// and publishes the complete bounded sweep atomically.
-using OutlineArguments = std::function<std::optional<std::vector<Value>>(
-    const Function&, const Op&)>;
-
-std::optional<std::size_t>
-outline(Compiler& compiler, Function& function,
-        Module::FunctionDecl reference, const OutlineArguments& select,
-        Diagnostics& diagnostics, std::size_t max_expansions = 256U);
-
-std::optional<std::size_t>
-outline(Compiler& compiler, Module& module,
-        Module::FunctionDecl reference, const OutlineArguments& select,
-        Diagnostics& diagnostics, std::size_t max_expansions = 256U);
 
 namespace transform_detail {
 

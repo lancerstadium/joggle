@@ -72,15 +72,12 @@ does not infer algebraic identities across quantization boundaries. The bytes
 overloads make numerical tests reproducible; they do not silently grant such
 identities.
 
-`qdq@1.0.0` demonstrates the safe composition point without making one tensor
-operator the quantization abstraction. Its ordinary `nchw_conv` source body
-contains the exact three Dequantize, Conv, and Quantize expression, so
-expansion reproduces the same opaque leaves and proves that packaging this
-region behind a transparent composite is definitionally equivalent. This is
-not yet an integer realization. A later bit-accurate implementation must be
-checked against this oracle and a trusted runtime. Successful ONNX Runtime
-differential execution remains evidence for the numerical contract, not a
-substitute for transformation correctness.
+No quantized Conv or MatMul wrapper is provided. A later integer kernel must
+have a concrete executable function body and be checked against this oracle
+and a trusted runtime; naming a QDQ subgraph does not constitute an
+implementation. Successful ONNX Runtime differential execution remains
+evidence for the numerical contract, not a substitute for transformation
+correctness.
 
 The operator contract follows the standard ONNX
 [QuantizeLinear](https://onnx.ai/onnx/operators/onnx__QuantizeLinear.html) and

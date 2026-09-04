@@ -50,32 +50,20 @@ Module data: `Module::store` returns a content digest, and
 `constant<T>(content: string)` records that digest rather than embedding bytes
 in textual IR.
 
-## User kernels and fusion
+## Structural transformations and kernels
 
-The semantic module intentionally does not declare fused kernels. A user
-extension can declare its own call and replace a typed expression with it:
+The semantic Module intentionally declares neither fused kernels nor a kernel
+class. `transform.replace` accepts typed lambdas and transactionally changes an
+actual Function body. Replacing an expression with a source function whose body
+expands to the same expression is valid function factoring, but it is not by
+itself kernel fusion and carries no performance claim.
 
-```joggle
-fn conv_relu<X, W, B, Y>(
-  input: X,
-  weight: W,
-  bias: B,
-  strides: list<int>,
-  pads: list<int>,
-  dilations: list<int>,
-  group: int
-) -> Y {
-  convolved: Y = t.conv(
-    input, weight, bias, strides, pads, dilations, group
-  );
-  return t.relu(convolved);
-}
-```
-
-The tensor integration test materializes a shape-complete SqueezeNet Fire
-block, matches its squeeze Conv/Relu DAG, and replaces exactly that pair with
-an extension-local `conv_relu`. The transformed Function verifies and
-round-trips through canonical source without changing `tensor@1.0.0`.
+A future user kernel must therefore provide more than a renamed reference
+expression: it needs an executable ordinary function body (or calls to
+source-grounded implementation functions), a checked semantic relation, and
+measured evidence. Until that representation exists, `tensor` remains the
+portable program vocabulary and no parallel family of format-aware tensor
+functions is accepted.
 
 ## Evidence boundary
 
@@ -85,9 +73,8 @@ Implemented and tested:
 - static-shape validation through the general type-verifier API;
 - typed Conv, Relu, and Concat materialization for a Fire block;
 - preservation of convolution and concatenation properties;
-- extension-local typed fusion and canonical round-trip;
-- a source-bodied fused kernel whose positive replacement is definitionally
-  proved and whose type-correct semantic mismatch is rejected atomically.
+- typed-lambda structural replacement, shared-DAG preservation, rollback, and
+  canonical Function round-trip.
 
 The separate `onnx` Module now imports the exact pinned SqueezeNet 1.1 model,
 preserves its initializers and supported properties, and has exact differential
@@ -97,7 +84,8 @@ schema.
 Not yet claimed:
 
 - general ONNX operator-set coverage or dynamic shapes;
-- physical layout, packed formats, or storage planning;
+- executable kernel fusion, physical layout, packed formats, or storage
+  planning;
 - executable hardware implementation and performance.
 
 The semantic transformation boundary is defined by

@@ -1,6 +1,6 @@
 # RFC 0007: Reference-bodied transformations
 
-Status: implementation gates 1--10 complete
+Status: implementation gates 1--7 complete
 
 ## Purpose
 
@@ -10,8 +10,8 @@ kernel IR. It is a correctness boundary for user-defined optimized functions.
 
 Today `replace` proves type, data-flow, ownership, and effect safety. It cannot
 prove that two pure expressions compute the same value. Consequently, replacing
-`relu(conv(x, w))` by a bodyless `conv_relu(x, w)` is structurally safe but
-semantically only an assertion by the extension author.
+an expression by a bodyless call is structurally safe but semantically only an
+assertion by the extension author.
 
 ## Accepted source model
 
@@ -19,7 +19,7 @@ An optimized function carries its reference semantics as its ordinary source
 body:
 
 ```joggle
-fn conv_relu(
+fn conv_then_relu(
   input: tensor<f32, [1, 16, 32, 32]>,
   weight: tensor<f32, [32, 16, 3, 3]>,
   bias: tensor<f32, [32]>
@@ -29,16 +29,16 @@ fn conv_relu(
 }
 ```
 
-This is not an implementation body versus a semantic body pair. It is one
-normal `fn` body. Concrete realization later rewrites calls inside that meaning
-to implementation functions; it does not attach a second hidden meaning to the
-same declaration.
+This is one normal `fn` body and therefore a transparent composite, not a fused
+kernel implementation. Concrete realization later needs an executable body
+whose structure differs for a justified reason; it must not attach a second
+hidden meaning to this declaration.
 
 A transformation remains an ordinary explicitly staged function:
 
 ```joggle
-fn fuse(input: function) -> function {
-  return @replace(
+fn factor_pair(input: function) -> function {
+  return @transform.replace(
     input,
     (x: tensor<f32, [1, 16, 32, 32]>,
      w: tensor<f32, [32, 16, 3, 3]>,
@@ -46,7 +46,7 @@ fn fuse(input: function) -> function {
       relu(conv(x, w, b, [1, 1], [0, 0, 0, 0], [1, 1], 1)),
     (x: tensor<f32, [1, 16, 32, 32]>,
      w: tensor<f32, [32, 16, 3, 3]>,
-     b: tensor<f32, [32]>) => conv_relu(x, w, b)
+     b: tensor<f32, [32]>) => conv_then_relu(x, w, b)
   );
 }
 ```
@@ -120,33 +120,18 @@ rebuild it deterministically. No runtime search is mandatory.
 2. [x] Add an equivalence query with stable mismatch diagnostics and tests for
    recursion, opaque leaves, properties, and overload identity.
 3. [x] Compose equivalence checking with atomic expression replacement.
-4. [x] Replace the tensor fusion fixture's bodyless fused declaration with a
-   source-bodied extension and prove the positive and negative cases.
+4. [x] Replace a bodyless declaration with a source-bodied transparent
+   composite and prove the positive and negative cases without calling it an
+   executable fusion.
 5. [x] Expose the primitive through an ordinary module function and exercise it
    from source with `@`. The installable `transform@1.0.0` Module accepts typed
    lambda Functions directly and has Function and Module overloads.
-6. [x] Derive transformation composition from the complete SqueezeNet fusion
-   pipeline. Ordinary `fn`/`@call` sequencing composes modules; the
-   transformation's own bounded sweep replaces every matching pair. No public
-   `seq`, `Strategy`, or `Result` abstraction is required. Repetition,
-   alternatives, and search remain deferred until a real optimization needs
-   them.
-7. [x] Add the installable `bitpack` Module and prove a representation-changing
-   i4x8/u32 Function through the idempotent logical projection in RFC 0008.
-8. [x] Preserve shared pure DAG ancestors during replacement. The official QDQ
-   model requires this because 16 of 26 Conv candidates form eight pairs that
-   share one activation Dequantize per pair; no new pattern or graph
-   abstraction is introduced.
-9. [x] Add `qdq` as an operator-independent library of transparent composites.
-   Its first normal `nchw_conv` function transforms all 26 eligible expressions
-   in the official model. Whole-Function equivalence, shared-DAG preservation,
-   provenance, and dependency closure are checked.
-10. [x] Add generic reference-body outlining. An extension supplies only an
-    eligible root and exact call arguments; the core instantiates the normal
-    source body, locks hole bindings, proves equivalence, preserves shared DAGs,
-    repeats to a bound, and publishes Function or Module updates atomically.
-11. [ ] Add bounded variant enumeration and measured selection only after the
-   physical format path has bit-accurate execution evidence.
+6. [x] Compose transformations through ordinary `fn`/`@call` sequencing. No
+   public `seq`, `Strategy`, or `Result` abstraction is required.
+7. [x] Preserve shared pure DAG ancestors during replacement without adding a
+   pattern graph or cloning values that still have external users.
+8. [ ] Represent and execute a real kernel body before adding scheduling,
+   physical formats, or measured variant selection.
 
 No target hierarchy, code emitter, machine-capacity model, or scheduling DSL is
 implemented before gates 1--5 establish this semantic boundary.

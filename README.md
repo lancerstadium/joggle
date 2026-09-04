@@ -76,14 +76,10 @@ ctest --test-dir build --output-on-failure
 The repository ships `tensor@1.0.0`, a small target-independent semantic
 Module; `transform@1.0.0`, the typed-lambda semantic replacement surface;
 `quant@1.1.0`, an affine QDQ boundary with a bit-exact reference
-oracle; `fusion@1.0.0`, a reference-bodied Conv/ReLU transformation;
-`qdq@1.0.0`, a library of transparent, source-bodied QDQ composites;
-`bitpack@1.0.0`, a checked logical-to-physical format experiment; and an
-optional, Protobuf-backed
+oracle; and an optional, Protobuf-backed
 `onnx@1.0.0` inference importer. The real-model paths import hash-pinned FLOAT
 and QDQ SqueezeNet artifacts into ordinary typed Functions. Both have exact
-ONNX Runtime differential evidence; the FLOAT graph also fuses all 26
-Conv/ReLU pairs through a source-defined compiler pipeline.
+ONNX Runtime differential evidence.
 
 ## Documentation
 
@@ -96,13 +92,9 @@ Conv/ReLU pairs through a source-defined compiler pipeline.
 - [Module design](docs/modules.md)
 - [Tensor module](docs/tensor.md)
 - [Quant module](docs/quant.md)
-- [QDQ composite module](docs/qdq.md)
-- [Fusion module](docs/fusion.md)
-- [Bitpack module](docs/bitpack.md)
 - [ONNX inference import](docs/onnx.md)
 - [Repository and reproducibility](docs/module-repository.md)
 - [Research position](docs/research-position.md)
 - [Accepted core-language RFC](docs/rfcs/0001-core-language.md)
 - [Reference-bodied transformation RFC](docs/rfcs/0007-reference-bodied-transformations.md)
-- [Logical representation RFC](docs/rfcs/0008-logical-representation.md)
 - [QDQ import RFC](docs/rfcs/0009-qdq-import.md)

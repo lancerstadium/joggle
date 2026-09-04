@@ -48,8 +48,8 @@ domains before invocation. The returned module is published only on success.
 
 Today a native compiler function can materialize a `Function`, open a
 transactional edit, inspect exact callees and typed operands, change calls,
-and commit after verification. This is the low-level substrate for fusion,
-constant folding, layout changes, and tensor-storage optimization.
+and commit after verification. This is the low-level substrate for constant
+folding and user-defined structural transformations.
 
 An explicit call may pass a typed lambda to a `function` parameter. The lambda
 is materialized as a verified anonymous `Function`, passed directly to the
@@ -89,21 +89,13 @@ compiler function. The compiler does not convert them through a pattern,
 strategy, or scalar metadata representation.
 
 The shipped `transform` Module binds this declaration to the
-equivalence-checking C++
-`joggle::replace(Compiler&, ...)` overload with `Compiler::bind`. Eligible
+equivalence-checking C++ `joggle::replace(Compiler&, ...)` overload with
+`Compiler::bind`. Eligible
 source bodies are expanded into a bounded canonical expression encoding;
 bodyless calls remain exact-identity leaves. A mismatch is diagnosed before
 the existing atomic structural replacement opens an edit. `replace` is not
 reserved syntax, and the lambdas remain verified Functions over the same IR
 rather than a second rewrite declaration or pattern representation.
-
-For a generic reference-bodied operation, native code may use
-`joggle::outline`. Its selector returns the concrete arguments of that normal
-function for one eligible root call. The core then instantiates the reference
-body, checks the selector's exact SSA bindings, proves equivalence, preserves
-shared ancestors, repeats to a structural bound, and publishes once. This
-keeps operator-specific legality in its Module while removing duplicated
-template construction, matching, proof, sweep, and Module-update code.
 
 ## Recursive specialization
 
