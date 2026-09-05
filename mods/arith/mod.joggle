@@ -1,9 +1,12 @@
 joggle 1;
 
-mod arith@1.1.0 {
+mod arith@1.2.0 {
+  fn literal<T>(value: int) -> T;
   fn zero<T>() -> T;
   fn zero<T>(like: T) -> T;
   fn max<T>(lhs: T, rhs: T) -> T;
   fn (+)<T>(lhs: T, rhs: T) -> T;
   fn (*)<T>(lhs: T, rhs: T) -> T;
+  fn (<)<T>(lhs: T, rhs: T) -> i1;
+  fn (>)<T>(lhs: T, rhs: T) -> i1;
 }

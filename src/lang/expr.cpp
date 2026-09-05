@@ -321,12 +321,12 @@ private:
       result.kind = Kind::Variable;
       return result;
     }
+    const bool unqualified = result.text.find('.') == std::string::npos;
     const bool kernel_domain_name =
-        result.text.find('.') == std::string::npos &&
-        (result.text == "list" ||
-         kernel_domain(Mod::Expr::reference(result.text)).has_value());
+        unqualified && result.text != "list" &&
+        kernel_domain(Mod::Expr::reference(result.text)).has_value();
     if (result.text.find('.') == std::string::npos && !kernel_domain_name &&
-        is_prelude_type(result.text)) {
+        result.text != "list" && is_prelude_type(result.text)) {
       result.text = std::string(prelude_mod_name) + "." + result.text;
     }
     if (match(TokenKind::Less)) {
@@ -339,6 +339,13 @@ private:
           result.arguments.push_back(parse(generic_argument_precedence));
         } while (match(TokenKind::Comma));
         expect(TokenKind::Greater, "'>'");
+      }
+      // list<D> is a compiler collection domain only when D itself is a
+      // compiler domain. Otherwise it names the ordinary Prelude list Type.
+      // This keeps list<int> and list<index> visually uniform without making
+      // their staging semantics ambiguous.
+      if (unqualified && result.text == "list" && !kernel_domain(result)) {
+        result.text = std::string(prelude_mod_name) + ".list";
       }
     } else if (match(TokenKind::LeftParen)) {
       result.kind = Kind::Call;

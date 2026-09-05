@@ -1,23 +1,19 @@
 joggle 1;
 
-mod tensor@4.0.0 {
+mod tensor@5.0.0 {
   type tensor(element: type, shape: list<int>);
 
   fn compute<E, S: list<int>>(
     shape: S,
-    body: callable<@repeat(index, length(S)), [E]>
+    body: (list<index>) -> E
   ) -> tensor<E, S>;
   fn ([])<E, S: list<int>>(
     input: tensor<E, S>,
     indices: index...
   ) -> E;
-  fn map<E, S: list<int>, R>(
+  fn ([])<E, S: list<int>>(
     input: tensor<E, S>,
-    body: (E) -> R
-  ) -> tensor<R, S>;
-  fn reduce<E, S: list<int>, A>(
-    input: tensor<E, S>,
-    initial: A,
-    body: (A, E) -> A
-  ) -> A;
+    indices: list<index>
+  ) -> E;
+  fn ([])(indices: list<index>, position: int) -> index;
 }

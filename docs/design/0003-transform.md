@@ -18,9 +18,9 @@ rewrite keyword, anchor, behavior class, or operation-name dispatch.
 
 Format conversion and optimization follow the same mechanism. ONNX-to-NN
 equations match source-schema declarations and construct frontend-neutral `nn`
-calls. Later NN expansion exposes Tensor `compute/map/reduce/[]` bodies. Fusion
-then composes those bodies; it never substitutes a `conv_relu` name or adds a
-case for Conv.
+calls. Later NN expansion exposes indexed construction, access Calls, and
+ordinary loop CFGs. Fusion transforms those bodies; it never substitutes a
+`conv_relu` name or adds a case for Conv.
 
 Callable parameters are nested Fns with explicit capture edges. A
 transformation entering a callable therefore sees ordinary typed dataflow.
@@ -38,7 +38,7 @@ Effect tokens remain affine values and cannot be hidden in a capture.
 ## Pending
 
 - CFG-aware inlining and equations;
-- access/dependence summaries derived from Tensor bodies;
-- legality-aware `compute/map/reduce` fusion;
+- access/dependence summaries derived from ordinary Fn bodies;
+- legality-aware fusion of indexed construction and loop CFGs;
 - frontend conversion equations with attribute normalization;
 - capability selection after semantic optimization.

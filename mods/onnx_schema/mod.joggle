@@ -1,7 +1,7 @@
 joggle 1;
 
 mod onnx_schema@1.0.0 {
-  import tensor@4 as t;
+  import tensor@5 as t;
 
   fn product(values: list<int>) -> int {
     result = 1;

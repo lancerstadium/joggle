@@ -109,10 +109,10 @@ an earlier gate.
    including generics inferred below the result root through local definitions
    and multi-result calls; source inference through rebinding and CFG equations
    remain planned. See Design 0003.**
-7. Tensor calculus: define a small construction/access/transformation/reduction
-   vocabulary outside the core. **In progress; static Tensor, indexed
-   `compute`, variadic `[]`, rank-polymorphic `map`, and ordered `reduce` are
-   implemented. See Design 0004.**
+7. Tensor semantics: define logical construction and overloaded access outside
+   the core; express traversal and accumulation with ordinary Fn control flow.
+   **In progress; static Tensor, indexed `compute`, list/multi-index `[]`, and
+   loop-carried accumulation are implemented. See Design 0004.**
 8. High-level tensor definitions: express Relu, Conv, MatMul, and similar
    operations in that calculus rather than compiler name cases. **MatMul and
    Relu are the first `nn` definitions; Conv remains planned.**

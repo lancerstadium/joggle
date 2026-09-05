@@ -28,8 +28,8 @@ The implementation currently demonstrates:
 4. typed lambdas are ordinary anonymous Fns rather than a pattern AST;
 5. Residual captures are explicit dependency edges and hidden typed body
    arguments, while effect tokens cannot be captured;
-6. `tensor@4` provides indexed `compute`, variadic `[]`, rank-polymorphic
-   `map`, and ordered `reduce`; Known shapes contextually determine lambda arity;
+6. `tensor@5` provides indexed `compute` and list/multi-index `[]`; generic-rank
+   elementwise code and loop-carried reductions remain ordinary Fn bodies;
 7. `nn@1` contains the first frontend-neutral bodyful MatMul and Relu
    definitions, while compiler core remains unaware of either name;
 8. the ONNX byte reader, ONNX source schema, NN algorithms, and Tensor algebra

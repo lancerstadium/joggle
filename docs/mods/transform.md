@@ -38,6 +38,6 @@ bodies. `resolve` materializes reachable source definitions into a closed Mod
 while leaving bodyless implementation boundaries visible. Neither operation
 executes Residual program calls through host callbacks.
 
-Tensor fusion laws will be added only after the current `compute/map/reduce`
-algebra is exercised by real NN bodies. They belong in a user-selected laws Mod,
-not in Tensor, a magic optimization package, or compiler C++.
+Tensor fusion laws will be added only after indexed construction, access, and
+loop analyses are exercised by real NN bodies. They belong in a user-selected
+laws Mod, not in Tensor, a magic optimization package, or compiler C++.

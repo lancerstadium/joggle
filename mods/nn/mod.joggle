@@ -2,29 +2,36 @@ joggle 1;
 
 mod nn@1.0.0 {
   import arith@1 as a;
-  import tensor@4 as t;
+  import tensor@5 as t;
 
   fn matmul_shape(lhs: list<int>, rhs: list<int>) -> list<int> {
     return [lhs[0], rhs[1]];
+  }
+  fn dot<E, L: list<int>, R: list<int>>(
+    lhs: t.tensor<E, L>,
+    rhs: t.tensor<E, R>,
+    row: index,
+    column: index
+  ) -> E {
+    sum: E = a.zero();
+    for inner: index in range(L[1]) {
+      sum = sum + lhs[row, inner] * rhs[inner, column];
+    }
+    return sum;
   }
   fn matmul<E, L: list<int>, R: list<int>>(
     lhs: t.tensor<E, L>,
     rhs: t.tensor<E, R>
   ) -> t.tensor<E, @matmul_shape(L, R)> {
-    initial: E = a.zero();
     return t.compute(
       @matmul_shape(L, R),
-      (row: index, column: index) -> E => t.reduce(
-        t.compute(
-          @[L[1]],
-          (inner: index) -> E => lhs[row, inner] * rhs[inner, column]
-        ),
-        initial,
-        (sum: E, value: E) => sum + value
-      )
+      (at) => dot(lhs, rhs, at[0], at[1])
     );
   }
   fn relu<E, S: list<int>>(input: t.tensor<E, S>) -> t.tensor<E, S> {
-    return t.map(input, (value: E) => a.max(value, a.zero(value)));
+    return t.compute(
+      S,
+      (at) => a.max(input[at], a.zero(input[at]))
+    );
   }
 }

@@ -28,7 +28,7 @@ TFLite bytes -> tflite_schema calls --pass--> nn calls
 Source-schema functions may contain compiler-time shape equations because the
 reader needs typed results. Residual algorithm bodies are forbidden there.
 MatMul, Relu, and future Conv bodies belong to `nn`, expressed using
-`tensor.compute`, `map`, `reduce`, multi-index `[]`, and scalar overloads.
+`tensor.compute`, overloaded `[]`, ordinary loops, and scalar overloads.
 
 The current importer supports the audited SqueezeNet opset-7 and QDQ opset-13
 fixtures, typed static shapes, deterministic source locations, and Mod-owned

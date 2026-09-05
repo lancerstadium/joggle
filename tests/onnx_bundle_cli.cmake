@@ -83,7 +83,7 @@ expect_success("lock installed identity bundle"
   -o "${lock}")
 file(READ "${lock}" lock_text)
 string(FIND "${lock_text}" "root ${JOGGLE_MODEL_NAME}@1.0.0#" root_position)
-string(FIND "${lock_text}" "mod tensor@4.0.0#" tensor_position)
+string(FIND "${lock_text}" "mod tensor@5.0.0#" tensor_position)
 string(FIND "${lock_text}" "mod onnx_schema@1.0.0#" schema_position)
 if(root_position EQUAL -1 OR tensor_position EQUAL -1 OR
    schema_position EQUAL -1)

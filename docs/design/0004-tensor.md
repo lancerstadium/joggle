@@ -1,84 +1,109 @@
-# Design 0004: Tensor algebra
+# Design 0004: Tensor functions
 
 Status: accepted; implementation in progress
 
 ## Decision
 
-Joggle uses one small, frontend-neutral Tensor package:
-
-```text
-compute(shape, index_fn)   construct a logical tensor
-tensor[i, j, ...]          read by logical indices
-map(tensor, element_fn)    rank-polymorphic element transform
-reduce(tensor, init, fn)   ordered accumulation
-```
-
-There is no public coordinate Type. A Known shape determines the number of
-`index` inputs in `compute`'s callable Type. Contextual lambda inference then
-turns `(i, j) => ...` into the same typed nested Fn that an explicitly annotated
-lambda would produce. Captured tensors remain explicit closure edges.
-
-## Rationale
-
-`compute` alone cannot replace the other two combinators without losing useful
-structure. Generic elementwise code does not know how many indices a shape has,
-so `map` is the rank-polymorphic form. A normal control-flow loop could encode a
-reduction, but would erase the reduction boundary and make reassociation,
-parallelization, and storage elimination harder to justify. Ordered `reduce`
-states only traversal order; a later pass needs additional evidence before
-reassociation.
-
-This retains the algorithmic-pattern structure emphasized by
-[LIFT](https://lift-project.github.io/publications/2017/steuwer17LiftIR.pdf)
-and [RISE & Shine](https://thok.eu/publications/2022/rise.pdf). The indexed
-construction surface follows the usability of
-[TVM TE](https://tvm.apache.org/docs/deep_dive/tensor_ir/tutorials/tir_creation.html),
-but Joggle does not introduce a second TE object model or convert it into a
-different built-in Fn kind.
-
-## Dependent callable mechanism
-
-Prelude supplies the ordinary compiler-time function:
+Tensor is an ordinary Mod with one construction function and one overloaded
+access symbol:
 
 ```joggle
-fn repeat(value: type, count: int) -> list<type>;
+type tensor(element: type, shape: list<int>);
+
+fn compute<E, S: list<int>>(
+  shape: S,
+  body: (list<index>) -> E
+) -> tensor<E, S>;
+
+fn ([])<E, S: list<int>>(
+  input: tensor<E, S>,
+  indices: index...
+) -> E;
+
+fn ([])<E, S: list<int>>(
+  input: tensor<E, S>,
+  indices: list<index>
+) -> E;
+
+fn ([])(indices: list<index>, position: int) -> index;
 ```
 
-Tensor declares `compute` with
-`callable<@repeat(index, length(S)), [E]>`. Direct Known bindings are solved
-before dependent Residual callable Types. This is a general language rule, not
-a Tensor special case: any package can let a Known parameter determine a later
-lambda Type.
+`map`, `reduce`, `fold`, and `scan` are not privileged Tensor declarations.
+They may be normal library helpers, but a user can express their computation
+with the same `fn`, `for`, rebinding, and `[]` syntax used everywhere else.
+
+## Logical indices
+
+The callback receives one ordinary `list<index>`. This keeps generic-rank code
+well typed without a public `coord<S>` class or a family of `compute1`,
+`compute2`, and similar declarations:
+
+```joggle
+fn relu<E, S: list<int>>(input: tensor<E, S>) -> tensor<E, S> {
+  return compute(S, (at) => max(input[at], zero(input[at])));
+}
+```
+
+Known-rank code can project the list and use familiar multi-index access:
+
+```joggle
+return compute([3, 2], (at) => input[at[1], at[0]]);
+```
+
+The index list is a logical point, not a layout, address, allocation, or
+machine coordinate. Projection and both Tensor access spellings resolve to
+ordinary `[]` Calls.
+
+## Reductions are ordinary control flow
+
+A reduction is a loop-carried value in the existing Fn CFG:
+
+```joggle
+sum: E = zero();
+for inner: index in range(K) {
+  sum = sum + lhs[row, inner] * rhs[inner, column];
+}
+return sum;
+```
+
+This avoids forcing an algorithm author to classify a function as `map` or
+`reduce`. It also preserves the exact sequential semantics by default.
+Reassociation, parallel execution, tiling, and fusion require a pass to prove
+the corresponding operator and dependence properties.
+
+The compiler will derive iteration domains, access relations, loop-carried
+values, effects, and reduction candidates from the real Fn. Those summaries
+are analysis results, not another Tensor IR and not annotations that every
+extension author must maintain.
+
+## Relation to prior systems
+
+LIFT and RISE show the optimization value of retaining algebraic structure.
+Joggle adopts that lesson in analysis and transformation rather than requiring
+their fixed combinator vocabulary at the public boundary. TVM TE motivates
+the concise indexed-construction surface, while TensorIR demonstrates why
+dependence facts must be explicit before schedules are legal. Joggle keeps all
+of those computations in one Fn/Call/CFG representation.
 
 ## Neural-network boundary
 
-`nn` owns bodyful frontend-independent algorithms. For example, rank-two
-MatMul is nested `compute`, product construction, and ordered `reduce`; Relu is
-`map`. ONNX contains no algorithm bodies. Its reader and source schema are
-separate so a future TFLite reader can preserve TFLite details while converging
-on the same `nn` functions through a normal pass.
-
-## Rejected alternatives
-
-- A public `coord<S>` wrapper adds ceremony to every indexing lambda and hides
-  familiar multi-index syntax.
-- Per-rank `compute1`, `compute2`, ... overloads create an unbounded declaration
-  family.
-- A single opaque `kernel` or `generate` operation discards map/reduce laws and
-  pushes semantic recovery into analysis.
-- Putting Conv or ONNX names in Tensor couples the reusable algebra to one
-  workload or exchange format.
+`nn` owns frontend-independent algorithms. Rank-two MatMul now uses
+`tensor.compute` plus an ordinary scalar accumulation loop; Relu uses indexed
+construction. Neither Tensor nor compiler C++ recognizes their names. ONNX
+owns no algorithm bodies and conversion from source-schema calls remains an
+ordinary pending pass.
 
 ## Gates
 
 - [x] Multi-index parsing, formatting, overload resolution, and IR round-trip.
 - [x] Contextually inferred lambda parameter Types.
-- [x] Known parameters can determine later callable Types.
-- [x] Frontend-neutral bodyful MatMul and Relu package.
+- [x] Generic-rank indexed construction without a coordinate wrapper.
+- [x] MatMul accumulation materializes as an ordinary five-block loop CFG.
+- [x] Relu materializes as ordinary indexed construction.
 - [x] ONNX reader/schema separation from NN algorithms.
 - [ ] Enforce Tensor subscript arity against static rank.
 - [ ] Add symbolic extents without a second shape AST.
-- [ ] Derive access summaries and dependence facts from ordinary Fn bodies.
-- [ ] Add generic fusion equations only after the new algebra has real workload
-      evidence.
-- [ ] Lower the same Fn semantics to user-defined implementation vocabulary.
+- [ ] Derive access and dependence summaries from ordinary Fn bodies.
+- [ ] Recognize reduction candidates without changing their default order.
+- [ ] Implement legality-checked fusion against real converted models.
+- [ ] Map the same Fn semantics to user-defined implementation vocabulary.

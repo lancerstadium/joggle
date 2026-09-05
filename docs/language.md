@@ -128,16 +128,14 @@ fn widened(input: i8) -> i16 {
 }
 ```
 
-Lambda parameter annotations are required. The expected fn type checks
-the annotations and supplies the result context, so generic higher-order calls
-use ordinary overload inference. Parameter annotations participate in overload
-selection; the body is checked only after one overload is selected, so calls
-whose annotations and surrounding result cannot distinguish two candidates
-remain explicitly ambiguous. The body is a normal expression and may call
-normal named or symbolic fns. Outer Residual values become explicit capture
-edges on the callable `Val` and trailing hidden arguments of the nested `Fn`;
-the visible callable Type does not change. Effect tokens cannot be captured
-and must remain visible parameters.
+Lambda parameters may all be explicit or all be inferred from a callable
+context. Explicit annotations participate in overload selection; contextual
+parameters are filled only after one overload determines the complete callable
+Type. The body is checked after that selection and remains a normal expression
+that may call named or symbolic fns. Outer Residual values become explicit
+capture edges on the callable `Val` and trailing hidden arguments of the nested
+`Fn`; the visible callable Type does not change. Effect tokens cannot be
+captured and must remain visible parameters.
 
 ## Symbolic fns
 
@@ -161,7 +159,7 @@ spelling: `input[position]` resolves and materializes exactly like the ordinary
 infix call `[](input, position)`.
 
 Fixity follows the source call shape. A variadic declaration such as
-`fn infix ([])(input: tensor<E, S>, indices: index...) -> E` still uses bracket
+`fn ([])(input: tensor<E, S>, indices: index...) -> E` still uses bracket
 surface syntax, so `input[i, j]` is one ordinary three-argument Call.
 
 ## Statements and control flow
@@ -214,10 +212,10 @@ present. It is especially useful for explicitly staged transformation
 templates whose parameter domain is the general compiler value `fn`.
 
 A contextual lambda may omit parameter Types when its caller determines them.
-For example, a Known shape determines the index arity of Tensor `compute`:
+For example, Tensor `compute` supplies one logical index list:
 
 ```joggle
-return compute([M, N], (row, column) => input[column, row]);
+return compute([M, N], (at) => input[at[1], at[0]]);
 ```
 
 The inference probe does not emit Calls and never executes a Guarded native
@@ -257,8 +255,8 @@ fn   := "fn" ("postfix")? (name | "(" symbol ")")
 generics   := "<" generic ("," generic)* ">"
 generic    := name (":" expression)?
 results    := ("->" expression | "->" "(" parameters? ")")?
-lambda     := "(" (name ":" expression
-              ("," name ":" expression)*)? ")"
+lambda     := "(" (name (":" expression)?
+              ("," name (":" expression)? )*)? ")"
               ("->" expression)? "=>" expression
 subscript  := expression "[" expression "]"
 ```

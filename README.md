@@ -75,11 +75,11 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The repository ships `arith@1.1.0`, `tensor@4.0.0`, `nn@1.0.0`,
-`transform@3.0.0`, and `quant@2.0.0`. Tensor exposes four frontend-neutral
-operations: indexed `compute`, multi-index `[]`, rank-polymorphic `map`, and
-ordered `reduce`. `nn` owns bodyful neural-network algorithms composed from
-that algebra. The optional Protobuf-backed `onnx@5.0.0` package only reads the
+The repository ships `arith@1.2.0`, `tensor@5.0.0`, `nn@1.0.0`,
+`transform@3.0.0`, and `quant@2.0.0`. Tensor exposes indexed construction and
+overloaded `[]`; ordinary Fn loops carry reductions instead of a privileged
+Tensor combinator. `nn` owns bodyful neural-network algorithms composed from
+those functions. The optional Protobuf-backed `onnx@5.0.0` package only reads the
 file format; `onnx_schema@1.0.0` separately describes source nodes and their
 shape rules. Neither package implements MatMul, Relu, or Conv. This boundary
 lets future TFLite and other readers converge on `nn` through ordinary passes

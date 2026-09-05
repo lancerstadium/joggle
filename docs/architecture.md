@@ -177,16 +177,17 @@ their host boundaries; model and kernel Ops do not. See
 
 The implemented path includes the core language, editable Fn IR, explicit
 staging, typed anonymous Fns, explicit closure captures, recursive
-single-block inlining, and pure generic equation packages. `tensor@4` defines
-indexed `compute`, variadic `[]`, rank-polymorphic `map`, and ordered `reduce`.
-`nn@1` owns the first bodyful MatMul and Relu definitions. The ONNX byte reader
+single-block inlining, and pure generic equation packages. `tensor@5` defines
+indexed `compute` and overloaded `[]`; map and reduction semantics are ordinary
+Fn bodies and loop-carried values. `nn@1` owns the first bodyful MatMul and Relu
+definitions. The ONNX byte reader
 and ONNX source schema are separate from both; the pinned SqueezeNet test
 exercises schema-driven import of all 118 calls. Concrete tests specialize
 generic equations across concrete Types and nested call structure.
 
 Execution semantics for the structural basis, equation inference through local
-rebinding or control flow, multi-block inlining, and dependence-checked
-reduction transforms remain unfinished.
+rebinding or control flow, multi-block inlining, and derived access/dependence
+analysis remain unfinished.
 ONNX-to-NN conversion, Conv, pooling, concatenation, reshape, softmax, and
 quantized computational definitions remain unfinished.
 

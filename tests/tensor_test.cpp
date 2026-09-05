@@ -33,12 +33,12 @@ joggle 1;
 
 mod tensor_use@1.0.0 {
   import nn@1 as n;
-  import tensor@4 as t;
+  import tensor@5 as t;
 
   fn transpose(
     input: t.tensor<f32, [2, 3]>
   ) -> t.tensor<f32, [3, 2]> {
-    return t.compute([3, 2], (row, column) => input[column, row]);
+    return t.compute([3, 2], (at) => input[at[1], at[0]]);
   }
 
   fn product(
@@ -46,6 +46,12 @@ mod tensor_use@1.0.0 {
     rhs: t.tensor<f32, [4, 3]>
   ) -> t.tensor<f32, [2, 3]> {
     return n.matmul(lhs, rhs);
+  }
+
+  fn activate(
+    input: t.tensor<f32, [2, 3]>
+  ) -> t.tensor<f32, [2, 3]> {
+    return n.relu(input);
   }
 }
 )",
@@ -66,9 +72,9 @@ mod tensor_use@1.0.0 {
     }
     return result;
   }();
-  ok &= expect(names == std::vector<std::string>({"compute", "[]", "map",
-                                                  "reduce"}),
-               "Tensor has one small frontend-neutral algebra");
+  ok &= expect(
+      names == std::vector<std::string>({"compute", "[]", "[]", "[]"}),
+               "Tensor has construction and overloaded indexing only");
 
   const auto transpose = compiler.materialize("tensor_use.transpose");
   if (!transpose) {
@@ -82,12 +88,12 @@ mod tensor_use@1.0.0 {
                             : std::optional<joggle::Fn>{};
   ok &= expect(transpose && transpose_ops.size() == 1U &&
                    callee(transpose_ops.front()) == "compute" && callback &&
-                   callback->arguments().size() == 3U &&
-                   callback->ops().size() == 1U &&
-                   callee(callback->ops().front()) == "[]" &&
-                   callback->ops().front().arguments().size() == 3U &&
+                   callback->arguments().size() == 2U &&
+                   callback->ops().size() == 3U &&
+                   callee(callback->ops().back()) == "[]" &&
+                   callback->ops().back().arguments().size() == 3U &&
                    compiler.verify(*transpose) && compiler.verify(*callback),
-               "shape context infers lambda arity and multi-index access");
+               "an index list supports generic rank and multi-index access");
 
   const auto product = compiler.materialize("tensor_use.product");
   const auto product_ops = product ? product->ops() : std::vector<joggle::Op>{};
@@ -98,17 +104,58 @@ mod tensor_use@1.0.0 {
     compiler.diag().print(std::cerr);
   }
   const auto matmul_ops = matmul ? matmul->ops() : std::vector<joggle::Op>{};
+  const auto matmul_callback =
+      matmul_ops.size() == 1U && matmul_ops.front().arguments().size() == 1U
+          ? matmul_ops.front().arguments().front().inline_fn()
+          : std::optional<joggle::Fn>{};
+  const auto matmul_callback_ops =
+      matmul_callback ? matmul_callback->ops() : std::vector<joggle::Op>{};
+  const auto dot = matmul_callback_ops.size() == 3U
+                       ? compiler.materialize(matmul_callback_ops.back())
+                       : std::optional<joggle::Fn>{};
+  if (!dot) {
+    compiler.diag().print(std::cerr);
+  }
   ok &= expect(product && product_ops.size() == 1U &&
                    callee(product_ops.front()) == "matmul" && matmul &&
-                   matmul_ops.size() == 2U && callee(matmul_ops.front()) == "zero" &&
-                   callee(matmul_ops.back()) == "compute" &&
-                   compiler.verify(*matmul),
-               "NN matmul owns a real body over the Tensor algebra");
+                   matmul_ops.size() == 1U &&
+                   callee(matmul_ops.front()) == "compute" &&
+                   matmul_callback && matmul_callback_ops.size() == 3U &&
+                   callee(matmul_callback_ops.back()) == "dot" && dot &&
+                   dot->blks().size() == 5U && compiler.verify(*matmul) &&
+                   compiler.verify(*matmul_callback) && compiler.verify(*dot),
+               "MatMul uses an ordinary loop-carried scalar accumulation");
+
+  const auto activate = compiler.materialize("tensor_use.activate");
+  const auto activate_ops =
+      activate ? activate->ops() : std::vector<joggle::Op>{};
+  const auto relu = activate_ops.size() == 1U
+                        ? compiler.materialize(activate_ops.front())
+                        : std::optional<joggle::Fn>{};
+  const auto relu_ops = relu ? relu->ops() : std::vector<joggle::Op>{};
+  const auto relu_callback =
+      relu_ops.size() == 1U && relu_ops.front().arguments().size() == 1U
+          ? relu_ops.front().arguments().front().inline_fn()
+          : std::optional<joggle::Fn>{};
+  ok &= expect(activate && relu && relu_callback &&
+                   callee(relu_ops.front()) == "compute" &&
+                   compiler.verify(*activate) && compiler.verify(*relu) &&
+                   compiler.verify(*relu_callback),
+               "rank-polymorphic Relu is ordinary indexed construction");
 
   const std::string formatted = tensor ? joggle::format(*tensor) : std::string{};
+  joggle::Diag roundtrip_diagnostics;
+  const auto roundtrip =
+      tensor ? joggle::parse_mod(formatted, roundtrip_diagnostics,
+                                 "tensor-roundtrip.joggle")
+             : std::optional<joggle::Mod>{};
   ok &= expect(formatted.find("coord") == std::string::npos &&
                    formatted.find("fn compute") != std::string::npos &&
-                   formatted.find("indices: index...") != std::string::npos,
-               "the public source has no coordinate wrapper burden");
+                   formatted.find("fn map") == std::string::npos &&
+                   formatted.find("fn reduce") == std::string::npos &&
+                   formatted.find("list<index>") != std::string::npos &&
+                   roundtrip && roundtrip_diagnostics.ok() &&
+                   joggle::format(*roundtrip) == formatted,
+               "the minimal Tensor surface round-trips without stage syntax");
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }
