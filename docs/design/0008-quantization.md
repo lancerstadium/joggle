@@ -18,7 +18,7 @@ fn dequantize<X, S, Z, Y>(input: X, scale: S, zero: Z, axis: int = 1) -> Y;
 ```
 
 Scale and zero point are normal tensor values. Their types and shapes state
-per-tensor or per-axis parameterization. `onnx@3` defines bodyful
+per-tensor or per-axis parameterization. `onnx@4` defines bodyful
 `QuantizeLinear` and `DequantizeLinear` wrappers that call these independent
 semantics. The signature-driven importer preserves the standard ONNX names;
 ordinary inlining exposes the quant calls without an importer case.
@@ -33,7 +33,7 @@ The hash-pinned Model Zoo SqueezeNet 1.0 QDQ graph imports as 228 typed
 constants and 171 ONNX calls, including 39 QuantizeLinear and 91
 DequantizeLinear calls.
 Reconstruction from the imported Fn and Mod-owned data produces exact ONNX
-Runtime output on the deterministic validation input. Because `onnx@3`
+Runtime output on the deterministic validation input. Because `onnx@4`
 imports `quant@2`, omitting that source dependency fails while linking the
 ONNX Mod rather than during model import.
 

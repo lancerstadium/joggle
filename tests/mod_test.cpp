@@ -76,6 +76,28 @@ int main() {
   ok &= expect(!operator_alias && !operator_alias_diagnostics.ok(),
                "symbolic fns cannot use a second alias identity");
 
+  joggle::Diag subscript_diagnostics;
+  const auto subscript_mod =
+      joggle::parse_mod(R"(
+    joggle 1;
+    mod subscript@1.0.0 {
+      type view();
+      type index();
+      fn ([])(input: view, position: index) -> view;
+      fn read(input: view, position: index) -> view {
+        return input[position];
+      }
+    }
+  )",
+                        subscript_diagnostics, "subscript.joggle");
+  const auto subscript = subscript_mod ? subscript_mod->fn("[]") : std::nullopt;
+  ok &= expect(
+      subscript_mod && subscript &&
+          subscript->operator_fixity() == joggle::Mod::FnDecl::Fixity::Infix &&
+          joggle::format(*subscript_mod).find("return input[position];") !=
+              std::string::npos,
+      "subscript syntax declares and calls an ordinary infix fn");
+
   const auto integer = mod->type("integer");
   const auto align = mod->fn("align");
   const auto add = mod->fn("+");
@@ -319,7 +341,8 @@ int main() {
                "semantic versions and numeric literals share one lexer");
 
   joggle::Diag defaults_diagnostics;
-  auto defaults_mod = joggle::parse_mod(R"(
+  auto defaults_mod =
+      joggle::parse_mod(R"(
     joggle 1;
     mod defaults@1.0.0 {
       type layout(shape: list<int> = [1, 4, 8]);
@@ -328,12 +351,10 @@ int main() {
       ) -> int;
     }
   )",
-                                        defaults_diagnostics,
-                                        "defaults.joggle");
+                        defaults_diagnostics, "defaults.joggle");
   const auto layout =
       defaults_mod ? defaults_mod->type("layout") : std::nullopt;
-  const auto window =
-      defaults_mod ? defaults_mod->fn("window") : std::nullopt;
+  const auto window = defaults_mod ? defaults_mod->fn("window") : std::nullopt;
   ok &= expect(
       layout && window && layout->parameters().front().default_value &&
           window->inputs().front().default_value &&
@@ -345,8 +366,8 @@ int main() {
           window->inputs().front().default_value->arguments.size() == 2U,
       "typed list defaults are part of type and fn declarations");
   ok &= expect(defaults_mod &&
-                   joggle::format(*defaults_mod).find(
-                       "shape: S = [3, 3]") != std::string::npos,
+                   joggle::format(*defaults_mod).find("shape: S = [3, 3]") !=
+                       std::string::npos,
                "typed list defaults round-trip canonically");
 
   joggle::Compiler compiler;

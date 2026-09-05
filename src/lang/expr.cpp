@@ -33,7 +33,24 @@ public:
       result = primary();
     }
 
-    while (is_operator()) {
+    while (true) {
+      // Subscript is surface syntax for the ordinary infix operator `[]`.
+      // Keeping it as an Infix expression lets declaration lookup, overload
+      // resolution, staging, and IR construction follow the same path as
+      // every other symbolic fn.
+      if (match(TokenKind::LeftBracket)) {
+        Mod::Expr combined;
+        combined.kind = Mod::Expr::Kind::Infix;
+        combined.text = "[]";
+        combined.arguments.push_back(std::move(result));
+        combined.arguments.push_back(parse(0));
+        expect(TokenKind::RightBracket, "']'");
+        result = std::move(combined);
+        continue;
+      }
+      if (!is_operator()) {
+        break;
+      }
       Lexer lookahead_lexer = lexer_;
       Token lookahead_current = current_;
       const TokenKind first = current_.kind;
@@ -461,6 +478,9 @@ std::string escape_string(std::string_view value) {
 }
 
 int formatted_operator_precedence(std::string_view symbol) {
+  if (symbol == "[]") {
+    return 80;
+  }
   if (symbol.empty()) {
     return 0;
   }
@@ -586,8 +606,7 @@ std::string format_expression(const Mod::Expr& expression,
   } else if (expression.kind == Kind::Lambda) {
     result = "(";
     const std::size_t parameter_count = expression.labels.size();
-    const bool annotated =
-        expression.arguments.size() == parameter_count + 2U;
+    const bool annotated = expression.arguments.size() == parameter_count + 2U;
     for (std::size_t index = 0; index < parameter_count; ++index) {
       if (index != 0U) {
         result += ", ";
@@ -597,8 +616,8 @@ std::string format_expression(const Mod::Expr& expression,
     }
     result += ')';
     if (annotated) {
-      result += " -> " +
-                format_expression(expression.arguments[parameter_count]);
+      result +=
+          " -> " + format_expression(expression.arguments[parameter_count]);
     }
     result += " => ";
     if (!expression.arguments.empty()) {
@@ -620,6 +639,9 @@ std::string format_expression(const Mod::Expr& expression,
     result =
         format_expression(expression.arguments.front(), precedence, false) +
         expression.text;
+  } else if (expression.text == "[]" && expression.arguments.size() == 2U) {
+    result = format_expression(expression.arguments[0], precedence, false) +
+             "[" + format_expression(expression.arguments[1]) + "]";
   } else {
     result = format_expression(expression.arguments[0], precedence, false) +
              " " + expression.text + " " +

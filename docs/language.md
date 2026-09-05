@@ -147,6 +147,7 @@ Operators are fns whose symbol is their real name:
 fn (+)(lhs: word<8>, rhs: word<8>) -> word<8>;
 fn (-)(value: word<8>) -> word<8>;
 fn postfix (!)(value: flag) -> flag;
+fn ([])(input: view, position: index) -> element;
 ```
 
 The parser determines prefix or infix form from arity; `postfix` is explicit.
@@ -154,8 +155,15 @@ Symbolic and named fns share overload resolution, reflection, native
 binding, serialization, and identity. Operator alias clauses do not exist.
 
 Supported expression symbols currently include unary `+ - !`, arithmetic
-`+ - * / // %`, comparisons, and boolean `&& ||`. A mod can overload a
-supported symbol for its own types.
+`+ - * / // %`, comparisons, boolean `&& ||`, and subscript `[]`. A mod can
+overload a supported symbol for its own types. Subscript is only a surface
+spelling: `input[position]` resolves and materializes exactly like the ordinary
+infix call `[](input, position)`.
+
+Fixity follows the complete source parameter sequence, including compiler-time
+parameters. Consequently a declaration such as
+`fn ([])(position: coord<S>, axis: int) -> index` is binary even though `axis`
+is stored as a compile-time binding and only `position` becomes an SSA operand.
 
 ## Statements and control flow
 
@@ -231,6 +239,7 @@ results    := ("->" expression | "->" "(" parameters? ")")?
 lambda     := "(" (name ":" expression
               ("," name ":" expression)*)? ")"
               ("->" expression)? "=>" expression
+subscript  := expression "[" expression "]"
 ```
 
 The formatter is the normative spelling for details not captured by this

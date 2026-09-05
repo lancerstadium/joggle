@@ -80,10 +80,10 @@ right body is cloned before the matched root; generic dead-expression removal
 then deletes unreachable producers. The same traversal enters existing lambda
 bodies and publishes changed closures through their capture edges.
 
-This already expresses concrete `map(build(f), g)` composition and
-`at(build(f), p) = f(p)` cancellation. It is not yet shape-polymorphic: generic
-lambda parameters and Type-variable unification are the next language gate,
-rather than a family of C++ Tensor cases.
+This already expresses concrete `map(build(S, f), g)` composition and
+`at(build(S, f), p) = f(p)` cancellation. It is not yet shape-polymorphic:
+generic lambda parameters and Type-variable unification are the next language
+gate, rather than a family of C++ Tensor cases.
 
 ## Function expansion and implementation closure
 
@@ -129,6 +129,8 @@ the compiler back into a catalog of `before`/`after` pairs.
    inlining with callable and capture remapping.
 5. [complete] Recurse through existing typed lambda bodies and rewire captures
    transactionally.
+   Nested lambdas also inherit their definition-site compiler bindings while
+   those Known values remain outside runtime captures.
 6. [planned] Extend inlining across explicit CFG while preserving successor
    arguments and effects.
 7. [planned] Retain structured `for` as a higher-order Call until explicit CFG

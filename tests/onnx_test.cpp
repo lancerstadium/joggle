@@ -44,43 +44,47 @@ bool load(joggle::Compiler& compiler, const char* arith, const char* tensor,
          compiler.load_native("transform", transform_native);
 }
 
+std::string callee_name(const joggle::Op& op) {
+  const auto declaration = op.callee().referenced_fn();
+  return declaration ? std::string(declaration->name()) : std::string{};
+}
+
 using ExpectedCall = std::pair<std::string_view, std::vector<std::int64_t>>;
 
 const std::vector<ExpectedCall> expected_calls{
-    {"conv", {1, 64, 111, 111}},    {"relu", {1, 64, 111, 111}},
-    {"max_pool", {1, 64, 55, 55}},  {"conv", {1, 16, 55, 55}},
-    {"relu", {1, 16, 55, 55}},      {"conv", {1, 64, 55, 55}},
-    {"relu", {1, 64, 55, 55}},      {"conv", {1, 64, 55, 55}},
-    {"relu", {1, 64, 55, 55}},      {"concat", {1, 128, 55, 55}},
-    {"conv", {1, 16, 55, 55}},      {"relu", {1, 16, 55, 55}},
-    {"conv", {1, 64, 55, 55}},      {"relu", {1, 64, 55, 55}},
-    {"conv", {1, 64, 55, 55}},      {"relu", {1, 64, 55, 55}},
-    {"concat", {1, 128, 55, 55}},   {"max_pool", {1, 128, 27, 27}},
-    {"conv", {1, 32, 27, 27}},      {"relu", {1, 32, 27, 27}},
-    {"conv", {1, 128, 27, 27}},     {"relu", {1, 128, 27, 27}},
-    {"conv", {1, 128, 27, 27}},     {"relu", {1, 128, 27, 27}},
-    {"concat", {1, 256, 27, 27}},   {"conv", {1, 32, 27, 27}},
-    {"relu", {1, 32, 27, 27}},      {"conv", {1, 128, 27, 27}},
-    {"relu", {1, 128, 27, 27}},     {"conv", {1, 128, 27, 27}},
-    {"relu", {1, 128, 27, 27}},     {"concat", {1, 256, 27, 27}},
-    {"max_pool", {1, 256, 13, 13}}, {"conv", {1, 48, 13, 13}},
-    {"relu", {1, 48, 13, 13}},      {"conv", {1, 192, 13, 13}},
-    {"relu", {1, 192, 13, 13}},     {"conv", {1, 192, 13, 13}},
-    {"relu", {1, 192, 13, 13}},     {"concat", {1, 384, 13, 13}},
-    {"conv", {1, 48, 13, 13}},      {"relu", {1, 48, 13, 13}},
-    {"conv", {1, 192, 13, 13}},     {"relu", {1, 192, 13, 13}},
-    {"conv", {1, 192, 13, 13}},     {"relu", {1, 192, 13, 13}},
-    {"concat", {1, 384, 13, 13}},   {"conv", {1, 64, 13, 13}},
-    {"relu", {1, 64, 13, 13}},      {"conv", {1, 256, 13, 13}},
-    {"relu", {1, 256, 13, 13}},     {"conv", {1, 256, 13, 13}},
-    {"relu", {1, 256, 13, 13}},     {"concat", {1, 512, 13, 13}},
-    {"conv", {1, 64, 13, 13}},      {"relu", {1, 64, 13, 13}},
-    {"conv", {1, 256, 13, 13}},     {"relu", {1, 256, 13, 13}},
-    {"conv", {1, 256, 13, 13}},     {"relu", {1, 256, 13, 13}},
-    {"concat", {1, 512, 13, 13}},   {"dropout", {1, 512, 13, 13}},
-    {"conv", {1, 1000, 13, 13}},
-    {"relu", {1, 1000, 13, 13}},    {"average_pool", {1, 1000, 1, 1}},
-    {"reshape", {1, 1000}},
+    {"conv", {1, 64, 111, 111}},       {"relu", {1, 64, 111, 111}},
+    {"max_pool", {1, 64, 55, 55}},     {"conv", {1, 16, 55, 55}},
+    {"relu", {1, 16, 55, 55}},         {"conv", {1, 64, 55, 55}},
+    {"relu", {1, 64, 55, 55}},         {"conv", {1, 64, 55, 55}},
+    {"relu", {1, 64, 55, 55}},         {"concat", {1, 128, 55, 55}},
+    {"conv", {1, 16, 55, 55}},         {"relu", {1, 16, 55, 55}},
+    {"conv", {1, 64, 55, 55}},         {"relu", {1, 64, 55, 55}},
+    {"conv", {1, 64, 55, 55}},         {"relu", {1, 64, 55, 55}},
+    {"concat", {1, 128, 55, 55}},      {"max_pool", {1, 128, 27, 27}},
+    {"conv", {1, 32, 27, 27}},         {"relu", {1, 32, 27, 27}},
+    {"conv", {1, 128, 27, 27}},        {"relu", {1, 128, 27, 27}},
+    {"conv", {1, 128, 27, 27}},        {"relu", {1, 128, 27, 27}},
+    {"concat", {1, 256, 27, 27}},      {"conv", {1, 32, 27, 27}},
+    {"relu", {1, 32, 27, 27}},         {"conv", {1, 128, 27, 27}},
+    {"relu", {1, 128, 27, 27}},        {"conv", {1, 128, 27, 27}},
+    {"relu", {1, 128, 27, 27}},        {"concat", {1, 256, 27, 27}},
+    {"max_pool", {1, 256, 13, 13}},    {"conv", {1, 48, 13, 13}},
+    {"relu", {1, 48, 13, 13}},         {"conv", {1, 192, 13, 13}},
+    {"relu", {1, 192, 13, 13}},        {"conv", {1, 192, 13, 13}},
+    {"relu", {1, 192, 13, 13}},        {"concat", {1, 384, 13, 13}},
+    {"conv", {1, 48, 13, 13}},         {"relu", {1, 48, 13, 13}},
+    {"conv", {1, 192, 13, 13}},        {"relu", {1, 192, 13, 13}},
+    {"conv", {1, 192, 13, 13}},        {"relu", {1, 192, 13, 13}},
+    {"concat", {1, 384, 13, 13}},      {"conv", {1, 64, 13, 13}},
+    {"relu", {1, 64, 13, 13}},         {"conv", {1, 256, 13, 13}},
+    {"relu", {1, 256, 13, 13}},        {"conv", {1, 256, 13, 13}},
+    {"relu", {1, 256, 13, 13}},        {"concat", {1, 512, 13, 13}},
+    {"conv", {1, 64, 13, 13}},         {"relu", {1, 64, 13, 13}},
+    {"conv", {1, 256, 13, 13}},        {"relu", {1, 256, 13, 13}},
+    {"conv", {1, 256, 13, 13}},        {"relu", {1, 256, 13, 13}},
+    {"concat", {1, 512, 13, 13}},      {"dropout", {1, 512, 13, 13}},
+    {"conv", {1, 1000, 13, 13}},       {"relu", {1, 1000, 13, 13}},
+    {"average_pool", {1, 1000, 1, 1}}, {"reshape", {1, 1000}},
 };
 
 }  // namespace
@@ -113,6 +117,61 @@ int main(int argc, char** argv) {
           malformed_message == malformed_again.diag().issues().back().message,
       "malformed Protobuf input is rejected transactionally");
 
+  joggle::Compiler structural;
+  structural.load(argv[1]);
+  structural.load(argv[2]);
+  structural.load(argv[3]);
+  structural.load(argv[4]);
+  structural.add(R"(
+joggle 1;
+mod matmul_use@1.0.0 {
+  import onnx@4 as o;
+  import tensor@3 as t;
+
+  fn main(
+    lhs: t.tensor<f32, [2, 4]>,
+    rhs: t.tensor<f32, [4, 3]>
+  ) -> t.tensor<f32, [2, 3]> {
+    return o.MatMul(lhs, rhs);
+  }
+}
+)",
+                 "matmul-use.joggle");
+  const bool structural_linked = structural.link();
+  const auto matmul_user = structural_linked
+                               ? structural.materialize("matmul_use.main")
+                               : std::optional<joggle::Fn>{};
+  const auto matmul_user_ops =
+      matmul_user ? matmul_user->ops() : std::vector<joggle::Op>{};
+  const auto matmul = matmul_user_ops.size() == 1U
+                          ? structural.materialize(matmul_user_ops.front())
+                          : std::optional<joggle::Fn>{};
+  const auto matmul_ops = matmul ? matmul->ops() : std::vector<joggle::Op>{};
+  const auto output_body =
+      matmul_ops.size() == 2U
+          ? matmul_ops.back().arguments().front().inline_fn()
+          : std::optional<joggle::Fn>{};
+  const auto output_ops =
+      output_body ? output_body->ops() : std::vector<joggle::Op>{};
+  const auto reduction_body =
+      output_ops.size() == 1U && output_ops.front().arguments().size() == 2U
+          ? output_ops.front().arguments()[1].inline_fn()
+          : std::optional<joggle::Fn>{};
+  if (!matmul) {
+    structural.diag().print(std::cerr);
+  }
+  ok &= expect(
+      matmul_user && matmul_user_ops.size() == 1U &&
+          callee_name(matmul_user_ops.front()) == "MatMul" && matmul &&
+          matmul_ops.size() == 2U &&
+          callee_name(matmul_ops.front()) == "zero" &&
+          callee_name(matmul_ops.back()) == "build" && output_body &&
+          output_ops.size() == 1U &&
+          callee_name(output_ops.front()) == "fold" && reduction_body &&
+          reduction_body->ops().size() == 10U && structural.verify(*matmul) &&
+          structural.verify(*output_body) && structural.verify(*reduction_body),
+      "ONNX MatMul expands to a real build/fold/index/arithmetic Fn body");
+
   if (argc == 8) {
     return ok ? EXIT_SUCCESS : EXIT_FAILURE;
   }
@@ -127,13 +186,10 @@ int main(int argc, char** argv) {
   }
   const auto shape_probe = compiler.run<std::vector<std::int64_t>>(
       "onnx.conv_shape", std::vector<std::int64_t>{1, 3, 224, 224},
-      std::vector<std::int64_t>{64, 3, 3, 3},
-      std::vector<std::int64_t>{3, 3},
-      std::vector<std::int64_t>{2, 2},
-      std::vector<std::int64_t>{0, 0, 0, 0},
+      std::vector<std::int64_t>{64, 3, 3, 3}, std::vector<std::int64_t>{3, 3},
+      std::vector<std::int64_t>{2, 2}, std::vector<std::int64_t>{0, 0, 0, 0},
       std::vector<std::int64_t>{1, 1});
-  ok &= expect(shape_probe ==
-                   std::vector<std::int64_t>({1, 64, 111, 111}),
+  ok &= expect(shape_probe == std::vector<std::int64_t>({1, 64, 111, 111}),
                "ONNX shape semantics execute as an ordinary source fn");
   const auto model =
       compiler.run<joggle::Mod>("onnx.read", bytes, std::string{"squeezenet"});
@@ -213,13 +269,13 @@ int main(int argc, char** argv) {
     const auto& expected = expected_calls[index];
     sequence_matches &=
         op.callee().referenced_fn()->symbol().local_name() ==
-            (expected.first == "conv"          ? "Conv"
-             : expected.first == "relu"        ? "Relu"
-             : expected.first == "max_pool"    ? "MaxPool"
+            (expected.first == "conv"           ? "Conv"
+             : expected.first == "relu"         ? "Relu"
+             : expected.first == "max_pool"     ? "MaxPool"
              : expected.first == "average_pool" ? "AveragePool"
-             : expected.first == "concat"      ? "Concat"
-             : expected.first == "reshape"     ? "Reshape"
-             : expected.first == "dropout"     ? "Dropout"
+             : expected.first == "concat"       ? "Concat"
+             : expected.first == "reshape"      ? "Reshape"
+             : expected.first == "dropout"      ? "Dropout"
                                                 : expected.first) &&
         op.value().type().get<std::vector<std::int64_t>>("shape") ==
             expected.second &&

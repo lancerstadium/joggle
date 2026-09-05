@@ -157,6 +157,23 @@ mod pipeline@1.0.0 {
   fn use_operator(lhs: int, rhs: int) -> int {
     return lhs + rhs;
   }
+  fn ([])(input: word<8>, position: int) -> word<8>;
+  fn apply_same<T>(input: T, body: (T) -> T) -> T;
+  fn use_subscript(input: word<8>) -> word<8> {
+    return input[0];
+  }
+  fn nested_generic<T>(input: T) -> T {
+    return apply_same(
+      input,
+      (outer: T) -> T => apply_same(
+        outer,
+        (inner: T) -> T => inner
+      )
+    );
+  }
+  fn use_nested_generic(input: word<8>) -> word<8> {
+    return nested_generic(input);
+  }
   fn earlier(lhs: int, rhs: int) -> int {
     if lhs < rhs {
       return lhs;
@@ -302,6 +319,10 @@ mod pipeline@1.0.0 {
   const auto use_twice = pipeline ? pipeline->fn("use_twice") : std::nullopt;
   const auto use_operator =
       pipeline ? pipeline->fn("use_operator") : std::nullopt;
+  const auto use_subscript =
+      pipeline ? pipeline->fn("use_subscript") : std::nullopt;
+  const auto use_nested_generic =
+      pipeline ? pipeline->fn("use_nested_generic") : std::nullopt;
   const auto divide = pipeline ? pipeline->fn("divide") : std::nullopt;
   const auto divide_exact =
       pipeline ? pipeline->fn("divide_exact") : std::nullopt;
@@ -321,8 +342,8 @@ mod pipeline@1.0.0 {
       !logical_not || !earlier || !invert || !ordered_typed || !unequal_order ||
       !relation_typed || !text_relation_typed || !overload_typed ||
       !default_typed || !staged_overload || !use_twice || !use_operator ||
-      !divide || !divide_exact || !observe || !observe_once || !fork ||
-      !relay_fork) {
+      !use_subscript || !use_nested_generic || !divide || !divide_exact ||
+      !observe || !observe_once || !fork || !relay_fork) {
     return EXIT_FAILURE;
   }
   const auto integer = compiler.make(*integer_decl, std::int64_t{8});
@@ -518,6 +539,41 @@ mod pipeline@1.0.0 {
   const auto staged_overload_fn = compiler.materialize(*staged_overload);
   const auto residual_overload_fn = compiler.materialize(*residual_overload);
   const auto residual_arguments_fn = compiler.materialize(*residual_arguments);
+  const auto subscript_fn = compiler.materialize(*use_subscript);
+  const auto subscript_ops =
+      subscript_fn ? subscript_fn->ops() : std::vector<joggle::Op>{};
+  ok &= expect(
+      subscript_fn && subscript_ops.size() == 1U &&
+          subscript_ops.front().arguments().size() == 1U &&
+          subscript_ops.front().callee().binding<std::int64_t>("position") ==
+              std::optional<std::int64_t>{0} &&
+          joggle::format(*subscript_fn, "use_subscript").find("arg0[0]") !=
+              std::string::npos,
+      "a residual subscript keeps its compile-time index on the ordinary "
+      "callee and round-trips symbolically");
+  const auto nested_generic_user = compiler.materialize(*use_nested_generic);
+  const auto nested_generic_user_ops = nested_generic_user
+                                           ? nested_generic_user->ops()
+                                           : std::vector<joggle::Op>{};
+  const auto nested_generic =
+      nested_generic_user_ops.size() == 1U
+          ? compiler.materialize(nested_generic_user_ops.front())
+          : std::optional<joggle::Fn>{};
+  const auto nested_generic_ops =
+      nested_generic ? nested_generic->ops() : std::vector<joggle::Op>{};
+  const auto outer = nested_generic_ops.size() == 1U
+                         ? nested_generic_ops.front().arguments()[1].inline_fn()
+                         : std::optional<joggle::Fn>{};
+  const auto outer_ops = outer ? outer->ops() : std::vector<joggle::Op>{};
+  const auto inner = outer_ops.size() == 1U
+                         ? outer_ops.front().arguments()[1].inline_fn()
+                         : std::optional<joggle::Fn>{};
+  ok &= expect(
+      nested_generic && outer && inner && compiler.verify(*nested_generic) &&
+          compiler.verify(*outer) && compiler.verify(*inner) &&
+          inner->arguments().size() == 1U && inner->ops().empty(),
+      "nested generic lambdas inherit lexical compiler Type bindings without "
+      "adding runtime captures");
   const auto residual_variadic_fn = compiler.materialize(*residual_variadic);
   const auto residual_dependent_fn = compiler.materialize(*residual_dependent);
   const auto relay_fork_fn = compiler.materialize(*relay_fork);

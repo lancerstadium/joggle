@@ -879,6 +879,60 @@ public:
   }
 
 private:
+  static bool source_order(const Op& op, const Mod::FnDecl& declaration,
+                           Mod::Expr& expression) {
+    std::vector<std::pair<std::size_t, std::size_t>> order;
+    const auto arguments = op.arguments();
+    order.reserve(arguments.size() + op.callee().bindings().size());
+    for (std::size_t index = 0; index < arguments.size(); ++index) {
+      order.emplace_back(detail::FnAccess::argument_parameter(op, index),
+                         index);
+    }
+    const auto parameters = declaration.inputs();
+    std::size_t expression_index = arguments.size();
+    for (const auto& [name, value] : op.callee().bindings()) {
+      (void)value;
+      const auto found = std::find_if(
+          parameters.begin(), parameters.end(),
+          [&](const auto& parameter) { return parameter.name == name; });
+      if (found == parameters.end()) {
+        return false;
+      }
+      order.emplace_back(
+          static_cast<std::size_t>(std::distance(parameters.begin(), found)),
+          expression_index++);
+    }
+    if (order.size() != expression.arguments.size()) {
+      return false;
+    }
+    std::stable_sort(
+        order.begin(), order.end(),
+        [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+    std::size_t expected = 0;
+    for (const auto& [parameter, original] : order) {
+      (void)original;
+      if (parameter >= parameters.size()) {
+        return false;
+      }
+      if (parameter == expected) {
+        ++expected;
+        continue;
+      }
+      if (parameter + 1U != expected || !parameters[parameter].variadic) {
+        return false;
+      }
+    }
+    std::vector<Mod::Expr> reordered;
+    reordered.reserve(expression.arguments.size());
+    for (const auto& [parameter, original] : order) {
+      (void)parameter;
+      reordered.push_back(std::move(expression.arguments[original]));
+    }
+    expression.arguments = std::move(reordered);
+    expression.labels.assign(expression.arguments.size(), {});
+    return true;
+  }
+
   static std::size_t
   visible_parameters(std::span<const ParamVal> parameters,
                      std::span<const Mod::ParamDecl> schema) {
@@ -1092,7 +1146,8 @@ private:
         result.labels.push_back(name);
       }
       const auto fixity = callee->operator_fixity();
-      if (fixity && callee_value.bindings().empty() &&
+      const bool ordered = source_order(*producer, *callee, result);
+      if (fixity && ordered &&
           ((fixity == Mod::FnDecl::Fixity::Infix &&
             result.arguments.size() == 2U) ||
            (fixity != Mod::FnDecl::Fixity::Infix &&
@@ -1245,15 +1300,16 @@ private:
       result.expression.value.arguments.push_back(expression(value(*payload)));
       result.expression.value.labels.push_back(name);
     }
+    const bool ordered =
+        declaration && source_order(op, *declaration, result.expression.value);
     const auto fixity = declaration ? declaration->operator_fixity()
                                     : std::optional<Mod::FnDecl::Fixity>{};
     const bool valid_arity =
         fixity && ((*fixity == Mod::FnDecl::Fixity::Infix &&
-                    op.arguments().size() == 2U) ||
+                    result.expression.value.arguments.size() == 2U) ||
                    (*fixity != Mod::FnDecl::Fixity::Infix &&
-                    op.arguments().size() == 1U));
-    if (fixity && valid_arity && result.bindings.size() == 1U &&
-        callee_value.bindings().empty()) {
+                    result.expression.value.arguments.size() == 1U));
+    if (fixity && valid_arity && result.bindings.size() == 1U && ordered) {
       result.expression.value.text = std::string(declaration->name());
       if (*fixity == Mod::FnDecl::Fixity::Prefix) {
         result.expression.value.kind = Mod::Expr::Kind::Prefix;

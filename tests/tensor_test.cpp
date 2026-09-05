@@ -16,7 +16,7 @@ joggle 1;
 
 mod tensor_use@1.0.0 {
   import arith@1 as a;
-  import tensor@2 as t;
+  import tensor@3 as t;
 
   fn twice(
     input: t.tensor<f32, [4]>
@@ -34,6 +34,42 @@ mod tensor_use@1.0.0 {
       (sum: f32, position: t.coord<[4]>) =>
         sum + t.at(lhs, position) * t.at(rhs, position),
       shape: [4]
+    );
+  }
+
+  fn indexed(
+    input: t.tensor<f32, [4]>,
+    position: t.coord<[4]>
+  ) -> f32 {
+    return input[position];
+  }
+
+  fn axis(position: t.coord<[4]>) -> index {
+    return position[0];
+  }
+
+  fn repeated(value: index) -> t.coord<[2]> {
+    return t.coord([2], value, value);
+  }
+
+  fn zero() -> f32 {
+    return a.zero();
+  }
+
+  fn matmul(
+    lhs: t.tensor<f32, [2, 4]>,
+    rhs: t.tensor<f32, [4, 3]>
+  ) -> t.tensor<f32, [2, 3]> {
+    initial: f32 = a.zero();
+    return t.build(
+      [2, 3],
+      (out: t.coord<[2, 3]>) => t.fold(
+        initial,
+        (sum: f32, k: t.coord<[4]>) =>
+          sum + lhs[t.coord([2, 4], out[0], k[0])] *
+                rhs[t.coord([4, 3], k[0], out[1])],
+        [4]
+      )
     );
   }
 }
@@ -100,26 +136,81 @@ int main() {
 
   bool ok = true;
   const auto members = tensor_mod->fns();
-  const std::vector<std::string> expected{"build", "at", "fold", "map"};
+  const std::vector<std::string> expected{"coord", "[]",   "build", "at",
+                                          "[]",    "fold", "map"};
   std::vector<std::string> names;
   names.reserve(members.size());
   for (const auto& member : members) {
     names.emplace_back(member.name());
   }
   ok &= expect(names == expected,
-               "tensor exposes only its structural calculus and map");
+               "tensor exposes coordinates, structural calculus, and map");
+
+  const auto indexed = compiler.materialize("tensor_use.indexed");
+  const auto axis = compiler.materialize("tensor_use.axis");
+  const auto repeated = compiler.materialize("tensor_use.repeated");
+  const auto zero = compiler.materialize("tensor_use.zero");
+  const auto matmul = compiler.materialize("tensor_use.matmul");
+  const auto indexed_ops = indexed ? indexed->ops() : std::vector<joggle::Op>{};
+  const auto axis_ops = axis ? axis->ops() : std::vector<joggle::Op>{};
+  const auto repeated_ops =
+      repeated ? repeated->ops() : std::vector<joggle::Op>{};
+  ok &= expect(
+      indexed && axis && repeated && zero && matmul &&
+          indexed_ops.size() == 1U &&
+          callee_name(indexed_ops.front()) == "[]" &&
+          indexed_ops.front().arguments().size() == 2U &&
+          axis_ops.size() == 1U && callee_name(axis_ops.front()) == "[]" &&
+          axis_ops.front().arguments().size() == 1U &&
+          axis_ops.front().callee().binding<std::int64_t>("axis") ==
+              std::optional<std::int64_t>{0} &&
+          repeated_ops.size() == 1U &&
+          callee_name(repeated_ops.front()) == "coord" &&
+          repeated_ops.front().arguments().size() == 2U &&
+          repeated_ops.front().callee().binding<std::vector<std::int64_t>>(
+              "shape") == std::optional<std::vector<std::int64_t>>{{2}} &&
+          joggle::format(*indexed, "indexed").find("arg0[arg1]") !=
+              std::string::npos &&
+          joggle::format(*axis, "axis").find("arg0[0]") != std::string::npos &&
+          joggle::format(*repeated, "repeated")
+                  .find("tensor.coord([2], arg0, arg0)") != std::string::npos &&
+          zero->ops().size() == 1U &&
+          callee_name(zero->ops().front()) == "zero",
+      "coordinate construction and indexing are ordinary typed fn calls");
+
+  const auto matmul_ops = matmul ? matmul->ops() : std::vector<joggle::Op>{};
+  const auto output_body =
+      matmul_ops.size() == 2U
+          ? matmul_ops.back().arguments().front().inline_fn()
+          : std::optional<joggle::Fn>{};
+  const auto output_ops =
+      output_body ? output_body->ops() : std::vector<joggle::Op>{};
+  const auto reduction_body =
+      output_ops.size() == 1U && output_ops.front().arguments().size() == 2U
+          ? output_ops.front().arguments()[1].inline_fn()
+          : std::optional<joggle::Fn>{};
+  ok &= expect(
+      matmul && matmul_ops.size() == 2U &&
+          callee_name(matmul_ops.front()) == "zero" &&
+          callee_name(matmul_ops.back()) == "build" && output_body &&
+          output_ops.size() == 1U &&
+          callee_name(output_ops.front()) == "fold" && reduction_body &&
+          reduction_body->ops().size() == 10U && compiler.verify(*matmul) &&
+          compiler.verify(*output_body) && compiler.verify(*reduction_body),
+      "a MatMul body exposes output construction, reduction, indexing, and "
+      "scalar arithmetic as nested Fns");
 
   const auto twice_ops = twice->ops();
   const auto map = twice_ops.size() == 1U
                        ? compiler.materialize(twice_ops.front())
                        : std::optional<joggle::Fn>{};
   const auto map_ops = map ? map->ops() : std::vector<joggle::Op>{};
-  const auto builder = map_ops.size() == 1U
-                           ? std::optional<joggle::Val>{
-                                 map_ops.front().arguments().front()}
-                           : std::optional<joggle::Val>{};
-  const auto builder_body = builder ? builder->inline_fn()
-                                    : std::optional<joggle::Fn>{};
+  const auto builder =
+      map_ops.size() == 1U
+          ? std::optional<joggle::Val>{map_ops.front().arguments().front()}
+          : std::optional<joggle::Val>{};
+  const auto builder_body =
+      builder ? builder->inline_fn() : std::optional<joggle::Fn>{};
   ok &= expect(
       twice_ops.size() == 1U && callee_name(twice_ops.front()) == "map" &&
           twice_ops.front().arguments().size() == 2U &&
@@ -134,15 +225,14 @@ int main() {
       "map is a real higher-order body over build and at");
 
   const auto dot_ops = dot->ops();
-  const auto update = dot_ops.size() == 1U &&
-                              dot_ops.front().arguments().size() == 2U
-                          ? std::optional<joggle::Val>{
-                                dot_ops.front().arguments()[1]}
-                          : std::optional<joggle::Val>{};
-  const auto update_body = update ? update->inline_fn()
-                                  : std::optional<joggle::Fn>{};
-  const auto update_ops = update_body ? update_body->ops()
-                                      : std::vector<joggle::Op>{};
+  const auto update =
+      dot_ops.size() == 1U && dot_ops.front().arguments().size() == 2U
+          ? std::optional<joggle::Val>{dot_ops.front().arguments()[1]}
+          : std::optional<joggle::Val>{};
+  const auto update_body =
+      update ? update->inline_fn() : std::optional<joggle::Fn>{};
+  const auto update_ops =
+      update_body ? update_body->ops() : std::vector<joggle::Op>{};
   ok &= expect(
       dot_ops.size() == 1U && callee_name(dot_ops.front()) == "fold" &&
           update && update->captures().size() == 2U && update_body &&
@@ -170,7 +260,7 @@ int main() {
   roundtrip.add(*use_mod);
   roundtrip.add("joggle 1;\nmod artifact@1.0.0 {\n"
                 "  import arith@1;\n"
-                "  import tensor@2;\n"
+                "  import tensor@3;\n"
                 "  import tensor_use@1;\n" +
                     canonical + "}\n",
                 "artifact.joggle");
@@ -187,8 +277,8 @@ int main() {
   invalid.load(JOGGLE_TENSOR_MOD);
   const bool invalid_linked = invalid.link();
   const auto invalid_mod = invalid.mod("tensor");
-  const auto invalid_tensor = invalid_mod ? invalid_mod->type("tensor")
-                                          : std::nullopt;
+  const auto invalid_tensor =
+      invalid_mod ? invalid_mod->type("tensor") : std::nullopt;
   const auto f32 = invalid.make("f32");
   if (invalid_tensor) {
     register_tensor_verifier(invalid, *invalid_tensor);

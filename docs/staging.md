@@ -68,11 +68,19 @@ The visible lambda type remains `(word) -> word`; `bias` is inspectable through
 `captures()`, and the nested body receives it after `x`. Effect values must be
 listed as visible parameters rather than captured.
 
+Definition-site compiler bindings used by type annotations or staged calls are
+inherited while an anonymous Fn is materialized. They remain Known lexical
+bindings and do not become residual arguments, capture edges, or attributes.
+This distinction lets a generic outer body create nested lambdas whose types
+depend on element Types or calculated shapes without hiding runtime dataflow.
+
 An explicit compiler call may also pass a typed lambda to a `fn` parameter. It
 is materialized as a verified anonymous `Fn`, passed directly to the compiler
 fn, and may be returned for a later `@` call. Compiler-domain lambdas remain
-standalone values and therefore must be capture-free; Residual closures belong
-to the program Fn that owns their capture edges.
+standalone values and therefore cannot capture Residual values. They may use
+definition-site Known bindings during materialization, but those bindings do
+not become stored runtime captures. Residual closures belong to the program Fn
+that owns their capture edges.
 
 Transformations compose with the language's existing fn call and local
 binding rules. There is no separate sequence object:

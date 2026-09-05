@@ -75,13 +75,15 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The repository ships `arith@1.0.0` and `tensor@2.0.0`. Tensor contains only
-the `build`, `at`, `fold`, and bodyful `map` calculus; it does not contain an
-ONNX operator catalog. `transform@2.1.0` performs recursive single-block
+The repository ships `arith@1.1.0` and `tensor@3.0.0`. Tensor contains
+coordinate construction/projection, explicit-domain `build`, `at`, ordered
+`fold`, overloaded indexing, and bodyful `map`; it does not contain an ONNX
+operator catalog. `transform@2.1.0` performs recursive single-block
 inlining, concrete typed-lambda equation passes, and source resolution.
 `quant@2.0.0` and the optional
-Protobuf-backed `onnx@3.0.0` import path remain incomplete domain libraries.
-Concrete `map(build(f), g)` composition and `at(build(f), p)` cancellation
+Protobuf-backed `onnx@4.0.0` import path remain incomplete domain libraries.
+Rank-two ONNX MatMul now has a real nested `build/fold/index/arithmetic` body.
+Concrete `map(build(S, f), g)` composition and `at(build(S, f), p)` cancellation
 already use the same declaration-identity/dataflow matcher rather than a
 name-specific transform.
 The ONNX fixtures test import and reconstruction fidelity. They are not yet

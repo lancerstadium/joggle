@@ -32,10 +32,14 @@ Symbolic fns use their symbol as their real name:
 ```joggle
 fn (+)<T>(lhs: T, rhs: T) -> T;
 fn postfix (!)<T>(value: T) -> T;
+fn ([])(input: view, position: index) -> element;
 ```
 
 `as +` aliases are forbidden. A symbolic overload and an ordinary overload use
 the same lookup, identity, reflection, native-binding, and serialization rules.
+Bracket syntax is not a second indexing node in executable IR:
+`input[position]` is the ordinary infix fn call `[](input, position)`. This
+allows any imported Type to define indexing without a compiler registry.
 
 ## Staging
 
@@ -104,11 +108,13 @@ an earlier gate.
    second pattern graph. **Complete for pure concrete typed equations; generic
    Types and CFG equations remain planned. See Design 0003.**
 7. Tensor calculus: define a small bodyful construction/access/reduction
-   vocabulary outside the core. **Planned; see Design 0004.**
+   vocabulary outside the core. **In progress; static Tensor and coordinate
+   Types, coordinate construction/projection, `build`, `at`, `fold`, indexing,
+   and bodyful `map` are implemented. See Design 0004.**
 8. High-level tensor definitions: express Relu, Conv, GEMM, and similar
    operations in that calculus rather than compiler name cases. **Planned.**
-9. Generic transformation: concrete `map(build(f), g)` and
-   `at(build(f), p)` equations now fuse by structure; Type-polymorphic rules
+9. Generic transformation: concrete `map(build(S, f), g)` and
+   `at(build(S, f), p)` equations now fuse by structure; Type-polymorphic rules
    and reduction dependence remain planned. **In progress.**
 10. ONNX validation: import unmodified models into bodyful definitions and
     validate transformed results against a trusted runtime. **Planned.**

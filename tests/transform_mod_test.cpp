@@ -19,7 +19,7 @@ constexpr std::string_view source = R"(
 joggle 1;
 mod transform_fixture@1.0.0 {
   import transform@2 as tr;
-  import tensor@2 as t;
+  import tensor@3 as t;
 
   type word();
   type memory();
@@ -56,6 +56,7 @@ mod transform_fixture@1.0.0 {
 
   fn tensor_chain() -> t.tensor<f32, [4]> {
     built: t.tensor<f32, [4]> = t.build(
+      [4],
       (position: t.coord<[4]>) => seed(position)
     );
     return t.map(
@@ -70,11 +71,12 @@ mod transform_fixture@1.0.0 {
       (
         make: (t.coord<[4]>) -> f32,
         map: (f32) -> f32
-      ) -> t.tensor<f32, [4]> => t.map(t.build(make), map),
+      ) -> t.tensor<f32, [4]> => t.map(t.build([4], make), map),
       (
         make: (t.coord<[4]>) -> f32,
         map: (f32) -> f32
       ) -> t.tensor<f32, [4]> => t.build(
+        [4],
         (position: t.coord<[4]>) => map(make(position))
       )
     );
@@ -82,6 +84,7 @@ mod transform_fixture@1.0.0 {
 
   fn sampled(position: t.coord<[4]>) -> f32 {
     built: t.tensor<f32, [4]> = t.build(
+      [4],
       (item: t.coord<[4]>) => seed(item)
     );
     return t.at(built, position);
@@ -93,7 +96,7 @@ mod transform_fixture@1.0.0 {
       (
         make: (t.coord<[4]>) -> f32,
         position: t.coord<[4]>
-      ) -> f32 => t.at(t.build(make), position),
+      ) -> f32 => t.at(t.build([4], make), position),
       (
         make: (t.coord<[4]>) -> f32,
         position: t.coord<[4]>
@@ -103,6 +106,7 @@ mod transform_fixture@1.0.0 {
 
   fn nested_sample() -> t.tensor<f32, [4]> {
     return t.build(
+      [4],
       (position: t.coord<[4]>) => sampled(position)
     );
   }
@@ -187,7 +191,7 @@ int main() {
           !fused_body->ops().front().callee().referenced_fn() &&
           !fused_body->ops().back().callee().referenced_fn() &&
           compiler.verify(*fused_tensor),
-      "the same typed pass fuses map(build(f), g) into one build with a "
+      "the same typed pass fuses map(build(S, f), g) into one build with a "
       "composed callable body");
 
   const auto sampled = compiler.materialize("transform_fixture.sampled");
@@ -200,7 +204,7 @@ int main() {
   ok &= expect(cancelled_calls.size() == 1U &&
                    !cancelled_calls.front().callee().referenced_fn() &&
                    compiler.verify(*cancelled),
-               "at(build(f), p) cancels through an ordinary typed equation "
+               "at(build(S, f), p) cancels through an ordinary typed equation "
                "rather than a built-in tensor transform");
 
   auto nested_sample = compiler.materialize("transform_fixture.nested_sample");

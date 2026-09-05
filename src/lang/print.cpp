@@ -42,6 +42,9 @@ std::string parameter_text(const Parameter& parameter,
 }
 
 int operator_precedence(std::string_view symbol) {
+  if (symbol == "[]") {
+    return 80;
+  }
   if (symbol.empty()) {
     return 0;
   }
@@ -205,14 +208,23 @@ std::string type_expression_layout(const detail::TypeExpr& expression,
                                        content_column, precedence, false);
       result += expression.text;
     } else if (expression.kind == Kind::Infix) {
-      result += type_expression_layout(expression.arguments[0], content_column,
-                                       precedence, false);
-      result += " " + expression.text;
-      result += '\n';
-      const std::size_t rhs_column = content_column + 2U;
-      result += indentation(rhs_column);
-      result += type_expression_layout(expression.arguments[1], rhs_column,
-                                       precedence, true);
+      if (expression.text == "[]" && expression.arguments.size() == 2U) {
+        result += type_expression_layout(expression.arguments[0],
+                                         content_column, precedence, false);
+        result += '[';
+        result += type_expression_layout(
+            expression.arguments[1], content_column + result.size(), 0, false);
+        result += ']';
+      } else {
+        result += type_expression_layout(expression.arguments[0],
+                                         content_column, precedence, false);
+        result += " " + expression.text;
+        result += '\n';
+        const std::size_t rhs_column = content_column + 2U;
+        result += indentation(rhs_column);
+        result += type_expression_layout(expression.arguments[1], rhs_column,
+                                         precedence, true);
+      }
     } else {
       return flat;
     }

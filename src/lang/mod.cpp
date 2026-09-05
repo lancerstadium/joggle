@@ -172,6 +172,13 @@ private:
   }
 
   std::optional<std::string> operator_symbol() {
+    if (match(TokenKind::LeftBracket)) {
+      if (!match(TokenKind::RightBracket)) {
+        error("expected ']' in subscript operator");
+        return std::nullopt;
+      }
+      return "[]";
+    }
     const auto is_symbol = [this] {
       return is(TokenKind::Equal) || is(TokenKind::Less) ||
              is(TokenKind::Greater) || is(TokenKind::Plus) ||
@@ -708,11 +715,10 @@ private:
     }
     definition.operator_fixity = declared_fixity;
     if (symbolic && !definition.operator_fixity) {
-      const auto value_inputs = static_cast<std::size_t>(
-          std::count_if(definition.inputs.begin(), definition.inputs.end(),
-                        detail::is_value_port));
-      const std::size_t operands =
-          value_inputs == 0U ? definition.inputs.size() : value_inputs;
+      // Fixity belongs to the source call shape. Compile-time arguments are
+      // still written operands even though materialization stores them as
+      // bindings on the callee rather than SSA edges on the Call.
+      const std::size_t operands = definition.inputs.size();
       definition.operator_fixity =
           operands == 1U   ? std::optional{Mod::FnDecl::Fixity::Prefix}
           : operands == 2U ? std::optional{Mod::FnDecl::Fixity::Infix}
@@ -1128,8 +1134,7 @@ private:
       if (fn.operator_fixity) {
         const auto mod_values = static_cast<std::size_t>(std::count_if(
             fn.inputs.begin(), fn.inputs.end(), detail::is_value_port));
-        const std::size_t operands =
-            mod_values == 0U ? fn.inputs.size() : mod_values;
+        const std::size_t operands = fn.inputs.size();
         const std::size_t required =
             fn.operator_fixity == Mod::FnDecl::Fixity::Infix ? 2U : 1U;
         const bool expected_ir_result = mod_values != 0U;

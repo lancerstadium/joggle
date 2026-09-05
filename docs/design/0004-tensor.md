@@ -8,14 +8,23 @@ Joggle represents target-independent tensor computation with a small
 installable calculus, not an operation catalog. Compiler core gains no tensor
 declaration kind, graph container, attribute dictionary, or lowering hook.
 
-`tensor@2` owns only:
+`tensor@3` owns only:
 
 ```joggle
 type tensor(element: type, shape: list<int>);
 type coord(shape: list<int>);
 
-fn build<E, S: list<int>>(body: (coord<S>) -> E) -> tensor<E, S>;
+fn coord<S: list<int>>(shape: S, values: index...) -> coord<S>;
+fn ([])<S: list<int>>(position: coord<S>, axis: int) -> index;
+fn build<E, S: list<int>>(
+  shape: S, body: (coord<S>) -> E
+) -> tensor<E, S>;
 fn at<E, S: list<int>>(input: tensor<E, S>, position: coord<S>) -> E;
+fn ([])<E, S: list<int>>(
+  input: tensor<E, S>, position: coord<S>
+) -> E {
+  return at(input, position);
+}
 fn fold<A, S: list<int>>(
   initial: A,
   body: (A, coord<S>) -> A,
@@ -23,9 +32,14 @@ fn fold<A, S: list<int>>(
 ) -> A;
 ```
 
-`fold` takes its logical domain explicitly because `S` cannot be inferred from
-an accumulator result. The shape is a normal compiler-time fn argument stored
-on the specialized callee `Val`; no Domain or Axis object is introduced.
+`build` and `fold` take their logical domains explicitly. A computed shape
+therefore participates in ordinary overload inference before its nested lambda
+is materialized, and loop transformations have a visible domain to rewrite.
+The shape is a normal compiler-time fn argument stored on the specialized
+callee `Val`; no Domain or Axis object is introduced.
+`position[axis]` and `input[position]` resolve through the same overload system
+as `+`: their IR is an ordinary Call to a fn named `[]`. The parser provides
+only the bracket spelling and does not know coordinate or Tensor semantics.
 
 ## Derived computation
 
@@ -70,12 +84,16 @@ introduce ordinary Types and fns without changing tensor or compiler core.
 
 - [x] Typed lambdas are nested Fns with explicit captures.
 - [x] Define static tensor and coordinate Types.
+- [x] Express coordinate construction, coordinate projection, and Tensor
+  indexing as ordinary overloaded fns.
 - [x] Define `build`, `at`, and ordered `fold` as the minimal basis.
 - [x] Express generic `map` with an inspectable body.
 - [x] Express and verify a dot-product body using only the basis and scalar
   overloads.
 - [ ] Add symbolic logical extents without a second shape AST.
+- [ ] Verify that coordinate constructor arity agrees with the static rank.
 - [ ] Define view/index-map composition.
-- [ ] Express GEMM and convolution as bodyful library fns.
+- [x] Express rank-two ONNX MatMul as a bodyful library fn.
+- [ ] Express convolution and batched/broadcast MatMul as bodyful library fns.
 - [ ] Implement dependence-checked `build`/`at` fusion.
 - [ ] Differentially validate transformed real-model computation.

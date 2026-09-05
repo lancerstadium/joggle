@@ -111,9 +111,11 @@ public:
   Instantiator(Compiler& compiler, std::string owner,
                const detail::FnBody& body, Diag& diagnostics,
                std::vector<std::pair<std::string, Type>> arguments,
-               std::optional<std::vector<Type>> results)
+               std::optional<std::vector<Type>> results,
+               detail::KnownBindings bindings)
       : compiler_(compiler), body_(body), owner_(std::move(owner)),
         diagnostics_(diagnostics), initial_diagnostics_(diagnostics.size()),
+        supplied_bindings_(std::move(bindings)),
         inline_arguments_(std::move(arguments)),
         inline_results_(std::move(results)) {}
 
@@ -431,6 +433,24 @@ private:
     }
     edit_.emplace(fn_->edit());
     locals_.push();
+    for (const auto& [name, binding] : supplied_bindings_) {
+      if (std::any_of(
+              inline_arguments_.begin(), inline_arguments_.end(),
+              [&](const auto& argument) { return argument.first == name; })) {
+        continue;
+      }
+      const Mod::ParamDecl parameter{name, binding.domain.value_or(Mod::Expr{}),
+                                     false, std::nullopt};
+      auto value = detail::exec_val(binding.value, parameter);
+      auto staged = value ? detail::stage(compiler_, std::move(*value))
+                          : std::optional<detail::StagedVal>{};
+      if (!staged) {
+        report("inline fn cannot inherit compiler binding '" + name + "'",
+               body_.range);
+      } else {
+        define_staged(name, std::move(*staged), body_.range);
+      }
+    }
     for (std::size_t index = 0; index < inline_arguments_.size(); ++index) {
       define(inline_arguments_[index].first,
              edit_->argument(argument_types[index]), body_.range);
@@ -3066,7 +3086,8 @@ instantiate_lambda(Compiler& compiler, std::string_view owner,
   body.blocks.push_back(std::move(entry));
 
   return Instantiator(compiler, std::string(owner), body, diagnostics,
-                      std::move(arguments), std::move(expected_results))
+                      std::move(arguments), std::move(expected_results),
+                      bindings)
       .instantiate();
 }
 

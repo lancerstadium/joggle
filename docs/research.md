@@ -28,8 +28,11 @@ The implementation currently demonstrates:
 4. typed lambdas are ordinary anonymous Fns rather than a pattern AST;
 5. Residual captures are explicit dependency edges and hidden typed body
    arguments, while effect tokens cannot be captured;
-6. `tensor@2` contains only `build`, `at`, ordered `fold`, and bodyful `map`;
-   a dot product is expressed by their composition plus scalar overloads;
+6. `tensor@3` provides coordinate construction/projection, explicit-domain
+   `build`, `at`,
+   ordered `fold`, bodyful indexing, and bodyful `map`; a dot product is
+   expressed by their composition plus scalar overloads, while `p[i]` and
+   `tensor[p]` remain ordinary overloaded Calls;
 7. those bodies materialize, expose nested element and update Fns, invoke
    arbitrary callable parameters, and pass the ordinary verifier;
 8. the same name-independent Mod transform expands all 26 ONNX Relu calls in
@@ -42,15 +45,16 @@ The implementation currently demonstrates:
 10. `transform.pass` accepts ordinary concrete typed lambdas as an equation,
     matches declaration identity and dataflow rather than names, recurses into
     callable bodies, rejects effects, and demonstrates both
-    `map(build(f), g)` composition and `at(build(f), p)` cancellation;
+    `map(build(S, f), g)` composition and `at(build(S, f), p)` cancellation;
 11. Mod bundles preserve and verify imported data through public `check`,
    `run`, `install`, and `lock` workflows; and
 12. source resolution constructs deterministic concrete instances while
    preserving bodyless calls as an explicit leaf set.
 
 Most compute-heavy ONNX operators and the independent quantized semantics
-remain opaque. Conv/GEMM bodies, polymorphic rewrite Types, generic model
-fusion, symbolic shapes, emission, and performance evidence are unfinished.
+remain opaque. Rank-two MatMul now has a verified nested `build/fold/index`
+body, but Conv, batched MatMul, polymorphic rewrite Types, generic model fusion,
+symbolic shapes, emission, and performance evidence are unfinished.
 The ONNX result establishes
 one bodyful elementwise expansion, not generic fusion, numerical preservation
 after compilation, or publication-level novelty.

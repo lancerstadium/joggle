@@ -1,6 +1,6 @@
 # Tensor
 
-`tensor@2.0.0` is a target-independent structural calculus. It is an ordinary
+`tensor@3.0.0` is a target-independent structural calculus. It is an ordinary
 source Mod and adds no tensor node, graph owner, operation registry, or
 lowering interface to compiler core.
 
@@ -16,10 +16,25 @@ address space, allocation, or placement. `coord<S>` is an index in that same
 logical space. The current test verifier accepts static non-negative extents;
 symbolic extents remain unfinished.
 
+Coordinates use the Prelude `index` Type. Construction and projection are
+ordinary fns:
+
+```joggle
+fn coord<S: list<int>>(shape: S, values: index...) -> coord<S>;
+fn ([])<S: list<int>>(position: coord<S>, axis: int) -> index;
+```
+
+The shape argument specializes the result and the number of residual values
+must agree with its rank. The rank check is an unfinished semantic verifier.
+The surface expression `position[0]` is the ordinary symbolic call
+`[](position, 0)`; `0` is a compiler-time callee binding rather than an Op
+attribute.
+
 ## Structural basis
 
 ```joggle
 fn build<E, S: list<int>>(
+  shape: S,
   body: (coord<S>) -> E
 ) -> tensor<E, S>;
 
@@ -27,6 +42,13 @@ fn at<E, S: list<int>>(
   input: tensor<E, S>,
   position: coord<S>
 ) -> E;
+
+fn ([])<E, S: list<int>>(
+  input: tensor<E, S>,
+  position: coord<S>
+) -> E {
+  return at(input, position);
+}
 
 fn fold<A, S: list<int>>(
   initial: A,
@@ -39,7 +61,9 @@ fn fold<A, S: list<int>>(
 element. `fold` performs an ordered accumulation over an explicit logical
 shape. Its shape is a compiler-time argument and therefore lives on the
 specialized callee value rather than as an Op attribute. No associativity or
-reassociation permission is implicit.
+reassociation permission is implicit. `input[position]` is a bodyful symbolic
+overload defined through `at`; the language core knows nothing about Tensor
+indexing.
 
 The bodyful `map` is derived from only `build` and `at`:
 
@@ -49,6 +73,7 @@ fn map<E, S: list<int>, R>(
   body: (E) -> R
 ) -> tensor<R, S> {
   return build(
+    S,
     (position: coord<S>) => body(at(input, position))
   );
 }
@@ -65,7 +90,8 @@ softmax, model constants, quantization, layouts, kernels, buffers, devices, or
 emitters. Domain Mods define those conveniences by composing the calculus.
 ONNX symbols belong to `onnx`; scalar leaves belong to `arith`.
 
-Current tests prove body inspection and generic inlining for `map`, and express
-a dot product as `fold + at + scalar operators`. Execution, symbolic shapes,
-views, dependence-checked fusion, storage planning, and scheduling remain
-future gates rather than implied capabilities.
+Current tests prove body inspection and generic inlining for `map`, express a
+dot product as `fold + at + scalar operators`, and materialize coordinate
+construction, coordinate projection, and tensor indexing as ordinary Calls.
+Execution, symbolic shapes, views, dependence-checked fusion, storage planning,
+and scheduling remain future gates rather than implied capabilities.

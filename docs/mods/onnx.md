@@ -1,6 +1,6 @@
 # ONNX
 
-`onnx@3.0.0` is an optional source Mod with one native file decoder. It turns
+`onnx@4.0.0` is an optional source Mod with one native file decoder. It turns
 an ONNX model into an ordinary Joggle `Mod`; it does not add a frontend class,
 ONNX Op hierarchy, graph container, or lowering level to compiler core.
 
@@ -8,7 +8,7 @@ ONNX Op hierarchy, graph container, or lowering level to compiler core.
 joggle 1;
 
 mod pipeline@1.0.0 {
-  import onnx@3;
+  import onnx@4;
 
   fn load(input: bytes) -> mod {
     return @onnx.read(input, "squeezenet");
@@ -16,7 +16,7 @@ mod pipeline@1.0.0 {
 }
 ```
 
-The ONNX source Mod imports `arith@1`, `tensor@2`, and `quant@2`. Callers must
+The ONNX source Mod imports `arith@1`, `tensor@3`, and `quant@2`. Callers must
 therefore load those dependencies before linking. An imported model records
 only the Mods referenced directly by its Fn.
 
@@ -56,10 +56,12 @@ with their graph-input declarations; IR 7 initializers may not masquerade as
 runtime inputs. Intermediate metadata and graph outputs are checked against
 the Types inferred from the source signatures.
 
-This is a verified vertical slice, not a claim of general ONNX coverage. Most
-compute-heavy ONNX fns are still semantic leaves. `Relu`, `Dropout`, and the QDQ
-wrappers have source bodies, but Conv, Pool, Concat, Reshape, Flatten, and
-Softmax still need tensor-calculus bodies before generic fusion is established.
+This is a verified vertical slice, not a claim of general ONNX coverage. A
+rank-two `MatMul` now has a real `build + fold + indexing + scalar arithmetic`
+body. `Relu`, `Dropout`, and the QDQ wrappers are also bodyful. Conv, Pool,
+Concat, Reshape, Flatten, batched/broadcast MatMul, and Softmax remain semantic
+leaves or unsupported shapes and still need tensor-calculus bodies before
+generic model fusion is established.
 
 ## Build and reference models
 
@@ -107,6 +109,13 @@ The QDQ model imports as one FLOAT argument, 228 constants, and 171 calls:
 The two QDQ wrappers are bodyful ONNX fns that call the independent `quant`
 semantics. The imported model consequently records `onnx` and `tensor` as
 direct dependencies while `quant` remains transitive through `onnx`.
+
+A separate structural test specializes the generic rank-two `MatMul` at
+`f32[2,4] x f32[4,3]`. Its materialized body contains an output `build`, a
+K-domain `fold`, coordinate construction/projection, two indexed reads, and
+ordinary scalar `*`/`+` calls. Both nested lambdas are verified Fns. This proves
+body visibility and generic lexical specialization, not numerical execution or
+the full ONNX broadcasting contract.
 
 ## Optional differential validation
 

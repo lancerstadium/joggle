@@ -1,9 +1,9 @@
 joggle 1;
 
-mod onnx@3.0.0 {
+mod onnx@4.0.0 {
   import arith@1 as a;
   import quant@2 as q;
-  import tensor@2 as t;
+  import tensor@3 as t;
 
   fn read(input: bytes, name: string = "model") -> mod;
 
@@ -125,7 +125,28 @@ mod onnx@3.0.0 {
     return [outer, inner];
   }
 
+  fn matmul_shape(lhs: list<int>, rhs: list<int>) -> list<int> {
+    return [@at(lhs, 0), @at(rhs, 1)];
+  }
+
   fn Constant<T>(content: string) -> T;
+
+  fn MatMul<E, L: list<int>, R: list<int>>(
+    lhs: t.tensor<E, L>,
+    rhs: t.tensor<E, R>
+  ) -> t.tensor<E, @matmul_shape(L, R)> {
+    initial: E = a.zero();
+    return t.build(
+      @matmul_shape(L, R),
+      (out: t.coord<[@at(L, 0), @at(R, 1)]>) -> E => t.fold(
+        initial,
+        (sum: E, k: t.coord<[@at(L, 1)]>) =>
+          sum + lhs[t.coord(L, out[0], k[0])] *
+                rhs[t.coord(R, k[0], out[1])],
+        [@at(L, 1)]
+      )
+    );
+  }
 
   fn Conv<
     E,
