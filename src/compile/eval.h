@@ -65,6 +65,7 @@ private:
 
 std::string_view exec_val_type(const ExecVal& value);
 std::optional<Domain> cpp_value_domain(std::string_view type);
+std::optional<std::string_view> cpp_scalar_type(std::string_view type);
 std::optional<Type> domain_type(Compiler& compiler, const Mod::Expr& domain);
 std::optional<Mod::Expr> type_domain(const Type& type);
 std::optional<Type> execution_type(Compiler& compiler, const ExecVal& value);

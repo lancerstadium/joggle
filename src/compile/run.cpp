@@ -220,7 +220,7 @@ Compiler::execute(Mod::FnDecl declaration,
         }
       }
     }
-    if (!check_host_values(current, values)) {
+    if (!check_execution_values(current, values)) {
       return std::nullopt;
     }
     if (!verify_values(values)) {
@@ -291,7 +291,7 @@ Compiler::execute(Mod::FnDecl declaration,
           return std::nullopt;
         }
       }
-      if (!check_host_values(current, values, *execution)) {
+      if (!check_execution_values(current, values, *execution)) {
         return std::nullopt;
       }
       if (!verify_values(*execution)) {
@@ -351,7 +351,7 @@ Compiler::execute(Mod::FnDecl declaration,
           return std::nullopt;
         }
       }
-      if (!check_host_values(current, values, *evaluated)) {
+      if (!check_execution_values(current, values, *evaluated)) {
         return std::nullopt;
       }
       if (!verify_values(*evaluated)) {

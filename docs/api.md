@@ -142,6 +142,12 @@ Optional `Compiler&` and `Diag&` service parameters are not source
 ports. Bindings can return `void`, one supported value, a tuple for multiple
 results, or `std::optional<T>` to report failure.
 
+Standard fixed-width C++ scalars map directly to their Prelude value types:
+`int8_t` through `int32_t`, their unsigned counterparts through `uint64_t`,
+and `float` map to `i8` through `i32`, `u8` through `u64`, and `f32`.
+`int64_t` and `double` retain their compiler-domain meanings `int` and `real`;
+an exact declaration handle resolves any name-level overload ambiguity.
+
 `HostEval::Hermetic` is an explicit promise for deterministic,
 side-effect-free host evaluation under residual control. Use the default
 guarded mode otherwise.

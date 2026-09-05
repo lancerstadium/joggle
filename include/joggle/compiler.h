@@ -46,14 +46,25 @@ using RealList = std::vector<double>;
 using BooleanList = std::vector<bool>;
 using StringList = std::vector<std::string>;
 using TypeList = std::vector<Type>;
-using ExecVal = std::variant<std::int64_t, double, bool, std::string, Type,
-                             Bytes, std::shared_ptr<Fn>, IntegerList, RealList,
-                             BooleanList, StringList, TypeList, HostVal>;
+using ExecVal =
+    std::variant<std::int8_t, std::uint8_t, std::int16_t, std::uint16_t,
+                 std::int32_t, std::uint32_t, std::int64_t, std::uint64_t,
+                 float, double, bool, std::string, Type, Bytes,
+                 std::shared_ptr<Fn>, IntegerList, RealList, BooleanList,
+                 StringList, TypeList, HostVal>;
 using ExecVals = std::vector<ExecVal>;
 
 template <typename T>
 inline constexpr bool is_builtin_host_value =
+    std::is_same_v<std::remove_cvref_t<T>, std::int8_t> ||
+    std::is_same_v<std::remove_cvref_t<T>, std::uint8_t> ||
+    std::is_same_v<std::remove_cvref_t<T>, std::int16_t> ||
+    std::is_same_v<std::remove_cvref_t<T>, std::uint16_t> ||
+    std::is_same_v<std::remove_cvref_t<T>, std::int32_t> ||
+    std::is_same_v<std::remove_cvref_t<T>, std::uint32_t> ||
     std::is_same_v<std::remove_cvref_t<T>, std::int64_t> ||
+    std::is_same_v<std::remove_cvref_t<T>, std::uint64_t> ||
+    std::is_same_v<std::remove_cvref_t<T>, float> ||
     std::is_same_v<std::remove_cvref_t<T>, double> ||
     std::is_same_v<std::remove_cvref_t<T>, bool> ||
     std::is_same_v<std::remove_cvref_t<T>, std::string> ||
@@ -620,9 +631,9 @@ private:
   bool bind_representation(Mod::TypeDecl schema, std::string_view type,
                            RepresentationProjector projector);
   bool project_host_value(detail::ExecVal& value);
-  bool check_host_values(const Mod::FnDecl& fn,
-                         std::span<const detail::ExecVal> arguments,
-                         std::span<const detail::ExecVal> results = {});
+  bool check_execution_values(const Mod::FnDecl& fn,
+                              std::span<const detail::ExecVal> arguments,
+                              std::span<const detail::ExecVal> results = {});
   bool accepts_host_type(const Mod::FnDecl& fn, const Mod::ParamDecl& field,
                          std::string_view type) const;
   void bind_native(Mod::FnDecl schema, NativeFn fn, HostEval evaluation);

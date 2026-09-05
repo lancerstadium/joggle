@@ -156,8 +156,32 @@ KnownBindings Locals::known_bindings() const {
 }
 
 std::string_view exec_val_type(const ExecVal& value) {
+  if (std::holds_alternative<std::int8_t>(value)) {
+    return typeid(std::int8_t).name();
+  }
+  if (std::holds_alternative<std::uint8_t>(value)) {
+    return typeid(std::uint8_t).name();
+  }
+  if (std::holds_alternative<std::int16_t>(value)) {
+    return typeid(std::int16_t).name();
+  }
+  if (std::holds_alternative<std::uint16_t>(value)) {
+    return typeid(std::uint16_t).name();
+  }
+  if (std::holds_alternative<std::int32_t>(value)) {
+    return typeid(std::int32_t).name();
+  }
+  if (std::holds_alternative<std::uint32_t>(value)) {
+    return typeid(std::uint32_t).name();
+  }
   if (std::holds_alternative<std::int64_t>(value)) {
     return typeid(std::int64_t).name();
+  }
+  if (std::holds_alternative<std::uint64_t>(value)) {
+    return typeid(std::uint64_t).name();
+  }
+  if (std::holds_alternative<float>(value)) {
+    return typeid(float).name();
   }
   if (std::holds_alternative<double>(value)) {
     return typeid(double).name();
@@ -260,6 +284,34 @@ std::optional<Domain> cpp_value_domain(std::string_view type) {
   return std::nullopt;
 }
 
+std::optional<std::string_view> cpp_scalar_type(std::string_view type) {
+  if (type == typeid(std::int8_t).name()) {
+    return "i8";
+  }
+  if (type == typeid(std::uint8_t).name()) {
+    return "u8";
+  }
+  if (type == typeid(std::int16_t).name()) {
+    return "i16";
+  }
+  if (type == typeid(std::uint16_t).name()) {
+    return "u16";
+  }
+  if (type == typeid(std::int32_t).name()) {
+    return "i32";
+  }
+  if (type == typeid(std::uint32_t).name()) {
+    return "u32";
+  }
+  if (type == typeid(std::uint64_t).name()) {
+    return "u64";
+  }
+  if (type == typeid(float).name()) {
+    return "f32";
+  }
+  return std::nullopt;
+}
+
 std::optional<Type> domain_type(Compiler& compiler,
                                 const Mod::Expr& expression) {
   const auto domain = kernel_domain(expression);
@@ -305,9 +357,12 @@ std::optional<Type> execution_type(Compiler& compiler, const ExecVal& value) {
     return host->concrete_type;
   }
   const auto domain = cpp_value_domain(exec_val_type(value));
-  return domain ? domain_type(compiler,
-                              domain_expression(domain->element, domain->list))
-                : std::optional<Type>{};
+  if (domain) {
+    return domain_type(compiler,
+                       domain_expression(domain->element, domain->list));
+  }
+  const auto scalar = cpp_scalar_type(exec_val_type(value));
+  return scalar ? compiler.make(*scalar) : std::optional<Type>{};
 }
 
 std::optional<StagedVal> stage(Compiler& compiler, ExecVal value) {
@@ -378,6 +433,30 @@ bool same_staged_value(const StagedVal& lhs, const StagedVal& rhs) {
     const auto& other = std::get<HostVal>(*right);
     return host->cpp_type == other.cpp_type && host->storage == other.storage &&
            host->concrete_type == other.concrete_type;
+  }
+  if (const auto* value = std::get_if<std::int8_t>(left)) {
+    return *value == std::get<std::int8_t>(*right);
+  }
+  if (const auto* value = std::get_if<std::uint8_t>(left)) {
+    return *value == std::get<std::uint8_t>(*right);
+  }
+  if (const auto* value = std::get_if<std::int16_t>(left)) {
+    return *value == std::get<std::int16_t>(*right);
+  }
+  if (const auto* value = std::get_if<std::uint16_t>(left)) {
+    return *value == std::get<std::uint16_t>(*right);
+  }
+  if (const auto* value = std::get_if<std::int32_t>(left)) {
+    return *value == std::get<std::int32_t>(*right);
+  }
+  if (const auto* value = std::get_if<std::uint32_t>(left)) {
+    return *value == std::get<std::uint32_t>(*right);
+  }
+  if (const auto* value = std::get_if<std::uint64_t>(left)) {
+    return *value == std::get<std::uint64_t>(*right);
+  }
+  if (const auto* value = std::get_if<float>(left)) {
+    return *value == std::get<float>(*right);
   }
   return false;
 }

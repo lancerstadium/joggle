@@ -148,7 +148,7 @@ bool Compiler::bind_representation(Mod::TypeDecl schema, std::string_view type,
                                "' outside this compiler");
     return false;
   }
-  if (detail::cpp_value_domain(type)) {
+  if (detail::cpp_value_domain(type) || detail::cpp_scalar_type(type)) {
     state_->diagnostics.report(
         "built-in C++ representations belong to Prelude and cannot be "
         "registered again");
@@ -187,6 +187,11 @@ bool Compiler::accepts_host_type(const Mod::FnDecl& fn,
     return parameter_domain(field) == domain;
   }
   const auto declaration = field_type_declaration(state_->mods, fn, field);
+  if (const auto scalar = detail::cpp_scalar_type(type)) {
+    return declaration &&
+           declaration->symbol().mod_name() == detail::prelude_mod_name &&
+           declaration->symbol().local_name() == *scalar;
+  }
   const auto representation = declaration
                                   ? state_->host_representations.find(
                                         declaration->symbol().stable_name())
@@ -230,18 +235,15 @@ bool Compiler::project_host_value(detail::ExecVal& value) {
   return true;
 }
 
-bool Compiler::check_host_values(const Mod::FnDecl& fn,
-                                 std::span<const detail::ExecVal> arguments,
-                                 std::span<const detail::ExecVal> results) {
-  const bool has_host_input =
-      std::any_of(arguments.begin(), arguments.end(), [](const auto& value) {
-        return std::holds_alternative<detail::HostVal>(value);
-      });
-  const bool has_host_result =
-      std::any_of(results.begin(), results.end(), [](const auto& value) {
-        return std::holds_alternative<detail::HostVal>(value);
-      });
-  if (!has_host_input && !has_host_result) {
+bool Compiler::check_execution_values(
+    const Mod::FnDecl& fn, std::span<const detail::ExecVal> arguments,
+    std::span<const detail::ExecVal> results) {
+  const bool has_values =
+      std::any_of(fn.inputs().begin(), fn.inputs().end(),
+                  detail::is_value_port) ||
+      std::any_of(fn.results().begin(), fn.results().end(),
+                  detail::is_value_port);
+  if (!has_values) {
     return true;
   }
 
@@ -252,13 +254,13 @@ bool Compiler::check_host_values(const Mod::FnDecl& fn,
   std::vector<std::optional<ParamVal>> known_arguments;
   for (std::size_t index = 0; index < arguments.size(); ++index) {
     if (detail::is_value_port(fn.inputs()[index])) {
-      const auto* host = std::get_if<detail::HostVal>(&arguments[index]);
-      if (host == nullptr || !host->concrete_type) {
+      auto type = detail::execution_type(*this, arguments[index]);
+      if (!type) {
         state_->diagnostics.report(
-            "compiler fn IR input has no concrete Joggle type");
+            "compiler fn input has no concrete Joggle type");
         return false;
       }
-      value_arguments.push_back(*host->concrete_type);
+      value_arguments.push_back(std::move(*type));
       continue;
     }
     known_arguments.push_back(detail::parameter_value(arguments[index]));
@@ -270,11 +272,9 @@ bool Compiler::check_host_values(const Mod::FnDecl& fn,
     if (!detail::is_value_port(fn.results()[index])) {
       continue;
     }
-    const auto* host = results.empty()
-                           ? nullptr
-                           : std::get_if<detail::HostVal>(&results[index]);
-    expected_results.push_back(host == nullptr ? std::optional<Type>{}
-                                               : host->concrete_type);
+    expected_results.push_back(
+        results.empty() ? std::optional<Type>{}
+                        : detail::execution_type(*this, results[index]));
   }
   return detail::resolve_call_types(*this, fn, value_arguments, known_arguments,
                                     expected_results, state_->diagnostics)

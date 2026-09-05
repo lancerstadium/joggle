@@ -1288,5 +1288,41 @@ mod unchecked_arm@1.0.0 {
                "linking verifies calls in every structured branch before "
                "Known execution selects one");
 
+  joggle::Compiler fixed_scalars;
+  fixed_scalars.add(R"(
+joggle 1;
+mod fixed_scalars@1.0.0 {
+  fn (+)(lhs: i32, rhs: i32) -> i32;
+  fn (*)(lhs: f32, rhs: f32) -> f32;
+  fn compute(lhs: i32, rhs: i32, input: f32, factor: f32)
+      -> (i32, f32) {
+    sum = lhs + rhs;
+    scaled = input * factor;
+    return sum, scaled;
+  }
+}
+)",
+                    "fixed-scalars.joggle");
+  const bool fixed_linked = fixed_scalars.link();
+  const auto fixed_mod = fixed_scalars.mod("fixed_scalars");
+  const auto add = fixed_mod ? fixed_mod->fn("+") : std::nullopt;
+  const auto multiply = fixed_mod ? fixed_mod->fn("*") : std::nullopt;
+  const auto compute = fixed_mod ? fixed_mod->fn("compute") : std::nullopt;
+  if (!fixed_linked || !add || !multiply || !compute) {
+    fixed_scalars.diag().print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  fixed_scalars.bind(*add, [](std::int32_t lhs, std::int32_t rhs) {
+    return static_cast<std::int32_t>(lhs + rhs);
+  });
+  fixed_scalars.bind(*multiply,
+                     [](float lhs, float rhs) { return lhs * rhs; });
+  const auto fixed_result = fixed_scalars.run<std::tuple<std::int32_t, float>>(
+      *compute, std::int32_t{17}, std::int32_t{25}, 1.5F, 4.0F);
+  ok &= expect(fixed_result && std::get<0>(*fixed_result) == 42 &&
+                   std::get<1>(*fixed_result) == 6.0F && fixed_scalars.ok(),
+               "source fns execute through exact fixed-width C++ scalar "
+               "representations");
+
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }
