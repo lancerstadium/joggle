@@ -1,6 +1,6 @@
 # Tensor
 
-`tensor@3.0.0` is a target-independent structural calculus. It is an ordinary
+`tensor@4.0.0` is a target-independent structural calculus. It is an ordinary
 source Mod and adds no tensor node, graph owner, operation registry, or
 lowering interface to compiler core.
 
@@ -30,54 +30,55 @@ The surface expression `position[0]` is the ordinary symbolic call
 `[](position, 0)`; `0` is a compiler-time callee binding rather than an Op
 attribute.
 
-## Structural basis
+## Functional basis
 
 ```joggle
-fn build<E, S: list<int>>(
+fn map<E, S: list<int>>(
   shape: S,
   body: (coord<S>) -> E
 ) -> tensor<E, S>;
 
-fn at<E, S: list<int>>(
+fn ([])<E, S: list<int>>(
   input: tensor<E, S>,
   position: coord<S>
 ) -> E;
 
-fn ([])<E, S: list<int>>(
+fn reduce<E, S: list<int>, A>(
   input: tensor<E, S>,
-  position: coord<S>
-) -> E {
-  return at(input, position);
-}
-
-fn fold<A, S: list<int>>(
   initial: A,
-  body: (A, coord<S>) -> A,
-  shape: S
+  body: (A, E) -> A
 ) -> A;
 ```
 
-`build` defines an element for every logical coordinate. `at` reads one
-element. `fold` performs an ordered accumulation over an explicit logical
-shape. Its shape is a compiler-time argument and therefore lives on the
-specialized callee value rather than as an Op attribute. No associativity or
-reassociation permission is implicit. `input[position]` is a bodyful symbolic
-overload defined through `at`; the language core knows nothing about Tensor
-indexing.
+The domain overload `map(shape, body)` defines an element for every logical
+coordinate. `input[position]`
+reads one element. `reduce(input, initial, body)` performs a deterministic
+ordered accumulation over the Tensor elements. Its logical domain comes from
+the Tensor Type and is not repeated at the call site. No associativity or
+reassociation permission is implicit. The symbolic overload is the only
+Tensor access declaration; there is no parallel named `at` API, and the
+language core knows nothing about Tensor indexing.
 
-The bodyful `map` is derived from only `build` and `at`:
+The Tensor overload of `map` is derived from domain `map` and `[]`:
 
 ```joggle
 fn map<E, S: list<int>, R>(
   input: tensor<E, S>,
   body: (E) -> R
 ) -> tensor<R, S> {
-  return build(
+  return map(
     S,
-    (position: coord<S>) => body(at(input, position))
+    (position: coord<S>) => body(input[position])
   );
 }
 ```
+
+This is one overloaded functional algebra, not a second IR tier. Model authors
+map an existing Tensor; library authors may map a logical coordinate domain.
+Inlining exposes both as the same nested-Fn representation. `reduce` consumes
+that Tensor representation and preserves logical order; parallel reassociation
+requires separate evidence. All are ordinary fns in the same `tensor` Mod,
+and only `[]` spells element access.
 
 Typed lambdas are nested `Fn` values. Their free tensor and callback values are
 explicit capture edges, so materialization, verification, inlining, and later
@@ -91,7 +92,7 @@ emitters. Domain Mods define those conveniences by composing the calculus.
 ONNX symbols belong to `onnx`; scalar leaves belong to `arith`.
 
 Current tests prove body inspection and generic inlining for `map`, express a
-dot product as `fold + at + scalar operators`, and materialize coordinate
+dot product as `map + reduce + [] + scalar operators`, and materialize coordinate
 construction, coordinate projection, and tensor indexing as ordinary Calls.
 Execution, symbolic shapes, views, dependence-checked fusion, storage planning,
 and scheduling remain future gates rather than implied capabilities.

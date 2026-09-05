@@ -1,23 +1,23 @@
 joggle 1;
 
-mod onnx@4.0.0 {
+mod onnx@5.0.0 {
   import arith@1 as a;
   import quant@2 as q;
-  import tensor@3 as t;
+  import tensor@4 as t;
 
   fn read(input: bytes, name: string = "model") -> mod;
 
   fn product(values: list<int>) -> int {
     result = 1;
     for value in values {
-      result = @(result * value);
+      result = result * value;
     }
     return result;
   }
 
   fn normalize_axis(axis: int, rank: int) -> int {
-    if @(axis < 0) {
-      return @(axis + rank);
+    if axis < 0 {
+      return axis + rank;
     }
     return axis;
   }
@@ -31,20 +31,18 @@ mod onnx@4.0.0 {
     dilations: list<int>
   ) -> list<int> {
     kernel = kernel_shape;
-    if @(@length(kernel) == 0) {
-      kernel = [@at(weight, 2), @at(weight, 3)];
+    if length(kernel) == 0 {
+      kernel = [weight[2], weight[3]];
     }
-    height = @(
-      (@at(input, 2) + @at(pads, 0) + @at(pads, 2) -
-       @at(dilations, 0) * (@at(kernel, 0) - 1) - 1) //
-      @at(strides, 0) + 1
-    );
-    width = @(
-      (@at(input, 3) + @at(pads, 1) + @at(pads, 3) -
-       @at(dilations, 1) * (@at(kernel, 1) - 1) - 1) //
-      @at(strides, 1) + 1
-    );
-    return [@at(input, 0), @at(weight, 0), height, width];
+    height =
+      (input[2] + pads[0] + pads[2] -
+       dilations[0] * (kernel[0] - 1) - 1) //
+      strides[0] + 1;
+    width =
+      (input[3] + pads[1] + pads[3] -
+       dilations[1] * (kernel[1] - 1) - 1) //
+      strides[1] + 1;
+    return [input[0], weight[0], height, width];
   }
 
   fn pool_shape(
@@ -53,15 +51,11 @@ mod onnx@4.0.0 {
     strides: list<int>,
     pads: list<int>
   ) -> list<int> {
-    height = @(
-      (@at(input, 2) + @at(pads, 0) + @at(pads, 2) - @at(kernel, 0)) //
-      @at(strides, 0) + 1
-    );
-    width = @(
-      (@at(input, 3) + @at(pads, 1) + @at(pads, 3) - @at(kernel, 1)) //
-      @at(strides, 1) + 1
-    );
-    return [@at(input, 0), @at(input, 1), height, width];
+    height =
+      (input[2] + pads[0] + pads[2] - kernel[0]) // strides[0] + 1;
+    width =
+      (input[3] + pads[1] + pads[3] - kernel[1]) // strides[1] + 1;
+    return [input[0], input[1], height, width];
   }
 
   fn concat_shape(
@@ -69,15 +63,15 @@ mod onnx@4.0.0 {
     rhs: list<int>,
     axis: int
   ) -> list<int> {
-    rank = @length(lhs);
-    selected = @normalize_axis(axis, rank);
+    rank = length(lhs);
+    selected = normalize_axis(axis, rank);
     result: list<int> = [];
-    for position in @range(rank) {
-      extent = @at(lhs, position);
-      if @(position == selected) {
-        extent = @(extent + @at(rhs, position));
+    for position in range(rank) {
+      extent = lhs[position];
+      if position == selected {
+        extent = extent + rhs[position];
       }
-      result = @append(result, extent);
+      result = append(result, extent);
     }
     return result;
   }
@@ -87,64 +81,81 @@ mod onnx@4.0.0 {
     requested: list<int>
   ) -> list<int> {
     known = 1;
-    for position in @range(@length(requested)) {
-      extent = @at(requested, position);
-      if @(extent == 0) {
-        extent = @at(input, position);
+    for position in range(length(requested)) {
+      extent = requested[position];
+      if extent == 0 {
+        extent = input[position];
       }
-      if @(extent != -1) {
-        known = @(known * extent);
+      if extent != -1 {
+        known = known * extent;
       }
     }
-    count = @product(input);
+    count = product(input);
     result: list<int> = [];
-    for position in @range(@length(requested)) {
-      extent = @at(requested, position);
-      if @(extent == 0) {
-        extent = @at(input, position);
+    for position in range(length(requested)) {
+      extent = requested[position];
+      if extent == 0 {
+        extent = input[position];
       }
-      if @(extent == -1) {
-        extent = @(count // known);
+      if extent == -1 {
+        extent = count // known;
       }
-      result = @append(result, extent);
+      result = append(result, extent);
     }
     return result;
   }
 
   fn flatten_shape(input: list<int>, axis: int) -> list<int> {
-    selected = @normalize_axis(axis, @length(input));
+    selected = normalize_axis(axis, length(input));
     outer = 1;
     inner = 1;
-    for position in @range(@length(input)) {
-      if @(position < selected) {
-        outer = @(outer * @at(input, position));
+    for position in range(length(input)) {
+      if position < selected {
+        outer = outer * input[position];
       } else {
-        inner = @(inner * @at(input, position));
+        inner = inner * input[position];
       }
     }
     return [outer, inner];
   }
 
   fn matmul_shape(lhs: list<int>, rhs: list<int>) -> list<int> {
-    return [@at(lhs, 0), @at(rhs, 1)];
+    return [lhs[0], rhs[1]];
+  }
+
+  fn global_pool_shape(input: list<int>) -> list<int> {
+    return [input[0], input[1], 1, 1];
   }
 
   fn Constant<T>(content: string) -> T;
+
+  fn matmul_element<E, L: list<int>, R: list<int>>(
+    lhs: t.tensor<E, L>,
+    rhs: t.tensor<E, R>,
+    out: t.coord<@matmul_shape(L, R)>
+  ) -> E {
+    initial: E = a.zero();
+    products: t.tensor<E, @([L[1]])> = t.map(
+      @([L[1]]),
+      (k: t.coord<@([L[1]])>) -> E =>
+        lhs[t.coord(L, out[0], k[0])] *
+        rhs[t.coord(R, k[0], out[1])]
+    );
+    return t.reduce(
+      products,
+      initial,
+      (sum: E, value: E) -> E => sum + value
+    );
+  }
 
   fn MatMul<E, L: list<int>, R: list<int>>(
     lhs: t.tensor<E, L>,
     rhs: t.tensor<E, R>
   ) -> t.tensor<E, @matmul_shape(L, R)> {
-    initial: E = a.zero();
-    return t.build(
+    return t.map(
       @matmul_shape(L, R),
-      (out: t.coord<[@at(L, 0), @at(R, 1)]>) -> E => t.fold(
-        initial,
-        (sum: E, k: t.coord<[@at(L, 1)]>) =>
-          sum + lhs[t.coord(L, out[0], k[0])] *
-                rhs[t.coord(R, k[0], out[1])],
-        [@at(L, 1)]
-      )
+      (out: t.coord<@matmul_shape(L, R)>) -> E =>
+        matmul_element(lhs, rhs, out)
     );
   }
 
@@ -220,7 +231,7 @@ mod onnx@4.0.0 {
 
   fn GlobalAveragePool<E, X: list<int>>(
     input: t.tensor<E, X>
-  ) -> t.tensor<E, [@at(X, 0), @at(X, 1), 1, 1]>;
+  ) -> t.tensor<E, @global_pool_shape(X)>;
 
   fn Concat<E, L: list<int>, R: list<int>, A: int>(
     lhs: t.tensor<E, L>,

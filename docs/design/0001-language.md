@@ -109,12 +109,12 @@ an earlier gate.
    Types and CFG equations remain planned. See Design 0003.**
 7. Tensor calculus: define a small bodyful construction/access/reduction
    vocabulary outside the core. **In progress; static Tensor and coordinate
-   Types, coordinate construction/projection, `build`, `at`, `fold`, indexing,
-   and bodyful `map` are implemented. See Design 0004.**
+   Types, coordinate construction/projection, overloaded `map`, ordered `reduce`,
+   and one `[]` access are implemented. See Design 0004.**
 8. High-level tensor definitions: express Relu, Conv, GEMM, and similar
    operations in that calculus rather than compiler name cases. **Planned.**
-9. Generic transformation: concrete `map(build(S, f), g)` and
-   `at(build(S, f), p)` equations now fuse by structure; Type-polymorphic rules
+9. Generic transformation: concrete `map(map(S, f), g)` and
+   `map(S, f)[p]` equations now fuse by structure; Type-polymorphic rules
    and reduction dependence remain planned. **In progress.**
 10. ONNX validation: import unmodified models into bodyful definitions and
     validate transformed results against a trusted runtime. **Planned.**

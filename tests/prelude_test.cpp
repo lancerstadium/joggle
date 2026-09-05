@@ -78,6 +78,12 @@ mod native_test@1.0.0 {
   const auto u32 = compiler.make("u32");
   const auto f32 = compiler.make("f32");
   const auto embedded_prelude = compiler.mod("prelude");
+  const auto list_subscripts =
+      embedded_prelude ? embedded_prelude->overloads("[]")
+                       : std::vector<joggle::Mod::FnDecl>{};
+  const auto legacy_at =
+      embedded_prelude ? embedded_prelude->overloads("at")
+                       : std::vector<joggle::Mod::FnDecl>{};
   const auto list_schema =
       embedded_prelude ? embedded_prelude->type("list") : std::nullopt;
   const auto effect_schema =
@@ -113,6 +119,7 @@ mod native_test@1.0.0 {
                "the installed Prelude source is the embedded authority");
   ok &= expect(
       i32 && u32 && f32 && integer_value_type && type_value_type &&
+          list_subscripts.size() == 5U && legacy_at.empty() &&
           integer_list && memory_effect &&
           integer_value_type->schema().symbol().qualified_name() ==
               "prelude.int" &&
@@ -169,7 +176,7 @@ mod primitive_test@1.0.0 {
 
   fn identity<T>(input: T) -> T;
 
-  fn fold<S: list<int>>(values: S) -> int {
+  fn sum_selected<S: list<int>>(values: S) -> int {
     total = 0;
     for value in S {
       if value > 0 && value != 2 {
@@ -202,7 +209,7 @@ mod primitive_test@1.0.0 {
   fn reverse(values: list<int>) -> list<int> {
     result: list<int> = [];
     for index in range(length(values)) {
-      result = append(result, at(values, length(values) - index - 1));
+      result = append(result, values[length(values) - index - 1]);
     }
     return result;
   }
@@ -210,7 +217,7 @@ mod primitive_test@1.0.0 {
   fn reverse_types(values: list<type>) -> list<type> {
     result: list<type> = [];
     for index in range(length(values)) {
-      result = append(result, at(values, length(values) - index - 1));
+      result = append(result, values[length(values) - index - 1]);
     }
     return result;
   }
@@ -230,10 +237,11 @@ mod primitive_test@1.0.0 {
 )",
                  "primitive-test.joggle");
   const bool primitives_linked = primitives.link();
-  const auto folded =
+  const auto summed =
       primitives_linked
           ? primitives.run<std::int64_t>(
-                "primitive_test.fold", std::vector<std::int64_t>{0, 1, 2, 3, 8})
+                "primitive_test.sum_selected",
+                std::vector<std::int64_t>{0, 1, 2, 3, 8})
           : std::nullopt;
   const auto predicate =
       primitives_linked ? primitives.run<bool>("primitive_test.predicate",
@@ -283,7 +291,7 @@ mod primitive_test@1.0.0 {
                             ? primitives.materialize(*unroll_decl, {*count})
                             : std::nullopt;
   ok &= expect(
-      primitives_linked && folded == std::optional<std::int64_t>{7} &&
+      primitives_linked && summed == std::optional<std::int64_t>{7} &&
           predicate == std::optional<bool>{true} &&
           real_math == std::optional<double>{4.0} && ascending &&
           *ascending == std::vector<std::int64_t>({0, 1, 2, 3}) && descending &&
@@ -447,7 +455,7 @@ mod bounded_range@1.0.0 {
 joggle 1;
 mod invalid_list@1.0.0 {
   fn out_of_bounds() -> int {
-    return at([4, 8], 2);
+    return [4, 8][2];
   }
 }
 )",

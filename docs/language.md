@@ -171,7 +171,7 @@ is stored as a compile-time binding and only `position` becomes an SSA operand.
 fn sum(input: tensor<i32, [4]>) -> i32 {
   total: i32 = 0;
   for i in range(4) {
-    total = total + at(input, i);
+    total = total + input[i];
   }
   if total < 0 {
     return -total;
@@ -197,6 +197,12 @@ output = run_time_op(value);
 program computation even when all of its operands are Known. A call that
 produces a compiler-domain result without `@` is rejected instead of being
 silently executed.
+
+The marker belongs at the boundary. The body of a fn already invoked through
+`@` is compiler computation and does not repeat `@` on its arithmetic, control,
+or list subscripts. Thus a residual declaration may use
+`@flatten_shape(S, A)`, while `flatten_shape` itself writes `S[i]`, not
+`@(S[i])`.
 
 A lambda may state its result when the surrounding call cannot infer it:
 

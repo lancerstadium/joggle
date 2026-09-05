@@ -125,8 +125,8 @@ int main(int argc, char** argv) {
   structural.add(R"(
 joggle 1;
 mod matmul_use@1.0.0 {
-  import onnx@4 as o;
-  import tensor@3 as t;
+  import onnx@5 as o;
+  import tensor@4 as t;
 
   fn main(
     lhs: t.tensor<f32, [2, 4]>,
@@ -148,14 +148,23 @@ mod matmul_use@1.0.0 {
                           : std::optional<joggle::Fn>{};
   const auto matmul_ops = matmul ? matmul->ops() : std::vector<joggle::Op>{};
   const auto output_body =
-      matmul_ops.size() == 2U
-          ? matmul_ops.back().arguments().front().inline_fn()
+      matmul_ops.size() == 1U && matmul_ops.front().arguments().size() == 1U
+          ? matmul_ops.front().arguments().front().inline_fn()
           : std::optional<joggle::Fn>{};
   const auto output_ops =
       output_body ? output_body->ops() : std::vector<joggle::Op>{};
+  const auto element = output_ops.size() == 1U
+                           ? structural.materialize(output_ops.front())
+                           : std::optional<joggle::Fn>{};
+  const auto element_ops =
+      element ? element->ops() : std::vector<joggle::Op>{};
+  const auto product_body =
+      element_ops.size() == 3U && element_ops[1].arguments().size() == 1U
+          ? element_ops[1].arguments().front().inline_fn()
+          : std::optional<joggle::Fn>{};
   const auto reduction_body =
-      output_ops.size() == 1U && output_ops.front().arguments().size() == 2U
-          ? output_ops.front().arguments()[1].inline_fn()
+      element_ops.size() == 3U && element_ops[2].arguments().size() == 3U
+          ? element_ops[2].arguments()[2].inline_fn()
           : std::optional<joggle::Fn>{};
   if (!matmul) {
     structural.diag().print(std::cerr);
@@ -163,14 +172,21 @@ mod matmul_use@1.0.0 {
   ok &= expect(
       matmul_user && matmul_user_ops.size() == 1U &&
           callee_name(matmul_user_ops.front()) == "MatMul" && matmul &&
-          matmul_ops.size() == 2U &&
-          callee_name(matmul_ops.front()) == "zero" &&
-          callee_name(matmul_ops.back()) == "build" && output_body &&
+          matmul_ops.size() == 1U &&
+          callee_name(matmul_ops.front()) == "map" && output_body &&
           output_ops.size() == 1U &&
-          callee_name(output_ops.front()) == "fold" && reduction_body &&
-          reduction_body->ops().size() == 10U && structural.verify(*matmul) &&
-          structural.verify(*output_body) && structural.verify(*reduction_body),
-      "ONNX MatMul expands to a real build/fold/index/arithmetic Fn body");
+          callee_name(output_ops.front()) == "matmul_element" && element &&
+          element_ops.size() == 3U &&
+          callee_name(element_ops[0]) == "zero" &&
+          callee_name(element_ops[1]) == "map" &&
+          callee_name(element_ops[2]) == "reduce" && product_body &&
+          product_body->ops().size() == 9U && reduction_body &&
+          reduction_body->ops().size() == 1U &&
+          callee_name(reduction_body->ops().front()) == "+" &&
+          structural.verify(*matmul) && structural.verify(*output_body) &&
+          structural.verify(*element) && structural.verify(*product_body) &&
+          structural.verify(*reduction_body),
+      "ONNX MatMul expands to a real map/reduce/index/arithmetic Fn body");
 
   if (argc == 8) {
     return ok ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -355,25 +371,25 @@ mod matmul_use@1.0.0 {
   const auto exposed = compiler.run<joggle::Mod>("transform.inline", *inlined);
   const auto exposed_main = exposed ? exposed->fn("main") : std::nullopt;
   const auto* exposed_body = exposed_main ? exposed_main->body() : nullptr;
-  std::size_t builds = 0;
+  std::size_t domain_maps = 0;
   bool captures_composition = true;
   if (exposed_body) {
     for (const auto& op : exposed_body->ops()) {
       const auto declaration = op.callee().referenced_fn();
       if (!declaration || declaration->symbol().mod_name() != "tensor" ||
-          declaration->name() != "build") {
+          declaration->name() != "map") {
         continue;
       }
-      ++builds;
+      ++domain_maps;
       const auto arguments = op.arguments();
       captures_composition &= arguments.size() == 1U &&
                               arguments.front().inline_fn().has_value() &&
                               arguments.front().captures().size() == 2U;
     }
   }
-  ok &= expect(exposed_body && builds == relus && captures_composition &&
+  ok &= expect(exposed_body && domain_maps == relus && captures_composition &&
                    compiler.verify(*exposed),
-               "a second generic expansion exposes build/at composition");
+               "a second generic expansion exposes domain-map/subscript composition");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

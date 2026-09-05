@@ -68,5 +68,6 @@ fn optimize(input: fn) -> fn {
 These are library fns, not language keywords. Dead-expression cleanup is part
 of the equation transaction. Every transformation uses Types, def-use,
 dominance, closure captures, and effect tokens for legality. Tensor libraries
-state algebraic laws in terms of `build`, `at`, `fold`, and higher-order
-composition; they do not match Conv, Relu, GEMM, or imported operator names.
+state algebraic laws in terms of overloaded `map`, `[]`, ordered `reduce`, and
+higher-order composition; they do not match Conv, Relu, GEMM, or imported
+operator names.

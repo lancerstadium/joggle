@@ -28,15 +28,14 @@ The implementation currently demonstrates:
 4. typed lambdas are ordinary anonymous Fns rather than a pattern AST;
 5. Residual captures are explicit dependency edges and hidden typed body
    arguments, while effect tokens cannot be captured;
-6. `tensor@3` provides coordinate construction/projection, explicit-domain
-   `build`, `at`,
-   ordered `fold`, bodyful indexing, and bodyful `map`; a dot product is
-   expressed by their composition plus scalar overloads, while `p[i]` and
+6. `tensor@4` provides coordinate construction/projection, explicit-domain
+   overloaded domain/Tensor `map`, overloaded `[]`, and ordered `reduce`; a dot
+   product is expressed by their composition plus scalar overloads, while `p[i]` and
    `tensor[p]` remain ordinary overloaded Calls;
 7. those bodies materialize, expose nested element and update Fns, invoke
    arbitrary callable parameters, and pass the ordinary verifier;
 8. the same name-independent Mod transform expands all 26 ONNX Relu calls in
-   the pinned, unmodified SqueezeNet graph first to `map` and then to `build`
+   the pinned, unmodified SqueezeNet graph first to Tensor-map and then to domain-map
    plus captured element Fns; existing nested bodies participate in the same
    recursive inliner, and value replacement rewires their capture edges;
 9. ONNX nodes bind generically against source fn signatures, declaration
@@ -45,14 +44,14 @@ The implementation currently demonstrates:
 10. `transform.pass` accepts ordinary concrete typed lambdas as an equation,
     matches declaration identity and dataflow rather than names, recurses into
     callable bodies, rejects effects, and demonstrates both
-    `map(build(S, f), g)` composition and `at(build(S, f), p)` cancellation;
+    `map(map(S, f), g)` composition and `map(S, f)[p]` cancellation;
 11. Mod bundles preserve and verify imported data through public `check`,
    `run`, `install`, and `lock` workflows; and
 12. source resolution constructs deterministic concrete instances while
    preserving bodyless calls as an explicit leaf set.
 
 Most compute-heavy ONNX operators and the independent quantized semantics
-remain opaque. Rank-two MatMul now has a verified nested `build/fold/index`
+remain opaque. Rank-two MatMul now has a verified nested `map/reduce/index`
 body, but Conv, batched MatMul, polymorphic rewrite Types, generic model fusion,
 symbolic shapes, emission, and performance evidence are unfinished.
 The ONNX result establishes

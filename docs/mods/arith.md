@@ -16,5 +16,5 @@ The zero-argument overload obtains `T` from its expected result Type, while the
 one-argument overload obtains it from a residual exemplar. These generic
 declarations make the current tensor-calculus slice independent of one fixed
 scalar format. A format Mod may provide more specific overloads.
-Algebraic laws such as reassociation are not implied: `fold` remains ordered
+Algebraic laws such as reassociation are not implied: `reduce` remains ordered
 unless a later transformation has enough evidence to change it safely.

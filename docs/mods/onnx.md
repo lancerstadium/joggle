@@ -1,6 +1,6 @@
 # ONNX
 
-`onnx@4.0.0` is an optional source Mod with one native file decoder. It turns
+`onnx@5.0.0` is an optional source Mod with one native file decoder. It turns
 an ONNX model into an ordinary Joggle `Mod`; it does not add a frontend class,
 ONNX Op hierarchy, graph container, or lowering level to compiler core.
 
@@ -8,7 +8,7 @@ ONNX Op hierarchy, graph container, or lowering level to compiler core.
 joggle 1;
 
 mod pipeline@1.0.0 {
-  import onnx@4;
+  import onnx@5;
 
   fn load(input: bytes) -> mod {
     return @onnx.read(input, "squeezenet");
@@ -16,7 +16,7 @@ mod pipeline@1.0.0 {
 }
 ```
 
-The ONNX source Mod imports `arith@1`, `tensor@3`, and `quant@2`. Callers must
+The ONNX source Mod imports `arith@1`, `tensor@4`, and `quant@2`. Callers must
 therefore load those dependencies before linking. An imported model records
 only the Mods referenced directly by its Fn.
 
@@ -33,7 +33,8 @@ each node it:
 
 There is no `op_type` dispatch chain and no native shape formula. Shape
 functions such as `conv_shape`, `reshape_shape`, and `flatten_shape` are
-ordinary explicitly staged source fns in `mods/onnx/mod.joggle`. Adding a node
+ordinary compiler fns in `mods/onnx/mod.joggle`; their callers mark the single
+Residual-to-compiler boundary with `@`. Adding a node
 kind normally means adding a source fn declaration or body; the decoder changes
 only when the serialized ONNX boundary itself gains a new representation.
 
@@ -57,7 +58,7 @@ runtime inputs. Intermediate metadata and graph outputs are checked against
 the Types inferred from the source signatures.
 
 This is a verified vertical slice, not a claim of general ONNX coverage. A
-rank-two `MatMul` now has a real `build + fold + indexing + scalar arithmetic`
+rank-two `MatMul` now has a real `map + reduce + indexing + scalar arithmetic`
 body. `Relu`, `Dropout`, and the QDQ wrappers are also bodyful. Conv, Pool,
 Concat, Reshape, Flatten, batched/broadcast MatMul, and Softmax remain semantic
 leaves or unsupported shapes and still need tensor-calculus bodies before
@@ -111,8 +112,9 @@ semantics. The imported model consequently records `onnx` and `tensor` as
 direct dependencies while `quant` remains transitive through `onnx`.
 
 A separate structural test specializes the generic rank-two `MatMul` at
-`f32[2,4] x f32[4,3]`. Its materialized body contains an output `build`, a
-K-domain `fold`, coordinate construction/projection, two indexed reads, and
+`f32[2,4] x f32[4,3]`. Its materialized body contains an output domain `map`, a
+K-domain `map`, ordered Tensor `reduce`, coordinate construction/projection,
+two indexed reads, and
 ordinary scalar `*`/`+` calls. Both nested lambdas are verified Fns. This proves
 body visibility and generic lexical specialization, not numerical execution or
 the full ONNX broadcasting contract.

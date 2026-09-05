@@ -18,7 +18,7 @@ constexpr std::string_view source = R"(
 joggle 1;
 
 mod qdq@1.0.0 {
-  import tensor@3 as t;
+  import tensor@4 as t;
   import quant@2 as q;
 
   fn roundtrip(

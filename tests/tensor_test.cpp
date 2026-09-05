@@ -16,7 +16,7 @@ joggle 1;
 
 mod tensor_use@1.0.0 {
   import arith@1 as a;
-  import tensor@3 as t;
+  import tensor@4 as t;
 
   fn twice(
     input: t.tensor<f32, [4]>
@@ -29,11 +29,14 @@ mod tensor_use@1.0.0 {
     rhs: t.tensor<f32, [4]>,
     initial: f32
   ) -> f32 {
-    return t.fold(
+    products: t.tensor<f32, [4]> = t.map(
+      [4],
+      (position: t.coord<[4]>) => lhs[position] * rhs[position]
+    );
+    return t.reduce(
+      products,
       initial,
-      (sum: f32, position: t.coord<[4]>) =>
-        sum + t.at(lhs, position) * t.at(rhs, position),
-      shape: [4]
+      (sum: f32, value: f32) -> f32 => sum + value
     );
   }
 
@@ -56,20 +59,32 @@ mod tensor_use@1.0.0 {
     return a.zero();
   }
 
+  fn matmul_element(
+    lhs: t.tensor<f32, [2, 4]>,
+    rhs: t.tensor<f32, [4, 3]>,
+    out: t.coord<[2, 3]>
+  ) -> f32 {
+    initial: f32 = a.zero();
+    products: t.tensor<f32, [4]> = t.map(
+      [4],
+      (k: t.coord<[4]>) -> f32 =>
+        lhs[t.coord([2, 4], out[0], k[0])] *
+        rhs[t.coord([4, 3], k[0], out[1])]
+    );
+    return t.reduce(
+      products,
+      initial,
+      (sum: f32, value: f32) -> f32 => sum + value
+    );
+  }
+
   fn matmul(
     lhs: t.tensor<f32, [2, 4]>,
     rhs: t.tensor<f32, [4, 3]>
   ) -> t.tensor<f32, [2, 3]> {
-    initial: f32 = a.zero();
-    return t.build(
+    return t.map(
       [2, 3],
-      (out: t.coord<[2, 3]>) => t.fold(
-        initial,
-        (sum: f32, k: t.coord<[4]>) =>
-          sum + lhs[t.coord([2, 4], out[0], k[0])] *
-                rhs[t.coord([4, 3], k[0], out[1])],
-        [4]
-      )
+      (out: t.coord<[2, 3]>) -> f32 => matmul_element(lhs, rhs, out)
     );
   }
 }
@@ -136,8 +151,8 @@ int main() {
 
   bool ok = true;
   const auto members = tensor_mod->fns();
-  const std::vector<std::string> expected{"coord", "[]",   "build", "at",
-                                          "[]",    "fold", "map"};
+  const std::vector<std::string> expected{"coord", "[]", "map",
+                                          "[]",    "reduce", "map"};
   std::vector<std::string> names;
   names.reserve(members.size());
   for (const auto& member : members) {
@@ -180,25 +195,41 @@ int main() {
 
   const auto matmul_ops = matmul ? matmul->ops() : std::vector<joggle::Op>{};
   const auto output_body =
-      matmul_ops.size() == 2U
-          ? matmul_ops.back().arguments().front().inline_fn()
+      matmul_ops.size() == 1U && matmul_ops.front().arguments().size() == 1U
+          ? matmul_ops.front().arguments().front().inline_fn()
           : std::optional<joggle::Fn>{};
   const auto output_ops =
       output_body ? output_body->ops() : std::vector<joggle::Op>{};
+  const auto element = output_ops.size() == 1U
+                           ? compiler.materialize(output_ops.front())
+                           : std::optional<joggle::Fn>{};
+  const auto element_ops =
+      element ? element->ops() : std::vector<joggle::Op>{};
+  const auto product_body =
+      element_ops.size() == 3U && element_ops[1].arguments().size() == 1U
+          ? element_ops[1].arguments().front().inline_fn()
+          : std::optional<joggle::Fn>{};
   const auto reduction_body =
-      output_ops.size() == 1U && output_ops.front().arguments().size() == 2U
-          ? output_ops.front().arguments()[1].inline_fn()
+      element_ops.size() == 3U && element_ops[2].arguments().size() == 3U
+          ? element_ops[2].arguments()[2].inline_fn()
           : std::optional<joggle::Fn>{};
   ok &= expect(
-      matmul && matmul_ops.size() == 2U &&
-          callee_name(matmul_ops.front()) == "zero" &&
-          callee_name(matmul_ops.back()) == "build" && output_body &&
+      matmul && matmul_ops.size() == 1U &&
+          callee_name(matmul_ops.front()) == "map" && output_body &&
           output_ops.size() == 1U &&
-          callee_name(output_ops.front()) == "fold" && reduction_body &&
-          reduction_body->ops().size() == 10U && compiler.verify(*matmul) &&
-          compiler.verify(*output_body) && compiler.verify(*reduction_body),
+          callee_name(output_ops.front()) == "matmul_element" && element &&
+          element_ops.size() == 3U &&
+          callee_name(element_ops[0]) == "zero" &&
+          callee_name(element_ops[1]) == "map" &&
+          callee_name(element_ops[2]) == "reduce" && product_body &&
+          product_body->ops().size() == 9U && reduction_body &&
+          reduction_body->ops().size() == 1U &&
+          callee_name(reduction_body->ops().front()) == "+" &&
+          compiler.verify(*matmul) && compiler.verify(*output_body) &&
+          compiler.verify(*element) && compiler.verify(*product_body) &&
+          compiler.verify(*reduction_body),
       "a MatMul body exposes output construction, reduction, indexing, and "
-      "scalar arithmetic as nested Fns");
+          "scalar arithmetic as nested Fns");
 
   const auto twice_ops = twice->ops();
   const auto map = twice_ops.size() == 1U
@@ -215,41 +246,52 @@ int main() {
       twice_ops.size() == 1U && callee_name(twice_ops.front()) == "map" &&
           twice_ops.front().arguments().size() == 2U &&
           twice_ops.front().arguments()[1].inline_fn() && map &&
-          map_ops.size() == 1U && callee_name(map_ops.front()) == "build" &&
+          map_ops.size() == 1U && callee_name(map_ops.front()) == "map" &&
           builder && builder->captures().size() == 2U && builder_body &&
           builder_body->ops().size() == 2U &&
-          callee_name(builder_body->ops().front()) == "at" &&
+          callee_name(builder_body->ops().front()) == "[]" &&
           !builder_body->ops().back().callee().referenced_fn() &&
           compiler.verify(*twice) && compiler.verify(*map) &&
           compiler.verify(*builder_body),
-      "map is a real higher-order body over build and at");
+      "tensor map expands to a domain map and subscript");
 
   const auto dot_ops = dot->ops();
+  const auto product =
+      dot_ops.size() == 2U && dot_ops.front().arguments().size() == 1U
+          ? std::optional<joggle::Val>{dot_ops.front().arguments().front()}
+          : std::optional<joggle::Val>{};
+  const auto products =
+      product ? product->inline_fn() : std::optional<joggle::Fn>{};
+  const auto product_ops =
+      products ? products->ops() : std::vector<joggle::Op>{};
   const auto update =
-      dot_ops.size() == 1U && dot_ops.front().arguments().size() == 2U
-          ? std::optional<joggle::Val>{dot_ops.front().arguments()[1]}
+      dot_ops.size() == 2U && dot_ops.back().arguments().size() == 3U
+          ? std::optional<joggle::Val>{dot_ops.back().arguments()[2]}
           : std::optional<joggle::Val>{};
   const auto update_body =
       update ? update->inline_fn() : std::optional<joggle::Fn>{};
   const auto update_ops =
       update_body ? update_body->ops() : std::vector<joggle::Op>{};
   ok &= expect(
-      dot_ops.size() == 1U && callee_name(dot_ops.front()) == "fold" &&
-          update && update->captures().size() == 2U && update_body &&
-          update_body->arguments().size() == 4U && update_ops.size() == 4U &&
-          callee_name(update_ops[0]) == "at" &&
-          callee_name(update_ops[1]) == "at" &&
-          callee_name(update_ops[2]) == "*" &&
-          callee_name(update_ops[3]) == "+" && compiler.verify(*dot) &&
-          compiler.verify(*update_body),
-      "dot composes fold, indexed reads, scalar overloads, and captures");
+      dot_ops.size() == 2U && callee_name(dot_ops.front()) == "map" &&
+          callee_name(dot_ops.back()) == "reduce" && products &&
+          product && product->captures().size() == 2U &&
+          products->arguments().size() == 3U && product_ops.size() == 3U &&
+          callee_name(product_ops[0]) == "[]" &&
+          callee_name(product_ops[1]) == "[]" &&
+          callee_name(product_ops[2]) == "*" && update &&
+          update->captures().empty() && update_body &&
+          update_body->arguments().size() == 2U && update_ops.size() == 1U &&
+          callee_name(update_ops.front()) == "+" && compiler.verify(*dot) &&
+          compiler.verify(*products) && compiler.verify(*update_body),
+      "dot composes map, indexed reads, scalar overloads, and reduce");
 
   joggle::Fn expanded = *twice;
   joggle::Diag diagnostics;
   const auto changed = joggle::inline_calls(compiler, expanded, diagnostics);
   ok &= expect(changed == std::optional<std::size_t>{1U} && diagnostics.ok() &&
-                   expanded.ops().size() == 1U &&
-                   callee_name(expanded.ops().front()) == "build" &&
+               expanded.ops().size() == 1U &&
+                   callee_name(expanded.ops().front()) == "map" &&
                    compiler.verify(expanded),
                "generic inlining exposes map without recognizing its name");
 
@@ -260,7 +302,7 @@ int main() {
   roundtrip.add(*use_mod);
   roundtrip.add("joggle 1;\nmod artifact@1.0.0 {\n"
                 "  import arith@1;\n"
-                "  import tensor@3;\n"
+                "  import tensor@4;\n"
                 "  import tensor_use@1;\n" +
                     canonical + "}\n",
                 "artifact.joggle");

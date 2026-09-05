@@ -27,6 +27,24 @@ An ordinary call denotes computation that remains in the program.
 This distinction is enforced during materialization. Known operands never
 cause an ordinary program call to invoke a host binding.
 
+`@` marks a stage boundary, not every operation performed after crossing it.
+Once a compiler fn is executing, its body already runs at the compiler stage:
+
+```joggle
+fn flatten_shape(input: list<int>, axis: int) -> list<int> {
+  // No nested @ markers: these are ordinary operations in a compiler fn.
+  return [input[0], input[axis]];
+}
+
+fn Flatten<E, S: list<int>, A: int>(input: tensor<E, S>, axis: A)
+    -> tensor<E, @flatten_shape(S, A)>;
+```
+
+The caller writes the single `@flatten_shape(...)` that crosses from a
+Residual Type expression into compiler evaluation. List, Tensor, coordinate,
+or user-defined indexing all use the same `[]` spelling; `@(shape[i])` is only
+needed when that individual access itself is the boundary.
+
 ## Native binding
 
 Host-only work such as parsing ONNX or writing an object file is declared in

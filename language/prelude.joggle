@@ -1,6 +1,6 @@
 joggle 1;
 
-mod prelude@4.0.0 {
+mod prelude@5.0.0 {
   type type();
   type int();
   type real();
@@ -100,11 +100,11 @@ mod prelude@4.0.0 {
   fn length(values: list<bool>) -> int;
   fn length(values: list<string>) -> int;
   fn length(values: list<type>) -> int;
-  fn at(values: list<int>, index: int) -> int;
-  fn at(values: list<real>, index: int) -> real;
-  fn at(values: list<bool>, index: int) -> bool;
-  fn at(values: list<string>, index: int) -> string;
-  fn at(values: list<type>, index: int) -> type;
+  fn ([])(values: list<int>, index: int) -> int;
+  fn ([])(values: list<real>, index: int) -> real;
+  fn ([])(values: list<bool>, index: int) -> bool;
+  fn ([])(values: list<string>, index: int) -> string;
+  fn ([])(values: list<type>, index: int) -> type;
   fn append(values: list<int>, value: int) -> list<int>;
   fn append(values: list<real>, value: real) -> list<real>;
   fn append(values: list<bool>, value: bool) -> list<bool>;

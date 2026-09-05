@@ -80,8 +80,8 @@ right body is cloned before the matched root; generic dead-expression removal
 then deletes unreachable producers. The same traversal enters existing lambda
 bodies and publishes changed closures through their capture edges.
 
-This already expresses concrete `map(build(S, f), g)` composition and
-`at(build(S, f), p) = f(p)` cancellation. It is not yet shape-polymorphic:
+This already expresses concrete `map(map(S, f), g)` composition and
+`map(S, f)[p] = f(p)` cancellation. It is not yet shape-polymorphic:
 generic lambda parameters and Type-variable unification are the next language
 gate, rather than a family of C++ Tensor cases.
 

@@ -176,13 +176,13 @@ their host boundaries; model and kernel Ops do not. See
 
 The implemented path includes the core language, editable Fn IR, explicit
 staging, typed anonymous Fns, explicit closure captures, recursive
-single-block inlining, and pure concrete typed-equation passes. `tensor@3`
-defines only `build`, `at`, `fold`, and
-bodyful `map`. ONNX owns its operator vocabulary; its Relu definition expands
-first to `map` and then to `build` while remapping nested closures. The pinned
+single-block inlining, and pure concrete typed-equation passes. `tensor@4`
+defines only overloaded `map`, overloaded `[]`, and ordered `reduce`. ONNX owns
+its operator vocabulary; its Relu definition expands from Tensor-map to
+domain-map while remapping nested closures. The pinned
 SqueezeNet test exercises this path for all 26 imported Relu calls. Concrete
-tests compose `map(build(S, f), g)` into one producer lambda and cancel
-`at(build(S, f), p)` inside an existing nested body.
+tests compose `map(map(S, f), g)` into one producer lambda and cancel
+`map(S, f)[p]` inside an existing nested body.
 
 Execution semantics for the structural basis, Type-polymorphic equations,
 multi-block inlining, and dependence-checked reduction transforms remain

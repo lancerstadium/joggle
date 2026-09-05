@@ -18,7 +18,7 @@ set(lock "${JOGGLE_BUNDLE_TEST_DIR}/joggle.lock")
 file(WRITE "${driver}" "joggle 1;
 
 mod onnx_bundle_test@1.0.0 {
-  import onnx@4;
+  import onnx@5;
   fn read(input: bytes) -> mod {
     return @onnx.read(input, \"${JOGGLE_MODEL_NAME}\");
   }
@@ -86,8 +86,8 @@ expect_success("lock installed identity bundle"
 file(READ "${lock}" lock_text)
 string(FIND "${lock_text}" "root ${JOGGLE_MODEL_NAME}@1.0.0#" root_position)
 string(FIND "${lock_text}" "mod arith@1.1.0#" arith_position)
-string(FIND "${lock_text}" "mod tensor@3.0.0#" tensor_position)
-string(FIND "${lock_text}" "mod onnx@4.0.0#" onnx_position)
+string(FIND "${lock_text}" "mod tensor@4.0.0#" tensor_position)
+string(FIND "${lock_text}" "mod onnx@5.0.0#" onnx_position)
 string(FIND "${lock_text}" "mod quant@2.0.0#" quant_position)
 if(root_position EQUAL -1 OR arith_position EQUAL -1 OR
    tensor_position EQUAL -1 OR onnx_position EQUAL -1 OR

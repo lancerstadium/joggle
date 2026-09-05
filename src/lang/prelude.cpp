@@ -148,7 +148,7 @@ bool primitive_name(std::string_view name) {
       std::string_view{"||"},    std::string_view{"ceildiv"},
       std::string_view{"min"},   std::string_view{"max"},
       std::string_view{"range"}, std::string_view{"length"},
-      std::string_view{"at"},    std::string_view{"append"},
+      std::string_view{"[]"},    std::string_view{"append"},
   };
   return std::find(names.begin(), names.end(), name) != names.end();
 }
@@ -231,12 +231,12 @@ std::optional<ParamVal> evaluate_prelude_primitive(
     }
     return ParamVal(static_cast<std::int64_t>(size));
   }
-  if (name == "at") {
+  if (name == "[]") {
     const auto* index =
         arguments.size() == 2U ? arguments[1].as_i64() : nullptr;
     if (arguments.size() != 2U || arguments[0].kind() != ParamVal::Kind::List ||
         index == nullptr) {
-      return fail("Prelude at expects a list and an int index");
+      return fail("list subscript expects a list and an int index");
     }
     const auto elements = arguments[0].elements();
     if (*index < 0 || static_cast<std::uint64_t>(*index) >= elements.size()) {
