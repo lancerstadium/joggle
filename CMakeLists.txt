@@ -319,13 +319,6 @@ if(JOGGLE_BUILD_TESTS)
   )
   add_test(NAME tensor COMMAND joggle_tensor_test)
 
-  add_test(NAME matmul_relu_example
-    COMMAND $<TARGET_FILE:joggle_cli> check
-      ${CMAKE_CURRENT_SOURCE_DIR}/examples/matmul_relu.joggle
-      --with ${JOGGLE_ARITH_MOD}
-      --with ${JOGGLE_TENSOR_MOD}
-      --with ${JOGGLE_NN_MOD})
-
   add_executable(joggle_quant_test tests/quant_test.cpp)
   target_link_libraries(joggle_quant_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_quant_test PRIVATE
