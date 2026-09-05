@@ -95,7 +95,7 @@ std::string instance_name(const Mod::Symbol& schema,
 
 bool detail::matches_parameter(const Mod::ParamDecl& schema,
                                const ParamVal& value) {
-  const auto domain = kernel_domain(schema.domain);
+  const auto domain = compiler_domain(schema.domain);
   if (!domain) {
     return false;
   }
@@ -123,7 +123,7 @@ detail::parameter_default(const Mod::ParamDecl& schema) {
   if (!schema.default_value) {
     return std::nullopt;
   }
-  const auto domain = kernel_domain(schema.domain);
+  const auto domain = compiler_domain(schema.domain);
   if (!domain) {
     return std::nullopt;
   }

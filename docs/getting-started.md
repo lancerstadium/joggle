@@ -1,10 +1,9 @@
 # Getting started
 
-This guide defines a small Mod and transforms its real Fn body with an ordinary
-generic equation. Joggle generates no declaration header; `.joggle` source is
-the schema and package authority.
+This guide runs the implemented MatMul–Relu path. It demonstrates a normal NN
+composition rather than a declaration-only or synthetic rewrite fixture.
 
-## 1. Build
+## Build
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -12,134 +11,95 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-An installed consumer uses `find_package(Joggle CONFIG REQUIRED)`.
+The tensor package has a native compiler-time implementation at
+`build/mods/tensor/native` with the platform library suffix.
 
-## 2. Define a Mod
+## Define the model
 
-Create `example.joggle`:
+Create `model.joggle`:
 
 ```joggle
 joggle 1;
 
-mod example@1.0.0 {
-  import transform@3 as tr;
+mod model@1.0.0 {
+  import nn@2 as n;
+  import tensor@7 as t;
 
-  type word(width: int);
-
-  fn keep<T>(input: T) -> T;
-  fn replacement<T>(input: T) -> T;
-
-  fn replace<W: int>(value: word<W>) -> (word<W>, word<W>) {
-    return keep(value), replacement(value);
-  }
-
-  fn rewrite(input: fn) -> fn {
-    return @tr.pass(input, example);
-  }
-
-  fn main(input: word<8>) -> word<8> {
-    return keep(input);
+  fn main(
+    lhs: t.tensor<f32, [2, 4]>,
+    rhs: t.tensor<f32, [4, 3]>
+  ) -> t.tensor<f32, [2, 3]> {
+    product = n.matmul(lhs, rhs);
+    return n.relu(product);
   }
 }
 ```
 
-Validate and canonically format it:
+Validate it with the shipped semantic packages:
 
 ```bash
-joggle check example.joggle --with /path/to/transform/mod.joggle
-joggle fmt example.joggle --write
+build/joggle check model.joggle \
+  --with mods/arith/mod.joggle \
+  --with mods/tensor/mod.joggle \
+  --with mods/nn/mod.joggle
 ```
 
-`pass` is an ordinary imported fn called explicitly with `@`; `example` is the
-current Mod used as a compiler-time package value. Every bodyful fn with two
-identical result Type expressions is an equation. The first returned expression
-is matched and the second replaces it, using the same typed arguments. Calls
-match exact declaration identity and dataflow rather than strings. Here `W` is
-bound from the candidate `word<W>` result, so the same equation works for every
-width without generated variants. The replacement is verified before
-publication and dead pure producers are removed.
-
-## 3. Run the transformation
+## Run the passes from C++
 
 ```cpp
+#include <iostream>
 #include <joggle/joggle.h>
 
-joggle::Compiler compiler;
-compiler.load("/path/to/transform/mod.joggle");
-compiler.load("example.joggle");
-if (!compiler.link() ||
-    !compiler.load_native("transform", "/path/to/transform/native")) {
-  compiler.diag().print(std::cerr);
-  return 1;
-}
+int main() {
+  joggle::Compiler compiler;
+  compiler.load("mods/arith/mod.joggle");
+  compiler.load("mods/tensor/mod.joggle");
+  compiler.load("mods/nn/mod.joggle");
+  compiler.load("model.joggle");
 
-auto fn = compiler.materialize("example.main");
-auto rewritten = fn ? compiler.run<joggle::Fn>("example.rewrite", *fn)
-                    : std::nullopt;
-if (!rewritten || !compiler.verify(*rewritten)) {
-  compiler.diag().print(std::cerr);
-  return 1;
-}
-```
+  if (!compiler.link() ||
+      !compiler.load_native("tensor", "build/mods/tensor/native.dylib")) {
+    compiler.diag().print(std::cerr);
+    return 1;
+  }
 
-The transformed value is still one `Fn`. Its calls, values, blocks, and nested
-lambda bodies were edited directly; there is no graph conversion or pass object.
+  auto model = compiler.materialize("model.main");
+  auto fused = model
+      ? compiler.run<joggle::Fn>("tensor.fuse", *model)
+      : std::nullopt;
+  auto looped = fused
+      ? compiler.run<joggle::Fn>("tensor.loops", *fused)
+      : std::nullopt;
 
-## 4. Add a native boundary only when needed
+  if (!looped || !compiler.verify(*looped)) {
+    compiler.diag().print(std::cerr);
+    return 1;
+  }
 
-Pure declarations and source bodies require no generated C++ wrapper. Host
-work such as decoding a file, measuring a device, or writing an object is a
-bodyless source fn with an optional native implementation:
-
-```joggle
-fn read(input: bytes) -> mod;
-```
-
-```cpp
-void joggle_mod(joggle::Compiler& compiler, const joggle::Mod& mod,
-                joggle::Diag&) {
-  compiler.bind(mod, "read",
-                [](const joggle::Bytes& input)
-                    -> std::optional<joggle::Mod> {
-                  return decode(input);
-                });
+  std::cout << joggle::format(*looped, "main");
 }
 ```
 
-Build that library with the source Mod as its identity:
+Use `.so` on Linux and `.dll` on Windows. Installed packages place the native
+library beside `mods/tensor/mod.joggle`.
 
-```cmake
-find_package(Joggle CONFIG REQUIRED)
+## What to inspect
 
-joggle_mod(example_native
-  SOURCE example.joggle
-  NATIVE native.cpp
-)
-```
+The original Fn contains calls to `nn.matmul` and `nn.relu`.
 
-`joggle_mod` embeds the canonical Mod identity in a hidden build translation
-unit. Authors write no export macro or generated declaration header.
+The fused Fn contains one `tensor.tensor` call. Its callback contains input
+indexing, a `tensor.reduce`, scalar multiplication/addition, and `arith.max`.
+There is no intermediate MatMul tensor and no `tensor.map`.
 
-## 5. Compose tools
+The loop Fn contains `tensor.empty`, input `tensor.[]`, output `tensor.set`, and
+CFG loops. It contains no `tensor.tensor`, `tensor.map`, or `tensor.reduce`.
 
-Compiler work remains ordinary source composition:
+No stage contains a `Graph`, `Fusion`, `Kernel`, `view`, `sink`, memory token,
+or NN-name-specific lowering operation.
 
-```joggle
-fn compile(input: bytes) -> bytes {
-  model = @read(input);
-  model = @optimize(model);
-  return @emit(model);
-}
-```
+## Next
 
-```bash
-joggle run driver.joggle compile model.onnx \
-  --native build/driver_native.dylib -o model.bin
-```
-
-The CLI supports `bytes -> bytes`, `bytes -> mod`, `mod -> mod`, and
-`mod -> bytes` entry points. Binary payloads are content-addressed within Mod
-bundles and survive `check`, `install`, and `lock`.
-
-See [Language](language.md), [Transform](mods/transform.md), and
-[Repository](repository.md) for the complete contracts.
+- [Tensor pipeline](pipeline.md) defines the transformation contracts.
+- [Language](language.md) defines source syntax and staging.
+- [C++ API](api.md) covers programmatic construction and editing.
+- [Packages](mods.md) explains how extensions are divided.

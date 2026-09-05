@@ -75,24 +75,30 @@ endif()
 
 set(installed_tensor
   "${install_dir}/share/joggle/mods/tensor/mod.joggle")
+set(installed_arith
+  "${install_dir}/share/joggle/mods/arith/mod.joggle")
 if(NOT EXISTS "${installed_tensor}")
   message(FATAL_ERROR "installed tensor Mod was not found")
 endif()
+file(GLOB installed_tensor_native
+  "${install_dir}/share/joggle/mods/tensor/native.*")
+list(LENGTH installed_tensor_native installed_tensor_native_count)
+if(NOT installed_tensor_native_count EQUAL 1)
+  message(FATAL_ERROR
+    "installed tensor Mod needs exactly one native implementation")
+endif()
 execute_process(
   COMMAND "${installed_cli}" check "${installed_tensor}"
+          --with "${installed_arith}"
   RESULT_VARIABLE tensor_cli_result
 )
 if(NOT tensor_cli_result EQUAL 0)
   message(FATAL_ERROR "installed tensor Mod failed validation")
 endif()
 
-set(installed_arith
-  "${install_dir}/share/joggle/mods/arith/mod.joggle")
 set(installed_nn
   "${install_dir}/share/joggle/mods/nn/mod.joggle")
-set(installed_mem
-  "${install_dir}/share/joggle/mods/mem/mod.joggle")
-foreach(installed_mod IN ITEMS "${installed_nn}" "${installed_mem}")
+foreach(installed_mod IN ITEMS "${installed_nn}")
   if(NOT EXISTS "${installed_mod}")
     message(FATAL_ERROR "installed source Mod was not found: ${installed_mod}")
   endif()
@@ -104,14 +110,6 @@ execute_process(
 )
 if(NOT nn_cli_result EQUAL 0)
   message(FATAL_ERROR "installed NN Mod failed validation")
-endif()
-execute_process(
-  COMMAND "${installed_cli}" check "${installed_mem}"
-          --with "${installed_arith}" --with "${installed_tensor}"
-  RESULT_VARIABLE mem_cli_result
-)
-if(NOT mem_cli_result EQUAL 0)
-  message(FATAL_ERROR "installed Mem Mod failed validation")
 endif()
 execute_process(
   COMMAND "${installed_cli}" check

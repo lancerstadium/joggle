@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <optional>
@@ -54,10 +55,24 @@ mod tensor_use@1.0.0 {
     return n.relu(input);
   }
 
+  fn product_relu(
+    lhs: t.tensor<f32, [2, 4]>,
+    rhs: t.tensor<f32, [4, 3]>
+  ) -> t.tensor<f32, [2, 3]> {
+    product: t.tensor<f32, [2, 3]> = n.matmul(lhs, rhs);
+    return n.relu(product);
+  }
+
+  fn prepare(input: fn) -> fn {
+    fused = @t.fuse(input);
+    return @t.loops(fused);
+  }
+
 }
 )",
                "tensor-use.joggle");
-  if (!compiler.link()) {
+  if (!compiler.link() ||
+      !compiler.load_native("tensor", JOGGLE_TENSOR_NATIVE)) {
     compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -73,9 +88,11 @@ mod tensor_use@1.0.0 {
     }
     return result;
   }();
-  ok &= expect(names == std::vector<std::string>(
-                            {"tensor", "map", "reduce", "[]", "constant"}),
-               "Tensor has construction and overloaded indexing only");
+  ok &= expect(
+      names ==
+          std::vector<std::string>({"tensor", "map", "reduce", "[]", "empty",
+                                    "set", "constant", "fuse", "loops"}),
+      "Tensor has one value type, a compact basis, and two explicit passes");
 
   const auto transpose = compiler.materialize("tensor_use.transpose");
   if (!transpose) {
@@ -139,6 +156,58 @@ mod tensor_use@1.0.0 {
                    compiler.verify(*relu_callback),
                "rank-polymorphic Relu is ordinary indexed construction");
 
+  const auto product_relu = compiler.materialize("tensor_use.product_relu");
+  const auto fused =
+      product_relu ? compiler.run<joggle::Fn>("tensor.fuse", *product_relu)
+                   : std::optional<joggle::Fn>{};
+  const auto fused_ops = fused ? fused->ops() : std::vector<joggle::Op>{};
+  const auto fused_body =
+      fused_ops.size() == 1U && fused_ops.front().arguments().size() == 1U
+          ? fused_ops.front().arguments().front().inline_fn()
+          : std::optional<joggle::Fn>{};
+  const auto fused_body_ops =
+      fused_body ? fused_body->ops() : std::vector<joggle::Op>{};
+  ok &= expect(
+      product_relu && fused && compiler.verify(*fused) && fused_body &&
+          compiler.verify(*fused_body) && fused_ops.size() == 1U &&
+          callee(fused_ops.front()) == "tensor" &&
+          std::none_of(fused_body_ops.begin(), fused_body_ops.end(),
+                       [](const auto& op) { return callee(op) == "map"; }) &&
+          std::any_of(fused_body_ops.begin(), fused_body_ops.end(),
+                      [](const auto& op) { return callee(op) == "reduce"; }) &&
+          std::any_of(fused_body_ops.begin(), fused_body_ops.end(),
+                      [](const auto& op) { return callee(op) == "max"; }),
+      "MatMul followed by Relu composes into one tensor construction");
+
+  const auto looped = fused ? compiler.run<joggle::Fn>("tensor.loops", *fused)
+                            : std::optional<joggle::Fn>{};
+  const auto looped_ops = looped ? looped->ops() : std::vector<joggle::Op>{};
+  const auto count = [&](std::string_view owner, std::string_view name) {
+    return std::count_if(
+        looped_ops.begin(), looped_ops.end(), [&](const auto& op) {
+          const auto fn = op.callee().referenced_fn();
+          return fn && fn->symbol().mod_name() == owner && fn->name() == name;
+        });
+  };
+  ok &= expect(
+      looped && compiler.verify(*looped) && looped->blks().size() > 1U &&
+          count("tensor", "empty") == 1U && count("tensor", "set") == 1U &&
+          count("tensor", "[]") == 2U && count("arith", "*") == 1U &&
+          count("arith", "max") == 1U && count("nn", "matmul") == 0U &&
+          count("nn", "relu") == 0U && count("tensor", "tensor") == 0U &&
+          count("tensor", "map") == 0U && count("tensor", "reduce") == 0U,
+      "the fused operator pipeline preserves MatMul-Relu scalar work in CFG "
+      "loops");
+
+  const auto prepared =
+      product_relu
+          ? compiler.run<joggle::Fn>("tensor_use.prepare", *product_relu)
+          : std::optional<joggle::Fn>{};
+  ok &= expect(prepared && looped && compiler.verify(*prepared) &&
+                   prepared->blks().size() == looped->blks().size() &&
+                   prepared->ops().size() == looped->ops().size(),
+               "the same pipeline composes through ordinary staged source");
+
   const std::string formatted =
       tensor ? joggle::format(*tensor) : std::string{};
   joggle::Diag roundtrip_diagnostics;
@@ -150,6 +219,8 @@ mod tensor_use@1.0.0 {
                    formatted.find("fn tensor") != std::string::npos &&
                    formatted.find("fn map") != std::string::npos &&
                    formatted.find("fn reduce") != std::string::npos &&
+                   formatted.find("fn fuse") != std::string::npos &&
+                   formatted.find("fn loops") != std::string::npos &&
                    formatted.find("fn constant") != std::string::npos &&
                    roundtrip && roundtrip_diagnostics.ok() &&
                    joggle::format(*roundtrip) == formatted,

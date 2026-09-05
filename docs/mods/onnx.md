@@ -1,25 +1,22 @@
 # ONNX
 
-`onnx@5` is an optional protobuf reader with one compiler-time function:
+`onnx@5` is an optional Protobuf reader with one compiler-time fn:
 
 ```joggle
 fn read(input: bytes, name: string = "model") -> mod;
 ```
 
-Call it explicitly with `@onnx.read`. It is a file operation, not an
-optimization pass. The reader decodes and validates ONNX records, converts
-external CamelCase names to ordinary Joggle naming, and asks the linked
-compiler environment for a unique compatible fn. Argument names, defaults,
-types, and overloads perform the binding; there is no switch over Conv, Relu,
-MatMul, or other node kinds.
+The reader converts ONNX records directly into calls to linked semantic fns.
+It normalizes external naming and binds attributes by parameter name, defaults,
+types, and overload resolution. It does not create `onnx.Conv` operations, an
+ONNX IR, or an automatic conversion pass.
 
-The resulting model contains calls to `tensor`, `nn`, and `quant`. It contains
-no `onnx.*` program operation, ONNX schema module, temporary ONNX IR, or hidden
-conversion phase. Initializer bytes and the original model are immutable data
-owned by the returned `Mod`.
+The current importer has deterministic structural tests using hash-pinned ONNX
+Model Zoo SqueezeNet FLOAT and QDQ models. Successful import proves faithful
+typed ingestion and data preservation; it does not claim numerical execution
+for bodyless NN functions.
 
-The tested profiles are the hash-pinned Model Zoo SqueezeNet FLOAT
-IR-3/opset-7 model and QDQ IR-7/opset-13 model. Both import deterministically.
-This proves typed format ingestion and preservation, not numerical execution.
 Unsupported domains, symbolic shapes, external data, subgraphs, and unmatched
-semantics fail with diagnostics.
+semantics fail with diagnostics. Source-format exceptions belong in the reader,
+while operator implementations belong in `nn`, `tensor`, `quant`, or a target
+package.

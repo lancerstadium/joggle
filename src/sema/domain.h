@@ -28,7 +28,7 @@ struct Domain {
 
 std::string_view domain_name(ValKind kind);
 Mod::Expr domain_expression(ValKind kind, bool list = false);
-std::optional<Domain> kernel_domain(const Mod::Expr& expression);
+std::optional<Domain> compiler_domain(const Mod::Expr& expression);
 bool is_domain(const Mod::Expr& expression, ValKind kind, bool list = false);
 std::optional<std::string> canonical_real(double value);
 

@@ -38,6 +38,7 @@ mod qdq@1.0.0 {
 
 int main() {
   joggle::Compiler compiler;
+  compiler.load(JOGGLE_ARITH_MOD);
   compiler.load(JOGGLE_TENSOR_MOD);
   compiler.load(JOGGLE_QUANT_MOD);
   compiler.add(source, "qdq.joggle");

@@ -238,8 +238,8 @@ private:
                     "use contextual inference");
             }
             typed_parameters = typed;
-            result.arguments.push_back(
-                typed ? parse(0) : Mod::Expr{Kind::Infer, {}, {}});
+            result.arguments.push_back(typed ? parse(0)
+                                             : Mod::Expr{Kind::Infer, {}, {}});
           } while (match(TokenKind::Comma));
           expect(TokenKind::RightParen, "')'");
         }
@@ -344,10 +344,10 @@ private:
       return result;
     }
     const bool unqualified = result.text.find('.') == std::string::npos;
-    const bool kernel_domain_name =
+    const bool compiler_domain_name =
         unqualified && result.text != "list" &&
-        kernel_domain(Mod::Expr::reference(result.text)).has_value();
-    if (result.text.find('.') == std::string::npos && !kernel_domain_name &&
+        compiler_domain(Mod::Expr::reference(result.text)).has_value();
+    if (result.text.find('.') == std::string::npos && !compiler_domain_name &&
         result.text != "list" && is_prelude_type(result.text)) {
       result.text = std::string(prelude_mod_name) + "." + result.text;
     }
@@ -366,7 +366,7 @@ private:
       // compiler domain. Otherwise it names the ordinary Prelude list Type.
       // This keeps list<int> and list<index> visually uniform without making
       // their staging semantics ambiguous.
-      if (unqualified && result.text == "list" && !kernel_domain(result)) {
+      if (unqualified && result.text == "list" && !compiler_domain(result)) {
         result.text = std::string(prelude_mod_name) + ".list";
       }
     } else if (match(TokenKind::LeftParen)) {
@@ -699,8 +699,8 @@ std::string format_expression(const Mod::Expr& expression,
         format_expression(expression.arguments.front(), precedence, false) +
         expression.text;
   } else if (expression.text == "[]" && expression.arguments.size() >= 2U) {
-    result = format_expression(expression.arguments[0], precedence, false) +
-             "[";
+    result =
+        format_expression(expression.arguments[0], precedence, false) + "[";
     for (std::size_t index = 1U; index < expression.arguments.size(); ++index) {
       if (index != 1U) {
         result += ", ";

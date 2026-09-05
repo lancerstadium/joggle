@@ -1,42 +1,32 @@
 # Documentation
 
-The top level contains stable user and contributor references. `mods/`
-documents shipped libraries; `design/` records accepted implementation
-decisions.
+The documentation is normative unless a page explicitly labels work as
+planned. Historical design records were removed because they described
+abandoned APIs and made the implemented system ambiguous.
 
-## Start
+## Read first
 
-- [Getting started](getting-started.md)
-- [Language](language.md)
-- [C++ API](api.md)
+1. [Getting started](getting-started.md) runs the MatMul–Relu compiler path.
+2. [Architecture](architecture.md) defines the object model and ownership
+   boundaries.
+3. [Tensor pipeline](pipeline.md) specifies fusion and loop expansion.
+4. [Language](language.md) is the textual language reference.
 
-## Compiler model
+## Reference
 
-- [Architecture](architecture.md)
-- [IR](ir.md)
-- [Staging](staging.md)
-- [Mods](mods.md)
-- [Repository](repository.md)
+- [IR](ir.md): `Fn`, `Blk`, `Op`, `Val`, editing, and verification.
+- [C++ API](api.md): embedding and native-package interfaces.
+- [Staging](staging.md): ordinary calls versus explicit `@` execution.
+- [Packages](mods.md): when a new `Mod` is justified.
+- [Repository](repository.md): installation, bundles, identities, and locks.
+- [Research scope](research.md): hypothesis, measurements, and publication
+  gates.
 
-## Shipped mods
+## Shipped packages
 
-- [Arithmetic](mods/arith.md)
+- [Arith](mods/arith.md)
 - [Tensor](mods/tensor.md)
-- [Logical memory](mods/mem.md)
-- [Neural-network functions](mods/nn.md)
-- [Quantization](mods/quant.md)
+- [Neural network](mods/nn.md)
 - [Transform](mods/transform.md)
+- [Quantization](mods/quant.md)
 - [ONNX](mods/onnx.md)
-
-## Design records
-
-- [0001 — Language core](design/0001-language.md)
-- [0002 — Fn values](design/0002-fns.md)
-- [0003 — Fn transformation](design/0003-transform.md)
-- [0004 — Tensor refinement](design/0004-tensor.md)
-- [0006 — Mod bundles](design/0006-bundles.md)
-- [0009 — Implementation closure](design/0009-implementation.md)
-
-Design records explain why current interfaces exist. They are not a second
-user manual or a migration log. [Research](research.md) separately tracks
-unimplemented hypotheses and publication gates.

@@ -239,7 +239,7 @@ bool matches(const Mod::ParamDecl& schema, const ParamVal& value);
 
 std::optional<Type> reflected_parameter_type(const FnState& fn,
                                              const Mod::Expr& expression) {
-  const auto domain = detail::kernel_domain(expression);
+  const auto domain = detail::compiler_domain(expression);
   if (!domain) {
     return std::nullopt;
   }

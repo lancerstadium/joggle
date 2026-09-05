@@ -497,14 +497,14 @@ private:
   bool
   is_ir_port(const ParsedMod::TypeExpr& annotation,
              std::span<const ParsedMod::GenericDefinition> generics) const {
-    if (detail::kernel_domain(annotation)) {
+    if (detail::compiler_domain(annotation)) {
       return false;
     }
     if (annotation.kind == ParsedMod::TypeExpr::Kind::Variable) {
       const auto* generic = find_generic(generics, annotation.text);
       const auto domain = generic == nullptr
                               ? std::optional<detail::Domain>{}
-                              : detail::kernel_domain(generic->domain);
+                              : detail::compiler_domain(generic->domain);
       if (domain && domain->element != ValKind::Type) {
         return false;
       }
@@ -650,7 +650,7 @@ private:
         input.domain = type_expression(generics);
         const bool ir_input = is_ir_port(input.domain, generics);
         std::optional<ParsedMod::TypeExpr> binding;
-        if (!ir_input && !detail::kernel_domain(input.domain)) {
+        if (!ir_input && !detail::compiler_domain(input.domain)) {
           const auto* generic =
               input.domain.kind == ParsedMod::TypeExpr::Kind::Variable
                   ? find_generic(generics, input.domain.text)
@@ -671,7 +671,7 @@ private:
           }
         }
         if (match(TokenKind::Equal)) {
-          const auto domain = detail::kernel_domain(input.domain);
+          const auto domain = detail::compiler_domain(input.domain);
           if (ir_input || !domain || domain->element == ValKind::Fn ||
               domain->element == ValKind::Bytes || input.variadic) {
             error("this parameter cannot have a default value");
@@ -699,7 +699,7 @@ private:
     definition.types.bindings = std::move(input_bindings);
     for (std::size_t index = 0; index < result_types.size(); ++index) {
       if (!is_ir_port(result_types[index], definition.generics) &&
-          !detail::kernel_domain(result_types[index])) {
+          !detail::compiler_domain(result_types[index])) {
         const auto* generic =
             result_types[index].kind == ParsedMod::TypeExpr::Kind::Variable
                 ? find_generic(definition.generics, result_types[index].text)
@@ -790,7 +790,7 @@ private:
       error(std::move(message), source);
     };
     using Kind = ParsedMod::TypeExpr::Kind;
-    const auto domain = detail::kernel_domain(expected);
+    const auto domain = detail::compiler_domain(expected);
     if (!domain) {
       report("unknown parameter domain in " + std::string(owner));
       return;

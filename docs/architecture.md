@@ -1,211 +1,158 @@
 # Architecture
 
-Joggle is a C++ compiler substrate with one source owner and one extension
-mechanism. The owner is `Mod`; the extension mechanism is ordinary typed
-`fn` declarations. Tensor operators, importers, transformations, measurements,
-and output writers are library vocabulary rather than core subclasses.
+Joggle is a small compiler substrate for extensible neural-network and edge
+hardware research. The architecture is organized around one package object,
+one executable IR object, and one extension mechanism.
 
-## Core objects
+## Public object model
 
-| Object | Responsibility |
+| Object | Meaning |
 | --- | --- |
-| `Mod` | versioned declarations, imports, fn bodies, immutable data |
-| `Type` | immutable instance of a `type` declaration |
-| `Fn` | editable typed CFG/SSA body |
-| `Expr` | immutable declaration-language expression inside a `Mod` |
-| `Blk` | basic block inside a `Fn` |
-| `Op` | one call in a `Fn` |
-| `Val` | typed fn argument, result, or known compiler value |
-| `Compiler` | dependency linking, overload resolution, staging, bindings |
+| `Mod` | versioned package, namespace, declarations, bodies, and immutable data |
+| `Type` | immutable instance of a declared type constructor |
+| `Fn` | typed CFG/SSA program |
+| `Blk` | basic block in a `Fn` |
+| `Op` | one ordinary call |
+| `Val` | typed argument, known value, callable, or call result |
+| `Compiler` | linking, inference, staging, native bindings, and verification |
+| `Diag` | structured diagnostics |
 
-These six high-frequency IR atoms use one compact vocabulary everywhere:
-`Mod`, `Fn`, `Val`, `Expr`, `Blk`, and `Op`. Their public accessors use the
-same stems (`mod`, `fn`, `blk`, and their plurals). Descriptive roles such as
-`TypeDecl`, `Term`, and `Loc` keep full words. Diagnostics use
-`Diag` for the collector and `Issue` for one reported item; Joggle does not
-abbreviate every identifier indiscriminately.
+An end-to-end model is a `Fn`; its SSA use-def relation is the computation
+graph. A fused computation is a `Fn`. A loop program is also a `Fn`. The
+compiler does not convert among `Graph`, `Fusion`, `Kernel`, or `Program`
+classes because those classes do not exist.
 
-There is no second Program, Graph, Package, Attribute, Pass, Target, or Result
-owner. A model graph is a `Mod` containing fns. Metadata is a normal
-`Type`. A transformation is a fn from one compiler value to another. This
-single object model does not collapse semantic tensor values and mutable
-storage into one meaning: explicit passes refine the same Fn representation
-between typed invariants.
+Compilation states are predicates over ordinary `Fn` contents:
 
-## Source layout
+```text
+semantic Fn  -- tensor.fuse -->  fused tensor Fn
+fused tensor Fn -- tensor.loops --> loop Fn
+loop Fn -- future target fn --> target Fn or bytes
+```
 
-Implementation files are grouped by ownership rather than compilation phase
-names embedded in filenames:
+The arrows are explicitly staged ordinary fns. No pass executes because of its
+name, and no call to one pass silently schedules the next.
 
-| Directory | Owns |
+## Source model
+
+A source file contains one versioned mod. Only `import`, `type`, and `fn` are
+module members.
+
+```joggle
+joggle 1;
+
+mod sample@1.0.0 {
+  type packed(bits: int, lanes: int);
+  fn convert<T, B: int, L: int>(input: T) -> packed<B, L>;
+}
+```
+
+The same `fn` form describes residual computation and compiler-time tools.
+An ordinary call remains an `Op`; `@call(...)` requests compile-time execution.
+This is the only staging distinction.
+
+## Calls, operators, and bodies
+
+Every `Op` calls a typed `Val`. The callee can reference a mod declaration or
+hold an anonymous `Fn`. Operators such as `+`, `*`, and `[]` are normal
+overloaded fns with surface syntax. There is no operation subclass, attribute
+dictionary, interface registry, or behavior object.
+
+A bodyful semantic fn is the implementation and optimization contract. A new
+NN operator becomes automatically inspectable when its body is expressed with
+the small tensor and scalar basis. A bodyless fn is an explicit opaque
+boundary; importing its name does not imply executable support.
+
+## Package boundary
+
+A `Mod` is created only for independently named, versioned, distributable
+vocabulary. The shipped ownership is:
+
+| Mod | Owns |
+| --- | --- |
+| `arith` | scalar operations |
+| `tensor` | tensor value semantics and tensor-specific passes |
+| `nn` | frontend-independent NN algorithms |
+| `transform` | domain-independent Fn transformations |
+| `quant` | quantization semantics |
+| `onnx` | ONNX byte decoding and schema-to-fn resolution |
+
+Dependencies follow semantics rather than workflow: `tensor` imports `arith`
+for scalar loop construction, `nn` imports `arith` and `tensor`, and `quant`
+imports `tensor`. Optional `onnx` has no fixed semantic dependency; its reader
+resolves against the packages deliberately linked by the caller. No package
+reaches into another package's C++ implementation.
+
+There is no current `mem`, `graph`, `kernel`, `device`, or `target` mod. Storage
+is not yet a portable package boundary: the logical loop form uses tensor value
+updates, while future target packages decide physical reuse and writes.
+
+## Tensor optimization boundary
+
+Tensor operations are pure unless their signatures contain an explicit
+`effect<domain>` value. The normal NN path contains no effects. This allows the
+compiler to derive maximal pure dataflow from existing types instead of asking
+users to mark graph blocks or register purity traits.
+
+`tensor.fuse` works on one straight-line, single-result region. It repeatedly
+expands bodyful calls, then composes tensor demand from the returned value back
+to input tensors. `tensor.tensor`, `tensor.map`, `tensor.reduce`, and `tensor.[]`
+are the only semantic basis it understands. NN names never appear in the pass.
+
+The first implementation deliberately refuses shared tensor producers. It does
+not duplicate their computation. A later planner will use use-def,
+post-dominance, symbolic traffic, recomputation, and code-size costs to choose
+fusion groups. Refusal is preferable to a hidden performance regression.
+
+`tensor.loops` accepts only the result of the fused tensor form. It expands
+output coordinates and reductions into CFG loops. The output starts as
+`tensor.empty` and each `tensor.set` produces the next logical tensor value.
+These are value operations, not allocation and mutation promises. A later
+target pass may safely reuse physical storage after conflict analysis.
+
+See [Tensor pipeline](pipeline.md) for the exact contracts and example.
+
+## Core and native code
+
+The C++ core owns only mechanisms shared by every domain:
+
+- parsing and canonical formatting;
+- versioned symbol identity and linking;
+- type construction and overload inference;
+- `Fn` construction, use-def, dominance, CFG, and transactional edits;
+- explicit Known/Residual staging;
+- native compiler-fn binding and execution;
+- verification and diagnostics.
+
+A native package library implements only bodyless compiler-time services that
+need host code. Its `.joggle` source remains the ABI authority, and the build
+embeds the declaration identity into the library. No generated C++ declaration
+header is needed.
+
+## Source tree
+
+| Directory | Responsibility |
 | --- | --- |
 | `src/base` | diagnostics and content digests |
-| `src/lang` | lexing, source syntax, formatting, and the Prelude |
-| `src/ir` | `Type`, `Mod`, `Fn`, `Blk`, `Op`, and `Val` storage |
-| `src/sema` | domains, call resolution, inference, and validation |
-| `src/compile` | linking, staging, native binding, and evaluation |
-| `src/transform` | rewriting, equivalence, and call-graph resolution |
-| `src/pkg` | installed-mod repository operations |
+| `src/lang` | lexer, parser, formatter, Prelude |
+| `src/ir` | `Mod`, `Type`, `Fn`, `Blk`, `Op`, `Val` storage |
+| `src/sema` | domains, type inference, calls, validation |
+| `src/compile` | linking, staging, bindings, execution |
+| `src/transform` | generic cloning, inlining, rewriting, resolution |
+| `src/pkg` | installation and lock-file repository |
+| `mods/<name>` | one shipped package and optional native implementation |
 
-These directories are not public namespaces, libraries, dialects, or runtime
-components. Joggle still builds one compiler library. Their purpose is to let
-short filenames such as `call.cpp`, `infer.cpp`, and `eval.cpp` communicate a
-single responsibility without suffixes such as `_internal` or `_contract`.
-In particular, `lang/mod.cpp` owns the textual Mod grammar, `lang/print.cpp`
-owns canonical printing, and `ir/mod.cpp` owns the in-memory Mod object and
-its identity semantics.
-Likewise, `lang/fn.cpp` owns fn parsing and printing, `lang/check.cpp` checks
-source-body structure, and `compile/body.cpp` specializes a valid source body
-into typed `Fn` IR. Within the compiler owner, `compile/compiler.cpp`
-coordinates materialization and type construction, `compile/bind.cpp` owns
-host representations and callable bindings, `compile/link.cpp` seals the Mod
-closure, `compile/native.cpp` owns host-library loading, and `compile/run.cpp`
-invokes compiler fns.
+These folders are implementation ownership, not public namespaces or IR
+levels. Joggle builds one core library.
 
-## Mod snapshots
+## Invariants
 
-Parsing creates a `Mod`. Materialization attaches editable `Fn`
-bodies to declarations in a new `Mod` snapshot. Committed edits use
-copy-on-write storage, so earlier snapshots remain valid.
+Every published transformation must satisfy all of the following:
 
-`Mod::digest()` identifies the complete canonical snapshot, including
-materialized bodies and stored data. `Mod::declaration_digest()` identifies
-the imports and declarations with bodies erased. Symbols retain the latter as
-provenance so a declaration from another compiler snapshot cannot be used by
-accident.
-
-## Declarations
-
-The public declaration forms are `import`, `type`, and `fn` inside a mod.
-`type` covers both run-time value types and compile-time descriptions:
-
-```joggle
-type word(width: int) {
-  storage_bits: int = width;
-}
-
-type layout(order: list<int>);
-fn pack<E, S: list<int>, O: list<int>>(
-  input: tensor<E, S>,
-  order: layout<O>
-) -> tensor<E, S>;
-```
-
-There is no separate attribute or capability declaration. Generic parameters
-bind directly to types or compiler domains, and a concrete type's computed
-fields are checked when referenced.
-
-## Calls and staging
-
-Ordinary calls are program calls. `@call(...)` requests compiler-time
-execution. Both resolve the same overload and use the same declaration
-identity; staging does not create a second kind of fn.
-
-The explicit-`@` rule is enforced during materialization. A compiler-domain
-call without `@` is diagnosed, and an ordinary program call remains in IR even
-when its inputs are Known.
-
-Native C++ bodies implement explicitly staged host services. Their signatures
-are checked against the source declaration when bound. They are not the
-execution semantics of ordinary Residual calls. The source mod remains
-authoritative; no generated declaration header is required.
-
-## Editable fns
-
-A `Fn` owns blocks, block arguments, calls, returns, and typed values.
-Edits are transactional: call, call_before, replace, erase, then commit. A failed
-commit does not publish a partially invalid body. The verifier checks ownership,
-dominance, terminators, call signatures, result types, and cross-mod symbol
-provenance.
-
-The edit API is the low-level substrate. A typed source lambda becomes an
-anonymous `Fn` held by a callable `Val`; it uses the same calls, types,
-verification, cloning, and formatting as a named body. Residual captures are
-explicit edges of that `Val` and trailing hidden arguments of the nested body.
-It is not a mod declaration and does not introduce an alternate graph or
-pattern IR.
-
-Explicit compiler-time calls pass typed lambdas as verified `Fn`
-execution values and may return them for later `@` calls. This path shares
-compiler-call shaping, overload filtering, default handling, and execution
-with source-defined compiler fns; it does not encode fns as scalar
-metadata. Typed expression matching and bounded source-body equivalence reuse
-these same verified Fns and create no normalization IR. `transform.pass`
-reads ordinary two-result fns from a passed Mod: the first result is the left
-expression and the second is its replacement. Generic parameters specialize
-against a candidate Type; arguments become pattern variables, and calls match
-declaration identity and dataflow before transactional replacement.
-
-Residual effects use the ordinary `effect<domain>` Prelude type. Tokens flow
-through calls and CFG edges as normal SSA values, and the verifier prevents
-more than one consumption on an executed path. Exclusive branch successors
-may each receive the incoming token and merge through a typed block argument.
-Structured Residual control inserts those block arguments for every visible
-effect token, including loop headers, bodies, latches, and exits. There is no
-purity registry or effect annotation attached to `fn`.
-
-## Extension boundary
-
-An extension normally contains:
-
-1. one `.joggle` mod declaring its types and fns;
-2. optional source bodies for portable behavior;
-3. an optional native library for host-only parsing, analysis, or file output.
-
-Composition is explicit in source:
-
-```joggle
-fn prepare(input: bytes, policy: type) -> mod {
-  model = @read(input);
-  return @optimize(model, policy);
-}
-```
-
-Names such as `read` and `optimize` are mod APIs, not magic hooks.
-The core imposes no lowering direction or fixed hardware hierarchy.
-
-## Implementation closure
-
-`transform.resolve` constructs a concrete call graph by instantiating reachable
-source bodies. Bodyless calls remain visible leaves for a later whole-Mod
-compiler fn. Resolution never invokes a leaf binding and never claims that a
-leaf is supported by a machine.
-
-An emitter consumes the complete resolved Mod once. Importers, transforms,
-emitters, and measurement tools may use a small number of native bindings at
-their host boundaries; model and kernel Ops do not. See
-[Design 0009](design/0009-implementation.md).
-
-## Near-term implementation order
-
-The implemented path includes the core language, editable Fn IR, explicit
-staging, typed anonymous Fns with expression or statement bodies, explicit
-closure captures, recursive single-block inlining, and generic equation
-packages. `tensor@7` defines pure construction, mapping, reduction, overloaded
-`[]`, and constants. `nn@2` owns bodyful MatMul, Relu, and Dropout plus typed
-semantic leaves. The ONNX byte reader directly resolves the pinned FLOAT and
-QDQ SqueezeNet graphs to those ordinary fns; no ONNX operation layer exists.
-
-`mem@1` now owns logical read views, affine write destinations, and the first
-destination-directed realization pass. It expands bodyful semantics and
-refines tensor construction, map, indexing, scalar composition, and reduction
-to verified loops and ordered stores. The MatMul and Relu paths contain no NN
-operator case.
-
-Execution semantics for the structural basis, multiple-result and whole-Mod
-destination passing, shared tensor values, equation inference through local
-rebinding or control flow, multi-block inlining, and derived access/dependence
-analysis remain unfinished.
-Conv, pooling, concatenation, reshape, Softmax, quantized computational
-definitions, and numerical execution remain unfinished.
-
-The next path is whole-Mod destination passing followed by access and
-dependence summaries. The core continues to supply only loop, CFG, effects,
-Fn editing, and verification. Physical layouts, packed formats, capability
-selection, cost models, and machine emission belong to later target Mods.
-There is no separate kernel language or Kernel owner. See
-[Design 0004](design/0004-tensor.md).
-
-The compiler must not simulate progress by matching operation names,
-interpreting every Op through a host callback, or renaming a reference
-expression as a fused operation.
+1. It returns a new valid `Fn` or leaves its input unchanged on failure.
+2. All calls retain exact declaration identity and concrete types.
+3. No compiler-time operation is triggered without explicit `@` staging.
+4. A pass does not introduce a new public owner or side channel.
+5. The result is printable, inspectable, and independently verifiable.
+6. Unsupported semantics fail with a diagnostic instead of matching an
+   operator name or pretending a body exists.

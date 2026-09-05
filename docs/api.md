@@ -51,14 +51,17 @@ resolves one coherent closure and freezes it for execution.
 ## Construct types
 
 ```cpp
-auto mod = compiler.mod("tensor");
-auto schema = mod ? mod->type("integer") : std::nullopt;
-auto i8 = schema ? compiler.make(*schema, 8, true)
-                 : std::optional<joggle::Type>{};
+auto tensor_mod = compiler.mod("tensor");
+auto tensor_schema = tensor_mod ? tensor_mod->type("tensor") : std::nullopt;
+auto f32 = compiler.make("f32");
+auto matrix = tensor_schema && f32
+    ? compiler.make(*tensor_schema, *f32,
+                    std::vector<std::int64_t>{2, 4})
+    : std::optional<joggle::Type>{};
 
-if (i8) {
-  auto width = i8->get<std::int64_t>("width");
-  auto bits = i8->get<std::int64_t>("storage_bits");
+if (matrix) {
+  auto element = matrix->get<joggle::Type>("element");
+  auto shape = matrix->get<std::vector<std::int64_t>>("shape");
 }
 ```
 
@@ -218,8 +221,8 @@ an optional projection maps a host value to its concrete Joggle `Type`.
 
 ```cpp
 void joggle_mod(joggle::Compiler& compiler,
-                   const joggle::Mod& mod,
-                   joggle::Diag& diagnostics) {
+                const joggle::Mod& mod,
+                joggle::Diag& diagnostics) {
   // bind fns and verifiers
 }
 ```

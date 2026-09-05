@@ -10,7 +10,7 @@ without adding declaration categories.
 joggle 1;
 
 mod example@1.2.0 {
-  import tensor@^2.0 as t;
+  import tensor@7 as t;
   type word(width: int);
   fn identity<T>(input: T) -> T;
 }
@@ -145,7 +145,7 @@ Operators are fns whose symbol is their real name:
 fn (+)(lhs: word<8>, rhs: word<8>) -> word<8>;
 fn (-)(value: word<8>) -> word<8>;
 fn postfix (!)(value: flag) -> flag;
-fn ([])(input: view, position: index) -> element;
+fn ([])(input: sequence, position: index) -> element;
 ```
 
 The parser determines prefix or infix form from arity; `postfix` is explicit.
@@ -187,14 +187,18 @@ canonical syntax for lexicographically nested loops:
 
 ```joggle
 for row, column in rows, columns {
-  output[row, column] = value;
+  output = t.set(output, value, row, column);
 }
 ```
 
 This is exactly `for row in rows { for column in columns { ... } }`. A list
 domain iterates its elements during specialization. Each binder has one domain;
 a shape list is never interpreted as a Cartesian domain. Loops are statements
-and do not return or collect values.
+and do not return or collect values. Indexed assignment is not a separate
+statement form: a domain package exposes an ordinary update fn, and normal
+rebinding carries its result. The tensor package's loop form uses functional
+`tensor.set`; a target pass may later prove that the update can reuse physical
+storage.
 
 ## Staging
 
@@ -287,7 +291,9 @@ results    := ("->" expression | "->" "(" parameters? ")")?
 lambda     := "(" (name (":" expression)?
               ("," name (":" expression)? )*)? ")"
               ("->" expression)? "=>" (expression | body)
-subscript  := expression "[" expression "]"
+subscript  := expression "[" expression ("," expression)* "]"
+if         := "if" expression body ("else" (body | if))?
+while      := "while" expression body
 for        := "for" binding ("," binding)* "in"
               expression ("," expression)* body
 ```

@@ -172,7 +172,7 @@ private:
       elements.push_back(*known);
     }
     const auto domain =
-        expected ? kernel_domain(expected->domain) : std::optional<Domain>{};
+        expected ? compiler_domain(expected->domain) : std::optional<Domain>{};
     const std::string_view element_type = [&]() -> std::string_view {
       if (!elements.empty()) {
         return exec_val_type(elements.front());
@@ -389,8 +389,9 @@ private:
       return known(ExecVal{expression.text}, range);
     }
     if (expression.kind == Kind::Lambda) {
-      const auto domain = expected == nullptr ? std::optional<Domain>{}
-                                              : kernel_domain(expected->domain);
+      const auto domain = expected == nullptr
+                              ? std::optional<Domain>{}
+                              : compiler_domain(expected->domain);
       if (!domain || domain->list || domain->element != ValKind::Fn) {
         report("compiler lambda needs a fn context", range);
         return std::nullopt;
@@ -444,7 +445,7 @@ private:
       }
       auto declarations = visible_operators(compiler_, fn_.symbol().mod_name(),
                                             expression.text, fixity);
-      if (expected != nullptr && kernel_domain(expected->domain)) {
+      if (expected != nullptr && compiler_domain(expected->domain)) {
         declarations.erase(
             std::remove_if(declarations.begin(), declarations.end(),
                            [&](const Mod::FnDecl& declaration) {
@@ -485,7 +486,7 @@ private:
     if (!binding.type) {
       return std::nullopt;
     }
-    if (kernel_domain(binding.type->value)) {
+    if (compiler_domain(binding.type->value)) {
       return Mod::ParamDecl{binding.name, binding.type->value, false,
                             std::nullopt};
     }

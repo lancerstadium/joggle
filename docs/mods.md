@@ -1,150 +1,123 @@
-# Mods
+# Packages
 
-A Joggle `Mod` is a versioned package. It is simultaneously a namespace,
-dependency and installation unit, declaration source, and container for
-materialized fns. It is not an IR level, pass, rewrite pattern, kernel
-kind, or optimization profile. No companion manifest language or generated C++
-header is required.
+A Joggle `Mod` is one versioned, installable package. It is simultaneously a
+namespace, dependency unit, declaration source, body container, and owner of
+immutable data. It is not an IR level or a pass object.
 
 ## Admission rule
 
-A new Mod is justified only when its contents need an independently named,
-versioned, distributable dependency. A single transformation, operator
-combination, model profile, or experiment belongs as a `fn` in an existing
-owner or application package. Moving one expression behind another fn
-name is not grounds for a package.
+Create a new mod only when its vocabulary must be independently named,
+versioned, installed, and reused. A single pass, fusion pattern, operator
+combination, schedule, benchmark, or paper experiment does not justify a mod.
 
-The shipped boundary is deliberately small:
+The shipped boundary is:
 
-- `tensor` owns target-independent tensor types and program fns;
-- `mem` owns target-independent readable views and ordered destinations;
-- `nn` owns frontend-independent neural-network algorithms;
-- `quant` owns affine Q/DQ semantics;
-- `transform` owns reusable explicitly staged Fn transformations; and
-- optional `onnx` owns one external-format reader.
+| Mod | Responsibility |
+| --- | --- |
+| `arith` | scalar operations |
+| `tensor` | tensor values, access algebra, fusion, loop expansion |
+| `nn` | frontend-independent NN semantics |
+| `transform` | domain-independent Fn rewriting and resolution |
+| `quant` | quantize/dequantize semantics |
+| `onnx` | optional external byte reader |
 
-These are package roles, not source-language categories. Every declaration is
-still a `type` or `fn`, and every program or compiler action is still a normal
-call distinguished only by explicit `@` staging.
+The declared dependency edges are small and acyclic:
 
-The user-facing problems map to the language directly:
+| Mod | Declared imports |
+| --- | --- |
+| `arith` | none |
+| `tensor` | `arith` |
+| `nn` | `arith`, `tensor` |
+| `quant` | `tensor` |
+| `transform` | none |
+| `onnx` | none |
 
-| Need | Representation | Package rule |
-| --- | --- | --- |
-| import or export a model format | `fn(bytes) -> mod` or `fn(mod) -> bytes` | owned by the external-format package |
-| express a model or kernel | an ordinary typed `fn` body | owned by the vocabulary that defines its calls |
-| optimize or convert IR | `fn(fn) -> fn` or `fn(mod) -> mod`, called with `@` | a fn in the destination domain owner; generic transactions live in `transform` |
-| define a data format or policy | a parameterized `type` plus ordinary conversion fns | a new package only when independently reusable and distributable |
-| emit or simulate an implementation | an explicitly staged fn returning declared data | a future implementation package, never a core `Target` hierarchy |
+`tensor` uses Arith only to construct scalar loop control. `nn` defines its
+portable bodies with Arith and Tensor. Quantization uses Tensor types. The
+optional ONNX reader is deliberately open: it resolves records to semantic
+fns that the caller linked, rather than fixing one operator package into its
+own ABI.
 
-This is the intended extensibility point for AI hardware/software co-design:
-new representations and implementation choices are declared as types and
-fns, while the core continues to own only linking, staging, verified
-Fn edits, and compiler-time evaluation. A device, layout, schedule, or cost model does
-not receive a privileged base class merely because one experiment needs it.
+There is no generic `mem`, `graph`, `kernel`, `device`, or `target` mod. A
+future target package is admitted only with a real backend and a demonstrated
+portable boundary.
 
-This boundary is intentionally narrower than established multi-level stacks.
-[MLIR](https://mlir.llvm.org/docs/DialectConversion/) uses dialects for durable
-IR semantics and passes for conversion. [TVM](https://tvm.apache.org/docs/arch/index.html)
-keeps graph-level Relax Fns and executable TensorIR PrimFuncs in one
-IRMod; its fusion pipeline ultimately creates a low-level fn.
-[IREE](https://iree.dev/reference/mlir-dialects/Stream/) introduces Flow,
-Stream, and HAL only when partitioning, asynchronous scheduling, and resource
-management become explicit program semantics. Joggle does not reproduce those
-layers as Mods. It keeps one Fn model and admits new packages only for
-independently distributed vocabulary or tools.
+## Members
 
-## Declaration surface
+Only three member forms exist:
+
+- `import` names a versioned dependency;
+- `type` defines an immutable parameterized type;
+- `fn` declares or defines computation.
+
+Import, analysis, conversion, optimization, simulation, and emission are
+ordinary fns. A compiler-time fn is called explicitly with `@`.
 
 ```joggle
-joggle 1;
-
 mod project@1.0.0 {
-  import onnx@5;
+  import tensor@7 as t;
 
-  fn canonicalize(input: mod) -> mod;
-
-  fn compile(input: bytes, name: string) -> mod {
-    model = @onnx.read(input, name);
-    return @canonicalize(model);
+  fn prepare(input: fn) -> fn {
+    fused = @t.fuse(input);
+    return @t.loops(fused);
   }
 }
 ```
 
-Only three member forms exist:
+The order is ordinary user code. Joggle does not discover pass names or impose
+a universal pipeline.
 
-- `import` names a versioned dependency and optional prefix;
-- `type` defines an immutable parameterized compile-time value;
-- `fn` defines or declares callable behavior.
+## Semantic functions
 
-Metadata and policies are ordinary types. Import, analysis, transformation,
-simulation, and output are ordinary fns. This keeps extensions
-composable without forcing authors to implement framework-specific base
-classes or create a Mod per action.
+Portable operators should have source bodies. A compiler pass may inspect and
+compose those bodies without knowing the function name. Bodyless residual fns
+are opaque implementation boundaries and must remain visible until a target
+package replaces or implements them.
 
-## Source authority and native implementation
+Do not create parallel declarations for a frontend operator and its semantic
+equivalent. An importer resolves directly to the linked semantic fn. Any
+source-format mismatch is handled while binding the source record, not by
+inventing an intermediate operation family.
 
-A bodyless `fn` may be implemented by C++:
+## Native implementation
+
+A bodyless compiler-time fn may be implemented in C++:
 
 ```cpp
-void joggle_mod(joggle::Compiler& compiler,
-                   const joggle::Mod& mod,
-                   joggle::Diag& diagnostics) {
-  compiler.bind(mod, "read",
-                [](const joggle::Bytes& input)
-                    -> std::optional<joggle::Mod> {
-                  return decode(input);
-                });
+void joggle_mod(joggle::Compiler& compiler, const joggle::Mod& mod,
+                joggle::Diag&) {
+  compiler.bind(mod, "read", [](const joggle::Bytes& input) {
+    return decode(input);
+  });
 }
 ```
 
-`Compiler::bind` selects a source overload using the C++ callable signature
-and rejects mismatches. C++ implements an explicitly staged host service, not
-the semantics of each Residual Op and not a parallel declaration system.
-Native libraries carry the mod identity produced by the CMake
-helper and are rejected when their declaration digest does not match.
+The `.joggle` source remains the ABI authority. `joggle_mod(...)` embeds its
+declaration identity in the native library, so no generated header or duplicate
+schema is required.
 
-## User-defined pipelines
+## Target packages
 
-Users compose fns in source instead of registering a fixed pass list:
+A target package may define types for packed formats, layouts, storage handles,
+or instructions and ordinary fns that transform a loop Fn into those calls.
+The target is not required to inherit a base class. The minimum useful target
+package must provide:
 
-```joggle
-fn prepare(input: bytes, name: string) -> mod {
-  model = @onnx.read(input, name);
-  folded = @fold_constants(model);
-  return @canonicalize(folded);
-}
-```
+- a conversion fn with a precise accepted-form contract;
+- verification or diagnostics for unsupported operations;
+- one executable emitter or simulator;
+- tests on a real computation rather than declaration-only fixtures.
 
-The names and order are ordinary application code. A mod can expose a
-convenient pipeline while still allowing expert users to call each component.
+Physical capacities and cycle costs belong to a concrete target description,
+not the compiler core or tensor package.
 
-## Portable and host-only fns
+## Review checklist
 
-A fn with a source body can be materialized into IR. A bodyless fn
-needs a native binding when invoked at compile time, or remains a residual call
-when used as program computation. `@` is the explicit source-level stage
-switch; known inputs alone never select host execution during materialization.
-Program fns are never bound merely so the compiler can walk their calls.
+Before adding a mod, verify:
 
-## Versioning and dependencies
-
-Imports use exact, major, minor, or caret ranges. Linking chooses one version
-per mod name, verifies the complete closure, and records exact dependencies
-in a materialized mod. Repositories and lock files are described in
-[Repository](repository.md).
-
-## Design rules for new mods
-
-- Require independent naming, versioning, installation, and at least one real
-  consumer; otherwise add a fn to its owning package.
-- Never create a Mod for one pass, pattern, operator combination, layout
-  profile, benchmark, or paper example.
-- Define only domain vocabulary that has an executable use case.
-- Prefer a small orthogonal type/fn surface over workflow-specific nouns.
-- Keep file formats and hardware descriptions outside compiler core.
-- Use normal overloads for extensible behavior.
-- Return a `Mod`, `Fn`, `Type`, `bytes`, or another declared type;
-  never invent a second ownership container.
-- Add real-model tests before claiming a frontend or optimization mod is
-  supported.
+1. Existing types and ordinary fns cannot express the boundary cleanly.
+2. The package has an independent version and at least one real consumer.
+3. Its public surface contains domain concepts, not workflow scaffolding.
+4. It introduces no per-operator C++ registration requirement.
+5. Unsupported cases fail explicitly.
+6. Its documentation distinguishes implemented behavior from planned work.

@@ -265,7 +265,7 @@ std::optional<Domain> cpp_value_domain(std::string_view type) {
 
 std::optional<Type> domain_type(Compiler& compiler,
                                 const Mod::Expr& expression) {
-  const auto domain = kernel_domain(expression);
+  const auto domain = compiler_domain(expression);
   if (!domain) {
     return std::nullopt;
   }
@@ -291,8 +291,8 @@ std::optional<Mod::Expr> type_domain(const Type& type) {
   if (symbol.local_name() != "list") {
     const auto expression =
         Mod::Expr::reference(std::string(symbol.local_name()));
-    return kernel_domain(expression) ? std::optional<Mod::Expr>{expression}
-                                     : std::nullopt;
+    return compiler_domain(expression) ? std::optional<Mod::Expr>{expression}
+                                       : std::nullopt;
   }
   const auto parameters = TypeAccess::parameters(type);
   const Type* element =
@@ -389,7 +389,7 @@ bool same_staged_value(const StagedVal& lhs, const StagedVal& rhs) {
 
 std::optional<ExecVal> exec_val(const ParamVal& value,
                                 const Mod::ParamDecl& parameter) {
-  const auto domain = kernel_domain(parameter.domain);
+  const auto domain = compiler_domain(parameter.domain);
   if (domain && domain->list) {
     switch (domain->element) {
     case ValKind::Integer:

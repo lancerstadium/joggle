@@ -119,7 +119,7 @@ private:
 
   void check(const Mod::Expr& expression, const Mod::Expr& expected) {
     using Kind = Mod::Expr::Kind;
-    const auto domain = kernel_domain(expected);
+    const auto domain = compiler_domain(expected);
     if (!domain) {
       report("unknown compiler domain");
       return;
@@ -234,9 +234,8 @@ private:
 
   void check_operator(const Mod::Expr& expression, const Mod::Expr& expected) {
     using Kind = Mod::Expr::Kind;
-    const std::size_t arity = expression.kind == Kind::Infix
-                                  ? expression.arguments.size()
-                                  : 1U;
+    const std::size_t arity =
+        expression.kind == Kind::Infix ? expression.arguments.size() : 1U;
     if (expression.arguments.size() != arity) {
       report("malformed operator expression");
       return;

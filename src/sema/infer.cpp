@@ -82,7 +82,7 @@ std::optional<Mod::Expr> known_domain(const Mod::Expr& expression,
   }
   if (expression.kind == Kind::List && !expression.arguments.empty()) {
     auto element = known_domain(expression.arguments.front(), bindings);
-    const auto domain = element ? kernel_domain(*element) : std::nullopt;
+    const auto domain = element ? compiler_domain(*element) : std::nullopt;
     if (!domain || domain->list) {
       return std::nullopt;
     }
@@ -612,7 +612,7 @@ private:
       ~DepthGuard() { --depth; }
     } guard{depth_};
     using Kind = TypeExpr::Kind;
-    const auto domain = kernel_domain(expected.domain);
+    const auto domain = compiler_domain(expected.domain);
     if (!domain) {
       report("unknown parameter domain for '" + expected.name + "'");
       return std::nullopt;

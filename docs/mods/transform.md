@@ -38,6 +38,7 @@ bodies. `resolve` materializes reachable source definitions into a closed Mod
 while leaving bodyless implementation boundaries visible. Neither operation
 executes Residual program calls through host callbacks.
 
-Tensor fusion laws will be added only after indexed construction, access, and
-loop analyses are exercised by real NN bodies. They belong in a user-selected
-laws Mod, not in Tensor, a magic optimization package, or compiler C++.
+Domain-specific structural transforms remain with the domain that defines
+their accepted form: `tensor.fuse` and `tensor.loops` therefore belong to
+Tensor. Algebraic identities that are meaningful across domains remain
+ordinary user-selected law Mods consumed by `transform.pass`.

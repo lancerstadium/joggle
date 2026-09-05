@@ -1,18 +1,19 @@
-# Neural-network functions
+# Neural network
 
-`nn@2` is the shared semantic library for neural-network programs. Its members
-are ordinary Joggle fns; the compiler core has no list of NN operation names.
+`nn@2` is a frontend-independent semantic library. Its members are ordinary
+Joggle fns, and the compiler core contains no NN operation names.
 
-`matmul`, `relu`, and `dropout` currently have source bodies. MatMul uses
-pure tensor construction, indexed `reduce`, multi-index `[]`, and scalar
-overloads. Relu uses rank-polymorphic `map`. Calls remain compact until a user
-explicitly expands their bodies.
+`matmul`, `relu`, and inference-mode `dropout` currently have source bodies.
+MatMul is expressed through tensor construction, indexing, reduction, and
+scalar arithmetic. Relu is a rank-polymorphic map. Consequently the tensor
+fusion pass can compose `matmul → relu` without a MatMul, Relu, or pair-specific
+rule.
 
 Conv, pooling, concatenation, reshape, flatten, and Softmax currently have
-typed declarations and compile-time shape semantics so real static models can
-be represented without an ONNX operation layer. They remain implementation
-leaves. A compiler or device module must either replace them or reject them;
-successful import does not imply executable support.
+typed signatures and shape functions but no computational bodies. They are
+honest opaque leaves: they can represent an imported model, but cannot yet pass
+through body-derived fusion or generic loop expansion.
 
-The shape helpers are ordinary compiler fns in the same module. They are used
-by result type expressions and are not an additional IR or public pass system.
+Adding executable support means writing a portable body or supplying a target
+replacement. It does not mean adding an NN subclass, lowering table, fusion
+trait, or C++ name switch.

@@ -1,179 +1,120 @@
 # Research scope
 
-This is an evidence ledger, not a paper draft. It separates mechanisms already
-present in Joggle from the next research hypothesis and its falsification
-criteria.
+Joggle targets compiler researchers and AI hardware/software co-designers who
+need to add semantic operators, transformations, data formats, and edge targets
+without modifying a central operation hierarchy.
 
-## Question
+The current artifact is an implementation substrate, not yet a publication
+claim.
 
-Can an AI software/hardware co-design compiler let a library author add a
-semantic operation, an optimized kernel, a physical format, and the
-transformations connecting them through one typed `type`/`fn` extension plane,
-without moving correctness or optimization policy into a fixed compiler
-registry?
+## Problem
 
-The scope is edge inference: reproducible compilation, controllable kernel
-implementation, low integration cost for unusual formats and instructions,
-and an optional measured-selection loop whose chosen program can be frozen for
-deterministic deployment.
+Extensible NN compilers commonly require one or more of:
 
-## Evidence in the current tree
+- a frontend operation family followed by legalization;
+- per-operation fusion categories or pattern registrations;
+- separate graph and loop IR object models;
+- operation interfaces for bufferization and target conversion;
+- backend-specific subclasses and attribute channels.
 
-The implementation currently demonstrates:
+These mechanisms are effective, but a user-defined semantic operator often
+needs coordinated changes across import, inference, fusion, scheduling, and
+bufferization. That cost is especially visible in research targets with custom
+bit widths, data formats, or compute units.
 
-1. one `Mod` owns declarations, editable Fns, imports, and content-addressed
-   data;
-2. `@` is the only stage switch, while ordinary calls remain program calls;
-3. every operation is one typed `Call(callee: Val, arguments...)`;
-4. typed lambdas are ordinary anonymous Fns rather than a pattern AST;
-5. Residual captures are explicit dependency edges and hidden typed body
-   arguments, while effect tokens cannot be captured;
-6. `tensor@7` provides pure indexed construction, `map`, indexed `reduce`,
-   multi-index `[]`, and constants;
-7. `nn@2` contains the first frontend-neutral bodyful MatMul and Relu
-   definitions, while compiler core remains unaware of either name;
-8. `mem@1` separates immutable views from write-only destinations and threads
-   writes through the core affine effect type;
-9. `mem.realize` expands bodyful semantics and refines MatMul and Relu through
-   the tensor basis into verified loops, SSA reduction, reads, and stores,
-   without matching either NN name; nested maps fuse by recursive coordinate
-   sampling and produce one logical allocation;
-10. the ONNX byte reader resolves two pinned Model Zoo graphs directly to
-   Tensor, NN, and Quant calls without an ONNX operation layer;
-11. ONNX nodes bind generically by normalized name, ordinary signatures,
-   defaults, and staged dependent result Types without an `op_type` branch
-   chain;
-12. `transform.pass` accepts a Mod of ordinary two-result equation fns,
-    infers generic Types from both results and structurally corresponding
-    pattern arguments, matches declaration identity and dataflow rather than
-    names, recurses into callable bodies, and rejects effects;
-13. Mod bundles preserve and verify imported data through public `check`,
-   `run`, `install`, and `lock` workflows; and
-14. source resolution constructs deterministic concrete instances while
-   preserving bodyless calls as an explicit leaf set.
+## Hypothesis
 
-Most NN algorithms remain opaque. Rank-two MatMul and Relu now have verified
-frontend-neutral bodies and a structural path to logical storage, and ONNX
-import produces those semantics directly. Whole-Mod destination passing,
-shared intermediates, Conv, batched MatMul, equation inference through control
-flow, generic model fusion, symbolic shapes, numerical execution, emission,
-and performance evidence are unfinished.
-The current result establishes clean ownership and dependent callable typing,
-not numerical preservation after compilation or publication-level novelty.
+A bodyful typed fn can be the common extension unit for semantic definition,
+graph optimization, loop generation, and target replacement.
 
-## What the closest systems already solve
+Joggle tests a specific version of that hypothesis:
 
-Joggle must not claim novelty for user-controlled scheduling alone.
+1. A model graph is the use-def relation of an ordinary `Fn`.
+2. A semantic operator is an ordinary bodyful fn built from a small tensor
+   algebra.
+3. Fusion derives coordinate demand and reductions from the body instead of an
+   operator name, trait, or registered fusion pattern.
+4. Fusion and explicit loops remain verified forms of the same `Fn` object.
+5. Physical storage is introduced only after tensor optimization.
+6. A target extension supplies ordinary types and transformation fns rather
+   than inheriting a compiler base class.
 
-- Halide separates an algorithm from a schedule, but schedules select from a
-  compiler-owned set of controls.
-- TVM and TensorIR provide mature graph/tensor optimization, schedule
-  primitives, blocks with dependency signatures, tensor intrinsics, validation,
-  and automatic search.
-- Lift and RISE preserve functional data-parallel semantics while rewrite rules
-  choose low-level parallel patterns; ELEVATE makes rewrite strategies
-  programmable and composable.
-- Exo externalizes instructions, memories, configuration state, and scheduling
-  policy into user libraries. Its effect analysis and SMT checks make
-  imperative rewrites safe. This is the nearest mechanism to the proposed
-  work.
-- TileLang gives kernel authors concise tile-level control over placement,
-  movement, thread mapping, layout, tensorization, and pipelines.
-- Astra separates legal-variant enumeration from measured selection across a
-  repetitive DNN workload, avoiding a monolithic performance model.
-- MLIR Quant represents expressed/storage scalar relationships and
-  quantization parameters; TVM BYODT uses runtime scalar type and lowering
-  registries and explicitly excludes block formats in its published scope.
+The strongest prospective contribution is body-derived fusion for independently
+defined operators. “One IR” or “modular compiler” alone is not novel enough.
 
-Their relevant boundaries are also precise. Lift/RISE use a fixed family of
-low-level hardware patterns. TensorIR's block signatures and transformations
-are compiler abstractions. Exo targets affine imperative library kernels and
-its paper prototype uses syntactic locations; it does not unify model-scale AI
-semantics, user-defined value formats, and kernel transformations in one
-source-level mechanism. Astra targets long-running training and cannot be
-transferred to resource-constrained inference without a bounded, cacheable
-selection protocol.
+## Relationship to existing systems
 
-## Hypothesis: one fn model across abstraction levels
+[TVM Relax](https://tvm.apache.org/docs/arch/fusion.html) groups dataflow calls
+using operator pattern kinds and post-dominator analysis, then merges associated
+TensorIR functions. Joggle should reuse the graph-partitioning insight while
+deriving access categories from portable function bodies and retaining one Fn
+object model.
 
-The next mechanism under test is deliberately smaller than another IR stack:
+[nncase](https://github.com/kendryte/nncase) demonstrates typed functional graph
+rewriting, e-graphs, cost extraction, and explicit fusion functions. Joggle
+should not reproduce its `Fusion` class or pair/complex fusion-rule hierarchy;
+an outlined fused region, when needed, remains an ordinary Fn.
 
-1. A model, user operation, or executable kernel is an ordinary typed `fn`.
-2. Fn bodies may use different imported vocabularies, but remain the
-   same `Fn` representation and type system. No `Kernel` subclass or
-   fixed lowering ladder is added.
-3. A conversion or optimization is an explicitly staged fn over
-   `fn` or `mod` values.
-4. A portable reference and an implementation are separate ordinary
-   fns. Their relationship must be checked explicitly; a declaration
-   never carries a hidden second body.
-5. Real kernels require an explicit, independently auditable semantic
-   validation fn; structural similarity alone is not a correctness proof.
-6. Physical formats are parameterized types and conversion fns, not
-   copies of the tensor operator vocabulary.
-7. Candidate enumeration, measurement, and selection are ordinary compiler
-   fns. Selection policy does not alter transformation correctness.
+[MLIR One-Shot Bufferize](https://mlir.llvm.org/docs/Bufferization/) shows why
+tensor fusion and tiling should precede buffer decisions and why whole-function
+use-def analysis is necessary for safe reuse. Joggle therefore keeps
+`tensor.set` functional and introduces no tensor-path effect token.
 
-Once a concrete implementation Fn is chosen, emission must not silently
-make new optimization decisions. This preserves the useful separation in
-RISE/Shine while keeping the extension surface uniform.
+[Lift](https://lift-project.github.io/publications/2017/steuwer17LiftIR.pdf)
+and RISE preserve functional data-parallel patterns so transformations can
+compose before imperative code generation. Joggle adopts the functional
+reasoning principle but uses ordinary typed calls and CFG loops in one
+representation.
 
-## Why this is not yet a contribution
+## Research questions
 
-One Fn representation may be too weak for both model graphs and useful
-kernel bodies, or may merely move a privileged registry into native fns.
-User formats may still require compiler changes to represent storage. A
-model-wide optimization may not compose from kernel-local equivalences. These
-are open risks, not details to hide in implementation.
+- **RQ1 — extension effort:** How many source and C++ changes are needed to add
+  a new bodyful operator and make it inferable, fusible, and loopable?
+- **RQ2 — coverage:** What fraction of operators in real ONNX edge models can
+  be expressed by the tensor basis and processed without per-op compiler code?
+- **RQ3 — fusion quality:** Compared with TVM and a no-fusion baseline, how much
+  intermediate traffic, peak live tensor storage, and execution time does the
+  deterministic planner remove?
+- **RQ4 — predictability:** What are compilation-time variance, generated code
+  size, and worst-case planner complexity on fixed models?
+- **RQ5 — target reuse:** Can two materially different edge targets reuse the
+  same semantic and fusion packages while implementing independent layout and
+  emission fns?
 
-## Required experiments
+## Required artifact milestones
 
-The hypothesis survives only if the same mechanism supports all of the
-following without a new core declaration category:
+1. Body-derived linear-chain fusion on MatMul–Relu — implemented.
+2. Explicit reduction and output loops with tensor value semantics —
+   implemented.
+3. Shared-producer planning using post-dominance and a documented deterministic
+   cost — planned.
+4. Bodyful Conv, pooling, reshape, transpose, broadcast, and Softmax — planned.
+5. End-to-end numerical execution for representative ONNX models — planned.
+6. Two target packages, at least one custom-format edge target — planned.
+7. Reproducible comparison with TVM/nncase-style registered fusion — planned.
 
-1. define an executable tensor kernel whose implementation structure differs
-   from its portable reference expression;
-2. reject a type-correct but semantically different implementation candidate;
-3. compose that kernel transformation with a model-scale structural pass;
-4. only after the kernel path works, add one independently installable low-bit
-   or packed format and its conversions without duplicating tensor fns;
-5. import and transform externally maintained ONNX models, then compare
-   numerically with a trusted runtime;
-6. produce and execute at least one useful edge implementation;
-7. record extension-local versus core changes against Exo and one established
-   AI compiler; and
-8. measure latency, memory, binary size, compile/selection cost, deterministic
-   rebuilds, and diagnostic coverage.
+## Publication gate
 
-A later cloud/edge experiment may enumerate and benchmark variants away from
-the constrained device, then lock the selected Fn and measurement record
-into a content-addressed Mod bundle. Online selection is optional; repeated
-deployment of the selected bundle must not require search.
+ASPLOS is plausible only after the work demonstrates a systems result across
+real models and targets: extension-effort reduction, compilation predictability,
+memory-traffic reduction, and end-to-end performance or energy evidence.
+
+TACO is plausible if the central contribution becomes a precise tensor access
+algebra and composition/planning algorithm with formal semantics, correctness
+argument, and substantial evaluation.
+
+Until those gates are met, documentation must describe the work as an
+implemented compiler foundation and research hypothesis, not a novel or
+top-tier result.
 
 ## Kill criteria
 
-Narrow or abandon the mechanism if realistic extensions repeatedly require
-new core declaration kinds, if semantic checking accepts unsound rewrites or
-rejects most useful kernels, if user-defined formats cannot be represented
-without a hidden target API, if whole-model composition is impractical, or if
-the controlled extension study shows no meaningful reduction in integration
-coupling.
+The research direction should be reconsidered if:
 
-## Venue gate
-
-ASPLOS is plausible only after the mechanism has measured compiler/runtime and
-hardware consequences on real edge inference. TACO additionally requires
-substantial architecture and code-optimization evidence. A language surface,
-an importer, or a synthetic emitter is insufficient for either venue.
-
-## Primary literature
-
-- [Halide: Decoupling Algorithms from Schedules](https://people.csail.mit.edu/jrk/halide12/)
-- [Lift: A Functional Data-Parallel IR](https://lift-project.github.io/publications/2017/steuwer17LiftIR.pdf)
-- [Achieving High Performance the Functional Way](https://michel-steuwer.github.io/files/publications/2020/ICFP-2020.pdf)
-- [Exocompilation for Productive Programming of Hardware Accelerators](https://people.csail.mit.edu/yuka/pdf/exo_pldi2022_full.pdf)
-- [TensorIR: An Abstraction for Automatic Tensorized Program Optimization](https://arxiv.org/abs/2207.04296)
-- [TileLang: Bridge Programmability and Performance in Modern Neural Kernels](https://proceedings.iclr.cc/paper_files/paper/2026/hash/76fb92288bf90360c527efb0d1c2aba6-Abstract-Conference.html)
-- [Astra: Exploiting Predictability to Optimize Deep Learning](https://www.microsoft.com/en-us/research/publication/astra-exploiting-predictability-to-optimize-deep-learning/)
-- [MLIR Quant dialect](https://mlir.llvm.org/docs/Dialects/QuantDialect/)
-- [TVM Bring Your Own Datatypes](https://tvm.apache.org/2020/09/26/bring-your-own-datatypes)
+- common operators still require C++ name cases;
+- body-derived summaries cover too little of real model graphs;
+- the single-Fn representation makes loop or target transformations materially
+  harder than a split graph/loop design;
+- target packages require hidden registries or duplicated schemas;
+- fusion quality is consistently worse than existing deterministic compilers
+  without a compensating extension or predictability advantage.

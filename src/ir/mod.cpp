@@ -184,7 +184,7 @@ select_parameters(std::span<const Mod::ParamDecl> parameters,
 }  // namespace
 
 bool detail::is_value_port(const Mod::ParamDecl& parameter) {
-  return !kernel_domain(parameter.domain);
+  return !compiler_domain(parameter.domain);
 }
 
 std::vector<Mod::ParamDecl>

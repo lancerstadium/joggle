@@ -27,7 +27,7 @@ using detail::belongs_to;
 using detail::ParamVal;
 
 std::optional<detail::Domain> parameter_domain(const Mod::ParamDecl& field) {
-  return detail::kernel_domain(field.domain);
+  return detail::compiler_domain(field.domain);
 }
 
 std::string_view resolve_prefix(const Mod& mod, std::string_view prefix);
@@ -37,7 +37,7 @@ std::optional<Mod::TypeDecl>
 field_type_declaration(const Mods& mods, const Mod::FnDecl& fn,
                        const Mod::ParamDecl& field) {
   if (field.domain.kind != Mod::Expr::Kind::Reference ||
-      detail::kernel_domain(field.domain)) {
+      detail::compiler_domain(field.domain)) {
     return std::nullopt;
   }
   const std::size_t dot = field.domain.text.find('.');

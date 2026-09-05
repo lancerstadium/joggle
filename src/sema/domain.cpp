@@ -34,7 +34,7 @@ Mod::Expr domain_expression(ValKind kind, bool list) {
   return list ? Mod::Expr::list_domain(std::move(element)) : std::move(element);
 }
 
-std::optional<Domain> kernel_domain(const Mod::Expr& expression) {
+std::optional<Domain> compiler_domain(const Mod::Expr& expression) {
   const Mod::Expr* element = &expression;
   bool list = false;
   if (expression.kind == Mod::Expr::Kind::Reference &&
@@ -59,7 +59,7 @@ std::optional<Domain> kernel_domain(const Mod::Expr& expression) {
 }
 
 bool is_domain(const Mod::Expr& expression, ValKind kind, bool list) {
-  return kernel_domain(expression) == Domain{kind, list};
+  return compiler_domain(expression) == Domain{kind, list};
 }
 
 std::optional<std::string> canonical_real(double value) {

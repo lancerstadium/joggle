@@ -81,10 +81,10 @@ int main() {
       joggle::parse_mod(R"(
     joggle 1;
     mod subscript@1.0.0 {
-      type view();
+      type sequence();
       type index();
-      fn ([])(input: view, position: index) -> view;
-      fn read(input: view, position: index) -> view {
+      fn ([])(input: sequence, position: index) -> sequence;
+      fn read(input: sequence, position: index) -> sequence {
         return input[position];
       }
     }

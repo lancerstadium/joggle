@@ -1,73 +1,87 @@
 # Joggle
 
-Joggle is a small C++ compiler substrate for AI software/hardware co-design.
-It provides one versioned `Mod` abstraction, one typed `fn` declaration,
-explicit Known/Residual staging, editable CFG/SSA bodies, and installable
-compiler-time services.
+Joggle is a compact C++ compiler for people who co-design neural-network
+software and edge hardware. Its central idea is deliberately small:
 
-The project deliberately does not prescribe a graph hierarchy, lowering
-ladder, target base class, pass registry, kernel object, device model, or
-deployment container. AI vocabularies and hardware experiments are installable
-Mods rather than compiler-core categories.
+- a versioned `Mod` is the package and namespace;
+- a typed `Fn` represents both a model graph and an explicit loop program;
+- every IR operation is an ordinary call;
+- compiler work is an ordinary fn invoked explicitly with `@`;
+- new operators are defined by bodies, not C++ subclasses or lowering tables.
 
-## Source model
+There is no `GraphIR`, `KernelIR`, dialect hierarchy, pass registry, target base
+class, or generated declaration header. Different compilation stages are
+verified forms of the same `Fn` object.
+
+## A neural-network pipeline
 
 ```joggle
 joggle 1;
 
 mod example@1.0.0 {
-  type word(width: int);
+  import nn@2 as n;
+  import tensor@7 as t;
 
-  fn (+)(lhs: word<8>, rhs: word<8>) -> word<8>;
+  fn model(
+    lhs: t.tensor<f32, [2, 4]>,
+    rhs: t.tensor<f32, [4, 3]>
+  ) -> t.tensor<f32, [2, 3]> {
+    product = n.matmul(lhs, rhs);
+    return n.relu(product);
+  }
 
-  fn twice(input: word<8>) -> word<8> {
-    return input + input;
+  fn prepare(input: fn) -> fn {
+    fused = @t.fuse(input);
+    return @t.loops(fused);
   }
 }
 ```
 
-`fn` is used for residual computation and compiler-time work. Prefix `@`
-requests compile-time execution; an ordinary call remains a program call even
-when its operands happen to be known. This explicit-staging rule is implemented
-and covered by both positive and negative materialization tests.
+`tensor.fuse` expands bodyful semantic functions and composes producer access
+into consumer demand. For MatMul followed by Relu, it produces one tensor
+construction containing the reduction and activation, with no intermediate
+MatMul tensor. `tensor.loops` then converts that fused construction and its
+reduction into ordinary CFG loops. The two passes are explicit and neither
+silently invokes the other.
 
-A `Mod` owns declarations, materialized Fn bodies, imports, and
-content-addressed immutable data. There is no second Program, Graph, Package,
-or Artifact owner. Source-only Mods remain one text file; a Mod with
-owned weights uses a lossless directory bundle containing `mod.joggle` and
-`data/<sha256>`, accepted directly by `check`, `run`, `install`, and
-`lock`.
+The loop form still has tensor value semantics. `tensor.set` returns the next
+tensor value; it is not a physical store. Storage reuse, layouts, packed
+formats, instructions, and emission belong to later target packages after
+fusion and scheduling decisions are complete.
 
-## Compiler extension model
+## Extension model
 
-An extension consists of one `.joggle` Mod and, only when required, one
-native library implementing bodyless compiler fns. The source Mod is
-the schema authority; no generated declaration header is required.
-
-Whole-mod import, conversion, optimization, analysis, simulation, and file
-output remain ordinary fns:
+A package is one `mod.joggle` file plus an optional native library for work
+that cannot be expressed portably, such as decoding ONNX or writing an object
+file. The source file is always the ABI authority.
 
 ```joggle
-fn read(input: bytes) -> mod;
-fn optimize(input: mod, policy: type) -> mod;
-fn inspect(input: mod) -> bytes;
-
-fn prepare(input: bytes, policy: type) -> mod {
-  model = @read(input);
-  return @optimize(model, policy);
-}
+fn read(input: bytes, name: string = "model") -> mod;
+fn optimize(input: fn) -> fn;
+fn emit(input: mod) -> bytes;
 ```
 
-The user controls composition in source. Joggle does not discover magic pass
-names or force a universal sequence of intermediate forms.
+Ordinary calls remain in the program. `@read(...)` or `@optimize(...)` asks the
+compiler to execute that fn now. Users compose their own pipeline in normal
+source instead of registering magic pass names.
 
-`Compiler::resolve` recursively materializes concrete source-defined calls and
-leaves bodyless implementation boundaries explicit. The installable
-`transform.resolve` fn exposes the same operation through normal `@` staging.
-Resolution constructs a call graph; it does not execute Residual Ops through
-host callbacks.
+## Shipped packages
 
-## Build
+- `arith@1.2`: scalar operations used by portable bodies;
+- `tensor@7.1`: the tensor value, its small semantic basis, fusion, and loop
+  expansion;
+- `nn@2`: frontend-independent neural-network functions;
+- `transform@3`: generic inlining, equational rewriting, and resolution;
+- `quant@3`: quantize/dequantize semantics;
+- optional `onnx@5`: a Protobuf reader that resolves directly to linked
+  semantic functions.
+
+There is intentionally no generic memory or device package in the current
+system. Such a package will be admitted only when a real target demonstrates a
+portable contract that is not already expressed by tensor values and ordinary
+functions.
+
+## Build and test
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -75,24 +89,15 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The repository ships `arith@1.2.0`, `tensor@7.0.0`, `mem@1.0.0`,
-`nn@2.0.0`, `transform@3.0.0`, and `quant@3.0.0`. Tensor exposes indexed
-construction, rank-polymorphic mapping, reduction, overloaded `[]`, and
-immutable constants. `mem` supplies target-independent read views and ordered
-write destinations; its explicit `realize(fn)` pass refines the tensor basis
-to loops and ordered stores without matching NN operator names. `nn` owns
-neural-network functions composed from the pure tensor basis. A call is a
-compact graph node until an explicit pass expands or refines it.
-
-The optional Protobuf-backed `onnx@5.0.0` package is only a file reader. It
-resolves decoded records directly to linked `nn`, `tensor`, and `quant` fns.
-There is no ONNX operation module, ONNX IR, conversion pass, or automatic
-`to_nn` stage.
+Enable the optional ONNX reader with `-DJOGGLE_BUILD_ONNX=ON` and provide a
+Protobuf installation.
 
 ## Documentation
 
-- [Documentation index](docs/README.md)
-- [Getting started](docs/getting-started.md)
-- [Language](docs/language.md)
+- [Documentation map](docs/README.md)
 - [Architecture](docs/architecture.md)
-- [Mods](docs/mods.md)
+- [Tensor compilation pipeline](docs/pipeline.md)
+- [Language](docs/language.md)
+- [C++ API](docs/api.md)
+- [Package design](docs/mods.md)
+- [Research scope](docs/research.md)

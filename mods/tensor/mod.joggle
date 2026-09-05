@@ -1,6 +1,8 @@
 joggle 1;
 
-mod tensor@7.0.0 {
+mod tensor@7.1.0 {
+  import arith@1 as a;
+
   type tensor(element: type, shape: list<int>);
 
   fn tensor<E, S: list<int>>(
@@ -20,5 +22,14 @@ mod tensor@7.0.0 {
     input: tensor<E, S>,
     indices: index...
   ) -> E;
+  fn empty<E, S: list<int>>(shape: S) -> tensor<E, S>;
+  fn set<E, S: list<int>>(
+    input: tensor<E, S>,
+    value: E,
+    indices: index...
+  ) -> tensor<E, S>;
   fn constant<T>(content: string) -> T;
+
+  fn fuse(input: fn) -> fn;
+  fn loops(input: fn) -> fn;
 }
