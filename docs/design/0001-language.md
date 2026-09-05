@@ -56,8 +56,7 @@ or `mod` value and edits the real calls, values, blocks, and nested fn bodies:
 ```joggle
 fn optimize(input: fn) -> fn {
   input = @inline(input);
-  input = @fuse(input);
-  return @dce(input);
+  return @fuse(input);
 }
 ```
 
@@ -69,10 +68,10 @@ pattern, or rewrite-framework objects into the source language.
 
 ## Effects and legality
 
-Pure tensor values and mutable views are distinct types. Effects are inferred
-and checked from called fns. Reordering, duplication, deletion, and
-replacement are legal only when the involved effects permit them. Effect
-checking is a compiler invariant, not a marker interface authors must attach
+Effects are explicit affine `effect<domain>` values. Calls without an effect
+input or result are pure. Reordering, duplication, deletion, and replacement
+are legal only when the visible token flow permits them. Effect checking is a
+compiler invariant, not a marker interface authors must attach
 manually.
 
 ## Scheduling boundary
@@ -102,13 +101,15 @@ an earlier gate.
 5. Explicit closures: retain lambda captures as typed dependency edges rather
    than textual substitution. **Complete; see Designs 0002 and 0003.**
 6. Direct Fn editing: transform concrete calls and nested bodies without a
-   second pattern graph. **In progress; see Design 0003.**
+   second pattern graph. **Complete for pure concrete typed equations; generic
+   Types and CFG equations remain planned. See Design 0003.**
 7. Tensor calculus: define a small bodyful construction/access/reduction
    vocabulary outside the core. **Planned; see Design 0004.**
 8. High-level tensor definitions: express Relu, Conv, GEMM, and similar
    operations in that calculus rather than compiler name cases. **Planned.**
-9. Generic transformation: inline and fuse those bodies by structure and
-   dependence. **Planned.**
+9. Generic transformation: concrete `map(build(f), g)` and
+   `at(build(f), p)` equations now fuse by structure; Type-polymorphic rules
+   and reduction dependence remain planned. **In progress.**
 10. ONNX validation: import unmodified models into bodyful definitions and
     validate transformed results against a trusted runtime. **Planned.**
 

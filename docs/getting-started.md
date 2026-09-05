@@ -1,10 +1,10 @@
 # Getting started
 
-This guide creates one installable declaration Mod and one optional C++
-native library. Joggle does not generate declaration headers: the `.joggle`
-file remains the schema authority.
+This guide defines a small Mod and transforms its real Fn body with an ordinary
+typed equation. Joggle generates no declaration header; `.joggle` source is the
+schema and package authority.
 
-## 1. Build Joggle
+## 1. Build
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -12,10 +12,9 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-For a separate consumer project, install Joggle and use
-`find_package(Joggle CONFIG REQUIRED)`.
+An installed consumer uses `find_package(Joggle CONFIG REQUIRED)`.
 
-## 2. Declare a Mod
+## 2. Define a Mod
 
 Create `example.joggle`:
 
@@ -23,11 +22,20 @@ Create `example.joggle`:
 joggle 1;
 
 mod example@1.0.0 {
+  import transform@2 as tr;
+
   type word(width: int);
 
   fn keep<T>(input: T) -> T;
   fn replacement<T>(input: T) -> T;
-  fn rewrite(input: fn) -> fn;
+
+  fn rewrite(input: fn) -> fn {
+    return @tr.pass(
+      input,
+      (value: word<8>) -> word<8> => keep(value),
+      (value: word<8>) -> word<8> => replacement(value)
+    );
+  }
 
   fn main(input: word<8>) -> word<8> {
     return keep(input);
@@ -35,66 +43,72 @@ mod example@1.0.0 {
 }
 ```
 
-Validate and format the source:
+Validate and canonically format it:
 
 ```bash
-joggle check example.joggle
+joggle check example.joggle --with /path/to/transform/mod.joggle
 joggle fmt example.joggle --write
 ```
 
-Use repeated `--with dependency.joggle` options for local imports that are not
-installed yet.
+`pass` is an ordinary imported fn called explicitly with `@`. The two lambdas
+are ordinary compiler-domain Fns. Their arguments are typed pattern variables;
+calls match exact declaration identity and dataflow rather than strings. The
+replacement is verified before publication and dead pure producers are removed.
 
-## 3. Implement native fns
+The current equation form uses concrete Types. Generic typed equations are an
+active language gate, so this example deliberately states `word<8>` instead of
+claiming shape-polymorphic rewriting.
 
-Create `native.cpp`:
+## 3. Run the transformation
 
 ```cpp
 #include <joggle/joggle.h>
 
-void joggle_mod(joggle::Compiler& compiler, const joggle::Mod& mod,
-                   joggle::Diag& diagnostics) {
-  const auto keep = mod.fn("keep");
-  const auto replacement = mod.fn("replacement");
-  if (!keep || !replacement) {
-    diagnostics.report("example native does not match its Mod");
-    return;
-  }
+joggle::Compiler compiler;
+compiler.load("/path/to/transform/mod.joggle");
+compiler.load("example.joggle");
+if (!compiler.link() ||
+    !compiler.load_native("transform", "/path/to/transform/native")) {
+  compiler.diag().print(std::cerr);
+  return 1;
+}
 
-  compiler.bind(
-      mod, "rewrite",
-      [keep = *keep, replacement = *replacement](
-          joggle::Fn fn,
-          joggle::Diag& edit_diagnostics)
-          -> std::optional<joggle::Fn> {
-        const auto ops = fn.ops();
-        auto edit = fn.edit();
-        for (const auto& op : ops) {
-          if (op.callee().referenced_fn() == keep) {
-            edit.replace(op, replacement);
-          }
-        }
-        if (!edit.commit(edit_diagnostics)) {
-          return std::nullopt;
-        }
-        return fn;
-      });
+auto fn = compiler.materialize("example.main");
+auto rewritten = fn ? compiler.run<joggle::Fn>("example.rewrite", *fn)
+                    : std::nullopt;
+if (!rewritten || !compiler.verify(*rewritten)) {
+  compiler.diag().print(std::cerr);
+  return 1;
 }
 ```
 
-The callable's C++ input and output select and check the declared
-`fn -> fn` overload. Only `keep` and `replacement` need explicit
-declaration handles because the rewrite compares against their exact IR
-identity. The input is an isolated value, and the returned Fn is
-published only after its edit commits; no pass base class, generated wrapper,
-Graph object, or Region API is involved.
+The transformed value is still one `Fn`. Its calls, values, blocks, and nested
+lambda bodies were edited directly; there is no graph conversion or pass object.
 
-## 4. Build and validate native
+## 4. Add a native boundary only when needed
+
+Pure declarations and source bodies require no generated C++ wrapper. Host
+work such as decoding a file, measuring a device, or writing an object is a
+bodyless source fn with an optional native implementation:
+
+```joggle
+fn read(input: bytes) -> mod;
+```
+
+```cpp
+void joggle_mod(joggle::Compiler& compiler, const joggle::Mod& mod,
+                joggle::Diag&) {
+  compiler.bind(mod, "read",
+                [](const joggle::Bytes& input)
+                    -> std::optional<joggle::Mod> {
+                  return decode(input);
+                });
+}
+```
+
+Build that library with the source Mod as its identity:
 
 ```cmake
-cmake_minimum_required(VERSION 3.20)
-project(ExampleNative LANGUAGES CXX)
-
 find_package(Joggle CONFIG REQUIRED)
 
 joggle_mod(example_native
@@ -103,51 +117,18 @@ joggle_mod(example_native
 )
 ```
 
-Then build and validate the exact source/binary pair:
+`joggle_mod` embeds the canonical Mod identity in a hidden build translation
+unit. Authors write no export macro or generated declaration header.
 
-```bash
-cmake -S . -B build
-cmake --build build
-joggle check example.joggle --native build/example_native.dylib
-```
+## 5. Compose tools
 
-Use the platform suffix produced by CMake: `.so`, `.dylib`, or `.dll`.
-`joggle_mod` embeds the canonical Mod identity and native entry point in
-a generated, hidden translation unit. Authors write no export macro and Joggle
-generates no declaration header; `example.joggle` remains the only schema.
-
-## 5. Run a compiler fn
-
-The in-process form directly materializes and transforms the example's
-Fn:
-
-```cpp
-joggle::Compiler compiler;
-compiler.load("example.joggle");
-if (!compiler.link() ||
-    !compiler.load_native("example", "build/example_native.dylib")) {
-  compiler.diag().print(std::cerr);
-  return 1;
-}
-
-auto fn = compiler.materialize("example.main");
-auto rewritten = fn ? compiler.run<joggle::Fn>(
-                                "example.rewrite", *fn)
-                          : std::nullopt;
-if (!rewritten) {
-  compiler.diag().print(std::cerr);
-  return 1;
-}
-fn = std::move(rewritten);
-```
-
-Command-line pipelines expose one portable file boundary:
+Compiler work remains ordinary source composition:
 
 ```joggle
 fn compile(input: bytes) -> bytes {
   model = @read(input);
-  optimized = @optimize(model);
-  return @emit(optimized);
+  model = @optimize(model);
+  return @emit(model);
 }
 ```
 
@@ -156,15 +137,9 @@ joggle run driver.joggle compile model.onnx \
   --native build/driver_native.dylib -o model.bin
 ```
 
-This wrapper uses `bytes -> bytes`. The CLI also accepts `bytes -> mod`,
-`mod -> mod`, and `mod -> bytes`, so `read`, `optimize`, and `emit`
-can be run individually without acquiring special declaration kinds. Mod
-files are linked and materialized at input and written as canonical source at
-output. Byte results are written byte-for-byte to `-o`, or to standard output
-when `-o` is absent.
+The CLI supports `bytes -> bytes`, `bytes -> mod`, `mod -> mod`, and
+`mod -> bytes` entry points. Binary payloads are content-addressed within Mod
+bundles and survive `check`, `install`, and `lock`.
 
-For installed discovery, call `compiler.search(root)` and the one-argument
-`load_native("example")`. See the
-[Repository](repository.md) for repository and lock semantics,
-and [`tests/consumer`](../tests/consumer) for the tested installed-project
-example.
+See [Language](language.md), [Transform](mods/transform.md), and
+[Repository](repository.md) for the complete contracts.

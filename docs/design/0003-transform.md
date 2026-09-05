@@ -11,16 +11,14 @@ values of the same `Fn`; it does not describe a separate before/after graph.
 ```joggle
 fn optimize(input: fn) -> fn {
   input = @inline(input);
-  input = @fuse(input);
-  input = @loops(input);
-  return @dce(input);
+  return @fuse(input);
 }
 ```
 
 The names are library API, not keywords or compiler hooks. `@` is the only
-staging marker. C++ implementations use the transactional `Fn::Edit` surface;
-source implementations will use the same `fn`, `blk`, `op`, and `val` domains
-once reflection is exposed.
+staging marker. `transform.pass` accepts ordinary typed lambdas as a concrete
+equation. C++ implementations use the transactional `Fn::Edit` surface; no
+source-visible cursor or operation wrapper is required.
 
 ## One body, not fusion op substitution
 
@@ -69,6 +67,24 @@ Effects remain ordinary affine `effect<domain>` values. A transformation may
 move or replace stateful computation only when it preserves the visible token
 boundary. An effect token cannot be hidden in a closure capture.
 
+The implemented equation form is intentionally narrow and checkable:
+
+```joggle
+return @transform.pass(input, before_lambda, after_lambda);
+```
+
+Both lambdas are pure, single-block Fns with the same concrete typed signature
+and one result. The left arguments are consistently bound pattern variables.
+Referenced callees match by declaration identity and compiler bindings. The
+right body is cloned before the matched root; generic dead-expression removal
+then deletes unreachable producers. The same traversal enters existing lambda
+bodies and publishes changed closures through their capture edges.
+
+This already expresses concrete `map(build(f), g)` composition and
+`at(build(f), p) = f(p)` cancellation. It is not yet shape-polymorphic: generic
+lambda parameters and Type-variable unification are the next language gate,
+rather than a family of C++ Tensor cases.
+
 ## Function expansion and implementation closure
 
 Inlining and source resolution are distinct:
@@ -95,7 +111,7 @@ the compiler back into a catalog of `before`/`after` pairs.
 
 ## Rejected designs
 
-- `replace(input, before, after)` as the primary pass abstraction;
+- untyped or string-based before/after matching;
 - a `rewrite` declaration or pattern-specific syntax;
 - matching by operator name or string;
 - one fused fn for every producer-consumer combination;
@@ -111,16 +127,21 @@ the compiler back into a catalog of `before`/`after` pairs.
    transform Mod, tests, fixtures, and public narrative.
 4. [complete] Implement transactional, name-independent single-block Fn
    inlining with callable and capture remapping.
-5. [planned] Extend inlining across explicit CFG while preserving successor
+5. [complete] Recurse through existing typed lambda bodies and rewire captures
+   transactionally.
+6. [planned] Extend inlining across explicit CFG while preserving successor
    arguments and effects.
-6. [planned] Retain structured `for` as a higher-order Call until explicit CFG
+7. [planned] Retain structured `for` as a higher-order Call until explicit CFG
    conversion.
-7. [in progress] Give the tensor Mod a small bodyful
+8. [in progress] Give the tensor Mod a small bodyful
    iteration/access/reduction
    calculus.
-8. [in progress] Expand high-level tensor fns into that calculus. Generic map
+9. [in progress] Expand high-level tensor fns into that calculus. Generic map
    and Relu are the first implemented definitions.
-9. [planned] Implement dependence-checked producer-consumer fusion inside one
-   Fn.
-10. [planned] Expose compact source-level Fn inspection and functional editing.
-11. [planned] Validate generic fusion on imported, unmodified ONNX models.
+10. [complete] Apply concrete typed lambda equations structurally, including
+    Tensor producer-consumer composition and effect rejection.
+11. [planned] Add generic typed lambdas and Type-variable unification to make
+    the same Tensor equations shape-polymorphic.
+12. [planned] Extend legality from pure deforestation to dependence-checked
+    reduction and loop transformations.
+13. [planned] Validate polymorphic fusion on imported, unmodified ONNX models.

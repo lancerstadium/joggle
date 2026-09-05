@@ -856,11 +856,21 @@ bool verify_body_calls(Compiler& compiler, const Mod::FnDecl& fn,
     diagnostics.report(std::move(message),
                        Loc{body.source, range.begin, range.end});
   };
-  const auto verify_expression = [&](const auto& self,
-                                     const ExprSyntax& syntax) -> void {
+  const auto verify_expression =
+      [&](const auto& self, const ExprSyntax& syntax,
+          const std::unordered_set<std::string>& visible_locals) -> void {
     using Kind = Mod::Expr::Kind;
     const Mod::Expr& expression = syntax.value;
-    if (expression.kind == Kind::Call && !locals.contains(expression.text)) {
+    if (expression.kind == Kind::Lambda) {
+      auto nested_locals = visible_locals;
+      nested_locals.insert(expression.labels.begin(), expression.labels.end());
+      for (const auto& argument : expression.arguments) {
+        self(self, ExprSyntax{argument, syntax.range}, nested_locals);
+      }
+      return;
+    }
+    if (expression.kind == Kind::Call &&
+        !visible_locals.contains(expression.text)) {
       const auto declarations =
           visible_fns(compiler, fn.symbol().mod_name(), expression.text);
       const bool shaped = std::any_of(
@@ -892,7 +902,7 @@ bool verify_body_calls(Compiler& compiler, const Mod::FnDecl& fn,
       }
     }
     for (const auto& argument : expression.arguments) {
-      self(self, ExprSyntax{argument, syntax.range});
+      self(self, ExprSyntax{argument, syntax.range}, visible_locals);
     }
   };
   const auto verify_statements =
@@ -902,10 +912,10 @@ bool verify_body_calls(Compiler& compiler, const Mod::FnDecl& fn,
           statement.kind == StatementSyntax::Kind::If ||
           statement.kind == StatementSyntax::Kind::While ||
           statement.kind == StatementSyntax::Kind::For) {
-        verify_expression(verify_expression, statement.expression);
+        verify_expression(verify_expression, statement.expression, locals);
       }
       for (const auto& value : statement.values) {
-        verify_expression(verify_expression, value);
+        verify_expression(verify_expression, value, locals);
       }
       self(self, statement.body);
       self(self, statement.otherwise);
@@ -917,14 +927,15 @@ bool verify_body_calls(Compiler& compiler, const Mod::FnDecl& fn,
       continue;
     }
     if (block.terminator->condition) {
-      verify_expression(verify_expression, *block.terminator->condition);
+      verify_expression(verify_expression, *block.terminator->condition,
+                        locals);
     }
     for (const auto& value : block.terminator->values) {
-      verify_expression(verify_expression, value);
+      verify_expression(verify_expression, value, locals);
     }
     for (const auto& successor : block.terminator->successors) {
       for (const auto& argument : successor.arguments) {
-        verify_expression(verify_expression, argument);
+        verify_expression(verify_expression, argument, locals);
       }
     }
   }

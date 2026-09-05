@@ -7,65 +7,11 @@
 #include <vector>
 
 #include "joggle/compiler.h"
+#include "transform/clone.h"
+#include "transform/nested.h"
 
 namespace joggle {
 namespace {
-
-using ValueMap = std::vector<std::pair<Val, Val>>;
-
-std::optional<Val> mapped(const ValueMap& values, const Val& source) {
-  if (source.known()) {
-    return source;
-  }
-  const auto found =
-      std::find_if(values.begin(), values.end(),
-                   [&](const auto& item) { return item.first == source; });
-  return found == values.end() ? std::nullopt
-                               : std::optional<Val>{found->second};
-}
-
-std::optional<Val> clone_value(Fn::Edit& edit, const Val& source,
-                               ValueMap& values, Diag& diagnostics) {
-  if (const auto existing = mapped(values, source)) {
-    return existing;
-  }
-
-  if (const auto declaration = source.referenced_fn()) {
-    std::vector<std::pair<std::string, Val>> bindings;
-    bindings.reserve(source.bindings().size());
-    for (const auto& [name, binding] : source.bindings()) {
-      const auto value = clone_value(edit, binding, values, diagnostics);
-      if (!value) {
-        diagnostics.report("cannot clone fn binding '" + name + "'");
-        return std::nullopt;
-      }
-      bindings.emplace_back(name, *value);
-    }
-    Val result =
-        edit.reference(*declaration, source.type(), std::move(bindings));
-    values.emplace_back(source, result);
-    return result;
-  }
-
-  if (const auto body = source.inline_fn()) {
-    std::vector<Val> captures;
-    captures.reserve(source.captures().size());
-    for (const Val& capture : source.captures()) {
-      const auto value = clone_value(edit, capture, values, diagnostics);
-      if (!value) {
-        diagnostics.report("cannot clone an inline fn capture");
-        return std::nullopt;
-      }
-      captures.push_back(*value);
-    }
-    Val result = edit.callable(*body, source.type(), std::move(captures));
-    values.emplace_back(source, result);
-    return result;
-  }
-
-  diagnostics.report("cannot clone a value before its definition");
-  return std::nullopt;
-}
 
 struct Candidate {
   Op call;
@@ -111,68 +57,64 @@ bool clone_call(Fn::Edit& edit, const Candidate& candidate, Diag& diagnostics) {
     return false;
   }
 
-  ValueMap values;
+  detail::ValMap values;
   values.reserve(parameters.size() + candidate.body.ops().size());
   for (std::size_t index = 0; index < parameters.size(); ++index) {
     values.emplace_back(parameters[index], supplied[index]);
   }
 
-  for (const Op& source : candidate.body.ops()) {
-    const auto callee = clone_value(edit, source.callee(), values, diagnostics);
-    if (!callee) {
-      return false;
-    }
-    std::vector<Val> arguments;
-    arguments.reserve(source.arguments().size());
-    for (const Val& argument : source.arguments()) {
-      const auto value = clone_value(edit, argument, values, diagnostics);
-      if (!value) {
-        return false;
-      }
-      arguments.push_back(*value);
-    }
-    std::vector<Type> result_types;
-    for (const Val& result : source.results()) {
-      result_types.push_back(result.type());
-    }
-    Op cloned = edit.call_before(candidate.call, *callee, std::move(arguments),
-                                 std::move(result_types));
-    if (const auto location = source.location()) {
-      edit.locate(cloned, *location);
-    }
-    const std::vector<Val> source_results = source.results();
-    const std::vector<Val> cloned_results = cloned.results();
-    for (std::size_t index = 0; index < source_results.size(); ++index) {
-      values.emplace_back(source_results[index], cloned_results[index]);
-    }
-  }
-
-  const Term term = candidate.body.entry().terminator();
-  if (term.kind() != Term::Kind::Return) {
-    diagnostics.report("single-block inline fn does not return");
+  auto returned = detail::clone_before(edit, candidate.body, candidate.call,
+                                       values, diagnostics);
+  if (!returned) {
     return false;
   }
-  std::vector<Val> returned;
-  returned.reserve(term.returned().size());
-  for (const Val& value : term.returned()) {
-    const auto result = clone_value(edit, value, values, diagnostics);
-    if (!result) {
-      return false;
-    }
-    returned.push_back(*result);
-  }
-  if (returned.size() != candidate.call.results().size()) {
+  if (returned->size() != candidate.call.results().size()) {
     diagnostics.report("inline fn result count does not match its call");
     return false;
   }
-  edit.replace(candidate.call, std::move(returned));
+  edit.replace(candidate.call, std::move(*returned));
   return true;
 }
 
 }  // namespace
 
-std::optional<std::size_t> inline_calls(Compiler& compiler, Fn& fn,
-                                        Diag& diagnostics) {
+namespace {
+
+std::optional<std::size_t> inline_impl(Compiler& compiler, Fn& fn,
+                                       Diag& diagnostics) {
+  struct Nested {
+    Val value;
+    Fn body;
+    std::size_t changed = 0;
+  };
+  std::vector<Nested> nested;
+  std::size_t total = 0;
+  for (const Val& value : detail::nested_values(fn)) {
+    auto body = value.inline_fn();
+    if (!body) {
+      continue;
+    }
+    const auto changed = inline_impl(compiler, *body, diagnostics);
+    if (!changed) {
+      return std::nullopt;
+    }
+    if (*changed != 0U) {
+      total += *changed;
+      nested.push_back({value, std::move(*body), *changed});
+    }
+  }
+  if (!nested.empty()) {
+    auto edit = fn.edit();
+    for (Nested& item : nested) {
+      Val replacement = edit.callable(std::move(item.body), item.value.type(),
+                                      item.value.captures());
+      edit.replace(item.value, replacement);
+    }
+    if (!edit.commit(compiler, diagnostics)) {
+      return std::nullopt;
+    }
+  }
+
   std::vector<Candidate> candidates;
   for (const Op& call : fn.ops()) {
     const std::size_t issue_count = diagnostics.issues().size();
@@ -186,7 +128,7 @@ std::optional<std::size_t> inline_calls(Compiler& compiler, Fn& fn,
     candidates.push_back(std::move(*selected));
   }
   if (candidates.empty()) {
-    return std::size_t{0};
+    return total;
   }
 
   auto edit = fn.edit();
@@ -198,7 +140,19 @@ std::optional<std::size_t> inline_calls(Compiler& compiler, Fn& fn,
   if (!edit.commit(compiler, diagnostics)) {
     return std::nullopt;
   }
-  return candidates.size();
+  return total + candidates.size();
+}
+
+}  // namespace
+
+std::optional<std::size_t> inline_calls(Compiler& compiler, Fn& fn,
+                                        Diag& diagnostics) {
+  Fn candidate = fn;
+  const auto changed = inline_impl(compiler, candidate, diagnostics);
+  if (changed && *changed != 0U) {
+    fn = std::move(candidate);
+  }
+  return changed;
 }
 
 std::optional<std::size_t> inline_calls(Compiler& compiler, Mod& mod,

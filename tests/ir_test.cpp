@@ -301,6 +301,25 @@ int main() {
           compiler.verify(*captured_owner),
       "inline fn captures are explicit use edges with hidden body arguments");
 
+  auto redirected_capture = *captured_owner;
+  {
+    auto edit = redirected_capture.edit();
+    const auto arguments = redirected_capture.arguments();
+    edit.replace(arguments[1], arguments[0]);
+    joggle::Diag diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  const auto redirected_call = redirected_capture.ops().front();
+  const auto redirected_body = redirected_call.arguments().back();
+  ok &= expect(redirected_body.captures() ==
+                       std::vector<joggle::Val>{
+                           redirected_capture.arguments().front()} &&
+                   compiler.verify(redirected_capture),
+               "value replacement rewires nested callable capture edges");
+
   auto effect_body = compiler.create_fn();
   if (!effect_body) {
     return EXIT_FAILURE;
@@ -697,27 +716,26 @@ int main() {
     return EXIT_FAILURE;
   }
   const auto inferred_mod = inferred_call.mod("inferred_call");
-  const auto inferred_tensor = inferred_mod ? inferred_mod->type("tensor")
-                                            : std::nullopt;
+  const auto inferred_tensor =
+      inferred_mod ? inferred_mod->type("tensor") : std::nullopt;
   const auto resize = inferred_mod ? inferred_mod->fn("resize") : std::nullopt;
   const auto inferred_f32 = inferred_call.make("f32");
   const auto integer_type = inferred_call.make("int");
   const auto inferred_prelude = inferred_call.mod("prelude");
-  const auto list = inferred_prelude ? inferred_prelude->type("list")
-                                     : std::nullopt;
+  const auto list =
+      inferred_prelude ? inferred_prelude->type("list") : std::nullopt;
   const auto integer_list = list && integer_type
                                 ? inferred_call.make(*list, *integer_type)
                                 : std::nullopt;
-  const auto input_type = inferred_tensor && inferred_f32
-                              ? inferred_call.make(
-                                    *inferred_tensor, *inferred_f32,
-                                    std::vector<std::int64_t>{1, 2})
-                              : std::nullopt;
-  const auto requested = integer_list
-                             ? inferred_call.known(
-                                   *integer_list,
-                                   std::vector<std::int64_t>{3, 5})
-                             : std::nullopt;
+  const auto input_type =
+      inferred_tensor && inferred_f32
+          ? inferred_call.make(*inferred_tensor, *inferred_f32,
+                               std::vector<std::int64_t>{1, 2})
+          : std::nullopt;
+  const auto requested =
+      integer_list
+          ? inferred_call.known(*integer_list, std::vector<std::int64_t>{3, 5})
+          : std::nullopt;
   auto inferred_fn = inferred_call.create_fn();
   if (!resize || !input_type || !requested || !inferred_fn) {
     return EXIT_FAILURE;
@@ -732,10 +750,9 @@ int main() {
     if (call) {
       edit.ret(inferred_fn->entry(), {call->value()});
     }
-    const auto shape = call ? call->value()
-                                  .type()
-                                  .get<std::vector<std::int64_t>>("shape")
-                            : std::optional<std::vector<std::int64_t>>{};
+    const auto shape =
+        call ? call->value().type().get<std::vector<std::int64_t>>("shape")
+             : std::optional<std::vector<std::int64_t>>{};
     joggle::Diag diagnostics;
     const bool committed = edit.commit(inferred_call, diagnostics);
     ok &= expect(call && committed && diagnostics.ok() &&

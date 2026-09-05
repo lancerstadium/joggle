@@ -30,21 +30,26 @@ The implementation currently demonstrates:
    arguments, while effect tokens cannot be captured;
 6. `tensor@2` contains only `build`, `at`, ordered `fold`, and bodyful `map`;
    a dot product is expressed by their composition plus scalar overloads;
-7. those bodies materialize, expose nested element and update Fns, and invoke arbitrary
-   callable parameters, and pass the ordinary verifier;
+7. those bodies materialize, expose nested element and update Fns, invoke
+   arbitrary callable parameters, and pass the ordinary verifier;
 8. the same name-independent Mod transform expands all 26 ONNX Relu calls in
    the pinned, unmodified SqueezeNet graph first to `map` and then to `build`
-   plus captured element Fns;
+   plus captured element Fns; existing nested bodies participate in the same
+   recursive inliner, and value replacement rewires their capture edges;
 9. ONNX nodes bind generically against source fn signatures, declaration
    defaults, and staged dependent result Types without an `op_type` branch
    chain or native shape formulas;
-10. Mod bundles preserve and verify imported data through public `check`,
+10. `transform.pass` accepts ordinary concrete typed lambdas as an equation,
+    matches declaration identity and dataflow rather than names, recurses into
+    callable bodies, rejects effects, and demonstrates both
+    `map(build(f), g)` composition and `at(build(f), p)` cancellation;
+11. Mod bundles preserve and verify imported data through public `check`,
    `run`, `install`, and `lock` workflows; and
-11. source resolution constructs deterministic concrete instances while
+12. source resolution constructs deterministic concrete instances while
    preserving bodyless calls as an explicit leaf set.
 
 Most compute-heavy ONNX operators and the independent quantized semantics
-remain opaque. Conv/GEMM bodies, recursive lambda normalization, generic
+remain opaque. Conv/GEMM bodies, polymorphic rewrite Types, generic model
 fusion, symbolic shapes, emission, and performance evidence are unfinished.
 The ONNX result establishes
 one bodyful elementwise expansion, not generic fusion, numerical preservation

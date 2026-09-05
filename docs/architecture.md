@@ -127,7 +127,10 @@ execution values and may return them for later `@` calls. This path shares
 compiler-call shaping, overload filtering, default handling, and execution
 with source-defined compiler fns; it does not encode fns as scalar
 metadata. Typed expression matching and bounded source-body equivalence reuse
-these same verified Fns and create no normalization IR.
+these same verified Fns and create no normalization IR. `transform.pass`
+interprets two concrete typed lambdas as an equation over the existing Fn:
+arguments are pattern variables, calls match declaration identity and
+dataflow, and the replacement is verified before publication.
 
 Residual effects use the ordinary `effect<domain>` Prelude type. Tokens flow
 through calls and CFG edges as normal SSA values, and the verifier prevents
@@ -172,14 +175,18 @@ their host boundaries; model and kernel Ops do not. See
 ## Near-term implementation order
 
 The implemented path includes the core language, editable Fn IR, explicit
-staging, typed anonymous Fns, explicit closure captures, and transactional
-single-block inlining. `tensor@2` defines only `build`, `at`, `fold`, and
+staging, typed anonymous Fns, explicit closure captures, recursive
+single-block inlining, and pure concrete typed-equation passes. `tensor@2`
+defines only `build`, `at`, `fold`, and
 bodyful `map`. ONNX owns its operator vocabulary; its Relu definition expands
 first to `map` and then to `build` while remapping nested closures. The pinned
-SqueezeNet test exercises this path for all 26 imported Relu calls.
+SqueezeNet test exercises this path for all 26 imported Relu calls. Concrete
+tests compose `map(build(f), g)` into one producer lambda and cancel
+`at(build(f), p)` inside an existing nested body.
 
-Execution semantics for the structural basis, views, multi-block inlining,
-direct source-level editing, and dependence-checked fusion remain unfinished.
+Execution semantics for the structural basis, Type-polymorphic equations,
+multi-block inlining, and dependence-checked reduction transforms remain
+unfinished.
 ONNX Conv, pooling, concatenation, reshape, softmax, and quantized operations
 are still opaque declarations rather than completed computational definitions.
 

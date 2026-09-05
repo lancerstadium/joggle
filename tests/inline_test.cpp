@@ -51,8 +51,12 @@ mod inline_fixture@1.0.0 {
     return choose(condition, lhs, rhs);
   }
 
+  fn nested(input: word) -> word {
+    return leaf(input);
+  }
+
   fn closure(input: word) -> word {
-    return apply(input, (value: word) => join(value, input));
+    return apply(input, (value: word) => join(nested(value), input));
   }
 
   fn closure_caller(input: word) -> word {
@@ -128,6 +132,23 @@ mod inline_fixture@1.0.0 {
                    compiler.verify(*closure),
                "inlining clones nested callable bodies and remaps their "
                "explicit captures");
+
+  const auto nested_count =
+      joggle::inline_calls(compiler, *closure, diagnostics);
+  const auto nested_ops = closure->ops();
+  const auto nested_callback =
+      nested_ops.size() == 1U && nested_ops.front().arguments().size() == 2U
+          ? nested_ops.front().arguments().back().inline_fn()
+          : std::optional<joggle::Fn>{};
+  ok &= expect(
+      nested_count == std::optional<std::size_t>{1U} && nested_callback &&
+          nested_callback->ops().size() == 2U &&
+          nested_callback->ops().front().callee().referenced_fn() &&
+          nested_callback->ops().front().callee().referenced_fn()->name() ==
+              "leaf" &&
+          compiler.verify(*closure),
+      "generic inlining recurses through existing typed lambda "
+      "bodies without a separate nested IR");
 
   const auto effect_count =
       joggle::inline_calls(compiler, *effect, diagnostics);

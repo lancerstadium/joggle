@@ -117,12 +117,29 @@ joggle::Diag diagnostics;
 auto changed = joggle::inline_calls(compiler, fn, diagnostics);
 ```
 
-One invocation considers the Calls present in the input snapshot. It expands
-source-defined and anonymous single-block callees into the caller, remaps
-arguments, results, fn bindings, locations, nested callable values, and closure
-captures, then commits once. Opaque, dynamic, and multi-block calls remain
-unchanged. Newly cloned calls are considered by a later invocation, so the
-operation is deterministic and bounded. A failure publishes no partial edit.
+One invocation considers the Calls present in the input snapshot, including
+those inside callable bodies already present in that snapshot. It expands
+source-defined and anonymous single-block callees, remaps arguments, results,
+fn bindings, locations, nested callable values, and closure captures. Opaque,
+dynamic, and multi-block calls remain unchanged. Newly cloned calls are
+considered by a later invocation, so the operation is deterministic and
+bounded. A failing Fn edit is not published.
+
+## Typed equation passes
+
+```cpp
+joggle::Diag diagnostics;
+auto changed =
+    joggle::apply_pass(compiler, fn, before, after, diagnostics);
+```
+
+`before` and `after` are ordinary concrete `Fn` values with the same typed
+arguments and one result. The `before` arguments are pattern variables. Calls
+match declaration identity, compiler bindings, exact Types, and dataflow; the
+replacement is cloned transactionally and dead pure calls are removed. The
+same pass recursively transforms nested callable bodies and rejects effectful
+or control-flow equations. The source wrapper is
+`@transform.pass(input, before_lambda, after_lambda)`.
 
 ## Bind native fns
 

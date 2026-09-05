@@ -56,7 +56,10 @@ add_library(joggle
   src/compile/native.cpp
   src/compile/run.cpp
   src/compile/val.cpp
+  src/transform/clone.cpp
   src/transform/inline.cpp
+  src/transform/nested.cpp
+  src/transform/rewrite.cpp
   src/transform/resolve.cpp
   src/pkg/repo.cpp
 )
@@ -322,6 +325,7 @@ if(JOGGLE_BUILD_TESTS)
   target_compile_definitions(joggle_transform_mod_test PRIVATE
     JOGGLE_TRANSFORM_MOD="${JOGGLE_TRANSFORM_MOD}"
     JOGGLE_TRANSFORM_NATIVE="$<TARGET_FILE:joggle_transform_native>"
+    JOGGLE_TENSOR_MOD="${JOGGLE_TENSOR_MOD}"
   )
   add_test(NAME transform_mod COMMAND joggle_transform_mod_test)
 

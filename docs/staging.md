@@ -91,8 +91,10 @@ The compiler does not convert them through a pattern, strategy, or scalar
 metadata representation.
 
 Direct transformations operate on the materialized Fn and its nested callable
-bodies. Transactional `Fn::Edit` is the low-level correctness boundary;
-source-facing inspection and editing fns are the next implementation gate.
+bodies. Transactional `Fn::Edit` is the low-level correctness boundary.
+`transform.pass` now accepts two pure, concrete typed lambdas and applies their
+equation structurally; Type-polymorphic equations and broader source-facing
+inspection remain implementation gates.
 
 ## Source resolution
 

@@ -2155,6 +2155,14 @@ void Fn::Edit::replace(Val from, Val to) {
       }
     }
   }
+  for (auto& [id, value] : state_->fn->state->values) {
+    static_cast<void>(id);
+    for (detail::StoredVal& capture : value.captures) {
+      if (!capture.known && capture.id == from_id) {
+        capture.id = to_id;
+      }
+    }
+  }
   for (auto& [id, block] : state_->fn->state->blocks) {
     static_cast<void>(id);
     if (!block.terminator) {
