@@ -51,8 +51,9 @@ The implementation already demonstrates:
     `check`, `run`, `install`, and `lock` workflows.
 12. a source-defined `i8` dot kernel uses an inferred static extent, an
     effect-ordered pair of reads, and an `i32` accumulator; the same ordinary
-    fn executes through leaf C++ bindings and specializes to a twelve-Op Fn
-    for extent four without a Kernel or Schedule object.
+    fn executes through leaf C++ bindings, specializes to a twelve-Op Fn for
+    extent four, and executes again from that Fn IR without a Kernel or
+    Schedule object.
 
 These are infrastructure results. The tensor QDQ calls remain opaque program
 semantics, and the dot test is a mechanism check rather than a competitive or

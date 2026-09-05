@@ -603,6 +603,25 @@ public:
     }
   }
 
+  // Executes one verified Fn directly. The Fn owns control flow while its
+  // leaf calls use the same source or native implementations as declarations.
+  template <typename Result = void, typename... Arguments>
+  std::conditional_t<std::is_void_v<Result>, bool, std::optional<Result>>
+  run(const Fn& fn, Arguments&&... arguments) {
+    std::vector<detail::ExecVal> values;
+    values.reserve(sizeof...(Arguments));
+    (values.push_back(
+         detail::store_exec_val(std::forward<Arguments>(arguments))),
+     ...);
+    auto results = execute(fn, std::move(values));
+    if constexpr (std::is_void_v<Result>) {
+      return results.has_value();
+    } else {
+      return results ? detail::take_exec_vals<Result>(std::move(*results))
+                     : std::optional<Result>{};
+    }
+  }
+
   template <typename Result = void, typename... Arguments>
   std::conditional_t<std::is_void_v<Result>, bool, std::optional<Result>>
   run(std::string_view name, Arguments&&... arguments) {
@@ -663,6 +682,8 @@ private:
   std::optional<detail::ExecVals>
   execute(Mod::FnDecl declaration, std::vector<detail::ExecVal> arguments,
           bool under_residual_control = false);
+  std::optional<detail::ExecVals>
+  execute(const Fn& fn, std::vector<detail::ExecVal> arguments);
   std::optional<detail::ParamVal>
   evaluate_binding(Mod::FnDecl fn, std::span<const detail::ParamVal> arguments,
                    bool under_residual_control);

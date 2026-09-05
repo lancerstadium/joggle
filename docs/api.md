@@ -163,6 +163,12 @@ bool emitted = compiler.run<void>("driver.write", model, output_path);
 `run` accepts a qualified name or exact declaration. Calls, source bodies, and
 native implementations use the same overload resolution.
 
+`run<Result>(fn, ...)` executes a verified Fn directly. Entry and block
+arguments carry the supplied values, terminators select CFG edges, and each Op
+invokes its exact declared fn through the same source/native binding path.
+This is the execution boundary for a specialized user kernel; it does not add
+a runtime graph or backend object.
+
 ## Verifiers and host representations
 
 ```cpp

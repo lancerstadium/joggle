@@ -143,5 +143,17 @@ mod dot@1.0.0 {
                    compiler.verify(*specialized) && diagnostics.ok(),
                "specialization exposes the same kernel as typed Fn IR");
 
+  const auto ir_result = implementation
+                             ? compiler.run<std::tuple<Token, std::int32_t>>(
+                                   *implementation, Token{}, View{&lhs},
+                                   View{&rhs}, std::int32_t{3})
+                             : std::optional<std::tuple<Token, std::int32_t>>{};
+  if (!ir_result || !compiler.ok()) {
+    compiler.diag().print(std::cerr);
+  }
+  ok &= expect(ir_result && std::get<0>(*ir_result).reads == 8 &&
+                   std::get<1>(*ir_result) == -57 && compiler.ok(),
+               "the specialized kernel executes from Fn IR");
+
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

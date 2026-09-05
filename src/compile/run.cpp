@@ -6,6 +6,7 @@
 #include "ir/mod.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <exception>
 #include <memory>
 #include <optional>
@@ -13,6 +14,7 @@
 #include <string>
 #include <string_view>
 #include <typeinfo>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -369,6 +371,156 @@ Compiler::execute(Mod::FnDecl declaration,
     return std::nullopt;
   }
   return result;
+}
+
+std::optional<detail::ExecVals>
+Compiler::execute(const Fn& fn, std::vector<detail::ExecVal> arguments) {
+  if (!state_->linked) {
+    state_->diagnostics.report(
+        "cannot run a fn before the compiler is linked");
+    return std::nullopt;
+  }
+  if (!verify(fn)) {
+    return std::nullopt;
+  }
+  const auto parameters = fn.arguments();
+  if (arguments.size() != parameters.size()) {
+    state_->diagnostics.report("fn received the wrong argument count");
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::uint64_t, detail::ExecVal> values;
+  for (std::size_t index = 0; index < arguments.size(); ++index) {
+    if (!project_host_value(arguments[index])) {
+      return std::nullopt;
+    }
+    const auto type = detail::execution_type(*this, arguments[index]);
+    if (!type || *type != parameters[index].type()) {
+      state_->diagnostics.report(
+          "fn received an argument with the wrong type");
+      return std::nullopt;
+    }
+    values.emplace(detail::FnAccess::id(parameters[index]),
+                   std::move(arguments[index]));
+  }
+
+  const auto read = [&](const Val& value) -> std::optional<detail::ExecVal> {
+    if (value.known()) {
+      auto staged = detail::stage(value);
+      const auto* known = staged ? staged->known_value() : nullptr;
+      return known ? std::optional<detail::ExecVal>{*known} : std::nullopt;
+    }
+    const auto found = values.find(detail::FnAccess::id(value));
+    return found == values.end()
+               ? std::optional<detail::ExecVal>{}
+               : std::optional<detail::ExecVal>{found->second};
+  };
+
+  Blk block = fn.entry();
+  std::size_t steps = 0;
+  while (true) {
+    if (steps++ >= state_->evaluation_limits.steps) {
+      state_->diagnostics.report("fn execution step limit exceeded");
+      return std::nullopt;
+    }
+    for (const Op& op : block.ops()) {
+      if (steps++ >= state_->evaluation_limits.steps) {
+        state_->diagnostics.report("fn execution step limit exceeded");
+        return std::nullopt;
+      }
+      const auto stored = op.arguments();
+      std::vector<std::optional<detail::ExecVal>> ordered(
+          op.callee().inputs().size());
+      for (std::size_t index = 0; index < stored.size(); ++index) {
+        const std::size_t parameter =
+            detail::FnAccess::argument_parameter(op, index);
+        auto value = read(stored[index]);
+        if (!value || parameter >= ordered.size()) {
+          state_->diagnostics.report("fn Op has an unavailable argument");
+          return std::nullopt;
+        }
+        ordered[parameter] = std::move(*value);
+      }
+      std::vector<detail::ExecVal> call_arguments;
+      call_arguments.reserve(ordered.size());
+      for (auto& value : ordered) {
+        if (!value) {
+          state_->diagnostics.report("fn Op has a missing argument");
+          return std::nullopt;
+        }
+        call_arguments.push_back(std::move(*value));
+      }
+      auto produced = execute(op.callee(), std::move(call_arguments));
+      const auto results = op.results();
+      if (!produced || produced->size() != results.size()) {
+        return std::nullopt;
+      }
+      for (std::size_t index = 0; index < results.size(); ++index) {
+        values.insert_or_assign(detail::FnAccess::id(results[index]),
+                                std::move((*produced)[index]));
+      }
+    }
+
+    const Term term = block.terminator();
+    if (term.kind() == Term::Kind::Return) {
+      detail::ExecVals returned;
+      for (const Val& value : term.returned()) {
+        auto result = read(value);
+        if (!result) {
+          state_->diagnostics.report("fn returns an unavailable value");
+          return std::nullopt;
+        }
+        returned.push_back(std::move(*result));
+      }
+      const auto expected = fn.result_types();
+      if (returned.size() != expected.size()) {
+        state_->diagnostics.report("fn returned the wrong number of values");
+        return std::nullopt;
+      }
+      for (std::size_t index = 0; index < returned.size(); ++index) {
+        if (!project_host_value(returned[index])) {
+          return std::nullopt;
+        }
+        const auto type = detail::execution_type(*this, returned[index]);
+        if (!type || *type != expected[index]) {
+          state_->diagnostics.report(
+              "fn returned a value with the wrong type");
+          return std::nullopt;
+        }
+      }
+      return returned;
+    }
+
+    std::size_t successor = 0;
+    if (term.kind() == Term::Kind::Branch) {
+      const auto condition = term.condition();
+      const auto value = condition ? read(*condition)
+                                   : std::optional<detail::ExecVal>{};
+      const bool* selected = value ? std::get_if<bool>(&*value) : nullptr;
+      if (selected == nullptr) {
+        state_->diagnostics.report("fn branch condition is not executable");
+        return std::nullopt;
+      }
+      successor = *selected ? 0U : 1U;
+    }
+    const Blk target = term.successor(successor);
+    const auto supplied = term.arguments(successor);
+    const auto target_arguments = target.arguments();
+    if (supplied.size() != target_arguments.size()) {
+      state_->diagnostics.report("fn edge has the wrong argument count");
+      return std::nullopt;
+    }
+    for (std::size_t index = 0; index < supplied.size(); ++index) {
+      auto value = read(supplied[index]);
+      if (!value) {
+        state_->diagnostics.report("fn edge has an unavailable argument");
+        return std::nullopt;
+      }
+      values.insert_or_assign(detail::FnAccess::id(target_arguments[index]),
+                              std::move(*value));
+    }
+    block = target;
+  }
 }
 
 }  // namespace joggle
