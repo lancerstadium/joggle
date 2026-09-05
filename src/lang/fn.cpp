@@ -556,8 +556,9 @@ private:
             output_ << ", ";
           }
           output_ << block.arguments[argument].name << ": ";
-          output_ << detail::format_expression(
-              block.arguments[argument].type.value);
+          output_ << detail::layout_expression(
+              block.arguments[argument].type.value, (indent_ + 1U) * 2U,
+              remaining(block.name.size() + 1U));
         }
         output_ << "):\n";
         for (const auto& statement : block.statements) {
@@ -580,7 +581,8 @@ private:
       if (index != 0U) {
         output_ << ", ";
       }
-      output_ << detail::format_expression(successor.arguments[index].value);
+      output_ << detail::layout_expression(successor.arguments[index].value,
+                                           indent_ * 2U);
     }
     output_ << ')';
   }
@@ -591,9 +593,15 @@ private:
     switch (terminator.kind) {
     case detail::TermSyntax::Kind::Return:
       output_ << "return";
-      for (std::size_t index = 0; index < terminator.values.size(); ++index) {
-        output_ << (index == 0U ? " " : ", ")
-                << detail::format_expression(terminator.values[index].value);
+      {
+        std::size_t used = 6U;
+        for (std::size_t index = 0; index < terminator.values.size(); ++index) {
+          const std::string_view separator = index == 0U ? " " : ", ";
+          output_ << separator;
+          used += separator.size();
+          output_ << detail::layout_expression(terminator.values[index].value,
+                                               level * 2U, remaining(used));
+        }
       }
       break;
     case detail::TermSyntax::Kind::Jump:
@@ -605,7 +613,8 @@ private:
     case detail::TermSyntax::Kind::Branch:
       output_ << "branch ";
       if (terminator.condition) {
-        output_ << detail::format_expression(terminator.condition->value);
+        output_ << detail::layout_expression(terminator.condition->value,
+                                             level * 2U, remaining(7U));
       }
       for (const detail::SuccessorSyntax& successor : terminator.successors) {
         output_ << ", ";
@@ -617,6 +626,10 @@ private:
   }
 
   static constexpr std::size_t line_limit = 88U;
+
+  static constexpr std::size_t remaining(std::size_t used) {
+    return used < line_limit ? line_limit - used : 1U;
+  }
 
   static std::string spaces(std::size_t level) {
     return std::string(level * 2U, ' ');
@@ -711,16 +724,21 @@ private:
     }
     if (statement.kind == detail::StatementSyntax::Kind::Return) {
       output_ << spaces(level) << "return";
+      std::size_t used = 6U;
       for (std::size_t index = 0; index < statement.values.size(); ++index) {
-        output_ << (index == 0U ? " " : ", ")
-                << detail::format_expression(statement.values[index].value);
+        const std::string_view separator = index == 0U ? " " : ", ";
+        output_ << separator;
+        used += separator.size();
+        output_ << detail::layout_expression(statement.values[index].value,
+                                             level * 2U, remaining(used));
       }
       output_ << ";\n";
       return;
     }
     if (statement.kind == detail::StatementSyntax::Kind::If) {
       output_ << spaces(level) << "if "
-              << detail::format_expression(statement.expression.value)
+              << detail::layout_expression(statement.expression.value,
+                                           level * 2U, remaining(3U))
               << " {\n";
       for (const auto& nested : statement.body) {
         write_statement(nested, level + 1U);
@@ -738,7 +756,8 @@ private:
     }
     if (statement.kind == detail::StatementSyntax::Kind::While) {
       output_ << spaces(level) << "while "
-              << detail::format_expression(statement.expression.value)
+              << detail::layout_expression(statement.expression.value,
+                                           level * 2U, remaining(6U))
               << " {\n";
       for (const auto& nested : statement.body) {
         write_statement(nested, level + 1U);
@@ -763,7 +782,8 @@ private:
         if (index != 0U) {
           output_ << ", ";
         }
-        output_ << detail::format_expression(statement.domains[index].value);
+        output_ << detail::layout_expression(statement.domains[index].value,
+                                             level * 2U, remaining(4U));
       }
       output_ << " {\n";
       for (const auto& nested : statement.body) {
@@ -794,30 +814,8 @@ private:
       prefix_width += 3U;
     }
     const Mod::Expr& expression = statement.expression.value;
-    const std::string flat = detail::format_expression(expression);
-    const bool multiline_call =
-        expression.kind == Mod::Expr::Kind::Call &&
-        expression.arguments.size() > 1U &&
-        level * 2U + prefix_width + flat.size() > line_limit;
-    if (!multiline_call) {
-      output_ << flat;
-    } else {
-      output_ << expression.text << "(\n";
-      for (std::size_t index = 0; index < expression.arguments.size();
-           ++index) {
-        output_ << spaces(level + 1U);
-        if (index < expression.labels.size() &&
-            !expression.labels[index].empty()) {
-          output_ << expression.labels[index] << ": ";
-        }
-        output_ << detail::format_expression(expression.arguments[index]);
-        if (index + 1U != expression.arguments.size()) {
-          output_ << ',';
-        }
-        output_ << '\n';
-      }
-      output_ << spaces(level) << ')';
-    }
+    output_ << detail::layout_expression(expression, level * 2U,
+                                         remaining(prefix_width));
     output_ << ";\n";
   }
 

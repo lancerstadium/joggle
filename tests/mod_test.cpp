@@ -673,5 +673,40 @@ int main() {
                    exported_lookup.fns("helper").empty(),
                "environment-wide fn discovery exposes only package API");
 
+  joggle::Diag layout_diagnostics;
+  const auto nested_layout =
+      joggle::parse_mod(R"(
+    joggle 1;
+    mod nested_layout@1.0.0 {
+      pub type word();
+      pub fn apply(input: word, body: (word) -> word) -> word;
+      pub fn compose(input: word) -> word {
+        return apply(input, (value) => {
+          first = apply(value, (nested) => nested);
+          return apply(first, (nested) => nested);
+        });
+      }
+    }
+  )",
+                        layout_diagnostics, "nested-layout.joggle");
+  const std::string nested_text =
+      nested_layout ? joggle::format(*nested_layout) : std::string{};
+  joggle::Diag nested_roundtrip_diagnostics;
+  const auto nested_roundtrip =
+      joggle::parse_mod(nested_text, nested_roundtrip_diagnostics,
+                        "nested-layout-formatted.joggle");
+  bool bounded_lines = true;
+  std::istringstream nested_lines(nested_text);
+  for (std::string line; std::getline(nested_lines, line);) {
+    bounded_lines = bounded_lines && line.size() <= 88U;
+  }
+  ok &= expect(
+      nested_layout && nested_roundtrip && bounded_lines &&
+          joggle::format(*nested_roundtrip) == nested_text &&
+          nested_text.find("\n      (value) => {\n") != std::string::npos &&
+          nested_text.find("\n        first = apply(") != std::string::npos,
+      "one expression layout keeps nested lambda bodies canonical, "
+      "indented, and bounded");
+
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

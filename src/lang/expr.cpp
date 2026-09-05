@@ -682,6 +682,9 @@ std::string format_expression(const Mod::Expr& expression,
     }
   } else if (expression.kind == Kind::Block) {
     result = expression.text;
+    if (!result.empty() && result.back() == '\n') {
+      result.pop_back();
+    }
   } else if (expression.kind == Kind::Evaluate) {
     const auto& operand = expression.arguments.front();
     result = expression_precedence(operand) == 100
@@ -716,6 +719,136 @@ std::string format_expression(const Mod::Expr& expression,
   if (precedence < parent_precedence ||
       (right_operand && precedence == parent_precedence && precedence < 100)) {
     return '(' + result + ')';
+  }
+  return result;
+}
+
+std::string layout_expression(const Mod::Expr& expression, std::size_t column,
+                              std::size_t line_width, int parent_precedence,
+                              bool right_operand) {
+  using Kind = Mod::Expr::Kind;
+  const std::string flat =
+      format_expression(expression, parent_precedence, right_operand);
+  const auto indent_continuations = [](std::string text,
+                                       std::size_t indentation) {
+    const std::string prefix(indentation, ' ');
+    std::size_t newline = 0U;
+    while ((newline = text.find('\n', newline)) != std::string::npos) {
+      ++newline;
+      if (newline < text.size()) {
+        text.insert(newline, prefix);
+        newline += prefix.size();
+      }
+    }
+    return text;
+  };
+  if (flat.find('\n') != std::string::npos &&
+      (expression.kind == Kind::Lambda || expression.kind == Kind::Block)) {
+    return indent_continuations(flat, column);
+  }
+  if (column + flat.size() <= line_width) {
+    return flat;
+  }
+
+  const int precedence = expression_precedence(expression);
+  const bool parenthesized =
+      precedence < parent_precedence ||
+      (right_operand && precedence == parent_precedence && precedence < 100);
+  const std::size_t content_column = column + (parenthesized ? 1U : 0U);
+  const auto spaces = [](std::size_t width) { return std::string(width, ' '); };
+  std::string result = parenthesized ? "(" : "";
+
+  if (expression.kind == Kind::If && expression.arguments.size() == 3U) {
+    result += "if ";
+    result += layout_expression(expression.arguments[0], content_column + 3U,
+                                line_width);
+    result += " {\n" + spaces(content_column + 2U);
+    result += layout_expression(expression.arguments[1], content_column + 2U,
+                                line_width);
+    result += "\n" + spaces(content_column) + "} else {\n";
+    result += spaces(content_column + 2U);
+    result += layout_expression(expression.arguments[2], content_column + 2U,
+                                line_width);
+    result += "\n" + spaces(content_column) + "}";
+  } else {
+    const bool delimited =
+        expression.kind == Kind::List || expression.kind == Kind::Reference ||
+        expression.kind == Kind::Call || expression.kind == Kind::Evaluate;
+    if (delimited && !expression.arguments.empty()) {
+      const std::string opening =
+          expression.kind == Kind::List       ? "["
+          : expression.kind == Kind::Evaluate ? "@("
+          : expression.kind == Kind::Call
+              ? expression.text + "("
+              : std::string(display_type_name(expression.text)) + "<";
+      const char closing =
+          expression.kind == Kind::List ? ']'
+          : expression.kind == Kind::Call || expression.kind == Kind::Evaluate
+              ? ')'
+              : '>';
+      result += opening + '\n';
+      const std::size_t argument_column = content_column + 2U;
+      for (std::size_t index = 0; index < expression.arguments.size();
+           ++index) {
+        result += spaces(argument_column);
+        const bool labeled = expression.kind == Kind::Call &&
+                             index < expression.labels.size() &&
+                             !expression.labels[index].empty();
+        if (labeled) {
+          result += expression.labels[index] + ": ";
+        }
+        result += layout_expression(
+            expression.arguments[index],
+            argument_column +
+                (labeled ? expression.labels[index].size() + 2U : 0U),
+            line_width);
+        if (index + 1U != expression.arguments.size()) {
+          result += ',';
+        }
+        result += '\n';
+      }
+      result += spaces(content_column);
+      result.push_back(closing);
+    } else if (expression.kind == Kind::Prefix) {
+      result += expression.text;
+      result += layout_expression(expression.arguments.front(),
+                                  content_column + expression.text.size(),
+                                  line_width, precedence, true);
+    } else if (expression.kind == Kind::Postfix) {
+      result += layout_expression(expression.arguments.front(), content_column,
+                                  line_width, precedence, false);
+      result += expression.text;
+    } else if (expression.kind == Kind::Infix) {
+      if (expression.text == "[]" && expression.arguments.size() >= 2U) {
+        result += layout_expression(expression.arguments[0], content_column,
+                                    line_width, precedence, false);
+        result += '[';
+        for (std::size_t index = 1U; index < expression.arguments.size();
+             ++index) {
+          if (index != 1U) {
+            result += ", ";
+          }
+          result +=
+              layout_expression(expression.arguments[index],
+                                content_column + result.size(), line_width);
+        }
+        result += ']';
+      } else {
+        result += layout_expression(expression.arguments[0], content_column,
+                                    line_width, precedence, false);
+        result += " " + expression.text + "\n";
+        const std::size_t rhs_column = content_column + 2U;
+        result += spaces(rhs_column);
+        result += layout_expression(expression.arguments[1], rhs_column,
+                                    line_width, precedence, true);
+      }
+    } else {
+      result += flat;
+    }
+  }
+
+  if (parenthesized) {
+    result += ')';
   }
   return result;
 }

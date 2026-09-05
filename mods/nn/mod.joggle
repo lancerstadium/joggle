@@ -29,8 +29,12 @@ mod nn@3.0.0 {
     if length(kernel) == 0 {
       kernel = [weight[2], weight[3]];
     }
-    height = (input[2] + pads[0] + pads[2] - dilations[0] * (kernel[0] - 1) - 1) // strides[0] + 1;
-    width = (input[3] + pads[1] + pads[3] - dilations[1] * (kernel[1] - 1) - 1) // strides[1] + 1;
+    height = (input[2] + pads[0] + pads[2] - dilations[0] * (kernel[0] - 1) - 1) //
+      strides[0] +
+      1;
+    width = (input[3] + pads[1] + pads[3] - dilations[1] * (kernel[1] - 1) - 1) //
+      strides[1] +
+      1;
     return [input[0], weight[0], height, width];
   }
   fn pool_shape(
@@ -97,11 +101,17 @@ mod nn@3.0.0 {
     lhs: t.tensor<E, [M, K]>,
     rhs: t.tensor<E, [K, N]>
   ) -> t.tensor<E, [M, N]> {
-    return t.tensor([M, N], (row, column) => {
-  initial: E = a.zero();
-  return t.reduce(K, initial, (sum, inner) => sum + lhs[row, inner] * rhs[inner, column]);
-}
-);
+    return t.tensor(
+      [M, N],
+      (row, column) => {
+        initial: E = a.zero();
+        return t.reduce(
+          K,
+          initial,
+          (sum, inner) => sum + lhs[row, inner] * rhs[inner, column]
+        );
+      }
+    );
   }
   pub fn relu<E, S: list<int>>(input: t.tensor<E, S>) -> t.tensor<E, S> {
     return t.map(input, (value) => a.max(value, a.zero(value)));

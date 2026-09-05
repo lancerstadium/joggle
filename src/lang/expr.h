@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <span>
 #include <string>
@@ -30,6 +31,11 @@ parse_expression(Lexer& lexer, Token& current, Diag& diagnostics,
                  int minimum_precedence = 0);
 
 std::string format_expression(const Mod::Expr& expression,
+                              int parent_precedence = 0,
+                              bool right_operand = false);
+
+std::string layout_expression(const Mod::Expr& expression, std::size_t column,
+                              std::size_t line_width = 88U,
                               int parent_precedence = 0,
                               bool right_operand = false);
 

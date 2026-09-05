@@ -41,69 +41,6 @@ std::string parameter_text(const Parameter& parameter,
   return parameter_text(displayed);
 }
 
-int operator_precedence(std::string_view symbol) {
-  if (symbol == "[]") {
-    return 80;
-  }
-  if (symbol.empty()) {
-    return 0;
-  }
-  switch (symbol.front()) {
-  case '|':
-    return 10;
-  case '^':
-    return 20;
-  case '&':
-    return 30;
-  case '=':
-  case '!':
-  case '<':
-  case '>':
-    return 40;
-  case '+':
-  case '-':
-    return 50;
-  case '*':
-  case '/':
-  case '%':
-    return 60;
-  default:
-    return 45;
-  }
-}
-
-int type_expression_precedence(const detail::TypeExpr& expression) {
-  using Kind = detail::TypeExpr::Kind;
-  switch (expression.kind) {
-  case Kind::Infer:
-    return 100;
-  case Kind::FnType:
-    return 1;
-  case Kind::Lambda:
-    return 2;
-  case Kind::If:
-    return 5;
-  case Kind::Infix:
-    return operator_precedence(expression.text);
-  case Kind::Prefix:
-    return 70;
-  case Kind::Postfix:
-    return 80;
-  case Kind::Evaluate:
-    return 90;
-  case Kind::Number:
-  case Kind::Boolean:
-  case Kind::String:
-  case Kind::List:
-  case Kind::Reference:
-  case Kind::Variable:
-  case Kind::Call:
-  case Kind::Block:
-    return 100;
-  }
-  return 0;
-}
-
 std::string type_expression_text(const detail::TypeExpr& expression,
                                  int parent_precedence, bool right_operand) {
   return detail::format_expression(expression, parent_precedence,
@@ -111,8 +48,6 @@ std::string type_expression_text(const detail::TypeExpr& expression,
 }
 
 constexpr std::size_t canonical_line_width = 88U;
-
-std::string indentation(std::size_t width) { return std::string(width, ' '); }
 
 void write_indented(std::ostringstream& output, std::string_view source) {
   std::size_t begin = 0;
@@ -130,120 +65,6 @@ void write_indented(std::ostringstream& output, std::string_view source) {
     }
     begin = end + 1U;
   }
-}
-
-std::string type_expression_layout(const detail::TypeExpr& expression,
-                                   std::size_t column,
-                                   int parent_precedence = 0,
-                                   bool right_operand = false) {
-  const std::string flat =
-      type_expression_text(expression, parent_precedence, right_operand);
-  if (column + flat.size() <= canonical_line_width) {
-    return flat;
-  }
-
-  using Kind = detail::TypeExpr::Kind;
-  const int precedence = type_expression_precedence(expression);
-  const bool parenthesized =
-      precedence < parent_precedence ||
-      (right_operand && precedence == parent_precedence && precedence < 100);
-  const std::size_t content_column = column + (parenthesized ? 1U : 0U);
-  std::string result = parenthesized ? "(" : "";
-
-  if (expression.kind == Kind::If && expression.arguments.size() == 3U) {
-    result += "if ";
-    result +=
-        type_expression_layout(expression.arguments[0], content_column + 3U);
-    result += " {\n";
-    result += indentation(content_column + 2U);
-    result +=
-        type_expression_layout(expression.arguments[1], content_column + 2U);
-    result += "\n" + indentation(content_column) + "} else {\n";
-    result += indentation(content_column + 2U);
-    result +=
-        type_expression_layout(expression.arguments[2], content_column + 2U);
-    result += "\n" + indentation(content_column) + "}";
-  } else {
-    const bool delimited =
-        expression.kind == Kind::List || expression.kind == Kind::Reference ||
-        expression.kind == Kind::Call || expression.kind == Kind::Evaluate;
-    if (delimited && !expression.arguments.empty()) {
-      const std::string opening =
-          expression.kind == Kind::List       ? "["
-          : expression.kind == Kind::Evaluate ? "@("
-          : expression.kind == Kind::Call
-              ? expression.text + "("
-              : std::string(detail::display_type_name(expression.text)) + "<";
-      const char closing =
-          expression.kind == Kind::List ? ']'
-          : expression.kind == Kind::Call || expression.kind == Kind::Evaluate
-              ? ')'
-              : '>';
-      result += opening + '\n';
-      const std::size_t argument_column = content_column + 2U;
-      for (std::size_t index = 0; index < expression.arguments.size();
-           ++index) {
-        result += indentation(argument_column);
-        const bool labeled = expression.kind == Kind::Call &&
-                             index < expression.labels.size() &&
-                             !expression.labels[index].empty();
-        if (labeled) {
-          result += expression.labels[index] + ": ";
-        }
-        result += type_expression_layout(
-            expression.arguments[index],
-            argument_column +
-                (labeled ? expression.labels[index].size() + 2U : 0U));
-        if (index + 1U != expression.arguments.size()) {
-          result += ',';
-        }
-        result += '\n';
-      }
-      result += indentation(content_column);
-      result.push_back(closing);
-    } else if (expression.kind == Kind::Prefix) {
-      result += expression.text;
-      result += type_expression_layout(expression.arguments.front(),
-                                       content_column + expression.text.size(),
-                                       precedence, true);
-    } else if (expression.kind == Kind::Postfix) {
-      result += type_expression_layout(expression.arguments.front(),
-                                       content_column, precedence, false);
-      result += expression.text;
-    } else if (expression.kind == Kind::Infix) {
-      if (expression.text == "[]" && expression.arguments.size() >= 2U) {
-        result += type_expression_layout(expression.arguments[0],
-                                         content_column, precedence, false);
-        result += '[';
-        for (std::size_t index = 1U; index < expression.arguments.size();
-             ++index) {
-          if (index != 1U) {
-            result += ", ";
-          }
-          result +=
-              type_expression_layout(expression.arguments[index],
-                                     content_column + result.size(), 0, false);
-        }
-        result += ']';
-      } else {
-        result += type_expression_layout(expression.arguments[0],
-                                         content_column, precedence, false);
-        result += " " + expression.text;
-        result += '\n';
-        const std::size_t rhs_column = content_column + 2U;
-        result += indentation(rhs_column);
-        result += type_expression_layout(expression.arguments[1], rhs_column,
-                                         precedence, true);
-      }
-    } else {
-      return flat;
-    }
-  }
-
-  if (parenthesized) {
-    result += ')';
-  }
-  return result;
 }
 
 }  // namespace
@@ -327,7 +148,7 @@ std::string format(const Mod& mod) {
           output << field_head << value << ";\n";
         } else {
           output << field_head << "\n      "
-                 << type_expression_layout(derived.value, 6U) << ";\n";
+                 << detail::layout_expression(derived.value, 6U) << ";\n";
         }
       }
       output << "  }\n";
@@ -459,12 +280,12 @@ std::string format(const Mod& mod) {
           output << " ->\n";
           if (fn.results.size() == 1U) {
             output << "    "
-                   << type_expression_layout(fn.results.front().domain, 4U);
+                   << detail::layout_expression(fn.results.front().domain, 4U);
           } else {
             output << "    (\n";
             for (std::size_t index = 0; index < fn.results.size(); ++index) {
               output << "      "
-                     << type_expression_layout(fn.results[index].domain, 6U);
+                     << detail::layout_expression(fn.results[index].domain, 6U);
               if (index + 1U != fn.results.size()) {
                 output << ',';
               }
