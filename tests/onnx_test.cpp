@@ -32,11 +32,16 @@ joggle::Bytes read_bytes(const char* path) {
   return result;
 }
 
-bool load(joggle::Compiler& compiler, const char* tensor, const char* onnx,
-          const char* native) {
+bool load(joggle::Compiler& compiler, const char* tensor,
+          const char* source_transform, const char* onnx,
+          const char* onnx_native, const char* transform,
+          const char* transform_native) {
   compiler.load(tensor);
+  compiler.load(transform);
   compiler.load(onnx);
-  return compiler.link() && compiler.load_native("onnx", native);
+  compiler.load(source_transform);
+  return compiler.link() && compiler.load_native("onnx", onnx_native) &&
+         compiler.load_native("transform", transform_native);
 }
 
 using ExpectedCall = std::pair<std::string_view, std::vector<std::int64_t>>;
@@ -80,19 +85,20 @@ const std::vector<ExpectedCall> expected_calls{
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 4 && argc != 5) {
+  if (argc != 7 && argc != 8) {
     return EXIT_FAILURE;
   }
 
   joggle::Compiler malformed;
-  if (!load(malformed, argv[1], argv[2], argv[3])) {
+  if (!load(malformed, argv[1], argv[2], argv[3], argv[4], argv[5], argv[6])) {
     malformed.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto rejected = malformed.run<joggle::Mod>(
       "onnx.read", joggle::Bytes{std::byte{0x7f}}, std::string{"bad"});
   joggle::Compiler malformed_again;
-  if (!load(malformed_again, argv[1], argv[2], argv[3])) {
+  if (!load(malformed_again, argv[1], argv[2], argv[3], argv[4], argv[5],
+            argv[6])) {
     malformed_again.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -105,14 +111,14 @@ int main(int argc, char** argv) {
           malformed_message == malformed_again.diag().issues().back().message,
       "malformed Protobuf input is rejected transactionally");
 
-  if (argc == 4) {
+  if (argc == 7) {
     return ok ? EXIT_SUCCESS : EXIT_FAILURE;
   }
-  const auto bytes = read_bytes(argv[4]);
+  const auto bytes = read_bytes(argv[7]);
   ok &= expect(!bytes.empty(), "reference model bytes are readable");
 
   joggle::Compiler compiler;
-  if (!load(compiler, argv[1], argv[2], argv[3])) {
+  if (!load(compiler, argv[1], argv[2], argv[3], argv[4], argv[5], argv[6])) {
     compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -232,6 +238,64 @@ int main(int argc, char** argv) {
                "match the independently audited graph");
   ok &= expect(compiler.verify(*model),
                "the imported Mod satisfies ordinary IR verification");
+
+  const auto factored = compiler.run<joggle::Mod>(
+      "squeezenet_transform.fuse_first", *model);
+  const auto factored_main = factored ? factored->fn("main") : std::nullopt;
+  const joggle::Fn* factored_body =
+      factored_main ? factored_main->body() : nullptr;
+  if (!factored_body) {
+    compiler.diag().print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  const auto factored_ops = factored_body->ops();
+  const auto fused = std::find_if(
+      factored_ops.begin(), factored_ops.end(), [](const joggle::Op& op) {
+        const auto symbol = op.callee().symbol();
+        return symbol.mod_name() == "squeezenet_transform" &&
+               symbol.local_name() == "conv_relu";
+      });
+  ok &= expect(factored_ops.size() == ops.size() - 1U &&
+                   fused != factored_ops.end() && compiler.verify(*factored),
+               "one source-language pass factors a real imported Conv-Relu "
+               "subgraph through the generic transform service");
+
+  const auto resolved =
+      factored ? compiler.run<joggle::Mod>("transform.resolve", *factored)
+               : std::nullopt;
+  const auto resolved_main = resolved ? resolved->fn("main") : std::nullopt;
+  const joggle::Fn* resolved_body =
+      resolved_main ? resolved_main->body() : nullptr;
+  std::size_t local_calls = 0;
+  std::size_t unresolved_calls = 0;
+  std::size_t tensor_leaves = 0;
+  if (resolved) {
+    for (const auto& member : resolved->fns()) {
+      const joggle::Fn* member_body = member.body();
+      if (!member_body) {
+        continue;
+      }
+      for (const auto& op : member_body->ops()) {
+        const auto callee = op.callee();
+        const auto symbol = callee.symbol();
+        if (callee.body() != nullptr) {
+          if (symbol.mod_name() == resolved->name()) {
+            ++local_calls;
+          } else {
+            ++unresolved_calls;
+          }
+        }
+        tensor_leaves +=
+            static_cast<std::size_t>(symbol.mod_name() == "tensor" &&
+                                     callee.body() == nullptr);
+      }
+    }
+  }
+  ok &= expect(resolved && resolved_body && resolved->fns().size() == 2U &&
+                   local_calls == 1U && unresolved_calls == 0U &&
+                   tensor_leaves == ops.size() && compiler.verify(*resolved),
+               "resolution closes the factored real graph to explicit tensor "
+               "leaves without an op-specific host binding");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

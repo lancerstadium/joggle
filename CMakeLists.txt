@@ -439,11 +439,15 @@ if(JOGGLE_BUILD_TESTS)
   if(JOGGLE_BUILD_ONNX)
     add_executable(joggle_onnx_test tests/onnx_test.cpp)
     target_link_libraries(joggle_onnx_test PRIVATE joggle::joggle)
+    add_dependencies(joggle_onnx_test joggle_transform_native)
     add_test(NAME onnx
       COMMAND joggle_onnx_test
         ${JOGGLE_TENSOR_MOD}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/squeezenet_transform.joggle
         ${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle
         $<TARGET_FILE:joggle_onnx_native>
+        ${JOGGLE_TRANSFORM_MOD}
+        $<TARGET_FILE:joggle_transform_native>
         ${JOGGLE_ONNX_TEST_MODEL})
 
     if(NOT JOGGLE_ONNX_QDQ_TEST_MODEL STREQUAL "")

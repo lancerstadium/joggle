@@ -171,9 +171,11 @@ their host boundaries; model and kernel Ops do not. See
 
 The implemented path currently ends at the core language, tensor and quant
 semantics, typed transformations, ONNX import, and lossless Mod bundles.
-`transform.replace` edits actual Fn SSA/CFG structure transactionally.
-Moving an expression behind another source fn is merely fn
-factoring, not executable kernel fusion.
+`transform.replace` edits actual Fn SSA/CFG structure transactionally; a
+source-defined pass now exercises that path on an imported SqueezeNet
+Conv-Relu expression before resolution closes the call graph. This is fn
+factoring, not an executable fused kernel, and the current expression
+template is concrete rather than shape-polymorphic.
 
 Kernel scheduling, physical layouts, packed formats, storage planning, and
 machine emission remain intentionally absent until source-level transformation

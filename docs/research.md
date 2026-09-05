@@ -50,11 +50,18 @@ The implementation already demonstrates:
     `check`, `run`, `install`, and `lock` workflows.
 12. `transform.resolve` constructs deterministic concrete source instances and
     preserves bodyless calls as an explicit leaf set without invoking them.
+13. On the hash-pinned FLOAT SqueezeNet graph, an ordinary source fn factors a
+    concrete Conv-Relu expression through the same `transform.replace`
+    service, and `transform.resolve` closes the result to one local source
+    instance plus the original 117 bodyless tensor leaves. The pass adds no
+    operator binding and the complete Mod still verifies.
 
-These are infrastructure results. The tensor QDQ calls remain opaque program
-semantics, and no emitted kernel exists yet. The result does not establish
-general mathematical equivalence of user rewrites, support for a physical
-format at run time, or publication-level novelty.
+These are infrastructure results. The real-model factor is deliberately
+monomorphic: one lambda signature names one concrete tensor shape. The tensor
+and QDQ leaves remain opaque program semantics, and no emitted kernel exists
+yet. The result does not establish shape-polymorphic matching, general
+mathematical equivalence of user rewrites, support for a physical format at
+run time, or publication-level novelty.
 
 ## What the closest systems already solve
 
