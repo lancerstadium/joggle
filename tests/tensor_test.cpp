@@ -59,32 +59,23 @@ mod tensor_use@1.0.0 {
     return a.zero();
   }
 
-  fn matmul_element(
-    lhs: t.tensor<f32, [2, 4]>,
-    rhs: t.tensor<f32, [4, 3]>,
-    out: t.coord<[2, 3]>
-  ) -> f32 {
-    initial: f32 = a.zero();
-    products: t.tensor<f32, [4]> = t.map(
-      [4],
-      (k: t.coord<[4]>) -> f32 =>
-        lhs[t.coord([2, 4], out[0], k[0])] *
-        rhs[t.coord([4, 3], k[0], out[1])]
-    );
-    return t.reduce(
-      products,
-      initial,
-      (sum: f32, value: f32) -> f32 => sum + value
-    );
-  }
-
   fn matmul(
     lhs: t.tensor<f32, [2, 4]>,
     rhs: t.tensor<f32, [4, 3]>
   ) -> t.tensor<f32, [2, 3]> {
+    initial: f32 = a.zero();
     return t.map(
       [2, 3],
-      (out: t.coord<[2, 3]>) -> f32 => matmul_element(lhs, rhs, out)
+      (out: t.coord<[2, 3]>) -> f32 => t.reduce(
+        t.map(
+          [4],
+          (k: t.coord<[4]>) -> f32 =>
+            lhs[t.coord([2, 4], out[0], k[0])] *
+            rhs[t.coord([4, 3], k[0], out[1])]
+        ),
+        initial,
+        (sum: f32, value: f32) -> f32 => sum + value
+      )
     );
   }
 }
@@ -195,39 +186,31 @@ int main() {
 
   const auto matmul_ops = matmul ? matmul->ops() : std::vector<joggle::Op>{};
   const auto output_body =
-      matmul_ops.size() == 1U && matmul_ops.front().arguments().size() == 1U
-          ? matmul_ops.front().arguments().front().inline_fn()
+      matmul_ops.size() == 2U && matmul_ops.back().arguments().size() == 1U
+          ? matmul_ops.back().arguments().front().inline_fn()
           : std::optional<joggle::Fn>{};
   const auto output_ops =
       output_body ? output_body->ops() : std::vector<joggle::Op>{};
-  const auto element = output_ops.size() == 1U
-                           ? compiler.materialize(output_ops.front())
-                           : std::optional<joggle::Fn>{};
-  const auto element_ops =
-      element ? element->ops() : std::vector<joggle::Op>{};
   const auto product_body =
-      element_ops.size() == 3U && element_ops[1].arguments().size() == 1U
-          ? element_ops[1].arguments().front().inline_fn()
+      output_ops.size() == 2U && output_ops.front().arguments().size() == 1U
+          ? output_ops.front().arguments().front().inline_fn()
           : std::optional<joggle::Fn>{};
   const auto reduction_body =
-      element_ops.size() == 3U && element_ops[2].arguments().size() == 3U
-          ? element_ops[2].arguments()[2].inline_fn()
+      output_ops.size() == 2U && output_ops.back().arguments().size() == 3U
+          ? output_ops.back().arguments()[2].inline_fn()
           : std::optional<joggle::Fn>{};
   ok &= expect(
-      matmul && matmul_ops.size() == 1U &&
-          callee_name(matmul_ops.front()) == "map" && output_body &&
-          output_ops.size() == 1U &&
-          callee_name(output_ops.front()) == "matmul_element" && element &&
-          element_ops.size() == 3U &&
-          callee_name(element_ops[0]) == "zero" &&
-          callee_name(element_ops[1]) == "map" &&
-          callee_name(element_ops[2]) == "reduce" && product_body &&
+      matmul && matmul_ops.size() == 2U &&
+          callee_name(matmul_ops.front()) == "zero" &&
+          callee_name(matmul_ops.back()) == "map" && output_body &&
+          output_ops.size() == 2U &&
+          callee_name(output_ops.front()) == "map" &&
+          callee_name(output_ops.back()) == "reduce" && product_body &&
           product_body->ops().size() == 9U && reduction_body &&
           reduction_body->ops().size() == 1U &&
           callee_name(reduction_body->ops().front()) == "+" &&
           compiler.verify(*matmul) && compiler.verify(*output_body) &&
-          compiler.verify(*element) && compiler.verify(*product_body) &&
-          compiler.verify(*reduction_body),
+          compiler.verify(*product_body) && compiler.verify(*reduction_body),
       "a MatMul body exposes output construction, reduction, indexing, and "
           "scalar arithmetic as nested Fns");
 

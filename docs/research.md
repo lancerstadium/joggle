@@ -33,7 +33,8 @@ The implementation currently demonstrates:
    product is expressed by their composition plus scalar overloads, while `p[i]` and
    `tensor[p]` remain ordinary overloaded Calls;
 7. those bodies materialize, expose nested element and update Fns, invoke
-   arbitrary callable parameters, and pass the ordinary verifier;
+   arbitrary callable parameters, infer direct nested `map`/`reduce`
+   composition without helper APIs, and pass the ordinary verifier;
 8. the same name-independent Mod transform expands all 26 ONNX Relu calls in
    the pinned, unmodified SqueezeNet graph first to Tensor-map and then to domain-map
    plus captured element Fns; existing nested bodies participate in the same

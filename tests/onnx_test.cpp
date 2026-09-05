@@ -148,23 +148,18 @@ mod matmul_use@1.0.0 {
                           : std::optional<joggle::Fn>{};
   const auto matmul_ops = matmul ? matmul->ops() : std::vector<joggle::Op>{};
   const auto output_body =
-      matmul_ops.size() == 1U && matmul_ops.front().arguments().size() == 1U
-          ? matmul_ops.front().arguments().front().inline_fn()
+      matmul_ops.size() == 2U && matmul_ops.back().arguments().size() == 1U
+          ? matmul_ops.back().arguments().front().inline_fn()
           : std::optional<joggle::Fn>{};
   const auto output_ops =
       output_body ? output_body->ops() : std::vector<joggle::Op>{};
-  const auto element = output_ops.size() == 1U
-                           ? structural.materialize(output_ops.front())
-                           : std::optional<joggle::Fn>{};
-  const auto element_ops =
-      element ? element->ops() : std::vector<joggle::Op>{};
   const auto product_body =
-      element_ops.size() == 3U && element_ops[1].arguments().size() == 1U
-          ? element_ops[1].arguments().front().inline_fn()
+      output_ops.size() == 2U && output_ops.front().arguments().size() == 1U
+          ? output_ops.front().arguments().front().inline_fn()
           : std::optional<joggle::Fn>{};
   const auto reduction_body =
-      element_ops.size() == 3U && element_ops[2].arguments().size() == 3U
-          ? element_ops[2].arguments()[2].inline_fn()
+      output_ops.size() == 2U && output_ops.back().arguments().size() == 3U
+          ? output_ops.back().arguments()[2].inline_fn()
           : std::optional<joggle::Fn>{};
   if (!matmul) {
     structural.diag().print(std::cerr);
@@ -172,20 +167,17 @@ mod matmul_use@1.0.0 {
   ok &= expect(
       matmul_user && matmul_user_ops.size() == 1U &&
           callee_name(matmul_user_ops.front()) == "MatMul" && matmul &&
-          matmul_ops.size() == 1U &&
-          callee_name(matmul_ops.front()) == "map" && output_body &&
-          output_ops.size() == 1U &&
-          callee_name(output_ops.front()) == "matmul_element" && element &&
-          element_ops.size() == 3U &&
-          callee_name(element_ops[0]) == "zero" &&
-          callee_name(element_ops[1]) == "map" &&
-          callee_name(element_ops[2]) == "reduce" && product_body &&
+          matmul_ops.size() == 2U &&
+          callee_name(matmul_ops.front()) == "zero" &&
+          callee_name(matmul_ops.back()) == "map" && output_body &&
+          output_ops.size() == 2U &&
+          callee_name(output_ops.front()) == "map" &&
+          callee_name(output_ops.back()) == "reduce" && product_body &&
           product_body->ops().size() == 9U && reduction_body &&
           reduction_body->ops().size() == 1U &&
           callee_name(reduction_body->ops().front()) == "+" &&
           structural.verify(*matmul) && structural.verify(*output_body) &&
-          structural.verify(*element) && structural.verify(*product_body) &&
-          structural.verify(*reduction_body),
+          structural.verify(*product_body) && structural.verify(*reduction_body),
       "ONNX MatMul expands to a real map/reduce/index/arithmetic Fn body");
 
   if (argc == 8) {

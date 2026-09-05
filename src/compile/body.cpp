@@ -80,6 +80,7 @@ class Instantiator {
     std::optional<Mod::Expr> inline_fn;
     std::optional<Mod::Expr> expression;
     std::optional<std::vector<Type>> inline_inputs;
+    std::optional<Type> inferred_type;
     std::size_t order = 0;
 
     bool is_fn() const { return !fn.empty(); }
@@ -932,7 +933,7 @@ private:
         for (const PendingArgument& argument : arguments) {
           argument_types.push_back(
               argument.value ? std::optional<Type>{argument.value->type()}
-                             : std::nullopt);
+                             : argument.inferred_type);
         }
         continue;
       }
@@ -985,6 +986,167 @@ private:
     }
     result.partial_types = std::move(*types);
     return result;
+  }
+
+  bool prepare_inline_fn(PendingArgument& argument,
+                         const Mod::Expr& expression,
+                         detail::SyntaxRange range,
+                         bool infer_signature = false) {
+    if (expression.kind != Mod::Expr::Kind::Lambda) {
+      return false;
+    }
+    argument.inline_fn = expression;
+    const std::size_t parameter_count = expression.labels.size();
+    const bool inferred = expression.arguments.size() == parameter_count + 1U;
+    const bool annotated = expression.arguments.size() == parameter_count + 2U;
+    if (!inferred && !annotated) {
+      return false;
+    }
+
+    std::vector<Type> inputs;
+    inputs.reserve(parameter_count);
+    for (std::size_t index = 0; index < parameter_count; ++index) {
+      auto input = infer_signature
+                       ? infer_type({expression.arguments[index], range})
+                       : type({expression.arguments[index], range});
+      if (!input) {
+        return false;
+      }
+      inputs.push_back(std::move(*input));
+    }
+    if (!annotated || !infer_signature) {
+      argument.inline_inputs = std::move(inputs);
+      return true;
+    }
+
+    auto result = infer_type({expression.arguments[parameter_count], range});
+    const auto prelude = compiler_.mod(detail::prelude_mod_name);
+    const auto callable =
+        prelude ? prelude->type("callable") : std::optional<Mod::TypeDecl>{};
+    if (!result || !callable) {
+      return false;
+    }
+    argument.inline_inputs = inputs;
+    argument.inferred_type =
+        compiler_.make(*callable, std::move(inputs),
+                       std::vector<Type>{std::move(*result)});
+    return argument.inferred_type.has_value();
+  }
+
+  std::optional<Type> infer_expression_type(const Mod::Expr& expression,
+                                            detail::SyntaxRange range) {
+    // A nested residual call may contribute a result Type to its enclosing
+    // generic call before either Call is emitted. Ambiguous or contextual
+    // expressions deliberately return no Type and use the existing
+    // top-down path instead.
+    using Kind = Mod::Expr::Kind;
+    if (expression.kind == Kind::Lambda) {
+      PendingArgument lambda;
+      return prepare_inline_fn(lambda, expression, range, true)
+                 ? lambda.inferred_type
+                 : std::nullopt;
+    }
+    if ((expression.kind == Kind::Reference ||
+         expression.kind == Kind::Variable) &&
+        expression.arguments.empty()) {
+      const auto value = lookup_staged(expression.text);
+      return value ? std::optional<Type>{value->type()} : std::nullopt;
+    }
+    if (known_result(expression, range)) {
+      auto value = infer_known({expression, range});
+      return value ? std::optional<Type>{value->type()} : std::nullopt;
+    }
+
+    std::optional<Mod::FnDecl::Fixity> fixity;
+    if (expression.kind == Kind::Prefix) {
+      fixity = Mod::FnDecl::Fixity::Prefix;
+    } else if (expression.kind == Kind::Infix) {
+      fixity = Mod::FnDecl::Fixity::Infix;
+    } else if (expression.kind == Kind::Postfix) {
+      fixity = Mod::FnDecl::Fixity::Postfix;
+    } else if (expression.kind != Kind::Call) {
+      return std::nullopt;
+    }
+
+    std::vector<PendingArgument> arguments;
+    arguments.reserve(expression.arguments.size());
+    for (const Mod::Expr& child : expression.arguments) {
+      PendingArgument argument;
+      argument.order = arguments.size();
+      if (child.kind == Kind::Lambda) {
+        if (!prepare_inline_fn(argument, child, range, true)) {
+          return std::nullopt;
+        }
+      } else if ((child.kind == Kind::Reference ||
+                  child.kind == Kind::Variable) &&
+                 child.arguments.empty()) {
+        argument.value = lookup_staged(child.text);
+        if (!argument.value) {
+          return std::nullopt;
+        }
+      } else if (known_result(child, range)) {
+        argument.value = infer_known({child, range});
+        if (!argument.value) {
+          return std::nullopt;
+        }
+      } else {
+        argument.expression = child;
+        argument.inferred_type = infer_expression_type(child, range);
+      }
+      if (!argument.valid()) {
+        return std::nullopt;
+      }
+      arguments.push_back(std::move(argument));
+    }
+
+    const auto declarations =
+        fixity ? detail::visible_operators(compiler_, owner_, expression.text,
+                                           *fixity)
+               : visible_fns(expression.text);
+    std::vector<PendingCall> plans;
+    for (const auto& fn : declarations) {
+      std::vector<std::optional<Type>> expected(
+          detail::value_results(fn).size());
+      if (auto plan = plan_call(fn, expression, arguments, expected, range,
+                                residual_control_depth_ == 0U)) {
+        plans.push_back(std::move(*plan));
+      }
+    }
+    if (plans.size() != 1U || plans.front().partial_types.results.size() != 1U) {
+      return std::nullopt;
+    }
+    return plans.front().partial_types.results.front();
+  }
+
+  std::optional<detail::StagedVal>
+  infer_known(const detail::ExprSyntax& syntax) {
+    auto expected = known_result(syntax.value, syntax.range);
+    if (!expected) {
+      return std::nullopt;
+    }
+    Diag attempt;
+    // Type probing must not invoke an observable host action. Hermetic native
+    // bindings and source-only compiler computation are safe to repeat;
+    // Guarded native work must be evaluated once by an explicit @ binding.
+    auto payload = detail::evaluate_known_expression(
+        compiler_, owner_, syntax.value, *expected, locals_.known_bindings(),
+        attempt, source(syntax.range), false);
+    auto value = payload ? detail::exec_val(*payload, *expected)
+                         : std::optional<detail::ExecVal>{};
+    return value ? detail::stage(compiler_, std::move(*value))
+                 : std::optional<detail::StagedVal>{};
+  }
+
+  std::optional<Type> infer_type(const detail::ExprSyntax& syntax) {
+    const Mod::ParamDecl expected{
+        "type", detail::domain_expression(detail::ValKind::Type), false,
+        std::nullopt};
+    Diag attempt;
+    auto value = detail::evaluate_known_expression(
+        compiler_, owner_, syntax.value, expected, locals_.known_bindings(),
+        attempt, source(syntax.range), false);
+    const Type* resolved = value ? value->as_type() : nullptr;
+    return resolved ? std::optional<Type>{*resolved} : std::nullopt;
   }
 
   bool matches_fn_value(const Mod::FnDecl& fn, const Type& callable,
@@ -2664,26 +2826,8 @@ private:
       PendingArgument argument;
       argument.order = arguments.size();
       if (argument_expression.kind == Kind::Lambda) {
-        argument.inline_fn = argument_expression;
-        const std::size_t parameter_count = argument_expression.labels.size();
-        if (argument_expression.arguments.size() == parameter_count + 1U ||
-            argument_expression.arguments.size() == parameter_count + 2U) {
-          std::vector<Type> inputs;
-          inputs.reserve(argument_expression.labels.size());
-          bool valid = true;
-          for (std::size_t index = 0; index < argument_expression.labels.size();
-               ++index) {
-            auto input = type({argument_expression.arguments[index],
-                               statement.expression.range});
-            valid = input.has_value() && valid;
-            if (input) {
-              inputs.push_back(std::move(*input));
-            }
-          }
-          if (valid) {
-            argument.inline_inputs = std::move(inputs);
-          }
-        }
+        prepare_inline_fn(argument, argument_expression,
+                          statement.expression.range);
       } else if ((argument_expression.kind == Kind::Reference ||
                   argument_expression.kind == Kind::Variable) &&
                  argument_expression.arguments.empty()) {
@@ -2705,6 +2849,8 @@ private:
         argument.value = evaluate_known(argument_syntax);
       } else {
         argument.expression = argument_expression;
+        argument.inferred_type = infer_expression_type(
+            argument_expression, statement.expression.range);
       }
       if (!argument.valid()) {
         invalidate_results();

@@ -214,6 +214,27 @@ The annotation is checked against a surrounding callable type when both are
 present. It is especially useful for explicitly staged transformation
 templates whose parameter domain is the general compiler value `fn`.
 
+A fully annotated lambda also gives a nested call enough information to infer
+its result Type before the enclosing call is materialized. This permits direct
+functional composition such as:
+
+```joggle
+return reduce(
+  map([K], (k: coord<[K]>) -> f32 => lhs[k] * rhs[k]),
+  zero,
+  (sum: f32, value: f32) -> f32 => sum + value
+);
+```
+
+The inference probe does not emit Calls and never executes a Guarded native
+compiler fn. If such a fn produces a value needed by nested Type inference,
+evaluate it once in an explicit binding and compose with that value:
+
+```joggle
+shape = @query_shape();
+return consume(generate(shape, body));
+```
+
 A lambda constructs a fn value. Passing it to an ordinary call remains
 run-time IR. Passing it to a `fn` parameter through `@` instead constructs
 a verified anonymous `Fn` execution value. Compiler fns may return

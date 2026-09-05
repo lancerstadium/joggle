@@ -32,6 +32,10 @@ mod logic@1.0.0 {
   fn apply<T, U>(input: T, body: (T) -> U) -> U;
   fn apply_same<T>(input: T, body: (T) -> T) -> T;
   fn callback_factory<T, U>() -> (T) -> U;
+  fn generate<T>(body: (word<8>) -> T) -> tensor<T, [4]>;
+  fn reduce<T, S: list<int>, A>(
+    input: tensor<T, S>, initial: A, body: (A, T) -> A
+  ) -> A;
   fn main(lhs: tensor<word<8>, [2, 4]>) -> tensor<word<8>, [2, 4]> {
     input: tensor<word<8>, [2, 4]> = source(
       name = "input } // still a string",
@@ -97,6 +101,13 @@ mod logic@1.0.0 {
   }
   fn direct_overloaded_callback_value(input: word<8>) -> word<8> {
     return apply_same(input, overloaded_callback);
+  }
+  fn nested_result_inference(input: word<8>, initial: word<8>) -> word<8> {
+    return reduce(
+      generate((value: word<8>) -> word<8> => value),
+      initial,
+      (sum: word<8>, value: word<8>) -> word<8> => sum
+    );
   }
 
 }
@@ -172,6 +183,8 @@ int main() {
       compiler.materialize("logic.direct_generic_callback_value");
   const auto direct_overloaded_callback_value =
       compiler.materialize("logic.direct_overloaded_callback_value");
+  const auto nested_result_inference =
+      compiler.materialize("logic.nested_result_inference");
   const auto callback_arguments =
       callback_user ? callback_user->arguments() : std::vector<joggle::Val>{};
   const auto callback_parameters =
@@ -242,6 +255,18 @@ int main() {
           generic_inline_callback->ops().front().arguments().back().inline_fn(),
       "lambda annotations and the surrounding result infer a "
       "generic higher-order call");
+  const auto nested_result_ops =
+      nested_result_inference ? nested_result_inference->ops()
+                              : std::vector<joggle::Op>{};
+  ok &= expect(
+      nested_result_ops.size() == 2U &&
+          nested_result_ops[0].callee().referenced_fn() &&
+          nested_result_ops[0].callee().referenced_fn()->name() == "generate" &&
+          nested_result_ops[1].callee().referenced_fn() &&
+          nested_result_ops[1].callee().referenced_fn()->name() == "reduce" &&
+          compiler.verify(*nested_result_inference),
+      "an annotated lambda lets a nested call contribute its result Type "
+      "to the enclosing generic call");
   const auto overloaded_inline_arguments =
       overloaded_inline_callback &&
               overloaded_inline_callback->ops().size() == 1U
@@ -292,6 +317,64 @@ int main() {
                    inline_roundtrip.verify(*replayed_inline),
                "typed lambda formatting is canonical and materializes after "
                "a source round trip");
+
+  joggle::Compiler guarded_inference;
+  guarded_inference.add(R"(
+joggle 1;
+mod guarded_inference@1.0.0 {
+  type word();
+  type tensor(element: type, shape: list<int>);
+
+  fn shape() -> list<int>;
+  fn generate<T, S: list<int>>(
+    shape: S, body: (word) -> T
+  ) -> tensor<T, S>;
+  fn reduce<T, S: list<int>, A>(
+    input: tensor<T, S>, initial: A, body: (A, T) -> A
+  ) -> A;
+
+  fn staged(input: word, initial: word) -> word {
+    shape = @shape();
+    return reduce(
+      generate(shape, (value: word) -> word => value),
+      initial,
+      (sum: word, value: word) -> word => sum
+    );
+  }
+
+  fn direct(input: word, initial: word) -> word {
+    return reduce(
+      generate(@shape(), (value: word) -> word => value),
+      initial,
+      (sum: word, value: word) -> word => sum
+    );
+  }
+}
+)",
+                        "guarded-inference.joggle");
+  const bool guarded_linked = guarded_inference.link();
+  const auto guarded_mod = guarded_inference.mod("guarded_inference");
+  const auto shape_decl = guarded_mod ? guarded_mod->fn("shape") : std::nullopt;
+  std::size_t shape_calls = 0;
+  if (shape_decl) {
+    guarded_inference.bind(*shape_decl, [&] {
+      ++shape_calls;
+      return std::vector<std::int64_t>{4};
+    });
+  }
+  const auto staged_nested =
+      guarded_linked && shape_decl
+          ? guarded_inference.materialize("guarded_inference.staged")
+          : std::nullopt;
+  const auto direct_nested =
+      staged_nested
+          ? guarded_inference.materialize("guarded_inference.direct")
+          : std::nullopt;
+  ok &= expect(
+      staged_nested && staged_nested->ops().size() == 2U && !direct_nested &&
+          shape_calls == 1U,
+      "nested Type inference uses an explicitly bound Known value but never "
+      "speculatively executes a guarded native compiler fn");
 
   joggle::Compiler invalid_lambda;
   invalid_lambda.add(R"(
