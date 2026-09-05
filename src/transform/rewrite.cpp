@@ -7,8 +7,11 @@
 #include <vector>
 
 #include "joggle/compiler.h"
+#include "ir/fn.h"
 #include "ir/mod.h"
+#include "lang/fn.h"
 #include "lang/prelude.h"
+#include "sema/call.h"
 #include "sema/infer.h"
 #include "transform/clone.h"
 #include "transform/nested.h"
@@ -327,10 +330,175 @@ std::vector<Mod::FnDecl> equations(Compiler& compiler, const Mod& laws,
   return result;
 }
 
-std::optional<Fn> materialize_equation(Compiler& compiler,
-                                       const Mod::FnDecl& law,
-                                       const Type& root_type) {
-  std::vector<std::optional<Type>> arguments(detail::value_inputs(law).size());
+class PatternProbe {
+public:
+  PatternProbe(Compiler& compiler, const Mod::FnDecl& law)
+      : compiler_(compiler), law_(law), inputs_(detail::value_inputs(law)),
+        types_(inputs_.size()) {}
+
+  std::optional<std::vector<std::optional<Type>>>
+  run(const Mod::Expr& expression, const Val& target) {
+    if (!match(expression, target)) {
+      return std::nullopt;
+    }
+    return types_;
+  }
+
+private:
+  std::optional<std::size_t> input(std::string_view name) const {
+    const auto found =
+        std::find_if(inputs_.begin(), inputs_.end(),
+                     [&](const auto& value) { return value.name == name; });
+    return found == inputs_.end()
+               ? std::nullopt
+               : std::optional<std::size_t>{static_cast<std::size_t>(
+                     std::distance(inputs_.begin(), found))};
+  }
+
+  bool bind(std::size_t index, const Val& target) {
+    if (types_[index]) {
+      return *types_[index] == target.type();
+    }
+    types_[index] = target.type();
+    return true;
+  }
+
+  bool match_dynamic(const Mod::Expr& expression, const Op& target,
+                     std::size_t callee) {
+    if (!bind(callee, target.callee()) ||
+        expression.arguments.size() != target.arguments().size()) {
+      return false;
+    }
+    if (std::any_of(expression.labels.begin(), expression.labels.end(),
+                    [](const auto& label) { return !label.empty(); })) {
+      return false;
+    }
+    const auto arguments = target.arguments();
+    for (std::size_t index = 0; index < arguments.size(); ++index) {
+      if (!match(expression.arguments[index], arguments[index])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  std::vector<Mod::FnDecl> declarations(const Mod::Expr& expression) const {
+    using Kind = Mod::Expr::Kind;
+    if (expression.kind == Kind::Call) {
+      return detail::visible_fns(compiler_, law_.symbol().mod_name(),
+                                 expression.text);
+    }
+    const auto fixity =
+        expression.kind == Kind::Prefix    ? Mod::FnDecl::Fixity::Prefix
+        : expression.kind == Kind::Postfix ? Mod::FnDecl::Fixity::Postfix
+                                           : Mod::FnDecl::Fixity::Infix;
+    return detail::visible_operators(compiler_, law_.symbol().mod_name(),
+                                     expression.text, fixity);
+  }
+
+  bool match_declared(const Mod::Expr& expression, const Op& target) {
+    const auto target_fn = target.callee().referenced_fn();
+    if (!target_fn) {
+      return false;
+    }
+    const auto visible = declarations(expression);
+    if (std::find(visible.begin(), visible.end(), *target_fn) ==
+        visible.end()) {
+      return false;
+    }
+    const auto shaped = detail::call_candidate(*target_fn, expression);
+    if (!shaped || shaped->parameters.size() != expression.arguments.size()) {
+      return false;
+    }
+
+    std::vector<std::vector<Val>> target_arguments(target_fn->inputs().size());
+    const auto arguments = target.arguments();
+    for (std::size_t index = 0; index < arguments.size(); ++index) {
+      const std::size_t parameter =
+          detail::FnAccess::argument_parameter(target, index);
+      if (parameter >= target_arguments.size()) {
+        return false;
+      }
+      target_arguments[parameter].push_back(arguments[index]);
+    }
+    std::vector<std::size_t> occurrences(target_fn->inputs().size());
+    for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
+      const std::size_t parameter = shaped->parameters[index];
+      if (!detail::is_value_port(target_fn->inputs()[parameter])) {
+        continue;
+      }
+      const std::size_t occurrence = occurrences[parameter]++;
+      if (occurrence >= target_arguments[parameter].size() ||
+          !match(expression.arguments[index],
+                 target_arguments[parameter][occurrence])) {
+        return false;
+      }
+    }
+    for (std::size_t parameter = 0; parameter < occurrences.size();
+         ++parameter) {
+      if (occurrences[parameter] != target_arguments[parameter].size()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool match(const Mod::Expr& expression, const Val& target) {
+    using Kind = Mod::Expr::Kind;
+    if (expression.kind == Kind::Variable) {
+      const auto parameter = input(expression.text);
+      return parameter && bind(*parameter, target);
+    }
+    const bool call =
+        expression.kind == Kind::Call || expression.kind == Kind::Prefix ||
+        expression.kind == Kind::Infix || expression.kind == Kind::Postfix;
+    if (!call) {
+      return target.known();
+    }
+    const auto operation = target.defining_op();
+    if (!operation || operation->results().size() != 1U ||
+        operation->result(0) != target) {
+      return false;
+    }
+    if (expression.kind == Kind::Call) {
+      if (const auto callee = input(expression.text)) {
+        return match_dynamic(expression, *operation, *callee);
+      }
+    }
+    return match_declared(expression, *operation);
+  }
+
+  Compiler& compiler_;
+  Mod::FnDecl law_;
+  std::vector<Mod::ParamDecl> inputs_;
+  std::vector<std::optional<Type>> types_;
+};
+
+std::optional<std::vector<std::optional<Type>>>
+pattern_types(Compiler& compiler, const Mod& laws, const Mod::FnDecl& law,
+              const Val& target) {
+  const auto body = detail::ModAccess::body(laws, law);
+  if (!body || body->blocks.size() != 1U || body->blocks.front().terminator ||
+      body->blocks.front().statements.empty()) {
+    return std::nullopt;
+  }
+  const detail::StatementSyntax& statement =
+      body->blocks.front().statements.back();
+  if (statement.kind != detail::StatementSyntax::Kind::Return ||
+      statement.values.size() != 2U) {
+    return std::nullopt;
+  }
+  return PatternProbe(compiler, law)
+      .run(statement.values.front().value, target);
+}
+
+std::optional<Fn>
+materialize_equation(Compiler& compiler, const Mod::FnDecl& law,
+                     const Type& root_type,
+                     std::vector<std::optional<Type>> arguments = {}) {
+  if (arguments.empty()) {
+    arguments.resize(detail::value_inputs(law).size());
+  }
   std::vector<std::optional<detail::ParamVal>> known;
   std::vector<std::optional<Type>> expected(2U);
   expected.front() = root_type;
@@ -377,6 +545,7 @@ std::optional<Fn> specialize(Compiler& compiler, const Mod::FnDecl& law,
 }
 
 std::optional<std::size_t> apply_equation(Compiler& compiler, Fn& fn,
+                                          const Mod& laws,
                                           const Mod::FnDecl& law,
                                           Specializations& specializations,
                                           Diag& diagnostics) {
@@ -391,8 +560,8 @@ std::optional<std::size_t> apply_equation(Compiler& compiler, Fn& fn,
     if (!body) {
       continue;
     }
-    const auto changed =
-        apply_equation(compiler, *body, law, specializations, diagnostics);
+    const auto changed = apply_equation(compiler, *body, laws, law,
+                                        specializations, diagnostics);
     if (!changed) {
       return std::nullopt;
     }
@@ -419,6 +588,13 @@ std::optional<std::size_t> apply_equation(Compiler& compiler, Fn& fn,
     for (const Val& candidate : operation.results()) {
       auto equation =
           specialize(compiler, law, candidate.type(), specializations);
+      if (!equation) {
+        const auto arguments = pattern_types(compiler, laws, law, candidate);
+        if (arguments) {
+          equation =
+              materialize_equation(compiler, law, candidate.type(), *arguments);
+        }
+      }
       if (!equation) {
         continue;
       }
@@ -489,8 +665,8 @@ std::optional<std::size_t> apply_pass(Compiler& compiler, Fn& fn,
   std::size_t total = 0;
   for (const Mod::FnDecl& rule : rules) {
     Specializations specializations;
-    const auto changed =
-        apply_equation(compiler, candidate, rule, specializations, diagnostics);
+    const auto changed = apply_equation(compiler, candidate, laws, rule,
+                                        specializations, diagnostics);
     if (!changed) {
       return std::nullopt;
     }

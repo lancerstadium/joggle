@@ -90,18 +90,25 @@ second is the replacement. Passing `tensor_laws` to `@transform.pass` keeps the
 rules installable and inspectable using the existing Mod/package mechanism.
 There is no `rule`, `rewrite`, or Pattern declaration.
 
-For each candidate value, result-Type unification specializes the generic law
-and materializes its body. The left expression's arguments become consistently
-bound pattern variables. Referenced callees match by declaration identity and
-compiler bindings. The right expression is cloned before the matched root;
+For each candidate value, the compiler first tries result-Type unification. If
+that does not determine the law, it synchronizes the unspecialized source left
+expression with the candidate IR and records the Types at corresponding law
+arguments. It then uses those facts in the ordinary call-Type solver and
+materializes a concrete law. This probe never accepts a rewrite: the concrete
+left expression must still match declaration identity, compiler bindings,
+exact Types, and dataflow. No candidate-Type enumeration or operation-name
+dispatch is involved. The right expression is cloned before the matched root;
 generic dead-expression removal then deletes unreachable producers. The same
 traversal enters existing lambda bodies and publishes changed closures through
 their capture edges.
 
 The same `fuse<E,S>` law is tested on `tensor<f32,[4]>` and
-`tensor<word,[2,3]>`. Concrete `map(S, f)[p] = f(p)` cancellation uses the same
-matcher. A generic that appears only below the left root is not yet inferred;
-that requires structural unification with the unspecialized source expression.
+`tensor<word,[2,3]>`. A single generic `map(S, f)[p] = f(p)` law is also tested
+on both `f32/[4]` and `word/[2,3]`; its shape parameter cannot be determined
+from the scalar result and is instead recovered from the left structure. The
+current source probe accepts direct single-expression left returns. Inference
+through law-local bindings, multi-result pattern calls, and CFG-shaped pattern
+bodies remains later work.
 
 ## Function expansion and implementation closure
 
@@ -162,8 +169,10 @@ the compiler back into a catalog of `before`/`after` pairs.
     Tensor producer-consumer composition and effect rejection.
 11. [complete] Specialize result-determined generic equations by Type
     unification; one Tensor law now covers multiple element Types and ranks.
-11a. [planned] Infer generics that occur only below the left root through
-     structural source-expression unification.
+11a. [complete] Infer generics below a direct left root by synchronizing its
+     source expression with candidate IR before concrete matching.
+11b. [planned] Extend source inference through law-local bindings,
+     multi-result calls, and CFG-shaped pattern bodies.
 12. [planned] Extend legality from pure deforestation to dependence-checked
     reduction and loop transformations.
 13. [planned] Validate polymorphic fusion on imported, unmodified ONNX models.

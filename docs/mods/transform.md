@@ -46,8 +46,9 @@ mod pipeline@1.0.0 {
 ```
 
 The equation's arguments are pattern variables shared by both expressions.
-Generic Types are solved from each candidate result before materializing the
-equation. Calls then match by declaration identity, specialized compiler
+Generic Types are solved from the candidate result and from values
+structurally corresponding to arguments in the source left expression. The
+concrete equation then matches declaration identity, specialized compiler
 bindings, exact Types, and dataflow structure; no string or operator-name
 dispatch participates. The second expression is cloned at each non-overlapping
 match. The pass recurses through existing callable bodies, rewires closure
@@ -58,9 +59,9 @@ Equation packages may also contain declarations and ordinary helper fns; only
 bodyful fns with two identical result Type expressions are equations. Equations
 are deliberately pure and single-block. An effect anywhere in their signature
 or body, a zero-result call, an unbound replacement argument, or control flow
-is rejected. Today every generic needed by an input Type must be recoverable
-from the candidate result Type. Structural inference from the left expression
-will remove that remaining restriction.
+is rejected. Generic Types may be recovered beneath a direct left return
+expression. Law-local bindings, multi-result pattern calls, and CFG-shaped
+left expressions are not yet accepted.
 
 `inline` replaces every source-defined or anonymous single-block Call visible
 in its input snapshot with the callee's actual operations. It first applies the

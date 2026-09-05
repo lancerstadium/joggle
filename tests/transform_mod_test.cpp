@@ -51,11 +51,11 @@ mod transform_rules@1.0.0 {
       t.map(S, (position: t.coord<S>) -> E => body(make(position)));
   }
 
-  fn cancel(
-    make: (t.coord<[4]>) -> f32,
-    position: t.coord<[4]>
-  ) -> (f32, f32) {
-    return t.map([4], make)[position], make(position);
+  fn cancel<E, S: list<int>>(
+    make: (t.coord<S>) -> E,
+    position: t.coord<S>
+  ) -> (E, E) {
+    return t.map(S, make)[position], make(position);
   }
 }
 )";
@@ -136,6 +136,14 @@ mod transform_fixture@1.0.0 {
     built: t.tensor<f32, [4]> = t.map(
       [4],
       (item: t.coord<[4]>) => a.seed(item)
+    );
+    return built[position];
+  }
+
+  fn sampled_word(position: t.coord<[2, 3]>) -> a.word {
+    built: t.tensor<a.word, [2, 3]> = t.map(
+      [2, 3],
+      (item: t.coord<[2, 3]>) => a.seed_word(item)
     );
     return built[position];
   }
@@ -279,8 +287,22 @@ int main() {
   ok &= expect(cancelled_calls.size() == 1U &&
                    !cancelled_calls.front().callee().referenced_fn() &&
                    compiler.verify(*cancelled),
-               "map(S, f)[p] cancels through an ordinary typed equation "
-               "rather than a built-in tensor transform");
+               "a result-underdetermined map(S, f)[p] equation infers its "
+               "generic shape from the matched expression");
+
+  const auto sampled_word =
+      compiler.materialize("transform_fixture.sampled_word");
+  const auto cancelled_word =
+      sampled_word ? compiler.run<joggle::Fn>("transform_fixture.cancel_tensor",
+                                              *sampled_word)
+                   : std::nullopt;
+  const auto cancelled_word_calls =
+      cancelled_word ? cancelled_word->ops() : std::vector<joggle::Op>{};
+  ok &= expect(cancelled_word_calls.size() == 1U &&
+                   !cancelled_word_calls.front().callee().referenced_fn() &&
+                   compiler.verify(*cancelled_word),
+               "one structurally inferred equation specializes across "
+               "unrelated element Types and ranks");
 
   auto nested_sample = compiler.materialize("transform_fixture.nested_sample");
   joggle::Diag nested_diagnostics;

@@ -43,10 +43,11 @@ The implementation currently demonstrates:
    defaults, and staged dependent result Types without an `op_type` branch
    chain or native shape formulas;
 10. `transform.pass` accepts a Mod of ordinary two-result equation fns,
-    specializes result-determined generic Types, matches declaration identity
-    and dataflow rather than names, recurses into callable bodies, rejects
-    effects, and demonstrates both polymorphic `map(map(S, f), g)` composition
-    and concrete `map(S, f)[p]` cancellation;
+    infers generic Types from both results and structurally corresponding
+    pattern arguments, matches declaration identity and dataflow rather than
+    names, recurses into callable bodies, rejects effects, and demonstrates
+    both polymorphic `map(map(S, f), g)` composition and generic
+    `map(S, f)[p]` cancellation across unrelated element Types and ranks;
 11. Mod bundles preserve and verify imported data through public `check`,
    `run`, `install`, and `lock` workflows; and
 12. source resolution constructs deterministic concrete instances while
@@ -54,9 +55,9 @@ The implementation currently demonstrates:
 
 Most compute-heavy ONNX operators and the independent quantized semantics
 remain opaque. Rank-two MatMul now has a verified nested `map/reduce/index`
-body, but Conv, batched MatMul, structural inference for result-underdetermined
-rules, generic model fusion, symbolic shapes, emission, and performance
-evidence are unfinished.
+body, but Conv, batched MatMul, inference through law-local pattern bindings,
+generic model fusion, symbolic shapes, emission, and performance evidence are
+unfinished.
 The ONNX result establishes
 one bodyful elementwise expansion, not generic fusion, numerical preservation
 after compilation, or publication-level novelty.
