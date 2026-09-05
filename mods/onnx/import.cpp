@@ -563,11 +563,11 @@ std::optional<joggle::Val> lift(joggle::Compiler& compiler, Domain expected,
 std::optional<Types> load_types(joggle::Compiler& compiler,
                                 joggle::Diag& diagnostics) {
   const auto tensor_mod = compiler.mod("tensor");
-  const auto onnx_mod = compiler.mod("onnx");
+  const auto schema = compiler.mod("onnx_schema");
   const auto tensor = tensor_mod ? tensor_mod->type("tensor") : std::nullopt;
   const auto constants =
-      onnx_mod ? onnx_mod->overloads("Constant")
-               : std::vector<joggle::Mod::FnDecl>{};
+      schema ? schema->overloads("Constant")
+             : std::vector<joggle::Mod::FnDecl>{};
   const auto constant = std::find_if(
       constants.begin(), constants.end(),
       [](const auto& fn) { return fn.inputs().size() == 1U; });
@@ -795,8 +795,8 @@ std::optional<joggle::Mod> read(joggle::Compiler& compiler,
   }
 
   const auto types = load_types(compiler, diagnostics);
-  const auto onnx_mod = compiler.mod("onnx");
-  if (!types || !onnx_mod) {
+  const auto schema = compiler.mod("onnx_schema");
+  if (!types || !schema) {
     return std::nullopt;
   }
 
@@ -953,7 +953,7 @@ std::optional<joggle::Mod> read(joggle::Compiler& compiler,
       std::vector<joggle::Val> arguments;
     };
     std::vector<Candidate> candidates;
-    for (const auto& declaration : onnx_mod->overloads(node.op_type())) {
+    for (const auto& declaration : schema->overloads(node.op_type())) {
       auto arguments =
           bind_node(compiler, declaration, node, *attrs, values, initializers);
       if (arguments) {

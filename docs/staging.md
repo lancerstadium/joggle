@@ -41,8 +41,8 @@ fn Flatten<E, S: list<int>, A: int>(input: tensor<E, S>, axis: A)
 ```
 
 The caller writes the single `@flatten_shape(...)` that crosses from a
-Residual Type expression into compiler evaluation. List, Tensor, coordinate,
-or user-defined indexing all use the same `[]` spelling; `@(shape[i])` is only
+Residual Type expression into compiler evaluation. List, Tensor, and
+user-defined indexing all use the same `[]` spelling; `@(shape[i])` is only
 needed when that individual access itself is the boundary.
 
 ## Native binding
@@ -119,10 +119,12 @@ metadata representation.
 Direct transformations operate on the materialized Fn and its nested callable
 bodies. Transactional `Fn::Edit` is the low-level correctness boundary.
 `transform.pass` accepts a Mod package whose ordinary two-result fns state
-oriented equations. It specializes generic equation Types against candidate
-results and applies them structurally. Generic parameters not determined by
-the candidate result and broader source-facing inspection remain
-implementation gates.
+oriented equations. It specializes generic equation Types from candidate
+results and structurally corresponding values in the source left expression,
+including straight-line local definitions and selected multi-call results.
+The concrete law must then match declaration identity, exact Types, compiler
+bindings, and dataflow before transactional replacement. The source probe is
+only Type evidence and cannot accept a rewrite.
 
 ## Source resolution
 

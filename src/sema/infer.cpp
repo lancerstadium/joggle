@@ -240,6 +240,30 @@ public:
       return std::nullopt;
     }
     Bindings bindings;
+    // Direct Known bindings establish dependent variables before Residual
+    // callable Types are matched. For example, a shape argument can determine
+    // the arity of a following lambda. Computed Known patterns still run in
+    // the complete pass below after Residual Types have contributed bindings.
+    std::size_t early_known_index = 0;
+    for (std::size_t input_index = 0; input_index < schema_->inputs().size();
+         ++input_index) {
+      const auto& input = schema_->inputs()[input_index];
+      if (is_value_port(input)) {
+        continue;
+      }
+      std::optional<ParamVal> actual = known_arguments[early_known_index++];
+      if (!actual && input.default_value) {
+        actual = parameter_default(input);
+      }
+      const Mod::Expr* pattern =
+          contract_->bindings.empty() || !contract_->bindings[input_index]
+              ? nullptr
+              : &*contract_->bindings[input_index];
+      if (actual && pattern && pattern->kind == Mod::Expr::Kind::Variable &&
+          !unify(*pattern, *actual, bindings)) {
+        return std::nullopt;
+      }
+    }
     std::size_t argument = 0;
     for (const auto& input : input_ports) {
       const std::size_t count =
@@ -313,6 +337,7 @@ public:
         }
         auto value = evaluate(input.domain, type_parameter, bindings);
         if (!value || value->as_type() == nullptr) {
+          report("while resolving input '" + input.name + "'");
           return std::nullopt;
         }
         resolved.arguments.push_back(*value->as_type());
@@ -323,6 +348,7 @@ public:
     for (const auto& result : result_ports) {
       auto value = evaluate(result.domain, type_parameter, bindings);
       if (!value || value->as_type() == nullptr) {
+        report("while resolving result '" + result.name + "'");
         return std::nullopt;
       }
       resolved.results.push_back(*value->as_type());

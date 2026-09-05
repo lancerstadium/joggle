@@ -2,18 +2,22 @@ joggle 1;
 
 mod tensor@4.0.0 {
   type tensor(element: type, shape: list<int>);
-  type coord(shape: list<int>);
 
-  fn coord<S: list<int>>(shape: S, values: index...) -> coord<S>;
-  fn ([])<S: list<int>>(position: coord<S>, axis: int) -> index;
-  fn map<E, S: list<int>>(shape: S, body: (coord<S>) -> E) -> tensor<E, S>;
-  fn ([])<E, S: list<int>>(input: tensor<E, S>, position: coord<S>) -> E;
+  fn compute<E, S: list<int>>(
+    shape: S,
+    body: callable<@repeat(index, length(S)), [E]>
+  ) -> tensor<E, S>;
+  fn ([])<E, S: list<int>>(
+    input: tensor<E, S>,
+    indices: index...
+  ) -> E;
+  fn map<E, S: list<int>, R>(
+    input: tensor<E, S>,
+    body: (E) -> R
+  ) -> tensor<R, S>;
   fn reduce<E, S: list<int>, A>(
     input: tensor<E, S>,
     initial: A,
     body: (A, E) -> A
   ) -> A;
-  fn map<E, S: list<int>, R>(input: tensor<E, S>, body: (E) -> R) -> tensor<R, S> {
-    return map(S, (position: coord<S>) => body(input[position]));
-  }
 }

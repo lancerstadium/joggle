@@ -4,179 +4,41 @@ Status: accepted; implementation in progress
 
 ## Decision
 
-A transformation receives an ordinary `fn` or `mod` compiler value and returns
-a new value. It edits the concrete calls, nested callable bodies, blocks, and
-values of the same `Fn`; it does not describe a separate before/after graph.
+A transformation receives an ordinary `fn` or `mod` value and returns a new
+value. It edits Calls, values, blocks, and nested callable bodies in the same Fn
+representation. `pass`, `inline`, and `resolve` are library fns invoked through
+the single `@` stage marker.
 
-```joggle
-fn optimize(input: fn) -> fn {
-  input = @inline(input);
-  return @fuse(input);
-}
-```
+An equation is an ordinary pure fn returning two values of the same Type: the
+left expression and its replacement. Matching uses declaration identity,
+Types, Known bindings, def-use structure, and effects. There is no Pattern AST,
+rewrite keyword, anchor, behavior class, or operation-name dispatch.
 
-The names are library API, not keywords or compiler hooks. `@` is the only
-staging marker. `transform.pass` accepts an ordinary Mod package containing
-generic equation fns. C++ implementations use the transactional `Fn::Edit`
-surface; no source-visible cursor or operation wrapper is required.
+## NN consequence
 
-## One body, not fusion op substitution
+Format conversion and optimization follow the same mechanism. ONNX-to-NN
+equations match source-schema declarations and construct frontend-neutral `nn`
+calls. Later NN expansion exposes Tensor `compute/map/reduce/[]` bodies. Fusion
+then composes those bodies; it never substitutes a `conv_relu` name or adds a
+case for Conv.
 
-High-level compute fns have real source bodies. Expanding
+Callable parameters are nested Fns with explicit capture edges. A
+transformation entering a callable therefore sees ordinary typed dataflow.
+Effect tokens remain affine values and cannot be hidden in a capture.
 
-```joggle
-y = relu(conv(x, w));
-```
+## Implemented
 
-reveals tensor construction, indexing, reduction, and scalar expressions in
-the caller. Fusion composes the producer and consumer bodies and removes the
-intermediate tensor in that same caller. It does not create or call a
-`conv_relu` fn, and it does not match either operator name.
+- transactional single-block Fn inlining;
+- recursive traversal of existing callable bodies;
+- pure generic equation application with dead-producer cleanup;
+- generic inference from result Types and straight-line left-hand dataflow;
+- effect rejection and exact declaration/binding matching;
+- whole-Mod source resolution without executing opaque leaves.
 
-Named hardware or library calls belong only to later implementation selection.
-They are not evidence that high-level fusion occurred.
+## Pending
 
-## Structured calls
-
-Tensor construction, reduction, and loops remain ordinary Calls whose callable
-arguments are typed lambdas. A lambda is an anonymous `Fn`; captures are
-explicit edges of its callable `Val` and hidden trailing arguments of its body.
-This retains enough structure for transformation without adding public Loop,
-Region, Graph, TensorOp, Pattern, or Rewrite classes.
-
-Structured control stays in this form until an explicit CFG transformation.
-The lower CFG still uses the existing `Blk` and `Term` representation, so this
-is a change in Fn structure rather than a second IR.
-
-## Generic legality
-
-Transformations depend on semantic structure, Types, def-use edges, and effect
-tokens:
-
-- producer-consumer fusion uses iteration domains and access expressions;
-- loop transforms use bounds, steps, carried values, and nested bodies;
-- storage transforms use value lifetimes and explicit memory effects;
-- opaque calls stop transformations that require unavailable semantics.
-
-No operation-name switch is accepted for Conv, Relu, GEMM, quantized variants,
-or imported framework operators. A new high-level operator becomes optimizable
-by defining it in terms of the common tensor calculus, not by adding a compiler
-case.
-
-Effects remain ordinary affine `effect<domain>` values. A transformation may
-move or replace stateful computation only when it preserves the visible token
-boundary. An effect token cannot be hidden in a closure capture.
-
-The implemented equation form is intentionally small and checkable:
-
-```joggle
-mod tensor_laws@1.0.0 {
-  import tensor@4 as t;
-
-  fn fuse<E, S: list<int>>(
-    make: (t.coord<S>) -> E,
-    body: (E) -> E
-  ) -> (t.tensor<E, S>, t.tensor<E, S>) {
-    return
-      t.map(t.map(S, make), body),
-      t.map(S, (p: t.coord<S>) -> E => body(make(p)));
-  }
-}
-```
-
-One ordinary two-result fn is one oriented equation. Both returned expressions
-share its arguments and generic parameters; the first is the pattern and the
-second is the replacement. Passing `tensor_laws` to `@transform.pass` keeps the
-rules installable and inspectable using the existing Mod/package mechanism.
-There is no `rule`, `rewrite`, or Pattern declaration.
-
-For each candidate value, the compiler first tries result-Type unification. If
-that does not determine the law, it synchronizes the unspecialized source left
-expression with the candidate IR and records the Types at corresponding law
-arguments. It then uses those facts in the ordinary call-Type solver and
-materializes a concrete law. This probe never accepts a rewrite: the concrete
-left expression must still match declaration identity, compiler bindings,
-exact Types, and dataflow. No candidate-Type enumeration or operation-name
-dispatch is involved. The right expression is cloned before the matched root;
-generic dead-expression removal then deletes unreachable producers. The same
-traversal enters existing lambda bodies and publishes changed closures through
-their capture edges.
-
-The same `fuse<E,S>` law is tested on `tensor<f32,[4]>` and
-`tensor<word,[2,3]>`. A single generic `map(S, f)[p] = f(p)` law is also tested
-on both `f32/[4]` and `word/[2,3]`; its shape parameter cannot be determined
-from the scalar result and is instead recovered from the left structure. Its
-producer may be named by a preceding local definition. Another generic law
-returns one selected result of a locally named multi-result call, proving that
-source names are followed as dataflow rather than treated as pattern atoms.
-The current source probe accepts straight-line, non-rebinding definitions
-before the return. Supplemental inference through rebinding remains later
-work; control-flow equations are still rejected.
-
-## Function expansion and implementation closure
-
-Inlining and source resolution are distinct:
-
-- `inline` clones a selected source body into its caller so local structural
-  transformations can see and change it;
-- `resolve` materializes a closed call graph without invoking opaque leaves.
-
-Inlining is selective and reversible through ordinary function factoring.
-Resolution is a packaging boundary. Neither operation executes Residual calls
-through host callbacks.
-
-## Later capability selection
-
-After tensor and loop transformations, an optional selection pass may cover a
-concrete body region with a function supplied by a capability Mod. A bodyful
-candidate provides its semantics once; the compiler derives the candidate
-shape from that body. A genuinely opaque instruction needs one semantic
-contract and one emitter binding on the same declaration identity, never a
-second matcher fn.
-
-Selection is deliberately later than fusion and scheduling. It must not turn
-the compiler back into a catalog of `before`/`after` pairs.
-
-## Rejected designs
-
-- untyped or string-based before/after matching;
-- a `rewrite` declaration or pattern-specific syntax;
-- matching by operator name or string;
-- one fused fn for every producer-consumer combination;
-- lowering structured loops to CFG before tensor and schedule transforms;
-- public cursor, anchor, behavior, interface, region, or pattern objects;
-- treating a renamed composite call as executable fusion.
-
-## Implementation gates
-
-1. [complete] One `Call(callee: Val, arguments...)` operation.
-2. [complete] Typed anonymous fns and explicit closure-capture edges.
-3. [complete] Remove expression-template replacement from the C++ API,
-   transform Mod, tests, fixtures, and public narrative.
-4. [complete] Implement transactional, name-independent single-block Fn
-   inlining with callable and capture remapping.
-5. [complete] Recurse through existing typed lambda bodies and rewire captures
-   transactionally.
-   Nested lambdas also inherit their definition-site compiler bindings while
-   those Known values remain outside runtime captures.
-6. [planned] Extend inlining across explicit CFG while preserving successor
-   arguments and effects.
-7. [planned] Retain structured `for` as a higher-order Call until explicit CFG
-   conversion.
-8. [in progress] Give the tensor Mod a small bodyful
-   iteration/access/reduction
-   calculus.
-9. [in progress] Expand high-level tensor fns into that calculus. Generic map
-   and Relu are the first implemented definitions.
-10. [complete] Apply ordinary two-result equation fns structurally, including
-    Tensor producer-consumer composition and effect rejection.
-11. [complete] Specialize result-determined generic equations by Type
-    unification; one Tensor law now covers multiple element Types and ranks.
-11a. [complete] Infer generics below a direct left root by synchronizing its
-     source expression with candidate IR before concrete matching.
-11b. [complete] Follow straight-line law-local definitions and selected results
-     of multi-result calls without introducing a pattern IR.
-11c. [planned] Extend source inference through local rebinding.
-12. [planned] Extend legality from pure deforestation to dependence-checked
-    reduction and loop transformations.
-13. [planned] Validate polymorphic fusion on imported, unmodified ONNX models.
+- CFG-aware inlining and equations;
+- access/dependence summaries derived from Tensor bodies;
+- legality-aware `compute/map/reduce` fusion;
+- frontend conversion equations with attribute normalization;
+- capability selection after semantic optimization.

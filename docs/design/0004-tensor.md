@@ -1,137 +1,84 @@
-# Design 0004: Tensor semantics
+# Design 0004: Tensor algebra
 
 Status: accepted; implementation in progress
 
 ## Decision
 
-Joggle represents target-independent tensor computation with a small
-installable calculus, not an operation catalog. Compiler core gains no tensor
-declaration kind, graph container, attribute dictionary, or lowering hook.
-
-`tensor@4` owns only:
-
-```joggle
-type tensor(element: type, shape: list<int>);
-type coord(shape: list<int>);
-
-fn coord<S: list<int>>(shape: S, values: index...) -> coord<S>;
-fn ([])<S: list<int>>(position: coord<S>, axis: int) -> index;
-fn map<E, S: list<int>>(
-  shape: S, body: (coord<S>) -> E
-) -> tensor<E, S>;
-fn ([])<E, S: list<int>>(
-  input: tensor<E, S>, position: coord<S>
-) -> E;
-fn reduce<E, S: list<int>, A>(
-  input: tensor<E, S>,
-  initial: A,
-  body: (A, E) -> A
-) -> A;
-fn map<E, S: list<int>, R>(
-  input: tensor<E, S>, body: (E) -> R
-) -> tensor<R, S> {
-  return map(S, (position: coord<S>) => body(input[position]));
-}
-```
-
-Domain `map` takes its logical domain first. A computed shape therefore
-participates in ordinary overload inference before its nested lambda is
-materialized, and loop transformations have a visible domain to rewrite. The
-shape is a normal compiler-time fn argument stored on the specialized callee
-`Val`; no Domain or Axis object is introduced. `reduce` consumes a Tensor, so
-the reduction domain is carried once by its Type rather than repeated at the
-call site.
-`position[axis]` and `input[position]` resolve through the same overload system
-as `+`: their IR is an ordinary Call to a fn named `[]`. The parser provides
-only the bracket spelling and does not know coordinate or Tensor semantics.
-
-## Algebra boundary
-
-The basis is a rank-polymorphic pull-array algebra:
+Joggle uses one small, frontend-neutral Tensor package:
 
 ```text
-map(S, f)[p]       = f(p)
-map(map(S, f), g)  = map(S, p => g(f(p)))
+compute(shape, index_fn)   construct a logical tensor
+tensor[i, j, ...]          read by logical indices
+map(tensor, element_fn)    rank-polymorphic element transform
+reduce(tensor, init, fn)   ordered accumulation
 ```
 
-This adopts Lift/RISE's essential choice—functional patterns remain visible
-and optimization is equational rewriting—without fixing OpenCL-specific
-patterns in compiler core. One overloaded `map` covers both logical-domain
-generation and collection mapping; there is no separate `build` vocabulary.
-`reduce` deliberately means deterministic ordered accumulation. Its name does
-not silently assert associativity or license reassociation.
+There is no public coordinate Type. A Known shape determines the number of
+`index` inputs in `compute`'s callable Type. Contextual lambda inference then
+turns `(i, j) => ...` into the same typed nested Fn that an explicitly annotated
+lambda would produce. Captured tensors remain explicit closure edges.
 
-Patterns such as zip, reindex, window, split/join, sequential/parallel map, or
-machine instructions are ordinary fns supplied by Tensor or later Mods. They
-are admitted only when they enable a real bodyful workload and generic
-equations; they do not become C++ Op kinds. This keeps the extension plane open
-while avoiding a prematurely fixed pattern catalog.
+## Rationale
 
-Primary precedents are [Lift's functional data-parallel
-IR](https://michel-steuwer.github.io/files/publications/2017/CGO-2017.pdf), its
-[rewrite-rule algebra](https://lift-project.github.io/publications/2015/steuwer15generating.pdf),
-and [RISE/Shine's language-oriented functional-to-imperative
-design](https://arxiv.org/abs/2201.03611).
+`compute` alone cannot replace the other two combinators without losing useful
+structure. Generic elementwise code does not know how many indices a shape has,
+so `map` is the rank-polymorphic form. A normal control-flow loop could encode a
+reduction, but would erase the reduction boundary and make reassociation,
+parallelization, and storage elimination harder to justify. Ordered `reduce`
+states only traversal order; a later pass needs additional evidence before
+reassociation.
 
-## Derived computation
+This retains the algorithmic-pattern structure emphasized by
+[LIFT](https://lift-project.github.io/publications/2017/steuwer17LiftIR.pdf)
+and [RISE & Shine](https://thok.eu/publications/2022/rise.pdf). The indexed
+construction surface follows the usability of
+[TVM TE](https://tvm.apache.org/docs/deep_dive/tensor_ir/tutorials/tir_creation.html),
+but Joggle does not introduce a second TE object model or convert it into a
+different built-in Fn kind.
 
-Higher-level computation is an ordinary bodyful fn. Tensor `map` is already
-defined through domain `map` and `[]`. A dot product can be written without
-registering a Dot or GEMM operation:
+## Dependent callable mechanism
+
+Prelude supplies the ordinary compiler-time function:
 
 ```joggle
-fn dot(lhs: tensor<f32, [4]>, rhs: tensor<f32, [4]>, initial: f32) -> f32 {
-  products: tensor<f32, [4]> = map(
-    [4],
-    (p: coord<[4]>) => lhs[p] * rhs[p]
-  );
-  return reduce(
-    products,
-    initial,
-    (sum: f32, value: f32) -> f32 => sum + value
-  );
-}
+fn repeat(value: type, count: int) -> list<type>;
 ```
 
-Both lambdas are real nested `Fn`s; `lhs` and `rhs` are explicit capture edges
-of the producer. Scalar operators resolve through ordinary imported overloads.
-Domain libraries such as ONNX may expose named Conv or Relu functions, but
-every optimizable function must expand into this calculus or remain visibly
-opaque.
+Tensor declares `compute` with
+`callable<@repeat(index, length(S)), [E]>`. Direct Known bindings are solved
+before dependent Residual callable Types. This is a general language rule, not
+a Tensor special case: any package can let a Known parameter determine a later
+lambda Type.
 
-## Transformation consequence
+## Neural-network boundary
 
-Inlining exposes construction, access, reduction, and scalar calls in the same
-caller. Fusion composes a producer domain-`map` body into consumer `[]` uses after
-checking index dependence and effects. It does not manufacture `conv_relu`,
-match a high-level function name, or create a second pattern IR.
+`nn` owns bodyful frontend-independent algorithms. For example, rank-two
+MatMul is nested `compute`, product construction, and ordered `reduce`; Relu is
+`map`. ONNX contains no algorithm bodies. Its reader and source schema are
+separate so a future TFLite reader can preserve TFLite details while converging
+on the same `nn` functions through a normal pass.
 
-Ordered `reduce` makes no reassociation promise. Parallel reduction is legal only
-after a transformation obtains an explicit algebraic contract or proves the
-property for the concrete scalar implementation.
+## Rejected alternatives
 
-## Boundaries
-
-Logical shape does not imply layout, packing, address space, storage capacity,
-allocation, or device placement. Model constants and ONNX operators belong to
-the ONNX Mod; scalar leaves belong to Arith. Later format and machine Mods may
-introduce ordinary Types and fns without changing tensor or compiler core.
+- A public `coord<S>` wrapper adds ceremony to every indexing lambda and hides
+  familiar multi-index syntax.
+- Per-rank `compute1`, `compute2`, ... overloads create an unbounded declaration
+  family.
+- A single opaque `kernel` or `generate` operation discards map/reduce laws and
+  pushes semantic recovery into analysis.
+- Putting Conv or ONNX names in Tensor couples the reusable algebra to one
+  workload or exchange format.
 
 ## Gates
 
-- [x] Typed lambdas are nested Fns with explicit captures.
-- [x] Define static tensor and coordinate Types.
-- [x] Express coordinate construction, coordinate projection, and Tensor
-  indexing as ordinary overloaded fns.
-- [x] Define overloaded `map`, overloaded `[]`, and ordered `reduce` as the
-  minimal basis.
-- [x] Express generic `map` with an inspectable body.
-- [x] Express and verify a dot-product body using only the basis and scalar
-  overloads.
-- [ ] Add symbolic logical extents without a second shape AST.
-- [ ] Verify that coordinate constructor arity agrees with the static rank.
-- [ ] Define view/index-map composition.
-- [x] Express rank-two ONNX MatMul as a bodyful library fn.
-- [ ] Express convolution and batched/broadcast MatMul as bodyful library fns.
-- [ ] Implement dependence-checked domain-`map`/`[]` fusion.
-- [ ] Differentially validate transformed real-model computation.
+- [x] Multi-index parsing, formatting, overload resolution, and IR round-trip.
+- [x] Contextually inferred lambda parameter Types.
+- [x] Known parameters can determine later callable Types.
+- [x] Frontend-neutral bodyful MatMul and Relu package.
+- [x] ONNX reader/schema separation from NN algorithms.
+- [ ] Enforce Tensor subscript arity against static rank.
+- [ ] Add symbolic extents without a second shape AST.
+- [ ] Derive access summaries and dependence facts from ordinary Fn bodies.
+- [ ] Add generic fusion equations only after the new algebra has real workload
+      evidence.
+- [ ] Lower the same Fn semantics to user-defined implementation vocabulary.

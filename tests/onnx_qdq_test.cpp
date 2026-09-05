@@ -40,10 +40,10 @@ std::string element_name(const joggle::Type& tensor) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 7) {
+  if (argc != 6) {
     return EXIT_FAILURE;
   }
-  const auto bytes = read_bytes(argv[6]);
+  const auto bytes = read_bytes(argv[5]);
   if (bytes.empty()) {
     return EXIT_FAILURE;
   }
@@ -53,8 +53,7 @@ int main(int argc, char** argv) {
   compiler.load(argv[1]);
   compiler.load(argv[2]);
   compiler.load(argv[3]);
-  compiler.load(argv[4]);
-  if (!compiler.link() || !compiler.load_native("onnx", argv[5])) {
+  if (!compiler.link() || !compiler.load_native("onnx", argv[4])) {
     compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }

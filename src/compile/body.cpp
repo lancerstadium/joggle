@@ -88,7 +88,7 @@ class Instantiator {
     bool is_expression() const { return expression.has_value(); }
     bool valid() const {
       return value.has_value() || is_fn() || is_expression() ||
-             (is_inline_fn() && inline_inputs.has_value());
+             is_inline_fn();
     }
   };
 
@@ -974,8 +974,8 @@ private:
           const auto results = callable.get<std::vector<Type>>("results");
           if (schema.mod_name() != detail::prelude_mod_name ||
               schema.local_name() != "callable" || !inputs || !results ||
-              results->size() != 1U || !argument.inline_inputs ||
-              *inputs != *argument.inline_inputs) {
+              results->size() != 1U ||
+              (argument.inline_inputs && *inputs != *argument.inline_inputs)) {
             reject("inline fn does not match argument '" +
                    parameters[index].name + "'");
             return std::nullopt;
@@ -1005,6 +1005,10 @@ private:
     std::vector<Type> inputs;
     inputs.reserve(parameter_count);
     for (std::size_t index = 0; index < parameter_count; ++index) {
+      if (expression.arguments[index].kind == Mod::Expr::Kind::Infer) {
+        argument.inline_inputs.reset();
+        return true;
+      }
       auto input = infer_signature
                        ? infer_type({expression.arguments[index], range})
                        : type({expression.arguments[index], range});
@@ -3184,11 +3188,20 @@ instantiate_lambda(Compiler& compiler, std::string_view owner,
   std::vector<std::pair<std::string, Type>> arguments;
   arguments.reserve(expression.labels.size());
   for (std::size_t index = 0; index < expression.labels.size(); ++index) {
-    auto value = evaluate_known_expression(
-        compiler, owner, expression.arguments[index], expected_type, bindings,
-        diagnostics, source, allow_guarded_evaluation);
-    const Type* annotation = value ? value->as_type() : nullptr;
-    if (annotation == nullptr ||
+    std::optional<Type> annotation;
+    if (expression.arguments[index].kind == Kind::Infer) {
+      if (expected_inputs) {
+        annotation = (*expected_inputs)[index];
+      }
+    } else {
+      auto value = evaluate_known_expression(
+          compiler, owner, expression.arguments[index], expected_type,
+          bindings, diagnostics, source, allow_guarded_evaluation);
+      if (value && value->as_type() != nullptr) {
+        annotation = *value->as_type();
+      }
+    }
+    if (!annotation ||
         (expected_inputs && *annotation != (*expected_inputs)[index])) {
       report("inline fn parameter '" + expression.labels[index] +
              "' does not match its callable context");

@@ -1,6 +1,6 @@
 # Design 0008: Quantized ONNX import
 
-Status: accepted
+Status: accepted; conversion implementation pending
 
 ## Problem
 
@@ -18,10 +18,10 @@ fn dequantize<X, S, Z, Y>(input: X, scale: S, zero: Z, axis: int = 1) -> Y;
 ```
 
 Scale and zero point are normal tensor values. Their types and shapes state
-per-tensor or per-axis parameterization. `onnx@5` defines bodyful
-`QuantizeLinear` and `DequantizeLinear` wrappers that call these independent
-semantics. The signature-driven importer preserves the standard ONNX names;
-ordinary inlining exposes the quant calls without an importer case.
+per-tensor or per-axis parameterization. `onnx_schema@1` declares source
+`QuantizeLinear` and `DequantizeLinear` calls without algorithm bodies. A future
+ONNX-to-NN/quant pass will validate ONNX attributes and construct independent
+quant semantics; the byte reader does not perform that conversion.
 
 There is no byte-oriented compiler-time overload and no `quant` native
 library. Numerical execution belongs to a whole-program implementation, not
@@ -33,11 +33,9 @@ The hash-pinned Model Zoo SqueezeNet 1.0 QDQ graph imports as 228 typed
 constants and 171 ONNX calls, including 39 QuantizeLinear and 91
 DequantizeLinear calls.
 Reconstruction from the imported Fn and Mod-owned data produces exact ONNX
-Runtime output on the deterministic validation input. Because `onnx@5`
-imports `quant@2`, omitting that source dependency fails while linking the
-ONNX Mod rather than during model import.
+Runtime output on the deterministic validation input. This validates faithful
+source import and export, not the pending conversion or quantized execution.
 
-This proves the frontend mapping and dependency composition. QDQ calls remain
-bodyless semantic leaves until a source implementation or explicit
-transformation supplies an implementation. No QLinear kernel or quantized
-Conv wrapper is implied.
+QDQ calls remain bodyless source-schema leaves until an explicit conversion
+supplies frontend-neutral semantics. No QLinear kernel or quantized Conv
+wrapper is implied.

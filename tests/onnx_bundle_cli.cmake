@@ -1,6 +1,6 @@
-foreach(required JOGGLE_CLI JOGGLE_ARITH_MOD JOGGLE_TENSOR_MOD JOGGLE_QUANT_MOD
-                 JOGGLE_ONNX_MOD JOGGLE_ONNX_NATIVE JOGGLE_ONNX_MODEL
-                 JOGGLE_BUNDLE_TEST_DIR)
+foreach(required JOGGLE_CLI JOGGLE_TENSOR_MOD JOGGLE_ONNX_MOD
+                 JOGGLE_ONNX_NATIVE JOGGLE_ONNX_MODEL
+                 JOGGLE_ONNX_SCHEMA JOGGLE_BUNDLE_TEST_DIR)
   if(NOT DEFINED ${required})
     message(FATAL_ERROR "${required} was not provided")
   endif()
@@ -37,9 +37,9 @@ function(expect_success label)
   set(command_output "${output}" PARENT_SCOPE)
 endfunction()
 
-set(with_mods --with "${JOGGLE_ARITH_MOD}" --with "${JOGGLE_TENSOR_MOD}"
-              --with "${JOGGLE_QUANT_MOD}")
+set(with_mods --with "${JOGGLE_TENSOR_MOD}")
 list(APPEND with_mods --with "${JOGGLE_ONNX_MOD}")
+list(APPEND with_mods --with "${JOGGLE_ONNX_SCHEMA}")
 expect_success("import reference model"
   "${JOGGLE_CLI}" run "${driver}" read "${JOGGLE_ONNX_MODEL}"
   ${with_mods}
@@ -58,14 +58,12 @@ if(DEFINED JOGGLE_EXPECTED_PAYLOADS AND
     "${JOGGLE_EXPECTED_PAYLOADS}")
 endif()
 
-expect_success("install arithmetic dependency"
-  "${JOGGLE_CLI}" install "${JOGGLE_ARITH_MOD}" --root "${root}")
 expect_success("install tensor dependency"
   "${JOGGLE_CLI}" install "${JOGGLE_TENSOR_MOD}" --root "${root}")
-expect_success("install quant dependency"
-  "${JOGGLE_CLI}" install "${JOGGLE_QUANT_MOD}" --root "${root}")
 expect_success("install ONNX dependency"
   "${JOGGLE_CLI}" install "${JOGGLE_ONNX_MOD}" --root "${root}")
+expect_success("install ONNX schema dependency"
+  "${JOGGLE_CLI}" install "${JOGGLE_ONNX_SCHEMA}" --root "${root}")
 expect_success("check imported bundle"
   "${JOGGLE_CLI}" check "${bundle}" --root "${root}")
 expect_success("install imported bundle"
@@ -85,12 +83,9 @@ expect_success("lock installed identity bundle"
   -o "${lock}")
 file(READ "${lock}" lock_text)
 string(FIND "${lock_text}" "root ${JOGGLE_MODEL_NAME}@1.0.0#" root_position)
-string(FIND "${lock_text}" "mod arith@1.1.0#" arith_position)
 string(FIND "${lock_text}" "mod tensor@4.0.0#" tensor_position)
-string(FIND "${lock_text}" "mod onnx@5.0.0#" onnx_position)
-string(FIND "${lock_text}" "mod quant@2.0.0#" quant_position)
-if(root_position EQUAL -1 OR arith_position EQUAL -1 OR
-   tensor_position EQUAL -1 OR onnx_position EQUAL -1 OR
-   quant_position EQUAL -1)
+string(FIND "${lock_text}" "mod onnx_schema@1.0.0#" schema_position)
+if(root_position EQUAL -1 OR tensor_position EQUAL -1 OR
+   schema_position EQUAL -1)
   message(FATAL_ERROR "installed ONNX Mod lock is incomplete")
 endif()

@@ -75,6 +75,8 @@ int operator_precedence(std::string_view symbol) {
 int type_expression_precedence(const detail::TypeExpr& expression) {
   using Kind = detail::TypeExpr::Kind;
   switch (expression.kind) {
+  case Kind::Infer:
+    return 100;
   case Kind::FnType:
     return 1;
   case Kind::Lambda:
@@ -208,12 +210,19 @@ std::string type_expression_layout(const detail::TypeExpr& expression,
                                        content_column, precedence, false);
       result += expression.text;
     } else if (expression.kind == Kind::Infix) {
-      if (expression.text == "[]" && expression.arguments.size() == 2U) {
+      if (expression.text == "[]" && expression.arguments.size() >= 2U) {
         result += type_expression_layout(expression.arguments[0],
                                          content_column, precedence, false);
         result += '[';
-        result += type_expression_layout(
-            expression.arguments[1], content_column + result.size(), 0, false);
+        for (std::size_t index = 1U; index < expression.arguments.size();
+             ++index) {
+          if (index != 1U) {
+            result += ", ";
+          }
+          result += type_expression_layout(expression.arguments[index],
+                                           content_column + result.size(), 0,
+                                           false);
+        }
         result += ']';
       } else {
         result += type_expression_layout(expression.arguments[0],
@@ -352,6 +361,9 @@ std::string format(const Mod& mod) {
     if (fn.operator_fixity) {
       if (fn.operator_fixity == Mod::FnDecl::Fixity::Postfix) {
         head += "postfix ";
+      } else if (fn.operator_fixity == Mod::FnDecl::Fixity::Infix &&
+                 fn.inputs.size() != 2U) {
+        head += "infix ";
       }
       head += '(' + fn.name + ')';
     } else {

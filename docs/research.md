@@ -28,39 +28,30 @@ The implementation currently demonstrates:
 4. typed lambdas are ordinary anonymous Fns rather than a pattern AST;
 5. Residual captures are explicit dependency edges and hidden typed body
    arguments, while effect tokens cannot be captured;
-6. `tensor@4` provides coordinate construction/projection, explicit-domain
-   overloaded domain/Tensor `map`, overloaded `[]`, and ordered `reduce`; a dot
-   product is expressed by their composition plus scalar overloads, while `p[i]` and
-   `tensor[p]` remain ordinary overloaded Calls;
-7. those bodies materialize, expose nested element and update Fns, invoke
-   arbitrary callable parameters, infer direct nested `map`/`reduce`
-   composition without helper APIs, and pass the ordinary verifier;
-8. the same name-independent Mod transform expands all 26 ONNX Relu calls in
-   the pinned, unmodified SqueezeNet graph first to Tensor-map and then to domain-map
-   plus captured element Fns; existing nested bodies participate in the same
-   recursive inliner, and value replacement rewires their capture edges;
+6. `tensor@4` provides indexed `compute`, variadic `[]`, rank-polymorphic
+   `map`, and ordered `reduce`; Known shapes contextually determine lambda arity;
+7. `nn@1` contains the first frontend-neutral bodyful MatMul and Relu
+   definitions, while compiler core remains unaware of either name;
+8. the ONNX byte reader, ONNX source schema, NN algorithms, and Tensor algebra
+   are separate ownership boundaries;
 9. ONNX nodes bind generically against source fn signatures, declaration
    defaults, and staged dependent result Types without an `op_type` branch
    chain or native shape formulas;
 10. `transform.pass` accepts a Mod of ordinary two-result equation fns,
     infers generic Types from both results and structurally corresponding
     pattern arguments, matches declaration identity and dataflow rather than
-    names, recurses into callable bodies, rejects effects, and demonstrates
-    both polymorphic `map(map(S, f), g)` composition and generic
-    `map(S, f)[p]` cancellation across unrelated element Types and ranks;
+    names, recurses into callable bodies, and rejects effects;
 11. Mod bundles preserve and verify imported data through public `check`,
    `run`, `install`, and `lock` workflows; and
 12. source resolution constructs deterministic concrete instances while
    preserving bodyless calls as an explicit leaf set.
 
-Most compute-heavy ONNX operators and the independent quantized semantics
-remain opaque. Rank-two MatMul now has a verified nested `map/reduce/index`
-body, but Conv, batched MatMul, equation inference through local rebinding or
-control flow, generic model fusion, symbolic shapes, emission, and performance
-evidence are unfinished.
-The ONNX result establishes
-one bodyful elementwise expansion, not generic fusion, numerical preservation
-after compilation, or publication-level novelty.
+Most NN algorithms remain opaque. Rank-two MatMul and Relu now have verified
+frontend-neutral bodies, but ONNX-to-NN conversion, Conv, batched MatMul,
+equation inference through local rebinding or control flow, generic model
+fusion, symbolic shapes, emission, and performance evidence are unfinished.
+The current result establishes clean ownership and dependent callable typing,
+not numerical preservation after compilation or publication-level novelty.
 
 ## What the closest systems already solve
 

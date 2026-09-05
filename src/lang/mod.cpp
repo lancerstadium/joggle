@@ -1137,8 +1137,12 @@ private:
         const std::size_t operands = fn.inputs.size();
         const std::size_t required =
             fn.operator_fixity == Mod::FnDecl::Fixity::Infix ? 2U : 1U;
+        const bool variadic_subscript =
+            fn.operator_fixity == Mod::FnDecl::Fixity::Infix &&
+            fn.name == "[]" && operands >= 2U && !fn.inputs.empty() &&
+            fn.inputs.back().variadic;
         const bool expected_ir_result = mod_values != 0U;
-        if (!fn.operator_fixity || operands != required ||
+        if ((!variadic_subscript && operands != required) ||
             fn.results.size() != 1U ||
             detail::is_value_port(fn.results.front()) != expected_ir_result) {
           error("operator on fn '" + fn.name +

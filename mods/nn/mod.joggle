@@ -1,0 +1,30 @@
+joggle 1;
+
+mod nn@1.0.0 {
+  import arith@1 as a;
+  import tensor@4 as t;
+
+  fn matmul_shape(lhs: list<int>, rhs: list<int>) -> list<int> {
+    return [lhs[0], rhs[1]];
+  }
+  fn matmul<E, L: list<int>, R: list<int>>(
+    lhs: t.tensor<E, L>,
+    rhs: t.tensor<E, R>
+  ) -> t.tensor<E, @matmul_shape(L, R)> {
+    initial: E = a.zero();
+    return t.compute(
+      @matmul_shape(L, R),
+      (row: index, column: index) -> E => t.reduce(
+        t.compute(
+          @[L[1]],
+          (inner: index) -> E => lhs[row, inner] * rhs[inner, column]
+        ),
+        initial,
+        (sum: E, value: E) => sum + value
+      )
+    );
+  }
+  fn relu<E, S: list<int>>(input: t.tensor<E, S>) -> t.tensor<E, S> {
+    return t.map(input, (value: E) => a.max(value, a.zero(value)));
+  }
+}

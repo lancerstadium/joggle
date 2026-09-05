@@ -1147,9 +1147,11 @@ private:
       }
       const auto fixity = callee->operator_fixity();
       const bool ordered = source_order(*producer, *callee, result);
+      const bool variadic_subscript =
+          callee->name() == "[]" && result.arguments.size() >= 2U;
       if (fixity && ordered &&
           ((fixity == Mod::FnDecl::Fixity::Infix &&
-            result.arguments.size() == 2U) ||
+            (result.arguments.size() == 2U || variadic_subscript)) ||
            (fixity != Mod::FnDecl::Fixity::Infix &&
             result.arguments.size() == 1U))) {
         result.text = std::string(callee->name());
@@ -1304,9 +1306,13 @@ private:
         declaration && source_order(op, *declaration, result.expression.value);
     const auto fixity = declaration ? declaration->operator_fixity()
                                     : std::optional<Mod::FnDecl::Fixity>{};
+    const bool variadic_subscript =
+        declaration && declaration->name() == "[]" &&
+        result.expression.value.arguments.size() >= 2U;
     const bool valid_arity =
         fixity && ((*fixity == Mod::FnDecl::Fixity::Infix &&
-                    result.expression.value.arguments.size() == 2U) ||
+                    (result.expression.value.arguments.size() == 2U ||
+                     variadic_subscript)) ||
                    (*fixity != Mod::FnDecl::Fixity::Infix &&
                     result.expression.value.arguments.size() == 1U));
     if (fixity && valid_arity && result.bindings.size() == 1U && ordered) {

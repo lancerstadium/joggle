@@ -43,7 +43,13 @@ public:
         combined.kind = Mod::Expr::Kind::Infix;
         combined.text = "[]";
         combined.arguments.push_back(std::move(result));
-        combined.arguments.push_back(parse(0));
+        if (is(TokenKind::RightBracket)) {
+          error("a subscript needs at least one index");
+        } else {
+          do {
+            combined.arguments.push_back(parse(0));
+          } while (match(TokenKind::Comma));
+        }
         expect(TokenKind::RightBracket, "']'");
         result = std::move(combined);
         continue;
@@ -199,22 +205,40 @@ private:
           return false;
         }
         Lexer lookahead = lexer_;
-        return lookahead.take().kind == TokenKind::Colon;
+        Token next = lookahead.take();
+        if (next.kind == TokenKind::Colon) {
+          return true;
+        }
+        while (next.kind == TokenKind::Comma) {
+          if (lookahead.take().kind != TokenKind::Name) {
+            return false;
+          }
+          next = lookahead.take();
+        }
+        return next.kind == TokenKind::RightParen &&
+               lookahead.take().kind == TokenKind::FatArrow;
       }();
       if (starts_lambda) {
         result.kind = Kind::Lambda;
         std::vector<std::string> parameters;
+        std::optional<bool> typed_parameters;
         if (!match(TokenKind::RightParen)) {
           do {
             const std::string parameter = name("a lambda parameter");
-            expect(TokenKind::Colon, "':' after a lambda parameter");
             if (std::find(parameters.begin(), parameters.end(), parameter) !=
                 parameters.end()) {
               error("duplicate lambda parameter '" + parameter + "'");
             }
             result.labels.push_back(parameter);
             parameters.push_back(parameter);
-            result.arguments.push_back(parse(0));
+            const bool typed = match(TokenKind::Colon);
+            if (typed_parameters && *typed_parameters != typed) {
+              error("lambda parameters must either all have types or all "
+                    "use contextual inference");
+            }
+            typed_parameters = typed;
+            result.arguments.push_back(
+                typed ? parse(0) : Mod::Expr{Kind::Infer, {}, {}});
           } while (match(TokenKind::Comma));
           expect(TokenKind::RightParen, "')'");
         }
@@ -543,6 +567,8 @@ std::string format_expression(const Mod::Expr& expression,
   std::string result;
   if (expression.kind == Kind::String) {
     result = escape_string(expression.text);
+  } else if (expression.kind == Kind::Infer) {
+    result = "_";
   } else if (expression.kind == Kind::Number ||
              expression.kind == Kind::Boolean ||
              expression.kind == Kind::Variable) {
@@ -611,8 +637,10 @@ std::string format_expression(const Mod::Expr& expression,
       if (index != 0U) {
         result += ", ";
       }
-      result += expression.labels[index] + ": " +
-                format_expression(expression.arguments[index]);
+      result += expression.labels[index];
+      if (expression.arguments[index].kind != Kind::Infer) {
+        result += ": " + format_expression(expression.arguments[index]);
+      }
     }
     result += ')';
     if (annotated) {
@@ -639,9 +667,16 @@ std::string format_expression(const Mod::Expr& expression,
     result =
         format_expression(expression.arguments.front(), precedence, false) +
         expression.text;
-  } else if (expression.text == "[]" && expression.arguments.size() == 2U) {
+  } else if (expression.text == "[]" && expression.arguments.size() >= 2U) {
     result = format_expression(expression.arguments[0], precedence, false) +
-             "[" + format_expression(expression.arguments[1]) + "]";
+             "[";
+    for (std::size_t index = 1U; index < expression.arguments.size(); ++index) {
+      if (index != 1U) {
+        result += ", ";
+      }
+      result += format_expression(expression.arguments[index]);
+    }
+    result += "]";
   } else {
     result = format_expression(expression.arguments[0], precedence, false) +
              " " + expression.text + " " +

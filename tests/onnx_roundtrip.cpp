@@ -295,20 +295,19 @@ bool emit(const joggle::Mod& mod, const char* path) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 8) {
+  if (argc != 7) {
     return EXIT_FAILURE;
   }
-  const int tensor_index = 2;
-  const int quant_index = 3;
-  const int onnx_index = 4;
-  const int native_index = 5;
-  const int model_index = 6;
-  const int output_index = 7;
+  const int tensor_index = 1;
+  const int onnx_index = 2;
+  const int schema_index = 3;
+  const int native_index = 4;
+  const int model_index = 5;
+  const int output_index = 6;
   joggle::Compiler compiler;
-  compiler.load(argv[1]);
   compiler.load(argv[tensor_index]);
-  compiler.load(argv[quant_index]);
   compiler.load(argv[onnx_index]);
+  compiler.load(argv[schema_index]);
   if (!compiler.link() || !compiler.load_native("onnx", argv[native_index])) {
     compiler.diag().print(std::cerr);
     return EXIT_FAILURE;

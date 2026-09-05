@@ -148,7 +148,8 @@ bool primitive_name(std::string_view name) {
       std::string_view{"||"},    std::string_view{"ceildiv"},
       std::string_view{"min"},   std::string_view{"max"},
       std::string_view{"range"}, std::string_view{"length"},
-      std::string_view{"[]"},    std::string_view{"append"},
+      std::string_view{"repeat"}, std::string_view{"[]"},
+      std::string_view{"append"},
   };
   return std::find(names.begin(), names.end(), name) != names.end();
 }
@@ -230,6 +231,21 @@ std::optional<ParamVal> evaluate_prelude_primitive(
       return fail("list length does not fit in int");
     }
     return ParamVal(static_cast<std::int64_t>(size));
+  }
+  if (name == "repeat") {
+    const Type* value =
+        arguments.size() == 2U ? arguments[0].as_type() : nullptr;
+    const auto* count =
+        arguments.size() == 2U ? arguments[1].as_i64() : nullptr;
+    if (value == nullptr || count == nullptr || *count < 0) {
+      return fail("Prelude repeat expects a type and a non-negative int");
+    }
+    if (static_cast<std::uint64_t>(*count) > element_limit) {
+      return fail("repeat exceeds the compiler evaluation step limit");
+    }
+    std::vector<ParamVal> result(static_cast<std::size_t>(*count),
+                                 ParamVal(*value));
+    return ParamVal::list(std::move(result));
   }
   if (name == "[]") {
     const auto* index =

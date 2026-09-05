@@ -17,9 +17,11 @@ name is not grounds for a package.
 The shipped boundary is deliberately small:
 
 - `tensor` owns target-independent tensor types and program fns;
+- `nn` owns frontend-independent neural-network algorithms;
 - `quant` owns source-only affine Q/DQ semantics;
 - `transform` owns reusable explicitly staged Fn transformations; and
-- optional `onnx` owns one external-format adapter.
+- optional `onnx` owns one external-format reader while `onnx_schema` owns its
+  versioned source schema.
 
 These are package roles, not source-language categories. Every declaration is
 still a `type` or `fn`, and every program or compiler action is still a normal

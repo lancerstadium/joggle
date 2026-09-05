@@ -61,6 +61,7 @@ public:
   // second private spelling of their types.
   struct Expr {
     enum class Kind {
+      Infer,
       Number,
       Boolean,
       String,
@@ -81,8 +82,9 @@ public:
     std::string text;
     std::vector<Expr> arguments;
     // Empty call entries are positional. Lambda labels name parameters whose
-    // type expressions occupy the corresponding argument positions. A lambda
-    // has either [inputs..., body] or [inputs..., result type, body].
+    // type expressions occupy the corresponding argument positions. Kind::Infer
+    // requests the callable context for an omitted parameter annotation. A
+    // lambda has either [inputs..., body] or [inputs..., result type, body].
     std::vector<std::string> labels;
 
     Expr() = default;

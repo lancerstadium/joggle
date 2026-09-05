@@ -177,20 +177,18 @@ their host boundaries; model and kernel Ops do not. See
 
 The implemented path includes the core language, editable Fn IR, explicit
 staging, typed anonymous Fns, explicit closure captures, recursive
-single-block inlining, and pure generic equation packages. `tensor@4`
-defines only overloaded `map`, overloaded `[]`, and ordered `reduce`. ONNX owns
-its operator vocabulary; its Relu definition expands from Tensor-map to
-domain-map while remapping nested closures. The pinned
-SqueezeNet test exercises this path for all 26 imported Relu calls. Concrete
-tests specialize one `map(map(S, f), g)` law across different element Types
-and ranks. A single result-underdetermined `map(S, f)[p]` law also specializes
-across `f32/[4]` and `word/[2,3]`, including inside an existing nested body.
+single-block inlining, and pure generic equation packages. `tensor@4` defines
+indexed `compute`, variadic `[]`, rank-polymorphic `map`, and ordered `reduce`.
+`nn@1` owns the first bodyful MatMul and Relu definitions. The ONNX byte reader
+and ONNX source schema are separate from both; the pinned SqueezeNet test
+exercises schema-driven import of all 118 calls. Concrete tests specialize
+generic equations across concrete Types and nested call structure.
 
 Execution semantics for the structural basis, equation inference through local
 rebinding or control flow, multi-block inlining, and dependence-checked
 reduction transforms remain unfinished.
-ONNX Conv, pooling, concatenation, reshape, softmax, and quantized operations
-are still opaque declarations rather than completed computational definitions.
+ONNX-to-NN conversion, Conv, pooling, concatenation, reshape, softmax, and
+quantized computational definitions remain unfinished.
 
 Only after the complete bodyful path works on an unmodified model do kernel
 scheduling, physical layouts, packed formats, storage planning, capability

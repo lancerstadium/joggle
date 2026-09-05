@@ -109,19 +109,20 @@ an earlier gate.
    including generics inferred below the result root through local definitions
    and multi-result calls; source inference through rebinding and CFG equations
    remain planned. See Design 0003.**
-7. Tensor calculus: define a small bodyful construction/access/reduction
-   vocabulary outside the core. **In progress; static Tensor and coordinate
-   Types, coordinate construction/projection, overloaded `map`, ordered `reduce`,
-   and one `[]` access are implemented. See Design 0004.**
-8. High-level tensor definitions: express Relu, Conv, GEMM, and similar
-   operations in that calculus rather than compiler name cases. **Planned.**
-9. Generic transformation: one `map(map(S, f), g)` equation and one generic
-   `map(S, f)[p]` equation now specialize across unrelated element Types and
-   ranks, including through straight-line local definitions. Generic
-   multi-result selection is also covered. Source inference through rebinding,
-   CFG equations, and reduction dependence remain planned. **In progress.**
-10. ONNX validation: import unmodified models into bodyful definitions and
-    validate transformed results against a trusted runtime. **Planned.**
+7. Tensor calculus: define a small construction/access/transformation/reduction
+   vocabulary outside the core. **In progress; static Tensor, indexed
+   `compute`, variadic `[]`, rank-polymorphic `map`, and ordered `reduce` are
+   implemented. See Design 0004.**
+8. High-level tensor definitions: express Relu, Conv, MatMul, and similar
+   operations in that calculus rather than compiler name cases. **MatMul and
+   Relu are the first `nn` definitions; Conv remains planned.**
+9. Generic transformation: ordinary two-result equation fns specialize by Type
+   and dataflow, including through straight-line local definitions and selected
+   multi-result calls. Tensor equations will be rebuilt against the new algebra
+   after real NN conversion workloads exist. **In progress.**
+10. Frontend validation: preserve unmodified models as source-schema calls,
+    convert them to bodyful `nn`, and validate transformed results against a
+    trusted runtime. **Import is implemented; conversion remains planned.**
 
 ## Deletion policy
 

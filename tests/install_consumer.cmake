@@ -86,6 +86,34 @@ if(NOT tensor_cli_result EQUAL 0)
   message(FATAL_ERROR "installed tensor Mod failed validation")
 endif()
 
+set(installed_arith
+  "${install_dir}/share/joggle/mods/arith/mod.joggle")
+set(installed_nn
+  "${install_dir}/share/joggle/mods/nn/mod.joggle")
+set(installed_onnx_schema
+  "${install_dir}/share/joggle/mods/onnx_schema/mod.joggle")
+foreach(installed_mod IN ITEMS "${installed_nn}" "${installed_onnx_schema}")
+  if(NOT EXISTS "${installed_mod}")
+    message(FATAL_ERROR "installed source Mod was not found: ${installed_mod}")
+  endif()
+endforeach()
+execute_process(
+  COMMAND "${installed_cli}" check "${installed_nn}"
+          --with "${installed_arith}" --with "${installed_tensor}"
+  RESULT_VARIABLE nn_cli_result
+)
+if(NOT nn_cli_result EQUAL 0)
+  message(FATAL_ERROR "installed NN Mod failed validation")
+endif()
+execute_process(
+  COMMAND "${installed_cli}" check "${installed_onnx_schema}"
+          --with "${installed_tensor}"
+  RESULT_VARIABLE onnx_schema_cli_result
+)
+if(NOT onnx_schema_cli_result EQUAL 0)
+  message(FATAL_ERROR "installed ONNX schema Mod failed validation")
+endif()
+
 execute_process(
   COMMAND "${installed_cli}" check
           "${JOGGLE_SOURCE_DIR}/tests/consumer/mod.joggle"

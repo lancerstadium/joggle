@@ -150,7 +150,9 @@ private:
       }
       const auto type_domain = domain_expression(ValKind::Type);
       for (std::size_t index = 0; index < expression.labels.size(); ++index) {
-        check(expression.arguments[index], type_domain);
+        if (expression.arguments[index].kind != Kind::Infer) {
+          check(expression.arguments[index], type_domain);
+        }
       }
       if (annotated) {
         check(expression.arguments[expression.labels.size()], type_domain);
@@ -232,7 +234,9 @@ private:
 
   void check_operator(const Mod::Expr& expression, const Mod::Expr& expected) {
     using Kind = Mod::Expr::Kind;
-    const std::size_t arity = expression.kind == Kind::Infix ? 2U : 1U;
+    const std::size_t arity = expression.kind == Kind::Infix
+                                  ? expression.arguments.size()
+                                  : 1U;
     if (expression.arguments.size() != arity) {
       report("malformed operator expression");
       return;

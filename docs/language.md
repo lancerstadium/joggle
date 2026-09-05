@@ -160,10 +160,9 @@ overload a supported symbol for its own types. Subscript is only a surface
 spelling: `input[position]` resolves and materializes exactly like the ordinary
 infix call `[](input, position)`.
 
-Fixity follows the complete source parameter sequence, including compiler-time
-parameters. Consequently a declaration such as
-`fn ([])(position: coord<S>, axis: int) -> index` is binary even though `axis`
-is stored as a compile-time binding and only `position` becomes an SSA operand.
+Fixity follows the source call shape. A variadic declaration such as
+`fn infix ([])(input: tensor<E, S>, indices: index...) -> E` still uses bracket
+surface syntax, so `input[i, j]` is one ordinary three-argument Call.
 
 ## Statements and control flow
 
@@ -214,16 +213,11 @@ The annotation is checked against a surrounding callable type when both are
 present. It is especially useful for explicitly staged transformation
 templates whose parameter domain is the general compiler value `fn`.
 
-A fully annotated lambda also gives a nested call enough information to infer
-its result Type before the enclosing call is materialized. This permits direct
-functional composition such as:
+A contextual lambda may omit parameter Types when its caller determines them.
+For example, a Known shape determines the index arity of Tensor `compute`:
 
 ```joggle
-return reduce(
-  map([K], (k: coord<[K]>) -> f32 => lhs[k] * rhs[k]),
-  zero,
-  (sum: f32, value: f32) -> f32 => sum + value
-);
+return compute([M, N], (row, column) => input[column, row]);
 ```
 
 The inference probe does not emit Calls and never executes a Guarded native
@@ -232,7 +226,7 @@ evaluate it once in an explicit binding and compose with that value:
 
 ```joggle
 shape = @query_shape();
-return consume(generate(shape, body));
+return consume(compute(shape, body));
 ```
 
 A lambda constructs a fn value. Passing it to an ordinary call remains
