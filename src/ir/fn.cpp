@@ -155,6 +155,57 @@ std::size_t FnAccess::argument_parameter(const Op& op, std::size_t argument) {
   return op.fn_->state->ops.at(op.id_).arguments[argument].parameter;
 }
 
+Blk FnAccess::split(Fn::Edit& edit, Op before) {
+  if (!edit.state_ || !edit.state_->active || !before.valid() ||
+      before.fn_ != edit.state_->fn) {
+    throw std::invalid_argument("split point does not belong to this fn edit");
+  }
+  auto fn = edit.state_->fn;
+  const auto operation = fn->state->ops.find(before.id_);
+  if (operation == fn->state->ops.end()) {
+    throw std::invalid_argument("split point is not an existing Call");
+  }
+  const std::uint64_t parent_id = operation->second.parent;
+  const auto parent = fn->state->blocks.find(parent_id);
+  if (parent == fn->state->blocks.end()) {
+    throw std::invalid_argument("split point has no parent block");
+  }
+  const auto position = std::find(parent->second.ops.begin(),
+                                  parent->second.ops.end(), before.id_);
+  if (position == parent->second.ops.end()) {
+    throw std::invalid_argument("split point is not ordered in its block");
+  }
+  const std::size_t position_index = static_cast<std::size_t>(
+      std::distance(parent->second.ops.begin(), position));
+
+  std::vector<Type> result_types;
+  for (const std::uint64_t result : operation->second.results) {
+    result_types.push_back(fn->state->values.at(result).type);
+  }
+  Blk continuation = edit.blk(std::move(result_types));
+  const std::uint64_t continuation_id = continuation.id_;
+  auto& parent_data = fn->state->blocks.at(parent_id);
+  auto& continuation_data = fn->state->blocks.at(continuation_id);
+  const auto after = std::next(parent_data.ops.begin(),
+                               static_cast<std::ptrdiff_t>(position_index + 1U));
+  continuation_data.ops.assign(after, parent_data.ops.end());
+  parent_data.ops.erase(after, parent_data.ops.end());
+  for (const std::uint64_t id : continuation_data.ops) {
+    fn->state->ops.at(id).parent = continuation_id;
+  }
+  continuation_data.terminator = std::move(parent_data.terminator);
+  parent_data.terminator.reset();
+
+  auto& order = fn->state->block_order;
+  order.erase(std::remove(order.begin(), order.end(), continuation_id),
+              order.end());
+  const auto parent_position = std::find(order.begin(), order.end(), parent_id);
+  order.insert(parent_position == order.end() ? order.end()
+                                              : std::next(parent_position),
+               continuation_id);
+  return continuation;
+}
+
 }  // namespace joggle::detail
 
 namespace joggle {

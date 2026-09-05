@@ -131,11 +131,13 @@ auto changed = joggle::inline_calls(compiler, fn, diagnostics);
 
 One invocation considers the Calls present in the input snapshot, including
 those inside callable bodies already present in that snapshot. It expands
-source-defined and anonymous single-block callees, remaps arguments, results,
-fn bindings, locations, nested callable values, and closure captures. Opaque,
-dynamic, and multi-block calls remain unchanged. Newly cloned calls are
-considered by a later invocation, so the operation is deterministic and
-bounded. A failing Fn edit is not published.
+source-defined and anonymous callees, including arbitrary verified CFG bodies.
+Arguments, results, fn bindings, locations, nested callable values, and closure
+captures are remapped. Every callee return jumps to a typed continuation block,
+so values used after the original call retain normal SSA dominance. Opaque and
+unresolved dynamic calls remain unchanged. Newly cloned calls are considered
+by a later invocation, so the operation is deterministic and bounded. A
+failing Fn edit is not published.
 
 ## Typed equation passes
 

@@ -18,6 +18,13 @@ std::optional<std::vector<Val>>
 clone_before(Fn::Edit& edit, const Fn& source, Op before, ValMap& values,
              Diag& diagnostics, std::optional<Loc> location = std::nullopt);
 
+// Replaces `before` with an arbitrary CFG body. `values` supplies the source
+// Fn arguments. Source returns converge on a continuation block and become its
+// arguments, so the caller's remaining operations keep normal SSA dominance.
+bool inline_cfg(Fn::Edit& edit, const Fn& source, Op before, ValMap& values,
+                Diag& diagnostics,
+                std::optional<Loc> location = std::nullopt);
+
 // Clones only the pure expression slice required by `source`. Existing
 // substitutions in `values` stop traversal, so equation arguments map directly
 // to target values and an unused left side is never copied.

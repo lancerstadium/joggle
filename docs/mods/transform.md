@@ -33,10 +33,12 @@ or strings. Effects, unbound replacement values, zero-result calls, and control
 flow reject an equation. The pass descends into existing callable bodies and
 rewires explicit captures transactionally.
 
-`inline` expands source-defined single-block calls and anonymous callable
-bodies. `resolve` materializes reachable source definitions into a closed Mod
-while leaving bodyless implementation boundaries visible. Neither operation
-executes Residual program calls through host callbacks.
+`inline` expands source-defined calls and anonymous callable bodies, including
+multi-block CFGs. Callee returns converge through typed continuation block
+arguments rather than a special region result. `resolve` materializes reachable
+source definitions into a closed Mod while leaving bodyless implementation
+boundaries visible. Neither operation executes Residual program calls through
+host callbacks.
 
 Domain-specific structural transforms remain with the domain that defines
 their accepted form: `tensor.fuse` and `tensor.loops` therefore belong to

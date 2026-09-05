@@ -30,6 +30,10 @@ struct FnAccess {
   static std::optional<Loc> location(const Op& op);
   static std::optional<ParamVal> known_value(const Val& value);
   static std::size_t argument_parameter(const Op& op, std::size_t argument);
+  // Moves the operations and terminator after `before` into a continuation
+  // block whose arguments have the Call result Types. The Call remains as the
+  // last operation of its original block until its owner rewires and erases it.
+  static Blk split(Fn::Edit& edit, Op before);
   static bool verify_structure(const Fn& fn, Diag& diagnostics);
   static bool verify_contracts(const Fn& fn, Diag& diagnostics);
   static bool verify_contracts(const Fn& fn, Compiler& compiler,

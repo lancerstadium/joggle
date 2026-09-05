@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <optional>
@@ -29,6 +30,10 @@ mod inline_fixture@1.0.0 {
   pub fn join(lhs: word, rhs: word) -> word;
   pub fn apply(input: word, body: (word) -> word) -> word;
   pub fn step(token: effect<memory>) -> effect<memory>;
+
+  fn invoke(input: word, body: (word) -> word) -> word {
+    return body(input);
+  }
 
   pub fn twice(input: word) -> word {
     first = leaf(input);
@@ -63,6 +68,13 @@ mod inline_fixture@1.0.0 {
     return closure(input);
   }
 
+  pub fn branch_closure(condition: i1, input: word) -> word {
+    return invoke(
+      input,
+      (value: word) => if condition { leaf(value) } else { leaf(input) }
+    );
+  }
+
   pub fn advance(token: effect<memory>) -> effect<memory> {
     token = step(token);
     return step(token);
@@ -83,8 +95,11 @@ mod inline_fixture@1.0.0 {
   auto opaque = compiler.materialize("inline_fixture.opaque");
   auto choose = compiler.materialize("inline_fixture.choose_caller");
   auto closure = compiler.materialize("inline_fixture.closure_caller");
+  auto branch_closure =
+      compiler.materialize("inline_fixture.branch_closure");
   auto effect = compiler.materialize("inline_fixture.effect_caller");
-  if (!caller || !opaque || !choose || !closure || !effect) {
+  if (!caller || !opaque || !choose || !closure || !branch_closure ||
+      !effect) {
     compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -113,11 +128,19 @@ mod inline_fixture@1.0.0 {
   const auto choose_revision = choose->revision();
   const auto choose_count =
       joggle::inline_calls(compiler, *choose, diagnostics);
-  ok &= expect(choose_count == std::optional<std::size_t>{0U} &&
-                   choose->revision() == choose_revision &&
-                   choose->ops().size() == 1U,
-               "multi-block callees remain structured until CFG inlining is "
-               "implemented");
+  const auto choose_ops = choose->ops();
+  ok &= expect(
+      choose_count == std::optional<std::size_t>{1U} &&
+          choose->revision() != choose_revision && choose->blks().size() > 1U &&
+          choose_ops.size() == 2U &&
+          std::all_of(choose_ops.begin(), choose_ops.end(),
+                      [](const joggle::Op& op) {
+                        const auto fn = op.callee().referenced_fn();
+                        return fn && fn->name() == "leaf";
+                      }) &&
+          compiler.verify(*choose),
+      "CFG inlining splices branches and joins through typed continuation "
+      "arguments");
 
   const auto closure_count =
       joggle::inline_calls(compiler, *closure, diagnostics);
@@ -149,6 +172,24 @@ mod inline_fixture@1.0.0 {
           compiler.verify(*closure),
       "generic inlining recurses through existing typed lambda "
       "bodies without a separate nested IR");
+
+  const auto branch_closure_outer =
+      joggle::inline_calls(compiler, *branch_closure, diagnostics);
+  const auto branch_closure_inner =
+      joggle::inline_calls(compiler, *branch_closure, diagnostics);
+  const auto branch_closure_ops = branch_closure->ops();
+  ok &= expect(
+      branch_closure_outer == std::optional<std::size_t>{1U} &&
+          branch_closure_inner == std::optional<std::size_t>{1U} &&
+          branch_closure->blks().size() > 1U &&
+          branch_closure_ops.size() == 2U &&
+          std::all_of(branch_closure_ops.begin(), branch_closure_ops.end(),
+                      [](const joggle::Op& op) {
+                        const auto fn = op.callee().referenced_fn();
+                        return fn && fn->name() == "leaf";
+                      }) &&
+          compiler.verify(*branch_closure),
+      "CFG inlining handles an anonymous branch body and remaps its captures");
 
   const auto effect_count =
       joggle::inline_calls(compiler, *effect, diagnostics);

@@ -23,9 +23,6 @@ std::optional<Candidate> candidate(Compiler& compiler, const Op& call,
                                    Diag& diagnostics) {
   const Val callee = call.callee();
   if (const auto body = callee.inline_fn()) {
-    if (body->blks().size() != 1U) {
-      return std::nullopt;
-    }
     return Candidate{call, *body, callee.captures()};
   }
   const auto declaration = callee.referenced_fn();
@@ -34,9 +31,6 @@ std::optional<Candidate> candidate(Compiler& compiler, const Op& call,
   }
   auto body = compiler.materialize(call, diagnostics);
   if (!body) {
-    return std::nullopt;
-  }
-  if (body->blks().size() != 1U) {
     return std::nullopt;
   }
   return Candidate{call, std::move(*body), {}};
@@ -63,6 +57,11 @@ bool clone_call(Fn::Edit& edit, const Candidate& candidate, Diag& diagnostics) {
     values.emplace_back(parameters[index], supplied[index]);
   }
 
+  if (candidate.body.blks().size() != 1U ||
+      candidate.body.entry().terminator().kind() != Term::Kind::Return) {
+    return detail::inline_cfg(edit, candidate.body, candidate.call, values,
+                              diagnostics, candidate.call.location());
+  }
   auto returned = detail::clone_before(edit, candidate.body, candidate.call,
                                        values, diagnostics);
   if (!returned) {

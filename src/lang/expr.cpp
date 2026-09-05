@@ -587,6 +587,27 @@ int expression_precedence(const Mod::Expr& expression) {
   return 100;
 }
 
+std::string format_lambda_head(const Mod::Expr& expression) {
+  using Kind = Mod::Expr::Kind;
+  std::string result = "(";
+  const std::size_t parameter_count = expression.labels.size();
+  const bool annotated = expression.arguments.size() == parameter_count + 2U;
+  for (std::size_t index = 0; index < parameter_count; ++index) {
+    if (index != 0U) {
+      result += ", ";
+    }
+    result += expression.labels[index];
+    if (expression.arguments[index].kind != Kind::Infer) {
+      result += ": " + format_expression(expression.arguments[index]);
+    }
+  }
+  result += ')';
+  if (annotated) {
+    result += " -> " + format_expression(expression.arguments[parameter_count]);
+  }
+  return result;
+}
+
 }  // namespace
 
 std::string format_expression(const Mod::Expr& expression,
@@ -659,24 +680,7 @@ std::string format_expression(const Mod::Expr& expression,
       }
     }
   } else if (expression.kind == Kind::Lambda) {
-    result = "(";
-    const std::size_t parameter_count = expression.labels.size();
-    const bool annotated = expression.arguments.size() == parameter_count + 2U;
-    for (std::size_t index = 0; index < parameter_count; ++index) {
-      if (index != 0U) {
-        result += ", ";
-      }
-      result += expression.labels[index];
-      if (expression.arguments[index].kind != Kind::Infer) {
-        result += ": " + format_expression(expression.arguments[index]);
-      }
-    }
-    result += ')';
-    if (annotated) {
-      result +=
-          " -> " + format_expression(expression.arguments[parameter_count]);
-    }
-    result += " => ";
+    result = format_lambda_head(expression) + " => ";
     if (!expression.arguments.empty()) {
       result += format_expression(expression.arguments.back());
     }
@@ -742,8 +746,7 @@ std::string layout_expression(const Mod::Expr& expression, std::size_t column,
     }
     return text;
   };
-  if (flat.find('\n') != std::string::npos &&
-      (expression.kind == Kind::Lambda || expression.kind == Kind::Block)) {
+  if (flat.find('\n') != std::string::npos && expression.kind == Kind::Block) {
     return indent_continuations(flat, column);
   }
   if (column + flat.size() <= line_width) {
@@ -770,6 +773,19 @@ std::string layout_expression(const Mod::Expr& expression, std::size_t column,
     result += layout_expression(expression.arguments[2], content_column + 2U,
                                 line_width);
     result += "\n" + spaces(content_column) + "}";
+  } else if (expression.kind == Kind::Lambda &&
+             !expression.arguments.empty()) {
+    const std::string head = format_lambda_head(expression) + " =>";
+    const Mod::Expr& body = expression.arguments.back();
+    if (body.kind == Kind::Block) {
+      result += head + ' ';
+      result += indent_continuations(format_expression(body), content_column);
+    } else {
+      result += head + '\n';
+      const std::size_t body_column = content_column + 2U;
+      result += spaces(body_column);
+      result += layout_expression(body, body_column, line_width);
+    }
   } else {
     const bool delimited =
         expression.kind == Kind::List || expression.kind == Kind::Reference ||
