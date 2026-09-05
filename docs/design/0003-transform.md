@@ -107,8 +107,8 @@ the compiler back into a catalog of `before`/`after` pairs.
 
 1. [complete] One `Call(callee: Val, arguments...)` operation.
 2. [complete] Typed anonymous fns and explicit closure-capture edges.
-3. [in progress] Remove expression-template replacement from the canonical
-   transform Mod and public narrative.
+3. [complete] Remove expression-template replacement from the C++ API,
+   transform Mod, tests, fixtures, and public narrative.
 4. [complete] Implement transactional, name-independent single-block Fn
    inlining with callable and capture remapping.
 5. [planned] Extend inlining across explicit CFG while preserving successor

@@ -33,7 +33,6 @@ decisions.
 - [0004 — Tensor semantics](design/0004-tensor.md)
 - [0005 — ONNX import](design/0005-onnx.md)
 - [0006 — Mod bundles](design/0006-bundles.md)
-- [0007 — Definitional equivalence](design/0007-equivalence.md)
 - [0008 — Quantized ONNX import](design/0008-quantization.md)
 - [0009 — Implementation closure](design/0009-implementation.md)
 

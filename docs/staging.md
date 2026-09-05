@@ -90,11 +90,9 @@ higher-order call or as an argument to an explicitly staged compiler fn.
 The compiler does not convert them through a pattern, strategy, or scalar
 metadata representation.
 
-The previous public `before`/`after` expression-template service is being
-removed from the canonical transformation design. Direct transformations
-operate on the materialized Fn and its nested callable bodies. Transactional
-`Fn::Edit` remains the low-level correctness boundary; source-facing
-inspection and editing fns are the next implementation gate.
+Direct transformations operate on the materialized Fn and its nested callable
+bodies. Transactional `Fn::Edit` is the low-level correctness boundary;
+source-facing inspection and editing fns are the next implementation gate.
 
 ## Source resolution
 

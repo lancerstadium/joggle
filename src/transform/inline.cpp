@@ -201,4 +201,43 @@ std::optional<std::size_t> inline_calls(Compiler& compiler, Fn& fn,
   return candidates.size();
 }
 
+std::optional<std::size_t> inline_calls(Compiler& compiler, Mod& mod,
+                                        Diag& diagnostics) {
+  Mod rewritten = mod;
+  std::size_t total = 0;
+  for (const Mod::FnDecl& original : mod.fns()) {
+    if (original.body() == nullptr) {
+      continue;
+    }
+    Fn body = *original.body();
+    const auto changed = inline_calls(compiler, body, diagnostics);
+    if (!changed) {
+      return std::nullopt;
+    }
+    if (*changed == 0U) {
+      continue;
+    }
+    const auto overloads = rewritten.overloads(original.name());
+    const auto current = std::find_if(
+        overloads.begin(), overloads.end(), [&](const Mod::FnDecl& candidate) {
+          return candidate.symbol() == original.symbol();
+        });
+    if (current == overloads.end()) {
+      diagnostics.report("cannot find the inlined fn in its Mod snapshot");
+      return std::nullopt;
+    }
+    Fn* destination = rewritten.body(*current);
+    if (destination == nullptr) {
+      diagnostics.report("cannot publish an inlined fn body");
+      return std::nullopt;
+    }
+    *destination = std::move(body);
+    total += *changed;
+  }
+  if (total != 0U) {
+    mod = std::move(rewritten);
+  }
+  return total;
+}
+
 }  // namespace joggle

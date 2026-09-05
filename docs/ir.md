@@ -44,9 +44,8 @@ present.
 
 An Op may carry an optional `Loc`. Parsers and import Mods use it
 for diagnostics and source provenance; it is not a semantic attribute, tensor
-property, or part of canonical Mod identity. Public Fn edits may
-attach a range, clone preserves it, and expression replacement transfers the
-matched root range to new calls.
+property, or part of canonical Mod identity. Public Fn edits may attach a
+range, and cloning or direct inlining preserves it.
 
 ## Blks and control flow
 

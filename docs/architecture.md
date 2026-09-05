@@ -171,16 +171,17 @@ their host boundaries; model and kernel Ops do not. See
 
 ## Near-term implementation order
 
-The implemented path currently ends at the core language, editable Fn IR,
-explicit staging, typed anonymous Fns, and explicit closure captures. Existing
-tensor, transform, and ONNX modules are prototypes under replacement; their
-presence is not evidence of bodyful tensor semantics or generic fusion.
+The implemented path includes the core language, editable Fn IR, explicit
+staging, typed anonymous Fns, explicit closure captures, and transactional
+single-block inlining. `tensor@1.1` defines `generate` and `at`; generic map and
+Relu have real source bodies. `transform@2` expands those bodies in both Fn and
+Mod values while remapping nested closures. The pinned SqueezeNet test expands
+all 26 imported Relu calls through this generic path.
 
-The current vertical slice has begun: `tensor@1.1` defines `generate` and `at`,
-generic map and Relu have real source bodies, and `transform@1.2` can inline
-single-block bodies while remapping nested closures. Reduction, views,
-multi-block inlining, direct source-level editing, and dependence-checked
-fusion remain unfinished.
+Reduction, views, multi-block inlining, direct source-level editing, and
+dependence-checked fusion remain unfinished. The other imported tensor and
+quantized operations are still opaque declarations rather than completed
+semantics.
 
 Only after the complete bodyful path works on an unmodified model do kernel
 scheduling, physical layouts, packed formats, storage planning, capability

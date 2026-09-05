@@ -91,7 +91,7 @@ mutable copy-on-write body for an exact declaration.
 
 `edit.locate(op, source_range)` attaches frontend provenance to a call, and
 `op.location()` reads it. Locations improve diagnostics and survive cloning or
-typed replacement, but they are not semantic properties and do not change
+transactional edits, but they are not semantic properties and do not change
 canonical Mod identity.
 
 Fn values remain ordinary typed `Val`s. A specialized declared reference is

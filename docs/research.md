@@ -32,18 +32,19 @@ The implementation currently demonstrates:
    generic `map` and Relu have inspectable source bodies over that basis;
 7. those bodies materialize, expose nested element Fns, invoke arbitrary
    callable parameters, and pass the ordinary verifier;
-8. Mod bundles preserve and verify imported data through public `check`,
+8. the same name-independent Mod transform expands all 26 Relu calls in the
+   pinned, unmodified SqueezeNet graph into `generate` plus captured element
+   Fns;
+9. Mod bundles preserve and verify imported data through public `check`,
    `run`, `install`, and `lock` workflows; and
-9. source resolution constructs deterministic concrete instances while
+10. source resolution constructs deterministic concrete instances while
    preserving bodyless calls as an explicit leaf set.
 
-The previous expression-template replacement, opaque tensor operator catalog,
-and SqueezeNet factoring demo are prototypes under removal, not evidence for
-the research claim. Most tensor operators and all quantized operators remain
-opaque. Reduction, Conv/GEMM bodies, dependence analysis, generic fusion,
-symbolic shapes, emission, and performance evidence are unfinished. Existing
-ONNX round-trip tests establish importer fidelity only; they do not establish
-the new bodyful transformation path or publication-level novelty.
+Most tensor operators and all quantized operators remain opaque. Reduction,
+Conv/GEMM bodies, dependence analysis, generic fusion, symbolic shapes,
+emission, and performance evidence are unfinished. The ONNX result establishes
+one bodyful elementwise expansion, not generic fusion, numerical preservation
+after compilation, or publication-level novelty.
 
 ## What the closest systems already solve
 
@@ -91,9 +92,8 @@ The next mechanism under test is deliberately smaller than another IR stack:
 4. A portable reference and an implementation are separate ordinary
    fns. Their relationship must be checked explicitly; a declaration
    never carries a hidden second body.
-5. Definitional equivalence remains the safe checker for transparent
-   factoring. Real kernels require stronger, independently auditable evidence
-   rather than weakening that checker.
+5. Real kernels require an explicit, independently auditable semantic
+   validation fn; structural similarity alone is not a correctness proof.
 6. Physical formats are parameterized types and conversion fns, not
    copies of the tensor operator vocabulary.
 7. Candidate enumeration, measurement, and selection are ordinary compiler
@@ -118,7 +118,7 @@ following without a new core declaration category:
 
 1. define an executable tensor kernel whose implementation structure differs
    from its portable reference expression;
-2. reject a type-correct but semantically different replacement;
+2. reject a type-correct but semantically different implementation candidate;
 3. compose that kernel transformation with a model-scale structural pass;
 4. only after the kernel path works, add one independently installable low-bit
    or packed format and its conversions without duplicating tensor fns;

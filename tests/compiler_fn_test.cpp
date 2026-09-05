@@ -968,20 +968,19 @@ mod short_circuit@1.0.0 {
                "C++ compiler-fn binding is checked against its "
                "declared type");
 
-  joggle::Compiler legacy_transform;
-  legacy_transform.add("joggle 1; mod legacy_transform@1.0.0 { "
-                       "fn rewrite(input: fn) -> fn; }",
-                       "legacy-transform.joggle");
-  const bool legacy_linked = legacy_transform.link();
-  const auto legacy_mod = legacy_transform.mod("legacy_transform");
-  const auto legacy_rewrite =
-      legacy_mod ? legacy_mod->fn("rewrite") : std::nullopt;
-  if (!legacy_linked || !legacy_rewrite) {
+  joggle::Compiler result_mismatch;
+  result_mismatch.add("joggle 1; mod result_mismatch@1.0.0 { "
+                      "fn transform(input: fn) -> fn; }",
+                      "result-mismatch.joggle");
+  const bool result_mismatch_linked = result_mismatch.link();
+  const auto result_mismatch_mod = result_mismatch.mod("result_mismatch");
+  const auto transform_fn =
+      result_mismatch_mod ? result_mismatch_mod->fn("transform") : std::nullopt;
+  if (!result_mismatch_linked || !transform_fn) {
     return EXIT_FAILURE;
   }
-  legacy_transform.bind(*legacy_rewrite,
-                        [](const joggle::Fn&) { return true; });
-  ok &= expect(!legacy_transform.ok(),
+  result_mismatch.bind(*transform_fn, [](const joggle::Fn&) { return true; });
+  ok &= expect(!result_mismatch.ok(),
                "a bool-returning callback cannot impersonate a declared "
                "fn -> fn result");
 

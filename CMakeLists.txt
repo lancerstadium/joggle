@@ -57,8 +57,6 @@ add_library(joggle
   src/compile/run.cpp
   src/compile/val.cpp
   src/transform/inline.cpp
-  src/transform/rewrite.cpp
-  src/transform/equal.cpp
   src/transform/resolve.cpp
   src/pkg/repo.cpp
 )
@@ -308,11 +306,6 @@ if(JOGGLE_BUILD_TESTS)
   target_link_libraries(joggle_mod_ir_test PRIVATE joggle::joggle)
   add_test(NAME mod_ir COMMAND joggle_mod_ir_test)
 
-  add_executable(joggle_transform_test tests/transform_test.cpp)
-  target_link_libraries(joggle_transform_test PRIVATE joggle::joggle)
-  target_include_directories(joggle_transform_test PRIVATE src)
-  add_test(NAME transform COMMAND joggle_transform_test)
-
   add_executable(joggle_inline_test tests/inline_test.cpp)
   target_link_libraries(joggle_inline_test PRIVATE joggle::joggle)
   add_test(NAME inline COMMAND joggle_inline_test)
@@ -323,14 +316,9 @@ if(JOGGLE_BUILD_TESTS)
   add_dependencies(joggle_transform_mod_test joggle_transform_native)
   target_compile_definitions(joggle_transform_mod_test PRIVATE
     JOGGLE_TRANSFORM_MOD="${JOGGLE_TRANSFORM_MOD}"
-    JOGGLE_TENSOR_MOD="${JOGGLE_TENSOR_MOD}"
     JOGGLE_TRANSFORM_NATIVE="$<TARGET_FILE:joggle_transform_native>"
   )
   add_test(NAME transform_mod COMMAND joggle_transform_mod_test)
-
-  add_executable(joggle_equivalence_test tests/equivalence_test.cpp)
-  target_link_libraries(joggle_equivalence_test PRIVATE joggle::joggle)
-  add_test(NAME equivalence COMMAND joggle_equivalence_test)
 
   add_executable(joggle_resolve_test tests/resolve_test.cpp)
   target_link_libraries(joggle_resolve_test PRIVATE joggle::joggle)
@@ -448,7 +436,6 @@ if(JOGGLE_BUILD_TESTS)
     add_test(NAME onnx
       COMMAND joggle_onnx_test
         ${JOGGLE_TENSOR_MOD}
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/squeezenet_transform.joggle
         ${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle
         $<TARGET_FILE:joggle_onnx_native>
         ${JOGGLE_TRANSFORM_MOD}

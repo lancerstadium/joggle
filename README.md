@@ -76,7 +76,7 @@ ctest --test-dir build --output-on-failure
 ```
 
 The repository ships `tensor@1.1.0`, whose first bodyful `map` and Relu fns
-expand into a small `generate`/`at` basis; `transform@1.2.0`, whose first
+expand into a small `generate`/`at` basis; `transform@2.0.0`, whose first
 direct Fn transform performs generic single-block inlining alongside source
 resolution; and the
 prototype `quant@2.0.0` and optional Protobuf-backed `onnx@1.0.0` import path.

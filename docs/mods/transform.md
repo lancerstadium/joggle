@@ -1,6 +1,6 @@
 # Transform
 
-`transform@1.2.0` is the installable owner for reusable explicitly staged Fn
+`transform@2.0.0` is the installable owner for reusable explicitly staged Fn
 and Mod transformations. It adds no `pass`, pattern, rewrite, pipeline, or
 result declaration to the language.
 
@@ -8,6 +8,7 @@ result declaration to the language.
 
 ```joggle
 fn inline(input: fn) -> fn;
+fn inline(input: mod) -> mod;
 fn resolve(input: mod) -> mod;
 ```
 
@@ -42,7 +43,3 @@ and `dce` in the example remain planned. Every transformation must edit
 concrete structure transactionally and use Types, def-use, dominance, closure
 captures, and effect tokens for legality. It may not match Conv, Relu, GEMM,
 or any other operation name.
-
-The old `replace(input, before, after)` expression-template API is not part of
-the accepted design and remains scheduled for source and C++ removal. It must
-not be used for new code or presented as generic fusion.

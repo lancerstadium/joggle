@@ -77,11 +77,10 @@ manually.
 
 ## Scheduling boundary
 
-A transformation policy is an ordinary compile-time fn that transforms
-a mod or a fn. Its component transformations are mod-defined
-fns; users do not construct a Schedule class. Correctness must be
-independent of later candidate ranking or measurement. Design 0007 defines the
-first semantic-equivalence boundary for user-defined optimized fns.
+A transformation policy is an ordinary compile-time fn that transforms a mod
+or fn. Its component transformations are mod-defined fns; users do not
+construct a Schedule class. Correctness must be independent of later candidate
+ranking or measurement.
 
 No target or device hierarchy is part of this record. A target-specific mod
 may define formats, memory spaces, operations, costs, and exporters using the

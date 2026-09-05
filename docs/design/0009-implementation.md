@@ -91,10 +91,9 @@ A semantic fn can be implemented in either of two visible ways:
    after it has inspected and transformed the semantic body.
 
 There is no hidden second body attached to a declaration. Structural and
-effect verification applies to every replacement. Definitional equivalence is
-useful for transparent factoring, but it is not falsely presented as a proof
-of arbitrary optimized kernels; stronger validation remains an explicit
-compiler fn.
+effect verification applies to every transformation. Semantic validation of
+an optimized implementation remains an explicit compiler fn; structural
+similarity is not presented as proof of an arbitrary kernel.
 
 ## Consequences
 
