@@ -98,10 +98,13 @@ Fn values remain ordinary typed `Val`s. A specialized declared reference is
 built with `edit.reference(declaration, callable_type, bindings)` and inspected
 with `value.referenced_fn()` and `value.bindings()`. The bindings are Known
 compile-time parameters; they are not Call arguments. An anonymous, already
-verified body is built
-with `edit.callable(fn, callable_type)` and inspected with
-`value.inline_fn()`. The callable type must exactly match the body's
-inputs and results; no public lambda or region object is involved.
+verified body is built with `edit.callable(fn, callable_type, captures)` and
+inspected with `value.inline_fn()` and `value.captures()`. Capture-free callers
+may omit the third argument. Captures are explicit parent-Fn edges and
+correspond, in order, to trailing hidden arguments of the nested body; the
+callable type describes only its visible source parameters and results. Effect
+values cannot be hidden in captures. No public lambda, closure, or region
+object is involved.
 The current source form has one expression and one result. Consequently,
 canonical formatting or `Mod::insert` rejects a C++-constructed inline body
 that cannot be represented by that source form instead of emitting hidden

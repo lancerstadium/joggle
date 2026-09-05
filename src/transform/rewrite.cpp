@@ -404,7 +404,18 @@ replace_expressions(Fn& subject, const Fn& before, const Fn& after,
           callee = edit.reference(*declaration, source_callee.type(),
                                   source_callee.bindings());
         } else if (const auto body = source_callee.inline_fn()) {
-          callee = edit.callable(*body, source_callee.type());
+          std::vector<Val> captures;
+          for (const Val& capture : source_callee.captures()) {
+            const auto mapped = map_value(capture);
+            if (!mapped) {
+              diagnostics.report(
+                  "replacement expression lost an inline fn capture");
+              return std::nullopt;
+            }
+            captures.push_back(*mapped);
+          }
+          callee =
+              edit.callable(*body, source_callee.type(), std::move(captures));
         }
         if (!callee) {
           diagnostics.report(

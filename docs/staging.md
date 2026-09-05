@@ -47,29 +47,32 @@ domains before invocation. The returned mod is published only on success.
 ## Transformation substrate
 
 Today a native compiler fn can materialize a `Fn`, open a transactional edit,
-inspect callable values and typed arguments, change calls, and commit after
-verification. Named specializations, lambdas, and fn parameters are not
-separate operation kinds. This is the low-level substrate for constant folding
-and user-defined structural transformations.
+inspect callable values and typed arguments, change calls and nested bodies,
+and commit after verification. Named specializations, lambdas, and fn
+parameters are not separate operation kinds. This is the low-level substrate
+for function-body transformations.
 
-An explicit call may pass a typed lambda to a `fn` parameter. The lambda
-is materialized as a verified anonymous `Fn`, passed directly to the
-compiler fn, and may be returned for a later `@` call. It is not encoded
-as scalar metadata. Since the compiler-domain `fn` accepts any signature,
-such a lambda can state its result explicitly:
+An ordinary higher-order call may pass a typed lambda. Residual values used by
+the lambda become explicit capture edges on its callable `Val` and trailing
+hidden arguments of the anonymous body:
 
 ```joggle
-@transform.replace(
-  model,
-  (x: tensor) -> tensor => relu(conv(x)),
-  (x: tensor) -> tensor => conv_relu(x)
-)
+fn apply(input: word, body: (word) -> word) -> word;
+
+fn use(input: word, bias: word) -> word {
+  return apply(input, (x: word) -> word => add(x, bias));
+}
 ```
 
-This is ordinary bidirectional typing: the result annotation supplies the
-expected type for nested generic calls and is checked against the body. It
-does not create a pattern language, a host callback, or a new transformation
-kind.
+The visible lambda type remains `(word) -> word`; `bias` is inspectable through
+`captures()`, and the nested body receives it after `x`. Effect values must be
+listed as visible parameters rather than captured.
+
+An explicit compiler call may also pass a capture-free typed lambda to a `fn`
+parameter. It is materialized as a verified anonymous `Fn`, passed directly to
+the compiler fn, and may be returned for a later `@` call. It is not encoded as
+scalar metadata. Compiler-domain lambdas remain standalone `Fn` values and
+therefore do not close over a surrounding Residual program.
 
 Transformations compose with the language's existing fn call and local
 binding rules. There is no separate sequence object:

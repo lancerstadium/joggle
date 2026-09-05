@@ -17,6 +17,12 @@ or anonymous `Fn`. A declared reference stores the compile-time arguments that
 specialized it; an anonymous body stores verified IR rather than parser syntax.
 Neither representation creates a synthetic Mod member.
 
+An anonymous callable closes over Residual values through explicit capture
+edges. The captured values become trailing hidden arguments of its nested
+`Fn`; they are not part of the visible callable Type or ordinary Call argument
+list. Capture edges participate in dominance, liveness, dependency collection,
+formatting, and identity. Effect values cannot be captured implicitly.
+
 Metadata is represented by a normal `Type` instance. This means a layout,
 numeric format, or policy uses the same construction, named-field access,
 identity, serialization, and list behavior as every other type.
@@ -54,7 +60,9 @@ materializer lower structured syntax into this single representation.
 `Fn::edit()` creates an isolated edit. `call`, `call_before`, `replace`, and
 `erase` modify that private revision; `commit()` verifies and publishes it
 atomically. Typed source lambdas and named references use the same callable
-`Val` representation as C++ edits.
+`Val` representation as C++ edits. `Val::captures()` exposes closure edges;
+`inline_fn()` exposes the nested body with its visible arguments followed by
+the hidden capture arguments.
 
 ## Verification
 

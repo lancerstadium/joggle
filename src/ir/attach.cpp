@@ -68,6 +68,9 @@ void collect(DependencyMap& dependencies, const Val& value) {
   if (const auto fn = value.inline_fn()) {
     collect(dependencies, *fn);
   }
+  for (const Val& capture : value.captures()) {
+    collect(dependencies, capture);
+  }
   for (const auto& [name, binding] : value.bindings()) {
     static_cast<void>(name);
     collect(dependencies, binding);

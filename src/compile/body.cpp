@@ -1080,13 +1080,81 @@ private:
   build_inline_fn(const Mod::Expr& expression,
                   const std::vector<Type>* expected_inputs,
                   std::optional<std::vector<Type>> expected_results,
-                  detail::SyntaxRange range) {
+                  detail::SyntaxRange range,
+                  std::vector<std::pair<std::string, Type>> captures = {}) {
     return detail::instantiate_lambda(
         compiler_, owner_, expression, source(range), diagnostics_,
         locals_.known_bindings(),
         expected_inputs ? std::optional<std::vector<Type>>{*expected_inputs}
                         : std::nullopt,
-        std::move(expected_results), residual_control_depth_ == 0U);
+        std::move(expected_results), residual_control_depth_ == 0U,
+        std::move(captures));
+  }
+
+  void collect_free_variables(const Mod::Expr& expression,
+                              std::vector<std::string>& bound,
+                              std::vector<std::string>& free) const {
+    using Kind = Mod::Expr::Kind;
+    const auto is_bound = [&](std::string_view name) {
+      return std::find(bound.begin(), bound.end(), name) != bound.end();
+    };
+    const auto remember = [&](std::string_view name) {
+      if (!name.empty() && !is_bound(name) && declared_local(name) &&
+          std::find(free.begin(), free.end(), name) == free.end()) {
+        free.emplace_back(name);
+      }
+    };
+
+    if (expression.kind == Kind::Variable) {
+      remember(expression.text);
+      return;
+    }
+    if (expression.kind == Kind::Call &&
+        expression.text.find('.') == std::string::npos) {
+      remember(expression.text);
+    }
+    if (expression.kind == Kind::Lambda) {
+      const std::size_t previous = bound.size();
+      bound.insert(bound.end(), expression.labels.begin(),
+                   expression.labels.end());
+      if (!expression.arguments.empty()) {
+        collect_free_variables(expression.arguments.back(), bound, free);
+      }
+      bound.resize(previous);
+      return;
+    }
+    for (const Mod::Expr& argument : expression.arguments) {
+      collect_free_variables(argument, bound, free);
+    }
+  }
+
+  std::optional<std::vector<std::pair<std::string, Val>>>
+  closure_captures(const Mod::Expr& expression,
+                   detail::SyntaxRange range) const {
+    std::vector<std::string> bound = expression.labels;
+    std::vector<std::string> free;
+    if (!expression.arguments.empty()) {
+      collect_free_variables(expression.arguments.back(), bound, free);
+    }
+    std::vector<std::pair<std::string, Val>> captures;
+    for (const std::string& name : free) {
+      const detail::StagedVal* value = locals_.find(name);
+      if (value == nullptr || value->known()) {
+        continue;
+      }
+      const Val* residual = value->residual_value();
+      if (residual == nullptr) {
+        continue;
+      }
+      if (detail::is_effect_type(residual->type())) {
+        diagnostics_.report("inline fn cannot implicitly capture effect '" +
+                                name + "'",
+                            source(range));
+        return std::nullopt;
+      }
+      captures.emplace_back(name, *residual);
+    }
+    return captures;
   }
 
   std::optional<Val> inline_fn(const Mod::Expr& expression,
@@ -1101,11 +1169,24 @@ private:
       report("inline fn does not match its callable context", range);
       return std::nullopt;
     }
-    auto fn = build_inline_fn(expression, &*inputs, *results, range);
+    auto captures = closure_captures(expression, range);
+    if (!captures) {
+      return std::nullopt;
+    }
+    std::vector<std::pair<std::string, Type>> capture_types;
+    std::vector<Val> capture_values;
+    capture_types.reserve(captures->size());
+    capture_values.reserve(captures->size());
+    for (const auto& [name, value] : *captures) {
+      capture_types.emplace_back(name, value.type());
+      capture_values.push_back(value);
+    }
+    auto fn = build_inline_fn(expression, &*inputs, *results, range,
+                              std::move(capture_types));
     if (!fn) {
       return std::nullopt;
     }
-    return edit_->callable(std::move(*fn), callable);
+    return edit_->callable(std::move(*fn), callable, std::move(capture_values));
   }
 
   std::optional<detail::ExecVal> compiler_fn(const Mod::Expr& expression,
@@ -2910,7 +2991,8 @@ instantiate_lambda(Compiler& compiler, std::string_view owner,
                    Diag& diagnostics, const KnownBindings& bindings,
                    std::optional<std::vector<Type>> expected_inputs,
                    std::optional<std::vector<Type>> expected_results,
-                   bool allow_guarded_evaluation) {
+                   bool allow_guarded_evaluation,
+                   std::vector<std::pair<std::string, Type>> captures) {
   using Kind = Mod::Expr::Kind;
   const auto report = [&](std::string message) {
     diagnostics.report(std::move(message), source);
@@ -2944,6 +3026,16 @@ instantiate_lambda(Compiler& compiler, std::string_view owner,
       return std::nullopt;
     }
     arguments.emplace_back(expression.labels[index], *annotation);
+  }
+  for (auto& capture : captures) {
+    if (std::find_if(arguments.begin(), arguments.end(), [&](const auto& item) {
+          return item.first == capture.first;
+        }) != arguments.end()) {
+      report("inline fn capture '" + capture.first +
+             "' conflicts with a parameter");
+      return std::nullopt;
+    }
+    arguments.push_back(std::move(capture));
   }
 
   if (annotated) {

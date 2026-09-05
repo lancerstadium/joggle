@@ -47,6 +47,7 @@ struct ValData {
   std::size_t index = 0;
   std::optional<Mod::FnDecl> reference;
   std::shared_ptr<Fn> inline_fn;
+  std::vector<StoredVal> captures;
   std::vector<StoredArgument> bindings;
 };
 
@@ -352,7 +353,20 @@ bool definition_dominates(
     return definition.reference.has_value();
   }
   if (definition.origin == ValData::Origin::InlineFn) {
-    return static_cast<bool>(definition.inline_fn);
+    if (!definition.inline_fn) {
+      return false;
+    }
+    return std::all_of(definition.captures.begin(), definition.captures.end(),
+                       [&](const detail::StoredVal& capture) {
+                         if (capture.known) {
+                           return owns(fn, capture.known->type) &&
+                                  owns(fn, capture.known->value);
+                         }
+                         const auto value = fn.values.find(capture.id);
+                         return value != fn.values.end() &&
+                                definition_dominates(fn, value->second,
+                                                     user_block, user_op, dom);
+                       });
   }
   if (definition.origin == ValData::Origin::BlkArg) {
     const auto owner = fn.blocks.find(definition.owner);
@@ -374,6 +388,41 @@ bool definition_dominates(
   const auto user_position = op_position(fn, *user_op);
   return producer_position && user_position &&
          *producer_position < *user_position;
+}
+
+bool stored_uses(const FnState& fn, const detail::StoredVal& candidate,
+                 std::uint64_t target,
+                 std::unordered_set<std::uint64_t>& visiting) {
+  if (candidate.known || candidate.id == 0) {
+    return false;
+  }
+  if (candidate.id == target) {
+    return true;
+  }
+  const auto value = fn.values.find(candidate.id);
+  if (value == fn.values.end() ||
+      value->second.origin != ValData::Origin::InlineFn ||
+      !visiting.insert(candidate.id).second) {
+    return false;
+  }
+  const bool found =
+      std::any_of(value->second.captures.begin(), value->second.captures.end(),
+                  [&](const detail::StoredVal& capture) {
+                    return stored_uses(fn, capture, target, visiting);
+                  });
+  visiting.erase(candidate.id);
+  return found;
+}
+
+bool stored_uses(const FnState& fn, const detail::StoredVal& candidate,
+                 std::uint64_t target) {
+  std::unordered_set<std::uint64_t> visiting;
+  return stored_uses(fn, candidate, target, visiting);
+}
+
+bool value_uses(const FnState& fn, std::uint64_t candidate,
+                std::uint64_t target) {
+  return stored_uses(fn, detail::StoredVal{candidate, {}}, target);
 }
 
 bool matches_fn_reference(const FnState& fn, const ValData& value) {
@@ -480,13 +529,34 @@ bool matches_inline_fn(const FnState& owner, const ValData& value) {
     return false;
   }
   const auto arguments = value.inline_fn->arguments();
-  if (arguments.size() != inputs->size() ||
+  if (arguments.size() != inputs->size() + value.captures.size() ||
       value.inline_fn->result_types() != *results) {
     return false;
   }
-  for (std::size_t index = 0; index < arguments.size(); ++index) {
+  for (std::size_t index = 0; index < inputs->size(); ++index) {
     if (arguments[index].type() != (*inputs)[index] ||
         !owns(owner, arguments[index].type())) {
+      return false;
+    }
+  }
+  for (std::size_t index = 0; index < value.captures.size(); ++index) {
+    const detail::StoredVal& capture = value.captures[index];
+    const Type* capture_type = nullptr;
+    if (capture.known) {
+      if (!owns(owner, capture.known->type) ||
+          !owns(owner, capture.known->value)) {
+        return false;
+      }
+      capture_type = &capture.known->type;
+    } else {
+      const auto found = owner.values.find(capture.id);
+      if (found == owner.values.end()) {
+        return false;
+      }
+      capture_type = &found->second.type;
+    }
+    if (detail::is_effect_type(*capture_type) ||
+        arguments[inputs->size() + index].type() != *capture_type) {
       return false;
     }
   }
@@ -701,7 +771,8 @@ bool verify_fn(const FnState& fn, Diag& diagnostics) {
         diagnostics.report("fn contains an invalid inline fn");
         valid = false;
       }
-    } else if (value.reference || value.inline_fn || !value.bindings.empty()) {
+    } else if (value.reference || value.inline_fn || !value.captures.empty() ||
+               !value.bindings.empty()) {
       diagnostics.report("non-callable value contains a callable payload");
       valid = false;
     }
@@ -1224,12 +1295,10 @@ std::vector<Op> Val::users() const {
     for (const std::uint64_t op_id : fn_->state->blocks.at(block).ops) {
       const auto& op = fn_->state->ops.at(op_id);
       const bool consumes =
-          (!op.callee.known && op.callee.id == id_) ||
+          stored_uses(*fn_->state, op.callee, id_) ||
           std::any_of(op.arguments.begin(), op.arguments.end(),
                       [&](const detail::StoredArgument& argument) {
-                        return detail::FnAccess::restore(
-                                   fn_, argument.value.id,
-                                   argument.value.known) == *this;
+                        return stored_uses(*fn_->state, argument.value, id_);
                       });
       if (consumes) {
         result.push_back(Op(fn_, op_id));
@@ -1260,6 +1329,23 @@ std::optional<Fn> Val::inline_fn() const {
                  found->second.inline_fn
              ? std::optional<Fn>{*found->second.inline_fn}
              : std::nullopt;
+}
+
+std::vector<Val> Val::captures() const {
+  if (!fn_) {
+    return {};
+  }
+  const auto found = fn_->state->values.find(id_);
+  if (found == fn_->state->values.end() ||
+      found->second.origin != ValData::Origin::InlineFn) {
+    return {};
+  }
+  std::vector<Val> result;
+  result.reserve(found->second.captures.size());
+  for (const detail::StoredVal& capture : found->second.captures) {
+    result.push_back(detail::FnAccess::restore(fn_, capture.id, capture.known));
+  }
+  return result;
 }
 
 std::vector<std::pair<std::string, Val>> Val::bindings() const {
@@ -1568,6 +1654,7 @@ Val Fn::Edit::argument(Type type) {
                                                 index,
                                                 std::nullopt,
                                                 nullptr,
+                                                {},
                                                 {}});
   state_->fn->state->arguments.push_back(id);
   return Fn::make_value(state_->fn, id);
@@ -1618,6 +1705,7 @@ Val Fn::Edit::reference(Mod::FnDecl fn, Type type,
                        0,
                        std::move(fn),
                        nullptr,
+                       {},
                        std::move(stored)};
   if (!matches_fn_reference(*state_->fn->state, data)) {
     throw std::invalid_argument(
@@ -1629,13 +1717,28 @@ Val Fn::Edit::reference(Mod::FnDecl fn, Type type,
   return Fn::make_value(state_->fn, id);
 }
 
-Val Fn::Edit::callable(Fn fn, Type type) {
+Val Fn::Edit::callable(Fn fn, Type type, std::vector<Val> captures) {
   if (!state_ || !state_->active) {
     throw std::logic_error("cannot edit an inactive fn");
   }
-  detail::ValData data{
-      std::move(type), detail::ValData::Origin::InlineFn,   0, 0,
-      std::nullopt,    std::make_shared<Fn>(std::move(fn)), {}};
+  std::vector<detail::StoredVal> stored;
+  stored.reserve(captures.size());
+  for (const Val& capture : captures) {
+    check_same_fn(state_->fn, capture, "inline fn capture");
+    if (detail::is_effect_type(capture.type())) {
+      throw std::invalid_argument("an inline fn cannot capture an effect");
+    }
+    stored.push_back(
+        {detail::FnAccess::id(capture), detail::FnAccess::known(capture)});
+  }
+  detail::ValData data{std::move(type),
+                       detail::ValData::Origin::InlineFn,
+                       0,
+                       0,
+                       std::nullopt,
+                       std::make_shared<Fn>(std::move(fn)),
+                       std::move(stored),
+                       {}};
   if (!matches_inline_fn(*state_->fn->state, data)) {
     throw std::invalid_argument("inline fn type does not match its body");
   }
@@ -1657,6 +1760,7 @@ Blk Fn::Edit::blk(std::vector<Type> argument_types) {
                                               index,
                                               std::nullopt,
                                               nullptr,
+                                              {},
                                               {}});
     data.arguments.push_back(value_id);
   }
@@ -1922,6 +2026,7 @@ Op Fn::Edit::add(Blk block, std::optional<Op> before, Val callee,
                                               index,
                                               std::nullopt,
                                               nullptr,
+                                              {},
                                               {}});
     results.push_back(result);
   }
@@ -2339,12 +2444,14 @@ std::vector<Op> Fn::users(Val value) const {
   for (const std::uint64_t block : fn_->state->block_order) {
     for (const std::uint64_t op_id : fn_->state->blocks.at(block).ops) {
       const auto& op = fn_->state->ops.at(op_id);
-      const bool consumes = std::any_of(
-          op.arguments.begin(), op.arguments.end(),
-          [&](const detail::StoredArgument& argument) {
-            return detail::FnAccess::restore(fn_, argument.value.id,
-                                             argument.value.known) == value;
-          });
+      const bool consumes =
+          !value.known() &&
+          (stored_uses(*fn_->state, op.callee, value.id_) ||
+           std::any_of(op.arguments.begin(), op.arguments.end(),
+                       [&](const detail::StoredArgument& argument) {
+                         return stored_uses(*fn_->state, argument.value,
+                                            value.id_);
+                       }));
       if (consumes) {
         result.push_back(make_op(fn_, op_id));
       }
@@ -2365,14 +2472,19 @@ bool Fn::has_uses(Val value) const {
     if (!terminator) {
       continue;
     }
-    if ((terminator->condition && *terminator->condition == value.id_) ||
-        std::find(terminator->returned.begin(), terminator->returned.end(),
-                  value.id_) != terminator->returned.end()) {
+    if ((terminator->condition &&
+         value_uses(*fn_->state, *terminator->condition, value.id_)) ||
+        std::any_of(terminator->returned.begin(), terminator->returned.end(),
+                    [&](std::uint64_t returned) {
+                      return value_uses(*fn_->state, returned, value.id_);
+                    })) {
       return true;
     }
     for (const auto& edge : terminator->successors) {
-      if (std::find(edge.arguments.begin(), edge.arguments.end(), value.id_) !=
-          edge.arguments.end()) {
+      if (std::any_of(edge.arguments.begin(), edge.arguments.end(),
+                      [&](std::uint64_t argument) {
+                        return value_uses(*fn_->state, argument, value.id_);
+                      })) {
         return true;
       }
     }

@@ -50,22 +50,22 @@ their argument types, and the availability of a source or native body.
 
 ## Higher-order transformation
 
-Fns and typed lambdas are values. The first transformation primitive is
-expression replacement:
+Fns and typed lambdas are values. A transformation receives an ordinary `fn`
+or `mod` value and edits the real calls, values, blocks, and nested fn bodies:
 
 ```joggle
-@transform.replace(
-  input,
-  (x: value) => step(step(x)),
-  (x: value) => twice(x),
-);
+fn optimize(input: fn) -> fn {
+  input = @inline(input);
+  input = @fuse(input);
+  return @dce(input);
+}
 ```
 
-The two lambdas use normal expression syntax and normal overload resolution.
-The compiler derives the match graph from the first lambda and checks both
-sides before mutation. Structural CFG editing is a later, typed quotation
-facility; it must not leak cursor, anchor, behavior, or rewrite-framework
-objects into the basic API.
+These names are library fns rather than language keywords. Typed lambdas are
+ordinary anonymous `Fn` values, so loop and tensor bodies use the same
+expression syntax, overload resolution, captures, verification, and editing
+as named bodies. Transformations must not leak cursor, anchor, behavior,
+pattern, or rewrite-framework objects into the source language.
 
 ## Effects and legality
 
@@ -100,16 +100,18 @@ an earlier gate.
    with fully known operands. **Complete.**
 4. Higher-order core: add typed fn values and typed lambdas without a
    second expression grammar. **Complete; see Design 0002.**
-5. Effect-safe replacement: implement checked expression matching and atomic
-   replacement. **Complete; see Design 0003.**
-6. Tensor mod: define real tensor types and operations outside the core.
-   **Complete; see Design 0004.**
-7. ONNX mod: load an unmodified ONNX model-zoo artifact through an ordinary
-   compile-time fn. **Complete; see Designs 0005 and 0006.**
-8. Open transformation research: relate executable user kernels to portable
-   semantics before adding transformation control, formats, or measured
-   selection.
-   **In progress; see Design 0007.**
+5. Explicit closures: retain lambda captures as typed dependency edges rather
+   than textual substitution. **Complete; see Designs 0002 and 0003.**
+6. Direct Fn editing: transform concrete calls and nested bodies without a
+   second pattern graph. **In progress; see Design 0003.**
+7. Tensor calculus: define a small bodyful construction/access/reduction
+   vocabulary outside the core. **Planned; see Design 0004.**
+8. High-level tensor definitions: express Relu, Conv, GEMM, and similar
+   operations in that calculus rather than compiler name cases. **Planned.**
+9. Generic transformation: inline and fuse those bodies by structure and
+   dependence. **Planned.**
+10. ONNX validation: import unmodified models into bodyful definitions and
+    validate transformed results against a trusted runtime. **Planned.**
 
 ## Deletion policy
 

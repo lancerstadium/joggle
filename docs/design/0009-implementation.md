@@ -67,37 +67,28 @@ fn compile(input: mod) -> bytes {
 `optimize`, `resolve`, and `emit` are normal module members. Their composition
 does not require a Pass, Pipeline, Target, Artifact, or Result object.
 
-Typed lambdas already provide the source-level way to write individual
-replacement passes. Users compose those pass fns with ordinary source calls;
-they do not bind each pass in C++:
+Typed lambdas provide structured fn bodies for loops and tensor computation.
+Users compose transformation fns with ordinary source calls; they do not bind
+each pass in C++:
 
 ```joggle
-fn pass(input: mod, before: fn, after: fn) -> mod {
-  return @transform.replace(input, before, after);
-}
-
-fn optimize(
-  input: mod,
-  first_before: fn,
-  first_after: fn,
-  second_before: fn,
-  second_after: fn
-) -> mod {
-  first = @pass(input, first_before, first_after);
-  return @pass(first, second_before, second_after);
+fn optimize(input: mod) -> mod {
+  input = @inline(input);
+  input = @fuse(input);
+  return @dce(input);
 }
 ```
 
-`transform.replace` is one generic transactional service. `pass` and
-`optimize` are source-defined and need no native entries.
+The named transformations operate on concrete Fn structure. `optimize` is
+source-defined and needs no privileged Pass or Pipeline object.
 
 ## Implementation selection
 
 A semantic fn can be implemented in either of two visible ways:
 
 1. it has a transparent source body that resolution can instantiate; or
-2. an explicitly staged transformation replaces its call with a different,
-   typed implementation fn before resolution.
+2. an explicitly staged transformation selects a typed implementation only
+   after it has inspected and transformed the semantic body.
 
 There is no hidden second body attached to a declaration. Structural and
 effect verification applies to every replacement. Definitional equivalence is
@@ -128,7 +119,7 @@ compiler fn.
 1. [x] Remove direct Fn host execution and fixed-width scalar bindings.
 2. [x] Resolve concrete source instances without executing bodyless leaves.
 3. [x] Expose resolution through the ordinary `transform` Mod.
-4. [x] Compose typed-lambda replacement passes as ordinary source fns.
+4. [ ] Compose direct Fn transformations as ordinary source fns.
 5. [ ] Resolve a transformed real ONNX model to an auditable leaf set.
 6. [ ] Add one whole-Mod emitter and compare its output numerically with a
    trusted runtime before claiming executable kernel support.

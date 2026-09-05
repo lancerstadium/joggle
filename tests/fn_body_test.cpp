@@ -300,9 +300,15 @@ mod invalid_lambda@1.0.0 {
   type word(width: int);
   fn apply(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
   fn callback(input: word<8>) -> word<16>;
+  fn identity(input: word<8>) -> word<8>;
 
   fn captures(input: word<8>) -> word<16> {
     return apply(input, (value: word<8>) => callback(input));
+  }
+
+  fn captures_local(input: word<8>) -> word<16> {
+    local = identity(input);
+    return apply(input, (value: word<8>) => callback(local));
   }
 
   fn mismatched(input: word<8>) -> word<16> {
@@ -320,13 +326,10 @@ mod invalid_lambda@1.0.0 {
       invalid_lambda_linked
           ? invalid_lambda.materialize("invalid_lambda.mismatched")
           : std::nullopt;
-  const bool reports_capture = std::any_of(
-      invalid_lambda.diag().issues().begin(),
-      invalid_lambda.diag().issues().end(),
-      [](const joggle::Issue& diagnostic) {
-        return diagnostic.message.find("undefined local value 'input'") !=
-               std::string::npos;
-      });
+  const auto captured_local =
+      invalid_lambda_linked
+          ? invalid_lambda.materialize("invalid_lambda.captures_local")
+          : std::nullopt;
   const bool reports_mismatch = std::any_of(
       invalid_lambda.diag().issues().begin(),
       invalid_lambda.diag().issues().end(),
@@ -334,13 +337,93 @@ mod invalid_lambda@1.0.0 {
         return diagnostic.message.find("inline fn") != std::string::npos &&
                diagnostic.message.find("does not match") != std::string::npos;
       });
-  if (captured || mismatched || !reports_capture || !reports_mismatch) {
+  const auto capture_call =
+      captured && captured->ops().size() == 1U
+          ? std::optional<joggle::Op>{captured->ops().front()}
+          : std::nullopt;
+  const auto capture_arguments =
+      capture_call ? capture_call->arguments() : std::vector<joggle::Val>{};
+  const auto closure = capture_arguments.size() == 2U
+                           ? std::optional<joggle::Val>{capture_arguments[1]}
+                           : std::nullopt;
+  const auto closure_captures =
+      closure ? closure->captures() : std::vector<joggle::Val>{};
+  const auto closure_body =
+      closure ? closure->inline_fn() : std::optional<joggle::Fn>{};
+  if (!captured || mismatched || !reports_mismatch) {
     invalid_lambda.diag().print(std::cerr);
   }
-  ok &= expect(invalid_lambda_linked && !captured && !mismatched &&
-                   reports_capture && reports_mismatch,
-               "typed lambdas reject residual captures and mismatched "
-               "parameter annotations");
+  ok &= expect(
+      invalid_lambda_linked && captured && !mismatched && reports_mismatch &&
+          closure && closure_captures.size() == 1U &&
+          closure_captures.front() == captured->arguments().front() &&
+          closure_body && closure_body->arguments().size() == 2U &&
+          closure_body->ops().size() == 1U &&
+          closure_body->ops().front().arguments() ==
+              std::vector<joggle::Val>{closure_body->arguments()[1]},
+      "typed lambdas close over Residual values with explicit capture edges "
+      "and still reject mismatched parameter annotations");
+  const auto local_ops =
+      captured_local ? captured_local->ops() : std::vector<joggle::Op>{};
+  const auto local_closure =
+      local_ops.size() == 2U && local_ops.back().arguments().size() == 2U
+          ? std::optional<joggle::Val>{local_ops.back().arguments().back()}
+          : std::nullopt;
+  ok &= expect(local_closure && local_closure->captures().size() == 1U &&
+                   local_closure->captures().front().defining_op() ==
+                       std::optional<joggle::Op>{local_ops.front()} &&
+                   captured_local->users(local_ops.front().value()) ==
+                       std::vector<joggle::Op>{local_ops.back()},
+               "a closure may capture a dominating local result without "
+               "turning it into hidden syntax");
+  const std::string capture_text =
+      captured ? joggle::format(*captured, "captured") : std::string{};
+  const std::string local_capture_text =
+      captured_local ? joggle::format(*captured_local, "captured_local")
+                     : std::string{};
+  joggle::Compiler capture_replay;
+  capture_replay.add(R"(
+joggle 1;
+mod invalid_lambda@1.0.0 {
+  type word(width: int);
+  fn callback(input: word<8>) -> word<16>;
+  fn apply(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
+  fn identity(input: word<8>) -> word<8>;
+}
+)",
+                     "capture-defs.joggle");
+  capture_replay.add("joggle 1;\nmod capture_artifact@1.0.0 {\n"
+                     "  import invalid_lambda@1;\n" +
+                         capture_text + local_capture_text + "}\n",
+                     "capture-artifact.joggle");
+  const bool capture_replay_linked = capture_replay.link();
+  const auto replayed_capture =
+      capture_replay_linked
+          ? capture_replay.materialize("capture_artifact.captured")
+          : std::optional<joggle::Fn>{};
+  const auto replayed_local_capture =
+      capture_replay_linked
+          ? capture_replay.materialize("capture_artifact.captured_local")
+          : std::optional<joggle::Fn>{};
+  const auto replayed_arguments =
+      replayed_capture && replayed_capture->ops().size() == 1U
+          ? replayed_capture->ops().front().arguments()
+          : std::vector<joggle::Val>{};
+  const auto replayed_closure =
+      replayed_arguments.size() == 2U
+          ? std::optional<joggle::Val>{replayed_arguments[1]}
+          : std::nullopt;
+  if (!replayed_capture) {
+    capture_replay.diag().print(std::cerr);
+  }
+  ok &= expect(capture_text.find("=>") != std::string::npos &&
+                   replayed_capture && replayed_closure &&
+                   replayed_closure->captures().size() == 1U &&
+                   replayed_local_capture &&
+                   replayed_local_capture->ops().size() == 2U &&
+                   capture_replay.verify(*replayed_capture),
+               "capturing lambdas preserve argument and local-result closure "
+               "edges through canonical source round trips");
 
   joggle::Compiler ambiguous_lambda;
   ambiguous_lambda.add(R"(

@@ -137,7 +137,8 @@ std::optional<Fn> instantiate_lambda(
     const Loc& source, Diag& diagnostics, const KnownBindings& bindings = {},
     std::optional<std::vector<Type>> expected_inputs = std::nullopt,
     std::optional<std::vector<Type>> expected_results = std::nullopt,
-    bool allow_guarded_evaluation = true);
+    bool allow_guarded_evaluation = true,
+    std::vector<std::pair<std::string, Type>> captures = {});
 
 }  // namespace detail
 }  // namespace joggle

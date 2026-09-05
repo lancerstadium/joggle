@@ -1,18 +1,17 @@
 # Design 0004: Tensor semantics
 
-Status: accepted
+Status: accepted; implementation pending
 
 ## Purpose
 
-Joggle needs a target-independent tensor vocabulary before ONNX import,
-storage planning, or kernel selection can be evaluated. Tensor semantics must
-remain a normal installable Mod: the core gains no tensor declaration kind,
-shape object, graph container, operation registry, or lowering interface.
+Joggle needs a target-independent tensor calculus in which high-level neural
+network fns have inspectable bodies. Tensor semantics remain a normal
+installable Mod: the core gains no tensor declaration kind, operation
+registry, graph container, or lowering interface.
 
-The first vertical slice targets the inference operators required by the
-ONNX SqueezeNet 1.1 model. This is deliberately narrower than ONNX while being
-large enough to exercise branches, repeated Fire mods, convolution
-attributes, pooling, concatenation, reshape, and classification output.
+An imported Conv or Relu call is not sufficient semantics. Its source fn must
+either expand into the common calculus or remain visibly opaque. Only the
+first case is eligible for generic fusion and loop transformation.
 
 ## Type boundary
 
@@ -20,59 +19,75 @@ attributes, pooling, concatenation, reshape, and classification output.
 type tensor(element: type, shape: list<int>);
 ```
 
-`element` is an ordinary installed Type. Operations may constrain which
-element Types they support; the compiler core does not maintain a numeric-type
-registry. `shape` is ordered semantic axis extent and contains non-negative
-static dimensions in this first slice. The integration registers that
-invariant through the normal type-verifier API. Symbolic dimensions are
-deferred until a real imported model requires them; `-1`, magic strings, and a
-second dimension AST are rejected.
+`element` is an ordinary Type. `shape` is a semantic extent, not a physical
+layout. The first executable slice may use static extents, but symbolic
+extents must later be expressible through ordinary types and fns rather than a
+second shape AST in compiler core.
 
 Physical layout, packing, address space, and storage allocation are not tensor
 semantics. Later format or storage mods may introduce their own Types and
 compiler fns without changing `tensor` or compiler core.
 
-## Fn vocabulary
+## Structural basis
 
-Calls are ordinary typed `fn` declarations. Generic result types allow an
-importer or source annotation to state the verified output tensor explicitly.
-Compiler-domain attributes stay in the same parameter list and become Known
-callee specialization bindings.
+The basis contains only concepts that expose computation:
 
-Fn parameters are model inputs. Initializers use
-`constant<T>(content: string)`, where `content` is the digest returned by
-`Mod::store`; large bytes remain Mod-owned rather than becoming text IR
-bindings. The initial mod includes Conv with and without bias, Relu,
-MaxPool, AveragePool, two-input Concat, Reshape, Softmax, and Add/Multiply.
-Two-input Concat uses independent input types because the channel extents
-differ in SqueezeNet. No heterogeneous variadic pack is invented before a
-model requires it.
+- tensor construction from an extent and a typed element lambda;
+- element access by a typed index;
+- reduction over an extent with an initial value and typed update lambda;
+- views whose index mapping is itself inspectable;
+- structured iteration for effectful or explicitly materialized storage.
 
-## Transformation use
+These are ordinary fns and Calls. The exact source names are not language
+keywords and will be accepted only with the first executable implementation.
+A schematic Relu body is therefore:
 
-Implementation calls are not added to the semantic mod. Transformations may
-match tensor expressions through ordinary typed lambdas, but replacing them
-with an executable kernel requires a real implementation body. Renaming a
-Conv/Relu pair is not accepted as fusion evidence.
+```joggle
+fn relu<E, S>(input: tensor<E, S>) -> tensor<E, S> {
+  return generate<S>((index: index<S>) =>
+    max(at(input, index), zero<E>()));
+}
+```
+
+`generate`, `at`, `max`, and `zero` are overloadable library fns. The lambda
+is a real nested `Fn`. Conv and GEMM use the same construction and reduction
+basis; they do not require privileged operator nodes. A user-defined tensor fn
+becomes transformable by providing such a body, not by registering its name in
+each pass.
+
+The example is a design sketch until the required generics and index Types are
+implemented. It does not reserve special syntax or claim a working API.
+
+## Transformation consequence
+
+Inlining a high-level fn exposes its construction, accesses, reductions, and
+scalar expressions in the caller. Producer-consumer fusion substitutes the
+producer element body into consumer accesses when dependence and effects
+permit, then removes the intermediate construction. Loop transforms edit the
+nested iteration `Fn`. Neither transform manufactures `conv_relu`, dispatches
+on a Conv name, or uses a second pattern IR.
 
 ## ONNX boundary
 
-The ONNX mod parses protobuf in a native compiler fn and
-construct Fns using exact tensor declarations and explicit result Types.
-It must preserve initializers, attributes, graph inputs/outputs, and source
-names, reject unsupported dynamic or operator semantics, and differentially
-validate the imported SqueezeNet Fn against ONNX Runtime before support
-is claimed.
+The ONNX mod parses protobuf through a staged importer and maps standard
+operators to ordinary Joggle declarations. Known operators select definitions
+from a separately versioned semantic Mod. Unknown operators remain typed,
+opaque leaves with their original domain, name, and attributes; import must not
+fail merely because an optimization definition is absent.
+
+Initializers remain Mod-owned bytes. Imported shapes, attributes, graph
+inputs/outputs, and source names must be preserved. Model support is claimed
+only after differential validation against a trusted runtime.
 
 ## Implementation gates
 
-- [x] Add and install the ordinary `tensor@1.0.0` source Mod.
-- [x] Register and test static-shape tensor invariants without a core type
-  case.
-- [x] Materialize a typed SqueezeNet Fire block and round-trip canonical IR.
-- [x] Exercise typed structural replacement on its Conv/Relu expression through
-  Design 0003 without claiming an executable fused kernel.
-- [x] Import the maintained ONNX SqueezeNet 1.1 artifact with initializer and
-  attribute fidelity.
-- [x] Differentially validate outputs and record unsupported-model
-  diagnostics.
+- [x] Typed lambdas are real nested Fns.
+- [x] Residual captures are explicit closure edges.
+- [ ] Define the minimal extent, index, tensor, and view Types.
+- [ ] Implement bodyful construction, access, and reduction fns.
+- [ ] Express elementwise, GEMM, and convolution fns using only that basis.
+- [ ] Inline those bodies into a caller without name-specific compiler code.
+- [ ] Implement dependence-checked producer-consumer fusion.
+- [ ] Import an unmodified ONNX model using semantic definitions plus opaque
+  fallback leaves.
+- [ ] Differentially validate baseline and transformed outputs.

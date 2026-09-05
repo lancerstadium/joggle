@@ -842,9 +842,6 @@ public:
         if (!op.callee().referenced_fn()) {
           remember_fn(op.callee());
         }
-        for (const Val& argument : op.arguments()) {
-          remember_fn(argument);
-        }
       }
       const Term terminator = block.terminator();
       if (const auto condition = terminator.condition()) {
@@ -977,8 +974,16 @@ private:
       return statement;
     }
     const auto body = value.inline_fn();
-    const auto lambda =
-        body ? inline_expression(*body) : std::optional<Mod::Expr>{};
+    std::vector<Mod::Expr> captures;
+    for (const Val& capture : value.captures()) {
+      auto expression = value_expression(capture);
+      if (!expression) {
+        throw std::logic_error("inline fn capture cannot be formatted");
+      }
+      captures.push_back(std::move(*expression));
+    }
+    const auto lambda = body ? inline_expression(*body, std::move(captures))
+                             : std::optional<Mod::Expr>{};
     if (!lambda) {
       throw std::logic_error(
           "inline fn cannot be represented as one expression");
@@ -987,7 +992,8 @@ private:
     return statement;
   }
 
-  std::optional<Mod::Expr> inline_expression(const Fn& fn) const {
+  std::optional<Mod::Expr>
+  inline_expression(const Fn& fn, std::vector<Mod::Expr> captures = {}) const {
     using Kind = Mod::Expr::Kind;
     const auto blocks = fn.blks();
     const auto returned = blocks.size() == 1U
@@ -997,27 +1003,59 @@ private:
       return std::nullopt;
     }
     const auto arguments = fn.arguments();
+    if (captures.size() > arguments.size()) {
+      return std::nullopt;
+    }
+    const std::size_t visible_arguments = arguments.size() - captures.size();
+    std::unordered_set<std::string> reserved;
+    const auto collect_names = [&](const auto& self,
+                                   const Mod::Expr& expression) -> void {
+      if (!expression.text.empty()) {
+        reserved.insert(expression.text);
+      }
+      for (const Mod::Expr& argument : expression.arguments) {
+        self(self, argument);
+      }
+    };
+    for (const Mod::Expr& capture : captures) {
+      collect_names(collect_names, capture);
+    }
     std::vector<std::string> names;
-    names.reserve(arguments.size());
-    for (std::size_t index = 0; index < arguments.size(); ++index) {
-      names.push_back("arg" + std::to_string(index));
+    names.reserve(visible_arguments);
+    for (std::size_t index = 0; index < visible_arguments; ++index) {
+      std::string name = "arg" + std::to_string(index);
+      while (reserved.contains(name)) {
+        name += '_';
+      }
+      reserved.insert(name);
+      names.push_back(std::move(name));
     }
     std::function<std::optional<Mod::Expr>(const Val&)> build =
         [&](const Val& current) -> std::optional<Mod::Expr> {
       const auto argument =
           std::find(arguments.begin(), arguments.end(), current);
       if (argument != arguments.end()) {
-        return Mod::Expr{Kind::Variable,
-                         names[static_cast<std::size_t>(
-                             std::distance(arguments.begin(), argument))],
-                         {}};
+        const std::size_t index = static_cast<std::size_t>(
+            std::distance(arguments.begin(), argument));
+        if (index < visible_arguments) {
+          return Mod::Expr{Kind::Variable, names[index], {}};
+        }
+        return captures[index - visible_arguments];
       }
       if (const auto reference = current.referenced_fn()) {
         return Mod::Expr::reference(
             std::string(reference->symbol().qualified_name()));
       }
       if (const auto nested = current.inline_fn()) {
-        return inline_expression(*nested);
+        std::vector<Mod::Expr> nested_captures;
+        for (const Val& capture : current.captures()) {
+          auto expression = build(capture);
+          if (!expression) {
+            return std::nullopt;
+          }
+          nested_captures.push_back(std::move(*expression));
+        }
+        return inline_expression(*nested, std::move(nested_captures));
       }
       if (current.known()) {
         const auto payload = detail::FnAccess::known_value(current);
@@ -1074,11 +1112,36 @@ private:
     Mod::Expr lambda;
     lambda.kind = Kind::Lambda;
     lambda.labels = std::move(names);
-    for (const Val& argument : arguments) {
-      lambda.arguments.push_back(expression(value(argument.type())));
+    for (std::size_t index = 0; index < visible_arguments; ++index) {
+      lambda.arguments.push_back(expression(value(arguments[index].type())));
     }
     lambda.arguments.push_back(std::move(*body));
     return lambda;
+  }
+
+  std::optional<Mod::Expr> value_expression(const Val& current) const {
+    using Kind = Mod::Expr::Kind;
+    if (const auto reference = current.referenced_fn()) {
+      return Mod::Expr::reference(
+          std::string(reference->symbol().qualified_name()));
+    }
+    if (const auto nested = current.inline_fn()) {
+      std::vector<Mod::Expr> captures;
+      for (const Val& capture : current.captures()) {
+        auto expression = value_expression(capture);
+        if (!expression) {
+          return std::nullopt;
+        }
+        captures.push_back(std::move(*expression));
+      }
+      return inline_expression(*nested, std::move(captures));
+    }
+    if (current.known()) {
+      const auto payload = detail::FnAccess::known_value(current);
+      return payload ? std::optional<Mod::Expr>{expression(value(*payload))}
+                     : std::nullopt;
+    }
+    return Mod::Expr{Kind::Variable, use(current), {}};
   }
 
   std::string use(const Val& value) const {
@@ -1166,8 +1229,11 @@ private:
             expression(value(*payload)));
         result.expression.value.labels.emplace_back();
       } else {
-        result.expression.value.arguments.push_back(
-            Mod::Expr::reference(use(argument)));
+        auto expression = value_expression(argument);
+        if (!expression) {
+          throw std::logic_error("call argument cannot be formatted");
+        }
+        result.expression.value.arguments.push_back(std::move(*expression));
         result.expression.value.labels.emplace_back();
       }
     }

@@ -259,6 +259,75 @@ int main() {
                "a typed inline Fn is a callable Val without a "
                "synthetic Mod declaration");
 
+  auto captured_body = compiler.create_fn();
+  auto captured_owner = compiler.create_fn();
+  if (!captured_body || !captured_owner) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = captured_body->edit();
+    const auto input = edit.argument(*i32);
+    const auto capture = edit.argument(*i32);
+    const auto sum = edit.call(*add_i32_schema, {input, capture});
+    edit.ret(captured_body->entry(), {sum.value()});
+    joggle::Diag diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  std::optional<joggle::Val> captured_callable;
+  std::optional<joggle::Op> captured_apply;
+  {
+    auto edit = captured_owner->edit();
+    const auto input = edit.argument(*i32);
+    const auto capture = edit.argument(*i32);
+    captured_callable = edit.callable(*captured_body, *callable, {capture});
+    captured_apply = edit.call(*apply_schema, {input, *captured_callable});
+    edit.ret(captured_owner->entry(), {captured_apply->value()});
+    joggle::Diag diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  ok &= expect(
+      captured_callable && captured_apply &&
+          captured_callable->captures() ==
+              std::vector<joggle::Val>{captured_owner->arguments()[1]} &&
+          captured_owner->users(captured_owner->arguments()[1]) ==
+              std::vector<joggle::Op>{*captured_apply} &&
+          captured_owner->has_uses(captured_owner->arguments()[1]) &&
+          compiler.verify(*captured_owner),
+      "inline fn captures are explicit use edges with hidden body arguments");
+
+  auto effect_body = compiler.create_fn();
+  if (!effect_body) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = effect_body->edit();
+    const auto input = edit.argument(*i32);
+    static_cast<void>(edit.argument(*memory_effect));
+    edit.ret(effect_body->entry(), {input});
+    joggle::Diag diagnostics;
+    if (!edit.commit(diagnostics)) {
+      diagnostics.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+  }
+  bool effect_capture_rejected = false;
+  try {
+    auto effect_owner = compiler.create_fn();
+    auto edit = effect_owner->edit();
+    const auto token = edit.argument(*memory_effect);
+    static_cast<void>(edit.callable(*effect_body, *callable, {token}));
+  } catch (const std::invalid_argument&) {
+    effect_capture_rejected = true;
+  }
+  ok &= expect(effect_capture_rejected,
+               "an effect token cannot be hidden in a closure capture");
+
   bool wrong_inline_callable_rejected = false;
   try {
     auto edit = inline_higher_order->edit();

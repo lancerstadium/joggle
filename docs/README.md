@@ -29,7 +29,7 @@ decisions.
 
 - [0001 — Language core](design/0001-language.md)
 - [0002 — Fn values](design/0002-fns.md)
-- [0003 — Expr rewriting](design/0003-rewrite.md)
+- [0003 — Fn transformation](design/0003-transform.md)
 - [0004 — Tensor semantics](design/0004-tensor.md)
 - [0005 — ONNX import](design/0005-onnx.md)
 - [0006 — Mod bundles](design/0006-bundles.md)

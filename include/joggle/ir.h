@@ -47,6 +47,9 @@ public:
   bool is_blk_arg() const;
   std::optional<Mod::FnDecl> referenced_fn() const;
   std::optional<Fn> inline_fn() const;
+  // Residual values closed over by an inline fn. The inline Fn stores these
+  // as trailing hidden arguments; they remain explicit edges of this value.
+  std::vector<Val> captures() const;
   // Compile-time arguments already applied to a declared fn reference.
   // They specialize the callable value and are not operands of a Call.
   std::vector<std::pair<std::string, Val>> bindings() const;
@@ -56,8 +59,9 @@ public:
     return value ? value->get<T>() : std::nullopt;
   }
   std::optional<Op> defining_op() const;
-  // Direct Op users of this Residual value in Fn order. Known values do
-  // not retain one owning Fn and therefore return an empty list.
+  // Op users of this Residual value in Fn order, including calls that consume
+  // it through an inline-fn capture. Known values do not retain one owning Fn
+  // and therefore return an empty list.
   std::vector<Op> users() const;
   bool operator==(const Val&) const;
 
@@ -174,7 +178,7 @@ public:
     Val argument(Type type);
     Val reference(Mod::FnDecl fn, Type type,
                   std::vector<std::pair<std::string, Val>> bindings = {});
-    Val callable(Fn fn, Type type);
+    Val callable(Fn fn, Type type, std::vector<Val> captures = {});
     Blk blk(std::vector<Type> argument_types = {});
     // Every IR operation is one Call. The FnDecl overload is a construction
     // convenience that binds compile-time arguments into a callee Val first.

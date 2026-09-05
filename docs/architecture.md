@@ -117,8 +117,10 @@ provenance.
 
 The edit API is the low-level substrate. A typed source lambda becomes an
 anonymous `Fn` held by a callable `Val`; it uses the same calls, types,
-verification, cloning, and formatting as a named body. It is not a mod
-declaration and does not introduce an alternate graph or pattern IR.
+verification, cloning, and formatting as a named body. Residual captures are
+explicit edges of that `Val` and trailing hidden arguments of the nested body.
+It is not a mod declaration and does not introduce an alternate graph or
+pattern IR.
 
 Explicit compiler-time calls pass typed lambdas as verified `Fn`
 execution values and may return them for later `@` calls. This path shares
@@ -169,17 +171,16 @@ their host boundaries; model and kernel Ops do not. See
 
 ## Near-term implementation order
 
-The implemented path currently ends at the core language, tensor and quant
-semantics, typed transformations, ONNX import, and lossless Mod bundles.
-`transform.replace` edits actual Fn SSA/CFG structure transactionally; a
-source-defined pass now exercises that path on an imported SqueezeNet
-Conv-Relu expression before resolution closes the call graph. This is fn
-factoring, not an executable fused kernel, and the current expression
-template is concrete rather than shape-polymorphic.
+The implemented path currently ends at the core language, editable Fn IR,
+explicit staging, typed anonymous Fns, and explicit closure captures. Existing
+tensor, transform, and ONNX modules are prototypes under replacement; their
+presence is not evidence of bodyful tensor semantics or generic fusion.
 
-Kernel scheduling, physical layouts, packed formats, storage planning, and
-machine emission remain intentionally absent until source-level transformation
-and implementation closure work on a real model. The compiler must not
-simulate progress by interpreting Ops through host callbacks, copying tensor
-vocabulary into a format Mod, or renaming a reference expression as a fused
-operation.
+The next vertical slice defines a small tensor construction/access/reduction
+calculus, expresses high-level fns with real bodies, and edits those bodies
+through direct Fn transformations. Only after that slice works on an
+unmodified model do kernel scheduling, physical layouts, packed formats,
+storage planning, capability selection, and machine emission enter scope. The
+compiler must not simulate progress by matching operation names, interpreting
+every Op through a host callback, or renaming a reference expression as a
+fused operation.
