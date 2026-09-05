@@ -18,4 +18,11 @@ std::optional<std::vector<Val>>
 clone_before(Fn::Edit& edit, const Fn& source, Op before, ValMap& values,
              Diag& diagnostics, std::optional<Loc> location = std::nullopt);
 
+// Clones only the pure expression slice required by `source`. Existing
+// substitutions in `values` stop traversal, so equation arguments map directly
+// to target values and an unused left side is never copied.
+std::optional<Val> clone_before(Fn::Edit& edit, const Val& source, Op before,
+                                ValMap& values, Diag& diagnostics,
+                                std::optional<Loc> location = std::nullopt);
+
 }  // namespace joggle::detail

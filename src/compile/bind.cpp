@@ -23,8 +23,8 @@
 namespace joggle {
 namespace {
 
-using detail::ParamVal;
 using detail::belongs_to;
+using detail::ParamVal;
 
 std::optional<detail::Domain> parameter_domain(const Mod::ParamDecl& field) {
   return detail::kernel_domain(field.domain);
@@ -198,6 +198,9 @@ bool Compiler::accepts_host_type(const Mod::FnDecl& fn,
 bool Compiler::project_host_value(detail::ExecVal& value) {
   auto* host = std::get_if<detail::HostVal>(&value);
   if (host == nullptr || host->concrete_type) {
+    return true;
+  }
+  if (detail::cpp_value_domain(host->cpp_type)) {
     return true;
   }
   const auto representation = state_->host_types.find(host->cpp_type);
@@ -377,23 +380,6 @@ void Compiler::bind_native(Mod::FnDecl schema, NativeFn fn,
     state_->diagnostics.report("compiler fn '" + symbol.qualified_name() +
                                "' already has a binding");
   }
-}
-
-void Compiler::bind_prelude_mod() {
-  const auto found = state_->mods.find(detail::prelude_mod_name);
-  const auto mod = found == state_->mods.end() ? std::optional<Mod::TypeDecl>{}
-                                               : found->second.type("mod");
-  if (!mod) {
-    state_->diagnostics.report("Prelude does not declare type 'mod'");
-    return;
-  }
-  const std::string cpp_type(detail::host_type_name<Mod>());
-  const auto projector = [](Compiler& compiler,
-                            const Mod::TypeDecl& declaration,
-                            const void*) { return compiler.make(declaration); };
-  state_->host_types.emplace(cpp_type,
-                             State::HostRepresentation{*mod, projector});
-  state_->host_representations.emplace(mod->symbol().stable_name(), cpp_type);
 }
 
 void Compiler::bind_prelude_primitives() {

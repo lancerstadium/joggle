@@ -18,12 +18,12 @@ std::optional<std::size_t> inline_calls(Compiler& compiler, Fn& fn,
 std::optional<std::size_t> inline_calls(Compiler& compiler, Mod& mod,
                                         Diag& diagnostics);
 
-// Applies one concrete, typed, single-result equation to every non-overlapping
-// pure expression in `fn`. The arguments of `before` are pattern variables;
-// `after` must have the same argument and result Types. Dead expressions are
-// removed after replacement. Effectful and control-flow rules are rejected.
+// Applies the ordinary two-result body fns in `laws` as ordered equations.
+// Each law returns its left and right expression from one shared set of typed
+// arguments. Generic laws are specialized against candidate result Types
+// before structural matching. Dead expressions are removed after replacement;
+// effectful and control-flow equations are rejected.
 std::optional<std::size_t> apply_pass(Compiler& compiler, Fn& fn,
-                                      const Fn& before, const Fn& after,
-                                      Diag& diagnostics);
+                                      const Mod& laws, Diag& diagnostics);
 
 }  // namespace joggle

@@ -16,9 +16,9 @@ fn optimize(input: fn) -> fn {
 ```
 
 The names are library API, not keywords or compiler hooks. `@` is the only
-staging marker. `transform.pass` accepts ordinary typed lambdas as a concrete
-equation. C++ implementations use the transactional `Fn::Edit` surface; no
-source-visible cursor or operation wrapper is required.
+staging marker. `transform.pass` accepts an ordinary Mod package containing
+generic equation fns. C++ implementations use the transactional `Fn::Edit`
+surface; no source-visible cursor or operation wrapper is required.
 
 ## One body, not fusion op substitution
 
@@ -67,23 +67,41 @@ Effects remain ordinary affine `effect<domain>` values. A transformation may
 move or replace stateful computation only when it preserves the visible token
 boundary. An effect token cannot be hidden in a closure capture.
 
-The implemented equation form is intentionally narrow and checkable:
+The implemented equation form is intentionally small and checkable:
 
 ```joggle
-return @transform.pass(input, before_lambda, after_lambda);
+mod tensor_laws@1.0.0 {
+  import tensor@4 as t;
+
+  fn fuse<E, S: list<int>>(
+    make: (t.coord<S>) -> E,
+    body: (E) -> E
+  ) -> (t.tensor<E, S>, t.tensor<E, S>) {
+    return
+      t.map(t.map(S, make), body),
+      t.map(S, (p: t.coord<S>) -> E => body(make(p)));
+  }
+}
 ```
 
-Both lambdas are pure, single-block Fns with the same concrete typed signature
-and one result. The left arguments are consistently bound pattern variables.
-Referenced callees match by declaration identity and compiler bindings. The
-right body is cloned before the matched root; generic dead-expression removal
-then deletes unreachable producers. The same traversal enters existing lambda
-bodies and publishes changed closures through their capture edges.
+One ordinary two-result fn is one oriented equation. Both returned expressions
+share its arguments and generic parameters; the first is the pattern and the
+second is the replacement. Passing `tensor_laws` to `@transform.pass` keeps the
+rules installable and inspectable using the existing Mod/package mechanism.
+There is no `rule`, `rewrite`, or Pattern declaration.
 
-This already expresses concrete `map(map(S, f), g)` composition and
-`map(S, f)[p] = f(p)` cancellation. It is not yet shape-polymorphic:
-generic lambda parameters and Type-variable unification are the next language
-gate, rather than a family of C++ Tensor cases.
+For each candidate value, result-Type unification specializes the generic law
+and materializes its body. The left expression's arguments become consistently
+bound pattern variables. Referenced callees match by declaration identity and
+compiler bindings. The right expression is cloned before the matched root;
+generic dead-expression removal then deletes unreachable producers. The same
+traversal enters existing lambda bodies and publishes changed closures through
+their capture edges.
+
+The same `fuse<E,S>` law is tested on `tensor<f32,[4]>` and
+`tensor<word,[2,3]>`. Concrete `map(S, f)[p] = f(p)` cancellation uses the same
+matcher. A generic that appears only below the left root is not yet inferred;
+that requires structural unification with the unspecialized source expression.
 
 ## Function expansion and implementation closure
 
@@ -140,10 +158,12 @@ the compiler back into a catalog of `before`/`after` pairs.
    calculus.
 9. [in progress] Expand high-level tensor fns into that calculus. Generic map
    and Relu are the first implemented definitions.
-10. [complete] Apply concrete typed lambda equations structurally, including
+10. [complete] Apply ordinary two-result equation fns structurally, including
     Tensor producer-consumer composition and effect rejection.
-11. [planned] Add generic typed lambdas and Type-variable unification to make
-    the same Tensor equations shape-polymorphic.
+11. [complete] Specialize result-determined generic equations by Type
+    unification; one Tensor law now covers multiple element Types and ranks.
+11a. [planned] Infer generics that occur only below the left root through
+     structural source-expression unification.
 12. [planned] Extend legality from pure deforestation to dependence-checked
     reduction and loop transformations.
 13. [planned] Validate polymorphic fusion on imported, unmodified ONNX models.

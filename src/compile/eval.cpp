@@ -193,6 +193,7 @@ private:
         return typeid(Type).name();
       case ValKind::Bytes:
       case ValKind::Fn:
+      case ValKind::Mod:
         return {};
       }
       return {};
@@ -347,6 +348,10 @@ private:
         expression.arguments.empty()) {
       if (auto* value = local(expression.text)) {
         return *value;
+      }
+      if (const auto mod = visible_mod(compiler_, fn_.symbol().mod_name(),
+                                       expression.text)) {
+        return known(store_exec_val(*mod), range);
       }
       if (expression.kind == Kind::Variable) {
         report("compiler fn '" + fn_.symbol().qualified_name() +

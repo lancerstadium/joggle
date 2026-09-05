@@ -311,6 +311,14 @@ private:
   }
 
   void check_declaration_reference(const Mod::Expr& expression, Domain domain) {
+    if (!domain.list && domain.element == ValKind::Mod) {
+      if (expression.arguments.empty() &&
+          visible_mod(compiler_, scope_.name(), expression.text)) {
+        return;
+      }
+      report("unknown Mod package '" + expression.text + "'");
+      return;
+    }
     if (domain.element != ValKind::Type) {
       report("reference '" + expression.text + "' has the wrong domain");
       return;

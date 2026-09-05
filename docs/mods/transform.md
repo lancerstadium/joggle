@@ -1,43 +1,66 @@
 # Transform
 
-`transform@2.1.0` is the installable owner for reusable explicitly staged Fn
+`transform@3.0.0` is the installable owner for reusable explicitly staged Fn
 and Mod transformations. `pass` is an ordinary fn name, not a declaration
 kind, keyword, pattern object, or pipeline class.
 
 ## Implemented operations
 
 ```joggle
-fn pass(input: fn, before: fn, after: fn) -> fn;
+fn pass(input: fn, laws: mod) -> fn;
 fn inline(input: fn) -> fn;
 fn inline(input: mod) -> mod;
 fn resolve(input: mod) -> mod;
 ```
 
-`pass` applies one concrete typed equation. Its two equation arguments are
-ordinary compiler-domain lambdas:
+`pass` applies the ordinary equation fns in a Mod package, in declaration
+order. An equation has two results with the same Type expression. The first
+returned expression is its left side and the second is its replacement:
 
 ```joggle
-fn reorder(input: fn) -> fn {
-  return @tr.pass(
-    input,
-    (x: word) -> word => consume(produce(x)),
-    (x: word) -> word => produce(consume(x))
-  );
+// laws.joggle
+mod laws@1.0.0 {
+  import tensor@4 as t;
+
+  fn fuse<E, S: list<int>>(
+    make: (t.coord<S>) -> E,
+    body: (E) -> E
+  ) -> (t.tensor<E, S>, t.tensor<E, S>) {
+    return
+      t.map(t.map(S, make), body),
+      t.map(S, (p: t.coord<S>) -> E => body(make(p)));
+  }
 }
 ```
 
-The left lambda's arguments are pattern variables. Calls match by declaration
-identity, specialized compiler bindings, exact Types, and dataflow structure;
-no string or operator-name dispatch participates. The right lambda has the
-same typed signature and is cloned at each non-overlapping match. The pass
-recurses through existing callable bodies, rewires closure captures, preserves
-the replaced root location, and removes dead pure producers.
+```joggle
+// pipeline.joggle
+mod pipeline@1.0.0 {
+  import transform@3 as tr;
+  import laws@1 as laws;
 
-Equations are currently deliberately strict: one returned value, one block,
-concrete argument Types, and no effect-typed or zero-result calls. This is a
-sound usable base, not yet the final polymorphic rule system. Generic typed
-lambda parameters and richer multi-result equations remain implementation
-gates.
+  fn optimize(input: fn) -> fn {
+    return @tr.pass(input, laws);
+  }
+}
+```
+
+The equation's arguments are pattern variables shared by both expressions.
+Generic Types are solved from each candidate result before materializing the
+equation. Calls then match by declaration identity, specialized compiler
+bindings, exact Types, and dataflow structure; no string or operator-name
+dispatch participates. The second expression is cloned at each non-overlapping
+match. The pass recurses through existing callable bodies, rewires closure
+captures, preserves the replaced root location, and removes dead pure
+producers.
+
+Equation packages may also contain declarations and ordinary helper fns; only
+bodyful fns with two identical result Type expressions are equations. Equations
+are deliberately pure and single-block. An effect anywhere in their signature
+or body, a zero-result call, an unbound replacement argument, or control flow
+is rejected. Today every generic needed by an input Type must be recoverable
+from the candidate result Type. Structural inference from the left expression
+will remove that remaining restriction.
 
 `inline` replaces every source-defined or anonymous single-block Call visible
 in its input snapshot with the callee's actual operations. It first applies the
@@ -61,7 +84,7 @@ nested callable bodies. Composition remains ordinary Joggle code:
 ```joggle
 fn optimize(input: fn) -> fn {
   input = @inline(input);
-  return @fuse_f32x4(input);
+  return @pass(input, laws);
 }
 ```
 

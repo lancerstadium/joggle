@@ -632,7 +632,6 @@ private:
   bool accepts_host_type(const Mod::FnDecl& fn, const Mod::ParamDecl& field,
                          std::string_view type) const;
   void bind_native(Mod::FnDecl schema, NativeFn fn, HostEval evaluation);
-  void bind_prelude_mod();
   void bind_prelude_primitives();
   bool check_binding_signature(const Mod::FnDecl& schema,
                                std::span<const std::string_view> inputs,

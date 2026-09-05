@@ -7,10 +7,10 @@ void joggle_mod(joggle::Compiler& compiler, const joggle::Mod& mod,
                 joggle::Diag&) {
   compiler.bind(mod, "pass",
                 [](joggle::Compiler& active, joggle::Fn input,
-                   const joggle::Fn& before, const joggle::Fn& after,
+                   const joggle::Mod& laws,
                    joggle::Diag& diagnostics) -> std::optional<joggle::Fn> {
-                  const auto changed = joggle::apply_pass(active, input, before,
-                                                          after, diagnostics);
+                  const auto changed =
+                      joggle::apply_pass(active, input, laws, diagnostics);
                   return changed ? std::optional<joggle::Fn>{std::move(input)}
                                  : std::nullopt;
                 });

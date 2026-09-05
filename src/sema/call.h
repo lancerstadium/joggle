@@ -14,6 +14,12 @@ struct CallCandidate {
   std::vector<std::size_t> parameters;
 };
 
+// Resolves one bare Mod name in `owner`: the owner itself or an imported
+// package prefix. Local values are resolved by the caller before this lookup,
+// so an ordinary local may shadow an import alias.
+std::optional<Mod> visible_mod(const Compiler& compiler, std::string_view owner,
+                               std::string_view reference);
+
 std::vector<Mod::FnDecl> visible_fns(const Compiler& compiler,
                                      std::string_view owner,
                                      std::string_view reference);

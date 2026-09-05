@@ -242,6 +242,9 @@ std::optional<Domain> cpp_value_domain(std::string_view type) {
   if (type == typeid(Fn).name()) {
     return Domain{ValKind::Fn, false};
   }
+  if (type == typeid(Mod).name()) {
+    return Domain{ValKind::Mod, false};
+  }
   if (type == typeid(IntegerList).name()) {
     return Domain{ValKind::Integer, true};
   }
@@ -302,7 +305,9 @@ std::optional<Mod::Expr> type_domain(const Type& type) {
 
 std::optional<Type> execution_type(Compiler& compiler, const ExecVal& value) {
   if (const auto* host = std::get_if<HostVal>(&value)) {
-    return host->concrete_type;
+    if (host->concrete_type) {
+      return host->concrete_type;
+    }
   }
   const auto domain = cpp_value_domain(exec_val_type(value));
   return domain ? domain_type(compiler,
@@ -398,6 +403,7 @@ std::optional<ExecVal> exec_val(const ParamVal& value,
     case ValKind::Type:
       return list_exec_val<Type>(value);
     case ValKind::Fn:
+    case ValKind::Mod:
     case ValKind::Bytes:
       return std::nullopt;
     }

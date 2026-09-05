@@ -107,7 +107,6 @@ Compiler::Compiler(Limits limits) : state_(std::make_unique<State>()) {
       parse_mod(detail::prelude_mod_source(), state_->diagnostics, "<prelude>");
   if (prelude) {
     add_mod(std::move(*prelude), false, std::nullopt);
-    bind_prelude_mod();
     bind_prelude_primitives();
   }
 }
@@ -311,11 +310,10 @@ std::optional<Op> Compiler::call(Fn::Edit& edit, Mod::FnDecl fn,
     return std::nullopt;
   }
 
-  std::vector<std::optional<Type>> expected(
-      detail::value_results(fn).size());
-  auto result_types = detail::infer_call_types(
-      *this, fn, value_types, known_arguments, expected, state_->diagnostics,
-      location);
+  std::vector<std::optional<Type>> expected(detail::value_results(fn).size());
+  auto result_types =
+      detail::infer_call_types(*this, fn, value_types, known_arguments,
+                               expected, state_->diagnostics, location);
   if (!result_types) {
     return std::nullopt;
   }

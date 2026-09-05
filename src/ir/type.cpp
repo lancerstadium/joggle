@@ -43,6 +43,7 @@ std::optional<ParamVal::Kind> expected_kind(detail::ValKind kind) {
   case detail::ValKind::Type:
     return ParamVal::Kind::Type;
   case detail::ValKind::Fn:
+  case detail::ValKind::Mod:
   case detail::ValKind::Bytes:
     return std::nullopt;
   }

@@ -21,6 +21,8 @@ std::string_view domain_name(ValKind kind) {
     return "type";
   case ValKind::Fn:
     return "fn";
+  case ValKind::Mod:
+    return "mod";
   case ValKind::Bytes:
     return "bytes";
   }
@@ -46,7 +48,7 @@ std::optional<Domain> kernel_domain(const Mod::Expr& expression) {
   }
   constexpr std::array kinds{
       ValKind::Integer, ValKind::Real, ValKind::Boolean, ValKind::String,
-      ValKind::Type,    ValKind::Fn,   ValKind::Bytes,
+      ValKind::Type,    ValKind::Fn,   ValKind::Mod,     ValKind::Bytes,
   };
   for (const ValKind kind : kinds) {
     if (element->text == domain_name(kind)) {

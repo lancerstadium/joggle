@@ -7,7 +7,9 @@
 #include <vector>
 
 #include "joggle/compiler.h"
+#include "ir/mod.h"
 #include "lang/prelude.h"
+#include "sema/infer.h"
 #include "transform/clone.h"
 #include "transform/nested.h"
 
@@ -70,6 +72,7 @@ struct Match {
   detail::ValMap arguments;
   std::vector<std::pair<Op, Op>> ops;
   Val root;
+  Fn equation;
 };
 
 std::optional<Val> bound(const detail::ValMap& values, const Val& pattern) {
@@ -220,43 +223,163 @@ std::optional<std::size_t> erase_dead(Fn& fn, Diag& diagnostics) {
   return dead.size();
 }
 
-bool valid_rule(const Fn& before, const Fn& after, Diag& diagnostics) {
-  if (before.blks().size() != 1U || after.blks().size() != 1U ||
-      before.entry().terminator().kind() != Term::Kind::Return ||
-      after.entry().terminator().kind() != Term::Kind::Return) {
+bool valid_equation(const Fn& equation, Diag& diagnostics) {
+  if (equation.blks().size() != 1U ||
+      equation.entry().terminator().kind() != Term::Kind::Return) {
     diagnostics.report("pass equations must be single-block fns");
     return false;
   }
-  if (before.arguments().size() != after.arguments().size() ||
-      before.result_types() != after.result_types()) {
-    diagnostics.report("pass equations must have the same typed signature");
+  const auto returned = equation.entry().terminator().returned();
+  const auto results = equation.result_types();
+  if (returned.size() != 2U || results.size() != 2U ||
+      results.front() != results.back()) {
+    diagnostics.report(
+        "a pass equation must return two values of the same Type");
     return false;
   }
-  for (std::size_t index = 0; index < before.arguments().size(); ++index) {
-    if (before.arguments()[index].type() != after.arguments()[index].type()) {
-      diagnostics.report("pass equation argument Types differ");
-      return false;
-    }
-  }
-  if (before.entry().terminator().returned().size() != 1U ||
-      after.entry().terminator().returned().size() != 1U) {
-    diagnostics.report("pass equations must return exactly one value");
-    return false;
-  }
-  if (has_effect(before) || has_effect(after)) {
+  if (has_effect(equation)) {
     diagnostics.report("pass equations cannot contain effects");
     return false;
   }
-  if (!before.entry().terminator().returned().front().defining_op()) {
+  if (!returned.front().defining_op()) {
     diagnostics.report("a pass pattern must return an expression");
     return false;
   }
   return true;
 }
 
-std::optional<std::size_t> apply_pass_impl(Compiler& compiler, Fn& fn,
-                                           const Fn& before, const Fn& after,
-                                           Diag& diagnostics) {
+std::optional<Mod::TypeDecl> referenced_type(Compiler& compiler,
+                                             const Mod& scope,
+                                             std::string_view reference) {
+  const std::size_t dot = reference.find('.');
+  std::string owner(scope.name());
+  std::string_view local = reference;
+  if (dot != std::string_view::npos) {
+    const std::string_view prefix = reference.substr(0U, dot);
+    local = reference.substr(dot + 1U);
+    owner = std::string(prefix);
+    const auto imported = std::find_if(
+        scope.imports().begin(), scope.imports().end(),
+        [&](const Mod::Import& import) { return import.prefix() == prefix; });
+    if (imported != scope.imports().end()) {
+      owner = imported->name;
+    }
+  }
+  const auto mod = compiler.mod(owner);
+  auto result = mod ? mod->type(local) : std::optional<Mod::TypeDecl>{};
+  if (!result && dot == std::string_view::npos) {
+    const auto prelude = compiler.mod(detail::prelude_mod_name);
+    result = prelude ? prelude->type(local) : std::optional<Mod::TypeDecl>{};
+  }
+  return result;
+}
+
+bool declares_effect(Compiler& compiler, const Mod& scope,
+                     const Mod::Expr& expression) {
+  if (expression.kind == Mod::Expr::Kind::Reference) {
+    const auto type = referenced_type(compiler, scope, expression.text);
+    if (type && type->symbol().mod_name() == detail::prelude_mod_name &&
+        type->symbol().local_name() == "effect") {
+      return true;
+    }
+  }
+  return std::any_of(expression.arguments.begin(), expression.arguments.end(),
+                     [&](const Mod::Expr& argument) {
+                       return declares_effect(compiler, scope, argument);
+                     });
+}
+
+std::vector<Mod::FnDecl> equations(Compiler& compiler, const Mod& laws,
+                                   Diag& diagnostics) {
+  std::vector<Mod::FnDecl> result;
+  for (const Mod::FnDecl& fn : laws.fns()) {
+    if (fn.form() != Mod::FnDecl::Form::Body || fn.results().size() != 2U ||
+        fn.results().front().domain != fn.results().back().domain) {
+      continue;
+    }
+    const bool effectful =
+        std::any_of(fn.inputs().begin(), fn.inputs().end(),
+                    [&](const Mod::ParamDecl& input) {
+                      return declares_effect(compiler, laws, input.domain);
+                    }) ||
+        std::any_of(fn.results().begin(), fn.results().end(),
+                    [&](const Mod::ParamDecl& output) {
+                      return declares_effect(compiler, laws, output.domain);
+                    });
+    if (effectful) {
+      diagnostics.report("pass equations cannot contain effects: '" +
+                         fn.symbol().qualified_name() + "'");
+      return {};
+    }
+    if (!detail::compiler_inputs(fn).empty() ||
+        !detail::compiler_results(fn).empty() ||
+        detail::value_results(fn).size() != 2U) {
+      diagnostics.report("pass equation '" + fn.symbol().qualified_name() +
+                         "' must use only value ports");
+      return {};
+    }
+    result.push_back(fn);
+  }
+  if (result.empty()) {
+    diagnostics.report("pass Mod '" + std::string(laws.name()) +
+                       "' contains no two-result equation fn");
+  }
+  return result;
+}
+
+std::optional<Fn> materialize_equation(Compiler& compiler,
+                                       const Mod::FnDecl& law,
+                                       const Type& root_type) {
+  std::vector<std::optional<Type>> arguments(detail::value_inputs(law).size());
+  std::vector<std::optional<detail::ParamVal>> known;
+  std::vector<std::optional<Type>> expected(2U);
+  expected.front() = root_type;
+  Diag attempt;
+  const auto types = detail::resolve_partial_call_types(
+      compiler, law, arguments, known, expected, attempt, std::nullopt, false);
+  if (!types || types->results.size() != 2U ||
+      types->results.front() != types->results.back()) {
+    return std::nullopt;
+  }
+
+  auto holder = compiler.create_fn();
+  if (!holder) {
+    return std::nullopt;
+  }
+  auto edit = holder->edit();
+  std::vector<Val> inputs;
+  inputs.reserve(types->arguments.size());
+  for (const Type& type : types->arguments) {
+    inputs.push_back(edit.argument(type));
+  }
+  Op call = edit.call(law, std::move(inputs), types->results);
+  edit.ret(holder->entry(), call.results());
+  if (!edit.commit(compiler, attempt)) {
+    return std::nullopt;
+  }
+  return compiler.materialize(call, attempt);
+}
+
+using Specializations = std::vector<std::pair<Type, std::optional<Fn>>>;
+
+std::optional<Fn> specialize(Compiler& compiler, const Mod::FnDecl& law,
+                             const Type& root_type,
+                             Specializations& specializations) {
+  const auto existing =
+      std::find_if(specializations.begin(), specializations.end(),
+                   [&](const auto& item) { return item.first == root_type; });
+  if (existing != specializations.end()) {
+    return existing->second;
+  }
+  auto equation = materialize_equation(compiler, law, root_type);
+  specializations.emplace_back(root_type, equation);
+  return equation;
+}
+
+std::optional<std::size_t> apply_equation(Compiler& compiler, Fn& fn,
+                                          const Mod::FnDecl& law,
+                                          Specializations& specializations,
+                                          Diag& diagnostics) {
   struct Nested {
     Val value;
     Fn body;
@@ -269,7 +392,7 @@ std::optional<std::size_t> apply_pass_impl(Compiler& compiler, Fn& fn,
       continue;
     }
     const auto changed =
-        apply_pass_impl(compiler, *body, before, after, diagnostics);
+        apply_equation(compiler, *body, law, specializations, diagnostics);
     if (!changed) {
       return std::nullopt;
     }
@@ -290,12 +413,21 @@ std::optional<std::size_t> apply_pass_impl(Compiler& compiler, Fn& fn,
     }
   }
 
-  const Val pattern_root = before.entry().terminator().returned().front();
   std::vector<Match> matches;
   std::vector<Op> claimed;
   for (const Op& operation : fn.ops()) {
     for (const Val& candidate : operation.results()) {
-      Match match{{}, {}, candidate};
+      auto equation =
+          specialize(compiler, law, candidate.type(), specializations);
+      if (!equation) {
+        continue;
+      }
+      if (!valid_equation(*equation, diagnostics)) {
+        return std::nullopt;
+      }
+      const Val pattern_root =
+          equation->entry().terminator().returned().front();
+      Match match{{}, {}, candidate, std::move(*equation)};
       if (!match_value(pattern_root, candidate, match, operation.parent())) {
         continue;
       }
@@ -318,23 +450,23 @@ std::optional<std::size_t> apply_pass_impl(Compiler& compiler, Fn& fn,
   auto edit = fn.edit();
   for (Match& match : matches) {
     detail::ValMap values;
-    const auto before_arguments = before.arguments();
-    const auto after_arguments = after.arguments();
-    for (std::size_t index = 0; index < before_arguments.size(); ++index) {
-      const auto value = bound(match.arguments, before_arguments[index]);
+    for (const Val& argument : match.equation.arguments()) {
+      const auto value = bound(match.arguments, argument);
       if (!value) {
         diagnostics.report("a pass replacement uses an unbound argument");
         return std::nullopt;
       }
-      values.emplace_back(after_arguments[index], *value);
+      values.emplace_back(argument, *value);
     }
     const Op root = *match.root.defining_op();
-    const auto returned = detail::clone_before(edit, after, root, values,
-                                               diagnostics, root.location());
-    if (!returned || returned->size() != 1U) {
+    const Val replacement =
+        match.equation.entry().terminator().returned().back();
+    const auto cloned = detail::clone_before(edit, replacement, root, values,
+                                             diagnostics, root.location());
+    if (!cloned) {
       return std::nullopt;
     }
-    edit.replace(match.root, returned->front());
+    edit.replace(match.root, *cloned);
   }
   if (!edit.commit(compiler, diagnostics)) {
     return std::nullopt;
@@ -348,18 +480,26 @@ std::optional<std::size_t> apply_pass_impl(Compiler& compiler, Fn& fn,
 }  // namespace
 
 std::optional<std::size_t> apply_pass(Compiler& compiler, Fn& fn,
-                                      const Fn& before, const Fn& after,
-                                      Diag& diagnostics) {
-  if (!valid_rule(before, after, diagnostics)) {
+                                      const Mod& laws, Diag& diagnostics) {
+  const auto rules = equations(compiler, laws, diagnostics);
+  if (rules.empty()) {
     return std::nullopt;
   }
   Fn candidate = fn;
-  const auto changed =
-      apply_pass_impl(compiler, candidate, before, after, diagnostics);
-  if (changed && *changed != 0U) {
+  std::size_t total = 0;
+  for (const Mod::FnDecl& rule : rules) {
+    Specializations specializations;
+    const auto changed =
+        apply_equation(compiler, candidate, rule, specializations, diagnostics);
+    if (!changed) {
+      return std::nullopt;
+    }
+    total += *changed;
+  }
+  if (total != 0U) {
     fn = std::move(candidate);
   }
-  return changed;
+  return total;
 }
 
 }  // namespace joggle

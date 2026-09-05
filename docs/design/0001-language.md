@@ -105,17 +105,19 @@ an earlier gate.
 5. Explicit closures: retain lambda captures as typed dependency edges rather
    than textual substitution. **Complete; see Designs 0002 and 0003.**
 6. Direct Fn editing: transform concrete calls and nested bodies without a
-   second pattern graph. **Complete for pure concrete typed equations; generic
-   Types and CFG equations remain planned. See Design 0003.**
+   second pattern graph. **Complete for pure, result-determined generic
+   equations; structural generic inference and CFG equations remain planned.
+   See Design 0003.**
 7. Tensor calculus: define a small bodyful construction/access/reduction
    vocabulary outside the core. **In progress; static Tensor and coordinate
    Types, coordinate construction/projection, overloaded `map`, ordered `reduce`,
    and one `[]` access are implemented. See Design 0004.**
 8. High-level tensor definitions: express Relu, Conv, GEMM, and similar
    operations in that calculus rather than compiler name cases. **Planned.**
-9. Generic transformation: concrete `map(map(S, f), g)` and
-   `map(S, f)[p]` equations now fuse by structure; Type-polymorphic rules
-   and reduction dependence remain planned. **In progress.**
+9. Generic transformation: one `map(map(S, f), g)` equation now specializes
+   across unrelated element Types and ranks; concrete `map(S, f)[p]` also
+   rewrites by structure. Result-underdetermined generics and reduction
+   dependence remain planned. **In progress.**
 10. ONNX validation: import unmodified models into bodyful definitions and
     validate transformed results against a trusted runtime. **Planned.**
 

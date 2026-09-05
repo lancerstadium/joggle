@@ -1,7 +1,7 @@
 joggle 1;
 
-mod transform@2.1.0 {
-  fn pass(input: fn, before: fn, after: fn) -> fn;
+mod transform@3.0.0 {
+  fn pass(input: fn, laws: mod) -> fn;
   fn inline(input: fn) -> fn;
   fn inline(input: mod) -> mod;
   fn resolve(input: mod) -> mod;

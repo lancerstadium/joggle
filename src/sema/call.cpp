@@ -116,6 +116,22 @@ find_visible_operators(Lookup&& lookup, std::string_view owner,
 
 }  // namespace
 
+std::optional<Mod> visible_mod(const Compiler& compiler, std::string_view owner,
+                               std::string_view reference) {
+  if (reference == owner) {
+    return compiler.mod(owner);
+  }
+  const auto scope = compiler.mod(owner);
+  if (!scope) {
+    return std::nullopt;
+  }
+  const auto imported = std::find_if(
+      scope->imports().begin(), scope->imports().end(),
+      [&](const Mod::Import& import) { return import.prefix() == reference; });
+  return imported == scope->imports().end() ? std::optional<Mod>{}
+                                            : compiler.mod(imported->name);
+}
+
 std::vector<Mod::FnDecl> visible_fns(const Compiler& compiler,
                                      std::string_view owner,
                                      std::string_view reference) {

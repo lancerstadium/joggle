@@ -118,9 +118,11 @@ metadata representation.
 
 Direct transformations operate on the materialized Fn and its nested callable
 bodies. Transactional `Fn::Edit` is the low-level correctness boundary.
-`transform.pass` now accepts two pure, concrete typed lambdas and applies their
-equation structurally; Type-polymorphic equations and broader source-facing
-inspection remain implementation gates.
+`transform.pass` accepts a Mod package whose ordinary two-result fns state
+oriented equations. It specializes generic equation Types against candidate
+results and applies them structurally. Generic parameters not determined by
+the candidate result and broader source-facing inspection remain
+implementation gates.
 
 ## Source resolution
 

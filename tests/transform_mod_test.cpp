@@ -15,10 +15,9 @@ bool expect(bool condition, std::string_view message) {
   return condition;
 }
 
-constexpr std::string_view source = R"(
+constexpr std::string_view algebra_source = R"(
 joggle 1;
-mod transform_fixture@1.0.0 {
-  import transform@2 as tr;
+mod transform_algebra@1.0.0 {
   import tensor@4 as t;
 
   type word();
@@ -29,12 +28,64 @@ mod transform_fixture@1.0.0 {
   fn other_step(token: effect<memory>) -> effect<memory>;
   fn seed(position: t.coord<[4]>) -> f32;
   fn raise(value: f32) -> f32;
+  fn seed_word(position: t.coord<[2, 3]>) -> word;
+}
+)";
 
-  fn chain(input: word) -> word {
-    return other(keep(input));
+constexpr std::string_view rules_source = R"(
+joggle 1;
+mod transform_rules@1.0.0 {
+  import transform_algebra@1 as a;
+  import tensor@4 as t;
+
+  fn reorder(value: a.word) -> (a.word, a.word) {
+    return a.other(a.keep(value)), a.keep(a.other(value));
   }
 
-  fn wrapped(input: word) -> word {
+  fn fuse<E, S: list<int>>(
+    make: (t.coord<S>) -> E,
+    body: (E) -> E
+  ) -> (t.tensor<E, S>, t.tensor<E, S>) {
+    return
+      t.map(t.map(S, make), body),
+      t.map(S, (position: t.coord<S>) -> E => body(make(position)));
+  }
+
+  fn cancel(
+    make: (t.coord<[4]>) -> f32,
+    position: t.coord<[4]>
+  ) -> (f32, f32) {
+    return t.map([4], make)[position], make(position);
+  }
+}
+)";
+
+constexpr std::string_view effect_source = R"(
+joggle 1;
+mod effect_rules@1.0.0 {
+  import transform_algebra@1 as a;
+
+  fn replace(token: effect<a.memory>)
+      -> (effect<a.memory>, effect<a.memory>) {
+    return a.step(token), a.other_step(token);
+  }
+}
+)";
+
+constexpr std::string_view fixture_source = R"(
+joggle 1;
+mod transform_fixture@1.0.0 {
+  import transform@3 as tr;
+  import transform_algebra@1 as a;
+  import transform_rules@1 as rules;
+  import effect_rules@1 as effects;
+  import tensor@4 as t;
+
+  fn chain(input: a.word) -> a.word {
+    return a.other(a.keep(input));
+  }
+
+  fn wrapped(input: a.word) -> a.word {
     return chain(input);
   }
 
@@ -47,61 +98,50 @@ mod transform_fixture@1.0.0 {
   }
 
   fn reorder(input: fn) -> fn {
-    return @tr.pass(
-      input,
-      (value: word) -> word => other(keep(value)),
-      (value: word) -> word => keep(other(value))
-    );
+    return @tr.pass(input, rules);
+  }
+
+  fn local_reorder(value: a.word) -> (a.word, a.word) {
+    return a.other(a.keep(value)), a.keep(a.other(value));
+  }
+
+  fn reorder_local(input: fn) -> fn {
+    return @tr.pass(input, transform_fixture);
   }
 
   fn tensor_chain() -> t.tensor<f32, [4]> {
     built: t.tensor<f32, [4]> = t.map(
       [4],
-      (position: t.coord<[4]>) => seed(position)
+      (position: t.coord<[4]>) => a.seed(position)
     );
     return t.map(
       built,
-      (value: f32) => raise(value)
+      (value: f32) => a.raise(value)
     );
   }
 
   fn fuse_tensor(input: fn) -> fn {
-    return @tr.pass(
-      input,
-      (
-        make: (t.coord<[4]>) -> f32,
-        map: (f32) -> f32
-      ) -> t.tensor<f32, [4]> => t.map(t.map([4], make), map),
-      (
-        make: (t.coord<[4]>) -> f32,
-        map: (f32) -> f32
-      ) -> t.tensor<f32, [4]> => t.map(
-        [4],
-        (position: t.coord<[4]>) => map(make(position))
-      )
+    return @tr.pass(input, rules);
+  }
+
+  fn tensor_chain_word() -> t.tensor<a.word, [2, 3]> {
+    built: t.tensor<a.word, [2, 3]> = t.map(
+      [2, 3],
+      (position: t.coord<[2, 3]>) => a.seed_word(position)
     );
+    return t.map(built, (value: a.word) => a.keep(value));
   }
 
   fn sampled(position: t.coord<[4]>) -> f32 {
     built: t.tensor<f32, [4]> = t.map(
       [4],
-      (item: t.coord<[4]>) => seed(item)
+      (item: t.coord<[4]>) => a.seed(item)
     );
     return built[position];
   }
 
   fn cancel_tensor(input: fn) -> fn {
-    return @tr.pass(
-      input,
-      (
-        make: (t.coord<[4]>) -> f32,
-        position: t.coord<[4]>
-      ) -> f32 => t.map([4], make)[position],
-      (
-        make: (t.coord<[4]>) -> f32,
-        position: t.coord<[4]>
-      ) -> f32 => make(position)
-    );
+    return @tr.pass(input, rules);
   }
 
   fn nested_sample() -> t.tensor<f32, [4]> {
@@ -111,16 +151,12 @@ mod transform_fixture@1.0.0 {
     );
   }
 
-  fn effect_chain(token: effect<memory>) -> effect<memory> {
-    return step(token);
+  fn effect_chain(token: effect<a.memory>) -> effect<a.memory> {
+    return a.step(token);
   }
 
   fn rewrite_effect(input: fn) -> fn {
-    return @tr.pass(
-      input,
-      (token: effect<memory>) -> effect<memory> => step(token),
-      (token: effect<memory>) -> effect<memory> => other_step(token)
-    );
+    return @tr.pass(input, effects);
   }
 }
 )";
@@ -131,7 +167,10 @@ int main() {
   joggle::Compiler compiler;
   compiler.load(JOGGLE_TRANSFORM_MOD);
   compiler.load(JOGGLE_TENSOR_MOD);
-  compiler.add(source, "transform-fixture.joggle");
+  compiler.add(algebra_source, "transform-algebra.joggle");
+  compiler.add(rules_source, "transform-rules.joggle");
+  compiler.add(effect_source, "effect-rules.joggle");
+  compiler.add(fixture_source, "transform-fixture.joggle");
   if (!compiler.link() ||
       !compiler.load_native("transform", JOGGLE_TRANSFORM_NATIVE)) {
     compiler.diag().print(std::cerr);
@@ -168,8 +207,21 @@ int main() {
           reordered_calls.back().arguments() ==
               reordered_calls.front().results() &&
           compiler.verify(*reordered),
-      "a staged pass applies ordinary typed lambda equations and removes the "
+      "a staged pass applies ordinary packaged equations and removes the "
       "replaced expression without operation-name dispatch");
+
+  const auto locally_reordered =
+      compiler.run<joggle::Fn>("transform_fixture.reorder_local", *expanded);
+  const auto local_calls =
+      locally_reordered ? locally_reordered->ops() : std::vector<joggle::Op>{};
+  ok &= expect(
+      local_calls.size() == 2U &&
+          local_calls.front().callee().referenced_fn() &&
+          local_calls.front().callee().referenced_fn()->name() == "other" &&
+          local_calls.back().callee().referenced_fn() &&
+          local_calls.back().callee().referenced_fn()->name() == "keep" &&
+          compiler.verify(*locally_reordered),
+      "the current Mod name is a first-class equation package");
 
   const auto tensor_chain =
       compiler.materialize("transform_fixture.tensor_chain");
@@ -193,6 +245,29 @@ int main() {
           compiler.verify(*fused_tensor),
       "the same typed pass fuses map(map(S, f), g) into one domain map with a "
       "composed callable body");
+
+  const auto tensor_chain_word =
+      compiler.materialize("transform_fixture.tensor_chain_word");
+  const auto fused_tensor_word =
+      tensor_chain_word
+          ? compiler.run<joggle::Fn>("transform_fixture.fuse_tensor",
+                                     *tensor_chain_word)
+          : std::nullopt;
+  const auto fused_word_calls =
+      fused_tensor_word ? fused_tensor_word->ops() : std::vector<joggle::Op>{};
+  const auto fused_word_body =
+      fused_word_calls.size() == 1U &&
+              !fused_word_calls.front().arguments().empty()
+          ? fused_word_calls.front().arguments().front().inline_fn()
+          : std::optional<joggle::Fn>{};
+  ok &= expect(
+      fused_word_calls.size() == 1U &&
+          fused_word_calls.front().callee().referenced_fn() &&
+          fused_word_calls.front().callee().referenced_fn()->name() == "map" &&
+          fused_word_body && fused_word_body->ops().size() == 2U &&
+          compiler.verify(*fused_tensor_word),
+      "one generic equation specializes to a different element Type and "
+      "rank without a generated rule family");
 
   const auto sampled = compiler.materialize("transform_fixture.sampled");
   const auto cancelled =

@@ -6,10 +6,11 @@ values inside a fn, while blocks and terminators provide control flow.
 
 ## Vals
 
-Every `Val` has a `Type`. A value is a fn input, block argument, call
-result, known compiler value, or callable literal. Known scalar payloads are
-immutable compiler-domain values: integers, reals, booleans, strings, types,
-bytes, and their supported homogeneous lists.
+Every `Val` has a `Type`. A value is a fn input, block argument, call result,
+known compiler value, or callable literal. Immutable compiler-domain values
+include integers, reals, booleans, strings, types, bytes, supported homogeneous
+lists, Fns, and Mods. `fn` and `mod` are compile-time program and package
+handles; they do not become runtime tensor data or list elements.
 
 A callable value has the ordinary `prelude.callable<inputs, results>` type.
 It may be a Fn argument, block argument, call result, declared-fn reference,

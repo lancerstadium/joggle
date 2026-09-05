@@ -15,6 +15,7 @@ enum class ValKind {
   String,
   Type,
   Fn,
+  Mod,
   Bytes,
 };
 

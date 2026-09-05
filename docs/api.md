@@ -129,17 +129,17 @@ bounded. A failing Fn edit is not published.
 
 ```cpp
 joggle::Diag diagnostics;
-auto changed =
-    joggle::apply_pass(compiler, fn, before, after, diagnostics);
+auto changed = joggle::apply_pass(compiler, fn, laws, diagnostics);
 ```
 
-`before` and `after` are ordinary concrete `Fn` values with the same typed
-arguments and one result. The `before` arguments are pattern variables. Calls
-match declaration identity, compiler bindings, exact Types, and dataflow; the
-replacement is cloned transactionally and dead pure calls are removed. The
-same pass recursively transforms nested callable bodies and rejects effectful
-or control-flow equations. The source wrapper is
-`@transform.pass(input, before_lambda, after_lambda)`.
+`laws` is an ordinary `Mod`. Each bodyful fn with two identical result Type
+expressions states one oriented equation: its first returned expression is the
+pattern and its second is the replacement. Generic parameters are specialized
+against each candidate result Type before calls match declaration identity,
+compiler bindings, exact Types, and dataflow. The replacement is cloned
+transactionally and dead pure calls are removed. The same pass recursively
+transforms nested callable bodies and rejects effectful or control-flow
+equations. The source wrapper is `@transform.pass(input, laws)`.
 
 ## Bind native fns
 

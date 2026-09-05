@@ -62,6 +62,68 @@ std::optional<Val> clone_value(Fn::Edit& edit, const Val& source,
   return std::nullopt;
 }
 
+std::optional<Val> clone_expression(Fn::Edit& edit, const Val& source,
+                                    Op before, ValMap& values,
+                                    Diag& diagnostics,
+                                    const std::optional<Loc>& location) {
+  if (const auto existing = mapped(values, source)) {
+    return existing;
+  }
+  if (source.referenced_fn() || source.inline_fn()) {
+    std::vector<Val> dependencies;
+    for (const auto& [name, binding] : source.bindings()) {
+      static_cast<void>(name);
+      dependencies.push_back(binding);
+    }
+    const auto captures = source.captures();
+    dependencies.insert(dependencies.end(), captures.begin(), captures.end());
+    for (const Val& dependency : dependencies) {
+      if (!clone_expression(edit, dependency, before, values, diagnostics,
+                            location)) {
+        return std::nullopt;
+      }
+    }
+    return clone_value(edit, source, values, diagnostics);
+  }
+  const auto operation = source.defining_op();
+  if (!operation) {
+    diagnostics.report("cannot clone an unbound expression value");
+    return std::nullopt;
+  }
+  const auto callee = clone_expression(edit, operation->callee(), before,
+                                       values, diagnostics, location);
+  if (!callee) {
+    return std::nullopt;
+  }
+  std::vector<Val> arguments;
+  arguments.reserve(operation->arguments().size());
+  for (const Val& argument : operation->arguments()) {
+    const auto value =
+        clone_expression(edit, argument, before, values, diagnostics, location);
+    if (!value) {
+      return std::nullopt;
+    }
+    arguments.push_back(*value);
+  }
+  std::vector<Type> result_types;
+  for (const Val& result : operation->results()) {
+    result_types.push_back(result.type());
+  }
+  Op cloned = edit.call_before(before, *callee, std::move(arguments),
+                               std::move(result_types));
+  if (location) {
+    edit.locate(cloned, *location);
+  } else if (const auto source_location = operation->location()) {
+    edit.locate(cloned, *source_location);
+  }
+  const auto original_results = operation->results();
+  const auto cloned_results = cloned.results();
+  for (std::size_t index = 0; index < original_results.size(); ++index) {
+    values.emplace_back(original_results[index], cloned_results[index]);
+  }
+  return mapped(values, source);
+}
+
 }  // namespace
 
 std::optional<std::vector<Val>> clone_before(Fn::Edit& edit, const Fn& source,
@@ -120,6 +182,12 @@ std::optional<std::vector<Val>> clone_before(Fn::Edit& edit, const Fn& source,
     returned.push_back(*result);
   }
   return returned;
+}
+
+std::optional<Val> clone_before(Fn::Edit& edit, const Val& source, Op before,
+                                ValMap& values, Diag& diagnostics,
+                                std::optional<Loc> location) {
+  return clone_expression(edit, source, before, values, diagnostics, location);
 }
 
 }  // namespace joggle::detail

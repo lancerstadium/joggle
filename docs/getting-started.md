@@ -1,8 +1,8 @@
 # Getting started
 
 This guide defines a small Mod and transforms its real Fn body with an ordinary
-typed equation. Joggle generates no declaration header; `.joggle` source is the
-schema and package authority.
+generic equation. Joggle generates no declaration header; `.joggle` source is
+the schema and package authority.
 
 ## 1. Build
 
@@ -22,19 +22,19 @@ Create `example.joggle`:
 joggle 1;
 
 mod example@1.0.0 {
-  import transform@2 as tr;
+  import transform@3 as tr;
 
   type word(width: int);
 
   fn keep<T>(input: T) -> T;
   fn replacement<T>(input: T) -> T;
 
+  fn replace<W: int>(value: word<W>) -> (word<W>, word<W>) {
+    return keep(value), replacement(value);
+  }
+
   fn rewrite(input: fn) -> fn {
-    return @tr.pass(
-      input,
-      (value: word<8>) -> word<8> => keep(value),
-      (value: word<8>) -> word<8> => replacement(value)
-    );
+    return @tr.pass(input, example);
   }
 
   fn main(input: word<8>) -> word<8> {
@@ -50,14 +50,14 @@ joggle check example.joggle --with /path/to/transform/mod.joggle
 joggle fmt example.joggle --write
 ```
 
-`pass` is an ordinary imported fn called explicitly with `@`. The two lambdas
-are ordinary compiler-domain Fns. Their arguments are typed pattern variables;
-calls match exact declaration identity and dataflow rather than strings. The
-replacement is verified before publication and dead pure producers are removed.
-
-The current equation form uses concrete Types. Generic typed equations are an
-active language gate, so this example deliberately states `word<8>` instead of
-claiming shape-polymorphic rewriting.
+`pass` is an ordinary imported fn called explicitly with `@`; `example` is the
+current Mod used as a compiler-time package value. Every bodyful fn with two
+identical result Type expressions is an equation. The first returned expression
+is matched and the second replaces it, using the same typed arguments. Calls
+match exact declaration identity and dataflow rather than strings. Here `W` is
+bound from the candidate `word<W>` result, so the same equation works for every
+width without generated variants. The replacement is verified before
+publication and dead pure producers are removed.
 
 ## 3. Run the transformation
 

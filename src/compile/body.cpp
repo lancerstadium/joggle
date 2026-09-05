@@ -988,8 +988,7 @@ private:
     return result;
   }
 
-  bool prepare_inline_fn(PendingArgument& argument,
-                         const Mod::Expr& expression,
+  bool prepare_inline_fn(PendingArgument& argument, const Mod::Expr& expression,
                          detail::SyntaxRange range,
                          bool infer_signature = false) {
     if (expression.kind != Mod::Expr::Kind::Lambda) {
@@ -1027,9 +1026,8 @@ private:
       return false;
     }
     argument.inline_inputs = inputs;
-    argument.inferred_type =
-        compiler_.make(*callable, std::move(inputs),
-                       std::vector<Type>{std::move(*result)});
+    argument.inferred_type = compiler_.make(
+        *callable, std::move(inputs), std::vector<Type>{std::move(*result)});
     return argument.inferred_type.has_value();
   }
 
@@ -1112,7 +1110,8 @@ private:
         plans.push_back(std::move(*plan));
       }
     }
-    if (plans.size() != 1U || plans.front().partial_types.results.size() != 1U) {
+    if (plans.size() != 1U ||
+        plans.front().partial_types.results.size() != 1U) {
       return std::nullopt;
     }
     return plans.front().partial_types.results.front();
@@ -2688,6 +2687,10 @@ private:
         const auto* known = local ? local->known_value() : nullptr;
         if (known) {
           return *known;
+        }
+        if (const auto mod =
+                detail::visible_mod(compiler_, owner_, argument.text)) {
+          return detail::store_exec_val(*mod);
         }
       }
       auto staged = evaluate_known(

@@ -78,14 +78,14 @@ ctest --test-dir build --output-on-failure
 The repository ships `arith@1.1.0` and `tensor@4.0.0`. Tensor contains
 coordinate construction/projection, overloaded domain/Tensor `map`, ordered
 Tensor `reduce`, and one overloaded `[]` access surface; it does not contain an
-ONNX operator catalog. `transform@2.1.0` performs recursive single-block
-inlining, concrete typed-lambda equation passes, and source resolution.
+ONNX operator catalog. `transform@3.0.0` performs recursive single-block
+inlining, package-defined generic equation passes, and source resolution.
 `quant@2.0.0` and the optional
 Protobuf-backed `onnx@5.0.0` import path remain incomplete domain libraries.
 Rank-two ONNX MatMul now has a real nested `map/reduce/index/arithmetic` body.
-Concrete `map(map(S, f), g)` composition and `map(S, f)[p]` cancellation
-already use the same declaration-identity/dataflow matcher rather than a
-name-specific transform.
+One generic `map(map(S, f), g)` equation already specializes across unrelated
+element Types and ranks. Concrete `map(S, f)[p]` cancellation uses the same
+declaration-identity/dataflow matcher rather than a name-specific transform.
 The ONNX fixtures test import and reconstruction fidelity. They are not yet
 evidence for generic bodyful fusion or an executable kernel pipeline.
 
