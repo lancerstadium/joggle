@@ -2318,6 +2318,10 @@ bool Fn::Edit::commit(Diag& diagnostics) {
   return true;
 }
 
+bool Fn::Edit::commit(Compiler& compiler, Diag& diagnostics) {
+  return detail::FnAccess::commit(*this, compiler, diagnostics);
+}
+
 Fn::Fn(std::vector<Mod> mods) : fn_(std::make_shared<FnIdentity>()) {
   fn_->state = std::make_shared<FnState>();
   for (Mod& mod : mods) {

@@ -177,6 +177,13 @@ template <typename T> ParamVal encode_parameter(T&& value) {
     return ParamVal(std::string(std::string_view(value)));
   } else if constexpr (std::is_same_v<Stored, Type>) {
     return ParamVal(std::forward<T>(value));
+  } else if constexpr (std::is_same_v<Stored, std::vector<bool>>) {
+    std::vector<ParamVal> elements;
+    elements.reserve(value.size());
+    for (const bool item : value) {
+      elements.emplace_back(item);
+    }
+    return ParamVal::list(std::move(elements));
   } else if constexpr (is_range<Stored>) {
     std::vector<ParamVal> elements;
     for (auto&& item : value) {

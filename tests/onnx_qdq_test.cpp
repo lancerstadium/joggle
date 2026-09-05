@@ -49,29 +49,6 @@ int main(int argc, char** argv) {
   }
 
   bool ok = true;
-  joggle::Compiler missing_quant;
-  missing_quant.load(argv[1]);
-  missing_quant.load(argv[2]);
-  missing_quant.load(argv[4]);
-  if (!missing_quant.link() || !missing_quant.load_native("onnx", argv[5])) {
-    missing_quant.diag().print(std::cerr);
-    return EXIT_FAILURE;
-  }
-  const auto rejected = missing_quant.run<joggle::Mod>(
-      "onnx.read", bytes, std::string{"missing_quant"});
-  const auto missing_entries = missing_quant.diag().issues();
-  const bool names_quant = std::any_of(
-      missing_entries.begin(), missing_entries.end(), [](const auto& entry) {
-        return entry.message.find("quant Mod") != std::string::npos;
-      });
-  const bool rejects_missing_quant =
-      !rejected && !missing_quant.ok() && names_quant;
-  if (!rejects_missing_quant) {
-    missing_quant.diag().print(std::cerr);
-  }
-  ok &= expect(rejects_missing_quant,
-               "QDQ import fails closed when its quant Mod is absent");
-
   joggle::Compiler compiler;
   compiler.load(argv[1]);
   compiler.load(argv[2]);
@@ -134,12 +111,14 @@ int main(int argc, char** argv) {
                    payloads_resolve,
                "all typed QDQ initializers are Mod-owned constants");
   ok &= expect(
-      calls["quant.quantize"] == 39U && calls["quant.dequantize"] == 91U &&
+      calls["onnx.QuantizeLinear"] == 39U &&
+          calls["onnx.DequantizeLinear"] == 91U &&
           calls["onnx.Conv"] == 26U && calls["onnx.MaxPool"] == 3U &&
-          calls["onnx.AveragePool"] == 1U && calls["onnx.Concat"] == 8U &&
-          calls["onnx.Reshape"] == 2U && calls["onnx.Softmax"] == 1U &&
-          calls.size() == 8U,
-      "the complete standard QDQ graph maps to quant and tensor");
+          calls["onnx.GlobalAveragePool"] == 1U &&
+          calls["onnx.Concat"] == 8U && calls["onnx.Reshape"] == 1U &&
+          calls["onnx.Flatten"] == 1U && calls["onnx.Softmax"] == 1U &&
+          calls.size() == 9U,
+      "the complete standard QDQ graph preserves ordinary ONNX fn calls");
 
   bool source_found = false;
   for (const auto& digest : model->data()) {
@@ -163,9 +142,10 @@ int main(int argc, char** argv) {
         dependencies.begin(), dependencies.end(),
         [&](const auto& dependency) { return dependency.name == name; });
   };
-  ok &= expect(has_dependency("onnx") && has_dependency("quant") &&
-                   has_dependency("tensor"),
-               "the generated Mod derives its direct semantic dependencies");
+  ok &= expect(has_dependency("onnx") && has_dependency("tensor") &&
+                   !has_dependency("quant"),
+               "the generated Mod records direct rather than transitive "
+               "semantic dependencies");
   if (!ok) {
     compiler.diag().print(std::cerr);
   }

@@ -33,10 +33,11 @@ joggle::Bytes read_bytes(const char* path) {
 }
 
 bool load(joggle::Compiler& compiler, const char* arith, const char* tensor,
-          const char* onnx, const char* onnx_native, const char* transform,
-          const char* transform_native) {
+          const char* quant, const char* onnx, const char* onnx_native,
+          const char* transform, const char* transform_native) {
   compiler.load(arith);
   compiler.load(tensor);
+  compiler.load(quant);
   compiler.load(transform);
   compiler.load(onnx);
   return compiler.link() && compiler.load_native("onnx", onnx_native) &&
@@ -76,7 +77,8 @@ const std::vector<ExpectedCall> expected_calls{
     {"conv", {1, 64, 13, 13}},      {"relu", {1, 64, 13, 13}},
     {"conv", {1, 256, 13, 13}},     {"relu", {1, 256, 13, 13}},
     {"conv", {1, 256, 13, 13}},     {"relu", {1, 256, 13, 13}},
-    {"concat", {1, 512, 13, 13}},   {"conv", {1, 1000, 13, 13}},
+    {"concat", {1, 512, 13, 13}},   {"dropout", {1, 512, 13, 13}},
+    {"conv", {1, 1000, 13, 13}},
     {"relu", {1, 1000, 13, 13}},    {"average_pool", {1, 1000, 1, 1}},
     {"reshape", {1, 1000}},
 };
@@ -84,12 +86,13 @@ const std::vector<ExpectedCall> expected_calls{
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 7 && argc != 8) {
+  if (argc != 8 && argc != 9) {
     return EXIT_FAILURE;
   }
 
   joggle::Compiler malformed;
-  if (!load(malformed, argv[1], argv[2], argv[3], argv[4], argv[5], argv[6])) {
+  if (!load(malformed, argv[1], argv[2], argv[3], argv[4], argv[5], argv[6],
+            argv[7])) {
     malformed.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -97,7 +100,7 @@ int main(int argc, char** argv) {
       "onnx.read", joggle::Bytes{std::byte{0x7f}}, std::string{"bad"});
   joggle::Compiler malformed_again;
   if (!load(malformed_again, argv[1], argv[2], argv[3], argv[4], argv[5],
-            argv[6])) {
+            argv[6], argv[7])) {
     malformed_again.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -110,17 +113,28 @@ int main(int argc, char** argv) {
           malformed_message == malformed_again.diag().issues().back().message,
       "malformed Protobuf input is rejected transactionally");
 
-  if (argc == 7) {
+  if (argc == 8) {
     return ok ? EXIT_SUCCESS : EXIT_FAILURE;
   }
-  const auto bytes = read_bytes(argv[7]);
+  const auto bytes = read_bytes(argv[8]);
   ok &= expect(!bytes.empty(), "reference model bytes are readable");
 
   joggle::Compiler compiler;
-  if (!load(compiler, argv[1], argv[2], argv[3], argv[4], argv[5], argv[6])) {
+  if (!load(compiler, argv[1], argv[2], argv[3], argv[4], argv[5], argv[6],
+            argv[7])) {
     compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
+  const auto shape_probe = compiler.run<std::vector<std::int64_t>>(
+      "onnx.conv_shape", std::vector<std::int64_t>{1, 3, 224, 224},
+      std::vector<std::int64_t>{64, 3, 3, 3},
+      std::vector<std::int64_t>{3, 3},
+      std::vector<std::int64_t>{2, 2},
+      std::vector<std::int64_t>{0, 0, 0, 0},
+      std::vector<std::int64_t>{1, 1});
+  ok &= expect(shape_probe ==
+                   std::vector<std::int64_t>({1, 64, 111, 111}),
+               "ONNX shape semantics execute as an ordinary source fn");
   const auto model =
       compiler.run<joggle::Mod>("onnx.read", bytes, std::string{"squeezenet"});
   if (!model) {
@@ -161,9 +175,9 @@ int main(int argc, char** argv) {
                    returned.front().type().get<std::vector<std::int64_t>>(
                        "shape") == std::vector<std::int64_t>({1, 1000}),
                "static propagation reaches the declared output shape");
-  ok &= expect(ops.size() == 117U && constants == 52U &&
-                   ops.size() - constants == 65U,
-               "reference model has 52 constants and 65 semantic calls");
+  ok &= expect(ops.size() == 118U && constants == 52U &&
+                   ops.size() - constants == 66U,
+               "reference model has 52 constants and 66 semantic calls");
   ok &= expect(located == ops.size(),
                "every imported call retains deterministic provenance");
   ok &= expect(model->data().size() == 54U,
@@ -205,6 +219,7 @@ int main(int argc, char** argv) {
              : expected.first == "average_pool" ? "AveragePool"
              : expected.first == "concat"      ? "Concat"
              : expected.first == "reshape"     ? "Reshape"
+             : expected.first == "dropout"     ? "Dropout"
                                                 : expected.first) &&
         op.value().type().get<std::vector<std::int64_t>>("shape") ==
             expected.second &&
@@ -229,7 +244,7 @@ int main(int argc, char** argv) {
                expected.first == "average_pool") {
       ++pools;
       sequence_matches &=
-          op.callee().binding<bool>("ceil_mode") == false &&
+          op.callee().binding<std::int64_t>("ceil_mode") == 0 &&
           op.callee().binding<std::vector<std::int64_t>>("pads") ==
               std::vector<std::int64_t>({0, 0, 0, 0});
     } else if (expected.first == "concat") {
@@ -242,7 +257,7 @@ int main(int argc, char** argv) {
   }
   ok &= expect(sequence_matches && convs == 26U && relus == 26U &&
                    pools == 4U && concats == 8U,
-               "all 65 semantic calls, shapes, bindings, and locations "
+               "all 66 semantic calls, shapes, bindings, and locations "
                "match the independently audited graph");
   ok &= expect(compiler.verify(*model),
                "the imported Mod satisfies ordinary IR verification");
@@ -275,7 +290,7 @@ int main(int argc, char** argv) {
                        arguments[1].inline_fn().has_value() &&
                        arguments[1].captures().empty();
   }
-  ok &= expect(inlined_ops.size() == ops.size() && maps == relus &&
+  ok &= expect(inlined_ops.size() + 1U == ops.size() && maps == relus &&
                    remaining_relu == 0U && typed_callbacks &&
                    compiler.verify(*inlined),
                "generic Fn inlining expands every real-model Relu into its "

@@ -459,6 +459,16 @@ public:
   // Creates an empty executable body in this linked compilation.
   std::optional<Fn> create_fn();
 
+  // Appends a direct Call while using this Compiler's complete staged
+  // environment to infer its result Types. This is the programmatic-frontend
+  // counterpart of materializing a source call: source-defined compiler fns
+  // may participate in type expressions, and no frontend must duplicate their
+  // result-shape logic. Arguments follow declaration order; compiler-domain
+  // values become callee bindings. A location is diagnostic provenance only.
+  std::optional<Op> call(Fn::Edit& edit, Mod::FnDecl fn,
+                         std::vector<Val> arguments,
+                         std::optional<Loc> location = std::nullopt);
+
   // Materializes every source-defined Fn whose results are
   // IR-representable and whose compiler inputs and generics have a complete
   // default specialization. Other declarations stay declarations in the

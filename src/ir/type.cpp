@@ -123,8 +123,23 @@ detail::parameter_default(const Mod::ParamDecl& schema) {
     return std::nullopt;
   }
   const auto domain = kernel_domain(schema.domain);
-  if (!domain || domain->list) {
+  if (!domain) {
     return std::nullopt;
+  }
+  if (domain->list) {
+    if (schema.default_value->kind != Mod::Expr::Kind::List) {
+      return std::nullopt;
+    }
+    std::vector<ParamVal> elements;
+    elements.reserve(schema.default_value->arguments.size());
+    for (const auto& expression : schema.default_value->arguments) {
+      auto element = literal_value(expression, domain->element);
+      if (!element) {
+        return std::nullopt;
+      }
+      elements.push_back(std::move(*element));
+    }
+    return ParamVal::list(std::move(elements));
   }
   return literal_value(*schema.default_value, domain->element);
 }

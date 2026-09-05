@@ -3,15 +3,20 @@
 #include <algorithm>
 #include <bit>
 #include <cctype>
+#include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <locale>
 #include <map>
 #include <optional>
 #include <set>
 #include <span>
+#include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -35,25 +40,6 @@ struct Initializer {
   std::vector<std::int64_t> integers;
 };
 
-struct Schema {
-  joggle::Mod::TypeDecl tensor;
-  joggle::Mod::FnDecl constant;
-  joggle::Mod::FnDecl conv;
-  joggle::Mod::FnDecl conv_bias;
-  joggle::Mod::FnDecl relu;
-  joggle::Mod::FnDecl max_pool;
-  joggle::Mod::FnDecl average_pool;
-  joggle::Mod::FnDecl concat;
-  joggle::Mod::FnDecl reshape;
-  joggle::Mod::FnDecl softmax;
-  std::optional<joggle::Mod::FnDecl> quantize;
-  std::optional<joggle::Mod::FnDecl> dequantize;
-  std::map<std::int32_t, joggle::Type> elements;
-  joggle::Type integer;
-  joggle::Type boolean;
-  joggle::Type string;
-  joggle::Type integer_list;
-};
 
 bool fail(joggle::Diag& diagnostics, std::string message) {
   diagnostics.report("onnx.read: " + std::move(message));
@@ -301,61 +287,295 @@ value_type(const onnx::ValueInfoProto& value, joggle::Diag& diagnostics) {
   return std::pair{tensor.elem_type(), std::move(shape)};
 }
 
-std::optional<joggle::Mod::FnDecl>
-overload(const joggle::Mod& mod, std::string_view name, std::size_t inputs) {
-  const auto declarations = mod.overloads(name);
-  const auto found = std::find_if(
-      declarations.begin(), declarations.end(),
-      [inputs](const auto& fn) { return fn.inputs().size() == inputs; });
-  return found == declarations.end()
-             ? std::nullopt
-             : std::optional<joggle::Mod::FnDecl>{*found};
+struct Types {
+  joggle::Mod::TypeDecl tensor;
+  joggle::Mod::FnDecl constant;
+  std::map<std::int32_t, joggle::Type> elements;
+};
+
+enum class Scalar { Integer, Real, Boolean, String, Type, Fn, Bytes };
+
+struct Domain {
+  Scalar element = Scalar::Integer;
+  bool list = false;
+};
+
+std::optional<Domain> domain(const joggle::Mod::Expr& expression) {
+  const joggle::Mod::Expr* element = &expression;
+  bool list = false;
+  if (expression.kind == joggle::Mod::Expr::Kind::Reference &&
+      expression.text == "list" && expression.arguments.size() == 1U) {
+    list = true;
+    element = &expression.arguments.front();
+  }
+  if (element->kind != joggle::Mod::Expr::Kind::Reference ||
+      !element->arguments.empty()) {
+    return std::nullopt;
+  }
+  const std::map<std::string_view, Scalar> names{
+      {"int", Scalar::Integer}, {"real", Scalar::Real},
+      {"bool", Scalar::Boolean}, {"string", Scalar::String},
+      {"type", Scalar::Type},    {"fn", Scalar::Fn},
+      {"bytes", Scalar::Bytes},
+  };
+  const auto found = names.find(element->text);
+  return found == names.end() ? std::nullopt
+                              : std::optional<Domain>{{found->second, list}};
 }
 
-std::optional<Schema> load_schema(joggle::Compiler& compiler, bool needs_quant,
-                                  joggle::Diag& diagnostics) {
+std::string_view scalar_name(Scalar scalar) {
+  switch (scalar) {
+  case Scalar::Integer:
+    return "int";
+  case Scalar::Real:
+    return "real";
+  case Scalar::Boolean:
+    return "bool";
+  case Scalar::String:
+    return "string";
+  case Scalar::Type:
+    return "type";
+  case Scalar::Fn:
+    return "fn";
+  case Scalar::Bytes:
+    return "bytes";
+  }
+  return {};
+}
+
+std::optional<joggle::Type> domain_type(joggle::Compiler& compiler,
+                                        Domain value) {
+  const auto element = compiler.make(scalar_name(value.element));
+  if (!element || !value.list) {
+    return element;
+  }
+  const auto prelude = compiler.mod("prelude");
+  const auto list = prelude ? prelude->type("list") : std::nullopt;
+  return list ? compiler.make(*list, *element) : std::nullopt;
+}
+
+std::optional<std::int64_t> integer_literal(const joggle::Mod::Expr& value) {
+  if (value.kind != joggle::Mod::Expr::Kind::Number) {
+    return std::nullopt;
+  }
+  std::int64_t result = 0;
+  const auto* begin = value.text.data();
+  const auto* end = begin + value.text.size();
+  const auto parsed = std::from_chars(begin, end, result);
+  return parsed.ec == std::errc{} && parsed.ptr == end
+             ? std::optional<std::int64_t>{result}
+             : std::nullopt;
+}
+
+std::optional<double> real_literal(const joggle::Mod::Expr& value) {
+  if (value.kind != joggle::Mod::Expr::Kind::Number) {
+    return std::nullopt;
+  }
+  std::istringstream stream(value.text);
+  stream.imbue(std::locale::classic());
+  double result = 0.0;
+  stream >> result;
+  return stream && stream.eof() && std::isfinite(result)
+             ? std::optional<double>{result}
+             : std::nullopt;
+}
+
+template <typename T, typename Decode>
+std::optional<std::vector<T>> literal_list(const joggle::Mod::Expr& expression,
+                                           Decode decode) {
+  if (expression.kind != joggle::Mod::Expr::Kind::List) {
+    return std::nullopt;
+  }
+  std::vector<T> result;
+  result.reserve(expression.arguments.size());
+  for (const auto& element : expression.arguments) {
+    auto value = decode(element);
+    if (!value) {
+      return std::nullopt;
+    }
+    result.push_back(std::move(*value));
+  }
+  return result;
+}
+
+std::optional<joggle::Val> literal(joggle::Compiler& compiler, Domain expected,
+                                   const joggle::Mod::Expr& expression) {
+  const auto type = domain_type(compiler, expected);
+  if (!type) {
+    return std::nullopt;
+  }
+  if (expected.list) {
+    switch (expected.element) {
+    case Scalar::Integer: {
+      auto values = literal_list<std::int64_t>(expression, integer_literal);
+      return values ? compiler.known(*type, std::move(*values)) : std::nullopt;
+    }
+    case Scalar::Real: {
+      auto values = literal_list<double>(expression, real_literal);
+      return values ? compiler.known(*type, std::move(*values)) : std::nullopt;
+    }
+    case Scalar::Boolean: {
+      auto values = literal_list<bool>(
+          expression, [](const joggle::Mod::Expr& value) -> std::optional<bool> {
+            return value.kind == joggle::Mod::Expr::Kind::Boolean
+                       ? std::optional<bool>{value.text == "true"}
+                       : std::nullopt;
+          });
+      return values ? compiler.known(*type, std::move(*values)) : std::nullopt;
+    }
+    case Scalar::String: {
+      auto values = literal_list<std::string>(
+          expression,
+          [](const joggle::Mod::Expr& value) -> std::optional<std::string> {
+            return value.kind == joggle::Mod::Expr::Kind::String
+                       ? std::optional<std::string>{value.text}
+                       : std::nullopt;
+          });
+      return values ? compiler.known(*type, std::move(*values)) : std::nullopt;
+    }
+    case Scalar::Type:
+    case Scalar::Fn:
+    case Scalar::Bytes:
+      return std::nullopt;
+    }
+  }
+
+  switch (expected.element) {
+  case Scalar::Integer: {
+    const auto value = integer_literal(expression);
+    return value ? compiler.known(*type, *value) : std::nullopt;
+  }
+  case Scalar::Real: {
+    const auto value = real_literal(expression);
+    return value ? compiler.known(*type, *value) : std::nullopt;
+  }
+  case Scalar::Boolean:
+    return expression.kind == joggle::Mod::Expr::Kind::Boolean
+               ? compiler.known(*type, expression.text == "true")
+               : std::nullopt;
+  case Scalar::String:
+    return expression.kind == joggle::Mod::Expr::Kind::String
+               ? compiler.known(*type, expression.text)
+               : std::nullopt;
+  case Scalar::Type:
+  case Scalar::Fn:
+  case Scalar::Bytes:
+    return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+std::optional<joggle::Val> attribute(joggle::Compiler& compiler,
+                                     Domain expected,
+                                     const onnx::AttributeProto& source) {
+  const auto type = domain_type(compiler, expected);
+  if (!type) {
+    return std::nullopt;
+  }
+  if (expected.list) {
+    switch (expected.element) {
+    case Scalar::Integer:
+      if (source.type() == onnx::AttributeProto_AttributeType_INTS) {
+        return compiler.known(
+            *type, Shape(source.ints().begin(), source.ints().end()));
+      }
+      return std::nullopt;
+    case Scalar::Real:
+      if (source.type() == onnx::AttributeProto_AttributeType_FLOATS) {
+        return compiler.known(
+            *type, std::vector<double>(source.floats().begin(),
+                                       source.floats().end()));
+      }
+      return std::nullopt;
+    case Scalar::Boolean:
+      if (source.type() == onnx::AttributeProto_AttributeType_INTS) {
+        std::vector<bool> values;
+        values.reserve(static_cast<std::size_t>(source.ints_size()));
+        for (const auto value : source.ints()) {
+          if (value != 0 && value != 1) {
+            return std::nullopt;
+          }
+          values.push_back(value != 0);
+        }
+        return compiler.known(*type, std::move(values));
+      }
+      return std::nullopt;
+    case Scalar::String:
+      if (source.type() == onnx::AttributeProto_AttributeType_STRINGS) {
+        return compiler.known(
+            *type, std::vector<std::string>(source.strings().begin(),
+                                            source.strings().end()));
+      }
+      return std::nullopt;
+    case Scalar::Type:
+    case Scalar::Fn:
+    case Scalar::Bytes:
+      return std::nullopt;
+    }
+  }
+
+  switch (expected.element) {
+  case Scalar::Integer:
+    return source.type() == onnx::AttributeProto_AttributeType_INT &&
+                   source.has_i()
+               ? compiler.known(*type, source.i())
+               : std::nullopt;
+  case Scalar::Real:
+    return source.type() == onnx::AttributeProto_AttributeType_FLOAT &&
+                   source.has_f() && std::isfinite(source.f())
+               ? compiler.known(*type, static_cast<double>(source.f()))
+               : std::nullopt;
+  case Scalar::Boolean:
+    return source.type() == onnx::AttributeProto_AttributeType_INT &&
+                   source.has_i() && (source.i() == 0 || source.i() == 1)
+               ? compiler.known(*type, source.i() != 0)
+               : std::nullopt;
+  case Scalar::String:
+    return source.type() == onnx::AttributeProto_AttributeType_STRING &&
+                   source.has_s()
+               ? compiler.known(*type, source.s())
+               : std::nullopt;
+  case Scalar::Type:
+  case Scalar::Fn:
+  case Scalar::Bytes:
+    return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+std::optional<joggle::Val> lift(joggle::Compiler& compiler, Domain expected,
+                                const Initializer& initializer) {
+  if (initializer.element != onnx::TensorProto_DataType_INT64) {
+    return std::nullopt;
+  }
+  const auto type = domain_type(compiler, expected);
+  if (!type || expected.element != Scalar::Integer) {
+    return std::nullopt;
+  }
+  if (expected.list) {
+    return compiler.known(*type, initializer.integers);
+  }
+  return initializer.integers.size() == 1U
+             ? compiler.known(*type, initializer.integers.front())
+             : std::nullopt;
+}
+
+std::optional<Types> load_types(joggle::Compiler& compiler,
+                                joggle::Diag& diagnostics) {
   const auto tensor_mod = compiler.mod("tensor");
   const auto onnx_mod = compiler.mod("onnx");
-  const auto quant = compiler.mod("quant");
-  const auto integer = compiler.make("int");
-  const auto boolean = compiler.make("bool");
-  const auto string = compiler.make("string");
-  const auto integer_list_decl = compiler.mod("prelude")
-                                     ? compiler.mod("prelude")->type("list")
-                                     : std::nullopt;
-  const auto integer_list = integer && integer_list_decl
-                                ? compiler.make(*integer_list_decl, *integer)
-                                : std::nullopt;
-  if (!tensor_mod || !onnx_mod || !integer || !boolean || !string ||
-      !integer_list) {
-    fail(diagnostics,
-         "linked ONNX, tensor, and Prelude schemas are unavailable");
+  const auto tensor = tensor_mod ? tensor_mod->type("tensor") : std::nullopt;
+  const auto constants =
+      onnx_mod ? onnx_mod->overloads("Constant")
+               : std::vector<joggle::Mod::FnDecl>{};
+  const auto constant = std::find_if(
+      constants.begin(), constants.end(),
+      [](const auto& fn) { return fn.inputs().size() == 1U; });
+  if (!tensor || constant == constants.end()) {
+    fail(diagnostics, "linked ONNX and tensor declarations are unavailable");
     return std::nullopt;
   }
-  if (needs_quant && !quant) {
-    fail(diagnostics, "the QDQ profile requires the quant Mod");
-    return std::nullopt;
-  }
-  const auto tensor = tensor_mod->type("tensor");
-  const auto constant = overload(*onnx_mod, "Constant", 1);
-  const auto conv = overload(*onnx_mod, "Conv", 6);
-  const auto conv_bias = overload(*onnx_mod, "Conv", 7);
-  const auto relu = overload(*onnx_mod, "Relu", 1);
-  const auto max_pool = overload(*onnx_mod, "MaxPool", 5);
-  const auto average_pool = overload(*onnx_mod, "AveragePool", 5);
-  const auto concat = overload(*onnx_mod, "Concat", 3);
-  const auto reshape = overload(*onnx_mod, "Reshape", 2);
-  const auto softmax = overload(*onnx_mod, "Softmax", 2);
-  const auto quantize = quant ? overload(*quant, "quantize", 4) : std::nullopt;
-  const auto dequantize =
-      quant ? overload(*quant, "dequantize", 4) : std::nullopt;
-  if (!tensor || !constant || !conv || !conv_bias || !relu || !max_pool ||
-      !average_pool || !concat || !reshape || !softmax ||
-      (needs_quant && (!quantize || !dequantize))) {
-    fail(diagnostics,
-         "ONNX or quant Mod declarations do not match the importer");
-    return std::nullopt;
-  }
+
   std::map<std::int32_t, joggle::Type> elements;
   for (const auto& [code, name] :
        std::vector<std::pair<std::int32_t, std::string_view>>{
@@ -371,163 +591,134 @@ std::optional<Schema> load_schema(joggle::Compiler& compiler, bool needs_quant,
     }
     elements.emplace(code, *type);
   }
-  return Schema{*tensor,
-                *constant,
-                *conv,
-                *conv_bias,
-                *relu,
-                *max_pool,
-                *average_pool,
-                *concat,
-                *reshape,
-                *softmax,
-                quantize,
-                dequantize,
-                std::move(elements),
-                *integer,
-                *boolean,
-                *string,
-                *integer_list};
+  return Types{*tensor, *constant, std::move(elements)};
 }
 
 std::optional<joggle::Type> tensor_type(joggle::Compiler& compiler,
-                                        const Schema& schema,
+                                        const Types& types,
                                         std::int32_t element,
                                         const Shape& shape) {
-  const auto found = schema.elements.find(element);
-  return found == schema.elements.end()
+  const auto found = types.elements.find(element);
+  return found == types.elements.end()
              ? std::nullopt
-             : compiler.make(schema.tensor, found->second, shape);
+             : compiler.make(types.tensor, found->second, shape);
 }
 
-std::optional<joggle::Val> known(joggle::Compiler& compiler,
-                                 const joggle::Type& type, std::int64_t value) {
-  return compiler.known(type, value);
+std::optional<std::pair<std::int32_t, Shape>>
+tensor_info(const Types& types, const joggle::Type& type) {
+  if (type.schema() != types.tensor) {
+    return std::nullopt;
+  }
+  const auto element = type.get<joggle::Type>("element");
+  const auto shape = type.get<Shape>("shape");
+  if (!element || !shape) {
+    return std::nullopt;
+  }
+  const auto found = std::find_if(
+      types.elements.begin(), types.elements.end(),
+      [&](const auto& item) { return item.second == *element; });
+  return found == types.elements.end()
+             ? std::nullopt
+             : std::optional<std::pair<std::int32_t, Shape>>{
+                   {found->first, *shape}};
 }
 
-std::optional<joggle::Val> known(joggle::Compiler& compiler,
-                                 const joggle::Type& type, bool value) {
-  return compiler.known(type, value);
-}
+using Attributes = std::map<std::string, const onnx::AttributeProto*>;
 
-std::optional<joggle::Val> known(joggle::Compiler& compiler,
-                                 const joggle::Type& type,
-                                 const std::string& value) {
-  return compiler.known(type, value);
-}
-
-std::optional<joggle::Val> known(joggle::Compiler& compiler,
-                                 const joggle::Type& type, const Shape& value) {
-  return compiler.known(type, value);
-}
-
-std::optional<std::map<std::string, const onnx::AttributeProto*>>
-attributes(const onnx::NodeProto& node, const std::set<std::string>& allowed,
-           joggle::Diag& diagnostics) {
-  std::map<std::string, const onnx::AttributeProto*> result;
+std::optional<Attributes> attributes(const onnx::NodeProto& node) {
+  Attributes result;
   for (const auto& attribute : node.attribute()) {
-    if (!allowed.contains(attribute.name())) {
-      fail(diagnostics, "node '" + node.name() + "' (" + node.op_type() +
-                            ") has unsupported attribute '" + attribute.name() +
-                            "'");
-      return std::nullopt;
-    }
-    if (!result.emplace(attribute.name(), &attribute).second) {
-      fail(diagnostics, "node '" + node.name() + "' has duplicate attribute '" +
-                            attribute.name() + "'");
+    if (attribute.name().empty() ||
+        !result.emplace(attribute.name(), &attribute).second) {
       return std::nullopt;
     }
   }
   return result;
 }
 
-std::optional<std::int64_t> integer_attribute(
-    const std::map<std::string, const onnx::AttributeProto*>& attrs,
-    std::string_view name, std::int64_t fallback, joggle::Diag& diagnostics) {
-  const auto found = attrs.find(std::string(name));
-  if (found == attrs.end()) {
-    return fallback;
-  }
-  if (found->second->type() != onnx::AttributeProto_AttributeType_INT ||
-      !found->second->has_i()) {
-    fail(diagnostics, "attribute '" + std::string(name) + "' must be INT");
-    return std::nullopt;
-  }
-  return found->second->i();
-}
+std::optional<std::vector<joggle::Val>> bind_node(
+    joggle::Compiler& compiler, const joggle::Mod::FnDecl& fn,
+    const onnx::NodeProto& node, const Attributes& attrs,
+    const std::map<std::string, Tensor>& values,
+    const std::map<std::string, Initializer>& initializers) {
+  std::vector<joggle::Val> result;
+  std::set<std::string> consumed_attributes;
+  std::size_t input = 0;
 
-std::optional<Shape> integers_attribute(
-    const std::map<std::string, const onnx::AttributeProto*>& attrs,
-    std::string_view name, Shape fallback, joggle::Diag& diagnostics) {
-  const auto found = attrs.find(std::string(name));
-  if (found == attrs.end()) {
-    return fallback;
-  }
-  if (found->second->type() != onnx::AttributeProto_AttributeType_INTS) {
-    fail(diagnostics, "attribute '" + std::string(name) + "' must be INTS");
-    return std::nullopt;
-  }
-  return Shape(found->second->ints().begin(), found->second->ints().end());
-}
+  for (const auto& parameter : fn.inputs()) {
+    const auto compile_domain = domain(parameter.domain);
+    if (!compile_domain) {
+      if (parameter.variadic) {
+        while (input < static_cast<std::size_t>(node.input_size())) {
+          if (node.input(static_cast<int>(input)).empty()) {
+            return std::nullopt;
+          }
+          const auto found = values.find(node.input(static_cast<int>(input++)));
+          if (found == values.end()) {
+            return std::nullopt;
+          }
+          result.push_back(found->second.value);
+        }
+        continue;
+      }
+      if (input >= static_cast<std::size_t>(node.input_size()) ||
+          node.input(static_cast<int>(input)).empty()) {
+        return std::nullopt;
+      }
+      const auto found = values.find(node.input(static_cast<int>(input++)));
+      if (found == values.end()) {
+        return std::nullopt;
+      }
+      result.push_back(found->second.value);
+      continue;
+    }
 
-std::optional<std::string> string_attribute(
-    const std::map<std::string, const onnx::AttributeProto*>& attrs,
-    std::string_view name, std::string fallback, joggle::Diag& diagnostics) {
-  const auto found = attrs.find(std::string(name));
-  if (found == attrs.end()) {
-    return fallback;
-  }
-  if (found->second->type() != onnx::AttributeProto_AttributeType_STRING ||
-      !found->second->has_s()) {
-    fail(diagnostics, "attribute '" + std::string(name) + "' must be STRING");
-    return std::nullopt;
-  }
-  return found->second->s();
-}
+    const auto found_attribute = attrs.find(parameter.name);
+    if (found_attribute != attrs.end()) {
+      auto value = attribute(compiler, *compile_domain,
+                             *found_attribute->second);
+      if (!value) {
+        return std::nullopt;
+      }
+      result.push_back(std::move(*value));
+      consumed_attributes.insert(found_attribute->first);
+      continue;
+    }
 
-bool positive_pair(const Shape& values) {
-  return values.size() == 2 &&
-         std::all_of(values.begin(), values.end(),
-                     [](std::int64_t value) { return value > 0; });
-}
+    if (input < static_cast<std::size_t>(node.input_size())) {
+      const std::string& name = node.input(static_cast<int>(input));
+      const auto initializer = initializers.find(name);
+      if (!name.empty() && initializer != initializers.end()) {
+        auto value = lift(compiler, *compile_domain, initializer->second);
+        if (value) {
+          result.push_back(std::move(*value));
+          ++input;
+          continue;
+        }
+      }
+      if (name.empty()) {
+        ++input;
+      }
+    }
 
-bool nonnegative_pads(const Shape& values) {
-  return values.size() == 4 &&
-         std::all_of(values.begin(), values.end(),
-                     [](std::int64_t value) { return value >= 0; });
-}
-
-std::optional<Shape> spatial_shape(const Shape& input, const Shape& kernel,
-                                   const Shape& strides, const Shape& pads,
-                                   const Shape& dilations,
-                                   joggle::Diag& diagnostics,
-                                   std::string_view operation) {
-  if (input.size() != 4 || !positive_pair(kernel) || !positive_pair(strides) ||
-      !positive_pair(dilations) || !nonnegative_pads(pads)) {
-    fail(diagnostics, std::string(operation) +
-                          " requires NCHW rank 4 and two-dimensional static "
-                          "kernel/stride/dilation/pad values");
-    return std::nullopt;
-  }
-  Shape result{input[0], input[1], 0, 0};
-  for (std::size_t axis = 0; axis < 2; ++axis) {
-    const auto maximum = std::numeric_limits<std::int64_t>::max();
-    if (input[axis + 2] > maximum - pads[axis] ||
-        input[axis + 2] + pads[axis] > maximum - pads[axis + 2] ||
-        kernel[axis] - 1 > (maximum - 1) / dilations[axis]) {
-      fail(diagnostics, std::string(operation) + " spatial extent overflows");
+    if (!parameter.default_value) {
       return std::nullopt;
     }
-    const auto padded = input[axis + 2] + pads[axis] + pads[axis + 2];
-    const auto receptive = dilations[axis] * (kernel[axis] - 1) + 1;
-    if (padded < receptive) {
-      fail(diagnostics,
-           std::string(operation) + " kernel exceeds padded input");
+    auto value = literal(compiler, *compile_domain, *parameter.default_value);
+    if (!value) {
       return std::nullopt;
     }
-    result[axis + 2] = (padded - receptive) / strides[axis] + 1;
+    result.push_back(std::move(*value));
   }
-  return result;
+
+  while (input < static_cast<std::size_t>(node.input_size()) &&
+         node.input(static_cast<int>(input)).empty()) {
+    ++input;
+  }
+  return input == static_cast<std::size_t>(node.input_size()) &&
+                 consumed_attributes.size() == attrs.size()
+             ? std::optional<std::vector<joggle::Val>>{std::move(result)}
+             : std::nullopt;
 }
 
 joggle::Loc location(const onnx::GraphProto& graph, std::string_view kind,
@@ -539,63 +730,7 @@ joggle::Loc location(const onnx::GraphProto& graph, std::string_view kind,
           {line, 2}};
 }
 
-std::optional<Shape> reshape_shape(const Shape& input, const Shape& requested,
-                                   joggle::Diag& diagnostics) {
-  const auto input_count = element_count(input);
-  if (!input_count) {
-    fail(diagnostics, "Reshape input has invalid element count");
-    return std::nullopt;
-  }
-  Shape result;
-  result.reserve(requested.size());
-  std::optional<std::size_t> inferred;
-  std::size_t known_count = 1;
-  for (std::size_t index = 0; index < requested.size(); ++index) {
-    auto dimension = requested[index];
-    if (dimension == 0) {
-      if (index >= input.size()) {
-        fail(diagnostics, "Reshape zero dimension has no input counterpart");
-        return std::nullopt;
-      }
-      dimension = input[index];
-    } else if (dimension == -1) {
-      if (inferred) {
-        fail(diagnostics, "Reshape has more than one inferred dimension");
-        return std::nullopt;
-      }
-      inferred = index;
-      result.push_back(-1);
-      continue;
-    } else if (dimension < 0) {
-      fail(diagnostics, "Reshape has an invalid negative dimension");
-      return std::nullopt;
-    }
-    if (dimension != 0 &&
-        known_count > std::numeric_limits<std::size_t>::max() /
-                          static_cast<std::size_t>(dimension)) {
-      fail(diagnostics, "Reshape element count overflows");
-      return std::nullopt;
-    }
-    known_count *= static_cast<std::size_t>(dimension);
-    result.push_back(dimension);
-  }
-  if (inferred) {
-    if (known_count == 0 || *input_count % known_count != 0) {
-      fail(diagnostics, "Reshape inferred dimension is not integral");
-      return std::nullopt;
-    }
-    result[*inferred] = static_cast<std::int64_t>(*input_count / known_count);
-  } else if (known_count != *input_count) {
-    fail(diagnostics, "Reshape changes the number of elements");
-    return std::nullopt;
-  }
-  return result;
-}
-
-enum class Profile {
-  Opset7,
-  Qdq13,
-};
+enum class Profile { Opset7, Opset13 };
 
 std::optional<Profile> profile(const onnx::ModelProto& source,
                                joggle::Diag& diagnostics) {
@@ -613,10 +748,9 @@ std::optional<Profile> profile(const onnx::ModelProto& source,
     return Profile::Opset7;
   }
   if (source.ir_version() == 7 && standard == 13) {
-    return Profile::Qdq13;
+    return Profile::Opset13;
   }
-  fail(diagnostics,
-       "supported profiles are IR 3/opset 7 and IR 7/opset 13 QDQ");
+  fail(diagnostics, "supported profiles are IR 3/opset 7 and IR 7/opset 13");
   return std::nullopt;
 }
 
@@ -647,37 +781,22 @@ std::optional<joggle::Mod> read(joggle::Compiler& compiler,
   if (!source.has_graph() || source.functions_size() != 0 ||
       source.training_info_size() != 0) {
     fail(diagnostics,
-         "a single inference graph without fns or training data is "
-         "required");
+         "a single inference graph without fns or training data is required");
     return std::nullopt;
   }
+
   const auto& graph = source.graph();
-  if (graph.output_size() != 1 || graph.sparse_initializer_size() != 0 ||
+  if (graph.output_size() == 0 || graph.sparse_initializer_size() != 0 ||
       graph.quantization_annotation_size() != 0) {
     fail(diagnostics,
-         "one graph output and no sparse initializers or quantization "
-         "annotations are required");
+         "at least one graph output and no sparse initializers or "
+         "quantization annotations are required");
     return std::nullopt;
   }
 
-  if (*selected == Profile::Qdq13) {
-    const bool has_quantize = std::any_of(
-        graph.node().begin(), graph.node().end(),
-        [](const auto& node) { return node.op_type() == "QuantizeLinear"; });
-    const bool has_dequantize = std::any_of(
-        graph.node().begin(), graph.node().end(),
-        [](const auto& node) { return node.op_type() == "DequantizeLinear"; });
-    if (!has_quantize || !has_dequantize) {
-      fail(diagnostics,
-           "the IR 7/opset 13 profile requires both QuantizeLinear and "
-           "DequantizeLinear");
-      return std::nullopt;
-    }
-  }
-
-  const auto schema =
-      load_schema(compiler, *selected == Profile::Qdq13, diagnostics);
-  if (!schema) {
+  const auto types = load_types(compiler, diagnostics);
+  const auto onnx_mod = compiler.mod("onnx");
+  if (!types || !onnx_mod) {
     return std::nullopt;
   }
 
@@ -728,7 +847,7 @@ std::optional<joggle::Mod> read(joggle::Compiler& compiler,
                               found->second.first == initializer.element &&
                               found->second.second == initializer.shape;
     if ((*selected == Profile::Opset7 && !legacy_match) ||
-        (*selected == Profile::Qdq13 &&
+        (*selected == Profile::Opset13 &&
          graph_inputs.contains(initializer_name))) {
       fail(diagnostics, "initializer '" + initializer_name +
                             "' violates its ONNX IR profile's input rule");
@@ -756,14 +875,10 @@ std::optional<joggle::Mod> read(joggle::Compiler& compiler,
       continue;
     }
     const auto& declared = declared_values.at(input_value.name());
-    if (declared.first != onnx::TensorProto_DataType_FLOAT) {
-      fail(diagnostics, "only FLOAT runtime graph inputs are supported");
-      return std::nullopt;
-    }
     const auto type =
-        tensor_type(compiler, *schema, declared.first, declared.second);
+        tensor_type(compiler, *types, declared.first, declared.second);
     if (!type) {
-      fail(diagnostics, "could not construct graph input tensor Type");
+      fail(diagnostics, "unsupported graph input tensor Type");
       return std::nullopt;
     }
     values.emplace(input_value.name(), Tensor{edit.argument(*type),
@@ -778,32 +893,23 @@ std::optional<joggle::Mod> read(joggle::Compiler& compiler,
       continue;
     }
     const auto type =
-        tensor_type(compiler, *schema, initializer.element, initializer.shape);
+        tensor_type(compiler, *types, initializer.element, initializer.shape);
     const auto digest = model.store(initializer.bytes);
-    const auto content = known(compiler, schema->string, digest);
+    const auto string = compiler.make("string");
+    const auto content =
+        string ? compiler.known(*string, digest) : std::nullopt;
     if (!type || !content) {
       fail(diagnostics,
            "could not materialize initializer '" + tensor.name() + "'");
       return std::nullopt;
     }
-    const auto constant = edit.call(schema->constant, {*content}, {*type});
+    const auto constant = edit.call(types->constant, {*content}, {*type});
     edit.locate(constant, location(graph, "initializer", tensor.name(),
                                    initializer_ordinal));
     values.emplace(tensor.name(), Tensor{constant.value(), initializer.element,
                                          initializer.shape});
     ++initializer_ordinal;
   }
-
-  const auto require_value =
-      [&](std::string_view value_name) -> std::optional<Tensor> {
-    const auto found = values.find(std::string(value_name));
-    if (found == values.end()) {
-      fail(diagnostics,
-           "value '" + std::string(value_name) + "' is unavailable at its use");
-      return std::nullopt;
-    }
-    return found->second;
-  };
 
   const auto publish = [&](std::string_view value_name, Tensor tensor) {
     const auto declared = declared_values.find(std::string(value_name));
@@ -816,21 +922,6 @@ std::optional<joggle::Mod> read(joggle::Compiler& compiler,
     return values.emplace(std::string(value_name), std::move(tensor)).second;
   };
 
-  const std::set<std::string_view> legacy_ops{"AveragePool", "Concat",  "Conv",
-                                              "Dropout",     "MaxPool", "Relu",
-                                              "Reshape",     "Softmax"};
-  const std::set<std::string_view> qdq_ops{"Concat",
-                                           "Conv",
-                                           "DequantizeLinear",
-                                           "Flatten",
-                                           "GlobalAveragePool",
-                                           "MaxPool",
-                                           "QuantizeLinear",
-                                           "Reshape",
-                                           "Softmax"};
-  const auto& supported_ops =
-      *selected == Profile::Opset7 ? legacy_ops : qdq_ops;
-
   for (std::size_t node_index = 0;
        node_index < static_cast<std::size_t>(graph.node_size()); ++node_index) {
     const auto& node = graph.node(static_cast<int>(node_index));
@@ -839,489 +930,103 @@ std::optional<joggle::Mod> read(joggle::Compiler& compiler,
            "node '" + node.name() + "' uses an unsupported domain");
       return std::nullopt;
     }
-    if (!supported_ops.contains(node.op_type())) {
-      fail(diagnostics, "operator '" + node.op_type() +
-                            "' is unsupported by the selected profile");
+    if (node.output_size() == 0) {
+      fail(diagnostics, "a node must define at least one output");
       return std::nullopt;
     }
-    if (node.output_size() != 1 || node.output(0).empty() ||
-        values.contains(node.output(0))) {
-      fail(diagnostics, "each node must define one unique non-empty output");
+    for (const auto& output : node.output()) {
+      if (!output.empty() && values.contains(output)) {
+        fail(diagnostics, "node output '" + output + "' is not unique");
+        return std::nullopt;
+      }
+    }
+
+    const auto attrs = attributes(node);
+    if (!attrs) {
+      fail(diagnostics, "node '" + node.name() +
+                            "' has an empty or duplicate attribute name");
       return std::nullopt;
     }
 
-    std::optional<joggle::Op> call;
-    std::int32_t output_element = 0;
-    Shape output_shape;
-    const auto append_call =
-        [&](joggle::Mod::FnDecl declaration, std::vector<joggle::Val> arguments,
-            std::int32_t element,
-            const Shape& shape) -> std::optional<joggle::Op> {
-      const auto type = tensor_type(compiler, *schema, element, shape);
-      if (!type) {
-        fail(diagnostics, "could not construct result tensor Type for node '" +
-                              node.name() + "'");
-        return std::nullopt;
-      }
-      return edit.call(declaration, std::move(arguments), {*type});
+    struct Candidate {
+      joggle::Mod::FnDecl fn;
+      std::vector<joggle::Val> arguments;
     };
-
-    if (node.op_type() == "QuantizeLinear" ||
-        node.op_type() == "DequantizeLinear") {
-      const bool quantizing = node.op_type() == "QuantizeLinear";
-      const auto attrs = attributes(node, {"axis"}, diagnostics);
-      const auto input_tensor = node.input_size() == 3
-                                    ? require_value(node.input(0))
-                                    : std::optional<Tensor>{};
-      const auto scale = node.input_size() == 3 ? require_value(node.input(1))
-                                                : std::optional<Tensor>{};
-      const auto zero = node.input_size() == 3 ? require_value(node.input(2))
-                                               : std::optional<Tensor>{};
-      const auto axis = attrs
-                            ? integer_attribute(*attrs, "axis", 1, diagnostics)
-                            : std::nullopt;
-      if (!attrs || !input_tensor || !scale || !zero || !axis ||
-          scale->element != onnx::TensorProto_DataType_FLOAT ||
-          scale->shape != zero->shape || input_tensor->shape.empty()) {
-        if (node.input_size() != 3 && diagnostics.ok()) {
-          fail(diagnostics,
-               node.op_type() + " requires input, scale, and zero point");
-        }
-        return std::nullopt;
+    std::vector<Candidate> candidates;
+    for (const auto& declaration : onnx_mod->overloads(node.op_type())) {
+      auto arguments =
+          bind_node(compiler, declaration, node, *attrs, values, initializers);
+      if (arguments) {
+        candidates.push_back({declaration, std::move(*arguments)});
       }
-      auto normalized_axis = *axis;
-      if (normalized_axis < 0) {
-        normalized_axis +=
-            static_cast<std::int64_t>(input_tensor->shape.size());
-      }
-      const auto parameter_count = element_count(scale->shape);
-      const bool scalar_parameters = parameter_count && *parameter_count == 1U;
-      const bool per_axis_parameters =
-          normalized_axis >= 0 &&
-          normalized_axis <
-              static_cast<std::int64_t>(input_tensor->shape.size()) &&
-          scale->shape ==
-              Shape{input_tensor
-                        ->shape[static_cast<std::size_t>(normalized_axis)]};
-      const bool storage_type =
-          zero->element == onnx::TensorProto_DataType_UINT8 ||
-          zero->element == onnx::TensorProto_DataType_INT8 ||
-          (!quantizing && zero->element == onnx::TensorProto_DataType_INT32);
-      if ((!scalar_parameters && !per_axis_parameters) || !storage_type ||
-          (quantizing &&
-           input_tensor->element != onnx::TensorProto_DataType_FLOAT) ||
-          (!quantizing && input_tensor->element != zero->element)) {
-        fail(diagnostics,
-             node.op_type() + " has inconsistent tensor or parameter Types");
-        return std::nullopt;
-      }
-      const auto axis_value = known(compiler, schema->integer, *axis);
-      output_element =
-          quantizing ? zero->element : onnx::TensorProto_DataType_FLOAT;
-      output_shape = input_tensor->shape;
-      const auto declaration =
-          quantizing ? schema->quantize : schema->dequantize;
-      if (!axis_value || !declaration) {
-        fail(diagnostics, "quant Mod declarations are unavailable");
-        return std::nullopt;
-      }
-      call = append_call(
-          *declaration,
-          {input_tensor->value, scale->value, zero->value, *axis_value},
-          output_element, output_shape);
-    } else if (node.op_type() == "Conv") {
-      if (node.input_size() != 2 && node.input_size() != 3) {
-        fail(diagnostics, "Conv requires weight and optional bias");
-        return std::nullopt;
-      }
-      const auto input_tensor = require_value(node.input(0));
-      const auto weight = require_value(node.input(1));
-      const auto bias = node.input_size() == 3 ? require_value(node.input(2))
-                                               : std::optional<Tensor>{};
-      const auto attrs = attributes(
-          node,
-          {"auto_pad", "dilations", "group", "kernel_shape", "pads", "strides"},
-          diagnostics);
-      if (!input_tensor || !weight || (node.input_size() == 3 && !bias) ||
-          !attrs || weight->shape.size() != 4 ||
-          input_tensor->element != onnx::TensorProto_DataType_FLOAT ||
-          weight->element != onnx::TensorProto_DataType_FLOAT ||
-          (bias && bias->element != onnx::TensorProto_DataType_FLOAT)) {
-        return std::nullopt;
-      }
-      const auto strides =
-          integers_attribute(*attrs, "strides", {1, 1}, diagnostics);
-      const auto pads =
-          integers_attribute(*attrs, "pads", {0, 0, 0, 0}, diagnostics);
-      const auto dilations =
-          integers_attribute(*attrs, "dilations", {1, 1}, diagnostics);
-      const auto kernel =
-          integers_attribute(*attrs, "kernel_shape",
-                             {weight->shape[2], weight->shape[3]}, diagnostics);
-      const auto group = integer_attribute(*attrs, "group", 1, diagnostics);
-      const auto auto_pad =
-          string_attribute(*attrs, "auto_pad", "NOTSET", diagnostics);
-      const bool channel_product_overflows =
-          group && *group > 0 && weight->shape[1] != 0 &&
-          *group > std::numeric_limits<std::int64_t>::max() / weight->shape[1];
-      if (!strides || !pads || !dilations || !kernel || !group || !auto_pad ||
-          *auto_pad != "NOTSET" ||
-          *kernel != Shape({weight->shape[2], weight->shape[3]}) ||
-          *group <= 0 || channel_product_overflows ||
-          input_tensor->shape.size() != 4 ||
-          weight->shape[1] * *group != input_tensor->shape[1] ||
-          (bias && (bias->shape != Shape{weight->shape[0]}))) {
-        if (diagnostics.ok()) {
-          fail(diagnostics, "Conv tensor shapes or kernel/group attributes "
-                            "are inconsistent");
-        }
-        return std::nullopt;
-      }
-      const auto spatial =
-          spatial_shape(input_tensor->shape, *kernel, *strides, *pads,
-                        *dilations, diagnostics, "Conv");
-      if (!spatial) {
-        return std::nullopt;
-      }
-      output_shape = *spatial;
-      output_shape[1] = weight->shape[0];
-      const auto strides_value =
-          known(compiler, schema->integer_list, *strides);
-      const auto pads_value = known(compiler, schema->integer_list, *pads);
-      const auto dilations_value =
-          known(compiler, schema->integer_list, *dilations);
-      const auto group_value = known(compiler, schema->integer, *group);
-      if (!strides_value || !pads_value || !dilations_value || !group_value) {
-        fail(diagnostics, "could not encode Conv bindings");
-        return std::nullopt;
-      }
-      std::vector<joggle::Val> arguments{input_tensor->value, weight->value};
-      if (bias) {
-        arguments.push_back(bias->value);
-      }
-      arguments.insert(arguments.end(), {*strides_value, *pads_value,
-                                         *dilations_value, *group_value});
-      call = append_call(bias ? schema->conv_bias : schema->conv,
-                         std::move(arguments), onnx::TensorProto_DataType_FLOAT,
-                         output_shape);
-      output_element = onnx::TensorProto_DataType_FLOAT;
-    } else if (node.op_type() == "Relu") {
-      const auto attrs = attributes(node, {}, diagnostics);
-      const auto input_tensor = node.input_size() == 1
-                                    ? require_value(node.input(0))
-                                    : std::optional<Tensor>{};
-      if (!attrs || !input_tensor) {
-        if (node.input_size() != 1 && diagnostics.ok()) {
-          fail(diagnostics, "Relu requires one input");
-        }
-        return std::nullopt;
-      }
-      output_shape = input_tensor->shape;
-      output_element = input_tensor->element;
-      call = append_call(schema->relu, {input_tensor->value}, output_element,
-                         output_shape);
-    } else if (node.op_type() == "MaxPool" || node.op_type() == "AveragePool") {
-      const bool average = node.op_type() == "AveragePool";
-      const auto attrs = attributes(
-          node,
-          average ? std::set<std::string>{"ceil_mode", "count_include_pad",
-                                          "auto_pad", "kernel_shape", "pads",
-                                          "strides"}
-                  : std::set<std::string>{"ceil_mode", "auto_pad", "dilations",
-                                          "kernel_shape", "pads",
-                                          "storage_order", "strides"},
-          diagnostics);
-      const auto input_tensor = node.input_size() == 1
-                                    ? require_value(node.input(0))
-                                    : std::optional<Tensor>{};
-      if (!attrs || !input_tensor) {
-        if (node.input_size() != 1 && diagnostics.ok()) {
-          fail(diagnostics, node.op_type() + " requires one input");
-        }
-        return std::nullopt;
-      }
-      const auto kernel =
-          integers_attribute(*attrs, "kernel_shape", {}, diagnostics);
-      const auto strides =
-          integers_attribute(*attrs, "strides", {1, 1}, diagnostics);
-      const auto pads =
-          integers_attribute(*attrs, "pads", {0, 0, 0, 0}, diagnostics);
-      const auto dilations =
-          integers_attribute(*attrs, "dilations", {1, 1}, diagnostics);
-      const auto auto_pad =
-          string_attribute(*attrs, "auto_pad", "NOTSET", diagnostics);
-      const auto ceil_mode =
-          integer_attribute(*attrs, "ceil_mode", 0, diagnostics);
-      const auto extra = integer_attribute(
-          *attrs, average ? "count_include_pad" : "storage_order", 0,
-          diagnostics);
-      if (!kernel || !strides || !pads || !dilations || !auto_pad ||
-          !ceil_mode || !extra || *auto_pad != "NOTSET" ||
-          *dilations != Shape({1, 1}) || *ceil_mode != 0 || *extra != 0) {
-        if (diagnostics.ok()) {
-          fail(diagnostics,
-               node.op_type() + " only supports floor-mode NCHW inference");
-        }
-        return std::nullopt;
-      }
-      const auto spatial =
-          spatial_shape(input_tensor->shape, *kernel, *strides, *pads,
-                        Shape{1, 1}, diagnostics, node.op_type());
-      if (!spatial) {
-        return std::nullopt;
-      }
-      output_shape = *spatial;
-      output_element = input_tensor->element;
-      const auto kernel_value = known(compiler, schema->integer_list, *kernel);
-      const auto strides_value =
-          known(compiler, schema->integer_list, *strides);
-      const auto pads_value = known(compiler, schema->integer_list, *pads);
-      const auto ceil_value = known(compiler, schema->boolean, false);
-      if (!kernel_value || !strides_value || !pads_value || !ceil_value) {
-        fail(diagnostics, "could not encode Pool bindings");
-        return std::nullopt;
-      }
-      call = append_call(average ? schema->average_pool : schema->max_pool,
-                         {input_tensor->value, *kernel_value, *strides_value,
-                          *pads_value, *ceil_value},
-                         output_element, output_shape);
-    } else if (node.op_type() == "GlobalAveragePool") {
-      const auto attrs = attributes(node, {}, diagnostics);
-      const auto input_tensor = node.input_size() == 1
-                                    ? require_value(node.input(0))
-                                    : std::optional<Tensor>{};
-      if (!attrs || !input_tensor || input_tensor->shape.size() != 4U) {
-        if (node.input_size() != 1 && diagnostics.ok()) {
-          fail(diagnostics, "GlobalAveragePool requires one NCHW input");
-        }
-        return std::nullopt;
-      }
-      const Shape kernel{input_tensor->shape[2], input_tensor->shape[3]};
-      const Shape strides{1, 1};
-      const Shape pads{0, 0, 0, 0};
-      const auto kernel_value = known(compiler, schema->integer_list, kernel);
-      const auto strides_value = known(compiler, schema->integer_list, strides);
-      const auto pads_value = known(compiler, schema->integer_list, pads);
-      const auto ceil_value = known(compiler, schema->boolean, false);
-      if (!kernel_value || !strides_value || !pads_value || !ceil_value) {
-        fail(diagnostics, "could not encode GlobalAveragePool bindings");
-        return std::nullopt;
-      }
-      output_element = input_tensor->element;
-      output_shape = {input_tensor->shape[0], input_tensor->shape[1], 1, 1};
-      call = append_call(schema->average_pool,
-                         {input_tensor->value, *kernel_value, *strides_value,
-                          *pads_value, *ceil_value},
-                         output_element, output_shape);
-    } else if (node.op_type() == "Flatten") {
-      const auto attrs = attributes(node, {"axis"}, diagnostics);
-      const auto input_tensor = node.input_size() == 1
-                                    ? require_value(node.input(0))
-                                    : std::optional<Tensor>{};
-      const auto axis = attrs
-                            ? integer_attribute(*attrs, "axis", 1, diagnostics)
-                            : std::nullopt;
-      if (!attrs || !input_tensor || !axis) {
-        return std::nullopt;
-      }
-      auto normalized = *axis;
-      if (normalized < 0) {
-        normalized += static_cast<std::int64_t>(input_tensor->shape.size());
-      }
-      if (normalized < 0 ||
-          normalized > static_cast<std::int64_t>(input_tensor->shape.size())) {
-        fail(diagnostics, "Flatten axis is out of range");
-        return std::nullopt;
-      }
-      const auto split = static_cast<std::size_t>(normalized);
-      const auto outer = element_count(
-          std::span<const std::int64_t>(input_tensor->shape.data(), split));
-      const auto inner = element_count(
-          std::span<const std::int64_t>(input_tensor->shape.data() + split,
-                                        input_tensor->shape.size() - split));
-      if (!outer || !inner ||
-          *outer > static_cast<std::size_t>(
-                       std::numeric_limits<std::int64_t>::max()) ||
-          *inner > static_cast<std::size_t>(
-                       std::numeric_limits<std::int64_t>::max())) {
-        fail(diagnostics, "Flatten shape overflows");
-        return std::nullopt;
-      }
-      output_element = input_tensor->element;
-      output_shape = {static_cast<std::int64_t>(*outer),
-                      static_cast<std::int64_t>(*inner)};
-      const auto shape_value =
-          known(compiler, schema->integer_list, output_shape);
-      if (!shape_value) {
-        fail(diagnostics, "could not encode Flatten shape");
-        return std::nullopt;
-      }
-      call = append_call(schema->reshape, {input_tensor->value, *shape_value},
-                         output_element, output_shape);
-    } else if (node.op_type() == "Softmax") {
-      const auto attrs = attributes(node, {"axis"}, diagnostics);
-      const auto input_tensor = node.input_size() == 1
-                                    ? require_value(node.input(0))
-                                    : std::optional<Tensor>{};
-      const auto fallback = *selected == Profile::Opset7 ? 1 : -1;
-      const auto axis =
-          attrs ? integer_attribute(*attrs, "axis", fallback, diagnostics)
-                : std::nullopt;
-      if (!attrs || !input_tensor || !axis ||
-          input_tensor->element != onnx::TensorProto_DataType_FLOAT) {
-        return std::nullopt;
-      }
-      auto normalized = *axis;
-      if (normalized < 0) {
-        normalized += static_cast<std::int64_t>(input_tensor->shape.size());
-      }
-      if (normalized < 0 ||
-          normalized >= static_cast<std::int64_t>(input_tensor->shape.size())) {
-        fail(diagnostics, "Softmax axis is out of range");
-        return std::nullopt;
-      }
-      const auto axis_value = known(compiler, schema->integer, *axis);
-      if (!axis_value) {
-        fail(diagnostics, "could not encode Softmax axis");
-        return std::nullopt;
-      }
-      output_element = input_tensor->element;
-      output_shape = input_tensor->shape;
-      call = append_call(schema->softmax, {input_tensor->value, *axis_value},
-                         output_element, output_shape);
-    } else if (node.op_type() == "Concat") {
-      const auto attrs = attributes(node, {"axis"}, diagnostics);
-      const auto lhs = node.input_size() == 2 ? require_value(node.input(0))
-                                              : std::optional<Tensor>{};
-      const auto rhs = node.input_size() == 2 ? require_value(node.input(1))
-                                              : std::optional<Tensor>{};
-      const auto axis = attrs
-                            ? integer_attribute(*attrs, "axis", 0, diagnostics)
-                            : std::nullopt;
-      if (!attrs || !lhs || !rhs || !axis ||
-          lhs->shape.size() != rhs->shape.size() ||
-          lhs->element != rhs->element) {
-        if (diagnostics.ok()) {
-          fail(diagnostics, "Concat requires two equal-rank inputs");
-        }
-        return std::nullopt;
-      }
-      auto normalized = *axis;
-      if (normalized < 0) {
-        normalized += static_cast<std::int64_t>(lhs->shape.size());
-      }
-      if (normalized < 0 ||
-          normalized >= static_cast<std::int64_t>(lhs->shape.size())) {
-        fail(diagnostics, "Concat axis is out of range");
-        return std::nullopt;
-      }
-      output_shape = lhs->shape;
-      for (std::size_t index = 0; index < output_shape.size(); ++index) {
-        if (index == static_cast<std::size_t>(normalized)) {
-          if (output_shape[index] >
-              std::numeric_limits<std::int64_t>::max() - rhs->shape[index]) {
-            fail(diagnostics, "Concat axis extent overflows");
-            return std::nullopt;
-          }
-          output_shape[index] += rhs->shape[index];
-        } else if (output_shape[index] != rhs->shape[index]) {
-          fail(diagnostics, "Concat non-axis dimensions differ");
-          return std::nullopt;
-        }
-      }
-      const auto axis_value = known(compiler, schema->integer, *axis);
-      if (!axis_value) {
-        fail(diagnostics, "could not encode Concat axis");
-        return std::nullopt;
-      }
-      call = append_call(schema->concat, {lhs->value, rhs->value, *axis_value},
-                         lhs->element, output_shape);
-      output_element = lhs->element;
-    } else if (node.op_type() == "Dropout") {
-      const auto attrs = attributes(node, {"ratio"}, diagnostics);
-      const auto input_tensor = node.input_size() == 1
-                                    ? require_value(node.input(0))
-                                    : std::optional<Tensor>{};
-      if (!attrs || !input_tensor) {
-        if (node.input_size() != 1 && diagnostics.ok()) {
-          fail(diagnostics, "Dropout-7 requires one input");
-        }
-        return std::nullopt;
-      }
-      const auto ratio = attrs->find("ratio");
-      if (ratio != attrs->end() &&
-          (ratio->second->type() != onnx::AttributeProto_AttributeType_FLOAT ||
-           !ratio->second->has_f())) {
-        fail(diagnostics, "Dropout ratio must be FLOAT");
-        return std::nullopt;
-      }
-      if (!publish(node.output(0), *input_tensor)) {
-        return std::nullopt;
-      }
-      continue;
-    } else if (node.op_type() == "Reshape") {
-      const auto attrs = attributes(node, {}, diagnostics);
-      const auto input_tensor = node.input_size() == 2
-                                    ? require_value(node.input(0))
-                                    : std::optional<Tensor>{};
-      const auto shape_initializer = node.input_size() == 2
-                                         ? initializers.find(node.input(1))
-                                         : initializers.end();
-      if (!attrs || !input_tensor || shape_initializer == initializers.end() ||
-          shape_initializer->second.element !=
-              onnx::TensorProto_DataType_INT64) {
-        if (diagnostics.ok()) {
-          fail(diagnostics,
-               "Reshape requires one tensor and one constant INT64 shape");
-        }
-        return std::nullopt;
-      }
-      const auto requested = shape_initializer->second.integers;
-      const auto resolved =
-          reshape_shape(input_tensor->shape, requested, diagnostics);
-      if (!resolved) {
-        return std::nullopt;
-      }
-      output_shape = *resolved;
-      output_element = input_tensor->element;
-      const auto shape_value = known(compiler, schema->integer_list, requested);
-      if (!shape_value) {
-        fail(diagnostics, "could not encode Reshape shape");
-        return std::nullopt;
-      }
-      call = append_call(schema->reshape, {input_tensor->value, *shape_value},
-                         output_element, output_shape);
-    } else {
-      fail(diagnostics, "operator '" + node.op_type() + "' is unsupported");
+    }
+    if (candidates.empty()) {
+      fail(diagnostics, "no declaration of '" + node.op_type() +
+                            "' accepts this node's inputs and attributes");
+      return std::nullopt;
+    }
+    if (candidates.size() != 1U) {
+      fail(diagnostics, "node '" + node.name() + "' ambiguously matches " +
+                            std::to_string(candidates.size()) +
+                            " declarations of '" + node.op_type() + "'");
       return std::nullopt;
     }
 
+    const auto where =
+        location(graph, "node",
+                 node.name().empty() ? node.output(0) : node.name(), node_index);
+    auto call = compiler.call(edit, candidates.front().fn,
+                              std::move(candidates.front().arguments), where);
     if (!call) {
+      fail(diagnostics, "could not infer the result Type of node '" +
+                            node.name() + "' (" + node.op_type() + ")");
       return std::nullopt;
     }
-    edit.locate(*call,
-                location(graph, "node",
-                         node.name().empty() ? node.output(0) : node.name(),
-                         node_index));
-    if (!publish(node.output(0),
-                 Tensor{call->value(), output_element, output_shape})) {
+    const auto results = call->results();
+    if (results.size() != static_cast<std::size_t>(node.output_size())) {
+      fail(diagnostics, "node '" + node.name() + "' has " +
+                            std::to_string(node.output_size()) +
+                            " outputs but its fn returns " +
+                            std::to_string(results.size()));
       return std::nullopt;
+    }
+    for (std::size_t index = 0; index < results.size(); ++index) {
+      const std::string& output = node.output(static_cast<int>(index));
+      if (output.empty()) {
+        continue;
+      }
+      const auto info = tensor_info(*types, results[index].type());
+      if (!info ||
+          !publish(output, Tensor{results[index], info->first, info->second})) {
+        if (diagnostics.ok()) {
+          fail(diagnostics, "node '" + node.name() +
+                                "' returned a non-tensor result");
+        }
+        return std::nullopt;
+      }
     }
   }
 
-  const auto output = values.find(graph.output(0).name());
-  const auto declared_output = value_type(graph.output(0), diagnostics);
-  if (output == values.end() || !declared_output ||
-      declared_output->first != onnx::TensorProto_DataType_FLOAT ||
-      output->second.element != declared_output->first ||
-      output->second.shape != declared_output->second) {
-    if (diagnostics.ok()) {
-      fail(diagnostics, "inferred graph output does not match declaration");
+  std::vector<joggle::Val> returned;
+  returned.reserve(static_cast<std::size_t>(graph.output_size()));
+  for (const auto& output : graph.output()) {
+    const auto value = values.find(output.name());
+    const auto declared = value_type(output, diagnostics);
+    if (value == values.end() || !declared ||
+        value->second.element != declared->first ||
+        value->second.shape != declared->second) {
+      if (diagnostics.ok()) {
+        fail(diagnostics,
+             "inferred graph output '" + output.name() +
+                 "' does not match its declaration");
+      }
+      return std::nullopt;
     }
-    return std::nullopt;
+    returned.push_back(value->second.value);
   }
-  edit.ret(fn->entry(), {output->second.value});
-  if (!edit.commit(diagnostics) ||
+
+  edit.ret(fn->entry(), std::move(returned));
+  if (!edit.commit(compiler, diagnostics) ||
       !model.insert("main", std::move(*fn), diagnostics)) {
     return std::nullopt;
   }

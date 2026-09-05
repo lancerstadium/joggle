@@ -96,6 +96,13 @@ void add_ints(onnx::NodeProto& node, std::string name, const Shape& values) {
   }
 }
 
+void add_float(onnx::NodeProto& node, std::string name, double value) {
+  auto* attribute = node.add_attribute();
+  attribute->set_name(std::move(name));
+  attribute->set_type(onnx::AttributeProto_AttributeType_FLOAT);
+  attribute->set_f(static_cast<float>(value));
+}
+
 bool emit(const joggle::Mod& mod, const char* path) {
   const auto main = mod.fn("main");
   const auto fn = main ? main->body() : nullptr;
@@ -106,7 +113,10 @@ bool emit(const joggle::Mod& mod, const char* path) {
   const auto operations = fn->ops();
   const bool qdq =
       std::any_of(operations.begin(), operations.end(), [](const auto& op) {
-        return op.callee().referenced_fn()->symbol().mod_name() == "quant";
+        const auto symbol = op.callee().referenced_fn()->symbol();
+        return symbol.mod_name() == "onnx" &&
+               (symbol.local_name() == "QuantizeLinear" ||
+                symbol.local_name() == "DequantizeLinear");
       });
   onnx::ModelProto model;
   model.set_ir_version(qdq ? 7 : onnx::IR_VERSION_2017_11_3);
@@ -157,10 +167,9 @@ bool emit(const joggle::Mod& mod, const char* path) {
 
     auto* node = graph->add_node();
     node->set_name("call_" + std::to_string(call_index));
-    if (callee_mod == "quant" &&
-        (callee == "quantize" || callee == "dequantize")) {
-      node->set_op_type(callee == "quantize" ? "QuantizeLinear"
-                                             : "DequantizeLinear");
+    if (callee_mod == "onnx" &&
+        (callee == "QuantizeLinear" || callee == "DequantizeLinear")) {
+      node->set_op_type(std::string(callee));
       const auto axis = op.callee().binding<std::int64_t>("axis");
       if (!axis) {
         return false;
@@ -184,19 +193,21 @@ bool emit(const joggle::Mod& mod, const char* path) {
     } else if (callee_mod == "onnx" &&
                (callee == "MaxPool" || callee == "AveragePool")) {
       node->set_op_type(std::string(callee));
-      const auto kernel = op.callee().binding<Shape>("kernel");
+      const auto kernel = op.callee().binding<Shape>("kernel_shape");
       const auto strides = op.callee().binding<Shape>("strides");
       const auto pads = op.callee().binding<Shape>("pads");
-      const auto ceil_mode = op.callee().binding<bool>("ceil_mode");
+      const auto ceil_mode = op.callee().binding<std::int64_t>("ceil_mode");
       if (!kernel || !strides || !pads || !ceil_mode) {
         return false;
       }
       add_ints(*node, "kernel_shape", *kernel);
       add_ints(*node, "strides", *strides);
       add_ints(*node, "pads", *pads);
-      if (*ceil_mode) {
+      if (*ceil_mode != 0) {
         return false;
       }
+    } else if (callee_mod == "onnx" && callee == "GlobalAveragePool") {
+      node->set_op_type("GlobalAveragePool");
     } else if (callee_mod == "onnx" && callee == "Concat") {
       node->set_op_type("Concat");
       const auto axis = op.callee().binding<std::int64_t>("axis");
@@ -206,6 +217,20 @@ bool emit(const joggle::Mod& mod, const char* path) {
       add_int(*node, "axis", *axis);
     } else if (callee_mod == "onnx" && callee == "Reshape") {
       node->set_op_type("Reshape");
+    } else if (callee_mod == "onnx" && callee == "Flatten") {
+      node->set_op_type("Flatten");
+      const auto axis = op.callee().binding<std::int64_t>("axis");
+      if (!axis) {
+        return false;
+      }
+      add_int(*node, "axis", *axis);
+    } else if (callee_mod == "onnx" && callee == "Dropout") {
+      node->set_op_type("Dropout");
+      const auto ratio = op.callee().binding<double>("ratio");
+      if (!ratio) {
+        return false;
+      }
+      add_float(*node, "ratio", *ratio);
     } else if (callee_mod == "onnx" && callee == "Softmax") {
       node->set_op_type("Softmax");
       const auto axis = op.callee().binding<std::int64_t>("axis");
@@ -270,22 +295,19 @@ bool emit(const joggle::Mod& mod, const char* path) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 7 && argc != 8) {
+  if (argc != 8) {
     return EXIT_FAILURE;
   }
-  const bool qdq = argc == 8;
   const int tensor_index = 2;
   const int quant_index = 3;
-  const int onnx_index = qdq ? 4 : 3;
-  const int native_index = qdq ? 5 : 4;
-  const int model_index = qdq ? 6 : 5;
-  const int output_index = qdq ? 7 : 6;
+  const int onnx_index = 4;
+  const int native_index = 5;
+  const int model_index = 6;
+  const int output_index = 7;
   joggle::Compiler compiler;
   compiler.load(argv[1]);
   compiler.load(argv[tensor_index]);
-  if (qdq) {
-    compiler.load(argv[quant_index]);
-  }
+  compiler.load(argv[quant_index]);
   compiler.load(argv[onnx_index]);
   if (!compiler.link() || !compiler.load_native("onnx", argv[native_index])) {
     compiler.diag().print(std::cerr);

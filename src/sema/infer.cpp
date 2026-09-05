@@ -138,7 +138,7 @@ Environment environment(Compiler& compiler, bool allow_host_evaluation = true) {
       Environment::Evaluator{
           [&, under_residual_control = !allow_host_evaluation](
               Mod::FnDecl fn, std::span<const ParamVal> arguments) {
-            return CompilerAccess::evaluate(compiler, std::move(fn), arguments,
+            return CompilerAccess::evaluate(compiler, fn, arguments,
                                             under_residual_control);
           }},
       !allow_host_evaluation,

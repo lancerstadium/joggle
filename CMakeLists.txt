@@ -442,6 +442,7 @@ if(JOGGLE_BUILD_TESTS)
       COMMAND joggle_onnx_test
         ${JOGGLE_ARITH_MOD}
         ${JOGGLE_TENSOR_MOD}
+        ${JOGGLE_QUANT_MOD}
         ${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle
         $<TARGET_FILE:joggle_onnx_native>
         ${JOGGLE_TRANSFORM_MOD}
@@ -468,6 +469,7 @@ if(JOGGLE_BUILD_TESTS)
           -DJOGGLE_CLI=$<TARGET_FILE:joggle_cli>
           -DJOGGLE_ARITH_MOD=${JOGGLE_ARITH_MOD}
           -DJOGGLE_TENSOR_MOD=${JOGGLE_TENSOR_MOD}
+          -DJOGGLE_QUANT_MOD=${JOGGLE_QUANT_MOD}
           -DJOGGLE_ONNX_MOD=${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle
           -DJOGGLE_ONNX_NATIVE=$<TARGET_FILE:joggle_onnx_native>
           -DJOGGLE_ONNX_MODEL=${JOGGLE_ONNX_TEST_MODEL}
@@ -513,6 +515,7 @@ if(JOGGLE_BUILD_TESTS)
           --emitter $<TARGET_FILE:joggle_onnx_roundtrip>
           --arith ${JOGGLE_ARITH_MOD}
           --tensor ${JOGGLE_TENSOR_MOD}
+          --quant ${JOGGLE_QUANT_MOD}
           --onnx ${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle
           --native $<TARGET_FILE:joggle_onnx_native>
           --model ${JOGGLE_ONNX_TEST_MODEL}

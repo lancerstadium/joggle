@@ -393,6 +393,26 @@ private:
     return Expr{Expr::Kind::Number, *canonical, {}};
   }
 
+  std::optional<ParsedMod::TypeExpr> literal(detail::Domain domain) {
+    using Expr = ParsedMod::TypeExpr;
+    if (!domain.list) {
+      return literal(domain.element);
+    }
+
+    std::vector<Expr> elements;
+    expect(TokenKind::LeftBracket, "'['");
+    if (!match(TokenKind::RightBracket)) {
+      do {
+        auto element = literal(domain.element);
+        if (element) {
+          elements.push_back(std::move(*element));
+        }
+      } while (match(TokenKind::Comma));
+      expect(TokenKind::RightBracket, "']'");
+    }
+    return Expr{Expr::Kind::List, {}, std::move(elements)};
+  }
+
   std::optional<Parameter> parameter(bool allow_variadic, bool allow_default) {
     auto parameter_name = name("a parameter name");
     expect(TokenKind::Colon, "':'");
@@ -413,11 +433,7 @@ private:
       if (!allow_default || result.variadic) {
         error("this parameter cannot have a default value");
       }
-      if (domain->list) {
-        error("list parameters cannot have default values");
-      } else {
-        result.default_value = literal(domain->element);
-      }
+      result.default_value = literal(*domain);
     }
     return result;
   }
@@ -649,12 +665,11 @@ private:
         }
         if (match(TokenKind::Equal)) {
           const auto domain = detail::kernel_domain(input.domain);
-          if (ir_input || !domain || domain->list ||
-              domain->element == ValKind::Fn ||
+          if (ir_input || !domain || domain->element == ValKind::Fn ||
               domain->element == ValKind::Bytes || input.variadic) {
             error("this parameter cannot have a default value");
           } else {
-            input.default_value = literal(domain->element);
+            input.default_value = literal(*domain);
           }
         }
         inputs.push_back(std::move(input));

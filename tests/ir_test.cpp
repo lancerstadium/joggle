@@ -671,5 +671,79 @@ int main() {
                  "a sibling block cannot consume another sibling's result");
   }
 
+  joggle::Compiler inferred_call;
+  inferred_call.add(R"(
+    joggle 1;
+    mod inferred_call@1.0.0 {
+      type tensor(element: type, shape: list<int>);
+
+      fn doubled(values: list<int>) -> list<int> {
+        output: list<int> = [];
+        for value in values {
+          output = @append(output, @(value * 2));
+        }
+        return output;
+      }
+
+      fn resize<E, I: list<int>, O: list<int>>(
+        input: tensor<E, I>,
+        shape: O
+      ) -> tensor<E, @doubled(O)>;
+    }
+  )",
+                    "inferred-call.joggle");
+  if (!inferred_call.link()) {
+    inferred_call.diag().print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  const auto inferred_mod = inferred_call.mod("inferred_call");
+  const auto inferred_tensor = inferred_mod ? inferred_mod->type("tensor")
+                                            : std::nullopt;
+  const auto resize = inferred_mod ? inferred_mod->fn("resize") : std::nullopt;
+  const auto inferred_f32 = inferred_call.make("f32");
+  const auto integer_type = inferred_call.make("int");
+  const auto inferred_prelude = inferred_call.mod("prelude");
+  const auto list = inferred_prelude ? inferred_prelude->type("list")
+                                     : std::nullopt;
+  const auto integer_list = list && integer_type
+                                ? inferred_call.make(*list, *integer_type)
+                                : std::nullopt;
+  const auto input_type = inferred_tensor && inferred_f32
+                              ? inferred_call.make(
+                                    *inferred_tensor, *inferred_f32,
+                                    std::vector<std::int64_t>{1, 2})
+                              : std::nullopt;
+  const auto requested = integer_list
+                             ? inferred_call.known(
+                                   *integer_list,
+                                   std::vector<std::int64_t>{3, 5})
+                             : std::nullopt;
+  auto inferred_fn = inferred_call.create_fn();
+  if (!resize || !input_type || !requested || !inferred_fn) {
+    return EXIT_FAILURE;
+  }
+  {
+    auto edit = inferred_fn->edit();
+    const auto input = edit.argument(*input_type);
+    const auto call = inferred_call.call(edit, *resize, {input, *requested});
+    if (!call) {
+      inferred_call.diag().print(std::cerr);
+    }
+    if (call) {
+      edit.ret(inferred_fn->entry(), {call->value()});
+    }
+    const auto shape = call ? call->value()
+                                  .type()
+                                  .get<std::vector<std::int64_t>>("shape")
+                            : std::optional<std::vector<std::int64_t>>{};
+    joggle::Diag diagnostics;
+    const bool committed = edit.commit(inferred_call, diagnostics);
+    ok &= expect(call && committed && diagnostics.ok() &&
+                     shape == std::vector<std::int64_t>({6, 10}) &&
+                     inferred_call.verify(*inferred_fn),
+                 "Compiler::call evaluates source-defined result Types for "
+                 "programmatic frontends");
+  }
+
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -35,14 +35,18 @@ The implementation currently demonstrates:
 8. the same name-independent Mod transform expands all 26 ONNX Relu calls in
    the pinned, unmodified SqueezeNet graph first to `map` and then to `build`
    plus captured element Fns;
-9. Mod bundles preserve and verify imported data through public `check`,
+9. ONNX nodes bind generically against source fn signatures, declaration
+   defaults, and staged dependent result Types without an `op_type` branch
+   chain or native shape formulas;
+10. Mod bundles preserve and verify imported data through public `check`,
    `run`, `install`, and `lock` workflows; and
-10. source resolution constructs deterministic concrete instances while
+11. source resolution constructs deterministic concrete instances while
    preserving bodyless calls as an explicit leaf set.
 
-Most ONNX operators and all quantized operators remain opaque. Conv/GEMM
-bodies, dependence analysis, generic fusion, symbolic shapes, schema-driven
-ONNX binding, emission, and performance evidence are unfinished. The ONNX result establishes
+Most compute-heavy ONNX operators and the independent quantized semantics
+remain opaque. Conv/GEMM bodies, recursive lambda normalization, generic
+fusion, symbolic shapes, emission, and performance evidence are unfinished.
+The ONNX result establishes
 one bodyful elementwise expansion, not generic fusion, numerical preservation
 after compilation, or publication-level novelty.
 

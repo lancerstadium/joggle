@@ -195,7 +195,7 @@ std::optional<std::size_t> inline_calls(Compiler& compiler, Fn& fn,
       return std::nullopt;
     }
   }
-  if (!edit.commit(diagnostics)) {
+  if (!edit.commit(compiler, diagnostics)) {
     return std::nullopt;
   }
   return candidates.size();

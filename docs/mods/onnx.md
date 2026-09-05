@@ -1,13 +1,14 @@
 # ONNX
 
-The optional `onnx@2.0.0` Mod converts a deliberately narrow ONNX
-inference model into an ordinary Joggle `Mod`:
+`onnx@3.0.0` is an optional source Mod with one native file decoder. It turns
+an ONNX model into an ordinary Joggle `Mod`; it does not add a frontend class,
+ONNX Op hierarchy, graph container, or lowering level to compiler core.
 
 ```joggle
 joggle 1;
 
 mod pipeline@1.0.0 {
-  import onnx@2;
+  import onnx@3;
 
   fn load(input: bytes) -> mod {
     return @onnx.read(input, "squeezenet");
@@ -15,61 +16,52 @@ mod pipeline@1.0.0 {
 }
 ```
 
-`read` is one explicitly staged compiler fn. It does not create an
-ONNX graph class, frontend registry, pass kind, or lowering level. The returned
-Mod owns one typed `main` Fn and content-addressed copies of the
-source model and initializer bytes.
+The ONNX source Mod imports `arith@1`, `tensor@2`, and `quant@2`. Callers must
+therefore load those dependencies before linking. An imported model records
+only the Mods referenced directly by its Fn.
 
-For QDQ input, the calling environment must also load `quant@2`; the returned
-model then derives its exact `quant` dependency from its Fn calls. FLOAT
-input does not acquire that dependency.
+## Extension model
 
-## Implemented profiles
+The native decoder handles the protobuf boundary, not operator semantics. For
+each node it:
 
-The importer accepts two exact profiles rather than a range of vaguely
-compatible versions.
+1. looks up every same-named overload in the linked `onnx` Mod;
+2. binds tensor inputs, compiler parameters, attributes, and declaration
+   defaults by the overload signature;
+3. selects the unique type-compatible overload; and
+4. asks the ordinary compiler evaluator for the result Type.
 
-The FLOAT profile is ONNX IR 3, `ai.onnx` opset 7, static dense NCHW inference
-with:
+There is no `op_type` dispatch chain and no native shape formula. Shape
+functions such as `conv_shape`, `reshape_shape`, and `flatten_shape` are
+ordinary explicitly staged source fns in `mods/onnx/mod.joggle`. Adding a node
+kind normally means adding a source fn declaration or body; the decoder changes
+only when the serialized ONNX boundary itself gains a new representation.
 
-- Conv with optional bias;
-- Relu;
-- MaxPool and AveragePool in floor mode;
-- two-input Concat;
-- inference-mode Dropout as an identity;
-- Reshape with a constant INT64 shape.
+`Constant` is the payload materialization boundary. Initializer bytes and the
+original model are content-addressed Mod data. INT64 tensors used where a fn
+signature expects `int` or `list<int>` are lifted to compiler values; this is
+type-directed rather than operator-directed.
 
-The QDQ profile is ONNX IR 7, `ai.onnx` opset 13, static dense inference with:
+## Accepted reference profiles
 
-- standard QuantizeLinear and DequantizeLinear using scalar or one-axis
-  FLOAT scales and u8, i8, or i32 zero points;
-- Conv, MaxPool, two-input Concat, Reshape, and Softmax;
-- GlobalAveragePool expressed as an ordinary AveragePool call; and
-- Flatten expressed as an ordinary Reshape call.
+The importer currently admits two exact, statically shaped profiles:
 
-QDQ calls belong to the independent `quant` Mod. Standard ONNX calls and model
-constants belong to `onnx`, while their tensor Types and bodyful definitions
-reuse `tensor` and `arith`. Initializer payloads retain f32, u8, i8, i32, and
-i64 element Types.
-The importer accepts unused non-standard opset imports but rejects every node
-outside `ai.onnx`, so the supported QDQ path does not depend on a vendor
-operator.
+- ONNX IR 3 / `ai.onnx` opset 7 FLOAT inference;
+- ONNX IR 7 / `ai.onnx` opset 13 QDQ inference.
 
-Every IR 3 initializer must match its graph-input declaration, while IR 7
-initializers must not masquerade as runtime inputs. Symbolic dimensions,
-external or sparse tensors, quantization annotations, subgraphs, training
-data, unknown attributes, and unsupported operators are rejected before a
-Mod is returned. Intermediate metadata, inferred shapes, element Types,
-and the declared graph output are checked for agreement.
+Both reject non-standard node domains, symbolic dimensions, external and
+sparse tensor storage, subgraphs, training data, unknown attributes, and calls
+that do not match exactly one linked declaration. IR 3 initializers must agree
+with their graph-input declarations; IR 7 initializers may not masquerade as
+runtime inputs. Intermediate metadata and graph outputs are checked against
+the Types inferred from the source signatures.
 
-This is not a general ONNX compatibility claim. Mod-owned bytes are
-preserved by the lossless CLI and repository bundle defined in
-[Design 0006](../design/0006-bundles.md).
+This is a verified vertical slice, not a claim of general ONNX coverage. Most
+compute-heavy ONNX fns are still semantic leaves. `Relu`, `Dropout`, and the QDQ
+wrappers have source bodies, but Conv, Pool, Concat, Reshape, Flatten, and
+Softmax still need tensor-calculus bodies before generic fusion is established.
 
-## Optional build
-
-The compiler core and tensor Mod do not depend on Protobuf. Enable the
-importer explicitly:
+## Build and reference models
 
 ```bash
 cmake -S . -B build \
@@ -82,24 +74,43 @@ cmake --build build
 ctest --test-dir build -R '^(onnx|onnx_qdq)$' --output-on-failure
 ```
 
-The fetch target downloads the ONNX Model Zoo SqueezeNet 1.1 model from commit
-`4c46cd00fbdb7cd30b6c1c17ab54f2e1f4f7b177` into the build directory and
-requires SHA-256
-`1eeff551a67ae8d565ca33b572fc4b66e3ef357b0eb2863bb9ff47a918cc4088`.
-The QDQ target fetches SqueezeNet 1.0 opset 13 from the same commit and requires
-SHA-256
-`4a567dd7542ef440890d57268fabf47211174c593d7a1837bd7f16a1067169e7`.
-The generic verified-download script never writes a model into the source tree
-and refuses to overwrite a cache file whose digest differs.
+The fetch commands use the ONNX Model Zoo state at commit
+`4c46cd00fbdb7cd30b6c1c17ab54f2e1f4f7b177` and reject digest mismatches.
 
-The native library is installed beside `mod.joggle`, preserving the normal
-Mod bundle layout. Generated Protobuf C++ remains in the build directory.
-The vendored schema provenance is recorded in
-`mods/onnx/third_party/README.md`.
+| Model | SHA-256 |
+| --- | --- |
+| `squeezenet1.1-7.onnx` | `1eeff551a67ae8d565ca33b572fc4b66e3ef357b0eb2863bb9ff47a918cc4088` |
+| `squeezenet1.0-13-qdq.onnx` | `4a567dd7542ef440890d57268fabf47211174c593d7a1837bd7f16a1067169e7` |
 
-## Differential runtime validation
+The vendored official schema provenance is recorded in
+`mods/onnx/third_party/README.md`. Generated protobuf C++ stays in the build
+tree. The native library is installed beside `mod.joggle` as a normal Mod
+bundle component.
 
-The runtime test is opt-in because it needs Python, NumPy, and ONNX Runtime:
+## Evidence
+
+The FLOAT model imports as one `f32[1,3,224,224]` argument, 52 typed constants,
+66 semantic calls, and one `f32[1,1000]` result. All 118 calls retain stable
+source locations. The original model and 53 initializer payloads occupy 54
+distinct content-addressed entries. Inference `Dropout` remains an ordinary
+bodyful identity call and is removed only by generic inlining.
+
+The QDQ model imports as one FLOAT argument, 228 constants, and 171 calls:
+
+- 39 `onnx.QuantizeLinear`;
+- 91 `onnx.DequantizeLinear`;
+- 26 `onnx.Conv`;
+- 3 `onnx.MaxPool`;
+- 8 `onnx.Concat`;
+- one each of `GlobalAveragePool`, `Reshape`, `Flatten`, and `Softmax`.
+
+The two QDQ wrappers are bodyful ONNX fns that call the independent `quant`
+semantics. The imported model consequently records `onnx` and `tensor` as
+direct dependencies while `quant` remains transitive through `onnx`.
+
+## Optional differential validation
+
+With Python, NumPy, ONNX, and ONNX Runtime available:
 
 ```bash
 cmake -S . -B build-runtime \
@@ -113,77 +124,25 @@ ctest --test-dir build-runtime \
   -R '^(onnx_runtime|onnx_qdq_runtime)$' -V
 ```
 
-The test reconstructs a standard ONNX graph from only the imported Joggle
-Fn, callee specialization bindings, result Types, and Mod-owned initializer
-bytes.
-It then runs the original and reconstructed graphs through the ONNX Runtime CPU
-provider with graph optimization disabled. A fixed ramp input is used twice to
-check determinism. The audited run produced output shape `[1,1000]`,
-`max_abs=0`, and `mean_abs=0`. The QDQ round trip independently produced
-shape `[1,1000,1,1]`, `max_abs=0`, and `mean_abs=0`.
+The test-only executable reconstructs ONNX from the imported Fn, specialized
+callee bindings, result Types, and Mod data, then compares the original and
+reconstructed models with graph optimization disabled. It is not a production
+emitter or a second graph representation.
 
-The reconstruction executable is test-only. It is not a public ONNX emitter,
-Mod fn, compiler-core category, or second production graph.
+## Bundle workflow
 
-## Lossless CLI workflow
-
-A driver may call `@onnx.read` and write the returned Mod to a bundle:
+`joggle run`, `check`, `install`, and `lock` preserve the model and all payload
+data. A driver must load the complete source dependency closure:
 
 ```bash
 joggle run driver.joggle read squeezenet1.1-7.onnx \
-  --with /path/to/tensor/mod.joggle \
   --with /path/to/arith/mod.joggle \
-  --with /path/to/onnx/mod.joggle \
-  --load-native onnx=/path/to/onnx/native \
-  -o squeezenet-bundle
-
-joggle run driver.joggle read squeezenet1.0-13-qdq.onnx \
   --with /path/to/tensor/mod.joggle \
-  --with /path/to/arith/mod.joggle \
   --with /path/to/quant/mod.joggle \
   --with /path/to/onnx/mod.joggle \
   --load-native onnx=/path/to/onnx/native \
-  -o squeezenet-qdq-bundle
-
-joggle install /path/to/arith/mod.joggle
-joggle install /path/to/tensor/mod.joggle
-joggle install /path/to/onnx/mod.joggle
-joggle check squeezenet-bundle
-joggle install squeezenet-bundle
+  -o squeezenet-bundle
 ```
 
-The real-model CLI tests verify 54 FLOAT and 148 deduplicated QDQ payload
-files, install their dependencies and models, reload the installed identities
-as bundles, and lock the exact model, tensor, and quant digests.
-
-## Reference-model evidence
-
-The exact audited model imports as:
-
-- one runtime input, `tensor<f32, [1, 3, 224, 224]>`;
-- 52 FLOAT `onnx.Constant` calls;
-- 65 ONNX semantic calls after inference Dropout is elided;
-- one output, `tensor<f32, [1, 1000]>`.
-
-All 117 retained calls have deterministic ONNX source locations. The original
-model plus all 53 initializer payloads are retained as 54 distinct
-content-addressed Mod data entries. The test fixes the independently audited
-65-node call/shape sequence, operator bindings and counts, every payload
-digest, the exact source digest, and repeated-import identity.
-
-The exact audited QDQ model imports as:
-
-- one runtime input, `tensor<f32, [1, 3, 224, 224]>`;
-- 228 typed constants: 88 f32, 36 u8, 52 i8, and 52 i32;
-- 39 `quant.quantize` and 91 `quant.dequantize` calls;
-- 41 ordinary ONNX calls, including all 26 Conv operations; and
-- one output, `tensor<f32, [1, 1000, 1, 1]>`.
-
-Content addressing deduplicates the source model and 229 initializer payloads
-to 148 data files. The QDQ bundle test installs both semantic dependencies,
-reloads the model, verifies the same 148 payloads, and locks exact `quant` and
-`tensor` versions.
-
-The QDQ path deliberately stops at preserving the standard affine boundary.
-See [Quantization](quant.md) for why transformations may not yet rewrite
-through those two opaque fns.
+See [Bundles](../design/0006-bundles.md) for the lossless repository contract
+and [Tensor](tensor.md) for the semantic calculus that ONNX bodies must target.

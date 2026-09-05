@@ -8,9 +8,11 @@
 #include "lang/fn.h"
 #include "lang/prelude.h"
 #include "sema/infer.h"
+#include "sema/domain.h"
 
 #include <algorithm>
 #include <exception>
+#include <stdexcept>
 #include <memory>
 #include <optional>
 #include <span>
@@ -251,6 +253,83 @@ std::optional<Fn> Compiler::create_fn() {
     mods.push_back(mod);
   }
   return Fn(std::move(mods));
+}
+
+std::optional<Op> Compiler::call(Fn::Edit& edit, Mod::FnDecl fn,
+                                 std::vector<Val> arguments,
+                                 std::optional<Loc> location) {
+  if (!state_->linked) {
+    state_->diagnostics.report("cannot create a Call before linking");
+    return std::nullopt;
+  }
+
+  const auto parameters = fn.inputs();
+  std::vector<Type> value_types;
+  std::vector<std::optional<ParamVal>> known_arguments;
+  known_arguments.reserve(detail::compiler_inputs(fn).size());
+  std::size_t supplied = 0;
+  for (std::size_t parameter_index = 0; parameter_index < parameters.size();
+       ++parameter_index) {
+    const auto& parameter = parameters[parameter_index];
+    const std::size_t count =
+        parameter.variadic ? arguments.size() - supplied : 1U;
+    bool use_default = false;
+    if (!parameter.variadic && parameter.default_value) {
+      std::size_t required_after = 0;
+      for (std::size_t index = parameter_index + 1U; index < parameters.size();
+           ++index) {
+        if (!parameters[index].variadic && !parameters[index].default_value) {
+          ++required_after;
+        }
+      }
+      use_default = arguments.size() - supplied == required_after;
+    }
+    if (use_default) {
+      if (!detail::is_value_port(parameter)) {
+        known_arguments.emplace_back();
+      }
+      continue;
+    }
+    if (supplied + count > arguments.size()) {
+      state_->diagnostics.report("call to '" + fn.symbol().qualified_name() +
+                                 "' is missing argument '" + parameter.name +
+                                 "'");
+      return std::nullopt;
+    }
+    for (std::size_t item = 0; item < count; ++item) {
+      const Val& argument = arguments[supplied++];
+      if (detail::is_value_port(parameter)) {
+        value_types.push_back(argument.type());
+      } else {
+        known_arguments.push_back(argument.known_value());
+      }
+    }
+  }
+  if (supplied != arguments.size()) {
+    state_->diagnostics.report("call to '" + fn.symbol().qualified_name() +
+                               "' has too many arguments");
+    return std::nullopt;
+  }
+
+  std::vector<std::optional<Type>> expected(
+      detail::value_results(fn).size());
+  auto result_types = detail::infer_call_types(
+      *this, fn, value_types, known_arguments, expected, state_->diagnostics,
+      location);
+  if (!result_types) {
+    return std::nullopt;
+  }
+  try {
+    Op op = edit.call(std::move(fn), std::move(arguments),
+                      std::move(*result_types));
+    if (location) {
+      edit.locate(op, std::move(*location));
+    }
+    return op;
+  } catch (const std::invalid_argument& error) {
+    state_->diagnostics.report(error.what());
+    return std::nullopt;
+  }
 }
 
 std::optional<Mod> Compiler::materialize(const Mod& mod) {

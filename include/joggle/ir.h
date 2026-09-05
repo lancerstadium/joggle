@@ -211,6 +211,7 @@ public:
     void erase(Op op);
 
     bool commit(Diag& diagnostics);
+    bool commit(Compiler& compiler, Diag& diagnostics);
 
   private:
     explicit Edit(std::shared_ptr<detail::FnIdentity> fn);

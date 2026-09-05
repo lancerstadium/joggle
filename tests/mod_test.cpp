@@ -318,6 +318,37 @@ int main() {
                    scale->parameters().front().default_value->text == "-150",
                "semantic versions and numeric literals share one lexer");
 
+  joggle::Diag defaults_diagnostics;
+  auto defaults_mod = joggle::parse_mod(R"(
+    joggle 1;
+    mod defaults@1.0.0 {
+      type layout(shape: list<int> = [1, 4, 8]);
+      fn window<S: list<int>>(
+        shape: S = [3, 3]
+      ) -> int;
+    }
+  )",
+                                        defaults_diagnostics,
+                                        "defaults.joggle");
+  const auto layout =
+      defaults_mod ? defaults_mod->type("layout") : std::nullopt;
+  const auto window =
+      defaults_mod ? defaults_mod->fn("window") : std::nullopt;
+  ok &= expect(
+      layout && window && layout->parameters().front().default_value &&
+          window->inputs().front().default_value &&
+          layout->parameters().front().default_value->kind ==
+              joggle::Mod::Expr::Kind::List &&
+          layout->parameters().front().default_value->arguments.size() == 3U &&
+          window->inputs().front().default_value->kind ==
+              joggle::Mod::Expr::Kind::List &&
+          window->inputs().front().default_value->arguments.size() == 2U,
+      "typed list defaults are part of type and fn declarations");
+  ok &= expect(defaults_mod &&
+                   joggle::format(*defaults_mod).find(
+                       "shape: S = [3, 3]") != std::string::npos,
+               "typed list defaults round-trip canonically");
+
   joggle::Compiler compiler;
   compiler.add(canonical, "compiler_test.joggle");
   compiler.add(R"(

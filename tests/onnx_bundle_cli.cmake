@@ -1,5 +1,6 @@
-foreach(required JOGGLE_CLI JOGGLE_ARITH_MOD JOGGLE_TENSOR_MOD JOGGLE_ONNX_MOD
-                 JOGGLE_ONNX_NATIVE JOGGLE_ONNX_MODEL JOGGLE_BUNDLE_TEST_DIR)
+foreach(required JOGGLE_CLI JOGGLE_ARITH_MOD JOGGLE_TENSOR_MOD JOGGLE_QUANT_MOD
+                 JOGGLE_ONNX_MOD JOGGLE_ONNX_NATIVE JOGGLE_ONNX_MODEL
+                 JOGGLE_BUNDLE_TEST_DIR)
   if(NOT DEFINED ${required})
     message(FATAL_ERROR "${required} was not provided")
   endif()
@@ -14,15 +15,10 @@ endif()
 set(bundle "${JOGGLE_BUNDLE_TEST_DIR}/${JOGGLE_MODEL_NAME}")
 set(root "${JOGGLE_BUNDLE_TEST_DIR}/mods")
 set(lock "${JOGGLE_BUNDLE_TEST_DIR}/joggle.lock")
-set(optional_import "")
-if(DEFINED JOGGLE_QUANT_MOD)
-  set(optional_import "  import quant@2;\n")
-endif()
 file(WRITE "${driver}" "joggle 1;
 
 mod onnx_bundle_test@1.0.0 {
-  import onnx@2;
-${optional_import}
+  import onnx@3;
   fn read(input: bytes) -> mod {
     return @onnx.read(input, \"${JOGGLE_MODEL_NAME}\");
   }
@@ -41,10 +37,8 @@ function(expect_success label)
   set(command_output "${output}" PARENT_SCOPE)
 endfunction()
 
-set(with_mods --with "${JOGGLE_ARITH_MOD}" --with "${JOGGLE_TENSOR_MOD}")
-if(DEFINED JOGGLE_QUANT_MOD)
-  list(APPEND with_mods --with "${JOGGLE_QUANT_MOD}")
-endif()
+set(with_mods --with "${JOGGLE_ARITH_MOD}" --with "${JOGGLE_TENSOR_MOD}"
+              --with "${JOGGLE_QUANT_MOD}")
 list(APPEND with_mods --with "${JOGGLE_ONNX_MOD}")
 expect_success("import reference model"
   "${JOGGLE_CLI}" run "${driver}" read "${JOGGLE_ONNX_MODEL}"
@@ -68,10 +62,8 @@ expect_success("install arithmetic dependency"
   "${JOGGLE_CLI}" install "${JOGGLE_ARITH_MOD}" --root "${root}")
 expect_success("install tensor dependency"
   "${JOGGLE_CLI}" install "${JOGGLE_TENSOR_MOD}" --root "${root}")
-if(DEFINED JOGGLE_QUANT_MOD)
-  expect_success("install quant dependency"
-    "${JOGGLE_CLI}" install "${JOGGLE_QUANT_MOD}" --root "${root}")
-endif()
+expect_success("install quant dependency"
+  "${JOGGLE_CLI}" install "${JOGGLE_QUANT_MOD}" --root "${root}")
 expect_success("install ONNX dependency"
   "${JOGGLE_CLI}" install "${JOGGLE_ONNX_MOD}" --root "${root}")
 expect_success("check imported bundle"
@@ -95,11 +87,8 @@ file(READ "${lock}" lock_text)
 string(FIND "${lock_text}" "root ${JOGGLE_MODEL_NAME}@1.0.0#" root_position)
 string(FIND "${lock_text}" "mod arith@1.0.0#" arith_position)
 string(FIND "${lock_text}" "mod tensor@2.0.0#" tensor_position)
-string(FIND "${lock_text}" "mod onnx@2.0.0#" onnx_position)
-set(quant_position 0)
-if(DEFINED JOGGLE_QUANT_MOD)
-  string(FIND "${lock_text}" "mod quant@2.0.0#" quant_position)
-endif()
+string(FIND "${lock_text}" "mod onnx@3.0.0#" onnx_position)
+string(FIND "${lock_text}" "mod quant@2.0.0#" quant_position)
 if(root_position EQUAL -1 OR arith_position EQUAL -1 OR
    tensor_position EQUAL -1 OR onnx_position EQUAL -1 OR
    quant_position EQUAL -1)
