@@ -1,3 +1,6 @@
+#include <optional>
+#include <utility>
+
 #include <joggle/joggle.h>
 
 namespace {
@@ -16,10 +19,15 @@ void bind(joggle::Compiler& compiler, const joggle::Mod& mod,
       [keep = *keep, converted = *converted](
           joggle::Fn fn,
           joggle::Diag& diagnostics) -> std::optional<joggle::Fn> {
-        if (!joggle::replace_calls(fn, keep, converted, diagnostics)) {
-          return std::nullopt;
+        auto edit = fn.edit();
+        for (const auto& op : fn.ops()) {
+          if (op.callee() == keep) {
+            edit.replace(op, converted);
+          }
         }
-        return fn;
+        return edit.commit(diagnostics)
+                   ? std::optional<joggle::Fn>{std::move(fn)}
+                   : std::nullopt;
       });
 }
 

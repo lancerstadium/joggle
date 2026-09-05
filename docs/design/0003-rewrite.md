@@ -144,9 +144,11 @@ std::optional<std::size_t> replace(
 ```
 
 It returns the number of committed matches. Zero is a successful no-op and
-preserves the subject revision. The existing callback-based `rewrite` remains
-available for compiler implementation, but users of the source language do
-not need it.
+preserves the subject revision. Callback sweeps, legality predicates,
+fixed-point drivers, declaration mappers, and CFG clone adapters are not
+parallel public transformation APIs. A native compiler fn that needs a custom
+transaction uses `Fn::Edit` directly; ordinary users compose typed source
+passes through the `transform` Mod.
 
 Whole-mod replacement applies the same primitive to materialized members
 on a private `Mod` snapshot and publishes only after every member succeeds.
