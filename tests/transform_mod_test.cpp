@@ -29,6 +29,10 @@ mod transform_algebra@1.0.0 {
   fn seed(position: t.coord<[4]>) -> f32;
   fn raise(value: f32) -> f32;
   fn seed_word(position: t.coord<[2, 3]>) -> word;
+  fn split_at<E, S: list<int>>(
+    make: (t.coord<S>) -> E,
+    position: t.coord<S>
+  ) -> (E, E);
 }
 )";
 
@@ -55,7 +59,16 @@ mod transform_rules@1.0.0 {
     make: (t.coord<S>) -> E,
     position: t.coord<S>
   ) -> (E, E) {
-    return t.map(S, make)[position], make(position);
+    built: t.tensor<E, S> = t.map(S, make);
+    return built[position], make(position);
+  }
+
+  fn second<E, S: list<int>>(
+    make: (t.coord<S>) -> E,
+    position: t.coord<S>
+  ) -> (E, E) {
+    first, second = a.split_at(make, position);
+    return second, make(position);
   }
 }
 )";
@@ -150,6 +163,14 @@ mod transform_fixture@1.0.0 {
 
   fn cancel_tensor(input: fn) -> fn {
     return @tr.pass(input, rules);
+  }
+
+  fn use_second(position: t.coord<[2, 3]>) -> a.word {
+    first, second = a.split_at(
+      (item: t.coord<[2, 3]>) => a.seed_word(item),
+      position
+    );
+    return second;
   }
 
   fn nested_sample() -> t.tensor<f32, [4]> {
@@ -303,6 +324,19 @@ int main() {
                    compiler.verify(*cancelled_word),
                "one structurally inferred equation specializes across "
                "unrelated element Types and ranks");
+
+  const auto use_second = compiler.materialize("transform_fixture.use_second");
+  const auto replaced_second =
+      use_second
+          ? compiler.run<joggle::Fn>("transform_fixture.reorder", *use_second)
+          : std::nullopt;
+  const auto second_calls =
+      replaced_second ? replaced_second->ops() : std::vector<joggle::Op>{};
+  ok &= expect(second_calls.size() == 1U &&
+                   !second_calls.front().callee().referenced_fn() &&
+                   compiler.verify(*replaced_second),
+               "generic inference follows a local name to one selected "
+               "result of an ordinary multi-result call");
 
   auto nested_sample = compiler.materialize("transform_fixture.nested_sample");
   joggle::Diag nested_diagnostics;

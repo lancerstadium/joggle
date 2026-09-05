@@ -105,10 +105,13 @@ their capture edges.
 The same `fuse<E,S>` law is tested on `tensor<f32,[4]>` and
 `tensor<word,[2,3]>`. A single generic `map(S, f)[p] = f(p)` law is also tested
 on both `f32/[4]` and `word/[2,3]`; its shape parameter cannot be determined
-from the scalar result and is instead recovered from the left structure. The
-current source probe accepts direct single-expression left returns. Inference
-through law-local bindings, multi-result pattern calls, and CFG-shaped pattern
-bodies remains later work.
+from the scalar result and is instead recovered from the left structure. Its
+producer may be named by a preceding local definition. Another generic law
+returns one selected result of a locally named multi-result call, proving that
+source names are followed as dataflow rather than treated as pattern atoms.
+The current source probe accepts straight-line, non-rebinding definitions
+before the return. Supplemental inference through rebinding remains later
+work; control-flow equations are still rejected.
 
 ## Function expansion and implementation closure
 
@@ -171,8 +174,9 @@ the compiler back into a catalog of `before`/`after` pairs.
     unification; one Tensor law now covers multiple element Types and ranks.
 11a. [complete] Infer generics below a direct left root by synchronizing its
      source expression with candidate IR before concrete matching.
-11b. [planned] Extend source inference through law-local bindings,
-     multi-result calls, and CFG-shaped pattern bodies.
+11b. [complete] Follow straight-line law-local definitions and selected results
+     of multi-result calls without introducing a pattern IR.
+11c. [planned] Extend source inference through local rebinding.
 12. [planned] Extend legality from pure deforestation to dependence-checked
     reduction and loop transformations.
 13. [planned] Validate polymorphic fusion on imported, unmodified ONNX models.

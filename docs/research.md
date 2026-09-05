@@ -55,9 +55,9 @@ The implementation currently demonstrates:
 
 Most compute-heavy ONNX operators and the independent quantized semantics
 remain opaque. Rank-two MatMul now has a verified nested `map/reduce/index`
-body, but Conv, batched MatMul, inference through law-local pattern bindings,
-generic model fusion, symbolic shapes, emission, and performance evidence are
-unfinished.
+body, but Conv, batched MatMul, equation inference through local rebinding or
+control flow, generic model fusion, symbolic shapes, emission, and performance
+evidence are unfinished.
 The ONNX result establishes
 one bodyful elementwise expansion, not generic fusion, numerical preservation
 after compilation, or publication-level novelty.

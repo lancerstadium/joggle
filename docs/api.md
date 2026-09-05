@@ -136,12 +136,14 @@ auto changed = joggle::apply_pass(compiler, fn, laws, diagnostics);
 expressions states one oriented equation: its first returned expression is the
 pattern and its second is the replacement. Generic parameters are specialized
 from the candidate result Type and the Types of structurally corresponding
-arguments in the source left expression. The materialized equation then
-matches declaration identity, compiler bindings, exact Types, and dataflow;
-the source probe cannot accept a match by itself. The replacement is cloned
-transactionally and dead pure calls are removed. The same pass recursively
-transforms nested callable bodies and rejects effectful or control-flow
-equations. The source wrapper is `@transform.pass(input, laws)`.
+arguments in the source left expression. Straight-line local definitions are
+followed through ordinary names, including a selected result of a multi-result
+call. The materialized equation then matches declaration identity, compiler
+bindings, exact Types, and dataflow; the source probe cannot accept a match by
+itself. The replacement is cloned transactionally and dead pure calls are
+removed. The same pass recursively transforms nested callable bodies and
+rejects effectful or control-flow equations. The source wrapper is
+`@transform.pass(input, laws)`.
 
 ## Bind native fns
 

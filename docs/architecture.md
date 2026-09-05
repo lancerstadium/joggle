@@ -186,8 +186,8 @@ tests specialize one `map(map(S, f), g)` law across different element Types
 and ranks. A single result-underdetermined `map(S, f)[p]` law also specializes
 across `f32/[4]` and `word/[2,3]`, including inside an existing nested body.
 
-Execution semantics for the structural basis, generic inference through
-law-local pattern bindings, multi-block inlining, and dependence-checked
+Execution semantics for the structural basis, equation inference through local
+rebinding or control flow, multi-block inlining, and dependence-checked
 reduction transforms remain unfinished.
 ONNX Conv, pooling, concatenation, reshape, softmax, and quantized operations
 are still opaque declarations rather than completed computational definitions.

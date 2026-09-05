@@ -59,9 +59,10 @@ Equation packages may also contain declarations and ordinary helper fns; only
 bodyful fns with two identical result Type expressions are equations. Equations
 are deliberately pure and single-block. An effect anywhere in their signature
 or body, a zero-result call, an unbound replacement argument, or control flow
-is rejected. Generic Types may be recovered beneath a direct left return
-expression. Law-local bindings, multi-result pattern calls, and CFG-shaped
-left expressions are not yet accepted.
+is rejected. Generic Types may be recovered beneath the left return expression
+and through preceding straight-line local definitions, including selected
+results of multi-result calls. Supplemental inference does not yet traverse a
+local rebind, and control-flow equations remain rejected.
 
 `inline` replaces every source-defined or anonymous single-block Call visible
 in its input snapshot with the callee's actual operations. It first applies the

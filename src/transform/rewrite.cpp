@@ -332,9 +332,17 @@ std::vector<Mod::FnDecl> equations(Compiler& compiler, const Mod& laws,
 
 class PatternProbe {
 public:
-  PatternProbe(Compiler& compiler, const Mod::FnDecl& law)
+  struct Local {
+    std::string name;
+    const Mod::Expr* expression;
+    std::size_t result;
+    std::size_t result_count;
+  };
+
+  PatternProbe(Compiler& compiler, const Mod::FnDecl& law,
+               std::vector<Local> locals)
       : compiler_(compiler), law_(law), inputs_(detail::value_inputs(law)),
-        types_(inputs_.size()) {}
+        types_(inputs_.size()), locals_(std::move(locals)) {}
 
   std::optional<std::vector<std::optional<Type>>>
   run(const Mod::Expr& expression, const Val& target) {
@@ -353,6 +361,24 @@ private:
                ? std::nullopt
                : std::optional<std::size_t>{static_cast<std::size_t>(
                      std::distance(inputs_.begin(), found))};
+  }
+
+  const Local* local(std::string_view name) const {
+    const auto found =
+        std::find_if(locals_.begin(), locals_.end(),
+                     [&](const Local& value) { return value.name == name; });
+    return found == locals_.end() ? nullptr : &*found;
+  }
+
+  bool match_local(const Local& binding, const Val& target) {
+    if (std::find(active_.begin(), active_.end(), &binding) != active_.end()) {
+      return false;
+    }
+    active_.push_back(&binding);
+    const bool matched = match(*binding.expression, target, binding.result,
+                               binding.result_count);
+    active_.pop_back();
+    return matched;
   }
 
   bool bind(std::size_t index, const Val& target) {
@@ -443,21 +469,26 @@ private:
     return true;
   }
 
-  bool match(const Mod::Expr& expression, const Val& target) {
+  bool match(const Mod::Expr& expression, const Val& target,
+             std::size_t result = 0U, std::size_t result_count = 1U) {
     using Kind = Mod::Expr::Kind;
     if (expression.kind == Kind::Variable) {
       const auto parameter = input(expression.text);
-      return parameter && bind(*parameter, target);
+      if (parameter) {
+        return result == 0U && result_count == 1U && bind(*parameter, target);
+      }
+      const Local* binding = local(expression.text);
+      return binding && match_local(*binding, target);
     }
     const bool call =
         expression.kind == Kind::Call || expression.kind == Kind::Prefix ||
         expression.kind == Kind::Infix || expression.kind == Kind::Postfix;
     if (!call) {
-      return target.known();
+      return result == 0U && result_count == 1U && target.known();
     }
     const auto operation = target.defining_op();
-    if (!operation || operation->results().size() != 1U ||
-        operation->result(0) != target) {
+    if (!operation || operation->results().size() != result_count ||
+        result >= result_count || operation->result(result) != target) {
       return false;
     }
     if (expression.kind == Kind::Call) {
@@ -472,6 +503,8 @@ private:
   Mod::FnDecl law_;
   std::vector<Mod::ParamDecl> inputs_;
   std::vector<std::optional<Type>> types_;
+  std::vector<Local> locals_;
+  std::vector<const Local*> active_;
 };
 
 std::optional<std::vector<std::optional<Type>>>
@@ -488,7 +521,22 @@ pattern_types(Compiler& compiler, const Mod& laws, const Mod::FnDecl& law,
       statement.values.size() != 2U) {
     return std::nullopt;
   }
-  return PatternProbe(compiler, law)
+  std::vector<PatternProbe::Local> locals;
+  for (auto current = body->blocks.front().statements.begin();
+       current != body->blocks.front().statements.end() - 1; ++current) {
+    if (current->kind != detail::StatementSyntax::Kind::Expr ||
+        current->bindings.empty() ||
+        std::any_of(current->bindings.begin(), current->bindings.end(),
+                    [](const auto& binding) { return binding.rebind; })) {
+      return std::nullopt;
+    }
+    for (std::size_t index = 0; index < current->bindings.size(); ++index) {
+      locals.push_back({current->bindings[index].name,
+                        &current->expression.value, index,
+                        current->bindings.size()});
+    }
+  }
+  return PatternProbe(compiler, law, std::move(locals))
       .run(statement.values.front().value, target);
 }
 

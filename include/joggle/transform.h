@@ -21,9 +21,10 @@ std::optional<std::size_t> inline_calls(Compiler& compiler, Mod& mod,
 // Applies the ordinary two-result body fns in `laws` as ordered equations.
 // Each law returns its left and right expression from one shared set of typed
 // arguments. Generic laws are specialized from candidate result Types and
-// Types recovered by synchronizing the source left expression with candidate
-// IR. Dead expressions are removed after replacement; effectful and
-// control-flow equations are rejected.
+// Types recovered by synchronizing the source left expression and its
+// straight-line local definitions with candidate IR. Dead expressions are
+// removed after replacement; effectful and control-flow equations are
+// rejected.
 std::optional<std::size_t> apply_pass(Compiler& compiler, Fn& fn,
                                       const Mod& laws, Diag& diagnostics);
 
