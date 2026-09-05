@@ -516,11 +516,15 @@ private:
     }
     const auto left = left_value->defining_op();
     const auto right = right_value->defining_op();
-    if (!left || !right ||
-        left->callee().symbol() != right->callee().symbol()) {
+    const auto left_callee =
+        left ? left->callee().referenced_fn() : std::optional<Mod::FnDecl>{};
+    const auto right_callee =
+        right ? right->callee().referenced_fn() : std::optional<Mod::FnDecl>{};
+    if (!left || !right || !left_callee || !right_callee ||
+        left_callee->symbol() != right_callee->symbol()) {
       return false;
     }
-    const auto callee = left->callee();
+    const auto callee = *left_callee;
     if (callee.name() != "literal" ||
         detail::compiler_inputs(callee).size() != 1U ||
         !detail::value_inputs(callee).empty() ||
@@ -540,11 +544,8 @@ private:
             std::distance(right_results.begin(), right_result)) {
       return false;
     }
-    const auto left_arguments = left->arguments();
-    const auto right_arguments = right->arguments();
-    return left_arguments.size() == right_arguments.size() &&
-           std::equal(left_arguments.begin(), left_arguments.end(),
-                      right_arguments.begin());
+    return left->arguments() == right->arguments() &&
+           left->callee().bindings() == right->callee().bindings();
   }
 
   bool same_staged_state(std::span<const detail::StagedVal> lhs,
@@ -1279,7 +1280,7 @@ private:
       return std::nullopt;
     }
 
-    Op op = edit_->append(block, matches.front(), {value}, {target});
+    Op op = edit_->call(block, matches.front(), {value}, {target});
     detail::FnAccess::locate(*edit_, op, source(range));
     return op.result(0);
   }
@@ -2635,6 +2636,103 @@ private:
       return;
     }
 
+    if (!fixity && declared_local(expression.text)) {
+      if (std::any_of(
+              expression.labels.begin(), expression.labels.end(),
+              [](const std::string& label) { return !label.empty(); })) {
+        report("an indirect call uses positional arguments",
+               statement.expression.range);
+        invalidate_results();
+        return;
+      }
+      const auto staged_callee = lookup_staged(expression.text);
+      const Val* callee =
+          staged_callee ? staged_callee->residual_value() : nullptr;
+      const auto inputs = callee
+                              ? callee->type().get<std::vector<Type>>("inputs")
+                              : std::optional<std::vector<Type>>{};
+      const auto results =
+          callee ? callee->type().get<std::vector<Type>>("results")
+                 : std::optional<std::vector<Type>>{};
+      const auto schema =
+          callee ? std::optional<Mod::Symbol>{callee->type().schema().symbol()}
+                 : std::optional<Mod::Symbol>{};
+      if (!callee || !schema ||
+          schema->mod_name() != detail::prelude_mod_name ||
+          schema->local_name() != "callable" || !inputs || !results) {
+        report("local value '" + expression.text + "' is not callable",
+               statement.expression.range);
+        invalidate_results();
+        return;
+      }
+      if (arguments.size() != inputs->size()) {
+        report("callable '" + expression.text + "' expects " +
+                   std::to_string(inputs->size()) + " arguments",
+               statement.expression.range);
+        invalidate_results();
+        return;
+      }
+      if (expected_types.size() != results->size() ||
+          !std::equal(expected_types.begin(), expected_types.end(),
+                      results->begin(),
+                      [](const auto& expected, const Type& actual) {
+                        return !expected || *expected == actual;
+                      })) {
+        report("callable '" + expression.text +
+                   "' does not match the expected results",
+               statement.expression.range);
+        invalidate_results();
+        return;
+      }
+
+      std::vector<Val> call_arguments;
+      call_arguments.reserve(arguments.size());
+      bool unresolved = false;
+      for (std::size_t index = 0; index < arguments.size(); ++index) {
+        PendingArgument& argument = arguments[index];
+        if (argument.is_inline_fn()) {
+          auto value = inline_fn(*argument.inline_fn, (*inputs)[index],
+                                 statement.expression.range);
+          argument.value = value ? detail::stage(std::move(*value))
+                                 : std::optional<detail::StagedVal>{};
+        } else if (argument.is_fn()) {
+          auto value = fn_reference(argument.fn, statement.expression.range,
+                                    (*inputs)[index]);
+          argument.value = value ? detail::stage(std::move(*value))
+                                 : std::optional<detail::StagedVal>{};
+        } else if (argument.is_expression()) {
+          auto [tail, value] = instantiate_expression(
+              *argument.expression, statement.expression.range, block,
+              (*inputs)[index]);
+          block = tail;
+          argument.value = value ? detail::stage(std::move(*value))
+                                 : std::optional<detail::StagedVal>{};
+        }
+        auto value = argument.value
+                         ? detail::ir_value(compiler_, *argument.value)
+                         : std::optional<Val>{};
+        if (value && value->type() != (*inputs)[index]) {
+          value = materialize(*value, (*inputs)[index], block,
+                              statement.expression.range);
+        }
+        if (!value) {
+          unresolved = true;
+        } else {
+          call_arguments.push_back(std::move(*value));
+        }
+      }
+      if (unresolved) {
+        invalidate_results();
+        return;
+      }
+      Op op = edit_->call(block, *callee, std::move(call_arguments), *results);
+      detail::FnAccess::locate(*edit_, op, source(statement.expression.range));
+      for (std::size_t index = 0; index < statement.bindings.size(); ++index) {
+        bind(statement.bindings[index], op.result(index));
+      }
+      return;
+    }
+
     std::vector<Mod::FnDecl> declarations =
         fixity ? detail::visible_operators(compiler_, owner_, expression.text,
                                            *fixity)
@@ -2721,8 +2819,8 @@ private:
                                : std::optional<detail::StagedVal>{};
         unresolved = !argument.value || unresolved;
       } else if (argument.is_fn()) {
-        auto reference = fn_reference(argument.fn, statement.expression.range,
-                                      planned.type);
+        auto reference =
+            fn_reference(argument.fn, statement.expression.range, planned.type);
         argument.value = reference ? detail::stage(std::move(*reference))
                                    : std::optional<detail::StagedVal>{};
         unresolved = !argument.value || unresolved;
@@ -2758,8 +2856,8 @@ private:
         call_arguments.push_back(std::move(*value));
       }
     }
-    Op op = edit_->append(std::move(block), plan.fn, std::move(call_arguments),
-                          plan.partial_types.results);
+    Op op = edit_->call(std::move(block), plan.fn, std::move(call_arguments),
+                        plan.partial_types.results);
     detail::FnAccess::locate(*edit_, op, source(statement.expression.range));
     if (statement.bindings.size() != op.results().size()) {
       report("call result count does not match its bindings", statement.range);
@@ -2793,7 +2891,6 @@ private:
   std::optional<std::vector<Type>> inline_results_;
 };
 
-
 }  // namespace
 
 namespace detail {
@@ -2819,10 +2916,8 @@ instantiate_lambda(Compiler& compiler, std::string_view owner,
     diagnostics.report(std::move(message), source);
   };
   const std::size_t parameter_count = expression.labels.size();
-  const bool inferred =
-      expression.arguments.size() == parameter_count + 1U;
-  const bool annotated =
-      expression.arguments.size() == parameter_count + 2U;
+  const bool inferred = expression.arguments.size() == parameter_count + 1U;
+  const bool annotated = expression.arguments.size() == parameter_count + 2U;
   if (expression.kind != Kind::Lambda || (!inferred && !annotated)) {
     report("malformed inline fn");
     return std::nullopt;

@@ -174,11 +174,10 @@ mod foreign@1.0.0 {
   auto foreign_replacement = compiler.materialize("foreign.replacement");
   if (!keep || !converted || !other || !binary || !identity ||
       !foreign_external || !word || !i1 || !expanded || !with_inline || !pair ||
-      !effect_template ||
-      !multi_call_template ||
-      !chain || !repeated || !different || !distinct_calls || !shared_call ||
-      !axis_one || !axis_two || !reference_a || !reference_b || !unused_hole ||
-      !replacement || !alternate_replacement || !double_keep || !triple_keep ||
+      !effect_template || !multi_call_template || !chain || !repeated ||
+      !different || !distinct_calls || !shared_call || !axis_one || !axis_two ||
+      !reference_a || !reference_b || !unused_hole || !replacement ||
+      !alternate_replacement || !double_keep || !triple_keep ||
       !foreign_replacement) {
     return EXIT_FAILURE;
   }
@@ -230,8 +229,8 @@ mod foreign@1.0.0 {
   {
     auto edit = dead_template->edit();
     const auto input = edit.argument(*word);
-    const auto root = edit.append(*keep, {input});
-    static_cast<void>(edit.append(*other, {input}));
+    const auto root = edit.call(*keep, {input});
+    static_cast<void>(edit.call(*other, {input}));
     edit.ret(dead_template->entry(), {root.value()});
     joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -276,10 +275,10 @@ mod foreign@1.0.0 {
   {
     auto edit = two_chains->edit();
     const auto input = edit.argument(*word);
-    const auto first_inner = edit.append(*keep, {input});
-    first_chain_root = edit.append(*other, {first_inner.value()}).value();
-    const auto second_inner = edit.append(*keep, {input});
-    second_chain_root = edit.append(*other, {second_inner.value()}).value();
+    const auto first_inner = edit.call(*keep, {input});
+    first_chain_root = edit.call(*other, {first_inner.value()}).value();
+    const auto second_inner = edit.call(*keep, {input});
+    second_chain_root = edit.call(*other, {second_inner.value()}).value();
     edit.ret(two_chains->entry(), {*second_chain_root});
     joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -327,7 +326,7 @@ mod foreign@1.0.0 {
   ok &= expect(known_matches && known_matches->empty() && reference_matches &&
                    reference_matches->empty() && known_match_diagnostics.ok() &&
                    reference_match_diagnostics.ok(),
-               "Known properties compare canonically and fn references "
+               "Known callee bindings compare canonically and fn references "
                "compare by declaration identity");
 
   auto escaping = compiler.create_fn();
@@ -337,9 +336,9 @@ mod foreign@1.0.0 {
   {
     auto edit = escaping->edit();
     const auto input = edit.argument(*word);
-    const auto inner = edit.append(*keep, {input});
-    const auto root = edit.append(*other, {inner.value()});
-    static_cast<void>(edit.append(*binary, {inner.value(), input}));
+    const auto inner = edit.call(*keep, {input});
+    const auto root = edit.call(*other, {inner.value()});
+    static_cast<void>(edit.call(*binary, {inner.value(), input}));
     edit.ret(escaping->entry(), {root.value()});
     joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -359,9 +358,9 @@ mod foreign@1.0.0 {
   const auto shared_ops = escaping->ops();
   ok &= expect(shared_replaced && *shared_replaced == 1U &&
                    shared_replace_diagnostics.ok() && shared_ops.size() == 3U &&
-                   shared_ops[0].callee() == *keep &&
-                   shared_ops[1].callee() == *converted &&
-                   shared_ops[2].callee() == *binary &&
+                   shared_ops[0].callee().referenced_fn() == keep &&
+                   shared_ops[1].callee().referenced_fn() == converted &&
+                   shared_ops[2].callee().referenced_fn() == binary &&
                    escaping->entry().terminator().returned().front() ==
                        shared_ops[1].value(),
                "replacement preserves a shared ancestor and its outside user");
@@ -373,10 +372,10 @@ mod foreign@1.0.0 {
   {
     auto edit = shared_branches->edit();
     const auto input = edit.argument(*word);
-    const auto shared = edit.append(*keep, {input});
-    const auto left = edit.append(*other, {shared.value()});
-    const auto right = edit.append(*other, {shared.value()});
-    const auto joined = edit.append(*binary, {left.value(), right.value()});
+    const auto shared = edit.call(*keep, {input});
+    const auto left = edit.call(*other, {shared.value()});
+    const auto right = edit.call(*other, {shared.value()});
+    const auto joined = edit.call(*binary, {left.value(), right.value()});
     edit.ret(shared_branches->entry(), {joined.value()});
     joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -394,9 +393,9 @@ mod foreign@1.0.0 {
   ok &= expect(first_branch && *first_branch == 1U && second_branch &&
                    *second_branch == 1U && first_branch_diagnostics.ok() &&
                    second_branch_diagnostics.ok() && branch_ops.size() == 3U &&
-                   branch_ops[0].callee() == *converted &&
-                   branch_ops[1].callee() == *converted &&
-                   branch_ops[2].callee() == *binary,
+                   branch_ops[0].callee().referenced_fn() == converted &&
+                   branch_ops[1].callee().referenced_fn() == converted &&
+                   branch_ops[2].callee().referenced_fn() == binary,
                "repeated replacement consumes both branches sharing one "
                "ancestor");
 
@@ -416,7 +415,8 @@ mod foreign@1.0.0 {
                  expression_replace_diagnostics.ok() &&
                  replaced_root_location.has_value() &&
                  replacement_subject.ops().size() == 1U &&
-                 replacement_subject.ops().front().callee() == *converted &&
+                 replacement_subject.ops().front().callee().referenced_fn() ==
+                     converted &&
                  replacement_subject.ops().front().location() ==
                      replaced_root_location &&
                  replacement_subject.entry().terminator().returned().front() ==
@@ -462,8 +462,9 @@ mod foreign@1.0.0 {
   ok &= expect(overlap_replace && *overlap_replace == 1U &&
                    overlap_replace_diagnostics.ok() &&
                    overlap_subject.ops().size() == 2U &&
-                   overlap_subject.ops()[0].callee() == *converted &&
-                   overlap_subject.ops()[1].callee() == *keep,
+                   overlap_subject.ops()[0].callee().referenced_fn() ==
+                       converted &&
+                   overlap_subject.ops()[1].callee().referenced_fn() == keep,
                "overlapping candidates select the first maximal "
                "non-overlapping match");
 
@@ -475,7 +476,8 @@ mod foreign@1.0.0 {
   ok &= expect(foreign_replace && *foreign_replace == 1U &&
                    foreign_replace_diagnostics.ok() &&
                    foreign_subject.ops().size() == 1U &&
-                   foreign_subject.ops().front().callee() == *foreign_external,
+                   foreign_subject.ops().front().callee().referenced_fn() ==
+                       foreign_external,
                "replacement extends the verified Fn mod closure for "
                "a newly cloned call");
 
@@ -511,14 +513,22 @@ mod foreign@1.0.0 {
       expression_mod, *chain, *replacement, expression_mod_diagnostics);
   const auto expression_mod_first = expression_mod.fn("first");
   const auto expression_mod_second = expression_mod.fn("second");
-  ok &= expect(
-      expression_mod_replaced && *expression_mod_replaced == 2U &&
-          expression_mod_diagnostics.ok() && expression_mod_first &&
-          expression_mod_second && expression_mod_first->body() &&
-          expression_mod_second->body() &&
-          expression_mod_first->body()->ops().front().callee() == *converted &&
-          expression_mod_second->body()->ops().front().callee() == *converted,
-      "whole-Mod expression replacement publishes all changed members");
+  ok &=
+      expect(expression_mod_replaced && *expression_mod_replaced == 2U &&
+                 expression_mod_diagnostics.ok() && expression_mod_first &&
+                 expression_mod_second && expression_mod_first->body() &&
+                 expression_mod_second->body() &&
+                 expression_mod_first->body()
+                         ->ops()
+                         .front()
+                         .callee()
+                         .referenced_fn() == converted &&
+                 expression_mod_second->body()
+                         ->ops()
+                         .front()
+                         .callee()
+                         .referenced_fn() == converted,
+             "whole-Mod expression replacement publishes all changed members");
 
   const std::string expression_mod_digest(expression_mod.digest());
   joggle::Diag expression_mod_failure_diagnostics;
@@ -567,7 +577,7 @@ mod foreign@1.0.0 {
     const auto yes = edit.blk();
     const auto no = edit.blk();
     const auto merge = edit.blk({*word});
-    const auto converted_value = edit.append(yes, *identity, {input});
+    const auto converted_value = edit.call(yes, *identity, {input});
     edit.branch(cfg->entry(), condition, yes, {}, no, {});
     edit.jump(yes, merge, {converted_value.value()});
     edit.jump(no, merge, {input});
@@ -635,14 +645,15 @@ mod staged_replace@1.0.0 {
   std::size_t inspected_replacement_calls = 0;
   std::optional<joggle::Mod::FnDecl> inspected_replacement_callee;
   if (staged_inspect_decl) {
-    staged_replace.bind(
-        *staged_inspect_decl, [&](const joggle::Fn& fn) -> std::int64_t {
-          inspected_replacement_calls = fn.ops().size();
-          if (!fn.ops().empty()) {
-            inspected_replacement_callee = fn.ops().front().callee();
-          }
-          return static_cast<std::int64_t>(fn.ops().size());
-        });
+    staged_replace.bind(*staged_inspect_decl,
+                        [&](const joggle::Fn& fn) -> std::int64_t {
+                          inspected_replacement_calls = fn.ops().size();
+                          if (!fn.ops().empty()) {
+                            inspected_replacement_callee =
+                                fn.ops().front().callee().referenced_fn();
+                          }
+                          return static_cast<std::int64_t>(fn.ops().size());
+                        });
   }
   const auto staged_optimized =
       staged_replace_linked && staged_optimize_decl && staged_replace_decl &&
@@ -656,7 +667,8 @@ mod staged_replace@1.0.0 {
       staged_replace_linked && staged_replace_decl && staged_optimize_decl &&
           staged_inspect_decl && staged_converted_decl && staged_optimized &&
           staged_replace.ok() && staged_optimized->ops().size() == 1U &&
-          staged_optimized->ops().front().callee() == *staged_converted_decl &&
+          staged_optimized->ops().front().callee().referenced_fn() ==
+              staged_converted_decl &&
           inspected_replacement_calls == 1U &&
           inspected_replacement_callee == staged_converted_decl,
       "an ordinary source fn invokes typed-lambda replacement "

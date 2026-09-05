@@ -112,7 +112,8 @@ ctest --test-dir build-runtime \
 ```
 
 The test reconstructs a standard ONNX graph from only the imported Joggle
-Fn, call properties, result Types, and Mod-owned initializer bytes.
+Fn, callee specialization bindings, result Types, and Mod-owned initializer
+bytes.
 It then runs the original and reconstructed graphs through the ONNX Runtime CPU
 provider with graph optimization disabled. A fixed ramp input is used twice to
 check determinism. The audited run produced output shape `[1,1000]`,
@@ -161,7 +162,7 @@ The exact audited model imports as:
 All 117 retained calls have deterministic ONNX source locations. The original
 model plus all 53 initializer payloads are retained as 54 distinct
 content-addressed Mod data entries. The test fixes the independently audited
-65-node call/shape sequence, operator properties and counts, every payload
+65-node call/shape sequence, operator bindings and counts, every payload
 digest, the exact source digest, and repeated-import identity.
 
 The exact audited QDQ model imports as:

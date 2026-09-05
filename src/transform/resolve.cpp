@@ -58,29 +58,30 @@ private:
   }
 
   std::optional<Replacement> resolve(const Op& call) {
-    if (call.callee().form() == Mod::FnDecl::Form::External) {
+    const auto declaration = call.callee().referenced_fn();
+    if (!declaration || declaration->form() == Mod::FnDecl::Form::External) {
       return Replacement{};
     }
+    const Mod::FnDecl callee = *declaration;
 
     const auto body = compiler_.materialize(call, diagnostics_);
     if (!body) {
-      diagnostics_.report(
-          "call '" + call.callee().symbol().qualified_name() +
-          "' has no resolvable source body");
+      diagnostics_.report("call '" + callee.symbol().qualified_name() +
+                          "' has no resolvable source body");
       return std::nullopt;
     }
 
-    std::string key = call.callee().symbol().stable_name();
+    std::string key = callee.symbol().stable_name();
     key += '\n';
-    key += call.callee().signature();
+    key += callee.signature();
     key += '\n';
-    key += format(*body, call.callee().name());
+    key += format(*body, callee.name());
     if (const auto known = generated_.find(key); known != generated_.end()) {
       return known->second;
     }
     if (!active_.insert(key).second) {
       diagnostics_.report("recursive source resolution at '" +
-                          call.callee().symbol().qualified_name() + "'");
+                          callee.symbol().qualified_name() + "'");
       return std::nullopt;
     }
 
@@ -93,7 +94,7 @@ private:
     std::string name;
     do {
       name = "inst_" + std::to_string(next_name_++) + "_" +
-             std::string(call.callee().name());
+             std::string(callee.name());
     } while (!output_.overloads(name).empty());
     if (!output_.insert(name, *body, diagnostics_)) {
       active_.erase(key);
@@ -157,8 +158,8 @@ private:
       for (const Val& result : calls[index].results()) {
         results.push_back(result.type());
       }
-      const Op linked =
-          edit.insert(calls[index], *callee, calls[index].operands(), results);
+      const Op linked = edit.call_before(calls[index], *callee,
+                                         calls[index].arguments(), results);
       edit.replace(calls[index], linked.results());
     }
     return edit.commit(diagnostics_);
@@ -175,8 +176,7 @@ private:
 
 }  // namespace
 
-std::optional<Mod>
-Compiler::resolve(const Mod& mod, Diag& diagnostics) {
+std::optional<Mod> Compiler::resolve(const Mod& mod, Diag& diagnostics) {
   return Resolver(*this, mod, diagnostics).run();
 }
 

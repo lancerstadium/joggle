@@ -222,8 +222,12 @@ mod mod_defs@1.0.0 {
       local_text, local_parse_diagnostics, "local-link.joggle");
   ok &= expect(compiler.verify(local) && local_reparsed &&
                    joggle::format(*local_reparsed) == local_text &&
-                   caller_body->ops().front().callee().symbol().mod_name() ==
-                       "local_link",
+                   caller_body->ops()
+                           .front()
+                           .callee()
+                           .referenced_fn()
+                           ->symbol()
+                           .mod_name() == "local_link",
                "inserted Fns are immediately usable as typed local "
                "callees without a format-and-parse round trip");
 

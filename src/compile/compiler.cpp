@@ -22,8 +22,8 @@
 namespace joggle {
 namespace {
 
-using detail::ParamVal;
 using detail::belongs_to;
+using detail::ParamVal;
 
 template <typename Subject, typename Verifier>
 bool invoke_verifier(Verifier& verifier, const Subject& subject,
@@ -370,7 +370,16 @@ std::optional<Fn> Compiler::materialize(const Op& call, Diag& diagnostics) {
     return std::nullopt;
   }
 
-  const Mod::FnDecl callee = call.callee();
+  const Val callee_value = call.callee();
+  if (const auto body = callee_value.inline_fn()) {
+    return *body;
+  }
+  const auto referenced = callee_value.referenced_fn();
+  if (!referenced) {
+    diagnostics.report("cannot materialize a dynamic callee");
+    return std::nullopt;
+  }
+  const Mod::FnDecl callee = *referenced;
   const auto owner = state_->mods.find(callee.symbol().mod_name());
   if (owner == state_->mods.end() ||
       owner->second.version() != callee.symbol().mod_version() ||
@@ -413,15 +422,15 @@ std::optional<Fn> Compiler::materialize(const Op& call, Diag& diagnostics) {
     }
     if (detail::is_value_port(parameters[parameter])) {
       argument_types.push_back(argument.type());
-      continue;
     }
-    const auto value = detail::FnAccess::known_value(argument);
+  }
+  for (const auto& [name, binding] : callee_value.bindings()) {
+    const auto value = detail::FnAccess::known_value(binding);
     if (!value) {
-      diagnostics.report("call property '" + parameters[parameter].name +
-                         "' is not Known");
+      diagnostics.report("callee binding '" + name + "' is not Known");
       return std::nullopt;
     }
-    known_values.push_back(argument);
+    known_values.push_back(binding);
     known_arguments.push_back(*value);
   }
   std::vector<std::optional<Type>> expected_results;
@@ -458,7 +467,11 @@ bool Compiler::verify(const Fn& fn) {
   bool valid =
       detail::FnAccess::verify_contracts(fn, *this, state_->diagnostics);
   for (const Op& op : fn.ops()) {
-    const Mod::FnDecl schema = op.callee();
+    const auto declaration = op.callee().referenced_fn();
+    if (!declaration) {
+      continue;
+    }
+    const Mod::FnDecl schema = *declaration;
     const Mod::Symbol symbol = schema.symbol();
     const auto location = detail::FnAccess::location(op);
     const auto verifier = state_->op_verifiers.find(symbol.stable_name());

@@ -477,8 +477,9 @@ public:
   std::optional<Fn> materialize(std::string_view name);
   std::optional<Fn> materialize(std::string_view name,
                                 std::vector<Val> known_arguments);
-  // Specializes a source-defined callee from one already typed call. Concrete
-  // operand, property, and result types recover the call's generic bindings.
+  // Specializes a source-defined callee from one already typed Call. The
+  // callable Val owns compile-time bindings; Call arguments and result types
+  // recover the remaining generic bindings.
   std::optional<Fn> materialize(const Op& call);
   std::optional<Fn> materialize(const Op& call, Diag& diagnostics);
 

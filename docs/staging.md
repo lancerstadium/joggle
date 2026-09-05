@@ -46,10 +46,11 @@ domains before invocation. The returned mod is published only on success.
 
 ## Transformation substrate
 
-Today a native compiler fn can materialize a `Fn`, open a
-transactional edit, inspect exact callees and typed operands, change calls,
-and commit after verification. This is the low-level substrate for constant
-folding and user-defined structural transformations.
+Today a native compiler fn can materialize a `Fn`, open a transactional edit,
+inspect callable values and typed arguments, change calls, and commit after
+verification. Named specializations, lambdas, and fn parameters are not
+separate operation kinds. This is the low-level substrate for constant folding
+and user-defined structural transformations.
 
 An explicit call may pass a typed lambda to a `fn` parameter. The lambda
 is materialized as a verified anonymous `Fn`, passed directly to the

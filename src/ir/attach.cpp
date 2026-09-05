@@ -68,6 +68,10 @@ void collect(DependencyMap& dependencies, const Val& value) {
   if (const auto fn = value.inline_fn()) {
     collect(dependencies, *fn);
   }
+  for (const auto& [name, binding] : value.bindings()) {
+    static_cast<void>(name);
+    collect(dependencies, binding);
+  }
   if (const auto known = detail::FnAccess::known_value(value)) {
     collect(dependencies, *known);
   }
@@ -85,7 +89,7 @@ void collect(DependencyMap& dependencies, const Fn& fn) {
       collect(dependencies, argument);
     }
     for (const Op& op : block.ops()) {
-      collect(dependencies, op.callee().symbol());
+      collect(dependencies, op.callee());
       for (const Val& argument : op.arguments()) {
         collect(dependencies, argument);
       }

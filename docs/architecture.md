@@ -110,7 +110,7 @@ authoritative; no generated declaration header is required.
 ## Editable fns
 
 A `Fn` owns blocks, block arguments, calls, returns, and typed values.
-Edits are transactional: append, insert, replace, erase, then commit. A failed
+Edits are transactional: call, call_before, replace, erase, then commit. A failed
 commit does not publish a partially invalid body. The verifier checks ownership,
 dominance, terminators, call signatures, result types, and cross-mod symbol
 provenance.

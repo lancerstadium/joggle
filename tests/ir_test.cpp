@@ -86,9 +86,9 @@ int main() {
     auto edit = fn->edit();
     const auto lhs = edit.argument(*integer);
     const auto rhs = edit.argument(*integer);
-    add = edit.append(*add_schema, {lhs, rhs});
+    add = edit.call(*add_schema, {lhs, rhs});
     edit.locate(*add, imported_location);
-    edit.append(*cast_schema, {add->result(0)});
+    edit.call(*cast_schema, {add->result(0)});
     joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
@@ -131,7 +131,7 @@ int main() {
   {
     auto edit = mixed->edit();
     const auto input = edit.argument(*i32);
-    const auto sum = edit.append(*add_i32_schema, {*known_seven, input});
+    const auto sum = edit.call(*add_i32_schema, {*known_seven, input});
     edit.ret(mixed->entry(), {sum.result(0)});
     joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -140,14 +140,13 @@ int main() {
     }
   }
   const auto mixed_arguments = mixed->ops().front().arguments();
-  const auto mixed_operands = mixed->ops().front().operands();
-  ok &=
-      expect(mixed_arguments.size() == 2U && mixed_arguments.front().known() &&
-                 mixed_arguments.front().get<std::int64_t>() == 7 &&
-                 !mixed_arguments.back().known() &&
-                 mixed_operands == mixed_arguments &&
-                 mixed->ops().front().properties().empty(),
-             "Known literals on value ports remain SSA operands");
+  const auto mixed_values = mixed->ops().front().arguments();
+  ok &= expect(
+      mixed_arguments.size() == 2U && mixed_arguments.front().known() &&
+          mixed_arguments.front().get<std::int64_t>() == 7 &&
+          !mixed_arguments.back().known() && mixed_values == mixed_arguments &&
+          mixed->ops().front().callee().bindings().empty(),
+      "Known literals on value ports remain SSA operands");
 
   auto configured = compiler.create_fn();
   if (!configured) {
@@ -156,7 +155,7 @@ int main() {
   {
     auto edit = configured->edit();
     const auto input = edit.argument(*i32);
-    const auto value = edit.append(*configure_schema, {input});
+    const auto value = edit.call(*configure_schema, {input});
     edit.ret(configured->entry(), {value.value()});
     joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -165,17 +164,16 @@ int main() {
     }
   }
   const auto configured_op = configured->ops().front();
-  const auto configured_properties = configured_op.properties();
+  const auto configured_bindings = configured_op.callee().bindings();
   ok &= expect(
-      configured_op.operands().size() == 1U &&
+      configured_op.arguments().size() == 1U &&
           configured_op.operand("input") ==
               std::optional<joggle::Val>{configured->arguments().front()} &&
-          !configured_op.operand("axis") &&
-          configured_properties.size() == 1U &&
-          configured_properties.front().first == "axis" &&
-          configured_op.property<std::int64_t>("axis") == 1 &&
-          !configured_op.property("input"),
-      "compiler-domain inputs are named immutable Op properties");
+          !configured_op.operand("axis") && configured_bindings.size() == 1U &&
+          configured_bindings.front().first == "axis" &&
+          configured_op.callee().binding<std::int64_t>("axis") == 1 &&
+          !configured_op.callee().binding("input"),
+      "compiler-domain inputs specialize the callable value");
 
   const auto callable =
       compiler.make(*callable_schema, std::vector<joggle::Type>{*i32},
@@ -190,7 +188,7 @@ int main() {
     auto edit = higher_order->edit();
     const auto input = edit.argument(*i32);
     callback = edit.reference(*callback_schema, *callable);
-    applied = edit.append(*apply_schema, {input, *callback});
+    applied = edit.call(*apply_schema, {input, *callback});
     edit.ret(higher_order->entry(), {applied->result(0)});
     joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -242,7 +240,7 @@ int main() {
     auto edit = inline_higher_order->edit();
     const auto input = edit.argument(*i32);
     inline_callable = edit.callable(*inline_body, *callable);
-    const auto result = edit.append(*apply_schema, {input, *inline_callable});
+    const auto result = edit.call(*apply_schema, {input, *inline_callable});
     edit.ret(inline_higher_order->entry(), {result.result(0)});
     joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -276,7 +274,7 @@ int main() {
   bool needs_explicit_result = false;
   try {
     auto edit = fn->edit();
-    edit.append(*source_schema);
+    edit.call(*source_schema);
   } catch (const std::invalid_argument& error) {
     needs_explicit_result =
         std::string_view(error.what()).find("cannot infer type variable 'T'") !=
@@ -288,7 +286,7 @@ int main() {
   std::optional<joggle::Op> inserted;
   {
     auto edit = fn->edit();
-    inserted = edit.insert(*add, *cast_schema, {fn->arguments()[0]});
+    inserted = edit.call_before(*add, *cast_schema, {fn->arguments()[0]});
     joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
@@ -315,7 +313,7 @@ int main() {
   bool missing_argument_rejected = false;
   try {
     auto edit = fn->edit();
-    edit.append(*add_schema, {fn->arguments()[0]}, {*integer});
+    edit.call(*add_schema, {fn->arguments()[0]}, {*integer});
   } catch (const std::invalid_argument& error) {
     missing_argument_rejected =
         std::string_view(error.what()).find("missing argument 'rhs'") !=
@@ -328,8 +326,8 @@ int main() {
   std::optional<joggle::Op> second_cast;
   {
     auto edit = fn->edit();
-    first_cast = edit.append(*cast_schema, {add->result(0)});
-    second_cast = edit.append(*cast_schema, {first_cast->result(0)});
+    first_cast = edit.call(*cast_schema, {add->result(0)});
+    second_cast = edit.call(*cast_schema, {first_cast->result(0)});
     edit.ret(fn->entry(), {first_cast->result(0)});
     joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -364,9 +362,9 @@ int main() {
     auto edit = queried->edit();
     queried_input = edit.argument(*i32);
     queried_first =
-        edit.append(*add_i32_schema, {*queried_input, *queried_input});
-    queried_second = edit.append(*add_i32_schema,
-                                 {queried_first->result(0), *queried_input});
+        edit.call(*add_i32_schema, {*queried_input, *queried_input});
+    queried_second =
+        edit.call(*add_i32_schema, {queried_first->result(0), *queried_input});
     edit.ret(queried->entry(), {queried_second->result(0)});
     joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -420,7 +418,7 @@ int main() {
     auto edit = invalid->edit();
     const auto lhs = edit.argument(*integer);
     const auto rhs = edit.argument(*other);
-    edit.append(*add_schema, {lhs, rhs}, {*integer});
+    edit.call(*add_schema, {lhs, rhs}, {*integer});
     joggle::Diag diagnostics;
     ok &= expect(!edit.commit(diagnostics) && !diagnostics.ok() &&
                      invalid->arguments().empty() && invalid->ops().empty(),
@@ -497,9 +495,9 @@ int main() {
     const auto merge_effect = edit.blk({*memory_effect});
     edit.branch(effect_cfg->entry(), condition, yes, {token}, no, {token});
     const auto yes_next =
-        edit.append(yes, *advance_schema, {yes.arguments().front()});
+        edit.call(yes, *advance_schema, {yes.arguments().front()});
     const auto no_next =
-        edit.append(no, *advance_schema, {no.arguments().front()});
+        edit.call(no, *advance_schema, {no.arguments().front()});
     edit.jump(yes, merge_effect, {yes_next.result(0)});
     edit.jump(no, merge_effect, {no_next.result(0)});
     edit.ret(merge_effect, {merge_effect.arguments().front()});
@@ -520,8 +518,8 @@ int main() {
   {
     auto edit = duplicated_effect->edit();
     const auto token = edit.argument(*memory_effect);
-    const auto first = edit.append(*advance_schema, {token});
-    static_cast<void>(edit.append(*advance_schema, {token}));
+    const auto first = edit.call(*advance_schema, {token});
+    static_cast<void>(edit.call(*advance_schema, {token}));
     edit.ret(duplicated_effect->entry(), {first.result(0)});
     joggle::Diag diagnostics;
     const bool committed = edit.commit(diagnostics);
@@ -593,9 +591,9 @@ int main() {
     const auto right = edit.blk();
     const auto merge_block = edit.blk();
     edit.branch(invalid_dominance->entry(), condition, left, {}, right, {});
-    const auto produced = edit.append(left, *cast_schema, {input});
+    const auto produced = edit.call(left, *cast_schema, {input});
     edit.jump(left, merge_block);
-    edit.append(right, *cast_schema, {produced.result(0)});
+    edit.call(right, *cast_schema, {produced.result(0)});
     edit.jump(right, merge_block);
     edit.ret(merge_block);
     joggle::Diag diagnostics;

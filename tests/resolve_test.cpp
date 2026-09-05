@@ -93,24 +93,39 @@ mod opaque_model@1.0.0 {
                "a source call resolves to one concrete Fn instance");
   ok &= expect(resolved && repeated && resolved->fns().size() == 2U &&
                    main_body && main_body->ops().size() == 1U &&
-                   main_body->ops().front().callee().symbol().mod_name() ==
-                       resolved->name() &&
+                   main_body->ops()
+                           .front()
+                           .callee()
+                           .referenced_fn()
+                           ->symbol()
+                           .mod_name() == resolved->name() &&
                    generated_body && generated_body->ops().size() == 1U &&
-                   generated_body->ops().front().callee().symbol().mod_name() ==
-                       "boundary" &&
+                   generated_body->ops()
+                           .front()
+                           .callee()
+                           .referenced_fn()
+                           ->symbol()
+                           .mod_name() == "boundary" &&
                    original_body &&
-                   original_body->ops().front().callee().symbol().mod_name() ==
-                       "source_kernel" &&
+                   original_body->ops()
+                           .front()
+                           .callee()
+                           .referenced_fn()
+                           ->symbol()
+                           .mod_name() == "source_kernel" &&
                    resolved->digest() == repeated->digest(),
                "resolution is local, non-mutating, and deterministic");
-  const auto rejected_main =
-      rejected ? rejected->fn("main") : std::nullopt;
+  const auto rejected_main = rejected ? rejected->fn("main") : std::nullopt;
   const joggle::Fn* rejected_body =
       rejected_main ? rejected_main->body() : nullptr;
   ok &= expect(rejected && rejected_body && rejected_diagnostics.ok() &&
                    rejected_body->ops().size() == 1U &&
-                   rejected_body->ops().front().callee().symbol().mod_name() ==
-                       "opaque_model",
+                   rejected_body->ops()
+                           .front()
+                           .callee()
+                           .referenced_fn()
+                           ->symbol()
+                           .mod_name() == "opaque_model",
                "a bodyless call remains an explicit implementation leaf");
   if (!ok) {
     diagnostics.print(std::cerr);

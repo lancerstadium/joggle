@@ -209,23 +209,26 @@ int main() {
   ok &= expect(scalar->get<std::vector<std::int64_t>>("shape") ==
                    std::vector<std::int64_t>{},
                "rank-zero static tensors remain valid tensor types");
-  ok &= expect(fire_ops.size() == 7U &&
-                   fire_ops[0].callee().symbol().mod_name() == "tensor" &&
-                   fire_ops[0].callee().symbol().local_name() == "conv" &&
-                   fire_ops[1].callee() == *relu_decl &&
-                   fire_ops.back().callee() == *concat_decl,
-               "a Fire block materializes as three Conv/Relu pairs and one "
-               "Concat without a second graph container");
+  ok &=
+      expect(fire_ops.size() == 7U &&
+                 fire_ops[0].callee().referenced_fn()->symbol().mod_name() ==
+                     "tensor" &&
+                 fire_ops[0].callee().referenced_fn()->symbol().local_name() ==
+                     "conv" &&
+                 fire_ops[1].callee().referenced_fn() == relu_decl &&
+                 fire_ops.back().callee().referenced_fn() == concat_decl,
+             "a Fire block materializes as three Conv/Relu pairs and one "
+             "Concat without a second graph container");
   ok &= expect(
-      fire_ops[0].property<std::vector<std::int64_t>>("strides") ==
+      fire_ops[0].callee().binding<std::vector<std::int64_t>>("strides") ==
               std::vector<std::int64_t>({1, 1}) &&
-          fire_ops[0].property<std::vector<std::int64_t>>("pads") ==
+          fire_ops[0].callee().binding<std::vector<std::int64_t>>("pads") ==
               std::vector<std::int64_t>({0, 0, 0, 0}) &&
-          fire_ops[0].property<std::int64_t>("group") == 1 &&
-          fire_ops[4].property<std::vector<std::int64_t>>("pads") ==
+          fire_ops[0].callee().binding<std::int64_t>("group") == 1 &&
+          fire_ops[4].callee().binding<std::vector<std::int64_t>>("pads") ==
               std::vector<std::int64_t>({1, 1, 1, 1}) &&
-          fire_ops.back().property<std::int64_t>("axis") == 1,
-      "compiler-domain tensor arguments become typed immutable properties");
+          fire_ops.back().callee().binding<std::int64_t>("axis") == 1,
+      "compiler-domain tensor arguments specialize an immutable callee");
   ok &=
       expect(result.size() == 1U &&
                  result.front().type().get<std::vector<std::int64_t>>(
@@ -249,12 +252,13 @@ int main() {
   const auto replacements = joggle::replace(compiler, *fire, *pattern, *fused,
                                             replacement_diagnostics);
   const auto fused_ops = fire->ops();
-  ok &= expect(replacements && *replacements == 1U &&
-                   replacement_diagnostics.ok() && fused_ops.size() == 6U &&
-                   fused_ops.front().callee() == *conv_relu_decl &&
-                   compiler.verify(*fire),
-               "an extension-local kernel fuses one shape-specific Conv/Relu "
-               "pair without changing the tensor mod");
+  ok &=
+      expect(replacements && *replacements == 1U &&
+                 replacement_diagnostics.ok() && fused_ops.size() == 6U &&
+                 fused_ops.front().callee().referenced_fn() == conv_relu_decl &&
+                 compiler.verify(*fire),
+             "an extension-local kernel fuses one shape-specific Conv/Relu "
+             "pair without changing the tensor mod");
 
   const std::string canonical = joggle::format(*fire, "fire_optimized");
   joggle::Compiler roundtrip;

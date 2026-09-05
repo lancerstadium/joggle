@@ -14,21 +14,20 @@ void bind(joggle::Compiler& compiler, const joggle::Mod& mod,
     return;
   }
 
-  compiler.bind(
-      mod, "convert",
-      [keep = *keep, converted = *converted](
-          joggle::Fn fn,
-          joggle::Diag& diagnostics) -> std::optional<joggle::Fn> {
-        auto edit = fn.edit();
-        for (const auto& op : fn.ops()) {
-          if (op.callee() == keep) {
-            edit.replace(op, converted);
-          }
-        }
-        return edit.commit(diagnostics)
-                   ? std::optional<joggle::Fn>{std::move(fn)}
-                   : std::nullopt;
-      });
+  compiler.bind(mod, "convert",
+                [keep = *keep, converted = *converted](
+                    joggle::Fn fn,
+                    joggle::Diag& diagnostics) -> std::optional<joggle::Fn> {
+                  auto edit = fn.edit();
+                  for (const auto& op : fn.ops()) {
+                    if (op.callee().referenced_fn() == keep) {
+                      edit.replace(op, converted);
+                    }
+                  }
+                  return edit.commit(diagnostics)
+                             ? std::optional<joggle::Fn>{std::move(fn)}
+                             : std::nullopt;
+                });
 }
 
 }  // namespace

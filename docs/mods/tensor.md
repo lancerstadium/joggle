@@ -23,11 +23,11 @@ The element is an ordinary Type. Joggle has no privileged numeric trait or
 closed format enumeration; an importing mod decides which element Types it
 accepts through normal verifiers.
 
-## Calls and properties
+## Calls and specialization
 
-Tensor operations are ordinary `fn` declarations. Residual tensor arguments
-become SSA operands; compiler-domain arguments in the same signature become
-immutable typed properties:
+Tensor operations are ordinary `fn` declarations. Tensor values become Call
+arguments; compiler-domain values in the same signature specialize the
+callee:
 
 ```joggle
 convolved: t.tensor<f32, [1, 16, 55, 55]> = t.conv(
@@ -41,9 +41,9 @@ convolved: t.tensor<f32, [1, 16, 55, 55]> = t.conv(
 );
 ```
 
-There is no separate attribute schema. `strides`, `pads`, `dilations`, and
-`group` are parameters of the exact selected `conv` overload and survive
-canonical Fn formatting.
+There is no separate attribute schema or Op property table. `strides`, `pads`,
+`dilations`, and `group` are bindings of the selected `conv` fn value and
+survive canonical Fn formatting.
 
 Model inputs are Fn parameters. Large initializers remain immutable
 Mod data: `Mod::store` returns a content digest, and
@@ -72,12 +72,12 @@ Implemented and tested:
 - ordinary installable tensor Mod;
 - static-shape validation through the general type-verifier API;
 - typed Conv, Relu, and Concat materialization for a Fire block;
-- preservation of convolution and concatenation properties;
+- preservation of convolution and concatenation specialization bindings;
 - typed-lambda structural replacement, shared-DAG preservation, rollback, and
   canonical Fn round-trip.
 
 The separate `onnx` Mod now imports the exact pinned SqueezeNet 1.1 model,
-preserves its initializers and supported properties, and has exact differential
+preserves its initializers and supported attributes as fn bindings, and has exact differential
 ONNX Runtime evidence. This does not broaden `tensor` itself into an ONNX
 schema.
 

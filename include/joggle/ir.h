@@ -47,6 +47,14 @@ public:
   bool is_blk_arg() const;
   std::optional<Mod::FnDecl> referenced_fn() const;
   std::optional<Fn> inline_fn() const;
+  // Compile-time arguments already applied to a declared fn reference.
+  // They specialize the callable value and are not operands of a Call.
+  std::vector<std::pair<std::string, Val>> bindings() const;
+  std::optional<Val> binding(std::string_view name) const;
+  template <typename T> std::optional<T> binding(std::string_view name) const {
+    const auto value = binding(name);
+    return value ? value->get<T>() : std::nullopt;
+  }
   std::optional<Op> defining_op() const;
   // Direct Op users of this Residual value in Fn order. Known values do
   // not retain one owning Fn and therefore return an empty list.
@@ -72,26 +80,17 @@ private:
 class Op {
 public:
   bool valid() const;
-  Mod::FnDecl callee() const;
+  Val callee() const;
   Blk parent() const;
-  // Residual inputs are SSA edges. Known inputs are immutable properties.
-  // Both are derived from the callee's single `fn` signature; an IR schema
-  // never maintains a second operand/attribute declaration.
-  std::vector<Val> operands() const;
-  std::vector<std::pair<std::string, Val>> properties() const;
+  // Runtime arguments are the Call's SSA edges. Compile-time bindings live on
+  // the callee Val, so Call has no attribute/property side channel.
   std::optional<Val> operand(std::string_view name) const;
-  std::optional<Val> property(std::string_view name) const;
   std::vector<Val> arguments() const;
   std::vector<Val> results() const;
   Val value() const;
   Val result(std::size_t index) const;
   // Optional frontend provenance used for diagnostics, not call semantics.
   std::optional<Loc> location() const;
-
-  template <typename T> std::optional<T> property(std::string_view name) const {
-    const auto value = property(name);
-    return value ? value->get<T>() : std::nullopt;
-  }
 
   bool operator==(const Op&) const = default;
 
@@ -173,16 +172,24 @@ public:
     Edit& operator=(const Edit&) = delete;
 
     Val argument(Type type);
-    Val reference(Mod::FnDecl fn, Type type);
+    Val reference(Mod::FnDecl fn, Type type,
+                  std::vector<std::pair<std::string, Val>> bindings = {});
     Val callable(Fn fn, Type type);
     Blk blk(std::vector<Type> argument_types = {});
-    // Straight-line convenience: append to the entry Blk.
-    Op append(Mod::FnDecl schema, std::vector<Val> arguments = {},
-              std::vector<Type> result_types = {});
-    Op append(Blk block, Mod::FnDecl schema, std::vector<Val> arguments = {},
-              std::vector<Type> result_types = {});
-    Op insert(Op before, Mod::FnDecl schema, std::vector<Val> arguments = {},
-              std::vector<Type> result_types = {});
+    // Every IR operation is one Call. The FnDecl overload is a construction
+    // convenience that binds compile-time arguments into a callee Val first.
+    Op call(Val callee, std::vector<Val> arguments = {},
+            std::vector<Type> result_types = {});
+    Op call(Blk block, Val callee, std::vector<Val> arguments = {},
+            std::vector<Type> result_types = {});
+    Op call_before(Op before, Val callee, std::vector<Val> arguments = {},
+                   std::vector<Type> result_types = {});
+    Op call(Mod::FnDecl fn, std::vector<Val> arguments = {},
+            std::vector<Type> result_types = {});
+    Op call(Blk block, Mod::FnDecl fn, std::vector<Val> arguments = {},
+            std::vector<Type> result_types = {});
+    Op call_before(Op before, Mod::FnDecl fn, std::vector<Val> arguments = {},
+                   std::vector<Type> result_types = {});
 
     void ret(Blk block, std::vector<Val> values = {});
     void jump(Blk block, Blk target, std::vector<Val> arguments = {});
@@ -192,7 +199,8 @@ public:
     // Attaches diagnostic provenance within this transaction.
     void locate(Op op, Loc source);
     void replace(Val from, Val to);
-    Op replace(Op op, Mod::FnDecl schema);
+    Op replace(Op op, Val callee);
+    Op replace(Op op, Mod::FnDecl fn);
     // Replaces every result position and erases the old Op. An empty
     // replacement erases a zero-result Op.
     void replace(Op op, std::vector<Val> results);
@@ -202,8 +210,10 @@ public:
 
   private:
     explicit Edit(std::shared_ptr<detail::FnIdentity> fn);
-    Op add(Blk block, std::optional<Op> before, Mod::FnDecl schema,
+    Op add(Blk block, std::optional<Op> before, Val callee,
            std::vector<Val> arguments, std::vector<Type> result_types);
+    Op direct(Blk block, std::optional<Op> before, Mod::FnDecl fn,
+              std::vector<Val> arguments, std::vector<Type> result_types);
     std::unique_ptr<detail::FnEditState> state_;
     friend class Fn;
     friend struct joggle::detail::FnAccess;

@@ -53,6 +53,9 @@ mod logic@1.0.0 {
       -> word<16> {
     return apply(input, body);
   }
+  fn invoke(input: word<8>, body: (word<8>) -> word<16>) -> word<16> {
+    return body(input);
+  }
   fn callback(input: word<8>) -> word<16>;
   fn apply_fixed(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
   fn inline_callback(input: word<8>) -> word<16> {
@@ -143,6 +146,7 @@ int main() {
       default_configured_decl ? compiler.materialize(*default_configured_decl)
                               : std::nullopt;
   const auto callback_user = compiler.materialize("logic.callback_user");
+  const auto invoke = compiler.materialize("logic.invoke");
   const auto inline_callback = compiler.materialize("logic.inline_callback");
   const auto generic_inline_callback =
       compiler.materialize("logic.generic_inline_callback");
@@ -206,6 +210,15 @@ int main() {
                    callback_user->ops().size() == 1U,
                "fn type syntax constructs a reflected callable type "
                "and participates in generic call inference");
+  ok &= expect(invoke && invoke->ops().size() == 1U &&
+                   invoke->ops().front().callee() == invoke->arguments()[1] &&
+                   !invoke->ops().front().callee().referenced_fn() &&
+                   invoke->ops().front().arguments() ==
+                       std::vector<joggle::Val>{invoke->arguments()[0]} &&
+                   joggle::format(*invoke, "invoke").find("arg1(arg0)") !=
+                       std::string::npos,
+               "a fn parameter is called through the same Call/callee Val "
+               "representation and source form as a declared fn");
   const auto inline_ops =
       inline_callback ? inline_callback->ops() : std::vector<joggle::Op>{};
   const auto inline_arguments = inline_ops.size() == 1U
@@ -214,14 +227,16 @@ int main() {
   const auto inline_body = inline_arguments.size() == 2U
                                ? inline_arguments.back().inline_fn()
                                : std::optional<joggle::Fn>{};
-  ok &= expect(inline_callback && inline_ops.size() == 1U &&
-                   inline_arguments.size() == 2U && inline_body &&
-                   !inline_arguments.back().referenced_fn() &&
-                   inline_body->arguments().size() == 1U &&
-                   inline_body->ops().size() == 1U &&
-                   inline_body->ops().front().callee().name() == "callback",
-               "a typed lambda materializes through the ordinary expression "
-               "and callable Val path");
+  ok &=
+      expect(inline_callback && inline_ops.size() == 1U &&
+                 inline_arguments.size() == 2U && inline_body &&
+                 !inline_arguments.back().referenced_fn() &&
+                 inline_body->arguments().size() == 1U &&
+                 inline_body->ops().size() == 1U &&
+                 inline_body->ops().front().callee().referenced_fn()->name() ==
+                     "callback",
+             "a typed lambda materializes through the ordinary expression "
+             "and callable Val path");
   ok &= expect(
       generic_inline_callback && generic_inline_callback->ops().size() == 1U &&
           generic_inline_callback->ops().front().arguments().back().inline_fn(),
@@ -373,18 +388,20 @@ mod duplicate_lambda@1.0.0 {
                                                   "duplicate-lambda.joggle");
   ok &= expect(!duplicate_lambda && !duplicate_lambda_diagnostics.ok(),
                "duplicate lambda parameter names are rejected while parsing");
-  ok &= expect(generic_body_user && generic_body_call && generic_body &&
-                   compiler.verify(*generic_body) &&
-                   generic_body->arguments().size() == 1U &&
-                   generic_body->result_types().size() == 1U &&
-                   generic_body->arguments().front().type() ==
-                       generic_body->result_types().front() &&
-                   generic_body->arguments().front().type().get<std::int64_t>(
-                       "width") == std::optional<std::int64_t>{8} &&
-                   generic_body->ops().size() == 1U &&
-                   generic_body->ops().front().callee().name() == "identity",
-               "a concrete typed call recovers generic bindings and "
-               "materializes its source-defined callee body");
+  ok &=
+      expect(generic_body_user && generic_body_call && generic_body &&
+                 compiler.verify(*generic_body) &&
+                 generic_body->arguments().size() == 1U &&
+                 generic_body->result_types().size() == 1U &&
+                 generic_body->arguments().front().type() ==
+                     generic_body->result_types().front() &&
+                 generic_body->arguments().front().type().get<std::int64_t>(
+                     "width") == std::optional<std::int64_t>{8} &&
+                 generic_body->ops().size() == 1U &&
+                 generic_body->ops().front().callee().referenced_fn()->name() ==
+                     "identity",
+             "a concrete typed call recovers generic bindings and "
+             "materializes its source-defined callee body");
   const auto callback_operations =
       callback_value ? callback_value->ops() : std::vector<joggle::Op>{};
   const auto applied_arguments = callback_operations.size() == 1U
@@ -528,7 +545,7 @@ mod invalid_callback@1.0.0 {
                    fn->result_types().front() ==
                        operations.back().result(0).type(),
                "a concrete fn signature and its SSA boundary agree");
-  ok &= expect(operations.front().property<std::string>("name") ==
+  ok &= expect(operations.front().callee().binding<std::string>("name") ==
                    "input } // still a string",
                "fn boundaries are parsed by the real string grammar");
 
@@ -787,18 +804,18 @@ mod cfg@1.0.0 {
           cfg_ir.find("block3(arg3: cfg.word):") != std::string::npos,
       "explicit source blocks instantiate as Fn-owned CFG and "
       "format without a nested ownership container");
-  ok &=
-      expect(cfg_materialized && cfg_materialized->blks().size() == 4U &&
-                 cfg_materialized->ops().size() == 2U &&
-                 std::all_of(materialized_operations.begin(),
-                             materialized_operations.end(),
-                             [](const joggle::Op& op) {
-                               return op.callee().name() == "literal";
-                             }) &&
-                 cfg_materialized->result_types().front() ==
-                     cfg_materialized->blks().back().arguments().front().type(),
-             "unequal Known branch values use a visible literal fn "
-             "before crossing Residual edges");
+  ok &= expect(
+      cfg_materialized && cfg_materialized->blks().size() == 4U &&
+          cfg_materialized->ops().size() == 2U &&
+          std::all_of(materialized_operations.begin(),
+                      materialized_operations.end(),
+                      [](const joggle::Op& op) {
+                        return op.callee().referenced_fn()->name() == "literal";
+                      }) &&
+          cfg_materialized->result_types().front() ==
+              cfg_materialized->blks().back().arguments().front().type(),
+      "unequal Known branch values use a visible literal fn "
+      "before crossing Residual edges");
   ok &= expect(
       cfg_statement_branch && cfg_statement_specialized &&
           cfg_statement_without_else && cfg_effect_branch && cfg_effect_loop &&
@@ -882,31 +899,31 @@ mod cfg@1.0.0 {
   ok &= expect(cfg_effect_for && cfg_compiler.verify(*cfg_effect_for),
                "typed for carries visible effect state through its residual "
                "header, body, latch, and exit");
-  ok &=
-      expect(cfg_early_return && cfg_early_return_both &&
-                 cfg_specialized_return && cfg_loop_return &&
-                 cfg_early_literal && cfg_compiler.verify(*cfg_early_return) &&
-                 cfg_compiler.verify(*cfg_early_return_both) &&
-                 cfg_compiler.verify(*cfg_specialized_return) &&
-                 cfg_compiler.verify(*cfg_loop_return) &&
-                 cfg_compiler.verify(*cfg_early_literal) &&
-                 cfg_early_return->blks().size() == 3U &&
-                 cfg_early_return->ops().size() == 2U &&
-                 cfg_early_return_both->blks().size() == 3U &&
-                 cfg_early_return_both->ops().size() == 2U &&
-                 cfg_specialized_return->blks().size() == 1U &&
-                 cfg_specialized_return->ops().size() == 1U &&
-                 cfg_loop_return->blks().size() == 4U &&
-                 cfg_loop_return->ops().size() == 2U &&
-                 cfg_early_literal->blks().size() == 3U &&
-                 cfg_early_literal->ops().size() == 2U &&
-                 std::all_of(early_literal_operations.begin(),
-                             early_literal_operations.end(),
-                             [](const joggle::Op& op) {
-                               return op.callee().name() == "literal";
-                             }),
-             "structured returns terminate only their selected control "
-             "paths without a Region or synthetic merge");
+  ok &= expect(
+      cfg_early_return && cfg_early_return_both && cfg_specialized_return &&
+          cfg_loop_return && cfg_early_literal &&
+          cfg_compiler.verify(*cfg_early_return) &&
+          cfg_compiler.verify(*cfg_early_return_both) &&
+          cfg_compiler.verify(*cfg_specialized_return) &&
+          cfg_compiler.verify(*cfg_loop_return) &&
+          cfg_compiler.verify(*cfg_early_literal) &&
+          cfg_early_return->blks().size() == 3U &&
+          cfg_early_return->ops().size() == 2U &&
+          cfg_early_return_both->blks().size() == 3U &&
+          cfg_early_return_both->ops().size() == 2U &&
+          cfg_specialized_return->blks().size() == 1U &&
+          cfg_specialized_return->ops().size() == 1U &&
+          cfg_loop_return->blks().size() == 4U &&
+          cfg_loop_return->ops().size() == 2U &&
+          cfg_early_literal->blks().size() == 3U &&
+          cfg_early_literal->ops().size() == 2U &&
+          std::all_of(early_literal_operations.begin(),
+                      early_literal_operations.end(),
+                      [](const joggle::Op& op) {
+                        return op.callee().referenced_fn()->name() == "literal";
+                      }),
+      "structured returns terminate only their selected control "
+      "paths without a Region or synthetic merge");
 
   joggle::Compiler invalid_effect_source;
   invalid_effect_source.add(R"(
@@ -1197,12 +1214,14 @@ mod loops@1.0.0 {
           repeat->blks()[3].arguments().size() == 1U,
       "Residual loops carry rebinding through typed Blk "
       "arguments");
-  ok &= expect(count_from_zero && loop_compiler.verify(*count_from_zero) &&
-                   count_from_zero->blks().size() == 4U &&
-                   count_from_zero->ops().size() == 3U &&
-                   count_from_zero->ops().front().callee().name() == "literal",
-               "a typed Known initializer materializes before becoming a "
-               "Residual loop-carried value");
+  ok &= expect(
+      count_from_zero && loop_compiler.verify(*count_from_zero) &&
+          count_from_zero->blks().size() == 4U &&
+          count_from_zero->ops().size() == 3U &&
+          count_from_zero->ops().front().callee().referenced_fn()->name() ==
+              "literal",
+      "a typed Known initializer materializes before becoming a "
+      "Residual loop-carried value");
   ok &= expect(huge_counted_loop && loop_compiler.verify(*huge_counted_loop) &&
                    huge_counted_loop->blks().size() <= 5U &&
                    huge_counted_loop->ops().size() <= 8U,
@@ -1307,7 +1326,7 @@ mod mixed_loop_transfer@1.0.0 {
   std::vector<std::int64_t> mixed_break_literals;
   if (mixed_break) {
     for (const auto& op : mixed_break->ops()) {
-      if (const auto value = op.property<std::int64_t>("value")) {
+      if (const auto value = op.callee().binding<std::int64_t>("value")) {
         mixed_break_literals.push_back(*value);
       }
     }
@@ -1366,10 +1385,10 @@ mod cyclic_mixed_loop@1.0.0 {
   std::vector<std::int64_t> cyclic_integer_literals;
   if (cyclic_mixed_loop_fn) {
     for (const auto& op : cyclic_mixed_loop_fn->ops()) {
-      if (const auto value = op.property<bool>("value")) {
+      if (const auto value = op.callee().binding<bool>("value")) {
         cyclic_bool_literals.push_back(*value);
       }
-      if (const auto value = op.property<std::int64_t>("value")) {
+      if (const auto value = op.callee().binding<std::int64_t>("value")) {
         cyclic_integer_literals.push_back(*value);
       }
     }
@@ -1715,7 +1734,7 @@ mod dependent@1.0.0 {
   bool inconsistent_rejected = false;
   {
     auto edit = inconsistent_fn->edit();
-    const auto value = edit.append(*inconsistent_input, {*width7}, {*word8});
+    const auto value = edit.call(*inconsistent_input, {*width7}, {*word8});
     edit.ret(inconsistent_fn->entry(), {value.result(0)});
     joggle::Diag diagnostics;
     inconsistent_rejected = !edit.commit(diagnostics) && !diagnostics.ok();
@@ -1741,7 +1760,7 @@ mod dependent@1.0.0 {
   }
   {
     auto edit = defaulted_fn->edit();
-    const auto value = edit.append(*defaulted_input);
+    const auto value = edit.call(*defaulted_input);
     edit.ret(defaulted_fn->entry(), {value.result(0)});
     joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -1769,7 +1788,7 @@ mod dependent@1.0.0 {
     if (!width) {
       return EXIT_FAILURE;
     }
-    const auto value = edit.append(*named_input, {*width}).value();
+    const auto value = edit.call(*named_input, {*width}).value();
     edit.ret(named_fn->entry(), {value});
     joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
@@ -1791,7 +1810,7 @@ mod dependent@1.0.0 {
     auto edit = named_fn->edit();
     auto one = defaulted.known(*defaulted_int, std::int64_t{1});
     auto two = defaulted.known(*defaulted_int, std::int64_t{2});
-    edit.append(*named_input, {*one, *two});
+    edit.call(*named_input, {*one, *two});
   } catch (const std::invalid_argument& error) {
     extra_argument_rejected =
         std::string_view(error.what()).find("too many arguments") !=
@@ -1809,7 +1828,7 @@ mod dependent@1.0.0 {
     if (!wide) {
       return EXIT_FAILURE;
     }
-    edit.append(*named_input, {*wide});
+    edit.call(*named_input, {*wide});
   } catch (const std::invalid_argument& error) {
     wrong_known_kind_rejected =
         std::string_view(error.what()).find("compatible Known value") !=
@@ -1991,9 +2010,9 @@ mod computed@1.0.0 {
           *compile_time_operator_width == 8 &&
           *compile_time_branch_width == 8 && *compile_time_host_width == 14 &&
           sum_fn->ops().size() == 1U &&
-          sum_fn->ops().front().callee().name() == "+" &&
+          sum_fn->ops().front().callee().referenced_fn()->name() == "+" &&
           quotient_fn->ops().size() == 1U &&
-          quotient_fn->ops().front().callee().name() == "//" &&
+          quotient_fn->ops().front().callee().referenced_fn()->name() == "//" &&
           computed_text.find("word<W + 1>") != std::string::npos &&
           computed_text.find("word<ceildiv(M * N, 8)>") != std::string::npos &&
           computed_text.find("word<align(W, 8)>") != std::string::npos &&
@@ -2223,7 +2242,8 @@ mod imported_operator@1.0.0 {
                  imported_operator_fn->ops()
                          .front()
                          .callee()
-                         .symbol()
+                         .referenced_fn()
+                         ->symbol()
                          .qualified_name() == "native_arith.+",
              "imported operator notation resolves for native SSA types");
 
@@ -2839,10 +2859,9 @@ mod explicit_staging@1.0.0 {
                "silently changes stage");
 
   const auto wrong_lambda_context =
-      explicit_staging_linked
-          ? explicit_staging.materialize(
-                "explicit_staging.wrong_lambda_context")
-          : std::nullopt;
+      explicit_staging_linked ? explicit_staging.materialize(
+                                    "explicit_staging.wrong_lambda_context")
+                              : std::nullopt;
   const bool reports_wrong_lambda_context = std::any_of(
       explicit_staging.diag().issues().begin(),
       explicit_staging.diag().issues().end(),
@@ -2857,8 +2876,7 @@ mod explicit_staging@1.0.0 {
 
   const auto wrong_lambda_body =
       explicit_staging_linked && inspect_decl
-          ? explicit_staging.materialize(
-                "explicit_staging.wrong_lambda_body")
+          ? explicit_staging.materialize("explicit_staging.wrong_lambda_body")
           : std::nullopt;
   ok &= expect(!wrong_lambda_body && lambda_inspections == 2U,
                "an explicit lambda result is checked against its body before "

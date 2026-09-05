@@ -114,9 +114,8 @@ private:
       normalized_arguments.emplace_back(argument, std::move(*normalized));
     }
     std::vector<std::string> residuals;
-    const auto residual_arguments = op.operands();
-    residuals.reserve(residual_arguments.size());
-    for (const Val& argument : residual_arguments) {
+    residuals.reserve(call_arguments.size());
+    for (const Val& argument : call_arguments) {
       const auto normalized = std::find_if(
           normalized_arguments.begin(), normalized_arguments.end(),
           [&](const auto& item) { return item.first == argument; });
@@ -134,7 +133,13 @@ private:
       return std::nullopt;
     }
 
-    const auto callee = op.callee();
+    const Val callee_value = op.callee();
+    const auto declaration = callee_value.referenced_fn();
+    if (!declaration) {
+      diagnostics_.report("equivalence does not yet expand a dynamic callee");
+      return std::nullopt;
+    }
+    const Mod::FnDecl callee = *declaration;
     if (callee.form() == Mod::FnDecl::Form::Body) {
       if (expansions_ == max_expansions_) {
         diagnostics_.report("equivalence expansion exceeded " +
@@ -187,6 +192,14 @@ private:
     field(leaf, selected.type().stable_name());
     for (const auto& argument : normalized_arguments) {
       field(leaf, argument.second);
+    }
+    for (const auto& [name, binding] : callee_value.bindings()) {
+      const auto normalized = value(binding, parameters, arguments);
+      if (!normalized) {
+        return std::nullopt;
+      }
+      field(leaf, name);
+      field(leaf, *normalized);
     }
     return leaf;
   }

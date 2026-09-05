@@ -33,15 +33,63 @@ optimized = @transform.replace(
 values defined by Design 0002. A library may expose a domain-specific
 transformation under any name while sharing the same C++ primitive.
 
+A pass is likewise an ordinary compiler-time fn, not a C++ base class or a
+second declaration category:
+
+```joggle
+fn fuse(input: fn) -> fn {
+  return @transform.replace(input, conv_relu, fused_conv_relu);
+}
+
+fn optimize(input: fn) -> fn {
+  folded = @fold(input);
+  return @fuse(folded);
+}
+```
+
+The names `fuse`, `fold`, and `optimize` have no privileged meaning. `@`
+supplies staging, the ordinary fn signature supplies composition, and `Fn`
+transactions supply atomicity.
+
+## Generic templates
+
+The exact concrete matcher below is implemented. Its planned generalization
+uses ordinary generic source fns as templates:
+
+```joggle
+fn conv_relu<E, X, W, Y>(x: X, w: W) -> Y {
+  return relu(conv(x, w));
+}
+
+fn fused_conv_relu<E, X, W, Y>(x: X, w: W) -> Y {
+  return fused_conv(x, w);
+}
+```
+
+When a named generic fn is passed to a compiler parameter in the `fn` domain,
+it denotes its checked declaration/body template rather than an arbitrarily
+chosen concrete specialization. The matcher unifies its generic variables
+against a concrete subject Call DAG, then instantiates the replacement with
+that one substitution. No wildcard Type, trait registry, pattern opcode, or
+parallel pattern parser is added.
+
+Generic bodies are also the capability mechanism. Calls inside a template are
+use-site constraints: a candidate matches only when normal overload resolution
+succeeds under the inferred substitution. A custom numeric or tensor format
+therefore implements the small primitive fns it needs; generic `map`, `relu`,
+or fusion passes reuse them without `qrelu`, `qconv`, or per-format pass
+registration.
+
 ## Pattern meaning
 
 The `before` fn denotes one rooted expression DAG:
 
 - its arguments are typed holes;
 - a repeated argument is an equality constraint, not two holes;
-- each call identifies one exact `FnDecl` overload;
-- Known properties and fn references compare by canonical value and
-  declaration identity;
+- each named callee identifies one exact `FnDecl` overload and compile-time
+  binding set;
+- Known bindings and fn references compare by canonical value and declaration
+  identity;
 - its single returned value is the root;
 - blocks, branches, loops, captures, and multiple results are outside the
   first expression matcher.
@@ -58,7 +106,7 @@ operations.
 
 A match is legal only when:
 
-1. every pattern call and Known property matches exactly;
+1. every pattern callee and Known specialization binding matches exactly;
 2. the root may have arbitrary external users, all replaced transactionally;
 3. a non-root matched result with an external user is preserved rather than
    erased, along with any matched ancestors required by that user;
@@ -117,8 +165,8 @@ one result. This rejects dead calls, unused holes, nested inline fns,
 effects, CFG structure, and tuple-like calls before matching begins, without
 retaining a second pattern representation.
 
-Matching recursively compares the existing typed Vals and exact call
-declarations. Hole bindings use SSA equality, including repeated-hole
+Matching recursively compares existing typed Vals and exact callable
+specializations. Hole bindings use SSA equality, including repeated-hole
 constraints; Known values use their canonical equality; fn references
 use declaration identity. Pattern-call mapping is injective. Accepted calls
 are returned in Fn order even when a pure internal result also feeds an
@@ -157,7 +205,7 @@ on a private `Mod` snapshot and publishes only after every member succeeds.
 
 - A `rewrite` declaration form duplicates `fn` and staging.
 - Pattern opcodes or wildcard values create a second IR.
-- Name-based matching ignores overload identity and properties.
+- Name-based matching ignores overload identity and specialization bindings.
 - A global purity registry can drift from installable mod declarations.
 - Implicit effect inference from names such as `store` is not compositional.
 - Mutating matches one by one exposes partial results after a later failure.
@@ -178,5 +226,11 @@ on a private `Mod` snapshot and publishes only after every member succeeds.
 7. [complete] Add positive replacement, no-match, overlap, wrong-type,
    shared-DAG, effect rejection, rollback, formatting, and source
    `@transform.replace` end-to-end tests.
+8. [planned] Represent a named generic declaration/body as a compiler-domain
+   `fn` value without forcing concrete callable specialization.
+9. [planned] Unify generic Type and Known parameters against concrete callable
+   Types and callee bindings, with deterministic conflict diagnostics.
+10. [planned] Instantiate the replacement under the inferred substitution and
+    re-run ordinary overload/type/effect verification before commit.
 
 No transform mod is added before gates 1--5 pass at the C++ level.

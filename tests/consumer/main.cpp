@@ -37,7 +37,8 @@ int main(int argc, char** argv) {
   }
   fn = std::move(transformed);
   const auto operations = fn->ops();
-  if (operations.size() != 1U || operations.front().callee() != *converted) {
+  if (operations.size() != 1U ||
+      operations.front().callee().referenced_fn() != converted) {
     compiler.diag().print(std::cerr);
     return 1;
   }
@@ -50,7 +51,7 @@ int main(int argc, char** argv) {
     return 1;
   }
   auto edit = constructed->edit();
-  auto value = edit.append(*make, {*bits12}).value();
+  auto value = edit.call(*make, {*bits12}).value();
   edit.ret(constructed->entry(), {value});
   joggle::Diag diagnostics;
   if (!edit.commit(diagnostics)) {

@@ -783,7 +783,7 @@ std::optional<joggle::Mod> read(joggle::Compiler& compiler,
            "could not materialize initializer '" + tensor.name() + "'");
       return std::nullopt;
     }
-    const auto constant = edit.append(schema->constant, {*content}, {*type});
+    const auto constant = edit.call(schema->constant, {*content}, {*type});
     edit.locate(constant, location(graph, "initializer", tensor.name(),
                                    initializer_ordinal));
     values.emplace(tensor.name(), Tensor{constant.value(), initializer.element,
@@ -860,7 +860,7 @@ std::optional<joggle::Mod> read(joggle::Compiler& compiler,
                               node.name() + "'");
         return std::nullopt;
       }
-      return edit.append(declaration, std::move(arguments), {*type});
+      return edit.call(declaration, std::move(arguments), {*type});
     };
 
     if (node.op_type() == "QuantizeLinear" ||
@@ -989,7 +989,7 @@ std::optional<joggle::Mod> read(joggle::Compiler& compiler,
           known(compiler, schema->integer_list, *dilations);
       const auto group_value = known(compiler, schema->integer, *group);
       if (!strides_value || !pads_value || !dilations_value || !group_value) {
-        fail(diagnostics, "could not encode Conv properties");
+        fail(diagnostics, "could not encode Conv bindings");
         return std::nullopt;
       }
       std::vector<joggle::Val> arguments{input_tensor->value, weight->value};
@@ -1075,7 +1075,7 @@ std::optional<joggle::Mod> read(joggle::Compiler& compiler,
       const auto pads_value = known(compiler, schema->integer_list, *pads);
       const auto ceil_value = known(compiler, schema->boolean, false);
       if (!kernel_value || !strides_value || !pads_value || !ceil_value) {
-        fail(diagnostics, "could not encode Pool properties");
+        fail(diagnostics, "could not encode Pool bindings");
         return std::nullopt;
       }
       call = append_call(average ? schema->average_pool : schema->max_pool,
@@ -1101,7 +1101,7 @@ std::optional<joggle::Mod> read(joggle::Compiler& compiler,
       const auto pads_value = known(compiler, schema->integer_list, pads);
       const auto ceil_value = known(compiler, schema->boolean, false);
       if (!kernel_value || !strides_value || !pads_value || !ceil_value) {
-        fail(diagnostics, "could not encode GlobalAveragePool properties");
+        fail(diagnostics, "could not encode GlobalAveragePool bindings");
         return std::nullopt;
       }
       output_element = input_tensor->element;

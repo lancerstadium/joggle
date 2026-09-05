@@ -114,12 +114,12 @@ int main(int argc, char** argv) {
   bool payloads_resolve = true;
   for (const auto& op : body->ops()) {
     located += static_cast<std::size_t>(op.location().has_value());
-    const auto symbol = op.callee().symbol();
+    const auto symbol = op.callee().referenced_fn()->symbol();
     const auto mod_name = symbol.mod_name();
     const auto name = symbol.local_name();
     if (mod_name == "tensor" && name == "constant") {
       ++constants[element_name(op.value().type())];
-      const auto digest = op.property<std::string>("content");
+      const auto digest = op.callee().binding<std::string>("content");
       payloads_resolve &= digest && model->data(*digest).has_value();
     } else {
       ++calls[std::string(mod_name) + "." + std::string(name)];

@@ -70,7 +70,7 @@ void joggle_mod(joggle::Compiler& compiler, const joggle::Mod& mod,
         const auto ops = fn.ops();
         auto edit = fn.edit();
         for (const auto& op : ops) {
-          if (op.callee() == keep) {
+          if (op.callee().referenced_fn() == keep) {
             edit.replace(op, replacement);
           }
         }

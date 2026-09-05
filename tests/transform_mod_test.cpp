@@ -141,11 +141,10 @@ int main() {
   const auto optimized =
       model ? compiler.run<joggle::Fn>("transform_fixture.optimize", *model)
             : std::nullopt;
-  const auto conv_model =
-      compiler.materialize("transform_fixture.conv_model");
+  const auto conv_model = compiler.materialize("transform_fixture.conv_model");
   const auto factored_conv =
       conv_model ? compiler.run<joggle::Fn>("transform_fixture.factor_conv",
-                                             *conv_model)
+                                            *conv_model)
                  : std::nullopt;
   if (!model || !wrapped || !optimized || !conv_model || !factored_conv) {
     compiler.diag().print(std::cerr);
@@ -155,20 +154,26 @@ int main() {
   const auto calls = optimized->ops();
   joggle::Diag equivalence;
   bool ok = true;
-  ok &= expect(calls.size() == 1U &&
-                   calls.front().callee().symbol().mod_name() ==
-                       "transform_fixture" &&
-                   calls.front().callee().symbol().local_name() == "wrapped",
-               "several source-defined passes compose without one native "
-               "binding per pass");
+  ok &= expect(
+      calls.size() == 1U &&
+          calls.front().callee().referenced_fn()->symbol().mod_name() ==
+              "transform_fixture" &&
+          calls.front().callee().referenced_fn()->symbol().local_name() ==
+              "wrapped",
+      "several source-defined passes compose without one native "
+      "binding per pass");
   ok &= expect(joggle::equivalent(compiler, *model, *optimized, equivalence) &&
                    equivalence.ok(),
                "the public transform Mod preserves reference meaning");
   ok &= expect(compiler.verify(*optimized),
                "the transformed Fn remains valid executable IR");
   ok &= expect(factored_conv->ops().size() == 1U &&
-                   factored_conv->ops().front().callee().symbol().local_name() ==
-                       "conv_relu" &&
+                   factored_conv->ops()
+                           .front()
+                           .callee()
+                           .referenced_fn()
+                           ->symbol()
+                           .local_name() == "conv_relu" &&
                    compiler.verify(*factored_conv),
                "a lambda result annotation supplies enough context to match "
                "and factor a generic tensor expression");
@@ -189,25 +194,25 @@ int main() {
       optimized_main ? optimized_main->body() : nullptr;
   const auto mod_calls =
       optimized_body ? optimized_body->ops() : std::vector<joggle::Op>{};
-  ok &= expect(mod_diagnostics.ok() && optimized_body != nullptr &&
-                   mod_calls.size() == 1U &&
-                   mod_calls.front().callee().symbol().local_name() ==
-                       "wrapped",
-               "a source-defined whole-Mod pipeline publishes one "
-               "transformed snapshot without additional bindings");
+  ok &= expect(
+      mod_diagnostics.ok() && optimized_body != nullptr &&
+          mod_calls.size() == 1U &&
+          mod_calls.front().callee().referenced_fn()->symbol().local_name() ==
+              "wrapped",
+      "a source-defined whole-Mod pipeline publishes one "
+      "transformed snapshot without additional bindings");
 
   joggle::Diag resolve_diagnostics;
-  auto resolve_subject = joggle::parse_mod(
-      "joggle 1; mod resolve_subject@1.0.0 {}", resolve_diagnostics,
-      "resolve-subject.joggle");
-  if (!resolve_subject ||
-      !resolve_subject->insert("main", joggle::Fn{*wrapped},
-                               resolve_diagnostics)) {
+  auto resolve_subject =
+      joggle::parse_mod("joggle 1; mod resolve_subject@1.0.0 {}",
+                        resolve_diagnostics, "resolve-subject.joggle");
+  if (!resolve_subject || !resolve_subject->insert("main", joggle::Fn{*wrapped},
+                                                   resolve_diagnostics)) {
     resolve_diagnostics.print(std::cerr);
     return EXIT_FAILURE;
   }
-  const auto resolved = compiler.run<joggle::Mod>("transform.resolve",
-                                                   *resolve_subject);
+  const auto resolved =
+      compiler.run<joggle::Mod>("transform.resolve", *resolve_subject);
   const auto resolved_main = resolved ? resolved->fn("main") : std::nullopt;
   const auto resolved_chain =
       resolved ? resolved->fn("inst_0_chain") : std::nullopt;
@@ -217,8 +222,8 @@ int main() {
       resolved_chain ? resolved_chain->body() : nullptr;
   ok &= expect(resolved && resolved_main_body && resolved_chain_body &&
                    resolved_main_body->ops().size() == 1U &&
-                   resolved_main_body->ops().front().callee() ==
-                       *resolved_chain &&
+                   resolved_main_body->ops().front().callee().referenced_fn() ==
+                       resolved_chain &&
                    resolved_chain_body->ops().size() == 2U &&
                    compiler.verify(*resolved),
                "one staged Mod fn resolves the complete source call graph");

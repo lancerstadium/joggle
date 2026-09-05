@@ -106,7 +106,7 @@ bool emit(const joggle::Mod& mod, const char* path) {
   const auto operations = fn->ops();
   const bool qdq =
       std::any_of(operations.begin(), operations.end(), [](const auto& op) {
-        return op.callee().symbol().mod_name() == "quant";
+        return op.callee().referenced_fn()->symbol().mod_name() == "quant";
       });
   onnx::ModelProto model;
   model.set_ir_version(qdq ? 7 : onnx::IR_VERSION_2017_11_3);
@@ -127,11 +127,11 @@ bool emit(const joggle::Mod& mod, const char* path) {
   std::size_t constant_index = 0;
   std::size_t call_index = 0;
   for (const auto& op : operations) {
-    const auto symbol = op.callee().symbol();
+    const auto symbol = op.callee().referenced_fn()->symbol();
     const auto callee = symbol.local_name();
     const auto callee_mod = symbol.mod_name();
     if (callee == "constant") {
-      const auto digest = op.property<std::string>("content");
+      const auto digest = op.callee().binding<std::string>("content");
       const auto data = digest ? mod.data(*digest) : std::nullopt;
       const auto shape = op.value().type().get<Shape>("shape");
       const auto element = op.value().type().get<joggle::Type>("element");
@@ -161,17 +161,17 @@ bool emit(const joggle::Mod& mod, const char* path) {
         (callee == "quantize" || callee == "dequantize")) {
       node->set_op_type(callee == "quantize" ? "QuantizeLinear"
                                              : "DequantizeLinear");
-      const auto axis = op.property<std::int64_t>("axis");
+      const auto axis = op.callee().binding<std::int64_t>("axis");
       if (!axis) {
         return false;
       }
       add_int(*node, "axis", *axis);
     } else if (callee == "conv") {
       node->set_op_type("Conv");
-      const auto strides = op.property<Shape>("strides");
-      const auto pads = op.property<Shape>("pads");
-      const auto dilations = op.property<Shape>("dilations");
-      const auto group = op.property<std::int64_t>("group");
+      const auto strides = op.callee().binding<Shape>("strides");
+      const auto pads = op.callee().binding<Shape>("pads");
+      const auto dilations = op.callee().binding<Shape>("dilations");
+      const auto group = op.callee().binding<std::int64_t>("group");
       if (!strides || !pads || !dilations || !group) {
         return false;
       }
@@ -183,10 +183,10 @@ bool emit(const joggle::Mod& mod, const char* path) {
       node->set_op_type("Relu");
     } else if (callee == "max_pool" || callee == "average_pool") {
       node->set_op_type(callee == "max_pool" ? "MaxPool" : "AveragePool");
-      const auto kernel = op.property<Shape>("kernel");
-      const auto strides = op.property<Shape>("strides");
-      const auto pads = op.property<Shape>("pads");
-      const auto ceil_mode = op.property<bool>("ceil_mode");
+      const auto kernel = op.callee().binding<Shape>("kernel");
+      const auto strides = op.callee().binding<Shape>("strides");
+      const auto pads = op.callee().binding<Shape>("pads");
+      const auto ceil_mode = op.callee().binding<bool>("ceil_mode");
       if (!kernel || !strides || !pads || !ceil_mode) {
         return false;
       }
@@ -198,7 +198,7 @@ bool emit(const joggle::Mod& mod, const char* path) {
       }
     } else if (callee == "concat") {
       node->set_op_type("Concat");
-      const auto axis = op.property<std::int64_t>("axis");
+      const auto axis = op.callee().binding<std::int64_t>("axis");
       if (!axis) {
         return false;
       }
@@ -207,7 +207,7 @@ bool emit(const joggle::Mod& mod, const char* path) {
       node->set_op_type("Reshape");
     } else if (callee == "softmax") {
       node->set_op_type("Softmax");
-      const auto axis = op.property<std::int64_t>("axis");
+      const auto axis = op.callee().binding<std::int64_t>("axis");
       if (!axis) {
         return false;
       }
@@ -216,7 +216,7 @@ bool emit(const joggle::Mod& mod, const char* path) {
       return false;
     }
 
-    for (const auto& operand : op.operands()) {
+    for (const auto& operand : op.arguments()) {
       const auto name = lookup(names, operand);
       if (name.empty()) {
         return false;
@@ -224,7 +224,7 @@ bool emit(const joggle::Mod& mod, const char* path) {
       node->add_input(name);
     }
     if (callee == "reshape") {
-      const auto requested = op.property<Shape>("shape");
+      const auto requested = op.callee().binding<Shape>("shape");
       if (!requested) {
         return false;
       }

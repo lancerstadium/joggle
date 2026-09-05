@@ -87,7 +87,7 @@ int main() {
                     -> std::optional<joggle::Fn> {
                   auto edit = fn.edit();
                   for (const joggle::Op& op : fn.ops()) {
-                    if (op.callee() != *cast_schema) {
+                    if (op.callee().referenced_fn() != cast_schema) {
                       continue;
                     }
                     edit.replace(op.result(0), op.arguments().front());
@@ -113,14 +113,14 @@ int main() {
         const auto operations = fn.ops();
         const bool has_marker = std::any_of(
             operations.begin(), operations.end(), [](const joggle::Op& op) {
-              return op.callee().name() == "marker";
+              return op.callee().referenced_fn()->name() == "marker";
             });
         if (!has_marker) {
           return fn;
         }
         auto edit = fn.edit();
         for (const joggle::Op& op : operations) {
-          if (op.callee().name() != "marker") {
+          if (op.callee().referenced_fn()->name() != "marker") {
             continue;
           }
           edit.replace(op.result(0), op.arguments()[0]);
@@ -142,9 +142,9 @@ int main() {
     auto edit = fn->edit();
     const auto lhs = edit.argument(*integer);
     const auto rhs = edit.argument(*integer);
-    const auto add = edit.append(*add_schema, {lhs, rhs});
-    const auto cast = edit.append(*cast_schema, {add.result(0)});
-    edit.append(*marker_schema, {cast.result(0)});
+    const auto add = edit.call(*add_schema, {lhs, rhs});
+    const auto cast = edit.call(*cast_schema, {add.result(0)});
+    edit.call(*marker_schema, {cast.result(0)});
     joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       diagnostics.print(std::cerr);
@@ -170,7 +170,7 @@ int main() {
                       joggle::Diag& diagnostics) -> std::optional<joggle::Fn> {
         const auto producer = current.ops().front();
         auto edit = current.edit();
-        edit.append(*marker_schema, {producer.result(0)});
+        edit.call(*marker_schema, {producer.result(0)});
         if (!edit.commit(diagnostics)) {
           return std::nullopt;
         }

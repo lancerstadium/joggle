@@ -37,12 +37,12 @@ compiler fns without changing `tensor` or compiler core.
 Calls are ordinary typed `fn` declarations. Generic result types allow an
 importer or source annotation to state the verified output tensor explicitly.
 Compiler-domain attributes stay in the same parameter list and become Known
-Op properties.
+callee specialization bindings.
 
 Fn parameters are model inputs. Initializers use
 `constant<T>(content: string)`, where `content` is the digest returned by
 `Mod::store`; large bytes remain Mod-owned rather than becoming text IR
-properties. The initial mod includes Conv with and without bias, Relu,
+bindings. The initial mod includes Conv with and without bias, Relu,
 MaxPool, AveragePool, two-input Concat, Reshape, Softmax, and Add/Multiply.
 Two-input Concat uses independent input types because the channel extents
 differ in SqueezeNet. No heterogeneous variadic pack is invented before a

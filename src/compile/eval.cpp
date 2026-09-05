@@ -12,6 +12,7 @@
 #include <locale>
 #include <sstream>
 #include <typeinfo>
+#include <unordered_set>
 #include <utility>
 
 namespace joggle::detail {
@@ -102,26 +103,25 @@ private:
     }
     std::vector<std::optional<Type>> expected_results(
         value_results(fn_).size());
-    auto resolved = resolve_call_types(compiler_, fn_, value_arguments,
-                                       known_arguments, expected_results,
-                                       diagnostics_);
+    auto resolved =
+        resolve_call_types(compiler_, fn_, value_arguments, known_arguments,
+                           expected_results, diagnostics_);
     if (!resolved) {
       return false;
     }
     for (const auto& [name, binding] : resolved->bindings) {
-      const Mod::ParamDecl parameter{
-          name, binding.domain.value_or(Mod::Expr{}), false, std::nullopt};
+      const Mod::ParamDecl parameter{name, binding.domain.value_or(Mod::Expr{}),
+                                     false, std::nullopt};
       auto raw = exec_val(binding.value, parameter);
-      auto value = raw ? stage(compiler_, std::move(*raw))
-                       : std::optional<StagedVal>{};
+      auto value =
+          raw ? stage(compiler_, std::move(*raw)) : std::optional<StagedVal>{};
       if (!value) {
         report("generic '" + name + "' has no executable value", body_.range);
         return false;
       }
       if (const auto* existing = local(name)) {
         if (!same_staged_value(*existing, *value)) {
-          report("generic '" + name +
-                     "' is bound to different compiler values",
+          report("generic '" + name + "' is bound to different compiler values",
                  body_.range);
           return false;
         }
@@ -829,6 +829,29 @@ execute_body(Compiler& compiler, const Mod::FnDecl& fn, const FnBody& body,
 bool verify_body_calls(Compiler& compiler, const Mod::FnDecl& fn,
                        const FnBody& body, Diag& diagnostics) {
   const std::size_t before = diagnostics.size();
+  std::unordered_set<std::string> locals;
+  for (const Mod::ParamDecl& input : fn.inputs()) {
+    locals.insert(input.name);
+  }
+  const auto collect = [&](const auto& self,
+                           std::span<const StatementSyntax> code) -> void {
+    for (const StatementSyntax& statement : code) {
+      for (const BindingSyntax& binding : statement.bindings) {
+        locals.insert(binding.name);
+      }
+      if (statement.iterator) {
+        locals.insert(statement.iterator->name);
+      }
+      self(self, statement.body);
+      self(self, statement.otherwise);
+    }
+  };
+  for (const BlkSyntax& block : body.blocks) {
+    for (const BlkArgSyntax& argument : block.arguments) {
+      locals.insert(argument.name);
+    }
+    collect(collect, block.statements);
+  }
   const auto report = [&](std::string message, SyntaxRange range) {
     diagnostics.report(std::move(message),
                        Loc{body.source, range.begin, range.end});
@@ -837,7 +860,7 @@ bool verify_body_calls(Compiler& compiler, const Mod::FnDecl& fn,
                                      const ExprSyntax& syntax) -> void {
     using Kind = Mod::Expr::Kind;
     const Mod::Expr& expression = syntax.value;
-    if (expression.kind == Kind::Call) {
+    if (expression.kind == Kind::Call && !locals.contains(expression.text)) {
       const auto declarations =
           visible_fns(compiler, fn.symbol().mod_name(), expression.text);
       const bool shaped = std::any_of(

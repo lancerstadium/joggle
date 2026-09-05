@@ -142,10 +142,10 @@ int main(int argc, char** argv) {
   std::size_t constants = 0;
   std::size_t located = 0;
   for (const auto& op : ops) {
-    if (op.callee().symbol().mod_name() == "tensor" &&
-        op.callee().symbol().local_name() == "constant") {
+    if (op.callee().referenced_fn()->symbol().mod_name() == "tensor" &&
+        op.callee().referenced_fn()->symbol().local_name() == "constant") {
       ++constants;
-      const auto digest = op.property<std::string>("content");
+      const auto digest = op.callee().binding<std::string>("content");
       ok &= expect(digest && model->data(*digest).has_value(),
                    "constant content names Mod-owned bytes");
     }
@@ -199,48 +199,50 @@ int main(int argc, char** argv) {
     const auto& op = ops[constants + index];
     const auto& expected = expected_calls[index];
     sequence_matches &=
-        op.callee().symbol().local_name() == expected.first &&
+        op.callee().referenced_fn()->symbol().local_name() == expected.first &&
         op.value().type().get<std::vector<std::int64_t>>("shape") ==
             expected.second &&
         op.location() && op.location()->source.starts_with("onnx:main/node/");
     if (expected.first == "conv") {
       ++convs;
-      const auto strides = op.property<std::vector<std::int64_t>>("strides");
-      const auto pads = op.property<std::vector<std::int64_t>>("pads");
+      const auto strides =
+          op.callee().binding<std::vector<std::int64_t>>("strides");
+      const auto pads = op.callee().binding<std::vector<std::int64_t>>("pads");
       const auto dilations =
-          op.property<std::vector<std::int64_t>>("dilations");
+          op.callee().binding<std::vector<std::int64_t>>("dilations");
       sequence_matches &= strides && pads && dilations &&
                           (*strides == std::vector<std::int64_t>{1, 1} ||
                            *strides == std::vector<std::int64_t>{2, 2}) &&
                           (*pads == std::vector<std::int64_t>{0, 0, 0, 0} ||
                            *pads == std::vector<std::int64_t>{1, 1, 1, 1}) &&
                           *dilations == std::vector<std::int64_t>{1, 1} &&
-                          op.property<std::int64_t>("group") == 1;
+                          op.callee().binding<std::int64_t>("group") == 1;
     } else if (expected.first == "relu") {
       ++relus;
     } else if (expected.first == "max_pool" ||
                expected.first == "average_pool") {
       ++pools;
-      sequence_matches &= op.property<bool>("ceil_mode") == false &&
-                          op.property<std::vector<std::int64_t>>("pads") ==
-                              std::vector<std::int64_t>({0, 0, 0, 0});
+      sequence_matches &=
+          op.callee().binding<bool>("ceil_mode") == false &&
+          op.callee().binding<std::vector<std::int64_t>>("pads") ==
+              std::vector<std::int64_t>({0, 0, 0, 0});
     } else if (expected.first == "concat") {
       ++concats;
-      sequence_matches &= op.property<std::int64_t>("axis") == 1;
+      sequence_matches &= op.callee().binding<std::int64_t>("axis") == 1;
     } else if (expected.first == "reshape") {
-      sequence_matches &= op.property<std::vector<std::int64_t>>("shape") ==
-                          std::vector<std::int64_t>({0, -1});
+      sequence_matches &= op.callee().binding<std::vector<std::int64_t>>(
+                              "shape") == std::vector<std::int64_t>({0, -1});
     }
   }
   ok &= expect(sequence_matches && convs == 26U && relus == 26U &&
                    pools == 4U && concats == 8U,
-               "all 65 semantic calls, shapes, properties, and locations "
+               "all 65 semantic calls, shapes, bindings, and locations "
                "match the independently audited graph");
   ok &= expect(compiler.verify(*model),
                "the imported Mod satisfies ordinary IR verification");
 
-  const auto factored = compiler.run<joggle::Mod>(
-      "squeezenet_transform.fuse_first", *model);
+  const auto factored =
+      compiler.run<joggle::Mod>("squeezenet_transform.fuse_first", *model);
   const auto factored_main = factored ? factored->fn("main") : std::nullopt;
   const joggle::Fn* factored_body =
       factored_main ? factored_main->body() : nullptr;
@@ -251,7 +253,7 @@ int main(int argc, char** argv) {
   const auto factored_ops = factored_body->ops();
   const auto fused = std::find_if(
       factored_ops.begin(), factored_ops.end(), [](const joggle::Op& op) {
-        const auto symbol = op.callee().symbol();
+        const auto symbol = op.callee().referenced_fn()->symbol();
         return symbol.mod_name() == "squeezenet_transform" &&
                symbol.local_name() == "conv_relu";
       });
@@ -285,9 +287,8 @@ int main(int argc, char** argv) {
             ++unresolved_calls;
           }
         }
-        tensor_leaves +=
-            static_cast<std::size_t>(symbol.mod_name() == "tensor" &&
-                                     callee.body() == nullptr);
+        tensor_leaves += static_cast<std::size_t>(
+            symbol.mod_name() == "tensor" && callee.body() == nullptr);
       }
     }
   }

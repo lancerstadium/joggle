@@ -839,6 +839,9 @@ public:
     }
     for (const Blk& block : blocks) {
       for (const Op& op : block.ops()) {
+        if (!op.callee().referenced_fn()) {
+          remember_fn(op.callee());
+        }
         for (const Val& argument : op.arguments()) {
           remember_fn(argument);
         }
@@ -1028,7 +1031,12 @@ private:
       }
       Mod::Expr result;
       result.kind = Kind::Call;
-      result.text = producer->callee().symbol().qualified_name();
+      const Val callee_value = producer->callee();
+      const auto callee = callee_value.referenced_fn();
+      if (!callee) {
+        return std::nullopt;
+      }
+      result.text = callee->symbol().qualified_name();
       for (const Val& operand : producer->arguments()) {
         auto built = build(operand);
         if (!built) {
@@ -1037,13 +1045,21 @@ private:
         result.arguments.push_back(std::move(*built));
         result.labels.emplace_back();
       }
-      const auto fixity = producer->callee().operator_fixity();
-      if (fixity && detail::compiler_inputs(producer->callee()).empty() &&
+      for (const auto& [name, binding] : callee_value.bindings()) {
+        const auto payload = detail::FnAccess::known_value(binding);
+        if (!payload) {
+          return std::nullopt;
+        }
+        result.arguments.push_back(expression(value(*payload)));
+        result.labels.push_back(name);
+      }
+      const auto fixity = callee->operator_fixity();
+      if (fixity && callee_value.bindings().empty() &&
           ((fixity == Mod::FnDecl::Fixity::Infix &&
             result.arguments.size() == 2U) ||
            (fixity != Mod::FnDecl::Fixity::Infix &&
             result.arguments.size() == 1U))) {
-        result.text = std::string(producer->callee().name());
+        result.text = std::string(callee->name());
         result.labels.clear();
         result.kind = fixity == Mod::FnDecl::Fixity::Prefix  ? Kind::Prefix
                       : fixity == Mod::FnDecl::Fixity::Infix ? Kind::Infix
@@ -1125,41 +1141,54 @@ private:
   detail::StatementSyntax convert(const Op& op) {
     detail::StatementSyntax result;
     result.expression.value.kind = Mod::Expr::Kind::Call;
-    result.expression.value.text = op.callee().symbol().qualified_name();
+    const Val callee_value = op.callee();
+    const auto declaration = callee_value.referenced_fn();
+    result.expression.value.text = declaration
+                                       ? declaration->symbol().qualified_name()
+                                       : use(callee_value);
     for (const Val& output : op.results()) {
       result.bindings.push_back(
           {bind(output, "v"), type_expression(output.type()), {}});
     }
     const auto arguments = op.arguments();
-    const auto parameters = op.callee().inputs();
+    const auto parameters =
+        declaration ? declaration->inputs() : std::span<const Mod::ParamDecl>{};
     for (std::size_t index = 0; index < arguments.size(); ++index) {
       const Val& argument = arguments[index];
       const std::size_t parameter_index =
           detail::FnAccess::argument_parameter(op, index);
       if (argument.known()) {
         const auto payload = detail::FnAccess::known_value(argument);
-        if (!payload || parameter_index >= parameters.size()) {
+        if (!payload || (declaration && parameter_index >= parameters.size())) {
           throw std::logic_error("op has an invalid Known argument");
         }
         result.expression.value.arguments.push_back(
             expression(value(*payload)));
-        result.expression.value.labels.push_back(
-            parameters[parameter_index].name);
+        result.expression.value.labels.emplace_back();
       } else {
         result.expression.value.arguments.push_back(
             Mod::Expr::reference(use(argument)));
         result.expression.value.labels.emplace_back();
       }
     }
-    const auto fixity = op.callee().operator_fixity();
+    for (const auto& [name, binding] : callee_value.bindings()) {
+      const auto payload = detail::FnAccess::known_value(binding);
+      if (!payload) {
+        throw std::logic_error("callee has an invalid compile-time binding");
+      }
+      result.expression.value.arguments.push_back(expression(value(*payload)));
+      result.expression.value.labels.push_back(name);
+    }
+    const auto fixity = declaration ? declaration->operator_fixity()
+                                    : std::optional<Mod::FnDecl::Fixity>{};
     const bool valid_arity =
         fixity && ((*fixity == Mod::FnDecl::Fixity::Infix &&
                     op.arguments().size() == 2U) ||
                    (*fixity != Mod::FnDecl::Fixity::Infix &&
                     op.arguments().size() == 1U));
     if (fixity && valid_arity && result.bindings.size() == 1U &&
-        detail::compiler_inputs(op.callee()).empty()) {
-      result.expression.value.text = std::string(op.callee().name());
+        callee_value.bindings().empty()) {
+      result.expression.value.text = std::string(declaration->name());
       if (*fixity == Mod::FnDecl::Fixity::Prefix) {
         result.expression.value.kind = Mod::Expr::Kind::Prefix;
       } else if (*fixity == Mod::FnDecl::Fixity::Infix) {

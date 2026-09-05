@@ -11,12 +11,11 @@ result, known compiler value, or callable literal. Known scalar payloads are
 immutable compiler-domain values: integers, reals, booleans, strings, types,
 bytes, and their supported homogeneous lists.
 
-A callable literal has the ordinary `prelude.callable<inputs, results>` type
-and stores either an exact declared-fn reference or an anonymous
-`Fn`. The anonymous body is verified IR, not retained parser syntax. It
-does not become a synthetic mod member or participate in overload lookup;
-it is part of the owning fn's structure, dependencies, formatting, and
-digest.
+A callable value has the ordinary `prelude.callable<inputs, results>` type.
+It may be a Fn argument, block argument, call result, declared-fn reference,
+or anonymous `Fn`. A declared reference stores the compile-time arguments that
+specialized it; an anonymous body stores verified IR rather than parser syntax.
+Neither representation creates a synthetic Mod member.
 
 Metadata is represented by a normal `Type` instance. This means a layout,
 numeric format, or policy uses the same construction, named-field access,
@@ -24,9 +23,18 @@ identity, serialization, and list behavior as every other type.
 
 ## Operations
 
-An `Op` is a call to an exact `Mod::FnDecl`. Inputs and results are
-checked against the selected overload. Operator syntax in source resolves to
-the same fn identity as named calls.
+There is one operation: `Call(callee, arguments)`. `callee` is a `Val` with a
+concrete callable type, so a named call, an operator, `body(input)`, and a call
+through a returned fn share the same IR shape. Runtime arguments are ordinary
+typed value edges. Compile-time arguments such as a convolution stride or
+numeric format are bindings of the declared-fn reference, not a second
+attribute/property channel on Call.
+
+The C++ `edit.call(declaration, arguments)` overload is construction sugar: it
+resolves compile-time arguments, creates the specialized callable value, and
+then creates the same Call. `op.callee()` always returns that value;
+`referenced_fn()` and `bindings()` inspect a named specialization when one is
+present.
 
 An Op may carry an optional `Loc`. Parsers and import Mods use it
 for diagnostics and source provenance; it is not a semantic attribute, tensor
@@ -43,24 +51,25 @@ materializer lower structured syntax into this single representation.
 
 ## Transactional editing
 
-`Fn::edit()` creates an isolated edit. Operations can be appended,
-inserted, replaced, or erased. `commit()` verifies the candidate and publishes
-it atomically. Typed source lambdas materialize through the same fn body
-engine and produce the same callable `Val` representation used by the C++
-edit API.
+`Fn::edit()` creates an isolated edit. `call`, `call_before`, `replace`, and
+`erase` modify that private revision; `commit()` verifies and publishes it
+atomically. Typed source lambdas and named references use the same callable
+`Val` representation as C++ edits.
 
 ## Verification
 
 Verification checks:
 
 - value, block, and declaration ownership;
-- call arity and type agreement;
+- callee dominance and callable-type agreement;
+- call argument and result type agreement;
 - dominance and use-before-definition;
 - block argument and branch agreement;
 - one valid terminator per block;
 - fn result agreement;
 - declaration provenance across mod snapshots.
-- callable type/body agreement and the inline body's mod closure.
+- callable type/body agreement, specialization bindings, and the inline
+  body's Mod closure;
 - affine use of `effect<domain>` values, including exclusive branch transfer.
 
 ## Serialization

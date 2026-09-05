@@ -333,9 +333,9 @@ mod pipeline@1.0.0 {
   }
   auto edit = fn->edit();
   const auto input = edit.argument(*integer);
-  const auto first = edit.append(*arith_cast_decl, {input});
-  const auto second = edit.append(*arith_cast_decl, {first.result(0)});
-  edit.append(*arith_cast_decl, {second.result(0)});
+  const auto first = edit.call(*arith_cast_decl, {input});
+  const auto second = edit.call(*arith_cast_decl, {first.result(0)});
+  edit.call(*arith_cast_decl, {second.result(0)});
   joggle::Diag edit_diagnostics;
   if (!edit.commit(edit_diagnostics)) {
     edit_diagnostics.print(std::cerr);
@@ -378,7 +378,7 @@ mod pipeline@1.0.0 {
                     -> std::optional<joggle::Fn> {
                   auto edit = current.edit();
                   for (const joggle::Op& op : current.ops()) {
-                    if (op.callee() != *arith_cast_decl) {
+                    if (op.callee().referenced_fn() != arith_cast_decl) {
                       continue;
                     }
                     edit.replace(op.result(0), op.arguments().front());
@@ -556,19 +556,21 @@ mod pipeline@1.0.0 {
               staged_overload_fn->result_types().front() &&
           residual_overload_fn && residual_overload_fn->ops().size() == 1U &&
           convert_word_8 != convert_words.end() &&
-          residual_overload_fn->ops().front().callee() == *convert_word_8 &&
+          residual_overload_fn->ops().front().callee().referenced_fn() ==
+              *convert_word_8 &&
           residual_arguments_fn && residual_arguments_fn->ops().size() == 2U &&
-          residual_arguments_fn->ops()[0].arguments()[1].get<std::int64_t>() ==
-              std::optional<std::int64_t>{7} &&
-          residual_arguments_fn->ops()[1].arguments()[1].get<std::int64_t>() ==
-              std::optional<std::int64_t>{9} &&
+          residual_arguments_fn->ops()[0].callee().binding<std::int64_t>(
+              "tag") == std::optional<std::int64_t>{7} &&
+          residual_arguments_fn->ops()[1].callee().binding<std::int64_t>(
+              "tag") == std::optional<std::int64_t>{9} &&
           residual_variadic_fn && residual_variadic_fn->ops().size() == 1U &&
           residual_variadic_fn->ops().front().arguments().size() == 2U &&
           residual_dependent_fn && residual_dependent_fn->ops().size() == 1U &&
-          residual_dependent_fn->ops().front().callee() == *width_copy &&
+          residual_dependent_fn->ops().front().callee().referenced_fn() ==
+              width_copy &&
           relay_fork_fn && relay_fork_fn->result_types().size() == 2U &&
           relay_fork_fn->ops().size() == 1U &&
-          relay_fork_fn->ops().front().callee() == *fork &&
+          relay_fork_fn->ops().front().callee().referenced_fn() == fork &&
           relay_fork_fn->ops().front().results().size() == 2U &&
           width_evaluations == 1U,
       "structured compiler fns participate in dependent type "
@@ -703,7 +705,8 @@ mod source_model@1.0.0 {
                  materialized_main->body() != nullptr &&
                  materialized_main->body()->ops().size() == 1U &&
                  materialized_keep && materialized_calls.size() == 1U &&
-                 materialized_calls.front().callee() == *materialized_keep &&
+                 materialized_calls.front().callee().referenced_fn() ==
+                     materialized_keep &&
                  materialized_model->declaration_digest() ==
                      source_model->declaration_digest() &&
                  materialized_model->digest() != source_model->digest() &&
@@ -739,7 +742,7 @@ mod source_model@1.0.0 {
   {
     auto edit = guarded_fn->edit();
     const auto input = edit.argument(*guarded_a);
-    edit.append(*guarded_identity, {input});
+    edit.call(*guarded_identity, {input});
     joggle::Diag diagnostics;
     if (!edit.commit(diagnostics)) {
       return EXIT_FAILURE;
@@ -884,7 +887,7 @@ mod transactional@1.0.0 {
       [token = *token](joggle::Fn current,
                        joggle::Diag& diagnostics) -> std::optional<joggle::Fn> {
         auto edit = current.edit();
-        edit.append(token);
+        edit.call(token);
         if (!edit.commit(diagnostics)) {
           return std::nullopt;
         }
@@ -1196,7 +1199,7 @@ mod mod_validation@1.0.0 {
   {
     auto edit = invalid_body->edit();
     const auto input = edit.argument(*word);
-    const auto call = edit.append(*forbidden, {input});
+    const auto call = edit.call(*forbidden, {input});
     edit.ret(invalid_body->entry(), {call.value()});
     if (!edit.commit(invalid_body_diagnostics)) {
       invalid_body_diagnostics.print(std::cerr);

@@ -183,7 +183,7 @@ mod semantics@1.0.0 {
   ok &= expect(!joggle::equivalent(compiler, *direct, *wrong_property,
                                    property_diagnostics) &&
                    !property_diagnostics.ok(),
-               "Known properties remain part of opaque call identity");
+               "Known callee bindings remain part of opaque call identity");
 
   joggle::Diag callee_diagnostics;
   ok &= expect(!joggle::equivalent(compiler, *direct, *wrong_callee,
@@ -202,8 +202,8 @@ mod semantics@1.0.0 {
                                   *interleaved_indirect,
                                   interleaved_diagnostics) &&
                    interleaved_diagnostics.ok(),
-               "source expansion maps Residual operands independently of "
-               "interleaved Known properties");
+               "source expansion maps runtime arguments independently of "
+               "callee bindings");
 
   joggle::Diag shared_dag_diagnostics;
   ok &= expect(joggle::equivalent(compiler, *shared_direct, *shared_indirect,
@@ -230,14 +230,17 @@ mod semantics@1.0.0 {
                                         replacement_diagnostics);
   ok &= expect(replaced && *replaced == 1U && replacement_diagnostics.ok() &&
                    subject->ops().size() == 1U &&
-                   subject->ops().front().callee().name() == "twice",
+                   subject->ops().front().callee().referenced_fn()->name() ==
+                       "twice",
                "a proved replacement commits atomically");
 
-  ok &= expect(staged_replacement && staged_apply->ops().size() == 1U &&
-                   staged_apply->ops().front().callee().name() == "twice" &&
-                   staged_replacement->revision() == staged_apply->revision(),
-               "compiler Fn values and typed lambdas compose through "
-               "ordinary explicitly staged source fns");
+  ok &=
+      expect(staged_replacement && staged_apply->ops().size() == 1U &&
+                 staged_apply->ops().front().callee().referenced_fn()->name() ==
+                     "twice" &&
+                 staged_replacement->revision() == staged_apply->revision(),
+             "compiler Fn values and typed lambdas compose through "
+             "ordinary explicitly staged source fns");
 
   joggle::Diag limit_diagnostics;
   ok &= expect(

@@ -78,7 +78,7 @@ if (!fn) {
 }
 
 auto edit = fn->edit();
-// append, insert, locate, replace, or erase calls in the isolated edit
+// call, call_before, locate, replace, or erase in the isolated edit
 if (!edit.commit(diagnostics)) {
   diagnostics.print(std::cerr);
 }
@@ -94,9 +94,11 @@ mutable copy-on-write body for an exact declaration.
 typed replacement, but they are not semantic properties and do not change
 canonical Mod identity.
 
-Fn values remain ordinary typed `Val`s. A declared reference is built
-with `edit.reference(declaration, callable_type)` and inspected with
-`value.referenced_fn()`. An anonymous, already verified body is built
+Fn values remain ordinary typed `Val`s. A specialized declared reference is
+built with `edit.reference(declaration, callable_type, bindings)` and inspected
+with `value.referenced_fn()` and `value.bindings()`. The bindings are Known
+compile-time parameters; they are not Call arguments. An anonymous, already
+verified body is built
 with `edit.callable(fn, callable_type)` and inspected with
 `value.inline_fn()`. The callable type must exactly match the body's
 inputs and results; no public lambda or region object is involved.
@@ -114,8 +116,8 @@ auto changed =
 
 `before` and `after` are ordinary single-expression `Fn` values. Their
 arguments are typed holes; repeated arguments require the same SSA value.
-Matching uses exact call declarations, canonical Known values, and fn
-reference identity. All maximal non-overlapping matches are replaced in one
+Matching uses exact callable specializations and canonical Known values. All
+maximal non-overlapping matches are replaced in one
 transaction. The `Mod&` overload applies the same operation on a private
 mod snapshot and publishes only after every materialized member succeeds.
 Zero changes are a successful no-op and preserve revision or mod identity.

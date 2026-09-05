@@ -143,8 +143,15 @@ bool match_value(const Val& pattern, const Val& subject,
 
   const auto pattern_call = pattern.defining_op();
   const auto subject_call = subject.defining_op();
-  if (!pattern_call || !subject_call ||
-      pattern_call->callee() != subject_call->callee()) {
+  const auto pattern_callee = pattern_call
+                                  ? pattern_call->callee().referenced_fn()
+                                  : std::optional<Mod::FnDecl>{};
+  const auto subject_callee = subject_call
+                                  ? subject_call->callee().referenced_fn()
+                                  : std::optional<Mod::FnDecl>{};
+  if (!pattern_call || !subject_call || !pattern_callee || !subject_callee ||
+      pattern_callee != subject_callee ||
+      pattern_call->callee().bindings() != subject_call->callee().bindings()) {
     return false;
   }
   const auto pattern_results = pattern_call->results();
@@ -391,8 +398,21 @@ replace_expressions(Fn& subject, const Fn& before, const Fn& after,
         for (const Val& result : call.results()) {
           result_types.push_back(result.type());
         }
-        const Op cloned = edit.insert(*insertion, call.callee(),
-                                      std::move(arguments), result_types);
+        const Val source_callee = call.callee();
+        std::optional<Val> callee;
+        if (const auto declaration = source_callee.referenced_fn()) {
+          callee = edit.reference(*declaration, source_callee.type(),
+                                  source_callee.bindings());
+        } else if (const auto body = source_callee.inline_fn()) {
+          callee = edit.callable(*body, source_callee.type());
+        }
+        if (!callee) {
+          diagnostics.report(
+              "replacement expression contains a dynamic callee");
+          return std::nullopt;
+        }
+        const Op cloned = edit.call_before(*insertion, *callee,
+                                           std::move(arguments), result_types);
         if (const auto location = insertion->location()) {
           edit.locate(cloned, *location);
         }

@@ -55,7 +55,7 @@ The first implementation is deliberately decidable and conservative:
 1. validate both lambdas using the existing expression-template rules;
 2. recursively expand eligible source-defined expression calls;
 3. canonicalize the resulting pure typed expression DAGs;
-4. compare exact overload identities, generic properties, constants, argument
+4. compare exact overload identities, specialization bindings, constants, argument
    positions, and normalized structure; and
 5. run the existing effect-safe atomic replacement only when the normalized
    expressions are identical.
@@ -89,7 +89,7 @@ portable reference meaning that participates in the same equivalence relation.
 
 After correctness composition works, candidate generation may return ordinary
 Fn values. Measurement and selection remain separate explicitly staged
-fns. A selected Fn, its inputs' static properties, and any profile
+fns. A selected Fn, its compile-time bindings, and any profile
 record must be content-addressed so an edge deployment can lock one choice and
 rebuild it deterministically. No runtime search is mandatory.
 
@@ -111,7 +111,7 @@ rebuild it deterministically. No runtime search is mandatory.
 1. [x] Add bounded source-body normalization for token-free expression
    Fns without adding a second IR.
 2. [x] Add an equivalence query with stable mismatch diagnostics and tests for
-   recursion, opaque leaves, properties, and overload identity.
+   recursion, opaque leaves, specialization bindings, and overload identity.
 3. [x] Compose equivalence checking with atomic expression replacement.
 4. [x] Replace a bodyless declaration with a source-bodied transparent
    composite and prove the positive and negative cases without calling it an
