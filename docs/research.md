@@ -38,10 +38,9 @@ The implementation already demonstrates:
    228 f32/u8/i8/i32 constants, 130 affine quantization boundaries, and 41
    tensor calls import without a vendor operation, and reconstruction through
    ONNX Runtime is exactly equal (`max_abs=0`, `mean_abs=0`);
-8. `quant@1.1` defines a deterministic f32 affine oracle with explicit
-   nearest-even rounding, saturation, signed storage, and per-axis indexing;
-   an independent opset 13 ONNX Runtime graph matches its i8 and f32 output
-   bits exactly;
+8. `quant@2` is a source-only semantic Mod: the 130 QDQ calls require no
+   native operation bindings, while whole-graph ONNX Runtime reconstruction
+   checks the imported numerical behavior;
 9. typed replacement preserves pure shared DAG ancestors instead of rejecting
    or duplicating them, while rollback and exact repeated-hole equality remain
    checked;

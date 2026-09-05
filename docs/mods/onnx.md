@@ -20,7 +20,7 @@ ONNX graph class, frontend registry, pass kind, or lowering level. The returned
 Mod owns one typed `main` Fn and content-addressed copies of the
 source model and initializer bytes.
 
-For QDQ input, the calling environment must also load `quant@1`; the returned
+For QDQ input, the calling environment must also load `quant@2`; the returned
 model then derives its exact `quant` dependency from its Fn calls. FLOAT
 input does not acquire that dependency.
 
@@ -121,12 +121,6 @@ shape `[1,1000,1,1]`, `max_abs=0`, and `mean_abs=0`.
 
 The reconstruction executable is test-only. It is not a public ONNX emitter,
 Mod fn, compiler-core category, or second production graph.
-
-The separate `quant_runtime` test does not reconstruct SqueezeNet. It builds a
-small standard opset 13 QDQ graph containing positive and negative halfway
-values and negative-axis per-channel parameters. ONNX Runtime's i8 output and
-dequantized f32 bit patterns must exactly match the executable `quant@1.1`
-reference overloads, and both runs must be deterministic.
 
 ## Lossless CLI workflow
 

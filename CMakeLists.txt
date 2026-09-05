@@ -106,21 +106,6 @@ set_target_properties(joggle_transform_native PROPERTIES
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/mods/transform"
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/mods/transform")
 
-joggle_mod(joggle_quant_native
-  SOURCE mods/quant/mod.joggle
-  NATIVE mods/quant/native.cpp)
-if(MSVC)
-  target_compile_options(joggle_quant_native PRIVATE /W4 /WX)
-else()
-  target_compile_options(joggle_quant_native PRIVATE
-    -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
-endif()
-set_target_properties(joggle_quant_native PROPERTIES
-  PREFIX ""
-  OUTPUT_NAME "native"
-  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/mods/quant"
-  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/mods/quant")
-
 set(JOGGLE_SQUEEZENET_MODEL
   "${CMAKE_CURRENT_BINARY_DIR}/models/squeezenet1.1-7.onnx"
   CACHE FILEPATH "Build-cache path for the audited SqueezeNet model")
@@ -231,9 +216,6 @@ install(FILES mods/onnx/mod.joggle
 install(TARGETS joggle_transform_native
   LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/transform
   RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/transform)
-install(TARGETS joggle_quant_native
-  LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/quant
-  RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/quant)
 install(EXPORT JoggleTargets
   FILE JoggleTargets.cmake
   NAMESPACE joggle::
@@ -308,10 +290,9 @@ if(JOGGLE_BUILD_TESTS)
 
   add_executable(joggle_quant_test tests/quant_test.cpp)
   target_link_libraries(joggle_quant_test PRIVATE joggle::joggle)
-  add_dependencies(joggle_quant_test joggle_quant_native)
   target_compile_definitions(joggle_quant_test PRIVATE
     JOGGLE_QUANT_MOD="${JOGGLE_QUANT_MOD}"
-    JOGGLE_QUANT_NATIVE="$<TARGET_FILE:joggle_quant_native>"
+    JOGGLE_TENSOR_MOD="${JOGGLE_TENSOR_MOD}"
   )
   add_test(NAME quant COMMAND joggle_quant_test)
 
@@ -520,26 +501,6 @@ if(JOGGLE_BUILD_TESTS)
         target_compile_options(joggle_onnx_roundtrip PRIVATE
           -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
       endif()
-      add_executable(joggle_quant_runtime_model
-        tests/quant_runtime_model.cpp)
-      target_link_libraries(joggle_quant_runtime_model PRIVATE
-        joggle::joggle joggle_onnx_proto)
-      add_dependencies(joggle_quant_runtime_model joggle_quant_native)
-      if(MSVC)
-        target_compile_options(joggle_quant_runtime_model PRIVATE /W4 /WX)
-      else()
-        target_compile_options(joggle_quant_runtime_model PRIVATE
-          -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
-      endif()
-      add_test(NAME quant_runtime
-        COMMAND ${Python3_EXECUTABLE}
-          ${CMAKE_CURRENT_SOURCE_DIR}/tests/quant_runtime_test.py
-          --generator $<TARGET_FILE:joggle_quant_runtime_model>
-          --quant ${JOGGLE_QUANT_MOD}
-          --native $<TARGET_FILE:joggle_quant_native>
-          --model ${CMAKE_CURRENT_BINARY_DIR}/quant-reference.onnx
-          --quantized ${CMAKE_CURRENT_BINARY_DIR}/quant-reference-i8.bin
-          --dequantized ${CMAKE_CURRENT_BINARY_DIR}/quant-reference-f32.bin)
       add_test(NAME onnx_runtime
         COMMAND ${Python3_EXECUTABLE}
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/onnx_runtime_test.py

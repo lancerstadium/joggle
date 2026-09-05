@@ -16,7 +16,7 @@ set(root "${JOGGLE_BUNDLE_TEST_DIR}/mods")
 set(lock "${JOGGLE_BUNDLE_TEST_DIR}/joggle.lock")
 set(optional_import "")
 if(DEFINED JOGGLE_QUANT_MOD)
-  set(optional_import "  import quant@1;\n")
+  set(optional_import "  import quant@2;\n")
 endif()
 file(WRITE "${driver}" "joggle 1;
 
@@ -92,7 +92,7 @@ string(FIND "${lock_text}" "root ${JOGGLE_MODEL_NAME}@1.0.0#" root_position)
 string(FIND "${lock_text}" "mod tensor@1.0.0#" tensor_position)
 set(quant_position 0)
 if(DEFINED JOGGLE_QUANT_MOD)
-  string(FIND "${lock_text}" "mod quant@1.1.0#" quant_position)
+  string(FIND "${lock_text}" "mod quant@2.0.0#" quant_position)
 endif()
 if(root_position EQUAL -1 OR tensor_position EQUAL -1 OR
    quant_position EQUAL -1)

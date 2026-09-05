@@ -17,7 +17,7 @@ name is not grounds for a package.
 The shipped boundary is deliberately small:
 
 - `tensor` owns target-independent tensor types and program fns;
-- `quant` owns affine Q/DQ semantics and its executable numerical oracle;
+- `quant` owns source-only affine Q/DQ semantics;
 - `transform` owns reusable explicitly staged Fn transformations; and
 - optional `onnx` owns one external-format adapter.
 
@@ -123,6 +123,7 @@ A fn with a source body can be materialized into IR. A bodyless fn
 needs a native binding when invoked at compile time, or remains a residual call
 when used as program computation. `@` is the explicit source-level stage
 switch; known inputs alone never select host execution during materialization.
+Program fns are never bound merely so the compiler can walk their calls.
 
 ## Versioning and dependencies
 

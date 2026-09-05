@@ -67,10 +67,29 @@ fn compile(input: mod) -> bytes {
 `optimize`, `resolve`, and `emit` are normal module members. Their composition
 does not require a Pass, Pipeline, Target, Artifact, or Result object.
 
-Typed expression matching and traversal will provide the source-level way to
-write `optimize`. Until that language surface exists, native transformation
-fns may use the same transactional `Fn` edits, but this is an implementation
-bridge rather than the intended user interface.
+Typed lambdas already provide the source-level way to write individual
+replacement passes. Users compose those pass fns with ordinary source calls;
+they do not bind each pass in C++:
+
+```joggle
+fn pass(input: mod, before: fn, after: fn) -> mod {
+  return @transform.replace(input, before, after);
+}
+
+fn optimize(
+  input: mod,
+  first_before: fn,
+  first_after: fn,
+  second_before: fn,
+  second_after: fn
+) -> mod {
+  first = @pass(input, first_before, first_after);
+  return @pass(first, second_before, second_after);
+}
+```
+
+`transform.replace` is one generic transactional service. `pass` and
+`optimize` are source-defined and need no native entries.
 
 ## Implementation selection
 
@@ -109,7 +128,7 @@ compiler fn.
 1. [x] Remove direct Fn host execution and fixed-width scalar bindings.
 2. [x] Resolve concrete source instances without executing bodyless leaves.
 3. [x] Expose resolution through the ordinary `transform` Mod.
-4. [ ] Add typed `expr<T>` matching and transactional traversal in source.
+4. [x] Compose typed-lambda replacement passes as ordinary source fns.
 5. [ ] Resolve a transformed real ONNX model to an auditable leaf set.
 6. [ ] Add one whole-Mod emitter and compare its output numerically with a
    trusted runtime before claiming executable kernel support.

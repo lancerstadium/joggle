@@ -1,22 +1,6 @@
 joggle 1;
 
-mod quant@1.1.0 {
+mod quant@2.0.0 {
   fn quantize<X, S, Z, Y>(input: X, scale: S, zero: Z, axis: int = 1) -> Y;
   fn dequantize<X, S, Z, Y>(input: X, scale: S, zero: Z, axis: int = 1) -> Y;
-  fn quantize(
-    input: bytes,
-    scale: list<real>,
-    zero: list<int>,
-    shape: list<int>,
-    axis: int,
-    storage: type
-  ) -> bytes;
-  fn dequantize(
-    input: bytes,
-    scale: list<real>,
-    zero: list<int>,
-    shape: list<int>,
-    axis: int,
-    storage: type
-  ) -> bytes;
 }

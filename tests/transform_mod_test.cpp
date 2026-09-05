@@ -36,12 +36,46 @@ mod transform_fixture@1.0.0 {
     return chain(input);
   }
 
-  fn optimize(input: fn) -> fn {
+  fn factor(input: fn) -> fn {
     return @tr.replace(
       input,
       (value: word) => other(keep(value)),
       (value: word) => chain(value)
     );
+  }
+
+  fn wrap(input: fn) -> fn {
+    return @tr.replace(
+      input,
+      (value: word) => chain(value),
+      (value: word) => wrapped(value)
+    );
+  }
+
+  fn optimize(input: fn) -> fn {
+    factored = @factor(input);
+    return @wrap(factored);
+  }
+
+  fn factor(input: mod) -> mod {
+    return @tr.replace(
+      input,
+      (value: word) => other(keep(value)),
+      (value: word) => chain(value)
+    );
+  }
+
+  fn wrap(input: mod) -> mod {
+    return @tr.replace(
+      input,
+      (value: word) => chain(value),
+      (value: word) => wrapped(value)
+    );
+  }
+
+  fn optimize(input: mod) -> mod {
+    factored = @factor(input);
+    return @wrap(factored);
   }
 }
 )";
@@ -74,8 +108,9 @@ int main() {
   ok &= expect(calls.size() == 1U &&
                    calls.front().callee().symbol().mod_name() ==
                        "transform_fixture" &&
-                   calls.front().callee().symbol().local_name() == "chain",
-               "a source pipeline invokes typed-lambda replacement directly");
+                   calls.front().callee().symbol().local_name() == "wrapped",
+               "several source-defined passes compose without one native "
+               "binding per pass");
   ok &= expect(joggle::equivalent(compiler, *model, *optimized, equivalence) &&
                    equivalence.ok(),
                "the public transform Mod preserves reference meaning");
@@ -90,8 +125,8 @@ int main() {
     mod_diagnostics.print(std::cerr);
     return EXIT_FAILURE;
   }
-  const auto optimized_mod = compiler.run<joggle::Mod>(
-      "transform.replace", *subject, *model, *wrapped);
+  const auto optimized_mod =
+      compiler.run<joggle::Mod>("transform_fixture.optimize", *subject);
   const auto optimized_main =
       optimized_mod ? optimized_mod->fn("main") : std::nullopt;
   const joggle::Fn* optimized_body =
@@ -100,9 +135,10 @@ int main() {
       optimized_body ? optimized_body->ops() : std::vector<joggle::Op>{};
   ok &= expect(mod_diagnostics.ok() && optimized_body != nullptr &&
                    mod_calls.size() == 1U &&
-                   mod_calls.front().callee().symbol().local_name() == "chain",
-               "the public Mod overload publishes one transformed "
-               "snapshot");
+                   mod_calls.front().callee().symbol().local_name() ==
+                       "wrapped",
+               "a source-defined whole-Mod pipeline publishes one "
+               "transformed snapshot without additional bindings");
 
   joggle::Diag resolve_diagnostics;
   auto resolve_subject = joggle::parse_mod(
