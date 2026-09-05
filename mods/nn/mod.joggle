@@ -1,6 +1,6 @@
 joggle 1;
 
-mod nn@3.0.0 {
+mod nn@3.1.0 {
   import arith@2 as a;
   import tensor@8 as t;
 
@@ -17,25 +17,171 @@ mod nn@3.0.0 {
     }
     return value;
   }
+  fn conv_pads(
+    input: list<int>,
+    weight: list<int>,
+    kernel_shape: list<int>,
+    strides: list<int>,
+    pads: list<int>,
+    dilations: list<int>,
+    auto_pad: string
+  ) -> list<int> {
+    kernel = kernel_shape;
+    if length(kernel) == 0 {
+      kernel = [weight[2], weight[3]];
+    }
+    if auto_pad == "VALID" {
+      return [0, 0, 0, 0];
+    }
+    if auto_pad == "SAME_UPPER" || auto_pad == "SAME_LOWER" {
+      output_height = ceildiv(input[2], strides[0]);
+      output_width = ceildiv(input[3], strides[1]);
+      effective_height = dilations[0] * (kernel[0] - 1) + 1;
+      effective_width = dilations[1] * (kernel[1] - 1) + 1;
+      total_height = max(
+        (output_height - 1) * strides[0] + effective_height - input[2],
+        0
+      );
+      total_width = max((output_width - 1) * strides[1] + effective_width - input[3], 0);
+      begin_height = total_height // 2;
+      begin_width = total_width // 2;
+      if auto_pad == "SAME_LOWER" {
+        begin_height = total_height - begin_height;
+        begin_width = total_width - begin_width;
+      }
+      return [
+        begin_height,
+        begin_width,
+        total_height - begin_height,
+        total_width - begin_width
+      ];
+    }
+    return pads;
+  }
   fn conv_shape(
     input: list<int>,
     weight: list<int>,
     kernel_shape: list<int>,
     strides: list<int>,
     pads: list<int>,
-    dilations: list<int>
+    dilations: list<int>,
+    auto_pad: string
   ) -> list<int> {
     kernel = kernel_shape;
     if length(kernel) == 0 {
       kernel = [weight[2], weight[3]];
     }
-    height = (input[2] + pads[0] + pads[2] - dilations[0] * (kernel[0] - 1) - 1) //
+    actual_pads = conv_pads(input, weight, kernel, strides, pads, dilations, auto_pad);
+    height = (input[2] + actual_pads[0] + actual_pads[2] -
+       dilations[0] * (kernel[0] - 1) -
+       1) //
       strides[0] +
       1;
-    width = (input[3] + pads[1] + pads[3] - dilations[1] * (kernel[1] - 1) - 1) //
+    width = (input[3] + actual_pads[1] + actual_pads[3] - dilations[1] * (kernel[1] - 1) -
+       1) //
       strides[1] +
       1;
     return [input[0], weight[0], height, width];
+  }
+  fn conv_step<E, X: list<int>, W: list<int>, S: list<int>, P: list<int>, D: list<int>>(
+    input: t.tensor<E, X>,
+    weight: t.tensor<E, W>,
+    batch: index,
+    output_channel: index,
+    output_row: index,
+    output_column: index,
+    channel: index,
+    kernel_row: index,
+    kernel_column: index,
+    strides: S,
+    pads: P,
+    dilations: D,
+    group: int,
+    sum: E
+  ) -> E {
+    zero: index = a.literal(0);
+    one: index = a.literal(1);
+    input_height: index = a.literal(X[2]);
+    input_width: index = a.literal(X[3]);
+    stride_row: index = a.literal(S[0]);
+    stride_column: index = a.literal(S[1]);
+    pad_row: index = a.literal(P[0]);
+    pad_column: index = a.literal(P[1]);
+    dilation_row: index = a.literal(D[0]);
+    dilation_column: index = a.literal(D[1]);
+    channels_per_group: index = a.literal(W[1]);
+    outputs_per_group: index = a.literal(W[0] // group);
+    group_index = output_channel // outputs_per_group;
+    input_channel = group_index * channels_per_group + channel;
+    input_row = output_row * stride_row + kernel_row * dilation_row - pad_row;
+    input_column = output_column * stride_column + kernel_column * dilation_column -
+      pad_column;
+    safe_row = a.min(a.max(input_row, zero), input_height - one);
+    safe_column = a.min(a.max(input_column, zero), input_width - one);
+    valid_row = input_row == safe_row;
+    valid_column = input_column == safe_column;
+    input_value = input[batch, input_channel, safe_row, safe_column];
+    weight_value = weight[output_channel, channel, kernel_row, kernel_column];
+    product = input_value * weight_value;
+    return sum + a.select(valid_row && valid_column, product, a.zero(product));
+  }
+  fn conv_sum<
+    E,
+    X: list<int>,
+    W: list<int>,
+    K: list<int>,
+    S: list<int>,
+    P: list<int>,
+    D: list<int>
+  >(
+    input: t.tensor<E, X>,
+    weight: t.tensor<E, W>,
+    batch: index,
+    output_channel: index,
+    output_row: index,
+    output_column: index,
+    kernel_shape: K,
+    strides: S,
+    pads: P,
+    dilations: D,
+    group: int,
+    initial: E
+  ) -> E {
+    kernel = K;
+    if length(kernel) == 0 {
+      kernel = [W[2], W[3]];
+    }
+    return t.reduce(
+      W[1],
+      initial,
+      (sum_channel, channel) =>
+        t.reduce(
+          kernel[0],
+          sum_channel,
+          (sum_row, kernel_row) =>
+            t.reduce(
+              kernel[1],
+              sum_row,
+              (sum, kernel_column) =>
+                conv_step(
+                  input,
+                  weight,
+                  batch,
+                  output_channel,
+                  output_row,
+                  output_column,
+                  channel,
+                  kernel_row,
+                  kernel_column,
+                  S,
+                  P,
+                  D,
+                  group,
+                  sum
+                )
+            )
+        )
+    );
   }
   fn pool_shape(
     input: list<int>,
@@ -123,7 +269,8 @@ mod nn@3.0.0 {
     K: list<int>,
     S: list<int>,
     P: list<int>,
-    D: list<int>
+    D: list<int>,
+    A: string
   >(
     input: t.tensor<E, X>,
     weight: t.tensor<E, W>,
@@ -132,8 +279,28 @@ mod nn@3.0.0 {
     pads: P = [0, 0, 0, 0],
     dilations: D = [1, 1],
     group: int = 1,
-    auto_pad: string = "NOTSET"
-  ) -> t.tensor<E, @conv_shape(X, W, K, S, P, D)>;
+    auto_pad: A = "NOTSET"
+  ) -> t.tensor<E, @conv_shape(X, W, K, S, P, D, A)> {
+    actual_pads = @conv_pads(X, W, K, S, P, D, auto_pad);
+    return t.tensor(
+      @conv_shape(X, W, K, S, actual_pads, D, "NOTSET"),
+      (batch, output_channel, row, column) =>
+        conv_sum(
+          input,
+          weight,
+          batch,
+          output_channel,
+          row,
+          column,
+          K,
+          S,
+          actual_pads,
+          D,
+          group,
+          a.zero()
+        )
+    );
+  }
   pub fn conv<
     E,
     X: list<int>,
@@ -142,7 +309,8 @@ mod nn@3.0.0 {
     K: list<int>,
     S: list<int>,
     P: list<int>,
-    D: list<int>
+    D: list<int>,
+    A: string
   >(
     input: t.tensor<E, X>,
     weight: t.tensor<E, W>,
@@ -152,8 +320,28 @@ mod nn@3.0.0 {
     pads: P = [0, 0, 0, 0],
     dilations: D = [1, 1],
     group: int = 1,
-    auto_pad: string = "NOTSET"
-  ) -> t.tensor<E, @conv_shape(X, W, K, S, P, D)>;
+    auto_pad: A = "NOTSET"
+  ) -> t.tensor<E, @conv_shape(X, W, K, S, P, D, A)> {
+    actual_pads = @conv_pads(X, W, K, S, P, D, auto_pad);
+    return t.tensor(
+      @conv_shape(X, W, K, S, actual_pads, D, "NOTSET"),
+      (batch, output_channel, row, column) =>
+        conv_sum(
+          input,
+          weight,
+          batch,
+          output_channel,
+          row,
+          column,
+          K,
+          S,
+          actual_pads,
+          D,
+          group,
+          bias[output_channel]
+        )
+    );
+  }
   pub fn max_pool<E, X: list<int>, K: list<int>, S: list<int>, P: list<int>>(
     input: t.tensor<E, X>,
     kernel_shape: K,

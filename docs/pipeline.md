@@ -87,8 +87,9 @@ The loop-form invariant is:
 
 The implemented first stage is deterministic:
 
-1. Expand every reachable bodyful, single-block call until only the tensor
-   basis and opaque leaves remain.
+1. Expand every reachable bodyful call until only the tensor basis and opaque
+   leaves remain. General CFG inlining is supported; fusion still requires any
+   source control flow in the selected region to specialize away.
 2. Reject control flow, effects, non-tensor results, and tensor values with
    multiple consumers.
 3. Start from each output coordinate and recursively request its scalar value.
@@ -102,6 +103,11 @@ The implemented first stage is deterministic:
 
 This is access composition, not textual operator grouping. A bodyful custom fn
 automatically participates if it normalizes to the tensor basis.
+
+The shipped 2-D Conv is a larger validation of this rule. Explicit or derived
+padding, grouped channel selection, optional bias, and its nested reductions
+all live in ordinary Joggle bodies. After specialization, the same two passes
+produce scalar calls and loops without a Conv-specific compiler hook.
 
 ## Current safety boundary
 

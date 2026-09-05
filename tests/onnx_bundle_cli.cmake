@@ -84,8 +84,10 @@ expect_success("lock installed identity bundle"
   -o "${lock}")
 file(READ "${lock}" lock_text)
 string(FIND "${lock_text}" "root ${JOGGLE_MODEL_NAME}@1.0.0#" root_position)
+string(FIND "${lock_text}" "mod arith@2.1.0#" arith_position)
 string(FIND "${lock_text}" "mod tensor@8.0.0#" tensor_position)
-string(FIND "${lock_text}" "mod nn@3.0.0#" nn_position)
-if(root_position EQUAL -1 OR tensor_position EQUAL -1 OR nn_position EQUAL -1)
+string(FIND "${lock_text}" "mod nn@3.1.0#" nn_position)
+if(root_position EQUAL -1 OR arith_position EQUAL -1 OR
+   tensor_position EQUAL -1 OR nn_position EQUAL -1)
   message(FATAL_ERROR "installed ONNX Mod lock is incomplete")
 endif()

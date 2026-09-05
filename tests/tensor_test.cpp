@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <optional>
@@ -61,6 +62,28 @@ mod tensor_use@1.0.0 {
   ) -> t.tensor<f32, [2, 3]> {
     product: t.tensor<f32, [2, 3]> = n.matmul(lhs, rhs);
     return n.relu(product);
+  }
+
+  pub fn convolution(
+    input: t.tensor<f32, [1, 2, 4, 4]>,
+    weight: t.tensor<f32, [3, 2, 3, 3]>
+  ) -> t.tensor<f32, [1, 3, 4, 4]> {
+    return n.conv(input, weight, pads: [1, 1, 1, 1]);
+  }
+
+  pub fn grouped_convolution(
+    input: t.tensor<f32, [1, 2, 5, 6]>,
+    weight: t.tensor<f32, [4, 1, 3, 3]>,
+    bias: t.tensor<f32, [4]>
+  ) -> t.tensor<f32, [1, 4, 3, 3]> {
+    return n.conv(
+      input,
+      weight,
+      bias,
+      strides: [2, 2],
+      group: 2,
+      auto_pad: "SAME_UPPER"
+    );
   }
 
   pub fn prepare(input: fn) -> fn {
@@ -207,6 +230,67 @@ mod tensor_use@1.0.0 {
                    prepared->blks().size() == looped->blks().size() &&
                    prepared->ops().size() == looped->ops().size(),
                "the same pipeline composes through ordinary staged source");
+
+  const auto convolution = compiler.materialize("tensor_use.convolution");
+  const auto convolution_fused =
+      convolution ? compiler.run<joggle::Fn>("tensor.fuse", *convolution)
+                  : std::optional<joggle::Fn>{};
+  const auto convolution_looped =
+      convolution_fused
+          ? compiler.run<joggle::Fn>("tensor.loops", *convolution_fused)
+          : std::optional<joggle::Fn>{};
+  const auto convolution_ops = convolution_looped ? convolution_looped->ops()
+                                                  : std::vector<joggle::Op>{};
+  const auto has_call = [&](std::string_view owner, std::string_view name) {
+    return std::any_of(convolution_ops.begin(), convolution_ops.end(),
+                       [&](const joggle::Op& op) {
+                         const auto fn = op.callee().referenced_fn();
+                         return fn && fn->symbol().mod_name() == owner &&
+                                fn->name() == name;
+                       });
+  };
+  ok &= expect(convolution && convolution_fused && convolution_looped &&
+                   compiler.verify(*convolution_fused) &&
+                   compiler.verify(*convolution_looped) &&
+                   !has_call("nn", "conv") && !has_call("tensor", "tensor") &&
+                   !has_call("tensor", "reduce") && has_call("tensor", "[]") &&
+                   has_call("arith", "select"),
+               "padded Conv lowers from its ordinary body without a Conv "
+               "case in either tensor pass");
+
+  const auto grouped =
+      compiler.materialize("tensor_use.grouped_convolution");
+  const auto grouped_fused =
+      grouped ? compiler.run<joggle::Fn>("tensor.fuse", *grouped)
+              : std::optional<joggle::Fn>{};
+  const auto grouped_looped =
+      grouped_fused
+          ? compiler.run<joggle::Fn>("tensor.loops", *grouped_fused)
+          : std::optional<joggle::Fn>{};
+  const auto grouped_shape = grouped && grouped->result_types().size() == 1U
+                                 ? grouped->result_types().front().get<
+                                       std::vector<std::int64_t>>("shape")
+                                 : std::nullopt;
+  const auto grouped_ops =
+      grouped_looped ? grouped_looped->ops() : std::vector<joggle::Op>{};
+  const auto grouped_has = [&](std::string_view owner, std::string_view name) {
+    return std::any_of(grouped_ops.begin(), grouped_ops.end(),
+                       [&](const joggle::Op& op) {
+                         const auto fn = op.callee().referenced_fn();
+                         return fn && fn->symbol().mod_name() == owner &&
+                                fn->name() == name;
+                       });
+  };
+  ok &= expect(
+      grouped && grouped_shape ==
+                     std::optional<std::vector<std::int64_t>>{{1, 4, 3, 3}} &&
+          grouped_fused && grouped_looped && compiler.verify(*grouped_fused) &&
+          compiler.verify(*grouped_looped) && !grouped_has("nn", "conv") &&
+          !grouped_has("tensor", "tensor") &&
+          !grouped_has("tensor", "reduce") && grouped_has("tensor", "[]") &&
+          grouped_has("arith", "//") && grouped_has("arith", "select"),
+      "Conv derives SAME padding and lowers grouped bias semantics through "
+      "the same generic functions");
 
   const std::string formatted =
       tensor ? joggle::format(*tensor) : std::string{};
