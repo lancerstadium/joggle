@@ -48,13 +48,17 @@ The implementation already demonstrates:
 10. the installable `transform` Mod exposes equivalence-checked replacement
     directly as ordinary Fn and Mod overloads taking typed lambdas;
 11. Mod bundles preserve and verify all imported data through public
-   `check`, `run`, `install`, and `lock` workflows.
+    `check`, `run`, `install`, and `lock` workflows.
+12. a source-defined `i8` dot kernel uses an inferred static extent, an
+    effect-ordered pair of reads, and an `i32` accumulator; the same ordinary
+    fn executes through leaf C++ bindings and specializes to a twelve-Op Fn
+    for extent four without a Kernel or Schedule object.
 
 These are infrastructure results. The tensor QDQ calls remain opaque program
-semantics, and no QDQ composite or integer kernel is claimed. The result does
-not establish general mathematical equivalence of user rewrites, competitive
-kernels, support for a physical format at run time, or publication-level
-novelty.
+semantics, and the dot test is a mechanism check rather than a competitive or
+model-connected integer kernel. The result does not establish general
+mathematical equivalence of user rewrites, support for a physical format at
+run time, or publication-level novelty.
 
 ## What the closest systems already solve
 

@@ -124,7 +124,10 @@ rebuild it deterministically. No runtime search is mandatory.
 7. [x] Preserve shared pure DAG ancestors during replacement without adding a
    pattern graph or cloning values that still have external users.
 8. [ ] Represent and execute a real kernel body before adding scheduling,
-   physical formats, or measured variant selection.
+   physical formats, or measured variant selection. A first `i8` dot test now
+   executes and specializes an ordinary source fn; this gate remains open
+   until that path is connected to model semantics and measured as an actual
+   implementation.
 
 No target hierarchy, code emitter, machine-capacity model, or scheduling DSL is
 implemented before gates 1--5 establish this semantic boundary.

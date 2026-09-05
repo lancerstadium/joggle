@@ -57,9 +57,13 @@ public:
         }
       }
     }
+    valid_ = bind_generics(arguments);
   }
 
   std::optional<ExecVals> run() {
+    if (!valid_) {
+      return std::nullopt;
+    }
     Flow flow = sequence(body_.blocks.front().statements);
     if (flow.control != Control::Return ||
         flow.values.size() != fn_.results().size()) {
@@ -82,6 +86,52 @@ public:
   }
 
 private:
+  bool bind_generics(std::span<const ExecVal> arguments) {
+    std::vector<Type> value_arguments;
+    std::vector<std::optional<ParamVal>> known_arguments;
+    for (std::size_t index = 0; index < arguments.size(); ++index) {
+      if (is_value_port(fn_.inputs()[index])) {
+        auto type = execution_type(compiler_, arguments[index]);
+        if (!type) {
+          return false;
+        }
+        value_arguments.push_back(std::move(*type));
+      } else {
+        known_arguments.push_back(parameter_value(arguments[index]));
+      }
+    }
+    std::vector<std::optional<Type>> expected_results(
+        value_results(fn_).size());
+    auto resolved = resolve_call_types(compiler_, fn_, value_arguments,
+                                       known_arguments, expected_results,
+                                       diagnostics_);
+    if (!resolved) {
+      return false;
+    }
+    for (const auto& [name, binding] : resolved->bindings) {
+      const Mod::ParamDecl parameter{
+          name, binding.domain.value_or(Mod::Expr{}), false, std::nullopt};
+      auto raw = exec_val(binding.value, parameter);
+      auto value = raw ? stage(compiler_, std::move(*raw))
+                       : std::optional<StagedVal>{};
+      if (!value) {
+        report("generic '" + name + "' has no executable value", body_.range);
+        return false;
+      }
+      if (const auto* existing = local(name)) {
+        if (!same_staged_value(*existing, *value)) {
+          report("generic '" + name +
+                     "' is bound to different compiler values",
+                 body_.range);
+          return false;
+        }
+      } else if (!locals_.define(name, std::move(*value))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   void report(std::string message, SyntaxRange range) {
     diagnostics_.report(std::move(message),
                         Loc{body_.source, range.begin, range.end});
@@ -637,6 +687,7 @@ private:
   Diag& diagnostics_;
   const ExecuteFn& execute_;
   Locals locals_;
+  bool valid_ = false;
 };
 
 }  // namespace

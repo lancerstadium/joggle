@@ -415,6 +415,10 @@ if(JOGGLE_BUILD_TESTS)
   )
   add_test(NAME compiler_fn COMMAND joggle_compiler_fn_test)
 
+  add_executable(joggle_kernel_test tests/kernel_test.cpp)
+  target_link_libraries(joggle_kernel_test PRIVATE joggle::joggle)
+  add_test(NAME kernel COMMAND joggle_kernel_test)
+
   add_executable(joggle_sha256_test tests/sha256_test.cpp)
   target_link_libraries(joggle_sha256_test PRIVATE joggle::joggle)
   add_test(NAME sha256 COMMAND joggle_sha256_test)
