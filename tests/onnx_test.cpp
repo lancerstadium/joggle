@@ -32,9 +32,10 @@ joggle::Bytes read_bytes(const char* path) {
   return result;
 }
 
-bool load(joggle::Compiler& compiler, const char* tensor, const char* onnx,
-          const char* onnx_native, const char* transform,
+bool load(joggle::Compiler& compiler, const char* arith, const char* tensor,
+          const char* onnx, const char* onnx_native, const char* transform,
           const char* transform_native) {
+  compiler.load(arith);
   compiler.load(tensor);
   compiler.load(transform);
   compiler.load(onnx);
@@ -83,19 +84,20 @@ const std::vector<ExpectedCall> expected_calls{
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 6 && argc != 7) {
+  if (argc != 7 && argc != 8) {
     return EXIT_FAILURE;
   }
 
   joggle::Compiler malformed;
-  if (!load(malformed, argv[1], argv[2], argv[3], argv[4], argv[5])) {
+  if (!load(malformed, argv[1], argv[2], argv[3], argv[4], argv[5], argv[6])) {
     malformed.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
   const auto rejected = malformed.run<joggle::Mod>(
       "onnx.read", joggle::Bytes{std::byte{0x7f}}, std::string{"bad"});
   joggle::Compiler malformed_again;
-  if (!load(malformed_again, argv[1], argv[2], argv[3], argv[4], argv[5])) {
+  if (!load(malformed_again, argv[1], argv[2], argv[3], argv[4], argv[5],
+            argv[6])) {
     malformed_again.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -108,14 +110,14 @@ int main(int argc, char** argv) {
           malformed_message == malformed_again.diag().issues().back().message,
       "malformed Protobuf input is rejected transactionally");
 
-  if (argc == 6) {
+  if (argc == 7) {
     return ok ? EXIT_SUCCESS : EXIT_FAILURE;
   }
-  const auto bytes = read_bytes(argv[6]);
+  const auto bytes = read_bytes(argv[7]);
   ok &= expect(!bytes.empty(), "reference model bytes are readable");
 
   joggle::Compiler compiler;
-  if (!load(compiler, argv[1], argv[2], argv[3], argv[4], argv[5])) {
+  if (!load(compiler, argv[1], argv[2], argv[3], argv[4], argv[5], argv[6])) {
     compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -139,8 +141,8 @@ int main(int argc, char** argv) {
   std::size_t constants = 0;
   std::size_t located = 0;
   for (const auto& op : ops) {
-    if (op.callee().referenced_fn()->symbol().mod_name() == "tensor" &&
-        op.callee().referenced_fn()->symbol().local_name() == "constant") {
+    if (op.callee().referenced_fn()->symbol().mod_name() == "onnx" &&
+        op.callee().referenced_fn()->symbol().local_name() == "Constant") {
       ++constants;
       const auto digest = op.callee().binding<std::string>("content");
       ok &= expect(digest && model->data(*digest).has_value(),
@@ -196,7 +198,14 @@ int main(int argc, char** argv) {
     const auto& op = ops[constants + index];
     const auto& expected = expected_calls[index];
     sequence_matches &=
-        op.callee().referenced_fn()->symbol().local_name() == expected.first &&
+        op.callee().referenced_fn()->symbol().local_name() ==
+            (expected.first == "conv"          ? "Conv"
+             : expected.first == "relu"        ? "Relu"
+             : expected.first == "max_pool"    ? "MaxPool"
+             : expected.first == "average_pool" ? "AveragePool"
+             : expected.first == "concat"      ? "Concat"
+             : expected.first == "reshape"     ? "Reshape"
+                                                : expected.first) &&
         op.value().type().get<std::vector<std::int64_t>>("shape") ==
             expected.second &&
         op.location() && op.location()->source.starts_with("onnx:main/node/");
@@ -247,29 +256,53 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
   const auto inlined_ops = inlined_body->ops();
-  std::size_t generated = 0;
+  std::size_t maps = 0;
   std::size_t remaining_relu = 0;
-  bool captured_inputs = true;
+  bool typed_callbacks = true;
   for (const joggle::Op& op : inlined_ops) {
     const auto declaration = op.callee().referenced_fn();
-    if (!declaration || declaration->symbol().mod_name() != "tensor") {
+    if (!declaration || (declaration->symbol().mod_name() != "onnx" &&
+                         declaration->symbol().mod_name() != "tensor")) {
       continue;
     }
-    remaining_relu += static_cast<std::size_t>(declaration->name() == "relu");
-    if (declaration->name() != "generate") {
+    remaining_relu += static_cast<std::size_t>(declaration->name() == "Relu");
+    if (declaration->name() != "map") {
       continue;
     }
-    ++generated;
+    ++maps;
     const auto arguments = op.arguments();
-    captured_inputs &= arguments.size() == 1U &&
-                       arguments.front().inline_fn().has_value() &&
-                       arguments.front().captures().size() == 1U;
+    typed_callbacks &= arguments.size() == 2U &&
+                       arguments[1].inline_fn().has_value() &&
+                       arguments[1].captures().empty();
   }
-  ok &= expect(inlined_ops.size() == ops.size() && generated == relus &&
-                   remaining_relu == 0U && captured_inputs &&
+  ok &= expect(inlined_ops.size() == ops.size() && maps == relus &&
+                   remaining_relu == 0U && typed_callbacks &&
                    compiler.verify(*inlined),
                "generic Fn inlining expands every real-model Relu into its "
-               "bodyful generate/access form without an operator-name case");
+               "bodyful map form without an operator-name case");
+
+  const auto exposed = compiler.run<joggle::Mod>("transform.inline", *inlined);
+  const auto exposed_main = exposed ? exposed->fn("main") : std::nullopt;
+  const auto* exposed_body = exposed_main ? exposed_main->body() : nullptr;
+  std::size_t builds = 0;
+  bool captures_composition = true;
+  if (exposed_body) {
+    for (const auto& op : exposed_body->ops()) {
+      const auto declaration = op.callee().referenced_fn();
+      if (!declaration || declaration->symbol().mod_name() != "tensor" ||
+          declaration->name() != "build") {
+        continue;
+      }
+      ++builds;
+      const auto arguments = op.arguments();
+      captures_composition &= arguments.size() == 1U &&
+                              arguments.front().inline_fn().has_value() &&
+                              arguments.front().captures().size() == 2U;
+    }
+  }
+  ok &= expect(exposed_body && builds == relus && captures_composition &&
+                   compiler.verify(*exposed),
+               "a second generic expansion exposes build/at composition");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -130,7 +130,7 @@ bool emit(const joggle::Mod& mod, const char* path) {
     const auto symbol = op.callee().referenced_fn()->symbol();
     const auto callee = symbol.local_name();
     const auto callee_mod = symbol.mod_name();
-    if (callee == "constant") {
+    if (callee_mod == "onnx" && callee == "Constant") {
       const auto digest = op.callee().binding<std::string>("content");
       const auto data = digest ? mod.data(*digest) : std::nullopt;
       const auto shape = op.value().type().get<Shape>("shape");
@@ -166,7 +166,7 @@ bool emit(const joggle::Mod& mod, const char* path) {
         return false;
       }
       add_int(*node, "axis", *axis);
-    } else if (callee == "conv") {
+    } else if (callee_mod == "onnx" && callee == "Conv") {
       node->set_op_type("Conv");
       const auto strides = op.callee().binding<Shape>("strides");
       const auto pads = op.callee().binding<Shape>("pads");
@@ -179,10 +179,11 @@ bool emit(const joggle::Mod& mod, const char* path) {
       add_ints(*node, "pads", *pads);
       add_ints(*node, "dilations", *dilations);
       add_int(*node, "group", *group);
-    } else if (callee == "relu") {
+    } else if (callee_mod == "onnx" && callee == "Relu") {
       node->set_op_type("Relu");
-    } else if (callee == "max_pool" || callee == "average_pool") {
-      node->set_op_type(callee == "max_pool" ? "MaxPool" : "AveragePool");
+    } else if (callee_mod == "onnx" &&
+               (callee == "MaxPool" || callee == "AveragePool")) {
+      node->set_op_type(std::string(callee));
       const auto kernel = op.callee().binding<Shape>("kernel");
       const auto strides = op.callee().binding<Shape>("strides");
       const auto pads = op.callee().binding<Shape>("pads");
@@ -196,16 +197,16 @@ bool emit(const joggle::Mod& mod, const char* path) {
       if (*ceil_mode) {
         return false;
       }
-    } else if (callee == "concat") {
+    } else if (callee_mod == "onnx" && callee == "Concat") {
       node->set_op_type("Concat");
       const auto axis = op.callee().binding<std::int64_t>("axis");
       if (!axis) {
         return false;
       }
       add_int(*node, "axis", *axis);
-    } else if (callee == "reshape") {
+    } else if (callee_mod == "onnx" && callee == "Reshape") {
       node->set_op_type("Reshape");
-    } else if (callee == "softmax") {
+    } else if (callee_mod == "onnx" && callee == "Softmax") {
       node->set_op_type("Softmax");
       const auto axis = op.callee().binding<std::int64_t>("axis");
       if (!axis) {
@@ -223,7 +224,7 @@ bool emit(const joggle::Mod& mod, const char* path) {
       }
       node->add_input(name);
     }
-    if (callee == "reshape") {
+    if (callee_mod == "onnx" && callee == "Reshape") {
       const auto requested = op.callee().binding<Shape>("shape");
       if (!requested) {
         return false;
@@ -269,18 +270,21 @@ bool emit(const joggle::Mod& mod, const char* path) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 6 && argc != 7) {
+  if (argc != 7 && argc != 8) {
     return EXIT_FAILURE;
   }
-  const bool qdq = argc == 7;
-  const int onnx_index = qdq ? 3 : 2;
-  const int native_index = qdq ? 4 : 3;
-  const int model_index = qdq ? 5 : 4;
-  const int output_index = qdq ? 6 : 5;
+  const bool qdq = argc == 8;
+  const int tensor_index = 2;
+  const int quant_index = 3;
+  const int onnx_index = qdq ? 4 : 3;
+  const int native_index = qdq ? 5 : 4;
+  const int model_index = qdq ? 6 : 5;
+  const int output_index = qdq ? 7 : 6;
   joggle::Compiler compiler;
   compiler.load(argv[1]);
+  compiler.load(argv[tensor_index]);
   if (qdq) {
-    compiler.load(argv[2]);
+    compiler.load(argv[quant_index]);
   }
   compiler.load(argv[onnx_index]);
   if (!compiler.link() || !compiler.load_native("onnx", argv[native_index])) {

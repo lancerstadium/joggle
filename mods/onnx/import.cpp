@@ -314,7 +314,8 @@ overload(const joggle::Mod& mod, std::string_view name, std::size_t inputs) {
 
 std::optional<Schema> load_schema(joggle::Compiler& compiler, bool needs_quant,
                                   joggle::Diag& diagnostics) {
-  const auto mod = compiler.mod("tensor");
+  const auto tensor_mod = compiler.mod("tensor");
+  const auto onnx_mod = compiler.mod("onnx");
   const auto quant = compiler.mod("quant");
   const auto integer = compiler.make("int");
   const auto boolean = compiler.make("bool");
@@ -325,24 +326,26 @@ std::optional<Schema> load_schema(joggle::Compiler& compiler, bool needs_quant,
   const auto integer_list = integer && integer_list_decl
                                 ? compiler.make(*integer_list_decl, *integer)
                                 : std::nullopt;
-  if (!mod || !integer || !boolean || !string || !integer_list) {
-    fail(diagnostics, "linked tensor and Prelude schemas are unavailable");
+  if (!tensor_mod || !onnx_mod || !integer || !boolean || !string ||
+      !integer_list) {
+    fail(diagnostics,
+         "linked ONNX, tensor, and Prelude schemas are unavailable");
     return std::nullopt;
   }
   if (needs_quant && !quant) {
     fail(diagnostics, "the QDQ profile requires the quant Mod");
     return std::nullopt;
   }
-  const auto tensor = mod->type("tensor");
-  const auto constant = overload(*mod, "constant", 1);
-  const auto conv = overload(*mod, "conv", 6);
-  const auto conv_bias = overload(*mod, "conv", 7);
-  const auto relu = overload(*mod, "relu", 1);
-  const auto max_pool = overload(*mod, "max_pool", 5);
-  const auto average_pool = overload(*mod, "average_pool", 5);
-  const auto concat = overload(*mod, "concat", 3);
-  const auto reshape = overload(*mod, "reshape", 2);
-  const auto softmax = overload(*mod, "softmax", 2);
+  const auto tensor = tensor_mod->type("tensor");
+  const auto constant = overload(*onnx_mod, "Constant", 1);
+  const auto conv = overload(*onnx_mod, "Conv", 6);
+  const auto conv_bias = overload(*onnx_mod, "Conv", 7);
+  const auto relu = overload(*onnx_mod, "Relu", 1);
+  const auto max_pool = overload(*onnx_mod, "MaxPool", 5);
+  const auto average_pool = overload(*onnx_mod, "AveragePool", 5);
+  const auto concat = overload(*onnx_mod, "Concat", 3);
+  const auto reshape = overload(*onnx_mod, "Reshape", 2);
+  const auto softmax = overload(*onnx_mod, "Softmax", 2);
   const auto quantize = quant ? overload(*quant, "quantize", 4) : std::nullopt;
   const auto dequantize =
       quant ? overload(*quant, "dequantize", 4) : std::nullopt;
@@ -350,7 +353,7 @@ std::optional<Schema> load_schema(joggle::Compiler& compiler, bool needs_quant,
       !average_pool || !concat || !reshape || !softmax ||
       (needs_quant && (!quantize || !dequantize))) {
     fail(diagnostics,
-         "tensor or quant Mod declarations do not match ONNX importer");
+         "ONNX or quant Mod declarations do not match the importer");
     return std::nullopt;
   }
   std::map<std::int32_t, joggle::Type> elements;

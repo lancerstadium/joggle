@@ -1,100 +1,81 @@
 # Design 0004: Tensor semantics
 
-Status: accepted; implementation pending
+Status: accepted; implementation in progress
 
-## Purpose
+## Decision
 
-Joggle needs a target-independent tensor calculus in which high-level neural
-network fns have inspectable bodies. Tensor semantics remain a normal
-installable Mod: the core gains no tensor declaration kind, operation
-registry, graph container, or lowering interface.
+Joggle represents target-independent tensor computation with a small
+installable calculus, not an operation catalog. Compiler core gains no tensor
+declaration kind, graph container, attribute dictionary, or lowering hook.
 
-An imported Conv or Relu call is not sufficient semantics. Its source fn must
-either expand into the common calculus or remain visibly opaque. Only the
-first case is eligible for generic fusion and loop transformation.
-
-## Type boundary
+`tensor@2` owns only:
 
 ```joggle
 type tensor(element: type, shape: list<int>);
+type coord(shape: list<int>);
+
+fn build<E, S: list<int>>(body: (coord<S>) -> E) -> tensor<E, S>;
+fn at<E, S: list<int>>(input: tensor<E, S>, position: coord<S>) -> E;
+fn fold<A, S: list<int>>(
+  initial: A,
+  body: (A, coord<S>) -> A,
+  shape: S
+) -> A;
 ```
 
-`element` is an ordinary Type. `shape` is a semantic extent, not a physical
-layout. The first executable slice may use static extents, but symbolic
-extents must later be expressible through ordinary types and fns rather than a
-second shape AST in compiler core.
+`fold` takes its logical domain explicitly because `S` cannot be inferred from
+an accumulator result. The shape is a normal compiler-time fn argument stored
+on the specialized callee `Val`; no Domain or Axis object is introduced.
 
-Physical layout, packing, address space, and storage allocation are not tensor
-semantics. Later format or storage mods may introduce their own Types and
-compiler fns without changing `tensor` or compiler core.
+## Derived computation
 
-## Structural basis
-
-The basis contains only concepts that expose computation:
-
-- tensor construction from an extent and a typed element lambda;
-- element access by a typed index;
-- reduction over an extent with an initial value and typed update lambda;
-- views whose index mapping is itself inspectable;
-- structured iteration for effectful or explicitly materialized storage.
-
-These are ordinary fns and Calls. The exact source names are not language
-keywords and will be accepted only with the first executable implementation.
-A schematic Relu body is therefore:
+Higher-level computation is an ordinary bodyful fn. `map` is already defined
+through `build` and `at`. A dot product can be written without registering a
+Dot or GEMM operation:
 
 ```joggle
-fn relu<E, S>(input: tensor<E, S>) -> tensor<E, S> {
-  return generate<S>((index: index<S>) =>
-    max(at(input, index), zero<E>()));
+fn dot(lhs: tensor<f32, [4]>, rhs: tensor<f32, [4]>, initial: f32) -> f32 {
+  return fold(
+    initial,
+    (sum: f32, p: coord<[4]>) => sum + at(lhs, p) * at(rhs, p),
+    shape: [4]
+  );
 }
 ```
 
-`generate`, `at`, `max`, and `zero` are overloadable library fns. The lambda
-is a real nested `Fn`. Conv and GEMM use the same construction and reduction
-basis; they do not require privileged operator nodes. A user-defined tensor fn
-becomes transformable by providing such a body, not by registering its name in
-each pass.
-
-The example is a design sketch until the required generics and index Types are
-implemented. It does not reserve special syntax or claim a working API.
+The update lambda is a real nested `Fn`; `lhs` and `rhs` are explicit capture
+edges. Scalar operators resolve through ordinary imported overloads. Domain
+libraries such as ONNX may expose named Conv or Relu functions, but every
+optimizable function must expand into this calculus or remain visibly opaque.
 
 ## Transformation consequence
 
-Inlining a high-level fn exposes its construction, accesses, reductions, and
-scalar expressions in the caller. Producer-consumer fusion substitutes the
-producer element body into consumer accesses when dependence and effects
-permit, then removes the intermediate construction. Loop transforms edit the
-nested iteration `Fn`. Neither transform manufactures `conv_relu`, dispatches
-on a Conv name, or uses a second pattern IR.
+Inlining exposes construction, access, reduction, and scalar calls in the same
+caller. Fusion composes a producer `build` body into consumer `at` uses after
+checking index dependence and effects. It does not manufacture `conv_relu`,
+match a high-level function name, or create a second pattern IR.
 
-## ONNX boundary
+Ordered `fold` makes no reassociation promise. Parallel reduction is legal only
+after a transformation obtains an explicit algebraic contract or proves the
+property for the concrete scalar implementation.
 
-The ONNX mod parses protobuf through a staged importer and maps standard
-operators to ordinary Joggle declarations. Known operators select definitions
-from a separately versioned semantic Mod. Unknown operators remain typed,
-opaque leaves with their original domain, name, and attributes; import must not
-fail merely because an optimization definition is absent.
+## Boundaries
 
-Initializers remain Mod-owned bytes. Imported shapes, attributes, graph
-inputs/outputs, and source names must be preserved. Model support is claimed
-only after differential validation against a trusted runtime.
+Logical shape does not imply layout, packing, address space, storage capacity,
+allocation, or device placement. Model constants and ONNX operators belong to
+the ONNX Mod; scalar leaves belong to Arith. Later format and machine Mods may
+introduce ordinary Types and fns without changing tensor or compiler core.
 
-## Implementation gates
+## Gates
 
-- [x] Typed lambdas are real nested Fns.
-- [x] Residual captures are explicit closure edges.
-- [in progress] Define the minimal extent, index, tensor, and view Types.
-  Static tensor and coordinate Types are implemented; symbolic extents and
-  views are not.
-- [in progress] Implement bodyful construction, access, and reduction fns.
-  `generate` and `at` form the first basis, while reduction is still pending.
-- [x] Express Relu and generic map with inspectable source bodies over that
-  basis.
-- [ ] Express elementwise, GEMM, and convolution fns using only that basis.
-- [in progress] Inline those bodies into a caller without name-specific
-  compiler code. Single-block source bodies and closure captures are supported;
-  CFG inlining is not.
-- [ ] Implement dependence-checked producer-consumer fusion.
-- [ ] Import an unmodified ONNX model using semantic definitions plus opaque
-  fallback leaves.
-- [ ] Differentially validate baseline and transformed outputs.
+- [x] Typed lambdas are nested Fns with explicit captures.
+- [x] Define static tensor and coordinate Types.
+- [x] Define `build`, `at`, and ordered `fold` as the minimal basis.
+- [x] Express generic `map` with an inspectable body.
+- [x] Express and verify a dot-product body using only the basis and scalar
+  overloads.
+- [ ] Add symbolic logical extents without a second shape AST.
+- [ ] Define view/index-map composition.
+- [ ] Express GEMM and convolution as bodyful library fns.
+- [ ] Implement dependence-checked `build`/`at` fusion.
+- [ ] Differentially validate transformed real-model computation.

@@ -10,7 +10,7 @@ without adding declaration categories.
 joggle 1;
 
 mod example@1.2.0 {
-  import tensor@^1.1 as t;
+  import tensor@^2.0 as t;
   type word(width: int);
   fn identity<T>(input: T) -> T;
 }

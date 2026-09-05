@@ -173,15 +173,15 @@ their host boundaries; model and kernel Ops do not. See
 
 The implemented path includes the core language, editable Fn IR, explicit
 staging, typed anonymous Fns, explicit closure captures, and transactional
-single-block inlining. `tensor@1.1` defines `generate` and `at`; generic map and
-Relu have real source bodies. `transform@2` expands those bodies in both Fn and
-Mod values while remapping nested closures. The pinned SqueezeNet test expands
-all 26 imported Relu calls through this generic path.
+single-block inlining. `tensor@2` defines only `build`, `at`, `fold`, and
+bodyful `map`. ONNX owns its operator vocabulary; its Relu definition expands
+first to `map` and then to `build` while remapping nested closures. The pinned
+SqueezeNet test exercises this path for all 26 imported Relu calls.
 
-Reduction, views, multi-block inlining, direct source-level editing, and
-dependence-checked fusion remain unfinished. The other imported tensor and
-quantized operations are still opaque declarations rather than completed
-semantics.
+Execution semantics for the structural basis, views, multi-block inlining,
+direct source-level editing, and dependence-checked fusion remain unfinished.
+ONNX Conv, pooling, concatenation, reshape, softmax, and quantized operations
+are still opaque declarations rather than completed computational definitions.
 
 Only after the complete bodyful path works on an unmodified model do kernel
 scheduling, physical layouts, packed formats, storage planning, capability

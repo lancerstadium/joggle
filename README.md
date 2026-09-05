@@ -75,11 +75,13 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The repository ships `tensor@1.1.0`, whose first bodyful `map` and Relu fns
-expand into a small `generate`/`at` basis; `transform@2.0.0`, whose first
-direct Fn transform performs generic single-block inlining alongside source
-resolution; and the
-prototype `quant@2.0.0` and optional Protobuf-backed `onnx@1.0.0` import path.
+The repository ships `arith@1.0.0` and `tensor@2.0.0`. Tensor contains only
+the `build`, `at`, `fold`, and bodyful `map` calculus; it does not contain an
+ONNX operator catalog. `transform@2.0.0` performs generic single-block
+inlining and source resolution. `quant@2.0.0` and the optional
+Protobuf-backed `onnx@2.0.0` import path remain incomplete domain libraries.
+ONNX Relu already expands through `map` and then `build` without a name-specific
+transform.
 The ONNX fixtures test import and reconstruction fidelity. They are not yet
 evidence for generic bodyful fusion or an executable kernel pipeline.
 

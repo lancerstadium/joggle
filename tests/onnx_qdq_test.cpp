@@ -40,10 +40,10 @@ std::string element_name(const joggle::Type& tensor) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 6) {
+  if (argc != 7) {
     return EXIT_FAILURE;
   }
-  const auto bytes = read_bytes(argv[5]);
+  const auto bytes = read_bytes(argv[6]);
   if (bytes.empty()) {
     return EXIT_FAILURE;
   }
@@ -51,8 +51,9 @@ int main(int argc, char** argv) {
   bool ok = true;
   joggle::Compiler missing_quant;
   missing_quant.load(argv[1]);
-  missing_quant.load(argv[3]);
-  if (!missing_quant.link() || !missing_quant.load_native("onnx", argv[4])) {
+  missing_quant.load(argv[2]);
+  missing_quant.load(argv[4]);
+  if (!missing_quant.link() || !missing_quant.load_native("onnx", argv[5])) {
     missing_quant.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -75,7 +76,8 @@ int main(int argc, char** argv) {
   compiler.load(argv[1]);
   compiler.load(argv[2]);
   compiler.load(argv[3]);
-  if (!compiler.link() || !compiler.load_native("onnx", argv[4])) {
+  compiler.load(argv[4]);
+  if (!compiler.link() || !compiler.load_native("onnx", argv[5])) {
     compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -117,7 +119,7 @@ int main(int argc, char** argv) {
     const auto symbol = op.callee().referenced_fn()->symbol();
     const auto mod_name = symbol.mod_name();
     const auto name = symbol.local_name();
-    if (mod_name == "tensor" && name == "constant") {
+    if (mod_name == "onnx" && name == "Constant") {
       ++constants[element_name(op.value().type())];
       const auto digest = op.callee().binding<std::string>("content");
       payloads_resolve &= digest && model->data(*digest).has_value();
@@ -133,9 +135,9 @@ int main(int argc, char** argv) {
                "all typed QDQ initializers are Mod-owned constants");
   ok &= expect(
       calls["quant.quantize"] == 39U && calls["quant.dequantize"] == 91U &&
-          calls["tensor.conv"] == 26U && calls["tensor.max_pool"] == 3U &&
-          calls["tensor.average_pool"] == 1U && calls["tensor.concat"] == 8U &&
-          calls["tensor.reshape"] == 2U && calls["tensor.softmax"] == 1U &&
+          calls["onnx.Conv"] == 26U && calls["onnx.MaxPool"] == 3U &&
+          calls["onnx.AveragePool"] == 1U && calls["onnx.Concat"] == 8U &&
+          calls["onnx.Reshape"] == 2U && calls["onnx.Softmax"] == 1U &&
           calls.size() == 8U,
       "the complete standard QDQ graph maps to quant and tensor");
 
@@ -161,8 +163,9 @@ int main(int argc, char** argv) {
         dependencies.begin(), dependencies.end(),
         [&](const auto& dependency) { return dependency.name == name; });
   };
-  ok &= expect(has_dependency("quant") && has_dependency("tensor"),
-               "the generated Mod derives both semantic dependencies");
+  ok &= expect(has_dependency("onnx") && has_dependency("quant") &&
+                   has_dependency("tensor"),
+               "the generated Mod derives its direct semantic dependencies");
   if (!ok) {
     compiler.diag().print(std::cerr);
   }

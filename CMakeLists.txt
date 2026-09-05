@@ -204,6 +204,8 @@ install(TARGETS joggle_cli
 install(DIRECTORY include/joggle DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES language/prelude.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/language)
+install(FILES mods/arith/mod.joggle
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/arith)
 install(FILES mods/tensor/mod.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/tensor)
 install(FILES mods/transform/mod.joggle
@@ -251,6 +253,8 @@ if(JOGGLE_BUILD_TESTS)
   enable_testing()
   set(JOGGLE_TEST_MOD
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/compiler_test.joggle")
+  set(JOGGLE_ARITH_MOD
+    "${CMAKE_CURRENT_SOURCE_DIR}/mods/arith/mod.joggle")
   set(JOGGLE_TENSOR_MOD
     "${CMAKE_CURRENT_SOURCE_DIR}/mods/tensor/mod.joggle")
   set(JOGGLE_TRANSFORM_MOD
@@ -283,6 +287,7 @@ if(JOGGLE_BUILD_TESTS)
   add_executable(joggle_tensor_test tests/tensor_test.cpp)
   target_link_libraries(joggle_tensor_test PRIVATE joggle::joggle)
   target_compile_definitions(joggle_tensor_test PRIVATE
+    JOGGLE_ARITH_MOD="${JOGGLE_ARITH_MOD}"
     JOGGLE_TENSOR_MOD="${JOGGLE_TENSOR_MOD}"
   )
   add_test(NAME tensor COMMAND joggle_tensor_test)
@@ -435,6 +440,7 @@ if(JOGGLE_BUILD_TESTS)
     add_dependencies(joggle_onnx_test joggle_transform_native)
     add_test(NAME onnx
       COMMAND joggle_onnx_test
+        ${JOGGLE_ARITH_MOD}
         ${JOGGLE_TENSOR_MOD}
         ${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle
         $<TARGET_FILE:joggle_onnx_native>
@@ -447,6 +453,7 @@ if(JOGGLE_BUILD_TESTS)
       target_link_libraries(joggle_onnx_qdq_test PRIVATE joggle::joggle)
       add_test(NAME onnx_qdq
         COMMAND joggle_onnx_qdq_test
+          ${JOGGLE_ARITH_MOD}
           ${JOGGLE_TENSOR_MOD}
           ${JOGGLE_QUANT_MOD}
           ${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle
@@ -459,6 +466,7 @@ if(JOGGLE_BUILD_TESTS)
       add_test(NAME onnx_bundle_cli
         COMMAND ${CMAKE_COMMAND}
           -DJOGGLE_CLI=$<TARGET_FILE:joggle_cli>
+          -DJOGGLE_ARITH_MOD=${JOGGLE_ARITH_MOD}
           -DJOGGLE_TENSOR_MOD=${JOGGLE_TENSOR_MOD}
           -DJOGGLE_ONNX_MOD=${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle
           -DJOGGLE_ONNX_NATIVE=$<TARGET_FILE:joggle_onnx_native>
@@ -472,6 +480,7 @@ if(JOGGLE_BUILD_TESTS)
       add_test(NAME onnx_qdq_bundle_cli
         COMMAND ${CMAKE_COMMAND}
           -DJOGGLE_CLI=$<TARGET_FILE:joggle_cli>
+          -DJOGGLE_ARITH_MOD=${JOGGLE_ARITH_MOD}
           -DJOGGLE_TENSOR_MOD=${JOGGLE_TENSOR_MOD}
           -DJOGGLE_QUANT_MOD=${JOGGLE_QUANT_MOD}
           -DJOGGLE_ONNX_MOD=${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle
@@ -502,6 +511,7 @@ if(JOGGLE_BUILD_TESTS)
         COMMAND ${Python3_EXECUTABLE}
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/onnx_runtime_test.py
           --emitter $<TARGET_FILE:joggle_onnx_roundtrip>
+          --arith ${JOGGLE_ARITH_MOD}
           --tensor ${JOGGLE_TENSOR_MOD}
           --onnx ${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle
           --native $<TARGET_FILE:joggle_onnx_native>
@@ -512,6 +522,7 @@ if(JOGGLE_BUILD_TESTS)
           COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/onnx_runtime_test.py
             --emitter $<TARGET_FILE:joggle_onnx_roundtrip>
+            --arith ${JOGGLE_ARITH_MOD}
             --tensor ${JOGGLE_TENSOR_MOD}
             --quant ${JOGGLE_QUANT_MOD}
             --onnx ${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle

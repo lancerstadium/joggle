@@ -58,7 +58,7 @@ independently distributed vocabulary or tools.
 joggle 1;
 
 mod project@1.0.0 {
-  import onnx@1;
+  import onnx@2;
 
   fn canonicalize(input: mod) -> mod;
 

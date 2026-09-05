@@ -28,21 +28,21 @@ The implementation currently demonstrates:
 4. typed lambdas are ordinary anonymous Fns rather than a pattern AST;
 5. Residual captures are explicit dependency edges and hidden typed body
    arguments, while effect tokens cannot be captured;
-6. `tensor@1.1` defines a first structural basis (`generate` and `at`), and
-   generic `map` and Relu have inspectable source bodies over that basis;
-7. those bodies materialize, expose nested element Fns, invoke arbitrary
+6. `tensor@2` contains only `build`, `at`, ordered `fold`, and bodyful `map`;
+   a dot product is expressed by their composition plus scalar overloads;
+7. those bodies materialize, expose nested element and update Fns, and invoke arbitrary
    callable parameters, and pass the ordinary verifier;
-8. the same name-independent Mod transform expands all 26 Relu calls in the
-   pinned, unmodified SqueezeNet graph into `generate` plus captured element
-   Fns;
+8. the same name-independent Mod transform expands all 26 ONNX Relu calls in
+   the pinned, unmodified SqueezeNet graph first to `map` and then to `build`
+   plus captured element Fns;
 9. Mod bundles preserve and verify imported data through public `check`,
    `run`, `install`, and `lock` workflows; and
 10. source resolution constructs deterministic concrete instances while
    preserving bodyless calls as an explicit leaf set.
 
-Most tensor operators and all quantized operators remain opaque. Reduction,
-Conv/GEMM bodies, dependence analysis, generic fusion, symbolic shapes,
-emission, and performance evidence are unfinished. The ONNX result establishes
+Most ONNX operators and all quantized operators remain opaque. Conv/GEMM
+bodies, dependence analysis, generic fusion, symbolic shapes, schema-driven
+ONNX binding, emission, and performance evidence are unfinished. The ONNX result establishes
 one bodyful elementwise expansion, not generic fusion, numerical preservation
 after compilation, or publication-level novelty.
 

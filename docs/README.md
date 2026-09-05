@@ -20,6 +20,7 @@ decisions.
 
 ## Shipped mods
 
+- [Arithmetic](mods/arith.md)
 - [Tensor](mods/tensor.md)
 - [Quantization](mods/quant.md)
 - [Transform](mods/transform.md)

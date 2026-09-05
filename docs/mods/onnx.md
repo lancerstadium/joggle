@@ -1,13 +1,13 @@
 # ONNX
 
-The optional `onnx@1.0.0` Mod converts a deliberately narrow ONNX
+The optional `onnx@2.0.0` Mod converts a deliberately narrow ONNX
 inference model into an ordinary Joggle `Mod`:
 
 ```joggle
 joggle 1;
 
 mod pipeline@1.0.0 {
-  import onnx@1;
+  import onnx@2;
 
   fn load(input: bytes) -> mod {
     return @onnx.read(input, "squeezenet");
@@ -47,8 +47,10 @@ The QDQ profile is ONNX IR 7, `ai.onnx` opset 13, static dense inference with:
 - GlobalAveragePool expressed as an ordinary AveragePool call; and
 - Flatten expressed as an ordinary Reshape call.
 
-QDQ calls belong to the independent `quant` Mod; all other calls remain in
-`tensor`. Initializer payloads retain f32, u8, i8, i32, and i64 element Types.
+QDQ calls belong to the independent `quant` Mod. Standard ONNX calls and model
+constants belong to `onnx`, while their tensor Types and bodyful definitions
+reuse `tensor` and `arith`. Initializer payloads retain f32, u8, i8, i32, and
+i64 element Types.
 The importer accepts unused non-standard opset imports but rejects every node
 outside `ai.onnx`, so the supported QDQ path does not depend on a vendor
 operator.
@@ -130,18 +132,22 @@ A driver may call `@onnx.read` and write the returned Mod to a bundle:
 ```bash
 joggle run driver.joggle read squeezenet1.1-7.onnx \
   --with /path/to/tensor/mod.joggle \
+  --with /path/to/arith/mod.joggle \
   --with /path/to/onnx/mod.joggle \
   --load-native onnx=/path/to/onnx/native \
   -o squeezenet-bundle
 
 joggle run driver.joggle read squeezenet1.0-13-qdq.onnx \
   --with /path/to/tensor/mod.joggle \
+  --with /path/to/arith/mod.joggle \
   --with /path/to/quant/mod.joggle \
   --with /path/to/onnx/mod.joggle \
   --load-native onnx=/path/to/onnx/native \
   -o squeezenet-qdq-bundle
 
+joggle install /path/to/arith/mod.joggle
 joggle install /path/to/tensor/mod.joggle
+joggle install /path/to/onnx/mod.joggle
 joggle check squeezenet-bundle
 joggle install squeezenet-bundle
 ```
@@ -155,8 +161,8 @@ as bundles, and lock the exact model, tensor, and quant digests.
 The exact audited model imports as:
 
 - one runtime input, `tensor<f32, [1, 3, 224, 224]>`;
-- 52 FLOAT `tensor.constant` calls;
-- 65 semantic tensor calls after inference Dropout is elided;
+- 52 FLOAT `onnx.Constant` calls;
+- 65 ONNX semantic calls after inference Dropout is elided;
 - one output, `tensor<f32, [1, 1000]>`.
 
 All 117 retained calls have deterministic ONNX source locations. The original
@@ -170,7 +176,7 @@ The exact audited QDQ model imports as:
 - one runtime input, `tensor<f32, [1, 3, 224, 224]>`;
 - 228 typed constants: 88 f32, 36 u8, 52 i8, and 52 i32;
 - 39 `quant.quantize` and 91 `quant.dequantize` calls;
-- 41 ordinary tensor calls, including all 26 Conv operations; and
+- 41 ordinary ONNX calls, including all 26 Conv operations; and
 - one output, `tensor<f32, [1, 1000, 1, 1]>`.
 
 Content addressing deduplicates the source model and 229 initializer payloads
