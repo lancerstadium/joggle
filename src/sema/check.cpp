@@ -139,15 +139,21 @@ private:
       return;
     }
     if (expression.kind == Kind::Lambda) {
+      const bool inferred =
+          expression.arguments.size() == expression.labels.size() + 1U;
+      const bool annotated =
+          expression.arguments.size() == expression.labels.size() + 2U;
       if (domain->list || domain->element != ValKind::Fn ||
-          expression.arguments.empty() ||
-          expression.labels.size() + 1U != expression.arguments.size()) {
+          (!inferred && !annotated)) {
         report("lambda has the wrong compiler domain");
         return;
       }
       const auto type_domain = domain_expression(ValKind::Type);
       for (std::size_t index = 0; index < expression.labels.size(); ++index) {
         check(expression.arguments[index], type_domain);
+      }
+      if (annotated) {
+        check(expression.arguments[expression.labels.size()], type_domain);
       }
       return;
     }

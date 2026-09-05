@@ -18,6 +18,7 @@ joggle 1;
 
 mod transform_fixture@1.0.0 {
   import transform@1 as tr;
+  import tensor@1 as t;
 
   type word();
 
@@ -77,6 +78,48 @@ mod transform_fixture@1.0.0 {
     factored = @factor(input);
     return @wrap(factored);
   }
+
+  fn conv_relu(
+    input: t.tensor<f32, [1, 3, 8, 8]>,
+    weight: t.tensor<f32, [4, 3, 3, 3]>,
+    bias: t.tensor<f32, [4]>
+  ) -> t.tensor<f32, [1, 4, 6, 6]> {
+    convolved: t.tensor<f32, [1, 4, 6, 6]> = t.conv(
+      input, weight, bias, [1, 1], [0, 0, 0, 0], [1, 1], 1
+    );
+    return t.relu(convolved);
+  }
+
+  fn conv_model(
+    input: t.tensor<f32, [1, 3, 8, 8]>,
+    weight: t.tensor<f32, [4, 3, 3, 3]>,
+    bias: t.tensor<f32, [4]>
+  ) -> t.tensor<f32, [1, 4, 6, 6]> {
+    convolved: t.tensor<f32, [1, 4, 6, 6]> = t.conv(
+      input, weight, bias, [1, 1], [0, 0, 0, 0], [1, 1], 1
+    );
+    return t.relu(convolved);
+  }
+
+  fn factor_conv(input: fn) -> fn {
+    return @tr.replace(
+      input,
+      (
+        value: t.tensor<f32, [1, 3, 8, 8]>,
+        weight: t.tensor<f32, [4, 3, 3, 3]>,
+        bias: t.tensor<f32, [4]>
+      ) -> t.tensor<f32, [1, 4, 6, 6]> => t.relu(t.conv(
+        value, weight, bias, [1, 1], [0, 0, 0, 0], [1, 1], 1
+      )),
+      (
+        value: t.tensor<f32, [1, 3, 8, 8]>,
+        weight: t.tensor<f32, [4, 3, 3, 3]>,
+        bias: t.tensor<f32, [4]>
+      ) -> t.tensor<f32, [1, 4, 6, 6]> => conv_relu(
+        value, weight, bias
+      )
+    );
+  }
 }
 )";
 
@@ -84,6 +127,7 @@ mod transform_fixture@1.0.0 {
 
 int main() {
   joggle::Compiler compiler;
+  compiler.load(JOGGLE_TENSOR_MOD);
   compiler.load(JOGGLE_TRANSFORM_MOD);
   compiler.add(source, "transform-fixture.joggle");
   if (!compiler.link() ||
@@ -97,7 +141,13 @@ int main() {
   const auto optimized =
       model ? compiler.run<joggle::Fn>("transform_fixture.optimize", *model)
             : std::nullopt;
-  if (!model || !wrapped || !optimized) {
+  const auto conv_model =
+      compiler.materialize("transform_fixture.conv_model");
+  const auto factored_conv =
+      conv_model ? compiler.run<joggle::Fn>("transform_fixture.factor_conv",
+                                             *conv_model)
+                 : std::nullopt;
+  if (!model || !wrapped || !optimized || !conv_model || !factored_conv) {
     compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -116,6 +166,12 @@ int main() {
                "the public transform Mod preserves reference meaning");
   ok &= expect(compiler.verify(*optimized),
                "the transformed Fn remains valid executable IR");
+  ok &= expect(factored_conv->ops().size() == 1U &&
+                   factored_conv->ops().front().callee().symbol().local_name() ==
+                       "conv_relu" &&
+                   compiler.verify(*factored_conv),
+               "a lambda result annotation supplies enough context to match "
+               "and factor a generic tensor expression");
 
   joggle::Diag mod_diagnostics;
   auto subject = joggle::parse_mod("joggle 1; mod transform_subject@1.0.0 {}",

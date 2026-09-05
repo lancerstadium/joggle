@@ -189,6 +189,16 @@ program computation even when all of its operands are Known. A call that
 produces a compiler-domain result without `@` is rejected instead of being
 silently executed.
 
+A lambda may state its result when the surrounding call cannot infer it:
+
+```joggle
+(input: tensor<f32, [1, 4]>) -> tensor<i8, [1, 4]> => quantize(input)
+```
+
+The annotation is checked against a surrounding callable type when both are
+present. It is especially useful for explicitly staged transformation
+templates whose parameter domain is the general compiler value `fn`.
+
 A lambda constructs a fn value. Passing it to an ordinary call remains
 run-time IR. Passing it to a `fn` parameter through `@` instead constructs
 a verified anonymous `Fn` execution value. Compiler fns may return
@@ -218,7 +228,8 @@ generics   := "<" generic ("," generic)* ">"
 generic    := name (":" expression)?
 results    := ("->" expression | "->" "(" parameters? ")")?
 lambda     := "(" (name ":" expression
-              ("," name ":" expression)*)? ")" "=>" expression
+              ("," name ":" expression)*)? ")"
+              ("->" expression)? "=>" expression
 ```
 
 The formatter is the normative spelling for details not captured by this

@@ -81,8 +81,8 @@ public:
     std::string text;
     std::vector<Expr> arguments;
     // Empty call entries are positional. Lambda labels name parameters whose
-    // type expressions occupy the corresponding argument positions; the last
-    // lambda argument is its body.
+    // type expressions occupy the corresponding argument positions. A lambda
+    // has either [inputs..., body] or [inputs..., result type, body].
     std::vector<std::string> labels;
 
     Expr() = default;

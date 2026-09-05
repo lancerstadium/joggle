@@ -175,7 +175,8 @@ private:
       const bool starts_lambda = [&] {
         if (is(TokenKind::RightParen)) {
           Lexer lookahead = lexer_;
-          return lookahead.take().kind == TokenKind::FatArrow;
+          const TokenKind next = lookahead.take().kind;
+          return next == TokenKind::FatArrow || next == TokenKind::Arrow;
         }
         if (!is(TokenKind::Name)) {
           return false;
@@ -200,7 +201,11 @@ private:
           } while (match(TokenKind::Comma));
           expect(TokenKind::RightParen, "')'");
         }
-        expect(TokenKind::FatArrow, "'=>' after lambda parameters");
+        if (match(TokenKind::Arrow)) {
+          result.arguments.push_back(parse(0));
+        }
+        expect(TokenKind::FatArrow,
+               "'=>' after lambda parameters or result type");
         const std::size_t previous = lambda_variables_.size();
         lambda_variables_.insert(lambda_variables_.end(), parameters.begin(),
                                  parameters.end());
@@ -580,8 +585,9 @@ std::string format_expression(const Mod::Expr& expression,
     }
   } else if (expression.kind == Kind::Lambda) {
     result = "(";
-    const std::size_t parameter_count =
-        expression.arguments.empty() ? 0U : expression.arguments.size() - 1U;
+    const std::size_t parameter_count = expression.labels.size();
+    const bool annotated =
+        expression.arguments.size() == parameter_count + 2U;
     for (std::size_t index = 0; index < parameter_count; ++index) {
       if (index != 0U) {
         result += ", ";
@@ -589,7 +595,12 @@ std::string format_expression(const Mod::Expr& expression,
       result += expression.labels[index] + ": " +
                 format_expression(expression.arguments[index]);
     }
-    result += ") => ";
+    result += ')';
+    if (annotated) {
+      result += " -> " +
+                format_expression(expression.arguments[parameter_count]);
+    }
+    result += " => ";
     if (!expression.arguments.empty()) {
       result += format_expression(expression.arguments.back());
     }

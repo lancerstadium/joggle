@@ -2689,6 +2689,8 @@ mod explicit_staging@1.0.0 {
   fn literal<T>(value: int) -> T;
   fn twice(value: int) -> int;
   fn identity(input: word) -> word;
+  fn make_i32() -> i32;
+  fn apply(input: word, body: (word) -> word) -> word;
   fn inspect(body: fn) -> int;
   fn keep_fn(body: fn) -> fn;
 
@@ -2703,7 +2705,7 @@ mod explicit_staging@1.0.0 {
   }
 
   fn staged_lambda(input: word) -> word {
-    count = @inspect((value: word) => identity(value));
+    count = @inspect((value: word) -> word => identity(value));
     return identity(input);
   }
 
@@ -2715,6 +2717,15 @@ mod explicit_staging@1.0.0 {
 
   fn staged_lambda_capture(input: word) -> word {
     count = @inspect((value: word) => identity(input));
+    return identity(input);
+  }
+
+  fn wrong_lambda_context(input: word) -> word {
+    return apply(input, (value: word) -> i32 => make_i32());
+  }
+
+  fn wrong_lambda_body(input: word) -> word {
+    count = @inspect((value: word) -> i32 => identity(value));
     return identity(input);
   }
 }
@@ -2773,8 +2784,13 @@ mod explicit_staging@1.0.0 {
   ok &= expect(staged_lambda && explicit_staging.verify(*staged_lambda) &&
                    staged_lambda->ops().size() == 1U &&
                    inspected_lambda_ops == 1U && lambda_inspections == 1U,
-               "@ passes a typed lambda as a verified Fn execution "
-               "value without scalar serialization");
+               "@ passes a result-annotated lambda as a verified Fn "
+               "execution value without scalar serialization");
+  ok &= expect(explicit_staging_mod &&
+                   joggle::format(*explicit_staging_mod)
+                           .find("(value: word) -> word => identity(value)") !=
+                       std::string::npos,
+               "lambda result annotations have one canonical source form");
 
   const auto staged_lambda_chain =
       explicit_staging_linked && inspect_decl && keep_fn_decl
@@ -2821,6 +2837,32 @@ mod explicit_staging@1.0.0 {
   ok &= expect(!missing_stage && reports_missing_stage && evaluations == 1U,
                "an ordinary compiler-domain call neither evaluates nor "
                "silently changes stage");
+
+  const auto wrong_lambda_context =
+      explicit_staging_linked
+          ? explicit_staging.materialize(
+                "explicit_staging.wrong_lambda_context")
+          : std::nullopt;
+  const bool reports_wrong_lambda_context = std::any_of(
+      explicit_staging.diag().issues().begin(),
+      explicit_staging.diag().issues().end(),
+      [](const joggle::Issue& diagnostic) {
+        return diagnostic.message.find(
+                   "inline fn result does not match its callable context") !=
+               std::string::npos;
+      });
+  ok &= expect(!wrong_lambda_context && reports_wrong_lambda_context,
+               "an explicit lambda result cannot contradict its callable "
+               "context");
+
+  const auto wrong_lambda_body =
+      explicit_staging_linked && inspect_decl
+          ? explicit_staging.materialize(
+                "explicit_staging.wrong_lambda_body")
+          : std::nullopt;
+  ok &= expect(!wrong_lambda_body && lambda_inspections == 2U,
+               "an explicit lambda result is checked against its body before "
+               "a compiler fn can observe it");
 
   const joggle::Compiler::Limits limits{2, 64};
   joggle::Compiler bounded(limits);

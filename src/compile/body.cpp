@@ -78,12 +78,15 @@ class Instantiator {
     std::optional<detail::StagedVal> value;
     std::string fn;
     std::optional<Mod::Expr> inline_fn;
+    std::optional<Mod::Expr> expression;
     std::optional<std::vector<Type>> inline_inputs;
+    std::size_t order = 0;
 
     bool is_fn() const { return !fn.empty(); }
     bool is_inline_fn() const { return inline_fn.has_value(); }
+    bool is_expression() const { return expression.has_value(); }
     bool valid() const {
-      return value.has_value() || is_fn() ||
+      return value.has_value() || is_fn() || is_expression() ||
              (is_inline_fn() && inline_inputs.has_value());
     }
   };
@@ -896,8 +899,9 @@ private:
                  parameters[index].name + "'");
           return std::nullopt;
         }
-        arguments.push_back(
-            {std::move(*value), {}, std::nullopt, std::nullopt});
+        PendingArgument argument;
+        argument.value = std::move(*value);
+        arguments.push_back(std::move(argument));
       }
       if (arguments.empty() && !parameters[index].variadic) {
         reject("call is missing argument '" + parameters[index].name + "'");
@@ -1282,23 +1286,30 @@ private:
 
   std::pair<Blk, std::optional<Val>>
   instantiate_expression(const Mod::Expr& expression, detail::SyntaxRange range,
-                         Blk block) {
+                         Blk block,
+                         std::optional<Type> expected = std::nullopt) {
     using Kind = Mod::Expr::Kind;
     const detail::ExprSyntax syntax{expression, range};
     if ((expression.kind == Kind::Variable ||
          expression.kind == Kind::Reference) &&
         expression.arguments.empty()) {
-      const auto expected = expected_values_.find(expression.text);
-      return {block, use(syntax, expected == expected_values_.end()
+      const auto found = expected_values_.find(expression.text);
+      return {block, use(syntax, found == expected_values_.end()
                                      ? std::optional<Type>{}
-                                     : std::optional<Type>{expected->second})};
+                                     : std::optional<Type>{found->second})};
     }
     const std::string name = "$value" + std::to_string(next_temporary_++);
+    if (expected) {
+      expected_values_.insert_or_assign(name, *expected);
+    }
     detail::StatementSyntax statement;
     statement.bindings.push_back({name, std::nullopt, range});
     statement.expression = syntax;
     statement.range = range;
     Flow flow = instantiate_statement(statement, block);
+    if (expected) {
+      expected_values_.erase(name);
+    }
     if (flow.next.size() != 1U || !flow.breaks.empty() ||
         !flow.continues.empty()) {
       report("expression produced non-local control flow", range);
@@ -2549,11 +2560,12 @@ private:
       detail::ExprSyntax argument_syntax{argument_expression,
                                          statement.expression.range};
       PendingArgument argument;
+      argument.order = arguments.size();
       if (argument_expression.kind == Kind::Lambda) {
         argument.inline_fn = argument_expression;
-        if (!argument_expression.arguments.empty() &&
-            argument_expression.labels.size() + 1U ==
-                argument_expression.arguments.size()) {
+        const std::size_t parameter_count = argument_expression.labels.size();
+        if (argument_expression.arguments.size() == parameter_count + 1U ||
+            argument_expression.arguments.size() == parameter_count + 2U) {
           std::vector<Type> inputs;
           inputs.reserve(argument_expression.labels.size());
           bool valid = true;
@@ -2590,11 +2602,7 @@ private:
                               statement.expression.range)) {
         argument.value = evaluate_known(argument_syntax);
       } else {
-        auto [argument_tail, value] = instantiate_expression(
-            argument_expression, statement.expression.range, block);
-        block = argument_tail;
-        argument.value = value ? detail::stage(std::move(*value))
-                               : std::optional<detail::StagedVal>{};
+        argument.expression = argument_expression;
       }
       if (!argument.valid()) {
         invalidate_results();
@@ -2684,29 +2692,48 @@ private:
       return;
     }
     const auto parameters = plan.fn.inputs();
+    struct PlannedArgument {
+      PendingArgument* argument;
+      Type type;
+    };
+    std::vector<PlannedArgument> planned_arguments;
     std::size_t argument_index = 0;
-    bool unresolved = false;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
       if (!detail::is_value_port(parameters[index])) {
         continue;
       }
       for (PendingArgument& argument : plan.arguments[index]) {
-        if (argument.is_inline_fn()) {
-          auto value = inline_fn(*argument.inline_fn,
-                                 plan.partial_types.arguments[argument_index],
-                                 statement.expression.range);
-          argument.value = value ? detail::stage(std::move(*value))
-                                 : std::optional<detail::StagedVal>{};
-          unresolved = !argument.value || unresolved;
-        } else if (argument.is_fn()) {
-          auto reference =
-              fn_reference(argument.fn, statement.expression.range,
-                           plan.partial_types.arguments[argument_index]);
-          argument.value = reference ? detail::stage(std::move(*reference))
-                                     : std::optional<detail::StagedVal>{};
-          unresolved = !argument.value || unresolved;
-        }
-        ++argument_index;
+        planned_arguments.push_back(
+            {&argument, plan.partial_types.arguments[argument_index++]});
+      }
+    }
+    std::sort(planned_arguments.begin(), planned_arguments.end(),
+              [](const PlannedArgument& lhs, const PlannedArgument& rhs) {
+                return lhs.argument->order < rhs.argument->order;
+              });
+    bool unresolved = false;
+    for (const PlannedArgument& planned : planned_arguments) {
+      PendingArgument& argument = *planned.argument;
+      if (argument.is_inline_fn()) {
+        auto value = inline_fn(*argument.inline_fn, planned.type,
+                               statement.expression.range);
+        argument.value = value ? detail::stage(std::move(*value))
+                               : std::optional<detail::StagedVal>{};
+        unresolved = !argument.value || unresolved;
+      } else if (argument.is_fn()) {
+        auto reference = fn_reference(argument.fn, statement.expression.range,
+                                      planned.type);
+        argument.value = reference ? detail::stage(std::move(*reference))
+                                   : std::optional<detail::StagedVal>{};
+        unresolved = !argument.value || unresolved;
+      } else if (argument.is_expression()) {
+        auto [argument_tail, value] = instantiate_expression(
+            *argument.expression, statement.expression.range, block,
+            planned.type);
+        block = argument_tail;
+        argument.value = value ? detail::stage(std::move(*value))
+                               : std::optional<detail::StagedVal>{};
+        unresolved = !argument.value || unresolved;
       }
     }
     if (unresolved) {
@@ -2791,8 +2818,12 @@ instantiate_lambda(Compiler& compiler, std::string_view owner,
   const auto report = [&](std::string message) {
     diagnostics.report(std::move(message), source);
   };
-  if (expression.kind != Kind::Lambda || expression.arguments.empty() ||
-      expression.labels.size() + 1U != expression.arguments.size()) {
+  const std::size_t parameter_count = expression.labels.size();
+  const bool inferred =
+      expression.arguments.size() == parameter_count + 1U;
+  const bool annotated =
+      expression.arguments.size() == parameter_count + 2U;
+  if (expression.kind != Kind::Lambda || (!inferred && !annotated)) {
     report("malformed inline fn");
     return std::nullopt;
   }
@@ -2818,6 +2849,20 @@ instantiate_lambda(Compiler& compiler, std::string_view owner,
       return std::nullopt;
     }
     arguments.emplace_back(expression.labels[index], *annotation);
+  }
+
+  if (annotated) {
+    auto value = evaluate_known_expression(
+        compiler, owner, expression.arguments[parameter_count], expected_type,
+        bindings, diagnostics, source, allow_guarded_evaluation);
+    const Type* annotation = value ? value->as_type() : nullptr;
+    if (annotation == nullptr ||
+        (expected_results &&
+         (*expected_results != std::vector<Type>{*annotation}))) {
+      report("inline fn result does not match its callable context");
+      return std::nullopt;
+    }
+    expected_results = std::vector<Type>{*annotation};
   }
 
   FnBody body;

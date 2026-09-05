@@ -54,7 +54,21 @@ folding and user-defined structural transformations.
 An explicit call may pass a typed lambda to a `fn` parameter. The lambda
 is materialized as a verified anonymous `Fn`, passed directly to the
 compiler fn, and may be returned for a later `@` call. It is not encoded
-as scalar metadata.
+as scalar metadata. Since the compiler-domain `fn` accepts any signature,
+such a lambda can state its result explicitly:
+
+```joggle
+@transform.replace(
+  model,
+  (x: tensor) -> tensor => relu(conv(x)),
+  (x: tensor) -> tensor => conv_relu(x)
+)
+```
+
+This is ordinary bidirectional typing: the result annotation supplies the
+expected type for nested generic calls and is checked against the body. It
+does not create a pattern language, a host callback, or a new transformation
+kind.
 
 Transformations compose with the language's existing fn call and local
 binding rules. There is no separate sequence object:

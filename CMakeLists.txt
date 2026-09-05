@@ -318,6 +318,7 @@ if(JOGGLE_BUILD_TESTS)
   add_dependencies(joggle_transform_mod_test joggle_transform_native)
   target_compile_definitions(joggle_transform_mod_test PRIVATE
     JOGGLE_TRANSFORM_MOD="${JOGGLE_TRANSFORM_MOD}"
+    JOGGLE_TENSOR_MOD="${JOGGLE_TENSOR_MOD}"
     JOGGLE_TRANSFORM_NATIVE="$<TARGET_FILE:joggle_transform_native>"
   )
   add_test(NAME transform_mod COMMAND joggle_transform_mod_test)
