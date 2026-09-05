@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <functional>
 #include <optional>
 #include <set>
 #include <string>
@@ -13,13 +12,11 @@
 namespace joggle {
 namespace {
 
-class Specializer {
+class Resolver {
 public:
-  Specializer(Compiler& compiler, const Mod& input,
-              const std::function<bool(const Mod::FnDecl&)>& boundary,
-              Diag& diagnostics)
-      : compiler_(compiler), input_(input), boundary_(boundary),
-        diagnostics_(diagnostics), output_(input) {}
+  Resolver(Compiler& compiler, const Mod& input, Diag& diagnostics)
+      : compiler_(compiler), input_(input), diagnostics_(diagnostics),
+        output_(input) {}
 
   std::optional<Mod> run() {
     for (const auto& member : input_.fns()) {
@@ -35,7 +32,7 @@ public:
       }
     }
     if (!compiler_.verify(output_)) {
-      diagnostics_.report("specialized Mod failed verification");
+      diagnostics_.report("resolved Mod failed verification");
       return std::nullopt;
     }
     return std::move(output_);
@@ -55,13 +52,13 @@ private:
         return candidate;
       }
     }
-    diagnostics_.report("specialization lost generated Fn '" +
-                        replacement.name + "'");
+    diagnostics_.report("resolution lost generated Fn '" + replacement.name +
+                        "'");
     return std::nullopt;
   }
 
-  std::optional<Replacement> specialize(const Op& call) {
-    if (boundary_(call.callee())) {
+  std::optional<Replacement> resolve(const Op& call) {
+    if (call.callee().form() == Mod::FnDecl::Form::External) {
       return Replacement{};
     }
 
@@ -69,7 +66,7 @@ private:
     if (!body) {
       diagnostics_.report(
           "call '" + call.callee().symbol().qualified_name() +
-          "' has neither a source body nor an accepted implementation");
+          "' has no resolvable source body");
       return std::nullopt;
     }
 
@@ -82,7 +79,7 @@ private:
       return known->second;
     }
     if (!active_.insert(key).second) {
-      diagnostics_.report("recursive source specialization at '" +
+      diagnostics_.report("recursive source resolution at '" +
                           call.callee().symbol().qualified_name() + "'");
       return std::nullopt;
     }
@@ -95,7 +92,7 @@ private:
 
     std::string name;
     do {
-      name = "specialized_" + std::to_string(next_name_++) + "_" +
+      name = "inst_" + std::to_string(next_name_++) + "_" +
              std::string(call.callee().name());
     } while (!output_.overloads(name).empty());
     if (!output_.insert(name, *body, diagnostics_)) {
@@ -121,7 +118,7 @@ private:
     Plan result;
     result.reserve(fn.ops().size());
     for (const Op& call : fn.ops()) {
-      auto replacement = specialize(call);
+      auto replacement = resolve(call);
       if (!replacement) {
         return std::nullopt;
       }
@@ -137,7 +134,7 @@ private:
   bool apply(Fn& fn, const Plan& replacements) {
     const auto calls = fn.ops();
     if (calls.size() != replacements.size()) {
-      diagnostics_.report("specialization plan does not match its Fn");
+      diagnostics_.report("resolution plan does not match its Fn");
       return false;
     }
     if (std::none_of(
@@ -169,7 +166,6 @@ private:
 
   Compiler& compiler_;
   const Mod& input_;
-  const std::function<bool(const Mod::FnDecl&)>& boundary_;
   Diag& diagnostics_;
   Mod output_;
   std::set<std::string> active_;
@@ -180,14 +176,8 @@ private:
 }  // namespace
 
 std::optional<Mod>
-Compiler::specialize(const Mod& mod,
-                     const std::function<bool(const Mod::FnDecl&)>& boundary,
-                     Diag& diagnostics) {
-  if (!boundary) {
-    diagnostics.report("specialization needs an accepted-call boundary");
-    return std::nullopt;
-  }
-  return Specializer(*this, mod, boundary, diagnostics).run();
+Compiler::resolve(const Mod& mod, Diag& diagnostics) {
+  return Resolver(*this, mod, diagnostics).run();
 }
 
 }  // namespace joggle

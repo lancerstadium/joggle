@@ -49,17 +49,13 @@ The implementation already demonstrates:
     directly as ordinary Fn and Mod overloads taking typed lambdas;
 11. Mod bundles preserve and verify all imported data through public
     `check`, `run`, `install`, and `lock` workflows.
-12. a source-defined `i8` dot kernel uses an inferred static extent, an
-    effect-ordered pair of reads, and an `i32` accumulator; the same ordinary
-    fn executes through leaf C++ bindings, specializes to a twelve-Op Fn for
-    extent four, and executes again from that Fn IR without a Kernel or
-    Schedule object.
+12. `transform.resolve` constructs deterministic concrete source instances and
+    preserves bodyless calls as an explicit leaf set without invoking them.
 
 These are infrastructure results. The tensor QDQ calls remain opaque program
-semantics, and the dot test is a mechanism check rather than a competitive or
-model-connected integer kernel. The result does not establish general
-mathematical equivalence of user rewrites, support for a physical format at
-run time, or publication-level novelty.
+semantics, and no emitted kernel exists yet. The result does not establish
+general mathematical equivalence of user rewrites, support for a physical
+format at run time, or publication-level novelty.
 
 ## What the closest systems already solve
 

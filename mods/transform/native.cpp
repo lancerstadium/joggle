@@ -30,4 +30,10 @@ void joggle_mod(joggle::Compiler& compiler, const joggle::Mod& mod,
          const joggle::Fn& after, joggle::Diag& diagnostics) {
         return replace(active, std::move(input), before, after, diagnostics);
       });
+  compiler.bind(
+      mod, "resolve",
+      [](joggle::Compiler& active, const joggle::Mod& input,
+         joggle::Diag& diagnostics) {
+        return active.resolve(input, diagnostics);
+      });
 }

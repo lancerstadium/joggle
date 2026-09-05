@@ -142,11 +142,10 @@ Optional `Compiler&` and `Diag&` service parameters are not source
 ports. Bindings can return `void`, one supported value, a tuple for multiple
 results, or `std::optional<T>` to report failure.
 
-Standard fixed-width C++ scalars map directly to their Prelude value types:
-`int8_t` through `int32_t`, their unsigned counterparts through `uint64_t`,
-and `float` map to `i8` through `i32`, `u8` through `u64`, and `f32`.
-`int64_t` and `double` retain their compiler-domain meanings `int` and `real`;
-an exact declaration handle resolves any name-level overload ambiguity.
+Bindings represent compiler-time values and host services. Fixed-width
+Residual types such as `i8`, `i32`, and `f32` are deliberately not mapped to
+C++ execution values: ordinary program calls must be compiled as a whole
+rather than interpreted through one binding per Op.
 
 `HostEval::Hermetic` is an explicit promise for deterministic,
 side-effect-free host evaluation under residual control. Use the default
@@ -160,14 +159,20 @@ bool emitted = compiler.run<void>("driver.write", model, output_path);
 ```
 
 `invocable<Result, Args...>` checks a reflected signature without running it.
-`run` accepts a qualified name or exact declaration. Calls, source bodies, and
-native implementations use the same overload resolution.
+`run` accepts a qualified name or exact declaration. It is the C++ entry to an
+explicitly staged compiler computation, not a runtime for Residual `Fn` IR.
 
-`run<Result>(fn, ...)` executes a verified Fn directly. Entry and block
-arguments carry the supplied values, terminators select CFG edges, and each Op
-invokes its exact declared fn through the same source/native binding path.
-This is the execution boundary for a specialized user kernel; it does not add
-a runtime graph or backend object.
+## Resolve source calls
+
+```cpp
+joggle::Diag diagnostics;
+auto resolved = compiler.resolve(model, diagnostics);
+```
+
+Resolution instantiates reachable source-defined callees at their concrete
+types and compiler parameters. Bodyless calls remain explicit leaves for a
+later whole-Mod emitter. It is also available as the normal staged fn
+`transform.resolve(mod) -> mod`.
 
 ## Verifiers and host representations
 

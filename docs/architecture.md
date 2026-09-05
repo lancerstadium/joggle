@@ -41,7 +41,7 @@ names embedded in filenames:
 | `src/ir` | `Type`, `Mod`, `Fn`, `Blk`, `Op`, and `Val` storage |
 | `src/sema` | domains, call resolution, inference, and validation |
 | `src/compile` | linking, staging, native binding, and evaluation |
-| `src/transform` | rewriting, equivalence, and specialization |
+| `src/transform` | rewriting, equivalence, and call-graph resolution |
 | `src/pkg` | installed-mod repository operations |
 
 These directories are not public namespaces, libraries, dialects, or runtime
@@ -102,9 +102,10 @@ The explicit-`@` rule is enforced during materialization. A compiler-domain
 call without `@` is diagnosed, and an ordinary program call remains in IR even
 when its inputs are Known.
 
-Native C++ bodies are optional implementations of bodyless fns. Their
-signatures are checked against the source declaration when bound. The source
-mod remains authoritative; no generated declaration header is required.
+Native C++ bodies implement explicitly staged host services. Their signatures
+are checked against the source declaration when bound. They are not the
+execution semantics of ordinary Residual calls. The source mod remains
+authoritative; no generated declaration header is required.
 
 ## Editable fns
 
@@ -154,6 +155,18 @@ fn prepare(input: bytes, policy: type) -> mod {
 Names such as `read` and `optimize` are mod APIs, not magic hooks.
 The core imposes no lowering direction or fixed hardware hierarchy.
 
+## Implementation closure
+
+`transform.resolve` constructs a concrete call graph by instantiating reachable
+source bodies. Bodyless calls remain visible leaves for a later whole-Mod
+compiler fn. Resolution never invokes a leaf binding and never claims that a
+leaf is supported by a machine.
+
+An emitter consumes the complete resolved Mod once. Importers, transforms,
+emitters, and measurement tools may use a small number of native bindings at
+their host boundaries; model and kernel Ops do not. See
+[Design 0009](design/0009-implementation.md).
+
 ## Near-term implementation order
 
 The implemented path currently ends at the core language, tensor and quant
@@ -163,7 +176,8 @@ Moving an expression behind another source fn is merely fn
 factoring, not executable kernel fusion.
 
 Kernel scheduling, physical layouts, packed formats, storage planning, and
-target emission remain intentionally absent until one normal fn body can
-express and verify a concrete executable implementation. The compiler must not
-simulate progress by copying the tensor vocabulary into a format Mod or by
-renaming a reference expression as a fused operation.
+machine emission remain intentionally absent until source-level transformation
+and implementation closure work on a real model. The compiler must not
+simulate progress by interpreting Ops through host callbacks, copying tensor
+vocabulary into a format Mod, or renaming a reference expression as a fused
+operation.

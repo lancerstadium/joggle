@@ -103,8 +103,36 @@ int main() {
                    mod_calls.front().callee().symbol().local_name() == "chain",
                "the public Mod overload publishes one transformed "
                "snapshot");
+
+  joggle::Diag resolve_diagnostics;
+  auto resolve_subject = joggle::parse_mod(
+      "joggle 1; mod resolve_subject@1.0.0 {}", resolve_diagnostics,
+      "resolve-subject.joggle");
+  if (!resolve_subject ||
+      !resolve_subject->insert("main", joggle::Fn{*wrapped},
+                               resolve_diagnostics)) {
+    resolve_diagnostics.print(std::cerr);
+    return EXIT_FAILURE;
+  }
+  const auto resolved = compiler.run<joggle::Mod>("transform.resolve",
+                                                   *resolve_subject);
+  const auto resolved_main = resolved ? resolved->fn("main") : std::nullopt;
+  const auto resolved_chain =
+      resolved ? resolved->fn("inst_0_chain") : std::nullopt;
+  const joggle::Fn* resolved_main_body =
+      resolved_main ? resolved_main->body() : nullptr;
+  const joggle::Fn* resolved_chain_body =
+      resolved_chain ? resolved_chain->body() : nullptr;
+  ok &= expect(resolved && resolved_main_body && resolved_chain_body &&
+                   resolved_main_body->ops().size() == 1U &&
+                   resolved_main_body->ops().front().callee() ==
+                       *resolved_chain &&
+                   resolved_chain_body->ops().size() == 2U &&
+                   compiler.verify(*resolved),
+               "one staged Mod fn resolves the complete source call graph");
   if (!ok) {
     equivalence.print(std::cerr);
+    resolve_diagnostics.print(std::cerr);
     compiler.diag().print(std::cerr);
   }
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;

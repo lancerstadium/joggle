@@ -2,8 +2,8 @@
 
 Joggle is a small C++ compiler substrate for AI software/hardware co-design.
 It provides one versioned `Mod` abstraction, one typed `fn` declaration,
-staged Known/Residual execution, editable CFG/SSA bodies, and installable native
-implementations.
+explicit Known/Residual staging, editable CFG/SSA bodies, and installable
+compiler-time services.
 
 The project deliberately does not prescribe a graph hierarchy, lowering
 ladder, target base class, pass registry, kernel object, device model, or
@@ -61,9 +61,11 @@ fn prepare(input: bytes, policy: type) -> mod {
 The user controls composition in source. Joggle does not discover magic pass
 names or force a universal sequence of intermediate forms.
 
-`Compiler::specialize` recursively materializes source-defined calls until a
-caller-supplied predicate accepts every remaining Fn. It is one reusable
-transformation primitive, not a prescribed target boundary or lowering ladder.
+`Compiler::resolve` recursively materializes concrete source-defined calls and
+leaves bodyless implementation boundaries explicit. The installable
+`transform.resolve` fn exposes the same operation through normal `@` staging.
+Resolution constructs a call graph; it does not execute Residual Ops through
+host callbacks.
 
 ## Build
 
@@ -74,7 +76,8 @@ ctest --test-dir build --output-on-failure
 ```
 
 The repository ships `tensor@1.0.0`, a small target-independent semantic
-Mod; `transform@1.0.0`, the typed-lambda semantic replacement surface;
+Mod; `transform@1.1.0`, the typed-lambda replacement and source-resolution
+surface;
 `quant@1.1.0`, an affine QDQ boundary with a bit-exact reference
 oracle; and an optional, Protobuf-backed
 `onnx@1.0.0` inference importer. The real-model paths import hash-pinned FLOAT

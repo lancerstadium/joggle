@@ -35,6 +35,7 @@ decisions.
 - [0006 — Mod bundles](design/0006-bundles.md)
 - [0007 — Definitional equivalence](design/0007-equivalence.md)
 - [0008 — Quantized ONNX import](design/0008-quantization.md)
+- [0009 — Implementation closure](design/0009-implementation.md)
 
 Design records explain why current interfaces exist. They are not a second
 user manual or a migration log. [Research](research.md) separately tracks

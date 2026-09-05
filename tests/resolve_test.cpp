@@ -75,40 +75,43 @@ mod opaque_model@1.0.0 {
     return EXIT_FAILURE;
   }
 
-  const auto boundary = [&](const joggle::Mod::FnDecl& fn) {
-    return fn.symbol().mod_name() == "boundary";
-  };
-  const auto specialized = compiler.specialize(program, boundary, diagnostics);
-  const auto repeated = compiler.specialize(program, boundary, diagnostics);
+  const auto resolved = compiler.resolve(program, diagnostics);
+  const auto repeated = compiler.resolve(program, diagnostics);
   joggle::Diag rejected_diagnostics;
-  const auto rejected =
-      compiler.specialize(bad_program, boundary, rejected_diagnostics);
+  const auto rejected = compiler.resolve(bad_program, rejected_diagnostics);
 
-  const auto main = specialized ? specialized->fn("main") : std::nullopt;
+  const auto main = resolved ? resolved->fn("main") : std::nullopt;
   const joggle::Fn* main_body = main ? main->body() : nullptr;
   const auto generated =
-      specialized ? specialized->fn("specialized_0_square") : std::nullopt;
+      resolved ? resolved->fn("inst_0_square") : std::nullopt;
   const joggle::Fn* generated_body = generated ? generated->body() : nullptr;
   const joggle::Fn* original_body = program.fns().front().body();
 
   bool ok = true;
-  ok &= expect(specialized && repeated && main_body && generated_body &&
+  ok &= expect(resolved && repeated && main_body && generated_body &&
                    original_body,
-               "a source Fn specializes to an accepted boundary");
-  ok &= expect(specialized && repeated && specialized->fns().size() == 2U &&
+               "a source call resolves to one concrete Fn instance");
+  ok &= expect(resolved && repeated && resolved->fns().size() == 2U &&
                    main_body && main_body->ops().size() == 1U &&
                    main_body->ops().front().callee().symbol().mod_name() ==
-                       specialized->name() &&
+                       resolved->name() &&
                    generated_body && generated_body->ops().size() == 1U &&
                    generated_body->ops().front().callee().symbol().mod_name() ==
                        "boundary" &&
                    original_body &&
                    original_body->ops().front().callee().symbol().mod_name() ==
                        "source_kernel" &&
-                   specialized->digest() == repeated->digest(),
-               "specialization is local, non-mutating, and deterministic");
-  ok &= expect(!rejected && !rejected_diagnostics.ok(),
-               "an opaque call outside the boundary fails closed");
+                   resolved->digest() == repeated->digest(),
+               "resolution is local, non-mutating, and deterministic");
+  const auto rejected_main =
+      rejected ? rejected->fn("main") : std::nullopt;
+  const joggle::Fn* rejected_body =
+      rejected_main ? rejected_main->body() : nullptr;
+  ok &= expect(rejected && rejected_body && rejected_diagnostics.ok() &&
+                   rejected_body->ops().size() == 1U &&
+                   rejected_body->ops().front().callee().symbol().mod_name() ==
+                       "opaque_model",
+               "a bodyless call remains an explicit implementation leaf");
   if (!ok) {
     diagnostics.print(std::cerr);
     rejected_diagnostics.print(std::cerr);

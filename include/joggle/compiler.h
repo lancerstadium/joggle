@@ -46,25 +46,14 @@ using RealList = std::vector<double>;
 using BooleanList = std::vector<bool>;
 using StringList = std::vector<std::string>;
 using TypeList = std::vector<Type>;
-using ExecVal =
-    std::variant<std::int8_t, std::uint8_t, std::int16_t, std::uint16_t,
-                 std::int32_t, std::uint32_t, std::int64_t, std::uint64_t,
-                 float, double, bool, std::string, Type, Bytes,
-                 std::shared_ptr<Fn>, IntegerList, RealList, BooleanList,
-                 StringList, TypeList, HostVal>;
+using ExecVal = std::variant<std::int64_t, double, bool, std::string, Type,
+                             Bytes, std::shared_ptr<Fn>, IntegerList, RealList,
+                             BooleanList, StringList, TypeList, HostVal>;
 using ExecVals = std::vector<ExecVal>;
 
 template <typename T>
 inline constexpr bool is_builtin_host_value =
-    std::is_same_v<std::remove_cvref_t<T>, std::int8_t> ||
-    std::is_same_v<std::remove_cvref_t<T>, std::uint8_t> ||
-    std::is_same_v<std::remove_cvref_t<T>, std::int16_t> ||
-    std::is_same_v<std::remove_cvref_t<T>, std::uint16_t> ||
-    std::is_same_v<std::remove_cvref_t<T>, std::int32_t> ||
-    std::is_same_v<std::remove_cvref_t<T>, std::uint32_t> ||
     std::is_same_v<std::remove_cvref_t<T>, std::int64_t> ||
-    std::is_same_v<std::remove_cvref_t<T>, std::uint64_t> ||
-    std::is_same_v<std::remove_cvref_t<T>, float> ||
     std::is_same_v<std::remove_cvref_t<T>, double> ||
     std::is_same_v<std::remove_cvref_t<T>, bool> ||
     std::is_same_v<std::remove_cvref_t<T>, std::string> ||
@@ -493,15 +482,10 @@ public:
   std::optional<Fn> materialize(const Op& call);
   std::optional<Fn> materialize(const Op& call, Diag& diagnostics);
 
-  // Recursively specializes source-defined calls until every remaining call
-  // is accepted by boundary. The returned Mod owns each concrete
-  // specialization and the input Mod is not modified. An unaccepted
-  // external call, recursive source expansion, or invalid rewrite fails the
-  // whole operation.
-  std::optional<Mod>
-  specialize(const Mod& mod,
-             const std::function<bool(const Mod::FnDecl&)>& boundary,
-             Diag& diagnostics);
+  // Resolves every reachable source-defined call to a concrete Fn instance.
+  // Bodyless declarations remain explicit leaves for a later whole-program
+  // compiler or emitter. The input Mod is not modified.
+  std::optional<Mod> resolve(const Mod& mod, Diag& diagnostics);
 
   template <typename Callable>
   void verify(Mod::TypeDecl schema, Callable&& callable) {
@@ -603,25 +587,6 @@ public:
     }
   }
 
-  // Executes one verified Fn directly. The Fn owns control flow while its
-  // leaf calls use the same source or native implementations as declarations.
-  template <typename Result = void, typename... Arguments>
-  std::conditional_t<std::is_void_v<Result>, bool, std::optional<Result>>
-  run(const Fn& fn, Arguments&&... arguments) {
-    std::vector<detail::ExecVal> values;
-    values.reserve(sizeof...(Arguments));
-    (values.push_back(
-         detail::store_exec_val(std::forward<Arguments>(arguments))),
-     ...);
-    auto results = execute(fn, std::move(values));
-    if constexpr (std::is_void_v<Result>) {
-      return results.has_value();
-    } else {
-      return results ? detail::take_exec_vals<Result>(std::move(*results))
-                     : std::optional<Result>{};
-    }
-  }
-
   template <typename Result = void, typename... Arguments>
   std::conditional_t<std::is_void_v<Result>, bool, std::optional<Result>>
   run(std::string_view name, Arguments&&... arguments) {
@@ -650,9 +615,9 @@ private:
   bool bind_representation(Mod::TypeDecl schema, std::string_view type,
                            RepresentationProjector projector);
   bool project_host_value(detail::ExecVal& value);
-  bool check_execution_values(const Mod::FnDecl& fn,
-                              std::span<const detail::ExecVal> arguments,
-                              std::span<const detail::ExecVal> results = {});
+  bool check_host_values(const Mod::FnDecl& fn,
+                         std::span<const detail::ExecVal> arguments,
+                         std::span<const detail::ExecVal> results = {});
   bool accepts_host_type(const Mod::FnDecl& fn, const Mod::ParamDecl& field,
                          std::string_view type) const;
   void bind_native(Mod::FnDecl schema, NativeFn fn, HostEval evaluation);
@@ -682,8 +647,6 @@ private:
   std::optional<detail::ExecVals>
   execute(Mod::FnDecl declaration, std::vector<detail::ExecVal> arguments,
           bool under_residual_control = false);
-  std::optional<detail::ExecVals>
-  execute(const Fn& fn, std::vector<detail::ExecVal> arguments);
   std::optional<detail::ParamVal>
   evaluate_binding(Mod::FnDecl fn, std::span<const detail::ParamVal> arguments,
                    bool under_residual_control);

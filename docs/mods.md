@@ -38,7 +38,7 @@ The user-facing problems map to the language directly:
 This is the intended extensibility point for AI hardware/software co-design:
 new representations and implementation choices are declared as types and
 fns, while the core continues to own only linking, staging, verified
-Fn edits, and execution. A device, layout, schedule, or cost model does
+Fn edits, and compiler-time evaluation. A device, layout, schedule, or cost model does
 not receive a privileged base class merely because one experiment needs it.
 
 This boundary is intentionally narrower than established multi-level stacks.
@@ -97,8 +97,9 @@ void joggle_mod(joggle::Compiler& compiler,
 ```
 
 `Compiler::bind` selects a source overload using the C++ callable signature
-and rejects mismatches. C++ provides execution, not a parallel declaration
-system. Native libraries carry the mod identity produced by the CMake
+and rejects mismatches. C++ implements an explicitly staged host service, not
+the semantics of each Residual Op and not a parallel declaration system.
+Native libraries carry the mod identity produced by the CMake
 helper and are rejected when their declaration digest does not match.
 
 ## User-defined pipelines

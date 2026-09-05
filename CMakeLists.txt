@@ -58,7 +58,7 @@ add_library(joggle
   src/compile/val.cpp
   src/transform/rewrite.cpp
   src/transform/equal.cpp
-  src/transform/specialize.cpp
+  src/transform/resolve.cpp
   src/pkg/repo.cpp
 )
 add_library(joggle::joggle ALIAS joggle)
@@ -345,9 +345,9 @@ if(JOGGLE_BUILD_TESTS)
   target_link_libraries(joggle_equivalence_test PRIVATE joggle::joggle)
   add_test(NAME equivalence COMMAND joggle_equivalence_test)
 
-  add_executable(joggle_specialization_test tests/specialization_test.cpp)
-  target_link_libraries(joggle_specialization_test PRIVATE joggle::joggle)
-  add_test(NAME specialization COMMAND joggle_specialization_test)
+  add_executable(joggle_resolve_test tests/resolve_test.cpp)
+  target_link_libraries(joggle_resolve_test PRIVATE joggle::joggle)
+  add_test(NAME resolve COMMAND joggle_resolve_test)
 
   add_executable(joggle_fn_body_test tests/fn_body_test.cpp)
   target_link_libraries(joggle_fn_body_test PRIVATE joggle::joggle)
@@ -414,10 +414,6 @@ if(JOGGLE_BUILD_TESTS)
     JOGGLE_TEST_NATIVE="$<TARGET_FILE:joggle_compiler_test_native>"
   )
   add_test(NAME compiler_fn COMMAND joggle_compiler_fn_test)
-
-  add_executable(joggle_kernel_test tests/kernel_test.cpp)
-  target_link_libraries(joggle_kernel_test PRIVATE joggle::joggle)
-  add_test(NAME kernel COMMAND joggle_kernel_test)
 
   add_executable(joggle_sha256_test tests/sha256_test.cpp)
   target_link_libraries(joggle_sha256_test PRIVATE joggle::joggle)

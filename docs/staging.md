@@ -60,13 +60,13 @@ Transformations compose with the language's existing fn call and local
 binding rules. There is no separate sequence object:
 
 ```joggle
-fn optimize(input: fn) -> fn {
+fn optimize(input: mod) -> mod {
   normalized = @canonicalize(input);
-  return @specialize(normalized);
+  return @transform.resolve(normalized);
 }
 ```
 
-Here `input` and `normalized` are ordinary compiler-domain `fn` values.
+Here `input` and `normalized` are ordinary compiler-domain `mod` values.
 Typed lambdas use the same materializer whether they appear inside a residual
 higher-order call or as an argument to an explicitly staged compiler fn.
 The compiler does not convert them through a pattern, strategy, or scalar
@@ -81,15 +81,12 @@ the existing atomic structural replacement opens an edit. `replace` is not
 reserved syntax, and the lambdas remain verified Fns over the same IR
 rather than a second rewrite declaration or pattern representation.
 
-## Recursive specialization
+## Source resolution
 
-`Compiler::specialize` expands source-defined calls until a caller-provided
-predicate accepts every remaining declaration. It is useful when an extension
-wants to define a primitive boundary without a global lowering registry.
-
-The predicate receives exact `FnDecl` handles. Accepted calls remain;
-other calls with materializable bodies are specialized recursively. Opaque
-unaccepted calls and recursive expansion fail with diagnostics.
+`transform.resolve` recursively instantiates reachable source-defined calls.
+Bodyless calls remain explicit leaves. A later compiler or emitter consumes the
+complete Mod once and rejects unsupported leaves; resolution never executes
+them through native bindings. The C++ primitive is `Compiler::resolve`.
 
 ## Reproducibility
 

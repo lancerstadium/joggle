@@ -117,17 +117,16 @@ rebuild it deterministically. No runtime search is mandatory.
    composite and prove the positive and negative cases without calling it an
    executable fusion.
 5. [x] Expose the primitive through an ordinary mod fn and exercise it
-   from source with `@`. The installable `transform@1.0.0` Mod accepts typed
+   from source with `@`. The installable `transform@1` Mod accepts typed
    lambda Fns directly and has Fn and Mod overloads.
 6. [x] Compose transformations through ordinary `fn`/`@call` sequencing. No
    public `seq`, `Strategy`, or `Result` abstraction is required.
 7. [x] Preserve shared pure DAG ancestors during replacement without adding a
    pattern graph or cloning values that still have external users.
-8. [ ] Represent and execute a real kernel body before adding scheduling,
-   physical formats, or measured variant selection. A first `i8` dot test now
-   executes an ordinary source fn before and after specialization to Fn IR;
-   this gate remains open until that path is connected to model semantics and
-   measured as an actual implementation.
+8. [ ] Transform and resolve a real model implementation before adding
+   scheduling, physical formats, or measured variant selection. Design 0009
+   explicitly rejects per-Op host execution; executable evidence requires a
+   whole-Mod compiler or emitter and numerical comparison.
 
 No target hierarchy, code emitter, machine-capacity model, or scheduling DSL is
 implemented before gates 1--5 establish this semantic boundary.

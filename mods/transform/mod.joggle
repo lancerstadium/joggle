@@ -1,6 +1,7 @@
 joggle 1;
 
-mod transform@1.0.0 {
+mod transform@1.1.0 {
   fn replace(input: fn, before: fn, after: fn) -> fn;
   fn replace(input: mod, before: fn, after: fn) -> mod;
+  fn resolve(input: mod) -> mod;
 }
