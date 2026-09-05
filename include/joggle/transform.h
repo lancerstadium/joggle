@@ -9,6 +9,12 @@
 
 namespace joggle {
 
+// Inlines every source-defined or anonymous single-block call visible in the
+// input snapshot. Newly cloned calls are left for a later invocation. Opaque,
+// dynamic, and CFG callees are preserved. The whole edit is transactional.
+std::optional<std::size_t> inline_calls(Compiler& compiler, Fn& fn,
+                                        Diag& diagnostics);
+
 // Replaces every maximal non-overlapping occurrence of before with after in
 // one transaction. The low-level overload checks IR safety but not semantic
 // equivalence. Zero changes are a successful no-op.

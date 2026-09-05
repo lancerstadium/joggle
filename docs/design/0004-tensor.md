@@ -91,7 +91,9 @@ only after differential validation against a trusted runtime.
 - [x] Express Relu and generic map with inspectable source bodies over that
   basis.
 - [ ] Express elementwise, GEMM, and convolution fns using only that basis.
-- [ ] Inline those bodies into a caller without name-specific compiler code.
+- [in progress] Inline those bodies into a caller without name-specific
+  compiler code. Single-block source bodies and closure captures are supported;
+  CFG inlining is not.
 - [ ] Implement dependence-checked producer-consumer fusion.
 - [ ] Import an unmodified ONNX model using semantic definitions plus opaque
   fallback leaves.

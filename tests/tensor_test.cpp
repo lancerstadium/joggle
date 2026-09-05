@@ -219,6 +219,31 @@ int main() {
           compiler.verify(*map_body) && compiler.verify(*map_element_fn),
       "Map is a bodyful higher-order fn whose element body calls the user "
       "callable without an operator registry or name-specific compiler case");
+
+  joggle::Fn expanded_fire = *fire;
+  joggle::Diag inline_diagnostics;
+  const auto inlined =
+      joggle::inline_calls(compiler, expanded_fire, inline_diagnostics);
+  const auto expanded_ops = expanded_fire.ops();
+  const bool only_basis_calls = std::all_of(
+      expanded_ops.begin(), expanded_ops.end(), [](const joggle::Op& op) {
+        const auto declaration = op.callee().referenced_fn();
+        return declaration && declaration->name() != "relu";
+      });
+  const auto first_element =
+      expanded_ops.size() > 1U && expanded_ops[1].arguments().size() == 1U
+          ? std::optional<joggle::Val>{expanded_ops[1].arguments().front()}
+          : std::nullopt;
+  ok &= expect(
+      inlined == std::optional<std::size_t>{3U} && inline_diagnostics.ok() &&
+          expanded_ops.size() == 7U && only_basis_calls &&
+          expanded_ops[1].callee().referenced_fn()->name() == "generate" &&
+          first_element && first_element->inline_fn() &&
+          first_element->captures().size() == 1U &&
+          first_element->captures().front() == expanded_ops.front().value() &&
+          compiler.verify(expanded_fire),
+      "generic inlining replaces every bodyful Relu Call with its real "
+      "generate body and remaps closure captures to producer values");
   ok &=
       expect(result.size() == 1U &&
                  result.front().type().get<std::vector<std::int64_t>>(

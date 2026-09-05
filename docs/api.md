@@ -110,6 +110,20 @@ canonical formatting or `Mod::insert` rejects a C++-constructed inline body
 that cannot be represented by that source form instead of emitting hidden
 declarations.
 
+## Inline source calls
+
+```cpp
+joggle::Diag diagnostics;
+auto changed = joggle::inline_calls(compiler, fn, diagnostics);
+```
+
+One invocation considers the Calls present in the input snapshot. It expands
+source-defined and anonymous single-block callees into the caller, remaps
+arguments, results, fn bindings, locations, nested callable values, and closure
+captures, then commits once. Opaque, dynamic, and multi-block calls remain
+unchanged. Newly cloned calls are considered by a later invocation, so the
+operation is deterministic and bounded. A failure publishes no partial edit.
+
 ## Bind native fns
 
 ```cpp

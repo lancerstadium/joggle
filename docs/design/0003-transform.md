@@ -109,12 +109,18 @@ the compiler back into a catalog of `before`/`after` pairs.
 2. [complete] Typed anonymous fns and explicit closure-capture edges.
 3. [in progress] Remove expression-template replacement from the canonical
    transform Mod and public narrative.
-4. [planned] Retain structured `for` as a higher-order Call until explicit CFG
+4. [complete] Implement transactional, name-independent single-block Fn
+   inlining with callable and capture remapping.
+5. [planned] Extend inlining across explicit CFG while preserving successor
+   arguments and effects.
+6. [planned] Retain structured `for` as a higher-order Call until explicit CFG
    conversion.
-5. [planned] Give the tensor Mod a small bodyful iteration/access/reduction
+7. [in progress] Give the tensor Mod a small bodyful
+   iteration/access/reduction
    calculus.
-6. [planned] Expand high-level tensor fns into that calculus.
-7. [planned] Implement dependence-checked producer-consumer fusion inside one
+8. [in progress] Expand high-level tensor fns into that calculus. Generic map
+   and Relu are the first implemented definitions.
+9. [planned] Implement dependence-checked producer-consumer fusion inside one
    Fn.
-8. [planned] Expose compact source-level Fn inspection and functional editing.
-9. [planned] Validate generic fusion on imported, unmodified ONNX models.
+10. [planned] Expose compact source-level Fn inspection and functional editing.
+11. [planned] Validate generic fusion on imported, unmodified ONNX models.

@@ -176,11 +176,14 @@ explicit staging, typed anonymous Fns, and explicit closure captures. Existing
 tensor, transform, and ONNX modules are prototypes under replacement; their
 presence is not evidence of bodyful tensor semantics or generic fusion.
 
-The next vertical slice defines a small tensor construction/access/reduction
-calculus, expresses high-level fns with real bodies, and edits those bodies
-through direct Fn transformations. Only after that slice works on an
-unmodified model do kernel scheduling, physical layouts, packed formats,
-storage planning, capability selection, and machine emission enter scope. The
-compiler must not simulate progress by matching operation names, interpreting
-every Op through a host callback, or renaming a reference expression as a
-fused operation.
+The current vertical slice has begun: `tensor@1.1` defines `generate` and `at`,
+generic map and Relu have real source bodies, and `transform@1.2` can inline
+single-block bodies while remapping nested closures. Reduction, views,
+multi-block inlining, direct source-level editing, and dependence-checked
+fusion remain unfinished.
+
+Only after the complete bodyful path works on an unmodified model do kernel
+scheduling, physical layouts, packed formats, storage planning, capability
+selection, and machine emission enter scope. The compiler must not simulate
+progress by matching operation names, interpreting every Op through a host
+callback, or renaming a reference expression as a fused operation.

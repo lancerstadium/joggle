@@ -1,14 +1,22 @@
 # Transform
 
-`transform` is the installable owner for reusable explicitly staged Fn and Mod
-transformations. It adds no `pass`, pattern, rewrite, pipeline, or result
-declaration to the language.
+`transform@1.2.0` is the installable owner for reusable explicitly staged Fn
+and Mod transformations. It adds no `pass`, pattern, rewrite, pipeline, or
+result declaration to the language.
 
-## Stable operation
+## Implemented operations
 
 ```joggle
+fn inline(input: fn) -> fn;
 fn resolve(input: mod) -> mod;
 ```
+
+`inline` replaces every source-defined or anonymous single-block Call visible
+in its input snapshot with the callee's actual operations. Runtime arguments,
+Known fn bindings, result edges, locations, nested callable values, and closure
+captures are remapped into the caller. Opaque, dynamic, and multi-block calls
+remain visible. Newly cloned calls wait for a later invocation, keeping one
+call deterministic and bounded.
 
 `resolve` materializes every reachable source-defined call at its concrete
 types and compiler bindings, deduplicates identical instances, and leaves
@@ -19,9 +27,7 @@ set.
 ## Transformation direction
 
 Direct transformation works on the actual `Fn`: calls, values, blocks, and
-nested callable bodies. The source-facing API is intentionally not declared
-until its first implementation exists. The intended composition remains
-ordinary Joggle code:
+nested callable bodies. Composition remains ordinary Joggle code:
 
 ```joggle
 fn optimize(input: fn) -> fn {
@@ -31,9 +37,10 @@ fn optimize(input: fn) -> fn {
 }
 ```
 
-The names above are planned library fns, not language keywords. They must edit
+These are library fns, not language keywords. `inline` is implemented; `fuse`
+and `dce` in the example remain planned. Every transformation must edit
 concrete structure transactionally and use Types, def-use, dominance, closure
-captures, and effect tokens for legality. They may not match Conv, Relu, GEMM,
+captures, and effect tokens for legality. It may not match Conv, Relu, GEMM,
 or any other operation name.
 
 The old `replace(input, before, after)` expression-template API is not part of

@@ -56,6 +56,7 @@ add_library(joggle
   src/compile/native.cpp
   src/compile/run.cpp
   src/compile/val.cpp
+  src/transform/inline.cpp
   src/transform/rewrite.cpp
   src/transform/equal.cpp
   src/transform/resolve.cpp
@@ -311,6 +312,10 @@ if(JOGGLE_BUILD_TESTS)
   target_link_libraries(joggle_transform_test PRIVATE joggle::joggle)
   target_include_directories(joggle_transform_test PRIVATE src)
   add_test(NAME transform COMMAND joggle_transform_test)
+
+  add_executable(joggle_inline_test tests/inline_test.cpp)
+  target_link_libraries(joggle_inline_test PRIVATE joggle::joggle)
+  add_test(NAME inline COMMAND joggle_inline_test)
 
   add_executable(joggle_transform_mod_test
     tests/transform_mod_test.cpp)

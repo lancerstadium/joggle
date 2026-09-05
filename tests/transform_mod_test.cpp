@@ -37,6 +37,10 @@ mod transform_fixture@1.0.0 {
     return chain(input);
   }
 
+  fn inline(input: fn) -> fn {
+    return @tr.inline(input);
+  }
+
   fn factor(input: fn) -> fn {
     return @tr.replace(
       input,
@@ -138,6 +142,9 @@ int main() {
 
   const auto model = compiler.materialize("transform_fixture.model");
   const auto wrapped = compiler.materialize("transform_fixture.wrapped");
+  const auto inlined =
+      wrapped ? compiler.run<joggle::Fn>("transform_fixture.inline", *wrapped)
+              : std::nullopt;
   const auto optimized =
       model ? compiler.run<joggle::Fn>("transform_fixture.optimize", *model)
             : std::nullopt;
@@ -146,7 +153,8 @@ int main() {
       conv_model ? compiler.run<joggle::Fn>("transform_fixture.factor_conv",
                                             *conv_model)
                  : std::nullopt;
-  if (!model || !wrapped || !optimized || !conv_model || !factored_conv) {
+  if (!model || !wrapped || !inlined || !optimized || !conv_model ||
+      !factored_conv) {
     compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -154,6 +162,13 @@ int main() {
   const auto calls = optimized->ops();
   joggle::Diag equivalence;
   bool ok = true;
+  ok &= expect(
+      inlined->ops().size() == 2U &&
+          inlined->ops().front().callee().referenced_fn()->name() == "keep" &&
+          inlined->ops().back().callee().referenced_fn()->name() == "other" &&
+          compiler.verify(*inlined),
+      "the staged inline fn edits the called source body directly without a "
+      "before/after expression template");
   ok &= expect(
       calls.size() == 1U &&
           calls.front().callee().referenced_fn()->symbol().mod_name() ==

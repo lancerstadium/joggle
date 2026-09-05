@@ -76,8 +76,9 @@ ctest --test-dir build --output-on-failure
 ```
 
 The repository ships `tensor@1.1.0`, whose first bodyful `map` and Relu fns
-expand into a small `generate`/`at` basis; `transform@1.1.0`, which currently
-provides source resolution while direct Fn transforms are rebuilt; and the
+expand into a small `generate`/`at` basis; `transform@1.2.0`, whose first
+direct Fn transform performs generic single-block inlining alongside source
+resolution; and the
 prototype `quant@2.0.0` and optional Protobuf-backed `onnx@1.0.0` import path.
 The ONNX fixtures test import and reconstruction fidelity. They are not yet
 evidence for generic bodyful fusion or an executable kernel pipeline.
