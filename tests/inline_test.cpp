@@ -22,53 +22,53 @@ int main() {
   compiler.add(R"(
 joggle 1;
 mod inline_fixture@1.0.0 {
-  type word();
-  type memory();
+  pub type word();
+  pub type memory();
 
-  fn leaf(input: word) -> word;
-  fn join(lhs: word, rhs: word) -> word;
-  fn apply(input: word, body: (word) -> word) -> word;
-  fn step(token: effect<memory>) -> effect<memory>;
+  pub fn leaf(input: word) -> word;
+  pub fn join(lhs: word, rhs: word) -> word;
+  pub fn apply(input: word, body: (word) -> word) -> word;
+  pub fn step(token: effect<memory>) -> effect<memory>;
 
-  fn twice(input: word) -> word {
+  pub fn twice(input: word) -> word {
     first = leaf(input);
     return leaf(first);
   }
 
-  fn caller(input: word) -> word {
+  pub fn caller(input: word) -> word {
     return twice(input);
   }
 
-  fn opaque(input: word) -> word {
+  pub fn opaque(input: word) -> word {
     return leaf(input);
   }
 
-  fn choose(condition: i1, lhs: word, rhs: word) -> word {
+  pub fn choose(condition: i1, lhs: word, rhs: word) -> word {
     return if condition { leaf(lhs) } else { leaf(rhs) };
   }
 
-  fn choose_caller(condition: i1, lhs: word, rhs: word) -> word {
+  pub fn choose_caller(condition: i1, lhs: word, rhs: word) -> word {
     return choose(condition, lhs, rhs);
   }
 
-  fn nested(input: word) -> word {
+  pub fn nested(input: word) -> word {
     return leaf(input);
   }
 
-  fn closure(input: word) -> word {
+  pub fn closure(input: word) -> word {
     return apply(input, (value: word) => join(nested(value), input));
   }
 
-  fn closure_caller(input: word) -> word {
+  pub fn closure_caller(input: word) -> word {
     return closure(input);
   }
 
-  fn advance(token: effect<memory>) -> effect<memory> {
+  pub fn advance(token: effect<memory>) -> effect<memory> {
     token = step(token);
     return step(token);
   }
 
-  fn effect_caller(token: effect<memory>) -> effect<memory> {
+  pub fn effect_caller(token: effect<memory>) -> effect<memory> {
     return advance(token);
   }
 }

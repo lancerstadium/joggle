@@ -1,12 +1,12 @@
 # Transform
 
-`transform@3.0.0` owns reusable explicitly staged transformations:
+`transform@4.0.0` owns reusable explicitly staged transformations:
 
 ```joggle
-fn pass(input: fn, laws: mod) -> fn;
-fn inline(input: fn) -> fn;
-fn inline(input: mod) -> mod;
-fn resolve(input: mod) -> mod;
+pub fn pass(input: fn, laws: mod) -> fn;
+pub fn inline(input: fn) -> fn;
+pub fn inline(input: mod) -> mod;
+pub fn resolve(input: mod) -> mod;
 ```
 
 These are ordinary fns, not language keywords, pass classes, or a second IR.

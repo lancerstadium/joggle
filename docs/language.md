@@ -10,9 +10,10 @@ without adding declaration categories.
 joggle 1;
 
 mod example@1.2.0 {
-  import tensor@7 as t;
-  type word(width: int);
-  fn identity<T>(input: T) -> T;
+  import tensor@8 as t;
+  pub type word(width: int);
+  pub fn identity<T>(input: T) -> T;
+  fn normalize(value: int) -> int;
 }
 ```
 
@@ -20,13 +21,20 @@ The file header selects the language version. A file contains one mod.
 Imports accept exact (`1.2.3`), major (`1`), minor (`1.2`), and caret
 (`^1.2.3`) ranges. An optional `as` name changes only the source prefix.
 
-The only public member forms are:
+The only member forms are:
 
 ```text
 import  type  fn
 ```
 
 Legacy declarations such as `interface`, `attr`, and `op` are errors.
+
+`type` and `fn` declarations are private to their defining mod by default.
+Prefix a declaration with `pub` when an importing mod or a format reader may
+name it. Private declarations remain available to bodies in the same mod,
+which keeps shape helpers and implementation details out of the package ABI.
+An imported private name is a link error, and a public fn may not expose a
+private local type in its inputs or results. Imports are not re-exported.
 
 ## Compiler domains
 
@@ -43,12 +51,12 @@ the same `type` mechanism.
 ## Types
 
 ```joggle
-type integer(width: int, signed: bool = true) {
+pub type integer(width: int, signed: bool = true) {
   storage_bits: int = width;
 }
 
-type tensor(element: type, shape: list<int>);
-type layout(order: list<int>);
+pub type tensor(element: type, shape: list<int>);
+pub type layout(order: list<int>);
 ```
 
 Constructor parameters are immutable and may have literal defaults. Computed
@@ -68,8 +76,8 @@ format, or machine description is a normal type instance.
 Residual side effects are ordered by ordinary SSA values:
 
 ```joggle
-type memory();
-fn store(token: effect<memory>, address: index, value: i8)
+pub type memory();
+pub fn store(token: effect<memory>, address: index, value: i8)
     -> effect<memory>;
 ```
 
@@ -94,9 +102,9 @@ compiler-time host interaction remains behind explicit `@`.
 ## Fns and overloads
 
 ```joggle
-fn cast<T, U>(input: T, result: U) -> U;
+pub fn cast<T, U>(input: T, result: U) -> U;
 
-fn clamp(input: i8, low: i8, high: i8) -> i8 {
+pub fn clamp(input: i8, low: i8, high: i8) -> i8 {
   return min(max(input, low), high);
 }
 ```
@@ -108,8 +116,8 @@ value, or a parenthesized list.
 Generic parameters default to the `type` domain:
 
 ```joggle
-fn identity<T>(input: T) -> T;
-fn vector<W: int>(input: tensor<i8, [W]>) -> tensor<i8, [W]>;
+pub fn identity<T>(input: T) -> T;
+pub fn vector<W: int>(input: tensor<i8, [W]>) -> tensor<i8, [W]>;
 ```
 
 Named and positional call arguments may not be mixed ambiguously:
@@ -121,9 +129,9 @@ cast(input = value, result = i16)
 Fn types and typed lambdas use the same expression language:
 
 ```joggle
-fn apply<T, U>(input: T, body: (T) -> U) -> U;
+pub fn apply<T, U>(input: T, body: (T) -> U) -> U;
 
-fn widened(input: i8) -> i16 {
+pub fn widened(input: i8) -> i16 {
   return apply(input, (value: i8) => extend(value));
 }
 ```
@@ -278,7 +286,7 @@ and data so declaration provenance remains stable across body materialization.
 ```text
 file       := "joggle" integer ";" mod
 mod     := "mod" name "@" version "{" member* "}"
-member     := import | type | fn
+member     := import | ("pub"? (type | fn))
 import     := "import" name "@" range ("as" name)? ";"
 type       := "type" name "(" parameters? ")"
               ("{" computed-field* "}" | ";")

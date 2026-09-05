@@ -25,7 +25,7 @@ int main() {
   compiler.add(R"(
     joggle 1;
     mod testing@1.0.0 {
-      type label(name: string);
+      pub type label(name: string);
     }
   )",
                "testing.joggle");
@@ -65,7 +65,7 @@ int main() {
   nonfinite.add(R"(
     joggle 1;
     mod numeric@1.0.0 {
-      type scale(value: real);
+      pub type scale(value: real);
     }
   )",
                 "numeric.joggle");
@@ -86,7 +86,7 @@ int main() {
     joggle 1;
     mod shaped@1.0.0 {
       import test_ir@1;
-      type tensor(element: type, shape: list<int>);
+      pub type tensor(element: type, shape: list<int>);
     }
   )",
              "shaped.joggle");

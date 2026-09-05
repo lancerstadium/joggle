@@ -1,30 +1,30 @@
 # Tensor
 
-`tensor@7.1` owns target-independent tensor value semantics and the two
+`tensor@8.0` owns target-independent tensor value semantics and the two
 currently implemented tensor passes.
 
 ## Value API
 
 ```joggle
-type tensor(element: type, shape: list<int>);
+pub type tensor(element: type, shape: list<int>);
 
-fn tensor<E, S: list<int>>(
+pub fn tensor<E, S: list<int>>(
   shape: S,
   body: callable<@repeat(index, length(S)), [E]>
 ) -> tensor<E, S>;
 
-fn map<E, S: list<int>, R>(
+pub fn map<E, S: list<int>, R>(
   input: tensor<E, S>,
   body: (E) -> R
 ) -> tensor<R, S>;
 
-fn reduce<A, N: int>(
+pub fn reduce<A, N: int>(
   extent: N,
   initial: A,
   body: (A, index) -> A
 ) -> A;
 
-fn ([])<E, S: list<int>>(
+pub fn ([])<E, S: list<int>>(
   input: tensor<E, S>,
   indices: index...
 ) -> E;
@@ -37,11 +37,13 @@ fn set<E, S: list<int>>(
   indices: index...
 ) -> tensor<E, S>;
 
-fn constant<T>(content: string) -> T;
+pub fn constant<T>(content: string) -> T;
 ```
 
-`tensor`, `map`, `reduce`, and `[]` are the pure semantic basis.
-`empty` and `set` are the loop-form basis. `set` returns a new tensor value;
+`tensor`, `map`, `reduce`, `[]`, and `constant` are public. `empty` and `set`
+are private implementation details of loop expansion; target-independent
+tools inspect their exact declaration identity in produced Fns instead of
+importing or spelling them in source. `set` returns a new tensor value;
 it is not an effectful physical store. `constant` refers to immutable bytes
 owned by a Mod.
 
@@ -51,8 +53,8 @@ emitter.
 ## Compiler-time API
 
 ```joggle
-fn fuse(input: fn) -> fn;
-fn loops(input: fn) -> fn;
+pub fn fuse(input: fn) -> fn;
+pub fn loops(input: fn) -> fn;
 ```
 
 `fuse` expands bodyful calls and composes access paths into one output tensor

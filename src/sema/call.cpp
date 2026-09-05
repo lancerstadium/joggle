@@ -69,10 +69,20 @@ std::vector<Mod::FnDecl> find_visible_fns(Lookup&& lookup,
   const auto mod = lookup(mod_name);
   std::vector<Mod::FnDecl> result =
       mod ? mod->overloads(local) : std::vector<Mod::FnDecl>{};
+  if (mod_name != owner) {
+    result.erase(
+        std::remove_if(result.begin(), result.end(),
+                       [](const Mod::FnDecl& fn) { return !fn.exported(); }),
+        result.end());
+  }
   if (dot == std::string_view::npos && mod_name != prelude_mod_name &&
       result.empty()) {
     if (const auto prelude = lookup(prelude_mod_name)) {
       result = prelude->overloads(local);
+      result.erase(
+          std::remove_if(result.begin(), result.end(),
+                         [](const Mod::FnDecl& fn) { return !fn.exported(); }),
+          result.end());
     }
   }
   return result;
@@ -87,24 +97,26 @@ find_visible_operators(Lookup&& lookup, std::string_view owner,
   if (!scope) {
     return result;
   }
-  const auto append = [&](const Mod& mod) {
+  const auto append = [&](const Mod& mod, bool imported) {
     for (const auto& fn : mod.fns()) {
-      if (fn.name() == symbol && fn.operator_fixity() == fixity) {
+      if ((!imported || fn.exported()) && fn.name() == symbol &&
+          fn.operator_fixity() == fixity) {
         result.push_back(fn);
       }
     }
   };
-  append(*scope);
+  append(*scope, false);
   for (const auto& import : scope->imports()) {
     if (const auto mod = lookup(import.name)) {
-      append(*mod);
+      append(*mod, true);
     }
   }
   if (scope->name() != prelude_mod_name) {
     if (const auto prelude = lookup(prelude_mod_name)) {
       std::vector<Mod::FnDecl> ambient;
       for (const auto& fn : prelude->fns()) {
-        if (fn.name() == symbol && fn.operator_fixity() == fixity) {
+        if (fn.exported() && fn.name() == symbol &&
+            fn.operator_fixity() == fixity) {
           ambient.push_back(fn);
         }
       }

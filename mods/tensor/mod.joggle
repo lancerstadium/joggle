@@ -1,35 +1,24 @@
 joggle 1;
 
-mod tensor@7.1.0 {
-  import arith@1 as a;
+mod tensor@8.0.0 {
+  import arith@2 as a;
 
-  type tensor(element: type, shape: list<int>);
+  pub type tensor(element: type, shape: list<int>);
 
-  fn tensor<E, S: list<int>>(
+  pub fn tensor<E, S: list<int>>(
     shape: S,
     body: callable<@repeat(index, length(S)), [E]>
   ) -> tensor<E, S>;
-  fn map<E, S: list<int>, R>(
-    input: tensor<E, S>,
-    body: (E) -> R
-  ) -> tensor<R, S>;
-  fn reduce<A, N: int>(
-    extent: N,
-    initial: A,
-    body: (A, index) -> A
-  ) -> A;
-  fn ([])<E, S: list<int>>(
-    input: tensor<E, S>,
-    indices: index...
-  ) -> E;
+  pub fn map<E, S: list<int>, R>(input: tensor<E, S>, body: (E) -> R) -> tensor<R, S>;
+  pub fn reduce<A, N: int>(extent: N, initial: A, body: (A, index) -> A) -> A;
+  pub fn ([])<E, S: list<int>>(input: tensor<E, S>, indices: index...) -> E;
   fn empty<E, S: list<int>>(shape: S) -> tensor<E, S>;
   fn set<E, S: list<int>>(
     input: tensor<E, S>,
     value: E,
     indices: index...
   ) -> tensor<E, S>;
-  fn constant<T>(content: string) -> T;
-
-  fn fuse(input: fn) -> fn;
-  fn loops(input: fn) -> fn;
+  pub fn constant<T>(content: string) -> T;
+  pub fn fuse(input: fn) -> fn;
+  pub fn loops(input: fn) -> fn;
 }

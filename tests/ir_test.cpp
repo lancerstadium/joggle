@@ -26,14 +26,14 @@ int main() {
   compiler.add(R"(
     joggle 1;
     mod control@1.0.0 {
-      type other();
-      type memory();
-      fn source<T>() -> T;
-      fn add_i32(lhs: i32, rhs: i32) -> i32;
-      fn configure(input: i32, axis: int = 1) -> i32;
-      fn callback(input: i32) -> i32;
-      fn apply(input: i32, body: (i32) -> i32) -> i32;
-      fn advance(token: effect<memory>) -> effect<memory>;
+      pub type other();
+      pub type memory();
+      pub fn source<T>() -> T;
+      pub fn add_i32(lhs: i32, rhs: i32) -> i32;
+      pub fn configure(input: i32, axis: int = 1) -> i32;
+      pub fn callback(input: i32) -> i32;
+      pub fn apply(input: i32, body: (i32) -> i32) -> i32;
+      pub fn advance(token: effect<memory>) -> effect<memory>;
     }
   )",
                "control.joggle");
@@ -694,9 +694,9 @@ int main() {
   inferred_call.add(R"(
     joggle 1;
     mod inferred_call@1.0.0 {
-      type tensor(element: type, shape: list<int>);
+      pub type tensor(element: type, shape: list<int>);
 
-      fn doubled(values: list<int>) -> list<int> {
+      pub fn doubled(values: list<int>) -> list<int> {
         output: list<int> = [];
         for value in values {
           output = @append(output, @(value * 2));
@@ -704,7 +704,7 @@ int main() {
         return output;
       }
 
-      fn resize<E, I: list<int>, O: list<int>>(
+      pub fn resize<E, I: list<int>, O: list<int>>(
         input: tensor<E, I>,
         shape: O
       ) -> tensor<E, @doubled(O)>;

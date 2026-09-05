@@ -19,10 +19,10 @@ verified forms of the same `Fn` object.
 joggle 1;
 
 mod example@1.0.0 {
-  import nn@2 as n;
-  import tensor@7 as t;
+  import nn@3 as n;
+  import tensor@8 as t;
 
-  fn model(
+  pub fn model(
     lhs: t.tensor<f32, [2, 4]>,
     rhs: t.tensor<f32, [4, 3]>
   ) -> t.tensor<f32, [2, 3]> {
@@ -30,7 +30,7 @@ mod example@1.0.0 {
     return n.relu(product);
   }
 
-  fn prepare(input: fn) -> fn {
+  pub fn prepare(input: fn) -> fn {
     fused = @t.fuse(input);
     return @t.loops(fused);
   }
@@ -56,9 +56,9 @@ that cannot be expressed portably, such as decoding ONNX or writing an object
 file. The source file is always the ABI authority.
 
 ```joggle
-fn read(input: bytes, name: string = "model") -> mod;
-fn optimize(input: fn) -> fn;
-fn emit(input: mod) -> bytes;
+pub fn read(input: bytes, name: string = "model") -> mod;
+pub fn optimize(input: fn) -> fn;
+pub fn emit(input: mod) -> bytes;
 ```
 
 Ordinary calls remain in the program. `@read(...)` or `@optimize(...)` asks the
@@ -67,13 +67,13 @@ source instead of registering magic pass names.
 
 ## Shipped packages
 
-- `arith@1.2`: scalar operations used by portable bodies;
-- `tensor@7.1`: the tensor value, its small semantic basis, fusion, and loop
+- `arith@2`: scalar operations used by portable bodies;
+- `tensor@8`: the tensor value, its small semantic basis, fusion, and loop
   expansion;
-- `nn@2`: frontend-independent neural-network functions;
-- `transform@3`: generic inlining, equational rewriting, and resolution;
-- `quant@3`: quantize/dequantize semantics;
-- optional `onnx@5`: a Protobuf reader that resolves directly to linked
+- `nn@3`: frontend-independent neural-network functions;
+- `transform@4`: generic inlining, equational rewriting, and resolution;
+- `quant@4`: quantize/dequantize semantics;
+- optional `onnx@6`: a Protobuf reader that resolves directly to linked
   semantic functions.
 
 There is intentionally no generic memory or device package in the current

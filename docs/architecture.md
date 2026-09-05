@@ -42,10 +42,15 @@ module members.
 joggle 1;
 
 mod sample@1.0.0 {
-  type packed(bits: int, lanes: int);
-  fn convert<T, B: int, L: int>(input: T) -> packed<B, L>;
+  pub type packed(bits: int, lanes: int);
+  pub fn convert<T, B: int, L: int>(input: T) -> packed<B, L>;
 }
 ```
+
+Declarations are private by default. `pub` defines the importable package
+surface; it does not introduce another declaration kind or IR object. Private
+helpers and public declarations use the same type checker, bodies, overload
+rules, and C++ reflection handles.
 
 The same `fn` form describes residual computation and compiler-time tools.
 An ordinary call remains an `Op`; `@call(...)` requests compile-time execution.

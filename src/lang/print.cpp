@@ -220,9 +220,9 @@ std::string type_expression_layout(const detail::TypeExpr& expression,
           if (index != 1U) {
             result += ", ";
           }
-          result += type_expression_layout(expression.arguments[index],
-                                           content_column + result.size(), 0,
-                                           false);
+          result +=
+              type_expression_layout(expression.arguments[index],
+                                     content_column + result.size(), 0, false);
         }
         result += ']';
       } else {
@@ -294,7 +294,8 @@ std::string format(const Mod& mod) {
   };
   begin_group(!mod.storage_->types.empty());
   for (const auto& type : mod.storage_->types) {
-    const std::string head = "  type " + type.name;
+    const std::string head =
+        std::string("  ") + (type.exported ? "pub " : "") + "type " + type.name;
     std::string flat = head + '(';
     for (std::size_t index = 0; index < type.parameters.size(); ++index) {
       if (index != 0U) {
@@ -358,7 +359,7 @@ std::string format(const Mod& mod) {
       continue;
     }
     const detail::FnDef& fn = *member.declaration;
-    std::string head = "  fn ";
+    std::string head = std::string("  ") + (fn.exported ? "pub " : "") + "fn ";
     if (fn.operator_fixity) {
       if (fn.operator_fixity == Mod::FnDecl::Fixity::Postfix) {
         head += "postfix ";
@@ -496,7 +497,11 @@ std::string format(const Mod& mod) {
               return left->name < right->name;
             });
   for (const detail::FnMember* fn : materialized) {
-    write_indented(output, joggle::format(*fn->ir, fn->name));
+    std::string source = joggle::format(*fn->ir, fn->name);
+    if (fn->declaration && fn->declaration->exported) {
+      source.insert(0U, "pub ");
+    }
+    write_indented(output, source);
   }
   output << "}\n";
   return output.str();

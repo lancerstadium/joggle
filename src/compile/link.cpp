@@ -564,7 +564,7 @@ bool Compiler::link() {
       for (const auto& input : detail::value_inputs(declaration)) {
         detail::check_declaration_expression(
             *this, mod, input.domain, type_domain, contract.generics, {},
-            state_->diagnostics, fn_source, subject);
+            state_->diagnostics, fn_source, subject, declaration.exported());
       }
       for (std::size_t index = 0; index < declaration.inputs().size();
            ++index) {
@@ -578,7 +578,7 @@ bool Compiler::link() {
       for (const auto& result : detail::value_results(declaration)) {
         detail::check_declaration_expression(
             *this, mod, result.domain, type_domain, contract.generics, {},
-            state_->diagnostics, fn_source, subject);
+            state_->diagnostics, fn_source, subject, declaration.exported());
       }
     }
   }
@@ -713,4 +713,3 @@ bool Compiler::link() {
 }
 
 }  // namespace joggle
-

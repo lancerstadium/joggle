@@ -21,7 +21,7 @@ int main() {
   compiler.add(R"(
 joggle 1;
 mod boundary@1.0.0 {
-  fn multiply(lhs: f32, rhs: f32) -> f32;
+  pub fn multiply(lhs: f32, rhs: f32) -> f32;
 }
 )",
                "boundary.joggle");
@@ -30,7 +30,7 @@ joggle 1;
 mod source_kernel@1.0.0 {
   import boundary@1.0.0;
 
-  fn square(input: f32) -> f32 {
+  pub fn square(input: f32) -> f32 {
     return boundary.multiply(input, input);
   }
 }
@@ -41,7 +41,7 @@ joggle 1;
 mod source_model@1.0.0 {
   import source_kernel@1.0.0;
 
-  fn main(input: f32) -> f32 {
+  pub fn main(input: f32) -> f32 {
     return source_kernel.square(input);
   }
 }
@@ -50,9 +50,9 @@ mod source_model@1.0.0 {
   compiler.add(R"(
 joggle 1;
 mod opaque_model@1.0.0 {
-  fn opaque(input: f32) -> f32;
+  pub fn opaque(input: f32) -> f32;
 
-  fn main(input: f32) -> f32 {
+  pub fn main(input: f32) -> f32 {
     return opaque(input);
   }
 }

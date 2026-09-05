@@ -1,6 +1,6 @@
 # Neural network
 
-`nn@2` is a frontend-independent semantic library. Its members are ordinary
+`nn@3` is a frontend-independent semantic library. Its members are ordinary
 Joggle fns, and the compiler core contains no NN operation names.
 
 `matmul`, `relu`, and inference-mode `dropout` currently have source bodies.

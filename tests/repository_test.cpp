@@ -59,7 +59,7 @@ int main() {
   const auto mod = joggle::parse_mod(R"(
     joggle 1;
     mod atomic@1.0.0 {
-      type word(width: int);
+      pub type word(width: int);
     }
   )",
                                      parse_diagnostics, "atomic.joggle");
@@ -71,7 +71,7 @@ int main() {
   auto second = joggle::parse_mod(R"(
     joggle 1;
     mod atomic@2.0.0 {
-      type word(width: int);
+      pub type word(width: int);
     }
   )",
                                   second_parse_diagnostics, "atomic-v2.joggle");

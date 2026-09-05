@@ -18,8 +18,8 @@ set(lock "${JOGGLE_BUNDLE_TEST_DIR}/joggle.lock")
 file(WRITE "${driver}" "joggle 1;
 
 mod onnx_bundle_test@1.0.0 {
-  import onnx@5;
-  fn read(input: bytes) -> mod {
+  import onnx@6;
+  pub fn read(input: bytes) -> mod {
     return @onnx.read(input, \"${JOGGLE_MODEL_NAME}\");
   }
 }
@@ -84,8 +84,8 @@ expect_success("lock installed identity bundle"
   -o "${lock}")
 file(READ "${lock}" lock_text)
 string(FIND "${lock_text}" "root ${JOGGLE_MODEL_NAME}@1.0.0#" root_position)
-string(FIND "${lock_text}" "mod tensor@7.1.0#" tensor_position)
-string(FIND "${lock_text}" "mod nn@2.0.0#" nn_position)
+string(FIND "${lock_text}" "mod tensor@8.0.0#" tensor_position)
+string(FIND "${lock_text}" "mod nn@3.0.0#" nn_position)
 if(root_position EQUAL -1 OR tensor_position EQUAL -1 OR nn_position EQUAL -1)
   message(FATAL_ERROR "installed ONNX Mod lock is incomplete")
 endif()

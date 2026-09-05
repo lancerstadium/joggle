@@ -130,6 +130,10 @@ std::string_view Mod::TypeDecl::name() const {
   return storage_->types[index_].name;
 }
 
+bool Mod::TypeDecl::exported() const {
+  return storage_->types[index_].exported;
+}
+
 std::span<const Mod::ParamDecl> Mod::TypeDecl::parameters() const {
   return storage_->types[index_].parameters;
 }
@@ -153,6 +157,10 @@ Mod::FnDecl::FnDecl(std::shared_ptr<const Storage> storage, std::size_t index)
 
 std::string_view Mod::FnDecl::name() const {
   return storage_->fns[index_].name;
+}
+
+bool Mod::FnDecl::exported() const {
+  return storage_->fns[index_].declaration->exported;
 }
 
 std::span<const Mod::FnDecl::GenericDecl> Mod::FnDecl::generics() const {

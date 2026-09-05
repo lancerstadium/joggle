@@ -26,12 +26,12 @@ int main() {
     joggle 1;
     mod testing@1.0.0 {
       import test_ir@1;
-      fn marker<T>(input: T) -> T;
-      fn cleanup(input: fn) -> fn;
-      fn optimize(input: fn) -> fn {
+      pub fn marker<T>(input: T) -> T;
+      pub fn cleanup(input: fn) -> fn;
+      pub fn optimize(input: fn) -> fn {
         return cleanup(test_ir.canonicalize(input));
       }
-      fn abort(input: fn) -> fn;
+      pub fn abort(input: fn) -> fn;
     }
   )",
                "testing.joggle");
@@ -225,8 +225,8 @@ int main() {
 joggle 1;
 mod throwing@1.0.0 {
   import test_ir@1;
-  type tag(value: int);
-  fn use(input: test_ir.integer<8>) -> test_ir.integer<8> {
+  pub type tag(value: int);
+  pub fn use(input: test_ir.integer<8>) -> test_ir.integer<8> {
     return test_ir.cast(input);
   }
 }

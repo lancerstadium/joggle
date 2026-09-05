@@ -171,7 +171,7 @@ set(identity_source "${rebuild_build}/rebuild_native_mod_identity.cpp")
 file(READ "${identity_source}" first_identity)
 file(READ "${rebuild_source}/mod.joggle" changed_mod)
 set(original_mod "${changed_mod}")
-string(REPLACE "  fn keep" "  type extra();\n\n  fn keep"
+string(REPLACE "  pub fn keep" "  pub type extra();\n\n  pub fn keep"
   changed_mod "${changed_mod}")
 if(changed_mod STREQUAL original_mod)
   message(FATAL_ERROR "native rebuild fixture did not change its Mod")

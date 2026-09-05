@@ -168,6 +168,7 @@ detail::FnDef definition(const Fn& fn, std::string_view name) {
     result.results.push_back({"", expression(type), false, std::nullopt});
   }
   result.types.bindings.resize(result.inputs.size());
+  result.exported = true;
   return result;
 }
 

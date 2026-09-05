@@ -1,21 +1,21 @@
 joggle 1;
 
 mod native_plugin@1.0.0 {
-  type positive(value: int);
+  pub type positive(value: int);
 
-  fn source() -> positive<1>;
-  fn cached(value: int) -> int;
-  fn cache_probe<N: int>(seed: N, input: positive<@cached(N)>) -> positive<@cached(N)> {
+  pub fn source() -> positive<1>;
+  pub fn cached(value: int) -> int;
+  pub fn cache_probe<N: int>(seed: N, input: positive<@cached(N)>) -> positive<@cached(N)> {
     return input;
   }
-  fn noop(input: fn) -> fn;
-  fn reverse(input: bytes) -> bytes;
-  fn read_model(input: bytes) -> mod;
-  fn normalize_model(input: mod) -> mod;
-  fn specialize_model(input: mod) -> mod;
-  fn reject_model(input: mod) -> mod;
-  fn emit_model(input: mod) -> bytes;
-  fn main() -> positive<1> {
+  pub fn noop(input: fn) -> fn;
+  pub fn reverse(input: bytes) -> bytes;
+  pub fn read_model(input: bytes) -> mod;
+  pub fn normalize_model(input: mod) -> mod;
+  pub fn specialize_model(input: mod) -> mod;
+  pub fn reject_model(input: mod) -> mod;
+  pub fn emit_model(input: mod) -> bytes;
+  pub fn main() -> positive<1> {
     value = source();
     return value;
   }

@@ -33,29 +33,29 @@ int main() {
 joggle 1;
 
 mod tensor_use@1.0.0 {
-  import nn@2 as n;
-  import tensor@7 as t;
+  import nn@3 as n;
+  import tensor@8 as t;
 
-  fn transpose(
+  pub fn transpose(
     input: t.tensor<f32, [2, 3]>
   ) -> t.tensor<f32, [3, 2]> {
     return t.tensor([3, 2], (row, column) => input[column, row]);
   }
 
-  fn product(
+  pub fn product(
     lhs: t.tensor<f32, [2, 4]>,
     rhs: t.tensor<f32, [4, 3]>
   ) -> t.tensor<f32, [2, 3]> {
     return n.matmul(lhs, rhs);
   }
 
-  fn activate(
+  pub fn activate(
     input: t.tensor<f32, [2, 3]>
   ) -> t.tensor<f32, [2, 3]> {
     return n.relu(input);
   }
 
-  fn product_relu(
+  pub fn product_relu(
     lhs: t.tensor<f32, [2, 4]>,
     rhs: t.tensor<f32, [4, 3]>
   ) -> t.tensor<f32, [2, 3]> {
@@ -63,7 +63,7 @@ mod tensor_use@1.0.0 {
     return n.relu(product);
   }
 
-  fn prepare(input: fn) -> fn {
+  pub fn prepare(input: fn) -> fn {
     fused = @t.fuse(input);
     return @t.loops(fused);
   }

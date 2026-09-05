@@ -18,10 +18,10 @@ constexpr std::string_view source = R"(
 joggle 1;
 
 mod qdq@1.0.0 {
-  import tensor@7 as t;
-  import quant@3 as q;
+  import tensor@8 as t;
+  import quant@4 as q;
 
-  fn roundtrip(
+  pub fn roundtrip(
     input: t.tensor<f32, [1, 4]>,
     scale: t.tensor<f32, []>,
     zero: t.tensor<i8, []>
@@ -56,7 +56,7 @@ int main() {
 
   const auto ops = fn->ops();
   bool ok = true;
-  ok &= expect(quant->version() == joggle::Version{3, 0, 0} &&
+  ok &= expect(quant->version() == joggle::Version{4, 0, 0} &&
                    quant->fns().size() == 2U,
                "quant is a small Residual semantic Mod without host oracle "
                "overloads");

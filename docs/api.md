@@ -28,6 +28,10 @@ std::string canonical = joggle::format(*mod);
 Declaration handles are immutable views backed by their mod snapshot.
 `Mod::Symbol` supplies mod name, version, kind, local name, qualified
 name, stable name, and declaration provenance.
+`TypeDecl::exported()` and `FnDecl::exported()` report whether a declaration is
+part of the importable package surface. Direct reflection on a `Mod` includes
+both public and private declarations so package tooling can inspect complete
+implementations.
 
 `digest()` identifies the whole snapshot. `declaration_digest()` identifies
 imports and declarations with bodies erased.
@@ -113,9 +117,10 @@ statement body; both materialize to the same nested `Fn` representation.
 Programmatic readers append calls through `Compiler::call`. The overload that
 accepts expected result Types constrains ordinary generic inference with type
 information already present in an external format; it never bypasses the fn
-declaration. `Compiler::fns(name)` returns same-named declarations across the
-linked environment so a reader can resolve semantics without depending on a
-specific package.
+declaration. `Compiler::fns(name)` returns same-named public declarations
+across the linked environment so a reader can resolve package APIs without
+depending on a specific package or accidentally binding an implementation
+helper.
 
 ## Inline source calls
 

@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <exception>
+#include <iterator>
 #include <stdexcept>
 #include <memory>
 #include <optional>
@@ -357,7 +358,9 @@ std::vector<Mod::FnDecl> Compiler::fns(std::string_view name) const {
   for (const auto& [mod_name, mod] : state_->mods) {
     static_cast<void>(mod_name);
     auto declarations = mod.overloads(name);
-    result.insert(result.end(), declarations.begin(), declarations.end());
+    std::copy_if(declarations.begin(), declarations.end(),
+                 std::back_inserter(result),
+                 [](const Mod::FnDecl& fn) { return fn.exported(); });
   }
   return result;
 }

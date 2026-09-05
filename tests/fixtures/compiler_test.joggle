@@ -1,15 +1,15 @@
 joggle 1;
 
 mod test_ir@1.0.0 {
-  type integer(width: int, signed: bool = false) {
+  pub type integer(width: int, signed: bool = false) {
     storage_bits: int = width;
     is_signed: bool = signed;
   }
 
-  fn align(value: int, multiple: int) -> int {
+  pub fn align(value: int, multiple: int) -> int {
     return @ceildiv(value, multiple) * multiple;
   }
-  fn cast<T>(input: T) -> T;
-  fn (+)<T>(lhs: T, rhs: T) -> T;
-  fn canonicalize(input: fn) -> fn;
+  pub fn cast<T>(input: T) -> T;
+  pub fn (+)<T>(lhs: T, rhs: T) -> T;
+  pub fn canonicalize(input: fn) -> fn;
 }

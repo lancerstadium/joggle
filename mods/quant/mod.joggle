@@ -1,15 +1,15 @@
 joggle 1;
 
-mod quant@3.0.0 {
-  import tensor@7 as t;
+mod quant@4.0.0 {
+  import tensor@8 as t;
 
-  fn quantize_linear<E, Q, X: list<int>, Z: list<int>>(
+  pub fn quantize_linear<E, Q, X: list<int>, Z: list<int>>(
     input: t.tensor<E, X>,
     scale: t.tensor<f32, Z>,
     zero: t.tensor<Q, Z>,
     axis: int = 1
   ) -> t.tensor<Q, X>;
-  fn dequantize_linear<Q, X: list<int>, Z: list<int>>(
+  pub fn dequantize_linear<Q, X: list<int>, Z: list<int>>(
     input: t.tensor<Q, X>,
     scale: t.tensor<f32, Z>,
     zero: t.tensor<Q, Z>,

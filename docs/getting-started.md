@@ -22,10 +22,10 @@ Create `model.joggle`:
 joggle 1;
 
 mod model@1.0.0 {
-  import nn@2 as n;
-  import tensor@7 as t;
+  import nn@3 as n;
+  import tensor@8 as t;
 
-  fn main(
+  pub fn main(
     lhs: t.tensor<f32, [2, 4]>,
     rhs: t.tensor<f32, [4, 3]>
   ) -> t.tensor<f32, [2, 3]> {

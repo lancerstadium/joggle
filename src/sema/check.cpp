@@ -66,10 +66,11 @@ public:
   ExprCheck(const Compiler& compiler, const Mod& scope,
             std::span<const Mod::FnDecl::GenericDecl> generics,
             std::span<const Mod::ParamDecl> locals, Diag& diagnostics,
-            std::optional<Loc> source, std::string_view subject)
+            std::optional<Loc> source, std::string_view subject,
+            bool public_contract)
       : compiler_(compiler), scope_(scope), generics_(generics),
         locals_(locals), diagnostics_(diagnostics), source_(std::move(source)),
-        subject_(subject) {}
+        subject_(subject), public_contract_(public_contract) {}
 
   bool run(const Mod::Expr& expression, const Mod::Expr& expected) {
     const std::size_t before = diagnostics_.size();
@@ -346,6 +347,10 @@ private:
       report("unknown type '" + expression.text + "'");
       return;
     }
+    if ((owner != scope_.name() || public_contract_) && !target->exported()) {
+      report("type '" + expression.text + "' is private");
+      return;
+    }
     const std::span<const Mod::ParamDecl> parameters = target->parameters();
     if (expression.arguments.size() > parameters.size()) {
       report("'" + expression.text + "' has too many arguments");
@@ -370,6 +375,7 @@ private:
   Diag& diagnostics_;
   std::optional<Loc> source_;
   std::string subject_;
+  bool public_contract_ = false;
 };
 
 }  // namespace
@@ -379,9 +385,9 @@ bool check_declaration_expression(
     const Mod::Expr& expected,
     std::span<const Mod::FnDecl::GenericDecl> generics,
     std::span<const Mod::ParamDecl> locals, Diag& diagnostics,
-    std::optional<Loc> source, std::string_view subject) {
+    std::optional<Loc> source, std::string_view subject, bool public_contract) {
   return ExprCheck(compiler, scope, generics, locals, diagnostics,
-                   std::move(source), subject)
+                   std::move(source), subject, public_contract)
       .run(expression, expected);
 }
 

@@ -16,27 +16,27 @@ constexpr std::string_view source = R"(
 joggle 1;
 
 mod logic@1.0.0 {
-  type word(width: int);
-  type tensor(element: type, shape: list<int>);
-  type payload(scale: real, labels: list<string>, element: type);
+  pub type word(width: int);
+  pub type tensor(element: type, shape: list<int>);
+  pub type payload(scale: real, labels: list<string>, element: type);
 
-  fn source<T>(name: string, meta: type) -> T;
-  fn identity<T>(input: T) -> T;
-  fn generic_body<T>(input: T) -> T {
+  pub fn source<T>(name: string, meta: type) -> T;
+  pub fn identity<T>(input: T) -> T;
+  pub fn generic_body<T>(input: T) -> T {
     return identity(input);
   }
-  fn generic_body_user(input: word<8>) -> word<8> {
+  pub fn generic_body_user(input: word<8>) -> word<8> {
     return generic_body(input);
   }
-  fn add<T>(lhs: T, rhs: T) -> T;
-  fn apply<T, U>(input: T, body: (T) -> U) -> U;
-  fn apply_same<T>(input: T, body: (T) -> T) -> T;
-  fn callback_factory<T, U>() -> (T) -> U;
-  fn generate<T>(body: (word<8>) -> T) -> tensor<T, [4]>;
-  fn reduce<T, S: list<int>, A>(
+  pub fn add<T>(lhs: T, rhs: T) -> T;
+  pub fn apply<T, U>(input: T, body: (T) -> U) -> U;
+  pub fn apply_same<T>(input: T, body: (T) -> T) -> T;
+  pub fn callback_factory<T, U>() -> (T) -> U;
+  pub fn generate<T>(body: (word<8>) -> T) -> tensor<T, [4]>;
+  pub fn reduce<T, S: list<int>, A>(
     input: tensor<T, S>, initial: A, body: (A, T) -> A
   ) -> A;
-  fn main(lhs: tensor<word<8>, [2, 4]>) -> tensor<word<8>, [2, 4]> {
+  pub fn main(lhs: tensor<word<8>, [2, 4]>) -> tensor<word<8>, [2, 4]> {
     input: tensor<word<8>, [2, 4]> = source(
       name = "input } // still a string",
       meta = payload<1.5, ["alpha", "beta"], word<8>>
@@ -45,30 +45,30 @@ mod logic@1.0.0 {
     return sum;
   }
 
-  fn configured<N: int>(scale: N, input: word<N>) -> word<N> {
+  pub fn configured<N: int>(scale: N, input: word<N>) -> word<N> {
     result = identity(input);
     return result;
   }
-  fn default_configured<N: int>(scale: N = 8, input: word<N>) -> word<N> {
+  pub fn default_configured<N: int>(scale: N = 8, input: word<N>) -> word<N> {
     result = identity(input);
     return result;
   }
-  fn callback_user(input: word<8>, body: (word<8>) -> word<16>)
+  pub fn callback_user(input: word<8>, body: (word<8>) -> word<16>)
       -> word<16> {
     return apply(input, body);
   }
-  fn invoke(input: word<8>, body: (word<8>) -> word<16>) -> word<16> {
+  pub fn invoke(input: word<8>, body: (word<8>) -> word<16>) -> word<16> {
     return body(input);
   }
-  fn callback(input: word<8>) -> word<16>;
-  fn apply_fixed(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
-  fn inline_callback(input: word<8>) -> word<16> {
+  pub fn callback(input: word<8>) -> word<16>;
+  pub fn apply_fixed(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
+  pub fn inline_callback(input: word<8>) -> word<16> {
     return apply_fixed(input, (value: word<8>) => callback(value));
   }
-  fn generic_inline_callback(input: word<8>) -> word<16> {
+  pub fn generic_inline_callback(input: word<8>) -> word<16> {
     return apply(input, (value: word<8>) => callback(value));
   }
-  fn nested_inline_callback(input: word<8>) -> word<16> {
+  pub fn nested_inline_callback(input: word<8>) -> word<16> {
     return apply_fixed(
       input,
       (outer: word<8>) => apply_fixed(
@@ -77,32 +77,32 @@ mod logic@1.0.0 {
       )
     );
   }
-  fn choose(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
-  fn choose(input: word<8>, body: (word<16>) -> word<16>) -> word<16>;
-  fn overloaded_inline_callback(input: word<8>) -> word<16> {
+  pub fn choose(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
+  pub fn choose(input: word<8>, body: (word<16>) -> word<16>) -> word<16>;
+  pub fn overloaded_inline_callback(input: word<8>) -> word<16> {
     return choose(input, (value: word<8>) => callback(value));
   }
-  fn callback_value(input: word<8>) -> word<16> {
+  pub fn callback_value(input: word<8>) -> word<16> {
     return apply(input, callback);
   }
-  fn generic_callback<T>(input: T) -> T;
-  fn generic_callback_value(input: word<8>) -> word<8> {
+  pub fn generic_callback<T>(input: T) -> T;
+  pub fn generic_callback_value(input: word<8>) -> word<8> {
     body: (word<8>) -> word<8> = generic_callback;
     return apply_same(input, body);
   }
-  fn direct_generic_callback_value(input: word<8>) -> word<8> {
+  pub fn direct_generic_callback_value(input: word<8>) -> word<8> {
     return apply_same(input, generic_callback);
   }
-  fn overloaded_callback(input: word<8>) -> word<8>;
-  fn overloaded_callback(input: word<16>) -> word<16>;
-  fn overloaded_callback_value(input: word<8>) -> word<8> {
+  pub fn overloaded_callback(input: word<8>) -> word<8>;
+  pub fn overloaded_callback(input: word<16>) -> word<16>;
+  pub fn overloaded_callback_value(input: word<8>) -> word<8> {
     body: (word<8>) -> word<8> = overloaded_callback;
     return apply_same(input, body);
   }
-  fn direct_overloaded_callback_value(input: word<8>) -> word<8> {
+  pub fn direct_overloaded_callback_value(input: word<8>) -> word<8> {
     return apply_same(input, overloaded_callback);
   }
-  fn nested_result_inference(input: word<8>, initial: word<8>) -> word<8> {
+  pub fn nested_result_inference(input: word<8>, initial: word<8>) -> word<8> {
     return reduce(
       generate((value: word<8>) -> word<8> => value),
       initial,
@@ -322,18 +322,18 @@ int main() {
   guarded_inference.add(R"(
 joggle 1;
 mod guarded_inference@1.0.0 {
-  type word();
-  type tensor(element: type, shape: list<int>);
+  pub type word();
+  pub type tensor(element: type, shape: list<int>);
 
-  fn shape() -> list<int>;
-  fn generate<T, S: list<int>>(
+  pub fn shape() -> list<int>;
+  pub fn generate<T, S: list<int>>(
     shape: S, body: (word) -> T
   ) -> tensor<T, S>;
-  fn reduce<T, S: list<int>, A>(
+  pub fn reduce<T, S: list<int>, A>(
     input: tensor<T, S>, initial: A, body: (A, T) -> A
   ) -> A;
 
-  fn staged(input: word, initial: word) -> word {
+  pub fn staged(input: word, initial: word) -> word {
     shape = @shape();
     return reduce(
       generate(shape, (value: word) -> word => value),
@@ -342,7 +342,7 @@ mod guarded_inference@1.0.0 {
     );
   }
 
-  fn direct(input: word, initial: word) -> word {
+  pub fn direct(input: word, initial: word) -> word {
     return reduce(
       generate(@shape(), (value: word) -> word => value),
       initial,
@@ -379,21 +379,21 @@ mod guarded_inference@1.0.0 {
   invalid_lambda.add(R"(
 joggle 1;
 mod invalid_lambda@1.0.0 {
-  type word(width: int);
-  fn apply(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
-  fn callback(input: word<8>) -> word<16>;
-  fn identity(input: word<8>) -> word<8>;
+  pub type word(width: int);
+  pub fn apply(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
+  pub fn callback(input: word<8>) -> word<16>;
+  pub fn identity(input: word<8>) -> word<8>;
 
-  fn captures(input: word<8>) -> word<16> {
+  pub fn captures(input: word<8>) -> word<16> {
     return apply(input, (value: word<8>) => callback(input));
   }
 
-  fn captures_local(input: word<8>) -> word<16> {
+  pub fn captures_local(input: word<8>) -> word<16> {
     local = identity(input);
     return apply(input, (value: word<8>) => callback(local));
   }
 
-  fn mismatched(input: word<8>) -> word<16> {
+  pub fn mismatched(input: word<8>) -> word<16> {
     return apply(input, (value: word<16>) => callback(value));
   }
 }
@@ -467,10 +467,10 @@ mod invalid_lambda@1.0.0 {
   capture_replay.add(R"(
 joggle 1;
 mod invalid_lambda@1.0.0 {
-  type word(width: int);
-  fn callback(input: word<8>) -> word<16>;
-  fn apply(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
-  fn identity(input: word<8>) -> word<8>;
+  pub type word(width: int);
+  pub fn callback(input: word<8>) -> word<16>;
+  pub fn apply(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
+  pub fn identity(input: word<8>) -> word<8>;
 }
 )",
                      "capture-defs.joggle");
@@ -511,12 +511,12 @@ mod invalid_lambda@1.0.0 {
   ambiguous_lambda.add(R"(
 joggle 1;
 mod ambiguous_lambda@1.0.0 {
-  type word(width: int);
-  fn callback(input: word<8>) -> word<16>;
-  fn choose(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
-  fn choose(input: word<8>, body: (word<8>) -> word<8>) -> word<16>;
+  pub type word(width: int);
+  pub fn callback(input: word<8>) -> word<16>;
+  pub fn choose(input: word<8>, body: (word<8>) -> word<16>) -> word<16>;
+  pub fn choose(input: word<8>, body: (word<8>) -> word<8>) -> word<16>;
 
-  fn use(input: word<8>) -> word<16> {
+  pub fn use(input: word<8>) -> word<16> {
     return choose(input, (value: word<8>) => callback(value));
   }
 }
@@ -542,9 +542,9 @@ mod ambiguous_lambda@1.0.0 {
   const auto duplicate_lambda = joggle::parse_mod(R"(
 joggle 1;
 mod duplicate_lambda@1.0.0 {
-  type word();
-  fn apply(input: word, body: (word, word) -> word) -> word;
-  fn invalid(input: word) -> word {
+  pub type word();
+  pub fn apply(input: word, body: (word, word) -> word) -> word;
+  pub fn invalid(input: word) -> word {
     return apply(input, (value: word, value: word) => value);
   }
 }
@@ -686,7 +686,7 @@ mod duplicate_lambda@1.0.0 {
       R"(
 joggle 1;
 mod invalid_callback@1.0.0 {
-  fn apply(body: (missing) -> i32) -> i32;
+  pub fn apply(body: (missing) -> i32) -> i32;
 }
 )",
       invalid_callback_diagnostics, "invalid-callback.joggle");
@@ -745,15 +745,15 @@ mod invalid_callback@1.0.0 {
   constexpr std::string_view cfg_source = R"(
 joggle 1;
 mod cfg@1.0.0 {
-  type word();
-  type memory();
-  fn identity(input: word) -> word;
-  fn advance(token: effect<memory>) -> effect<memory>;
-  fn literal<T>(value: int) -> T ;
-  fn (<)(lhs: i32, rhs: i32) -> i1;
-  fn (>)(lhs: i32, rhs: i32) -> i1;
-  fn (+)(lhs: i32, rhs: i32) -> i32;
-  fn choose(condition: i1, lhs: word, rhs: word) -> word {
+  pub type word();
+  pub type memory();
+  pub fn identity(input: word) -> word;
+  pub fn advance(token: effect<memory>) -> effect<memory>;
+  pub fn literal<T>(value: int) -> T ;
+  pub fn (<)(lhs: i32, rhs: i32) -> i1;
+  pub fn (>)(lhs: i32, rhs: i32) -> i1;
+  pub fn (+)(lhs: i32, rhs: i32) -> i32;
+  pub fn choose(condition: i1, lhs: word, rhs: word) -> word {
     entry():
       branch condition, left(), right();
 
@@ -766,13 +766,13 @@ mod cfg@1.0.0 {
     merge(value: word):
       return value;
   }
-  fn structured(condition: i1, lhs: word, rhs: word) -> word {
+  pub fn structured(condition: i1, lhs: word, rhs: word) -> word {
     return if condition { identity(lhs) } else { identity(rhs) };
   }
-  fn specialized(lhs: word, rhs: word) -> word {
+  pub fn specialized(lhs: word, rhs: word) -> word {
     return if true { identity(lhs) } else { identity(rhs) };
   }
-  fn nested(first: i1, second: i1, lhs: word, middle: word, rhs: word)
+  pub fn nested(first: i1, second: i1, lhs: word, middle: word, rhs: word)
       -> word {
     return if first {
       if second { identity(lhs) } else { identity(middle) }
@@ -780,10 +780,10 @@ mod cfg@1.0.0 {
       identity(rhs)
     };
   }
-  fn materialized(condition: i1) -> i32 {
+  pub fn materialized(condition: i1) -> i32 {
     return if condition { 1 } else { 2 };
   }
-  fn statement_branch(condition: i1, lhs: word, rhs: word) -> word {
+  pub fn statement_branch(condition: i1, lhs: word, rhs: word) -> word {
     value = lhs;
     if condition {
       value = identity(value);
@@ -792,7 +792,7 @@ mod cfg@1.0.0 {
     }
     return value;
   }
-  fn statement_specialized(lhs: word, rhs: word) -> word {
+  pub fn statement_specialized(lhs: word, rhs: word) -> word {
     value = lhs;
     if true {
       value = identity(value);
@@ -801,14 +801,14 @@ mod cfg@1.0.0 {
     }
     return value;
   }
-  fn statement_without_else(condition: i1, lhs: word, rhs: word) -> word {
+  pub fn statement_without_else(condition: i1, lhs: word, rhs: word) -> word {
     value = lhs;
     if condition {
       value = identity(rhs);
     }
     return value;
   }
-  fn effect_branch(condition: i1, token: effect<memory>) -> effect<memory> {
+  pub fn effect_branch(condition: i1, token: effect<memory>) -> effect<memory> {
     if condition {
       token = advance(token);
     } else {
@@ -816,51 +816,51 @@ mod cfg@1.0.0 {
     }
     return token;
   }
-  fn effect_loop(condition: i1, token: effect<memory>) -> effect<memory> {
+  pub fn effect_loop(condition: i1, token: effect<memory>) -> effect<memory> {
     while condition {
       token = advance(token);
     }
     return token;
   }
-  fn effect_return(condition: i1, token: effect<memory>) -> effect<memory> {
+  pub fn effect_return(condition: i1, token: effect<memory>) -> effect<memory> {
     if condition {
       return advance(token);
     } else {
       return advance(token);
     }
   }
-  fn effect_for(token: effect<memory>) -> effect<memory> {
+  pub fn effect_for(token: effect<memory>) -> effect<memory> {
     for item: i32 in @range(4) {
       token = advance(token);
     }
     return token;
   }
-  fn early_return(condition: i1, lhs: word, rhs: word) -> word {
+  pub fn early_return(condition: i1, lhs: word, rhs: word) -> word {
     if condition {
       return identity(lhs);
     }
     return identity(rhs);
   }
-  fn early_return_both(condition: i1, lhs: word, rhs: word) -> word {
+  pub fn early_return_both(condition: i1, lhs: word, rhs: word) -> word {
     if condition {
       return identity(lhs);
     } else {
       return identity(rhs);
     }
   }
-  fn specialized_return(lhs: word, rhs: word) -> word {
+  pub fn specialized_return(lhs: word, rhs: word) -> word {
     if true {
       return identity(lhs);
     }
     return identity(rhs);
   }
-  fn loop_return(condition: i1, lhs: word, rhs: word) -> word {
+  pub fn loop_return(condition: i1, lhs: word, rhs: word) -> word {
     while condition {
       return identity(lhs);
     }
     return identity(rhs);
   }
-  fn early_literal(condition: i1) -> i32 {
+  pub fn early_literal(condition: i1) -> i32 {
     if condition {
       return 1;
     }
@@ -891,7 +891,8 @@ mod cfg@1.0.0 {
           cfg_canonical.find("      return identity(rhs);\n"
                              "    }\n"
                              "  }\n"
-                             "  fn specialized_return") != std::string::npos,
+                             "  pub fn specialized_return") !=
+              std::string::npos,
       "one expression tree round-trips structured and explicit "
       "region-free control flow");
 
@@ -1094,9 +1095,9 @@ mod cfg@1.0.0 {
   invalid_effect_source.add(R"(
 joggle 1;
 mod invalid_effect_source@1.0.0 {
-  type memory();
-  fn advance(token: effect<memory>) -> effect<memory>;
-  fn invalid(token: effect<memory>) -> effect<memory> {
+  pub type memory();
+  pub fn advance(token: effect<memory>) -> effect<memory>;
+  pub fn invalid(token: effect<memory>) -> effect<memory> {
     first = advance(token);
     second = advance(token);
     return first;
@@ -1126,8 +1127,8 @@ mod invalid_effect_source@1.0.0 {
       R"(
 joggle 1;
 mod incomplete_return@1.0.0 {
-  type word();
-  fn invalid(condition: i1, input: word) -> word {
+  pub type word();
+  pub fn invalid(condition: i1, input: word) -> word {
     if condition {
       return input;
     }
@@ -1150,8 +1151,8 @@ mod incomplete_return@1.0.0 {
       R"(
 joggle 1;
 mod unreachable_statement@1.0.0 {
-  type word();
-  fn invalid(condition: i1, input: word) -> word {
+  pub type word();
+  pub fn invalid(condition: i1, input: word) -> word {
     if condition {
       return input;
       value = input;
@@ -1175,7 +1176,7 @@ mod unreachable_statement@1.0.0 {
   missing_literal.add(R"(
 joggle 1;
 mod missing_literal@1.0.0 {
-  fn choose(condition: i1) -> i32 {
+  pub fn choose(condition: i1) -> i32 {
     return if condition { 1 } else { 2 };
   }
 }
@@ -1202,14 +1203,14 @@ mod missing_literal@1.0.0 {
   ambiguous_literal.add(R"(
 joggle 1;
 mod literal_a@1.0.0 {
-  fn literal<T>(value: int) -> T;
+  pub fn literal<T>(value: int) -> T;
 }
 )",
                         "literal-a.joggle");
   ambiguous_literal.add(R"(
 joggle 1;
 mod literal_b@1.0.0 {
-  fn literal<T>(value: int) -> T;
+  pub fn literal<T>(value: int) -> T;
 }
 )",
                         "literal-b.joggle");
@@ -1218,7 +1219,7 @@ joggle 1;
 mod ambiguous_literal@1.0.0 {
   import literal_a@1.0.0;
   import literal_b@1.0.0;
-  fn choose(condition: i1) -> i32 {
+  pub fn choose(condition: i1) -> i32 {
     return if condition { 1 } else { 2 };
   }
 }
@@ -1243,15 +1244,15 @@ mod ambiguous_literal@1.0.0 {
   constexpr std::string_view loop_source = R"(
 joggle 1;
 mod loops@1.0.0 {
-  type word(width: int);
-  fn source<T>() -> T;
-  fn literal<T>(value: int) -> T ;
-  fn less(lhs: i32, rhs: i32) -> i1;
-  fn (<)(lhs: i32, rhs: i32) -> i1;
-  fn (+)(lhs: i32, rhs: i32) -> i32;
-  fn next(input: i32) -> i32;
+  pub type word(width: int);
+  pub fn source<T>() -> T;
+  pub fn literal<T>(value: int) -> T ;
+  pub fn less(lhs: i32, rhs: i32) -> i1;
+  pub fn (<)(lhs: i32, rhs: i32) -> i1;
+  pub fn (+)(lhs: i32, rhs: i32) -> i32;
+  pub fn next(input: i32) -> i32;
 
-  fn repeat(start: i32, limit: i32) -> i32 {
+  pub fn repeat(start: i32, limit: i32) -> i32 {
     current = start;
     while less(current, limit) {
       current = next(current);
@@ -1259,7 +1260,7 @@ mod loops@1.0.0 {
     return current;
   }
 
-  fn count_from_zero(limit: i32) -> i32 {
+  pub fn count_from_zero(limit: i32) -> i32 {
     current: i32 = 0;
     while less(current, limit) {
       current = next(current);
@@ -1267,7 +1268,7 @@ mod loops@1.0.0 {
     return current;
   }
 
-  fn huge_counted_loop(input: i32) -> i32 {
+  pub fn huge_counted_loop(input: i32) -> i32 {
     current = input;
     for offset: i32 in @range(1000000000) {
       current = next(current);
@@ -1276,7 +1277,7 @@ mod loops@1.0.0 {
     return current;
   }
 
-  fn specialize() -> word<1> {
+  pub fn specialize() -> word<1> {
     count = 0;
     running = true;
     while running {
@@ -1287,7 +1288,7 @@ mod loops@1.0.0 {
     return value;
   }
 
-  fn controlled(start: i32, limit: i32, skip: i1, stop: i1) -> i32 {
+  pub fn controlled(start: i32, limit: i32, skip: i1, stop: i1) -> i32 {
     current = start;
     while less(current, limit) {
       current = next(current);
@@ -1303,7 +1304,7 @@ mod loops@1.0.0 {
     return current;
   }
 
-  fn known_break() -> word<1> {
+  pub fn known_break() -> word<1> {
     running = true;
     count = 0;
     while running {
@@ -1314,7 +1315,7 @@ mod loops@1.0.0 {
     return value;
   }
 
-  fn known_continue() -> word<1> {
+  pub fn known_continue() -> word<1> {
     running = true;
     count = 0;
     while running {
@@ -1424,7 +1425,7 @@ mod loops@1.0.0 {
       joggle::parse_mod(R"(
 joggle 1;
 mod outside_loop@1.0.0 {
-  fn invalid() {
+  pub fn invalid() {
     break;
   }
 }
@@ -1444,9 +1445,9 @@ mod outside_loop@1.0.0 {
   mixed_loop_transfer.add(R"(
 joggle 1;
 mod mixed_loop_transfer@1.0.0 {
-  fn literal<T>(value: int) -> T ;
+  pub fn literal<T>(value: int) -> T ;
 
-  fn break_on(stop: i1) -> i32 {
+  pub fn break_on(stop: i1) -> i32 {
     running = true;
     count = 1;
     while running {
@@ -1459,7 +1460,7 @@ mod mixed_loop_transfer@1.0.0 {
     return count;
   }
 
-  fn continue_on(skip: i1) {
+  pub fn continue_on(skip: i1) {
     running = true;
     while running {
       running = false;
@@ -1511,10 +1512,10 @@ mod mixed_loop_transfer@1.0.0 {
   cyclic_mixed_loop.add(R"(
 joggle 1;
 mod cyclic_mixed_loop@1.0.0 {
-  fn literal<T>(value: bool) -> T ;
-  fn literal<T>(value: int) -> T ;
+  pub fn literal<T>(value: bool) -> T ;
+  pub fn literal<T>(value: int) -> T ;
 
-  fn rebuild<Start: int>(phase: Start, skip: i1) -> i32 {
+  pub fn rebuild<Start: int>(phase: Start, skip: i1) -> i32 {
     running = true;
     while running {
       if skip {
@@ -1592,11 +1593,11 @@ mod cyclic_mixed_loop@1.0.0 {
   computed_cycle.add(R"(
 joggle 1;
 mod computed_cycle@1.0.0 {
-  fn condition(value: bool) -> bool {
+  pub fn condition(value: bool) -> bool {
     return value;
   }
 
-  fn invalid(skip: i1) {
+  pub fn invalid(skip: i1) {
     running = true;
     while @condition(running) {
       if skip {
@@ -1624,7 +1625,7 @@ mod computed_cycle@1.0.0 {
   unconstrained_cycle.add(R"(
 joggle 1;
 mod unconstrained_cycle@1.0.0 {
-  fn invalid(skip: i1) {
+  pub fn invalid(skip: i1) {
     running = true;
     token = 0;
     while running {
@@ -1655,7 +1656,7 @@ mod unconstrained_cycle@1.0.0 {
   bounded_loop.add(R"(
 joggle 1;
 mod bounded_loop@1.0.0 {
-  fn never_finishes() {
+  pub fn never_finishes() {
     running = true;
     while running {
       running = true;
@@ -1686,8 +1687,8 @@ mod bounded_loop@1.0.0 {
       joggle::parse_mod(R"(
 joggle 1;
 mod invalid_cfg@1.0.0 {
-  type word();
-  fn choose(condition: i1, value: word) -> word {
+  pub type word();
+  pub fn choose(condition: i1, value: word) -> word {
     entry():
       jump merge();
     merge(result: word):
@@ -1716,9 +1717,9 @@ mod invalid_cfg@1.0.0 {
   constexpr std::string_view undefined = R"(
 joggle 1;
 mod logic@1.0.0 {
-  type word(width: int);
-  fn add<T>(lhs: T, rhs: T) -> T;
-  fn main() -> word<8> {
+  pub type word(width: int);
+  pub fn add<T>(lhs: T, rhs: T) -> T;
+  pub fn main() -> word<8> {
     sum: word<8> = add(missing, missing);
     return sum;
   }
@@ -1738,7 +1739,7 @@ mod logic@1.0.0 {
   unknown.add(R"(
 joggle 1;
 mod logic@1.0.0 {
-  type different();
+  pub type different();
 }
 )",
               "unknown.joggle");
@@ -1764,10 +1765,10 @@ mod logic@1.0.0 {
   mismatch.add(R"(
 joggle 1;
 mod mismatch@1.0.0 {
-  type a();
-  type b();
-  fn same<T>(lhs: T, rhs: T) -> T;
-  fn main(lhs: a, rhs: b) -> a {
+  pub type a();
+  pub type b();
+  pub fn same<T>(lhs: T, rhs: T) -> T;
+  pub fn main(lhs: a, rhs: b) -> a {
     result = same(lhs, rhs);
     return result;
   }
@@ -1785,9 +1786,9 @@ mod mismatch@1.0.0 {
   return_inferred.add(R"(
 joggle 1;
 mod return_inferred@1.0.0 {
-  type a();
-  fn source<T>() -> T;
-  fn main() -> a {
+  pub type a();
+  pub fn source<T>() -> T;
+  pub fn main() -> a {
     result = source();
     return result;
   }
@@ -1808,9 +1809,9 @@ mod return_inferred@1.0.0 {
   unbound.add(R"(
 joggle 1;
 mod unbound@1.0.0 {
-  type a();
-  fn source<T>() -> T;
-  fn main() {
+  pub type a();
+  pub fn source<T>() -> T;
+  pub fn main() {
     result = source();
     return;
   }
@@ -1827,15 +1828,15 @@ mod unbound@1.0.0 {
   constexpr std::string_view dependent_source = R"(
 joggle 1;
 mod dependent@1.0.0 {
-  type word(width: int);
-  fn input<N: int>(width: N) -> word<N>;
-  fn default_input<N: int>(width: N = 8) -> word<N>;
-  fn align(value: int, multiple: int) -> int {
+  pub type word(width: int);
+  pub fn input<N: int>(width: N) -> word<N>;
+  pub fn default_input<N: int>(width: N = 8) -> word<N>;
+  pub fn align(value: int, multiple: int) -> int {
     return ceildiv(value, multiple) * multiple;
   }
-  fn double(value: int) -> int;
+  pub fn double(value: int) -> int;
 
-  fn inferred() {
+  pub fn inferred() {
     aligned = @align(3, 4);
     width = @(if true { double(aligned) } else { 1 / 0 });
     value = input(width: width);
@@ -2005,66 +2006,66 @@ mod dependent@1.0.0 {
   constexpr std::string_view computed_source = R"(
 joggle 1;
 mod computed@1.0.0 {
-  type word(width: int);
+  pub type word(width: int);
 
-  fn align(value: int, multiple: int) -> int {
+  pub fn align(value: int, multiple: int) -> int {
     return ceildiv(value, multiple) * multiple;
   }
 
-  fn (//)(lhs: int, rhs: int) -> int {
+  pub fn (//)(lhs: int, rhs: int) -> int {
     return lhs + rhs;
   }
-  fn guarded(value: int) -> int {
+  pub fn guarded(value: int) -> int {
     return if true { value } else { 1 / 0 };
   }
 
-  fn extend<W: int>(input: word<W>) -> word<W + 1>;
-  fn packed<M: int, N: int>(rows: M, columns: N)
+  pub fn extend<W: int>(input: word<W>) -> word<W + 1>;
+  pub fn packed<M: int, N: int>(rows: M, columns: N)
     -> word<ceildiv(M * N, 8)>;
-  fn aligned<W: int>(input: word<W>) -> word<align(W, 8)>;
-  fn (+)<W: int>(lhs: word<W>, rhs: word<W>) -> word<W>;
-  fn (//)<W: int>(lhs: word<W>, rhs: word<W>) -> word<W>;
-  fn postfix (!)(value: int) -> int;
-  fn combined<W: int>(input: word<W>) -> word<@(W // 2)>;
-  fn selected<W: int>(input: word<W>) -> word<@(guarded(W + 2))>;
-  fn hosted<W: int>(input: word<W>) -> word<@(W!)>;
+  pub fn aligned<W: int>(input: word<W>) -> word<align(W, 8)>;
+  pub fn (+)<W: int>(lhs: word<W>, rhs: word<W>) -> word<W>;
+  pub fn (//)<W: int>(lhs: word<W>, rhs: word<W>) -> word<W>;
+  pub fn postfix (!)(value: int) -> int;
+  pub fn combined<W: int>(input: word<W>) -> word<@(W // 2)>;
+  pub fn selected<W: int>(input: word<W>) -> word<@(guarded(W + 2))>;
+  pub fn hosted<W: int>(input: word<W>) -> word<@(W!)>;
 
-  fn main(input: word<7>) -> word<8> {
+  pub fn main(input: word<7>) -> word<8> {
     result = extend(input);
     return result;
   }
 
-  fn pack() -> word<15> {
+  pub fn pack() -> word<15> {
     result = packed(rows = 10, columns = 12);
     return result;
   }
 
-  fn align_width(input: word<10>) -> word<16> {
+  pub fn align_width(input: word<10>) -> word<16> {
     result = aligned(input);
     return result;
   }
 
-  fn sum(lhs: word<8>, rhs: word<8>) -> word<8> {
+  pub fn sum(lhs: word<8>, rhs: word<8>) -> word<8> {
     result = lhs + rhs;
     return result;
   }
 
-  fn quotient(lhs: word<8>, rhs: word<8>) -> word<8> {
+  pub fn quotient(lhs: word<8>, rhs: word<8>) -> word<8> {
     result = lhs // rhs;
     return result;
   }
 
-  fn compile_time_operator(input: word<6>) -> word<8> {
+  pub fn compile_time_operator(input: word<6>) -> word<8> {
     result = combined(input);
     return result;
   }
 
-  fn compile_time_branch(input: word<6>) -> word<8> {
+  pub fn compile_time_branch(input: word<6>) -> word<8> {
     result = selected(input);
     return result;
   }
 
-  fn compile_time_host(input: word<7>) -> word<14> {
+  pub fn compile_time_host(input: word<7>) -> word<14> {
     result = hosted(input);
     return result;
   }
@@ -2194,12 +2195,12 @@ mod computed@1.0.0 {
   projected.add(R"(
 joggle 1;
 mod formats@1.0.0 {
-  type packed(width: int, signed: bool = false) {
+  pub type packed(width: int, signed: bool = false) {
     storage_bits: int = width;
     is_signed: bool = signed;
   }
 
-  fn align(value: int, multiple: int) -> int {
+  pub fn align(value: int, multiple: int) -> int {
     return ceildiv(value, multiple) * multiple;
   }
 }
@@ -2210,18 +2211,18 @@ joggle 1;
 mod projected@1.0.0 {
   import formats@1.0.0 as fmt;
 
-  type word(width: int, signed: bool);
-  fn encode<T>(input: T)
+  pub type word(width: int, signed: bool);
+  pub fn encode<T>(input: T)
     -> word<T.storage_bits, T.is_signed>;
-  fn align<T>(input: T)
+  pub fn align<T>(input: T)
     -> word<fmt.align(T.storage_bits, 8), T.is_signed>;
 
-  fn encode13(input: fmt.packed<13, true>) -> word<13, true> {
+  pub fn encode13(input: fmt.packed<13, true>) -> word<13, true> {
     result = encode(input);
     return result;
   }
 
-  fn align13(input: fmt.packed<13, true>) -> word<16, true> {
+  pub fn align13(input: fmt.packed<13, true>) -> word<16, true> {
     result = align(input);
     return result;
   }
@@ -2270,10 +2271,10 @@ mod projected@1.0.0 {
   missing_field.add(R"(
 joggle 1;
 mod missing_field@1.0.0 {
-  type opaque();
-  type word(width: int);
-  fn encode<T>(input: T) -> word<T.storage_bits>;
-  fn main(input: opaque) -> word<8> {
+  pub type opaque();
+  pub type word(width: int);
+  pub fn encode<T>(input: T) -> word<T.storage_bits>;
+  pub fn main(input: opaque) -> word<8> {
     result = encode(input);
     return result;
   }
@@ -2298,7 +2299,7 @@ mod missing_field@1.0.0 {
   ill_typed_field.add(R"(
 joggle 1;
 mod ill_typed_field@1.0.0 {
-  type malformed() {
+  pub type malformed() {
     storage_bits: int = "wide";
   }
 }
@@ -2311,10 +2312,10 @@ mod ill_typed_field@1.0.0 {
   recursive_fn.add(R"(
 joggle 1;
 mod recursive_fn@1.0.0 {
-  fn first(value: int) -> int {
+  pub fn first(value: int) -> int {
     return second(value);
   }
-  fn second(value: int) -> int {
+  pub fn second(value: int) -> int {
     return first(value);
   }
 }
@@ -2333,7 +2334,7 @@ mod recursive_fn@1.0.0 {
   imported_fn.add(R"(
 joggle 1;
 mod integer_math@1.0.0 {
-  fn align(value: int, multiple: int) -> int {
+  pub fn align(value: int, multiple: int) -> int {
     return ceildiv(value, multiple) * multiple;
   }
 }
@@ -2344,11 +2345,11 @@ joggle 1;
 mod imported_fn@1.0.0 {
   import integer_math@1.0.0 as math;
 
-  type word(width: int);
+  pub type word(width: int);
 
-  fn aligned<W: int>(input: word<W>) -> word<math.align(W, 8)>;
+  pub fn aligned<W: int>(input: word<W>) -> word<math.align(W, 8)>;
 
-  fn main(input: word<9>) -> word<16> {
+  pub fn main(input: word<9>) -> word<16> {
     result = aligned(input);
     return result;
   }
@@ -2377,17 +2378,17 @@ mod imported_fn@1.0.0 {
   joggle::Compiler imported_operator;
   imported_operator.add(R"(
 joggle 1;
-mod native_arith@1.0.0 {
-  fn (+)<T>(lhs: T, rhs: T) -> T;
+mod native_arith@2.0.0 {
+  pub fn (+)<T>(lhs: T, rhs: T) -> T;
 }
 )",
                         "native-arith.joggle");
   imported_operator.add(R"(
 joggle 1;
 mod imported_operator@1.0.0 {
-  import native_arith@1.0.0;
+  import native_arith@2.0.0;
 
-  fn main(lhs: i32, rhs: i32) -> i32 {
+  pub fn main(lhs: i32, rhs: i32) -> i32 {
     result = lhs + rhs;
     return result;
   }
@@ -2416,12 +2417,12 @@ mod imported_operator@1.0.0 {
   ambiguous_operator.add(R"(
 joggle 1;
 mod ambiguous_operator@1.0.0 {
-  type word(width: int);
+  pub type word(width: int);
 
-  fn (+)<W: int>(lhs: word<W>, rhs: word<W>) -> word<W>;
-  fn (+)<W: int>(lhs: word<W>, rhs: word<W>) -> word<W>;
+  pub fn (+)<W: int>(lhs: word<W>, rhs: word<W>) -> word<W>;
+  pub fn (+)<W: int>(lhs: word<W>, rhs: word<W>) -> word<W>;
 
-  fn main(lhs: word<8>, rhs: word<8>) -> word<8> {
+  pub fn main(lhs: word<8>, rhs: word<8>) -> word<8> {
     result = lhs + rhs;
     return result;
   }
@@ -2448,9 +2449,9 @@ mod ambiguous_operator@1.0.0 {
   unsafe_expression.add(R"(
 joggle 1;
 mod unsafe_expression@1.0.0 {
-  type word(width: int);
-  fn invalid<W: int>(input: word<W>) -> word<W / 0>;
-  fn main(input: word<8>) {
+  pub type word(width: int);
+  pub fn invalid<W: int>(input: word<W>) -> word<W / 0>;
+  pub fn main(input: word<8>) {
     result = invalid(input);
     return;
   }
@@ -2475,7 +2476,7 @@ mod unsafe_expression@1.0.0 {
   dynamic_at.add(R"(
 joggle 1;
 mod dynamic_at@1.0.0 {
-  fn invalid(input: i32) -> i32 {
+  pub fn invalid(input: i32) -> i32 {
     forced = @(input);
     return input;
   }
@@ -2499,8 +2500,8 @@ mod dynamic_at@1.0.0 {
   guarded_host.add(R"(
 joggle 1;
 mod guarded_host@1.0.0 {
-  fn observe(value: int) -> int;
-  fn invalid(condition: i1) {
+  pub fn observe(value: int) -> int;
+  pub fn invalid(condition: i1) {
     selected = if condition { @observe(1) } else { @observe(2) };
     return;
   }
@@ -2536,8 +2537,8 @@ mod guarded_host@1.0.0 {
   hermetic_host.add(R"(
 joggle 1;
 mod hermetic_host@1.0.0 {
-  fn evaluate(value: int) -> int;
-  fn valid(condition: i1) {
+  pub fn evaluate(value: int) -> int;
+  pub fn valid(condition: i1) {
     if condition {
       selected = @evaluate(1);
     } else {
@@ -2569,17 +2570,17 @@ mod hermetic_host@1.0.0 {
   list_evaluation.add(R"(
 joggle 1;
 mod list_evaluation@1.0.0 {
-  type word(width: int);
+  pub type word(width: int);
 
-  fn source<T>() -> T;
-  fn sum(values: list<int>) -> int;
+  pub fn source<T>() -> T;
+  pub fn sum(values: list<int>) -> int;
 
-  fn populated() -> word<6> {
+  pub fn populated() -> word<6> {
     value: word<@(sum([1, 2, 3]))> = source();
     return value;
   }
 
-  fn empty() -> word<0> {
+  pub fn empty() -> word<0> {
     value: word<@(sum([]))> = source();
     return value;
   }
@@ -2641,18 +2642,18 @@ mod list_evaluation@1.0.0 {
   constexpr std::string_view staged_control_source = R"(
 joggle 1;
 mod staged_control@1.0.0 {
-  type word(width: int);
+  pub type word(width: int);
 
-  fn identity<T>(input: T) -> T;
-  fn (+)(lhs: int, rhs: int) -> int;
-  fn (<)(lhs: int, rhs: int) -> bool;
-  fn (>)(lhs: int, rhs: int) -> bool;
-  fn literal<T>(value: int) -> T ;
-  fn (+)(lhs: index, rhs: index) -> index;
-  fn (<)(lhs: index, rhs: index) -> i1;
-  fn touch(input: i32, position: index) -> i32;
+  pub fn identity<T>(input: T) -> T;
+  pub fn (+)(lhs: int, rhs: int) -> int;
+  pub fn (<)(lhs: int, rhs: int) -> bool;
+  pub fn (>)(lhs: int, rhs: int) -> bool;
+  pub fn literal<T>(value: int) -> T ;
+  pub fn (+)(lhs: index, rhs: index) -> index;
+  pub fn (<)(lhs: index, rhs: index) -> i1;
+  pub fn touch(input: i32, position: index) -> i32;
 
-  fn sum_shape<S: list<int>>(shape: S) -> int {
+  pub fn sum_shape<S: list<int>>(shape: S) -> int {
     total = 0;
     for dimension in S {
       if @(dimension > 1) {
@@ -2667,7 +2668,7 @@ mod staged_control@1.0.0 {
     return total;
   }
 
-  fn count<N: int>(limit: N) -> int {
+  pub fn count<N: int>(limit: N) -> int {
     current = 0;
     while @(current < N) {
       current = @(current + 1);
@@ -2675,7 +2676,7 @@ mod staged_control@1.0.0 {
     return current;
   }
 
-  fn specialize<N: int>(width: N, input: word<N>) -> word<N> {
+  pub fn specialize<N: int>(width: N, input: word<N>) -> word<N> {
     if @(N > 4) {
       output = identity(input);
       return output;
@@ -2683,7 +2684,7 @@ mod staged_control@1.0.0 {
     return input;
   }
 
-  fn pipeline<S: list<int>>(stages: S, input: word<8>) -> word<8> {
+  pub fn pipeline<S: list<int>>(stages: S, input: word<8>) -> word<8> {
     current = input;
     for stage in S {
       if @(stage > 0) {
@@ -2693,7 +2694,7 @@ mod staged_control@1.0.0 {
     return current;
   }
 
-  fn residual_count<N: int>(count: N, input: i32) -> i32 {
+  pub fn residual_count<N: int>(count: N, input: i32) -> i32 {
     current = input;
     for position: index in @range(N) {
       current = touch(current, position);
@@ -2701,7 +2702,7 @@ mod staged_control@1.0.0 {
     return current;
   }
 
-  fn residual_grid<M: int, N: int>(rows: M, columns: N, input: i32) -> i32 {
+  pub fn residual_grid<M: int, N: int>(rows: M, columns: N, input: i32) -> i32 {
     current = input;
     for row, column in M, N {
       current = touch(current, row);
@@ -2710,7 +2711,7 @@ mod staged_control@1.0.0 {
     return current;
   }
 
-  fn residual_grid_nested<M: int, N: int>(
+  pub fn residual_grid_nested<M: int, N: int>(
     rows: M,
     columns: N,
     input: i32
@@ -2725,7 +2726,7 @@ mod staged_control@1.0.0 {
     return current;
   }
 
-  fn residual_control<N: int>(count: N, input: i32, stop: i1, skip: i1)
+  pub fn residual_control<N: int>(count: N, input: i32, stop: i1, skip: i1)
       -> i32 {
     current = input;
     for position: index in @range(N) {
@@ -2740,7 +2741,7 @@ mod staged_control@1.0.0 {
     return current;
   }
 
-  fn materialize_index<N: int>(value: N) -> index {
+  pub fn materialize_index<N: int>(value: N) -> index {
     result: index = N;
     return result;
   }
@@ -2922,46 +2923,46 @@ mod staged_control@1.0.0 {
   explicit_staging.add(R"(
 joggle 1;
 mod explicit_staging@1.0.0 {
-  type word();
-  fn literal<T>(value: int) -> T;
-  fn twice(value: int) -> int;
-  fn identity(input: word) -> word;
-  fn make_i32() -> i32;
-  fn apply(input: word, body: (word) -> word) -> word;
-  fn inspect(body: fn) -> int;
-  fn keep_fn(body: fn) -> fn;
+  pub type word();
+  pub fn literal<T>(value: int) -> T;
+  pub fn twice(value: int) -> int;
+  pub fn identity(input: word) -> word;
+  pub fn make_i32() -> i32;
+  pub fn apply(input: word, body: (word) -> word) -> word;
+  pub fn inspect(body: fn) -> int;
+  pub fn keep_fn(body: fn) -> fn;
 
-  fn staged() -> i32 {
+  pub fn staged() -> i32 {
     value: i32 = @twice(2);
     return value;
   }
 
-  fn missing_stage() {
+  pub fn missing_stage() {
     value = twice(2);
     return;
   }
 
-  fn staged_lambda(input: word) -> word {
+  pub fn staged_lambda(input: word) -> word {
     count = @inspect((value: word) -> word => identity(value));
     return identity(input);
   }
 
-  fn staged_lambda_chain(input: word) -> word {
+  pub fn staged_lambda_chain(input: word) -> word {
     body = @keep_fn((value: word) => identity(value));
     count = @inspect(body);
     return identity(input);
   }
 
-  fn staged_lambda_capture(input: word) -> word {
+  pub fn staged_lambda_capture(input: word) -> word {
     count = @inspect((value: word) => identity(input));
     return identity(input);
   }
 
-  fn wrong_lambda_context(input: word) -> word {
+  pub fn wrong_lambda_context(input: word) -> word {
     return apply(input, (value: word) -> i32 => make_i32());
   }
 
-  fn wrong_lambda_body(input: word) -> word {
+  pub fn wrong_lambda_body(input: word) -> word {
     count = @inspect((value: word) -> i32 => identity(value));
     return identity(input);
   }
@@ -3104,9 +3105,9 @@ mod explicit_staging@1.0.0 {
   bounded.add(R"(
 joggle 1;
 mod bounded@1.0.0 {
-  type word(width: int);
-  fn source() -> word<1 + 2>;
-  fn main() -> word<3> {
+  pub type word(width: int);
+  pub fn source() -> word<1 + 2>;
+  pub fn main() -> word<3> {
     return source();
   }
 }

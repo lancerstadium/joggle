@@ -162,6 +162,7 @@ public:
     };
 
     std::string_view name() const;
+    bool exported() const;
     std::span<const ParamDecl> parameters() const;
     std::span<const DerivedParamDecl> derived_parameters() const;
     Symbol symbol() const;
@@ -190,6 +191,7 @@ public:
     };
 
     std::string_view name() const;
+    bool exported() const;
     std::span<const GenericDecl> generics() const;
     std::span<const ParamDecl> inputs() const;
     std::span<const ParamDecl> results() const;

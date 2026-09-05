@@ -422,6 +422,11 @@ private:
       static_assert(std::is_same_v<Declaration, Mod::FnDecl>);
       result = mod->fn(local);
     }
+    if (result && owner != scope_ && !result->exported()) {
+      report("type contract references private declaration '" +
+             std::string(reference) + "'");
+      return std::nullopt;
+    }
     if (!result) {
       report("type contract references unknown declaration '" +
              std::string(reference) + "'");

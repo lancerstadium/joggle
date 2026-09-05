@@ -1,9 +1,9 @@
 # ONNX
 
-`onnx@5` is an optional Protobuf reader with one compiler-time fn:
+`onnx@6` is an optional Protobuf reader with one compiler-time fn:
 
 ```joggle
-fn read(input: bytes, name: string = "model") -> mod;
+pub fn read(input: bytes, name: string = "model") -> mod;
 ```
 
 The reader converts ONNX records directly into calls to linked semantic fns.

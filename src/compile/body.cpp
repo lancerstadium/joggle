@@ -678,6 +678,14 @@ private:
     } else {
       result = mod->fn(local);
     }
+    const bool imported = *mod_name != scope;
+    if (result && imported && !result->exported()) {
+      constexpr std::string_view kind =
+          std::is_same_v<Declaration, Mod::TypeDecl> ? "type" : "fn";
+      report(std::string(kind) + " '" + std::string(reference) + "' is private",
+             range);
+      return std::nullopt;
+    }
     if (!result) {
       constexpr std::string_view kind =
           std::is_same_v<Declaration, Mod::TypeDecl> ? "type" : "fn";
@@ -701,7 +709,8 @@ private:
     if (!mod) {
       return std::nullopt;
     }
-    if (mod->type(local)) {
+    const auto type = mod->type(local);
+    if (type && (*mod_name == owner_ || type->exported())) {
       return Mod::Symbol::Kind::Type;
     }
     return std::nullopt;

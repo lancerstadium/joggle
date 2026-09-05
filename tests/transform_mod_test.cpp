@@ -29,9 +29,9 @@ int main() {
   compiler.add(R"(
 joggle 1;
 mod algebra@1.0.0 {
-  type word();
-  fn keep(input: word) -> word;
-  fn other(input: word) -> word;
+  pub type word();
+  pub fn keep(input: word) -> word;
+  pub fn other(input: word) -> word;
 }
 )",
                "algebra.joggle");
@@ -39,7 +39,7 @@ mod algebra@1.0.0 {
 joggle 1;
 mod laws@1.0.0 {
   import algebra@1 as a;
-  fn commute(value: a.word) -> (a.word, a.word) {
+  pub fn commute(value: a.word) -> (a.word, a.word) {
     return a.other(a.keep(value)), a.keep(a.other(value));
   }
 }
@@ -50,21 +50,21 @@ joggle 1;
 mod fixture@1.0.0 {
   import algebra@1 as a;
   import laws@1 as laws;
-  import transform@3 as tr;
+  import transform@4 as tr;
 
-  fn chain(input: a.word) -> a.word {
+  pub fn chain(input: a.word) -> a.word {
     return a.other(a.keep(input));
   }
-  fn wrapped(input: a.word) -> a.word {
+  pub fn wrapped(input: a.word) -> a.word {
     return chain(input);
   }
-  fn rewrite(input: fn) -> fn {
+  pub fn rewrite(input: fn) -> fn {
     return @tr.pass(input, laws);
   }
-  fn expand(input: fn) -> fn {
+  pub fn expand(input: fn) -> fn {
     return @tr.inline(input);
   }
-  fn close(input: mod) -> mod {
+  pub fn close(input: mod) -> mod {
     return @tr.resolve(input);
   }
 }

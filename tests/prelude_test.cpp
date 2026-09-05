@@ -35,32 +35,32 @@ int main() {
 joggle 1;
 
 mod native_test@1.0.0 {
-  type packed(bits: int) {
+  pub type packed(bits: int) {
     storage_bits: int = bits;
   }
-  type word(width: int);
-  type memory();
+  pub type word(width: int);
+  pub type memory();
 
-  fn identity<T>(input: T) -> T;
-  fn encode<T>(input: T) -> word<T.storage_bits>;
+  pub fn identity<T>(input: T) -> T;
+  pub fn encode<T>(input: T) -> word<T.storage_bits>;
 
-  fn integers(x: i32, y: u32) -> i32 {
+  pub fn integers(x: i32, y: u32) -> i32 {
     result = identity(x);
     return result;
   }
-  fn floating(x: f32) -> f32 {
+  pub fn floating(x: f32) -> f32 {
     result = identity(x);
     return result;
   }
-  fn custom(x: packed<4>) -> packed<4> {
+  pub fn custom(x: packed<4>) -> packed<4> {
     result = identity(x);
     return result;
   }
-  fn native_width(x: i32) -> word<32> {
+  pub fn native_width(x: i32) -> word<32> {
     result = encode(x);
     return result;
   }
-  fn custom_width(x: packed<4>) -> word<4> {
+  pub fn custom_width(x: packed<4>) -> word<4> {
     result = encode(x);
     return result;
   }
@@ -172,11 +172,11 @@ mod native_test@1.0.0 {
   primitives.add(R"(
 joggle 1;
 mod primitive_test@1.0.0 {
-  type word(width: int);
+  pub type word(width: int);
 
-  fn identity<T>(input: T) -> T;
+  pub fn identity<T>(input: T) -> T;
 
-  fn sum_selected<S: list<int>>(values: S) -> int {
+  pub fn sum_selected<S: list<int>>(values: S) -> int {
     total = 0;
     for value in S {
       if value > 0 && value != 2 {
@@ -186,27 +186,27 @@ mod primitive_test@1.0.0 {
     return total;
   }
 
-  fn predicate(lhs: int, rhs: int) -> bool {
+  pub fn predicate(lhs: int, rhs: int) -> bool {
     return !(lhs >= rhs) || lhs == rhs;
   }
 
-  fn real_math(lhs: real, rhs: real) -> real {
+  pub fn real_math(lhs: real, rhs: real) -> real {
     return min(lhs + rhs, max(lhs, rhs)) // 1.0;
   }
 
-  fn ascending(stop: int) -> list<int> {
+  pub fn ascending(stop: int) -> list<int> {
     return range(stop);
   }
 
-  fn descending() -> list<int> {
+  pub fn descending() -> list<int> {
     return range(5, -1, -2);
   }
 
-  fn empty_range() -> list<int> {
+  pub fn empty_range() -> list<int> {
     return range(4, 0);
   }
 
-  fn reverse(values: list<int>) -> list<int> {
+  pub fn reverse(values: list<int>) -> list<int> {
     result: list<int> = [];
     for index in range(length(values)) {
       result = append(result, values[length(values) - index - 1]);
@@ -214,7 +214,7 @@ mod primitive_test@1.0.0 {
     return result;
   }
 
-  fn reverse_types(values: list<type>) -> list<type> {
+  pub fn reverse_types(values: list<type>) -> list<type> {
     result: list<type> = [];
     for index in range(length(values)) {
       result = append(result, values[length(values) - index - 1]);
@@ -222,11 +222,11 @@ mod primitive_test@1.0.0 {
     return result;
   }
 
-  fn append_name(values: list<string>, name: string) -> list<string> {
+  pub fn append_name(values: list<string>, name: string) -> list<string> {
     return append(values, name);
   }
 
-  fn unroll<N: int>(count: N, input: word<8>) -> word<8> {
+  pub fn unroll<N: int>(count: N, input: word<8>) -> word<8> {
     current = input;
     for index in range(N) {
       current = identity(current);
@@ -308,19 +308,19 @@ mod primitive_test@1.0.0 {
   shadowing.add(R"(
 joggle 1;
 mod shadowing@1.0.0 {
-  fn ceildiv(lhs: int, rhs: int) -> int {
+  pub fn ceildiv(lhs: int, rhs: int) -> int {
     return 99;
   }
-  fn (+)(lhs: int, rhs: int) -> int {
+  pub fn (+)(lhs: int, rhs: int) -> int {
     return lhs - rhs;
   }
-  fn local_call(lhs: int, rhs: int) -> int {
+  pub fn local_call(lhs: int, rhs: int) -> int {
     return ceildiv(lhs, rhs);
   }
-  fn local_operator(lhs: int, rhs: int) -> int {
+  pub fn local_operator(lhs: int, rhs: int) -> int {
     return lhs + rhs;
   }
-  fn standard_call(lhs: int, rhs: int) -> int {
+  pub fn standard_call(lhs: int, rhs: int) -> int {
     return prelude.ceildiv(lhs, rhs);
   }
 }
@@ -353,7 +353,7 @@ mod shadowing@1.0.0 {
   invalid_arithmetic.add(R"(
 joggle 1;
 mod invalid_arithmetic@1.0.0 {
-  fn divide_by_zero() -> int {
+  pub fn divide_by_zero() -> int {
     return 1 / 0;
   }
 }
@@ -378,7 +378,7 @@ mod invalid_arithmetic@1.0.0 {
   overflowing.add(R"(
 joggle 1;
 mod overflowing@1.0.0 {
-  fn add_past_i64() -> int {
+  pub fn add_past_i64() -> int {
     return 9223372036854775807 + 1;
   }
 }
@@ -402,7 +402,7 @@ mod overflowing@1.0.0 {
   invalid_range.add(R"(
 joggle 1;
 mod invalid_range@1.0.0 {
-  fn zero_step() -> list<int> {
+  pub fn zero_step() -> list<int> {
     return range(0, 4, 0);
   }
 }
@@ -427,7 +427,7 @@ mod invalid_range@1.0.0 {
   bounded_range.add(R"(
 joggle 1;
 mod bounded_range@1.0.0 {
-  fn expand() -> list<int> {
+  pub fn expand() -> list<int> {
     return range(8);
   }
 }
@@ -454,7 +454,7 @@ mod bounded_range@1.0.0 {
   invalid_list.add(R"(
 joggle 1;
 mod invalid_list@1.0.0 {
-  fn out_of_bounds() -> int {
+  pub fn out_of_bounds() -> int {
     return [4, 8][2];
   }
 }

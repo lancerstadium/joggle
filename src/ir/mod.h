@@ -78,6 +78,7 @@ struct TypeDefinition {
   std::vector<Mod::ParamDecl> parameters;
   std::vector<Mod::TypeDecl::DerivedParamDecl> derived_parameters;
   std::optional<Loc> source;
+  bool exported = false;
 };
 
 struct FnDef {
@@ -89,6 +90,7 @@ struct FnDef {
   std::optional<Mod::FnDecl::Fixity> operator_fixity;
   std::optional<FnBody> body;
   std::optional<Loc> source;
+  bool exported = false;
 };
 
 // One Mod owns one ordered fn-member table. A parsed member initially has a

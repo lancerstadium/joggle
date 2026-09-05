@@ -45,67 +45,67 @@ int main() {
 joggle 1;
 mod pipeline@1.0.0 {
   import test_ir@1;
-  type word(width: int);
-  type flag(enabled: bool);
-  fn read(input: bytes) -> fn;
-  fn inspect(input: fn) -> int;
-  fn emit(input: fn) -> bytes;
-  fn consume(input: bytes);
-  fn append(input: bytes) -> bytes;
-  fn nonzero(input: int) -> bool;
-  fn twice(input: int) -> int;
-  fn twice(input: string) -> string;
-  fn choose_amount(value: int, amount: int = 2) -> int {
+  pub type word(width: int);
+  pub type flag(enabled: bool);
+  pub fn read(input: bytes) -> fn;
+  pub fn inspect(input: fn) -> int;
+  pub fn emit(input: fn) -> bytes;
+  pub fn consume(input: bytes);
+  pub fn append(input: bytes) -> bytes;
+  pub fn nonzero(input: int) -> bool;
+  pub fn twice(input: int) -> int;
+  pub fn twice(input: string) -> string;
+  pub fn choose_amount(value: int, amount: int = 2) -> int {
     return amount;
   }
-  fn (+)(lhs: int, rhs: int) -> int;
-  fn (<)(lhs: int, rhs: int) -> bool;
-  fn (<)(lhs: string, rhs: string) -> bool;
-  fn (<=)(lhs: int, rhs: int) -> bool;
-  fn (>)(lhs: int, rhs: int) -> bool;
-  fn (>=)(lhs: int, rhs: int) -> bool;
-  fn (==)(lhs: int, rhs: int) -> bool;
-  fn (!=)(lhs: int, rhs: int) -> bool;
-  fn (!)(input: bool) -> bool;
-  fn (&&)(lhs: bool, rhs: bool) -> bool {
+  pub fn (+)(lhs: int, rhs: int) -> int;
+  pub fn (<)(lhs: int, rhs: int) -> bool;
+  pub fn (<)(lhs: string, rhs: string) -> bool;
+  pub fn (<=)(lhs: int, rhs: int) -> bool;
+  pub fn (>)(lhs: int, rhs: int) -> bool;
+  pub fn (>=)(lhs: int, rhs: int) -> bool;
+  pub fn (==)(lhs: int, rhs: int) -> bool;
+  pub fn (!=)(lhs: int, rhs: int) -> bool;
+  pub fn (!)(input: bool) -> bool;
+  pub fn (&&)(lhs: bool, rhs: bool) -> bool {
     return if lhs { rhs } else { false };
   }
-  fn (||)(lhs: bool, rhs: bool) -> bool {
+  pub fn (||)(lhs: bool, rhs: bool) -> bool {
     return if lhs { true } else { rhs };
   }
-  fn mod_identity(input: mod) -> mod;
-  fn convert_word(input: test_ir.integer<8>) -> test_ir.integer<8>;
-  fn convert_word(input: test_ir.integer<16>) -> test_ir.integer<16>;
-  fn configured_copy(input: test_ir.integer<8>, tag: int = 7)
+  pub fn mod_identity(input: mod) -> mod;
+  pub fn convert_word(input: test_ir.integer<8>) -> test_ir.integer<8>;
+  pub fn convert_word(input: test_ir.integer<16>) -> test_ir.integer<16>;
+  pub fn configured_copy(input: test_ir.integer<8>, tag: int = 7)
       -> test_ir.integer<8>;
-  fn choose_first<T>(items: T...) -> T;
-  fn compute_width(value: int) -> int;
-  fn width_copy(input: test_ir.integer<8>)
+  pub fn choose_first<T>(items: T...) -> T;
+  pub fn compute_width(value: int) -> int;
+  pub fn width_copy(input: test_ir.integer<8>)
       -> test_ir.integer<compute_width(8)>;
-  fn residual_overload(input: test_ir.integer<8>) -> test_ir.integer<8> {
+  pub fn residual_overload(input: test_ir.integer<8>) -> test_ir.integer<8> {
     result = convert_word(input);
     return result;
   }
-  fn residual_arguments(input: test_ir.integer<8>) -> test_ir.integer<8> {
+  pub fn residual_arguments(input: test_ir.integer<8>) -> test_ir.integer<8> {
     first = configured_copy(input);
     second = configured_copy(tag: 9, input: first);
     return second;
   }
-  fn residual_variadic(input: test_ir.integer<8>) -> test_ir.integer<8> {
+  pub fn residual_variadic(input: test_ir.integer<8>) -> test_ir.integer<8> {
     result = choose_first(input, input);
     return result;
   }
-  fn residual_dependent(input: test_ir.integer<8>) -> test_ir.integer<8> {
+  pub fn residual_dependent(input: test_ir.integer<8>) -> test_ir.integer<8> {
     result = width_copy(input);
     return result;
   }
-  fn clean(input: fn) -> fn {
+  pub fn clean(input: fn) -> fn {
     return test_ir.canonicalize(input);
   }
-  fn compile(input: bytes) -> bytes {
+  pub fn compile(input: bytes) -> bytes {
     return emit(clean(read(input)));
   }
-  fn select(condition: bool, input: bytes) -> bytes {
+  pub fn select(condition: bool, input: bytes) -> bytes {
     result = input;
     if condition {
       result = append(result);
@@ -114,7 +114,7 @@ mod pipeline@1.0.0 {
     }
     return result;
   }
-  fn repeat(count: int, input: bytes) -> bytes {
+  pub fn repeat(count: int, input: bytes) -> bytes {
     result = input;
     while nonzero(count) {
       result = append(result);
@@ -122,17 +122,17 @@ mod pipeline@1.0.0 {
     }
     return result;
   }
-  fn choose(condition: bool, lhs: bytes, rhs: bytes) -> bytes {
+  pub fn choose(condition: bool, lhs: bytes, rhs: bytes) -> bytes {
     return if condition { lhs } else { rhs };
   }
-  fn once(input: bytes) -> bytes {
+  pub fn once(input: bytes) -> bytes {
     while true {
       input = append(input);
       break;
     }
     return input;
   }
-  fn last(count: int, input: bytes) -> bytes {
+  pub fn last(count: int, input: bytes) -> bytes {
     while nonzero(count) {
       count = count - 1;
       if nonzero(count) {
@@ -142,27 +142,27 @@ mod pipeline@1.0.0 {
     }
     return input;
   }
-  fn choose_width(condition: bool) -> int {
+  pub fn choose_width(condition: bool) -> int {
     if condition {
       return 7;
     }
     return 9;
   }
-  fn typed(input: word<choose_width(true)>) -> word<7> {
+  pub fn typed(input: word<choose_width(true)>) -> word<7> {
     return input;
   }
-  fn use_twice(input: int) -> int {
+  pub fn use_twice(input: int) -> int {
     return twice(input);
   }
-  fn use_operator(lhs: int, rhs: int) -> int {
+  pub fn use_operator(lhs: int, rhs: int) -> int {
     return lhs + rhs;
   }
-  fn ([])(input: word<8>, position: int) -> word<8>;
-  fn apply_same<T>(input: T, body: (T) -> T) -> T;
-  fn use_subscript(input: word<8>) -> word<8> {
+  pub fn ([])(input: word<8>, position: int) -> word<8>;
+  pub fn apply_same<T>(input: T, body: (T) -> T) -> T;
+  pub fn use_subscript(input: word<8>) -> word<8> {
     return input[0];
   }
-  fn nested_generic<T>(input: T) -> T {
+  pub fn nested_generic<T>(input: T) -> T {
     return apply_same(
       input,
       (outer: T) -> T => apply_same(
@@ -171,54 +171,54 @@ mod pipeline@1.0.0 {
       )
     );
   }
-  fn use_nested_generic(input: word<8>) -> word<8> {
+  pub fn use_nested_generic(input: word<8>) -> word<8> {
     return nested_generic(input);
   }
-  fn earlier(lhs: int, rhs: int) -> int {
+  pub fn earlier(lhs: int, rhs: int) -> int {
     if lhs < rhs {
       return lhs;
     }
     return rhs;
   }
-  fn invert(input: bool) -> bool {
+  pub fn invert(input: bool) -> bool {
     return !input;
   }
-  fn ordered_typed(input: word<earlier(9, 7)>) -> word<7> {
+  pub fn ordered_typed(input: word<earlier(9, 7)>) -> word<7> {
     return input;
   }
-  fn unequal_order(lhs: int, rhs: int) -> bool {
+  pub fn unequal_order(lhs: int, rhs: int) -> bool {
     return (lhs <= rhs && lhs != rhs) ||
            (lhs > rhs && lhs >= rhs);
   }
-  fn relation_typed(input: flag<(9 > 7)>) -> flag<true> {
+  pub fn relation_typed(input: flag<(9 > 7)>) -> flag<true> {
     return input;
   }
-  fn text_relation_typed(input: flag<("a" < "b")>) -> flag<true> {
+  pub fn text_relation_typed(input: flag<("a" < "b")>) -> flag<true> {
     return input;
   }
-  fn overload_typed(input: word<@twice(4)>) -> word<8> {
+  pub fn overload_typed(input: word<@twice(4)>) -> word<8> {
     return input;
   }
-  fn default_typed(input: word<@choose_amount(value: 3)>) -> word<2> {
+  pub fn default_typed(input: word<@choose_amount(value: 3)>) -> word<2> {
     return input;
   }
-  fn staged_overload(input: test_ir.integer<8>) -> test_ir.integer<8> {
+  pub fn staged_overload(input: test_ir.integer<8>) -> test_ir.integer<8> {
     doubled = @twice(4);
     return input;
   }
-  fn divide(input: int) -> (int, bool);
-  fn divide_exact(input: int) -> (int, bool) {
+  pub fn divide(input: int) -> (int, bool);
+  pub fn divide_exact(input: int) -> (int, bool) {
     quotient, exact = divide(input);
     return quotient, exact;
   }
-  fn observe(input: int);
-  fn observe_once(input: int) {
+  pub fn observe(input: int);
+  pub fn observe_once(input: int) {
     observe(input);
     return;
   }
-  fn fork(input: test_ir.integer<8>)
+  pub fn fork(input: test_ir.integer<8>)
       -> (test_ir.integer<8>, test_ir.integer<8>);
-  fn relay_fork(input: test_ir.integer<8>)
+  pub fn relay_fork(input: test_ir.integer<8>)
       -> (test_ir.integer<8>, test_ir.integer<8>) {
     lhs, rhs = fork(input);
     return lhs, rhs;
@@ -728,12 +728,12 @@ mod pipeline@1.0.0 {
   mod_materialization.add(R"(
 joggle 1;
 mod source_model@1.0.0 {
-  type word();
-  fn keep(input: word) -> word;
-  fn main(input: word) -> word {
+  pub type word();
+  pub fn keep(input: word) -> word;
+  pub fn main(input: word) -> word {
     return keep(input);
   }
-  fn count(input: word) -> int {
+  pub fn count(input: word) -> int {
     return 1;
   }
 }
@@ -775,9 +775,9 @@ mod source_model@1.0.0 {
   constexpr std::string_view guarded_source = R"(
     joggle 1;
     mod guarded@1.0.0 {
-      type a();
-      fn identity<T>(input: T) -> T;
-      fn touch(input: fn) -> fn;
+      pub type a();
+      pub fn identity<T>(input: T) -> T;
+      pub fn touch(input: fn) -> fn;
     }
   )";
   joggle::Compiler guarded_compiler;
@@ -860,8 +860,8 @@ mod source_model@1.0.0 {
   mismatched_overload.add(R"(
 joggle 1;
 mod mismatched_overload@1.0.0 {
-  fn choose(input: int) -> int;
-  fn choose(input: string) -> string;
+  pub fn choose(input: int) -> int;
+  pub fn choose(input: string) -> string;
 }
 )",
                           "mismatched-overload.joggle");
@@ -899,9 +899,9 @@ mod mismatched_overload@1.0.0 {
   incompatible.add(R"(
 joggle 1;
 mod incompatible@1.0.0 {
-  fn read(input: bytes) -> fn;
-  fn inspect(input: fn) -> int;
-  fn broken(input: bytes) -> fn {
+  pub fn read(input: bytes) -> fn;
+  pub fn inspect(input: fn) -> int;
+  pub fn broken(input: bytes) -> fn {
     return inspect(read(input));
   }
 }
@@ -914,10 +914,10 @@ mod incompatible@1.0.0 {
   transactional.add(R"(
 joggle 1;
 mod transactional@1.0.0 {
-  fn token() -> i32;
-  fn mutate(input: fn) -> fn;
-  fn reject(input: fn) -> bytes;
-  fn pipeline(input: fn) -> bytes {
+  pub fn token() -> i32;
+  pub fn mutate(input: fn) -> fn;
+  pub fn reject(input: fn) -> bytes;
+  pub fn pipeline(input: fn) -> bytes {
     return reject(mutate(input));
   }
 }
@@ -962,9 +962,9 @@ mod transactional@1.0.0 {
   short_circuit.add(R"(
 joggle 1;
 mod short_circuit@1.0.0 {
-  fn report(input: bytes) -> bytes;
-  fn observe(input: bytes) -> bytes;
-  fn pipeline(input: bytes) -> bytes {
+  pub fn report(input: bytes) -> bytes;
+  pub fn observe(input: bytes) -> bytes;
+  pub fn pipeline(input: bytes) -> bytes {
     reported = report(input);
     return observe(reported);
   }
@@ -1044,11 +1044,11 @@ mod short_circuit@1.0.0 {
   represented.add(R"(
 joggle 1;
 mod represented@1.0.0 {
-  type target();
-  type estimate();
+  pub type target();
+  pub type estimate();
 
-  fn measure(input: target) -> estimate;
-  fn analyze(input: target) -> estimate {
+  pub fn measure(input: target) -> estimate;
+  pub fn analyze(input: target) -> estimate {
     return measure(input);
   }
 }
@@ -1109,15 +1109,15 @@ mod represented@1.0.0 {
   parameterized_host.add(R"(
 joggle 1;
 mod parameterized_host@1.0.0 {
-  type target(lanes: int);
-  type estimate(lanes: int);
+  pub type target(lanes: int);
+  pub type estimate(lanes: int);
 
-  fn measure<N: int>(input: target<N>) -> estimate<N>;
-  fn analyze<N: int>(input: target<N>) -> estimate<N> {
+  pub fn measure<N: int>(input: target<N>) -> estimate<N>;
+  pub fn analyze<N: int>(input: target<N>) -> estimate<N> {
     return measure(input);
   }
-  fn fixed(input: target<32>) -> estimate<32>;
-  fn wrong(input: target<32>) -> estimate<32>;
+  pub fn fixed(input: target<32>) -> estimate<32>;
+  pub fn wrong(input: target<32>) -> estimate<32>;
 }
 )",
                          "parameterized-host.joggle");
@@ -1186,8 +1186,8 @@ mod parameterized_host@1.0.0 {
   lists.add(R"(
 joggle 1;
 mod lists@1.0.0 {
-  fn reverse(values: list<int>) -> list<int>;
-  fn sum(values: list<int>) -> int;
+  pub fn reverse(values: list<int>) -> list<int>;
+  pub fn sum(values: list<int>) -> int;
 }
 )",
             "lists.joggle");
@@ -1223,10 +1223,10 @@ mod lists@1.0.0 {
   mod_validation.add(R"(
 joggle 1;
 mod mod_validation@1.0.0 {
-  type word();
-  fn forbidden(input: word) -> word;
-  fn identity(input: mod) -> mod;
-  fn produce() -> mod;
+  pub type word();
+  pub fn forbidden(input: word) -> word;
+  pub fn identity(input: mod) -> mod;
+  pub fn produce() -> mod;
 }
 )",
                      "mod-validation.joggle");
@@ -1299,7 +1299,7 @@ mod mod_validation@1.0.0 {
   bounded.add(R"(
 joggle 1;
 mod bounded@1.0.0 {
-  fn spin(input: bytes) -> bytes {
+  pub fn spin(input: bytes) -> bytes {
     while true {
     }
     return input;
@@ -1325,7 +1325,7 @@ mod bounded@1.0.0 {
   unchecked_arm.add(R"(
 joggle 1;
 mod unchecked_arm@1.0.0 {
-  fn broken(condition: bool, input: bytes) -> bytes {
+  pub fn broken(condition: bool, input: bytes) -> bytes {
     if condition {
       return input;
     } else {

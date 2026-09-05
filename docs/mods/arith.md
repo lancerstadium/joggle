@@ -1,18 +1,18 @@
 # Arith
 
-`arith@1.2.0` is the scalar-computation boundary used by domain libraries.
+`arith@2` is the scalar-computation boundary used by domain libraries.
 It declares ordinary overloadable fns rather than adding numeric Op kinds to
 compiler core:
 
 ```joggle
-fn zero<T>() -> T;
-fn zero<T>(like: T) -> T;
-fn literal<T>(value: int) -> T;
-fn max<T>(lhs: T, rhs: T) -> T;
-fn (+)<T>(lhs: T, rhs: T) -> T;
-fn (*)<T>(lhs: T, rhs: T) -> T;
-fn (<)<T>(lhs: T, rhs: T) -> i1;
-fn (>)<T>(lhs: T, rhs: T) -> i1;
+pub fn zero<T>() -> T;
+pub fn zero<T>(like: T) -> T;
+pub fn literal<T>(value: int) -> T;
+pub fn max<T>(lhs: T, rhs: T) -> T;
+pub fn (+)<T>(lhs: T, rhs: T) -> T;
+pub fn (*)<T>(lhs: T, rhs: T) -> T;
+pub fn (<)<T>(lhs: T, rhs: T) -> i1;
+pub fn (>)<T>(lhs: T, rhs: T) -> i1;
 ```
 
 The zero-argument overload obtains `T` from its expected result Type, while the

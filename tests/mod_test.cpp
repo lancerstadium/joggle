@@ -81,10 +81,10 @@ int main() {
       joggle::parse_mod(R"(
     joggle 1;
     mod subscript@1.0.0 {
-      type sequence();
-      type index();
-      fn ([])(input: sequence, position: index) -> sequence;
-      fn read(input: sequence, position: index) -> sequence {
+      pub type sequence();
+      pub type index();
+      pub fn ([])(input: sequence, position: index) -> sequence;
+      pub fn read(input: sequence, position: index) -> sequence {
         return input[position];
       }
     }
@@ -159,19 +159,19 @@ int main() {
   const auto surface = joggle::parse_mod(R"(
     joggle 1;
     mod surface@2.3.4 {
-      fn empty() {
+      pub fn empty() {
         return;
       }
-      fn pipeline(input: fn) -> fn {
+      pub fn pipeline(input: fn) -> fn {
         return @(external(input));
       }
-      fn external(input: fn) -> fn;
-      fn collect<T>(items: T...) -> T;
-      fn identity(value: int) -> int {
+      pub fn external(input: fn) -> fn;
+      pub fn collect<T>(items: T...) -> T;
+      pub fn identity(value: int) -> int {
         return value;
       }
-      type meta(values: list<int>, element: type);
-      type scalar(
+      pub type meta(values: list<int>, element: type);
+      pub type scalar(
         bits: int = 8,
         scale: real = -1.5e2,
         signed: bool = true,
@@ -212,7 +212,7 @@ int main() {
       R"(
     joggle 1;
     mod compiler_generic@1.0.0 {
-      fn identity<N: int>(value: N) -> N {
+      pub fn identity<N: int>(value: N) -> N {
         return value;
       }
     }
@@ -251,7 +251,7 @@ int main() {
       R"(
     joggle 1;
     mod test_ir@1.0.0 {
-      type integer(width: int);
+      pub type integer(width: int);
     }
   )",
       conflicting_identity_diagnostics, "conflicting-identity.joggle");
@@ -271,9 +271,9 @@ int main() {
       joggle::parse_mod(R"(
     joggle 1;
     mod fn_identity@1.0.0 {
-      type value();
-      fn identity<T>(input: T) -> T;
-      fn main(input: value) -> value {
+      pub type value();
+      pub fn identity<T>(input: T) -> T;
+      pub fn main(input: value) -> value {
         return input;
       }
     }
@@ -284,9 +284,9 @@ int main() {
       R"(
     joggle 1;
     mod fn_identity@1.0.0 {
-      type value();
-      fn identity<T>(input: T) -> T;
-      fn main(input: value) -> value {
+      pub type value();
+      pub fn identity<T>(input: T) -> T;
+      pub fn main(input: value) -> value {
         output = identity(input);
         return output;
       }
@@ -313,7 +313,7 @@ int main() {
   auto list_mod = joggle::parse_mod(R"(
     joggle 1;
     mod shaped@1.0.0 {
-      type tensor(element: type, shape: list<int>);
+      pub type tensor(element: type, shape: list<int>);
     }
   )",
                                     list_diagnostics, "shaped.joggle");
@@ -328,7 +328,7 @@ int main() {
   auto numeric_mod = joggle::parse_mod(R"(
     joggle 1;
     mod numeric@1.2.3 {
-      type scale(value: real = -1.5e2);
+      pub type scale(value: real = -1.5e2);
     }
   )",
                                        numeric_diagnostics, "numeric.joggle");
@@ -345,8 +345,8 @@ int main() {
       joggle::parse_mod(R"(
     joggle 1;
     mod defaults@1.0.0 {
-      type layout(shape: list<int> = [1, 4, 8]);
-      fn window<S: list<int>>(
+      pub type layout(shape: list<int> = [1, 4, 8]);
+      pub fn window<S: list<int>>(
         shape: S = [3, 3]
       ) -> int;
     }
@@ -376,8 +376,8 @@ int main() {
     joggle 1;
     mod client@1.0.0 {
       import test_ir@1 as math;
-      fn inference<T>(input: T) -> T;
-      fn pipeline(input: fn) -> fn {
+      pub fn inference<T>(input: T) -> T;
+      pub fn pipeline(input: fn) -> fn {
         return math.canonicalize(input);
       }
     }
@@ -457,9 +457,9 @@ int main() {
       joggle::parse_mod(R"(
     joggle 1;
     mod legacy_rewrite@1.0.0 {
-      type integer();
-      fn identity<T>(input: T) -> T;
-      fn simplify(input: fn) -> fn {
+      pub type integer();
+      pub fn identity<T>(input: T) -> T;
+      pub fn simplify(input: fn) -> fn {
         return rewrite(input) {
           identity($input) => $input;
         };
@@ -499,8 +499,8 @@ int main() {
       joggle::parse_mod(R"(
     joggle 1;
     mod value_name@1.0.0 {
-      type value();
-      fn identity(input: value) -> value;
+      pub type value();
+      pub fn identity(input: value) -> value;
     }
   )",
                         value_name_diagnostics, "value-name.joggle");
@@ -511,10 +511,10 @@ int main() {
   fn_cycle.add(R"(
     joggle 1;
     mod fn_cycle@1.0.0 {
-      fn first(input: fn) -> fn {
+      pub fn first(input: fn) -> fn {
         return second(input);
       }
-      fn second(input: fn) -> fn {
+      pub fn second(input: fn) -> fn {
         return first(input);
       }
     }
@@ -544,7 +544,7 @@ int main() {
   invalid_contract.add(R"(
     joggle 1;
     mod base@1.0.0 {
-      type scalar();
+      pub type scalar();
     }
   )",
                        "base.joggle");
@@ -552,7 +552,7 @@ int main() {
     joggle 1;
     mod invalid_contract@1.0.0 {
       import base@1 as b;
-      fn broken(input: b.missing) -> b.scalar;
+      pub fn broken(input: b.missing) -> b.scalar;
     }
   )",
                        "invalid-contract.joggle");
@@ -570,12 +570,108 @@ int main() {
       R"(
     joggle 1;
     mod compiler_variadic@1.0.0 {
-      fn invalid(values: int...) -> int;
+      pub fn invalid(values: int...) -> int;
     }
   )",
       compiler_variadic_diagnostics, "compiler-variadic.joggle");
   ok &= expect(!compiler_variadic && !compiler_variadic_diagnostics.ok(),
                "compiler collections use list domains instead of variadics");
+
+  joggle::Diag visibility_diagnostics;
+  const auto visibility =
+      joggle::parse_mod(R"(
+    joggle 1;
+    mod visibility@1.0.0 {
+      pub type api();
+      type detail();
+      pub fn expose(input: api) -> api {
+        return hidden(input);
+      }
+      fn hidden(input: api) -> api;
+      fn helper(input: detail) -> detail;
+    }
+  )",
+                        visibility_diagnostics, "visibility.joggle");
+  const auto api = visibility ? visibility->type("api") : std::nullopt;
+  const auto detail = visibility ? visibility->type("detail") : std::nullopt;
+  const auto expose = visibility ? visibility->fn("expose") : std::nullopt;
+  const auto hidden = visibility ? visibility->fn("hidden") : std::nullopt;
+  const auto helper = visibility ? visibility->fn("helper") : std::nullopt;
+  ok &= expect(visibility && visibility_diagnostics.ok() && api && detail &&
+                   expose && hidden && helper && api->exported() &&
+                   !detail->exported() && expose->exported() &&
+                   !hidden->exported() && !helper->exported() &&
+                   joggle::format(*visibility).find("pub type api();") !=
+                       std::string::npos,
+               "pub is canonical declaration visibility, not a new member "
+               "kind");
+
+  joggle::Compiler private_import;
+  private_import.add(joggle::format(*visibility), "visibility.joggle");
+  private_import.add(R"(
+    joggle 1;
+    mod private_import@1.0.0 {
+      import visibility@1 as v;
+      pub fn leak(input: v.detail) -> v.detail;
+    }
+  )",
+                     "private-import.joggle");
+  ok &= expect(!private_import.link() && !private_import.diag().ok() &&
+                   private_import.diag().issues().back().message.find(
+                       "private") != std::string::npos,
+               "an imported private declaration is rejected");
+
+  joggle::Compiler public_import;
+  public_import.add(joggle::format(*visibility), "visibility.joggle");
+  public_import.add(R"(
+    joggle 1;
+    mod public_import@1.0.0 {
+      import visibility@1 as v;
+      pub fn use(input: v.api) -> v.api {
+        return v.expose(input);
+      }
+    }
+  )",
+                    "public-import.joggle");
+  ok &= expect(public_import.link(),
+               "a pub declaration may use private helpers internally");
+
+  joggle::Compiler private_fn_import;
+  private_fn_import.add(joggle::format(*visibility), "visibility.joggle");
+  private_fn_import.add(R"(
+    joggle 1;
+    mod private_fn_import@1.0.0 {
+      import visibility@1 as v;
+      pub fn use(input: v.api) -> v.api {
+        return v.hidden(input);
+      }
+    }
+  )",
+                        "private-fn-import.joggle");
+  ok &= expect(!private_fn_import.link() && !private_fn_import.diag().ok(),
+               "an imported private fn is not callable");
+
+  joggle::Compiler leaking_api;
+  leaking_api.add(R"(
+    joggle 1;
+    mod leaking_api@1.0.0 {
+      type detail();
+      pub fn leak(input: detail) -> detail;
+    }
+  )",
+                  "leaking-api.joggle");
+  ok &= expect(!leaking_api.link() && !leaking_api.diag().ok() &&
+                   leaking_api.diag().issues().back().message.find("private") !=
+                       std::string::npos,
+               "a pub fn cannot expose a private local type");
+
+  joggle::Compiler exported_lookup;
+  exported_lookup.add(joggle::format(*visibility), "visibility.joggle");
+  ok &= expect(exported_lookup.link() &&
+                   exported_lookup.fns("expose").size() == 1U &&
+                   exported_lookup.fns("hidden").empty() &&
+                   exported_lookup.fns("helper").empty(),
+               "environment-wide fn discovery exposes only package API");
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

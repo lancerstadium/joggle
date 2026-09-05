@@ -1,13 +1,13 @@
 joggle 1;
 
 mod external@1.0.0 {
-  type scalar(bits: int);
+  pub type scalar(bits: int);
 
-  fn make<N: int>(bits: N) -> scalar<N>;
-  fn keep<T>(input: T) -> T;
-  fn converted<T>(input: T) -> T;
-  fn convert(input: fn) -> fn;
-  fn main(input: scalar<8>) -> scalar<8> {
+  pub fn make<N: int>(bits: N) -> scalar<N>;
+  pub fn keep<T>(input: T) -> T;
+  pub fn converted<T>(input: T) -> T;
+  pub fn convert(input: fn) -> fn;
+  pub fn main(input: scalar<8>) -> scalar<8> {
     output = keep(input);
     return output;
   }

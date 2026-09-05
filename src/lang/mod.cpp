@@ -80,16 +80,21 @@ public:
     }
 
     while (!is(TokenKind::RightBrace) && !is(TokenKind::End) && ok()) {
+      const bool exported = match_name("pub");
       if (is_name("import")) {
+        if (exported) {
+          error("an import cannot be pub");
+          break;
+        }
         const Loc::Pos begin = current_.begin;
         advance();
         parse_import(begin);
       } else if (match_name("type")) {
-        parse_type();
+        parse_type(exported);
       } else if (is_name("fn")) {
-        parse_fn();
+        parse_fn(exported);
       } else {
-        error("expected import, type, or fn");
+        error("expected import, type, or fn after optional pub");
       }
     }
     expect(TokenKind::RightBrace, "'}'");
@@ -575,7 +580,7 @@ private:
     }
   }
 
-  void parse_type() {
+  void parse_type(bool exported) {
     const Loc::Pos begin = current_.begin;
     auto definition_name = name("a type name");
     auto definition_parameters = parameters(false, true);
@@ -605,13 +610,14 @@ private:
       expect(TokenKind::RightBrace, "'}'");
     }
     if (definition_name) {
-      mod_.types.push_back(
-          {std::move(*definition_name), std::move(definition_parameters),
-           std::move(derived_parameters), Loc{source_, begin, current_.begin}});
+      mod_.types.push_back({std::move(*definition_name),
+                            std::move(definition_parameters),
+                            std::move(derived_parameters),
+                            Loc{source_, begin, current_.begin}, exported});
     }
   }
 
-  void parse_fn() {
+  void parse_fn(bool exported) {
     const Loc::Pos begin = current_.begin;
 
     std::optional<Mod::FnDecl::Fixity> declared_fixity;
@@ -690,6 +696,7 @@ private:
       result_types = fn_results(generics);
     }
     ParsedMod::FnDef definition;
+    definition.exported = exported;
     if (fn_name) {
       definition.name = std::move(*fn_name);
     }

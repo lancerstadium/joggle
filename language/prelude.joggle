@@ -1,114 +1,114 @@
 joggle 1;
 
-mod prelude@5.0.0 {
-  type type();
-  type int();
-  type real();
-  type bool();
-  type string();
-  type bytes();
-  type fn();
-  type mod();
-  type callable(inputs: list<type>, results: list<type>);
-  type effect(domain: type);
-  type list(element: type);
-  type i1() {
+mod prelude@6.0.0 {
+  pub type type();
+  pub type int();
+  pub type real();
+  pub type bool();
+  pub type string();
+  pub type bytes();
+  pub type fn();
+  pub type mod();
+  pub type callable(inputs: list<type>, results: list<type>);
+  pub type effect(domain: type);
+  pub type list(element: type);
+  pub type i1() {
     storage_bits: int = 1;
   }
-  type i8() {
+  pub type i8() {
     storage_bits: int = 8;
   }
-  type i16() {
+  pub type i16() {
     storage_bits: int = 16;
   }
-  type i32() {
+  pub type i32() {
     storage_bits: int = 32;
   }
-  type i64() {
+  pub type i64() {
     storage_bits: int = 64;
   }
-  type u8() {
+  pub type u8() {
     storage_bits: int = 8;
   }
-  type u16() {
+  pub type u16() {
     storage_bits: int = 16;
   }
-  type u32() {
+  pub type u32() {
     storage_bits: int = 32;
   }
-  type u64() {
+  pub type u64() {
     storage_bits: int = 64;
   }
-  type f16() {
+  pub type f16() {
     storage_bits: int = 16;
   }
-  type bf16() {
+  pub type bf16() {
     storage_bits: int = 16;
   }
-  type f32() {
+  pub type f32() {
     storage_bits: int = 32;
   }
-  type f64() {
+  pub type f64() {
     storage_bits: int = 64;
   }
-  type index();
+  pub type index();
 
-  fn (+)(value: int) -> int;
-  fn (+)(value: real) -> real;
-  fn (-)(value: int) -> int;
-  fn (-)(value: real) -> real;
-  fn (+)(lhs: int, rhs: int) -> int;
-  fn (+)(lhs: real, rhs: real) -> real;
-  fn (-)(lhs: int, rhs: int) -> int;
-  fn (-)(lhs: real, rhs: real) -> real;
-  fn (*)(lhs: int, rhs: int) -> int;
-  fn (*)(lhs: real, rhs: real) -> real;
-  fn (/)(lhs: int, rhs: int) -> int;
-  fn (/)(lhs: real, rhs: real) -> real;
-  fn (//)(lhs: int, rhs: int) -> int;
-  fn (//)(lhs: real, rhs: real) -> real;
-  fn (%)(lhs: int, rhs: int) -> int;
-  fn (<)(lhs: int, rhs: int) -> bool;
-  fn (<)(lhs: real, rhs: real) -> bool;
-  fn (<=)(lhs: int, rhs: int) -> bool;
-  fn (<=)(lhs: real, rhs: real) -> bool;
-  fn (>)(lhs: int, rhs: int) -> bool;
-  fn (>)(lhs: real, rhs: real) -> bool;
-  fn (>=)(lhs: int, rhs: int) -> bool;
-  fn (>=)(lhs: real, rhs: real) -> bool;
-  fn (==)(lhs: int, rhs: int) -> bool;
-  fn (==)(lhs: real, rhs: real) -> bool;
-  fn (==)(lhs: bool, rhs: bool) -> bool;
-  fn (==)(lhs: string, rhs: string) -> bool;
-  fn (!=)(lhs: int, rhs: int) -> bool;
-  fn (!=)(lhs: real, rhs: real) -> bool;
-  fn (!=)(lhs: bool, rhs: bool) -> bool;
-  fn (!=)(lhs: string, rhs: string) -> bool;
-  fn (!)(value: bool) -> bool;
-  fn (&&)(lhs: bool, rhs: bool) -> bool;
-  fn (||)(lhs: bool, rhs: bool) -> bool;
-  fn ceildiv(lhs: int, rhs: int) -> int;
-  fn min(lhs: int, rhs: int) -> int;
-  fn min(lhs: real, rhs: real) -> real;
-  fn max(lhs: int, rhs: int) -> int;
-  fn max(lhs: real, rhs: real) -> real;
-  fn range(stop: int) -> list<int>;
-  fn range(start: int, stop: int) -> list<int>;
-  fn range(start: int, stop: int, step: int) -> list<int>;
-  fn length(values: list<int>) -> int;
-  fn length(values: list<real>) -> int;
-  fn length(values: list<bool>) -> int;
-  fn length(values: list<string>) -> int;
-  fn length(values: list<type>) -> int;
-  fn repeat(value: type, count: int) -> list<type>;
-  fn ([])(values: list<int>, index: int) -> int;
-  fn ([])(values: list<real>, index: int) -> real;
-  fn ([])(values: list<bool>, index: int) -> bool;
-  fn ([])(values: list<string>, index: int) -> string;
-  fn ([])(values: list<type>, index: int) -> type;
-  fn append(values: list<int>, value: int) -> list<int>;
-  fn append(values: list<real>, value: real) -> list<real>;
-  fn append(values: list<bool>, value: bool) -> list<bool>;
-  fn append(values: list<string>, value: string) -> list<string>;
-  fn append(values: list<type>, value: type) -> list<type>;
+  pub fn (+)(value: int) -> int;
+  pub fn (+)(value: real) -> real;
+  pub fn (-)(value: int) -> int;
+  pub fn (-)(value: real) -> real;
+  pub fn (+)(lhs: int, rhs: int) -> int;
+  pub fn (+)(lhs: real, rhs: real) -> real;
+  pub fn (-)(lhs: int, rhs: int) -> int;
+  pub fn (-)(lhs: real, rhs: real) -> real;
+  pub fn (*)(lhs: int, rhs: int) -> int;
+  pub fn (*)(lhs: real, rhs: real) -> real;
+  pub fn (/)(lhs: int, rhs: int) -> int;
+  pub fn (/)(lhs: real, rhs: real) -> real;
+  pub fn (//)(lhs: int, rhs: int) -> int;
+  pub fn (//)(lhs: real, rhs: real) -> real;
+  pub fn (%)(lhs: int, rhs: int) -> int;
+  pub fn (<)(lhs: int, rhs: int) -> bool;
+  pub fn (<)(lhs: real, rhs: real) -> bool;
+  pub fn (<=)(lhs: int, rhs: int) -> bool;
+  pub fn (<=)(lhs: real, rhs: real) -> bool;
+  pub fn (>)(lhs: int, rhs: int) -> bool;
+  pub fn (>)(lhs: real, rhs: real) -> bool;
+  pub fn (>=)(lhs: int, rhs: int) -> bool;
+  pub fn (>=)(lhs: real, rhs: real) -> bool;
+  pub fn (==)(lhs: int, rhs: int) -> bool;
+  pub fn (==)(lhs: real, rhs: real) -> bool;
+  pub fn (==)(lhs: bool, rhs: bool) -> bool;
+  pub fn (==)(lhs: string, rhs: string) -> bool;
+  pub fn (!=)(lhs: int, rhs: int) -> bool;
+  pub fn (!=)(lhs: real, rhs: real) -> bool;
+  pub fn (!=)(lhs: bool, rhs: bool) -> bool;
+  pub fn (!=)(lhs: string, rhs: string) -> bool;
+  pub fn (!)(value: bool) -> bool;
+  pub fn (&&)(lhs: bool, rhs: bool) -> bool;
+  pub fn (||)(lhs: bool, rhs: bool) -> bool;
+  pub fn ceildiv(lhs: int, rhs: int) -> int;
+  pub fn min(lhs: int, rhs: int) -> int;
+  pub fn min(lhs: real, rhs: real) -> real;
+  pub fn max(lhs: int, rhs: int) -> int;
+  pub fn max(lhs: real, rhs: real) -> real;
+  pub fn range(stop: int) -> list<int>;
+  pub fn range(start: int, stop: int) -> list<int>;
+  pub fn range(start: int, stop: int, step: int) -> list<int>;
+  pub fn length(values: list<int>) -> int;
+  pub fn length(values: list<real>) -> int;
+  pub fn length(values: list<bool>) -> int;
+  pub fn length(values: list<string>) -> int;
+  pub fn length(values: list<type>) -> int;
+  pub fn repeat(value: type, count: int) -> list<type>;
+  pub fn ([])(values: list<int>, index: int) -> int;
+  pub fn ([])(values: list<real>, index: int) -> real;
+  pub fn ([])(values: list<bool>, index: int) -> bool;
+  pub fn ([])(values: list<string>, index: int) -> string;
+  pub fn ([])(values: list<type>, index: int) -> type;
+  pub fn append(values: list<int>, value: int) -> list<int>;
+  pub fn append(values: list<real>, value: real) -> list<real>;
+  pub fn append(values: list<bool>, value: bool) -> list<bool>;
+  pub fn append(values: list<string>, value: string) -> list<string>;
+  pub fn append(values: list<type>, value: type) -> list<type>;
 }

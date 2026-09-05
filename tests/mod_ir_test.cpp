@@ -24,25 +24,25 @@ int main() {
   constexpr std::string_view source = R"(
 joggle 1;
 mod mod_defs@1.0.0 {
-  type word();
-  fn source() -> word;
-  fn callback(input: i32) -> i32;
-  fn apply(input: i32, body: (i32) -> i32) -> i32;
+  pub type word();
+  pub fn source() -> word;
+  pub fn callback(input: i32) -> i32;
+  pub fn apply(input: i32, body: (i32) -> i32) -> i32;
 
-  fn main() -> word {
+  pub fn main() -> word {
     value = source();
     return value;
   }
 
-  fn forward() -> word {
+  pub fn forward() -> word {
     return main();
   }
 
-  fn choose(condition: i1, lhs: word, rhs: word) -> word {
+  pub fn choose(condition: i1, lhs: word, rhs: word) -> word {
     return if condition { lhs } else { rhs };
   }
 
-  fn inline_user(input: i32) -> i32 {
+  pub fn inline_user(input: i32) -> i32 {
     return apply(input, (value: i32) => callback(value));
   }
 }
@@ -134,7 +134,7 @@ mod mod_defs@1.0.0 {
       "signature instead of living in a second fn table");
   ok &= expect(dependencies ==
                    std::vector<joggle::Mod::Dependency>{{"mod_defs", {1, 0, 0}},
-                                                        {"prelude", {5, 0, 0}}},
+                                                        {"prelude", {6, 0, 0}}},
                "an executable Mod reports exact schema dependencies");
   ok &= expect(parsed && reparsed == text &&
                    parsed->declaration_digest() == mod.declaration_digest(),

@@ -53,11 +53,17 @@ Only three member forms exist:
 Import, analysis, conversion, optimization, simulation, and emission are
 ordinary fns. A compiler-time fn is called explicitly with `@`.
 
+Types and fns are private unless prefixed with `pub`. Package authors use
+private declarations for shape arithmetic and implementation helpers, and
+publish only names that downstream mods or format readers may resolve. `pub`
+is visibility on the same declaration, not an interface block, export table,
+or second schema.
+
 ```joggle
 mod project@1.0.0 {
-  import tensor@7 as t;
+  import tensor@8 as t;
 
-  fn prepare(input: fn) -> fn {
+  pub fn prepare(input: fn) -> fn {
     fused = @t.fuse(input);
     return @t.loops(fused);
   }
