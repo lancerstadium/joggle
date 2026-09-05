@@ -1,5 +1,6 @@
 #include "lang/expr.h"
 
+#include "lang/fn.h"
 #include "sema/domain.h"
 #include "lang/prelude.h"
 #include "lang/lex.h"
@@ -250,7 +251,28 @@ private:
         const std::size_t previous = lambda_variables_.size();
         lambda_variables_.insert(lambda_variables_.end(), parameters.begin(),
                                  parameters.end());
-        result.arguments.push_back(parse(0));
+        if (is(TokenKind::LeftBrace)) {
+          std::vector<Mod::FnDecl::GenericDecl> variables(variables_.begin(),
+                                                          variables_.end());
+          for (const std::string& variable : lambda_variables_) {
+            if (std::none_of(variables.begin(), variables.end(),
+                             [&](const auto& current) {
+                               return current.name == variable;
+                             })) {
+              variables.push_back({variable, Mod::Expr::reference("type")});
+            }
+          }
+          auto body = parse_fn_body(lexer_, current_, diagnostics_,
+                                    std::string(source_), variables);
+          Mod::Expr block;
+          block.kind = Kind::Block;
+          if (body) {
+            block.text = format_fn_body(*body);
+          }
+          result.arguments.push_back(std::move(block));
+        } else {
+          result.arguments.push_back(parse(0));
+        }
         lambda_variables_.resize(previous);
         return result;
       }
@@ -658,6 +680,8 @@ std::string format_expression(const Mod::Expr& expression,
     if (!expression.arguments.empty()) {
       result += format_expression(expression.arguments.back());
     }
+  } else if (expression.kind == Kind::Block) {
+    result = expression.text;
   } else if (expression.kind == Kind::Evaluate) {
     const auto& operand = expression.arguments.front();
     result = expression_precedence(operand) == 100

@@ -40,20 +40,20 @@ std::string element_name(const joggle::Type& tensor) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 6) {
+  if (argc != 8) {
     return EXIT_FAILURE;
   }
-  const auto bytes = read_bytes(argv[5]);
+  const auto bytes = read_bytes(argv[7]);
   if (bytes.empty()) {
     return EXIT_FAILURE;
   }
 
   bool ok = true;
   joggle::Compiler compiler;
-  compiler.load(argv[1]);
-  compiler.load(argv[2]);
-  compiler.load(argv[3]);
-  if (!compiler.link() || !compiler.load_native("onnx", argv[4])) {
+  for (int index = 1; index <= 5; ++index) {
+    compiler.load(argv[index]);
+  }
+  if (!compiler.link() || !compiler.load_native("onnx", argv[6])) {
     compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
     const auto symbol = op.callee().referenced_fn()->symbol();
     const auto mod_name = symbol.mod_name();
     const auto name = symbol.local_name();
-    if (mod_name == "onnx" && name == "Constant") {
+    if (mod_name == "tensor" && name == "constant") {
       ++constants[element_name(op.value().type())];
       const auto digest = op.callee().binding<std::string>("content");
       payloads_resolve &= digest && model->data(*digest).has_value();
@@ -110,12 +110,12 @@ int main(int argc, char** argv) {
                    payloads_resolve,
                "all typed QDQ initializers are Mod-owned constants");
   ok &= expect(
-      calls["onnx.QuantizeLinear"] == 39U &&
-          calls["onnx.DequantizeLinear"] == 91U &&
-          calls["onnx.Conv"] == 26U && calls["onnx.MaxPool"] == 3U &&
-          calls["onnx.GlobalAveragePool"] == 1U &&
-          calls["onnx.Concat"] == 8U && calls["onnx.Reshape"] == 1U &&
-          calls["onnx.Flatten"] == 1U && calls["onnx.Softmax"] == 1U &&
+      calls["quant.quantize_linear"] == 39U &&
+          calls["quant.dequantize_linear"] == 91U &&
+          calls["nn.conv"] == 26U && calls["nn.max_pool"] == 3U &&
+          calls["nn.global_average_pool"] == 1U &&
+          calls["nn.concat"] == 8U && calls["nn.reshape"] == 1U &&
+          calls["nn.flatten"] == 1U && calls["nn.softmax"] == 1U &&
           calls.size() == 9U,
       "the complete standard QDQ graph preserves ordinary ONNX fn calls");
 
@@ -141,10 +141,10 @@ int main(int argc, char** argv) {
         dependencies.begin(), dependencies.end(),
         [&](const auto& dependency) { return dependency.name == name; });
   };
-  ok &= expect(has_dependency("onnx") && has_dependency("tensor") &&
-                   !has_dependency("quant"),
-               "the generated Mod records direct rather than transitive "
-               "semantic dependencies");
+  ok &= expect(has_dependency("tensor") && has_dependency("nn") &&
+                   has_dependency("quant") && !has_dependency("onnx"),
+               "the generated Mod records semantic rather than format "
+               "dependencies");
   if (!ok) {
     compiler.diag().print(std::cerr);
   }

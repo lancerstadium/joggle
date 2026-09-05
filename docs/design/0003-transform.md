@@ -16,11 +16,10 @@ rewrite keyword, anchor, behavior class, or operation-name dispatch.
 
 ## NN consequence
 
-Format conversion and optimization follow the same mechanism. ONNX-to-NN
-equations match source-schema declarations and construct frontend-neutral `nn`
-calls. Later NN expansion exposes indexed construction, access Calls, and
-ordinary loop CFGs. Fusion transforms those bodies; it never substitutes a
-`conv_relu` name or adds a case for Conv.
+Optimization operates on ordinary calls. NN expansion exposes indexed
+construction, access Calls, and ordinary loop CFGs in the same Fn. Fusion
+transforms those bodies; it never substitutes a `conv_relu` name or adds a
+compiler-core case for Conv. File readers are not transformations.
 
 Callable parameters are nested Fns with explicit capture edges. A
 transformation entering a callable therefore sees ordinary typed dataflow.

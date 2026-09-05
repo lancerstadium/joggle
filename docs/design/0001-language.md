@@ -109,10 +109,10 @@ an earlier gate.
    including generics inferred below the result root through local definitions
    and multi-result calls; source inference through rebinding and CFG equations
    remain planned. See Design 0003.**
-7. Tensor semantics: define logical construction and overloaded access outside
-   the core; express traversal and accumulation with ordinary Fn control flow.
-   **In progress; static Tensor, indexed `compute`, list/multi-index `[]`, and
-   loop-carried accumulation are implemented. See Design 0004.**
+7. Tensor semantics: define pure construction, mapping, indexed reduction, and
+   overloaded access outside the core. **In progress; paired multi-domain
+   loops are available to later realized forms, while `tensor@7` provides pure
+   construction, `map`, `reduce`, multi-index `[]`, and block lambdas.**
 8. High-level tensor definitions: express Relu, Conv, MatMul, and similar
    operations in that calculus rather than compiler name cases. **MatMul and
    Relu are the first `nn` definitions; Conv remains planned.**
@@ -120,9 +120,10 @@ an earlier gate.
    and dataflow, including through straight-line local definitions and selected
    multi-result calls. Tensor equations will be rebuilt against the new algebra
    after real NN conversion workloads exist. **In progress.**
-10. Frontend validation: preserve unmodified models as source-schema calls,
-    convert them to bodyful `nn`, and validate transformed results against a
-    trusted runtime. **Import is implemented; conversion remains planned.**
+10. Frontend validation: decode typed external records directly into linked
+    ordinary fns, then validate executable definitions against a trusted
+    runtime. **Direct FLOAT and QDQ import is implemented; execution remains
+    planned.**
 
 ## Deletion policy
 

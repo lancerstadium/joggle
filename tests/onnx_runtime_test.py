@@ -10,9 +10,11 @@ import onnxruntime as ort
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--emitter", required=True)
+    parser.add_argument("--arith", required=True)
     parser.add_argument("--tensor", required=True)
+    parser.add_argument("--nn", required=True)
+    parser.add_argument("--quant", required=True)
     parser.add_argument("--onnx", required=True)
-    parser.add_argument("--schema", required=True)
     parser.add_argument("--native", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--output", required=True)
@@ -29,8 +31,8 @@ def session(path):
 
 def main():
     args = parse_args()
-    command = [args.emitter, args.tensor]
-    command.extend([args.onnx, args.schema, args.native, args.model, args.output])
+    command = [args.emitter, args.arith, args.tensor, args.nn, args.quant]
+    command.extend([args.onnx, args.native, args.model, args.output])
     subprocess.run(command, check=True)
 
     original = session(args.model)

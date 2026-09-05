@@ -61,10 +61,18 @@ bool verify_fn_body(const FnBody& body, Diag& diagnostics) {
       if (statement.kind != StatementSyntax::Kind::Expr) {
         auto nested = names;
         if (statement.kind == StatementSyntax::Kind::For) {
-          if (!statement.iterator) {
+          if (statement.iterators.empty()) {
             report("for statement has no iterator", statement.range);
-          } else {
-            nested.insert(statement.iterator->name);
+          }
+          if (statement.iterators.size() != statement.domains.size()) {
+            report("for must have one domain for each iterator",
+                   statement.range);
+          }
+          for (const BindingSyntax& iterator : statement.iterators) {
+            if (!nested.insert(iterator.name).second) {
+              report("duplicate for iterator '" + iterator.name + "'",
+                     iterator.range);
+            }
           }
         }
         self(self, statement.body, nested);

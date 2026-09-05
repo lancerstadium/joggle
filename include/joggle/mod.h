@@ -72,6 +72,7 @@ public:
       If,
       FnType,
       Lambda,
+      Block,
       Evaluate,
       Prefix,
       Infix,
@@ -84,7 +85,11 @@ public:
     // Empty call entries are positional. Lambda labels name parameters whose
     // type expressions occupy the corresponding argument positions. Kind::Infer
     // requests the callable context for an omitted parameter annotation. A
-    // lambda has either [inputs..., body] or [inputs..., result type, body].
+    // A lambda has either [inputs..., body] or [inputs..., result type, body].
+    // An expression body is stored directly. A statement body is one
+    // canonical braced source fragment in a final Kind::Block expression;
+    // it is parsed by the ordinary Fn body parser when the lambda is
+    // materialized, so lambdas do not introduce a second statement AST.
     std::vector<std::string> labels;
 
     Expr() = default;

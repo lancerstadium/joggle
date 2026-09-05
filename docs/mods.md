@@ -17,11 +17,11 @@ name is not grounds for a package.
 The shipped boundary is deliberately small:
 
 - `tensor` owns target-independent tensor types and program fns;
+- `mem` owns target-independent readable views and ordered destinations;
 - `nn` owns frontend-independent neural-network algorithms;
-- `quant` owns source-only affine Q/DQ semantics;
+- `quant` owns affine Q/DQ semantics;
 - `transform` owns reusable explicitly staged Fn transformations; and
-- optional `onnx` owns one external-format reader while `onnx_schema` owns its
-  versioned source schema.
+- optional `onnx` owns one external-format reader.
 
 These are package roles, not source-language categories. Every declaration is
 still a `type` or `fn`, and every program or compiler action is still a normal
@@ -33,7 +33,7 @@ The user-facing problems map to the language directly:
 | --- | --- | --- |
 | import or export a model format | `fn(bytes) -> mod` or `fn(mod) -> bytes` | owned by the external-format package |
 | express a model or kernel | an ordinary typed `fn` body | owned by the vocabulary that defines its calls |
-| optimize or convert IR | `fn(fn) -> fn` or `fn(mod) -> mod`, called with `@` | a fn in the domain owner; generic transactions live in `transform` |
+| optimize or convert IR | `fn(fn) -> fn` or `fn(mod) -> mod`, called with `@` | a fn in the destination domain owner; generic transactions live in `transform` |
 | define a data format or policy | a parameterized `type` plus ordinary conversion fns | a new package only when independently reusable and distributable |
 | emit or simulate an implementation | an explicitly staged fn returning declared data | a future implementation package, never a core `Target` hierarchy |
 

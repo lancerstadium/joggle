@@ -257,6 +257,14 @@ std::optional<Fn> Compiler::create_fn() {
 std::optional<Op> Compiler::call(Fn::Edit& edit, Mod::FnDecl fn,
                                  std::vector<Val> arguments,
                                  std::optional<Loc> location) {
+  return call(edit, std::move(fn), std::move(arguments), {},
+              std::move(location));
+}
+
+std::optional<Op> Compiler::call(Fn::Edit& edit, Mod::FnDecl fn,
+                                 std::vector<Val> arguments,
+                                 std::vector<Type> expected_results,
+                                 std::optional<Loc> location) {
   if (!state_->linked) {
     state_->diagnostics.report("cannot create a Call before linking");
     return std::nullopt;
@@ -310,7 +318,21 @@ std::optional<Op> Compiler::call(Fn::Edit& edit, Mod::FnDecl fn,
     return std::nullopt;
   }
 
-  std::vector<std::optional<Type>> expected(detail::value_results(fn).size());
+  if (!expected_results.empty() &&
+      expected_results.size() != detail::value_results(fn).size()) {
+    state_->diagnostics.report("call to '" + fn.symbol().qualified_name() +
+                               "' has the wrong number of expected results");
+    return std::nullopt;
+  }
+  std::vector<std::optional<Type>> expected;
+  expected.reserve(detail::value_results(fn).size());
+  if (expected_results.empty()) {
+    expected.resize(detail::value_results(fn).size());
+  } else {
+    for (Type& type : expected_results) {
+      expected.push_back(std::move(type));
+    }
+  }
   auto result_types =
       detail::infer_call_types(*this, fn, value_types, known_arguments,
                                expected, state_->diagnostics, location);
@@ -328,6 +350,16 @@ std::optional<Op> Compiler::call(Fn::Edit& edit, Mod::FnDecl fn,
     state_->diagnostics.report(error.what());
     return std::nullopt;
   }
+}
+
+std::vector<Mod::FnDecl> Compiler::fns(std::string_view name) const {
+  std::vector<Mod::FnDecl> result;
+  for (const auto& [mod_name, mod] : state_->mods) {
+    static_cast<void>(mod_name);
+    auto declarations = mod.overloads(name);
+    result.insert(result.end(), declarations.begin(), declarations.end());
+  }
+  return result;
 }
 
 std::optional<Mod> Compiler::materialize(const Mod& mod) {

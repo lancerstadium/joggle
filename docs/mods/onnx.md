@@ -1,37 +1,25 @@
-# ONNX frontend
+# ONNX
 
-The ONNX frontend is deliberately split by responsibility:
+`onnx@5` is an optional protobuf reader with one compiler-time function:
 
-- `onnx@5` owns the Protobuf reader service `read(bytes, name) -> mod`;
-- `onnx_schema@1` owns source-format declarations, defaults, and static shape
-  functions;
-- `nn@1` owns frontend-independent algorithm bodies;
-- a conversion pass will rewrite source-schema calls to `nn` calls.
-
-The reader is schema-driven. For each node it looks up declarations by
-`op_type`, binds graph inputs and named attributes against the selected source
-signature, and uses normal Joggle call inference. There is no C++ switch for
-Conv, Relu, MatMul, or other individual operations. Adding a compatible source
-declaration therefore does not require rebuilding an operator visitor.
-
-This separation matters for additional frontends. TFLite has different builtin
-codes, option tables, defaults, layouts, quantization rules, and versioning; it
-must preserve those facts in its own reader/schema. It should not impersonate
-ONNX or duplicate NN implementations. Both frontends converge only after
-explicit conversion:
-
-```text
-ONNX bytes  -> onnx_schema calls  --pass--> nn calls
-TFLite bytes -> tflite_schema calls --pass--> nn calls
+```joggle
+fn read(input: bytes, name: string = "model") -> mod;
 ```
 
-Source-schema functions may contain compiler-time shape equations because the
-reader needs typed results. Residual algorithm bodies are forbidden there.
-MatMul, Relu, and future Conv bodies belong to `nn`, expressed using
-`tensor.compute`, overloaded `[]`, ordinary loops, and scalar overloads.
+Call it explicitly with `@onnx.read`. It is a file operation, not an
+optimization pass. The reader decodes and validates ONNX records, converts
+external CamelCase names to ordinary Joggle naming, and asks the linked
+compiler environment for a unique compatible fn. Argument names, defaults,
+types, and overloads perform the binding; there is no switch over Conv, Relu,
+MatMul, or other node kinds.
 
-The current importer supports the audited SqueezeNet opset-7 and QDQ opset-13
-fixtures, typed static shapes, deterministic source locations, and Mod-owned
-constant payloads. Coverage is intentionally narrower than the ONNX standard;
-unsupported schemas fail explicitly. Opset selection, richer ONNX control flow,
-symbolic dimensions, and the ONNX-to-NN conversion package remain future work.
+The resulting model contains calls to `tensor`, `nn`, and `quant`. It contains
+no `onnx.*` program operation, ONNX schema module, temporary ONNX IR, or hidden
+conversion phase. Initializer bytes and the original model are immutable data
+owned by the returned `Mod`.
+
+The tested profiles are the hash-pinned Model Zoo SqueezeNet FLOAT
+IR-3/opset-7 model and QDQ IR-7/opset-13 model. Both import deterministically.
+This proves typed format ingestion and preservation, not numerical execution.
+Unsupported domains, symbolic shapes, external data, subgraphs, and unmatched
+semantics fail with diagnostics.

@@ -60,6 +60,54 @@ bool valid_identifier(std::string_view name) {
   });
 }
 
+std::vector<std::string> semantic_names(std::string_view external) {
+  std::string snake;
+  std::string compact;
+  snake.reserve(external.size() + 4U);
+  compact.reserve(external.size());
+  for (std::size_t index = 0; index < external.size(); ++index) {
+    const unsigned char current =
+        static_cast<unsigned char>(external[index]);
+    const bool upper = std::isupper(current) != 0;
+    const bool previous_lower =
+        index != 0U &&
+        (std::islower(static_cast<unsigned char>(external[index - 1U])) != 0 ||
+         std::isdigit(static_cast<unsigned char>(external[index - 1U])) != 0);
+    const bool acronym_boundary =
+        index != 0U && index + 1U < external.size() && upper &&
+        std::isupper(static_cast<unsigned char>(external[index - 1U])) != 0 &&
+        std::islower(static_cast<unsigned char>(external[index + 1U])) != 0;
+    if (upper && !snake.empty() && (previous_lower || acronym_boundary)) {
+      snake.push_back('_');
+    }
+    const char lowered = static_cast<char>(std::tolower(current));
+    snake.push_back(lowered);
+    compact.push_back(lowered);
+  }
+  std::vector<std::string> result{std::move(snake)};
+  if (compact != result.front()) {
+    result.push_back(std::move(compact));
+  }
+  return result;
+}
+
+std::vector<joggle::Mod::FnDecl>
+semantic_candidates(const joggle::Compiler& compiler,
+                    std::string_view external) {
+  std::vector<joggle::Mod::FnDecl> result;
+  for (const std::string& name : semantic_names(external)) {
+    auto declarations = compiler.fns(name);
+    for (const auto& declaration : declarations) {
+      if (std::none_of(result.begin(), result.end(), [&](const auto& current) {
+            return current.symbol() == declaration.symbol();
+          })) {
+        result.push_back(declaration);
+      }
+    }
+  }
+  return result;
+}
+
 std::optional<std::size_t> element_count(std::span<const std::int64_t> shape) {
   std::size_t count = 1;
   for (const auto dimension : shape) {
@@ -563,16 +611,15 @@ std::optional<joggle::Val> lift(joggle::Compiler& compiler, Domain expected,
 std::optional<Types> load_types(joggle::Compiler& compiler,
                                 joggle::Diag& diagnostics) {
   const auto tensor_mod = compiler.mod("tensor");
-  const auto schema = compiler.mod("onnx_schema");
   const auto tensor = tensor_mod ? tensor_mod->type("tensor") : std::nullopt;
   const auto constants =
-      schema ? schema->overloads("Constant")
+      tensor_mod ? tensor_mod->overloads("constant")
              : std::vector<joggle::Mod::FnDecl>{};
   const auto constant = std::find_if(
       constants.begin(), constants.end(),
       [](const auto& fn) { return fn.inputs().size() == 1U; });
   if (!tensor || constant == constants.end()) {
-    fail(diagnostics, "linked ONNX and tensor declarations are unavailable");
+    fail(diagnostics, "linked tensor declarations are unavailable");
     return std::nullopt;
   }
 
@@ -795,8 +842,7 @@ std::optional<joggle::Mod> read(joggle::Compiler& compiler,
   }
 
   const auto types = load_types(compiler, diagnostics);
-  const auto schema = compiler.mod("onnx_schema");
-  if (!types || !schema) {
+  if (!types) {
     return std::nullopt;
   }
 
@@ -953,7 +999,8 @@ std::optional<joggle::Mod> read(joggle::Compiler& compiler,
       std::vector<joggle::Val> arguments;
     };
     std::vector<Candidate> candidates;
-    for (const auto& declaration : schema->overloads(node.op_type())) {
+    for (const auto& declaration :
+         semantic_candidates(compiler, node.op_type())) {
       auto arguments =
           bind_node(compiler, declaration, node, *attrs, values, initializers);
       if (arguments) {
@@ -975,8 +1022,28 @@ std::optional<joggle::Mod> read(joggle::Compiler& compiler,
     const auto where =
         location(graph, "node",
                  node.name().empty() ? node.output(0) : node.name(), node_index);
+    std::vector<joggle::Type> expected_results;
+    expected_results.reserve(static_cast<std::size_t>(node.output_size()));
+    bool complete_result_types = true;
+    for (const auto& output : node.output()) {
+      const auto declared = declared_values.find(output);
+      const auto type = declared == declared_values.end()
+                            ? std::optional<joggle::Type>{}
+                            : tensor_type(compiler, *types,
+                                          declared->second.first,
+                                          declared->second.second);
+      if (!type) {
+        complete_result_types = false;
+        break;
+      }
+      expected_results.push_back(*type);
+    }
+    if (!complete_result_types) {
+      expected_results.clear();
+    }
     auto call = compiler.call(edit, candidates.front().fn,
-                              std::move(candidates.front().arguments), where);
+                              std::move(candidates.front().arguments),
+                              std::move(expected_results), where);
     if (!call) {
       fail(diagnostics, "could not infer the result Type of node '" +
                             node.name() + "' (" + node.op_type() + ")");

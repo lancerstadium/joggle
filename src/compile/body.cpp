@@ -8,6 +8,7 @@
 #include "ir/type.h"
 #include "joggle/compiler.h"
 #include "lang/expr.h"
+#include "lang/lex.h"
 #include "lang/prelude.h"
 #include "sema/call.h"
 #include "sema/domain.h"
@@ -34,6 +35,24 @@ namespace joggle {
 namespace {
 
 using detail::ParamVal;
+
+std::optional<detail::FnBody> lambda_block(const Mod::Expr& expression,
+                                           const Loc& source,
+                                           std::span<const std::string> names,
+                                           Diag& diagnostics) {
+  if (expression.kind != Mod::Expr::Kind::Block || expression.text.empty()) {
+    return std::nullopt;
+  }
+  std::vector<Mod::FnDecl::GenericDecl> variables;
+  variables.reserve(names.size());
+  for (const std::string& name : names) {
+    variables.push_back({name, Mod::Expr::reference("type")});
+  }
+  detail::Lexer lexer(expression.text, source.begin);
+  detail::Token current = lexer.take();
+  return detail::parse_fn_body(lexer, current, diagnostics, source.source,
+                               variables);
+}
 
 std::pair<std::string_view, std::string_view>
 split_reference(std::string_view owner, std::string_view reference) {
@@ -87,8 +106,7 @@ class Instantiator {
     bool is_inline_fn() const { return inline_fn.has_value(); }
     bool is_expression() const { return expression.has_value(); }
     bool valid() const {
-      return value.has_value() || is_fn() || is_expression() ||
-             is_inline_fn();
+      return value.has_value() || is_fn() || is_expression() || is_inline_fn();
     }
   };
 
@@ -1308,8 +1326,75 @@ private:
       bound.resize(previous);
       return;
     }
+    if (expression.kind == Kind::Block) {
+      std::vector<std::string> visible = locals_.names();
+      visible.insert(visible.end(), bound.begin(), bound.end());
+      std::sort(visible.begin(), visible.end());
+      visible.erase(std::unique(visible.begin(), visible.end()), visible.end());
+      Diag diagnostics;
+      const auto body = lambda_block(expression, Loc{body_.source, {}, {}},
+                                     visible, diagnostics);
+      if (body) {
+        collect_free_statements(body->blocks.front().statements, bound, free);
+      }
+      return;
+    }
     for (const Mod::Expr& argument : expression.arguments) {
       collect_free_variables(argument, bound, free);
+    }
+  }
+
+  void collect_free_statements(
+      const std::vector<detail::StatementSyntax>& statements,
+      std::vector<std::string>& bound, std::vector<std::string>& free) const {
+    using Statement = detail::StatementSyntax;
+    for (const Statement& statement : statements) {
+      if (statement.kind == Statement::Kind::Return) {
+        for (const detail::ExprSyntax& value : statement.values) {
+          collect_free_variables(value.value, bound, free);
+        }
+        continue;
+      }
+      if (statement.kind == Statement::Kind::Break ||
+          statement.kind == Statement::Kind::Continue) {
+        continue;
+      }
+      collect_free_variables(statement.expression.value, bound, free);
+      if (statement.kind == Statement::Kind::If ||
+          statement.kind == Statement::Kind::While) {
+        auto nested = bound;
+        collect_free_statements(statement.body, nested, free);
+        if (statement.kind == Statement::Kind::If) {
+          nested = bound;
+          collect_free_statements(statement.otherwise, nested, free);
+        }
+        continue;
+      }
+      if (statement.kind == Statement::Kind::For) {
+        auto nested = bound;
+        for (std::size_t index = 0; index < statement.iterators.size();
+             ++index) {
+          const detail::BindingSyntax& iterator = statement.iterators[index];
+          if (iterator.type) {
+            collect_free_variables(iterator.type->value, nested, free);
+          }
+          if (index < statement.domains.size()) {
+            collect_free_variables(statement.domains[index].value, nested,
+                                   free);
+          }
+          nested.push_back(iterator.name);
+        }
+        collect_free_statements(statement.body, nested, free);
+        continue;
+      }
+      for (const detail::BindingSyntax& binding : statement.bindings) {
+        if (binding.type) {
+          collect_free_variables(binding.type->value, bound, free);
+        }
+        if (!binding.rebind) {
+          bound.push_back(binding.name);
+        }
+      }
     }
   }
 
@@ -2096,14 +2181,36 @@ private:
   }
 
   Flow instantiate_for(const detail::StatementSyntax& statement, Blk block) {
-    if (!statement.iterator) {
+    if (statement.iterators.empty()) {
       report("for statement has no iterator", statement.range);
       return next(block);
     }
+    if (statement.iterators.size() != statement.domains.size()) {
+      report("for must have one domain for each iterator", statement.range);
+      return next(block);
+    }
+    if (statement.iterators.size() > 1U) {
+      std::vector<detail::StatementSyntax> nested = statement.body;
+      for (std::size_t reverse = statement.iterators.size(); reverse != 0U;
+           --reverse) {
+        const std::size_t index = reverse - 1U;
+        detail::StatementSyntax loop;
+        loop.kind = detail::StatementSyntax::Kind::For;
+        loop.iterators.push_back(statement.iterators[index]);
+        loop.domains.push_back(statement.domains[index]);
+        loop.body = std::move(nested);
+        loop.range = statement.range;
+        nested.clear();
+        nested.push_back(std::move(loop));
+      }
+      return instantiate_sequence(nested, block);
+    }
+    detail::BindingSyntax iterator = statement.iterators.front();
+    const detail::ExprSyntax& domain = statement.domains.front();
     std::optional<CountedRange> counted;
     std::optional<std::vector<detail::ExecVal>> elements;
-    if (statement.iterator->type) {
-      auto probe = prelude_counted_range(statement.expression);
+    if (iterator.type) {
+      auto probe = prelude_counted_range(domain);
       if (probe.matched) {
         if (!probe.value) {
           return next(block);
@@ -2112,19 +2219,34 @@ private:
       }
     }
     if (!counted) {
-      auto iterable = evaluate_known(statement.expression);
+      auto iterable = evaluate_known(domain);
       const detail::ExecVal* payload =
           iterable && iterable->known() ? iterable->known_value() : nullptr;
-      elements = payload ? detail::list_elements(*payload)
-                         : std::optional<std::vector<detail::ExecVal>>{};
-      if (!elements) {
-        report("for iterable must be a Known list", statement.expression.range);
-        return next(block);
+      if (const auto* extent =
+              payload ? std::get_if<std::int64_t>(payload) : nullptr) {
+        if (*extent < 0) {
+          report("for extent must be non-negative", domain.range);
+          return next(block);
+        }
+        counted = CountedRange{0, *extent, 1, *extent == 0};
+        if (!iterator.type) {
+          iterator.type = detail::ExprSyntax{
+              Mod::Expr::reference(std::string(detail::prelude_mod_name) +
+                                   ".index"),
+              iterator.range};
+        }
+      } else {
+        elements = payload ? detail::list_elements(*payload)
+                           : std::optional<std::vector<detail::ExecVal>>{};
+        if (!elements) {
+          report("for domain must be a Known extent or list", domain.range);
+          return next(block);
+        }
       }
     }
 
-    if (statement.iterator->type) {
-      const auto iterator_type = expected_type(*statement.iterator);
+    if (iterator.type) {
+      const auto iterator_type = expected_type(iterator);
       if (!iterator_type) {
         return next(block);
       }
@@ -2138,8 +2260,7 @@ private:
         for (const detail::ExecVal& element : *elements) {
           const auto* integer = std::get_if<std::int64_t>(&element);
           if (!integer) {
-            report("a typed for iterable must contain integers",
-                   statement.expression.range);
+            report("a typed for iterable must contain integers", domain.range);
             return next(block);
           }
           sequence.push_back(*integer);
@@ -2178,7 +2299,7 @@ private:
           const auto difference = checked_subtract(sequence[1], sequence[0]);
           if (!difference || *difference == 0) {
             report("a typed for iterable must be an arithmetic progression",
-                   statement.expression.range);
+                   domain.range);
             return next(block);
           }
           step = *difference;
@@ -2187,7 +2308,7 @@ private:
                 checked_subtract(sequence[index], sequence[index - 1U]);
             if (!next_step || *next_step != step) {
               report("a typed for iterable must be an arithmetic progression",
-                     statement.expression.range);
+                     domain.range);
               return next(block);
             }
           }
@@ -2198,7 +2319,7 @@ private:
         const auto limit = checked_add(sequence.back(), step);
         if (!limit) {
           report("typed for range exceeds the compiler integer domain",
-                 statement.expression.range);
+                 domain.range);
           return next(block);
         }
         limit_integer = *limit;
@@ -2244,16 +2365,16 @@ private:
         auto staged = detail::stage(compiler_, detail::ExecVal{integer});
         auto known = staged ? detail::ir_value(compiler_, *staged)
                             : std::optional<Val>{};
-        return known ? materialize(*known, *iterator_type, block,
-                                   statement.iterator->range)
-                     : std::optional<Val>{};
+        return known
+                   ? materialize(*known, *iterator_type, block, iterator.range)
+                   : std::optional<Val>{};
       };
       auto start = materialize_integer(start_integer);
       auto bound = materialize_integer(limit_integer);
       auto step_value = materialize_integer(step);
       if (!start || !bound || !step_value) {
         report("typed for bounds cannot be materialized as its iterator type",
-               statement.iterator->range);
+               iterator.range);
         return next(block);
       }
 
@@ -2288,11 +2409,10 @@ private:
           "$for.limit" + std::to_string(next_temporary_++);
       const std::string step_name =
           "$for.step" + std::to_string(next_temporary_++);
-      define(state_name, header_arguments.front(), statement.iterator->range);
-      define(statement.iterator->name, header_arguments.front(),
-             statement.iterator->range);
-      define(limit_name, *bound, statement.expression.range);
-      define(step_name, *step_value, statement.expression.range);
+      define(state_name, header_arguments.front(), iterator.range);
+      define(iterator.name, header_arguments.front(), iterator.range);
+      define(limit_name, *bound, domain.range);
+      define(step_name, *step_value, domain.range);
       for (std::size_t index = 0; index < carried_names.size(); ++index) {
         bind({carried_names[index], std::nullopt, statement.range, true},
              header_arguments[index + 1U]);
@@ -2306,12 +2426,11 @@ private:
                           Mod::Expr::reference(std::move(rhs))}};
       };
       auto [condition_tail, condition] = instantiate_expression(
-          infix(step > 0 ? "<" : ">", state_name, limit_name),
-          statement.expression.range, header);
+          infix(step > 0 ? "<" : ">", state_name, limit_name), domain.range,
+          header);
       const auto i1 = compiler_.make("i1");
       if (!condition || condition->known() || !i1 || condition->type() != *i1) {
-        report("typed for comparison must produce i1",
-               statement.expression.range);
+        report("typed for comparison must produce i1", domain.range);
         return next(block);
       }
       std::vector<Val> exit_values(header_arguments.begin() + 1,
@@ -2377,13 +2496,12 @@ private:
           bind({carried_names[index], std::nullopt, statement.range, true},
                latch_arguments[index]);
         }
-        auto [increment_tail, increment] =
-            instantiate_expression(infix("+", state_name, step_name),
-                                   statement.iterator->range, latch);
+        auto [increment_tail, increment] = instantiate_expression(
+            infix("+", state_name, step_name), iterator.range, latch);
         if (!increment || increment->known() ||
             increment->type() != *iterator_type) {
           report("typed for increment has the wrong iterator type",
-                 statement.iterator->range);
+                 iterator.range);
           return next(block);
         }
         std::vector<Val> next_values{*increment};
@@ -2412,16 +2530,15 @@ private:
       std::vector<Path> following;
       for (const Path& path : active) {
         restore(path);
-        auto iterator = detail::stage(compiler_, element);
-        if (!iterator) {
-          report("for iterator cannot enter staged evaluation",
-                 statement.iterator->range);
+        auto staged_iterator = detail::stage(compiler_, element);
+        if (!staged_iterator) {
+          report("for iterator cannot enter staged evaluation", iterator.range);
           continue;
         }
         const std::size_t outer_depth = locals_.depth();
         locals_.push();
-        define_staged(statement.iterator->name, std::move(*iterator),
-                      statement.iterator->range);
+        define_staged(iterator.name, std::move(*staged_iterator),
+                      iterator.range);
         loops_.push_back({});
         Flow flow = instantiate_sequence(statement.body, path.block);
         loops_.pop_back();
@@ -3195,8 +3312,8 @@ instantiate_lambda(Compiler& compiler, std::string_view owner,
       }
     } else {
       auto value = evaluate_known_expression(
-          compiler, owner, expression.arguments[index], expected_type,
-          bindings, diagnostics, source, allow_guarded_evaluation);
+          compiler, owner, expression.arguments[index], expected_type, bindings,
+          diagnostics, source, allow_guarded_evaluation);
       if (value && value->as_type() != nullptr) {
         annotation = *value->as_type();
       }
@@ -3235,17 +3352,38 @@ instantiate_lambda(Compiler& compiler, std::string_view owner,
   }
 
   FnBody body;
-  body.source = source.source;
-  body.range = {source.begin, source.end};
-  BlkSyntax entry;
-  entry.name = "entry";
-  entry.range = body.range;
-  StatementSyntax returned;
-  returned.kind = StatementSyntax::Kind::Return;
-  returned.range = body.range;
-  returned.values.push_back({expression.arguments.back(), body.range});
-  entry.statements.push_back(std::move(returned));
-  body.blocks.push_back(std::move(entry));
+  if (expression.arguments.back().kind == Kind::Block) {
+    std::vector<std::string> names;
+    names.reserve(arguments.size());
+    for (const auto& [name, type] : arguments) {
+      static_cast<void>(type);
+      names.push_back(name);
+    }
+    for (const auto& [name, binding] : bindings) {
+      static_cast<void>(binding);
+      if (std::find(names.begin(), names.end(), name) == names.end()) {
+        names.push_back(name);
+      }
+    }
+    auto parsed =
+        lambda_block(expression.arguments.back(), source, names, diagnostics);
+    if (!parsed) {
+      return std::nullopt;
+    }
+    body = std::move(*parsed);
+  } else {
+    body.source = source.source;
+    body.range = {source.begin, source.end};
+    BlkSyntax entry;
+    entry.name = "entry";
+    entry.range = body.range;
+    StatementSyntax returned;
+    returned.kind = StatementSyntax::Kind::Return;
+    returned.range = body.range;
+    returned.values.push_back({expression.arguments.back(), body.range});
+    entry.statements.push_back(std::move(returned));
+    body.blocks.push_back(std::move(entry));
+  }
 
   return Instantiator(compiler, std::string(owner), body, diagnostics,
                       std::move(arguments), std::move(expected_results),

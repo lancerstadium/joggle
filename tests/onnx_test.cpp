@@ -31,16 +31,16 @@ joggle::Bytes bytes(const char* path) {
 }
 
 bool load(joggle::Compiler& compiler, char** argv) {
-  for (int index = 1; index <= 3; ++index) {
+  for (int index = 1; index <= 4; ++index) {
     compiler.load(argv[index]);
   }
-  return compiler.link() && compiler.load_native("onnx", argv[4]);
+  return compiler.link() && compiler.load_native("onnx", argv[5]);
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 5 && argc != 6) {
+  if (argc != 6 && argc != 7) {
     return EXIT_FAILURE;
   }
 
@@ -56,19 +56,10 @@ int main(int argc, char** argv) {
                            "valid ModelProto") != std::string::npos,
                    "malformed ONNX is rejected transactionally");
 
-  const auto shape = malformed.run<std::vector<std::int64_t>>(
-      "onnx_schema.conv_shape", std::vector<std::int64_t>{1, 3, 224, 224},
-      std::vector<std::int64_t>{64, 3, 3, 3},
-      std::vector<std::int64_t>{3, 3}, std::vector<std::int64_t>{2, 2},
-      std::vector<std::int64_t>{0, 0, 0, 0},
-      std::vector<std::int64_t>{1, 1});
-  ok &= expect(shape == std::vector<std::int64_t>({1, 64, 111, 111}),
-               "the source schema owns ONNX shape rules");
-
-  if (argc == 5) {
+  if (argc == 6) {
     return ok ? EXIT_SUCCESS : EXIT_FAILURE;
   }
-  const auto model_bytes = bytes(argv[5]);
+  const auto model_bytes = bytes(argv[6]);
   joggle::Compiler compiler;
   if (model_bytes.empty() || !load(compiler, argv)) {
     compiler.diag().print(std::cerr);
@@ -97,7 +88,7 @@ int main(int argc, char** argv) {
     }
     ++calls[std::string(fn->name())];
     located += static_cast<std::size_t>(op.location().has_value());
-    if (fn->name() == "Constant") {
+    if (fn->symbol().mod_name() == "tensor" && fn->name() == "constant") {
       const auto digest = op.callee().binding<std::string>("content");
       ok &= expect(digest && model->data(*digest).has_value(),
                    "constant payload is owned by the imported mod");
@@ -115,11 +106,11 @@ int main(int argc, char** argv) {
                    returned.front().type().get<std::vector<std::int64_t>>(
                        "shape") == std::vector<std::int64_t>({1, 1000}),
                "schema inference reaches the declared output");
-  ok &= expect(body->ops().size() == 118U && calls["Constant"] == 52U &&
-                   calls["Conv"] == 26U && calls["Relu"] == 26U &&
-                   calls["Concat"] == 8U && calls["MaxPool"] == 3U &&
-                   calls["AveragePool"] == 1U && calls["Dropout"] == 1U &&
-                   calls["Reshape"] == 1U,
+  ok &= expect(body->ops().size() == 118U && calls["constant"] == 52U &&
+                   calls["conv"] == 26U && calls["relu"] == 26U &&
+                   calls["concat"] == 8U && calls["max_pool"] == 3U &&
+                   calls["average_pool"] == 1U && calls["dropout"] == 1U &&
+                   calls["reshape"] == 1U,
                "the audited model graph is imported without op-specific C++"
                " dispatch");
   ok &= expect(located == body->ops().size() && model->data().size() == 54U &&

@@ -255,9 +255,9 @@ int main() {
           generic_inline_callback->ops().front().arguments().back().inline_fn(),
       "lambda annotations and the surrounding result infer a "
       "generic higher-order call");
-  const auto nested_result_ops =
-      nested_result_inference ? nested_result_inference->ops()
-                              : std::vector<joggle::Op>{};
+  const auto nested_result_ops = nested_result_inference
+                                     ? nested_result_inference->ops()
+                                     : std::vector<joggle::Op>{};
   ok &= expect(
       nested_result_ops.size() == 2U &&
           nested_result_ops[0].callee().referenced_fn() &&
@@ -367,9 +367,8 @@ mod guarded_inference@1.0.0 {
           ? guarded_inference.materialize("guarded_inference.staged")
           : std::nullopt;
   const auto direct_nested =
-      staged_nested
-          ? guarded_inference.materialize("guarded_inference.direct")
-          : std::nullopt;
+      staged_nested ? guarded_inference.materialize("guarded_inference.direct")
+                    : std::nullopt;
   ok &= expect(
       staged_nested && staged_nested->ops().size() == 2U && !direct_nested &&
           shape_calls == 1U,
@@ -2702,6 +2701,30 @@ mod staged_control@1.0.0 {
     return current;
   }
 
+  fn residual_grid<M: int, N: int>(rows: M, columns: N, input: i32) -> i32 {
+    current = input;
+    for row, column in M, N {
+      current = touch(current, row);
+      current = touch(current, column);
+    }
+    return current;
+  }
+
+  fn residual_grid_nested<M: int, N: int>(
+    rows: M,
+    columns: N,
+    input: i32
+  ) -> i32 {
+    current = input;
+    for row in M {
+      for column in N {
+        current = touch(current, row);
+        current = touch(current, column);
+      }
+    }
+    return current;
+  }
+
   fn residual_control<N: int>(count: N, input: i32, stop: i1, skip: i1)
       -> i32 {
     current = input;
@@ -2790,6 +2813,10 @@ mod staged_control@1.0.0 {
       staged_mod ? staged_mod->fn("pipeline") : std::nullopt;
   const auto residual_count_decl =
       staged_mod ? staged_mod->fn("residual_count") : std::nullopt;
+  const auto residual_grid_decl =
+      staged_mod ? staged_mod->fn("residual_grid") : std::nullopt;
+  const auto residual_grid_nested_decl =
+      staged_mod ? staged_mod->fn("residual_grid_nested") : std::nullopt;
   const auto residual_control_decl =
       staged_mod ? staged_mod->fn("residual_control") : std::nullopt;
   const auto materialize_index_decl =
@@ -2803,6 +2830,12 @@ mod staged_control@1.0.0 {
   const auto width = integer_type
                          ? staged_control.known(*integer_type, std::int64_t{8})
                          : std::nullopt;
+  const auto rows = integer_type
+                        ? staged_control.known(*integer_type, std::int64_t{2})
+                        : std::nullopt;
+  const auto columns =
+      integer_type ? staged_control.known(*integer_type, std::int64_t{3})
+                   : std::nullopt;
   const auto stages =
       integer_list_type
           ? staged_control.known(*integer_list_type,
@@ -2820,6 +2853,15 @@ mod staged_control@1.0.0 {
       residual_count_decl && width
           ? staged_control.materialize(*residual_count_decl, {*width})
           : std::nullopt;
+  const auto residual_grid =
+      residual_grid_decl && rows && columns
+          ? staged_control.materialize(*residual_grid_decl, {*rows, *columns})
+          : std::nullopt;
+  const auto residual_grid_nested =
+      residual_grid_nested_decl && rows && columns
+          ? staged_control.materialize(*residual_grid_nested_decl,
+                                       {*rows, *columns})
+          : std::nullopt;
   const auto zero = integer_type
                         ? staged_control.known(*integer_type, std::int64_t{0})
                         : std::nullopt;
@@ -2836,7 +2878,8 @@ mod staged_control@1.0.0 {
           ? staged_control.materialize(*materialize_index_decl, {*width})
           : std::nullopt;
   if (!staged_control_linked || !specialized || !pipeline || !residual_count ||
-      !empty_residual_count || !residual_control || !materialized_index) {
+      !residual_grid || !residual_grid_nested || !empty_residual_count ||
+      !residual_control || !materialized_index) {
     staged_control.diag().print(std::cerr);
   }
   ok &= expect(
@@ -2848,11 +2891,19 @@ mod staged_control@1.0.0 {
               std::string::npos &&
           staged_control_text.find("for position: index in @range(N) {") !=
               std::string::npos &&
+          staged_control_text.find("for row, column in M, N {") !=
+              std::string::npos &&
           sum_shape == std::optional<std::int64_t>{14} &&
           count == std::optional<std::int64_t>{3} && specialized && pipeline &&
           residual_count && staged_control.verify(*residual_count) &&
           residual_count->blks().size() == 5U &&
           residual_count->ops().size() == 6U && empty_residual_count &&
+          residual_grid && residual_grid_nested &&
+          staged_control.verify(*residual_grid) &&
+          staged_control.verify(*residual_grid_nested) &&
+          residual_grid->blks().size() == 9U &&
+          joggle::format(*residual_grid, "grid") ==
+              joggle::format(*residual_grid_nested, "grid") &&
           staged_control.verify(*empty_residual_count) &&
           empty_residual_count->blks().size() == 1U &&
           empty_residual_count->ops().empty() && residual_control &&

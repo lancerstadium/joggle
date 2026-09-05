@@ -96,10 +96,16 @@ include(cmake/JoggleMod.cmake)
 joggle_mod(joggle_transform_native
   SOURCE mods/transform/mod.joggle
   NATIVE mods/transform/native.cpp)
+joggle_mod(joggle_mem_native
+  SOURCE mods/mem/mod.joggle
+  NATIVE mods/mem/native.cpp)
 if(MSVC)
   target_compile_options(joggle_transform_native PRIVATE /W4 /WX)
+  target_compile_options(joggle_mem_native PRIVATE /W4 /WX)
 else()
   target_compile_options(joggle_transform_native PRIVATE
+    -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
+  target_compile_options(joggle_mem_native PRIVATE
     -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
 endif()
 set_target_properties(joggle_transform_native PROPERTIES
@@ -107,6 +113,11 @@ set_target_properties(joggle_transform_native PROPERTIES
   OUTPUT_NAME "native"
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/mods/transform"
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/mods/transform")
+set_target_properties(joggle_mem_native PROPERTIES
+  PREFIX ""
+  OUTPUT_NAME "native"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/mods/mem"
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/mods/mem")
 
 set(JOGGLE_SQUEEZENET_MODEL
   "${CMAKE_CURRENT_BINARY_DIR}/models/squeezenet1.1-7.onnx"
@@ -211,6 +222,8 @@ install(FILES mods/arith/mod.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/arith)
 install(FILES mods/tensor/mod.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/tensor)
+install(FILES mods/mem/mod.joggle
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/mem)
 install(FILES mods/nn/mod.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/nn)
 install(FILES mods/transform/mod.joggle
@@ -219,11 +232,12 @@ install(FILES mods/quant/mod.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/quant)
 install(FILES mods/onnx/mod.joggle
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/onnx)
-install(FILES mods/onnx_schema/mod.joggle
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/onnx_schema)
 install(TARGETS joggle_transform_native
   LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/transform
   RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/transform)
+install(TARGETS joggle_mem_native
+  LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/mem
+  RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/mods/mem)
 install(EXPORT JoggleTargets
   FILE JoggleTargets.cmake
   NAMESPACE joggle::
@@ -264,10 +278,10 @@ if(JOGGLE_BUILD_TESTS)
     "${CMAKE_CURRENT_SOURCE_DIR}/mods/arith/mod.joggle")
   set(JOGGLE_TENSOR_MOD
     "${CMAKE_CURRENT_SOURCE_DIR}/mods/tensor/mod.joggle")
+  set(JOGGLE_MEM_MOD
+    "${CMAKE_CURRENT_SOURCE_DIR}/mods/mem/mod.joggle")
   set(JOGGLE_NN_MOD
     "${CMAKE_CURRENT_SOURCE_DIR}/mods/nn/mod.joggle")
-  set(JOGGLE_ONNX_SCHEMA
-    "${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx_schema/mod.joggle")
   set(JOGGLE_TRANSFORM_MOD
     "${CMAKE_CURRENT_SOURCE_DIR}/mods/transform/mod.joggle")
   set(JOGGLE_QUANT_MOD
@@ -303,6 +317,18 @@ if(JOGGLE_BUILD_TESTS)
     JOGGLE_NN_MOD="${JOGGLE_NN_MOD}"
   )
   add_test(NAME tensor COMMAND joggle_tensor_test)
+
+  add_executable(joggle_mem_test tests/mem_test.cpp)
+  target_link_libraries(joggle_mem_test PRIVATE joggle::joggle)
+  add_dependencies(joggle_mem_test joggle_mem_native)
+  target_compile_definitions(joggle_mem_test PRIVATE
+    JOGGLE_ARITH_MOD="${JOGGLE_ARITH_MOD}"
+    JOGGLE_TENSOR_MOD="${JOGGLE_TENSOR_MOD}"
+    JOGGLE_MEM_MOD="${JOGGLE_MEM_MOD}"
+    JOGGLE_NN_MOD="${JOGGLE_NN_MOD}"
+    JOGGLE_MEM_NATIVE="$<TARGET_FILE:joggle_mem_native>"
+  )
+  add_test(NAME mem COMMAND joggle_mem_test)
 
   add_executable(joggle_quant_test tests/quant_test.cpp)
   target_link_libraries(joggle_quant_test PRIVATE joggle::joggle)
@@ -452,9 +478,10 @@ if(JOGGLE_BUILD_TESTS)
     target_link_libraries(joggle_onnx_test PRIVATE joggle::joggle)
     add_test(NAME onnx
       COMMAND joggle_onnx_test
+        ${JOGGLE_ARITH_MOD}
         ${JOGGLE_TENSOR_MOD}
+        ${JOGGLE_NN_MOD}
         ${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle
-        ${JOGGLE_ONNX_SCHEMA}
         $<TARGET_FILE:joggle_onnx_native>
         ${JOGGLE_ONNX_TEST_MODEL})
 
@@ -463,9 +490,11 @@ if(JOGGLE_BUILD_TESTS)
       target_link_libraries(joggle_onnx_qdq_test PRIVATE joggle::joggle)
       add_test(NAME onnx_qdq
         COMMAND joggle_onnx_qdq_test
+          ${JOGGLE_ARITH_MOD}
           ${JOGGLE_TENSOR_MOD}
+          ${JOGGLE_NN_MOD}
+          ${JOGGLE_QUANT_MOD}
           ${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle
-          ${JOGGLE_ONNX_SCHEMA}
           $<TARGET_FILE:joggle_onnx_native>
           ${JOGGLE_ONNX_QDQ_TEST_MODEL})
 
@@ -475,9 +504,11 @@ if(JOGGLE_BUILD_TESTS)
       add_test(NAME onnx_bundle_cli
         COMMAND ${CMAKE_COMMAND}
           -DJOGGLE_CLI=$<TARGET_FILE:joggle_cli>
+          -DJOGGLE_ARITH_MOD=${JOGGLE_ARITH_MOD}
           -DJOGGLE_TENSOR_MOD=${JOGGLE_TENSOR_MOD}
+          -DJOGGLE_NN_MOD=${JOGGLE_NN_MOD}
+          -DJOGGLE_QUANT_MOD=${JOGGLE_QUANT_MOD}
           -DJOGGLE_ONNX_MOD=${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle
-          -DJOGGLE_ONNX_SCHEMA=${JOGGLE_ONNX_SCHEMA}
           -DJOGGLE_ONNX_NATIVE=$<TARGET_FILE:joggle_onnx_native>
           -DJOGGLE_ONNX_MODEL=${JOGGLE_ONNX_TEST_MODEL}
           -DJOGGLE_EXPECTED_PAYLOADS=54
@@ -489,9 +520,11 @@ if(JOGGLE_BUILD_TESTS)
       add_test(NAME onnx_qdq_bundle_cli
         COMMAND ${CMAKE_COMMAND}
           -DJOGGLE_CLI=$<TARGET_FILE:joggle_cli>
+          -DJOGGLE_ARITH_MOD=${JOGGLE_ARITH_MOD}
           -DJOGGLE_TENSOR_MOD=${JOGGLE_TENSOR_MOD}
+          -DJOGGLE_NN_MOD=${JOGGLE_NN_MOD}
+          -DJOGGLE_QUANT_MOD=${JOGGLE_QUANT_MOD}
           -DJOGGLE_ONNX_MOD=${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle
-          -DJOGGLE_ONNX_SCHEMA=${JOGGLE_ONNX_SCHEMA}
           -DJOGGLE_ONNX_NATIVE=$<TARGET_FILE:joggle_onnx_native>
           -DJOGGLE_ONNX_MODEL=${JOGGLE_ONNX_QDQ_TEST_MODEL}
           -DJOGGLE_MODEL_NAME=squeezenet_qdq
@@ -520,8 +553,10 @@ if(JOGGLE_BUILD_TESTS)
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/onnx_runtime_test.py
           --emitter $<TARGET_FILE:joggle_onnx_roundtrip>
           --tensor ${JOGGLE_TENSOR_MOD}
+          --arith ${JOGGLE_ARITH_MOD}
+          --nn ${JOGGLE_NN_MOD}
+          --quant ${JOGGLE_QUANT_MOD}
           --onnx ${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle
-          --schema ${JOGGLE_ONNX_SCHEMA}
           --native $<TARGET_FILE:joggle_onnx_native>
           --model ${JOGGLE_ONNX_TEST_MODEL}
           --output ${CMAKE_CURRENT_BINARY_DIR}/squeezenet-roundtrip.onnx)
@@ -531,8 +566,10 @@ if(JOGGLE_BUILD_TESTS)
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/onnx_runtime_test.py
             --emitter $<TARGET_FILE:joggle_onnx_roundtrip>
             --tensor ${JOGGLE_TENSOR_MOD}
+            --arith ${JOGGLE_ARITH_MOD}
+            --nn ${JOGGLE_NN_MOD}
+            --quant ${JOGGLE_QUANT_MOD}
             --onnx ${CMAKE_CURRENT_SOURCE_DIR}/mods/onnx/mod.joggle
-            --schema ${JOGGLE_ONNX_SCHEMA}
             --native $<TARGET_FILE:joggle_onnx_native>
             --model ${JOGGLE_ONNX_QDQ_TEST_MODEL}
             --output ${CMAKE_CURRENT_BINARY_DIR}/squeezenet-qdq-roundtrip.onnx)

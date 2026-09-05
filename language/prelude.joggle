@@ -100,6 +100,7 @@ mod prelude@5.0.0 {
   fn length(values: list<bool>) -> int;
   fn length(values: list<string>) -> int;
   fn length(values: list<type>) -> int;
+  fn repeat(value: type, count: int) -> list<type>;
   fn ([])(values: list<int>, index: int) -> int;
   fn ([])(values: list<real>, index: int) -> real;
   fn ([])(values: list<bool>, index: int) -> bool;

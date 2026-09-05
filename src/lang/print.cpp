@@ -98,6 +98,7 @@ int type_expression_precedence(const detail::TypeExpr& expression) {
   case Kind::Reference:
   case Kind::Variable:
   case Kind::Call:
+  case Kind::Block:
     return 100;
   }
   return 0;

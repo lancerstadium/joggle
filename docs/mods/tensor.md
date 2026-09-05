@@ -1,62 +1,39 @@
 # Tensor
 
-`tensor@5.0.0` is the frontend-neutral logical Tensor Mod. Compiler core has
-no Tensor Op class, graph dialect, attribute table, or lowering registry.
-
-## Surface
+`tensor@7` supplies the target-independent tensor value and five ordinary fns:
 
 ```joggle
 type tensor(element: type, shape: list<int>);
-
-fn compute<E, S: list<int>>(
+fn tensor<E,S:list<int>>(
   shape: S,
-  body: (list<index>) -> E
-) -> tensor<E, S>;
-
-fn ([])<E, S: list<int>>(
-  input: tensor<E, S>, indices: index...
-) -> E;
-
-fn ([])<E, S: list<int>>(
-  input: tensor<E, S>, indices: list<index>
-) -> E;
-
-fn ([])(indices: list<index>, position: int) -> index;
+  body: callable<@repeat(index, length(S)), [E]>
+) -> tensor<E,S>;
+fn map<E,S:list<int>,R>(
+  input: tensor<E,S>, body: (E) -> R
+) -> tensor<R,S>;
+fn reduce<A,N:int>(
+  extent: N, initial: A, body: (A, index) -> A
+) -> A;
+fn ([])<E,S:list<int>>(input: tensor<E,S>, indices: index...) -> E;
+fn constant<T>(content: string) -> T;
 ```
 
-`compute` constructs one value for every logical point. Its callback receives
-an ordinary `list<index>`, so the same signature supports any rank:
+Known-rank construction uses normal callback parameters:
 
 ```joggle
-return t.compute([3, 2], (at) => input[at[1], at[0]]);
+return t.tensor([3,2], (row, column) => input[column,row]);
 ```
 
-The two subscript overloads are one operation symbol. `input[at]` is convenient
-for generic-rank elementwise code; `input[row, column]` is convenient after a
-point has been projected. Both become ordinary Calls.
-
-## Ordinary loops, not Tensor combinators
-
-Tensor does not declare `map`, `reduce`, `fold`, or `scan`. An extension may
-offer such helpers as normal bodyful fns, but they have no special compiler
-status. Elementwise algorithms use `compute`; reductions use ordinary loop
-carried values:
+Rank-polymorphic elementwise code consumes values instead of exposing an index
+list:
 
 ```joggle
-sum: E = zero();
-for k: index in range(K) {
-  sum = sum + lhs[row, k] * rhs[k, column];
-}
-return sum;
+return t.map(input, (value) => max(value, zero(value)));
 ```
 
-Analyses must recover access and reduction facts from this real Fn structure.
-A transformation may reassociate or parallelize only after proving legality.
-
-## Boundaries
-
-Logical shape does not define layout, packing, allocation, address space,
-schedule, or device. Those remain future user-defined Types and fns. Tensor
-also does not declare Conv, Relu, MatMul, ONNX nodes, or TFLite builtins. The
-`nn` Mod defines frontend-independent algorithms; format readers preserve
-their source schemas and convert through ordinary passes.
+`reduce` expresses a pure indexed reduction; its callback returns the next
+accumulator value and contains no implicit mutation. A construction callback
+may use local scalar bindings and `return`, but tensor form does not mix an
+imperative `for` into construction. `constant` refers to immutable bytes owned
+by the enclosing `Mod`. Tensor does not define NN operators, layouts, buffers,
+schedules, devices, or hardware resources.

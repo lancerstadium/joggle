@@ -583,32 +583,78 @@ private:
         continue;
       }
       if (statement.kind == StatementSyntax::Kind::For) {
-        if (statement.iterator && statement.iterator->type) {
-          report("a typed for iterator requires Residual materialization",
-                 statement.iterator->range);
+        if (statement.iterators.empty()) {
+          report("compiler for statement has no iterator", statement.range);
           return {Control::Error, {}};
         }
-        auto iterable = evaluate(statement.expression.value,
-                                 statement.expression.range, nullptr);
+        if (statement.iterators.size() != statement.domains.size()) {
+          report("for must have one domain for each iterator", statement.range);
+          return {Control::Error, {}};
+        }
+        if (statement.iterators.size() > 1U) {
+          std::vector<StatementSyntax> nested = statement.body;
+          for (std::size_t reverse = statement.iterators.size(); reverse != 0U;
+               --reverse) {
+            const std::size_t index = reverse - 1U;
+            StatementSyntax loop;
+            loop.kind = StatementSyntax::Kind::For;
+            loop.iterators.push_back(statement.iterators[index]);
+            loop.domains.push_back(statement.domains[index]);
+            loop.body = std::move(nested);
+            loop.range = statement.range;
+            nested.clear();
+            nested.push_back(std::move(loop));
+          }
+          Flow flow = sequence(nested);
+          if (flow.control != Control::Next) {
+            return flow;
+          }
+          continue;
+        }
+        const BindingSyntax& iterator = statement.iterators.front();
+        const ExprSyntax& domain = statement.domains.front();
+        if (iterator.type) {
+          report("a typed for iterator requires Residual materialization",
+                 iterator.range);
+          return {Control::Error, {}};
+        }
+        auto iterable = evaluate(domain.value, domain.range, nullptr);
         const ExecVal* payload = iterable ? iterable->known_value() : nullptr;
-        auto elements = payload ? list_elements(*payload)
-                                : std::optional<std::vector<ExecVal>>{};
+        std::optional<std::vector<ExecVal>> elements;
+        if (const auto* extent =
+                payload ? std::get_if<std::int64_t>(payload) : nullptr) {
+          if (*extent < 0) {
+            report("for extent must be non-negative", domain.range);
+            return {Control::Error, {}};
+          }
+          if (static_cast<std::uint64_t>(*extent) >
+              compiler_.evaluation_limits().steps) {
+            report("compile-time for iteration limit exceeded", domain.range);
+            return {Control::Error, {}};
+          }
+          elements.emplace();
+          elements->reserve(static_cast<std::size_t>(*extent));
+          for (std::int64_t index = 0; index < *extent; ++index) {
+            elements->push_back(index);
+          }
+        } else if (payload) {
+          elements = list_elements(*payload);
+        }
         if (!elements) {
-          report("compiler for iterable must be a Known list",
-                 statement.expression.range);
+          report("compiler for domain must be a Known extent or list",
+                 domain.range);
           return {Control::Error, {}};
         }
         for (ExecVal& element : *elements) {
           if (!step(statement.range)) {
             return {Control::Error, {}};
           }
-          auto value = known(std::move(element), statement.expression.range);
+          auto value = known(std::move(element), domain.range);
           if (!value) {
             return {Control::Error, {}};
           }
           locals_.push();
-          if (!statement.iterator ||
-              !locals_.define(statement.iterator->name, std::move(*value))) {
+          if (!locals_.define(iterator.name, std::move(*value))) {
             report("cannot define compiler for iterator", statement.range);
             locals_.pop();
             return {Control::Error, {}};
@@ -844,8 +890,8 @@ bool verify_body_calls(Compiler& compiler, const Mod::FnDecl& fn,
       for (const BindingSyntax& binding : statement.bindings) {
         locals.insert(binding.name);
       }
-      if (statement.iterator) {
-        locals.insert(statement.iterator->name);
+      for (const BindingSyntax& iterator : statement.iterators) {
+        locals.insert(iterator.name);
       }
       self(self, statement.body);
       self(self, statement.otherwise);
@@ -915,9 +961,13 @@ bool verify_body_calls(Compiler& compiler, const Mod::FnDecl& fn,
     for (const StatementSyntax& statement : code) {
       if (statement.kind == StatementSyntax::Kind::Expr ||
           statement.kind == StatementSyntax::Kind::If ||
-          statement.kind == StatementSyntax::Kind::While ||
-          statement.kind == StatementSyntax::Kind::For) {
+          statement.kind == StatementSyntax::Kind::While) {
         verify_expression(verify_expression, statement.expression, locals);
+      }
+      if (statement.kind == StatementSyntax::Kind::For) {
+        for (const ExprSyntax& domain : statement.domains) {
+          verify_expression(verify_expression, domain, locals);
+        }
       }
       for (const auto& value : statement.values) {
         verify_expression(verify_expression, value, locals);

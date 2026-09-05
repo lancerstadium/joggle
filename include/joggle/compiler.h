@@ -468,6 +468,18 @@ public:
   std::optional<Op> call(Fn::Edit& edit, Mod::FnDecl fn,
                          std::vector<Val> arguments,
                          std::optional<Loc> location = std::nullopt);
+  // Frontends for typed external formats may provide result Types already
+  // present in the file. They constrain the same generic call solver; they do
+  // not bypass declaration checking or create a format-specific IR.
+  std::optional<Op> call(Fn::Edit& edit, Mod::FnDecl fn,
+                         std::vector<Val> arguments,
+                         std::vector<Type> expected_results,
+                         std::optional<Loc> location = std::nullopt);
+
+  // Finds same-named declarations across the linked package set. External
+  // readers use this to resolve format names without depending on a semantic
+  // package. Ambiguity remains an error at the reader's call site.
+  std::vector<Mod::FnDecl> fns(std::string_view name) const;
 
   // Materializes every source-defined Fn whose results are
   // IR-representable and whose compiler inputs and generics have a complete

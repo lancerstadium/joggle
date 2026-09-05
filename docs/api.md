@@ -104,11 +104,15 @@ may omit the third argument. Captures are explicit parent-Fn edges and
 correspond, in order, to trailing hidden arguments of the nested body; the
 callable type describes only its visible source parameters and results. Effect
 values cannot be hidden in captures. No public lambda, closure, or region
-object is involved.
-The current source form has one expression and one result. Consequently,
-canonical formatting or `Mod::insert` rejects a C++-constructed inline body
-that cannot be represented by that source form instead of emitting hidden
-declarations.
+object is involved. A source lambda may have one expression or an ordinary
+statement body; both materialize to the same nested `Fn` representation.
+
+Programmatic readers append calls through `Compiler::call`. The overload that
+accepts expected result Types constrains ordinary generic inference with type
+information already present in an external format; it never bypasses the fn
+declaration. `Compiler::fns(name)` returns same-named declarations across the
+linked environment so a reader can resolve semantics without depending on a
+specific package.
 
 ## Inline source calls
 

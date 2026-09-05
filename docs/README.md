@@ -22,6 +22,8 @@ decisions.
 
 - [Arithmetic](mods/arith.md)
 - [Tensor](mods/tensor.md)
+- [Logical memory](mods/mem.md)
+- [Neural-network functions](mods/nn.md)
 - [Quantization](mods/quant.md)
 - [Transform](mods/transform.md)
 - [ONNX](mods/onnx.md)
@@ -31,10 +33,8 @@ decisions.
 - [0001 — Language core](design/0001-language.md)
 - [0002 — Fn values](design/0002-fns.md)
 - [0003 — Fn transformation](design/0003-transform.md)
-- [0004 — Tensor algebra](design/0004-tensor.md)
-- [0005 — Source frontends and NN semantics](design/0005-onnx.md)
+- [0004 — Tensor refinement](design/0004-tensor.md)
 - [0006 — Mod bundles](design/0006-bundles.md)
-- [0008 — Quantized ONNX import](design/0008-quantization.md)
 - [0009 — Implementation closure](design/0009-implementation.md)
 
 Design records explain why current interfaces exist. They are not a second

@@ -28,28 +28,36 @@ The implementation currently demonstrates:
 4. typed lambdas are ordinary anonymous Fns rather than a pattern AST;
 5. Residual captures are explicit dependency edges and hidden typed body
    arguments, while effect tokens cannot be captured;
-6. `tensor@5` provides indexed `compute` and list/multi-index `[]`; generic-rank
-   elementwise code and loop-carried reductions remain ordinary Fn bodies;
-7. `nn@1` contains the first frontend-neutral bodyful MatMul and Relu
+6. `tensor@7` provides pure indexed construction, `map`, indexed `reduce`,
+   multi-index `[]`, and constants;
+7. `nn@2` contains the first frontend-neutral bodyful MatMul and Relu
    definitions, while compiler core remains unaware of either name;
-8. the ONNX byte reader, ONNX source schema, NN algorithms, and Tensor algebra
-   are separate ownership boundaries;
-9. ONNX nodes bind generically against source fn signatures, declaration
+8. `mem@1` separates immutable views from write-only destinations and threads
+   writes through the core affine effect type;
+9. `mem.realize` expands bodyful semantics and refines MatMul and Relu through
+   the tensor basis into verified loops, SSA reduction, reads, and stores,
+   without matching either NN name; nested maps fuse by recursive coordinate
+   sampling and produce one logical allocation;
+10. the ONNX byte reader resolves two pinned Model Zoo graphs directly to
+   Tensor, NN, and Quant calls without an ONNX operation layer;
+11. ONNX nodes bind generically by normalized name, ordinary signatures,
    defaults, and staged dependent result Types without an `op_type` branch
-   chain or native shape formulas;
-10. `transform.pass` accepts a Mod of ordinary two-result equation fns,
+   chain;
+12. `transform.pass` accepts a Mod of ordinary two-result equation fns,
     infers generic Types from both results and structurally corresponding
     pattern arguments, matches declaration identity and dataflow rather than
     names, recurses into callable bodies, and rejects effects;
-11. Mod bundles preserve and verify imported data through public `check`,
+13. Mod bundles preserve and verify imported data through public `check`,
    `run`, `install`, and `lock` workflows; and
-12. source resolution constructs deterministic concrete instances while
+14. source resolution constructs deterministic concrete instances while
    preserving bodyless calls as an explicit leaf set.
 
 Most NN algorithms remain opaque. Rank-two MatMul and Relu now have verified
-frontend-neutral bodies, but ONNX-to-NN conversion, Conv, batched MatMul,
-equation inference through local rebinding or control flow, generic model
-fusion, symbolic shapes, emission, and performance evidence are unfinished.
+frontend-neutral bodies and a structural path to logical storage, and ONNX
+import produces those semantics directly. Whole-Mod destination passing,
+shared intermediates, Conv, batched MatMul, equation inference through control
+flow, generic model fusion, symbolic shapes, numerical execution, emission,
+and performance evidence are unfinished.
 The current result establishes clean ownership and dependent callable typing,
 not numerical preservation after compilation or publication-level novelty.
 
@@ -161,8 +169,8 @@ an importer, or a synthetic emitter is insufficient for either venue.
 ## Primary literature
 
 - [Halide: Decoupling Algorithms from Schedules](https://people.csail.mit.edu/jrk/halide12/)
-- [Lift: A Fnal Data-Parallel IR](https://lift-project.github.io/publications/2017/steuwer17LiftIR.pdf)
-- [Achieving High Performance the Fnal Way](https://michel-steuwer.github.io/files/publications/2020/ICFP-2020.pdf)
+- [Lift: A Functional Data-Parallel IR](https://lift-project.github.io/publications/2017/steuwer17LiftIR.pdf)
+- [Achieving High Performance the Functional Way](https://michel-steuwer.github.io/files/publications/2020/ICFP-2020.pdf)
 - [Exocompilation for Productive Programming of Hardware Accelerators](https://people.csail.mit.edu/yuka/pdf/exo_pldi2022_full.pdf)
 - [TensorIR: An Abstraction for Automatic Tensorized Program Optimization](https://arxiv.org/abs/2207.04296)
 - [TileLang: Bridge Programmability and Performance in Modern Neural Kernels](https://proceedings.iclr.cc/paper_files/paper/2026/hash/76fb92288bf90360c527efb0d1c2aba6-Abstract-Conference.html)

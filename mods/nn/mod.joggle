@@ -1,37 +1,232 @@
 joggle 1;
 
-mod nn@1.0.0 {
+mod nn@2.0.0 {
   import arith@1 as a;
-  import tensor@5 as t;
+  import tensor@7 as t;
 
-  fn matmul_shape(lhs: list<int>, rhs: list<int>) -> list<int> {
-    return [lhs[0], rhs[1]];
+  fn product(values: list<int>) -> int {
+    result = 1;
+    for value in values {
+      result = result * value;
+    }
+    return result;
   }
-  fn dot<E, L: list<int>, R: list<int>>(
+
+  fn axis(value: int, rank: int) -> int {
+    if value < 0 {
+      return value + rank;
+    }
+    return value;
+  }
+
+  fn conv_shape(
+    input: list<int>,
+    weight: list<int>,
+    kernel_shape: list<int>,
+    strides: list<int>,
+    pads: list<int>,
+    dilations: list<int>
+  ) -> list<int> {
+    kernel = kernel_shape;
+    if length(kernel) == 0 {
+      kernel = [weight[2], weight[3]];
+    }
+    height =
+      (input[2] + pads[0] + pads[2] -
+       dilations[0] * (kernel[0] - 1) - 1) //
+      strides[0] + 1;
+    width =
+      (input[3] + pads[1] + pads[3] -
+       dilations[1] * (kernel[1] - 1) - 1) //
+      strides[1] + 1;
+    return [input[0], weight[0], height, width];
+  }
+
+  fn pool_shape(
+    input: list<int>,
+    kernel: list<int>,
+    strides: list<int>,
+    pads: list<int>
+  ) -> list<int> {
+    height =
+      (input[2] + pads[0] + pads[2] - kernel[0]) // strides[0] + 1;
+    width =
+      (input[3] + pads[1] + pads[3] - kernel[1]) // strides[1] + 1;
+    return [input[0], input[1], height, width];
+  }
+
+  fn concat_shape(
+    lhs: list<int>,
+    rhs: list<int>,
+    selected_axis: int
+  ) -> list<int> {
+    selected = axis(selected_axis, length(lhs));
+    result: list<int> = [];
+    for position in range(length(lhs)) {
+      extent = lhs[position];
+      if position == selected {
+        extent = extent + rhs[position];
+      }
+      result = append(result, extent);
+    }
+    return result;
+  }
+
+  fn reshape_shape(input: list<int>, requested: list<int>) -> list<int> {
+    known = 1;
+    for position in range(length(requested)) {
+      extent = requested[position];
+      if extent == 0 {
+        extent = input[position];
+      }
+      if extent != -1 {
+        known = known * extent;
+      }
+    }
+    count = product(input);
+    result: list<int> = [];
+    for position in range(length(requested)) {
+      extent = requested[position];
+      if extent == 0 {
+        extent = input[position];
+      }
+      if extent == -1 {
+        extent = count // known;
+      }
+      result = append(result, extent);
+    }
+    return result;
+  }
+
+  fn flatten_shape(input: list<int>, selected_axis: int) -> list<int> {
+    selected = axis(selected_axis, length(input));
+    outer = 1;
+    inner = 1;
+    for position in range(length(input)) {
+      if position < selected {
+        outer = outer * input[position];
+      } else {
+        inner = inner * input[position];
+      }
+    }
+    return [outer, inner];
+  }
+
+  fn matmul<E, M: int, K: int, N: int>(
+    lhs: t.tensor<E, [M, K]>,
+    rhs: t.tensor<E, [K, N]>
+  ) -> t.tensor<E, [M, N]> {
+    return t.tensor(
+      [M, N],
+      (row, column) => {
+        initial: E = a.zero();
+        return t.reduce(
+          K,
+          initial,
+          (sum, inner) =>
+            sum + lhs[row, inner] * rhs[inner, column]
+        );
+      }
+    );
+  }
+
+  fn relu<E, S: list<int>>(input: t.tensor<E, S>) -> t.tensor<E, S> {
+    return t.map(input, (value) => a.max(value, a.zero(value)));
+  }
+
+  fn conv<
+    E,
+    X: list<int>,
+    W: list<int>,
+    K: list<int>,
+    S: list<int>,
+    P: list<int>,
+    D: list<int>
+  >(
+    input: t.tensor<E, X>,
+    weight: t.tensor<E, W>,
+    kernel_shape: K = [],
+    strides: S = [1, 1],
+    pads: P = [0, 0, 0, 0],
+    dilations: D = [1, 1],
+    group: int = 1,
+    auto_pad: string = "NOTSET"
+  ) -> t.tensor<E, @conv_shape(X, W, K, S, P, D)>;
+
+  fn conv<
+    E,
+    X: list<int>,
+    W: list<int>,
+    B: list<int>,
+    K: list<int>,
+    S: list<int>,
+    P: list<int>,
+    D: list<int>
+  >(
+    input: t.tensor<E, X>,
+    weight: t.tensor<E, W>,
+    bias: t.tensor<E, B>,
+    kernel_shape: K = [],
+    strides: S = [1, 1],
+    pads: P = [0, 0, 0, 0],
+    dilations: D = [1, 1],
+    group: int = 1,
+    auto_pad: string = "NOTSET"
+  ) -> t.tensor<E, @conv_shape(X, W, K, S, P, D)>;
+
+  fn max_pool<E, X: list<int>, K: list<int>, S: list<int>, P: list<int>>(
+    input: t.tensor<E, X>,
+    kernel_shape: K,
+    strides: S = [1, 1],
+    pads: P = [0, 0, 0, 0],
+    ceil_mode: int = 0,
+    auto_pad: string = "NOTSET",
+    dilations: list<int> = [1, 1],
+    storage_order: int = 0
+  ) -> t.tensor<E, @pool_shape(X, K, S, P)>;
+
+  fn average_pool<
+    E,
+    X: list<int>,
+    K: list<int>,
+    S: list<int>,
+    P: list<int>
+  >(
+    input: t.tensor<E, X>,
+    kernel_shape: K,
+    strides: S = [1, 1],
+    pads: P = [0, 0, 0, 0],
+    ceil_mode: int = 0,
+    auto_pad: string = "NOTSET",
+    count_include_pad: int = 0
+  ) -> t.tensor<E, @pool_shape(X, K, S, P)>;
+
+  fn global_average_pool<E, X: list<int>>(
+    input: t.tensor<E, X>
+  ) -> t.tensor<E, [X[0], X[1], 1, 1]>;
+
+  fn concat<E, L: list<int>, R: list<int>, A: int>(
     lhs: t.tensor<E, L>,
     rhs: t.tensor<E, R>,
-    row: index,
-    column: index
-  ) -> E {
-    sum: E = a.zero();
-    for inner: index in range(L[1]) {
-      sum = sum + lhs[row, inner] * rhs[inner, column];
-    }
-    return sum;
-  }
-  fn matmul<E, L: list<int>, R: list<int>>(
-    lhs: t.tensor<E, L>,
-    rhs: t.tensor<E, R>
-  ) -> t.tensor<E, @matmul_shape(L, R)> {
-    return t.compute(
-      @matmul_shape(L, R),
-      (at) => dot(lhs, rhs, at[0], at[1])
-    );
-  }
-  fn relu<E, S: list<int>>(input: t.tensor<E, S>) -> t.tensor<E, S> {
-    return t.compute(
-      S,
-      (at) => a.max(input[at], a.zero(input[at]))
-    );
+    axis: A
+  ) -> t.tensor<E, @concat_shape(L, R, A)>;
+
+  fn reshape<E, X: list<int>, R: list<int>>(
+    input: t.tensor<E, X>,
+    shape: R
+  ) -> t.tensor<E, @reshape_shape(X, R)>;
+
+  fn flatten<E, X: list<int>, A: int>(
+    input: t.tensor<E, X>,
+    axis: A = 1
+  ) -> t.tensor<E, @flatten_shape(X, A)>;
+
+  fn softmax<E, X: list<int>>(
+    input: t.tensor<E, X>,
+    axis: int = -1
+  ) -> t.tensor<E, X>;
+
+  fn dropout<T>(input: T, ratio: real = 0.5) -> T {
+    return input;
   }
 }

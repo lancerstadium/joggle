@@ -18,18 +18,18 @@ constexpr std::string_view source = R"(
 joggle 1;
 
 mod qdq@1.0.0 {
-  import tensor@5 as t;
-  import quant@2 as q;
+  import tensor@7 as t;
+  import quant@3 as q;
 
   fn roundtrip(
     input: t.tensor<f32, [1, 4]>,
     scale: t.tensor<f32, []>,
     zero: t.tensor<i8, []>
   ) -> t.tensor<f32, [1, 4]> {
-    stored: t.tensor<i8, [1, 4]> = q.quantize(
+    stored: t.tensor<i8, [1, 4]> = q.quantize_linear(
       input, scale, zero, axis: 1
     );
-    return q.dequantize(stored, scale, zero, axis: 1);
+    return q.dequantize_linear(stored, scale, zero, axis: 1);
   }
 }
 )";
@@ -55,15 +55,15 @@ int main() {
 
   const auto ops = fn->ops();
   bool ok = true;
-  ok &= expect(quant->version() == joggle::Version{2, 0, 0} &&
+  ok &= expect(quant->version() == joggle::Version{3, 0, 0} &&
                    quant->fns().size() == 2U,
                "quant is a small Residual semantic Mod without host oracle "
                "overloads");
   ok &= expect(ops.size() == 2U &&
                    ops[0].callee().referenced_fn()->symbol().qualified_name() ==
-                       "quant.quantize" &&
+                       "quant.quantize_linear" &&
                    ops[1].callee().referenced_fn()->symbol().qualified_name() ==
-                       "quant.dequantize",
+                       "quant.dequantize_linear",
                "QDQ source materializes as ordinary typed calls");
   ok &= expect(ops.size() == 2U &&
                    ops[0].callee().binding<std::int64_t>("axis") == 1 &&

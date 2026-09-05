@@ -56,7 +56,8 @@ struct StatementSyntax {
 
   Kind kind = Kind::Expr;
   std::vector<BindingSyntax> bindings;
-  std::optional<BindingSyntax> iterator;
+  std::vector<BindingSyntax> iterators;
+  std::vector<ExprSyntax> domains;
   ExprSyntax expression;
   std::vector<StatementSyntax> body;
   std::vector<StatementSyntax> otherwise;

@@ -27,7 +27,10 @@ abbreviate every identifier indiscriminately.
 
 There is no second Program, Graph, Package, Attribute, Pass, Target, or Result
 owner. A model graph is a `Mod` containing fns. Metadata is a normal
-`Type`. A transformation is a fn from one compiler value to another.
+`Type`. A transformation is a fn from one compiler value to another. This
+single object model does not collapse semantic tensor values and mutable
+storage into one meaning: explicit passes refine the same Fn representation
+between typed invariants.
 
 ## Source layout
 
@@ -176,23 +179,33 @@ their host boundaries; model and kernel Ops do not. See
 ## Near-term implementation order
 
 The implemented path includes the core language, editable Fn IR, explicit
-staging, typed anonymous Fns, explicit closure captures, recursive
-single-block inlining, and pure generic equation packages. `tensor@5` defines
-indexed `compute` and overloaded `[]`; map and reduction semantics are ordinary
-Fn bodies and loop-carried values. `nn@1` owns the first bodyful MatMul and Relu
-definitions. The ONNX byte reader
-and ONNX source schema are separate from both; the pinned SqueezeNet test
-exercises schema-driven import of all 118 calls. Concrete tests specialize
-generic equations across concrete Types and nested call structure.
+staging, typed anonymous Fns with expression or statement bodies, explicit
+closure captures, recursive single-block inlining, and generic equation
+packages. `tensor@7` defines pure construction, mapping, reduction, overloaded
+`[]`, and constants. `nn@2` owns bodyful MatMul, Relu, and Dropout plus typed
+semantic leaves. The ONNX byte reader directly resolves the pinned FLOAT and
+QDQ SqueezeNet graphs to those ordinary fns; no ONNX operation layer exists.
 
-Execution semantics for the structural basis, equation inference through local
+`mem@1` now owns logical read views, affine write destinations, and the first
+destination-directed realization pass. It expands bodyful semantics and
+refines tensor construction, map, indexing, scalar composition, and reduction
+to verified loops and ordered stores. The MatMul and Relu paths contain no NN
+operator case.
+
+Execution semantics for the structural basis, multiple-result and whole-Mod
+destination passing, shared tensor values, equation inference through local
 rebinding or control flow, multi-block inlining, and derived access/dependence
 analysis remain unfinished.
-ONNX-to-NN conversion, Conv, pooling, concatenation, reshape, softmax, and
-quantized computational definitions remain unfinished.
+Conv, pooling, concatenation, reshape, Softmax, quantized computational
+definitions, and numerical execution remain unfinished.
 
-Only after the complete bodyful path works on an unmodified model do kernel
-scheduling, physical layouts, packed formats, storage planning, capability
-selection, and machine emission enter scope. The compiler must not simulate
-progress by matching operation names, interpreting every Op through a host
-callback, or renaming a reference expression as a fused operation.
+The next path is whole-Mod destination passing followed by access and
+dependence summaries. The core continues to supply only loop, CFG, effects,
+Fn editing, and verification. Physical layouts, packed formats, capability
+selection, cost models, and machine emission belong to later target Mods.
+There is no separate kernel language or Kernel owner. See
+[Design 0004](design/0004-tensor.md).
+
+The compiler must not simulate progress by matching operation names,
+interpreting every Op through a host callback, or renaming a reference
+expression as a fused operation.

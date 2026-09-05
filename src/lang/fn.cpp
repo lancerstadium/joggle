@@ -351,29 +351,33 @@ private:
     }
     if (match_name("for")) {
       statement.kind = detail::StatementSyntax::Kind::For;
-      const Loc::Pos iterator_begin = current_.begin;
-      if (auto iterator = local_name()) {
-        statement.iterator =
-            detail::BindingSyntax{std::move(*iterator),
-                                  std::nullopt,
-                                  {iterator_begin, previous_end_},
-                                  false};
-      }
-      if (statement.iterator && match(TokenKind::Colon)) {
-        statement.iterator->type = expression();
-        statement.iterator->range.end = previous_end_;
-      }
+      do {
+        const Loc::Pos iterator_begin = current_.begin;
+        detail::BindingSyntax iterator;
+        if (auto name = local_name()) {
+          iterator.name = std::move(*name);
+        }
+        if (match(TokenKind::Colon)) {
+          iterator.type = expression();
+        }
+        iterator.range = {iterator_begin, previous_end_};
+        statement.iterators.push_back(std::move(iterator));
+      } while (match(TokenKind::Comma));
       expect_name("in");
-      statement.expression = expression();
+      do {
+        statement.domains.push_back(expression());
+      } while (match(TokenKind::Comma));
+      if (statement.iterators.size() != statement.domains.size()) {
+        error("for must have one domain for each iterator");
+      }
       expect(TokenKind::LeftBrace, "'{' after for iterable");
       const auto outer_variables = variables_;
       const auto outer_locals = locals_;
-      if (statement.iterator) {
-        locals_.insert(statement.iterator->name);
+      for (const detail::BindingSyntax& iterator : statement.iterators) {
+        locals_.insert(iterator.name);
         variables_.push_back(
-            {statement.iterator->name, statement.iterator->type
-                                           ? statement.iterator->type->value
-                                           : Mod::Expr::reference("type")});
+            {iterator.name, iterator.type ? iterator.type->value
+                                          : Mod::Expr::reference("type")});
       }
       ++loop_depth_;
       while (!is(TokenKind::RightBrace) && !is(TokenKind::End) && ok()) {
@@ -743,13 +747,25 @@ private:
       return;
     }
     if (statement.kind == detail::StatementSyntax::Kind::For) {
-      output_ << spaces(level) << "for " << statement.iterator->name;
-      if (statement.iterator->type) {
-        output_ << ": "
-                << detail::format_expression(statement.iterator->type->value);
+      output_ << spaces(level) << "for ";
+      for (std::size_t index = 0; index < statement.iterators.size(); ++index) {
+        if (index != 0U) {
+          output_ << ", ";
+        }
+        const detail::BindingSyntax& iterator = statement.iterators[index];
+        output_ << iterator.name;
+        if (iterator.type) {
+          output_ << ": " << detail::format_expression(iterator.type->value);
+        }
       }
-      output_ << " in " << detail::format_expression(statement.expression.value)
-              << " {\n";
+      output_ << " in ";
+      for (std::size_t index = 0; index < statement.domains.size(); ++index) {
+        if (index != 0U) {
+          output_ << ", ";
+        }
+        output_ << detail::format_expression(statement.domains[index].value);
+      }
+      output_ << " {\n";
       for (const auto& nested : statement.body) {
         write_statement(nested, level + 1U);
       }

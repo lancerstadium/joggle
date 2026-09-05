@@ -75,15 +75,19 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The repository ships `arith@1.2.0`, `tensor@5.0.0`, `nn@1.0.0`,
-`transform@3.0.0`, and `quant@2.0.0`. Tensor exposes indexed construction and
-overloaded `[]`; ordinary Fn loops carry reductions instead of a privileged
-Tensor combinator. `nn` owns bodyful neural-network algorithms composed from
-those functions. The optional Protobuf-backed `onnx@5.0.0` package only reads the
-file format; `onnx_schema@1.0.0` separately describes source nodes and their
-shape rules. Neither package implements MatMul, Relu, or Conv. This boundary
-lets future TFLite and other readers converge on `nn` through ordinary passes
-without sharing importer code or duplicating operator implementations.
+The repository ships `arith@1.2.0`, `tensor@7.0.0`, `mem@1.0.0`,
+`nn@2.0.0`, `transform@3.0.0`, and `quant@3.0.0`. Tensor exposes indexed
+construction, rank-polymorphic mapping, reduction, overloaded `[]`, and
+immutable constants. `mem` supplies target-independent read views and ordered
+write destinations; its explicit `realize(fn)` pass refines the tensor basis
+to loops and ordered stores without matching NN operator names. `nn` owns
+neural-network functions composed from the pure tensor basis. A call is a
+compact graph node until an explicit pass expands or refines it.
+
+The optional Protobuf-backed `onnx@5.0.0` package is only a file reader. It
+resolves decoded records directly to linked `nn`, `tensor`, and `quant` fns.
+There is no ONNX operation module, ONNX IR, conversion pass, or automatic
+`to_nn` stage.
 
 ## Documentation
 

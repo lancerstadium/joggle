@@ -167,7 +167,7 @@ surface syntax, so `input[i, j]` is one ordinary three-argument Call.
 ```joggle
 fn sum(input: tensor<i32, [4]>) -> i32 {
   total: i32 = 0;
-  for i in range(4) {
+  for i in 4 {
     total = total + input[i];
   }
   if total < 0 {
@@ -181,6 +181,20 @@ fn sum(input: tensor<i32, [4]>) -> i32 {
 Bindings may carry a type annotation. `if`, `for`, calls, and `return` use the
 same expression grammar as declaration expressions; there is no region or
 graph sublanguage.
+
+An integer loop domain is a half-open extent. Paired binders and domains are
+canonical syntax for lexicographically nested loops:
+
+```joggle
+for row, column in rows, columns {
+  output[row, column] = value;
+}
+```
+
+This is exactly `for row in rows { for column in columns { ... } }`. A list
+domain iterates its elements during specialization. Each binder has one domain;
+a shape list is never interpreted as a Cartesian domain. Loops are statements
+and do not return or collect values.
 
 ## Staging
 
@@ -212,10 +226,25 @@ present. It is especially useful for explicitly staged transformation
 templates whose parameter domain is the general compiler value `fn`.
 
 A contextual lambda may omit parameter Types when its caller determines them.
-For example, Tensor `compute` supplies one logical index list:
+For example, the Tensor constructor derives the callback arity from a known
+shape:
 
 ```joggle
-return compute([M, N], (at) => input[at[1], at[0]]);
+return tensor([M, N], (row, column) => input[column, row]);
+```
+
+A lambda may also use a statement body. It is parsed and materialized by the
+same Fn machinery as a named body:
+
+```joggle
+return tensor([M, N], (row, column) => {
+  initial: E = zero();
+  return reduce(
+    K,
+    initial,
+    (sum, inner) => sum + lhs[row, inner] * rhs[inner, column]
+  );
+});
 ```
 
 The inference probe does not emit Calls and never executes a Guarded native
@@ -257,8 +286,10 @@ generic    := name (":" expression)?
 results    := ("->" expression | "->" "(" parameters? ")")?
 lambda     := "(" (name (":" expression)?
               ("," name (":" expression)? )*)? ")"
-              ("->" expression)? "=>" expression
+              ("->" expression)? "=>" (expression | body)
 subscript  := expression "[" expression "]"
+for        := "for" binding ("," binding)* "in"
+              expression ("," expression)* body
 ```
 
 The formatter is the normative spelling for details not captured by this
