@@ -1,92 +1,96 @@
 # Tensor
 
-`tensor@1.0.0` is Joggle's first target-independent AI vocabulary. It is an
-ordinary source Mod installed beside the language tools; it adds no tensor
-kind, graph owner, operation registry, or lowering interface to compiler core.
+`tensor@1.1.0` is a target-independent, bodyful AI vocabulary. It is an
+ordinary source Mod and adds no tensor node, graph owner, operation registry,
+or lowering interface to compiler core.
 
-## Semantic type
-
-```joggle
-import tensor@1 as t;
-
-fn classify(input: t.tensor<f32, [1, 3, 224, 224]>)
-    -> t.tensor<f32, [1, 1000]>;
-```
-
-The shape is logical axis extent. The current tested contract accepts static
-non-negative dimensions, including an empty list for a rank-zero tensor. It
-does not encode physical layout, packing, address space, allocation, or a
-device. Those are separate Types introduced by later user Mods when an
-optimization needs them.
-
-The element is an ordinary Type. Joggle has no privileged numeric trait or
-closed format enumeration; an importing mod decides which element Types it
-accepts through normal verifiers.
-
-## Calls and specialization
-
-Tensor operations are ordinary `fn` declarations. Tensor values become Call
-arguments; compiler-domain values in the same signature specialize the
-callee:
+## Types
 
 ```joggle
-convolved: t.tensor<f32, [1, 16, 55, 55]> = t.conv(
-  input,
-  weight,
-  bias,
-  [1, 1],
-  [0, 0, 0, 0],
-  [1, 1],
-  1
-);
+type tensor(element: type, shape: list<int>);
+type coord(shape: list<int>);
 ```
 
-There is no separate attribute schema or Op property table. `strides`, `pads`,
-`dilations`, and `group` are bindings of the selected `conv` fn value and
-survive canonical Fn formatting.
+The shape is logical extent. It does not encode physical layout, packing,
+address space, allocation, or device placement. `coord<S>` is an index in that
+same logical space; targets may later choose how either Type is represented.
 
-Model inputs are Fn parameters. Large initializers remain immutable
-Mod data: `Mod::store` returns a content digest, and
-`constant<T>(content: string)` records that digest rather than embedding bytes
-in textual IR.
+The current verifier accepts static non-negative dimensions, including an
+empty shape for a scalar tensor. Symbolic extents remain future work.
 
-## Structural transformations and kernels
+## Structural basis
 
-The semantic Mod intentionally declares neither fused kernels nor a kernel
-class. `transform.replace` accepts typed lambdas and transactionally changes an
-actual Fn body. Replacing an expression with a source fn whose body
-expands to the same expression is valid fn factoring, but it is not by
-itself kernel fusion and carries no performance claim.
+The first basis has two opaque leaves:
 
-A future user kernel must therefore provide more than a renamed reference
-expression: it needs an executable ordinary fn body (or calls to
-source-grounded implementation fns), a checked semantic relation, and
-measured evidence. Until that representation exists, `tensor` remains the
-portable program vocabulary and no parallel family of format-aware tensor
-fns is accepted.
+```joggle
+fn generate<E, S: list<int>>(
+  body: (coord<S>) -> E
+) -> tensor<E, S>;
 
-## Evidence boundary
+fn at<E, S: list<int>>(
+  input: tensor<E, S>,
+  position: coord<S>
+) -> E;
+```
 
-Implemented and tested:
+`generate` constructs each result element by calling its typed body. `at`
+reads one logical element. They are ordinary fns rather than privileged IR
+operations. A machine or lower-level library eventually implements this small
+basis; it does not implement every neural-network operation separately.
 
-- ordinary installable tensor Mod;
-- static-shape validation through the general type-verifier API;
-- typed Conv, Relu, and Concat materialization for a Fire block;
-- preservation of convolution and concatenation specialization bindings;
-- typed-lambda structural replacement, shared-DAG preservation, rollback, and
-  canonical Fn round-trip.
+Higher-level fns have inspectable source bodies. For example, `map` expands to
+one `generate` whose nested Fn captures the input tensor and user callable:
 
-The separate `onnx` Mod now imports the exact pinned SqueezeNet 1.1 model,
-preserves its initializers and supported attributes as fn bindings, and has exact differential
-ONNX Runtime evidence. This does not broaden `tensor` itself into an ONNX
-schema.
+```joggle
+fn map<E, S: list<int>, R>(
+  input: tensor<E, S>,
+  body: (E) -> R
+) -> tensor<R, S> {
+  return generate(
+    (position: coord<S>) => body(at(input, position))
+  );
+}
+```
 
-Not yet claimed:
+Relu uses the same basis:
 
-- general ONNX operator-set coverage or dynamic shapes;
-- executable kernel fusion, physical layout, packed formats, or storage
-  planning;
-- executable hardware implementation and performance.
+```joggle
+fn relu<E, S: list<int>>(
+  input: tensor<E, S>
+) -> tensor<E, S> {
+  return generate(
+    (position: coord<S>) => relu_value(at(input, position))
+  );
+}
+```
 
-The semantic transformation boundary is defined by
-[Design 0007](../design/0007-equivalence.md).
+Materializing these calls yields normal `Fn`, `Op`, and `Val` objects. The
+element body is a nested `Fn`; its input-tensor dependency is an explicit
+closure edge. A transformation can enter, inline, clone, or edit that body
+without matching the name `relu`.
+
+## Remaining operators
+
+Conv, pooling, concatenation, reshape, and softmax are still typed opaque
+declarations retained for the existing ONNX importer. They are not considered
+complete tensor semantics. Each must either receive a definition over the
+construction/access/reduction basis or remain an explicit unsupported leaf.
+
+Initializers remain immutable Mod data: `Mod::store` returns a content digest,
+and `constant<T>(content: string)` records that digest instead of embedding
+large bytes in textual IR.
+
+## Current evidence and limits
+
+Tests now prove that:
+
+- Relu specializes and materializes to `generate`, `at`, and scalar calls;
+- its element Fn explicitly captures the input tensor;
+- `map` invokes an arbitrary typed callable from its nested element Fn;
+- all resulting Fns pass the normal verifier;
+- tensor programs retain canonical source round trips.
+
+This is the first bodyful vertical slice, not a fusion or performance claim.
+Reduction, Conv/GEMM definitions, dependence analysis, generic fusion,
+symbolic shapes, physical formats, storage planning, and emission remain
+unfinished.

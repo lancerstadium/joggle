@@ -19,49 +19,31 @@ deterministic deployment.
 
 ## Evidence in the current tree
 
-The implementation already demonstrates:
+The implementation currently demonstrates:
 
-1. one `Mod` owns declarations, editable CFG/SSA Fns, imports, and
-   content-addressed data;
-2. `@` is the only stage switch, while ordinary calls always remain program
-   calls;
-3. typed capture-free lambdas are ordinary anonymous Fns rather than a
-   pattern AST;
-4. typed expression replacement is atomic, rejects unsafe data-flow and effect
-   boundaries, and now has a bounded definitional-equivalence overload for
-   source-bodied fns;
-5. a target-independent tensor Mod and an optional ONNX Mod import the
-   exact Model Zoo SqueezeNet 1.1 graph;
-6. the imported Fn reconstructs an ONNX graph whose deterministic
-   ONNX Runtime output is bit-identical to the original model;
-7. a second hash-pinned Model Zoo model exercises standard QDQ inference: its
-   228 f32/u8/i8/i32 constants, 130 affine quantization boundaries, and 41
-   tensor calls import without a vendor operation, and reconstruction through
-   ONNX Runtime is exactly equal (`max_abs=0`, `mean_abs=0`);
-8. `quant@2` is a source-only semantic Mod: the 130 QDQ calls require no
-   native operation bindings, while whole-graph ONNX Runtime reconstruction
-   checks the imported numerical behavior;
-9. typed replacement preserves pure shared DAG ancestors instead of rejecting
-   or duplicating them, while rollback and exact repeated-hole equality remain
-   checked;
-10. the installable `transform` Mod exposes equivalence-checked replacement
-    directly as ordinary Fn and Mod overloads taking typed lambdas;
-11. Mod bundles preserve and verify all imported data through public
-    `check`, `run`, `install`, and `lock` workflows.
-12. `transform.resolve` constructs deterministic concrete source instances and
-    preserves bodyless calls as an explicit leaf set without invoking them.
-13. On the hash-pinned FLOAT SqueezeNet graph, an ordinary source fn factors a
-    concrete Conv-Relu expression through the same `transform.replace`
-    service, and `transform.resolve` closes the result to one local source
-    instance plus the original 117 bodyless tensor leaves. The pass adds no
-    operator binding and the complete Mod still verifies.
+1. one `Mod` owns declarations, editable Fns, imports, and content-addressed
+   data;
+2. `@` is the only stage switch, while ordinary calls remain program calls;
+3. every operation is one typed `Call(callee: Val, arguments...)`;
+4. typed lambdas are ordinary anonymous Fns rather than a pattern AST;
+5. Residual captures are explicit dependency edges and hidden typed body
+   arguments, while effect tokens cannot be captured;
+6. `tensor@1.1` defines a first structural basis (`generate` and `at`), and
+   generic `map` and Relu have inspectable source bodies over that basis;
+7. those bodies materialize, expose nested element Fns, invoke arbitrary
+   callable parameters, and pass the ordinary verifier;
+8. Mod bundles preserve and verify imported data through public `check`,
+   `run`, `install`, and `lock` workflows; and
+9. source resolution constructs deterministic concrete instances while
+   preserving bodyless calls as an explicit leaf set.
 
-These are infrastructure results. The real-model factor is deliberately
-monomorphic: one lambda signature names one concrete tensor shape. The tensor
-and QDQ leaves remain opaque program semantics, and no emitted kernel exists
-yet. The result does not establish shape-polymorphic matching, general
-mathematical equivalence of user rewrites, support for a physical format at
-run time, or publication-level novelty.
+The previous expression-template replacement, opaque tensor operator catalog,
+and SqueezeNet factoring demo are prototypes under removal, not evidence for
+the research claim. Most tensor operators and all quantized operators remain
+opaque. Reduction, Conv/GEMM bodies, dependence analysis, generic fusion,
+symbolic shapes, emission, and performance evidence are unfinished. Existing
+ONNX round-trip tests establish importer fidelity only; they do not establish
+the new bodyful transformation path or publication-level novelty.
 
 ## What the closest systems already solve
 

@@ -128,8 +128,8 @@ binaries:
 ```text
 joggle-lock 1;
 root model@1.0.0#<digest>;
-mod tensor@1.0.0#<digest>;
-native tensor@1.0.0#<mod-digest> macos-arm64#<binary-digest>;
+mod tensor@1.1.0#<digest>;
+native tensor@1.1.0#<mod-digest> macos-arm64#<binary-digest>;
 ```
 
 Generate and replay it explicitly:

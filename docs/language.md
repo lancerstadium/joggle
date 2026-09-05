@@ -118,7 +118,7 @@ Named and positional call arguments may not be mixed ambiguously:
 cast(input = value, result = i16)
 ```
 
-Fn types and capture-free lambdas use the same expression language:
+Fn types and typed lambdas use the same expression language:
 
 ```joggle
 fn apply<T, U>(input: T, body: (T) -> U) -> U;
@@ -134,9 +134,10 @@ use ordinary overload inference. Parameter annotations participate in overload
 selection; the body is checked only after one overload is selected, so calls
 whose annotations and surrounding result cannot distinguish two candidates
 remain explicitly ambiguous. The body is a normal expression and may call
-normal named or symbolic fns. Capturing an outer run-time local is
-currently rejected; it will not silently create an environment object or a
-hidden mod declaration.
+normal named or symbolic fns. Outer Residual values become explicit capture
+edges on the callable `Val` and trailing hidden arguments of the nested `Fn`;
+the visible callable Type does not change. Effect tokens cannot be captured
+and must remain visible parameters.
 
 ## Symbolic fns
 

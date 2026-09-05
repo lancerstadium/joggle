@@ -68,11 +68,11 @@ The visible lambda type remains `(word) -> word`; `bias` is inspectable through
 `captures()`, and the nested body receives it after `x`. Effect values must be
 listed as visible parameters rather than captured.
 
-An explicit compiler call may also pass a capture-free typed lambda to a `fn`
-parameter. It is materialized as a verified anonymous `Fn`, passed directly to
-the compiler fn, and may be returned for a later `@` call. It is not encoded as
-scalar metadata. Compiler-domain lambdas remain standalone `Fn` values and
-therefore do not close over a surrounding Residual program.
+An explicit compiler call may also pass a typed lambda to a `fn` parameter. It
+is materialized as a verified anonymous `Fn`, passed directly to the compiler
+fn, and may be returned for a later `@` call. Compiler-domain lambdas remain
+standalone values and therefore must be capture-free; Residual closures belong
+to the program Fn that owns their capture edges.
 
 Transformations compose with the language's existing fn call and local
 binding rules. There is no separate sequence object:
@@ -90,14 +90,11 @@ higher-order call or as an argument to an explicitly staged compiler fn.
 The compiler does not convert them through a pattern, strategy, or scalar
 metadata representation.
 
-The shipped `transform` Mod binds this declaration to the
-equivalence-checking C++ `joggle::replace(Compiler&, ...)` overload with
-`Compiler::bind`. Eligible source bodies are expanded into a bounded canonical
-expression encoding; bodyless calls remain exact-identity leaves. A mismatch
-is diagnosed before
-the existing atomic structural replacement opens an edit. `replace` is not
-reserved syntax, and the lambdas remain verified Fns over the same IR
-rather than a second rewrite declaration or pattern representation.
+The previous public `before`/`after` expression-template service is being
+removed from the canonical transformation design. Direct transformations
+operate on the materialized Fn and its nested callable bodies. Transactional
+`Fn::Edit` remains the low-level correctness boundary; source-facing
+inspection and editing fns are the next implementation gate.
 
 ## Source resolution
 

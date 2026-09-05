@@ -75,14 +75,12 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The repository ships `tensor@1.0.0`, a small target-independent semantic
-Mod; `transform@1.1.0`, the typed-lambda replacement and source-resolution
-surface;
-`quant@2.0.0`, a source-only affine QDQ semantic boundary; and an optional,
-Protobuf-backed
-`onnx@1.0.0` inference importer. The real-model paths import hash-pinned FLOAT
-and QDQ SqueezeNet artifacts into ordinary typed Fns. Both have exact
-ONNX Runtime differential evidence.
+The repository ships `tensor@1.1.0`, whose first bodyful `map` and Relu fns
+expand into a small `generate`/`at` basis; `transform@1.1.0`, which currently
+provides source resolution while direct Fn transforms are rebuilt; and the
+prototype `quant@2.0.0` and optional Protobuf-backed `onnx@1.0.0` import path.
+The ONNX fixtures test import and reconstruction fidelity. They are not yet
+evidence for generic bodyful fusion or an executable kernel pipeline.
 
 ## Documentation
 

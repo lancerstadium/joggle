@@ -83,8 +83,13 @@ only after differential validation against a trusted runtime.
 
 - [x] Typed lambdas are real nested Fns.
 - [x] Residual captures are explicit closure edges.
-- [ ] Define the minimal extent, index, tensor, and view Types.
-- [ ] Implement bodyful construction, access, and reduction fns.
+- [in progress] Define the minimal extent, index, tensor, and view Types.
+  Static tensor and coordinate Types are implemented; symbolic extents and
+  views are not.
+- [in progress] Implement bodyful construction, access, and reduction fns.
+  `generate` and `at` form the first basis, while reduction is still pending.
+- [x] Express Relu and generic map with inspectable source bodies over that
+  basis.
 - [ ] Express elementwise, GEMM, and convolution fns using only that basis.
 - [ ] Inline those bodies into a caller without name-specific compiler code.
 - [ ] Implement dependence-checked producer-consumer fusion.

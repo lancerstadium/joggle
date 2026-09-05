@@ -110,28 +110,6 @@ canonical formatting or `Mod::insert` rejects a C++-constructed inline body
 that cannot be represented by that source form instead of emitting hidden
 declarations.
 
-## Replace typed expressions
-
-```cpp
-auto changed =
-    joggle::replace(compiler, fn, before, after, diagnostics);
-```
-
-`before` and `after` are ordinary single-expression `Fn` values. Their
-arguments are typed holes; repeated arguments require the same SSA value.
-Matching uses exact callable specializations and canonical Known values. All
-maximal non-overlapping matches are replaced in one
-transaction. The `Mod&` overload applies the same operation on a private
-mod snapshot and publishes only after every materialized member succeeds.
-Zero changes are a successful no-op and preserve revision or mod identity.
-
-The `Compiler&` overload first proves conservative definitional equivalence.
-It recursively expands eligible pure source bodies with a fixed bound, keeps
-bodyless calls as exact-identity leaves, and rejects recursion or a normalized
-mismatch before opening an edit. The overload without `Compiler&` is the
-low-level structural primitive: it preserves IR invariants but does not claim
-the two expressions compute the same value.
-
 ## Bind native fns
 
 ```cpp

@@ -17,30 +17,13 @@ joggle 1;
 mod squeezenet_slice@1.0.0 {
   import tensor@1 as t;
 
-  fn conv_relu(
-    input: t.tensor<f32, [1, 64, 55, 55]>,
-    weight: t.tensor<f32, [16, 64, 1, 1]>,
-    bias: t.tensor<f32, [16]>,
-    strides: list<int>,
-    pads: list<int>,
-    dilations: list<int>,
-    group: int
-  ) -> t.tensor<f32, [1, 16, 55, 55]> {
-    convolved: t.tensor<f32, [1, 16, 55, 55]> = t.conv(
-      input, weight, bias, strides, pads, dilations, group
+  fn mapped(
+    input: t.tensor<f32, [4]>
+  ) -> t.tensor<f32, [4]> {
+    return t.map(
+      input,
+      (value: f32) => t.relu_value(value)
     );
-    return t.relu(convolved);
-  }
-
-  fn conv_relu_wrong(
-    input: t.tensor<f32, [1, 64, 55, 55]>,
-    weight: t.tensor<f32, [16, 64, 1, 1]>,
-    bias: t.tensor<f32, [16]>
-  ) -> t.tensor<f32, [1, 16, 55, 55]> {
-    convolved: t.tensor<f32, [1, 16, 55, 55]> = t.conv(
-      input, weight, bias, [1, 1], [0, 0, 0, 0], [1, 1], 2
-    );
-    return t.relu(convolved);
   }
 
   fn fire(
@@ -85,47 +68,6 @@ mod squeezenet_slice@1.0.0 {
     );
     expanded3: t.tensor<f32, [1, 64, 55, 55]> = t.relu(expanded3_conv);
     return t.concat(expanded1, expanded3, 1);
-  }
-
-  fn squeeze_pattern(
-    input: t.tensor<f32, [1, 64, 55, 55]>,
-    weight: t.tensor<f32, [16, 64, 1, 1]>,
-    bias: t.tensor<f32, [16]>
-  ) -> t.tensor<f32, [1, 16, 55, 55]> {
-    convolved: t.tensor<f32, [1, 16, 55, 55]> = t.conv(
-      input,
-      weight,
-      bias,
-      [1, 1],
-      [0, 0, 0, 0],
-      [1, 1],
-      1
-    );
-    return t.relu(convolved);
-  }
-
-  fn squeeze_fused(
-    input: t.tensor<f32, [1, 64, 55, 55]>,
-    weight: t.tensor<f32, [16, 64, 1, 1]>,
-    bias: t.tensor<f32, [16]>
-  ) -> t.tensor<f32, [1, 16, 55, 55]> {
-    return conv_relu(
-      input,
-      weight,
-      bias,
-      [1, 1],
-      [0, 0, 0, 0],
-      [1, 1],
-      1
-    );
-  }
-
-  fn squeeze_wrong(
-    input: t.tensor<f32, [1, 64, 55, 55]>,
-    weight: t.tensor<f32, [16, 64, 1, 1]>,
-    bias: t.tensor<f32, [16]>
-  ) -> t.tensor<f32, [1, 16, 55, 55]> {
-    return conv_relu_wrong(input, weight, bias);
   }
 }
 )";
@@ -180,25 +122,19 @@ int main() {
   const auto tensor_mod = compiler.mod("tensor");
   const auto f32 = compiler.make("f32");
   const auto fire_decl = slice ? slice->fn("fire") : std::nullopt;
-  const auto pattern_decl = slice ? slice->fn("squeeze_pattern") : std::nullopt;
-  const auto fused_decl = slice ? slice->fn("squeeze_fused") : std::nullopt;
-  const auto wrong_decl = slice ? slice->fn("squeeze_wrong") : std::nullopt;
-  const auto conv_relu_decl = slice ? slice->fn("conv_relu") : std::nullopt;
+  const auto mapped_decl = slice ? slice->fn("mapped") : std::nullopt;
   const auto relu_decl = tensor_mod ? tensor_mod->fn("relu") : std::nullopt;
   const auto concat_decl = tensor_mod ? tensor_mod->fn("concat") : std::nullopt;
-  if (!tensor || !slice || !tensor_mod || !f32 || !fire_decl || !pattern_decl ||
-      !fused_decl || !wrong_decl || !conv_relu_decl || !relu_decl ||
-      !concat_decl) {
+  if (!tensor || !slice || !tensor_mod || !f32 || !fire_decl || !mapped_decl ||
+      !relu_decl || !concat_decl) {
     compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
 
   const auto scalar = compiler.make(*tensor, *f32, std::vector<std::int64_t>{});
   auto fire = compiler.materialize(*fire_decl);
-  auto pattern = compiler.materialize(*pattern_decl);
-  auto fused = compiler.materialize(*fused_decl);
-  auto wrong = compiler.materialize(*wrong_decl);
-  if (!scalar || !fire || !pattern || !fused || !wrong || !compiler.ok()) {
+  auto mapped = compiler.materialize(*mapped_decl);
+  if (!scalar || !fire || !mapped || !compiler.ok()) {
     compiler.diag().print(std::cerr);
     return EXIT_FAILURE;
   }
@@ -206,6 +142,29 @@ int main() {
   bool ok = true;
   const auto fire_ops = fire->ops();
   const auto result = fire->entry().terminator().returned();
+  const auto relu_body = fire_ops.size() > 1U
+                             ? compiler.materialize(fire_ops[1])
+                             : std::optional<joggle::Fn>{};
+  const auto relu_ops =
+      relu_body ? relu_body->ops() : std::vector<joggle::Op>{};
+  const auto element_fn =
+      relu_ops.size() == 1U && relu_ops.front().arguments().size() == 1U
+          ? relu_ops.front().arguments().front().inline_fn()
+          : std::optional<joggle::Fn>{};
+  const auto element_ops =
+      element_fn ? element_fn->ops() : std::vector<joggle::Op>{};
+  const auto relu_value_body = element_ops.size() == 2U
+                                   ? compiler.materialize(element_ops.back())
+                                   : std::optional<joggle::Fn>{};
+  const auto mapped_ops = mapped->ops();
+  const auto map_body = mapped_ops.size() == 1U
+                            ? compiler.materialize(mapped_ops.front())
+                            : std::optional<joggle::Fn>{};
+  const auto map_ops = map_body ? map_body->ops() : std::vector<joggle::Op>{};
+  const auto map_element_fn =
+      map_ops.size() == 1U && map_ops.front().arguments().size() == 1U
+          ? map_ops.front().arguments().front().inline_fn()
+          : std::optional<joggle::Fn>{};
   ok &= expect(scalar->get<std::vector<std::int64_t>>("shape") ==
                    std::vector<std::int64_t>{},
                "rank-zero static tensors remain valid tensor types");
@@ -229,6 +188,37 @@ int main() {
               std::vector<std::int64_t>({1, 1, 1, 1}) &&
           fire_ops.back().callee().binding<std::int64_t>("axis") == 1,
       "compiler-domain tensor arguments specialize an immutable callee");
+  ok &= expect(
+      relu_body && relu_ops.size() == 1U && element_fn &&
+          relu_ops.front().callee().referenced_fn() &&
+          relu_ops.front().callee().referenced_fn()->name() == "generate" &&
+          relu_ops.front().arguments().front().captures() ==
+              std::vector<joggle::Val>{relu_body->arguments().front()} &&
+          element_fn->arguments().size() == 2U && element_ops.size() == 2U &&
+          element_ops.front().callee().referenced_fn()->name() == "at" &&
+          element_ops.back().callee().referenced_fn()->name() == "relu_value" &&
+          relu_value_body && relu_value_body->ops().size() == 2U &&
+          relu_value_body->ops().front().callee().referenced_fn()->name() ==
+              "zero" &&
+          relu_value_body->ops().back().callee().referenced_fn()->name() ==
+              "max" &&
+          compiler.verify(*relu_body) && compiler.verify(*element_fn) &&
+          compiler.verify(*relu_value_body),
+      "Relu expands through ordinary source fns into generate, access, and "
+      "scalar calls with an explicit captured tensor");
+  ok &= expect(
+      map_body && map_ops.size() == 1U && map_element_fn &&
+          map_ops.front().callee().referenced_fn()->name() == "generate" &&
+          map_ops.front().arguments().front().captures().size() == 2U &&
+          map_ops.front().arguments().front().captures()[0] ==
+              map_body->arguments()[1] &&
+          map_ops.front().arguments().front().captures()[1] ==
+              map_body->arguments()[0] &&
+          map_element_fn->ops().size() == 2U &&
+          !map_element_fn->ops().back().callee().referenced_fn() &&
+          compiler.verify(*map_body) && compiler.verify(*map_element_fn),
+      "Map is a bodyful higher-order fn whose element body calls the user "
+      "callable without an operator registry or name-specific compiler case");
   ok &=
       expect(result.size() == 1U &&
                  result.front().type().get<std::vector<std::int64_t>>(
@@ -236,31 +226,7 @@ int main() {
                  compiler.verify(*fire),
              "the Fire block keeps its explicit semantic output type");
 
-  joggle::Fn rejected_fire = *fire;
-  const auto rejected_revision = rejected_fire.revision();
-  joggle::Diag rejected_replacement_diagnostics;
-  const auto rejected_replacement =
-      joggle::replace(compiler, rejected_fire, *pattern, *wrong,
-                      rejected_replacement_diagnostics);
-  ok &=
-      expect(!rejected_replacement && !rejected_replacement_diagnostics.ok() &&
-                 rejected_fire.revision() == rejected_revision,
-             "a type-correct tensor kernel with different reference "
-             "semantics is rejected without mutation");
-
-  joggle::Diag replacement_diagnostics;
-  const auto replacements = joggle::replace(compiler, *fire, *pattern, *fused,
-                                            replacement_diagnostics);
-  const auto fused_ops = fire->ops();
-  ok &=
-      expect(replacements && *replacements == 1U &&
-                 replacement_diagnostics.ok() && fused_ops.size() == 6U &&
-                 fused_ops.front().callee().referenced_fn() == conv_relu_decl &&
-                 compiler.verify(*fire),
-             "an extension-local kernel fuses one shape-specific Conv/Relu "
-             "pair without changing the tensor mod");
-
-  const std::string canonical = joggle::format(*fire, "fire_optimized");
+  const std::string canonical = joggle::format(*fire, "fire_body");
   joggle::Compiler roundtrip;
   roundtrip.add(*tensor_mod);
   roundtrip.add(*slice);
@@ -278,15 +244,13 @@ int main() {
     register_tensor_verifier(roundtrip, *roundtrip_tensor);
   }
   const auto replayed = roundtrip_linked && roundtrip_tensor
-                            ? roundtrip.materialize("artifact.fire_optimized")
+                            ? roundtrip.materialize("artifact.fire_body")
                             : std::nullopt;
   if (!replayed) {
     roundtrip.diag().print(std::cerr);
   }
-  ok &= expect(replayed &&
-                   joggle::format(*replayed, "fire_optimized") == canonical,
-               "a transformed tensor Fn has canonical round-trippable "
-               "source");
+  ok &= expect(replayed && joggle::format(*replayed, "fire_body") == canonical,
+               "a tensor Fn has canonical round-trippable source");
 
   joggle::Compiler invalid;
   invalid.load(JOGGLE_TENSOR_MOD);
