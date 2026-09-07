@@ -104,10 +104,11 @@ The implemented first stage is deterministic:
 This is access composition, not textual operator grouping. A bodyful custom fn
 automatically participates if it normalizes to the tensor basis.
 
-The shipped 2-D Conv is a larger validation of this rule. Explicit or derived
-padding, grouped channel selection, optional bias, and its nested reductions
-all live in ordinary Joggle bodies. After specialization, the same two passes
-produce scalar calls and loops without a Conv-specific compiler hook.
+The shipped 2-D Conv and pooling functions are larger validations of this rule.
+Explicit or derived padding, grouped channel selection, optional bias, nested
+reductions, predicated pooling contributions, and valid-point counting all live
+in ordinary Joggle bodies. After specialization, the same two passes produce
+scalar calls and loops without Conv- or Pool-specific compiler hooks.
 
 ## Current safety boundary
 

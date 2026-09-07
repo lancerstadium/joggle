@@ -83,12 +83,14 @@ representation.
 
 ## Required artifact milestones
 
-1. Body-derived fusion on MatMul–Relu and 2-D NCHW Conv — implemented.
+1. Body-derived fusion on MatMul–Relu, 2-D NCHW Conv, and pooling —
+   implemented.
 2. Explicit reduction and output loops with tensor value semantics —
    implemented.
 3. Shared-producer planning using post-dominance and a documented deterministic
    cost — planned.
-4. Bodyful pooling, reshape, transpose, broadcast, and Softmax — planned.
+4. Rank-polymorphic access plus bodyful reshape, transpose, broadcast, and
+   Softmax — planned.
 5. End-to-end numerical execution for representative ONNX models — planned.
 6. Two target packages, at least one custom-format edge target — planned.
 7. Reproducible comparison with TVM/nncase-style registered fusion — planned.

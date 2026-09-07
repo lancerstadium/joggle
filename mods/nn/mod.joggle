@@ -1,6 +1,6 @@
 joggle 1;
 
-mod nn@3.1.0 {
+mod nn@3.2.0 {
   import arith@2 as a;
   import tensor@8 as t;
 
@@ -17,19 +17,14 @@ mod nn@3.1.0 {
     }
     return value;
   }
-  fn conv_pads(
+  fn spatial_pads(
     input: list<int>,
-    weight: list<int>,
-    kernel_shape: list<int>,
+    kernel: list<int>,
     strides: list<int>,
     pads: list<int>,
     dilations: list<int>,
     auto_pad: string
   ) -> list<int> {
-    kernel = kernel_shape;
-    if length(kernel) == 0 {
-      kernel = [weight[2], weight[3]];
-    }
     if auto_pad == "VALID" {
       return [0, 0, 0, 0];
     }
@@ -57,6 +52,21 @@ mod nn@3.1.0 {
       ];
     }
     return pads;
+  }
+  fn conv_pads(
+    input: list<int>,
+    weight: list<int>,
+    kernel_shape: list<int>,
+    strides: list<int>,
+    pads: list<int>,
+    dilations: list<int>,
+    auto_pad: string
+  ) -> list<int> {
+    kernel = kernel_shape;
+    if length(kernel) == 0 {
+      kernel = [weight[2], weight[3]];
+    }
+    return spatial_pads(input, kernel, strides, pads, dilations, auto_pad);
   }
   fn conv_shape(
     input: list<int>,
@@ -187,11 +197,167 @@ mod nn@3.1.0 {
     input: list<int>,
     kernel: list<int>,
     strides: list<int>,
-    pads: list<int>
+    pads: list<int>,
+    dilations: list<int>,
+    ceil_mode: int,
+    auto_pad: string
   ) -> list<int> {
-    height = (input[2] + pads[0] + pads[2] - kernel[0]) // strides[0] + 1;
-    width = (input[3] + pads[1] + pads[3] - kernel[1]) // strides[1] + 1;
+    actual_pads = spatial_pads(input, kernel, strides, pads, dilations, auto_pad);
+    height_size = input[2] + actual_pads[0] + actual_pads[2] -
+      dilations[0] * (kernel[0] - 1) -
+      1;
+    width_size = input[3] + actual_pads[1] + actual_pads[3] -
+      dilations[1] * (kernel[1] - 1) -
+      1;
+    height = height_size // strides[0] + 1;
+    width = width_size // strides[1] + 1;
+    if ceil_mode == 1 {
+      height = ceildiv(height_size, strides[0]) + 1;
+      width = ceildiv(width_size, strides[1]) + 1;
+      if (height - 1) * strides[0] >= input[2] + actual_pads[0] {
+        height = height - 1;
+      }
+      if (width - 1) * strides[1] >= input[3] + actual_pads[1] {
+        width = width - 1;
+      }
+    }
     return [input[0], input[1], height, width];
+  }
+  fn pool_point<E, X: list<int>, S: list<int>, P: list<int>, D: list<int>>(
+    input: t.tensor<E, X>,
+    batch: index,
+    channel: index,
+    output_row: index,
+    output_column: index,
+    kernel_row: index,
+    kernel_column: index,
+    strides: S,
+    pads: P,
+    dilations: D
+  ) -> (E, i1) {
+    zero: index = a.literal(0);
+    one: index = a.literal(1);
+    input_height: index = a.literal(X[2]);
+    input_width: index = a.literal(X[3]);
+    stride_row: index = a.literal(S[0]);
+    stride_column: index = a.literal(S[1]);
+    pad_row: index = a.literal(P[0]);
+    pad_column: index = a.literal(P[1]);
+    dilation_row: index = a.literal(D[0]);
+    dilation_column: index = a.literal(D[1]);
+    input_row = output_row * stride_row + kernel_row * dilation_row - pad_row;
+    input_column = output_column * stride_column + kernel_column * dilation_column -
+      pad_column;
+    safe_row = a.min(a.max(input_row, zero), input_height - one);
+    safe_column = a.min(a.max(input_column, zero), input_width - one);
+    valid = input_row == safe_row && input_column == safe_column;
+    return input[batch, channel, safe_row, safe_column], valid;
+  }
+  fn max_pool_value<
+    E,
+    X: list<int>,
+    K: list<int>,
+    S: list<int>,
+    P: list<int>,
+    D: list<int>
+  >(
+    input: t.tensor<E, X>,
+    batch: index,
+    channel: index,
+    output_row: index,
+    output_column: index,
+    kernel: K,
+    strides: S,
+    pads: P,
+    dilations: D
+  ) -> E {
+    zero: index = a.literal(0);
+    initial, valid = pool_point(
+      input,
+      batch,
+      channel,
+      output_row,
+      output_column,
+      zero,
+      zero,
+      S,
+      P,
+      D
+    );
+    return t.reduce(
+      K[0],
+      initial,
+      (row_max, kernel_row) =>
+        t.reduce(
+          K[1],
+          row_max,
+          (value_max, kernel_column) => {
+            value, point_valid = pool_point(
+              input,
+              batch,
+              channel,
+              output_row,
+              output_column,
+              kernel_row,
+              kernel_column,
+              S,
+              P,
+              D
+            );
+            return a.max(value_max, value);
+          }
+        )
+    );
+  }
+  fn average_pool_sum<
+    E,
+    X: list<int>,
+    K: list<int>,
+    S: list<int>,
+    P: list<int>,
+    D: list<int>
+  >(
+    input: t.tensor<E, X>,
+    batch: index,
+    channel: index,
+    output_row: index,
+    output_column: index,
+    kernel: K,
+    strides: S,
+    pads: P,
+    dilations: D,
+    count: bool
+  ) -> E {
+    initial: E = a.zero();
+    return t.reduce(
+      K[0],
+      initial,
+      (row_sum, kernel_row) =>
+        t.reduce(
+          K[1],
+          row_sum,
+          (sum, kernel_column) => {
+            value, valid = pool_point(
+              input,
+              batch,
+              channel,
+              output_row,
+              output_column,
+              kernel_row,
+              kernel_column,
+              S,
+              P,
+              D
+            );
+            contribution = a.select(valid, value, a.zero(value));
+            if count {
+              one: E = a.literal(1);
+              contribution = a.select(valid, one, a.zero(one));
+            }
+            return sum + contribution;
+          }
+        )
+    );
   }
   fn concat_shape(lhs: list<int>, rhs: list<int>, selected_axis: int) -> list<int> {
     selected = axis(selected_axis, length(lhs));
@@ -342,28 +508,89 @@ mod nn@3.1.0 {
         )
     );
   }
-  pub fn max_pool<E, X: list<int>, K: list<int>, S: list<int>, P: list<int>>(
+  pub fn max_pool<
+    E,
+    X: list<int>,
+    K: list<int>,
+    S: list<int>,
+    P: list<int>,
+    C: int,
+    A: string,
+    D: list<int>
+  >(
     input: t.tensor<E, X>,
     kernel_shape: K,
     strides: S = [1, 1],
     pads: P = [0, 0, 0, 0],
-    ceil_mode: int = 0,
-    auto_pad: string = "NOTSET",
-    dilations: list<int> = [1, 1],
+    ceil_mode: C = 0,
+    auto_pad: A = "NOTSET",
+    dilations: D = [1, 1],
     storage_order: int = 0
-  ) -> t.tensor<E, @pool_shape(X, K, S, P)>;
-  pub fn average_pool<E, X: list<int>, K: list<int>, S: list<int>, P: list<int>>(
+  ) -> t.tensor<E, @pool_shape(X, K, S, P, D, C, A)> {
+    actual_pads = @spatial_pads(X, K, S, P, D, auto_pad);
+    return t.tensor(
+      @pool_shape(X, K, S, actual_pads, D, ceil_mode, "NOTSET"),
+      (batch, channel, row, column) =>
+        max_pool_value(input, batch, channel, row, column, K, S, actual_pads, D)
+    );
+  }
+  pub fn average_pool<
+    E,
+    X: list<int>,
+    K: list<int>,
+    S: list<int>,
+    P: list<int>,
+    C: int,
+    A: string
+  >(
     input: t.tensor<E, X>,
     kernel_shape: K,
     strides: S = [1, 1],
     pads: P = [0, 0, 0, 0],
-    ceil_mode: int = 0,
-    auto_pad: string = "NOTSET",
+    ceil_mode: C = 0,
+    auto_pad: A = "NOTSET",
     count_include_pad: int = 0
-  ) -> t.tensor<E, @pool_shape(X, K, S, P)>;
+  ) -> t.tensor<E, @pool_shape(X, K, S, P, [1, 1], C, A)> {
+    actual_pads = @spatial_pads(X, K, S, P, [1, 1], auto_pad);
+    return t.tensor(
+      @pool_shape(X, K, S, actual_pads, [1, 1], ceil_mode, "NOTSET"),
+      (batch, channel, row, column) => {
+        sum = average_pool_sum(
+          input,
+          batch,
+          channel,
+          row,
+          column,
+          K,
+          S,
+          actual_pads,
+          [1, 1],
+          false
+        );
+        divisor: E = a.literal(K[0] * K[1]);
+        if count_include_pad == 0 {
+          divisor = average_pool_sum(
+            input,
+            batch,
+            channel,
+            row,
+            column,
+            K,
+            S,
+            actual_pads,
+            [1, 1],
+            true
+          );
+        }
+        return sum / divisor;
+      }
+    );
+  }
   pub fn global_average_pool<E, X: list<int>>(
     input: t.tensor<E, X>
-  ) -> t.tensor<E, [X[0], X[1], 1, 1]>;
+  ) -> t.tensor<E, [X[0], X[1], 1, 1]> {
+    return average_pool(input, [X[2], X[3]]);
+  }
   pub fn concat<E, L: list<int>, R: list<int>, A: int>(
     lhs: t.tensor<E, L>,
     rhs: t.tensor<E, R>,

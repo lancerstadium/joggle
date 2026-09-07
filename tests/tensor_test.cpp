@@ -86,6 +86,35 @@ mod tensor_use@1.0.0 {
     );
   }
 
+  pub fn max_pooling(
+    input: t.tensor<f32, [1, 2, 5, 6]>
+  ) -> t.tensor<f32, [1, 2, 3, 3]> {
+    return n.max_pool(
+      input,
+      [3, 3],
+      strides: [2, 2],
+      auto_pad: "SAME_UPPER"
+    );
+  }
+
+  pub fn average_pooling(
+    input: t.tensor<f32, [1, 2, 4, 4]>
+  ) -> t.tensor<f32, [1, 2, 3, 3]> {
+    return n.average_pool(
+      input,
+      [3, 3],
+      strides: [2, 2],
+      pads: [1, 1, 1, 1],
+      ceil_mode: 1
+    );
+  }
+
+  pub fn global_pooling(
+    input: t.tensor<f32, [1, 2, 4, 4]>
+  ) -> t.tensor<f32, [1, 2, 1, 1]> {
+    return n.global_average_pool(input);
+  }
+
   pub fn prepare(input: fn) -> fn {
     fused = @t.fuse(input);
     return @t.loops(fused);
@@ -291,6 +320,54 @@ mod tensor_use@1.0.0 {
           grouped_has("arith", "//") && grouped_has("arith", "select"),
       "Conv derives SAME padding and lowers grouped bias semantics through "
       "the same generic functions");
+
+  const auto lower = [&](std::string_view name) -> std::optional<joggle::Fn> {
+    const auto semantic = compiler.materialize(name);
+    const auto fused = semantic
+                           ? compiler.run<joggle::Fn>("tensor.fuse", *semantic)
+                           : std::optional<joggle::Fn>{};
+    return fused ? compiler.run<joggle::Fn>("tensor.loops", *fused)
+                 : std::optional<joggle::Fn>{};
+  };
+  const auto max_pooling = lower("tensor_use.max_pooling");
+  const auto average_pooling = lower("tensor_use.average_pooling");
+  const auto global_pooling = lower("tensor_use.global_pooling");
+  const auto contains = [](const std::optional<joggle::Fn>& fn,
+                           std::string_view owner, std::string_view name) {
+    if (!fn) {
+      return false;
+    }
+    const auto ops = fn->ops();
+    return std::any_of(ops.begin(), ops.end(), [&](const joggle::Op& op) {
+      const auto declaration = op.callee().referenced_fn();
+      return declaration && declaration->symbol().mod_name() == owner &&
+             declaration->name() == name;
+    });
+  };
+  ok &= expect(
+      max_pooling && compiler.verify(*max_pooling) &&
+          !contains(max_pooling, "nn", "max_pool") &&
+          !contains(max_pooling, "tensor", "tensor") &&
+          !contains(max_pooling, "tensor", "reduce") &&
+          contains(max_pooling, "tensor", "[]") &&
+          contains(max_pooling, "arith", "max"),
+      "MaxPool derives padding and lowers through generic tensor reduction");
+  ok &= expect(
+      average_pooling && compiler.verify(*average_pooling) &&
+          !contains(average_pooling, "nn", "average_pool") &&
+          !contains(average_pooling, "tensor", "tensor") &&
+          !contains(average_pooling, "tensor", "reduce") &&
+          contains(average_pooling, "tensor", "[]") &&
+          contains(average_pooling, "arith", "select") &&
+          contains(average_pooling, "arith", "/"),
+      "AveragePool lowers exclusion-aware padding and division generically");
+  ok &= expect(
+      global_pooling && compiler.verify(*global_pooling) &&
+          !contains(global_pooling, "nn", "global_average_pool") &&
+          !contains(global_pooling, "nn", "average_pool") &&
+          contains(global_pooling, "tensor", "[]") &&
+          contains(global_pooling, "arith", "/"),
+      "GlobalAveragePool reuses the ordinary AveragePool definition");
 
   const std::string formatted =
       tensor ? joggle::format(*tensor) : std::string{};

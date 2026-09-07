@@ -14,6 +14,7 @@ pub fn select<T>(condition: i1, consequent: T, alternative: T) -> T;
 pub fn (+)<T>(lhs: T, rhs: T) -> T;
 pub fn (-)<T>(lhs: T, rhs: T) -> T;
 pub fn (*)<T>(lhs: T, rhs: T) -> T;
+pub fn (/)<T>(lhs: T, rhs: T) -> T;
 pub fn (//)<T>(lhs: T, rhs: T) -> T;
 pub fn (<)<T>(lhs: T, rhs: T) -> i1;
 pub fn (>)<T>(lhs: T, rhs: T) -> i1;

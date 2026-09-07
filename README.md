@@ -44,8 +44,9 @@ MatMul tensor. `tensor.loops` then converts that fused construction and its
 reduction into ordinary CFG loops. The two passes are explicit and neither
 silently invokes the other.
 
-The same path handles the shipped 2-D Conv body—including padding, grouping,
-and optional bias—without a Conv case in either pass.
+The same path handles the shipped 2-D Conv and pooling bodies—including
+padding, grouping, optional bias, and exclusion-aware averaging—without an NN
+operator case in either pass.
 
 The loop form still has tensor value semantics. `tensor.set` returns the next
 tensor value; it is not a physical store. Storage reuse, layouts, packed
