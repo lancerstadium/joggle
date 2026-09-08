@@ -1,41 +1,48 @@
 # Joggle
 
-Joggle is being relaunched as a research compiler for deterministic,
-resource-constrained neural-network inference.
+Joggle is a research compiler for deterministic neural-network inference on
+small, software-managed accelerators.
 
-The project investigates one question: can a compiler take an ordinary
-pretrained neural network and a bounded finite numerical-representation
-function, then synthesize a competitive fixed-cycle reduction without a
-format-specific kernel, lowering, hardware template, or user schedule?
+Its current question is deliberately narrow: can one executable description of
+target instructions, storage, transfers, constraints, and costs induce both
+legal accelerator implementations and profitable whole-model execution
+regions—without a second target-specific operator, fusion, or schedule
+registry?
 
-The proposed mechanism analyzes the representation function inside its
-enclosing tensor reduction. It may factor repeated code-dependent work into
-bounded partial state and a shared-parameter finalizer, or retain direct
-decode-and-multiply execution when factoring is not profitable.
+Joggle treats a region boundary as a real target transition: live values are
+exported to an ABI-visible representation, control returns or transfers, and
+resident state is lost unless the target explicitly preserves it. Instruction
+selection, residency, spilling, and host/device cuts are therefore one search
+problem rather than independent compiler stages.
 
 ## Status
 
-The previous implementation has been archived at the Git tag
-`archive/pre-relaunch-a2a281e`. This branch intentionally contains no compiler
-implementation while the reduction-synthesis hypothesis is tested.
+The previous implementation is preserved at Git tag
+`archive/pre-relaunch-a2a281e`. It is not part of the current design.
 
-The first gate is a disposable, frozen compiler probe evaluated against direct
-execution, generic algebraic rewriting, decoder-plus-MAC synthesis, and
-handwritten INT, SP2, codebook, distributed-arithmetic, and per-vector-scaling
-baselines. Open-source synthesis is used only to reject weak candidates;
-publishable hardware claims require vendor post-route results and real-board,
-batch-one measurements on standard pretrained models.
+The research contract and its first feasibility gate are complete.
+Source-grounded experiments on ACT and VTA established that open resident
+composition can be legal when forced external-memory closure is not, and
+identified the minimum state needed to handle representation, capacity,
+destructive fan-out, and target dependency protocols.
+
+Only the next experimental slice is in scope: compare reusable open-frontier
+search against closed convex-region synthesis on frozen subgraphs from standard
+pretrained models. A general DSL, pass framework, package manager, broad
+operator library, runtime, and speculative backends remain out of scope until
+that mechanism survives its kill criteria.
+
+See [docs/research.md](docs/research.md) for the accepted hypothesis, concept
+model, evidence boundary, and gates.
 
 ## Non-goals
 
-Joggle is not another graph IR, custom-datatype registry, accelerator ISA
-language, device hierarchy, scheduling DSL, HLS wrapper, or portable runtime.
-ONNX/TFLite import, textual modules, package loading, passes, host JIT,
-cost-model integration, and artifact emission are necessary infrastructure,
-not research contributions.
-
-No public API, language, module format, or implementation from the archived
-prototype should be considered current or stable.
+Joggle is not an SNN, LUT, Popcount, custom-number-format, graph-IR, or
+kernel-language project. It does not claim automatic fusion, compiler
+extensibility, semantic instruction matching, or hardware-aware partitioning
+individually; each already has substantial prior art. The proposed contribution
+is their specific conjunction: semantics-derived kernelization, compositional
+open frontiers, and measurable deterministic edge-inference benefit.
 
 ## License
 
