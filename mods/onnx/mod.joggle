@@ -1,5 +1,0 @@
-joggle 1;
-
-mod onnx@6.0.0 {
-  pub fn read(input: bytes, name: string = "model") -> mod;
-}

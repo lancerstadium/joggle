@@ -1,8 +1,0 @@
-joggle 1;
-
-mod transform@4.0.0 {
-  pub fn pass(input: fn, laws: mod) -> fn;
-  pub fn inline(input: fn) -> fn;
-  pub fn inline(input: mod) -> mod;
-  pub fn resolve(input: mod) -> mod;
-}

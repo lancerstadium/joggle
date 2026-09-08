@@ -1,107 +1,42 @@
 # Joggle
 
-Joggle is a compact C++ compiler for people who co-design neural-network
-software and edge hardware. Its central idea is deliberately small:
+Joggle is being relaunched as a research compiler for deterministic,
+resource-constrained neural-network inference.
 
-- a versioned `Mod` is the package and namespace;
-- a typed `Fn` represents both a model graph and an explicit loop program;
-- every IR operation is an ordinary call;
-- compiler work is an ordinary fn invoked explicitly with `@`;
-- new operators are defined by bodies, not C++ subclasses or lowering tables.
+The project investigates one question: can a compiler take an ordinary
+pretrained neural network and a bounded finite numerical-representation
+function, then synthesize a competitive fixed-cycle reduction without a
+format-specific kernel, lowering, hardware template, or user schedule?
 
-There is no `GraphIR`, `KernelIR`, dialect hierarchy, pass registry, target base
-class, or generated declaration header. Different compilation stages are
-verified forms of the same `Fn` object.
+The proposed mechanism analyzes the representation function inside its
+enclosing tensor reduction. It may factor repeated code-dependent work into
+bounded partial state and a shared-parameter finalizer, or retain direct
+decode-and-multiply execution when factoring is not profitable.
 
-## A neural-network pipeline
+## Status
 
-```joggle
-joggle 1;
+The previous implementation has been archived at the Git tag
+`archive/pre-relaunch-a2a281e`. This branch intentionally contains no compiler
+implementation while the reduction-synthesis hypothesis is tested.
 
-mod example@1.0.0 {
-  import nn@3 as n;
-  import tensor@8 as t;
+The first gate is a disposable, frozen compiler probe evaluated against direct
+execution, generic algebraic rewriting, decoder-plus-MAC synthesis, and
+handwritten INT, SP2, codebook, distributed-arithmetic, and per-vector-scaling
+baselines. Open-source synthesis is used only to reject weak candidates;
+publishable hardware claims require vendor post-route results and real-board,
+batch-one measurements on standard pretrained models.
 
-  pub fn model(
-    lhs: t.tensor<f32, [2, 4]>,
-    rhs: t.tensor<f32, [4, 3]>
-  ) -> t.tensor<f32, [2, 3]> {
-    product = n.matmul(lhs, rhs);
-    return n.relu(product);
-  }
+## Non-goals
 
-  pub fn prepare(input: fn) -> fn {
-    fused = @t.fuse(input);
-    return @t.loops(fused);
-  }
-}
-```
+Joggle is not another graph IR, custom-datatype registry, accelerator ISA
+language, device hierarchy, scheduling DSL, HLS wrapper, or portable runtime.
+ONNX/TFLite import, textual modules, package loading, passes, host JIT,
+cost-model integration, and artifact emission are necessary infrastructure,
+not research contributions.
 
-`tensor.fuse` expands bodyful semantic functions and composes producer access
-into consumer demand. For MatMul followed by Relu, it produces one tensor
-construction containing the reduction and activation, with no intermediate
-MatMul tensor. `tensor.loops` then converts that fused construction and its
-reduction into ordinary CFG loops. The two passes are explicit and neither
-silently invokes the other.
+No public API, language, module format, or implementation from the archived
+prototype should be considered current or stable.
 
-The same path handles the shipped 2-D Conv and pooling bodies—including
-padding, grouping, optional bias, and exclusion-aware averaging—without an NN
-operator case in either pass.
+## License
 
-The loop form still has tensor value semantics. `tensor.set` returns the next
-tensor value; it is not a physical store. Storage reuse, layouts, packed
-formats, instructions, and emission belong to later target packages after
-fusion and scheduling decisions are complete.
-
-## Extension model
-
-A package is one `mod.joggle` file plus an optional native library for work
-that cannot be expressed portably, such as decoding ONNX or writing an object
-file. The source file is always the ABI authority.
-
-```joggle
-pub fn read(input: bytes, name: string = "model") -> mod;
-pub fn optimize(input: fn) -> fn;
-pub fn emit(input: mod) -> bytes;
-```
-
-Ordinary calls remain in the program. `@read(...)` or `@optimize(...)` asks the
-compiler to execute that fn now. Users compose their own pipeline in normal
-source instead of registering magic pass names.
-
-## Shipped packages
-
-- `arith@2`: scalar operations used by portable bodies;
-- `tensor@8`: the tensor value, its small semantic basis, fusion, and loop
-  expansion;
-- `nn@3`: frontend-independent neural-network functions;
-- `transform@4`: generic inlining, equational rewriting, and resolution;
-- `quant@4`: quantize/dequantize semantics;
-- optional `onnx@6`: a Protobuf reader that resolves directly to linked
-  semantic functions.
-
-There is intentionally no generic memory or device package in the current
-system. Such a package will be admitted only when a real target demonstrates a
-portable contract that is not already expressed by tensor values and ordinary
-functions.
-
-## Build and test
-
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-ctest --test-dir build --output-on-failure
-```
-
-Enable the optional ONNX reader with `-DJOGGLE_BUILD_ONNX=ON` and provide a
-Protobuf installation.
-
-## Documentation
-
-- [Documentation map](docs/README.md)
-- [Architecture](docs/architecture.md)
-- [Tensor compilation pipeline](docs/pipeline.md)
-- [Language](docs/language.md)
-- [C++ API](docs/api.md)
-- [Package design](docs/mods.md)
-- [Research scope](docs/research.md)
+Joggle is licensed under the MIT License. See [LICENSE](LICENSE).
