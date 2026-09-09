@@ -75,6 +75,14 @@ without introducing a class per type constructor. Malformed nesting and empty
 arguments are rejected while parsing declarations. Constructor meaning is
 supplied by modules; the core only needs the tree for matching and substitution.
 
+The same tree is available to compile-time functions. `ir.type(value)` returns
+a `Ty`; `name(type)` and `args(type)` inspect it, `int(type)` projects a numeric
+term, and `str(type)` requests canonical text for a native boundary.
+`ty(text)`, `ty(integer)`, and `ty(name, arguments)` construct validated trees.
+`ir.type(mod, value, type)` writes an inferred type back to a value and its
+structured carried-value family. This is ordinary type algebra, not a separate
+shape-expression or data-format registry.
+
 A named parametric type is declared with the same `fn` mechanism as every
 other extension. A zero-argument function returning `Ty` is a type constructor;
 its generic list is the constructor's argument list:

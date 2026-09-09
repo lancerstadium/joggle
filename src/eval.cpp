@@ -801,7 +801,9 @@ private:
 
   bool fundamental(std::string_view name) const noexcept {
     return name == "len" || name == "keys" || name == "has" ||
-           name == "get" || name == "kind";
+           name == "get" || name == "kind" || name == "name" ||
+           name == "args" || name == "int" || name == "str" ||
+           name == "ty";
   }
 
   std::optional<Items> fundamental(std::string_view name, const Items& args,
@@ -851,6 +853,55 @@ private:
                                       : value->dict()    ? "dict"
                                                          : "nil";
         return Items{Item(Attr(std::string(type)))};
+      }
+    } else if (name == "name" && args.size() == 1) {
+      if (const auto* type = as<Ty>(args[0]); type && type->valid())
+        return Items{Item(Attr(std::string(type->name())))};
+    } else if (name == "args" && args.size() == 1) {
+      if (const auto* type = as<Ty>(args[0]); type && type->valid()) {
+        Items out;
+        for (const Ty& argument : type->args())
+          out.emplace_back(argument);
+        return Items{Item(std::move(out))};
+      }
+    } else if (name == "int" && args.size() == 1) {
+      if (const auto* type = as<Ty>(args[0]); type && type->valid())
+        if (const auto value = integer(*type))
+          return Items{Item(Attr(*value))};
+    } else if (name == "str" && args.size() == 1) {
+      if (const auto* type = as<Ty>(args[0]); type && type->valid())
+        return Items{Item(Attr(std::string(type->text())))};
+    } else if (name == "ty" && args.size() == 1) {
+      Ty type;
+      if (const auto value = integer(args[0]))
+        type = Ty(std::to_string(*value));
+      else if (const auto value = string(args[0]))
+        type = Ty(std::string(*value));
+      if (type.valid())
+        return Items{Item(std::move(type))};
+    } else if (name == "ty" && args.size() == 2) {
+      const auto constructor = string(args[0]);
+      const Items* arguments = list(args[1]);
+      if (constructor && arguments) {
+        std::string text = *constructor == "[]"
+                               ? "["
+                               : std::string(*constructor) + '<';
+        for (std::size_t index = 0; index < arguments->size(); ++index) {
+          const auto* argument = as<Ty>((*arguments)[index]);
+          if (!argument || !argument->valid()) {
+            text.clear();
+            break;
+          }
+          if (index)
+            text += ", ";
+          text += argument->text();
+        }
+        if (!text.empty()) {
+          text += *constructor == "[]" ? ']' : '>';
+          Ty type(std::move(text));
+          if (type.valid())
+            return Items{Item(std::move(type))};
+        }
       }
     }
     fail("invalid base." + std::string(name) + " compile-time call", loc);
@@ -978,7 +1029,13 @@ private:
         return Items{Item(Attr(std::string(op->callee())))};
     } else if (name == "type" && args.size() == 1) {
       if (const auto* value = as<Val>(args[0]))
-        return Items{Item(Attr(std::string(value->type().text())))};
+        return Items{Item(value->type())};
+    } else if (name == "type" && args.size() == 3) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* value = as<Val>(args[1]);
+      const auto* type = as<Ty>(args[2]);
+      if (mod && *mod && value && type)
+        return Items{Item(Attr((*mod)->type(*value, *type)))};
     } else if (name == "resolve" && args.size() == 2) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* op = as<Op>(args[1]);

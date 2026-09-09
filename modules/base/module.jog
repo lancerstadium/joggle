@@ -10,6 +10,14 @@ fn get(xs: dict, key: str) -> Attr;
 fn get(xs: dict, key: str, fallback: Attr) -> Attr;
 fn kind(x: Attr) -> str;
 
+fn name(type: Ty) -> str;
+fn args(type: Ty) -> list<Ty>;
+fn int(type: Ty) -> int;
+fn str(type: Ty) -> str;
+fn ty(text: str) -> Ty;
+fn ty(value: int) -> Ty;
+fn ty(name: str, args: list<Ty>) -> Ty;
+
 fn []<T: Ty>(xs: list<T>, index: int) -> T;
 fn [](xs: dict, key: str) -> Attr;
 

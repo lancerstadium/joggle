@@ -251,6 +251,33 @@ fn has_use(m: Mod, module: str) -> bool {
   return found
 }
 
+fn type_opaque(m: Mod) -> bool {
+  let shape = ty("[]", [ty(2), ty(3)])
+  let tensor_type = ty("tensor", [ty("f32"), shape])
+  for op in ir.ops(m) {
+    if ir.callee(op) == "opaque" {
+      return ir.type(m, ir.outs(op)[0], tensor_type)
+    }
+  }
+  return false
+}
+
+fn elements(m: Mod, callee: str) -> int {
+  var total = 0
+  for op in ir.ops(m) {
+    if ir.callee(op) == callee {
+      let type = ir.type(ir.outs(op)[0])
+      if name(type) == "tensor" && len(args(type)) == 2 {
+        total = 1
+        for dim in args(args(type)[1]) {
+          total *= int(dim)
+        }
+      }
+    }
+  }
+  return total
+}
+
 fn bad_entry(m: Mod) -> int {
   return 0
 }
@@ -290,7 +317,9 @@ fn rebuild_tagged(m: Mod) -> bool {
           if ir.callee(op) == "operator +" {
             let outs = ir.outs(op)
             if len(outs) == 1 && len(ir.users(outs[0])) == 1 {
-              let next = ir.call(m, op, target, ir.args(op), ir.type(outs[0]))
+              let next = ir.call(
+                m, op, target, ir.args(op), str(ir.type(outs[0]))
+              )
               changed = ir.replace(m, outs[0], next)
               changed = ir.erase(m, op)
             }

@@ -102,7 +102,7 @@ The built-in `ir` module is the complete reflection boundary:
 | --- | --- |
 | `fns`, `params`, `blks`, `ops`, `uses` | Traverse function, structure, and dependencies. |
 | `args`, `outs`, `users` | Read operation dataflow. |
-| `live`, `block`, `kind`, `callee`, `type` | Query handle state and structure. |
+| `live`, `block`, `kind`, `callee`, `type` | Query handle state, structure, and structural `Ty`. |
 | `resolve` | Resolve a call to its visible function declaration. |
 | `is_const`, `constant` | Query constant IR values. |
 | `has`, `meta` | Query open function or operation attributes. |
@@ -122,6 +122,12 @@ and `attrs["key"]` is the strict indexing form. These are enough for an
 explicit bridge function to interpret frontend attributes without adding an
 ONNX/TFLite field API or string-key cases to core. A missing strict key is a
 diagnostic, while the three-argument `get` supplies a caller-chosen fallback.
+
+`Ty` is also a normal compile-time value. `name`, `args`, and `int` decompose a
+type tree; `ty` reconstructs one from text, an integer term, or a constructor
+name plus child types; `str` is the explicit conversion back to canonical text.
+The overloaded `ir.type(m, value, type)` records an inferred type while keeping
+loop/condition-carried versions consistent and printable.
 
 ### Tensor and network semantics
 

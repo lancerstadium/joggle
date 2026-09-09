@@ -364,6 +364,7 @@ public:
   bool replace(Val old_value, Val new_value);
   bool replace(Val old_value, Val new_value, Op user);
   bool erase(Op op);
+  bool type(Val value, Ty type);
   bool rename(Val value, std::string name);
   bool rename(Op call, std::string callee);
   bool set(Fn fn, std::string key, Attr value);

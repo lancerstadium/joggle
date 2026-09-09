@@ -307,6 +307,51 @@ int main(int argc, char** argv) {
   dependencies.clear_diags();
   CHECK(dependencies.verify(env));
 
+  constexpr std::string_view inferred_source =
+      "module inferred\n"
+      "use tensor\n"
+      "fn main(x: i32) -> tensor<f32, [2, 3]> {\n"
+      "  var y = opaque(x)\n"
+      "  for i in 0..1 {\n"
+      "    observe(y)\n"
+      "  }\n"
+      "  return y\n}\n";
+  joggle::Mod inferred;
+  joggle::Mod inferred_cpp;
+  CHECK(joggle::parse(env, inferred_source, inferred, "inferred.jog"));
+  CHECK(joggle::parse(env, inferred_source, inferred_cpp,
+                      "inferred-cpp.jog"));
+  CHECK(inferred.verify(env) && inferred_cpp.verify(env));
+  CHECK(joggle::run(env, "script.type_opaque", inferred));
+  joggle::Op opaque_cpp;
+  for (joggle::Op op : inferred_cpp.ops())
+    if (op.callee() == "opaque")
+      opaque_cpp = op;
+  const joggle::Ty inferred_type("tensor<f32, [2, 3]>");
+  CHECK(opaque_cpp && inferred_cpp.type(opaque_cpp.outs()[0], inferred_type));
+  CHECK(inferred.verify(env) && inferred_cpp.verify(env));
+  CHECK(joggle::structurally_equal(inferred, inferred_cpp));
+  joggle::Attr elements;
+  const std::vector<joggle::Attr> opaque_query{joggle::Attr("opaque")};
+  CHECK(joggle::query(env, "script.elements", inferred, elements,
+                      opaque_query));
+  CHECK(elements.integer() == 6);
+  const std::string inferred_text = joggle::print(inferred);
+  CHECK(inferred_text.find("var y: tensor<f32, [2, 3]> = opaque(x)") !=
+        std::string::npos);
+  joggle::Mod inferred_roundtrip;
+  CHECK(joggle::parse(env, inferred_text, inferred_roundtrip,
+                      "inferred-roundtrip.jog"));
+  CHECK(inferred_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(inferred, inferred_roundtrip));
+  const std::uint64_t inferred_revision = inferred_cpp.revision();
+  const std::string inferred_cpp_text = joggle::print(inferred_cpp);
+  CHECK(!inferred_cpp.type(opaque_cpp.outs()[0], joggle::Ty("tensor<")));
+  CHECK(inferred_cpp.revision() == inferred_revision);
+  CHECK(joggle::print(inferred_cpp) == inferred_cpp_text);
+  inferred_cpp.clear_diags();
+  CHECK(inferred_cpp.verify(env));
+
   joggle::Mod precedence;
   constexpr std::string_view precedence_source =
       "module precedence\n"

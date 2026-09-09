@@ -156,13 +156,14 @@ measurements, not general performance claims.
 
 The optional `sat` module is the extension-boundary gate. Its `sat<W>` type and
 `sat.add` primitive are ordinary signatures. Its textual `sat.select` function
-uses `ir.type` to select only matching additions; integer additions remain
-untouched. Three native scalar functions recognize supported formats, execute
-the saturating reference semantics, and emit a concrete SystemVerilog adder.
+inspects the structural type and explicitly converts it to text for the native
+predicate; integer additions remain untouched. Three native scalar functions
+recognize supported formats, execute the saturating reference semantics, and
+emit a concrete SystemVerilog adder.
 
 SystemVerilog is an output of that removable module, not a core backend or IR.
-After the generic `ir.type` query completed the reflection boundary, the whole
-format, policy, simulator, and emitter were added without changing the core
+After structural type reflection completed the boundary, the whole format,
+policy, simulator, and emitter were added without changing the core
 library, parser, evaluator, public header, or operation vocabulary.
 
 ## M5 slice
@@ -439,3 +440,19 @@ adding `nn`, mapping `onnx.Relu` to `nn.relu`, resolving the result through the
 normal type system, printing, and reparsing. The helper has no frontend table;
 the bridge function owns the relation. More involved schema differences remain
 normal module code using attribute access and IR construction.
+
+## M10 type-algebra slice
+
+Network and format passes require structure, not parsed type strings.
+Compile-time `Ty` values now use the same immutable tree as the verifier:
+`ir.type` reads a value type; ordinary `name`, `args`, `int`, `str`, and `ty`
+functions decompose, project, serialize, and construct it. The overloaded
+`ir.type(m, value, type)` and `Mod::type` write a type through a structured
+carried-value family and participate in revision tracking and rollback.
+
+A tested `.jog` function constructs `tensor<f32, [2, 3]>` from child `Ty`
+values, annotates an open frontend result, then computes six elements by
+walking the resulting tree. A direct C++ edit produces structurally identical
+IR; invalid types leave bytes and revision unchanged. This is the substrate
+for later shape, custom-bitwidth, and layout inference modules without adding
+those policies to core.

@@ -23,7 +23,7 @@ fn select(m: Mod) -> bool {
         if ir.callee(op) == "operator +" {
           let outs = ir.outs(op)
           if len(outs) == 1 {
-            if sat.supports(ir.type(outs[0])) {
+            if sat.supports(str(ir.type(outs[0]))) {
               changed = ir.rename(m, op, "sat.add")
             }
           }

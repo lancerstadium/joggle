@@ -40,7 +40,8 @@ it resolves ordinary overloads and has no NN-operator switch. `base`
 dictionary access lets ordinary bridge functions interpret frontend
 attributes. A bridge may add a module dependency and apply a data-driven call
 mapping, so frontend-to-network relationships stay outside both codecs and
-core.
+core. Compile-time functions can inspect, construct, and write structural `Ty`
+trees, enabling shape and custom-format reasoning without parsing type strings.
 
 ## Build
 

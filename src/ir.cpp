@@ -98,6 +98,57 @@ bool carried_arg(const detail::Store& store, std::uint32_t value) {
   return false;
 }
 
+std::unordered_set<std::uint32_t> family(const detail::Store& store,
+                                         std::uint32_t seed) {
+  std::unordered_set<std::uint32_t> values{seed};
+  bool expanded = true;
+  while (expanded) {
+    expanded = false;
+    const auto connect = [&](std::span<const std::uint32_t> ids) {
+      const bool related = std::any_of(ids.begin(), ids.end(), [&](auto id) {
+        return values.contains(id);
+      });
+      if (!related)
+        return;
+      for (const std::uint32_t id : ids)
+        if (id < store.vals.size() && store.vals[id].live)
+          expanded = values.insert(id).second || expanded;
+    };
+    for (const auto& slot : store.ops) {
+      if (!slot.live || (slot.data.kind != Op::Kind::loop &&
+                         slot.data.kind != Op::Kind::branch))
+        continue;
+      const detail::OpData& op = slot.data;
+      const std::size_t offset =
+          op.kind == Op::Kind::loop ? op.iter_names.size() : 1;
+      if (op.args.size() < offset + op.carried_count ||
+          op.outs.size() < op.carried_count)
+        continue;
+      for (std::size_t index = 0; index < op.carried_count; ++index) {
+        std::vector<std::uint32_t> ids{op.args[offset + index],
+                                       op.outs[index]};
+        for (const std::uint32_t block : op.blks) {
+          if (block >= store.blks.size() || !store.blks[block].live)
+            continue;
+          const detail::BlkData& body = store.blks[block].data;
+          const std::size_t arg =
+              op.kind == Op::Kind::loop ? offset + index : index;
+          if (arg >= body.args.size())
+            continue;
+          ids.push_back(body.args[arg]);
+          if (!body.ops.empty()) {
+            const detail::OpData& end = store.ops[body.ops.back()].data;
+            if (end.kind == Op::Kind::yield && index < end.args.size())
+              ids.push_back(end.args[index]);
+          }
+        }
+        connect(ids);
+      }
+    }
+  }
+  return values;
+}
+
 std::optional<std::vector<std::string_view>>
 split_terms(std::string_view text) {
   std::vector<std::string_view> terms;
@@ -1643,6 +1694,27 @@ bool Mod::erase(Op op) {
   return true;
 }
 
+bool Mod::type(Val value, Ty next) {
+  auto& store = impl_->store;
+  if (!value.valid() || value.store_ != &store || !next.valid()) {
+    detail::add_diag(store.diags,
+                     "type requires a live value and valid structural type");
+    return false;
+  }
+  const std::unordered_set<std::uint32_t> related = family(store, value.id_);
+  bool changed = false;
+  for (const std::uint32_t id : related) {
+    detail::ValData& data = store.vals[id].data;
+    changed = data.type != next || changed;
+    data.type = next;
+    if (data.kind == detail::ValKind::result)
+      data.type_annotation = true;
+  }
+  if (changed)
+    touch(store);
+  return true;
+}
+
 bool Mod::rename(Val value, std::string name) {
   auto& store = impl_->store;
   if (!value.valid() || value.store_ != &store || !valid_binding(name)) {
@@ -1651,60 +1723,14 @@ bool Mod::rename(Val value, std::string name) {
     return false;
   }
 
-  std::unordered_set<std::uint32_t> family{value.id_};
-  bool expanded = true;
-  while (expanded) {
-    expanded = false;
-    const auto connect = [&](std::span<const std::uint32_t> ids) {
-      const bool related = std::any_of(ids.begin(), ids.end(),
-                                       [&](std::uint32_t id) {
-                                         return family.contains(id);
-                                       });
-      if (!related)
-        return;
-      for (const std::uint32_t id : ids)
-        if (id < store.vals.size() && store.vals[id].live)
-          expanded = family.insert(id).second || expanded;
-    };
-    for (const auto& slot : store.ops) {
-      if (!slot.live || (slot.data.kind != Op::Kind::loop &&
-                         slot.data.kind != Op::Kind::branch))
-        continue;
-      const detail::OpData& op = slot.data;
-      const std::size_t offset =
-          op.kind == Op::Kind::loop ? op.iter_names.size() : 1;
-      if (op.args.size() < offset + op.carried_count ||
-          op.outs.size() < op.carried_count)
-        continue;
-      for (std::size_t index = 0; index < op.carried_count; ++index) {
-        std::vector<std::uint32_t> ids{op.args[offset + index],
-                                       op.outs[index]};
-        for (const std::uint32_t block : op.blks) {
-          if (block >= store.blks.size() || !store.blks[block].live)
-            continue;
-          const detail::BlkData& body = store.blks[block].data;
-          const std::size_t arg =
-              op.kind == Op::Kind::loop ? offset + index : index;
-          if (arg >= body.args.size())
-            continue;
-          ids.push_back(body.args[arg]);
-          if (!body.ops.empty()) {
-            const detail::OpData& end = store.ops[body.ops.back()].data;
-            if (end.kind == Op::Kind::yield && index < end.args.size())
-              ids.push_back(end.args[index]);
-          }
-        }
-        connect(ids);
-      }
-    }
-  }
+  const std::unordered_set<std::uint32_t> related = family(store, value.id_);
 
   const auto conflicts = [&](std::span<const std::uint32_t> ids) {
     const bool owns = std::any_of(ids.begin(), ids.end(), [&](std::uint32_t id) {
-      return family.contains(id);
+      return related.contains(id);
     });
     return owns && std::any_of(ids.begin(), ids.end(), [&](std::uint32_t id) {
-             return !family.contains(id) && id < store.vals.size() &&
+             return !related.contains(id) && id < store.vals.size() &&
                     store.vals[id].live && store.vals[id].data.name == name;
            });
   };
@@ -1727,7 +1753,7 @@ bool Mod::rename(Val value, std::string name) {
     }
 
   bool changed = false;
-  for (const std::uint32_t id : family) {
+  for (const std::uint32_t id : related) {
     detail::ValData& data = store.vals[id].data;
     changed = data.name != name || changed;
     data.name = name;
@@ -1749,7 +1775,7 @@ bool Mod::rename(Val value, std::string name) {
     const auto& args = block_slot.data.args;
     for (std::size_t index = 0;
          index < parent.iter_names.size() && index < args.size(); ++index) {
-      if (!family.contains(args[index]))
+      if (!related.contains(args[index]))
         continue;
       changed = parent.iter_names[index] != name || changed;
       parent.iter_names[index] = name;
