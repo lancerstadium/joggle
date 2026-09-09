@@ -484,6 +484,16 @@ fn broadcast<E: Ty, S: list<int>, T: list<int>>(
   return out
 }
 
+fn cast<A: Ty, B: Ty, S: list<int>>(
+  x: tensor<A, S>
+) -> tensor<B, S> {
+  var out = tensor<B, S>(B(0))
+  for i in 0..numel<S>() {
+    out[i] = B(x[i])
+  }
+  return out
+}
+
 fn +<E: Ty, S: list<int>>(
   a: tensor<E, S>, b: tensor<E, S>
 ) -> tensor<E, S> {
@@ -681,6 +691,49 @@ fn matmul<E: Ty, L: list<int>, R: list<int>, Y: list<int>>(
       sum += a[ai] * b[bi]
     }
     out[batch * m * n + i * n + j] = sum
+  }
+  return out
+}
+
+fn matmul<E: Ty, L: list<int>, R: list<int>, Y: list<int>>(
+  a: tensor<E, L>,
+  b: tensor<E, R>,
+  transpose_a: bool,
+  transpose_b: bool,
+  alpha: f64
+) -> tensor<E, Y> {
+  var m = L[len(L) - 2]
+  var depth = L[len(L) - 1]
+  var n = R[len(R) - 1]
+  if transpose_a {
+    m = L[len(L) - 1]
+    depth = L[len(L) - 2]
+  }
+  if transpose_b {
+    n = R[len(R) - 2]
+  }
+  let batches = numel<Y>() / (m * n)
+  var out = tensor<E, Y>(E(0))
+  for batch in 0..batches, row in 0..m, column in 0..n {
+    var sum = E(0)
+    for k in 0..depth {
+      var ar = row
+      var ac = k
+      var br = k
+      var bc = column
+      if transpose_a {
+        ar = k
+        ac = row
+      }
+      if transpose_b {
+        br = column
+        bc = k
+      }
+      let ai = matmul_offset(L, Y, batch, ar, ac)
+      let bi = matmul_offset(R, Y, batch, br, bc)
+      sum += a[ai] * b[bi]
+    }
+    out[batch * m * n + row * n + column] = sum * E(alpha)
   }
   return out
 }

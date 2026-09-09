@@ -785,8 +785,7 @@ Tensor refinement merges only compatible holes, so inferred structure cannot
 overwrite an imported interface contract. Shape-of-shape relations now cover
 Gather, Slice, Squeeze/Unsqueeze, Concat, ConstantOfShape, and Split. OneHot,
 DynamicQuantizeLinear, MatMulInteger, and the transposed-batched shape of
-`com.microsoft.FusedMatMul` propagate types without pretending that their
-quantization or vendor semantics have already been converted.
+`com.microsoft.FusedMatMul` propagate types before semantic conversion.
 
 Call conversion now uses the general `ir.retarget` edit. It checks a proposed
 callee and operand list with normal module visibility and overload resolution,
@@ -798,7 +797,10 @@ exposed and fixed empty type-list classification, allowing scalar tensor shape
 On the locally imported 12-layer quantized BERT graph, inference leaves no open
 result binding. Conversion maps all 844 covered floating tensor operations:
 70 Reshape, 50 ReduceMean, 49 Transpose, 185 Add, 62 Sub, 342 Mul, and the
-remaining Pow, Sqrt, Reciprocal, Tanh, and Softmax calls. Integer quantization,
-source shape transport, Split, and the Microsoft fused MatMul stay explicit
-frontier calls for later research modules. Both inference and conversion are
-byte-idempotent.
+remaining Pow, Sqrt, Reciprocal, Tanh, and Softmax calls. The quantized path,
+Cast, and scaled/transposed MatMul add 72 dynamic quantizers, 84 integer
+matrix multiplications, 150 element conversions, and 12 scaled matrix
+multiplications through generic `quant` and `tensor` bodies. Cast conversion is
+deferred until shape consumers have read their source programs. Source shape
+transport, OneHot, ConstantOfShape, and Split stay explicit boundaries. Both
+inference and conversion are byte-idempotent.

@@ -101,7 +101,10 @@ normal tensor type and the converted Reshape still expands through
 Type refinement fills only open tensor elements or dimensions and rejects
 conflicting facts. Structural relations for ConstantOfShape, OneHot, dynamic
 quantization, integer MatMul, Split, and transposed batched MatMul let a
-12-layer quantized BERT graph reach the same shared floating-point semantics.
+12-layer quantized BERT graph reach shared semantics. Dynamic quantization is a
+normal multi-result function, integer MatMul exposes zero-point subtraction and
+`i32` accumulation, Cast is an element loop, and a parameterized
+`tensor.matmul` absorbs transpose/scale instead of preserving a vendor call.
 `ir.retarget` atomically changes a call and its operands only when the ordinary
 overload resolver accepts the prospective call, so an unsupported mapping
 leaves that call unchanged rather than invalidating a complete transform.

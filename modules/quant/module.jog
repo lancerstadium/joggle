@@ -34,6 +34,46 @@ fn dequantize<
   return out
 }
 
+fn matmul<
+  A: Ty,
+  B: Ty,
+  L: list<int>,
+  R: list<int>,
+  Y: list<int>,
+  ZA: list<int>,
+  ZB: list<int>
+>(
+  a: tensor<A, L>,
+  b: tensor<B, R>,
+  a_zero: tensor<A, ZA>,
+  b_zero: tensor<B, ZB>
+) -> tensor<i32, Y> {
+  let m = L[len(L) - 2]
+  let depth = L[len(L) - 1]
+  let n = R[len(R) - 1]
+  let batches = tensor.numel<Y>() / (m * n)
+  var out = tensor<i32, Y>(i32(0))
+  for batch in 0..batches, row in 0..m, column in 0..n {
+    var sum = i32(0)
+    var az = 0
+    var bz = 0
+    if tensor.numel<ZA>() != 1 {
+      az = row
+    }
+    if tensor.numel<ZB>() != 1 {
+      bz = column
+    }
+    for k in 0..depth {
+      let ai = tensor.matmul_offset(L, Y, batch, row, k)
+      let bi = tensor.matmul_offset(R, Y, batch, k, column)
+      sum += (i32(a[ai]) - i32(a_zero[az])) *
+             (i32(b[bi]) - i32(b_zero[bz]))
+    }
+    out[batch * m * n + row * n + column] = sum
+  }
+  return out
+}
+
 fn quantize<
   E: Ty,
   Q: Ty,
@@ -60,4 +100,35 @@ fn quantize<
     out[i] = Q(value)
   }
   return out
+}
+
+fn dynamic<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> (tensor<u8, S>, tensor<E, []>, tensor<u8, []>) {
+  var low = E(0)
+  var high = E(0)
+  for i in 0..tensor.numel<S>() {
+    if x[i] < low {
+      low = x[i]
+    }
+    if x[i] > high {
+      high = x[i]
+    }
+  }
+  var scale_value = E(1)
+  var zero_value = E(0)
+  if high != low {
+    scale_value = (high - low) / E(255)
+    zero_value = math.round_even(-low / scale_value)
+    if zero_value < E(0) {
+      zero_value = E(0)
+    }
+    if zero_value > E(255) {
+      zero_value = E(255)
+    }
+  }
+  let scale = tensor<E, []>(scale_value)
+  let zero = tensor<u8, []>(u8(zero_value))
+  let values = quantize(x, scale, zero, 0, 0, 255)
+  return values, scale, zero
 }

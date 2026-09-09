@@ -182,7 +182,7 @@ retains duplicate or out-of-range axes. A symbolic multi-axis reduction expands
 through the same generic body. The imported quantized BERT graph now exercises
 all 50 `ReduceMean` nodes after shape and integer-quantized type propagation.
 Their computation is converted to the shared multi-axis mean body while the
-quantized operators themselves remain explicit frontier calls.
+quantized operators retain their own explicit `quant` semantics.
 The shared library also covers broadcast division and power plus elementwise
 square root, reciprocal, and hyperbolic tangent. A symbolic decomposed
 normalization/GELU chain passes inference, conversion, body expansion, and
@@ -195,8 +195,10 @@ chains. Compatible tensor holes are refined without overwriting imported type
 contracts; ConstantOfShape, OneHot, DynamicQuantizeLinear, MatMulInteger,
 Split, and transposed batched MatMul complete structural propagation through a
 12-layer quantized BERT graph. All 70 Reshape calls and 774 other covered
-floating tensor calls convert through shared semantics. Quantized execution
-semantics and vendor fused computation deliberately remain later module work.
+floating tensor calls convert through shared semantics. All 72 dynamic
+quantizers, 84 integer matrix multiplications, 150 casts, and 12 Microsoft
+scaled/transposed MatMul calls also convert to generic `quant` and `tensor`
+bodies; the vendor namespace is no longer a compute boundary.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

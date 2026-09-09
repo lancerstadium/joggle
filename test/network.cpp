@@ -422,6 +422,59 @@ int main(int argc, char** argv) {
     return env.print_diags(stderr);
   CHECK(joggle::structurally_equal(qdq, qdq_roundtrip));
 
+  constexpr std::string_view dynamic_quant_source =
+      "module dynamic.quant\n"
+      "use onnx\n"
+      "fn main(\n"
+      "  a: tensor<f32, [2, 3]>, b: tensor<u8, [3, 4]>,\n"
+      "  b_zero: tensor<u8, [4]>\n"
+      ") -> tensor<f32, [2, 4]> {\n"
+      "  let aq, scale, a_zero = onnx.DynamicQuantizeLinear(a)\n"
+      "  let out = onnx.MatMulInteger(aq, b, a_zero, b_zero)\n"
+      "  [onnx: {to: 1}]\n"
+      "  let cast = onnx.Cast(out)\n"
+      "  return cast\n"
+      "}\n";
+  joggle::Mod dynamic_quant;
+  CHECK(joggle::parse(env, dynamic_quant_source, dynamic_quant,
+                      "dynamic-quant.jog"));
+  CHECK(dynamic_quant.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", dynamic_quant));
+  CHECK(joggle::run(env, "onnx.nn.convert", dynamic_quant));
+  CHECK(dynamic_quant.verify(env));
+  joggle::Op dynamic_call;
+  joggle::Op integer_matmul;
+  joggle::Op cast;
+  for (joggle::Op op : dynamic_quant.ops()) {
+    if (op.callee() == "quant.dynamic")
+      dynamic_call = op;
+    if (op.callee() == "quant.matmul")
+      integer_matmul = op;
+    if (op.callee() == "tensor.cast")
+      cast = op;
+  }
+  CHECK(dynamic_call && dynamic_call.outs().size() == 3);
+  CHECK(integer_matmul && integer_matmul.outs()[0].type() ==
+                              joggle::Ty("tensor<i32, [2, 4]>"));
+  CHECK(cast && cast.outs()[0].type() ==
+                    joggle::Ty("tensor<f32, [2, 4]>"));
+  const joggle::Fn dynamic_fn = env.resolve(dynamic_quant, dynamic_call);
+  const joggle::Fn integer_matmul_fn =
+      env.resolve(dynamic_quant, integer_matmul);
+  const joggle::Fn cast_fn = env.resolve(dynamic_quant, cast);
+  CHECK(dynamic_fn && integer_matmul_fn && cast_fn);
+  CHECK(dynamic_quant.expand(dynamic_call, dynamic_fn));
+  CHECK(dynamic_quant.expand(integer_matmul, integer_matmul_fn));
+  CHECK(dynamic_quant.expand(cast, cast_fn));
+  CHECK(dynamic_quant.verify(env));
+  joggle::Mod dynamic_quant_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(dynamic_quant),
+                      dynamic_quant_roundtrip,
+                      "dynamic-quant-roundtrip.jog"));
+  CHECK(dynamic_quant_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(dynamic_quant,
+                                   dynamic_quant_roundtrip));
+
   constexpr std::string_view symbolic_conv_source =
       "module symbolic.conv\n"
       "use onnx\n"
@@ -616,6 +669,12 @@ int main(int argc, char** argv) {
                       joggle::Ty("tensor<f32, [N, 12, 256, 64]>"));
   CHECK(scores && scores.outs()[0].type() ==
                       joggle::Ty("tensor<f32, [N, 12, 256, 256]>"));
+  CHECK(joggle::run(env, "onnx.nn.convert", transformer));
+  CHECK(transformer.verify(env));
+  CHECK(scores.callee() == "tensor.matmul");
+  const joggle::Fn scaled_matmul = env.resolve(transformer, scores);
+  CHECK(scaled_matmul && transformer.expand(scores, scaled_matmul));
+  CHECK(transformer.verify(env));
 
   constexpr std::string_view split_source =
       "module split.shape\n"

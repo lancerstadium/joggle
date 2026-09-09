@@ -191,7 +191,11 @@ provide the inspectable index and copy semantics for an exposed static body.
 `tensor.matmul` keeps a more specific two-dimensional overload and adds one
 rank-generic body for operands of rank two or greater. Leading dimensions use
 the same broadcast relation; `matmul_offset` maps an output batch coordinate
-back into either operand without a layout or attention-specific operation.
+back into either operand without a layout or attention-specific operation. A
+second overload makes last-two-axis transposition and scalar scaling explicit
+values while retaining the same batched computation; vendor fused calls do not
+become permanent operator families. `tensor.cast` is likewise an ordinary
+element loop.
 `extent`, `offset`, and `coord` interpret
 a physical shape through an explicit logical-axis list. Each physical dimension
 names its logical axis; `-1` denotes a fixed singleton dimension. Thus NCHW is
@@ -204,6 +208,9 @@ a generic stored element type, and either scalar or one-axis parameter tensors.
 The parameter axis, saturation bounds, and round-to-nearest-even primitive are
 visible in the function body. The module therefore fixes mathematical behavior
 without fixing a bit width, storage class, or target implementation.
+`quant.dynamic` returns values, scale, and zero point through the normal
+multi-result function model. `quant.matmul` accumulates differing integer input
+types into `i32` and accepts scalar, per-row, and per-column zero points.
 `nn.linear` composes matrix
 multiplication with an optional bias loop, while `nn.relu` is a loop and
 condition over the same tensor primitives. The general `nn.conv2d` overload
@@ -275,8 +282,8 @@ literals. Conv accepts its schema's optional one-dimensional bias and maps it
 through the existing layout-explicit `nn.conv2d` composition. A mismatched bias,
 channel relation, nonpositive stride/dilation, or non-`NOTSET` automatic padding
 keeps the source call intact.
-`onnx.nn.convert` then maps QuantizeLinear/DequantizeLinear, Conv,
-BatchNormalization, ReLU, Add/Sub/Mul/Div/Pow,
+`onnx.nn.convert` then maps static and dynamic quantization, integer and scaled
+transposed MatMul, Cast, Conv, BatchNormalization, ReLU, Add/Sub/Mul/Div/Pow,
 Sqrt/Reciprocal/Tanh, AveragePool, MaxPool, GlobalAveragePool, ReduceMean,
 Softmax, Reshape, Flatten, rank-two-or-higher MatMul, and Transpose. Flatten
 reuses `tensor.reshape`; MatMul reuses `tensor.matmul`; Transpose reuses

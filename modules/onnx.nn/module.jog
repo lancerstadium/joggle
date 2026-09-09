@@ -929,17 +929,16 @@ fn integer_matmul_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], shaped(ty("i32"), shape))
 }
 
-fn fused_matmul_type(m: Mod, op: Op) -> bool {
+fn fused_matmul_result(op: Op) -> Ty {
   let inputs = ir.args(op)
-  let outputs = ir.outs(op)
-  if len(inputs) != 2 || len(outputs) != 1 {
-    return false
+  if len(inputs) != 2 {
+    return ty("_")
   }
   let left = ir.type(inputs[0])
   let right = ir.type(inputs[1])
   if !tensor.valid(left) || !tensor.valid(right) ||
      tensor.elem(left) != tensor.elem(right) {
-    return false
+    return ty("_")
   }
   let meta = attrs(op)
   let trans_a = base.get(meta, "transA", 0)
@@ -948,13 +947,21 @@ fn fused_matmul_type(m: Mod, op: Op) -> bool {
      (trans_b != 0 && trans_b != 1) ||
      base.get(meta, "transBatchA", 0) != 0 ||
      base.get(meta, "transBatchB", 0) != 0 {
-    return false
+    return ty("_")
   }
   let shape = matmul_shape(left, right, trans_a == 1, trans_b == 1)
   if len(shape) == 0 {
+    return ty("_")
+  }
+  return shaped(tensor.elem(left), shape)
+}
+
+fn fused_matmul_type(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
     return false
   }
-  return set_type(m, outputs[0], shaped(tensor.elem(left), shape))
+  return set_type(m, outputs[0], fused_matmul_result(op))
 }
 
 fn transpose_axes(op: Op, rank: int) -> list<int> {
@@ -1555,6 +1562,103 @@ fn convert_dequantize(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "quant.dequantize", inputs)
 }
 
+fn convert_dynamic_quant(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 3 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return false
+  }
+  let shape = tensor.dims(input)
+  if ir.type(outputs[0]) != shaped(ty("u8"), shape) ||
+     ir.type(outputs[1]) != ty("tensor<f32, []>") ||
+     ir.type(outputs[2]) != ty("tensor<u8, []>") ||
+     tensor.elem(input) != ty("f32") {
+    return false
+  }
+  return convert_call(m, op, "quant.dynamic")
+}
+
+fn convert_cast(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let result = ir.type(outputs[0])
+  if !tensor.valid(input) || !tensor.valid(result) ||
+     tensor.dims(input) != tensor.dims(result) ||
+     tensor.elem(result) != element(base.get(attrs(op), "to", 0)) {
+    return false
+  }
+  return convert_call(m, op, "tensor.cast")
+}
+
+fn matmul_param(type: Ty, elem: Ty, extent: Ty) -> bool {
+  if !tensor.valid(type) || tensor.elem(type) != elem {
+    return false
+  }
+  let shape = tensor.dims(type)
+  return len(shape) == 0 ||
+         (len(shape) == 1 &&
+          (shape[0] == ty(1) || shape[0] == extent))
+}
+
+fn convert_integer_matmul(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 4 || len(outputs) != 1 {
+    return false
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[1])
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     len(tensor.dims(left)) < 2 || len(tensor.dims(right)) < 2 ||
+     !matmul_param(
+       ir.type(inputs[2]), tensor.elem(left),
+       tensor.dims(left)[len(tensor.dims(left)) - 2]
+     ) ||
+     !matmul_param(
+       ir.type(inputs[3]), tensor.elem(right),
+       tensor.dims(right)[len(tensor.dims(right)) - 1]
+     ) {
+    return false
+  }
+  let shape = matmul_shape(left, right)
+  if len(shape) == 0 ||
+     ir.type(outputs[0]) != shaped(ty("i32"), shape) {
+    return false
+  }
+  return convert_call(m, op, "quant.matmul")
+}
+
+fn convert_fused_matmul(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 1 {
+    return false
+  }
+  let expected = fused_matmul_result(op)
+  if expected == ty("_") || ir.type(outputs[0]) != expected {
+    return false
+  }
+  let meta = attrs(op)
+  inputs += [
+    ir.constant(m, op, base.get(meta, "transA", 0) == 1, "bool")
+  ]
+  inputs += [
+    ir.constant(m, op, base.get(meta, "transB", 0) == 1, "bool")
+  ]
+  inputs += [
+    ir.constant(m, op, base.get(meta, "alpha", 1.0), "f64")
+  ]
+  return convert_call(m, op, "tensor.matmul", inputs)
+}
+
 fn convert_flatten(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1681,6 +1785,15 @@ fn convert(m: Mod) -> bool {
     if ir.callee(op) == "onnx.DequantizeLinear" {
       changed = convert_dequantize(m, op) || changed
     }
+    if ir.callee(op) == "onnx.DynamicQuantizeLinear" {
+      changed = convert_dynamic_quant(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.MatMulInteger" {
+      changed = convert_integer_matmul(m, op) || changed
+    }
+    if ir.callee(op) == "com_microsoft.FusedMatMul" {
+      changed = convert_fused_matmul(m, op) || changed
+    }
     if ir.callee(op) == "onnx.Conv" {
       changed = convert_conv(m, op) || changed
     }
@@ -1740,6 +1853,11 @@ fn convert(m: Mod) -> bool {
     }
     if ir.callee(op) == "onnx.Reshape" {
       changed = convert_reshape(m, op) || changed
+    }
+  }
+  for op in ir.ops(m) {
+    if ir.callee(op) == "onnx.Cast" {
+      changed = convert_cast(m, op) || changed
     }
   }
   return changed
