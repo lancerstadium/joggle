@@ -274,7 +274,30 @@ and constants. A loop constructor creates iterator and carried block arguments
 plus a valid forwarding `yield`; a branch constructor creates two such arms.
 The generic argument mutator reconnects calls, loops, branches, returns, and
 yields with arity, type, and dominance checks. Consequently a textual module
-and embedding code can each build the same loop-plus-condition function from a
-one-return seed, populate its bodies through their terminator insertion points,
-print ordinary source, and round-trip it. No public block builder, region
-descriptor, or source-form enum was introduced.
+and embedding code can each build the same nested-loop-plus-condition function
+from a one-return seed, populate its bodies through their terminator insertion
+points, print ordinary source, and round-trip it. The textual path also proves
+that a failure after editing restores the complete nested structure and its
+revision. No public block builder, region descriptor, or source-form enum was
+introduced.
+
+## M7 sixth slice
+
+Value renaming is now closed over structured control flow. Renaming any member
+of a loop- or branch-carried value chain updates its entry value, block
+arguments, yielded versions, and operation results together; renaming a loop
+iterator also updates the loop header. This keeps the single `Val` API honest:
+there is no separate block-argument naming hook, and every successful edit
+still prints as valid ordinary source. Binding names accepted by the editor are
+restricted to source-safe, non-keyword identifiers.
+
+## M7 exit gate
+
+The workflow test now has C++ and `.jog` implementations construct byte-for-byte
+identical nested-loop-plus-condition source from the same one-return seed. It
+also exercises multi-result creation, deep structured cloning, block-local
+motion, selective replacement, carried block-argument renaming, and rollback
+after a nested-IR edit. The strict Release build, address sanitizer build,
+installed-header consumer, and pinned official ONNX model all pass. M7 is
+therefore closed; later additions to editing must be justified by a concrete
+module rather than by expanding a generic builder surface.

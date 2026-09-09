@@ -300,13 +300,27 @@ int main(int argc, char** argv) {
   const joggle::Blk built_body = built_loop.blocks().front();
   CHECK(built_body.args().size() == 2);
   const joggle::Op built_yield = built_body.ops().back();
-  const std::vector<joggle::Val> sum_args{built_body.args()[1],
-                                          built_body.args()[0]};
+  const std::vector<joggle::Val> inner_range_args{zero,
+                                                  built_body.args()[0]};
+  const joggle::Val inner_range = built_control.call(
+      built_yield, "operator ..", inner_range_args, joggle::Ty("range"));
+  CHECK(inner_range);
+  const std::vector<std::string> inner_names{"j"};
+  const std::vector<joggle::Val> inner_sources{inner_range};
+  const std::vector<joggle::Val> inner_carried{built_body.args()[1]};
+  const joggle::Op inner_loop = built_control.loop(
+      built_yield, inner_names, inner_sources, inner_carried);
+  CHECK(inner_loop && inner_loop.blocks().size() == 1);
+  const joggle::Blk inner_body = inner_loop.blocks().front();
+  const joggle::Op inner_yield = inner_body.ops().back();
+  const std::vector<joggle::Val> sum_args{inner_body.args()[1],
+                                          inner_body.args()[0]};
   const joggle::Val sum = built_control.call(
-      built_yield, "operator +", sum_args, joggle::Ty("int"));
+      inner_yield, "operator +", sum_args, joggle::Ty("int"));
   CHECK(sum && built_control.rename(sum, "total"));
-  const std::vector<joggle::Val> yielded{sum};
-  CHECK(built_control.args(built_yield, yielded));
+  const std::vector<joggle::Val> inner_values{sum};
+  CHECK(built_control.args(inner_yield, inner_values));
+  CHECK(built_control.args(built_yield, inner_loop.outs()));
   const joggle::Op built_branch = built_control.branch(
       build_ret, build_fn.params()[1], built_loop.outs());
   CHECK(built_branch && built_branch.blocks().size() == 2);
@@ -326,12 +340,52 @@ int main(int argc, char** argv) {
   CHECK(built_control.verify(env));
   const std::string built_control_text = joggle::print(built_control);
   CHECK(built_control_text.find("for i in total..n") != std::string::npos);
+  CHECK(built_control_text.find("for j in total..i") != std::string::npos);
   CHECK(built_control_text.find("if flag") != std::string::npos);
   joggle::Mod control_roundtrip;
   CHECK(joggle::parse(env, built_control_text, control_roundtrip,
                       "control-roundtrip.jog"));
   CHECK(control_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(built_control, control_roundtrip));
+
+  joggle::Mod renamed_control;
+  CHECK(joggle::parse(env, built_control_text, renamed_control,
+                      "renamed-control.jog"));
+  std::vector<joggle::Op> renamed_loops;
+  joggle::Op renamed_branch;
+  for (joggle::Op op : renamed_control.ops()) {
+    if (op.kind() == joggle::Op::Kind::loop)
+      renamed_loops.push_back(op);
+    else if (op.kind() == joggle::Op::Kind::branch)
+      renamed_branch = op;
+  }
+  CHECK(renamed_loops.size() == 2 && renamed_branch);
+  const std::uint64_t rename_revision = renamed_control.revision();
+  CHECK(!renamed_control.rename(renamed_loops[0].blocks()[0].args()[0],
+                                "return"));
+  CHECK(renamed_control.revision() == rename_revision);
+  renamed_control.clear_diags();
+  CHECK(!renamed_control.rename(renamed_loops[0].blocks()[0].args()[0],
+                                "total"));
+  CHECK(renamed_control.revision() == rename_revision);
+  renamed_control.clear_diags();
+  CHECK(renamed_control.rename(renamed_loops[0].blocks()[0].args()[0],
+                               "outer"));
+  CHECK(renamed_control.rename(renamed_loops[1].blocks()[0].args()[0],
+                               "inner"));
+  CHECK(renamed_control.rename(renamed_branch.blocks()[0].args()[0], "acc"));
+  CHECK(renamed_control.verify(env));
+  const std::string renamed_control_text = joggle::print(renamed_control);
+  CHECK(renamed_control_text.find("var acc: int = 0") != std::string::npos);
+  CHECK(renamed_control_text.find("for outer in acc..n") != std::string::npos);
+  CHECK(renamed_control_text.find("for inner in acc..outer") !=
+        std::string::npos);
+  CHECK(renamed_control_text.find("acc + inner") != std::string::npos);
+  joggle::Mod renamed_roundtrip;
+  CHECK(joggle::parse(env, renamed_control_text, renamed_roundtrip,
+                      "renamed-control-roundtrip.jog"));
+  CHECK(renamed_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(renamed_control, renamed_roundtrip));
 
   joggle::Mod wrong_result_type;
   CHECK(joggle::parse(env,
@@ -584,6 +638,18 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "script.build_control", scripted_control));
   CHECK(scripted_control.verify(env));
   CHECK(joggle::print(scripted_control) == built_control_text);
+  joggle::Mod control_rollback;
+  CHECK(joggle::parse(env, built_control_text, control_rollback,
+                      "control-rollback.jog"));
+  const std::uint64_t control_revision = control_rollback.revision();
+  CHECK(!joggle::run(env, "script.fail_after_control_rename",
+                     control_rollback));
+  CHECK(joggle::print(control_rollback) == built_control_text);
+  CHECK(control_rollback.revision() == control_revision);
+  control_rollback.clear_diags();
+  CHECK(joggle::run(env, "script.rename_control", scripted_control));
+  CHECK(scripted_control.verify(env));
+  CHECK(joggle::print(scripted_control) == renamed_control_text);
   joggle::Mod rolled_back;
   CHECK(joggle::parse(env, source.str(), rolled_back, argv[1]));
   const std::string before_failure = joggle::print(rolled_back);

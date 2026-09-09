@@ -33,6 +33,47 @@ bool valid_atom(std::string_view text) {
          });
 }
 
+bool valid_binding(std::string_view text) {
+  if (text.empty() ||
+      (!std::isalpha(static_cast<unsigned char>(text.front())) &&
+       text.front() != '_'))
+    return false;
+  if (std::any_of(text.begin() + 1, text.end(), [](char ch) {
+        return !std::isalnum(static_cast<unsigned char>(ch)) && ch != '_';
+      }))
+    return false;
+  static constexpr std::string_view reserved[] = {
+      "module", "use", "fn", "let", "var", "for", "in",
+      "if", "else", "return", "true", "false", "nil"};
+  for (const std::string_view word : reserved)
+    if (text == word)
+      return false;
+  return true;
+}
+
+bool carried_arg(const detail::Store& store, std::uint32_t value) {
+  for (const auto& slot : store.blocks) {
+    if (!slot.live || slot.data.parent_op == detail::none ||
+        slot.data.parent_op >= store.ops.size() ||
+        !store.ops[slot.data.parent_op].live)
+      continue;
+    const auto found =
+        std::find(slot.data.args.begin(), slot.data.args.end(), value);
+    if (found == slot.data.args.end())
+      continue;
+    const std::size_t index =
+        static_cast<std::size_t>(found - slot.data.args.begin());
+    const detail::OpData& parent = store.ops[slot.data.parent_op].data;
+    if (parent.kind == Op::Kind::loop)
+      return index >= parent.iter_names.size() &&
+             index < parent.iter_names.size() + parent.carried_count;
+    if (parent.kind == Op::Kind::branch)
+      return index < parent.carried_count;
+    return false;
+  }
+  return false;
+}
+
 std::optional<std::vector<std::string_view>>
 split_terms(std::string_view text) {
   std::vector<std::string_view> terms;
@@ -570,8 +611,8 @@ Op Mod::loop(Op before, std::span<const std::string> names,
     return reject("loop requires an insertion point and one name per source");
   std::unordered_set<std::string> unique;
   for (const std::string& name : names)
-    if (name.empty() || !unique.insert(name).second)
-      return reject("loop variable names must be non-empty and distinct");
+    if (!valid_binding(name) || !unique.insert(name).second)
+      return reject("loop variable names must be valid and distinct");
   std::vector<Val> inputs(sources.begin(), sources.end());
   inputs.insert(inputs.end(), carried.begin(), carried.end());
   for (Val value : inputs)
@@ -585,12 +626,17 @@ Op Mod::loop(Op before, std::span<const std::string> names,
   if (position == parent_ops.end())
     return reject("loop insertion point is not in its block");
   for (Val value : carried) {
-    if (value.name().empty() || !value.def())
+    if (value.name().empty())
       return reject("loop-carried values must be named local bindings");
-    detail::OpData& def = store.ops[value.def().id_].data;
-    if ((def.kind == Op::Kind::call || def.kind == Op::Kind::constant) &&
-        def.form == detail::Form::let)
-      def.form = detail::Form::var;
+    const Op definition = value.def();
+    if (!definition && !carried_arg(store, value.id_))
+      return reject("loop-carried values must be mutable local bindings");
+    if (definition) {
+      detail::OpData& def = store.ops[definition.id_].data;
+      if ((def.kind == Op::Kind::call || def.kind == Op::Kind::constant) &&
+          def.form == detail::Form::let)
+        def.form = detail::Form::var;
+    }
   }
 
   detail::OpData data;
@@ -680,12 +726,17 @@ Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
   if (position == parent_ops.end())
     return reject("branch insertion point is not in its block");
   for (Val value : carried) {
-    if (value.name().empty() || !value.def())
+    if (value.name().empty())
       return reject("branch-carried values must be named local bindings");
-    detail::OpData& def = store.ops[value.def().id_].data;
-    if ((def.kind == Op::Kind::call || def.kind == Op::Kind::constant) &&
-        def.form == detail::Form::let)
-      def.form = detail::Form::var;
+    const Op definition = value.def();
+    if (!definition && !carried_arg(store, value.id_))
+      return reject("branch-carried values must be mutable local bindings");
+    if (definition) {
+      detail::OpData& def = store.ops[definition.id_].data;
+      if ((def.kind == Op::Kind::call || def.kind == Op::Kind::constant) &&
+          def.form == detail::Form::let)
+        def.form = detail::Form::var;
+    }
   }
 
   detail::OpData data;
@@ -1235,19 +1286,115 @@ bool Mod::erase(Op op) {
 
 bool Mod::rename(Val value, std::string name) {
   auto& store = impl_->store;
-  if (!value.valid() || value.store_ != &store || name.empty()) {
+  if (!value.valid() || value.store_ != &store || !valid_binding(name)) {
     detail::add_diag(store.diags,
-                     "rename requires a live value and non-empty name");
+                     "rename requires a live value and valid binding name");
     return false;
   }
-  detail::ValData& data = store.vals[value.id_].data;
-  const bool changed = data.name != name;
-  data.name = std::move(name);
-  if (data.def != detail::none) {
+
+  std::unordered_set<std::uint32_t> family{value.id_};
+  bool expanded = true;
+  while (expanded) {
+    expanded = false;
+    const auto connect = [&](std::span<const std::uint32_t> ids) {
+      const bool related = std::any_of(ids.begin(), ids.end(),
+                                       [&](std::uint32_t id) {
+                                         return family.contains(id);
+                                       });
+      if (!related)
+        return;
+      for (const std::uint32_t id : ids)
+        if (id < store.vals.size() && store.vals[id].live)
+          expanded = family.insert(id).second || expanded;
+    };
+    for (const auto& slot : store.ops) {
+      if (!slot.live || (slot.data.kind != Op::Kind::loop &&
+                         slot.data.kind != Op::Kind::branch))
+        continue;
+      const detail::OpData& op = slot.data;
+      const std::size_t offset =
+          op.kind == Op::Kind::loop ? op.iter_names.size() : 1;
+      if (op.args.size() < offset + op.carried_count ||
+          op.outs.size() < op.carried_count)
+        continue;
+      for (std::size_t index = 0; index < op.carried_count; ++index) {
+        std::vector<std::uint32_t> ids{op.args[offset + index],
+                                       op.outs[index]};
+        for (const std::uint32_t block : op.blocks) {
+          if (block >= store.blocks.size() || !store.blocks[block].live)
+            continue;
+          const detail::BlkData& body = store.blocks[block].data;
+          const std::size_t arg =
+              op.kind == Op::Kind::loop ? offset + index : index;
+          if (arg >= body.args.size())
+            continue;
+          ids.push_back(body.args[arg]);
+          if (!body.ops.empty()) {
+            const detail::OpData& end = store.ops[body.ops.back()].data;
+            if (end.kind == Op::Kind::yield && index < end.args.size())
+              ids.push_back(end.args[index]);
+          }
+        }
+        connect(ids);
+      }
+    }
+  }
+
+  const auto conflicts = [&](std::span<const std::uint32_t> ids) {
+    const bool owns = std::any_of(ids.begin(), ids.end(), [&](std::uint32_t id) {
+      return family.contains(id);
+    });
+    return owns && std::any_of(ids.begin(), ids.end(), [&](std::uint32_t id) {
+             return !family.contains(id) && id < store.vals.size() &&
+                    store.vals[id].live && store.vals[id].data.name == name;
+           });
+  };
+  for (const auto& slot : store.fns) {
+    if (!slot.live)
+      continue;
+    std::vector<std::uint32_t> bindings = slot.data.generic_vals;
+    bindings.insert(bindings.end(), slot.data.params.begin(),
+                    slot.data.params.end());
+    if (conflicts(bindings)) {
+      detail::add_diag(store.diags,
+                       "rename would duplicate a function binding");
+      return false;
+    }
+  }
+  for (const auto& slot : store.blocks)
+    if (slot.live && conflicts(slot.data.args)) {
+      detail::add_diag(store.diags, "rename would duplicate a block binding");
+      return false;
+    }
+
+  bool changed = false;
+  for (const std::uint32_t id : family) {
+    detail::ValData& data = store.vals[id].data;
+    changed = data.name != name || changed;
+    data.name = name;
+    if (data.def == detail::none)
+      continue;
     detail::OpData& op = store.ops[data.def].data;
     if ((op.kind == Op::Kind::call || op.kind == Op::Kind::constant) &&
         op.form == detail::Form::hidden)
       op.form = detail::Form::let;
+  }
+  for (const auto& block_slot : store.blocks) {
+    if (!block_slot.live || block_slot.data.parent_op == detail::none ||
+        block_slot.data.parent_op >= store.ops.size() ||
+        !store.ops[block_slot.data.parent_op].live)
+      continue;
+    detail::OpData& parent = store.ops[block_slot.data.parent_op].data;
+    if (parent.kind != Op::Kind::loop)
+      continue;
+    const auto& args = block_slot.data.args;
+    for (std::size_t index = 0;
+         index < parent.iter_names.size() && index < args.size(); ++index) {
+      if (!family.contains(args[index]))
+        continue;
+      changed = parent.iter_names[index] != name || changed;
+      parent.iter_names[index] = name;
+    }
   }
   if (changed)
     touch(store);

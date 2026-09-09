@@ -149,6 +149,12 @@ argument mutator updates an existing return. Named local carried values recover
 as ordinary `var` bindings when printed, so the construction API does not leak
 an auxiliary block syntax into `.jog`.
 
+`ir.rename` may be applied directly to a block argument. Iterator renames are
+reflected in the loop header, while carried-value renames propagate through
+both arms, yields, and enclosing structured results. The operation therefore
+preserves printable lexical bindings rather than changing only one internal
+handle label.
+
 The bracket syntax is not a `host` special case. Any module may define its own
 keys and attach them to a function or operation statement. Version and ABI
 information remains in package/API data; it is not encoded in function names

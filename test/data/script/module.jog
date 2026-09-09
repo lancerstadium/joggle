@@ -146,12 +146,23 @@ fn build_control(m: Mod) -> bool {
             let loop = ir.loop(m, op, ["i"], [range], [zero])
             let body = ir.blocks(loop)[0]
             let values = ir.args(body)
-            let yield = ir.ops(body)[0]
+            let outer_yield = ir.ops(body)[0]
+            let inner_range = ir.call(
+              m, outer_yield, "operator ..", [zero, values[0]], "range"
+            )
+            let inner_loop = ir.loop(
+              m, outer_yield, ["j"], [inner_range], [values[1]]
+            )
+            let inner_body = ir.blocks(inner_loop)[0]
+            let inner_values = ir.args(inner_body)
+            let inner_yield = ir.ops(inner_body)[0]
             let sum = ir.call(
-              m, yield, "operator +", [values[1], values[0]], "int"
+              m, inner_yield, "operator +",
+              [inner_values[1], inner_values[0]], "int"
             )
             changed = ir.rename(m, sum, "total")
-            changed = ir.args(m, yield, [sum])
+            changed = ir.args(m, inner_yield, [sum])
+            changed = ir.args(m, outer_yield, ir.outs(inner_loop))
             let branch = ir.branch(m, op, params[1], ir.outs(loop))
             let then = ir.blocks(branch)[0]
             let then_yield = ir.ops(then)[0]
@@ -170,6 +181,30 @@ fn build_control(m: Mod) -> bool {
     }
   }
   return false
+}
+
+fn rename_control(m: Mod) -> bool {
+  var changed = false
+  var first = true
+  for op in ir.ops(m) {
+    if ir.kind(op) == "loop" {
+      if first {
+        changed = ir.rename(m, ir.args(ir.blocks(op)[0])[0], "outer")
+        first = false
+      } else {
+        changed = ir.rename(m, ir.args(ir.blocks(op)[0])[0], "inner")
+      }
+    }
+    if ir.kind(op) == "branch" {
+      changed = ir.rename(m, ir.args(ir.blocks(op)[0])[0], "acc")
+    }
+  }
+  return changed
+}
+
+fn fail_after_control_rename(m: Mod) -> bool {
+  let changed = rename_control(m)
+  return missing(changed)
 }
 
 fn rebuild_tagged(m: Mod) -> bool {

@@ -205,6 +205,12 @@ structural arity and dominance. A named local selected as carried state prints
 as the corresponding ordinary `var`; users never construct block objects or
 source-presentation records themselves.
 
+`ir.rename` treats the versions of a carried mutable binding as one lexical
+name. Calling it on the incoming value, a loop or branch block argument, a
+yielded update, or the structure result renames the whole chain atomically.
+Calling it on a loop iterator also updates the loop header. This makes generic
+block traversal safe to edit without exposing the printer's bookkeeping.
+
 Generic compile-time helpers use the same syntax and bindings. In
 `fn below<N: int>(x: int) -> bool { return x < N }`, a call to `below<4>(3)`
 binds the generic `Val` `N` to the integer `4` in the function frame. `Ty` and

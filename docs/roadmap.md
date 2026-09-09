@@ -72,6 +72,8 @@ incompatible programs fail with stable diagnostics.
 
 ### M7 — complete IR editing
 
+Status: complete.
+
 - Support multi-result calls and complete constant, call, block, loop, branch,
   return, and yield construction.
 - Add nested walking, selective use replacement, cloning, moving, and block
