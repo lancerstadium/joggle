@@ -325,6 +325,7 @@ private:
   friend class Mod;
   friend bool run(Env&, std::string_view, Mod&);
   friend bool run(Env&, std::string_view, Mod&, Attr&);
+  friend bool run(Env&, std::span<const std::string_view>, Mod&, Attr&);
   friend bool query(Env&, std::string_view, const Mod&, Attr&,
                     std::span<const Attr>, bool*);
 };
@@ -382,6 +383,7 @@ private:
   friend class Env;
   friend bool run(Env&, std::string_view, Mod&);
   friend bool run(Env&, std::string_view, Mod&, Attr&);
+  friend bool run(Env&, std::span<const std::string_view>, Mod&, Attr&);
   friend bool query(Env&, std::string_view, const Mod&, Attr&,
                     std::span<const Attr>, bool*);
   friend std::string print(const Mod&);
@@ -394,6 +396,9 @@ bool print(std::FILE* file, const Mod& mod);
 bool structurally_equal(const Mod& left, const Mod& right);
 bool run(Env& env, std::string_view function, Mod& mod);
 bool run(Env& env, std::string_view function, Mod& mod, Attr& report);
+bool run(Env& env, std::span<const std::string_view> functions, Mod& mod);
+bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
+         Attr& report);
 bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
            std::span<const Attr> args = {}, bool* cached = nullptr);
 

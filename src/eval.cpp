@@ -1351,4 +1351,49 @@ bool run(Env& env, std::string_view function, Mod& mod) {
   return run(env, function, mod, ignored);
 }
 
+bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
+         Attr& report) {
+  env.clear_diags();
+  report = Attr{};
+  if (!mod.verify(env)) {
+    env.error("cannot run compile-time functions on an invalid module");
+    return false;
+  }
+  detail::Store before = mod.impl_->store;
+  const std::uint64_t before_revision = mod.revision();
+  Attr::List steps;
+  steps.reserve(functions.size());
+  bool reported = false;
+  for (const std::string_view function : functions) {
+    Attr step;
+    if (!run(env, function, mod, step)) {
+      mod.impl_->store = std::move(before);
+      return false;
+    }
+    if (const Attr::Dict* values = step.dict()) {
+      const auto found = values->find("reported");
+      reported = reported ||
+                 (found != values->end() && found->second.boolean() == true);
+    }
+    steps.push_back(std::move(step));
+  }
+  const std::uint64_t after_revision = mod.revision();
+  Attr::Dict summary;
+  summary["ok"] = Attr(true);
+  summary["reported"] = Attr(reported);
+  summary["before"] = Attr(static_cast<std::int64_t>(before_revision));
+  summary["after"] = Attr(static_cast<std::int64_t>(after_revision));
+  summary["edits"] =
+      Attr(static_cast<std::int64_t>(after_revision - before_revision));
+  summary["changed"] = Attr(after_revision != before_revision);
+  summary["steps"] = Attr(std::move(steps));
+  report = Attr(std::move(summary));
+  return true;
+}
+
+bool run(Env& env, std::span<const std::string_view> functions, Mod& mod) {
+  Attr ignored;
+  return run(env, functions, mod, ignored);
+}
+
 }  // namespace joggle

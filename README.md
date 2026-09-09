@@ -27,6 +27,8 @@ reported change flags, and actual revision deltas without another result type.
 Ordinary read-only functions can be invoked through `query`; results are cached
 by function, explicit inputs, environment epoch, and module revision, while an
 attempted mutation is isolated and rejected.
+Host code may also pass an ordered span of function names to `run`; the complete
+sequence is transactional and returns the individual structural reports.
 The core contains no ONNX, device, instruction-set, runtime, or code-generation
 policy; those capabilities belong in removable modules.
 The optional ONNX transport preserves typed intermediate values and native

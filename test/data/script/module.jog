@@ -225,6 +225,12 @@ fn clean_pure(m: Mod) -> bool {
   return opt.fix(m, ["pure"], 8)
 }
 
+fn prepare(m: Mod) -> bool {
+  var changed = opt.fold_add_zero(m)
+  changed = mark_add(m) || changed
+  return changed
+}
+
 fn bad_entry(m: Mod) -> int {
   return 0
 }

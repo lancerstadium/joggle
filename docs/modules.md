@@ -206,6 +206,13 @@ epoch, function specialization, and explicit `Attr` arguments. For example,
 `opt.count(m, callee)` counts live calls without introducing an analysis class
 or metadata convention.
 
+Embedding code that chooses steps dynamically may pass a
+`span<const string_view>` to `run`. The overload executes the named functions
+in order, returns their ordinary reports in a `steps` list, and treats the
+whole sequence as one transaction. This is the host-side equivalent of writing
+a normal `.jog` wrapper function; it does not register, own, or serialize a
+pipeline object.
+
 The bracket syntax is not a `host` special case. Any module may define its own
 keys and attach them to a function or operation statement. Version and ABI
 information remains in package/API data; it is not encoded in function names

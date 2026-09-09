@@ -263,6 +263,12 @@ the call fail without changing the original module. Successful results are
 revision-aware and may be reused; the optional `cached` output reports whether
 that happened.
 
+For a host-selected sequence, the embedding API also accepts
+`run(env, span_of_names, mod, report)`. It executes the same ordinary functions
+in order and rolls the complete sequence back if any step fails. A source
+wrapper and a host sequence therefore differ only in where the list of calls is
+chosen, not in their IR or function semantics.
+
 ### Open attributes
 
 Square brackets hold an open attribute dictionary rather than a fixed set of

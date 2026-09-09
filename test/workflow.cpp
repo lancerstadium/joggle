@@ -637,6 +637,33 @@ int main(int argc, char** argv) {
   CHECK(scripted_text.find("return x") != std::string::npos);
 
   CHECK(env.load("script"));
+  joggle::Mod embedded_sequence;
+  joggle::Mod source_sequence;
+  CHECK(joggle::parse(env, source.str(), embedded_sequence, argv[1]));
+  CHECK(joggle::parse(env, source.str(), source_sequence, argv[1]));
+  constexpr std::string_view sequence[]{"opt.fold_add_zero",
+                                        "script.mark_add"};
+  joggle::Attr sequence_report;
+  CHECK(joggle::run(env, sequence, embedded_sequence, sequence_report));
+  CHECK(joggle::run(env, "script.prepare", source_sequence));
+  CHECK(joggle::print(embedded_sequence) == joggle::print(source_sequence));
+  const joggle::Attr::Dict* sequence_summary = sequence_report.dict();
+  CHECK(sequence_summary &&
+        sequence_summary->at("changed").boolean() == true);
+  CHECK(sequence_summary->at("steps").list() &&
+        sequence_summary->at("steps").list()->size() == 2);
+  joggle::Mod failed_sequence;
+  CHECK(joggle::parse(env, source.str(), failed_sequence, argv[1]));
+  const std::string before_sequence = joggle::print(failed_sequence);
+  const std::uint64_t before_sequence_revision = failed_sequence.revision();
+  constexpr std::string_view invalid_sequence[]{"opt.fold_add_zero",
+                                                "script.bad_entry"};
+  CHECK(!joggle::run(env, invalid_sequence, failed_sequence));
+  CHECK(joggle::print(failed_sequence) == before_sequence);
+  CHECK(failed_sequence.revision() == before_sequence_revision);
+  CHECK(!env.diags().empty());
+  env.clear_diags();
+
   joggle::Mod cleaned;
   constexpr std::string_view clean_source =
       "module clean\n"

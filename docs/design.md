@@ -356,6 +356,22 @@ the environment epoch, so cached overload resolution cannot survive a changed
 function environment. `opt.count` is a small reusable example rather than a
 privileged analysis primitive.
 
+## M8 fourth slice
+
+Embedding code can assemble an ordered transform sequence by passing a
+`span<string_view>` to `run`. This is an overload, not a pipeline object: each
+name still selects an ordinary `fn(Mod) -> bool`, and source code composes the
+same functions by calling them normally. The sequence reports its constituent
+function reports as structural `Attr` values and derives aggregate change/edit
+information from the module revision.
+
+The outer execution is transactional. If a later function is missing, has the
+wrong signature, fails, or leaves invalid IR, all earlier edits in that
+sequence are rolled back together. The workflow test runs the same two
+functions once through the C++ sequence overload and once through a textual
+wrapper, then requires byte-identical canonical IR; a deliberately bad second
+step exercises whole-sequence rollback.
+
 ## M10 transport slice
 
 The ONNX codec now exercises the core's general multi-result functions rather
