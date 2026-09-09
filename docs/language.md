@@ -230,6 +230,13 @@ Canonical printing preserves expression trees with precedence-aware
 parentheses. In particular, `a && (b || c)`, `(a + b) * c`, and
 `a - (b - c)` retain their meaning after print and reparse.
 
+The embedding overload `run(env, name, mod, report)` returns execution detail
+in an `Attr` dictionary. `ok` denotes successful execution, `reported` is the
+entry function's boolean return, `changed` compares module revisions, `edits`
+is the revision delta, and `steps` contains the same fields for nested
+`Mod`-accepting calls in completion order. This keeps reporting optional and
+does not add a pipeline object to the language.
+
 ### Open attributes
 
 Square brackets hold an open attribute dictionary rather than a fixed set of

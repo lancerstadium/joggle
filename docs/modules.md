@@ -167,6 +167,13 @@ requested number of rounds, while `basic` supplies a small algebra-only entry
 point. A research module can call the individual functions or wrap `fix` with
 its own purity policy using normal `.jog` code.
 
+The C++ embedding API can call the same function as
+`run(env, "module.fn", mod)` or request a structural report with
+`run(env, "module.fn", mod, report)`. Reports are `Attr` dictionaries, so tools
+can serialize or extend them without linking to a report-class ABI. They expose
+the returned change claim separately from the observed revision delta and
+include nested transform completions.
+
 The bracket syntax is not a `host` special case. Any module may define its own
 keys and attach them to a function or operation statement. Version and ABI
 information remains in package/API data; it is not encoded in function names

@@ -242,11 +242,11 @@ class Eval {
 public:
   using Error = std::function<void(std::string, Loc)>;
 
-  Eval(Env& env, Error error) : env_(env), error_(std::move(error)) {}
+  Eval(Env& env, Error error, Attr::List* trace = nullptr)
+      : env_(env), error_(std::move(error)), trace_(trace) {}
 
-  bool run(Fn fn, Mod& mod) {
-    const auto result = invoke(fn, {Item(&mod)});
-    return result.has_value();
+  std::optional<Items> run(Fn fn, Mod& mod) {
+    return invoke(fn, {Item(&mod)});
   }
 
 private:
@@ -277,6 +277,24 @@ private:
       frame.emplace_back(value, std::move(item));
     else
       found->second = std::move(item);
+  }
+
+  void record(Fn fn, Mod& mod, std::uint64_t before,
+              const Items& results) {
+    if (!trace_)
+      return;
+    const std::uint64_t after = mod.revision();
+    Attr::Dict event;
+    event["fn"] =
+        Attr(std::string(fn.module()) + "." + std::string(fn.name()));
+    event["before"] = Attr(static_cast<std::int64_t>(before));
+    event["after"] = Attr(static_cast<std::int64_t>(after));
+    event["edits"] = Attr(static_cast<std::int64_t>(after - before));
+    event["changed"] = Attr(after != before);
+    if (results.size() == 1)
+      if (const auto* value = as<Attr>(results.front()); value && value->boolean())
+        event["reported"] = *value;
+    trace_->emplace_back(std::move(event));
   }
 
   std::optional<Items> values(const Frame& frame, const std::vector<Val>& vals,
@@ -386,14 +404,24 @@ private:
       return out;
     }
 
+    Mod* observed = nullptr;
+    for (const Item& item : args)
+      if (const auto* value = as<Mod*>(item); value && *value) {
+        observed = *value;
+        break;
+      }
+    const std::uint64_t before = observed ? observed->revision() : 0;
     Frame frame;
     for (std::size_t index = 0; index < generics.size(); ++index)
       put(frame, generics[index], generic_args[index]);
     for (std::size_t index = 0; index < params.size(); ++index)
       put(frame, params[index], args[index]);
     Flow flow = block(fn.body(), {}, frame);
-    if (flow.kind == FlowKind::ret)
+    if (flow.kind == FlowKind::ret) {
+      if (observed)
+        record(fn, *observed, before, flow.values);
       return flow.values;
+    }
     if (flow.kind != FlowKind::fail)
       fail("compile-time function reached the end without return", fn.loc());
     return std::nullopt;
@@ -1026,6 +1054,7 @@ private:
 
   Env& env_;
   Error error_;
+  Attr::List* trace_ = nullptr;
   bool failed_ = false;
 };
 
@@ -1033,8 +1062,9 @@ private:
 
 namespace joggle {
 
-bool run(Env& env, std::string_view function, Mod& mod) {
+bool run(Env& env, std::string_view function, Mod& mod, Attr& report) {
   env.clear_diags();
+  report = Attr{};
   if (!mod.verify(env)) {
     env.error("cannot run a compile-time function on an invalid module");
     return false;
@@ -1052,11 +1082,34 @@ bool run(Env& env, std::string_view function, Mod& mod) {
               fn.loc());
     return false;
   }
+  const std::vector<Ty> returns = fn.returns();
+  if (returns.size() != 1 || returns.front().text() != "bool") {
+    env.error("compile-time entry must return exactly one bool: " +
+                  std::string(function),
+              fn.loc());
+    return false;
+  }
+  const std::uint64_t before_revision = mod.revision();
+  Attr::List trace;
   detail::Eval eval(env, [&](std::string message, Loc loc) {
     env.error(std::move(message), std::move(loc));
-  });
-  if (!eval.run(fn, mod)) {
+  }, &trace);
+  const auto result = eval.run(fn, mod);
+  if (!result) {
     mod.impl_->store = std::move(before);
+    return false;
+  }
+  if (result->size() != 1) {
+    mod.impl_->store = std::move(before);
+    env.error("compile-time entry returned an invalid result: " +
+              std::string(function));
+    return false;
+  }
+  const Attr* returned = detail::as<Attr>(result->front());
+  if (!returned || !returned->boolean()) {
+    mod.impl_->store = std::move(before);
+    env.error("compile-time entry did not return bool: " +
+              std::string(function));
     return false;
   }
   if (!mod.verify(env)) {
@@ -1065,7 +1118,26 @@ bool run(Env& env, std::string_view function, Mod& mod) {
               std::string(function));
     return false;
   }
+  if (!trace.empty())
+    trace.pop_back();
+  const std::uint64_t after_revision = mod.revision();
+  Attr::Dict summary;
+  summary["ok"] = Attr(true);
+  summary["fn"] = Attr(std::string(function));
+  summary["reported"] = *returned;
+  summary["before"] = Attr(static_cast<std::int64_t>(before_revision));
+  summary["after"] = Attr(static_cast<std::int64_t>(after_revision));
+  summary["edits"] =
+      Attr(static_cast<std::int64_t>(after_revision - before_revision));
+  summary["changed"] = Attr(after_revision != before_revision);
+  summary["steps"] = Attr(std::move(trace));
+  report = Attr(std::move(summary));
   return true;
+}
+
+bool run(Env& env, std::string_view function, Mod& mod) {
+  Attr ignored;
+  return run(env, function, mod, ignored);
 }
 
 }  // namespace joggle

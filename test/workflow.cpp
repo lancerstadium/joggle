@@ -617,15 +617,33 @@ int main(int argc, char** argv) {
       "  return same\n}\n";
   CHECK(joggle::parse(env, clean_source, cleaned, "clean.jog"));
   CHECK(cleaned.verify(env));
-  CHECK(joggle::run(env, "script.clean_pure", cleaned));
+  joggle::Attr clean_report;
+  CHECK(joggle::run(env, "script.clean_pure", cleaned, clean_report));
   CHECK(cleaned.verify(env));
+  const joggle::Attr::Dict* clean_summary = clean_report.dict();
+  CHECK(clean_summary && clean_summary->at("ok").boolean() == true);
+  CHECK(clean_summary->at("fn").string() == "script.clean_pure");
+  CHECK(clean_summary->at("changed").boolean() == true);
+  CHECK(clean_summary->at("reported").boolean() == true);
+  CHECK(clean_summary->at("edits").integer() &&
+        *clean_summary->at("edits").integer() > 0);
+  CHECK(clean_summary->at("steps").list() &&
+        !clean_summary->at("steps").list()->empty());
   std::size_t pure_calls = 0;
   for (joggle::Op op : cleaned.ops())
     pure_calls += op.callee() == "pure" ? 1 : 0;
   CHECK(pure_calls == 1);
   const std::uint64_t clean_revision = cleaned.revision();
-  CHECK(joggle::run(env, "script.clean_pure", cleaned));
+  joggle::Attr stable_report;
+  CHECK(joggle::run(env, "script.clean_pure", cleaned, stable_report));
   CHECK(cleaned.revision() == clean_revision);
+  const joggle::Attr::Dict* stable_summary = stable_report.dict();
+  CHECK(stable_summary && stable_summary->at("changed").boolean() == false);
+  CHECK(stable_summary->at("reported").boolean() == false);
+  CHECK(stable_summary->at("edits").integer() == 0);
+  CHECK(!joggle::run(env, "script.bad_entry", cleaned));
+  CHECK(!env.diags().empty());
+  env.clear_diags();
 
   joggle::Mod distinct_meta;
   constexpr std::string_view distinct_meta_source =

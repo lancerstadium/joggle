@@ -322,6 +322,7 @@ private:
   friend class Parser;
   friend class Mod;
   friend bool run(Env&, std::string_view, Mod&);
+  friend bool run(Env&, std::string_view, Mod&, Attr&);
 };
 
 class Mod {
@@ -376,6 +377,7 @@ private:
   friend class Parser;
   friend class Env;
   friend bool run(Env&, std::string_view, Mod&);
+  friend bool run(Env&, std::string_view, Mod&, Attr&);
   friend std::string print(const Mod&);
 };
 
@@ -385,6 +387,7 @@ std::string print(const Mod& mod);
 bool print(std::FILE* file, const Mod& mod);
 bool structurally_equal(const Mod& left, const Mod& right);
 bool run(Env& env, std::string_view function, Mod& mod);
+bool run(Env& env, std::string_view function, Mod& mod, Attr& report);
 
 }  // namespace joggle
 

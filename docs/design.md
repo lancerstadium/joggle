@@ -322,3 +322,18 @@ metadata differs, and is revision-idempotent on a second run.
 While exercising composed conditions, the canonical printer was also made
 precedence-aware. It now restores the minimal parentheses needed to preserve
 operator trees, including right-nested operators of equal precedence.
+
+## M8 second slice
+
+Embedding code may request a deterministic execution report through the
+four-argument `run(env, function, mod, report)` overload. The report is an
+ordinary structural `Attr` dictionary rather than a pipeline, result, or event
+class. It distinguishes the function's returned `reported` flag from actual
+IR mutation (`changed` and `edits`, derived from revisions) and lists every
+nested function that accepted the same `Mod` in completion order. The original
+three-argument call remains the terse success/failure API.
+
+Compile-time entry points are now checked against the promised
+`fn(Mod) -> bool` contract before execution. A false return still means “ran
+successfully but reported no change”; malformed entry signatures and runtime
+failures remain failures and roll the module back.

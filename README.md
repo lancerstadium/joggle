@@ -22,6 +22,8 @@ make real graph changes; the pinned MobileNetV2 test fuses 36 three-call chains.
 The `opt` module also supplies policy-parameterized CSE and dead-call
 elimination plus a bounded fixed-point pipeline; callers state which functions
 are pure instead of adopting a built-in effect hierarchy.
+An optional `Attr` output from `run` reports nested function completions,
+reported change flags, and actual revision deltas without another result type.
 The core contains no ONNX, device, instruction-set, runtime, or code-generation
 policy; those capabilities belong in removable modules.
 
