@@ -192,7 +192,7 @@ Construction also uses ordinary overloaded functions. `ir.constant` and
 `ir.call` insert leaves before a named operation. `ir.clone` deep-copies an
 operation and its nested blocks, while `ir.move` changes block-local order only
 when all operands and users remain dominated. `ir.kind(op)` returns `call`,
-`constant`, `loop`, `branch`, `return`, or `yield`; `ir.blocks(op)` exposes
+`constant`, `loop`, `branch`, `return`, or `yield`; `ir.blks(op)` exposes
 nested bodies. A terminator supplies an insertion point even for an otherwise
 empty block, so there is no stateful builder object.
 
@@ -236,6 +236,14 @@ entry function's boolean return, `changed` compares module revisions, `edits`
 is the revision delta, and `steps` contains the same fields for nested
 `Mod`-accepting calls in completion order. This keeps reporting optional and
 does not add a pipeline object to the language.
+
+`query(env, name, mod, result, args, cached)` embeds an ordinary function as a
+read-only analysis. Its first parameter is `Mod`; subsequent parameters receive
+the explicit `Attr` arguments, and it returns one value representable as
+`Attr`. The function runs on a verified snapshot. Any attempted IR edit makes
+the call fail without changing the original module. Successful results are
+revision-aware and may be reused; the optional `cached` output reports whether
+that happened.
 
 ### Open attributes
 

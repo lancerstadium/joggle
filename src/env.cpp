@@ -1,6 +1,7 @@
 #include "detail.h"
 
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -21,6 +22,11 @@ struct jog_module {
 namespace joggle {
 
 namespace {
+
+std::uint64_t next_env_id() {
+  static std::atomic<std::uint64_t> next{1};
+  return next.fetch_add(1, std::memory_order_relaxed);
+}
 
 struct Native {
   jog_fn function = nullptr;
@@ -259,6 +265,8 @@ void print_diag(std::FILE* file, const Diag& diag) {
 }  // namespace
 
 struct Env::Impl {
+  std::uint64_t id = next_env_id();
+  std::uint64_t epoch = 0;
   std::vector<std::filesystem::path> paths;
   std::vector<Diag> diags;
   std::map<std::string, std::unique_ptr<Mod>, std::less<>> modules;
@@ -271,6 +279,10 @@ struct Env::Impl {
       close_library(*it);
   }
 };
+
+std::uint64_t Env::cache_id() const noexcept { return impl_->id; }
+
+std::uint64_t Env::cache_epoch() const noexcept { return impl_->epoch; }
 
 Env::Env() : impl_(std::make_unique<Impl>()) {}
 Env::~Env() = default;
@@ -408,6 +420,7 @@ bool Env::load(std::string_view name) {
     impl_->libraries.push_back(handle);
   }
   impl_->loading.erase(key);
+  ++impl_->epoch;
   return true;
 }
 

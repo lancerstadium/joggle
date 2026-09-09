@@ -144,7 +144,7 @@ fn build_control(m: Mod) -> bool {
               m, op, "operator ..", [zero, returned[0]], "range"
             )
             let loop = ir.loop(m, op, ["i"], [range], [zero])
-            let body = ir.blocks(loop)[0]
+            let body = ir.blks(loop)[0]
             let values = ir.args(body)
             let outer_yield = ir.ops(body)[0]
             let inner_range = ir.call(
@@ -153,7 +153,7 @@ fn build_control(m: Mod) -> bool {
             let inner_loop = ir.loop(
               m, outer_yield, ["j"], [inner_range], [values[1]]
             )
-            let inner_body = ir.blocks(inner_loop)[0]
+            let inner_body = ir.blks(inner_loop)[0]
             let inner_values = ir.args(inner_body)
             let inner_yield = ir.ops(inner_body)[0]
             let sum = ir.call(
@@ -164,7 +164,7 @@ fn build_control(m: Mod) -> bool {
             changed = ir.args(m, inner_yield, [sum])
             changed = ir.args(m, outer_yield, ir.outs(inner_loop))
             let branch = ir.branch(m, op, params[1], ir.outs(loop))
-            let then = ir.blocks(branch)[0]
+            let then = ir.blks(branch)[0]
             let then_yield = ir.ops(then)[0]
             let one = ir.constant(m, then_yield, 1, "int")
             changed = ir.rename(m, one, "one")
@@ -189,14 +189,14 @@ fn rename_control(m: Mod) -> bool {
   for op in ir.ops(m) {
     if ir.kind(op) == "loop" {
       if first {
-        changed = ir.rename(m, ir.args(ir.blocks(op)[0])[0], "outer")
+        changed = ir.rename(m, ir.args(ir.blks(op)[0])[0], "outer")
         first = false
       } else {
-        changed = ir.rename(m, ir.args(ir.blocks(op)[0])[0], "inner")
+        changed = ir.rename(m, ir.args(ir.blks(op)[0])[0], "inner")
       }
     }
     if ir.kind(op) == "branch" {
-      changed = ir.rename(m, ir.args(ir.blocks(op)[0])[0], "acc")
+      changed = ir.rename(m, ir.args(ir.blks(op)[0])[0], "acc")
     }
   }
   return changed
@@ -210,6 +210,15 @@ fn bad_entry(m: Mod) -> int {
   return 0
 }
 
+fn mutating_query(m: Mod, callee: str) -> int {
+  let changed = opt.dce(m, [callee])
+  return 0
+}
+
+fn handle_query(m: Mod) -> Fn {
+  return ir.fns(m)[0]
+}
+
 fn fail_after_control_rename(m: Mod) -> bool {
   let changed = rename_control(m)
   return missing(changed)
@@ -220,7 +229,7 @@ fn rebuild_tagged(m: Mod) -> bool {
   for f in ir.fns(m) {
     if ir.has(f, "rename") {
       let target = ir.meta(f, "rename")
-      for b in ir.blocks(f) {
+      for b in ir.blks(f) {
         for op in ir.ops(b) {
           if ir.callee(op) == "operator +" {
             let outs = ir.outs(op)

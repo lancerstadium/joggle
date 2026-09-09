@@ -24,6 +24,9 @@ elimination plus a bounded fixed-point pipeline; callers state which functions
 are pure instead of adopting a built-in effect hierarchy.
 An optional `Attr` output from `run` reports nested function completions,
 reported change flags, and actual revision deltas without another result type.
+Ordinary read-only functions can be invoked through `query`; results are cached
+by function, explicit inputs, environment epoch, and module revision, while an
+attempted mutation is isolated and rejected.
 The core contains no ONNX, device, instruction-set, runtime, or code-generation
 policy; those capabilities belong in removable modules.
 

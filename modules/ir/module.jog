@@ -3,8 +3,8 @@ use base
 
 fn fns(m: Mod) -> list<Fn>;
 fn params(f: Fn) -> list<Val>;
-fn blocks(f: Fn) -> list<Blk>;
-fn blocks(op: Op) -> list<Blk>;
+fn blks(f: Fn) -> list<Blk>;
+fn blks(op: Op) -> list<Blk>;
 fn block(op: Op) -> Blk;
 fn ops(m: Mod) -> list<Op>;
 fn ops(f: Fn) -> list<Op>;

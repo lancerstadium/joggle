@@ -264,7 +264,7 @@ and works for nested loops and conditions; erasing the replaced source
 recursively invalidates its complete subtree. Motion is atomic and checks the
 whole module's dominance before commit. The identical operations are available
 through `ir.constant`, `ir.clone`, and `ir.move`, with `ir.kind` and
-`ir.blocks(op)` completing structural discovery. Named constants now remain
+`ir.blks(op)` completing structural discovery. Named constants now remain
 named when printed instead of being silently duplicated as inline literals.
 
 ## M7 fifth slice
@@ -337,3 +337,21 @@ Compile-time entry points are now checked against the promised
 `fn(Mod) -> bool` contract before execution. A false return still means “ran
 successfully but reported no change”; malformed entry signatures and runtime
 failures remain failures and roll the module back.
+
+## M8 third slice
+
+Analyses are ordinary source functions too. The embedding call
+`query(env, function, mod, result, args, cached)` resolves a textual function
+whose first parameter is `Mod`, passes any remaining inputs as structural
+`Attr` values, and requires exactly one `Attr`-representable result. Calling
+through `query` is the explicit read-only promise; no `[pure]` tag, analysis
+base class, or second declaration form is involved.
+
+The evaluator receives a private verified snapshot. A query that edits that
+snapshot is rejected, while the caller's module remains untouched. Successful
+results are cached against the environment identity and load epoch, module
+revision, applied function spelling, and explicit inputs. Every IR mutation
+clears the module-local cache, and loading another source/native module advances
+the environment epoch, so cached overload resolution cannot survive a changed
+function environment. `opt.count` is a small reusable example rather than a
+privileged analysis primitive.

@@ -249,6 +249,15 @@ public:
     return invoke(fn, {Item(&mod)});
   }
 
+  std::optional<Items> query(Fn fn, Mod& mod,
+                             std::span<const Attr> args) {
+    Items values{Item(&mod)};
+    values.reserve(args.size() + 1);
+    for (const Attr& value : args)
+      values.push_back(materialize(value));
+    return invoke(fn, values);
+  }
+
 private:
   using Frame = std::vector<std::pair<Val, Item>>;
 
@@ -495,8 +504,8 @@ private:
       fail("if condition is not a compile-time bool", op.loc());
       return {FlowKind::fail, {}};
     }
-    const std::vector<Blk> blocks = op.blocks();
-    const Blk arm = blocks[*condition ? 0 : 1];
+    const std::vector<Blk> blks = op.blks();
+    const Blk arm = blks[*condition ? 0 : 1];
     Items carried(args->begin() + 1, args->end());
     Frame nested = frame;
     Flow flow = block(arm, carried, nested);
@@ -521,7 +530,7 @@ private:
     if (!args)
       return {FlowKind::fail, {}};
     const std::size_t iter_count =
-        op.blocks().front().args().size() - op.outs().size();
+        op.blks().front().args().size() - op.outs().size();
     if (iter_count > args->size()) {
       fail("compile-time loop source count is inconsistent", op.loc());
       return {FlowKind::fail, {}};
@@ -555,7 +564,7 @@ private:
       Items block_args = indices;
       block_args.insert(block_args.end(), carried.begin(), carried.end());
       Frame nested = frame;
-      Flow flow = block(op.blocks().front(), block_args, nested);
+      Flow flow = block(op.blks().front(), block_args, nested);
       if (flow.kind == FlowKind::yield)
         carried = std::move(flow.values);
       else if (flow.kind != FlowKind::next)
@@ -760,18 +769,18 @@ private:
           out.emplace_back(value);
         return Items{Item(std::move(out))};
       }
-    } else if (name == "blocks" && args.size() == 1) {
-      std::vector<Blk> blocks;
+    } else if (name == "blks" && args.size() == 1) {
+      std::vector<Blk> blks;
       if (const auto* fn = as<Fn>(args[0]))
-        blocks = fn->blocks();
+        blks = fn->blks();
       else if (const auto* op = as<Op>(args[0]))
-        blocks = op->blocks();
+        blks = op->blks();
       else {
-        fail("invalid ir.blocks compile-time call", loc);
+        fail("invalid ir.blks compile-time call", loc);
         return std::nullopt;
       }
       Items out;
-      for (Blk block : blocks)
+      for (Blk block : blks)
         out.emplace_back(block);
       return Items{Item(std::move(out))};
     } else if (name == "block" && args.size() == 1) {
@@ -1061,6 +1070,106 @@ private:
 }  // namespace joggle::detail
 
 namespace joggle {
+
+bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
+           std::span<const Attr> args, bool* cached) {
+  env.clear_diags();
+  result = Attr{};
+  if (cached)
+    *cached = false;
+
+  auto& entries = mod.impl_->store.queries;
+  const auto hit = std::find_if(entries.begin(), entries.end(),
+                                [&](const detail::QueryData& entry) {
+                                  return entry.env == env.cache_id() &&
+                                         entry.epoch == env.cache_epoch() &&
+                                         entry.revision == mod.revision() &&
+                                         entry.function == function &&
+                                         entry.args.size() == args.size() &&
+                                         std::equal(entry.args.begin(),
+                                                    entry.args.end(),
+                                                    args.begin());
+                                });
+  if (hit != entries.end()) {
+    result = hit->result;
+    if (cached)
+      *cached = true;
+    return true;
+  }
+
+  const Ty applied{std::string(function)};
+  const std::string symbol(applied.args().empty() ? function : applied.name());
+  const std::vector<Ty> explicit_args =
+      applied.args().empty() ? std::vector<Ty>{} : applied.args();
+  const std::vector<Fn> candidates = env.find_fns(symbol);
+  std::vector<Ty> argument_types{Ty("Mod")};
+  argument_types.reserve(args.size() + 1);
+  for (const Attr& value : args)
+    argument_types.push_back(detail::runtime_type(detail::materialize(value)));
+  std::vector<Ty> result_types;
+  bool ambiguous = false;
+  const Fn fn = detail::resolve_overload(
+      candidates, argument_types, explicit_args, &result_types, &ambiguous);
+  if (!fn) {
+    env.error((ambiguous ? "ambiguous query function: "
+                         : "query function not found: ") +
+              std::string(function));
+    return false;
+  }
+  if (fn.external()) {
+    env.error("query entry must have a textual body: " +
+                  std::string(function),
+              fn.loc());
+    return false;
+  }
+  if (result_types.size() != 1) {
+    env.error("query entry must return exactly one value: " +
+                  std::string(function),
+              fn.loc());
+    return false;
+  }
+
+  Mod scratch;
+  scratch.impl_->store = mod.impl_->store;
+  scratch.impl_->store.queries.clear();
+  if (!scratch.verify(env)) {
+    for (const Diag& diag : scratch.diags())
+      env.error(diag.message, diag.loc);
+    env.error("cannot query an invalid module");
+    return false;
+  }
+  const std::uint64_t before = scratch.revision();
+  const std::string structure = print(scratch);
+  detail::Eval eval(env, [&](std::string message, Loc loc) {
+    env.error(std::move(message), std::move(loc));
+  });
+  const auto values = eval.query(fn, scratch, args);
+  if (!values)
+    return false;
+  if (scratch.revision() != before || print(scratch) != structure) {
+    env.error("query function mutated its module snapshot: " +
+                  std::string(function),
+              fn.loc());
+    return false;
+  }
+  if (values->size() != 1) {
+    env.error("query function returned an invalid result: " +
+              std::string(function));
+    return false;
+  }
+  auto converted = detail::attribute(values->front());
+  if (!converted) {
+    env.error("query result is not representable as Attr: " +
+                  std::string(function),
+              fn.loc());
+    return false;
+  }
+  result = std::move(*converted);
+  entries.push_back({env.cache_id(), env.cache_epoch(), mod.revision(),
+                     std::string(function),
+                     std::vector<Attr>(args.begin(), args.end()), result});
+  return true;
+}
 
 bool run(Env& env, std::string_view function, Mod& mod, Attr& report) {
   env.clear_diags();

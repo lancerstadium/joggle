@@ -131,6 +131,18 @@ fn basic(m: Mod) -> bool {
   return fix(m, [], 8)
 }
 
+fn count(m: Mod, callee: str) -> int {
+  var total = 0
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" {
+      if ir.callee(op) == callee {
+        total += 1
+      }
+    }
+  }
+  return total
+}
+
 fn fuse(m: Mod, pattern: list<str>, replacement: str) -> bool {
   var changed = false
   if ir.len(pattern) > 1 {

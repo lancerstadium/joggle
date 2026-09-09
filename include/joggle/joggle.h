@@ -209,7 +209,7 @@ public:
   std::string_view callee() const noexcept;
   std::vector<Val> args() const;
   std::vector<Val> outs() const;
-  std::vector<Blk> blocks() const;
+  std::vector<Blk> blks() const;
   Blk block() const noexcept;
   const Attr::Dict& meta() const noexcept;
   const Attr* meta(std::string_view key) const noexcept;
@@ -268,7 +268,7 @@ public:
   const Attr::Dict& meta() const noexcept;
   const Attr* meta(std::string_view key) const noexcept;
   Blk body() const noexcept;
-  std::vector<Blk> blocks() const;
+  std::vector<Blk> blks() const;
   std::vector<Op> ops() const;
   Loc loc() const;
 
@@ -318,11 +318,15 @@ private:
   std::unique_ptr<Impl> impl_;
 
   void error(std::string message, Loc loc = {});
+  std::uint64_t cache_id() const noexcept;
+  std::uint64_t cache_epoch() const noexcept;
 
   friend class Parser;
   friend class Mod;
   friend bool run(Env&, std::string_view, Mod&);
   friend bool run(Env&, std::string_view, Mod&, Attr&);
+  friend bool query(Env&, std::string_view, const Mod&, Attr&,
+                    std::span<const Attr>, bool*);
 };
 
 class Mod {
@@ -378,6 +382,8 @@ private:
   friend class Env;
   friend bool run(Env&, std::string_view, Mod&);
   friend bool run(Env&, std::string_view, Mod&, Attr&);
+  friend bool query(Env&, std::string_view, const Mod&, Attr&,
+                    std::span<const Attr>, bool*);
   friend std::string print(const Mod&);
 };
 
@@ -388,6 +394,8 @@ bool print(std::FILE* file, const Mod& mod);
 bool structurally_equal(const Mod& left, const Mod& right);
 bool run(Env& env, std::string_view function, Mod& mod);
 bool run(Env& env, std::string_view function, Mod& mod, Attr& report);
+bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
+           std::span<const Attr> args = {}, bool* cached = nullptr);
 
 }  // namespace joggle
 

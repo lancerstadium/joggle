@@ -20,7 +20,7 @@ namespace {
 std::size_t count_calls(const joggle::Mod& mod, std::string_view callee) {
   std::size_t count = 0;
   for (joggle::Fn fn : mod.fns())
-    for (joggle::Blk block : fn.blocks())
+    for (joggle::Blk block : fn.blks())
       for (joggle::Op op : block.ops())
         count += op.kind() == joggle::Op::Kind::call && op.callee() == callee;
   return count;
@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
   std::size_t tensors = 0;
   std::size_t nodes = 0;
   std::size_t weight_bytes = 0;
-  for (joggle::Blk block : main.blocks()) {
+  for (joggle::Blk block : main.blks()) {
     for (joggle::Op op : block.ops()) {
       if (op.kind() != joggle::Op::Kind::call)
         continue;

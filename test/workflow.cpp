@@ -18,7 +18,7 @@ namespace {
 
 bool fold_add_zero(joggle::Mod& mod, joggle::Op* removed = nullptr) {
   for (joggle::Fn fn : mod.fns()) {
-    for (joggle::Blk block : fn.blocks()) {
+    for (joggle::Blk block : fn.blks()) {
       for (joggle::Op op : block.ops()) {
         if (op.kind() != joggle::Op::Kind::call || op.callee() != "operator +")
           continue;
@@ -114,7 +114,7 @@ int main(int argc, char** argv) {
   const joggle::Val applied =
       types.find_fn("apply").body().ops().back().args().front();
   CHECK(applied.type() == joggle::Ty("tensor<f32, [2, 3]>"));
-  const std::vector<joggle::Blk> last_blocks = types.find_fn("last").blocks();
+  const std::vector<joggle::Blk> last_blocks = types.find_fn("last").blks();
   CHECK(last_blocks.size() == 2);
   CHECK(last_blocks[1].args().front().type() == joggle::Ty("int"));
   joggle::Mod types_roundtrip;
@@ -231,9 +231,9 @@ int main(int argc, char** argv) {
     if (op.kind() == joggle::Op::Kind::loop)
       old_loop = op;
   CHECK(old_loop && old_loop.outs().size() == 1);
-  const joggle::Blk old_body = old_loop.blocks().front();
+  const joggle::Blk old_body = old_loop.blks().front();
   const joggle::Op copied_loop = cloned_loop.clone(old_loop, old_loop);
-  CHECK(copied_loop && copied_loop.blocks().size() == 1);
+  CHECK(copied_loop && copied_loop.blks().size() == 1);
   CHECK(cloned_loop.replace(old_loop.outs()[0], copied_loop.outs()[0]));
   CHECK(cloned_loop.erase(old_loop));
   CHECK(!old_loop.valid() && !old_body.valid());
@@ -287,9 +287,9 @@ int main(int argc, char** argv) {
   for (joggle::Op op : cloned_branch.ops())
     if (op.kind() == joggle::Op::Kind::branch)
       old_branch = op;
-  CHECK(old_branch && old_branch.blocks().size() == 2);
+  CHECK(old_branch && old_branch.blks().size() == 2);
   const joggle::Op copied_branch = cloned_branch.clone(old_branch, old_branch);
-  CHECK(copied_branch && copied_branch.blocks().size() == 2);
+  CHECK(copied_branch && copied_branch.blks().size() == 2);
   CHECK(cloned_branch.replace(old_branch.outs()[0],
                               copied_branch.outs()[0]));
   CHECK(cloned_branch.erase(old_branch));
@@ -316,8 +316,8 @@ int main(int argc, char** argv) {
   const std::vector<joggle::Val> carried{zero};
   const joggle::Op built_loop =
       built_control.loop(build_ret, iter_names, sources, carried);
-  CHECK(built_loop && built_loop.blocks().size() == 1);
-  const joggle::Blk built_body = built_loop.blocks().front();
+  CHECK(built_loop && built_loop.blks().size() == 1);
+  const joggle::Blk built_body = built_loop.blks().front();
   CHECK(built_body.args().size() == 2);
   const joggle::Op built_yield = built_body.ops().back();
   const std::vector<joggle::Val> inner_range_args{zero,
@@ -330,8 +330,8 @@ int main(int argc, char** argv) {
   const std::vector<joggle::Val> inner_carried{built_body.args()[1]};
   const joggle::Op inner_loop = built_control.loop(
       built_yield, inner_names, inner_sources, inner_carried);
-  CHECK(inner_loop && inner_loop.blocks().size() == 1);
-  const joggle::Blk inner_body = inner_loop.blocks().front();
+  CHECK(inner_loop && inner_loop.blks().size() == 1);
+  const joggle::Blk inner_body = inner_loop.blks().front();
   const joggle::Op inner_yield = inner_body.ops().back();
   const std::vector<joggle::Val> sum_args{inner_body.args()[1],
                                           inner_body.args()[0]};
@@ -343,8 +343,8 @@ int main(int argc, char** argv) {
   CHECK(built_control.args(built_yield, inner_loop.outs()));
   const joggle::Op built_branch = built_control.branch(
       build_ret, build_fn.params()[1], built_loop.outs());
-  CHECK(built_branch && built_branch.blocks().size() == 2);
-  const joggle::Blk then_block = built_branch.blocks().front();
+  CHECK(built_branch && built_branch.blks().size() == 2);
+  const joggle::Blk then_block = built_branch.blks().front();
   const joggle::Op then_yield = then_block.ops().back();
   const joggle::Val one =
       built_control.constant(then_yield, joggle::Attr(std::int64_t{1}),
@@ -381,19 +381,19 @@ int main(int argc, char** argv) {
   }
   CHECK(renamed_loops.size() == 2 && renamed_branch);
   const std::uint64_t rename_revision = renamed_control.revision();
-  CHECK(!renamed_control.rename(renamed_loops[0].blocks()[0].args()[0],
+  CHECK(!renamed_control.rename(renamed_loops[0].blks()[0].args()[0],
                                 "return"));
   CHECK(renamed_control.revision() == rename_revision);
   renamed_control.clear_diags();
-  CHECK(!renamed_control.rename(renamed_loops[0].blocks()[0].args()[0],
+  CHECK(!renamed_control.rename(renamed_loops[0].blks()[0].args()[0],
                                 "total"));
   CHECK(renamed_control.revision() == rename_revision);
   renamed_control.clear_diags();
-  CHECK(renamed_control.rename(renamed_loops[0].blocks()[0].args()[0],
+  CHECK(renamed_control.rename(renamed_loops[0].blks()[0].args()[0],
                                "outer"));
-  CHECK(renamed_control.rename(renamed_loops[1].blocks()[0].args()[0],
+  CHECK(renamed_control.rename(renamed_loops[1].blks()[0].args()[0],
                                "inner"));
-  CHECK(renamed_control.rename(renamed_branch.blocks()[0].args()[0], "acc"));
+  CHECK(renamed_control.rename(renamed_branch.blks()[0].args()[0], "acc"));
   CHECK(renamed_control.verify(env));
   const std::string renamed_control_text = joggle::print(renamed_control);
   CHECK(renamed_control_text.find("var acc: int = 0") != std::string::npos);
@@ -574,7 +574,7 @@ int main(int argc, char** argv) {
   CHECK(matmul.generics()[0].type() == joggle::Ty("Ty"));
   CHECK(matmul.generics()[1].type() == joggle::Ty("int"));
   CHECK(matmul.params().size() == 2);
-  CHECK(matmul.blocks().size() == 3);
+  CHECK(matmul.blks().size() == 3);
   CHECK(matmul.ops().size() > matmul.body().ops().size());
 
   const std::string canonical = joggle::print(mod);
@@ -617,6 +617,26 @@ int main(int argc, char** argv) {
       "  return same\n}\n";
   CHECK(joggle::parse(env, clean_source, cleaned, "clean.jog"));
   CHECK(cleaned.verify(env));
+  const std::vector<joggle::Attr> pure_query{joggle::Attr("pure")};
+  joggle::Attr count;
+  bool cached = true;
+  CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query, &cached));
+  CHECK(!cached && count.integer() == 3);
+  CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query, &cached));
+  CHECK(cached && count.integer() == 3);
+  const std::string before_bad_query = joggle::print(cleaned);
+  const std::uint64_t before_bad_query_revision = cleaned.revision();
+  CHECK(!joggle::query(env, "script.mutating_query", cleaned, count,
+                       pure_query, &cached));
+  CHECK(joggle::print(cleaned) == before_bad_query);
+  CHECK(cleaned.revision() == before_bad_query_revision);
+  CHECK(!env.diags().empty());
+  env.clear_diags();
+  CHECK(!joggle::query(env, "script.handle_query", cleaned, count));
+  CHECK(joggle::print(cleaned) == before_bad_query);
+  CHECK(cleaned.revision() == before_bad_query_revision);
+  CHECK(!env.diags().empty());
+  env.clear_diags();
   joggle::Attr clean_report;
   CHECK(joggle::run(env, "script.clean_pure", cleaned, clean_report));
   CHECK(cleaned.verify(env));
@@ -633,6 +653,13 @@ int main(int argc, char** argv) {
   for (joggle::Op op : cleaned.ops())
     pure_calls += op.callee() == "pure" ? 1 : 0;
   CHECK(pure_calls == 1);
+  CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query, &cached));
+  CHECK(!cached && count.integer() == 1);
+  CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query, &cached));
+  CHECK(cached && count.integer() == 1);
+  const std::vector<joggle::Attr> join_query{joggle::Attr("join")};
+  CHECK(joggle::query(env, "opt.count", cleaned, count, join_query, &cached));
+  CHECK(!cached && count.integer() == 0);
   const std::uint64_t clean_revision = cleaned.revision();
   joggle::Attr stable_report;
   CHECK(joggle::run(env, "script.clean_pure", cleaned, stable_report));

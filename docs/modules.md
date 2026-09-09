@@ -100,7 +100,7 @@ The built-in `ir` module is the complete reflection boundary:
 
 | Function | Meaning |
 | --- | --- |
-| `fns`, `params`, `blocks`, `ops` | Traverse function and structural ownership. |
+| `fns`, `params`, `blks`, `ops` | Traverse function and structural ownership. |
 | `args`, `outs`, `users` | Read operation dataflow. |
 | `live`, `block`, `kind`, `callee`, `type` | Query handle state and structure. |
 | `is_const`, `constant`, `len` | Query values and lists. |
@@ -140,7 +140,7 @@ is needed. `ir.constant` and `ir.call` insert leaves. `ir.clone` recursively
 copies a call, constant, loop, or condition, creates fresh blocks/results, and
 remaps values defined inside the copied subtree. `ir.move` reorders an operation
 within its block atomically and rejects the change if any use would lose
-dominance. `ir.kind` and `ir.blocks(op)` make structural selection explicit.
+dominance. `ir.kind` and `ir.blks(op)` make structural selection explicit.
 
 `ir.loop` creates iterator and carried block arguments plus an initial
 forwarding yield. `ir.branch` creates two initially forwarding arms. A module
@@ -173,6 +173,14 @@ The C++ embedding API can call the same function as
 can serialize or extend them without linking to a report-class ABI. They expose
 the returned change claim separately from the observed revision delta and
 include nested transform completions.
+
+A read-only module function is invoked with `query(env, "module.fn", mod,
+result, args, cached)`. It is still declared with ordinary `fn` syntax. The
+call mode evaluates a verified snapshot, rejects attempted edits, and caches
+the single structural result using the module revision, environment load
+epoch, function specialization, and explicit `Attr` arguments. For example,
+`opt.count(m, callee)` counts live calls without introducing an analysis class
+or metadata convention.
 
 The bracket syntax is not a `host` special case. Any module may define its own
 keys and attach them to a function or operation statement. Version and ABI

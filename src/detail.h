@@ -46,7 +46,7 @@ struct OpData {
   std::string callee;
   std::vector<std::uint32_t> args;
   std::vector<std::uint32_t> outs;
-  std::vector<std::uint32_t> blocks;
+  std::vector<std::uint32_t> blks;
   std::vector<std::string> iter_names;
   std::size_t carried_count = 0;
   Attr literal;
@@ -67,10 +67,19 @@ struct FnData {
   std::vector<std::uint32_t> generic_vals;
   std::vector<std::uint32_t> params;
   std::vector<Ty> returns;
-  std::vector<std::uint32_t> blocks;
+  std::vector<std::uint32_t> blks;
   Attr::Dict meta;
   bool external = false;
   Loc loc;
+};
+
+struct QueryData {
+  std::uint64_t env = 0;
+  std::uint64_t epoch = 0;
+  std::uint64_t revision = 0;
+  std::string function;
+  std::vector<Attr> args;
+  Attr result;
 };
 
 struct Store {
@@ -78,11 +87,12 @@ struct Store {
   std::uint64_t revision = 0;
   std::vector<std::string> uses;
   std::vector<Slot<FnData>> fns;
-  std::vector<Slot<BlkData>> blocks;
+  std::vector<Slot<BlkData>> blks;
   std::vector<Slot<OpData>> ops;
   std::vector<Slot<ValData>> vals;
   std::vector<Diag> diags;
   std::unordered_map<std::string, std::vector<std::uint32_t>> symbols;
+  mutable std::vector<QueryData> queries;
 };
 
 template <class T>

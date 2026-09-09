@@ -18,7 +18,7 @@ fn emit(width: int) -> str;
 fn select(m: Mod) -> bool {
   var changed = false
   for f in ir.fns(m) {
-    for b in ir.blocks(f) {
+    for b in ir.blks(f) {
       for op in ir.ops(b) {
         if ir.callee(op) == "operator +" {
           let outs = ir.outs(op)
