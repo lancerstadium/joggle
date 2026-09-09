@@ -93,6 +93,19 @@ fn mark_add(m: Mod) -> bool {
   return false
 }
 
+fn mark_first_param(m: Mod) -> bool {
+  for f in ir.fns(m) {
+    let values = ir.params(f)
+    if len(values) != 0 {
+      let value = values[0]
+      return ir.set(m, value, "layout", "packed") &&
+             ir.has(value, "layout") &&
+             ir.meta(value, "layout") == "packed"
+    }
+  }
+  return false
+}
+
 fn replace_first_use(m: Mod) -> bool {
   for op in ir.ops(m) {
     if ir.callee(op) == "operator +" {

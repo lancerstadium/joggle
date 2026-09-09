@@ -177,6 +177,8 @@ public:
   explicit operator bool() const noexcept;
   std::string_view name() const noexcept;
   Ty type() const;
+  const Attr::Dict& meta() const noexcept;
+  const Attr* meta(std::string_view key) const noexcept;
   Op def() const noexcept;
   std::vector<Op> users() const;
   bool is_const() const noexcept;
@@ -368,8 +370,10 @@ public:
   bool rename(Val value, std::string name);
   bool rename(Op call, std::string callee);
   bool set(Fn fn, std::string key, Attr value);
+  bool set(Val item, std::string key, Attr value);
   bool set(Op op, std::string key, Attr value);
   bool unset(Fn fn, std::string_view key);
+  bool unset(Val item, std::string_view key);
   bool unset(Op op, std::string_view key);
   bool verify(const Env& env);
 

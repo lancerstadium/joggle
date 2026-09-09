@@ -151,6 +151,12 @@ struct Binding {
 };
 using Scope = std::unordered_map<std::string, Binding>;
 
+struct Decl {
+  std::string name;
+  Ty type{"_"};
+  Attr::Dict meta;
+};
+
 std::string operator_name(std::string_view spelling) {
   return "operator " + std::string(spelling);
 }
@@ -528,15 +534,18 @@ private:
     data.name = name;
     data.loc = loc;
     data.meta = std::move(meta);
-    std::vector<std::pair<std::string, Ty>> generics;
+    std::vector<Decl> generics;
     if (match("<")) {
       do {
+        Attr::Dict generic_meta;
+        if (!parse_meta(generic_meta))
+          return false;
         std::string generic = take_name("generic parameter");
         if (generic.empty())
           return false;
         if (std::any_of(
                 generics.begin(), generics.end(),
-                [&](const auto& item) { return item.first == generic; }))
+                [&](const Decl& item) { return item.name == generic; }))
           return fail("duplicate generic parameter '" + generic + "'");
         Ty type("_");
         if (match(":")) {
@@ -547,24 +556,28 @@ private:
           if (!type.valid())
             return fail("malformed generic parameter type '" + text + "'");
         }
-        generics.emplace_back(std::move(generic), std::move(type));
+        generics.push_back(
+            {std::move(generic), std::move(type), std::move(generic_meta)});
       } while (match(","));
       if (!expect(">"))
         return false;
     }
     if (!expect("("))
       return false;
-    std::vector<std::pair<std::string, Ty>> params;
+    std::vector<Decl> params;
     if (!is(")")) {
       do {
+        Attr::Dict param_meta;
+        if (!parse_meta(param_meta))
+          return false;
         std::string param = take_name("parameter name");
         if (param.empty() || !expect(":"))
           return false;
         if (std::any_of(
                 generics.begin(), generics.end(),
-                [&](const auto& item) { return item.first == param; }) ||
+                [&](const Decl& item) { return item.name == param; }) ||
             std::any_of(params.begin(), params.end(),
-                        [&](const auto& item) { return item.first == param; }))
+                        [&](const Decl& item) { return item.name == param; }))
           return fail("duplicate parameter '" + param + "'");
         const std::string type = type_text(")");
         if (type.empty())
@@ -572,7 +585,8 @@ private:
         Ty parsed(type);
         if (!parsed.valid())
           return fail("malformed parameter type '" + type + "'");
-        params.emplace_back(std::move(param), std::move(parsed));
+        params.push_back(
+            {std::move(param), std::move(parsed), std::move(param_meta)});
       } while (match(","));
     }
     if (!expect(")") || !expect("->"))
@@ -612,16 +626,14 @@ private:
             generic_names(generic_info(store_, existing));
         std::vector<std::string> parsed_generics;
         parsed_generics.reserve(generics.size());
-        for (const auto& [generic, ignored] : generics) {
-          (void)ignored;
-          parsed_generics.push_back(generic);
-        }
+        for (const Decl& generic : generics)
+          parsed_generics.push_back(generic.name);
         bool same = true;
         for (std::size_t index = 0; index < params.size(); ++index)
           same = same &&
                  same_type_pattern(
                      store_.vals[existing.params[index]].data.type,
-                     existing_generics, params[index].second, parsed_generics);
+                     existing_generics, params[index].type, parsed_generics);
         if (same)
           return fail("duplicate function signature '" + name + "'", loc);
       }
@@ -631,23 +643,25 @@ private:
     store_.symbols[name].push_back(fn);
 
     Scope scope;
-    for (auto& [generic, type] : generics) {
+    for (Decl& generic : generics) {
       detail::ValData value;
       value.kind = detail::ValKind::generic;
-      value.name = generic;
-      value.type = std::move(type);
+      value.name = generic.name;
+      value.type = std::move(generic.type);
+      value.meta = std::move(generic.meta);
       const auto id = add_val(std::move(value));
       store_.fns[fn].data.generic_vals.push_back(id);
-      scope.emplace(generic, Binding{id, false});
+      scope.emplace(generic.name, Binding{id, false});
     }
-    for (auto& [param, type] : params) {
+    for (Decl& param : params) {
       detail::ValData value;
       value.kind = detail::ValKind::param;
-      value.name = param;
-      value.type = std::move(type);
+      value.name = param.name;
+      value.type = std::move(param.type);
+      value.meta = std::move(param.meta);
       const auto id = add_val(std::move(value));
       store_.fns[fn].data.params.push_back(id);
-      scope.emplace(param, Binding{id, false});
+      scope.emplace(param.name, Binding{id, false});
     }
     if (match(";")) {
       store_.fns[fn].data.external = true;
@@ -671,13 +685,16 @@ private:
       if (word("let") || word("var")) {
         const bool mut = tokens_[pos_ - 1].text == "var";
         const detail::Form form = mut ? detail::Form::var : detail::Form::let;
-        std::vector<std::pair<std::string, Ty>> names;
+        std::vector<Decl> names;
         do {
+          Attr::Dict value_meta;
+          if (!parse_meta(value_meta))
+            return false;
           std::string name = take_name("binding name");
           if (name.empty())
             return false;
           if (std::any_of(names.begin(), names.end(),
-                          [&](const auto& item) { return item.first == name; }))
+                          [&](const Decl& item) { return item.name == name; }))
             return fail("duplicate binding '" + name + "'");
           Ty type("_");
           if (match(":")) {
@@ -688,7 +705,8 @@ private:
             if (!type.valid())
               return fail("malformed binding type '" + text + "'");
           }
-          names.emplace_back(std::move(name), std::move(type));
+          names.push_back(
+              {std::move(name), std::move(type), std::move(value_meta)});
         } while (match(","));
         if (!expect("="))
           return false;
@@ -704,30 +722,34 @@ private:
             return fail("multiple bindings require one direct call");
           for (std::size_t index = 1; index < names.size(); ++index) {
             detail::ValData result;
-            result.type = names[index].second;
+            result.type = names[index].type;
+            result.meta = names[index].meta;
             result.def = def;
             result.index = index;
-            result.type_annotation = names[index].second.text() != "_";
+            result.type_annotation = names[index].type.text() != "_";
             store_.ops[def].data.outs.push_back(add_val(std::move(result)));
           }
         }
-        if (store_.vals[value].data.def == detail::none ||
-            store_.ops[store_.vals[value].data.def].data.form !=
-                detail::Form::hidden)
+        const std::uint32_t expression_def = store_.vals[value].data.def;
+        if (expression_def == detail::none ||
+            (store_.ops[expression_def].data.kind != Op::Kind::call &&
+             store_.ops[expression_def].data.kind != Op::Kind::constant) ||
+            store_.ops[expression_def].data.form != detail::Form::hidden)
           value = add_call(blk, "base.copy", {value},
                            store_.vals[value].data.type, peek().loc);
         const std::uint32_t def = store_.vals[value].data.def;
-        if (names.front().second.text() != "_") {
-          store_.vals[value].data.type = names.front().second;
+        if (names.front().type.text() != "_") {
+          store_.vals[value].data.type = names.front().type;
           store_.vals[value].data.type_annotation = true;
         }
-        show(value, form, names.front().first);
+        store_.vals[value].data.meta = names.front().meta;
+        show(value, form, names.front().name);
         if (!attach(value, std::move(meta)))
           return false;
         const std::vector<std::uint32_t>& outs = store_.ops[def].data.outs;
         for (std::size_t index = 0; index < names.size(); ++index) {
-          store_.vals[outs[index]].data.name = names[index].first;
-          scope[names[index].first] = {outs[index], mut};
+          store_.vals[outs[index]].data.name = names[index].name;
+          scope[names[index].name] = {outs[index], mut};
         }
         semi();
       } else if (word("for")) {
@@ -799,6 +821,9 @@ private:
       results.emplace_back(name, store_.vals[binding.value].data.type);
     }
     const auto op = add_op(blk, std::move(data), std::move(results));
+    for (std::size_t index = 0; index < captures.size(); ++index)
+      store_.vals[store_.ops[op].data.outs[index]].data.meta =
+          store_.vals[captures[index].second.value].data.meta;
     const auto body = add_blk(fn, op);
     store_.ops[op].data.blks.push_back(body);
 
@@ -817,6 +842,7 @@ private:
       value.kind = detail::ValKind::blk_arg;
       value.name = name;
       value.type = store_.vals[binding.value].data.type;
+      value.meta = store_.vals[binding.value].data.meta;
       const auto id = add_val(std::move(value));
       store_.blks[body].data.args.push_back(id);
       inner[name] = {id, true};
@@ -853,6 +879,9 @@ private:
       results.emplace_back(name, store_.vals[binding.value].data.type);
     }
     const auto op = add_op(blk, std::move(data), std::move(results));
+    for (std::size_t index = 0; index < captures.size(); ++index)
+      store_.vals[store_.ops[op].data.outs[index]].data.meta =
+          store_.vals[captures[index].second.value].data.meta;
 
     auto arm = [&](bool present) {
       const auto body = add_blk(fn, op);
@@ -863,6 +892,7 @@ private:
         value.kind = detail::ValKind::blk_arg;
         value.name = name;
         value.type = store_.vals[binding.value].data.type;
+        value.meta = store_.vals[binding.value].data.meta;
         const auto id = add_val(std::move(value));
         store_.blks[body].data.args.push_back(id);
         inner[name] = {id, true};
@@ -922,6 +952,8 @@ private:
       } else
         value = add_call(blk, "base.copy", {rhs},
                          store_.vals[found->second.value].data.type, name.loc);
+      store_.vals[value].data.meta =
+          store_.vals[found->second.value].data.meta;
       show(value, form, name.text);
       if (!attach(value, std::move(meta)))
         return false;
@@ -958,6 +990,8 @@ private:
       const auto value =
           add_call(blk, operator_name("[]="), std::move(args),
                    store_.vals[found->second.value].data.type, base.loc);
+      store_.vals[value].data.meta =
+          store_.vals[found->second.value].data.meta;
       show(value, detail::Form::index_assign, base.text);
       if (!attach(value, std::move(meta)))
         return false;
@@ -1338,12 +1372,7 @@ void indent(std::ostringstream& out, unsigned depth) {
   out << std::string(depth * 2, ' ');
 }
 
-void render_meta(std::ostringstream& out, const Attr::Dict& meta,
-                 unsigned depth) {
-  if (meta.empty())
-    return;
-  indent(out, depth);
-  out << '[';
+void render_meta_items(std::ostringstream& out, const Attr::Dict& meta) {
   std::size_t index = 0;
   for (const auto& [name, value] : meta) {
     if (index++)
@@ -1352,6 +1381,23 @@ void render_meta(std::ostringstream& out, const Attr::Dict& meta,
     if (value.boolean() != true)
       out << ": " << attr_text(value);
   }
+}
+
+void render_inline_meta(std::ostringstream& out, const Attr::Dict& meta) {
+  if (meta.empty())
+    return;
+  out << '[';
+  render_meta_items(out, meta);
+  out << "] ";
+}
+
+void render_meta(std::ostringstream& out, const Attr::Dict& meta,
+                 unsigned depth) {
+  if (meta.empty())
+    return;
+  indent(out, depth);
+  out << '[';
+  render_meta_items(out, meta);
   out << "]\n";
 }
 
@@ -1377,6 +1423,7 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
           if (index)
             out << ", ";
           const detail::ValData& value = store.vals[op.outs[index]].data;
+          render_inline_meta(out, value.meta);
           out << value.name;
           if (value.type_annotation)
             out << ": " << value.type.text();
@@ -1482,6 +1529,7 @@ std::string print(const Mod& mod) {
           out << ", ";
         const detail::ValData& generic =
             store.vals[fn.generic_vals[index]].data;
+        render_inline_meta(out, generic.meta);
         out << generic.name;
         if (generic.type.text() != "_")
           out << ": " << generic.type.text();
@@ -1493,6 +1541,7 @@ std::string print(const Mod& mod) {
       if (index)
         out << ", ";
       const detail::ValData& param = store.vals[fn.params[index]].data;
+      render_inline_meta(out, param.meta);
       out << param.name << ": " << param.type.text();
     }
     out << ") -> ";

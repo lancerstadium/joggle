@@ -149,6 +149,26 @@ std::unordered_set<std::uint32_t> family(const detail::Store& store,
   return values;
 }
 
+bool printable_value(const detail::Store& store,
+                     const std::unordered_set<std::uint32_t>& values) {
+  for (const std::uint32_t id : values) {
+    if (id >= store.vals.size() || !store.vals[id].live)
+      continue;
+    const detail::ValData& value = store.vals[id].data;
+    if (value.kind == detail::ValKind::generic ||
+        value.kind == detail::ValKind::param)
+      return true;
+    if (value.kind != detail::ValKind::result || value.name.empty() ||
+        value.def == detail::none || value.def >= store.ops.size() ||
+        !store.ops[value.def].live)
+      continue;
+    const detail::Form form = store.ops[value.def].data.form;
+    if (form == detail::Form::let || form == detail::Form::var)
+      return true;
+  }
+  return false;
+}
+
 std::optional<std::vector<std::string_view>>
 split_terms(std::string_view text) {
   std::vector<std::string_view> terms;
@@ -347,6 +367,17 @@ std::string_view Val::name() const noexcept {
   return entry ? std::string_view(entry->data.name) : std::string_view{};
 }
 Ty Val::type() const { return valid() ? store_->vals[id_].data.type : Ty{}; }
+const Attr::Dict& Val::meta() const noexcept {
+  static const Attr::Dict empty;
+  return valid() ? store_->vals[id_].data.meta : empty;
+}
+const Attr* Val::meta(std::string_view key) const noexcept {
+  if (!valid())
+    return nullptr;
+  const auto& values = store_->vals[id_].data.meta;
+  const auto found = values.find(key);
+  return found == values.end() ? nullptr : &found->second;
+}
 Op Val::def() const noexcept {
   if (!valid() || store_->vals[id_].data.def == detail::none)
     return {};
@@ -774,6 +805,7 @@ Op Mod::loop(Op before, std::span<const std::string> names,
     detail::ValData result;
     result.name = std::string(value.name());
     result.type = value.type();
+    result.meta = value.meta();
     result.def = op_id;
     result.index = store.ops[op_id].data.outs.size();
     const auto id = static_cast<std::uint32_t>(store.vals.size());
@@ -803,6 +835,7 @@ Op Mod::loop(Op before, std::span<const std::string> names,
     arg.kind = detail::ValKind::blk_arg;
     arg.name = std::string(value.name());
     arg.type = value.type();
+    arg.meta = value.meta();
     const auto id = static_cast<std::uint32_t>(store.vals.size());
     store.vals.push_back({std::move(arg), 1, true});
     store.blks[blk_id].data.args.push_back(id);
@@ -872,6 +905,7 @@ Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
     detail::ValData result;
     result.name = std::string(value.name());
     result.type = value.type();
+    result.meta = value.meta();
     result.def = op_id;
     result.index = store.ops[op_id].data.outs.size();
     const auto id = static_cast<std::uint32_t>(store.vals.size());
@@ -894,6 +928,7 @@ Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
       arg.kind = detail::ValKind::blk_arg;
       arg.name = std::string(value.name());
       arg.type = value.type();
+      arg.meta = value.meta();
       const auto id = static_cast<std::uint32_t>(store.vals.size());
       store.vals.push_back({std::move(arg), 1, true});
       store.blks[blk_id].data.args.push_back(id);
@@ -1270,6 +1305,24 @@ bool Mod::expand(Op call, Fn callee) {
     replacements.push_back(mapped->second);
   }
 
+  for (std::size_t index = 0; index < call_outs.size(); ++index) {
+    const Attr::Dict& boundary =
+        store.vals[call_outs[index].id_].data.meta;
+    const std::unordered_set<std::uint32_t> related =
+        family(store, replacements[index]);
+    for (const auto& [key, value] : boundary) {
+      for (const std::uint32_t id : related) {
+        const auto found = store.vals[id].data.meta.find(key);
+        if (found != store.vals[id].data.meta.end() &&
+            found->second != value)
+          return reject("expanded result metadata conflicts with function body",
+                        call.loc());
+      }
+      for (const std::uint32_t id : related)
+        store.vals[id].data.meta[key] = value;
+    }
+  }
+
   auto& order = store.blks[destination].data.ops;
   for (const std::uint32_t root : roots)
     order.erase(std::remove(order.begin(), order.end(), root), order.end());
@@ -1527,6 +1580,7 @@ bool Mod::fuse(std::span<const Op> ops, std::string callee) {
   if (!fused)
     return rollback();
   store.vals[fused.id_].data.name = std::string(output.name());
+  store.vals[fused.id_].data.meta = output.meta();
   store.ops[fused.def().id_].data.form = old_form;
   store.ops[fused.def().id_].data.meta =
       store.ops[output.def().id_].data.meta;
@@ -1820,6 +1874,33 @@ bool Mod::set(Fn fn, std::string key, Attr value) {
   return true;
 }
 
+bool Mod::set(Val item, std::string key, Attr value) {
+  auto& store = impl_->store;
+  if (!item.valid() || item.store_ != &store || key.empty()) {
+    detail::add_diag(store.diags,
+                     "set requires a live value and non-empty key");
+    return false;
+  }
+  const std::unordered_set<std::uint32_t> related = family(store, item.id_);
+  if (!printable_value(store, related)) {
+    detail::add_diag(store.diags,
+                     "cannot annotate a value without a source binding");
+    return false;
+  }
+  bool changed = false;
+  for (const std::uint32_t id : related) {
+    Attr::Dict& meta = store.vals[id].data.meta;
+    const auto found = meta.find(key);
+    if (found != meta.end() && found->second == value)
+      continue;
+    meta[key] = value;
+    changed = true;
+  }
+  if (changed)
+    touch(store);
+  return true;
+}
+
 bool Mod::set(Op op, std::string key, Attr value) {
   auto& store = impl_->store;
   if (!op.valid() || op.store_ != &store || key.empty()) {
@@ -1852,6 +1933,28 @@ bool Mod::unset(Fn fn, std::string_view key) {
     return false;
   }
   if (!store.fns[fn.id_].data.meta.erase(std::string(key)))
+    return false;
+  touch(store);
+  return true;
+}
+
+bool Mod::unset(Val item, std::string_view key) {
+  auto& store = impl_->store;
+  if (!item.valid() || item.store_ != &store || key.empty()) {
+    detail::add_diag(store.diags,
+                     "unset requires a live value and non-empty key");
+    return false;
+  }
+  const std::unordered_set<std::uint32_t> related = family(store, item.id_);
+  if (!printable_value(store, related)) {
+    detail::add_diag(store.diags,
+                     "cannot annotate a value without a source binding");
+    return false;
+  }
+  bool changed = false;
+  for (const std::uint32_t id : related)
+    changed = store.vals[id].data.meta.erase(std::string(key)) || changed;
+  if (!changed)
     return false;
   touch(store);
   return true;

@@ -34,6 +34,7 @@ struct ValData {
   ValKind kind = ValKind::result;
   std::string name;
   Ty type;
+  Attr::Dict meta;
   std::uint32_t def = none;
   std::size_t index = 0;
   std::vector<std::uint32_t> users;

@@ -1046,6 +1046,8 @@ private:
     } else if (name == "meta" && args.size() == 1) {
       if (const auto* fn = as<Fn>(args[0]); fn && *fn)
         return Items{Item(Attr(fn->meta()))};
+      if (const auto* value = as<Val>(args[0]); value && *value)
+        return Items{Item(Attr(value->meta()))};
       if (const auto* op = as<Op>(args[0]); op && *op)
         return Items{Item(Attr(op->meta()))};
     } else if ((name == "has" || name == "meta") && args.size() == 2) {
@@ -1055,6 +1057,9 @@ private:
         bool node = false;
         if (const auto* fn = as<Fn>(args[0])) {
           value = fn->meta(*key);
+          node = true;
+        } else if (const auto* val = as<Val>(args[0])) {
+          value = val->meta(*key);
           node = true;
         } else if (const auto* op = as<Op>(args[0])) {
           value = op->meta(*key);
@@ -1222,6 +1227,9 @@ private:
         if (const auto* fn = as<Fn>(args[1]))
           return Items{Item(Attr((*mod)->set(*fn, std::string(*key),
                                              std::move(*value))))};
+        if (const auto* val = as<Val>(args[1]))
+          return Items{Item(Attr((*mod)->set(*val, std::string(*key),
+                                             std::move(*value))))};
         if (const auto* op = as<Op>(args[1]))
           return Items{Item(Attr((*mod)->set(*op, std::string(*key),
                                              std::move(*value))))};
@@ -1232,6 +1240,8 @@ private:
       if (mod && *mod && key) {
         if (const auto* fn = as<Fn>(args[1]))
           return Items{Item(Attr((*mod)->unset(*fn, *key)))};
+        if (const auto* val = as<Val>(args[1]))
+          return Items{Item(Attr((*mod)->unset(*val, *key)))};
         if (const auto* op = as<Op>(args[1]))
           return Items{Item(Attr((*mod)->unset(*op, *key)))};
       }

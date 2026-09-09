@@ -1279,6 +1279,80 @@ int main(int argc, char** argv) {
                       "attrs-roundtrip.jog"));
   CHECK(joggle::structurally_equal(attrs, attrs_roundtrip));
 
+  joggle::Mod value_attrs;
+  constexpr std::string_view value_attr_source =
+      "module value_attrs\n"
+      "use base\n"
+      "fn carry<[role: \"extent\"] N: int>(\n"
+      "  [range: {min: 0}] seed: i32\n"
+      ") -> i32 {\n"
+      "  [place: \"edge\"]\n"
+      "  var [format: \"q8\"] value: i32 = seed\n"
+      "  for i in 0..N {\n"
+      "    value += 1\n"
+      "  }\n"
+      "  let [range: {min: 0, max: 255}] output: i32 = value\n"
+      "  return output\n"
+      "}\n"
+      "fn inner(x: i32) -> i32 {\n"
+      "  let [space: \"body\"] y: i32 = x\n"
+      "  return y\n"
+      "}\n"
+      "fn conflict(x: i32) -> i32 {\n"
+      "  let [space: \"call\"] y: i32 = inner(x)\n"
+      "  return y\n"
+      "}\n";
+  CHECK(joggle::parse(env, value_attr_source, value_attrs,
+                      "value-attrs.jog"));
+  CHECK(value_attrs.verify(env));
+  const joggle::Fn carry = value_attrs.find_fn("carry");
+  CHECK(carry && carry.generics().size() == 1 && carry.params().size() == 1);
+  CHECK(carry.generics()[0].meta("role") &&
+        carry.generics()[0].meta("role")->string() == "extent");
+  CHECK(carry.params()[0].meta("range") &&
+        carry.params()[0].meta("range")->dict());
+  joggle::Op value_loop;
+  joggle::Val value;
+  joggle::Val output;
+  for (joggle::Op op : carry.ops()) {
+    if (op.kind() == joggle::Op::Kind::loop)
+      value_loop = op;
+    for (joggle::Val out : op.outs()) {
+      if (out.name() == "value" && out.meta("format"))
+        value = out;
+      if (out.name() == "output")
+        output = out;
+    }
+  }
+  CHECK(value_loop && value && output);
+  CHECK(output.meta("range") && output.meta("range")->dict());
+  const joggle::Op conflict_call =
+      value_attrs.find_fn("conflict").body().ops().front();
+  const std::string before_conflict = joggle::print(value_attrs);
+  CHECK(!value_attrs.expand(conflict_call,
+                            env.resolve(value_attrs, conflict_call)));
+  CHECK(joggle::print(value_attrs) == before_conflict);
+  value_attrs.clear_diags();
+  CHECK(value_attrs.set(value_loop.blks()[0].args()[1], "bank",
+                        joggle::Attr(std::int64_t{2})));
+  for (joggle::Val member : value_loop.blks()[0].args())
+    if (member.name() == "value")
+      CHECK(member.meta("bank") && member.meta("bank")->integer() == 2);
+  CHECK(value_attrs.unset(value, "bank"));
+  CHECK(joggle::run(env, "script.mark_first_param", value_attrs));
+  CHECK(carry.params()[0].meta("layout") &&
+        carry.params()[0].meta("layout")->string() == "packed");
+  joggle::Mod value_attrs_roundtrip;
+  const std::string value_attrs_text = joggle::print(value_attrs);
+  if (!joggle::parse(env, value_attrs_text, value_attrs_roundtrip,
+                     "value-attrs-roundtrip.jog")) {
+    std::fwrite(value_attrs_text.data(), 1, value_attrs_text.size(), stderr);
+    value_attrs_roundtrip.print_diags(stderr);
+    return 1;
+  }
+  CHECK(value_attrs_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(value_attrs, value_attrs_roundtrip));
+
   joggle::Mod tagged;
   constexpr std::string_view tagged_source =
       "module tagged\n"
