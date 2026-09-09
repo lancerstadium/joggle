@@ -119,6 +119,11 @@ int main(int argc, char** argv) {
   CHECK(compute == 66 && checked_model && checked_options &&
         payload > 13'000'000);
 
+  CHECK(env.load("opt"));
+  joggle::Attr missing;
+  CHECK(joggle::query(env, "opt.unresolved", model, missing));
+  CHECK(missing.list() && missing.list()->size() == 6);
+
   const std::string canonical = joggle::print(model);
   joggle::Mod roundtrip;
   CHECK(joggle::parse(env, canonical, roundtrip, "tflite-roundtrip.jog"));
@@ -142,6 +147,8 @@ int main(int argc, char** argv) {
   CHECK(count(semantic, "nn.avg_pool2d") == 1);
   CHECK(count(semantic, "tensor.reshape") == 1);
   CHECK(count(semantic, "nn.softmax") == 1);
+  CHECK(joggle::query(env, "opt.unresolved", semantic, missing));
+  CHECK(missing.list() && missing.list()->empty());
   std::size_t standard_layouts = 0;
   std::size_t depthwise_layouts = 0;
   for (joggle::Op op : semantic.ops()) {

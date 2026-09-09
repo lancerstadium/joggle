@@ -1041,8 +1041,7 @@ private:
       const auto* op = as<Op>(args[1]);
       if (mod && *mod && op) {
         const Fn target = env_.resolve(**mod, *op);
-        if (target)
-          return Items{Item(target)};
+        return Items{Item(target)};
       }
     } else if (name == "meta" && args.size() == 1) {
       if (const auto* fn = as<Fn>(args[0]); fn && *fn)

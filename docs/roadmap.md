@@ -127,7 +127,8 @@ node and round-trips as ordinary nested IR. The second real frontend imports
 the official TensorFlow Hub MobileNetV2 with reflection-driven options and no
 core or reader operator switches. Its independent `.jog` bridge converts all
 66 compute calls through explicit logical-axis operands and exposes every
-shared body. The two target gates remain.
+shared body. `opt.unresolved` reports six open source call families before that
+bridge and none afterward. The two target gates remain.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

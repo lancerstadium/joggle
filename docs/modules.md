@@ -236,6 +236,10 @@ handle label.
 ### Optimization functions
 
 The bundled `opt` module demonstrates composition without a pass hierarchy.
+`opt.unresolved` returns the distinct unresolved call names in structural order,
+so a frontend bridge or target can audit semantic coverage without a registry
+or a built-in operator catalogue. The hidden `base.list` normalization used by
+list literals is language structure and is not reported as an external call.
 `fold_identity` applies an explicit binary identity, `cse` merges structurally
 identical same-block calls, and `dce` removes unused calls. The latter two take
 a list of callees the caller asserts are pure; no unknown computation is

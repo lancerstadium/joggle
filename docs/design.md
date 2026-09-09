@@ -549,3 +549,9 @@ fused activation are ordinary function composition. Conversion is explicit,
 idempotent, and removes source metadata only after its meaning is represented.
 The gate resolves and exposes one body for every converted call, verifies the
 nested IR, and requires a canonical structural round-trip.
+
+Coverage is queried rather than declared. `opt.unresolved` walks ordinary calls,
+uses the normal resolver, and returns each unresolved callee once in structural
+order. The TFLite gate observes six source families before conversion and none
+afterward; the same query works for a target module without knowing either
+frontend.

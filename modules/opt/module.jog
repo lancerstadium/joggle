@@ -143,6 +143,28 @@ fn count(m: Mod, callee: str) -> int {
   return total
 }
 
+fn unresolved(m: Mod) -> list<str> {
+  var out: list<str> = []
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" &&
+       ir.callee(op) != "base.list" {
+      if !ir.live(ir.resolve(m, op)) {
+        let callee = ir.callee(op)
+        var seen = false
+        for item in out {
+          if item == callee {
+            seen = true
+          }
+        }
+        if !seen {
+          out += [callee]
+        }
+      }
+    }
+  }
+  return out
+}
+
 fn rename(m: Mod, rules: list<list<str>>) -> bool {
   var changed = false
   for op in ir.ops(m) {
