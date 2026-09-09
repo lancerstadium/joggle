@@ -235,6 +235,22 @@ fn expand_network(m: Mod) -> bool {
   return opt.expand(m, ["operator +", "nn.relu"])
 }
 
+fn bridge_relu(m: Mod) -> bool {
+  var changed = ir.use(m, "nn")
+  changed = opt.rename(m, [["onnx.Relu", "nn.relu"]]) || changed
+  return changed
+}
+
+fn has_use(m: Mod, module: str) -> bool {
+  var found = false
+  for dependency in ir.uses(m) {
+    if dependency == module {
+      found = true
+    }
+  }
+  return found
+}
+
 fn bad_entry(m: Mod) -> int {
   return 0
 }

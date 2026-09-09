@@ -38,7 +38,9 @@ algebra, linear layers, and ReLU. A generic body-expansion edit can expose a
 selected network call as tensor calls and later expose those calls as loops;
 it resolves ordinary overloads and has no NN-operator switch. `base`
 dictionary access lets ordinary bridge functions interpret frontend
-attributes.
+attributes. A bridge may add a module dependency and apply a data-driven call
+mapping, so frontend-to-network relationships stay outside both codecs and
+core.
 
 ## Build
 

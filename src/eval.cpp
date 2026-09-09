@@ -867,6 +867,13 @@ private:
           out.emplace_back(fn);
         return Items{Item(std::move(out))};
       }
+    } else if (name == "uses" && args.size() == 1) {
+      if (const auto* mod = as<Mod*>(args[0]); mod && *mod) {
+        Items out;
+        for (const std::string& module : (*mod)->uses())
+          out.emplace_back(Attr(module));
+        return Items{Item(std::move(out))};
+      }
     } else if (name == "params" && args.size() == 1) {
       if (const auto* fn = as<Fn>(args[0])) {
         Items out;
@@ -1172,6 +1179,11 @@ private:
         if (const auto* op = as<Op>(args[1]))
           return Items{Item(Attr((*mod)->unset(*op, *key)))};
       }
+    } else if (name == "use" && args.size() == 2) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto module = string(args[1]);
+      if (mod && *mod && module)
+        return Items{Item(Attr((*mod)->use(std::string(*module))))};
     }
     fail("invalid ir." + std::string(name) + " compile-time call", loc);
     return std::nullopt;

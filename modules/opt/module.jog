@@ -143,6 +143,24 @@ fn count(m: Mod, callee: str) -> int {
   return total
 }
 
+fn rename(m: Mod, rules: list<list<str>>) -> bool {
+  var changed = false
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" {
+      var selected = false
+      for rule in rules {
+        if !selected && len(rule) == 2 {
+          if ir.callee(op) == rule[0] {
+            selected = true
+            changed = ir.rename(m, op, rule[1]) || changed
+          }
+        }
+      }
+    }
+  }
+  return changed
+}
+
 fn expand(m: Mod, callees: list<str>) -> bool {
   var changed = false
   for op in ir.ops(m) {

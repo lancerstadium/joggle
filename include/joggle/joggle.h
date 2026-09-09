@@ -342,6 +342,7 @@ public:
   std::string_view name() const noexcept;
   void name(std::string name);
   std::vector<std::string> uses() const;
+  bool use(std::string module);
   std::vector<Fn> fns() const;
   std::vector<Op> ops() const;
   std::vector<Fn> find_fns(std::string_view name) const;

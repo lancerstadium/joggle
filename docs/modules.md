@@ -100,7 +100,7 @@ The built-in `ir` module is the complete reflection boundary:
 
 | Function | Meaning |
 | --- | --- |
-| `fns`, `params`, `blks`, `ops` | Traverse function and structural ownership. |
+| `fns`, `params`, `blks`, `ops`, `uses` | Traverse function, structure, and dependencies. |
 | `args`, `outs`, `users` | Read operation dataflow. |
 | `live`, `block`, `kind`, `callee`, `type` | Query handle state and structure. |
 | `resolve` | Resolve a call to its visible function declaration. |
@@ -110,6 +110,7 @@ The built-in `ir` module is the complete reflection boundary:
 | `clone`, `expand`, `move`, `args` | Copy, substitute a function body, place, or reconnect IR. |
 | `replace`, `erase`, `rename` | Rewrite dataflow, ownership, and readable names. |
 | `set`, `unset` | Add, replace, or remove a function or operation attribute. |
+| `use` | Add an idempotent module dependency. |
 
 These functions operate on generic handles and contain no NN operator names.
 Adding an importer, optimization, or target module therefore does not extend
@@ -207,6 +208,14 @@ snapshot traversal deliberately does not recurse into calls created by the
 same invocation, so the caller controls abstraction: one step may expose
 `nn.linear` as `tensor.matmul` plus a bias loop, and a later step may expose
 `tensor.matmul` as explicit nested loops.
+
+`opt.rename(m, rules)` applies exact call-name pairs supplied as
+`list<list<str>>`. It knows no frontend or network names. A bridge first calls
+`ir.use` for its destination library, then supplies a relation such as
+`[["onnx.Relu", "nn.relu"]]`; final verification checks that the renamed
+call actually matches a visible destination function. Rules that need operand
+reordering, attribute interpretation, or new constants remain ordinary bridge
+code rather than hidden behavior in this simple relation helper.
 
 The C++ embedding API can call the same function as
 `run(env, "module.fn", mod)` or request a structural report with

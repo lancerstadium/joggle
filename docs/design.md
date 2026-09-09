@@ -424,3 +424,18 @@ The workflow gate requires C++ and `.jog` selection to create structurally
 identical IR, concrete `M/N/K` specialization to round-trip through text, and
 rejected metadata-bearing expansion to leave both bytes and revision intact.
 No operator, frontend, target, or schedule name appears in the core mechanism.
+
+## M10 semantic-bridge slice
+
+A frontend codec cannot assume the semantic modules that a later experiment
+will choose. The generic `Mod::use`/`ir.use` edit therefore adds a dependency
+explicitly and idempotently, with ordinary revision and rollback behavior.
+`ir.uses` exposes the resulting dependency list without introducing a graph or
+package object.
+
+For the common same-signature case, `opt.rename` consumes a list of exact
+source/destination call-name pairs. An ONNX-like ReLU fragment is tested by
+adding `nn`, mapping `onnx.Relu` to `nn.relu`, resolving the result through the
+normal type system, printing, and reparsing. The helper has no frontend table;
+the bridge function owns the relation. More involved schema differences remain
+normal module code using attribute access and IR construction.

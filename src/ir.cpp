@@ -52,6 +52,29 @@ bool valid_binding(std::string_view text) {
   return true;
 }
 
+bool valid_module(std::string_view text) {
+  if (text.empty())
+    return false;
+  std::size_t begin = 0;
+  while (begin < text.size()) {
+    const std::size_t end = text.find('.', begin);
+    const std::string_view part = text.substr(
+        begin, end == std::string_view::npos ? text.size() - begin
+                                             : end - begin);
+    if (part.empty() ||
+        (!std::isalpha(static_cast<unsigned char>(part.front())) &&
+         part.front() != '_') ||
+        std::any_of(part.begin() + 1, part.end(), [](char ch) {
+          return !std::isalnum(static_cast<unsigned char>(ch)) && ch != '_';
+        }))
+      return false;
+    if (end == std::string_view::npos)
+      return true;
+    begin = end + 1;
+  }
+  return false;
+}
+
 bool carried_arg(const detail::Store& store, std::uint32_t value) {
   for (const auto& slot : store.blks) {
     if (!slot.live || slot.data.parent_op == detail::none ||
@@ -485,6 +508,21 @@ void Mod::name(std::string name) {
   touch(impl_->store);
 }
 std::vector<std::string> Mod::uses() const { return impl_->store.uses; }
+
+bool Mod::use(std::string module) {
+  auto& store = impl_->store;
+  if (!valid_module(module) || module == store.name) {
+    detail::add_diag(store.diags,
+                     "use requires a valid, different module name");
+    return false;
+  }
+  if (std::find(store.uses.begin(), store.uses.end(), module) !=
+      store.uses.end())
+    return true;
+  store.uses.push_back(std::move(module));
+  touch(store);
+  return true;
+}
 
 std::vector<Fn> Mod::fns() const {
   std::vector<Fn> out;

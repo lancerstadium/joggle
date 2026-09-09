@@ -2,6 +2,7 @@ module ir
 use base
 
 fn fns(m: Mod) -> list<Fn>;
+fn uses(m: Mod) -> list<str>;
 fn params(f: Fn) -> list<Val>;
 fn blks(f: Fn) -> list<Blk>;
 fn blks(op: Op) -> list<Blk>;
@@ -52,3 +53,4 @@ fn set(m: Mod, f: Fn, key: str, value: Attr) -> bool;
 fn set(m: Mod, op: Op, key: str, value: Attr) -> bool;
 fn unset(m: Mod, f: Fn, key: str) -> bool;
 fn unset(m: Mod, op: Op, key: str) -> bool;
+fn use(m: Mod, module: str) -> bool;

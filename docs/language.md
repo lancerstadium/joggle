@@ -237,6 +237,12 @@ preserves the caller's visible result bindings. The edit is atomic; a missing
 body, signature mismatch, unrepresentable compile-time argument, or metadata
 whose policy has not been chosen leaves the module unchanged.
 
+`ir.uses(m)` returns the module's declared dependencies and
+`ir.use(m, name)` adds one idempotently. Dependency edits advance the same
+module revision and participate in compile-time rollback. This lets an
+explicit frontend bridge introduce the semantic library whose qualified
+functions it selects; parsing a frontend never does so implicitly.
+
 Generic compile-time helpers use the same syntax and bindings. In
 `fn below<N: int>(x: int) -> bool { return x < N }`, a call to `below<4>(3)`
 binds the generic `Val` `N` to the integer `4` in the function frame. `Ty` and

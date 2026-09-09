@@ -88,6 +88,20 @@ Frontend attributes are structural dictionaries. A bridge can use
 `keys(attrs)` directly in `.jog`; no schema accessor class or frontend-specific
 core hook is required.
 
+For same-signature calls, the whole frontend relation can stay declarative:
+
+```jog
+fn onnx_to_nn(m: Mod) -> bool {
+  var changed = ir.use(m, "nn")
+  changed = opt.rename(m, [["onnx.Relu", "nn.relu"]]) || changed
+  return changed
+}
+```
+
+Neither importing ONNX nor loading `nn` runs this function. The bridge is
+selected explicitly, and transaction-final verification rejects a target
+whose signature does not match the transported call.
+
 The textual equivalent loads a module and selects one of its normal functions:
 
 ```cpp

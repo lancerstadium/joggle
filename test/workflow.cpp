@@ -257,6 +257,56 @@ int main(int argc, char** argv) {
   rejected_expand.clear_diags();
   CHECK(rejected_expand.verify(env));
 
+  CHECK(env.load("onnx"));
+  joggle::Mod bridged;
+  constexpr std::string_view bridged_source =
+      "module bridged\n"
+      "use onnx\n"
+      "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
+      "  let y: tensor<f32, [4]> = onnx.Relu(x)\n"
+      "  return y\n}\n";
+  CHECK(joggle::parse(env, bridged_source, bridged, "bridged.jog"));
+  CHECK(bridged.verify(env));
+  CHECK(joggle::run(env, "script.bridge_relu", bridged));
+  CHECK(bridged.verify(env));
+  bool uses_nn = false;
+  for (const std::string& module : bridged.uses())
+    uses_nn = uses_nn || module == "nn";
+  CHECK(uses_nn);
+  joggle::Attr has_nn;
+  const std::vector<joggle::Attr> nn_query{joggle::Attr("nn")};
+  CHECK(joggle::query(env, "script.has_use", bridged, has_nn, nn_query));
+  CHECK(has_nn.boolean() && *has_nn.boolean());
+  joggle::Op bridged_relu;
+  for (joggle::Op op : bridged.ops())
+    if (op.callee() == "nn.relu")
+      bridged_relu = op;
+  CHECK(bridged_relu && env.resolve(bridged, bridged_relu) == relu);
+  const std::uint64_t bridged_revision = bridged.revision();
+  CHECK(joggle::run(env, "script.bridge_relu", bridged));
+  CHECK(bridged.revision() == bridged_revision);
+  joggle::Mod bridged_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(bridged), bridged_roundtrip,
+                      "bridged-roundtrip.jog"));
+  CHECK(bridged_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(bridged, bridged_roundtrip));
+
+  joggle::Mod dependencies;
+  CHECK(joggle::parse(env, "module dependencies\nfn main() -> int { "
+                           "return 0 }\n",
+                      dependencies, "dependencies.jog"));
+  const std::uint64_t dependencies_revision = dependencies.revision();
+  CHECK(dependencies.use("nn"));
+  CHECK(dependencies.revision() == dependencies_revision + 1);
+  CHECK(dependencies.use("nn"));
+  CHECK(dependencies.revision() == dependencies_revision + 1);
+  const std::string dependencies_text = joggle::print(dependencies);
+  CHECK(!dependencies.use("not-a-module"));
+  CHECK(joggle::print(dependencies) == dependencies_text);
+  CHECK(dependencies.revision() == dependencies_revision + 1);
+  dependencies.clear_diags();
+  CHECK(dependencies.verify(env));
+
   joggle::Mod precedence;
   constexpr std::string_view precedence_source =
       "module precedence\n"
