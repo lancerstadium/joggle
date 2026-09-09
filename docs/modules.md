@@ -48,9 +48,10 @@ returns against the `.jog` declaration. Scalars include length-delimited `str`
 and `bytes`; embedded zero bytes are preserved.
 
 The standard modules are deliberately narrow: `base` declares value copying,
-`tensor` establishes the tensor dependency boundary, `ir` declares universal
-reflection functions, and `opt` contains a real textual transform. The optional
-`onnx` module adds binary model import without a core operator switch. Future NN
+`tensor` declares the open `tensor<E, S>` type constructor, `ir` declares
+universal reflection functions, and `opt` contains a real textual transform.
+The optional `onnx` module adds binary model import without a core operator
+switch. Future NN
 semantics, MLIR, JIT, simulation, hardware description, and target experiments
 remain removable modules.
 
@@ -77,6 +78,13 @@ of native binding: a declaration may define model semantics, a textual
 transform, or a native compile-time service. Unknown calls are preserved
 deliberately for frontend transport, but code that needs a declaration must
 load or invoke an explicit semantic bridge.
+
+Type constructors use this same boundary. A module named `format` can export
+`fn format<P>() -> Ty;`; consumers write `use format` and then `format<...>`.
+The function's generic list defines arity, and its `Ty` result identifies it as
+a constructor without a second declaration system. A qualified constructor
+name may target any visible constructor function when the module and type names
+differ.
 
 The built-in `ir` module is the complete reflection boundary:
 

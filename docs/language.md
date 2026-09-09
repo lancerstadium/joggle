@@ -62,6 +62,24 @@ without introducing a class per type constructor. Malformed nesting and empty
 arguments are rejected while parsing declarations. Constructor meaning is
 supplied by modules; the core only needs the tree for matching and substitution.
 
+A named parametric type is declared with the same `fn` mechanism as every
+other extension. A zero-argument function returning `Ty` is a type constructor;
+its generic list is the constructor's argument list:
+
+```jog
+module sat
+
+fn sat<W>() -> Ty;
+fn add<W>(a: sat<W>, b: sat<W>) -> sat<W>;
+```
+
+After `use sat`, `sat<8>` resolves to `sat.sat<8>`. No `type` keyword, generated
+class, registry callback, or metadata tag is involved. Constructor arity and
+visibility are verified like function arity and visibility. Unloaded
+constructors remain open structural types so a source-only parse does not need
+to install every extension; once a matching module is loaded, a missing `use`
+edge or incompatible declaration is an error.
+
 During verification, a call to a known local or qualified module function is
 checked against its declaration. Generic arguments may be written explicitly
 or inferred recursively from argument types, and the resulting substitution is
@@ -136,9 +154,9 @@ are errors. `Fn::meta` exposes the same data to C++, while `ir.has` and
 No metadata name changes parsing, binding, or the IR shape. A native library
 may bind any matching body-less declaration; no marker is required and a
 function with a body cannot be rebound. Useful module-defined keys include
-`role`, `stage`, `target`, and `cost`, but none is owned by the core. Named type
-constructor declarations and overload-set resolution remain M6 work; structural
-parametric matching and result inference are already implemented.
+`role`, `stage`, `target`, and `cost`, but none is owned by the core. Structural
+type constructors, parametric matching, and result inference are implemented;
+overload-set resolution remains M6 work.
 
 Metadata becomes behavior only when an explicitly selected function queries
 it. A transform may use `[rewrite: "lab.fused"]` to choose a replacement call;

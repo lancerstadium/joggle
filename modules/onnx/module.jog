@@ -1,4 +1,5 @@
 module onnx
+use tensor
 
 [role: "read"]
 fn read(data: bytes) -> str;

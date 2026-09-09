@@ -1,2 +1,4 @@
 module tensor
 use base
+
+fn tensor<E, S>() -> Ty;

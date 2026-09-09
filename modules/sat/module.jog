@@ -1,6 +1,7 @@
 module sat
 use ir
 
+fn sat<W>() -> Ty;
 fn add<W>(a: sat<W>, b: sat<W>) -> sat<W>;
 
 [role: "match"]

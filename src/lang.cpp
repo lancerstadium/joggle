@@ -1529,6 +1529,92 @@ void infer_regions(detail::Store& store, const detail::OpData& op) {
   }
 }
 
+bool intrinsic_type(std::string_view name) {
+  static constexpr std::string_view names[] = {
+      "_",    "nil", "bool",  "int",  "index", "f16",   "f32",
+      "f64",  "str", "bytes", "dict", "list",  "range", "Ty",
+      "Attr", "Mod", "Fn",    "Blk",  "Op",    "Val",   "meta"};
+  for (const std::string_view intrinsic : names)
+    if (intrinsic == name)
+      return true;
+  if (name.size() < 2 || (name.front() != 'i' && name.front() != 'u'))
+    return false;
+  return std::all_of(name.begin() + 1, name.end(), [](char ch) {
+    return std::isdigit(static_cast<unsigned char>(ch));
+  });
+}
+
+Fn type_declaration(const Mod& mod, const Env& env, std::string_view name) {
+  if (Fn local = mod.find_fn(name))
+    return local;
+  if (name.find('.') != std::string_view::npos)
+    return env.resolve(mod, name);
+  const std::string symbol = std::string(name) + "." + std::string(name);
+  return env.resolve(mod, symbol);
+}
+
+bool verify_type(detail::Store& store, const Mod& mod, const Env& env,
+                 const Ty& type, const std::vector<std::string>& generics,
+                 Loc loc) {
+  if (!type.valid()) {
+    detail::add_diag(store.diags,
+                     "malformed type '" + std::string(type.text()) + "'",
+                     std::move(loc));
+    return false;
+  }
+  if (type.args().empty() &&
+      (intrinsic_type(type.name()) || generic(generics, type.name())))
+    return true;
+  if (type.name() == "[]")
+    return true;
+  if (type.name() == "list") {
+    if (type.args().size() != 1) {
+      detail::add_diag(store.diags, "type 'list' expects 1 argument",
+                       std::move(loc));
+      return false;
+    }
+    return verify_type(store, mod, env, type.args().front(), generics,
+                       std::move(loc));
+  }
+
+  const Fn constructor = type_declaration(mod, env, type.name());
+  if (!constructor) {
+    std::string symbol(type.name());
+    if (symbol.find('.') == std::string::npos)
+      symbol += "." + symbol;
+    const Fn hidden = env.find_fn(symbol);
+    if (!hidden)
+      return true;
+    detail::add_diag(store.diags,
+                     "type '" + std::string(type.name()) + "' requires 'use " +
+                         std::string(hidden.module()) + "'",
+                     std::move(loc));
+    return false;
+  }
+  const std::vector<Ty> returns = constructor.returns();
+  if (!constructor.params().empty() || returns.size() != 1 ||
+      returns.front().name() != "Ty") {
+    detail::add_diag(store.diags,
+                     "function '" + std::string(constructor.module()) + "." +
+                         std::string(constructor.name()) +
+                         "' is not a type constructor",
+                     std::move(loc));
+    return false;
+  }
+  if (constructor.generics().size() != type.args().size()) {
+    detail::add_diag(store.diags,
+                     "type '" + std::string(type.name()) + "' expects " +
+                         std::to_string(constructor.generics().size()) +
+                         (constructor.generics().size() == 1
+                              ? " type argument, got "
+                              : " type arguments, got ") +
+                         std::to_string(type.args().size()),
+                     std::move(loc));
+    return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 bool Mod::verify(const Env& env) {
@@ -1537,6 +1623,16 @@ bool Mod::verify(const Env& env) {
   detail::rebuild_uses(store);
   if (store.name.empty())
     detail::add_diag(store.diags, "module has no name");
+  for (const auto& fn_slot : store.fns) {
+    if (!fn_slot.live)
+      continue;
+    const detail::FnData& fn = fn_slot.data;
+    for (const std::uint32_t param : fn.params)
+      verify_type(store, *this, env, store.vals[param].data.type, fn.generics,
+                  fn.loc);
+    for (const Ty& type : fn.returns)
+      verify_type(store, *this, env, type, fn.generics, fn.loc);
+  }
   for (std::size_t iteration = 0; iteration <= store.ops.size(); ++iteration) {
     std::vector<Ty> before;
     before.reserve(store.vals.size());

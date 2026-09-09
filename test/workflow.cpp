@@ -58,10 +58,15 @@ int main(int argc, char** argv) {
   joggle::Env env;
   env.path(argv[2]);
   env.path(argv[3]);
+  CHECK(env.load("tensor"));
+  CHECK(env.loaded("base"));
+  CHECK(env.loaded("tensor"));
+  CHECK((env.modules() == std::vector<std::string>{"base", "tensor"}));
 
   joggle::Mod types;
   constexpr std::string_view type_source =
       "module types\n"
+      "use tensor\n"
       "fn id<E, S>(x: tensor<E, S>) -> tensor<E, S>;\n"
       "fn apply(x: tensor<f32, [2, 3]>) -> tensor<f32, [2, 3]> {\n"
       "  return id(x)\n"
@@ -80,10 +85,6 @@ int main(int argc, char** argv) {
   CHECK(last_blocks.size() == 2);
   CHECK(last_blocks[1].args().front().type() == joggle::Ty("int"));
 
-  CHECK(env.load("tensor"));
-  CHECK(env.loaded("base"));
-  CHECK(env.loaded("tensor"));
-  CHECK((env.modules() == std::vector<std::string>{"base", "tensor"}));
   CHECK(env.load("sample"));
   CHECK(env.bound("sample.ping"));
   const joggle::Fn ping = env.find_fn("sample.ping");

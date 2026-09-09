@@ -186,10 +186,16 @@ model code. Qualified resolution follows only explicit and transitive `use`
 edges, preventing unrelated modules already present in an `Env` from changing
 the meaning of a source file.
 
+Parametric type constructors also remain functions: `fn tensor<E, S>() -> Ty`
+defines the arity and ownership of `tensor<E, S>`. The verifier recognizes the
+`Ty` result instead of a special declaration kind or registration hook. This is
+the first self-hosting step toward using ordinary compile-time values to define
+and validate richer data formats.
+
 The generic `sat.add<W>` declaration is the first module-defined parametric
 gate: inferred and explicit widths succeed, conflicting widths and wrong arity
 fail with located diagnostics, and no saturating-arithmetic case exists in the
 core. Language normalizations (`base.copy`, list construction, and indexing)
 retain only the minimal intrinsic rules needed to recover ordinary source
-bindings and iteration. Overload sets, named constructor declarations, and
-explicit unresolved-call state remain before the M6 exit gate.
+bindings and iteration. Overload sets and richer constructor-argument kind
+checking remain before the M6 exit gate.

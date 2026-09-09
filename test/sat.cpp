@@ -88,6 +88,16 @@ int main(int argc, char** argv) {
   CHECK(missing_use.diags().front().message.find("requires 'use sat'") !=
         std::string::npos);
 
+  joggle::Mod wrong_constructor;
+  CHECK(joggle::parse(env,
+                      "module wrong\nuse sat\n"
+                      "fn f(x: sat<8, 16>) -> sat<8, 16> { return x }\n",
+                      wrong_constructor, "wrong-constructor.jog"));
+  CHECK(!wrong_constructor.verify(env));
+  CHECK(!wrong_constructor.diags().empty());
+  CHECK(wrong_constructor.diags().front().message.find(
+            "expects 1 type argument") != std::string::npos);
+
   joggle::Mod mod;
   CHECK(joggle::parse(env, source.str(), mod, argv[1]));
   CHECK(mod.verify(env));
