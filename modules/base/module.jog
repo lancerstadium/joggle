@@ -9,6 +9,7 @@ fn has(xs: dict, key: str) -> bool;
 fn get(xs: dict, key: str) -> Attr;
 fn get(xs: dict, key: str, fallback: Attr) -> Attr;
 fn kind(x: Attr) -> str;
+fn kind(x: Ty) -> str;
 
 fn name(type: Ty) -> str;
 fn args(type: Ty) -> list<Ty>;

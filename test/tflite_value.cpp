@@ -125,19 +125,37 @@ int main(int argc, char** argv) {
   CHECK(env.load("tflite.nn"));
   CHECK(joggle::run(env, "tflite.nn.convert", mod));
   CHECK(mod.verify(env));
-  joggle::Op lowered;
+  joggle::Op retained;
   for (joggle::Op op : mod.ops())
-    if (op.callee() == "nn.add")
-      lowered = op;
-  CHECK(lowered && lowered.outs().size() == 1);
-  CHECK(quant_matches(lowered.outs()[0], "sum", 0.75, 1));
-  const joggle::Fn callee = env.resolve(mod, lowered);
-  CHECK(callee && mod.expand(lowered, callee));
-  CHECK(mod.verify(env));
-  const joggle::Op returned = main.body().ops().back();
-  CHECK(returned.kind() == joggle::Op::Kind::ret &&
-        returned.args().size() == 1);
-  CHECK(quant_matches(returned.args()[0], "sum", 0.75, 1));
+    if (op.callee() == "tflite.ADD")
+      retained = op;
+  CHECK(retained && retained.outs().size() == 1);
+  CHECK(quant_matches(retained.outs()[0], "sum", 0.75, 1));
+  CHECK(!env.resolve(mod, retained));
+
+  constexpr std::string_view mul_source =
+      "module float.mul\n"
+      "use tflite\n"
+      "fn main(\n"
+      "  left: tensor<f32, [1, 3]>, right: tensor<f32, [2, 1]>\n"
+      ") -> tensor<f32, [2, 3]> {\n"
+      "  [tflite: {options: {fused_activation_function: \"NONE\"}}]\n"
+      "  let out: tensor<f32, [2, 3]> = tflite.MUL(left, right)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod mul;
+  CHECK(joggle::parse(env, mul_source, mul, "tflite-mul.jog"));
+  CHECK(mul.verify(env));
+  CHECK(joggle::run(env, "tflite.nn.convert", mul));
+  CHECK(mul.verify(env));
+  joggle::Op mul_call;
+  for (joggle::Op op : mul.ops())
+    if (op.callee() == "nn.mul")
+      mul_call = op;
+  CHECK(mul_call && mul_call.args().size() == 3);
+  const joggle::Fn mul_fn = env.resolve(mul, mul_call);
+  CHECK(mul_fn && mul.expand(mul_call, mul_fn));
+  CHECK(mul.verify(env));
 
   constexpr std::string_view max_pool_source =
       "module max.pool\n"

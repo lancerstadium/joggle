@@ -218,6 +218,45 @@ int main(int argc, char** argv) {
   CHECK(semantic_fn && bridge.expand(semantic_add, semantic_fn));
   CHECK(bridge.verify(env));
 
+  constexpr std::string_view binary_bridge_source =
+      "module binary.bridge\n"
+      "use onnx\n"
+      "fn main(\n"
+      "  left: tensor<f32, [1, 3, 1]>,\n"
+      "  right: tensor<f32, [2, 1, 4]>\n"
+      ") -> tensor<f32, [2, 3, 4]> {\n"
+      "  let product = onnx.Mul(left, right)\n"
+      "  let out: tensor<f32, [2, 3, 4]> = onnx.Sub(product, right)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod binary_bridge;
+  CHECK(joggle::parse(env, binary_bridge_source, binary_bridge,
+                      "binary-bridge.jog"));
+  CHECK(binary_bridge.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", binary_bridge));
+  CHECK(binary_bridge.verify(env));
+  joggle::Op source_mul;
+  for (joggle::Op op : binary_bridge.ops())
+    if (op.callee() == "onnx.Mul")
+      source_mul = op;
+  CHECK(source_mul && source_mul.outs().size() == 1);
+  CHECK(source_mul.outs()[0].type() ==
+        joggle::Ty("tensor<f32, [2, 3, 4]>"));
+  CHECK(joggle::run(env, "onnx.nn.convert", binary_bridge));
+  CHECK(binary_bridge.verify(env));
+  std::size_t binaries = 0;
+  for (joggle::Op op : binary_bridge.ops()) {
+    if (op.callee() != "nn.mul" && op.callee() != "nn.sub")
+      continue;
+    CHECK(op.args().size() == 3 && op.meta().empty());
+    const joggle::Fn fn = env.resolve(binary_bridge, op);
+    CHECK(fn && binary_bridge.expand(op, fn));
+    ++binaries;
+  }
+  CHECK(binaries == 2 && binary_bridge.verify(env));
+  for (joggle::Op op : binary_bridge.ops())
+    CHECK(op.callee() != "nn.mul" && op.callee() != "nn.sub");
+
   constexpr std::string_view pool_bridge_source =
       "module pool.bridge\n"
       "use onnx\n"
@@ -243,6 +282,30 @@ int main(int argc, char** argv) {
   CHECK(semantic_pool_fn &&
         pool_bridge.expand(semantic_pool, semantic_pool_fn));
   CHECK(pool_bridge.verify(env));
+
+  constexpr std::string_view symbolic_source =
+      "module symbolic.bridge\n"
+      "use onnx\n"
+      "fn main<N: int>(\n"
+      "  left: tensor<f32, [N, 3]>, right: tensor<f32, [1, 3]>\n"
+      ") -> tensor<f32, [N, 3]> {\n"
+      "  let unknown = onnx.Unknown(left)\n"
+      "  let pending: tensor<f32, [N, 3]> = onnx.Add(unknown, right)\n"
+      "  let out: tensor<f32, [N, 3]> = onnx.Mul(left, right)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod symbolic;
+  CHECK(joggle::parse(env, symbolic_source, symbolic, "symbolic-bridge.jog"));
+  CHECK(symbolic.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", symbolic));
+  CHECK(symbolic.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.convert", symbolic));
+  CHECK(symbolic.verify(env));
+  std::size_t symbolic_binaries = 0;
+  for (joggle::Op op : symbolic.ops())
+    if (op.callee() == "onnx.Add" || op.callee() == "onnx.Mul")
+      ++symbolic_binaries;
+  CHECK(symbolic_binaries == 2);
 
   constexpr std::string_view invalid_source =
       "module invalid.broadcast\n"

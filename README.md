@@ -74,8 +74,9 @@ This second frontend adds no dependency or case to the core. Every TFLite
 tensor is represented by one typed `Val`; its source identity and optional
 quantization or sparsity description live on that value, while operator
 options remain on the producing `Op`. A dependency-local quantized Add gate
-checks import, canonical round-trip, semantic conversion, and body expansion
-without downloading a model.
+checks import and canonical round-trip, then requires the generic floating-
+point bridge to retain that call until a quantization module explicitly
+materializes its rescaling semantics.
 The separately selected `tflite.nn` relation then converts all 66 compute calls
 in that model to shared `nn`/`tensor` functions. Logical-axis operands retain
 NHWC and both TFLite weight layouts without creating a second IR or a

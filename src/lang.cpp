@@ -1718,7 +1718,8 @@ bool unify(const Ty& formal, const Ty& actual,
 
 std::size_t specificity(const Ty& type,
                         const std::vector<std::string>& generics) {
-  if (type.name() == "_" ||
+  if (type.name() == "_" || type.name() == "Attr" ||
+      type.name() == "meta" ||
       (type.args().empty() && generic(generics, type.name())))
     return 0;
   std::size_t score = 1;

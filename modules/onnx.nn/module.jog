@@ -19,7 +19,7 @@ fn same_type(m: Mod, op: Op) -> bool {
   return false
 }
 
-fn add_type(m: Mod, op: Op) -> bool {
+fn binary_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 2 || len(outputs) != 1 {
@@ -27,8 +27,10 @@ fn add_type(m: Mod, op: Op) -> bool {
   }
   let left = ir.type(inputs[0])
   let right = ir.type(inputs[1])
-  if name(left) != "tensor" || name(right) != "tensor" ||
-     tensor.elem(left) != tensor.elem(right) {
+  if !tensor.static(left) || !tensor.static(right) {
+    return false
+  }
+  if tensor.elem(left) != tensor.elem(right) {
     return false
   }
   let shape = tensor.broadcast_shape(
@@ -49,7 +51,7 @@ fn conv_type(m: Mod, op: Op) -> bool {
   }
   let x = ir.type(inputs[0])
   let weight = ir.type(inputs[1])
-  if name(x) != "tensor" || name(weight) != "tensor" {
+  if !tensor.static(x) || !tensor.static(weight) {
     return false
   }
   let xs = tensor.shape(x)
@@ -83,7 +85,7 @@ fn global_pool_type(m: Mod, op: Op) -> bool {
     return false
   }
   let x = ir.type(inputs[0])
-  if name(x) != "tensor" {
+  if !tensor.static(x) {
     return false
   }
   let shape = tensor.shape(x)
@@ -102,7 +104,7 @@ fn pool_type(m: Mod, op: Op) -> bool {
     return false
   }
   let x = ir.type(inputs[0])
-  if name(x) != "tensor" {
+  if !tensor.static(x) {
     return false
   }
   let shape = tensor.shape(x)
@@ -144,8 +146,9 @@ fn infer(m: Mod) -> bool {
        ir.callee(op) == "onnx.Relu" {
       changed = same_type(m, op) || changed
     }
-    if ir.callee(op) == "onnx.Add" {
-      changed = add_type(m, op) || changed
+    if ir.callee(op) == "onnx.Add" || ir.callee(op) == "onnx.Sub" ||
+       ir.callee(op) == "onnx.Mul" {
+      changed = binary_type(m, op) || changed
     }
     if ir.callee(op) == "onnx.GlobalAveragePool" {
       changed = global_pool_type(m, op) || changed
@@ -177,8 +180,12 @@ fn convert_call(m: Mod, op: Op, callee: str) -> bool {
 fn convert_conv(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
-  if len(inputs) != 2 || len(outputs) != 1 ||
-     name(ir.type(outputs[0])) != "tensor" {
+  if len(inputs) != 2 || len(outputs) != 1 {
+    return false
+  }
+  if !tensor.valid(ir.type(inputs[0])) ||
+     !tensor.valid(ir.type(inputs[1])) ||
+     !tensor.valid(ir.type(outputs[0])) {
     return false
   }
   let meta = ir.meta(op, "onnx")
@@ -198,8 +205,10 @@ fn convert_conv(m: Mod, op: Op) -> bool {
 fn convert_norm(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
-  if len(inputs) != 5 || len(outputs) != 1 ||
-     name(ir.type(outputs[0])) != "tensor" {
+  if len(inputs) != 5 || len(outputs) != 1 {
+    return false
+  }
+  if !tensor.valid(ir.type(outputs[0])) {
     return false
   }
   let meta = ir.meta(op, "onnx")
@@ -218,9 +227,11 @@ fn convert_norm(m: Mod, op: Op) -> bool {
 fn convert_reshape(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
-  if len(inputs) != 2 || len(outputs) != 1 ||
-     name(ir.type(inputs[0])) != "tensor" ||
-     name(ir.type(outputs[0])) != "tensor" {
+  if len(inputs) != 2 || len(outputs) != 1 {
+    return false
+  }
+  if !tensor.valid(ir.type(inputs[0])) ||
+     !tensor.valid(ir.type(outputs[0])) {
     return false
   }
   if !ir.args(m, op, [inputs[0]]) {
@@ -229,7 +240,7 @@ fn convert_reshape(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.reshape")
 }
 
-fn convert_add(m: Mod, op: Op) -> bool {
+fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 2 || len(outputs) != 1 {
@@ -238,10 +249,15 @@ fn convert_add(m: Mod, op: Op) -> bool {
   let left = ir.type(inputs[0])
   let right = ir.type(inputs[1])
   let result = ir.type(outputs[0])
-  if name(left) != "tensor" || name(right) != "tensor" ||
-     name(result) != "tensor" || tensor.elem(left) != tensor.elem(right) ||
-     tensor.elem(left) != tensor.elem(result) ||
-     !tensor.broadcastable(tensor.shape(left), tensor.shape(result)) ||
+  if !tensor.static(left) || !tensor.static(right) ||
+     !tensor.static(result) {
+    return false
+  }
+  if tensor.elem(left) != tensor.elem(right) ||
+     tensor.elem(left) != tensor.elem(result) {
+    return false
+  }
+  if !tensor.broadcastable(tensor.shape(left), tensor.shape(result)) ||
      !tensor.broadcastable(tensor.shape(right), tensor.shape(result)) {
     return false
   }
@@ -250,15 +266,17 @@ fn convert_add(m: Mod, op: Op) -> bool {
   if !ir.args(m, op, next) {
     return false
   }
-  return convert_call(m, op, "nn.add")
+  return convert_call(m, op, callee)
 }
 
 fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
-  if len(inputs) != 1 || len(outputs) != 1 ||
-     name(ir.type(inputs[0])) != "tensor" ||
-     name(ir.type(outputs[0])) != "tensor" {
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  if !tensor.valid(ir.type(inputs[0])) ||
+     !tensor.valid(ir.type(outputs[0])) {
     return false
   }
   let meta = ir.meta(op, "onnx")
@@ -307,7 +325,13 @@ fn convert(m: Mod) -> bool {
       changed = convert_call(m, op, "nn.relu") || changed
     }
     if ir.callee(op) == "onnx.Add" {
-      changed = convert_add(m, op) || changed
+      changed = convert_binary(m, op, "nn.add") || changed
+    }
+    if ir.callee(op) == "onnx.Sub" {
+      changed = convert_binary(m, op, "nn.sub") || changed
+    }
+    if ir.callee(op) == "onnx.Mul" {
+      changed = convert_binary(m, op, "nn.mul") || changed
     }
     if ir.callee(op) == "onnx.GlobalAveragePool" {
       changed = convert_call(m, op, "nn.global_avg_pool2d") || changed

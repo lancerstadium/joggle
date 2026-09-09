@@ -545,7 +545,9 @@ identifier normalization. The TFLite codec separates tensor descriptors from
 operator options: tensor index, original name, buffer identity, and optional
 quantization, sparsity, or variable state belong to `Val`; reflected builtin
 options belong to `Op`. A generated quantized-Add model verifies that these
-descriptors survive parsing, printing, bridge conversion, and body expansion.
+descriptors survive parsing and printing. The generic floating-point bridge
+now recognizes nonempty scale/zero-point metadata and retains such a call;
+plain integer expansion would not represent the required rescaling.
 
 ## M10 network-semantics slice
 
@@ -576,11 +578,18 @@ and NHWC without a layout enum; short overloads preserve the earlier unit-
 dilation spelling. ONNX AveragePool/MaxPool and TFLite AveragePool/MaxPool
 materialize their schema fields into these same calls before body expansion.
 
+Broadcasting now also feeds `nn.sub` and `nn.mul`. Their function bodies reuse
+the same `tensor.broadcast` relation as Add and finish in ordinary tensor `-`
+and `*` loops. ONNX and unquantized TFLite binary calls therefore differ only
+in their explicit bridge metadata and optional fused activation, not in their
+shared computation.
+
 The optional `onnx.nn` module owns the frontend/library relationship. Its
 `infer` function propagates the supported MobileNetV2 shapes in graph order;
 its separately invoked `convert` function materializes Conv attributes as
-ordinary operands and maps Conv, BatchNormalization, ReLU, Add, AveragePool,
-MaxPool, GlobalAveragePool, and Reshape to shared semantics. The codec remains
+ordinary operands and maps Conv, BatchNormalization, ReLU, Add/Sub/Mul,
+AveragePool, MaxPool, GlobalAveragePool, and Reshape to shared semantics. The
+codec remains
 name-agnostic, unknown calls remain open, and neither action happens on load.
 The official model gate requires every intermediate node result to become
 typed, every compute node to leave the ONNX namespace, conversion to verify and
@@ -590,6 +599,13 @@ values, making the boundary explicit instead of teaching expansion how to
 reinterpret frontend provenance. A second official-model gate expands all 155
 compute calls from one pre-edit snapshot, verifies the resulting nested loop
 IR, and round-trips it structurally.
+
+Tensor inspection has two explicit predicates. `tensor.valid` checks only the
+constructor tree, while `tensor.static` also requires integer-literal extents.
+Network relations that perform shape arithmetic first require `static`; an
+open result or a symbolic extent remains a legal source call. This policy is
+also exercised by an imported symbolic-shape BERT graph, preventing partial
+inference from becoming a compiler error.
 
 ## M10 second-frontend slice
 
@@ -632,6 +648,13 @@ The same relation maps both TFLite average and maximum pooling to shared `nn`
 bodies. The pinned model exercises average pooling; a focused compiler test
 covers MaxPool conversion and expansion without treating the fixture as a
 model-quality or performance benchmark.
+
+Before any TFLite conversion, the relation checks all input and output `Val`s
+for nonempty scale and zero-point vectors. Quantized calls stay in the TFLite
+namespace until a separate module materializes zero-point subtraction,
+rescaling, rounding, saturation, and the chosen implementation policy. Empty
+or min/max-only FlatBuffer quantization tables do not misclassify floating-
+point models.
 
 ## M10 broadcast slice
 

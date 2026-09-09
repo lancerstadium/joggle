@@ -843,6 +843,16 @@ private:
     } else if (name == "kind" && args.size() == 1) {
       if (list(args[0]))
         return Items{Item(Attr("list"))};
+      if (const auto* value = as<Ty>(args[0])) {
+        std::string_view type = "Ty";
+        if (integer(*value))
+          type = "int";
+        else if (value->text() == "true" || value->text() == "false")
+          type = "bool";
+        else if (value->name() == "[]")
+          type = "list";
+        return Items{Item(Attr(std::string(type)))};
+      }
       if (const auto* value = as<Attr>(args[0])) {
         const std::string_view type = value->boolean() ? "bool"
                                       : value->integer() ? "int"

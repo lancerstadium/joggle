@@ -4,6 +4,28 @@ use base
 fn tensor<E: Ty, S: list<int>>() -> Ty;
 fn tensor<E: Ty, S: list<int>>(fill: E) -> tensor<E, S>;
 
+fn valid(type: Ty) -> bool {
+  if name(type) != "tensor" {
+    return false
+  }
+  if len(args(type)) != 2 {
+    return false
+  }
+  return name(args(type)[1]) == "[]"
+}
+
+fn static(type: Ty) -> bool {
+  if !valid(type) {
+    return false
+  }
+  for dim in args(args(type)[1]) {
+    if kind(dim) != "int" {
+      return false
+    }
+  }
+  return true
+}
+
 fn elem(type: Ty) -> Ty {
   return args(type)[0]
 }
@@ -184,6 +206,26 @@ fn +<E: Ty, S: list<int>>(
   var out = tensor<E, S>(E(0))
   for i in 0..numel<S>() {
     out[i] = a[i] + b[i]
+  }
+  return out
+}
+
+fn -<E: Ty, S: list<int>>(
+  a: tensor<E, S>, b: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..numel<S>() {
+    out[i] = a[i] - b[i]
+  }
+  return out
+}
+
+fn *<E: Ty, S: list<int>>(
+  a: tensor<E, S>, b: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..numel<S>() {
+    out[i] = a[i] * b[i]
   }
   return out
 }

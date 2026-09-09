@@ -15,6 +15,35 @@ fn options(op: Op) -> Attr {
   return base.get(ir.meta(op, "tflite"), "options", {})
 }
 
+fn quantized(value: Val) -> bool {
+  if !ir.has(value, "tflite") {
+    return false
+  }
+  let source = ir.meta(value, "tflite")
+  if !base.has(source, "quantization") {
+    return false
+  }
+  let quant = source["quantization"]
+  if !base.has(quant, "scale") || !base.has(quant, "zero_point") {
+    return false
+  }
+  return len(quant["scale"]) != 0 && len(quant["zero_point"]) != 0
+}
+
+fn quantized(op: Op) -> bool {
+  for value in ir.args(op) {
+    if quantized(value) {
+      return true
+    }
+  }
+  for value in ir.outs(op) {
+    if quantized(value) {
+      return true
+    }
+  }
+  return false
+}
+
 fn supports_activation(kind: str) -> bool {
   return kind == "NONE" || kind == "RELU" || kind == "RELU6" ||
          kind == "RELU_N1_TO_1"
@@ -69,8 +98,8 @@ fn convert_conv(m: Mod, op: Op, depthwise: bool) -> bool {
   let weight = ir.type(inputs[1])
   let bias = ir.type(inputs[2])
   let y = ir.type(outputs[0])
-  if name(x) != "tensor" || name(weight) != "tensor" ||
-     name(bias) != "tensor" || name(y) != "tensor" {
+  if !tensor.static(x) || !tensor.static(weight) ||
+     !tensor.static(bias) || !tensor.static(y) {
     return false
   }
   if tensor.elem(x) != tensor.elem(weight) ||
@@ -133,7 +162,7 @@ fn convert_conv(m: Mod, op: Op, depthwise: bool) -> bool {
   return convert_call(m, op, "nn.conv2d")
 }
 
-fn convert_add(m: Mod, op: Op) -> bool {
+fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 2 || len(outputs) != 1 {
@@ -142,10 +171,15 @@ fn convert_add(m: Mod, op: Op) -> bool {
   let left = ir.type(inputs[0])
   let right = ir.type(inputs[1])
   let result = ir.type(outputs[0])
-  if name(left) != "tensor" || name(right) != "tensor" ||
-     name(result) != "tensor" || tensor.elem(left) != tensor.elem(right) ||
-     tensor.elem(left) != tensor.elem(result) ||
-     !tensor.broadcastable(tensor.shape(left), tensor.shape(result)) ||
+  if !tensor.static(left) || !tensor.static(right) ||
+     !tensor.static(result) {
+    return false
+  }
+  if tensor.elem(left) != tensor.elem(right) ||
+     tensor.elem(left) != tensor.elem(result) {
+    return false
+  }
+  if !tensor.broadcastable(tensor.shape(left), tensor.shape(result)) ||
      !tensor.broadcastable(tensor.shape(right), tensor.shape(result)) {
     return false
   }
@@ -157,7 +191,7 @@ fn convert_add(m: Mod, op: Op) -> bool {
   if !ir.args(m, op, inputs) {
     return false
   }
-  return convert_call(m, op, "nn.add")
+  return convert_call(m, op, callee)
 }
 
 fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
@@ -168,7 +202,7 @@ fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
   }
   let x = ir.type(inputs[0])
   let y = ir.type(outputs[0])
-  if name(x) != "tensor" || name(y) != "tensor" {
+  if !tensor.static(x) || !tensor.static(y) {
     return false
   }
   if tensor.elem(x) != tensor.elem(y) {
@@ -242,7 +276,7 @@ fn convert_softmax(m: Mod, op: Op) -> bool {
 fn convert(m: Mod) -> bool {
   var changed = ir.use(m, "nn")
   for op in ir.ops(m) {
-    if ir.live(op) {
+    if ir.live(op) && !quantized(op) {
       if ir.callee(op) == "tflite.CONV_2D" {
         changed = convert_conv(m, op, false) || changed
       }
@@ -250,7 +284,13 @@ fn convert(m: Mod) -> bool {
         changed = convert_conv(m, op, true) || changed
       }
       if ir.callee(op) == "tflite.ADD" {
-        changed = convert_add(m, op) || changed
+        changed = convert_binary(m, op, "nn.add") || changed
+      }
+      if ir.callee(op) == "tflite.SUB" {
+        changed = convert_binary(m, op, "nn.sub") || changed
+      }
+      if ir.callee(op) == "tflite.MUL" {
+        changed = convert_binary(m, op, "nn.mul") || changed
       }
       if ir.callee(op) == "tflite.AVERAGE_POOL_2D" {
         changed = convert_pool(m, op, "nn.avg_pool2d") || changed

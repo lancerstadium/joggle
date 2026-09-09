@@ -132,7 +132,9 @@ terms; a dependency-local codec test covers both without a downloaded model.
 Open attributes now cover `Val` as well as `Fn` and `Op`, separating tensor
 quantization, layout, and provenance from computation options. ONNX preserves
 source value identity, and a dependency-local quantized TFLite Add gate proves
-value metadata survives import, round-trip, conversion, and body expansion.
+value metadata survives import and round-trip. The generic floating-point
+bridge now retains quantized calls instead of silently applying raw integer
+semantics; explicit rescaling remains work for a quantization module.
 Grouped 2-D convolution now has an
 inspectable body, and the explicit `onnx.nn` relation propagates all official
 MobileNetV2 intermediate types before converting every compute node through
@@ -146,7 +148,8 @@ core or reader operator switches. Its independent `.jog` bridge converts all
 66 compute calls through explicit logical-axis operands and exposes every
 shared body. Shared tensor functions now define trailing-axis broadcasting;
 both frontend bridges validate against that relation and lower Add to the same
-inspectable `nn.add` body. `opt.unresolved` reports six open source call
+inspectable `nn.add` body; Sub and Mul now use the same path. `opt.unresolved`
+reports six open source call
 families before that bridge and none afterward. The two target gates remain.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge

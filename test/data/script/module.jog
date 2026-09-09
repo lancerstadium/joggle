@@ -37,8 +37,12 @@ fn generic_probe(m: Mod) -> bool {
 
 fn tensor_type_probe(m: Mod) -> bool {
   let original = tensor.type(ty("f32"), [2, 3, 5])
-  return tensor.elem(original) == ty("f32") &&
-         tensor.shape(original) == [2, 3, 5]
+  return tensor.valid(original) && tensor.static(original) &&
+         tensor.elem(original) == ty("f32") &&
+         tensor.shape(original) == [2, 3, 5] &&
+         tensor.valid(ty("tensor<f32, [N, 3]>")) &&
+         !tensor.static(ty("tensor<f32, [N, 3]>")) &&
+         !tensor.valid(ty("tensor"))
 }
 
 fn divmod(x: int, y: int) -> (int, int) {

@@ -147,8 +147,9 @@ ONNX/TFLite field API or string-key cases to core. A missing strict key is a
 diagnostic, while the three-argument `get` supplies a caller-chosen fallback.
 
 `Ty` is also a normal compile-time value. `name`, `args`, and `int` decompose a
-type tree; `ty` reconstructs one from text, an integer term, or a constructor
-name plus child types; `str` is the explicit conversion back to canonical text.
+type tree; the `kind` overload distinguishes integer, Boolean, list, and type
+terms; `ty` reconstructs one from text, an integer term, or a constructor name
+plus child types; `str` is the explicit conversion back to canonical text.
 The overloaded `ir.type(m, value, type)` records an inferred type while keeping
 loop/condition-carried versions consistent and printable.
 Typed empty lists retain their explicit element type, so module functions can
@@ -160,7 +161,10 @@ do not need a frontend-specific projection primitive.
 
 `tensor` defines `tensor<E, S>`, structural `elem`/`shape`/`type` helpers,
 linear, two-dimensional, and four-dimensional indexing, `numel`, elementwise
-addition, and matrix multiplication. `broadcast_shape` and `broadcastable`
+addition, subtraction, multiplication, and matrix multiplication. `valid`
+recognizes the structural constructor without projecting it; `static` further
+requires integer-literal extents. Shape-arithmetic passes use the latter and
+leave symbolic or not-yet-inferred calls intact. `broadcast_shape` and `broadcastable`
 express trailing-axis compatibility, while `broadcast_offset` and `broadcast`
 provide its inspectable index and copy semantics. `extent`, `offset`, and
 `coord` interpret
@@ -177,7 +181,7 @@ takes three logical-axis lists, so grouped convolution and depthwise
 convolution share one loop body across activation and weight layouts. The terse
 NCHW overload delegates to it. Bias and fused activation are ordinary composed
 functions rather than hidden operator fields. `nn.avg_pool2d`, dilation-aware
-`nn.max_pool2d`, broadcast-aware `nn.add`, and
+`nn.max_pool2d`, broadcast-aware `nn.add`/`nn.sub`/`nn.mul`, and
 `nn.softmax` provide the remaining shared semantics needed by the second
 real-network gate; `nn.global_avg_pool2d` is a normal NCHW specialization.
 Both spatial pool functions use explicit kernel, stride, pad, dilation, and
@@ -207,12 +211,15 @@ module function.
 
 The optional `onnx.nn` module is that relationship, not another IR layer.
 `onnx.nn.infer` walks operations in source order and propagates tensor types
-through Conv, BatchNormalization, ReLU, broadcast Add, spatial pooling, and
-GlobalAveragePool.
-Unsupported ranks and `auto_pad` are left unchanged rather than guessed.
-`onnx.nn.convert` then maps Conv, BatchNormalization, ReLU, Add, AveragePool,
-MaxPool, GlobalAveragePool, and Reshape calls, materializing schema attributes
-as ordinary operands and removing the schema-only Reshape shape input. It does
+through Conv, BatchNormalization, ReLU, broadcast Add/Sub/Mul, spatial pooling,
+and GlobalAveragePool.
+Unsupported ranks and `auto_pad` are left unchanged rather than guessed. Open
+intermediate types and symbolic extents are likewise retained instead of
+causing an unsafe projection or inventing a concrete shape.
+`onnx.nn.convert` then maps Conv, BatchNormalization, ReLU, Add/Sub/Mul,
+AveragePool, MaxPool, GlobalAveragePool, and Reshape calls, materializing schema
+attributes as ordinary operands and removing the schema-only Reshape shape
+input. It does
 not run inference implicitly and does not alter the codec. On the pinned
 MobileNetV2 this covers every compute node; unsupported calls in other models
 remain untouched.
@@ -404,10 +411,17 @@ responsibility of a separately selected relationship module.
 That relationship is the pure `.jog` module `tflite.nn`. Its `convert`
 function materializes padding, stride, dilation, groups, logical axes, fused
 activation, and softmax scale as normal operands. Standard and depthwise Conv,
-Add, average/max pool, reshape, and softmax then resolve to shared functions. On
+Add/Sub/Mul, average/max pool, reshape, and softmax then resolve to shared
+functions. On
 the pinned MobileNetV2 this removes all 66 source compute calls while retaining
 the source model marker and payloads. A second invocation is unchanged, and
 all 66 converted bodies can be independently exposed and round-tripped.
+
+The same bridge maps unquantized Add, Sub, and Mul through the shared broadcast
+semantics. Before any conversion it checks every operand and result for
+nonempty scale and zero-point metadata. Quantized calls are deliberately left
+intact: their rescaling, rounding, and saturation must be made explicit by a
+quantization module rather than approximated by raw integer arithmetic.
 
 ### A hardware extension
 
