@@ -1777,7 +1777,7 @@ Fn select_overload(std::span<const Fn> candidates,
 std::vector<Fn> declarations(const Mod& mod, const Env& env,
                              std::string_view callee,
                              std::vector<Ty>& explicit_args,
-                             std::string_view& symbol) {
+                             std::string& symbol) {
   if (callee == "base.list")
     return {};
   const Ty applied{std::string(callee)};
@@ -1821,7 +1821,7 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
   }
 
   std::vector<Ty> explicit_args;
-  std::string_view symbol;
+  std::string symbol;
   const std::vector<Fn> candidates =
       declarations(mod, env, op.callee, explicit_args, symbol);
   if (candidates.empty()) {

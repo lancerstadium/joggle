@@ -130,6 +130,48 @@ fn move_second_first(m: Mod) -> bool {
   return false
 }
 
+fn build_control(m: Mod) -> bool {
+  for f in ir.fns(m) {
+    let params = ir.params(f)
+    if ir.len(params) == 2 {
+      for op in ir.ops(f) {
+        if ir.kind(op) == "return" {
+          let returned = ir.args(op)
+          if ir.len(returned) == 1 {
+            let zero = ir.constant(m, op, 0, "int")
+            var changed = ir.rename(m, zero, "total")
+            let range = ir.call(
+              m, op, "operator ..", [zero, returned[0]], "range"
+            )
+            let loop = ir.loop(m, op, ["i"], [range], [zero])
+            let body = ir.blocks(loop)[0]
+            let values = ir.args(body)
+            let yield = ir.ops(body)[0]
+            let sum = ir.call(
+              m, yield, "operator +", [values[1], values[0]], "int"
+            )
+            changed = ir.rename(m, sum, "total")
+            changed = ir.args(m, yield, [sum])
+            let branch = ir.branch(m, op, params[1], ir.outs(loop))
+            let then = ir.blocks(branch)[0]
+            let then_yield = ir.ops(then)[0]
+            let one = ir.constant(m, then_yield, 1, "int")
+            changed = ir.rename(m, one, "one")
+            let increment = ir.call(
+              m, then_yield, "operator +", [ir.args(then)[0], one], "int"
+            )
+            changed = ir.rename(m, increment, "total")
+            changed = ir.args(m, then_yield, [increment])
+            changed = ir.args(m, op, ir.outs(branch))
+            return changed
+          }
+        }
+      }
+    }
+  }
+  return false
+}
+
 fn rebuild_tagged(m: Mod) -> bool {
   var changed = false
   for f in ir.fns(m) {

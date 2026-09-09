@@ -80,6 +80,37 @@ std::optional<Attr> attribute(const Item& item) {
   return Attr(std::move(out));
 }
 
+std::optional<std::vector<Val>> value_handles(const Item& item) {
+  const Items* items = list(item);
+  if (!items)
+    return std::nullopt;
+  std::vector<Val> out;
+  out.reserve(items->size());
+  for (const Item& entry : *items) {
+    const auto* value = as<Val>(entry);
+    if (!value)
+      return std::nullopt;
+    out.push_back(*value);
+  }
+  return out;
+}
+
+std::optional<std::vector<std::string>> strings(const Item& item) {
+  const Items* items = list(item);
+  if (!items)
+    return std::nullopt;
+  std::vector<std::string> out;
+  out.reserve(items->size());
+  for (const Item& entry : *items) {
+    const auto* attr = as<Attr>(entry);
+    const auto value = attr ? attr->string() : std::nullopt;
+    if (!value)
+      return std::nullopt;
+    out.emplace_back(*value);
+  }
+  return out;
+}
+
 std::optional<std::int64_t> integer(const Item& item) {
   const Attr* value = as<Attr>(item);
   return value ? value->integer() : std::nullopt;
@@ -694,6 +725,13 @@ private:
           out.emplace_back(fn);
         return Items{Item(std::move(out))};
       }
+    } else if (name == "params" && args.size() == 1) {
+      if (const auto* fn = as<Fn>(args[0])) {
+        Items out;
+        for (Val value : fn->params())
+          out.emplace_back(value);
+        return Items{Item(std::move(out))};
+      }
     } else if (name == "blocks" && args.size() == 1) {
       std::vector<Blk> blocks;
       if (const auto* fn = as<Fn>(args[0]))
@@ -725,9 +763,19 @@ private:
         out.emplace_back(op);
       return Items{Item(std::move(out))};
     } else if ((name == "args" || name == "outs") && args.size() == 1) {
+      std::vector<Val> vals;
+      bool node = false;
       if (const auto* op = as<Op>(args[0])) {
+        vals = name == "args" ? op->args() : op->outs();
+        node = true;
+      } else if (name == "args") {
+        if (const auto* block = as<Blk>(args[0])) {
+          vals = block->args();
+          node = true;
+        }
+      }
+      if (node) {
         Items out;
-        const std::vector<Val> vals = name == "args" ? op->args() : op->outs();
         for (Val value : vals)
           out.emplace_back(value);
         return Items{Item(std::move(out))};
@@ -848,6 +896,27 @@ private:
             return Items{Item(result)};
         }
       }
+    } else if (name == "loop" && args.size() == 5) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* before = as<Op>(args[1]);
+      auto names = strings(args[2]);
+      auto sources = value_handles(args[3]);
+      auto carried = value_handles(args[4]);
+      if (mod && *mod && before && names && sources && carried) {
+        Op result = (*mod)->loop(*before, *names, *sources, *carried);
+        if (result)
+          return Items{Item(result)};
+      }
+    } else if (name == "branch" && args.size() == 4) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* before = as<Op>(args[1]);
+      const auto* condition = as<Val>(args[2]);
+      auto carried = value_handles(args[3]);
+      if (mod && *mod && before && condition && carried) {
+        Op result = (*mod)->branch(*before, *condition, *carried);
+        if (result)
+          return Items{Item(result)};
+      }
     } else if (name == "clone" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* op = as<Op>(args[1]);
@@ -863,6 +932,12 @@ private:
       const auto* before = as<Op>(args[2]);
       if (mod && *mod && op && before)
         return Items{Item(Attr((*mod)->move(*op, *before)))};
+    } else if (name == "args" && args.size() == 3) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* op = as<Op>(args[1]);
+      auto values = value_handles(args[2]);
+      if (mod && *mod && op && values)
+        return Items{Item(Attr((*mod)->args(*op, *values)))};
     } else if (name == "fuse" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
       const Items* values = list(args[1]);

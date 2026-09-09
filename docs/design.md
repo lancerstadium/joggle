@@ -266,3 +266,15 @@ whole module's dominance before commit. The identical operations are available
 through `ir.constant`, `ir.clone`, and `ir.move`, with `ir.kind` and
 `ir.blocks(op)` completing structural discovery. Named constants now remain
 named when printed instead of being silently duplicated as inline literals.
+
+## M7 fifth slice
+
+Direct construction now covers loops and two-way conditions as well as calls
+and constants. A loop constructor creates iterator and carried block arguments
+plus a valid forwarding `yield`; a branch constructor creates two such arms.
+The generic argument mutator reconnects calls, loops, branches, returns, and
+yields with arity, type, and dominance checks. Consequently a textual module
+and embedding code can each build the same loop-plus-condition function from a
+one-return seed, populate its bodies through their terminator insertion points,
+print ordinary source, and round-trip it. No public block builder, region
+descriptor, or source-form enum was introduced.

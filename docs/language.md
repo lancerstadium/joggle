@@ -196,6 +196,15 @@ when all operands and users remain dominated. `ir.kind(op)` returns `call`,
 nested bodies. A terminator supplies an insertion point even for an otherwise
 empty block, so there is no stateful builder object.
 
+Structured construction follows the same rule. `ir.loop` receives iterator
+names, source values, and carried values, then returns an `Op` with one body and
+an initial `yield`. `ir.branch` returns an `Op` with two initially forwarding
+arms. `ir.args(block)` obtains block arguments and `ir.args(m, op, values)`
+reconnects any operation, including `return` and `yield`, while enforcing its
+structural arity and dominance. A named local selected as carried state prints
+as the corresponding ordinary `var`; users never construct block objects or
+source-presentation records themselves.
+
 Generic compile-time helpers use the same syntax and bindings. In
 `fn below<N: int>(x: int) -> bool { return x < N }`, a call to `below<4>(3)`
 binds the generic `Val` `N` to the integer `4` in the function frame. `Ty` and

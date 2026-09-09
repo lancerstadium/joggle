@@ -346,8 +346,12 @@ public:
           std::span<const Ty> types);
   Val call(Op before, std::string callee, std::span<const Val> args, Ty type);
   Val constant(Op before, Attr value, Ty type);
+  Op loop(Op before, std::span<const std::string> names,
+          std::span<const Val> sources, std::span<const Val> carried);
+  Op branch(Op before, Val condition, std::span<const Val> carried);
   Op clone(Op op, Op before);
   bool move(Op op, Op before);
+  bool args(Op op, std::span<const Val> values);
   bool fuse(std::span<const Op> ops, std::string callee);
   bool replace(Val old_value, Val new_value);
   bool replace(Val old_value, Val new_value, Op user);

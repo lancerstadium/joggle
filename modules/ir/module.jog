@@ -2,11 +2,13 @@ module ir
 use base
 
 fn fns(m: Mod) -> list<Fn>;
+fn params(f: Fn) -> list<Val>;
 fn blocks(f: Fn) -> list<Blk>;
 fn blocks(op: Op) -> list<Blk>;
 fn ops(m: Mod) -> list<Op>;
 fn ops(f: Fn) -> list<Op>;
 fn ops(b: Blk) -> list<Op>;
+fn args(b: Blk) -> list<Val>;
 fn args(op: Op) -> list<Val>;
 fn outs(op: Op) -> list<Val>;
 fn users(v: Val) -> list<Op>;
@@ -23,8 +25,15 @@ fn len<T: Ty>(xs: list<T>) -> int;
 fn call(m: Mod, before: Op, callee: str, args: list<Val>, type: str) -> Val;
 fn call(m: Mod, before: Op, callee: str, args: list<Val>, types: list<str>) -> Op;
 fn constant(m: Mod, before: Op, value: Attr, type: str) -> Val;
+fn loop(
+  m: Mod, before: Op, names: list<str>, sources: list<Val>, carried: list<Val>
+) -> Op;
+fn branch(
+  m: Mod, before: Op, condition: Val, carried: list<Val>
+) -> Op;
 fn clone(m: Mod, op: Op, before: Op) -> Op;
 fn move(m: Mod, op: Op, before: Op) -> bool;
+fn args(m: Mod, op: Op, values: list<Val>) -> bool;
 fn fuse(m: Mod, ops: list<Op>, callee: str) -> bool;
 fn replace(m: Mod, old: Val, next: Val) -> bool;
 fn replace(m: Mod, old: Val, next: Val, user: Op) -> bool;

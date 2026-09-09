@@ -275,6 +275,64 @@ int main(int argc, char** argv) {
   CHECK(cloned_branch.erase(old_branch));
   CHECK(cloned_branch.verify(env));
 
+  joggle::Mod built_control;
+  constexpr std::string_view control_seed =
+      "module control\n"
+      "fn build(n: int, flag: bool) -> int { return n }\n";
+  CHECK(joggle::parse(env, control_seed, built_control, "control.jog"));
+  CHECK(built_control.verify(env));
+  const joggle::Fn build_fn = built_control.find_fn("build");
+  const joggle::Op build_ret = build_fn.body().ops().back();
+  const joggle::Val zero =
+      built_control.constant(build_ret, joggle::Attr(std::int64_t{0}),
+                             joggle::Ty("int"));
+  CHECK(zero && built_control.rename(zero, "total"));
+  const std::vector<joggle::Val> range_args{zero, build_fn.params().front()};
+  const joggle::Val range = built_control.call(
+      build_ret, "operator ..", range_args, joggle::Ty("range"));
+  CHECK(range);
+  const std::vector<std::string> iter_names{"i"};
+  const std::vector<joggle::Val> sources{range};
+  const std::vector<joggle::Val> carried{zero};
+  const joggle::Op built_loop =
+      built_control.loop(build_ret, iter_names, sources, carried);
+  CHECK(built_loop && built_loop.blocks().size() == 1);
+  const joggle::Blk built_body = built_loop.blocks().front();
+  CHECK(built_body.args().size() == 2);
+  const joggle::Op built_yield = built_body.ops().back();
+  const std::vector<joggle::Val> sum_args{built_body.args()[1],
+                                          built_body.args()[0]};
+  const joggle::Val sum = built_control.call(
+      built_yield, "operator +", sum_args, joggle::Ty("int"));
+  CHECK(sum && built_control.rename(sum, "total"));
+  const std::vector<joggle::Val> yielded{sum};
+  CHECK(built_control.args(built_yield, yielded));
+  const joggle::Op built_branch = built_control.branch(
+      build_ret, build_fn.params()[1], built_loop.outs());
+  CHECK(built_branch && built_branch.blocks().size() == 2);
+  const joggle::Blk then_block = built_branch.blocks().front();
+  const joggle::Op then_yield = then_block.ops().back();
+  const joggle::Val one =
+      built_control.constant(then_yield, joggle::Attr(std::int64_t{1}),
+                             joggle::Ty("int"));
+  CHECK(one && built_control.rename(one, "one"));
+  const std::vector<joggle::Val> then_args{then_block.args().front(), one};
+  const joggle::Val increment = built_control.call(
+      then_yield, "operator +", then_args, joggle::Ty("int"));
+  CHECK(increment && built_control.rename(increment, "total"));
+  const std::vector<joggle::Val> then_values{increment};
+  CHECK(built_control.args(then_yield, then_values));
+  CHECK(built_control.args(build_ret, built_branch.outs()));
+  CHECK(built_control.verify(env));
+  const std::string built_control_text = joggle::print(built_control);
+  CHECK(built_control_text.find("for i in total..n") != std::string::npos);
+  CHECK(built_control_text.find("if flag") != std::string::npos);
+  joggle::Mod control_roundtrip;
+  CHECK(joggle::parse(env, built_control_text, control_roundtrip,
+                      "control-roundtrip.jog"));
+  CHECK(control_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(built_control, control_roundtrip));
+
   joggle::Mod wrong_result_type;
   CHECK(joggle::parse(env,
                       "module wrong_result\n"
@@ -520,6 +578,12 @@ int main(int argc, char** argv) {
                       "scripted-schedule.jog"));
   CHECK(joggle::run(env, "script.move_second_first", scripted_schedule));
   CHECK(joggle::print(scripted_schedule) == scheduled_text);
+  joggle::Mod scripted_control;
+  CHECK(joggle::parse(env, control_seed, scripted_control,
+                      "scripted-control.jog"));
+  CHECK(joggle::run(env, "script.build_control", scripted_control));
+  CHECK(scripted_control.verify(env));
+  CHECK(joggle::print(scripted_control) == built_control_text);
   joggle::Mod rolled_back;
   CHECK(joggle::parse(env, source.str(), rolled_back, argv[1]));
   const std::string before_failure = joggle::print(rolled_back);

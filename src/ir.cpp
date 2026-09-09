@@ -558,6 +558,191 @@ Val Mod::constant(Op before, Attr literal, Ty type) {
   return Val(&store, value_id, store.vals[value_id].generation);
 }
 
+Op Mod::loop(Op before, std::span<const std::string> names,
+             std::span<const Val> sources, std::span<const Val> carried) {
+  auto& store = impl_->store;
+  const auto reject = [&](std::string message) {
+    detail::add_diag(store.diags, std::move(message), before.loc());
+    return Op{};
+  };
+  if (!before.valid() || before.store_ != &store || names.empty() ||
+      names.size() != sources.size())
+    return reject("loop requires an insertion point and one name per source");
+  std::unordered_set<std::string> unique;
+  for (const std::string& name : names)
+    if (name.empty() || !unique.insert(name).second)
+      return reject("loop variable names must be non-empty and distinct");
+  std::vector<Val> inputs(sources.begin(), sources.end());
+  inputs.insert(inputs.end(), carried.begin(), carried.end());
+  for (Val value : inputs)
+    if (!value.valid() || value.store_ != &store ||
+        !detail::dominates(store, value.id_, before.id_))
+      return reject("loop inputs must dominate the insertion point");
+  const std::uint32_t parent = store.ops[before.id_].data.block;
+  auto& parent_ops = store.blocks[parent].data.ops;
+  const auto position = std::find(parent_ops.begin(), parent_ops.end(),
+                                  before.id_);
+  if (position == parent_ops.end())
+    return reject("loop insertion point is not in its block");
+  for (Val value : carried) {
+    if (value.name().empty() || !value.def())
+      return reject("loop-carried values must be named local bindings");
+    detail::OpData& def = store.ops[value.def().id_].data;
+    if ((def.kind == Op::Kind::call || def.kind == Op::Kind::constant) &&
+        def.form == detail::Form::let)
+      def.form = detail::Form::var;
+  }
+
+  detail::OpData data;
+  data.kind = Op::Kind::loop;
+  data.block = parent;
+  data.iter_names.assign(names.begin(), names.end());
+  data.carried_count = carried.size();
+  data.loc = before.loc();
+  for (Val value : inputs)
+    data.args.push_back(value.id_);
+  const auto op_id = static_cast<std::uint32_t>(store.ops.size());
+  store.ops.push_back({std::move(data), 1, true});
+  parent_ops.insert(position, op_id);
+
+  for (Val value : carried) {
+    detail::ValData result;
+    result.name = std::string(value.name());
+    result.type = value.type();
+    result.def = op_id;
+    result.index = store.ops[op_id].data.outs.size();
+    const auto id = static_cast<std::uint32_t>(store.vals.size());
+    store.vals.push_back({std::move(result), 1, true});
+    store.ops[op_id].data.outs.push_back(id);
+  }
+
+  detail::BlkData body;
+  body.fn = store.blocks[parent].data.fn;
+  body.parent_op = op_id;
+  const auto block_id = static_cast<std::uint32_t>(store.blocks.size());
+  store.blocks.push_back({std::move(body), 1, true});
+  store.fns[store.blocks[parent].data.fn].data.blocks.push_back(block_id);
+  store.ops[op_id].data.blocks.push_back(block_id);
+  for (const std::string& name : names) {
+    detail::ValData arg;
+    arg.kind = detail::ValKind::block_arg;
+    arg.name = name;
+    arg.type = Ty("index");
+    const auto id = static_cast<std::uint32_t>(store.vals.size());
+    store.vals.push_back({std::move(arg), 1, true});
+    store.blocks[block_id].data.args.push_back(id);
+  }
+  std::vector<std::uint32_t> yielded;
+  for (Val value : carried) {
+    detail::ValData arg;
+    arg.kind = detail::ValKind::block_arg;
+    arg.name = std::string(value.name());
+    arg.type = value.type();
+    const auto id = static_cast<std::uint32_t>(store.vals.size());
+    store.vals.push_back({std::move(arg), 1, true});
+    store.blocks[block_id].data.args.push_back(id);
+    yielded.push_back(id);
+  }
+  detail::OpData yield;
+  yield.kind = Op::Kind::yield;
+  yield.block = block_id;
+  yield.args = std::move(yielded);
+  yield.loc = before.loc();
+  const auto yield_id = static_cast<std::uint32_t>(store.ops.size());
+  store.ops.push_back({std::move(yield), 1, true});
+  store.blocks[block_id].data.ops.push_back(yield_id);
+  detail::rebuild_uses(store);
+  touch(store);
+  return Op(&store, op_id, store.ops[op_id].generation);
+}
+
+Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
+  auto& store = impl_->store;
+  const auto reject = [&](std::string message) {
+    detail::add_diag(store.diags, std::move(message), before.loc());
+    return Op{};
+  };
+  if (!before.valid() || before.store_ != &store || !condition.valid() ||
+      condition.store_ != &store)
+    return reject("branch requires an insertion point and condition");
+  if (condition.type().text() != "_" && condition.type().text() != "bool")
+    return reject("branch condition must have type bool");
+  std::vector<Val> inputs{condition};
+  inputs.insert(inputs.end(), carried.begin(), carried.end());
+  for (Val value : inputs)
+    if (!value.valid() || value.store_ != &store ||
+        !detail::dominates(store, value.id_, before.id_))
+      return reject("branch inputs must dominate the insertion point");
+  const std::uint32_t parent = store.ops[before.id_].data.block;
+  auto& parent_ops = store.blocks[parent].data.ops;
+  const auto position = std::find(parent_ops.begin(), parent_ops.end(),
+                                  before.id_);
+  if (position == parent_ops.end())
+    return reject("branch insertion point is not in its block");
+  for (Val value : carried) {
+    if (value.name().empty() || !value.def())
+      return reject("branch-carried values must be named local bindings");
+    detail::OpData& def = store.ops[value.def().id_].data;
+    if ((def.kind == Op::Kind::call || def.kind == Op::Kind::constant) &&
+        def.form == detail::Form::let)
+      def.form = detail::Form::var;
+  }
+
+  detail::OpData data;
+  data.kind = Op::Kind::branch;
+  data.block = parent;
+  data.carried_count = carried.size();
+  data.loc = before.loc();
+  for (Val value : inputs)
+    data.args.push_back(value.id_);
+  const auto op_id = static_cast<std::uint32_t>(store.ops.size());
+  store.ops.push_back({std::move(data), 1, true});
+  parent_ops.insert(position, op_id);
+  for (Val value : carried) {
+    detail::ValData result;
+    result.name = std::string(value.name());
+    result.type = value.type();
+    result.def = op_id;
+    result.index = store.ops[op_id].data.outs.size();
+    const auto id = static_cast<std::uint32_t>(store.vals.size());
+    store.vals.push_back({std::move(result), 1, true});
+    store.ops[op_id].data.outs.push_back(id);
+  }
+
+  const std::uint32_t fn = store.blocks[parent].data.fn;
+  for (std::size_t arm = 0; arm < 2; ++arm) {
+    detail::BlkData body;
+    body.fn = fn;
+    body.parent_op = op_id;
+    const auto block_id = static_cast<std::uint32_t>(store.blocks.size());
+    store.blocks.push_back({std::move(body), 1, true});
+    store.fns[fn].data.blocks.push_back(block_id);
+    store.ops[op_id].data.blocks.push_back(block_id);
+    std::vector<std::uint32_t> yielded;
+    for (Val value : carried) {
+      detail::ValData arg;
+      arg.kind = detail::ValKind::block_arg;
+      arg.name = std::string(value.name());
+      arg.type = value.type();
+      const auto id = static_cast<std::uint32_t>(store.vals.size());
+      store.vals.push_back({std::move(arg), 1, true});
+      store.blocks[block_id].data.args.push_back(id);
+      yielded.push_back(id);
+    }
+    detail::OpData yield;
+    yield.kind = Op::Kind::yield;
+    yield.block = block_id;
+    yield.args = std::move(yielded);
+    yield.loc = before.loc();
+    const auto yield_id = static_cast<std::uint32_t>(store.ops.size());
+    store.ops.push_back({std::move(yield), 1, true});
+    store.blocks[block_id].data.ops.push_back(yield_id);
+  }
+  detail::rebuild_uses(store);
+  touch(store);
+  return Op(&store, op_id, store.ops[op_id].generation);
+}
+
 Op Mod::clone(Op source, Op before) {
   auto& store = impl_->store;
   const auto reject = [&](std::string message, Loc loc = {}) {
@@ -715,6 +900,75 @@ bool Mod::move(Op op, Op before) {
       }
     }
   }
+  touch(store);
+  return true;
+}
+
+bool Mod::args(Op op, std::span<const Val> values) {
+  auto& store = impl_->store;
+  const auto reject = [&](std::string message) {
+    detail::add_diag(store.diags, std::move(message), op.loc());
+    return false;
+  };
+  if (!op.valid() || op.store_ != &store)
+    return reject("args requires a live operation in this module");
+  for (Val value : values)
+    if (!value.valid() || value.store_ != &store ||
+        !detail::dominates(store, value.id_, op.id_))
+      return reject("operation arguments must dominate their use");
+
+  const detail::OpData& data = store.ops[op.id_].data;
+  std::size_t expected = values.size();
+  if (data.kind == Op::Kind::constant)
+    expected = 0;
+  else if (data.kind == Op::Kind::loop)
+    expected = data.iter_names.size() + data.carried_count;
+  else if (data.kind == Op::Kind::branch)
+    expected = 1 + data.carried_count;
+  else if (data.kind == Op::Kind::ret) {
+    const std::uint32_t block = data.block;
+    const std::uint32_t fn = store.blocks[block].data.fn;
+    expected = store.fns[fn].data.returns.size();
+  } else if (data.kind == Op::Kind::yield) {
+    const std::uint32_t block = data.block;
+    const std::uint32_t parent = store.blocks[block].data.parent_op;
+    expected = parent == detail::none ? 0 : store.ops[parent].data.carried_count;
+  }
+  if (values.size() != expected)
+    return reject("operation argument count would break its structure");
+  if (data.kind == Op::Kind::branch && !values.empty() &&
+      values.front().type().text() != "_" &&
+      values.front().type().text() != "bool")
+    return reject("branch condition must have type bool");
+
+  const auto compatible = [](const Ty& left, const Ty& right) {
+    return left.text() == "_" || right.text() == "_" || left == right;
+  };
+  if (data.kind == Op::Kind::ret) {
+    const std::uint32_t fn = store.blocks[data.block].data.fn;
+    const std::vector<Ty>& returns = store.fns[fn].data.returns;
+    for (std::size_t index = 0; index < values.size(); ++index)
+      if (!compatible(values[index].type(), returns[index]))
+        return reject("return argument type does not match its function");
+  } else if (data.kind == Op::Kind::yield) {
+    const std::uint32_t parent = store.blocks[data.block].data.parent_op;
+    if (parent != detail::none) {
+      const std::vector<std::uint32_t>& outs = store.ops[parent].data.outs;
+      for (std::size_t index = 0; index < values.size(); ++index)
+        if (!compatible(values[index].type(),
+                        store.vals[outs[index]].data.type))
+          return reject("yield argument type does not match its parent");
+    }
+  }
+
+  std::vector<std::uint32_t> next;
+  next.reserve(values.size());
+  for (Val value : values)
+    next.push_back(value.id_);
+  if (next == data.args)
+    return true;
+  store.ops[op.id_].data.args = std::move(next);
+  detail::rebuild_uses(store);
   touch(store);
   return true;
 }

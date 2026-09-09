@@ -100,11 +100,12 @@ The built-in `ir` module is the complete reflection boundary:
 
 | Function | Meaning |
 | --- | --- |
-| `fns`, `blocks`, `ops` | Traverse structural ownership; `ops(Mod/Fn)` walks nested bodies. |
+| `fns`, `params`, `blocks`, `ops` | Traverse function and structural ownership. |
 | `args`, `outs`, `users` | Read operation dataflow. |
 | `kind`, `callee`, `type`, `is_const`, `constant`, `len` | Query operations, values, and lists. |
 | `has`, `meta` | Query open function or operation attributes. |
-| `call`, `constant`, `clone`, `move` | Construct or place IR at an explicit operation position. |
+| `call`, `constant`, `loop`, `branch` | Construct leaves and structured control flow. |
+| `clone`, `move`, `args` | Copy, place, or reconnect existing IR. |
 | `replace`, `erase`, `rename` | Rewrite dataflow, ownership, and readable names. |
 | `set`, `unset` | Add, replace, or remove a function or operation attribute. |
 
@@ -139,6 +140,14 @@ copies a call, constant, loop, or condition, creates fresh blocks/results, and
 remaps values defined inside the copied subtree. `ir.move` reorders an operation
 within its block atomically and rejects the change if any use would lose
 dominance. `ir.kind` and `ir.blocks(op)` make structural selection explicit.
+
+`ir.loop` creates iterator and carried block arguments plus an initial
+forwarding yield. `ir.branch` creates two initially forwarding arms. A module
+populates either structure by inserting ordinary calls or constants before its
+yield, then reconnects the terminator with `ir.args(m, op, values)`. The same
+argument mutator updates an existing return. Named local carried values recover
+as ordinary `var` bindings when printed, so the construction API does not leak
+an auxiliary block syntax into `.jog`.
 
 The bracket syntax is not a `host` special case. Any module may define its own
 keys and attach them to a function or operation statement. Version and ABI
