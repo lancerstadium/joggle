@@ -76,6 +76,10 @@ int main(int argc, char** argv) {
   CHECK(main.generics()[1].name() == "batch_size_1");
   CHECK(main.generics()[1].type() == joggle::Ty("int"));
   CHECK(main.params()[0].name() == "batch_size_2");
+  CHECK(main.params()[0].meta("onnx") &&
+        main.params()[0].meta("onnx")->dict() &&
+        main.params()[0].meta("onnx")->dict()->at("name").string() ==
+            "batch_size");
   const joggle::Ty dynamic(
       "tensor<f32, [batch_size, batch_size_1, _]>");
   CHECK(main.params()[0].type() == dynamic);

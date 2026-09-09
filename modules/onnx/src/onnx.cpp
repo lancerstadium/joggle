@@ -30,6 +30,11 @@ std::string quote(std::string_view text) {
   return out + '"';
 }
 
+std::string value_meta(std::string_view name) {
+  return name.empty() ? std::string{}
+                      : "[onnx: {name: " + quote(name) + "}] ";
+}
+
 std::string atom(std::string_view text) {
   std::string out;
   for (const unsigned char ch : text)
@@ -451,7 +456,8 @@ std::string emit(const jogonnx::ModelProto& model) {
     if (!first)
       out << ", ";
     first = false;
-    out << names.get(input.name()) << ": " << type(input, dimensions);
+    out << value_meta(input.name()) << names.get(input.name()) << ": "
+        << type(input, dimensions);
   }
   if (!graph.output_size())
     throw std::runtime_error("ONNX graph has no output");
@@ -479,8 +485,8 @@ std::string emit(const jogonnx::ModelProto& model) {
   out << "]})\n";
 
   for (const auto& value : graph.initializer())
-    out << "  let " << names.get(value.name()) << ": " << type(value)
-        << " = onnx.tensor("
+    out << "  let " << value_meta(value.name()) << names.get(value.name())
+        << ": " << type(value) << " = onnx.tensor("
         << value.data_type() << ", " << shape(value.dims()) << ", "
         << hex(data(value)) << ")\n";
 
@@ -501,7 +507,7 @@ std::string emit(const jogonnx::ModelProto& model) {
                                         ? names.get("$unused_" +
                                                     std::to_string(unnamed++))
                                         : names.get(output);
-        out << binding;
+        out << value_meta(output) << binding;
         const auto found = types.find(output);
         if (found != types.end() && found->second != "_")
           out << ": " << found->second;

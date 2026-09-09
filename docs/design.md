@@ -40,16 +40,15 @@ size-checked C ABI. The declaration remains the single source of its signature.
 The exported entry is always `joggle_module`; ABI evolution is represented in
 the API record instead of encoded in public symbol and type names.
 
-Function metadata is an open `Attr` dictionary. The parser preserves it but
-does not reserve tag names. Selection, scheduling, testing, cost models, and
-research modules may define their own tags. Native binding depends only on an
-external declaration and a matching native symbol; it needs no marker.
-
-Operations use the same open dictionary and square-bracket syntax. Placement,
-layout, specialization, provenance, and cost experiments can therefore carry
-their decisions through the common IR without a new operation kind. These
-attributes are inert until an explicitly selected module function reads them;
-even names such as `host` have no privileged behavior.
+Functions, operations, and values use the same open `Attr` dictionary and
+square-bracket syntax. Function attributes describe declarations and entry
+policy; operation attributes describe computation such as placement or
+scheduling; value attributes describe data such as quantization, layout,
+sparsity, range, and source identity. The parser reserves no attribute name.
+Attributes are inert until an explicitly selected module function reads them;
+even names such as `host` have no privileged behavior. Native binding depends
+only on an external declaration and a matching native symbol; it needs no
+marker.
 
 An importer, transform, analysis, simulator, or emitter is therefore an
 ordinary compile-time function. `run` interprets the same structured function
@@ -507,6 +506,29 @@ reader, verifies `tensor<f32, [batch_size, batch_size_1, _]>`, and requires a
 canonical round-trip. TFLite `shape_signature` already maps negative extents to
 the same `_` term. This slice preserves named identity and anonymous openness;
 it does not ask static-only network transforms to guess a runtime extent.
+
+## M10 value-semantics slice
+
+The open attribute mechanism now covers `Val` as well as `Fn` and `Op`.
+Inline binding syntax keeps ownership visible: `[place: "edge"]` before a
+statement annotates its computation, while
+`let [quant: {...}] y: tensor<...> = f(x)` annotates the resulting data. The
+same inline form applies to parameters and generic bindings. C++ and `.jog`
+reflection use symmetric `meta`, `has`, `set`, and `unset` operations.
+
+Metadata on a mutable source binding is copied through its internal loop and
+branch versions, and editing any member updates the full carried-value family.
+Deep clone copies value metadata, region fusion preserves the live-out, and
+body expansion merges caller-visible result metadata with the exposed body,
+rejecting a conflicting key. A value without a printable source binding cannot
+be annotated through the editor, so canonical printing remains complete.
+
+The ONNX codec uses value metadata to retain original value names after safe
+identifier normalization. The TFLite codec separates tensor descriptors from
+operator options: tensor index, original name, buffer identity, and optional
+quantization, sparsity, or variable state belong to `Val`; reflected builtin
+options belong to `Op`. A generated quantized-Add model verifies that these
+descriptors survive parsing, printing, bridge conversion, and body expansion.
 
 ## M10 network-semantics slice
 

@@ -102,6 +102,8 @@ int main(int argc, char** argv) {
   CHECK(model.verify(env));
   const joggle::Fn main = model.find_fn("main");
   CHECK(main && main.params().size() == 1);
+  CHECK(main.params()[0].meta("onnx") &&
+        main.params()[0].meta("onnx")->dict());
 
   std::size_t tensors = 0;
   std::size_t nodes = 0;
@@ -112,6 +114,8 @@ int main(int argc, char** argv) {
         continue;
       if (op.callee() == "onnx.tensor") {
         ++tensors;
+        CHECK(op.outs().size() == 1 && op.outs()[0].meta("onnx") &&
+              op.outs()[0].meta("onnx")->dict());
         const std::vector<joggle::Val> values = op.args();
         CHECK(values.size() == 3);
         const joggle::Attr data = values[2].constant();
@@ -252,6 +256,11 @@ int main(int argc, char** argv) {
   CHECK(onnx->dict()->at("axis").integer() == 0);
   CHECK(split.outs()[0].type() == joggle::Ty("tensor<f32, [1]>"));
   CHECK(split.outs()[1].type() == joggle::Ty("tensor<f32, [1]>"));
+  CHECK(split.outs()[0].meta("onnx") &&
+        split.outs()[0].meta("onnx")->dict()->at("name").string() == "left");
+  CHECK(split.outs()[1].meta("onnx") &&
+        split.outs()[1].meta("onnx")->dict()->at("name").string() ==
+            "right");
   const std::string multi_text = joggle::print(multi);
   joggle::Mod multi_roundtrip;
   CHECK(joggle::parse(env, multi_text, multi_roundtrip,

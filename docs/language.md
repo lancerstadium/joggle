@@ -173,6 +173,24 @@ let quotient, remainder = divmod(7, 3)
 let data: tensor<f32, [4]>, token: i32 = source()
 ```
 
+Each binding may carry the same open attributes used elsewhere:
+
+```jog
+fn run<[role: "extent"] N: int>(
+  [layout: "nhwc"] x: tensor<i8, [N, 8]>
+) -> tensor<i8, [N, 8]> {
+  [place: "edge"]
+  let [quant: {scale: [0.25], zero_point: [0]}] y = execute(x)
+  return y
+}
+```
+
+Position is the only distinction. Attributes before `fn` describe the `Fn`,
+attributes before a statement describe its root `Op`, and inline attributes
+before a generic, parameter, or local name describe that `Val`. No key is
+reserved. Mutable bindings carry their value attributes through the internal
+`Blk` arguments and results created by `for` and `if`.
+
 Known function declarations infer the result types. Explicit annotations keep
 types for open calls whose semantics have not yet been imported. A call is
 still one `Op`; its ordered values are returned by `outs()`. The same form is
@@ -309,7 +327,8 @@ chosen, not in their IR or function semantics.
 ### Open attributes
 
 Square brackets hold an open attribute dictionary rather than a fixed set of
-compiler keywords. They may precede a function or an operation statement:
+compiler keywords. They may precede a function or an operation statement, or
+appear inline before a generic, parameter, or local binding:
 
 ```jog
 [entry, stage: "select", policy: {modes: ["fast", "small"]}]
@@ -317,7 +336,7 @@ fn choose(m: Mod) -> bool { return true }
 
 fn placed(x: tensor<f32, [4]>) -> tensor<f32, [4]> {
   [place: "edge", layout: "packed"]
-  let y = transform(x)
+  let [quant: {scale: [0.5], zero_point: [0]}] y = transform(x)
   [trace]
   return y
 }
@@ -327,9 +346,9 @@ A bare name means `true`; values use normal `Attr` literals. Repeated brackets
 are accepted and canonical printing merges them in key order. Duplicate keys
 are errors. On a statement, the dictionary belongs to its root `Op`, whether
 that operation is a call, loop, condition, or return. `Fn::meta` and `Op::meta`
-expose the same data to C++, while overloaded `ir.has` and `ir.meta` expose it
-to textual functions. `ir.set` and `ir.unset` edit function or operation
-attributes.
+expose those dictionaries to C++; `Val::meta` exposes binding attributes.
+Overloaded `ir.has`, `ir.meta`, `ir.set`, and `ir.unset` cover all three handle
+kinds for textual functions.
 
 No attribute name changes parsing, binding, or the IR shape. In particular,
 `host`, `target`, `place`, and `layout` have no built-in meaning. A native

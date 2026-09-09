@@ -14,7 +14,7 @@ C++ transform and an ordinary `.jog` function edit the same representation.
 Compile-time functions traverse universal IR handles and run transactionally;
 they are functions, not instances of a pass class. A separately built native
 module is also discovered, signature-checked, loaded, and called through the
-single native-function ABI. Functions and operations may carry open,
+single native-function ABI. Functions, operations, and values may carry open,
 user-defined attributes without adding parser cases. Generic zero/multi-result
 call, constant, loop, and branch construction, deep cloning, checked motion,
 nested traversal, selective use replacement, and region fusion let such modules
@@ -37,7 +37,8 @@ Named ONNX dimensions become ordinary integer generics on the imported
 function, while anonymous dynamic dimensions remain `_`; both preserve one
 tensor type instead of introducing a dynamic-shape IR.
 Node attributes remain operation metadata rather than fake dataflow operands,
-so ordinary signature matching can bridge a real imported network. The pinned
+while original value identity remains value metadata, so ordinary signature
+matching can bridge a real imported network. The pinned
 MobileNetV2 gate maps every one-input ReLU through the same data-driven relation
 used by small models and proves that a second bridge run is unchanged.
 The standard `math`, `tensor`, and `nn` modules contain scalar math primitives
@@ -67,7 +68,12 @@ The optional TFLite codec independently exercises the same boundary on the
 official TensorFlow Hub MobileNetV2. Its FlatBuffer schema generates a private
 build header with mini-reflection, so schema-known operator option tables are
 transported without a switch over operator names or a checked-in generated API.
-This second frontend adds no dependency or case to the core.
+This second frontend adds no dependency or case to the core. Every TFLite
+tensor is represented by one typed `Val`; its source identity and optional
+quantization or sparsity description live on that value, while operator
+options remain on the producing `Op`. A dependency-local quantized Add gate
+checks import, canonical round-trip, semantic conversion, and body expansion
+without downloading a model.
 The separately selected `tflite.nn` relation then converts all 66 compute calls
 in that model to shared `nn`/`tensor` functions. Logical-axis operands retain
 NHWC and both TFLite weight layouts without creating a second IR or a

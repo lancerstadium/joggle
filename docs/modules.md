@@ -128,11 +128,11 @@ The built-in `ir` module is the complete reflection boundary:
 | `live`, `blk`, `kind`, `callee`, `type` | Query handle state, structure, and structural `Ty`. |
 | `resolve` | Resolve a call to its visible function declaration. |
 | `is_const`, `constant` | Query constant IR values. |
-| `has`, `meta` | Query open function or operation attributes. |
+| `has`, `meta` | Query open function, value, or operation attributes. |
 | `call`, `constant`, `loop`, `branch` | Construct leaves and structured control flow. |
 | `clone`, `expand`, `move`, `args` | Copy, substitute a function body, place, or reconnect IR. |
 | `replace`, `erase`, `rename` | Rewrite dataflow, ownership, and readable names. |
-| `set`, `unset` | Add, replace, or remove a function or operation attribute. |
+| `set`, `unset` | Edit a function, value, or operation attribute. |
 | `use` | Add an idempotent module dependency. |
 
 These functions operate on generic handles and contain no NN operator names.
@@ -312,9 +312,9 @@ a normal `.jog` wrapper function; it does not register, own, or serialize a
 pipeline object.
 
 The bracket syntax is not a `host` special case. Any module may define its own
-keys and attach them to a function or operation statement. Version and ABI
-information remains in package/API data; it is not encoded in function names
-or required in module source.
+keys and attach them to a function, value binding, or operation statement.
+Version and ABI information remains in package/API data; it is not encoded in
+function names or required in module source.
 
 `ir.fuse` is likewise operator-neutral. It accepts an ordered `list<Op>`,
 derives unique live-ins and the single live-out, inserts the requested call,
@@ -346,8 +346,9 @@ the ordinary open term `_`.
 Unsupported sparse, string, external-data, and nested-graph forms fail with a
 diagnostic rather than being dropped. Operator names and attributes are
 transported generically; their semantics belong to later modules. Data inputs
-remain call operands, while node names and schema attributes live under the
-single open `onnx` metadata dictionary. This preserves source information
+remain call operands. Node names and schema attributes live on the `Op`, while
+each nonempty original value name lives on its `Val` under the same open
+`onnx` key. This preserves source identity through identifier normalization
 without changing a call's semantic arity.
 
 The optional `tflite` codec is a second implementation of the same boundary.
@@ -356,6 +357,10 @@ tensors as payload calls, and operators as open `tflite.*` calls. FlatBuffers
 mini-reflection transports every schema-known option table into the operation's
 `tflite` metadata dictionary without dispatching on operator names. Optional
 input slots remain `nil`, and multiple outputs remain ordinary call results.
+Every source tensor attaches its index and original name to the corresponding
+`Val`; nonzero buffer identity and optional quantization, sparsity, and variable
+state are included when present. Types do not repeat in metadata. Thus a bridge
+or target can inspect data semantics independently of producer opcode.
 Negative extents in `shape_signature` become `_`, which now satisfies the same
 open integer-term rule as an anonymous ONNX dimension.
 The checked-in schema is upstream source; its large generated C++ interface is

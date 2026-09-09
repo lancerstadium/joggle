@@ -129,6 +129,10 @@ fusion, same-signature semantic bridging, progressive body expansion, and
 structural tensor type construction are complete. Named ONNX dimensions now
 reuse integer function generics and anonymous dynamic dimensions remain open
 terms; a dependency-local codec test covers both without a downloaded model.
+Open attributes now cover `Val` as well as `Fn` and `Op`, separating tensor
+quantization, layout, and provenance from computation options. ONNX preserves
+source value identity, and a dependency-local quantized TFLite Add gate proves
+value metadata survives import, round-trip, conversion, and body expansion.
 Grouped 2-D convolution now has an
 inspectable body, and the explicit `onnx.nn` relation propagates all official
 MobileNetV2 intermediate types before converting every compute node through

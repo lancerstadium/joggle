@@ -376,6 +376,21 @@ if(JOGGLE_BUILD_TESTS)
               ${CMAKE_CURRENT_BINARY_DIR}/modules
     )
   endif()
+  if(JOGGLE_BUILD_TFLITE)
+    add_executable(joggle-tflite-value-test test/tflite_value.cpp)
+    target_include_directories(
+      joggle-tflite-value-test
+      PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/tflite-generated
+    )
+    target_link_libraries(
+      joggle-tflite-value-test PRIVATE Joggle::joggle flatbuffers::flatbuffers
+    )
+    add_dependencies(joggle-tflite-value-test joggle-tflite)
+    add_test(
+      NAME tflite-value
+      COMMAND joggle-tflite-value-test ${CMAKE_CURRENT_BINARY_DIR}/modules
+    )
+  endif()
   if(JOGGLE_BUILD_SAT)
     add_executable(joggle-sat-test test/sat.cpp)
     target_link_libraries(joggle-sat-test PRIVATE Joggle::joggle)

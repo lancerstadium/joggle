@@ -133,6 +133,26 @@ std::string describe(const void* object, const flatbuffers::TypeTable* type) {
   return visitor.s;
 }
 
+std::string tensor_meta(flatbuffers::uoffset_t index,
+                        const tflite::Tensor& tensor) {
+  std::string out = "[tflite: {\"index\": " + std::to_string(index) +
+                    ", \"name\": " +
+                    quote(tensor.name() ? tensor.name()->string_view()
+                                        : std::string_view{});
+  if (tensor.buffer())
+    out += ", \"buffer\": " + std::to_string(tensor.buffer());
+  if (tensor.quantization())
+    out += ", \"quantization\": " +
+           describe(tensor.quantization(),
+                    tflite::QuantizationParametersTypeTable());
+  if (tensor.sparsity())
+    out += ", \"sparsity\": " +
+           describe(tensor.sparsity(), tflite::SparsityParametersTypeTable());
+  if (tensor.is_variable())
+    out += ", \"variable\": true";
+  return out + "}] ";
+}
+
 std::string options(const tflite::Operator& op) {
   const auto* union_type = tflite::BuiltinOptionsTypeTable();
   const auto index = flatbuffers::LookupEnum(
@@ -287,7 +307,9 @@ std::string emit(const tflite::Model& model) {
         if (!first)
           out << ", ";
         first = false;
-        out << binding[index] << ": " << type(*graph->tensors()->Get(index));
+        const auto* tensor = graph->tensors()->Get(index);
+        out << tensor_meta(static_cast<flatbuffers::uoffset_t>(index), *tensor)
+            << binding[index] << ": " << type(*tensor);
       }
     }
     out << ')';
@@ -321,10 +343,8 @@ std::string emit(const tflite::Model& model) {
       if (tensor->buffer() >= model.buffers()->size())
         throw std::runtime_error("tensor has an invalid buffer index");
       const auto* buffer = model.buffers()->Get(tensor->buffer());
-      out << "  [tflite: {\"index\": " << index
-          << ", \"tensor\": "
-          << describe(tensor, tflite::TensorTypeTable()) << "}]\n"
-          << "  let " << binding[index] << ": " << type(*tensor)
+      out << "  let " << tensor_meta(index, *tensor) << binding[index]
+          << ": " << type(*tensor)
           << " = tflite.tensor(" << hex(buffer->data()) << ")\n";
     }
 
@@ -351,8 +371,11 @@ std::string emit(const tflite::Model& model) {
           require_tensor(*graph, tensor_index);
           if (index)
             out << ", ";
-          out << binding[tensor_index] << ": "
-              << type(*graph->tensors()->Get(tensor_index));
+          const auto* tensor = graph->tensors()->Get(tensor_index);
+          out << tensor_meta(
+                     static_cast<flatbuffers::uoffset_t>(tensor_index),
+                     *tensor)
+              << binding[tensor_index] << ": " << type(*tensor);
         }
         out << " = ";
       }

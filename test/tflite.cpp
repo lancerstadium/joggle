@@ -72,6 +72,8 @@ int main(int argc, char** argv) {
   CHECK(main && main.params().size() == 1 && main.returns().size() == 1);
   CHECK(main.params().front().type() ==
         joggle::Ty("tensor<f32, [1, 224, 224, 3]>"));
+  CHECK(main.params().front().meta("tflite") &&
+        main.params().front().meta("tflite")->dict());
   CHECK(main.returns().front() == joggle::Ty("tensor<f32, [1, 1001]>"));
 
   CHECK(count(model, "tflite.tensor") == 107);
@@ -100,12 +102,16 @@ int main(int argc, char** argv) {
       const joggle::Attr bytes = op.args().front().constant();
       CHECK(bytes.bytes());
       payload += bytes.bytes()->size();
-      CHECK(op.meta("tflite") && op.meta("tflite")->dict());
+      CHECK(op.meta("tflite") == nullptr);
+      CHECK(op.outs().size() == 1 && op.outs()[0].meta("tflite") &&
+            op.outs()[0].meta("tflite")->dict());
     } else if (op.callee().starts_with("tflite.") &&
                op.callee() != "tflite.model") {
       ++compute;
       const joggle::Attr* meta = op.meta("tflite");
       CHECK(meta && meta->dict());
+      for (joggle::Val out : op.outs())
+        CHECK(out.meta("tflite") && out.meta("tflite")->dict());
       const auto options = meta->dict()->find("options");
       CHECK(options != meta->dict()->end() && options->second.dict());
       if (op.callee() == "tflite.CONV_2D" && !checked_options) {

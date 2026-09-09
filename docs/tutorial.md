@@ -107,6 +107,18 @@ Frontend attributes are structural dictionaries. A bridge can use
 `keys(attrs)` directly in `.jog`; no schema accessor class or frontend-specific
 core hook is required.
 
+Computation and data annotations stay separate without new object families:
+
+```jog
+[place: "edge"]
+let [quant: {scale: [0.25], zero_point: [0]}] y = frontend.add(a, b)
+```
+
+The first dictionary belongs to the call `Op`; the inline dictionary belongs
+to its result `Val`. A module queries both with the same `ir.meta` and edits
+both with the same `ir.set`/`ir.unset` functions. Names such as `place` and
+`quant` are examples, not built-in policies.
+
 For same-signature calls, the whole frontend relation can stay declarative:
 
 ```jog
