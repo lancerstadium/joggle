@@ -414,7 +414,7 @@ std::vector<Blk> Op::blks() const {
       out.push_back(Blk(store_, id, store_->blks[id].generation));
   return out;
 }
-Blk Op::block() const noexcept {
+Blk Op::blk() const noexcept {
   if (!valid() || store_->ops[id_].data.block == detail::none)
     return {};
   const std::uint32_t id = store_->ops[id_].data.block;
@@ -1067,7 +1067,7 @@ bool Mod::expand(Op call, Fn callee) {
   const std::vector<Ty> explicit_arguments =
       applied.args().empty() ? std::vector<Ty>{} : applied.args();
   const std::vector<Fn> candidates{callee};
-  const std::vector<Val> context = call.block().fn().generics();
+  const std::vector<Val> context = call.blk().fn().generics();
   std::vector<Ty> result_types;
   std::vector<Ty> generic_values;
   if (!detail::resolve_overload(candidates, arguments, explicit_arguments,
@@ -1144,7 +1144,7 @@ bool Mod::expand(Op call, Fn callee) {
   }
 
   const detail::Store& source = *callee.store_;
-  const std::uint32_t destination = call.block().id_;
+  const std::uint32_t destination = call.blk().id_;
   const std::uint32_t owner = store.blks[destination].data.fn;
   std::unordered_set<std::string> used_names;
   for (const auto& slot : store.vals)
@@ -1328,7 +1328,7 @@ bool Mod::move(Op op, Op before) {
   }
   if (op == before)
     return true;
-  if (op.block() != before.block()) {
+  if (op.blk() != before.blk()) {
     detail::add_diag(store.diags,
                      "move currently requires one destination block",
                      before.loc());
@@ -1340,7 +1340,7 @@ bool Mod::move(Op op, Op before) {
                      op.loc());
     return false;
   }
-  auto& order = store.blks[op.block().id_].data.ops;
+  auto& order = store.blks[op.blk().id_].data.ops;
   const std::vector<std::uint32_t> old_order = order;
   order.erase(std::remove(order.begin(), order.end(), op.id_), order.end());
   const auto position = std::find(order.begin(), order.end(), before.id_);
@@ -1446,7 +1446,7 @@ bool Mod::fuse(std::span<const Op> ops, std::string callee) {
   if (ops.size() < 2 || callee.empty())
     return reject("fuse requires at least two calls and a callee");
 
-  const Blk block = ops.front().block();
+  const Blk block = ops.front().blk();
   if (!block || block.store_ != &store)
     return reject("fuse requires live calls in this module");
   const std::vector<Op> order = block.ops();
@@ -1454,7 +1454,7 @@ bool Mod::fuse(std::span<const Op> ops, std::string callee) {
   std::size_t previous = 0;
   for (std::size_t index = 0; index < ops.size(); ++index) {
     const Op op = ops[index];
-    if (!op.valid() || op.store_ != &store || op.block() != block ||
+    if (!op.valid() || op.store_ != &store || op.blk() != block ||
         op.kind() != Op::Kind::call || !selected.insert(op.id_).second)
       return reject("fuse requires distinct calls in one block", op.loc());
     const auto position = std::find(order.begin(), order.end(), op);

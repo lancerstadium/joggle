@@ -269,7 +269,7 @@ directly and use a bounded `for` to reach a fixed point; no function runs merely
 because it is tagged or installed. The bundled `opt.fix(m, pure, limit)` is one
 such function. Its `pure` list is explicit policy: an unknown call is never
 merged or deleted unless the caller names it. `ir.live` lets deletion-based
-transforms safely consume a traversal snapshot, while `ir.block` and
+transforms safely consume a traversal snapshot, while `ir.blk` and
 `ir.meta(op)` support structural comparison.
 
 Canonical printing preserves expression trees with precedence-aware

@@ -73,7 +73,7 @@ fn cse(m: Mod, pure: list<str>) -> bool {
           if !merged {
             let prior = ops[j]
             if ir.live(prior) {
-              if ir.kind(prior) == "call" && ir.block(prior) == ir.block(op) {
+              if ir.kind(prior) == "call" && ir.blk(prior) == ir.blk(op) {
                 let left = ir.outs(prior)
                 let right = ir.outs(op)
                 var same = len(left) == len(right)

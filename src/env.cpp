@@ -523,7 +523,7 @@ Fn Env::resolve(const Mod& from, Op call) const {
   for (const Val value : call.outs())
     returns.push_back(value.type());
   const std::vector<Fn> candidates = resolve_fns(from, symbol);
-  const std::vector<Val> context = call.block().fn().generics();
+  const std::vector<Val> context = call.blk().fn().generics();
   return detail::resolve_overload(candidates, arguments, explicit_arguments,
                                   nullptr, nullptr, context, nullptr, returns);
 }

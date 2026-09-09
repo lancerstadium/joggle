@@ -946,9 +946,9 @@ private:
       for (Blk block : blks)
         out.emplace_back(block);
       return Items{Item(std::move(out))};
-    } else if (name == "block" && args.size() == 1) {
-      if (const auto* op = as<Op>(args[0]); op && op->block())
-        return Items{Item(op->block())};
+    } else if (name == "blk" && args.size() == 1) {
+      if (const auto* op = as<Op>(args[0]); op && op->blk())
+        return Items{Item(op->blk())};
     } else if (name == "ops" && args.size() == 1) {
       std::vector<Op> ops;
       if (const auto* mod = as<Mod*>(args[0]); mod && *mod)

@@ -210,7 +210,7 @@ public:
   std::vector<Val> args() const;
   std::vector<Val> outs() const;
   std::vector<Blk> blks() const;
-  Blk block() const noexcept;
+  Blk blk() const noexcept;
   const Attr::Dict& meta() const noexcept;
   const Attr* meta(std::string_view key) const noexcept;
   Loc loc() const;

@@ -102,7 +102,7 @@ The built-in `ir` module is the complete reflection boundary:
 | --- | --- |
 | `fns`, `params`, `blks`, `ops`, `uses` | Traverse function, structure, and dependencies. |
 | `args`, `outs`, `users` | Read operation dataflow. |
-| `live`, `block`, `kind`, `callee`, `type` | Query handle state, structure, and structural `Ty`. |
+| `live`, `blk`, `kind`, `callee`, `type` | Query handle state, structure, and structural `Ty`. |
 | `resolve` | Resolve a call to its visible function declaration. |
 | `is_const`, `constant` | Query constant IR values. |
 | `has`, `meta` | Query open function or operation attributes. |

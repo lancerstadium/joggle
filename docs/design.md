@@ -314,7 +314,7 @@ keeps unknown frontend or target calls conservative without adding an effect
 class, trait, or privileged attribute to the core.
 
 Deletion-aware transforms use `ir.live` when iterating an earlier operation
-snapshot. `ir.block` and whole-dictionary `ir.meta` provide the remaining
+snapshot. `ir.blk` and whole-dictionary `ir.meta` provide the remaining
 structural equality inputs: CSE only merges calls in one block with identical
 callee, operands, result types, and metadata. The test pipeline merges repeated
 open calls, removes newly dead calls to a fixed point, preserves calls whose

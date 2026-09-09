@@ -6,7 +6,7 @@ fn uses(m: Mod) -> list<str>;
 fn params(f: Fn) -> list<Val>;
 fn blks(f: Fn) -> list<Blk>;
 fn blks(op: Op) -> list<Blk>;
-fn block(op: Op) -> Blk;
+fn blk(op: Op) -> Blk;
 fn ops(m: Mod) -> list<Op>;
 fn ops(f: Fn) -> list<Op>;
 fn ops(b: Blk) -> list<Op>;
