@@ -224,8 +224,9 @@ for key in keys(attrs) { inspect(key) }
 
 `attrs[key]` is strict; `get` returns `nil` or an explicit fallback when absent.
 `kind` reports the structural value kind, and `len` applies to lists or
-dictionaries. These operations are in `base`, leaving `ir` exclusively about
-`Mod/Fn/Blk/Op/Val` reflection.
+dictionaries. `int` and `str` project a checked `Attr` leaf into a typed scalar;
+the same names also project structural `Ty` terms. These operations are in
+`base`, leaving `ir` exclusively about `Mod/Fn/Blk/Op/Val` reflection.
 
 ### Compile-time functions
 

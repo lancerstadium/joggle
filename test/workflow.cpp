@@ -1126,6 +1126,9 @@ int main(int argc, char** argv) {
   const std::vector<joggle::Attr> attr_args{joggle::Attr(attr_map)};
   CHECK(joggle::query(env, "script.attr_query", cleaned, count, attr_args));
   CHECK(count.integer() == 2);
+  joggle::Attr mode;
+  CHECK(joggle::query(env, "script.attr_mode", cleaned, mode, attr_args));
+  CHECK(mode.string() == "nearest");
   joggle::Attr keys;
   CHECK(joggle::query(env, "script.attr_keys", cleaned, keys, attr_args));
   CHECK(keys.list() && keys.list()->size() == 3);

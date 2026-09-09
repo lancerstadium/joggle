@@ -132,9 +132,10 @@ terms; a dependency-local codec test covers both without a downloaded model.
 Open attributes now cover `Val` as well as `Fn` and `Op`, separating tensor
 quantization, layout, and provenance from computation options. ONNX preserves
 source value identity, and a dependency-local quantized TFLite Add gate proves
-value metadata survives import and round-trip. The generic floating-point
-bridge now retains quantized calls instead of silently applying raw integer
-semantics; explicit rescaling remains work for a quantization module.
+value metadata survives import and round-trip. A frontend-neutral `quant`
+module now exposes scale, zero point, parameter axis, round-to-nearest-even,
+saturation bounds, and element conversion as ordinary computation; it does not
+turn raw integer arithmetic into implicit quantized semantics.
 Grouped 2-D convolution now has an
 inspectable body, and the explicit `onnx.nn` relation propagates all official
 MobileNetV2 intermediate types before converting every compute node through
@@ -162,12 +163,14 @@ normal tensor bodies without requiring a concrete batch size. Shape relations
 cancel exact factors and retain anonymous dimensions when a runtime product is
 not representable as one existing term; rank information no longer disappears
 with that product.
-QuantizeLinear and DequantizeLinear now propagate shape and element type without
-being semantically converted. Conv and pooling require concrete spatial
-arithmetic but preserve a symbolic batch dimension; optional Conv bias is
-validated and reuses the existing composed `nn.conv2d` body. This makes the
-compute path of a conventional QDQ ResNet representable while leaving its
-quantization policy explicit and unresolved.
+QuantizeLinear and DequantizeLinear now propagate shape and element type, then
+compatible three-input forms convert to generic `quant` bodies. All 258
+quantizers and 652 of 653 dequantizers across three local QDQ vision models use
+that path; one inconsistent imported result remains explicit. Conv
+and pooling require concrete spatial arithmetic but preserve a symbolic batch
+dimension; optional Conv bias is validated and reuses the existing composed
+`nn.conv2d` body. This makes the compute path of a conventional QDQ ResNet
+representable while keeping quantization policy explicit and inspectable.
 Leading MatMul dimensions now use the shared broadcast relation and one
 rank-generic tensor body, while the 2-D overload remains the compact case.
 An axis-generic line-offset relation supports shared Softmax semantics; TFLite

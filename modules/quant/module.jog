@@ -1,0 +1,63 @@
+module quant
+use tensor
+use math
+
+fn param(
+  shape: list<int>, params: list<int>, linear: int, axis: int
+) -> int {
+  if len(params) == 0 || params[0] == 1 {
+    return 0
+  }
+  var stride = 1
+  for dim in axis + 1..len(shape) {
+    stride *= shape[dim]
+  }
+  return (linear / stride) % shape[axis]
+}
+
+fn dequantize<
+  Q: Ty,
+  E: Ty,
+  S: list<int>,
+  P: list<int>
+>(
+  x: tensor<Q, S>,
+  scale: tensor<E, P>,
+  zero: tensor<Q, P>,
+  axis: int
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    let p = param(S, P, i, axis)
+    out[i] = (E(x[i]) - E(zero[p])) * scale[p]
+  }
+  return out
+}
+
+fn quantize<
+  E: Ty,
+  Q: Ty,
+  S: list<int>,
+  P: list<int>
+>(
+  x: tensor<E, S>,
+  scale: tensor<E, P>,
+  zero: tensor<Q, P>,
+  axis: int,
+  low: int,
+  high: int
+) -> tensor<Q, S> {
+  var out = tensor<Q, S>(Q(0))
+  for i in 0..tensor.numel<S>() {
+    let p = param(S, P, i, axis)
+    var value = math.round_even(x[i] / scale[p]) + E(zero[p])
+    if value < E(low) {
+      value = E(low)
+    }
+    if value > E(high) {
+      value = E(high)
+    }
+    out[i] = Q(value)
+  }
+  return out
+}

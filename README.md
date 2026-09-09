@@ -41,8 +41,9 @@ while original value identity remains value metadata, so ordinary signature
 matching can bridge a real imported network. The pinned
 MobileNetV2 gate maps every one-input ReLU through the same data-driven relation
 used by small models and proves that a second bridge run is unchanged.
-The standard `math`, `tensor`, and `nn` modules contain scalar math primitives
-and inspectable bodies for tensor algebra, grouped 2-D convolution, batch
+The standard `math`, `tensor`, `quant`, and `nn` modules contain scalar math
+primitives and inspectable bodies for tensor algebra, explicit quantization,
+grouped 2-D convolution, batch
 normalization, average/max pooling, reshape, linear layers, and ReLU. A generic
 NumPy-style broadcast relation supports rank extension and singleton
 dimensions in shared tensor code, so ONNX and TFLite Add reuse the same
@@ -68,10 +69,13 @@ Unrepresentable symbolic products remain source calls instead of triggering a
 model-specific guess.
 Convolution and pooling likewise keep symbolic batch dimensions while checking
 only the extents used by spatial arithmetic. ONNX Conv's optional bias reuses
-the existing layout-explicit `nn.conv2d` composition. QDQ nodes propagate shape
-and element type so surrounding compute can be converted, but the nodes remain
-in the source namespace until a quantization module defines their exact
-rounding and rescaling behavior.
+the existing layout-explicit `nn.conv2d` composition. The frontend-neutral
+`quant` module defines per-tensor and per-axis zero-point subtraction,
+rescaling, round-to-nearest-even, saturation, and conversion as ordinary
+functions. Quantized element type and bounds are explicit operands, so custom
+formats can reuse the computation without becoming core types. The ONNX bridge
+maps compatible three-input QDQ nodes to those functions and leaves newer or
+incompatible schema forms visible.
 The same tensor library supplies broadcast-batched MatMul and an axis-generic
 line-offset relation. `nn.softmax` uses the latter directly, allowing frontend
 bridges to materialize an axis as an ordinary operand instead of choosing a
@@ -118,8 +122,8 @@ tensor is represented by one typed `Val`; its source identity and optional
 quantization or sparsity description live on that value, while operator
 options remain on the producing `Op`. A dependency-local quantized Add gate
 checks import and canonical round-trip, then requires the generic floating-
-point bridge to retain that call until a quantization module explicitly
-materializes its rescaling semantics.
+point bridge to retain that call until a TFLite relation can prove and
+materialize its rescaling semantics through `quant`.
 The separately selected `tflite.nn` relation then converts all 66 compute calls
 in that model to shared `nn`/`tensor` functions. Logical-axis operands retain
 NHWC and both TFLite weight layouts without creating a second IR or a

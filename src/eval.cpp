@@ -886,12 +886,18 @@ private:
         return Items{Item(std::move(out))};
       }
     } else if (name == "int" && args.size() == 1) {
-      if (const auto* type = as<Ty>(args[0]); type && type->valid())
+      if (const auto* type = as<Ty>(args[0]); type && type->valid()) {
         if (const auto value = integer(*type))
           return Items{Item(Attr(*value))};
+      } else if (const auto value = integer(args[0])) {
+        return Items{Item(Attr(*value))};
+      }
     } else if (name == "str" && args.size() == 1) {
-      if (const auto* type = as<Ty>(args[0]); type && type->valid())
+      if (const auto* type = as<Ty>(args[0]); type && type->valid()) {
         return Items{Item(Attr(std::string(type->text())))};
+      } else if (const auto value = string(args[0])) {
+        return Items{Item(Attr(std::string(*value)))};
+      }
     } else if (name == "ty" && args.size() == 1) {
       Ty type;
       if (const auto value = integer(args[0]))

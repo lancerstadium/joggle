@@ -13,7 +13,7 @@ set(JOGGLE_TEST_ONNX_MODEL "" CACHE FILEPATH "Official ONNX model used by tests"
 set(JOGGLE_TEST_TFLITE_MODEL "" CACHE FILEPATH
     "Official TFLite model used by tests")
 
-foreach(module base ir math nn opt tensor)
+foreach(module base ir math nn opt quant tensor)
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/${module}")
   configure_file(
     "modules/${module}/module.jog"
@@ -225,6 +225,7 @@ install(
     modules/math
     modules/nn
     modules/opt
+    modules/quant
     modules/tensor
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules
   PATTERN .DS_Store EXCLUDE

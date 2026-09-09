@@ -378,10 +378,12 @@ int main(int argc, char** argv) {
       "module qdq.shape\n"
       "use onnx\n"
       "fn main<N: int>(\n"
-      "  x: tensor<f32, [N, 3]>, scale: tensor<f32, [1]>,\n"
-      "  zero: tensor<u8, [1]>\n"
+      "  x: tensor<f32, [N, 3]>, scale: tensor<f32, [3]>,\n"
+      "  zero: tensor<u8, [3]>\n"
       ") -> tensor<f32, [N, 3]> {\n"
+      "  [onnx: {axis: 1}]\n"
       "  let q = onnx.QuantizeLinear(x, scale, zero)\n"
+      "  [onnx: {axis: 1}]\n"
       "  let out: tensor<f32, [N, 3]> = "
       "onnx.DequantizeLinear(q, scale, zero)\n"
       "  return out\n"
@@ -403,6 +405,22 @@ int main(int argc, char** argv) {
                      joggle::Ty("tensor<u8, [N, 3]>"));
   CHECK(dequant && dequant.outs()[0].type() ==
                        joggle::Ty("tensor<f32, [N, 3]>"));
+  CHECK(joggle::run(env, "onnx.nn.convert", qdq));
+  CHECK(qdq.verify(env));
+  CHECK(quant.callee() == "quant.quantize");
+  CHECK(dequant.callee() == "quant.dequantize");
+  const joggle::Fn quant_fn = env.resolve(qdq, quant);
+  const joggle::Fn dequant_fn = env.resolve(qdq, dequant);
+  CHECK(quant_fn && dequant_fn);
+  CHECK(qdq.expand(quant, quant_fn));
+  CHECK(qdq.expand(dequant, dequant_fn));
+  CHECK(qdq.verify(env));
+  joggle::Mod qdq_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(qdq), qdq_roundtrip,
+                      "qdq-roundtrip.jog"));
+  if (!qdq_roundtrip.verify(env))
+    return env.print_diags(stderr);
+  CHECK(joggle::structurally_equal(qdq, qdq_roundtrip));
 
   constexpr std::string_view symbolic_conv_source =
       "module symbolic.conv\n"

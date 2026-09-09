@@ -663,10 +663,9 @@ model-quality or performance benchmark.
 
 Before any TFLite conversion, the relation checks all input and output `Val`s
 for nonempty scale and zero-point vectors. Quantized calls stay in the TFLite
-namespace until a separate module materializes zero-point subtraction,
-rescaling, rounding, saturation, and the chosen implementation policy. Empty
-or min/max-only FlatBuffer quantization tables do not misclassify floating-
-point models.
+namespace until a frontend relation can prove and materialize their rescaling
+through `quant`. Empty or min/max-only FlatBuffer quantization tables do not
+misclassify floating-point models.
 
 ## M10 broadcast slice
 
@@ -718,11 +717,19 @@ standalone conversion cannot accept an output shape that inference would have
 rejected. Group/channel consistency, optional bias shape, strides, dilations,
 and padding mode are checked before any edit.
 
-QuantizeLinear and DequantizeLinear propagate shape and element type in source
-order. They are not converted: zero-point subtraction, scale multiplication,
-rounding, saturation, and per-axis policy are intentionally reserved for an
-explicit quantization module. This lets QDQ networks expose their surrounding
-Conv/pool/matrix computation without silently changing quantized semantics.
+QuantizeLinear and DequantizeLinear first propagate shape and element type in
+source order. The separate `quant` module then defines zero-point subtraction,
+scale multiplication, round-to-nearest-even, saturation, and per-axis parameter
+selection in ordinary function bodies. ONNX conversion supplies the axis and
+numeric bounds as values only after input, scale, zero-point, and result types
+agree. This lets QDQ networks expose their quantized boundary without putting
+an ONNX field, integer width, or target policy in core.
+
+Across the local QDQ ResNet50, MobileNetV2, and EfficientNet-Lite4 models, all
+258 QuantizeLinear calls and 652 of 653 DequantizeLinear calls map to the same
+two functions. The one retained call has a scalar imported result that
+conflicts with its matrix-shaped input, demonstrating that refinement and
+conversion do not overwrite a bad interface fact merely to improve coverage.
 
 ## M10 axis-reduction slice
 

@@ -5,3 +5,4 @@ fn sqrt<T: Ty>(x: T) -> T;
 fn exp<T: Ty>(x: T) -> T;
 fn pow<T: Ty>(x: T, y: T) -> T;
 fn tanh<T: Ty>(x: T) -> T;
+fn round_even<T: Ty>(x: T) -> T;

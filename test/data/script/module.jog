@@ -380,11 +380,15 @@ fn handle_query(m: Mod) -> Fn {
   return ir.fns(m)[0]
 }
 
-fn attr_query(m: Mod, attrs: dict) -> Attr {
+fn attr_query(m: Mod, attrs: dict) -> int {
   if has(attrs, "axis") {
-    return attrs["axis"]
+    return int(attrs["axis"])
   }
-  return get(attrs, "axis", -1)
+  return int(get(attrs, "axis", -1))
+}
+
+fn attr_mode(m: Mod, attrs: dict) -> str {
+  return str(get(attrs, "mode", "none"))
 }
 
 fn attr_keys(m: Mod, attrs: dict) -> list<str> {

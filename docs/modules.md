@@ -50,9 +50,10 @@ and `bytes`; embedded zero bytes are preserved.
 The standard modules are deliberately narrow. `base` declares scalar/list/dict
 fundamentals, `ir` is universal reflection and editing, `opt` contains reusable
 textual transforms, `math` names scalar math primitives, `tensor` defines
-storage-neutral tensor computation, and `nn` contains network semantics. The
-optional `onnx` module only transports a binary model. MLIR, JIT, simulation,
-hardware description, and target experiments remain removable modules.
+storage-neutral tensor computation, `quant` makes quantization policy explicit,
+and `nn` contains network semantics. The optional `onnx` module only transports
+a binary model. MLIR, JIT, simulation, hardware description, and target
+experiments remain removable modules.
 
 Version 0.1 searches explicit local paths. The CLI exposes that same local
 model directly:
@@ -147,7 +148,9 @@ opaque and are never copied into a second core representation.
 
 General compile-time values live in `base`, not `ir`. `len` covers lists and
 dictionaries; `keys`, `has`, and `get` expose deterministic dictionary access;
-and `attrs["key"]` is the strict indexing form. These are enough for an
+and `attrs["key"]` is the strict indexing form. `int` and `str` project a
+checked attribute leaf when a transform needs a statically typed value. These
+are enough for an
 explicit bridge function to interpret frontend attributes without adding an
 ONNX/TFLite field API or string-key cases to core. A missing strict key is a
 diagnostic, while the three-argument `get` supplies a caller-chosen fallback.
@@ -196,6 +199,11 @@ names its logical axis; `-1` denotes a fixed singleton dimension. Thus NCHW is
 weight is `[-1, 2, 3, 0]`. These are ordinary values, not layout classes or
 registered compiler cases. The computations have normal `.jog` bodies with
 loops and explicit value updates; they are not opaque operator records.
+`quant.quantize` and `quant.dequantize` operate on a generic real element type,
+a generic stored element type, and either scalar or one-axis parameter tensors.
+The parameter axis, saturation bounds, and round-to-nearest-even primitive are
+visible in the function body. The module therefore fixes mathematical behavior
+without fixing a bit width, storage class, or target implementation.
 `nn.linear` composes matrix
 multiplication with an optional bias loop, while `nn.relu` is a loop and
 condition over the same tensor primitives. The general `nn.conv2d` overload
@@ -252,8 +260,9 @@ The optional `onnx.nn` module is that relationship, not another IR layer.
 through quantization boundaries, convolution, normalization point algebra,
 broadcast arithmetic, pooling, matrix operations, tensor rearrangement, and
 shape dataflow. Quantization nodes contribute only their provable shape and
-element type here; they remain source calls until a quantization module
-supplies rounding and rescaling semantics.
+element type here. Compatible three-input QuantizeLinear and DequantizeLinear
+calls are then converted through `quant`; unsupported parameter layouts or
+element formats remain source calls.
 Unsupported ranks and `auto_pad` are left unchanged rather than guessed. Open
 intermediate types are likewise retained instead of causing an unsafe
 projection. Named symbolic extents now flow through Add/Sub/Mul, Flatten,
@@ -266,7 +275,8 @@ literals. Conv accepts its schema's optional one-dimensional bias and maps it
 through the existing layout-explicit `nn.conv2d` composition. A mismatched bias,
 channel relation, nonpositive stride/dilation, or non-`NOTSET` automatic padding
 keeps the source call intact.
-`onnx.nn.convert` then maps Conv, BatchNormalization, ReLU, Add/Sub/Mul/Div/Pow,
+`onnx.nn.convert` then maps QuantizeLinear/DequantizeLinear, Conv,
+BatchNormalization, ReLU, Add/Sub/Mul/Div/Pow,
 Sqrt/Reciprocal/Tanh, AveragePool, MaxPool, GlobalAveragePool, ReduceMean,
 Softmax, Reshape, Flatten, rank-two-or-higher MatMul, and Transpose. Flatten
 reuses `tensor.reshape`; MatMul reuses `tensor.matmul`; Transpose reuses

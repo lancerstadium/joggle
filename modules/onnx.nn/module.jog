@@ -1,6 +1,7 @@
 module onnx.nn
 use onnx
 use nn
+use quant
 use ir
 
 fn set_type(m: Mod, value: Val, type: Ty) -> bool {
@@ -1458,6 +1459,102 @@ fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
   return convert_call(m, op, callee)
 }
 
+fn quant_axis(op: Op, data: Ty, params: Ty) -> int {
+  if !tensor.valid(data) || !tensor.valid(params) {
+    return -1
+  }
+  let shape = tensor.dims(data)
+  let parameter_shape = tensor.dims(params)
+  if len(parameter_shape) == 0 ||
+     (len(parameter_shape) == 1 && parameter_shape[0] == ty(1)) {
+    return 0
+  }
+  if len(parameter_shape) != 1 {
+    return -1
+  }
+  var axis = base.int(base.get(attrs(op), "axis", 1))
+  if axis < 0 {
+    axis += len(shape)
+  }
+  if axis < 0 || axis >= len(shape) ||
+     parameter_shape[0] != shape[axis] {
+    return -1
+  }
+  return axis
+}
+
+fn quant_bounds(elem: Ty) -> list<int> {
+  if elem == ty("u8") {
+    return [0, 255]
+  }
+  if elem == ty("i8") {
+    return [-128, 127]
+  }
+  if elem == ty("u16") {
+    return [0, 65535]
+  }
+  if elem == ty("i16") {
+    return [-32768, 32767]
+  }
+  var unsupported: list<int> = []
+  return unsupported
+}
+
+fn convert_quantize(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 {
+    return false
+  }
+  let data = ir.type(inputs[0])
+  let scale = ir.type(inputs[1])
+  let zero = ir.type(inputs[2])
+  let result = ir.type(outputs[0])
+  if !tensor.valid(data) || !tensor.valid(scale) ||
+     !tensor.valid(zero) || !tensor.valid(result) ||
+     tensor.elem(scale) != tensor.elem(data) ||
+     tensor.elem(zero) != tensor.elem(result) ||
+     tensor.dims(zero) != tensor.dims(scale) ||
+     tensor.dims(result) != tensor.dims(data) {
+    return false
+  }
+  let axis = quant_axis(op, data, scale)
+  let bounds = quant_bounds(tensor.elem(result))
+  if axis < 0 || len(bounds) != 2 {
+    return false
+  }
+  inputs += [ir.constant(m, op, axis, "int")]
+  inputs += [ir.constant(m, op, bounds[0], "int")]
+  inputs += [ir.constant(m, op, bounds[1], "int")]
+  return convert_call(m, op, "quant.quantize", inputs)
+}
+
+fn convert_dequantize(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 {
+    return false
+  }
+  let data = ir.type(inputs[0])
+  let scale = ir.type(inputs[1])
+  let zero = ir.type(inputs[2])
+  let result = ir.type(outputs[0])
+  if !tensor.valid(data) || !tensor.valid(scale) ||
+     !tensor.valid(zero) || !tensor.valid(result) ||
+     tensor.elem(zero) != tensor.elem(data) ||
+     tensor.elem(scale) != tensor.elem(result) ||
+     tensor.dims(zero) != tensor.dims(scale) ||
+     tensor.dims(result) != tensor.dims(data) {
+    return false
+  }
+  let axis = quant_axis(op, data, scale)
+  if axis < 0 {
+    return false
+  }
+  inputs += [ir.constant(m, op, axis, "int")]
+  return convert_call(m, op, "quant.dequantize", inputs)
+}
+
 fn convert_flatten(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1576,7 +1673,14 @@ fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
 
 fn convert(m: Mod) -> bool {
   var changed = ir.use(m, "nn")
+  changed = ir.use(m, "quant") || changed
   for op in ir.ops(m) {
+    if ir.callee(op) == "onnx.QuantizeLinear" {
+      changed = convert_quantize(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.DequantizeLinear" {
+      changed = convert_dequantize(m, op) || changed
+    }
     if ir.callee(op) == "onnx.Conv" {
       changed = convert_conv(m, op) || changed
     }
