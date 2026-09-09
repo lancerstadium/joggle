@@ -213,6 +213,56 @@ fn transpose_type(m: Mod, op: Op) -> bool {
   )
 }
 
+fn reduce_axes(op: Op, rank: int) -> list<int> {
+  let meta = attrs(op)
+  var axes: list<int> = []
+  if base.has(meta, "axes") {
+    for value in meta["axes"] {
+      var axis = value
+      if axis < 0 {
+        axis += rank
+      }
+      axes += [axis]
+    }
+  } else {
+    for axis in 0..rank {
+      axes += [axis]
+    }
+  }
+  return axes
+}
+
+fn reduce_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) != 1 {
+    return ty("_")
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return ty("_")
+  }
+  let shape = tensor.dims(input)
+  let axes = reduce_axes(op, len(shape))
+  if !tensor.valid_axes(axes, len(shape)) {
+    return ty("_")
+  }
+  let keep = base.get(attrs(op), "keepdims", 1)
+  if keep != 0 && keep != 1 {
+    return ty("_")
+  }
+  return tensor.type(
+    tensor.elem(input), tensor.reduced(shape, axes, keep == 1)
+  )
+}
+
+fn reduce_type(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  return set_type(m, outputs[0], reduce_result(op))
+}
+
 fn positive(dim: Ty) -> bool {
   return kind(dim) == "int" && int(dim) > 0
 }
@@ -402,6 +452,9 @@ fn infer(m: Mod) -> bool {
     }
     if ir.callee(op) == "onnx.Transpose" {
       changed = transpose_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.ReduceMean" {
+      changed = reduce_type(m, op) || changed
     }
     if ir.callee(op) == "onnx.GlobalAveragePool" {
       changed = global_pool_type(m, op) || changed
@@ -621,6 +674,24 @@ fn convert_transpose(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.permute")
 }
 
+fn convert_mean(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let expected = reduce_result(op)
+  if expected == ty("_") || ir.type(outputs[0]) != expected {
+    return false
+  }
+  let axes = reduce_axes(op, len(tensor.dims(ir.type(inputs[0]))))
+  inputs += [ints(m, op, axes)]
+  if !ir.args(m, op, inputs) {
+    return false
+  }
+  return convert_call(m, op, "tensor.mean")
+}
+
 fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -696,6 +767,9 @@ fn convert(m: Mod) -> bool {
     }
     if ir.callee(op) == "onnx.Transpose" {
       changed = convert_transpose(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.ReduceMean" {
+      changed = convert_mean(m, op) || changed
     }
     if ir.callee(op) == "onnx.GlobalAveragePool" {
       changed = convert_call(m, op, "nn.global_avg_pool2d") || changed

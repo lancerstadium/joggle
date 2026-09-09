@@ -417,6 +417,90 @@ fn line_offset(
   return offset
 }
 
+fn valid_axes(axes: list<int>, rank: int) -> bool {
+  if len(axes) == 0 {
+    return false
+  }
+  for i in 0..len(axes) {
+    if axes[i] < 0 || axes[i] >= rank {
+      return false
+    }
+    for j in 0..i {
+      if axes[i] == axes[j] {
+        return false
+      }
+    }
+  }
+  return true
+}
+
+fn reduced(
+  shape: list<Ty>, axes: list<int>, keep: bool
+) -> list<Ty> {
+  var out: list<Ty> = []
+  for dim in 0..len(shape) {
+    var selected = false
+    for axis in axes {
+      if axis == dim {
+        selected = true
+      }
+    }
+    if selected {
+      if keep {
+        out += [ty(1)]
+      }
+    } else {
+      out += [shape[dim]]
+    }
+  }
+  return out
+}
+
+fn reduce_offset(
+  shape: list<int>, axes: list<int>, line: int, item: int
+) -> int {
+  var offset = 0
+  var source_stride = 1
+  var line_stride = 1
+  var item_stride = 1
+  for reverse in 0..len(shape) {
+    let dim = len(shape) - reverse - 1
+    var selected = false
+    for axis in axes {
+      if axis == dim {
+        selected = true
+      }
+    }
+    if selected {
+      offset += (item / item_stride) % shape[dim] * source_stride
+      item_stride *= shape[dim]
+    } else {
+      offset += (line / line_stride) % shape[dim] * source_stride
+      line_stride *= shape[dim]
+    }
+    source_stride *= shape[dim]
+  }
+  return offset
+}
+
+fn mean<E: Ty, S: list<int>, Y: list<int>>(
+  x: tensor<E, S>, axes: list<int>
+) -> tensor<E, Y> {
+  var count = 1
+  for axis in axes {
+    count *= S[axis]
+  }
+  var out = tensor<E, Y>(E(0))
+  for line in 0..tensor.numel<Y>() {
+    var sum = E(0)
+    for item in 0..count {
+      sum += x[reduce_offset(S, axes, line, item)]
+    }
+    out[line] = sum / E(count)
+  }
+  return out
+}
+
 fn matmul<E: Ty, L: list<int>, R: list<int>, Y: list<int>>(
   a: tensor<E, L>, b: tensor<E, R>
 ) -> tensor<E, Y> {

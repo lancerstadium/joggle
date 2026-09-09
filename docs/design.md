@@ -733,3 +733,11 @@ it is neither last-axis-only nor rank-specific. TFLite materializes its fixed
 last-axis convention, while the ONNX relation normalizes an explicit positive
 or negative axis. An omitted ONNX axis remains open because the schema default
 changed across opsets and guessing it would silently alter a model.
+
+`tensor.reduce_offset(shape, axes, line, item)` generalizes that coordinate
+split to a set of unique axes. `tensor.mean` uses it in one ordinary function
+body; `tensor.reduced` separately derives the structural result shape for
+retained or removed dimensions. ONNX negative-axis normalization and
+`keepdims` interpretation stay in `onnx.nn`, while the reusable computation has
+no frontend fields. Duplicate and out-of-range axes are rejected before any IR
+edit.

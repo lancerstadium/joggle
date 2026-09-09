@@ -75,7 +75,11 @@ rounding and rescaling behavior.
 The same tensor library supplies broadcast-batched MatMul and an axis-generic
 line-offset relation. `nn.softmax` uses the latter directly, allowing frontend
 bridges to materialize an axis as an ordinary operand instead of choosing a
-rank-specific kernel class.
+rank-specific kernel class. A complementary multi-axis relation maps reduction
+coordinates without transposing the tensor; the inspectable `tensor.mean` body
+therefore covers arbitrary normalized axes and either retained or removed
+dimensions. The ONNX bridge derives the result shape and conservatively keeps
+malformed reductions in the source namespace.
 The optional `onnx.nn` relation module is selected explicitly. On the official
 MobileNetV2 it propagates all intermediate tensor types, then converts every
 compute node to shared semantics. The model marker and tensor payloads remain

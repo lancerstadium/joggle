@@ -172,6 +172,12 @@ rank-generic tensor body, while the 2-D overload remains the compact case.
 An axis-generic line-offset relation supports shared Softmax semantics; TFLite
 materializes its last axis and ONNX converts an explicit normalized axis.
 ONNX's version-dependent omitted-axis default remains open.
+A multi-axis coordinate relation now supports an inspectable tensor mean body.
+The ONNX relation normalizes negative axes, models `keepdims` structurally, and
+retains duplicate or out-of-range axes. A symbolic multi-axis reduction expands
+through the same generic body. The imported quantized BERT graph supplies the
+next coverage gate: its 50 `ReduceMean` nodes are downstream of unresolved shape
+and integer-quantized subgraphs, so conversion is intentionally not yet claimed.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

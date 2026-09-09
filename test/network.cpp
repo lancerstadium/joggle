@@ -546,6 +546,52 @@ int main(int argc, char** argv) {
   CHECK(softmax_fn && softmax.expand(semantic_softmax, softmax_fn));
   CHECK(softmax.verify(env));
 
+  constexpr std::string_view mean_source =
+      "module axis.mean\n"
+      "use onnx\n"
+      "fn main<N: int>(x: tensor<f32, [N, 2, 3, 4]>) "
+      "-> tensor<f32, [N, 3]> {\n"
+      "  [onnx: {axes: [1, -1], keepdims: 0}]\n"
+      "  let out = onnx.ReduceMean(x)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod mean;
+  CHECK(joggle::parse(env, mean_source, mean, "axis-mean.jog"));
+  CHECK(mean.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", mean));
+  CHECK(mean.verify(env));
+  CHECK(mean.find_fn("main").body().ops().back().args()[0].type() ==
+        joggle::Ty("tensor<f32, [N, 3]>"));
+  CHECK(joggle::run(env, "onnx.nn.convert", mean));
+  CHECK(mean.verify(env));
+  joggle::Op semantic_mean;
+  for (joggle::Op op : mean.ops())
+    if (op.callee() == "tensor.mean")
+      semantic_mean = op;
+  CHECK(semantic_mean && semantic_mean.args().size() == 2);
+  const joggle::Fn mean_fn = env.resolve(mean, semantic_mean);
+  CHECK(mean_fn && mean.expand(semantic_mean, mean_fn));
+  CHECK(mean.verify(env));
+
+  constexpr std::string_view invalid_mean_source =
+      "module invalid.mean\n"
+      "use onnx\n"
+      "fn main(x: tensor<f32, [2, 3]>) -> tensor<f32, [2, 1]> {\n"
+      "  [onnx: {axes: [1, 1]}]\n"
+      "  let out: tensor<f32, [2, 1]> = onnx.ReduceMean(x)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod invalid_mean;
+  CHECK(joggle::parse(env, invalid_mean_source, invalid_mean,
+                      "invalid-mean.jog"));
+  CHECK(invalid_mean.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", invalid_mean));
+  CHECK(joggle::run(env, "onnx.nn.convert", invalid_mean));
+  bool retained_mean = false;
+  for (joggle::Op op : invalid_mean.ops())
+    retained_mean = retained_mean || op.callee() == "onnx.ReduceMean";
+  CHECK(retained_mean && invalid_mean.verify(env));
+
   constexpr std::string_view implicit_softmax_source =
       "module implicit.softmax\n"
       "use onnx\n"

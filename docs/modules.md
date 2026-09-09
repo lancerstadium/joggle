@@ -195,8 +195,12 @@ functions rather than hidden operator fields. `nn.avg_pool2d`, dilation-aware
 `nn.max_pool2d`, broadcast-aware `nn.add`/`nn.sub`/`nn.mul`, and
 axis-explicit `nn.softmax` provide the remaining shared semantics needed by the
 second real-network gate. `tensor.line_offset` enumerates all lines orthogonal
-to an axis, so Softmax and later reduction modules do not need a transpose or
-rank-specific case; `nn.global_avg_pool2d` is a normal NCHW specialization.
+to an axis, while `tensor.reduce_offset` separates ordinary and reduced
+coordinates for any unique axis set. The inspectable `tensor.mean` body uses
+that relation for single- or multi-axis reduction without a transpose or
+rank-specific case; output singleton dimensions are a type relation rather
+than a second computation. `nn.global_avg_pool2d` is a normal NCHW
+specialization.
 Both spatial pool functions use explicit kernel, stride, pad, dilation, and
 logical-axis values, so ONNX NCHW and TFLite NHWC calls share the same bodies.
 `nn.batch_norm` exposes inference-time channel
