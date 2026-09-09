@@ -705,3 +705,19 @@ multiplication, and permutation bodies remain ordinary nested `Fn/Blk/Op/Val`
 IR after exposure. A relation that would require multiplying two symbols or a
 symbol by a non-unit coefficient returns `_` and leaves its source call at the
 frontier. The boundary is conservative and testable rather than model-specific.
+
+## M10 partial-shape network slice
+
+Spatial operators no longer require every tensor dimension to be a literal.
+The ONNX relation projects raw dimension terms, checks only the kernel and
+spatial extents used in integer arithmetic, and carries batch/channel terms
+unchanged. Its Conv result relation is shared by inference and conversion, so a
+standalone conversion cannot accept an output shape that inference would have
+rejected. Group/channel consistency, optional bias shape, strides, dilations,
+and padding mode are checked before any edit.
+
+QuantizeLinear and DequantizeLinear propagate shape and element type in source
+order. They are not converted: zero-point subtraction, scale multiplication,
+rounding, saturation, and per-axis policy are intentionally reserved for an
+explicit quantization module. This lets QDQ networks expose their surrounding
+Conv/pool/matrix computation without silently changing quantized semantics.

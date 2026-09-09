@@ -65,6 +65,12 @@ MatMul preserve named extents and reuse the same inspectable tensor/network
 bodies; Transpose becomes an ordinary rank-generic tensor permutation.
 Unrepresentable symbolic products remain source calls instead of triggering a
 model-specific guess.
+Convolution and pooling likewise keep symbolic batch dimensions while checking
+only the extents used by spatial arithmetic. ONNX Conv's optional bias reuses
+the existing layout-explicit `nn.conv2d` composition. QDQ nodes propagate shape
+and element type so surrounding compute can be converted, but the nodes remain
+in the source namespace until a quantization module defines their exact
+rounding and rescaling behavior.
 The optional `onnx.nn` relation module is selected explicitly. On the official
 MobileNetV2 it propagates all intermediate tensor types, then converts every
 compute node to shared semantics. The model marker and tensor payloads remain

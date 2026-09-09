@@ -349,6 +349,107 @@ int main(int argc, char** argv) {
   CHECK(symbolic_mul_fn && symbolic.expand(symbolic_mul, symbolic_mul_fn));
   CHECK(symbolic.verify(env));
 
+  constexpr std::string_view qdq_source =
+      "module qdq.shape\n"
+      "use onnx\n"
+      "fn main<N: int>(\n"
+      "  x: tensor<f32, [N, 3]>, scale: tensor<f32, [1]>,\n"
+      "  zero: tensor<u8, [1]>\n"
+      ") -> tensor<f32, [N, 3]> {\n"
+      "  let q = onnx.QuantizeLinear(x, scale, zero)\n"
+      "  let out: tensor<f32, [N, 3]> = "
+      "onnx.DequantizeLinear(q, scale, zero)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod qdq;
+  CHECK(joggle::parse(env, qdq_source, qdq, "qdq-shape.jog"));
+  CHECK(qdq.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", qdq));
+  CHECK(qdq.verify(env));
+  joggle::Op quant;
+  joggle::Op dequant;
+  for (joggle::Op op : qdq.ops()) {
+    if (op.callee() == "onnx.QuantizeLinear")
+      quant = op;
+    if (op.callee() == "onnx.DequantizeLinear")
+      dequant = op;
+  }
+  CHECK(quant && quant.outs()[0].type() ==
+                     joggle::Ty("tensor<u8, [N, 3]>"));
+  CHECK(dequant && dequant.outs()[0].type() ==
+                       joggle::Ty("tensor<f32, [N, 3]>"));
+
+  constexpr std::string_view symbolic_conv_source =
+      "module symbolic.conv\n"
+      "use onnx\n"
+      "fn main<N: int>(\n"
+      "  x: tensor<f32, [N, 3, 8, 8]>,\n"
+      "  weight: tensor<f32, [4, 3, 3, 3]>,\n"
+      "  bias: tensor<f32, [4]>\n"
+      ") -> tensor<f32, [N, 4, 1, 1]> {\n"
+      "  [onnx: {auto_pad: \"NOTSET\", pads: [1, 1, 1, 1]}]\n"
+      "  let convolved = onnx.Conv(x, weight, bias)\n"
+      "  let out = onnx.GlobalAveragePool(convolved)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod symbolic_conv;
+  CHECK(joggle::parse(env, symbolic_conv_source, symbolic_conv,
+                      "symbolic-conv.jog"));
+  CHECK(symbolic_conv.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", symbolic_conv));
+  CHECK(symbolic_conv.verify(env));
+  joggle::Op source_conv;
+  for (joggle::Op op : symbolic_conv.ops())
+    if (op.callee() == "onnx.Conv")
+      source_conv = op;
+  CHECK(source_conv && source_conv.outs()[0].type() ==
+                           joggle::Ty("tensor<f32, [N, 4, 8, 8]>"));
+  CHECK(joggle::run(env, "onnx.nn.convert", symbolic_conv));
+  CHECK(symbolic_conv.verify(env));
+  joggle::Op semantic_conv;
+  joggle::Op semantic_global_pool;
+  for (joggle::Op op : symbolic_conv.ops()) {
+    if (op.callee() == "nn.conv2d")
+      semantic_conv = op;
+    if (op.callee() == "nn.global_avg_pool2d")
+      semantic_global_pool = op;
+  }
+  CHECK(semantic_conv && semantic_conv.args().size() == 11);
+  CHECK(semantic_global_pool);
+  const joggle::Fn symbolic_conv_fn = env.resolve(symbolic_conv, semantic_conv);
+  CHECK(symbolic_conv_fn && symbolic_conv.expand(semantic_conv,
+                                                 symbolic_conv_fn));
+  CHECK(symbolic_conv.verify(env));
+  const joggle::Fn symbolic_pool_fn =
+      env.resolve(symbolic_conv, semantic_global_pool);
+  CHECK(symbolic_pool_fn &&
+        symbolic_conv.expand(semantic_global_pool, symbolic_pool_fn));
+  CHECK(symbolic_conv.verify(env));
+
+  constexpr std::string_view invalid_conv_source =
+      "module invalid.conv\n"
+      "use onnx\n"
+      "fn main<N: int>(\n"
+      "  x: tensor<f32, [N, 3, 8, 8]>,\n"
+      "  weight: tensor<f32, [4, 3, 3, 3]>,\n"
+      "  bias: tensor<f32, [5]>\n"
+      ") -> tensor<f32, [N, 4, 8, 8]> {\n"
+      "  let out: tensor<f32, [N, 4, 8, 8]> = "
+      "onnx.Conv(x, weight, bias)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod invalid_conv;
+  CHECK(joggle::parse(env, invalid_conv_source, invalid_conv,
+                      "invalid-conv.jog"));
+  CHECK(invalid_conv.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", invalid_conv));
+  CHECK(joggle::run(env, "onnx.nn.convert", invalid_conv));
+  CHECK(invalid_conv.verify(env));
+  bool retained_conv = false;
+  for (joggle::Op op : invalid_conv.ops())
+    retained_conv = retained_conv || op.callee() == "onnx.Conv";
+  CHECK(retained_conv);
+
   constexpr std::string_view symbolic_matrix_source =
       "module symbolic.matrix\n"
       "use onnx\n"

@@ -223,14 +223,23 @@ module function.
 
 The optional `onnx.nn` module is that relationship, not another IR layer.
 `onnx.nn.infer` walks operations in source order and propagates tensor types
-through Conv, BatchNormalization, ReLU, broadcast Add/Sub/Mul, spatial pooling,
-and GlobalAveragePool.
+through QuantizeLinear/DequantizeLinear, Conv, BatchNormalization, ReLU,
+broadcast Add/Sub/Mul, spatial pooling, and GlobalAveragePool. Quantization
+nodes contribute only their provable shape and element type here; they remain
+source calls until a quantization module supplies rounding and rescaling
+semantics.
 Unsupported ranks and `auto_pad` are left unchanged rather than guessed. Open
 intermediate types are likewise retained instead of causing an unsafe
 projection. Named symbolic extents now flow through Add/Sub/Mul, Flatten,
 strict 2-D MatMul, and Transpose when equality, singleton broadcasting,
 permutation, or a directly representable partition product proves the result;
 ambiguous symbolic arithmetic remains at the ONNX frontier.
+Convolution and pooling preserve symbolic batch or channel terms while
+requiring only the spatial extents used by their arithmetic to be integer
+literals. Conv accepts its schema's optional one-dimensional bias and maps it
+through the existing layout-explicit `nn.conv2d` composition. A mismatched bias,
+channel relation, nonpositive stride/dilation, or non-`NOTSET` automatic padding
+keeps the source call intact.
 `onnx.nn.convert` then maps Conv, BatchNormalization, ReLU, Add/Sub/Mul,
 AveragePool, MaxPool, GlobalAveragePool, Reshape, Flatten, and the strict 2-D
 subset of MatMul. Flatten reuses `tensor.reshape`; MatMul reuses

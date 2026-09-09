@@ -160,6 +160,12 @@ reuses caller dimension bindings, so those converted calls can expose their
 normal tensor bodies without requiring a concrete batch size. Shape relations
 that need an unrepresentable symbolic product remain open rather than being
 special-cased for a model.
+QuantizeLinear and DequantizeLinear now propagate shape and element type without
+being semantically converted. Conv and pooling require concrete spatial
+arithmetic but preserve a symbolic batch dimension; optional Conv bias is
+validated and reuses the existing composed `nn.conv2d` body. This makes the
+compute path of a conventional QDQ ResNet representable while leaving its
+quantization policy explicit and unresolved.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

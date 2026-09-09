@@ -4,19 +4,67 @@ use nn
 use ir
 
 fn set_type(m: Mod, value: Val, type: Ty) -> bool {
+  if type == ty("_") {
+    return false
+  }
   if ir.type(value) != type {
     return ir.type(m, value, type)
   }
   return false
 }
 
+fn attrs(op: Op) -> Attr {
+  return base.get(ir.meta(op), "onnx", {})
+}
+
 fn same_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 0 && len(outputs) == 1 {
-    return set_type(m, outputs[0], ir.type(inputs[0]))
+    let type = ir.type(inputs[0])
+    if tensor.valid(type) {
+      return set_type(m, outputs[0], type)
+    }
   }
   return false
+}
+
+fn quant_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if (len(inputs) != 2 && len(inputs) != 3) || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let scale = ir.type(inputs[1])
+  if !tensor.valid(input) || !tensor.valid(scale) {
+    return false
+  }
+  var elem = ty("u8")
+  if len(inputs) == 3 {
+    let zero = ir.type(inputs[2])
+    if !tensor.valid(zero) {
+      return false
+    }
+    elem = tensor.elem(zero)
+  }
+  return set_type(m, outputs[0], tensor.type(elem, tensor.dims(input)))
+}
+
+fn dequant_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if (len(inputs) != 2 && len(inputs) != 3) || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let scale = ir.type(inputs[1])
+  if !tensor.valid(input) || !tensor.valid(scale) {
+    return false
+  }
+  return set_type(
+    m, outputs[0], tensor.type(tensor.elem(scale), tensor.dims(input))
+  )
 }
 
 fn binary_type(m: Mod, op: Op) -> bool {
@@ -65,7 +113,7 @@ fn infer_flatten(m: Mod, op: Op) -> bool {
     return false
   }
   let shape = tensor.dims(input)
-  var axis = base.get(ir.meta(op, "onnx"), "axis", 1)
+  var axis = base.get(attrs(op), "axis", 1)
   if axis < 0 {
     axis += len(shape)
   }
@@ -106,7 +154,7 @@ fn matmul_type(m: Mod, op: Op) -> bool {
 }
 
 fn transpose_axes(op: Op, rank: int) -> list<int> {
-  let meta = ir.meta(op, "onnx")
+  let meta = attrs(op)
   var axes: list<int> = []
   if base.has(meta, "perm") {
     for axis in meta["perm"] {
@@ -142,39 +190,98 @@ fn transpose_type(m: Mod, op: Op) -> bool {
   )
 }
 
-fn conv_type(m: Mod, op: Op) -> bool {
-  let inputs = ir.args(op)
-  let outputs = ir.outs(op)
-  if len(inputs) < 2 || len(outputs) != 1 {
+fn positive(dim: Ty) -> bool {
+  return kind(dim) == "int" && int(dim) > 0
+}
+
+fn conv_inputs(x: Ty, weight: Ty, bias: Ty, groups: int) -> bool {
+  if !tensor.valid(x) || !tensor.valid(weight) || groups <= 0 {
     return false
   }
-  let x = ir.type(inputs[0])
-  let weight = ir.type(inputs[1])
-  if !tensor.static(x) || !tensor.static(weight) {
+  if tensor.elem(x) != tensor.elem(weight) {
     return false
   }
-  let xs = tensor.shape(x)
-  let ws = tensor.shape(weight)
+  let xs = tensor.dims(x)
+  let ws = tensor.dims(weight)
   if len(xs) != 4 || len(ws) != 4 {
     return false
   }
-  let meta = ir.meta(op, "onnx")
-  if base.has(meta, "auto_pad") {
-    return false
+  if groups == 1 {
+    if xs[1] != ws[1] {
+      return false
+    }
+  } else {
+    if !positive(xs[1]) || !positive(ws[1]) ||
+       int(xs[1]) != int(ws[1]) * groups {
+      return false
+    }
+  }
+  if bias != ty("_") {
+    if !tensor.valid(bias) || tensor.elem(bias) != tensor.elem(x) {
+      return false
+    }
+    let bs = tensor.dims(bias)
+    if len(bs) != 1 || bs[0] != ws[0] {
+      return false
+    }
+  }
+  return true
+}
+
+fn conv_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) != 2 && len(inputs) != 3 {
+    return ty("_")
+  }
+  let x = ir.type(inputs[0])
+  let weight = ir.type(inputs[1])
+  var bias = ty("_")
+  if len(inputs) == 3 {
+    bias = ir.type(inputs[2])
+  }
+  let meta = attrs(op)
+  let groups = base.get(meta, "group", 1)
+  if !conv_inputs(x, weight, bias, groups) {
+    return ty("_")
+  }
+  let xs = tensor.dims(x)
+  let ws = tensor.dims(weight)
+  if !positive(xs[2]) || !positive(xs[3]) ||
+     !positive(ws[2]) || !positive(ws[3]) {
+    return ty("_")
+  }
+  if base.get(meta, "auto_pad", "NOTSET") != "NOTSET" {
+    return ty("_")
   }
   let stride = base.get(meta, "strides", [1, 1])
   let pad = base.get(meta, "pads", [0, 0, 0, 0])
   let dilation = base.get(meta, "dilations", [1, 1])
   if len(stride) != 2 || len(pad) != 4 || len(dilation) != 2 {
+    return ty("_")
+  }
+  if stride[0] <= 0 || stride[1] <= 0 ||
+     dilation[0] <= 0 || dilation[1] <= 0 {
+    return ty("_")
+  }
+  let h = (int(xs[2]) + pad[0] + pad[2] -
+           dilation[0] * (int(ws[2]) - 1) - 1) /
+          stride[0] + 1
+  let w = (int(xs[3]) + pad[1] + pad[3] -
+           dilation[1] * (int(ws[3]) - 1) - 1) /
+          stride[1] + 1
+  if h <= 0 || w <= 0 {
+    return ty("_")
+  }
+  let shape: list<Ty> = [xs[0], ws[0], ty(h), ty(w)]
+  return tensor.type(tensor.elem(x), shape)
+}
+
+fn conv_type(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
     return false
   }
-  let h = (xs[2] + pad[0] + pad[2] - dilation[0] * (ws[2] - 1) - 1) /
-          stride[0] + 1
-  let w = (xs[3] + pad[1] + pad[3] - dilation[1] * (ws[3] - 1) - 1) /
-          stride[1] + 1
-  return set_type(
-    m, outputs[0], tensor.type(tensor.elem(x), [xs[0], ws[0], h, w])
-  )
+  return set_type(m, outputs[0], conv_result(op))
 }
 
 fn global_pool_type(m: Mod, op: Op) -> bool {
@@ -184,15 +291,16 @@ fn global_pool_type(m: Mod, op: Op) -> bool {
     return false
   }
   let x = ir.type(inputs[0])
-  if !tensor.static(x) {
+  if !tensor.valid(x) {
     return false
   }
-  let shape = tensor.shape(x)
+  let shape = tensor.dims(x)
   if len(shape) != 4 {
     return false
   }
+  let result: list<Ty> = [shape[0], shape[1], ty(1), ty(1)]
   return set_type(
-    m, outputs[0], tensor.type(tensor.elem(x), [shape[0], shape[1], 1, 1])
+    m, outputs[0], tensor.type(tensor.elem(x), result)
   )
 }
 
@@ -203,14 +311,14 @@ fn pool_type(m: Mod, op: Op) -> bool {
     return false
   }
   let x = ir.type(inputs[0])
-  if !tensor.static(x) {
+  if !tensor.valid(x) {
     return false
   }
-  let shape = tensor.shape(x)
-  if len(shape) != 4 {
+  let shape = tensor.dims(x)
+  if len(shape) != 4 || !positive(shape[2]) || !positive(shape[3]) {
     return false
   }
-  let meta = ir.meta(op, "onnx")
+  let meta = attrs(op)
   if base.get(meta, "auto_pad", "NOTSET") != "NOTSET" ||
      !base.has(meta, "kernel_shape") ||
      base.get(meta, "ceil_mode", 0) != 0 {
@@ -224,20 +332,33 @@ fn pool_type(m: Mod, op: Op) -> bool {
      len(dilation) != 2 {
     return false
   }
-  let h = (shape[2] + pad[0] + pad[2] -
+  if kernel[0] <= 0 || kernel[1] <= 0 ||
+     stride[0] <= 0 || stride[1] <= 0 ||
+     dilation[0] <= 0 || dilation[1] <= 0 {
+    return false
+  }
+  let h = (int(shape[2]) + pad[0] + pad[2] -
            dilation[0] * (kernel[0] - 1) - 1) / stride[0] + 1
-  let w = (shape[3] + pad[1] + pad[3] -
+  let w = (int(shape[3]) + pad[1] + pad[3] -
            dilation[1] * (kernel[1] - 1) - 1) / stride[1] + 1
+  if h <= 0 || w <= 0 {
+    return false
+  }
+  let result: list<Ty> = [shape[0], shape[1], ty(h), ty(w)]
   return set_type(
-    m, outputs[0], tensor.type(
-      tensor.elem(x), [shape[0], shape[1], h, w]
-    )
+    m, outputs[0], tensor.type(tensor.elem(x), result)
   )
 }
 
 fn infer(m: Mod) -> bool {
   var changed = false
   for op in ir.ops(m) {
+    if ir.callee(op) == "onnx.QuantizeLinear" {
+      changed = quant_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.DequantizeLinear" {
+      changed = dequant_type(m, op) || changed
+    }
     if ir.callee(op) == "onnx.Conv" {
       changed = conv_type(m, op) || changed
     }
@@ -288,22 +409,26 @@ fn convert_call(m: Mod, op: Op, callee: str) -> bool {
 fn convert_conv(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
-  if len(inputs) != 2 || len(outputs) != 1 {
+  if (len(inputs) != 2 && len(inputs) != 3) || len(outputs) != 1 {
     return false
   }
-  if !tensor.valid(ir.type(inputs[0])) ||
-     !tensor.valid(ir.type(inputs[1])) ||
-     !tensor.valid(ir.type(outputs[0])) {
-    return false
-  }
-  let meta = ir.meta(op, "onnx")
-  if base.has(meta, "auto_pad") {
+  let biased = len(inputs) == 3
+  let meta = attrs(op)
+  let groups = base.get(meta, "group", 1)
+  let expected = conv_result(op)
+  if expected == ty("_") || ir.type(outputs[0]) != expected {
     return false
   }
   inputs += [ints(m, op, base.get(meta, "strides", [1, 1]))]
   inputs += [ints(m, op, base.get(meta, "pads", [0, 0, 0, 0]))]
   inputs += [ints(m, op, base.get(meta, "dilations", [1, 1]))]
-  inputs += [ir.constant(m, op, base.get(meta, "group", 1), "int")]
+  inputs += [ir.constant(m, op, groups, "int")]
+  if biased {
+    inputs += [ints(m, op, [0, 1, 2, 3])]
+    inputs += [ints(m, op, [0, 1, 2, 3])]
+    inputs += [ints(m, op, [0, 1, 2, 3])]
+    inputs += [ir.constant(m, op, "NONE", "str")]
+  }
   if !ir.args(m, op, inputs) {
     return false
   }
@@ -319,7 +444,7 @@ fn convert_norm(m: Mod, op: Op) -> bool {
   if !tensor.valid(ir.type(outputs[0])) {
     return false
   }
-  let meta = ir.meta(op, "onnx")
+  let meta = attrs(op)
   if base.get(meta, "spatial", 1) != 1 {
     return false
   }
@@ -389,7 +514,7 @@ fn convert_flatten(m: Mod, op: Op) -> bool {
     return false
   }
   let shape = tensor.dims(input)
-  var axis = base.get(ir.meta(op, "onnx"), "axis", 1)
+  var axis = base.get(attrs(op), "axis", 1)
   if axis < 0 {
     axis += len(shape)
   }
@@ -468,7 +593,7 @@ fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
      !tensor.valid(ir.type(outputs[0])) {
     return false
   }
-  let meta = ir.meta(op, "onnx")
+  let meta = attrs(op)
   if base.get(meta, "auto_pad", "NOTSET") != "NOTSET" ||
      !base.has(meta, "kernel_shape") ||
      base.get(meta, "ceil_mode", 0) != 0 {
