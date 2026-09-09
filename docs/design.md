@@ -142,7 +142,7 @@ dependency. It maps graph inputs to function parameters, initializers to
 typed tensor constants with preserved bytes, nodes to calls named by ONNX
 domain and operator, node attributes to structural `Attr` dictionaries, and
 graph outputs to returns. Operator meaning is not decoded by a core switch.
-The same codec boundary must be usable by a later TFLite module.
+The same codec boundary is now independently exercised by the TFLite module.
 
 The pinned model now passes the complete codec gate: binary decode, generation
 of 267 tensor constants and 155 calls, parse, verify, canonical print, reparse,
@@ -512,3 +512,21 @@ values, making the boundary explicit instead of teaching expansion how to
 reinterpret frontend provenance. A second official-model gate expands all 155
 compute calls from one pre-edit snapshot, verifies the resulting nested loop
 IR, and round-trips it structurally.
+
+## M10 second-frontend slice
+
+The optional `tflite` module validates that the frontend boundary is not an
+ONNX-shaped accident. It uses TensorFlow's version-3b FlatBuffer schema and
+generates a mini-reflection header only in the build tree. One generic reader
+therefore transports every option table known to that pinned schema; it never
+switches on operator names, and FlatBuffers remains absent from the core and
+public header.
+
+The pinned official TensorFlow Hub MobileNetV2 has one NHWC input, one output,
+107 buffer-backed tensors, and 66 compute calls: 36 Conv2D, 17 depthwise Conv2D,
+10 Add, and one each of average pool, reshape, and softmax. The gate requires
+binary verification, typed import, exact option dictionaries, payload
+preservation, canonical round-trip, and rejection of truncated input. Semantic
+conversion is deliberately not guessed by the codec: TFLite's NHWC layouts,
+fused activations, bias operands, and quantization metadata must become an
+explicit `tflite.nn` relationship rather than hidden reader policy.

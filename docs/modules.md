@@ -306,6 +306,16 @@ remain call operands, while node names and schema attributes live under the
 single open `onnx` metadata dictionary. This preserves source information
 without changing a call's semantic arity.
 
+The optional `tflite` codec is a second implementation of the same boundary.
+It emits every subgraph as a function, tensors as typed values, buffer-backed
+tensors as payload calls, and operators as open `tflite.*` calls. FlatBuffers
+mini-reflection transports every schema-known option table into the operation's
+`tflite` metadata dictionary without dispatching on operator names. Optional
+input slots remain `nil`, and multiple outputs remain ordinary call results.
+The checked-in schema is upstream source; its large generated C++ interface is
+private build output. As with ONNX, mapping those source calls to `nn` is the
+responsibility of a separately selected relationship module.
+
 ### A hardware extension
 
 `sat` is a complete, intentionally small module for signed saturating integers.

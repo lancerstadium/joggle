@@ -58,6 +58,11 @@ than acquiring guessed semantics.
 Conversion removes source-schema metadata only after its values have become
 ordinary operands. The same official model is then expanded one function body
 per compute node and verified and round-tripped as loop/tensor IR.
+The optional TFLite codec independently exercises the same boundary on the
+official TensorFlow Hub MobileNetV2. Its FlatBuffer schema generates a private
+build header with mini-reflection, so schema-known operator option tables are
+transported without a switch over operator names or a checked-in generated API.
+This second frontend adds no dependency or case to the core.
 
 ## Build
 
@@ -81,6 +86,22 @@ The optional ONNX codec keeps Protobuf out of the core build:
 cmake -S . -B build -DJOGGLE_BUILD_ONNX=ON
 cmake --build build
 ./build/joggle read onnx.read model.onnx -M build/modules > model.jog
+```
+
+The optional TFLite codec similarly keeps FlatBuffers private to its module.
+Its opt-in build requires a FlatBuffers package that provides both the library
+and `flatc`:
+
+```sh
+cmake -S . -B build -DJOGGLE_BUILD_TFLITE=ON
+cmake --build build
+./build/joggle read tflite.read model.tflite -M build/modules > model.jog
+```
+
+The pinned integration model can be fetched and checked independently:
+
+```sh
+cmake -DOUT=/tmp/mobilenet_v2.tflite -P test/tflite.cmake
 ```
 
 The optional `sat` module is a compact extension example rather than a built-in

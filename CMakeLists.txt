@@ -7,8 +7,11 @@ include(CMakePackageConfigHelpers)
 
 option(JOGGLE_BUILD_TESTS "Build Joggle tests" ON)
 option(JOGGLE_BUILD_ONNX "Build the optional ONNX module" OFF)
+option(JOGGLE_BUILD_TFLITE "Build the optional TFLite module" OFF)
 option(JOGGLE_BUILD_SAT "Build the optional saturating-integer module" OFF)
 set(JOGGLE_TEST_ONNX_MODEL "" CACHE FILEPATH "Official ONNX model used by tests")
+set(JOGGLE_TEST_TFLITE_MODEL "" CACHE FILEPATH
+    "Official TFLite model used by tests")
 
 foreach(module base ir math nn opt tensor)
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/${module}")
@@ -36,6 +39,61 @@ if(MSVC)
   target_compile_options(joggle PRIVATE /W4)
 else()
   target_compile_options(joggle PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+if(JOGGLE_BUILD_TFLITE)
+  find_package(flatbuffers CONFIG REQUIRED)
+  set(tflite_generated "${CMAKE_CURRENT_BINARY_DIR}/tflite-generated")
+  file(MAKE_DIRECTORY "${tflite_generated}")
+  add_custom_command(
+    OUTPUT "${tflite_generated}/schema_generated.h"
+    COMMAND $<TARGET_FILE:flatbuffers::flatc>
+            --cpp --reflect-names
+            -o "${tflite_generated}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/modules/tflite/src/schema.fbs"
+    DEPENDS modules/tflite/src/schema.fbs flatbuffers::flatc
+    VERBATIM
+  )
+  add_library(joggle-tflite MODULE
+    modules/tflite/src/tflite.cpp
+    "${tflite_generated}/schema_generated.h"
+  )
+  target_compile_features(joggle-tflite PRIVATE cxx_std_20)
+  target_include_directories(
+    joggle-tflite
+    PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/include
+      "${tflite_generated}"
+  )
+  target_link_libraries(joggle-tflite PRIVATE flatbuffers::flatbuffers)
+  if(MSVC)
+    target_compile_options(joggle-tflite PRIVATE /W4)
+  else()
+    target_compile_options(joggle-tflite PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+  set_target_properties(
+    joggle-tflite
+    PROPERTIES
+      PREFIX ""
+      OUTPUT_NAME "joggle_tflite"
+      LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/tflite/native"
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/tflite/native"
+  )
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/tflite")
+  configure_file(
+    modules/tflite/module.jog
+    "${CMAKE_CURRENT_BINARY_DIR}/modules/tflite/module.jog"
+    COPYONLY
+  )
+  install(
+    TARGETS joggle-tflite
+    LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/tflite/native
+    RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/tflite/native
+  )
+  install(
+    FILES modules/tflite/module.jog modules/tflite/LICENSE
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/tflite
+  )
 endif()
 
 if(JOGGLE_BUILD_ONNX)
@@ -247,6 +305,22 @@ if(JOGGLE_BUILD_TESTS)
       NAME onnx
       COMMAND joggle-onnx-test
               ${JOGGLE_TEST_ONNX_MODEL}
+              ${CMAKE_CURRENT_BINARY_DIR}/modules
+    )
+  endif()
+  if(JOGGLE_BUILD_TFLITE AND NOT JOGGLE_TEST_TFLITE_MODEL STREQUAL "")
+    file(SHA256 "${JOGGLE_TEST_TFLITE_MODEL}" tflite_model_sha256)
+    if(NOT tflite_model_sha256 STREQUAL
+       "ff5cb7f9e62c92ebdad971f8a98aa6b3106d82a64587a7787c6a385c9e791339")
+      message(FATAL_ERROR "JOGGLE_TEST_TFLITE_MODEL is not the pinned model")
+    endif()
+    add_executable(joggle-tflite-test test/tflite.cpp)
+    target_link_libraries(joggle-tflite-test PRIVATE Joggle::joggle)
+    add_dependencies(joggle-tflite-test joggle-tflite)
+    add_test(
+      NAME tflite
+      COMMAND joggle-tflite-test
+              ${JOGGLE_TEST_TFLITE_MODEL}
               ${CMAKE_CURRENT_BINARY_DIR}/modules
     )
   endif()

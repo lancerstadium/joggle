@@ -116,15 +116,17 @@ upgraded compatibly, and removed without editing or rebuilding Joggle.
 
 ### M10 — neural-network workflow
 
-Status: in progress. Binary ONNX transport, real-model generic fusion,
+Status: in progress. Binary ONNX and TFLite transport, real-model generic fusion,
 same-signature semantic bridging, progressive body expansion, and structural
 tensor type construction are complete. Grouped 2-D convolution now has an
 inspectable body, and the explicit `onnx.nn` relation propagates all official
 MobileNetV2 intermediate types before converting every compute node through
 shared Conv, BatchNormalization, ReLU, Add, global-pool, and reshape semantics.
-The complete converted model also expands one semantic body per compute node
-and round-trips as ordinary nested IR. Broader operator semantics, a second
-frontend, and target gates remain.
+The complete converted ONNX model also expands one semantic body per compute
+node and round-trips as ordinary nested IR. The second real frontend now imports
+the official TensorFlow Hub MobileNetV2 with reflection-driven options and no
+core or reader operator switches. Its independent semantic bridge and the two
+target gates remain.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.
