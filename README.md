@@ -5,18 +5,19 @@ software co-design research. It gives experiments one readable IR, one module
 format, and one extension boundary without prescribing a target, scheduler, or
 paper mechanism.
 
-The rebuilt core parses and verifies generic functions, calls, constants,
-structured loops and conditions, explicit returns, and loop-carried values. A
-tested C++ transform and an ordinary `.jog` function edit the same
-representation. Compile-time functions traverse universal IR handles and run
-transactionally; they are functions, not instances of a pass class. A
-separately built native module is also discovered, signature-checked, loaded,
-and called through the single native-function ABI. Functions may carry
-user-defined metadata without adding parser cases. Generic call construction
-and checked region fusion let such modules make real graph changes; the pinned
-MobileNetV2 test fuses 36 three-call chains. The core contains no ONNX, device,
-instruction-set, runtime, or code-generation policy; those capabilities belong
-in removable modules.
+The rebuilt core parses and verifies typed generic functions, calls, constants,
+structured loops and conditions, explicit returns, and loop-carried values.
+Generic parameters are ordinary `Val`s, so custom widths, element types, and
+shapes use the same type checker instead of a trait or kind registry. A tested
+C++ transform and an ordinary `.jog` function edit the same representation.
+Compile-time functions traverse universal IR handles and run transactionally;
+they are functions, not instances of a pass class. A separately built native
+module is also discovered, signature-checked, loaded, and called through the
+single native-function ABI. Functions may carry user-defined metadata without
+adding parser cases. Generic call construction and checked region fusion let
+such modules make real graph changes; the pinned MobileNetV2 test fuses 36
+three-call chains. The core contains no ONNX, device, instruction-set, runtime,
+or code-generation policy; those capabilities belong in removable modules.
 
 ## Build
 

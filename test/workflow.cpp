@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
   constexpr std::string_view type_source =
       "module types\n"
       "use tensor\n"
-      "fn id<E, S>(x: tensor<E, S>) -> tensor<E, S>;\n"
+      "fn id<E: Ty, S: list<int>>(x: tensor<E, S>) -> tensor<E, S>;\n"
       "fn apply(x: tensor<f32, [2, 3]>) -> tensor<f32, [2, 3]> {\n"
       "  return id(x)\n"
       "}\n"
@@ -97,6 +97,22 @@ int main(int argc, char** argv) {
   const std::vector<joggle::Blk> last_blocks = types.find_fn("last").blocks();
   CHECK(last_blocks.size() == 2);
   CHECK(last_blocks[1].args().front().type() == joggle::Ty("int"));
+  joggle::Mod types_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(types), types_roundtrip,
+                      "types-roundtrip.jog"));
+  CHECK(types_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(types, types_roundtrip));
+
+  joggle::Mod wrong_shape;
+  CHECK(joggle::parse(
+      env,
+      "module wrong_shape\nuse tensor\n"
+      "fn bad(x: tensor<f32, 4>) -> tensor<f32, 4> { return x }\n",
+      wrong_shape, "wrong-shape.jog"));
+  CHECK(!wrong_shape.verify(env));
+  CHECK(!wrong_shape.diags().empty());
+  CHECK(wrong_shape.diags().front().message.find("expected 'list<int>'") !=
+        std::string::npos);
 
   joggle::Mod overloaded;
   constexpr std::string_view overload_source =
@@ -162,6 +178,24 @@ int main(int argc, char** argv) {
                        duplicate_generic, "duplicate-generic.jog"));
   CHECK(!duplicate_generic.diags().empty());
 
+  joggle::Mod duplicate_parameter;
+  CHECK(!joggle::parse(env,
+                       "module duplicate\n"
+                       "fn same<T, T>(x: int) -> int;\n",
+                       duplicate_parameter, "duplicate-parameter.jog"));
+  CHECK(!duplicate_parameter.diags().empty());
+
+  joggle::Mod wrong_generic_kind;
+  CHECK(joggle::parse(env,
+                      "module kinds\n"
+                      "fn width<W: int>(x: int) -> int;\n"
+                      "fn bad(x: int) -> int { return width<f32>(x) }\n",
+                      wrong_generic_kind, "wrong-generic-kind.jog"));
+  CHECK(!wrong_generic_kind.verify(env));
+  CHECK(!wrong_generic_kind.diags().empty());
+  CHECK(wrong_generic_kind.diags().front().message.find("expected 'int'") !=
+        std::string::npos);
+
   CHECK(env.load("sample"));
   CHECK(env.bound("sample.ping"));
   const joggle::Fn ping = env.find_fn("sample.ping");
@@ -202,6 +236,8 @@ int main(int argc, char** argv) {
   joggle::Fn matmul = mod.find_fn("matmul");
   CHECK(matmul);
   CHECK(matmul.generics().size() == 4);
+  CHECK(matmul.generics()[0].type() == joggle::Ty("Ty"));
+  CHECK(matmul.generics()[1].type() == joggle::Ty("int"));
   CHECK(matmul.params().size() == 2);
   CHECK(matmul.blocks().size() == 3);
 

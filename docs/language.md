@@ -10,7 +10,7 @@ The implemented surface is conventional:
 module demo
 use tensor
 
-fn matmul<T, M, N, K>(
+fn matmul<T: Ty, M: int, N: int, K: int>(
   a: tensor<T, [M, K]>,
   b: tensor<T, [K, N]>
 ) -> tensor<T, [M, N]> {
@@ -44,8 +44,8 @@ implemented. Operators normalize to ordinary function calls such as
 IR operation kind. Operator functions use the symbol directly:
 
 ```jog
-fn +<T>(a: T, b: T) -> T;
-fn +<W>(a: sat<W>, b: sat<W>) -> sat<W>;
+fn +<T: Ty>(a: T, b: T) -> T;
+fn +<W: int>(a: sat<W>, b: sat<W>) -> sat<W>;
 ```
 
 Ordinary and symbolic functions both form overload sets. Verification filters
@@ -81,15 +81,23 @@ its generic list is the constructor's argument list:
 ```jog
 module sat
 
-fn sat<W>() -> Ty;
-fn add<W>(a: sat<W>, b: sat<W>) -> sat<W>;
+fn sat<W: int>() -> Ty;
+fn add<W: int>(a: sat<W>, b: sat<W>) -> sat<W>;
 ```
 
+Generic parameters are compile-time `Val`s and use ordinary types for their
+constraints. `Ty` means a type argument, `int` can represent a bit width or
+dimension, and `list<int>` describes a shape. An omitted annotation is `_`, the
+open constraint. The same structural checker validates explicit generic
+arguments, inferred bindings, and type-constructor arguments; no separate kind
+or trait registry exists. `Fn::generics()` exposes the parameter values, so
+embedding code reads both `name()` and `type()` through the normal `Val` API.
+
 Type construction and value construction may share one name. For example,
-`fn tensor<E, S>() -> Ty` declares the type spelling while
-`fn tensor<E, S>(fill: E) -> tensor<E, S>` constructs a value. They are normal
-overloads; the verifier identifies the zero-value-argument `Ty` overload when
-checking a type and the value overload when checking a call.
+`fn tensor<E: Ty, S: list<int>>() -> Ty` declares the type spelling while
+`fn tensor<E: Ty, S: list<int>>(fill: E) -> tensor<E, S>` constructs a value.
+They are normal overloads; the verifier identifies the zero-value-argument
+`Ty` overload when checking a type and the value overload when checking a call.
 
 After `use sat`, `sat<8>` resolves to `sat.sat<8>`. No `type` keyword, generated
 class, registry callback, or metadata tag is involved. Constructor arity and

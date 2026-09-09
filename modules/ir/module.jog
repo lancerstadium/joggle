@@ -13,7 +13,7 @@ fn has(f: Fn, key: str) -> bool;
 fn meta(f: Fn, key: str) -> Attr;
 fn is_const(v: Val) -> bool;
 fn constant(v: Val) -> Attr;
-fn len<T>(xs: list<T>) -> int;
+fn len<T: Ty>(xs: list<T>) -> int;
 fn call(m: Mod, before: Op, callee: str, args: list<Val>, type: str) -> Val;
 fn fuse(m: Mod, ops: list<Op>, callee: str) -> bool;
 fn replace(m: Mod, old: Val, next: Val) -> bool;

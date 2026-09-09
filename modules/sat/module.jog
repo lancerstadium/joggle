@@ -1,9 +1,9 @@
 module sat
 use ir
 
-fn sat<W>() -> Ty;
-fn +<W>(a: sat<W>, b: sat<W>) -> sat<W>;
-fn add<W>(a: sat<W>, b: sat<W>) -> sat<W>;
+fn sat<W: int>() -> Ty;
+fn +<W: int>(a: sat<W>, b: sat<W>) -> sat<W>;
+fn add<W: int>(a: sat<W>, b: sat<W>) -> sat<W>;
 
 [role: "match"]
 fn supports(type: str) -> bool;

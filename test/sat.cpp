@@ -98,6 +98,16 @@ int main(int argc, char** argv) {
   CHECK(wrong_constructor.diags().front().message.find(
             "expects 1 type argument") != std::string::npos);
 
+  joggle::Mod wrong_kind;
+  CHECK(joggle::parse(env,
+                      "module wrong\nuse sat\n"
+                      "fn f(x: sat<f32>) -> sat<f32> { return x }\n",
+                      wrong_kind, "wrong-kind.jog"));
+  CHECK(!wrong_kind.verify(env));
+  CHECK(!wrong_kind.diags().empty());
+  CHECK(wrong_kind.diags().front().message.find("expected 'int'") !=
+        std::string::npos);
+
   joggle::Mod mod;
   CHECK(joggle::parse(env, source.str(), mod, argv[1]));
   CHECK(mod.verify(env));

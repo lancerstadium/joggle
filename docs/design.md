@@ -186,11 +186,13 @@ model code. Qualified resolution follows only explicit and transitive `use`
 edges, preventing unrelated modules already present in an `Env` from changing
 the meaning of a source file.
 
-Parametric type constructors also remain functions: `fn tensor<E, S>() -> Ty`
-defines the arity and ownership of `tensor<E, S>`. The verifier recognizes the
-`Ty` result instead of a special declaration kind or registration hook. This is
-the first self-hosting step toward using ordinary compile-time values to define
-and validate richer data formats.
+Parametric type constructors also remain functions:
+`fn tensor<E: Ty, S: list<int>>() -> Ty` defines the arity, argument
+constraints, and ownership of `tensor<E, S>`. Generic parameters are the same
+typed `Val`s used elsewhere, so no parallel kind or trait objects are needed.
+The verifier recognizes the `Ty` result instead of a special declaration kind
+or registration hook. This is the first self-hosting step toward using ordinary
+compile-time values to define and validate richer data formats.
 
 Function names now map to ordered overload sets rather than one declaration.
 The same structural matcher handles ordinary calls, symbolic functions such as
@@ -201,10 +203,9 @@ and ties are rejected. The base operator declarations provide general algebra;
 the `sat` module adds a more specific overload without modifying the parser,
 verifier, evaluator, or operator representation.
 
-The generic `sat.add<W>` declaration is the first module-defined parametric
-gate: inferred and explicit widths succeed, conflicting widths and wrong arity
-fail with located diagnostics, and no saturating-arithmetic case exists in the
-core. Language normalizations (`base.copy`, list construction, and indexing)
-retain only the minimal intrinsic rules needed to recover ordinary source
-bindings and iteration. Richer constructor-argument kind checking remains
-before the M6 exit gate.
+The generic `sat.add<W: int>` declaration is the first module-defined
+parametric gate: inferred and explicit widths succeed, conflicting widths,
+wrong parameter types, and wrong arity fail with located diagnostics, and no
+saturating-arithmetic case exists in the core. Language normalizations
+(`base.copy`, list construction, and indexing) retain only the minimal
+intrinsic rules needed to recover ordinary source bindings and iteration.

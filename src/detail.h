@@ -62,7 +62,6 @@ struct BlkData {
 
 struct FnData {
   std::string name;
-  std::vector<std::string> generics;
   std::vector<std::uint32_t> generic_vals;
   std::vector<std::uint32_t> params;
   std::vector<Ty> returns;
@@ -97,7 +96,8 @@ bool dominates(const Store& store, std::uint32_t value, std::uint32_t use);
 Fn resolve_overload(std::span<const Fn> candidates,
                     std::span<const Ty> arguments,
                     std::span<const Ty> explicit_arguments,
-                    std::vector<Ty>* returns, bool* ambiguous);
+                    std::vector<Ty>* returns, bool* ambiguous,
+                    std::span<const Val> context = {});
 
 }  // namespace joggle::detail
 

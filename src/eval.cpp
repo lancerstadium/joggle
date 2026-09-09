@@ -450,8 +450,10 @@ private:
     for (const Item& item : args)
       argument_types.push_back(runtime_type(item));
     bool ambiguous = false;
-    const Fn target = resolve_overload(candidates, argument_types,
-                                       explicit_arguments, nullptr, &ambiguous);
+    const std::vector<Val> context = current.generics();
+    const Fn target =
+        resolve_overload(candidates, argument_types, explicit_arguments,
+                         nullptr, &ambiguous, context);
     if (name.starts_with("operator ") &&
         (!target || target.external() || target.module() == "base"))
       return operation(name.substr(9), args, std::move(loc));

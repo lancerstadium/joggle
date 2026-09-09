@@ -259,7 +259,7 @@ public:
   explicit operator bool() const noexcept;
   std::string_view name() const noexcept;
   std::string_view module() const noexcept;
-  std::vector<std::string> generics() const;
+  std::vector<Val> generics() const;
   std::vector<Val> params() const;
   std::vector<Ty> returns() const;
   bool external() const noexcept;

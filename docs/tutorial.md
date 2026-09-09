@@ -118,9 +118,9 @@ The module declares both its type constructor and its symbolic algebra as
 ordinary functions:
 
 ```jog
-fn sat<W>() -> Ty;
-fn +<W>(a: sat<W>, b: sat<W>) -> sat<W>;
-fn add<W>(a: sat<W>, b: sat<W>) -> sat<W>;
+fn sat<W: int>() -> Ty;
+fn +<W: int>(a: sat<W>, b: sat<W>) -> sat<W>;
+fn add<W: int>(a: sat<W>, b: sat<W>) -> sat<W>;
 ```
 
 After verification, embedding code can inspect the actual overload selected

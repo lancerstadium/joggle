@@ -318,8 +318,13 @@ std::string_view Fn::name() const noexcept {
 std::string_view Fn::module() const noexcept {
   return valid() ? std::string_view(store_->name) : std::string_view{};
 }
-std::vector<std::string> Fn::generics() const {
-  return valid() ? store_->fns[id_].data.generics : std::vector<std::string>{};
+std::vector<Val> Fn::generics() const {
+  std::vector<Val> out;
+  if (!valid())
+    return out;
+  for (const std::uint32_t id : store_->fns[id_].data.generic_vals)
+    out.push_back(Val(store_, id, store_->vals[id].generation));
+  return out;
 }
 std::vector<Val> Fn::params() const {
   std::vector<Val> out;

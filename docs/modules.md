@@ -89,11 +89,12 @@ scalar values, the call fails as ambiguous instead of choosing by declaration
 order.
 
 Type constructors use this same boundary. A module named `format` can export
-`fn format<P>() -> Ty;`; consumers write `use format` and then `format<...>`.
-The function's generic list defines arity, and its `Ty` result identifies it as
-a constructor without a second declaration system. A qualified constructor
-name may target any visible constructor function when the module and type names
-differ.
+`fn format<P: Attr>() -> Ty;`; consumers write `use format` and then
+`format<...>`. The function's generic list defines arity and ordinary parameter
+types constrain compile-time arguments (`int` widths, `Ty` element types, or
+`list<int>` shapes). Its `Ty` result identifies it as a constructor without a
+second declaration system or kind registry. A qualified constructor name may
+target any visible constructor function when the module and type names differ.
 
 The built-in `ir` module is the complete reflection boundary:
 

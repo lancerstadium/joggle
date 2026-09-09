@@ -14,7 +14,7 @@ fn choose(x: i32, flag: bool) -> i32 {
   return y
 }
 
-fn matmul<T, M, N, K>(
+fn matmul<T: Ty, M: int, N: int, K: int>(
   a: tensor<T, [M, K]>,
   b: tensor<T, [K, N]>
 ) -> tensor<T, [M, N]> {
