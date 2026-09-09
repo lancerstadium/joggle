@@ -1,49 +1,43 @@
 # Joggle
 
-Joggle is a research compiler for deterministic neural-network inference on
-small, software-managed accelerators.
+Joggle is a small C++20 compiler workbench for neural-network and hardware/
+software co-design research. It gives experiments one readable IR, one module
+format, and one extension boundary without prescribing a target, scheduler, or
+paper mechanism.
 
-Its current question is deliberately narrow: can one executable description of
-target instructions, storage, transfers, constraints, and costs induce both
-legal accelerator implementations and profitable whole-model execution
-regions—without a second target-specific operator, fusion, or schedule
-registry?
+The project is being rebuilt from a deliberately small foundation. The core
+contains no ONNX, device, instruction-set, runtime, or code-generation policy.
+Those capabilities belong in removable modules.
 
-Joggle treats a region boundary as a real target transition: live values are
-exported to an ABI-visible representation, control returns or transfers, and
-resident state is lost unless the target explicitly preserves it. Instruction
-selection, residency, spilling, and host/device cuts are therefore one search
-problem rather than independent compiler stages.
+## Build
 
-## Status
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
 
-The previous implementation is preserved at Git tag
-`archive/pre-relaunch-a2a281e`. It is not part of the current design.
+The core and command-line tool require only a C++20 compiler and the standard
+library. Building does not download dependencies.
 
-The research contract and its first feasibility gate are complete.
-Source-grounded experiments on ACT and VTA established that open resident
-composition can be legal when forced external-memory closure is not, and
-identified the minimum state needed to handle representation, capacity,
-destructive fan-out, and target dependency protocols.
+## Shape of the project
 
-Only the next experimental slice is in scope: compare reusable open-frontier
-search against closed convex-region synthesis on frozen subgraphs from standard
-pretrained models. A general DSL, pass framework, package manager, broad
-operator library, runtime, and speculative backends remain out of scope until
-that mechanism survives its kill criteria.
+- `joggle::Env` owns loaded modules, native bindings, and environment
+  diagnostics.
+- `joggle::Mod` owns one self-contained IR unit.
+- `Fn`, `Blk`, `Op`, and `Val` are stable handles into a `Mod`.
+- `Ty` and `Attr` are structural values.
+- `.jog` is the only source and readable IR format.
+- imports, transforms, analyses, simulators, and emitters are module functions,
+  not separate plugin class families.
 
-See [docs/research.md](docs/research.md) for the accepted hypothesis, concept
-model, evidence boundary, and gates.
+Start with [the design](docs/design.md), then read the
+[language](docs/language.md), [module model](docs/modules.md), and
+[tutorial](docs/tutorial.md).
 
-## Non-goals
-
-Joggle is not an SNN, LUT, Popcount, custom-number-format, graph-IR, or
-kernel-language project. It does not claim automatic fusion, compiler
-extensibility, semantic instruction matching, or hardware-aware partitioning
-individually; each already has substantial prior art. The proposed contribution
-is their specific conjunction: semantics-derived kernelization, compositional
-open frontiers, and measurable deterministic edge-inference benefit.
+The implementation removed during the redesign remains recoverable at Git tag
+`archive/pre-relaunch-a2a281e`.
 
 ## License
 
-Joggle is licensed under the MIT License. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
