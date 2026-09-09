@@ -1,3 +1,27 @@
 module base
 
 fn copy<T>(x: T) -> T;
+
+fn +<T>(x: T) -> T;
+fn +<T>(a: T, b: T) -> T;
+fn -<T>(x: T) -> T;
+fn -<T>(a: T, b: T) -> T;
+fn !<T>(x: T) -> bool;
+fn ~<T>(x: T) -> T;
+fn *<T>(a: T, b: T) -> T;
+fn /<T>(a: T, b: T) -> T;
+fn %<T>(a: T, b: T) -> T;
+fn |<T>(a: T, b: T) -> T;
+fn ^<T>(a: T, b: T) -> T;
+fn &<T>(a: T, b: T) -> T;
+fn << <T>(a: T, b: int) -> T;
+fn >><T>(a: T, b: int) -> T;
+fn ==<A, B>(a: A, b: B) -> bool;
+fn !=<A, B>(a: A, b: B) -> bool;
+fn < <A, B>(a: A, b: B) -> bool;
+fn <= <A, B>(a: A, b: B) -> bool;
+fn ><A, B>(a: A, b: B) -> bool;
+fn >=<A, B>(a: A, b: B) -> bool;
+fn &&(a: bool, b: bool) -> bool;
+fn ||(a: bool, b: bool) -> bool;
+fn ..<A, B>(a: A, b: B) -> range;

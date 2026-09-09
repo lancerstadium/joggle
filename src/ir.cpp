@@ -381,12 +381,21 @@ std::vector<Fn> Mod::fns() const {
   return out;
 }
 
-Fn Mod::find_fn(std::string_view name) const noexcept {
+std::vector<Fn> Mod::find_fns(std::string_view name) const {
+  std::vector<Fn> out;
   const auto found = impl_->store.symbols.find(std::string(name));
   if (found == impl_->store.symbols.end())
-    return {};
-  const std::uint32_t id = found->second;
-  return Fn(&impl_->store, id, impl_->store.fns[id].generation);
+    return out;
+  out.reserve(found->second.size());
+  for (const std::uint32_t id : found->second)
+    if (id < impl_->store.fns.size() && impl_->store.fns[id].live)
+      out.push_back(Fn(&impl_->store, id, impl_->store.fns[id].generation));
+  return out;
+}
+
+Fn Mod::find_fn(std::string_view name) const {
+  const std::vector<Fn> matches = find_fns(name);
+  return matches.size() == 1 ? matches.front() : Fn{};
 }
 
 Val Mod::call(Op before, std::string callee, std::span<const Val> args,

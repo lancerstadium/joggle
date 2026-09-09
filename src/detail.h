@@ -80,7 +80,7 @@ struct Store {
   std::vector<Slot<OpData>> ops;
   std::vector<Slot<ValData>> vals;
   std::vector<Diag> diags;
-  std::unordered_map<std::string, std::uint32_t> symbols;
+  std::unordered_map<std::string, std::vector<std::uint32_t>> symbols;
 };
 
 template <class T>
@@ -94,6 +94,10 @@ void add_diag(std::vector<Diag>& diags, std::string message, Loc loc = {});
 int print_diags(std::FILE* file, const std::vector<Diag>& diags);
 void rebuild_uses(Store& store);
 bool dominates(const Store& store, std::uint32_t value, std::uint32_t use);
+Fn resolve_overload(std::span<const Fn> candidates,
+                    std::span<const Ty> arguments,
+                    std::span<const Ty> explicit_arguments,
+                    std::vector<Ty>* returns, bool* ambiguous);
 
 }  // namespace joggle::detail
 

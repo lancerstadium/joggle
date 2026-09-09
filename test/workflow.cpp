@@ -63,6 +63,19 @@ int main(int argc, char** argv) {
   CHECK(env.loaded("tensor"));
   CHECK((env.modules() == std::vector<std::string>{"base", "tensor"}));
 
+  std::ifstream base_input(std::string(argv[2]) + "/base/module.jog");
+  CHECK(base_input);
+  std::ostringstream base_source;
+  base_source << base_input.rdbuf();
+  joggle::Mod base;
+  CHECK(joggle::parse(env, base_source.str(), base, "base.jog"));
+  CHECK(base.verify(env));
+  joggle::Mod base_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(base), base_roundtrip,
+                      "base-roundtrip.jog"));
+  CHECK(base_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(base, base_roundtrip));
+
   joggle::Mod types;
   constexpr std::string_view type_source =
       "module types\n"
@@ -85,6 +98,70 @@ int main(int argc, char** argv) {
   CHECK(last_blocks.size() == 2);
   CHECK(last_blocks[1].args().front().type() == joggle::Ty("int"));
 
+  joggle::Mod overloaded;
+  constexpr std::string_view overload_source =
+      "module overloads\n"
+      "fn choose(x: int) -> str;\n"
+      "fn choose(x: str) -> int;\n"
+      "fn select<T>(x: T) -> int;\n"
+      "fn select(x: str) -> str;\n"
+      "fn +<T>(a: T, b: T) -> T;\n"
+      "fn from_int(x: int) -> str { return choose(x) }\n"
+      "fn from_str(x: str) -> int { return choose(x) }\n"
+      "fn specific(x: str) -> str { return select(x) }\n"
+      "fn plus(a: i32, b: i32) -> i32 { return a + b }\n";
+  CHECK(joggle::parse(env, overload_source, overloaded, "overloads.jog"));
+  CHECK(overloaded.verify(env));
+  CHECK(!overloaded.find_fn("choose"));
+  CHECK(overloaded.find_fns("choose").size() == 2);
+  CHECK(overloaded.find_fn("from_int")
+            .body()
+            .ops()
+            .back()
+            .args()
+            .front()
+            .type() == joggle::Ty("str"));
+  CHECK(overloaded.find_fn("specific")
+            .body()
+            .ops()
+            .back()
+            .args()
+            .front()
+            .type() == joggle::Ty("str"));
+  joggle::Mod overload_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(overloaded), overload_roundtrip,
+                      "overloads-roundtrip.jog"));
+  CHECK(overload_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(overloaded, overload_roundtrip));
+
+  joggle::Mod ambiguous;
+  constexpr std::string_view ambiguous_source =
+      "module ambiguous\n"
+      "fn pick<A>(x: pair<A, i32>) -> int;\n"
+      "fn pick<B>(x: pair<i32, B>) -> str;\n"
+      "fn use(x: pair<i32, i32>) -> int { return pick(x) }\n";
+  CHECK(joggle::parse(env, ambiguous_source, ambiguous, "ambiguous.jog"));
+  CHECK(!ambiguous.verify(env));
+  CHECK(!ambiguous.diags().empty());
+  CHECK(ambiguous.diags().front().message.find("ambiguous") !=
+        std::string::npos);
+
+  joggle::Mod duplicate_overload;
+  CHECK(!joggle::parse(env,
+                       "module duplicate\n"
+                       "fn same(x: int) -> int;\n"
+                       "fn same(x: int) -> str;\n",
+                       duplicate_overload, "duplicate-overload.jog"));
+  CHECK(!duplicate_overload.diags().empty());
+
+  joggle::Mod duplicate_generic;
+  CHECK(!joggle::parse(env,
+                       "module duplicate\n"
+                       "fn same<T>(x: T) -> int;\n"
+                       "fn same<U>(x: U) -> int;\n",
+                       duplicate_generic, "duplicate-generic.jog"));
+  CHECK(!duplicate_generic.diags().empty());
+
   CHECK(env.load("sample"));
   CHECK(env.bound("sample.ping"));
   const joggle::Fn ping = env.find_fn("sample.ping");
@@ -92,8 +169,11 @@ int main(int argc, char** argv) {
   CHECK(ping.module() == "sample");
   CHECK(!ping.meta("host"));
   CHECK(ping.meta("role") && ping.meta("role")->string() == "test");
-  const joggle::Fn echo = env.find_fn("sample.echo");
-  CHECK(echo && echo.external() && echo.meta().empty());
+  const std::vector<joggle::Fn> echoes = env.find_fns("sample.echo");
+  CHECK(echoes.size() == 2);
+  CHECK(!env.find_fn("sample.echo"));
+  CHECK(echoes[0].external() && echoes[1].external());
+  CHECK(echoes[0].meta().empty() && echoes[1].meta().empty());
   CHECK(env.bound("sample.echo"));
   const std::vector<joggle::Attr> arguments{joggle::Attr(std::int64_t{41})};
   std::vector<joggle::Attr> returns;
@@ -105,6 +185,9 @@ int main(int argc, char** argv) {
   CHECK(env.call("sample.echo", bytes, returns));
   CHECK(returns.size() == 1);
   CHECK(returns[0].bytes() && *returns[0].bytes() == *bytes[0].bytes());
+  const std::vector<joggle::Attr> text{joggle::Attr("hello")};
+  CHECK(env.call("sample.echo", text, returns));
+  CHECK(returns.size() == 1 && returns[0].string() == "hello");
   CHECK(!env.load("bad"));
   CHECK(!env.loaded("bad"));
   CHECK(!env.diags().empty());
@@ -152,6 +235,9 @@ int main(int argc, char** argv) {
   CHECK(scripted_text.find("return x") != std::string::npos);
 
   CHECK(env.load("script"));
+  joggle::Mod overload_execution;
+  CHECK(joggle::parse(env, source.str(), overload_execution, argv[1]));
+  CHECK(joggle::run(env, "script.overload_probe", overload_execution));
   joggle::Mod rolled_back;
   CHECK(joggle::parse(env, source.str(), rolled_back, argv[1]));
   const std::string before_failure = joggle::print(rolled_back);

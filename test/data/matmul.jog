@@ -18,7 +18,7 @@ fn matmul<T, M, N, K>(
   a: tensor<T, [M, K]>,
   b: tensor<T, [K, N]>
 ) -> tensor<T, [M, N]> {
-  var c = tensor<T, [M, N]>(0)
+  var c = tensor<T, [M, N]>(T(0))
   for i in 0..M, j in 0..N {
     var sum = T(0)
     for k in 0..K {

@@ -1,4 +1,5 @@
 module ir
+use base
 
 fn fns(m: Mod) -> list<Fn>;
 fn blocks(f: Fn) -> list<Blk>;

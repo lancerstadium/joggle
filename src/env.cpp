@@ -25,7 +25,7 @@ namespace {
 struct Native {
   jog_fn function = nullptr;
   void* data = nullptr;
-  Fn declaration;
+  std::vector<Fn> declarations;
 };
 
 struct CallState {
@@ -91,8 +91,10 @@ bool bind_native(jog_module* opaque, const char* symbol, jog_fn function,
     return false;
   }
   const std::string local = full.substr(prefix.size());
-  const Fn fn = state.module->find_fn(local);
-  if (!fn || !fn.external()) {
+  const std::vector<Fn> declarations = state.module->find_fns(local);
+  if (declarations.empty() ||
+      std::any_of(declarations.begin(), declarations.end(),
+                  [](Fn fn) { return !fn.external(); })) {
     detail::add_diag(*state.diags,
                      "native binding has no matching external function: " +
                          full);
@@ -102,7 +104,7 @@ bool bind_native(jog_module* opaque, const char* symbol, jog_fn function,
     detail::add_diag(*state.diags, "duplicate native binding: " + full);
     return false;
   }
-  state.natives->emplace(full, Native{function, data, fn});
+  state.natives->emplace(full, Native{function, data, declarations});
   return true;
 }
 
@@ -219,6 +221,24 @@ bool scalar_matches(const Ty& type, const Attr& value) {
       (name.size() > 1 && (name.front() == 'i' || name.front() == 'u')))
     return value.integer().has_value();
   return true;
+}
+
+Ty scalar_type(const Attr& value) {
+  if (value.boolean())
+    return Ty("bool");
+  if (value.integer())
+    return Ty("int");
+  if (value.real())
+    return Ty("f64");
+  if (value.string())
+    return Ty("str");
+  if (value.bytes())
+    return Ty("bytes");
+  if (value.list())
+    return Ty("list<_>");
+  if (value.dict())
+    return Ty("dict");
+  return Ty("Attr");
 }
 
 void print_diag(std::FILE* file, const Diag& diag) {
@@ -395,32 +415,39 @@ bool Env::loaded(std::string_view name) const noexcept {
   return impl_->modules.contains(name);
 }
 
-Fn Env::find_fn(std::string_view symbol) const noexcept {
+std::vector<Fn> Env::find_fns(std::string_view symbol) const {
   std::size_t best = 0;
-  Fn result;
+  std::vector<Fn> result;
   for (const auto& [name, module] : impl_->modules) {
     if (name.size() <= best || symbol.size() <= name.size() ||
         !symbol.starts_with(name) || symbol[name.size()] != '.')
       continue;
-    Fn candidate = module->find_fn(symbol.substr(name.size() + 1));
-    if (candidate) {
+    std::vector<Fn> candidates =
+        module->find_fns(symbol.substr(name.size() + 1));
+    if (!candidates.empty()) {
       best = name.size();
-      result = candidate;
+      result = std::move(candidates);
     }
   }
   return result;
 }
 
-Fn Env::resolve(const Mod& from, std::string_view symbol) const noexcept {
-  if (symbol.find('.') == std::string_view::npos)
-    return from.find_fn(symbol);
+Fn Env::find_fn(std::string_view symbol) const {
+  const std::vector<Fn> matches = find_fns(symbol);
+  return matches.size() == 1 ? matches.front() : Fn{};
+}
+
+std::vector<Fn> Env::resolve_fns(const Mod& from,
+                                 std::string_view symbol) const {
+  if (symbol.find('.') == std::string_view::npos) {
+    std::vector<Fn> local = from.find_fns(symbol);
+    if (!local.empty())
+      return local;
+  }
   const std::string own_prefix = std::string(from.name()) + ".";
   if (symbol.starts_with(own_prefix))
-    return from.find_fn(symbol.substr(own_prefix.size()));
+    return from.find_fns(symbol.substr(own_prefix.size()));
 
-  const Fn candidate = find_fn(symbol);
-  if (!candidate)
-    return {};
   std::vector<std::string> pending = from.uses();
   std::set<std::string, std::less<>> visited;
   while (!pending.empty()) {
@@ -428,15 +455,65 @@ Fn Env::resolve(const Mod& from, std::string_view symbol) const noexcept {
     pending.pop_back();
     if (!visited.insert(name).second)
       continue;
-    if (name == candidate.module())
-      return candidate;
     const auto dependency = impl_->modules.find(name);
     if (dependency == impl_->modules.end())
       continue;
     const auto next = dependency->second->uses();
     pending.insert(pending.end(), next.begin(), next.end());
   }
-  return {};
+
+  if (symbol.find('.') != std::string_view::npos) {
+    std::vector<Fn> matches = find_fns(symbol);
+    if (!matches.empty() &&
+        visited.contains(std::string(matches.front().module())))
+      return matches;
+    return {};
+  }
+
+  std::vector<Fn> matches;
+  for (const std::string& name : visited) {
+    const auto module = impl_->modules.find(name);
+    if (module == impl_->modules.end())
+      continue;
+    std::vector<Fn> candidates = module->second->find_fns(symbol);
+    matches.insert(matches.end(), candidates.begin(), candidates.end());
+  }
+  return matches;
+}
+
+std::vector<Fn> Env::resolve_fns(Fn from, std::string_view symbol) const {
+  if (!from)
+    return {};
+  const auto module = impl_->modules.find(std::string(from.module()));
+  return module == impl_->modules.end() ? std::vector<Fn>{}
+                                        : resolve_fns(*module->second, symbol);
+}
+
+Fn Env::resolve(const Mod& from, std::string_view symbol) const {
+  const std::vector<Fn> matches = resolve_fns(from, symbol);
+  return matches.size() == 1 ? matches.front() : Fn{};
+}
+
+Fn Env::resolve(Fn from, std::string_view symbol) const {
+  const std::vector<Fn> matches = resolve_fns(from, symbol);
+  return matches.size() == 1 ? matches.front() : Fn{};
+}
+
+Fn Env::resolve(const Mod& from, Op call) const {
+  if (!call || call.kind() != Op::Kind::call)
+    return {};
+  const std::string_view callee = call.callee();
+  const Ty applied{std::string(callee)};
+  const std::string_view symbol =
+      applied.args().empty() ? callee : applied.name();
+  const std::vector<Ty> explicit_arguments =
+      applied.args().empty() ? std::vector<Ty>{} : applied.args();
+  std::vector<Ty> arguments;
+  for (const Val value : call.args())
+    arguments.push_back(value.type());
+  const std::vector<Fn> candidates = resolve_fns(from, symbol);
+  return detail::resolve_overload(candidates, arguments, explicit_arguments,
+                                  nullptr, nullptr);
 }
 
 bool Env::bound(std::string_view symbol) const noexcept {
@@ -452,13 +529,23 @@ bool Env::call(std::string_view symbol, std::span<const Attr> args,
     return false;
   }
   const Native& native = found->second;
-  const std::vector<Val> params = native.declaration.params();
-  if (params.size() != args.size()) {
+  std::vector<Ty> argument_types;
+  argument_types.reserve(args.size());
+  for (const Attr& argument : args)
+    argument_types.push_back(scalar_type(argument));
+  bool ambiguous = false;
+  std::vector<Ty> result_types;
+  const Fn declaration = detail::resolve_overload(
+      native.declarations, argument_types, {}, &result_types, &ambiguous);
+  if (!declaration) {
     detail::add_diag(impl_->diags,
-                     "argument count does not match native declaration: " +
-                         std::string(symbol));
+                     ambiguous
+                         ? "native call is ambiguous: " + std::string(symbol)
+                         : "arguments do not match a native declaration: " +
+                               std::string(symbol));
     return false;
   }
+  const std::vector<Val> params = declaration.params();
   for (std::size_t index = 0; index < args.size(); ++index) {
     if (!scalar_matches(params[index].type(), args[index])) {
       detail::add_diag(impl_->diags,
@@ -467,7 +554,7 @@ bool Env::call(std::string_view symbol, std::span<const Attr> args,
       return false;
     }
   }
-  returns.assign(native.declaration.returns().size(), Attr{});
+  returns.assign(result_types.size(), Attr{});
   CallState state{args,
                   &returns,
                   std::vector<bool>(returns.size(), false),
@@ -484,9 +571,8 @@ bool Env::call(std::string_view symbol, std::span<const Attr> args,
                          std::string(symbol));
     return false;
   }
-  const std::vector<Ty> types = native.declaration.returns();
   for (std::size_t index = 0; index < returns.size(); ++index) {
-    if (!scalar_matches(types[index], returns[index])) {
+    if (!scalar_matches(result_types[index], returns[index])) {
       detail::add_diag(impl_->diags,
                        "return type does not match native declaration: " +
                            std::string(symbol));

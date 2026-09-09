@@ -76,6 +76,45 @@ std::optional<std::string_view> string(const Item& item) {
   return value ? value->string() : std::nullopt;
 }
 
+Ty runtime_type(const Item& item) {
+  if (const auto* value = as<Attr>(item)) {
+    if (value->boolean())
+      return Ty("bool");
+    if (value->integer())
+      return Ty("int");
+    if (value->real())
+      return Ty("f64");
+    if (value->string())
+      return Ty("str");
+    if (value->bytes())
+      return Ty("bytes");
+    if (value->dict())
+      return Ty("dict");
+    return Ty("Attr");
+  }
+  if (as<Mod*>(item))
+    return Ty("Mod");
+  if (as<Fn>(item))
+    return Ty("Fn");
+  if (as<Blk>(item))
+    return Ty("Blk");
+  if (as<Op>(item))
+    return Ty("Op");
+  if (as<Val>(item))
+    return Ty("Val");
+  if (const Items* items = list(item)) {
+    Ty element("_");
+    if (!items->empty()) {
+      element = runtime_type(items->front());
+      for (std::size_t index = 1; index < items->size(); ++index)
+        if (runtime_type((*items)[index]) != element)
+          element = Ty("_");
+    }
+    return Ty("list<" + std::string(element.text()) + ">");
+  }
+  return Ty("_");
+}
+
 bool same(const Item& left, const Item& right) {
   if (left.data.index() != right.data.index())
     return false;
@@ -185,16 +224,6 @@ private:
       out.push_back(*item);
     }
     return out;
-  }
-
-  Fn local(Fn current, std::string_view name) {
-    if (!current || !current.store_)
-      return {};
-    const auto found = current.store_->symbols.find(std::string(name));
-    if (found == current.store_->symbols.end())
-      return {};
-    const std::uint32_t id = found->second;
-    return Fn(current.store_, id, current.store_->fns[id].generation);
   }
 
   std::optional<Items> invoke(Fn fn, const Items& args) {
@@ -403,17 +432,34 @@ private:
 
   std::optional<Items> call(Fn current, std::string_view name,
                             const Items& args, Loc loc) {
-    if (name.starts_with("operator "))
-      return operation(name.substr(9), args, std::move(loc));
     if (name == "base.copy" && args.size() == 1)
       return args;
     if (name == "base.list")
       return Items{Item(args)};
     if (name.starts_with("ir."))
       return intrinsic(name.substr(3), args, std::move(loc));
-    Fn target = name.find('.') == std::string_view::npos ? local(current, name)
-                                                         : env_.find_fn(name);
+
+    const Ty applied{std::string(name)};
+    const std::string_view symbol =
+        applied.args().empty() ? name : applied.name();
+    const std::vector<Ty> explicit_arguments =
+        applied.args().empty() ? std::vector<Ty>{} : applied.args();
+    const std::vector<Fn> candidates = env_.resolve_fns(current, symbol);
+    std::vector<Ty> argument_types;
+    argument_types.reserve(args.size());
+    for (const Item& item : args)
+      argument_types.push_back(runtime_type(item));
+    bool ambiguous = false;
+    const Fn target = resolve_overload(candidates, argument_types,
+                                       explicit_arguments, nullptr, &ambiguous);
+    if (name.starts_with("operator ") &&
+        (!target || target.external() || target.module() == "base"))
+      return operation(name.substr(9), args, std::move(loc));
     if (!target) {
+      if (ambiguous) {
+        fail("ambiguous compile-time function: " + std::string(name), loc);
+        return std::nullopt;
+      }
       fail("unknown compile-time function: " + std::string(name), loc);
       return std::nullopt;
     }

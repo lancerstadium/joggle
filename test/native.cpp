@@ -16,8 +16,8 @@ bool ping(jog_call* call, void*) {
 bool echo(jog_call* call, void*) {
   jog_value value{};
   if (call->api->arg_count(call) != 1 || !call->api->arg(call, 0, &value) ||
-      value.kind != JOG_BYTES)
-    return call->api->fail(call, "expected one byte string");
+      (value.kind != JOG_BYTES && value.kind != JOG_STR))
+    return call->api->fail(call, "expected one string or byte string");
   return call->api->ret(call, 0, &value);
 }
 

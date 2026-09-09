@@ -2,3 +2,4 @@ module tensor
 use base
 
 fn tensor<E, S>() -> Ty;
+fn tensor<E, S>(fill: E) -> tensor<E, S>;

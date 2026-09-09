@@ -69,15 +69,24 @@ It never runs a transform as a side effect. The caller selects an ordinary
 function with `joggle::run` or `joggle run`; this keeps module installation,
 function definition, and execution as three separate operations.
 
-Qualified calls resolve through the explicit and transitive `use` closure,
-while unqualified calls refer to functions in the current `Mod`. Merely loading
-another module into the same `Env` does not make its declarations visible;
+Qualified and imported calls resolve through the explicit and transitive `use`
+closure. A local function family shadows imported families; otherwise matching
+imported declarations form one deterministic overload set. Merely loading
+another module into the same `Env` does not make its declarations visible, and
 missing `use` edges are diagnosed. Resolution checks arity and structural
-types, infers generic arguments, and computes result types. It is independent
-of native binding: a declaration may define model semantics, a textual
-transform, or a native compile-time service. Unknown calls are preserved
-deliberately for frontend transport, but code that needs a declaration must
-load or invoke an explicit semantic bridge.
+types, infers generic arguments, ranks specificity, and computes result types.
+It is independent of native binding: a declaration may define model semantics,
+a textual transform, or a native compile-time service. Unknown calls are
+preserved deliberately for frontend transport, but code that needs a
+declaration must load or invoke an explicit semantic bridge.
+
+A native binding names an external function family. At invocation, scalar
+argument types must select exactly one declaration before the callback runs;
+the selected result signature is checked afterward. Thus overload support does
+not change the stable C entry or expose C++ containers across the ABI. When
+several native overloads cannot be distinguished from the dynamically supplied
+scalar values, the call fails as ambiguous instead of choosing by declaration
+order.
 
 Type constructors use this same boundary. A module named `format` can export
 `fn format<P>() -> Ty;`; consumers write `use format` and then `format<...>`.

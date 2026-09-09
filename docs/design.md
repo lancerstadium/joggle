@@ -192,10 +192,19 @@ defines the arity and ownership of `tensor<E, S>`. The verifier recognizes the
 the first self-hosting step toward using ordinary compile-time values to define
 and validate richer data formats.
 
+Function names now map to ordered overload sets rather than one declaration.
+The same structural matcher handles ordinary calls, symbolic functions such as
+`fn +`, textual compile-time execution, public `Env::resolve`, and native
+function families. Selection is independent of declaration order: incompatible
+signatures are removed, structurally specific signatures outrank generic ones,
+and ties are rejected. The base operator declarations provide general algebra;
+the `sat` module adds a more specific overload without modifying the parser,
+verifier, evaluator, or operator representation.
+
 The generic `sat.add<W>` declaration is the first module-defined parametric
 gate: inferred and explicit widths succeed, conflicting widths and wrong arity
 fail with located diagnostics, and no saturating-arithmetic case exists in the
 core. Language normalizations (`base.copy`, list construction, and indexing)
 retain only the minimal intrinsic rules needed to recover ordinary source
-bindings and iteration. Overload sets and richer constructor-argument kind
-checking remain before the M6 exit gate.
+bindings and iteration. Richer constructor-argument kind checking remains
+before the M6 exit gate.

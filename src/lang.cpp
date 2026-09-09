@@ -152,6 +152,33 @@ std::string operator_name(std::string_view spelling) {
   return "operator " + std::string(spelling);
 }
 
+std::optional<std::size_t>
+generic_index(const std::vector<std::string>& generics, std::string_view name) {
+  const auto found = std::find(generics.begin(), generics.end(), name);
+  return found == generics.end()
+             ? std::nullopt
+             : std::optional<std::size_t>(
+                   static_cast<std::size_t>(found - generics.begin()));
+}
+
+bool same_type_pattern(const Ty& left,
+                       const std::vector<std::string>& left_generics,
+                       const Ty& right,
+                       const std::vector<std::string>& right_generics) {
+  const auto left_generic = generic_index(left_generics, left.name());
+  const auto right_generic = generic_index(right_generics, right.name());
+  if (left.args().empty() && right.args().empty() &&
+      (left_generic || right_generic))
+    return left_generic == right_generic;
+  if (left.name() != right.name() || left.args().size() != right.args().size())
+    return false;
+  for (std::size_t index = 0; index < left.args().size(); ++index)
+    if (!same_type_pattern(left.args()[index], left_generics,
+                           right.args()[index], right_generics))
+      return false;
+  return true;
+}
+
 int precedence(std::string_view op) {
   if (op == "||")
     return 1;
@@ -421,8 +448,26 @@ private:
   bool parse_fn(Attr::Dict meta) {
     if (!word("fn"))
       return fail("expected function declaration");
-    const Loc loc = peek().loc;
-    std::string name = take_name("function name");
+    const Token first = take();
+    const Loc loc = first.loc;
+    std::string name;
+    if (first.kind == Tk::name)
+      name = first.text;
+    else if (first.kind == Tk::symbol) {
+      std::string spelling = first.text;
+      if (spelling == "[") {
+        if (!expect("]"))
+          return false;
+        spelling = "[]";
+        if (match("="))
+          spelling += '=';
+      }
+      if (precedence(spelling) < 0 && spelling != "!" && spelling != "~" &&
+          spelling != ".." && spelling != "[]" && spelling != "[]=")
+        return fail("unsupported function symbol '" + spelling + "'", loc);
+      name = operator_name(spelling);
+    } else
+      return fail("expected function name", loc);
     if (name.empty())
       return false;
 
@@ -482,11 +527,26 @@ private:
       data.returns.push_back(std::move(parsed));
     }
 
-    if (store_.symbols.contains(name))
-      return fail("duplicate function '" + name + "'", loc);
+    const auto overloads = store_.symbols.find(name);
+    if (overloads != store_.symbols.end()) {
+      for (const std::uint32_t id : overloads->second) {
+        const detail::FnData& existing = store_.fns[id].data;
+        if (existing.generics.size() != data.generics.size() ||
+            existing.params.size() != params.size())
+          continue;
+        bool same = true;
+        for (std::size_t index = 0; index < params.size(); ++index)
+          same = same &&
+                 same_type_pattern(
+                     store_.vals[existing.params[index]].data.type,
+                     existing.generics, params[index].second, data.generics);
+        if (same)
+          return fail("duplicate function signature '" + name + "'", loc);
+      }
+    }
     const auto fn = static_cast<std::uint32_t>(store_.fns.size());
     store_.fns.push_back({std::move(data), 1, true});
-    store_.symbols.emplace(name, fn);
+    store_.symbols[name].push_back(fn);
 
     Scope scope;
     for (const std::string& generic : store_.fns[fn].data.generics) {
@@ -1215,8 +1275,18 @@ std::string print(const Mod& mod) {
       }
       out << "]\n";
     }
-    out << "fn " << fn.name;
+    out << "fn ";
+    const bool symbolic = std::string_view(fn.name).starts_with("operator ");
+    const std::string_view spelling = symbolic
+                                          ? std::string_view(fn.name).substr(9)
+                                          : std::string_view(fn.name);
+    if (symbolic)
+      out << spelling;
+    else
+      out << fn.name;
     if (!fn.generics.empty()) {
+      if (symbolic && spelling.find('<') != std::string_view::npos)
+        out << ' ';
       out << '<';
       for (std::size_t index = 0; index < fn.generics.size(); ++index) {
         if (index)
@@ -1347,6 +1417,28 @@ bool generic(const std::vector<std::string>& names, std::string_view name) {
   return std::find(names.begin(), names.end(), name) != names.end();
 }
 
+bool sized_integer(std::string_view name) {
+  if (name.size() < 2 || (name.front() != 'i' && name.front() != 'u'))
+    return false;
+  return std::all_of(name.begin() + 1, name.end(), [](char ch) {
+    return std::isdigit(static_cast<unsigned char>(ch));
+  });
+}
+
+bool merge_binding(Ty& bound, const Ty& actual) {
+  if (bound == actual || actual.name() == "_")
+    return true;
+  if (bound.name() == "_") {
+    bound = actual;
+    return true;
+  }
+  if (bound.name() == "int" && sized_integer(actual.name())) {
+    bound = actual;
+    return true;
+  }
+  return actual.name() == "int" && sized_integer(bound.name());
+}
+
 bool unify(const Ty& formal, const Ty& actual,
            const std::vector<std::string>& generics, Bindings& bindings) {
   if (formal.empty() || actual.empty() || formal.name() == "_" ||
@@ -1358,8 +1450,11 @@ bool unify(const Ty& formal, const Ty& actual,
       bindings.emplace(std::string(formal.name()), actual);
       return true;
     }
-    return found->second == actual;
+    return merge_binding(found->second, actual);
   }
+  if ((formal.name() == "int" && sized_integer(actual.name())) ||
+      (actual.name() == "int" && sized_integer(formal.name())))
+    return true;
   if (formal.name() != actual.name())
     return false;
   if (formal.args().empty() || actual.args().empty())
@@ -1370,6 +1465,17 @@ bool unify(const Ty& formal, const Ty& actual,
     if (!unify(formal.args()[index], actual.args()[index], generics, bindings))
       return false;
   return true;
+}
+
+std::size_t specificity(const Ty& type,
+                        const std::vector<std::string>& generics) {
+  if (type.name() == "_" ||
+      (type.args().empty() && generic(generics, type.name())))
+    return 0;
+  std::size_t score = 1;
+  for (const Ty& arg : type.args())
+    score += specificity(arg, generics);
+  return score;
 }
 
 Ty substitute(const Ty& type, const std::vector<std::string>& generics,
@@ -1390,17 +1496,19 @@ Ty substitute(const Ty& type, const std::vector<std::string>& generics,
   return Ty(std::move(text));
 }
 
-Fn declaration(const Mod& mod, const Env& env, std::string_view callee,
-               std::vector<Ty>& explicit_args) {
-  if (callee.starts_with("operator ") || callee == "base.list")
+std::vector<Fn> declarations(const Mod& mod, const Env& env,
+                             std::string_view callee,
+                             std::vector<Ty>& explicit_args,
+                             std::string_view& symbol) {
+  if (callee == "base.list")
     return {};
   const Ty applied{std::string(callee)};
-  std::string_view symbol = callee;
+  symbol = callee;
   if (!applied.args().empty()) {
     symbol = applied.name();
     explicit_args = applied.args();
   }
-  return env.resolve(mod, symbol);
+  return env.resolve_fns(mod, symbol);
 }
 
 void infer_list(detail::Store& store, detail::OpData& op) {
@@ -1435,58 +1543,72 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
   }
 
   std::vector<Ty> explicit_args;
-  const Fn fn = declaration(mod, env, op.callee, explicit_args);
-  if (!fn) {
+  std::string_view symbol;
+  const std::vector<Fn> candidates =
+      declarations(mod, env, op.callee, explicit_args, symbol);
+  if (candidates.empty()) {
     if (diagnose) {
-      const Ty applied{std::string(op.callee)};
-      const std::string_view symbol =
-          applied.args().empty() ? std::string_view(op.callee) : applied.name();
-      const Fn hidden = env.find_fn(symbol);
-      if (hidden)
+      const std::vector<Fn> hidden = env.find_fns(symbol);
+      if (!hidden.empty())
         detail::add_diag(store.diags,
                          "call to '" + std::string(op.callee) +
-                             "' requires 'use " + std::string(hidden.module()) +
-                             "'",
+                             "' requires 'use " +
+                             std::string(hidden.front().module()) + "'",
                          op.loc);
     }
     return;
   }
-  const std::vector<std::string> generics = fn.generics();
-  const std::vector<Val> params = fn.params();
-  const std::vector<Ty> returns = fn.returns();
-  if (params.size() != op.args.size()) {
-    if (diagnose)
-      detail::add_diag(store.diags,
-                       "call to '" + std::string(op.callee) + "' expects " +
-                           std::to_string(params.size()) + " arguments, got " +
-                           std::to_string(op.args.size()),
-                       op.loc);
+  std::vector<Ty> arguments;
+  arguments.reserve(op.args.size());
+  for (const std::uint32_t argument : op.args)
+    arguments.push_back(store.vals[argument].data.type);
+  std::vector<Ty> returns;
+  bool ambiguous = false;
+  const Fn fn = detail::resolve_overload(candidates, arguments, explicit_args,
+                                         &returns, &ambiguous);
+  if (!fn) {
+    if (diagnose) {
+      std::string message;
+      if (ambiguous)
+        message = "call to '" + std::string(op.callee) + "' is ambiguous";
+      else if (candidates.size() == 1) {
+        const Fn candidate = candidates.front();
+        const std::vector<Val> params = candidate.params();
+        const std::vector<std::string> generics = candidate.generics();
+        if (params.size() != arguments.size())
+          message = "call to '" + std::string(op.callee) + "' expects " +
+                    std::to_string(params.size()) + " arguments, got " +
+                    std::to_string(arguments.size());
+        else if (!explicit_args.empty() &&
+                 explicit_args.size() != generics.size())
+          message = "call to '" + std::string(op.callee) + "' expects " +
+                    std::to_string(generics.size()) +
+                    " generic arguments, got " +
+                    std::to_string(explicit_args.size());
+        else {
+          Bindings bindings;
+          for (std::size_t index = 0; index < explicit_args.size(); ++index)
+            bindings.emplace(generics[index], explicit_args[index]);
+          for (std::size_t index = 0; index < params.size(); ++index) {
+            const Ty formal = params[index].type();
+            if (unify(formal, arguments[index], generics, bindings))
+              continue;
+            message =
+                "argument " + std::to_string(index + 1) + " of '" +
+                std::string(op.callee) + "' has type '" +
+                std::string(arguments[index].text()) + "', expected '" +
+                std::string(substitute(formal, generics, bindings).text()) +
+                "'";
+            break;
+          }
+        }
+      }
+      if (message.empty())
+        message = "no overload of '" + std::string(op.callee) +
+                  "' accepts the argument types";
+      detail::add_diag(store.diags, std::move(message), op.loc);
+    }
     return;
-  }
-  if (!explicit_args.empty() && explicit_args.size() != generics.size()) {
-    if (diagnose)
-      detail::add_diag(store.diags,
-                       "call to '" + std::string(op.callee) + "' expects " +
-                           std::to_string(generics.size()) +
-                           " generic arguments, got " +
-                           std::to_string(explicit_args.size()),
-                       op.loc);
-    return;
-  }
-  Bindings bindings;
-  for (std::size_t index = 0; index < explicit_args.size(); ++index)
-    bindings.emplace(generics[index], explicit_args[index]);
-  for (std::size_t index = 0; index < params.size(); ++index) {
-    const Ty formal = params[index].type();
-    const Ty& actual = store.vals[op.args[index]].data.type;
-    if (!unify(formal, actual, generics, bindings) && diagnose)
-      detail::add_diag(
-          store.diags,
-          "argument " + std::to_string(index + 1) + " of '" +
-              std::string(op.callee) + "' has type '" +
-              std::string(actual.text()) + "', expected '" +
-              std::string(substitute(formal, generics, bindings).text()) + "'",
-          op.loc);
   }
   if (returns.size() != op.outs.size()) {
     if (diagnose)
@@ -1497,8 +1619,7 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
     return;
   }
   for (std::size_t index = 0; index < returns.size(); ++index)
-    store.vals[op.outs[index]].data.type =
-        substitute(returns[index], generics, bindings);
+    store.vals[op.outs[index]].data.type = returns[index];
 }
 
 void infer_regions(detail::Store& store, const detail::OpData& op) {
@@ -1544,13 +1665,40 @@ bool intrinsic_type(std::string_view name) {
   });
 }
 
-Fn type_declaration(const Mod& mod, const Env& env, std::string_view name) {
-  if (Fn local = mod.find_fn(name))
-    return local;
-  if (name.find('.') != std::string_view::npos)
-    return env.resolve(mod, name);
-  const std::string symbol = std::string(name) + "." + std::string(name);
-  return env.resolve(mod, symbol);
+struct TypeLookup {
+  Fn constructor;
+  bool seen = false;
+  bool ambiguous = false;
+  std::vector<std::size_t> arities;
+};
+
+TypeLookup type_declaration(const Mod& mod, const Env& env, const Ty& type) {
+  std::vector<Fn> candidates = mod.find_fns(type.name());
+  if (candidates.empty()) {
+    const std::string symbol =
+        type.name().find('.') == std::string_view::npos
+            ? std::string(type.name()) + "." + std::string(type.name())
+            : std::string(type.name());
+    candidates = env.resolve_fns(mod, symbol);
+  }
+  TypeLookup result;
+  result.seen = !candidates.empty();
+  for (const Fn candidate : candidates) {
+    const std::vector<Ty> returns = candidate.returns();
+    if (!candidate.params().empty() || returns.size() != 1 ||
+        returns.front().name() != "Ty")
+      continue;
+    result.arities.push_back(candidate.generics().size());
+    if (candidate.generics().size() != type.args().size())
+      continue;
+    if (result.constructor) {
+      result.constructor = {};
+      result.ambiguous = true;
+      return result;
+    }
+    result.constructor = candidate;
+  }
+  return result;
 }
 
 bool verify_type(detail::Store& store, const Mod& mod, const Env& env,
@@ -1577,38 +1725,46 @@ bool verify_type(detail::Store& store, const Mod& mod, const Env& env,
                        std::move(loc));
   }
 
-  const Fn constructor = type_declaration(mod, env, type.name());
-  if (!constructor) {
+  const TypeLookup lookup = type_declaration(mod, env, type);
+  if (!lookup.constructor) {
+    if (lookup.ambiguous) {
+      detail::add_diag(store.diags,
+                       "type constructor '" + std::string(type.name()) +
+                           "' is ambiguous",
+                       std::move(loc));
+      return false;
+    }
+    if (lookup.seen) {
+      if (lookup.arities.size() == 1)
+        detail::add_diag(store.diags,
+                         "type '" + std::string(type.name()) + "' expects " +
+                             std::to_string(lookup.arities.front()) +
+                             (lookup.arities.front() == 1
+                                  ? " type argument, got "
+                                  : " type arguments, got ") +
+                             std::to_string(type.args().size()),
+                         std::move(loc));
+      else
+        detail::add_diag(store.diags,
+                         lookup.arities.empty()
+                             ? "function family '" + std::string(type.name()) +
+                                   "' has no type-constructor overload"
+                             : "no type-constructor overload of '" +
+                                   std::string(type.name()) + "' accepts " +
+                                   std::to_string(type.args().size()) +
+                                   " arguments",
+                         std::move(loc));
+      return false;
+    }
     std::string symbol(type.name());
     if (symbol.find('.') == std::string::npos)
       symbol += "." + symbol;
-    const Fn hidden = env.find_fn(symbol);
-    if (!hidden)
+    const std::vector<Fn> hidden = env.find_fns(symbol);
+    if (hidden.empty())
       return true;
     detail::add_diag(store.diags,
                      "type '" + std::string(type.name()) + "' requires 'use " +
-                         std::string(hidden.module()) + "'",
-                     std::move(loc));
-    return false;
-  }
-  const std::vector<Ty> returns = constructor.returns();
-  if (!constructor.params().empty() || returns.size() != 1 ||
-      returns.front().name() != "Ty") {
-    detail::add_diag(store.diags,
-                     "function '" + std::string(constructor.module()) + "." +
-                         std::string(constructor.name()) +
-                         "' is not a type constructor",
-                     std::move(loc));
-    return false;
-  }
-  if (constructor.generics().size() != type.args().size()) {
-    detail::add_diag(store.diags,
-                     "type '" + std::string(type.name()) + "' expects " +
-                         std::to_string(constructor.generics().size()) +
-                         (constructor.generics().size() == 1
-                              ? " type argument, got "
-                              : " type arguments, got ") +
-                         std::to_string(type.args().size()),
+                         std::string(hidden.front().module()) + "'",
                      std::move(loc));
     return false;
   }
@@ -1616,6 +1772,58 @@ bool verify_type(detail::Store& store, const Mod& mod, const Env& env,
 }
 
 }  // namespace
+
+Fn detail::resolve_overload(std::span<const Fn> candidates,
+                            std::span<const Ty> arguments,
+                            std::span<const Ty> explicit_arguments,
+                            std::vector<Ty>* returns, bool* ambiguous) {
+  Fn best;
+  std::vector<Ty> best_returns;
+  std::size_t best_score = 0;
+  bool tied = false;
+  for (const Fn candidate : candidates) {
+    const std::vector<Val> params = candidate.params();
+    const std::vector<std::string> generics = candidate.generics();
+    if (params.size() != arguments.size() ||
+        (!explicit_arguments.empty() &&
+         explicit_arguments.size() != generics.size()))
+      continue;
+    Bindings bindings;
+    for (std::size_t index = 0; index < explicit_arguments.size(); ++index)
+      bindings.emplace(generics[index], explicit_arguments[index]);
+    bool matches = true;
+    std::size_t score = 0;
+    for (std::size_t index = 0; index < params.size(); ++index) {
+      const Ty formal = params[index].type();
+      score += specificity(formal, generics);
+      if (!unify(formal, arguments[index], generics, bindings)) {
+        matches = false;
+        break;
+      }
+    }
+    if (!matches)
+      continue;
+    score =
+        score * 1024 + (1023 - std::min<std::size_t>(generics.size(), 1023));
+    std::vector<Ty> substituted;
+    for (const Ty& type : candidate.returns())
+      substituted.push_back(substitute(type, generics, bindings));
+    if (!best || score > best_score) {
+      best = candidate;
+      best_returns = std::move(substituted);
+      best_score = score;
+      tied = false;
+    } else if (score == best_score)
+      tied = true;
+  }
+  if (ambiguous)
+    *ambiguous = tied;
+  if (!best || tied)
+    return {};
+  if (returns)
+    *returns = std::move(best_returns);
+  return best;
+}
 
 bool Mod::verify(const Env& env) {
   detail::Store& store = impl_->store;

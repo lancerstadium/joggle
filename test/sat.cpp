@@ -101,6 +101,12 @@ int main(int argc, char** argv) {
   joggle::Mod mod;
   CHECK(joggle::parse(env, source.str(), mod, argv[1]));
   CHECK(mod.verify(env));
+  const joggle::Op abstract8 =
+      mod.find_fn("add8").body().ops().back().args().front().def();
+  const joggle::Op abstract32 =
+      mod.find_fn("add32").body().ops().back().args().front().def();
+  CHECK(env.resolve(mod, abstract8).module() == "sat");
+  CHECK(env.resolve(mod, abstract32).module() == "base");
   CHECK(joggle::run(env, "sat.select", mod));
   CHECK(mod.verify(env));
 

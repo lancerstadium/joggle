@@ -41,7 +41,19 @@ C++ transforms but are recovered as normal source syntax by the printer.
 Calls, literals, indexing, unary operators, and common binary operators are
 implemented. Operators normalize to ordinary function calls such as
 `operator +` and `operator []`; adding a concrete overload does not add a new
-IR operation kind.
+IR operation kind. Operator functions use the symbol directly:
+
+```jog
+fn +<T>(a: T, b: T) -> T;
+fn +<W>(a: sat<W>, b: sat<W>) -> sat<W>;
+```
+
+Ordinary and symbolic functions both form overload sets. Verification filters
+by arity and recursive generic unification, then prefers the structurally more
+specific signature; equally specific survivors are an ambiguity error. A local
+family shadows imported families. Otherwise declarations from the transitive
+`use` closure participate together, which lets the `sat<W>` overload outrank
+the generic base overload without a saturating-type case in the resolver.
 
 Types are immutable structural values rather than uninterpreted spellings. A
 type has a constructor name and zero or more type/value arguments; bracketed
@@ -73,6 +85,12 @@ fn sat<W>() -> Ty;
 fn add<W>(a: sat<W>, b: sat<W>) -> sat<W>;
 ```
 
+Type construction and value construction may share one name. For example,
+`fn tensor<E, S>() -> Ty` declares the type spelling while
+`fn tensor<E, S>(fill: E) -> tensor<E, S>` constructs a value. They are normal
+overloads; the verifier identifies the zero-value-argument `Ty` overload when
+checking a type and the value overload when checking a call.
+
 After `use sat`, `sat<8>` resolves to `sat.sat<8>`. No `type` keyword, generated
 class, registry callback, or metadata tag is involved. Constructor arity and
 visibility are verified like function arity and visibility. Unloaded
@@ -88,6 +106,12 @@ wrong concrete types receive source-located diagnostics. For example,
 `sat.add(a, b)` over two `sat<8>` values has result type `sat<8>`, while mixing
 `sat<8>` and `sat<16>` is rejected. Unknown calls remain valid open IR so a
 frontend can transport source operations before a semantic bridge is loaded.
+`Mod::find_fns` and `Env::find_fns` return the complete declaration family;
+their singular `find_fn` forms intentionally return an invalid handle when the
+name is overloaded. `Env::resolve(mod, op)` performs the same overload choice
+as verification, allowing tools to distinguish a resolved call from open IR.
+Resolution from a `Fn` uses that function's module and transitive imports, so
+compile-time execution and verification have identical visibility rules.
 
 List literal element types and loop-element types participate in the same
 fixed-point propagation. This is what lets `for op in ir.ops(block)` type `op`
@@ -155,8 +179,10 @@ No metadata name changes parsing, binding, or the IR shape. A native library
 may bind any matching body-less declaration; no marker is required and a
 function with a body cannot be rebound. Useful module-defined keys include
 `role`, `stage`, `target`, and `cost`, but none is owned by the core. Structural
-type constructors, parametric matching, and result inference are implemented;
-overload-set resolution remains M6 work.
+type constructors, parametric matching, result inference, and overload-set
+resolution use the same function declarations. Return types do not distinguish
+overloads, and parameter signatures that differ only in generic names are
+rejected as duplicates.
 
 Metadata becomes behavior only when an explicitly selected function queries
 it. A transform may use `[rewrite: "lab.fused"]` to choose a replacement call;

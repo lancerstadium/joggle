@@ -295,8 +295,13 @@ public:
   void path(std::string path);
   bool load(std::string_view name);
   bool loaded(std::string_view name) const noexcept;
-  Fn find_fn(std::string_view symbol) const noexcept;
-  Fn resolve(const Mod& from, std::string_view symbol) const noexcept;
+  std::vector<Fn> find_fns(std::string_view symbol) const;
+  Fn find_fn(std::string_view symbol) const;
+  std::vector<Fn> resolve_fns(const Mod& from, std::string_view symbol) const;
+  std::vector<Fn> resolve_fns(Fn from, std::string_view symbol) const;
+  Fn resolve(const Mod& from, std::string_view symbol) const;
+  Fn resolve(Fn from, std::string_view symbol) const;
+  Fn resolve(const Mod& from, Op call) const;
   bool bound(std::string_view symbol) const noexcept;
   bool call(std::string_view symbol, std::span<const Attr> args,
             std::vector<Attr>& returns);
@@ -329,7 +334,8 @@ public:
   void name(std::string name);
   std::vector<std::string> uses() const;
   std::vector<Fn> fns() const;
-  Fn find_fn(std::string_view name) const noexcept;
+  std::vector<Fn> find_fns(std::string_view name) const;
+  Fn find_fn(std::string_view name) const;
 
   Val call(Op before, std::string callee, std::span<const Val> args, Ty type);
   bool fuse(std::span<const Op> ops, std::string callee);

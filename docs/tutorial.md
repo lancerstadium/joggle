@@ -114,6 +114,24 @@ cmake --build build
 ./build/joggle run sat.select test/data/sat.jog -M build/modules
 ```
 
+The module declares both its type constructor and its symbolic algebra as
+ordinary functions:
+
+```jog
+fn sat<W>() -> Ty;
+fn +<W>(a: sat<W>, b: sat<W>) -> sat<W>;
+fn add<W>(a: sat<W>, b: sat<W>) -> sat<W>;
+```
+
+After verification, embedding code can inspect the actual overload selected
+for any call:
+
+```cpp
+joggle::Fn target = env.resolve(mod, addition);
+if (!target)
+  return mod.print_diags(stderr);
+```
+
 The `sat<8>` addition becomes `sat.add(a, b)` while the `i32` addition remains
 an ordinary `a + b`. `Env::call` invokes `sat.sim(8, 100, 100)` to obtain the
 saturated result `127`, or `sat.emit(8)` to obtain a standalone SystemVerilog
