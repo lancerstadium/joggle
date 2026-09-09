@@ -127,30 +127,53 @@ fn infer_flatten(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], result)
 }
 
-fn matmul_type(m: Mod, op: Op) -> bool {
+fn matmul_result(op: Op) -> Ty {
   let inputs = ir.args(op)
-  let outputs = ir.outs(op)
-  if len(inputs) != 2 || len(outputs) != 1 {
-    return false
+  if len(inputs) != 2 {
+    return ty("_")
   }
   let left = ir.type(inputs[0])
   let right = ir.type(inputs[1])
   if !tensor.valid(left) || !tensor.valid(right) {
-    return false
+    return ty("_")
   }
   if tensor.elem(left) != tensor.elem(right) {
-    return false
+    return ty("_")
   }
   let ls = tensor.dims(left)
   let rs = tensor.dims(right)
-  if len(ls) != 2 || len(rs) != 2 {
+  if len(ls) < 2 || len(rs) < 2 {
+    return ty("_")
+  }
+  if ls[len(ls) - 1] != rs[len(rs) - 2] {
+    return ty("_")
+  }
+  var left_batch: list<Ty> = []
+  var right_batch: list<Ty> = []
+  for i in 0..len(ls) - 2 {
+    left_batch += [ls[i]]
+  }
+  for i in 0..len(rs) - 2 {
+    right_batch += [rs[i]]
+  }
+  var shape: list<Ty> = []
+  if len(left_batch) != 0 || len(right_batch) != 0 {
+    shape = tensor.broadcast_shape(left_batch, right_batch)
+    if !tensor.broadcastable(left_batch, shape) ||
+       !tensor.broadcastable(right_batch, shape) {
+      return ty("_")
+    }
+  }
+  shape += [ls[len(ls) - 2], rs[len(rs) - 1]]
+  return tensor.type(tensor.elem(left), shape)
+}
+
+fn matmul_type(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
     return false
   }
-  if ls[1] != rs[0] {
-    return false
-  }
-  let shape: list<Ty> = [ls[0], rs[1]]
-  return set_type(m, outputs[0], tensor.type(tensor.elem(left), shape))
+  return set_type(m, outputs[0], matmul_result(op))
 }
 
 fn transpose_axes(op: Op, rank: int) -> list<int> {
@@ -529,29 +552,12 @@ fn convert_flatten(m: Mod, op: Op) -> bool {
 }
 
 fn convert_matmul(m: Mod, op: Op) -> bool {
-  let inputs = ir.args(op)
   let outputs = ir.outs(op)
-  if len(inputs) != 2 || len(outputs) != 1 {
+  if len(outputs) != 1 {
     return false
   }
-  let left = ir.type(inputs[0])
-  let right = ir.type(inputs[1])
-  let result = ir.type(outputs[0])
-  if !tensor.valid(left) || !tensor.valid(right) ||
-     !tensor.valid(result) {
-    return false
-  }
-  if tensor.elem(left) != tensor.elem(right) ||
-     tensor.elem(left) != tensor.elem(result) {
-    return false
-  }
-  let ls = tensor.dims(left)
-  let rs = tensor.dims(right)
-  let ys = tensor.dims(result)
-  if len(ls) != 2 || len(rs) != 2 || len(ys) != 2 {
-    return false
-  }
-  if ls[1] != rs[0] || ys[0] != ls[0] || ys[1] != rs[1] {
+  let expected = matmul_result(op)
+  if expected == ty("_") || ir.type(outputs[0]) != expected {
     return false
   }
   return convert_call(m, op, "tensor.matmul")

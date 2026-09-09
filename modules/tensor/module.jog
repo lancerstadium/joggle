@@ -373,3 +373,47 @@ fn matmul<E: Ty, M: int, N: int, K: int>(
   }
   return out
 }
+
+fn matmul_offset(
+  shape: list<int>, output: list<int>, batch: int, row: int, column: int
+) -> int {
+  let batch_rank = len(shape) - 2
+  let output_rank = len(output) - 2
+  let shift = output_rank - batch_rank
+  var offset = row * shape[len(shape) - 1] + column
+  var source_stride = shape[len(shape) - 2] * shape[len(shape) - 1]
+  for reverse in 0..batch_rank {
+    let source_axis = batch_rank - reverse - 1
+    let output_axis = shift + source_axis
+    var output_stride = 1
+    for next in output_axis + 1..output_rank {
+      output_stride *= output[next]
+    }
+    let coordinate = (batch / output_stride) % output[output_axis]
+    if shape[source_axis] != 1 {
+      offset += coordinate * source_stride
+    }
+    source_stride *= shape[source_axis]
+  }
+  return offset
+}
+
+fn matmul<E: Ty, L: list<int>, R: list<int>, Y: list<int>>(
+  a: tensor<E, L>, b: tensor<E, R>
+) -> tensor<E, Y> {
+  let m = L[len(L) - 2]
+  let k_size = L[len(L) - 1]
+  let n = R[len(R) - 1]
+  let batches = numel<Y>() / (m * n)
+  var out = tensor<E, Y>(E(0))
+  for batch in 0..batches, i in 0..m, j in 0..n {
+    var sum = E(0)
+    for k in 0..k_size {
+      let ai = matmul_offset(L, Y, batch, i, k)
+      let bi = matmul_offset(R, Y, batch, k, j)
+      sum += a[ai] * b[bi]
+    }
+    out[batch * m * n + i * n + j] = sum
+  }
+  return out
+}

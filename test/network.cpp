@@ -485,6 +485,42 @@ int main(int argc, char** argv) {
   }
   CHECK(symbolic_matrix_calls == 3 && symbolic_matrix.verify(env));
 
+  constexpr std::string_view batched_matmul_source =
+      "module batched.matmul\n"
+      "use onnx\n"
+      "fn main<N: int>(\n"
+      "  left: tensor<f32, [N, 3, 4]>,\n"
+      "  right: tensor<f32, [2, 1, 4, 5]>\n"
+      ") -> tensor<f32, [2, N, 3, 5]> {\n"
+      "  let out = onnx.MatMul(left, right)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod batched_matmul;
+  CHECK(joggle::parse(env, batched_matmul_source, batched_matmul,
+                      "batched-matmul.jog"));
+  CHECK(batched_matmul.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", batched_matmul));
+  CHECK(batched_matmul.verify(env));
+  joggle::Op source_batched_matmul;
+  for (joggle::Op op : batched_matmul.ops())
+    if (op.callee() == "onnx.MatMul")
+      source_batched_matmul = op;
+  CHECK(source_batched_matmul && source_batched_matmul.outs()[0].type() ==
+                                       joggle::Ty(
+                                           "tensor<f32, [2, N, 3, 5]>"));
+  CHECK(joggle::run(env, "onnx.nn.convert", batched_matmul));
+  CHECK(batched_matmul.verify(env));
+  joggle::Op semantic_batched_matmul;
+  for (joggle::Op op : batched_matmul.ops())
+    if (op.callee() == "tensor.matmul")
+      semantic_batched_matmul = op;
+  CHECK(semantic_batched_matmul);
+  const joggle::Fn batched_matmul_fn =
+      env.resolve(batched_matmul, semantic_batched_matmul);
+  CHECK(batched_matmul_fn &&
+        batched_matmul.expand(semantic_batched_matmul, batched_matmul_fn));
+  CHECK(batched_matmul.verify(env));
+
   constexpr std::string_view unresolved_shape_source =
       "module unresolved.shape\n"
       "use onnx\n"

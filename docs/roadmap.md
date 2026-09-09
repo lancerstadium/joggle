@@ -149,13 +149,14 @@ core or reader operator switches. Its independent `.jog` bridge converts all
 shared body. Shared tensor functions now define trailing-axis broadcasting;
 both frontend bridges validate against that relation and lower Add to the same
 inspectable `nn.add` body; Sub and Mul now use the same path. ONNX Flatten and
-the strict two-dimensional MatMul subset reuse `tensor.reshape` and
-`tensor.matmul`, while Transpose reuses rank-generic `tensor.permute`, instead
-of adding frontend-shaped semantics. `opt.unresolved`
+rank-two-or-higher MatMul reuse `tensor.reshape` and `tensor.matmul`, while
+Transpose reuses rank-generic `tensor.permute`, instead of adding frontend-
+shaped semantics. `opt.unresolved`
 reports six open source call
 families before that bridge and none afterward. The two target gates remain.
-Named extents now flow through broadcast binary operations, Flatten, strict
-2-D MatMul, and Transpose using structural type terms. Generic-list expansion
+Named extents now flow through broadcast binary operations, Flatten,
+broadcast-batched MatMul, and Transpose using structural type terms.
+Generic-list expansion
 reuses caller dimension bindings, so those converted calls can expose their
 normal tensor bodies without requiring a concrete batch size. Shape relations
 that need an unrepresentable symbolic product remain open rather than being

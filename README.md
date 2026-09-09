@@ -60,9 +60,10 @@ concrete and symbolic tensor projections plus one constructor, enabling shape
 and custom-format reasoning without parsing type strings. Generic function
 expansion can reuse caller-owned dimension bindings inside shape lists.
 Structural and static-shape predicates let relations safely retain
-not-yet-inferred calls. Common ONNX binary operations, Flatten, and strict 2-D
-MatMul preserve named extents and reuse the same inspectable tensor/network
-bodies; Transpose becomes an ordinary rank-generic tensor permutation.
+not-yet-inferred calls. Common ONNX binary operations, Flatten, and rank-two-or-
+higher MatMul preserve named extents and reuse the same inspectable tensor/
+network bodies; MatMul broadcasts leading batch dimensions and Transpose is an
+ordinary rank-generic tensor permutation.
 Unrepresentable symbolic products remain source calls instead of triggering a
 model-specific guess.
 Convolution and pooling likewise keep symbolic batch dimensions while checking

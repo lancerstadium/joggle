@@ -594,11 +594,13 @@ The optional `onnx.nn` module owns the frontend/library relationship. Its
 `infer` function propagates the supported MobileNetV2 shapes in graph order;
 its separately invoked `convert` function materializes Conv attributes as
 ordinary operands and maps Conv, BatchNormalization, ReLU, Add/Sub/Mul,
-AveragePool, MaxPool, GlobalAveragePool, Reshape, Flatten, and two-dimensional
+AveragePool, MaxPool, GlobalAveragePool, Reshape, Flatten, and rank-two-or-higher
 MatMul to shared semantics. Flatten and MatMul become existing tensor functions
-rather than parallel NN declarations. Transpose similarly materializes ONNX's
-permutation attribute as an operand of the rank-generic `tensor.permute` body.
-Batched MatMul remains open until its broadcast semantics have a shared body.
+rather than parallel NN declarations. MatMul's generic body broadcasts leading
+batch dimensions and computes source offsets explicitly; the more specific 2-D
+overload preserves the compact three-loop form. Transpose similarly
+materializes ONNX's permutation attribute as an operand of the rank-generic
+`tensor.permute` body. The vector cases of ONNX MatMul remain open.
 The codec remains
 name-agnostic, unknown calls remain open, and neither action happens on load.
 The official model gate requires every intermediate node result to become

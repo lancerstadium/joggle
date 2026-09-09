@@ -174,6 +174,10 @@ otherwise it returns `_` instead of inventing an expression language.
 raw dimension terms. They express trailing-axis compatibility by exact term
 equality and singleton expansion, while `broadcast_offset` and `broadcast`
 provide the inspectable index and copy semantics for an exposed static body.
+`tensor.matmul` keeps a more specific two-dimensional overload and adds one
+rank-generic body for operands of rank two or greater. Leading dimensions use
+the same broadcast relation; `matmul_offset` maps an output batch coordinate
+back into either operand without a layout or attention-specific operation.
 `extent`, `offset`, and `coord` interpret
 a physical shape through an explicit logical-axis list. Each physical dimension
 names its logical axis; `-1` denotes a fixed singleton dimension. Thus NCHW is
@@ -231,7 +235,7 @@ semantics.
 Unsupported ranks and `auto_pad` are left unchanged rather than guessed. Open
 intermediate types are likewise retained instead of causing an unsafe
 projection. Named symbolic extents now flow through Add/Sub/Mul, Flatten,
-strict 2-D MatMul, and Transpose when equality, singleton broadcasting,
+rank-two-or-higher MatMul, and Transpose when equality, singleton broadcasting,
 permutation, or a directly representable partition product proves the result;
 ambiguous symbolic arithmetic remains at the ONNX frontier.
 Convolution and pooling preserve symbolic batch or channel terms while
@@ -241,8 +245,8 @@ through the existing layout-explicit `nn.conv2d` composition. A mismatched bias,
 channel relation, nonpositive stride/dilation, or non-`NOTSET` automatic padding
 keeps the source call intact.
 `onnx.nn.convert` then maps Conv, BatchNormalization, ReLU, Add/Sub/Mul,
-AveragePool, MaxPool, GlobalAveragePool, Reshape, Flatten, and the strict 2-D
-subset of MatMul. Flatten reuses `tensor.reshape`; MatMul reuses
+AveragePool, MaxPool, GlobalAveragePool, Reshape, Flatten, and the
+rank-two-or-higher subset of MatMul. Flatten reuses `tensor.reshape`; MatMul reuses
 `tensor.matmul`; Transpose reuses `tensor.permute`. The relation materializes
 schema attributes as ordinary operands and removes schema-only shape inputs. It does
 not run inference implicitly and does not alter the codec. On the pinned

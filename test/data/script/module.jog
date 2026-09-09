@@ -60,6 +60,8 @@ fn tensor_type_probe(m: Mod) -> bool {
          reversed == [ty(3), ty("N")] && broadcast == dims &&
          tensor.product(dims, 0, 1) == ty("N") &&
          tensor.product(dims, 1, 2) == ty(3) &&
+         tensor.matmul_offset([7, 3, 4], [2, 7, 3, 5], 11, 2, 3) == 59 &&
+         tensor.matmul_offset([2, 1, 4, 5], [2, 7, 3, 5], 11, 2, 4) == 34 &&
          !tensor.valid(ty("tensor"))
 }
 
