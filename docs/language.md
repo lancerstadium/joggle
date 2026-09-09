@@ -117,11 +117,13 @@ edge or incompatible declaration is an error.
 
 During verification, a call to a known local or qualified module function is
 checked against its declaration. Generic arguments may be written explicitly
-or inferred recursively from argument types and explicit result annotations;
-the resulting substitution is applied to every call result. This permits a
-shape-producing function to infer dimensions that occur only in its result
-without encoding them in the function name. Conflicting bindings, wrong
-argument counts, and wrong concrete types receive source-located diagnostics.
+or inferred recursively from argument types, explicit result annotations, and
+the enclosing function result when a call is returned directly. The resulting
+substitution is applied to every call result. This permits a shape-producing
+function to infer dimensions that occur only in its result without encoding
+them in the function name or forcing an otherwise redundant `let` binding.
+Conflicting bindings, wrong argument counts, and wrong concrete types receive
+source-located diagnostics.
 For example,
 `sat.add(a, b)` over two `sat<8>` values has result type `sat<8>`, while mixing
 `sat<8>` and `sat<16>` is rejected. Unknown calls remain valid open IR so a

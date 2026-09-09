@@ -136,9 +136,17 @@ fn convert_conv(m: Mod, op: Op, depthwise: bool) -> bool {
 fn convert_add(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
-  if len(inputs) != 2 || len(outputs) != 1 ||
-     ir.type(inputs[0]) != ir.type(inputs[1]) ||
-     ir.type(inputs[0]) != ir.type(outputs[0]) {
+  if len(inputs) != 2 || len(outputs) != 1 {
+    return false
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[1])
+  let result = ir.type(outputs[0])
+  if name(left) != "tensor" || name(right) != "tensor" ||
+     name(result) != "tensor" || tensor.elem(left) != tensor.elem(right) ||
+     tensor.elem(left) != tensor.elem(result) ||
+     !tensor.broadcastable(tensor.shape(left), tensor.shape(result)) ||
+     !tensor.broadcastable(tensor.shape(right), tensor.shape(result)) {
     return false
   }
   let act = base.get(options(op), "fused_activation_function", "NONE")

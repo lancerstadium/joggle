@@ -248,6 +248,16 @@ fn add<E: Ty, S: list<int>>(
   return activate(left + right, activation)
 }
 
+fn add<
+  E: Ty, L: list<int>, R: list<int>, Y: list<int>
+>(
+  left: tensor<E, L>, right: tensor<E, R>, activation: str
+) -> tensor<E, Y> {
+  let a: tensor<E, Y> = tensor.broadcast(left)
+  let b: tensor<E, Y> = tensor.broadcast(right)
+  return activate(a + b, activation)
+}
+
 fn softmax<E: Ty, S: list<int>>(
   x: tensor<E, S>, beta: f64
 ) -> tensor<E, S> {

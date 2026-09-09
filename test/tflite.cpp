@@ -198,6 +198,32 @@ int main(int argc, char** argv) {
   CHECK(exposed_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(semantic_roundtrip, exposed_roundtrip));
 
+  constexpr std::string_view broadcast_source =
+      "module broadcast\n"
+      "use tflite\n"
+      "fn main(\n"
+      "  left: tensor<f32, [1, 3]>, right: tensor<f32, [2, 1]>\n"
+      ") -> tensor<f32, [2, 3]> {\n"
+      "  [tflite: {options: {fused_activation_function: \"NONE\"}}]\n"
+      "  let out: tensor<f32, [2, 3]> = tflite.ADD(left, right)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod broadcast;
+  CHECK(joggle::parse(env, broadcast_source, broadcast,
+                      "tflite-broadcast.jog"));
+  CHECK(broadcast.verify(env));
+  CHECK(joggle::run(env, "tflite.nn.convert", broadcast));
+  CHECK(broadcast.verify(env));
+  CHECK(count(broadcast, "tflite.ADD") == 0);
+  CHECK(count(broadcast, "nn.add") == 1);
+  for (joggle::Op op : broadcast.ops()) {
+    if (op.callee() != "nn.add")
+      continue;
+    const joggle::Fn fn = env.resolve(broadcast, op);
+    CHECK(fn && broadcast.expand(op, fn));
+  }
+  CHECK(broadcast.verify(env));
+
   constexpr std::string_view unsupported_source =
       "module unsupported\n"
       "use tflite\n"

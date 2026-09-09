@@ -279,10 +279,18 @@ if(JOGGLE_BUILD_TESTS)
   )
   add_executable(joggle-workflow-test test/workflow.cpp)
   target_link_libraries(joggle-workflow-test PRIVATE Joggle::joggle)
+  add_executable(joggle-network-test test/network.cpp)
+  target_link_libraries(joggle-network-test PRIVATE Joggle::joggle)
   add_test(
     NAME workflow
     COMMAND joggle-workflow-test
             ${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
+            ${CMAKE_CURRENT_SOURCE_DIR}/modules
+            ${CMAKE_CURRENT_BINARY_DIR}/modules
+  )
+  add_test(
+    NAME network
+    COMMAND joggle-network-test
             ${CMAKE_CURRENT_SOURCE_DIR}/modules
             ${CMAKE_CURRENT_BINARY_DIR}/modules
   )

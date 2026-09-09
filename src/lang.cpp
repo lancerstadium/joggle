@@ -1864,6 +1864,25 @@ void infer_list(detail::Store& store, detail::OpData& op) {
         Ty("list<" + std::string(element.text()) + ">");
 }
 
+Ty return_context(const detail::Store& store, std::uint32_t value) {
+  for (const std::uint32_t user : store.vals[value].data.users) {
+    if (user >= store.ops.size() || !store.ops[user].live)
+      continue;
+    const detail::OpData& op = store.ops[user].data;
+    if (op.kind != Op::Kind::ret || op.blk >= store.blks.size())
+      continue;
+    const std::uint32_t owner = store.blks[op.blk].data.fn;
+    if (owner >= store.fns.size() || !store.fns[owner].live)
+      continue;
+    const std::vector<Ty>& returns = store.fns[owner].data.returns;
+    for (std::size_t index = 0;
+         index < op.args.size() && index < returns.size(); ++index)
+      if (op.args[index] == value)
+        return returns[index];
+  }
+  return Ty("_");
+}
+
 void infer_call(detail::Store& store, const Mod& mod, const Env& env,
                 detail::OpData& op, bool diagnose) {
   if (op.callee == "base.copy" && op.args.size() == 1 && op.outs.size() == 1) {
@@ -1908,7 +1927,9 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
   expected_returns.reserve(op.outs.size());
   for (const std::uint32_t output : op.outs) {
     const detail::ValData& value = store.vals[output].data;
-    expected_returns.push_back(value.type_annotation ? value.type : Ty("_"));
+    expected_returns.push_back(value.type_annotation
+                                   ? value.type
+                                   : return_context(store, output));
   }
   bool ambiguous = false;
   const std::uint32_t owner = store.blks[op.blk].data.fn;

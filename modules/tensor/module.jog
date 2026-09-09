@@ -105,6 +105,79 @@ fn reshape<E: Ty, S: list<int>, T: list<int>>(
   return out
 }
 
+fn broadcastable(from: list<int>, to: list<int>) -> bool {
+  if len(from) > len(to) {
+    return false
+  }
+  let shift = len(to) - len(from)
+  for i in 0..len(from) {
+    if from[i] != 1 && from[i] != to[shift + i] {
+      return false
+    }
+  }
+  return true
+}
+
+fn broadcast_shape(left: list<int>, right: list<int>) -> list<int> {
+  var rank = len(left)
+  if len(right) > rank {
+    rank = len(right)
+  }
+  var out: list<int> = []
+  for axis in 0..rank {
+    var l = 1
+    var r = 1
+    let li = axis - (rank - len(left))
+    let ri = axis - (rank - len(right))
+    if li >= 0 {
+      l = left[li]
+    }
+    if ri >= 0 {
+      r = right[ri]
+    }
+    if l != r && l != 1 && r != 1 {
+      return []
+    }
+    if l == 1 {
+      out += [r]
+    } else {
+      out += [l]
+    }
+  }
+  return out
+}
+
+fn broadcast_offset(
+  from: list<int>, to: list<int>, linear: int
+) -> int {
+  var out = 0
+  var from_stride = 1
+  var to_stride = 1
+  let shift = len(to) - len(from)
+  for reverse in 0..len(to) {
+    let axis = len(to) - reverse - 1
+    let source = axis - shift
+    if source >= 0 {
+      if from[source] != 1 {
+        out += (linear / to_stride) % to[axis] * from_stride
+      }
+      from_stride *= from[source]
+    }
+    to_stride *= to[axis]
+  }
+  return out
+}
+
+fn broadcast<E: Ty, S: list<int>, T: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, T> {
+  var out = tensor<E, T>(E(0))
+  for i in 0..numel<T>() {
+    out[i] = x[broadcast_offset(S, T, i)]
+  }
+  return out
+}
+
 fn +<E: Ty, S: list<int>>(
   a: tensor<E, S>, b: tensor<E, S>
 ) -> tensor<E, S> {

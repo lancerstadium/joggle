@@ -184,7 +184,7 @@ int main(int argc, char** argv) {
   CHECK(count_calls(semantic, "nn.conv2d") == network_convs);
   CHECK(count_calls(semantic, "nn.batch_norm") == network_norms);
   CHECK(count_calls(semantic, "nn.relu") == network_relus);
-  CHECK(count_calls(semantic, "operator +") == network_adds);
+  CHECK(count_calls(semantic, "nn.add") == network_adds);
   CHECK(count_calls(semantic, "nn.global_avg_pool2d") == network_pools);
   CHECK(count_calls(semantic, "tensor.reshape") == network_reshapes);
   std::size_t remaining_nodes = 0;
@@ -203,7 +203,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(semantic, semantic_roundtrip));
 
   const std::set<std::string, std::less<>> expandable{
-      "nn.conv2d", "nn.batch_norm", "nn.relu", "operator +",
+      "nn.conv2d", "nn.batch_norm", "nn.relu", "nn.add",
       "nn.global_avg_pool2d", "tensor.reshape"};
   std::size_t expanded = 0;
   for (joggle::Op op : semantic_roundtrip.ops()) {
