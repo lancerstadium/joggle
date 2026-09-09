@@ -953,9 +953,9 @@ private:
     return value;
   }
 
-  std::string template_suffix() {
+  std::optional<std::string> template_suffix() {
     if (!match("<"))
-      return {};
+      return std::nullopt;
     std::string out = "<";
     int depth = 1;
     while (!at_end() && depth > 0) {
@@ -964,11 +964,12 @@ private:
         ++depth;
       else if (text == ">")
         --depth;
+      else if (text == ">>")
+        depth -= 2;
       out += text == "," ? ", " : text;
     }
-    if (depth != 0)
-      fail("unterminated template argument list");
-    return out;
+    return depth == 0 ? std::optional<std::string>(std::move(out))
+                      : std::nullopt;
   }
 
   std::optional<Attr> attr_literal(Ty& type) {
@@ -1138,9 +1139,9 @@ private:
     std::string callee = token.text;
     if (is("<")) {
       const std::size_t save = pos_;
-      const std::string suffix = template_suffix();
-      if (is("("))
-        callee += suffix;
+      const auto suffix = template_suffix();
+      if (suffix && is("("))
+        callee += *suffix;
       else
         pos_ = save;
     }
@@ -1620,9 +1621,11 @@ Fn select_overload(std::span<const Fn> candidates,
                    std::span<const Ty> arguments,
                    std::span<const Ty> explicit_arguments,
                    std::vector<Ty>* returns, bool* ambiguous,
-                   std::span<const GenericInfo> context) {
+                   std::span<const GenericInfo> context,
+                   std::vector<Ty>* resolved_generics = nullptr) {
   Fn best;
   std::vector<Ty> best_returns;
+  std::vector<Ty> best_generics;
   std::size_t best_score = 0;
   bool tied = false;
   for (const Fn candidate : candidates) {
@@ -1659,9 +1662,17 @@ Fn select_overload(std::span<const Fn> candidates,
     std::vector<Ty> substituted;
     for (const Ty& type : candidate.returns())
       substituted.push_back(substitute(type, generics, bindings));
+    std::vector<Ty> bound_generics;
+    bound_generics.reserve(generics.size());
+    for (const std::string& generic : generics) {
+      const auto bound = bindings.find(generic);
+      bound_generics.push_back(bound == bindings.end() ? Ty("_")
+                                                       : bound->second);
+    }
     if (!best || score > best_score) {
       best = candidate;
       best_returns = std::move(substituted);
+      best_generics = std::move(bound_generics);
       best_score = score;
       tied = false;
     } else if (score == best_score)
@@ -1673,6 +1684,8 @@ Fn select_overload(std::span<const Fn> candidates,
     return {};
   if (returns)
     *returns = std::move(best_returns);
+  if (resolved_generics)
+    *resolved_generics = std::move(best_generics);
   return best;
 }
 
@@ -2020,13 +2033,14 @@ Fn detail::resolve_overload(std::span<const Fn> candidates,
                             std::span<const Ty> arguments,
                             std::span<const Ty> explicit_arguments,
                             std::vector<Ty>* returns, bool* ambiguous,
-                            std::span<const Val> context) {
+                            std::span<const Val> context,
+                            std::vector<Ty>* generics) {
   std::vector<GenericInfo> info;
   info.reserve(context.size());
   for (const Val generic : context)
     info.push_back({generic.name(), generic.type()});
   return select_overload(candidates, arguments, explicit_arguments, returns,
-                         ambiguous, info);
+                         ambiguous, info, generics);
 }
 
 bool Mod::verify(const Env& env) {

@@ -1,6 +1,7 @@
 #include "detail.h"
 
 #include <algorithm>
+#include <charconv>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -20,12 +21,13 @@ struct List {
 };
 
 struct Item {
-  using Data = std::variant<std::monostate, Attr, Mod*, Fn, Blk, Op, Val,
+  using Data = std::variant<std::monostate, Attr, Ty, Mod*, Fn, Blk, Op, Val,
                             std::shared_ptr<List>>;
   Data data;
 
   Item() = default;
   Item(Attr value) : data(std::move(value)) {}
+  Item(Ty value) : data(std::move(value)) {}
   Item(Mod* value) : data(value) {}
   Item(Fn value) : data(value) {}
   Item(Blk value) : data(value) {}
@@ -66,6 +68,18 @@ std::optional<std::int64_t> integer(const Item& item) {
   return value ? value->integer() : std::nullopt;
 }
 
+std::optional<std::int64_t> integer(const Ty& value) {
+  std::string_view text = value.text();
+  if (text.starts_with('+'))
+    text.remove_prefix(1);
+  std::int64_t out = 0;
+  const auto parsed =
+      std::from_chars(text.data(), text.data() + text.size(), out);
+  return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size()
+             ? std::optional<std::int64_t>(out)
+             : std::nullopt;
+}
+
 std::optional<bool> boolean(const Item& item) {
   const Attr* value = as<Attr>(item);
   return value ? value->boolean() : std::nullopt;
@@ -94,6 +108,8 @@ Ty runtime_type(const Item& item) {
   }
   if (as<Mod*>(item))
     return Ty("Mod");
+  if (as<Ty>(item))
+    return Ty("Ty");
   if (as<Fn>(item))
     return Ty("Fn");
   if (as<Blk>(item))
@@ -120,6 +136,8 @@ bool same(const Item& left, const Item& right) {
     return false;
   if (const auto* value = as<Attr>(left))
     return *value == *as<Attr>(right);
+  if (const auto* value = as<Ty>(left))
+    return *value == *as<Ty>(right);
   if (const auto* value = as<Mod*>(left))
     return *value == *as<Mod*>(right);
   if (const auto* value = as<Fn>(left))
@@ -226,12 +244,64 @@ private:
     return out;
   }
 
-  std::optional<Items> invoke(Fn fn, const Items& args) {
+  std::optional<Item> generic(Ty value, Ty type, Loc loc) {
+    if (value.text() == "_") {
+      fail("compile-time generic argument could not be inferred", loc);
+      return std::nullopt;
+    }
+    if (type.text() == "_") {
+      if (value.name() == "[]")
+        type = Ty("list<_>");
+      else {
+        if (integer(value))
+          type = Ty("int");
+        else if (value.text() == "true" || value.text() == "false")
+          type = Ty("bool");
+        else
+          type = Ty("Ty");
+      }
+    }
+    if (type.text() == "int" || type.text() == "index") {
+      if (const auto integer_value = integer(value))
+        return Item(Attr(*integer_value));
+    } else if (type.text() == "bool") {
+      if (value.text() == "true" || value.text() == "false")
+        return Item(Attr(value.text() == "true"));
+    } else if (type.text() == "Ty") {
+      return Item(std::move(value));
+    } else if (type.name() == "list" && type.args().size() == 1 &&
+               value.name() == "[]") {
+      Items items;
+      for (const Ty& element : value.args()) {
+        auto item = generic(element, type.args().front(), loc);
+        if (!item)
+          return std::nullopt;
+        items.push_back(std::move(*item));
+      }
+      return Item(std::move(items));
+    } else if (type.text() == "Attr" || type.text() == "meta") {
+      return Item(Attr(std::string(value.text())));
+    }
+    fail("compile-time generic argument '" + std::string(value.text()) +
+             "' does not have type '" + std::string(type.text()) + "'",
+         loc);
+    return std::nullopt;
+  }
+
+  std::optional<Items> invoke(Fn fn, const Items& args,
+                              const Items& generic_args = {}) {
     if (!fn) {
       fail("compile-time function is invalid");
       return std::nullopt;
     }
     const std::vector<Val> params = fn.params();
+    const std::vector<Val> generics = fn.generics();
+    if (generics.size() != generic_args.size()) {
+      fail("generic argument count does not match compile-time function '" +
+               std::string(fn.name()) + "'",
+           fn.loc());
+      return std::nullopt;
+    }
     if (params.size() != args.size()) {
       fail("argument count does not match compile-time function '" +
                std::string(fn.name()) + "'",
@@ -269,6 +339,8 @@ private:
     }
 
     Frame frame;
+    for (std::size_t index = 0; index < generics.size(); ++index)
+      put(frame, generics[index], generic_args[index]);
     for (std::size_t index = 0; index < params.size(); ++index)
       put(frame, params[index], args[index]);
     Flow flow = block(fn.body(), {}, frame);
@@ -451,9 +523,10 @@ private:
       argument_types.push_back(runtime_type(item));
     bool ambiguous = false;
     const std::vector<Val> context = current.generics();
+    std::vector<Ty> generic_values;
     const Fn target =
         resolve_overload(candidates, argument_types, explicit_arguments,
-                         nullptr, &ambiguous, context);
+                         nullptr, &ambiguous, context, &generic_values);
     if (name.starts_with("operator ") &&
         (!target || target.external() || target.module() == "base"))
       return operation(name.substr(9), args, std::move(loc));
@@ -465,7 +538,16 @@ private:
       fail("unknown compile-time function: " + std::string(name), loc);
       return std::nullopt;
     }
-    return invoke(target, args);
+    Items resolved;
+    const std::vector<Val> generics = target.generics();
+    resolved.reserve(generics.size());
+    for (std::size_t index = 0; index < generics.size(); ++index) {
+      auto value = generic(generic_values[index], generics[index].type(), loc);
+      if (!value)
+        return std::nullopt;
+      resolved.push_back(std::move(*value));
+    }
+    return invoke(target, args, resolved);
   }
 
   std::optional<Items> operation(std::string_view name, const Items& args,

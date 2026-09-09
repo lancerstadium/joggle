@@ -192,7 +192,9 @@ constraints, and ownership of `tensor<E, S>`. Generic parameters are the same
 typed `Val`s used elsewhere, so no parallel kind or trait objects are needed.
 The verifier recognizes the `Ty` result instead of a special declaration kind
 or registration hook. This is the first self-hosting step toward using ordinary
-compile-time values to define and validate richer data formats.
+compile-time values to define and validate richer data formats. Explicit and
+inferred generic bindings are also materialized in textual compile-time
+function frames, covering integers, type values, and recursively typed lists.
 
 Function names now map to ordered overload sets rather than one declaration.
 The same structural matcher handles ordinary calls, symbolic functions such as

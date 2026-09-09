@@ -274,6 +274,7 @@ int main(int argc, char** argv) {
   joggle::Mod overload_execution;
   CHECK(joggle::parse(env, source.str(), overload_execution, argv[1]));
   CHECK(joggle::run(env, "script.overload_probe", overload_execution));
+  CHECK(joggle::run(env, "script.generic_probe", overload_execution));
   joggle::Mod rolled_back;
   CHECK(joggle::parse(env, source.str(), rolled_back, argv[1]));
   const std::string before_failure = joggle::print(rolled_back);

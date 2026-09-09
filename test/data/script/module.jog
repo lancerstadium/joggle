@@ -18,6 +18,22 @@ fn overload_probe(m: Mod) -> bool {
   return probe(1)
 }
 
+fn below<N: int>(x: int) -> bool {
+  return x < N
+}
+
+fn extent<S: list<int>>() -> int {
+  return ir.len(S)
+}
+
+fn type_same<T: Ty>() -> bool {
+  return T == T
+}
+
+fn generic_probe(m: Mod) -> bool {
+  return below<4>(3) && extent<[2, 3]>() == 2 && type_same<i32>()
+}
+
 fn rebuild_tagged(m: Mod) -> bool {
   var changed = false
   for f in ir.fns(m) {

@@ -168,6 +168,13 @@ supports structured `for` and `if`, scalar operators, lists, and the universal
 transactional. It does not evaluate arbitrary model functions or silently run
 transforms while parsing.
 
+Generic compile-time helpers use the same syntax and bindings. In
+`fn below<N: int>(x: int) -> bool { return x < N }`, a call to `below<4>(3)`
+binds the generic `Val` `N` to the integer `4` in the function frame. `Ty` and
+`list<...>` generic values are materialized through the same mechanism, so
+modules can write reusable shape and format helpers without a second evaluator
+API.
+
 ### Function metadata
 
 Square brackets hold an open metadata dictionary rather than a fixed set of
