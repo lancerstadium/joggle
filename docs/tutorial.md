@@ -59,6 +59,31 @@ if (!env.load("opt") || !joggle::run(env, "opt.fold_add_zero", mod))
 blocks, and operations through `ir`, replaces the result of `x + 0`, and erases
 the dead call. No C++ registration is required for that transform.
 
+## Define a fusion policy
+
+A project module can reuse the generic chain matcher while choosing its own
+source and destination functions:
+
+```jog
+module my_opt
+use opt
+
+[entry, target: "my_accelerator"]
+fn fuse_conv_norm_act(m: Mod) -> bool {
+  return opt.fuse(
+    m,
+    ["frontend.conv", "frontend.norm", "frontend.relu"],
+    "my_accelerator.conv_norm_act"
+  )
+}
+```
+
+Run it explicitly with `joggle run my_opt.fuse_conv_norm_act model.jog -M ...`.
+The names and `target` tag belong to this module; Joggle does not register or
+interpret them. `opt.fuse` follows only single-use chains, while `ir.fuse`
+checks the selected region's order, live-in/live-out boundary, and dominance
+before committing the rewrite.
+
 ## Import an official ONNX model
 
 Download the pinned official MobileNetV2 model and enable the optional codec:
@@ -74,8 +99,10 @@ ctest --test-dir build --output-on-failure
 ```
 
 The `onnx` test checks the official model's 267 tensor constants, 155 nodes,
-14,156,560 initializer bytes, verifier result, and canonical round trip. The
-download is never part of a normal configure or build.
+14,156,560 initializer bytes, verifier result, and canonical round trip. It
+also uses a test bridge built from `opt.fuse` to combine 36
+Conv-BatchNormalization-ReLU chains, then verifies and round-trips the changed
+module. The download is never part of a normal configure or build.
 
 ## Add a data format and primitive
 

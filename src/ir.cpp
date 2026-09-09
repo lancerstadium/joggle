@@ -1,6 +1,7 @@
 #include "detail.h"
 
 #include <algorithm>
+#include <unordered_set>
 #include <utility>
 
 namespace joggle {
@@ -309,6 +310,108 @@ Val Mod::call(Op before, std::string callee, std::span<const Val> args,
   order.insert(position, op_id);
   detail::rebuild_uses(store);
   return Val(&store, value_id, store.vals[value_id].generation);
+}
+
+bool Mod::fuse(std::span<const Op> ops, std::string callee) {
+  auto& store = impl_->store;
+  auto reject = [&](std::string message, Loc loc = {}) {
+    detail::add_diag(store.diags, std::move(message), std::move(loc));
+    return false;
+  };
+  if (ops.size() < 2 || callee.empty())
+    return reject("fuse requires at least two calls and a callee");
+
+  const Blk block = ops.front().block();
+  if (!block || block.store_ != &store)
+    return reject("fuse requires live calls in this module");
+  const std::vector<Op> order = block.ops();
+  std::unordered_set<std::uint32_t> selected;
+  std::size_t previous = 0;
+  for (std::size_t index = 0; index < ops.size(); ++index) {
+    const Op op = ops[index];
+    if (!op.valid() || op.store_ != &store || op.block() != block ||
+        op.kind() != Op::Kind::call || !selected.insert(op.id_).second)
+      return reject("fuse requires distinct calls in one block", op.loc());
+    const auto position = std::find(order.begin(), order.end(), op);
+    if (position == order.end())
+      return reject("fuse call is not in its block", op.loc());
+    const auto at = static_cast<std::size_t>(position - order.begin());
+    if (index && at <= previous)
+      return reject("fuse calls must be in program order", op.loc());
+    previous = at;
+  }
+  bool within = false;
+  for (Op op : order) {
+    if (op == ops.front())
+      within = true;
+    if (within && !selected.contains(op.id_) && op.kind() != Op::Kind::constant)
+      return reject("fuse cannot cross an unselected operation", op.loc());
+    if (op == ops.back())
+      break;
+  }
+
+  std::vector<Val> inputs;
+  std::unordered_set<std::uint32_t> input_ids;
+  std::vector<Val> outputs;
+  std::size_t external_uses = 0;
+  for (Op op : ops) {
+    for (Val arg : op.args()) {
+      const Op def = arg.def();
+      if ((!def || !selected.contains(def.id_)) &&
+          input_ids.insert(arg.id_).second)
+        inputs.push_back(arg);
+    }
+    for (Val out : op.outs()) {
+      bool escapes = false;
+      for (Op user : out.users()) {
+        if (!selected.contains(user.id_)) {
+          escapes = true;
+          ++external_uses;
+        }
+      }
+      if (escapes)
+        outputs.push_back(out);
+    }
+  }
+  if (outputs.size() != 1)
+    return reject("fuse region must have exactly one live-out",
+                  ops.front().loc());
+  const Val output = outputs.front();
+  for (Op user : output.users()) {
+    if (selected.contains(user.id_))
+      return reject("fuse live-out must leave the region only",
+                    output.def().loc());
+  }
+  const auto old_form = store.ops[output.def().id_].data.form;
+  if (old_form != detail::Form::hidden && old_form != detail::Form::let &&
+      old_form != detail::Form::var)
+    return reject("fuse live-out must be an expression value",
+                  output.def().loc());
+  if (external_uses > 1 && old_form == detail::Form::hidden)
+    return reject("an unnamed fuse live-out cannot have multiple users",
+                  output.def().loc());
+
+  detail::Store backup = store;
+  Val fused = call(ops.back(), std::move(callee), inputs, output.type());
+  if (!fused) {
+    const std::vector<Diag> diags = store.diags;
+    store = std::move(backup);
+    store.diags = diags;
+    return false;
+  }
+  store.vals[fused.id_].data.name = std::string(output.name());
+  store.ops[fused.def().id_].data.form = old_form;
+  if (!replace(output, fused)) {
+    store = std::move(backup);
+    return false;
+  }
+  for (auto it = ops.rbegin(); it != ops.rend(); ++it) {
+    if (!erase(*it)) {
+      store = std::move(backup);
+      return false;
+    }
+  }
+  return true;
 }
 
 bool Mod::replace(Val old_value, Val new_value) {

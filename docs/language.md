@@ -43,6 +43,15 @@ implemented. Operators normalize to ordinary function calls such as
 `operator +` and `operator []`; adding a concrete overload does not add a new
 IR operation kind.
 
+List literals may contain any compile-time value, including IR handles, and
+`+` concatenates lists. This makes structural selections concise without a
+second pattern language:
+
+```jog
+let group = [producer, consumer]
+group += [last]
+```
+
 `let` bindings are immutable. `var` bindings may be reassigned with `=` or
 `+=`, and tensor-like values may use `value[i, j] = next`. The latter normalizes
 to a call of `operator []=` returning the updated value, so mutation remains an

@@ -15,6 +15,19 @@
     }                                                                          \
   } while (false)
 
+namespace {
+
+std::size_t count_calls(const joggle::Mod& mod, std::string_view callee) {
+  std::size_t count = 0;
+  for (joggle::Fn fn : mod.fns())
+    for (joggle::Blk block : fn.blocks())
+      for (joggle::Op op : block.ops())
+        count += op.kind() == joggle::Op::Kind::call && op.callee() == callee;
+  return count;
+}
+
+}  // namespace
+
 int main(int argc, char** argv) {
   CHECK(argc == 3);
   std::ifstream input(argv[1], std::ios::binary);
@@ -65,5 +78,25 @@ int main(int argc, char** argv) {
   CHECK(joggle::parse(env, canonical, roundtrip, "mobilenet-roundtrip.jog"));
   CHECK(roundtrip.verify(env));
   CHECK(joggle::structurally_equal(model, roundtrip));
+
+  const std::size_t convs = count_calls(model, "onnx.Conv");
+  const std::size_t norms = count_calls(model, "onnx.BatchNormalization");
+  const std::size_t relus = count_calls(model, "onnx.Relu");
+  CHECK(convs > 0 && norms > 0 && relus > 0);
+  CHECK(env.load("script"));
+  CHECK(joggle::run(env, "script.fuse_onnx", model));
+  const std::size_t fused = count_calls(model, "test.conv_bn_relu");
+  CHECK(fused == 36);
+  CHECK(count_calls(model, "onnx.Conv") == convs - fused);
+  CHECK(count_calls(model, "onnx.BatchNormalization") == norms - fused);
+  CHECK(count_calls(model, "onnx.Relu") == relus - fused);
+  const std::string optimized = joggle::print(model);
+  joggle::Mod optimized_roundtrip;
+  CHECK(joggle::parse(env, optimized, optimized_roundtrip,
+                      "mobilenet-optimized.jog"));
+  CHECK(optimized_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(model, optimized_roundtrip));
+  CHECK(joggle::run(env, "script.fuse_onnx", model));
+  CHECK(joggle::print(model) == optimized);
   return 0;
 }

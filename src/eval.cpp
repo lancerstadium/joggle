@@ -407,6 +407,8 @@ private:
       return operation(name.substr(9), args, std::move(loc));
     if (name == "base.copy" && args.size() == 1)
       return args;
+    if (name == "base.list")
+      return Items{Item(args)};
     if (name.starts_with("ir."))
       return intrinsic(name.substr(3), args, std::move(loc));
     Fn target = name.find('.') == std::string_view::npos ? local(current, name)
@@ -496,6 +498,15 @@ private:
     if ((name == "+" || name == "-" || name == "*" || name == "/" ||
          name == "%") &&
         args.size() == 2) {
+      if (name == "+") {
+        const Items* left = list(args[0]);
+        const Items* right = list(args[1]);
+        if (left && right) {
+          Items value = *left;
+          value.insert(value.end(), right->begin(), right->end());
+          return Items{Item(std::move(value))};
+        }
+      }
       const auto left = integer(args[0]);
       const auto right = integer(args[1]);
       const auto min = std::numeric_limits<std::int64_t>::min();
@@ -610,6 +621,23 @@ private:
                                   Ty(std::string(*type)));
         if (result)
           return Items{Item(result)};
+      }
+    } else if (name == "fuse" && args.size() == 3) {
+      const auto* mod = as<Mod*>(args[0]);
+      const Items* values = list(args[1]);
+      const auto callee = string(args[2]);
+      if (mod && *mod && values && callee) {
+        std::vector<Op> ops;
+        ops.reserve(values->size());
+        for (const Item& item : *values) {
+          const auto* op = as<Op>(item);
+          if (!op) {
+            fail("ir.fuse arguments must be operations", loc);
+            return std::nullopt;
+          }
+          ops.push_back(*op);
+        }
+        return Items{Item(Attr((*mod)->fuse(ops, std::string(*callee))))};
       }
     } else if (name == "replace" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);

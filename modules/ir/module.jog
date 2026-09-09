@@ -14,6 +14,7 @@ fn is_const(v: Val) -> bool;
 fn constant(v: Val) -> Attr;
 fn len<T>(xs: list<T>) -> int;
 fn call(m: Mod, before: Op, callee: str, args: list<Val>, type: str) -> Val;
+fn fuse(m: Mod, ops: list<Op>, callee: str) -> bool;
 fn replace(m: Mod, old: Val, next: Val) -> bool;
 fn erase(m: Mod, op: Op) -> bool;
 fn rename(m: Mod, op: Op, callee: str) -> bool;

@@ -322,6 +322,7 @@ public:
   Fn find_fn(std::string_view name) const noexcept;
 
   Val call(Op before, std::string callee, std::span<const Val> args, Ty type);
+  bool fuse(std::span<const Op> ops, std::string callee);
   bool replace(Val old_value, Val new_value);
   bool erase(Op op);
   bool rename(Op call, std::string callee);

@@ -965,8 +965,23 @@ private:
   }
 
   std::uint32_t primary(std::uint32_t block, Scope& scope) {
+    if (match("[")) {
+      const Loc loc = tokens_[pos_ - 1].loc;
+      std::vector<std::uint32_t> items;
+      if (!is("]")) {
+        do {
+          const auto item = expression(block, scope);
+          if (item == detail::none)
+            return detail::none;
+          items.push_back(item);
+        } while (match(","));
+      }
+      if (!expect("]"))
+        return detail::none;
+      return add_call(block, "base.list", std::move(items), Ty("list"), loc);
+    }
     if (peek().kind == Tk::number || peek().kind == Tk::string || is("true") ||
-        is("false") || is("[") || is("{") || is("hex") || is("nil")) {
+        is("false") || is("{") || is("hex") || is("nil")) {
       const Loc loc = peek().loc;
       Ty type;
       auto value = attr_literal(type);
@@ -1029,6 +1044,15 @@ namespace {
 std::string render_value(const detail::Store& store, std::uint32_t value);
 
 std::string render_call(const detail::Store& store, const detail::OpData& op) {
+  if (op.callee == "base.list") {
+    std::string out = "[";
+    for (std::size_t index = 0; index < op.args.size(); ++index) {
+      if (index)
+        out += ", ";
+      out += render_value(store, op.args[index]);
+    }
+    return out + "]";
+  }
   if (op.callee.starts_with("operator ")) {
     const std::string_view symbol(op.callee.data() + 9, op.callee.size() - 9);
     if (symbol == "[]" && !op.args.empty()) {

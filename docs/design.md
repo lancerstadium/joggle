@@ -158,3 +158,19 @@ SystemVerilog is an output of that removable module, not a core backend or IR.
 After the generic `ir.type` query completed the reflection boundary, the whole
 format, policy, simulator, and emitter were added without changing the core
 library, parser, evaluator, public header, or operation vocabulary.
+
+## M5 slice
+
+M5 turns open metadata and reflection into construction rather than mere
+inspection. A module can use arbitrary function metadata to select work, query
+users, insert any call, replace uses, and erase the old operation. Dynamic list
+literals allow the same source language to collect IR handles.
+
+The operator-neutral region primitive computes live-ins and a single live-out
+for an ordered call region, enforces dominance and motion safety, preserves the
+visible result name, and commits the fusion atomically. The generic textual
+`opt.fuse` helper follows a user-supplied callee sequence; it contains no ONNX
+or NN operator names. A test-only bridge applies the helper to the pinned
+MobileNetV2 import and replaces 36 Conv-BatchNormalization-ReLU chains with 36
+user-named calls, reducing those 108 calls to 36. The optimized 28.4 MB module
+then verifies, prints, reparses, and remains structurally equal.

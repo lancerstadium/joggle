@@ -186,6 +186,27 @@ int main(int argc, char** argv) {
   CHECK(renamed.callee() == "custom.add");
   CHECK(plain.callee() == "operator +");
 
+  joggle::Mod unsafe_fusion;
+  constexpr std::string_view unsafe_source =
+      "module unsafe\n"
+      "fn main(x: i32) -> i32 {\n"
+      "  let first = test.first(x)\n"
+      "  let unrelated = test.unrelated(x)\n"
+      "  let last = test.last(first)\n"
+      "  return last\n}\n";
+  CHECK(joggle::parse(env, unsafe_source, unsafe_fusion, "unsafe.jog"));
+  CHECK(unsafe_fusion.verify(env));
+  const std::string unsafe_before = joggle::print(unsafe_fusion);
+  std::vector<joggle::Op> unsafe_group;
+  for (joggle::Op op : unsafe_fusion.find_fn("main").body().ops()) {
+    if (op.callee() == "test.first" || op.callee() == "test.last")
+      unsafe_group.push_back(op);
+  }
+  CHECK(unsafe_group.size() == 2);
+  CHECK(!unsafe_fusion.fuse(unsafe_group, "test.fused"));
+  CHECK(joggle::print(unsafe_fusion) == unsafe_before);
+  CHECK(!unsafe_fusion.diags().empty());
+
   joggle::Mod duplicate_meta;
   CHECK(!joggle::parse(env,
                        "module bad\n[a, a: 1]\n"

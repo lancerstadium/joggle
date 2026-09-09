@@ -27,3 +27,12 @@ fn rebuild_tagged(m: Mod) -> bool {
   }
   return changed
 }
+
+[entry]
+fn fuse_onnx(m: Mod) -> bool {
+  return opt.fuse(
+    m,
+    ["onnx.Conv", "onnx.BatchNormalization", "onnx.Relu"],
+    "test.conv_bn_relu"
+  )
+}

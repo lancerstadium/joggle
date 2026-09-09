@@ -23,3 +23,45 @@ fn fold_add_zero(m: Mod) -> bool {
   }
   return changed
 }
+
+fn fuse(m: Mod, pattern: list<str>, replacement: str) -> bool {
+  var changed = false
+  if ir.len(pattern) > 1 {
+    for f in ir.fns(m) {
+      for b in ir.blocks(f) {
+        for first in ir.ops(b) {
+          if ir.callee(first) == pattern[0] {
+            var matched = true
+            var current = first
+            var group = [first]
+            for i in 1..ir.len(pattern) {
+              if matched {
+                let outs = ir.outs(current)
+                if ir.len(outs) == 1 {
+                  let users = ir.users(outs[0])
+                  if ir.len(users) == 1 {
+                    let next = users[0]
+                    if ir.callee(next) == pattern[i] {
+                      current = next
+                      group += [next]
+                    } else {
+                      matched = false
+                    }
+                  } else {
+                    matched = false
+                  }
+                } else {
+                  matched = false
+                }
+              }
+            }
+            if matched {
+              changed = ir.fuse(m, group, replacement)
+            }
+          }
+        }
+      }
+    }
+  }
+  return changed
+}
