@@ -452,6 +452,8 @@ std::string emit(const jogonnx::ModelProto& model) {
   for (const auto& node : graph.node()) {
     const std::string domain =
         node.domain().empty() ? "onnx" : atom(node.domain());
+    if (node.attribute_size() || (node.has_name() && !node.name().empty()))
+      out << "  [onnx: " << attrs(node) << "]\n";
     out << "  ";
     if (node.output_size()) {
       out << "let ";
@@ -475,11 +477,6 @@ std::string emit(const jogonnx::ModelProto& model) {
       if (index)
         out << ", ";
       out << (node.input(index).empty() ? "nil" : names.get(node.input(index)));
-    }
-    if (node.attribute_size() || (node.has_name() && !node.name().empty())) {
-      if (node.input_size())
-        out << ", ";
-      out << attrs(node);
     }
     out << ")\n";
   }

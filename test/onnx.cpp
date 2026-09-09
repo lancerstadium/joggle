@@ -43,9 +43,14 @@ joggle::Attr::Bytes multi_output_model() {
   tensor_type(graph->add_output(), "right", {1});
   auto* split = graph->add_node();
   split->set_op_type("Split");
+  split->set_name("split-node");
   split->add_input("x");
   split->add_output("left");
   split->add_output("right");
+  auto* axis = split->add_attribute();
+  axis->set_name("axis");
+  axis->set_type(jogonnx::AttributeProto::INT);
+  axis->set_i(0);
   std::string bytes;
   if (!model.SerializeToString(&bytes))
     return {};
@@ -114,6 +119,24 @@ int main(int argc, char** argv) {
   CHECK(roundtrip.verify(env));
   CHECK(joggle::structurally_equal(model, roundtrip));
 
+  for (joggle::Op op : model.ops())
+    if (op.callee() == "onnx.Relu") {
+      CHECK(op.args().size() == 1);
+      CHECK(op.meta("onnx") && op.meta("onnx")->dict());
+    }
+
+  CHECK(env.load("script"));
+  joggle::Mod bridged;
+  CHECK(joggle::parse(env, canonical, bridged, "mobilenet-bridge.jog"));
+  const std::size_t network_relus = count_calls(bridged, "onnx.Relu");
+  CHECK(network_relus > 0);
+  CHECK(joggle::run(env, "script.bridge_relu", bridged));
+  CHECK(count_calls(bridged, "onnx.Relu") == 0);
+  CHECK(count_calls(bridged, "nn.relu") == network_relus);
+  const std::string bridged_text = joggle::print(bridged);
+  CHECK(joggle::run(env, "script.bridge_relu", bridged));
+  CHECK(joggle::print(bridged) == bridged_text);
+
   const std::vector<joggle::Attr> multi_args{
       joggle::Attr(multi_output_model())};
   CHECK(env.call("onnx.read", multi_args, returns));
@@ -129,6 +152,11 @@ int main(int argc, char** argv) {
     if (op.callee() == "onnx.Split")
       split = op;
   CHECK(split && split.outs().size() == 2);
+  CHECK(split.args().size() == 1);
+  const joggle::Attr* onnx = split.meta("onnx");
+  CHECK(onnx && onnx->dict());
+  CHECK(onnx->dict()->at("$node").string() == "split-node");
+  CHECK(onnx->dict()->at("axis").integer() == 0);
   CHECK(split.outs()[0].type() == joggle::Ty("tensor<f32, [1]>"));
   CHECK(split.outs()[1].type() == joggle::Ty("tensor<f32, [1]>"));
   const std::string multi_text = joggle::print(multi);
@@ -142,7 +170,6 @@ int main(int argc, char** argv) {
   const std::size_t norms = count_calls(model, "onnx.BatchNormalization");
   const std::size_t relus = count_calls(model, "onnx.Relu");
   CHECK(convs > 0 && norms > 0 && relus > 0);
-  CHECK(env.load("script"));
   CHECK(joggle::run(env, "script.fuse_onnx", model));
   const std::size_t fused = count_calls(model, "test.conv_bn_relu");
   CHECK(fused == 36);
