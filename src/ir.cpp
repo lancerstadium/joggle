@@ -1157,6 +1157,16 @@ bool Mod::expand(Op call, Fn callee) {
     if (generic.type().name() == "list" && value.name() == "[]") {
       std::vector<Val> items;
       for (const Ty& item : value.args()) {
+        bool mapped_item = false;
+        for (Val outer : context) {
+          if (item.args().empty() && item.name() == outer.name()) {
+            items.push_back(outer);
+            mapped_item = true;
+            break;
+          }
+        }
+        if (mapped_item)
+          continue;
         const auto number = integer(item);
         if (!number)
           return reject("cannot materialize an expanded list parameter",

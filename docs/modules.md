@@ -159,17 +159,22 @@ do not need a frontend-specific projection primitive.
 
 ### Tensor and network semantics
 
-`tensor` defines `tensor<E, S>`, structural `elem`/`shape`/`type` helpers,
+`tensor` defines `tensor<E, S>`, structural `elem`/`shape`/`dims`/`type` helpers,
 linear, two-dimensional, and four-dimensional indexing, `numel`, elementwise
 addition, subtraction, multiplication, and matrix multiplication. `valid`
 recognizes the structural constructor without projecting it; `static` further
-requires integer-literal extents. Shape-arithmetic passes use the latter and
-leave symbolic or not-yet-inferred calls intact. `permutation`, `permuted`, and
-the inspectable `permute` body provide rank-generic axis reordering.
-`broadcast_shape` and `broadcastable`
-express trailing-axis compatibility, while `broadcast_offset` and `broadcast`
-provide its inspectable index and copy semantics. `extent`, `offset`, and
-`coord` interpret
+requires integer-literal extents. `shape` deliberately projects only such
+concrete shapes to `list<int>`; `dims` retains every extent as a `Ty` term.
+The latter lets a relation preserve caller generics such as `N` without adding
+a symbolic-expression class. `permutation`, `permuted`, and the inspectable
+`permute` body provide rank-generic axis reordering. `product` proves a
+partition extent when it is concrete or contains one unscaled symbolic term;
+otherwise it returns `_` instead of inventing an expression language.
+`broadcast_shape` and `broadcastable` are overloaded for concrete shapes and
+raw dimension terms. They express trailing-axis compatibility by exact term
+equality and singleton expansion, while `broadcast_offset` and `broadcast`
+provide the inspectable index and copy semantics for an exposed static body.
+`extent`, `offset`, and `coord` interpret
 a physical shape through an explicit logical-axis list. Each physical dimension
 names its logical axis; `-1` denotes a fixed singleton dimension. Thus NCHW is
 `[0, 1, 2, 3]`, NHWC is `[0, 2, 3, 1]`, and TFLite's depthwise `[1,H,W,O]`
@@ -201,6 +206,11 @@ that normal function body, including nested loops and conditions. Generic
 type, shape, and integer bindings are specialized at the call site; visible
 result names and structured carried bindings remain printable. The C++ pair
 `env.resolve(mod, op)` and `mod.expand(op, fn)` performs the identical edit.
+When a shape generic contains a caller's integer generic, expansion
+materializes one ordinary `list<int>` value containing that existing binding.
+This keeps bodies such as symbolic reshape, matrix multiplication, and
+permutation representable instead of requiring dimensions to be frozen before
+body exposure.
 `opt.expand` is only a policy helper over an explicit list of callees, not a
 built-in lowering stage.
 
@@ -216,8 +226,11 @@ The optional `onnx.nn` module is that relationship, not another IR layer.
 through Conv, BatchNormalization, ReLU, broadcast Add/Sub/Mul, spatial pooling,
 and GlobalAveragePool.
 Unsupported ranks and `auto_pad` are left unchanged rather than guessed. Open
-intermediate types and symbolic extents are likewise retained instead of
-causing an unsafe projection or inventing a concrete shape.
+intermediate types are likewise retained instead of causing an unsafe
+projection. Named symbolic extents now flow through Add/Sub/Mul, Flatten,
+strict 2-D MatMul, and Transpose when equality, singleton broadcasting,
+permutation, or a directly representable partition product proves the result;
+ambiguous symbolic arithmetic remains at the ONNX frontier.
 `onnx.nn.convert` then maps Conv, BatchNormalization, ReLU, Add/Sub/Mul,
 AveragePool, MaxPool, GlobalAveragePool, Reshape, Flatten, and the strict 2-D
 subset of MatMul. Flatten reuses `tensor.reshape`; MatMul reuses

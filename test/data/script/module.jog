@@ -48,11 +48,18 @@ fn generic_probe(m: Mod) -> bool {
 
 fn tensor_type_probe(m: Mod) -> bool {
   let original = tensor.type(ty("f32"), [2, 3, 5])
+  let dynamic = ty("tensor<f32, [N, 3]>")
+  let dims = tensor.dims(dynamic)
+  let reversed = tensor.permuted(dims, [1, 0])
+  let broadcast = tensor.broadcast_shape(dims, [ty(1), ty(3)])
   return tensor.valid(original) && tensor.static(original) &&
          tensor.elem(original) == ty("f32") &&
          tensor.shape(original) == [2, 3, 5] &&
-         tensor.valid(ty("tensor<f32, [N, 3]>")) &&
-         !tensor.static(ty("tensor<f32, [N, 3]>")) &&
+         tensor.valid(dynamic) && !tensor.static(dynamic) &&
+         tensor.type(ty("f32"), dims) == dynamic &&
+         reversed == [ty(3), ty("N")] && broadcast == dims &&
+         tensor.product(dims, 0, 1) == ty("N") &&
+         tensor.product(dims, 1, 2) == ty(3) &&
          !tensor.valid(ty("tensor"))
 }
 

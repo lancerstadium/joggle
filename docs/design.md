@@ -688,3 +688,20 @@ uses the normal resolver, and returns each unresolved callee once in structural
 order. The TFLite gate observes six source families before conversion and none
 afterward; the same query works for a target module without knowing either
 frontend.
+
+## M10 symbolic network slice
+
+Tensor shape relations now have two deliberately different projections.
+`tensor.shape` returns concrete `list<int>` extents for arithmetic that really
+requires integers. `tensor.dims` returns structural `list<Ty>` terms and is used
+by relations that only need equality, singleton broadcasting, permutation, or
+a directly representable partition product. This is enough to preserve a
+generic batch dimension through common network paths without embedding a shape
+solver or expression AST in the core.
+
+Function expansion can materialize a generic `list<int>` containing integer
+generics owned by its caller. As a result, symbolic reshape, matrix
+multiplication, and permutation bodies remain ordinary nested `Fn/Blk/Op/Val`
+IR after exposure. A relation that would require multiplying two symbols or a
+symbol by a non-unit coefficient returns `_` and leaves its source call at the
+frontier. The boundary is conservative and testable rather than model-specific.

@@ -38,12 +38,45 @@ fn shape(type: Ty) -> list<int> {
   return out
 }
 
+fn dims(type: Ty) -> list<Ty> {
+  return args(args(type)[1])
+}
+
 fn type(elem: Ty, shape: list<int>) -> Ty {
   var dims: list<Ty> = []
   for extent in shape {
     dims += [ty(extent)]
   }
   return ty("tensor", [elem, ty("[]", dims)])
+}
+
+fn type(elem: Ty, dims: list<Ty>) -> Ty {
+  return ty("tensor", [elem, ty("[]", dims)])
+}
+
+fn product(dims: list<Ty>, first: int, last: int) -> Ty {
+  if first < 0 || last < first || last > len(dims) {
+    return ty("_")
+  }
+  var value = 1
+  var symbol = ty("_")
+  for i in first..last {
+    if kind(dims[i]) == "int" {
+      value *= int(dims[i])
+    } else {
+      if symbol != ty("_") {
+        return ty("_")
+      }
+      symbol = dims[i]
+    }
+  }
+  if symbol != ty("_") {
+    if value != 1 {
+      return ty("_")
+    }
+    return symbol
+  }
+  return ty(value)
 }
 
 fn []<E: Ty, S: list<int>>(x: tensor<E, S>, i: index) -> E;
@@ -153,6 +186,14 @@ fn permuted(shape: list<int>, axes: list<int>) -> list<int> {
   return out
 }
 
+fn permuted(shape: list<Ty>, axes: list<int>) -> list<Ty> {
+  var out: list<Ty> = []
+  for axis in axes {
+    out += [shape[axis]]
+  }
+  return out
+}
+
 fn permute<E: Ty, S: list<int>, T: list<int>>(
   x: tensor<E, S>, axes: list<int>
 ) -> tensor<E, T> {
@@ -192,6 +233,19 @@ fn broadcastable(from: list<int>, to: list<int>) -> bool {
   return true
 }
 
+fn broadcastable(from: list<Ty>, to: list<Ty>) -> bool {
+  if len(from) > len(to) {
+    return false
+  }
+  let shift = len(to) - len(from)
+  for i in 0..len(from) {
+    if from[i] != ty(1) && from[i] != to[shift + i] {
+      return false
+    }
+  }
+  return true
+}
+
 fn broadcast_shape(left: list<int>, right: list<int>) -> list<int> {
   var rank = len(left)
   if len(right) > rank {
@@ -216,6 +270,30 @@ fn broadcast_shape(left: list<int>, right: list<int>) -> list<int> {
       out += [r]
     } else {
       out += [l]
+    }
+  }
+  return out
+}
+
+fn broadcast_shape(left: list<Ty>, right: list<Ty>) -> list<Ty> {
+  var rank = len(left)
+  if len(right) > rank {
+    rank = len(right)
+  }
+  var out: list<Ty> = []
+  for axis in 0..rank {
+    var a = ty(1)
+    var b = ty(1)
+    if axis >= rank - len(left) {
+      a = left[axis - (rank - len(left))]
+    }
+    if axis >= rank - len(right) {
+      b = right[axis - (rank - len(right))]
+    }
+    if a == ty(1) {
+      out += [b]
+    } else {
+      out += [a]
     }
   }
   return out

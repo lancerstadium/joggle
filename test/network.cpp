@@ -335,11 +335,76 @@ int main(int argc, char** argv) {
   CHECK(symbolic.verify(env));
   CHECK(joggle::run(env, "onnx.nn.convert", symbolic));
   CHECK(symbolic.verify(env));
-  std::size_t symbolic_binaries = 0;
-  for (joggle::Op op : symbolic.ops())
+  std::size_t retained_binaries = 0;
+  joggle::Op symbolic_mul;
+  for (joggle::Op op : symbolic.ops()) {
     if (op.callee() == "onnx.Add" || op.callee() == "onnx.Mul")
-      ++symbolic_binaries;
-  CHECK(symbolic_binaries == 2);
+      ++retained_binaries;
+    if (op.callee() == "nn.mul")
+      symbolic_mul = op;
+  }
+  CHECK(retained_binaries == 1);
+  CHECK(symbolic_mul);
+  const joggle::Fn symbolic_mul_fn = env.resolve(symbolic, symbolic_mul);
+  CHECK(symbolic_mul_fn && symbolic.expand(symbolic_mul, symbolic_mul_fn));
+  CHECK(symbolic.verify(env));
+
+  constexpr std::string_view symbolic_matrix_source =
+      "module symbolic.matrix\n"
+      "use onnx\n"
+      "fn main<N: int>(\n"
+      "  x: tensor<f32, [N, 2, 3]>, w: tensor<f32, [6, 4]>\n"
+      ") -> tensor<f32, [4, N]> {\n"
+      "  [onnx: {axis: 1}]\n"
+      "  let flat = onnx.Flatten(x)\n"
+      "  let product = onnx.MatMul(flat, w)\n"
+      "  [onnx: {perm: [1, 0]}]\n"
+      "  let out = onnx.Transpose(product)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod symbolic_matrix;
+  CHECK(joggle::parse(env, symbolic_matrix_source, symbolic_matrix,
+                      "symbolic-matrix.jog"));
+  CHECK(symbolic_matrix.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", symbolic_matrix));
+  CHECK(symbolic_matrix.verify(env));
+  CHECK(symbolic_matrix.find_fn("main").body().ops().back().args()[0].type() ==
+        joggle::Ty("tensor<f32, [4, N]>"));
+  CHECK(joggle::run(env, "onnx.nn.convert", symbolic_matrix));
+  CHECK(symbolic_matrix.verify(env));
+  std::size_t symbolic_matrix_calls = 0;
+  for (joggle::Op op : symbolic_matrix.ops()) {
+    if (op.callee() != "tensor.reshape" &&
+        op.callee() != "tensor.matmul" &&
+        op.callee() != "tensor.permute")
+      continue;
+    const joggle::Fn fn = env.resolve(symbolic_matrix, op);
+    CHECK(fn && symbolic_matrix.expand(op, fn));
+    ++symbolic_matrix_calls;
+  }
+  CHECK(symbolic_matrix_calls == 3 && symbolic_matrix.verify(env));
+
+  constexpr std::string_view unresolved_shape_source =
+      "module unresolved.shape\n"
+      "use onnx\n"
+      "fn main<N: int, M: int>(\n"
+      "  x: tensor<f32, [N, M, 3]>\n"
+      ") -> tensor<f32, [_, 3]> {\n"
+      "  [onnx: {axis: 2}]\n"
+      "  let out: tensor<f32, [_, 3]> = onnx.Flatten(x)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod unresolved_shape;
+  CHECK(joggle::parse(env, unresolved_shape_source, unresolved_shape,
+                      "unresolved-shape.jog"));
+  CHECK(unresolved_shape.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", unresolved_shape));
+  CHECK(joggle::run(env, "onnx.nn.convert", unresolved_shape));
+  CHECK(unresolved_shape.verify(env));
+  bool retained_flatten = false;
+  for (joggle::Op op : unresolved_shape.ops())
+    retained_flatten = retained_flatten || op.callee() == "onnx.Flatten";
+  CHECK(retained_flatten);
 
   constexpr std::string_view invalid_source =
       "module invalid.broadcast\n"

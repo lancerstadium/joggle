@@ -154,6 +154,12 @@ the strict two-dimensional MatMul subset reuse `tensor.reshape` and
 of adding frontend-shaped semantics. `opt.unresolved`
 reports six open source call
 families before that bridge and none afterward. The two target gates remain.
+Named extents now flow through broadcast binary operations, Flatten, strict
+2-D MatMul, and Transpose using structural type terms. Generic-list expansion
+reuses caller dimension bindings, so those converted calls can expose their
+normal tensor bodies without requiring a concrete batch size. Shape relations
+that need an unrepresentable symbolic product remain open rather than being
+special-cased for a model.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

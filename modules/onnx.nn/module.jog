@@ -27,34 +27,31 @@ fn binary_type(m: Mod, op: Op) -> bool {
   }
   let left = ir.type(inputs[0])
   let right = ir.type(inputs[1])
-  if !tensor.static(left) || !tensor.static(right) {
+  if !tensor.valid(left) || !tensor.valid(right) {
     return false
   }
   if tensor.elem(left) != tensor.elem(right) {
     return false
   }
   let shape = tensor.broadcast_shape(
-    tensor.shape(left), tensor.shape(right)
+    tensor.dims(left), tensor.dims(right)
   )
-  if !tensor.broadcastable(tensor.shape(left), shape) ||
-     !tensor.broadcastable(tensor.shape(right), shape) {
+  if !tensor.broadcastable(tensor.dims(left), shape) ||
+     !tensor.broadcastable(tensor.dims(right), shape) {
     return false
   }
   return set_type(m, outputs[0], tensor.type(tensor.elem(left), shape))
 }
 
 fn flattened(input: Ty, axis: int) -> Ty {
-  let shape = tensor.shape(input)
-  var outer = 1
-  var inner = 1
-  for i in 0..len(shape) {
-    if i < axis {
-      outer *= shape[i]
-    } else {
-      inner *= shape[i]
-    }
+  let dims = tensor.dims(input)
+  let outer = tensor.product(dims, 0, axis)
+  let inner = tensor.product(dims, axis, len(dims))
+  if outer == ty("_") || inner == ty("_") {
+    return ty("_")
   }
-  return tensor.type(tensor.elem(input), [outer, inner])
+  let shape: list<Ty> = [outer, inner]
+  return tensor.type(tensor.elem(input), shape)
 }
 
 fn infer_flatten(m: Mod, op: Op) -> bool {
@@ -64,10 +61,10 @@ fn infer_flatten(m: Mod, op: Op) -> bool {
     return false
   }
   let input = ir.type(inputs[0])
-  if !tensor.static(input) {
+  if !tensor.valid(input) {
     return false
   }
-  let shape = tensor.shape(input)
+  let shape = tensor.dims(input)
   var axis = base.get(ir.meta(op, "onnx"), "axis", 1)
   if axis < 0 {
     axis += len(shape)
@@ -75,7 +72,11 @@ fn infer_flatten(m: Mod, op: Op) -> bool {
   if axis < 0 || axis > len(shape) {
     return false
   }
-  return set_type(m, outputs[0], flattened(input, axis))
+  let result = flattened(input, axis)
+  if result == ty("_") {
+    return false
+  }
+  return set_type(m, outputs[0], result)
 }
 
 fn matmul_type(m: Mod, op: Op) -> bool {
@@ -86,23 +87,22 @@ fn matmul_type(m: Mod, op: Op) -> bool {
   }
   let left = ir.type(inputs[0])
   let right = ir.type(inputs[1])
-  if !tensor.static(left) || !tensor.static(right) {
+  if !tensor.valid(left) || !tensor.valid(right) {
     return false
   }
   if tensor.elem(left) != tensor.elem(right) {
     return false
   }
-  let ls = tensor.shape(left)
-  let rs = tensor.shape(right)
+  let ls = tensor.dims(left)
+  let rs = tensor.dims(right)
   if len(ls) != 2 || len(rs) != 2 {
     return false
   }
   if ls[1] != rs[0] {
     return false
   }
-  return set_type(
-    m, outputs[0], tensor.type(tensor.elem(left), [ls[0], rs[1]])
-  )
+  let shape: list<Ty> = [ls[0], rs[1]]
+  return set_type(m, outputs[0], tensor.type(tensor.elem(left), shape))
 }
 
 fn transpose_axes(op: Op, rank: int) -> list<int> {
@@ -127,10 +127,10 @@ fn transpose_type(m: Mod, op: Op) -> bool {
     return false
   }
   let input = ir.type(inputs[0])
-  if !tensor.static(input) {
+  if !tensor.valid(input) {
     return false
   }
-  let shape = tensor.shape(input)
+  let shape = tensor.dims(input)
   let axes = transpose_axes(op, len(shape))
   if !tensor.permutation(axes, len(shape)) {
     return false
@@ -357,16 +357,16 @@ fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
   let left = ir.type(inputs[0])
   let right = ir.type(inputs[1])
   let result = ir.type(outputs[0])
-  if !tensor.static(left) || !tensor.static(right) ||
-     !tensor.static(result) {
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     !tensor.valid(result) {
     return false
   }
   if tensor.elem(left) != tensor.elem(right) ||
      tensor.elem(left) != tensor.elem(result) {
     return false
   }
-  if !tensor.broadcastable(tensor.shape(left), tensor.shape(result)) ||
-     !tensor.broadcastable(tensor.shape(right), tensor.shape(result)) {
+  if !tensor.broadcastable(tensor.dims(left), tensor.dims(result)) ||
+     !tensor.broadcastable(tensor.dims(right), tensor.dims(result)) {
     return false
   }
   var next = inputs
@@ -385,10 +385,10 @@ fn convert_flatten(m: Mod, op: Op) -> bool {
   }
   let input = ir.type(inputs[0])
   let result = ir.type(outputs[0])
-  if !tensor.static(input) || !tensor.static(result) {
+  if !tensor.valid(input) || !tensor.valid(result) {
     return false
   }
-  let shape = tensor.shape(input)
+  let shape = tensor.dims(input)
   var axis = base.get(ir.meta(op, "onnx"), "axis", 1)
   if axis < 0 {
     axis += len(shape)
@@ -396,7 +396,8 @@ fn convert_flatten(m: Mod, op: Op) -> bool {
   if axis < 0 || axis > len(shape) {
     return false
   }
-  if result != flattened(input, axis) {
+  let expected = flattened(input, axis)
+  if expected == ty("_") || result != expected {
     return false
   }
   return convert_call(m, op, "tensor.reshape")
@@ -411,17 +412,17 @@ fn convert_matmul(m: Mod, op: Op) -> bool {
   let left = ir.type(inputs[0])
   let right = ir.type(inputs[1])
   let result = ir.type(outputs[0])
-  if !tensor.static(left) || !tensor.static(right) ||
-     !tensor.static(result) {
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     !tensor.valid(result) {
     return false
   }
   if tensor.elem(left) != tensor.elem(right) ||
      tensor.elem(left) != tensor.elem(result) {
     return false
   }
-  let ls = tensor.shape(left)
-  let rs = tensor.shape(right)
-  let ys = tensor.shape(result)
+  let ls = tensor.dims(left)
+  let rs = tensor.dims(right)
+  let ys = tensor.dims(result)
   if len(ls) != 2 || len(rs) != 2 || len(ys) != 2 {
     return false
   }
@@ -439,10 +440,10 @@ fn convert_transpose(m: Mod, op: Op) -> bool {
   }
   let input = ir.type(inputs[0])
   let result = ir.type(outputs[0])
-  if !tensor.static(input) || !tensor.static(result) {
+  if !tensor.valid(input) || !tensor.valid(result) {
     return false
   }
-  let shape = tensor.shape(input)
+  let shape = tensor.dims(input)
   let axes = transpose_axes(op, len(shape))
   if !tensor.permutation(axes, len(shape)) {
     return false

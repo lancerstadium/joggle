@@ -55,13 +55,16 @@ dictionary access lets ordinary bridge functions interpret frontend
 attributes. A bridge may add a module dependency and apply a data-driven call
 mapping, so frontend-to-network relationships stay outside both codecs and
 core. Compile-time functions can inspect, construct, and write structural `Ty`
-trees. `tensor.elem`, `tensor.shape`, and `tensor.type` provide the common
-tensor projections and constructor, enabling shape and custom-format reasoning
-without parsing type strings.
-Structural and static-shape predicates let relations safely retain symbolic or
+trees. `tensor.elem`, `tensor.shape`, `tensor.dims`, and `tensor.type` provide
+concrete and symbolic tensor projections plus one constructor, enabling shape
+and custom-format reasoning without parsing type strings. Generic function
+expansion can reuse caller-owned dimension bindings inside shape lists.
+Structural and static-shape predicates let relations safely retain
 not-yet-inferred calls. Common ONNX binary operations, Flatten, and strict 2-D
-MatMul then reuse the same inspectable tensor/network bodies; Transpose becomes
-an ordinary rank-generic tensor permutation.
+MatMul preserve named extents and reuse the same inspectable tensor/network
+bodies; Transpose becomes an ordinary rank-generic tensor permutation.
+Unrepresentable symbolic products remain source calls instead of triggering a
+model-specific guess.
 The optional `onnx.nn` relation module is selected explicitly. On the official
 MobileNetV2 it propagates all intermediate tensor types, then converts every
 compute node to shared semantics. The model marker and tensor payloads remain
