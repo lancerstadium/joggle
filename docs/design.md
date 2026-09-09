@@ -122,9 +122,17 @@ GlobalAveragePool, and Reshape; all initializers use typed fields rather than
 `raw_data`. The importer must therefore exclude initializer-backed legacy graph
 inputs and normalize typed tensor payloads without losing their bits.
 
-The ONNX module will use Protobuf as an optional module dependency, not a core
-dependency. It will map graph inputs to function parameters, initializers to
+The ONNX module uses Protobuf as an optional module dependency, not a core
+dependency. It maps graph inputs to function parameters, initializers to
 typed tensor constants with preserved bytes, nodes to calls named by ONNX
 domain and operator, node attributes to structural `Attr` dictionaries, and
 graph outputs to returns. Operator meaning is not decoded by a core switch.
 The same codec boundary must be usable by a later TFLite module.
+
+The pinned model now passes the complete codec gate: binary decode, generation
+of 267 tensor constants and 155 calls, parse, verify, canonical print, reparse,
+and structural equality. Its 14,156,560 bytes of initializer payload are
+preserved in typed tensor constants. A Release run on the M1 reference machine
+imports and prints the self-contained 28.4 MB module in approximately 0.49 s;
+the second parse-print takes approximately 0.31 s. These are local regression
+measurements, not general performance claims.

@@ -1,0 +1,7 @@
+module onnx
+
+[host]
+fn read(data: bytes) -> str;
+
+fn model(info: dict) -> _;
+fn tensor(type: int, shape: list<int>, data: bytes) -> _;

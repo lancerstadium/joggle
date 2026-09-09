@@ -58,3 +58,21 @@ if (!env.load("opt") || !joggle::run(env, "opt.fold_add_zero", mod))
 `modules/opt/module.jog` is the complete transform. It iterates functions,
 blocks, and operations through `ir`, replaces the result of `x + 0`, and erases
 the dead call. No C++ registration is required for that transform.
+
+## Import an official ONNX model
+
+Download the pinned official MobileNetV2 model and enable the optional codec:
+
+```sh
+cmake -DOUT=/tmp/mobilenetv2-7.onnx -P test/model.cmake
+cmake -S . -B build -DJOGGLE_BUILD_ONNX=ON \
+  -DJOGGLE_TEST_ONNX_MODEL=/tmp/mobilenetv2-7.onnx
+cmake --build build
+ctest --test-dir build --output-on-failure
+./build/joggle read onnx.read /tmp/mobilenetv2-7.onnx \
+  -M build/modules > /tmp/mobilenet.jog
+```
+
+The `onnx` test checks the official model's 267 tensor constants, 155 nodes,
+14,156,560 initializer bytes, verifier result, and canonical round trip. The
+download is never part of a normal configure or build.

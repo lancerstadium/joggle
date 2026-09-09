@@ -137,15 +137,17 @@ int main(int argc, char** argv) {
   joggle::Mod attrs;
   constexpr std::string_view attr_source =
       "module attrs\nfn payload() -> dict {\n"
-      "  return {axis: 1, pads: [0, -1], raw: hex\"007fff\"}\n}\n";
+      "  return {axis: 1, epsilon: 9.9999997473787516e-06, "
+      "pads: [0, -1], raw: hex\"007fff\"}\n}\n";
   CHECK(joggle::parse(env, attr_source, attrs, "attrs.jog"));
   CHECK(attrs.verify(env));
   const joggle::Val payload =
       attrs.find_fn("payload").body().ops().back().args()[0];
   const joggle::Attr payload_attr = payload.constant();
   const joggle::Attr::Dict* dict = payload_attr.dict();
-  CHECK(dict && dict->size() == 3);
+  CHECK(dict && dict->size() == 4);
   CHECK(dict->at("axis").integer() == 1);
+  CHECK(dict->at("epsilon").real() == 9.9999997473787516e-06);
   CHECK(dict->at("pads").list() && dict->at("pads").list()->size() == 2);
   CHECK(dict->at("raw").bytes() && dict->at("raw").bytes()->size() == 3);
   joggle::Mod attrs_roundtrip;

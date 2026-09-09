@@ -4,6 +4,9 @@
 #include <charconv>
 #include <cctype>
 #include <exception>
+#include <iomanip>
+#include <limits>
+#include <locale>
 #include <sstream>
 #include <unordered_map>
 #include <utility>
@@ -61,6 +64,16 @@ public:
             text.push_back(take());
           } else
             break;
+        }
+        if ((peek() == 'e' || peek() == 'E') &&
+            (std::isdigit(static_cast<unsigned char>(peek(1))) ||
+             ((peek(1) == '+' || peek(1) == '-') &&
+              std::isdigit(static_cast<unsigned char>(peek(2)))))) {
+          text.push_back(take());
+          if (peek() == '+' || peek() == '-')
+            text.push_back(take());
+          while (std::isdigit(static_cast<unsigned char>(peek())))
+            text.push_back(take());
         }
         out.push_back({Tk::number, std::move(text), begin});
         continue;
@@ -167,7 +180,9 @@ std::string attr_text(const Attr& value) {
     return std::to_string(*item);
   if (const auto item = value.real()) {
     std::ostringstream out;
-    out << *item;
+    out.imbue(std::locale::classic());
+    out << std::setprecision(std::numeric_limits<double>::max_digits10)
+        << *item;
     return out.str();
   }
   if (const auto item = value.string()) {
@@ -803,7 +818,7 @@ private:
     if (peek().kind == Tk::number) {
       const Token token = take();
       const std::string text = negative ? "-" + token.text : token.text;
-      if (token.text.find('.') != std::string::npos) {
+      if (token.text.find_first_of(".eE") != std::string::npos) {
         double value = 0;
         std::size_t consumed = 0;
         try {

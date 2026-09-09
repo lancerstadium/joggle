@@ -31,6 +31,14 @@ Check a module or run a textual transform:
 ./build/joggle run opt.fold_add_zero test/data/matmul.jog -M modules
 ```
 
+The optional ONNX codec keeps Protobuf out of the core build:
+
+```sh
+cmake -S . -B build -DJOGGLE_BUILD_ONNX=ON
+cmake --build build
+./build/joggle read onnx.read model.onnx -M build/modules > model.jog
+```
+
 The core and command-line tool require only a C++20 compiler and the standard
 library. Building does not download dependencies. Installation provides the
 `Joggle::joggle` CMake target, CLI, public header, and standard modules under

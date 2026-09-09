@@ -41,12 +41,12 @@ ABI mismatches reported by the module. Calls validate scalar arguments and
 returns against the `.jog` declaration. Scalars include length-delimited `str`
 and `bytes`; embedded zero bytes are preserved.
 
-The current standard modules are deliberately narrow: `base` declares value
-copying, `tensor` establishes the tensor dependency boundary, `ir` declares
-universal reflection functions, and `opt` contains a real textual transform.
-Future `nn` and `onnx` modules may add model semantics and import without core
-operator switches. MLIR, JIT, simulation, hardware description, and target
-experiments remain optional.
+The standard modules are deliberately narrow: `base` declares value copying,
+`tensor` establishes the tensor dependency boundary, `ir` declares universal
+reflection functions, and `opt` contains a real textual transform. The optional
+`onnx` module adds binary model import without a core operator switch. Future NN
+semantics, MLIR, JIT, simulation, hardware description, and target experiments
+remain removable modules.
 
 Version 0.1 searches explicit local paths. Installation means placing or
 linking a directory on one of those paths; removal means taking it off the path.
@@ -74,6 +74,20 @@ The built-in `ir` module is the complete reflection boundary:
 These functions operate on generic handles and contain no NN operator names.
 Adding an importer, optimization, or target module therefore does not extend
 the reflection ABI or add a parser case.
+
+### Binary codecs
+
+`joggle read module.function input` is the common frontend boundary. It reads
+the input as `bytes`, invokes a declared host function returning `str`, then
+parses and verifies that string as an ordinary `Mod`. The optional ONNX module
+implements `onnx.read` with generated Protobuf Lite code. Protobuf is linked only
+into `joggle_onnx`; the core library and normal build remain dependency-free.
+
+The current codec accepts dense ONNX tensors, tensor-shaped graph values,
+scalar/list/tensor node attributes, single-output nodes, and one graph output.
+Unsupported sparse, string, external-data, nested-graph, or multi-output forms
+fail with a diagnostic rather than being dropped. Operator names and attributes
+are transported generically; their semantics belong to later modules.
 
 `module.jog` contains the module header and imports. Files in `lib/*.jog` are
 appended in lexical path order and contain further declarations without another
