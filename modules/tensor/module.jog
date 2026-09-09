@@ -398,6 +398,25 @@ fn matmul_offset(
   return offset
 }
 
+fn line_offset(
+  shape: list<int>, axis: int, line: int, item: int
+) -> int {
+  var offset = 0
+  var source_stride = 1
+  var line_stride = 1
+  for reverse in 0..len(shape) {
+    let dim = len(shape) - reverse - 1
+    if dim == axis {
+      offset += item * source_stride
+    } else {
+      offset += (line / line_stride) % shape[dim] * source_stride
+      line_stride *= shape[dim]
+    }
+    source_stride *= shape[dim]
+  }
+  return offset
+}
+
 fn matmul<E: Ty, L: list<int>, R: list<int>, Y: list<int>>(
   a: tensor<E, L>, b: tensor<E, R>
 ) -> tensor<E, Y> {

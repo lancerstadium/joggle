@@ -193,8 +193,10 @@ convolution share one loop body across activation and weight layouts. The terse
 NCHW overload delegates to it. Bias and fused activation are ordinary composed
 functions rather than hidden operator fields. `nn.avg_pool2d`, dilation-aware
 `nn.max_pool2d`, broadcast-aware `nn.add`/`nn.sub`/`nn.mul`, and
-`nn.softmax` provide the remaining shared semantics needed by the second
-real-network gate; `nn.global_avg_pool2d` is a normal NCHW specialization.
+axis-explicit `nn.softmax` provide the remaining shared semantics needed by the
+second real-network gate. `tensor.line_offset` enumerates all lines orthogonal
+to an axis, so Softmax and later reduction modules do not need a transpose or
+rank-specific case; `nn.global_avg_pool2d` is a normal NCHW specialization.
 Both spatial pool functions use explicit kernel, stride, pad, dilation, and
 logical-axis values, so ONNX NCHW and TFLite NHWC calls share the same bodies.
 `nn.batch_norm` exposes inference-time channel
@@ -245,13 +247,16 @@ through the existing layout-explicit `nn.conv2d` composition. A mismatched bias,
 channel relation, nonpositive stride/dilation, or non-`NOTSET` automatic padding
 keeps the source call intact.
 `onnx.nn.convert` then maps Conv, BatchNormalization, ReLU, Add/Sub/Mul,
-AveragePool, MaxPool, GlobalAveragePool, Reshape, Flatten, and the
+AveragePool, MaxPool, GlobalAveragePool, Softmax, Reshape, Flatten, and the
 rank-two-or-higher subset of MatMul. Flatten reuses `tensor.reshape`; MatMul reuses
 `tensor.matmul`; Transpose reuses `tensor.permute`. The relation materializes
 schema attributes as ordinary operands and removes schema-only shape inputs. It does
 not run inference implicitly and does not alter the codec. On the pinned
 MobileNetV2 this covers every compute node; unsupported calls in other models
 remain untouched.
+Softmax conversion accepts an explicit, in-range ONNX axis and normalizes a
+negative value before calling the shared body. An omitted axis stays in the
+source namespace because its default depends on the imported opset.
 After a successful mapping, source metadata is removed because its semantic
 fields are now explicit operands and the readable result binding already
 preserves node identity. Consequently the normal `ir.expand` operation can
@@ -439,7 +444,7 @@ responsibility of a separately selected relationship module.
 
 That relationship is the pure `.jog` module `tflite.nn`. Its `convert`
 function materializes padding, stride, dilation, groups, logical axes, fused
-activation, and softmax scale as normal operands. Standard and depthwise Conv,
+activation, and softmax axis/scale as normal operands. Standard and depthwise Conv,
 Add/Sub/Mul, average/max pool, reshape, and softmax then resolve to shared
 functions. On
 the pinned MobileNetV2 this removes all 66 source compute calls while retaining

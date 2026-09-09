@@ -521,6 +521,48 @@ int main(int argc, char** argv) {
         batched_matmul.expand(semantic_batched_matmul, batched_matmul_fn));
   CHECK(batched_matmul.verify(env));
 
+  constexpr std::string_view softmax_source =
+      "module axis.softmax\n"
+      "use onnx\n"
+      "fn main<N: int>(x: tensor<f32, [N, 2, 3]>) "
+      "-> tensor<f32, [N, 2, 3]> {\n"
+      "  [onnx: {axis: 1}]\n"
+      "  let out = onnx.Softmax(x)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod softmax;
+  CHECK(joggle::parse(env, softmax_source, softmax, "axis-softmax.jog"));
+  CHECK(softmax.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", softmax));
+  CHECK(joggle::run(env, "onnx.nn.convert", softmax));
+  CHECK(softmax.verify(env));
+  joggle::Op semantic_softmax;
+  for (joggle::Op op : softmax.ops())
+    if (op.callee() == "nn.softmax")
+      semantic_softmax = op;
+  CHECK(semantic_softmax && semantic_softmax.args().size() == 3);
+  CHECK(semantic_softmax.args()[1].constant().integer() == 1);
+  const joggle::Fn softmax_fn = env.resolve(softmax, semantic_softmax);
+  CHECK(softmax_fn && softmax.expand(semantic_softmax, softmax_fn));
+  CHECK(softmax.verify(env));
+
+  constexpr std::string_view implicit_softmax_source =
+      "module implicit.softmax\n"
+      "use onnx\n"
+      "fn main(x: tensor<f32, [2, 3]>) -> tensor<f32, [2, 3]> {\n"
+      "  let out: tensor<f32, [2, 3]> = onnx.Softmax(x)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod implicit_softmax;
+  CHECK(joggle::parse(env, implicit_softmax_source, implicit_softmax,
+                      "implicit-softmax.jog"));
+  CHECK(implicit_softmax.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.convert", implicit_softmax));
+  bool retained_softmax = false;
+  for (joggle::Op op : implicit_softmax.ops())
+    retained_softmax = retained_softmax || op.callee() == "onnx.Softmax";
+  CHECK(retained_softmax && implicit_softmax.verify(env));
+
   constexpr std::string_view unresolved_shape_source =
       "module unresolved.shape\n"
       "use onnx\n"

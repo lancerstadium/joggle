@@ -62,6 +62,8 @@ fn tensor_type_probe(m: Mod) -> bool {
          tensor.product(dims, 1, 2) == ty(3) &&
          tensor.matmul_offset([7, 3, 4], [2, 7, 3, 5], 11, 2, 3) == 59 &&
          tensor.matmul_offset([2, 1, 4, 5], [2, 7, 3, 5], 11, 2, 4) == 34 &&
+         tensor.line_offset([2, 3, 4], 1, 6, 1) == 18 &&
+         tensor.line_offset([2, 3, 4], 0, 11, 1) == 23 &&
          !tensor.valid(ty("tensor"))
 }
 

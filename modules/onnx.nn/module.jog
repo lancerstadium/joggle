@@ -386,7 +386,8 @@ fn infer(m: Mod) -> bool {
       changed = conv_type(m, op) || changed
     }
     if ir.callee(op) == "onnx.BatchNormalization" ||
-       ir.callee(op) == "onnx.Relu" {
+       ir.callee(op) == "onnx.Relu" ||
+       ir.callee(op) == "onnx.Softmax" {
       changed = same_type(m, op) || changed
     }
     if ir.callee(op) == "onnx.Add" || ir.callee(op) == "onnx.Sub" ||
@@ -478,6 +479,37 @@ fn convert_norm(m: Mod, op: Op) -> bool {
     return false
   }
   return convert_call(m, op, "nn.batch_norm")
+}
+
+fn convert_softmax(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 ||
+     ir.type(inputs[0]) != ir.type(outputs[0]) {
+    return false
+  }
+  let type = ir.type(inputs[0])
+  if !tensor.valid(type) {
+    return false
+  }
+  let rank = len(tensor.dims(type))
+  let meta = attrs(op)
+  if rank == 0 || !base.has(meta, "axis") {
+    return false
+  }
+  var axis = meta["axis"]
+  if axis < 0 {
+    axis += rank
+  }
+  if axis < 0 || axis >= rank {
+    return false
+  }
+  inputs += [ir.constant(m, op, axis, "int")]
+  inputs += [ir.constant(m, op, 1.0, "f64")]
+  if !ir.args(m, op, inputs) {
+    return false
+  }
+  return convert_call(m, op, "nn.softmax")
 }
 
 fn convert_reshape(m: Mod, op: Op) -> bool {
@@ -640,6 +672,9 @@ fn convert(m: Mod) -> bool {
     }
     if ir.callee(op) == "onnx.BatchNormalization" {
       changed = convert_norm(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Softmax" {
+      changed = convert_softmax(m, op) || changed
     }
     if ir.callee(op) == "onnx.Relu" {
       changed = convert_call(m, op, "nn.relu") || changed

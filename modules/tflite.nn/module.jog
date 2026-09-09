@@ -264,6 +264,13 @@ fn convert_softmax(m: Mod, op: Op) -> bool {
      ir.type(inputs[0]) != ir.type(outputs[0]) {
     return false
   }
+  let type = ir.type(inputs[0])
+  if !tensor.valid(type) || len(tensor.dims(type)) == 0 {
+    return false
+  }
+  inputs += [
+    ir.constant(m, op, len(tensor.dims(type)) - 1, "int")
+  ]
   inputs += [
     ir.constant(m, op, base.get(options(op), "beta", 1.0), "f64")
   ]

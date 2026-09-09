@@ -167,6 +167,11 @@ arithmetic but preserve a symbolic batch dimension; optional Conv bias is
 validated and reuses the existing composed `nn.conv2d` body. This makes the
 compute path of a conventional QDQ ResNet representable while leaving its
 quantization policy explicit and unresolved.
+Leading MatMul dimensions now use the shared broadcast relation and one
+rank-generic tensor body, while the 2-D overload remains the compact case.
+An axis-generic line-offset relation supports shared Softmax semantics; TFLite
+materializes its last axis and ONNX converts an explicit normalized axis.
+ONNX's version-dependent omitted-axis default remains open.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

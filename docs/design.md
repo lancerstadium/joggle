@@ -723,3 +723,13 @@ order. They are not converted: zero-point subtraction, scale multiplication,
 rounding, saturation, and per-axis policy are intentionally reserved for an
 explicit quantization module. This lets QDQ networks expose their surrounding
 Conv/pool/matrix computation without silently changing quantized semantics.
+
+## M10 axis-reduction slice
+
+`tensor.line_offset(shape, axis, line, item)` maps a line orthogonal to any
+tensor axis back to a linear element offset. The shared `nn.softmax` body uses
+that one relation for its maximum, exponential sum, and normalization loops, so
+it is neither last-axis-only nor rank-specific. TFLite materializes its fixed
+last-axis convention, while the ONNX relation normalizes an explicit positive
+or negative axis. An omitted ONNX axis remains open because the schema default
+changed across opsets and guessing it would silently alter a model.

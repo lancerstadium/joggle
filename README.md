@@ -72,6 +72,10 @@ the existing layout-explicit `nn.conv2d` composition. QDQ nodes propagate shape
 and element type so surrounding compute can be converted, but the nodes remain
 in the source namespace until a quantization module defines their exact
 rounding and rescaling behavior.
+The same tensor library supplies broadcast-batched MatMul and an axis-generic
+line-offset relation. `nn.softmax` uses the latter directly, allowing frontend
+bridges to materialize an axis as an ordinary operand instead of choosing a
+rank-specific kernel class.
 The optional `onnx.nn` relation module is selected explicitly. On the official
 MobileNetV2 it propagates all intermediate tensor types, then converts every
 compute node to shared semantics. The model marker and tensor payloads remain

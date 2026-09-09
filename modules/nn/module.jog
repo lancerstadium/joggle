@@ -392,27 +392,30 @@ fn mul<
 }
 
 fn softmax<E: Ty, S: list<int>>(
-  x: tensor<E, S>, beta: f64
+  x: tensor<E, S>, axis: int, beta: f64
 ) -> tensor<E, S> {
-  let width = S[len(S) - 1]
-  let rows = tensor.numel<S>() / width
+  let width = S[axis]
+  let lines = tensor.numel<S>() / width
   var out = tensor<E, S>(E(0))
-  for row in 0..rows {
-    let start = row * width
-    var peak = x[start]
+  for line in 0..lines {
+    let first = tensor.line_offset(S, axis, line, 0)
+    var peak = x[first]
     for column in 1..width {
-      if x[start + column] > peak {
-        peak = x[start + column]
+      let offset = tensor.line_offset(S, axis, line, column)
+      if x[offset] > peak {
+        peak = x[offset]
       }
     }
     var sum = E(0)
     for column in 0..width {
-      let value = math.exp((x[start + column] - peak) * E(beta))
-      out[start + column] = value
+      let offset = tensor.line_offset(S, axis, line, column)
+      let value = math.exp((x[offset] - peak) * E(beta))
+      out[offset] = value
       sum += value
     }
     for column in 0..width {
-      out[start + column] = out[start + column] / sum
+      let offset = tensor.line_offset(S, axis, line, column)
+      out[offset] = out[offset] / sum
     }
   }
   return out
