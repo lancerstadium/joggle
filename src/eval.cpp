@@ -558,6 +558,13 @@ private:
           out.emplace_back(value);
         return Items{Item(std::move(out))};
       }
+    } else if (name == "users" && args.size() == 1) {
+      if (const auto* value = as<Val>(args[0])) {
+        Items out;
+        for (Op user : value->users())
+          out.emplace_back(user);
+        return Items{Item(std::move(out))};
+      }
     } else if (name == "callee" && args.size() == 1) {
       if (const auto* op = as<Op>(args[0]))
         return Items{Item(Attr(std::string(op->callee())))};
@@ -582,6 +589,28 @@ private:
     } else if (name == "len" && args.size() == 1) {
       if (const Items* values = list(args[0]))
         return Items{Item(Attr(static_cast<std::int64_t>(values->size())))};
+    } else if (name == "call" && args.size() == 5) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* before = as<Op>(args[1]);
+      const auto callee = string(args[2]);
+      const Items* values = list(args[3]);
+      const auto type = string(args[4]);
+      if (mod && *mod && before && callee && values && type) {
+        std::vector<Val> inputs;
+        inputs.reserve(values->size());
+        for (const Item& item : *values) {
+          const auto* value = as<Val>(item);
+          if (!value) {
+            fail("ir.call arguments must be values", loc);
+            return std::nullopt;
+          }
+          inputs.push_back(*value);
+        }
+        Val result = (*mod)->call(*before, std::string(*callee), inputs,
+                                  Ty(std::string(*type)));
+        if (result)
+          return Items{Item(result)};
+      }
     } else if (name == "replace" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* old_value = as<Val>(args[1]);

@@ -1270,8 +1270,10 @@ bool block_within(const detail::Store& store, std::uint32_t child,
   return false;
 }
 
-bool dominates(const detail::Store& store, std::uint32_t value,
-               std::uint32_t use) {
+}  // namespace
+
+bool detail::dominates(const detail::Store& store, std::uint32_t value,
+                       std::uint32_t use) {
   const detail::ValData& val = store.vals[value].data;
   const std::uint32_t use_block = store.ops[use].data.block;
   if (val.kind == detail::ValKind::generic ||
@@ -1302,8 +1304,6 @@ bool dominates(const detail::Store& store, std::uint32_t value,
   }
   return false;
 }
-
-}  // namespace
 
 bool Mod::verify(const Env&) {
   detail::Store& store = impl_->store;
@@ -1393,7 +1393,7 @@ bool Mod::verify(const Env&) {
                          op.loc);
         continue;
       }
-      if (!dominates(store, arg, op_id))
+      if (!detail::dominates(store, arg, op_id))
         detail::add_diag(store.diags, "value does not dominate its use",
                          op.loc);
     }

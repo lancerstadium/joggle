@@ -3,13 +3,13 @@ use ir
 
 fn add<W>(a: sat<W>, b: sat<W>) -> sat<W>;
 
-[host, role: "match"]
+[role: "match"]
 fn supports(type: str) -> bool;
 
-[host, role: "sim"]
+[role: "sim"]
 fn sim(width: int, a: int, b: int) -> int;
 
-[host, role: "emit", format: "sv"]
+[role: "emit", format: "sv"]
 fn emit(width: int) -> str;
 
 [stage: "select"]

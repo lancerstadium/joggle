@@ -261,6 +261,56 @@ Fn Mod::find_fn(std::string_view name) const noexcept {
   return Fn(&impl_->store, id, impl_->store.fns[id].generation);
 }
 
+Val Mod::call(Op before, std::string callee, std::span<const Val> args,
+              Ty type) {
+  auto& store = impl_->store;
+  if (!before.valid() || before.store_ != &store || callee.empty() ||
+      type.empty()) {
+    detail::add_diag(
+        store.diags,
+        "call requires a live insertion point, callee, and result type");
+    return {};
+  }
+  for (Val arg : args) {
+    if (!arg.valid() || arg.store_ != &store ||
+        !detail::dominates(store, arg.id_, before.id_)) {
+      detail::add_diag(store.diags,
+                       "call argument must dominate the insertion point",
+                       before.loc());
+      return {};
+    }
+  }
+
+  const std::uint32_t block = store.ops[before.id_].data.block;
+  auto& order = store.blocks[block].data.ops;
+  const auto position = std::find(order.begin(), order.end(), before.id_);
+  if (position == order.end()) {
+    detail::add_diag(store.diags, "call insertion point is not in its block",
+                     before.loc());
+    return {};
+  }
+
+  const auto op_id = static_cast<std::uint32_t>(store.ops.size());
+  const auto value_id = static_cast<std::uint32_t>(store.vals.size());
+  detail::ValData value;
+  value.type = std::move(type);
+  value.def = op_id;
+  detail::OpData op;
+  op.kind = Op::Kind::call;
+  op.block = block;
+  op.callee = std::move(callee);
+  op.outs.push_back(value_id);
+  op.loc = before.loc();
+  op.args.reserve(args.size());
+  for (Val arg : args)
+    op.args.push_back(arg.id_);
+  store.vals.push_back({std::move(value), 1, true});
+  store.ops.push_back({std::move(op), 1, true});
+  order.insert(position, op_id);
+  detail::rebuild_uses(store);
+  return Val(&store, value_id, store.vals[value_id].generation);
+}
+
 bool Mod::replace(Val old_value, Val new_value) {
   auto& store = impl_->store;
   if (!old_value.valid() || !new_value.valid() || old_value.store_ != &store ||

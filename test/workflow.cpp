@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
   CHECK(env.bound("sample.ping"));
   const joggle::Fn ping = env.find_fn("sample.ping");
   CHECK(ping && ping.external());
-  CHECK(ping.meta("host") && ping.meta("host")->boolean() == true);
+  CHECK(!ping.meta("host"));
   CHECK(ping.meta("role") && ping.meta("role")->string() == "test");
   const joggle::Fn echo = env.find_fn("sample.echo");
   CHECK(echo && echo.external() && echo.meta().empty());
@@ -178,7 +178,7 @@ int main(int argc, char** argv) {
       "fn plain(x: i32, y: i32) -> i32 { return x + y }\n";
   CHECK(joggle::parse(env, tagged_source, tagged, "tagged.jog"));
   CHECK(tagged.verify(env));
-  CHECK(joggle::run(env, "script.rename_tagged", tagged));
+  CHECK(joggle::run(env, "script.rebuild_tagged", tagged));
   const joggle::Op renamed =
       tagged.find_fn("add").body().ops().back().args().front().def();
   const joggle::Op plain =

@@ -21,7 +21,7 @@ containers, exceptions, RTTI, and virtual tables do not cross that boundary.
 ```jog
 module sample
 
-[host, role: "example"]
+[role: "example"]
 fn ping(x: i32) -> i32;
 ```
 
@@ -33,10 +33,10 @@ JOGGLE_MODULE_EXPORT bool joggle_module(const jog_api* api,
 }
 ```
 
-`[host]` above is ordinary metadata and may be omitted; it documents intent for
-humans and tools. The native binding itself requires a matching external
-declaration. This keeps model primitives, native implementations, and textual
-functions in one function model.
+`role` above is ordinary module-defined metadata and may be omitted. The native
+binding itself requires only a matching external declaration. This keeps model
+primitives, native implementations, and textual functions in one function
+model.
 
 The callback receives one call frame for arguments, returns, and diagnostics.
 The API record carries its ABI version and byte size, hidden behind
@@ -73,14 +73,23 @@ The built-in `ir` module is the complete reflection boundary:
 | Function | Meaning |
 | --- | --- |
 | `fns`, `blocks`, `ops` | Traverse structural ownership in stable order. |
-| `args`, `outs` | Read operation dataflow. |
+| `args`, `outs`, `users` | Read operation dataflow. |
 | `callee`, `type`, `is_const`, `constant`, `len` | Query calls, values, and lists. |
 | `has`, `meta` | Query open function metadata. |
-| `replace`, `erase`, `rename` | Apply the same checked mutations as C++. |
+| `call`, `replace`, `erase`, `rename` | Build and rewrite calls through the same checked mutations as C++. |
 
 These functions operate on generic handles and contain no NN operator names.
 Adding an importer, optimization, or target module therefore does not extend
 the reflection ABI or add a parser case.
+
+`ir.call` inserts an arbitrary one-result call immediately before an existing
+operation. The insertion point makes order explicit and lets the core reject
+non-dominating operands without a stateful builder object. For example, a
+module can select functions carrying `[rewrite: "my.fused"]`, inspect their
+calls, create `my.fused(...)`, redirect uses, and erase the old calls. The same
+metadata mechanism can describe entry points, optimization stages, target
+capabilities, cost hints, provenance, or test groups; their interpretation
+belongs entirely to the module that queries them.
 
 ### Binary codecs
 

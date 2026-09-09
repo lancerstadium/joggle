@@ -321,6 +321,7 @@ public:
   std::vector<Fn> fns() const;
   Fn find_fn(std::string_view name) const noexcept;
 
+  Val call(Op before, std::string callee, std::span<const Val> args, Ty type);
   bool replace(Val old_value, Val new_value);
   bool erase(Op op);
   bool rename(Op call, std::string callee);

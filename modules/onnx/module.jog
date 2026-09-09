@@ -1,6 +1,6 @@
 module onnx
 
-[host, role: "read"]
+[role: "read"]
 fn read(data: bytes) -> str;
 
 fn model(info: dict) -> _;

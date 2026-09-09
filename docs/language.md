@@ -91,8 +91,14 @@ are accepted and canonical printing merges them in key order. Duplicate keys
 are errors. `Fn::meta` exposes the same data to C++, while `ir.has` and
 `ir.meta` expose it to textual functions.
 
-No metadata name changes parsing or the IR shape. `[host]` is a conventional
-description for a native implementation, not a distinct function kind. A
-native library may bind any matching body-less declaration; a function with a
-body cannot be rebound. User type declarations and full typed overload
-resolution remain for later slices.
+No metadata name changes parsing, binding, or the IR shape. A native library
+may bind any matching body-less declaration; no marker is required and a
+function with a body cannot be rebound. Useful module-defined keys include
+`role`, `stage`, `target`, and `cost`, but none is owned by the core. User type
+declarations and full typed overload resolution remain for later slices.
+
+Metadata becomes behavior only when an explicitly selected function queries
+it. A transform may use `[rewrite: "lab.fused"]` to choose a replacement call;
+an emitter may use `[target: "board-name"]`; a search procedure may attach a
+structural `cost` dictionary. Installing such a module does not register a new
+language keyword or silently execute any of these policies.

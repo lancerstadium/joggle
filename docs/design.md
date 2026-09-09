@@ -41,10 +41,9 @@ The exported entry is always `joggle_module`; ABI evolution is represented in
 the API record instead of encoded in public symbol and type names.
 
 Function metadata is an open `Attr` dictionary. The parser preserves it but
-does not reserve tag names. Native modules conventionally use `[host]` to state
-intent, while selection, scheduling, testing, cost models, and research modules
-may define their own tags. Binding depends on an external declaration and a
-matching native symbol, not on the presence of `[host]`.
+does not reserve tag names. Selection, scheduling, testing, cost models, and
+research modules may define their own tags. Native binding depends only on an
+external declaration and a matching native symbol; it needs no marker.
 
 An importer, transform, analysis, simulator, or emitter is therefore an
 ordinary compile-time function. `run` interprets the same structured function
@@ -64,6 +63,8 @@ rewritten IR behind.
 - Adding computation never adds an `Op` subclass or parser case.
 - Adding a module never generates or recompiles a core header.
 - Mutations go through `Mod` and preserve handle/use-def integrity.
+- Call insertion names its existing insertion point and rejects operands that
+  do not dominate it; no mutable global builder state is required.
 - Unknown external symbols remain printable; operations that require their
   semantics diagnose the missing dependency.
 - User-visible text never exposes generated SSA names.

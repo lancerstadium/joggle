@@ -93,6 +93,7 @@ inline bool live(const std::vector<Slot<T>>& slots, std::uint32_t id,
 void add_diag(std::vector<Diag>& diags, std::string message, Loc loc = {});
 int print_diags(std::FILE* file, const std::vector<Diag>& diags);
 void rebuild_uses(Store& store);
+bool dominates(const Store& store, std::uint32_t value, std::uint32_t use);
 
 }  // namespace joggle::detail
 

@@ -6,7 +6,7 @@ fn fail_after_edit(m: Mod) -> bool {
   return missing(changed)
 }
 
-fn rename_tagged(m: Mod) -> bool {
+fn rebuild_tagged(m: Mod) -> bool {
   var changed = false
   for f in ir.fns(m) {
     if ir.has(f, "rename") {
@@ -14,7 +14,12 @@ fn rename_tagged(m: Mod) -> bool {
       for b in ir.blocks(f) {
         for op in ir.ops(b) {
           if ir.callee(op) == "operator +" {
-            changed = ir.rename(m, op, target)
+            let outs = ir.outs(op)
+            if ir.len(outs) == 1 && ir.len(ir.users(outs[0])) == 1 {
+              let next = ir.call(m, op, target, ir.args(op), ir.type(outs[0]))
+              changed = ir.replace(m, outs[0], next)
+              changed = ir.erase(m, op)
+            }
           }
         }
       }

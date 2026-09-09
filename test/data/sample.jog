@@ -1,6 +1,6 @@
 module sample
 
-[host, role: "test"]
+[role: "test"]
 fn ping(x: i32) -> i32;
 
 fn echo(data: bytes) -> bytes;
