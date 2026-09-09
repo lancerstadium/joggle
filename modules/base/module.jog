@@ -2,6 +2,17 @@ module base
 
 fn copy<T: Ty>(x: T) -> T;
 
+fn len<T: Ty>(xs: list<T>) -> int;
+fn len(xs: dict) -> int;
+fn keys(xs: dict) -> list<str>;
+fn has(xs: dict, key: str) -> bool;
+fn get(xs: dict, key: str) -> Attr;
+fn get(xs: dict, key: str, fallback: Attr) -> Attr;
+fn kind(x: Attr) -> str;
+
+fn []<T: Ty>(xs: list<T>, index: int) -> T;
+fn [](xs: dict, key: str) -> Attr;
+
 fn +<T: Ty>(x: T) -> T;
 fn +<T: Ty>(a: T, b: T) -> T;
 fn -<T: Ty>(x: T) -> T;

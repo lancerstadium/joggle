@@ -45,7 +45,33 @@ canonical form, and walks the same `Fn/Blk/Op/Val` representation to fold
 native module and calls its declared native function.
 
 There is no hidden lowering step in this workflow. Loops, calls, mutable source
-bindings, and pass edits all refer to one `Mod`.
+bindings, and function edits all refer to one `Mod`.
+
+## Reuse network semantics
+
+The installed `tensor` and `nn` modules are ordinary source libraries. A model
+can stay concise while the referenced implementation remains inspectable:
+
+```jog
+module network
+use nn
+
+fn block(x: tensor<f32, [4]>, skip: tensor<f32, [4]>)
+    -> tensor<f32, [4]> {
+  return nn.relu(x + skip)
+}
+```
+
+The tensor-specific `+` wins over the generic base overload by structural
+specificity. Its body is a linear element loop; `nn.relu` is another loop with
+a condition. Loading the functions does not inline or lower them. A selected
+transform can preserve the calls, inspect the bodies, or replace them with
+target functions using the same IR editing API.
+
+Frontend attributes are structural dictionaries. A bridge can use
+`has(attrs, key)`, strict `attrs[key]`, `get(attrs, key, fallback)`, and
+`keys(attrs)` directly in `.jog`; no schema accessor class or frontend-specific
+core hook is required.
 
 The textual equivalent loads a module and selects one of its normal functions:
 

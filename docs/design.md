@@ -370,3 +370,21 @@ The pinned official MobileNetV2 remains the real-model regression gate. A tiny
 in-memory protocol fixture separately covers two-result/two-output structure so
 that this compatibility path cannot regress merely because the pinned model is
 single-output.
+
+## M10 semantic substrate slice
+
+The first reusable network library remains deliberately small but is no longer
+declaration-only. `tensor` supplies storage-neutral indexing, shape-product,
+elementwise addition, and matrix multiplication; `nn.relu` is defined through
+those primitives. Their `.jog` bodies lower abstraction by ordinary function
+structure—calls, loops, conditions, and value updates—so a later transform can
+inspect or replace any level without switching IRs or asking core what a neural
+operator means.
+
+Frontend bridges also need to read schema attributes. Deterministic list/dict
+operations now live in `base`: `len`, `keys`, `has`, `get`, and overloaded
+indexing. `ir` is correspondingly restricted to IR handles. This permits a
+normal function to interpret ONNX or TFLite attributes without per-frontend
+core hooks. The same change generalizes compound assignment and makes all
+explicitly imported overloads participate together, which is required for a
+specialized tensor/format overload to reuse base scalar algebra in its body.

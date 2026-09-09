@@ -31,6 +31,9 @@ The core contains no ONNX, device, instruction-set, runtime, or code-generation
 policy; those capabilities belong in removable modules.
 The optional ONNX transport preserves typed intermediate values and native
 multi-result/multi-output structure without defining any ONNX operator in core.
+The standard `tensor` and `nn` modules now contain inspectable loop/condition
+bodies for basic tensor algebra and ReLU, while `base` dictionary access lets
+ordinary bridge functions interpret frontend attributes.
 
 ## Build
 

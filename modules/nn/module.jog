@@ -1,0 +1,14 @@
+module nn
+use tensor
+
+fn relu<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    if x[i] > E(0) {
+      out[i] = x[i]
+    }
+  }
+  return out
+}

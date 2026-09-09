@@ -10,7 +10,7 @@ option(JOGGLE_BUILD_ONNX "Build the optional ONNX module" OFF)
 option(JOGGLE_BUILD_SAT "Build the optional saturating-integer module" OFF)
 set(JOGGLE_TEST_ONNX_MODEL "" CACHE FILEPATH "Official ONNX model used by tests")
 
-foreach(module base ir opt tensor)
+foreach(module base ir nn opt tensor)
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/${module}")
   configure_file(
     "modules/${module}/module.jog"
@@ -141,7 +141,7 @@ target_link_libraries(joggle-tool PRIVATE Joggle::joggle)
 install(TARGETS joggle joggle-tool EXPORT JoggleTargets)
 install(FILES include/joggle/joggle.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/joggle)
 install(
-  DIRECTORY modules/base modules/ir modules/opt modules/tensor
+  DIRECTORY modules/base modules/ir modules/nn modules/opt modules/tensor
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules
   PATTERN .DS_Store EXCLUDE
 )

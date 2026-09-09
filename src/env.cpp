@@ -452,11 +452,6 @@ Fn Env::find_fn(std::string_view symbol) const {
 
 std::vector<Fn> Env::resolve_fns(const Mod& from,
                                  std::string_view symbol) const {
-  if (symbol.find('.') == std::string_view::npos) {
-    std::vector<Fn> local = from.find_fns(symbol);
-    if (!local.empty())
-      return local;
-  }
   const std::string own_prefix = std::string(from.name()) + ".";
   if (symbol.starts_with(own_prefix))
     return from.find_fns(symbol.substr(own_prefix.size()));
@@ -483,7 +478,7 @@ std::vector<Fn> Env::resolve_fns(const Mod& from,
     return {};
   }
 
-  std::vector<Fn> matches;
+  std::vector<Fn> matches = from.find_fns(symbol);
   for (const std::string& name : visited) {
     const auto module = impl_->modules.find(name);
     if (module == impl_->modules.end())

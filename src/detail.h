@@ -26,7 +26,7 @@ enum class Form : std::uint8_t {
   let,
   var,
   assign,
-  add_assign,
+  compound,
   index_assign
 };
 

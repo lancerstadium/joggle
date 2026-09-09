@@ -47,13 +47,12 @@ ABI mismatches reported by the module. Calls validate scalar arguments and
 returns against the `.jog` declaration. Scalars include length-delimited `str`
 and `bytes`; embedded zero bytes are preserved.
 
-The standard modules are deliberately narrow: `base` declares value copying,
-`tensor` declares the open `tensor<E, S>` type constructor, `ir` declares
-universal reflection functions, and `opt` contains a real textual transform.
-The optional `onnx` module adds binary model import without a core operator
-switch. Future NN
-semantics, MLIR, JIT, simulation, hardware description, and target experiments
-remain removable modules.
+The standard modules are deliberately narrow. `base` declares scalar/list/dict
+fundamentals, `ir` is universal reflection and editing, `opt` contains reusable
+textual transforms, `tensor` defines storage-neutral tensor computation, and
+`nn` contains network semantics. The optional `onnx` module only transports a
+binary model. MLIR, JIT, simulation, hardware description, and target
+experiments remain removable modules.
 
 Version 0.1 searches explicit local paths. Installation means placing or
 linking a directory on one of those paths; removal means taking it off the path.
@@ -70,11 +69,12 @@ function with `joggle::run` or `joggle run`; this keeps module installation,
 function definition, and execution as three separate operations.
 
 Qualified and imported calls resolve through the explicit and transitive `use`
-closure. A local function family shadows imported families; otherwise matching
-imported declarations form one deterministic overload set. Merely loading
-another module into the same `Env` does not make its declarations visible, and
-missing `use` edges are diagnosed. Resolution checks arity and structural
-types, infers generic arguments, ranks specificity, and computes result types.
+closure. Local and imported declarations form one deterministic visible
+overload set, allowing a specialized overload to reuse less-specific imported
+algebra in its own body. Merely loading another module into the same `Env` does
+not make its declarations visible, and missing `use` edges are diagnosed.
+Resolution checks arity and structural types, infers generic arguments, ranks
+specificity, and computes result types.
 It is independent of native binding: a declaration may define model semantics,
 a textual transform, or a native compile-time service. Unknown calls are
 preserved deliberately for frontend transport, but code that needs a
@@ -103,7 +103,7 @@ The built-in `ir` module is the complete reflection boundary:
 | `fns`, `params`, `blks`, `ops` | Traverse function and structural ownership. |
 | `args`, `outs`, `users` | Read operation dataflow. |
 | `live`, `block`, `kind`, `callee`, `type` | Query handle state and structure. |
-| `is_const`, `constant`, `len` | Query values and lists. |
+| `is_const`, `constant` | Query constant IR values. |
 | `has`, `meta` | Query open function or operation attributes. |
 | `call`, `constant`, `loop`, `branch` | Construct leaves and structured control flow. |
 | `clone`, `move`, `args` | Copy, place, or reconnect existing IR. |
@@ -113,6 +113,30 @@ The built-in `ir` module is the complete reflection boundary:
 These functions operate on generic handles and contain no NN operator names.
 Adding an importer, optimization, or target module therefore does not extend
 the reflection ABI or add a parser case.
+
+General compile-time values live in `base`, not `ir`. `len` covers lists and
+dictionaries; `keys`, `has`, and `get` expose deterministic dictionary access;
+and `attrs["key"]` is the strict indexing form. These are enough for an
+explicit bridge function to interpret frontend attributes without adding an
+ONNX/TFLite field API or string-key cases to core. A missing strict key is a
+diagnostic, while the three-argument `get` supplies a caller-chosen fallback.
+
+### Tensor and network semantics
+
+`tensor` defines `tensor<E, S>`, linear and two-dimensional indexing, `numel`,
+elementwise addition, and matrix multiplication. Addition and matrix
+multiplication have normal `.jog` bodies with loops and explicit value updates;
+they are not opaque operator records. `nn.relu` is likewise an ordinary
+function whose body is a loop and condition over the same tensor primitives.
+Transforms can therefore keep a call abstract, clone or inspect its body, or
+replace it with another function using the one `Fn/Blk/Op/Val` representation.
+
+These definitions specify computation but deliberately do not choose layout,
+memory space, vector width, tiling, device, or instruction. Such choices belong
+to separately loaded research modules and can use open attributes or explicit
+function arguments. The ONNX codec does not import `nn`; conversion between a
+frontend schema and these functions must remain an explicit user-selected
+module function.
 
 `ir.call` inserts an arbitrary call immediately before an existing operation.
 A `str` result-type argument returns the single `Val` convenience form; a

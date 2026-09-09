@@ -101,9 +101,12 @@ public:
       std::string text(1, take());
       const std::string pair = text + std::string(1, peek());
       if (pair == "->" || pair == ".." || pair == "+=" || pair == "-=" ||
-          pair == "*=" || pair == "/=" || pair == "==" || pair == "!=" ||
+          pair == "*=" || pair == "/=" || pair == "%=" || pair == "|=" ||
+          pair == "^=" || pair == "&=" || pair == "==" || pair == "!=" ||
           pair == "<=" || pair == ">=" || pair == "&&" || pair == "||" ||
           pair == "<<" || pair == ">>")
+        text.push_back(take());
+      if ((text == "<<" || text == ">>") && peek() == '=')
         text.push_back(take());
       out.push_back({Tk::symbol, std::move(text), begin});
     }
@@ -887,8 +890,13 @@ private:
 
   bool parse_assignment(std::uint32_t block, Scope& scope, Attr::Dict meta) {
     const std::size_t start = pos_;
-    if (peek().kind == Tk::name &&
-        (peek(1).text == "=" || peek(1).text == "+=")) {
+    static constexpr std::string_view assignments[] = {
+        "=",  "+=", "-=", "*=",  "/=",  "%=",
+        "|=", "^=", "&=", "<<=", ">>="};
+    const bool assignment_token = std::find(
+        std::begin(assignments), std::end(assignments), peek(1).text) !=
+                                  std::end(assignments);
+    if (peek().kind == Tk::name && assignment_token) {
       const Token name = take();
       const std::string assignment = take().text;
       auto found = scope.find(name.text);
@@ -901,10 +909,13 @@ private:
         return false;
       std::uint32_t value = rhs;
       detail::Form form = detail::Form::assign;
-      if (assignment == "+=") {
-        value = add_call(block, operator_name("+"), {found->second.value, rhs},
+      if (assignment != "=") {
+        value = add_call(block,
+                         operator_name(assignment.substr(0,
+                                                         assignment.size() - 1)),
+                         {found->second.value, rhs},
                          store_.vals[found->second.value].data.type, name.loc);
-        form = detail::Form::add_assign;
+        form = detail::Form::compound;
       } else
         value = add_call(block, "base.copy", {rhs},
                          store_.vals[found->second.value].data.type, name.loc);
@@ -1372,8 +1383,13 @@ void render_block(std::ostringstream& out, const detail::Store& store,
                                               : render_call(store, op));
       } else if (op.form == detail::Form::assign)
         out << name << " = " << render_value(store, op.args.back());
-      else if (op.form == detail::Form::add_assign)
-        out << name << " += " << render_value(store, op.args.back());
+      else if (op.form == detail::Form::compound) {
+        const std::string_view symbol(
+            op.callee.data() + std::string_view("operator ").size(),
+            op.callee.size() - std::string_view("operator ").size());
+        out << name << ' ' << symbol << "= "
+            << render_value(store, op.args.back());
+      }
       else if (op.form == detail::Form::index_assign) {
         out << name << "[";
         for (std::size_t index = 1; index + 1 < op.args.size(); ++index) {
@@ -1833,9 +1849,10 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
   }
   if (op.callee == "operator []" && op.args.size() == 2 && !op.outs.empty()) {
     const Ty& container = store.vals[op.args.front()].data.type;
-    if (container.name() == "list" && container.args().size() == 1)
+    if (container.name() == "list" && container.args().size() == 1) {
       store.vals[op.outs.front()].data.type = container.args().front();
-    return;
+      return;
+    }
   }
 
   std::vector<Ty> explicit_args;

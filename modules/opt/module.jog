@@ -7,7 +7,7 @@ fn fold_identity(m: Mod, callee: str, identity: Attr, side: int) -> bool {
     if ir.callee(op) == callee && (side == 0 || side == 1) {
       let args = ir.args(op)
       let outs = ir.outs(op)
-      if ir.len(args) == 2 && ir.len(outs) == 1 {
+      if len(args) == 2 && len(outs) == 1 {
         if ir.is_const(args[side]) {
           if ir.constant(args[side]) == identity {
             let keep = args[1 - side]
@@ -42,7 +42,7 @@ fn dce(m: Mod, pure: list<str>) -> bool {
       if ir.kind(op) == "call" && allowed {
         var unused = true
         for value in ir.outs(op) {
-          if ir.len(ir.users(value)) != 0 {
+          if len(ir.users(value)) != 0 {
             unused = false
           }
         }
@@ -58,7 +58,7 @@ fn dce(m: Mod, pure: list<str>) -> bool {
 fn cse(m: Mod, pure: list<str>) -> bool {
   var changed = false
   let ops = ir.ops(m)
-  for i in 0..ir.len(ops) {
+  for i in 0..len(ops) {
     let op = ops[i]
     if ir.live(op) {
       var allowed = false
@@ -76,9 +76,9 @@ fn cse(m: Mod, pure: list<str>) -> bool {
               if ir.kind(prior) == "call" && ir.block(prior) == ir.block(op) {
                 let left = ir.outs(prior)
                 let right = ir.outs(op)
-                var same = ir.len(left) == ir.len(right)
+                var same = len(left) == len(right)
                 if same {
-                  for k in 0..ir.len(left) {
+                  for k in 0..len(left) {
                     if ir.type(left[k]) != ir.type(right[k]) {
                       same = false
                     }
@@ -88,7 +88,7 @@ fn cse(m: Mod, pure: list<str>) -> bool {
                    ir.args(prior) == ir.args(op) &&
                    ir.meta(prior) == ir.meta(op) {
                   var replaced = true
-                  for k in 0..ir.len(ir.outs(op)) {
+                  for k in 0..len(ir.outs(op)) {
                     replaced = ir.replace(
                       m, ir.outs(op)[k], ir.outs(prior)[k]
                     ) && replaced
@@ -145,18 +145,18 @@ fn count(m: Mod, callee: str) -> int {
 
 fn fuse(m: Mod, pattern: list<str>, replacement: str) -> bool {
   var changed = false
-  if ir.len(pattern) > 1 {
+  if len(pattern) > 1 {
     for first in ir.ops(m) {
       if ir.callee(first) == pattern[0] {
         var matched = true
         var current = first
         var group = [first]
-        for i in 1..ir.len(pattern) {
+        for i in 1..len(pattern) {
           if matched {
             let outs = ir.outs(current)
-            if ir.len(outs) == 1 {
+            if len(outs) == 1 {
               let users = ir.users(outs[0])
-              if ir.len(users) == 1 {
+              if len(users) == 1 {
                 let next = users[0]
                 if ir.callee(next) == pattern[i] {
                   current = next

@@ -3,3 +3,46 @@ use base
 
 fn tensor<E: Ty, S: list<int>>() -> Ty;
 fn tensor<E: Ty, S: list<int>>(fill: E) -> tensor<E, S>;
+
+fn []<E: Ty, S: list<int>>(x: tensor<E, S>, i: index) -> E;
+fn []<E: Ty, M: int, N: int>(
+  x: tensor<E, [M, N]>, i: index, j: index
+) -> E;
+fn []=<E: Ty, S: list<int>>(
+  x: tensor<E, S>, i: index, value: E
+) -> tensor<E, S>;
+fn []=<E: Ty, M: int, N: int>(
+  x: tensor<E, [M, N]>, i: index, j: index, value: E
+) -> tensor<E, [M, N]>;
+
+fn numel<S: list<int>>() -> int {
+  var size = 1
+  for extent in S {
+    size *= extent
+  }
+  return size
+}
+
+fn +<E: Ty, S: list<int>>(
+  a: tensor<E, S>, b: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..numel<S>() {
+    out[i] = a[i] + b[i]
+  }
+  return out
+}
+
+fn matmul<E: Ty, M: int, N: int, K: int>(
+  a: tensor<E, [M, K]>, b: tensor<E, [K, N]>
+) -> tensor<E, [M, N]> {
+  var out = tensor<E, [M, N]>(E(0))
+  for i in 0..M, j in 0..N {
+    var sum = E(0)
+    for k in 0..K {
+      sum += a[i, k] * b[k, j]
+    }
+    out[i, j] = sum
+  }
+  return out
+}

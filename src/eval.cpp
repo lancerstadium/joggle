@@ -1,6 +1,7 @@
 #include "detail.h"
 
 #include <algorithm>
+#include <bit>
 #include <charconv>
 #include <functional>
 #include <limits>
@@ -623,6 +624,9 @@ private:
       fail("unknown compile-time function: " + std::string(name), loc);
       return std::nullopt;
     }
+    if (target.external() && target.module() == "base" &&
+        fundamental(target.name()))
+      return fundamental(target.name(), args, std::move(loc));
     Items resolved;
     const std::vector<Val> generics = target.generics();
     resolved.reserve(generics.size());
@@ -638,14 +642,29 @@ private:
   std::optional<Items> operation(std::string_view name, const Items& args,
                                  Loc loc) {
     if (name == "[]" && args.size() == 2) {
-      const Items* items = list(args[0]);
-      const auto index = integer(args[1]);
-      if (!items || !index || *index < 0 ||
-          static_cast<std::size_t>(*index) >= items->size()) {
-        fail("compile-time index is out of bounds", loc);
+      if (const Items* items = list(args[0])) {
+        const auto index = integer(args[1]);
+        if (!index || *index < 0 ||
+            static_cast<std::size_t>(*index) >= items->size()) {
+          fail("compile-time index is out of bounds", loc);
+          return std::nullopt;
+        }
+        return Items{(*items)[static_cast<std::size_t>(*index)]};
+      }
+      const auto* value = as<Attr>(args[0]);
+      const auto* values = value ? value->dict() : nullptr;
+      const auto key = string(args[1]);
+      if (!values || !key) {
+        fail("compile-time index has invalid operands", loc);
         return std::nullopt;
       }
-      return Items{(*items)[static_cast<std::size_t>(*index)]};
+      const auto found = values->find(*key);
+      if (found == values->end()) {
+        fail("compile-time dictionary key not found: " + std::string(*key),
+             loc);
+        return std::nullopt;
+      }
+      return Items{Item(found->second)};
     }
     if (name == ".." && args.size() == 2) {
       const auto first = integer(args[0]);
@@ -748,7 +767,93 @@ private:
       }
       return Items{Item(Attr(value))};
     }
+    if ((name == "|" || name == "^" || name == "&" || name == "<<" ||
+         name == ">>") &&
+        args.size() == 2) {
+      const auto left = integer(args[0]);
+      const auto right = integer(args[1]);
+      if (!left || !right ||
+          ((name == "<<" || name == ">>") &&
+           (*right < 0 || *right >= 64))) {
+        fail("bit operator has invalid operands", loc);
+        return std::nullopt;
+      }
+      const std::uint64_t left_bits = std::bit_cast<std::uint64_t>(*left);
+      std::uint64_t bits = 0;
+      if (name == "|")
+        bits = left_bits | std::bit_cast<std::uint64_t>(*right);
+      else if (name == "^")
+        bits = left_bits ^ std::bit_cast<std::uint64_t>(*right);
+      else if (name == "&")
+        bits = left_bits & std::bit_cast<std::uint64_t>(*right);
+      else if (name == "<<")
+        bits = left_bits << static_cast<unsigned>(*right);
+      else {
+        bits = left_bits >> static_cast<unsigned>(*right);
+        if (*left < 0 && *right)
+          bits |= ~std::uint64_t{0} << (64 - static_cast<unsigned>(*right));
+      }
+      return Items{Item(Attr(std::bit_cast<std::int64_t>(bits)))};
+    }
     fail("unsupported compile-time operator: " + std::string(name), loc);
+    return std::nullopt;
+  }
+
+  bool fundamental(std::string_view name) const noexcept {
+    return name == "len" || name == "keys" || name == "has" ||
+           name == "get" || name == "kind";
+  }
+
+  std::optional<Items> fundamental(std::string_view name, const Items& args,
+                                   Loc loc) {
+    if (name == "len" && args.size() == 1) {
+      if (const Items* values = list(args[0]))
+        return Items{Item(Attr(static_cast<std::int64_t>(values->size())))};
+      if (const auto* value = as<Attr>(args[0]); value && value->dict())
+        return Items{
+            Item(Attr(static_cast<std::int64_t>(value->dict()->size())))};
+    } else if (name == "keys" && args.size() == 1) {
+      if (const auto* value = as<Attr>(args[0]); value && value->dict()) {
+        Items out;
+        out.reserve(value->dict()->size());
+        for (const auto& [key, ignored] : *value->dict()) {
+          (void)ignored;
+          out.emplace_back(Attr(key));
+        }
+        return Items{Item(std::move(out))};
+      }
+    } else if (name == "has" && args.size() == 2) {
+      const auto* value = as<Attr>(args[0]);
+      const auto key = string(args[1]);
+      if (value && value->dict() && key)
+        return Items{Item(Attr(value->dict()->contains(*key)))};
+    } else if (name == "get" && (args.size() == 2 || args.size() == 3)) {
+      const auto* value = as<Attr>(args[0]);
+      const auto key = string(args[1]);
+      if (value && value->dict() && key) {
+        const auto found = value->dict()->find(*key);
+        if (found != value->dict()->end())
+          return Items{Item(found->second)};
+        if (args.size() == 3)
+          return Items{args[2]};
+        return Items{Item(Attr{})};
+      }
+    } else if (name == "kind" && args.size() == 1) {
+      if (list(args[0]))
+        return Items{Item(Attr("list"))};
+      if (const auto* value = as<Attr>(args[0])) {
+        const std::string_view type = value->boolean() ? "bool"
+                                      : value->integer() ? "int"
+                                      : value->real()    ? "f64"
+                                      : value->string()  ? "str"
+                                      : value->bytes()   ? "bytes"
+                                      : value->list()    ? "list"
+                                      : value->dict()    ? "dict"
+                                                         : "nil";
+        return Items{Item(Attr(std::string(type)))};
+      }
+    }
+    fail("invalid base." + std::string(name) + " compile-time call", loc);
     return std::nullopt;
   }
 
@@ -909,9 +1014,6 @@ private:
             return Items{Item(result)};
         }
       }
-    } else if (name == "len" && args.size() == 1) {
-      if (const Items* values = list(args[0]))
-        return Items{Item(Attr(static_cast<std::int64_t>(values->size())))};
     } else if (name == "call" && args.size() == 5) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* before = as<Op>(args[1]);

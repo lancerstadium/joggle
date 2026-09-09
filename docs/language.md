@@ -50,10 +50,11 @@ fn +<W: int>(a: sat<W>, b: sat<W>) -> sat<W>;
 
 Ordinary and symbolic functions both form overload sets. Verification filters
 by arity and recursive generic unification, then prefers the structurally more
-specific signature; equally specific survivors are an ambiguity error. A local
-family shadows imported families. Otherwise declarations from the transitive
-`use` closure participate together, which lets the `sat<W>` overload outrank
-the generic base overload without a saturating-type case in the resolver.
+specific signature; equally specific survivors are an ambiguity error. Local
+and transitively imported declarations participate in the same visible family.
+This lets a tensor or number-format overload call less-specific base algebra in
+its own body, while a more-specific `sat<W>` overload still wins without a
+saturating-type case in the resolver.
 
 Types are immutable structural values rather than uninterpreted spellings. A
 type has a constructor name and zero or more type/value arguments; bracketed
@@ -135,10 +136,12 @@ let group = [producer, consumer]
 group += [last]
 ```
 
-`let` bindings are immutable. `var` bindings may be reassigned with `=` or
-`+=`, and tensor-like values may use `value[i, j] = next`. The latter normalizes
-to a call of `operator []=` returning the updated value, so mutation remains an
-explicit value flow.
+`let` bindings are immutable. `var` bindings may be reassigned with `=` or the
+compound forms `+=`, `-=`, `*=`, `/=`, `%=`, `|=`, `^=`, `&=`, `<<=`, and
+`>>=`. Each compound form is the corresponding overloaded binary call followed
+by the same value update; it does not add an operation kind. Tensor-like values
+may use `value[i, j] = next`, which normalizes to `operator []=` returning the
+updated value, so mutation remains explicit value flow.
 
 Multiple results use ordinary comma-separated bindings rather than tuple or
 result operations:
@@ -165,6 +168,21 @@ Attributes use the same literal syntax wherever constant metadata is needed:
 The structural `Attr` values are `nil`, `bool`, signed integer, `f64`, `str`,
 `bytes`, list, and string-keyed dictionary. Byte strings print as lowercase hex
 and cross the native ABI without being treated as UTF-8.
+
+Dictionary values use ordinary library functions and indexing:
+
+```jog
+if has(attrs, "axis") {
+  let axis = attrs["axis"]
+}
+let fallback = get(attrs, "axis", -1)
+for key in keys(attrs) { inspect(key) }
+```
+
+`attrs[key]` is strict; `get` returns `nil` or an explicit fallback when absent.
+`kind` reports the structural value kind, and `len` applies to lists or
+dictionaries. These operations are in `base`, leaving `ir` exclusively about
+`Mod/Fn/Blk/Op/Val` reflection.
 
 ### Compile-time functions
 

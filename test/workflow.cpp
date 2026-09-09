@@ -76,6 +76,36 @@ int main(int argc, char** argv) {
   CHECK(base_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(base, base_roundtrip));
 
+  CHECK(env.load("nn"));
+  joggle::Mod network;
+  constexpr std::string_view network_source =
+      "module network\n"
+      "use nn\n"
+      "fn block(x: tensor<f32, [4]>, skip: tensor<f32, [4]>) "
+      "-> tensor<f32, [4]> {\n"
+      "  return nn.relu(x + skip)\n}\n";
+  CHECK(joggle::parse(env, network_source, network, "network.jog"));
+  CHECK(network.verify(env));
+  joggle::Op tensor_add;
+  for (joggle::Op op : network.find_fn("block").ops())
+    if (op.callee() == "operator +")
+      tensor_add = op;
+  CHECK(tensor_add && env.resolve(network, tensor_add).module() == "tensor");
+  const joggle::Fn relu = env.find_fn("nn.relu");
+  CHECK(relu && !relu.external());
+  bool relu_loop = false;
+  bool relu_branch = false;
+  for (joggle::Op op : relu.ops()) {
+    relu_loop = relu_loop || op.kind() == joggle::Op::Kind::loop;
+    relu_branch = relu_branch || op.kind() == joggle::Op::Kind::branch;
+  }
+  CHECK(relu_loop && relu_branch);
+  joggle::Mod network_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(network), network_roundtrip,
+                      "network-roundtrip.jog"));
+  CHECK(network_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(network, network_roundtrip));
+
   joggle::Mod precedence;
   constexpr std::string_view precedence_source =
       "module precedence\n"
@@ -637,6 +667,19 @@ int main(int argc, char** argv) {
   CHECK(cleaned.revision() == before_bad_query_revision);
   CHECK(!env.diags().empty());
   env.clear_diags();
+  const joggle::Attr::Dict attr_map{{"axis", joggle::Attr(std::int64_t{2})},
+                                    {"mode", joggle::Attr("nearest")}};
+  const std::vector<joggle::Attr> attr_args{joggle::Attr(attr_map)};
+  CHECK(joggle::query(env, "script.attr_query", cleaned, count, attr_args));
+  CHECK(count.integer() == 2);
+  joggle::Attr keys;
+  CHECK(joggle::query(env, "script.attr_keys", cleaned, keys, attr_args));
+  CHECK(keys.list() && keys.list()->size() == 2);
+  const std::vector<joggle::Attr> missing_attr{
+      joggle::Attr(joggle::Attr::Dict{})};
+  CHECK(joggle::query(env, "script.attr_query", cleaned, count,
+                       missing_attr));
+  CHECK(count.integer() == -1);
   joggle::Attr clean_report;
   CHECK(joggle::run(env, "script.clean_pure", cleaned, clean_report));
   CHECK(cleaned.verify(env));
@@ -695,6 +738,8 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "script.overload_probe", overload_execution));
   CHECK(joggle::run(env, "script.generic_probe", overload_execution));
   CHECK(joggle::run(env, "script.multi_probe", overload_execution));
+  CHECK(joggle::run(env, "script.compound_probe", overload_execution));
+  CHECK(joggle::run(env, "script.numel_probe", overload_execution));
   CHECK(joggle::run(env, "script.make_pair", overload_execution));
   CHECK(joggle::print(overload_execution)
             .find("let left: i32, right: i32 = test.pair(x, 0)") !=
