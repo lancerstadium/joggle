@@ -1,0 +1,155 @@
+# Roadmap
+
+Joggle is intended to become a small compiler workbench that AI software and
+hardware co-design researchers can extend without forking its core. Completion
+means that a new frontend, data format, optimization, execution model, or
+emitter can be supplied as a module and composed with existing work through the
+same function IR. A collection of demos is not completion.
+
+## Design sources
+
+The project uses a deliberately narrow subset of ideas from earlier systems:
+
+- Lift: transformations and algorithm structure compose as functions; Joggle
+  should not require a second rewrite language or an operator class hierarchy.
+- TVM and TileLang: users may start from tensor calls and progressively expose
+  loops, storage, and target details. Joggle keeps those stages in `Fn` rather
+  than imposing a built-in graph/tile pipeline.
+- MLIR, IREE, and ONNX-MLIR: symbols, types, conversion legality, and explicit
+  interfaces are essential. Joggle adopts those checks without dialect classes,
+  generated adaptors, or an MLIR dependency.
+- MIR: a small embeddable implementation, stable handles, explicit ownership,
+  and a plain C boundary are more valuable here than a large framework API.
+- XOC: data-driven definitions, shared queries, and composable pipelines are
+  useful. Its global record registry, stringly `kind` protocols, backend-owned
+  reinterpretation, and many behavior fields must not reappear in Joggle.
+
+These are design inputs, not compatibility promises. New abstractions enter the
+core only when two unrelated modules need the same structural capability.
+
+## Completion criteria
+
+The project is ready for sustained research use when all of the following hold:
+
+1. Types and symbols are structural, scoped, diagnosable, and extensible by
+   modules. Generic calls infer and check their result types without operator
+   switches.
+2. C++ and `.jog` functions can construct, inspect, clone, move, replace, and
+   erase every public IR form while preserving dominance, use-def links, source
+   locations, and transactional failure.
+3. Ordinary `fn(Mod) -> bool` functions compose into named pipelines and
+   fixed-point runs. Analyses use explicit values and revision-aware caching;
+   there is no pass or analysis class hierarchy.
+4. Frontends transport source semantics without defining optimization policy.
+   Semantic conversion lives in explicit bridge modules and is never triggered
+   by parsing or loading.
+5. Target modules can define data formats, legal computations, cost queries,
+   reference execution, storage choices, and emitted artifacts without adding
+   target cases to the core.
+6. Module discovery, installation layout, dependency diagnostics, ABI checks,
+   and source compatibility are documented and tested on a clean consumer
+   project.
+7. Official conventional neural-network models exercise importing, conversion,
+   fusion, tensor/loop transforms, storage planning, and at least two genuinely
+   different target modules. All results are deterministic and reproducible.
+
+## Milestones
+
+### M6 — types and symbols
+
+- Replace opaque type strings internally with immutable structural type nodes.
+- Resolve local, imported, qualified, overloaded, and generic function calls.
+- Infer generic bindings from arguments and explicit parameters; propagate
+  result and loop-element types; diagnose ambiguity and arity/type failures.
+- Keep unknown external computation printable, but distinguish it explicitly
+  from a resolved declaration.
+- Let module-defined type constructors use the same lookup and compile-time
+  value machinery as built-in types.
+
+Exit gate: a module-defined parametric number format and nested tensor/list
+signatures resolve without parser cases, while intentionally ambiguous and
+incompatible programs fail with stable diagnostics.
+
+### M7 — complete IR editing
+
+- Support multi-result calls and complete constant, call, block, loop, branch,
+  return, and yield construction.
+- Add nested walking, selective use replacement, cloning, moving, and block
+  argument editing with explicit insertion points.
+- Give every successful mutation a module revision and make compound edits
+  atomic.
+- Preserve readable bindings during printing without exposing generated SSA
+  names.
+
+Exit gate: one textual module and one C++ module independently build and rewrite
+the same nested-loop kernel, including a multi-result transformation and a
+forced rollback.
+
+### M8 — composition and analyses
+
+- Compose ordinary transform functions into pipelines without a pass class or
+  new surface keyword.
+- Provide bounded fixed-point execution, per-step diagnostics, change counts,
+  timing hooks, and deterministic pipeline reports.
+- Cache pure analysis function results by module revision and explicit inputs;
+  mutation invalidates them automatically.
+- Implement reusable constant folding, dead-call elimination, common
+  subexpression elimination, canonicalization, and region fusion as modules.
+
+Exit gate: pipelines can be assembled in source and through the embedding API,
+produce identical results, and expose which step changed the module.
+
+### M9 — distributable modules
+
+- Specify source, native library, tests, documentation, dependencies, and
+  compatibility metadata in one module directory.
+- Add deterministic discovery, inspection, validation, installation, and
+  removal commands; loading remains explicit and side-effect free.
+- Keep the exported native entry stable and evolve the size-tagged ABI by
+  append-only fields until a deliberate major break.
+- Test installed use from an external CMake consumer on supported platforms.
+
+Exit gate: an out-of-tree module can be packaged, installed, discovered, run,
+upgraded compatibly, and removed without editing or rebuilding Joggle.
+
+### M10 — neural-network workflow
+
+- Keep binary codecs such as ONNX and TFLite separate from semantic bridge
+  modules.
+- Define reusable tensor and scalar computation libraries with function bodies
+  where semantics can be expressed in Joggle and native references otherwise.
+- Implement declarative source-to-library conversion, shape/type propagation,
+  fusion, layout and storage transforms, and loop exposure.
+- Allow target modules to select supported calls, attach costs, simulate exact
+  behavior, and emit their chosen representation.
+
+Exit gate: official models from two frontends pass through one shared semantic
+library and run through at least two targets without core operator switches.
+
+### M11 — research instrumentation
+
+- Record pipeline decisions, costs, code size, memory use, and deterministic
+  cycle estimates through module functions and stable structured output.
+- Make cloud/edge partitioning, JIT specialization, custom formats, LUT/logic
+  implementations, and WCET-oriented analysis independent research modules.
+- Provide reproducible experiment manifests and artifact hashes without making
+  any one research policy part of the compiler core.
+
+Exit gate: a clean checkout reproduces at least one end-to-end co-design study,
+including baselines, ablations, failure cases, and generated artifacts.
+
+## Compatibility policy
+
+- `module.jog` is the source of declarations; native code cannot replace its
+  signatures.
+- The C ABI carries version and byte size in data, never in exported names.
+- Pre-1.0 source changes prefer one documented migration over permanent aliases.
+- Canonical text is deterministic within a release. Round-trip and installed
+  consumer tests guard changes to syntax, public headers, and module layout.
+- Core remains C++20 plus the standard library. Optional dependencies belong to
+  the modules that need them.
+
+Each milestone lands as reviewable commits only after strict compiler warnings,
+default offline tests, optional-module tests, sanitizers, failure rollback, and
+the relevant real-model gate pass. A milestone is reopened when its abstraction
+requires operator-, frontend-, or target-specific logic in the core.

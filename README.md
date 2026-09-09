@@ -70,7 +70,8 @@ library. Building does not download dependencies. Installation provides the
 
 Start with [the design](docs/design.md), then read the
 [language](docs/language.md), [module model](docs/modules.md), and
-[tutorial](docs/tutorial.md).
+[tutorial](docs/tutorial.md). The [roadmap](docs/roadmap.md) defines the
+remaining completion gates and compatibility policy.
 
 The implementation removed during the redesign remains recoverable at Git tag
 `archive/pre-relaunch-a2a281e`.

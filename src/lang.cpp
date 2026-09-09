@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <limits>
 #include <locale>
+#include <map>
 #include <sstream>
 #include <unordered_map>
 #include <utility>
@@ -449,7 +450,10 @@ private:
         const std::string type = type_text(")");
         if (type.empty())
           return fail("expected parameter type");
-        params.emplace_back(std::move(param), Ty(type));
+        Ty parsed(type);
+        if (!parsed.valid())
+          return fail("malformed parameter type '" + type + "'");
+        params.emplace_back(std::move(param), std::move(parsed));
       } while (match(","));
     }
     if (!expect(")") || !expect("->"))
@@ -460,7 +464,10 @@ private:
           const std::string type = type_text(")");
           if (type.empty())
             return fail("expected return type");
-          data.returns.emplace_back(type);
+          Ty parsed(type);
+          if (!parsed.valid())
+            return fail("malformed return type '" + type + "'");
+          data.returns.push_back(std::move(parsed));
         } while (match(","));
       }
       if (!expect(")"))
@@ -469,7 +476,10 @@ private:
       const std::string type = type_text("{");
       if (type.empty())
         return fail("expected return type");
-      data.returns.emplace_back(type);
+      Ty parsed(type);
+      if (!parsed.valid())
+        return fail("malformed return type '" + type + "'");
+      data.returns.push_back(std::move(parsed));
     }
 
     if (store_.symbols.contains(name))
@@ -1329,12 +1339,225 @@ bool detail::dominates(const detail::Store& store, std::uint32_t value,
   return false;
 }
 
-bool Mod::verify(const Env&) {
+namespace {
+
+using Bindings = std::map<std::string, Ty, std::less<>>;
+
+bool generic(const std::vector<std::string>& names, std::string_view name) {
+  return std::find(names.begin(), names.end(), name) != names.end();
+}
+
+bool unify(const Ty& formal, const Ty& actual,
+           const std::vector<std::string>& generics, Bindings& bindings) {
+  if (formal.empty() || actual.empty() || formal.name() == "_" ||
+      actual.name() == "_" || actual.name() == "Attr")
+    return true;
+  if (formal.args().empty() && generic(generics, formal.name())) {
+    const auto found = bindings.find(std::string(formal.name()));
+    if (found == bindings.end()) {
+      bindings.emplace(std::string(formal.name()), actual);
+      return true;
+    }
+    return found->second == actual;
+  }
+  if (formal.name() != actual.name())
+    return false;
+  if (formal.args().empty() || actual.args().empty())
+    return true;
+  if (formal.args().size() != actual.args().size())
+    return false;
+  for (std::size_t index = 0; index < formal.args().size(); ++index)
+    if (!unify(formal.args()[index], actual.args()[index], generics, bindings))
+      return false;
+  return true;
+}
+
+Ty substitute(const Ty& type, const std::vector<std::string>& generics,
+              const Bindings& bindings) {
+  if (type.args().empty() && generic(generics, type.name())) {
+    const auto found = bindings.find(std::string(type.name()));
+    return found == bindings.end() ? Ty("_") : found->second;
+  }
+  if (type.args().empty())
+    return type;
+  std::string text = type.name() == "[]" ? "[" : std::string(type.name()) + '<';
+  for (std::size_t index = 0; index < type.args().size(); ++index) {
+    if (index)
+      text += ", ";
+    text += substitute(type.args()[index], generics, bindings).text();
+  }
+  text += type.name() == "[]" ? ']' : '>';
+  return Ty(std::move(text));
+}
+
+Fn declaration(const Mod& mod, const Env& env, std::string_view callee,
+               std::vector<Ty>& explicit_args) {
+  if (callee.starts_with("operator ") || callee == "base.list")
+    return {};
+  const Ty applied{std::string(callee)};
+  std::string_view symbol = callee;
+  if (!applied.args().empty()) {
+    symbol = applied.name();
+    explicit_args = applied.args();
+  }
+  return env.resolve(mod, symbol);
+}
+
+void infer_list(detail::Store& store, detail::OpData& op) {
+  Ty element("_");
+  if (!op.args.empty()) {
+    element = store.vals[op.args.front()].data.type;
+    for (std::size_t index = 1; index < op.args.size(); ++index)
+      if (store.vals[op.args[index]].data.type != element)
+        element = Ty("_");
+  }
+  if (!op.outs.empty())
+    store.vals[op.outs.front()].data.type =
+        Ty("list<" + std::string(element.text()) + ">");
+}
+
+void infer_call(detail::Store& store, const Mod& mod, const Env& env,
+                detail::OpData& op, bool diagnose) {
+  if (op.callee == "base.copy" && op.args.size() == 1 && op.outs.size() == 1) {
+    store.vals[op.outs.front()].data.type =
+        store.vals[op.args.front()].data.type;
+    return;
+  }
+  if (op.callee == "base.list") {
+    infer_list(store, op);
+    return;
+  }
+  if (op.callee == "operator []" && op.args.size() == 2 && !op.outs.empty()) {
+    const Ty& container = store.vals[op.args.front()].data.type;
+    if (container.name() == "list" && container.args().size() == 1)
+      store.vals[op.outs.front()].data.type = container.args().front();
+    return;
+  }
+
+  std::vector<Ty> explicit_args;
+  const Fn fn = declaration(mod, env, op.callee, explicit_args);
+  if (!fn) {
+    if (diagnose) {
+      const Ty applied{std::string(op.callee)};
+      const std::string_view symbol =
+          applied.args().empty() ? std::string_view(op.callee) : applied.name();
+      const Fn hidden = env.find_fn(symbol);
+      if (hidden)
+        detail::add_diag(store.diags,
+                         "call to '" + std::string(op.callee) +
+                             "' requires 'use " + std::string(hidden.module()) +
+                             "'",
+                         op.loc);
+    }
+    return;
+  }
+  const std::vector<std::string> generics = fn.generics();
+  const std::vector<Val> params = fn.params();
+  const std::vector<Ty> returns = fn.returns();
+  if (params.size() != op.args.size()) {
+    if (diagnose)
+      detail::add_diag(store.diags,
+                       "call to '" + std::string(op.callee) + "' expects " +
+                           std::to_string(params.size()) + " arguments, got " +
+                           std::to_string(op.args.size()),
+                       op.loc);
+    return;
+  }
+  if (!explicit_args.empty() && explicit_args.size() != generics.size()) {
+    if (diagnose)
+      detail::add_diag(store.diags,
+                       "call to '" + std::string(op.callee) + "' expects " +
+                           std::to_string(generics.size()) +
+                           " generic arguments, got " +
+                           std::to_string(explicit_args.size()),
+                       op.loc);
+    return;
+  }
+  Bindings bindings;
+  for (std::size_t index = 0; index < explicit_args.size(); ++index)
+    bindings.emplace(generics[index], explicit_args[index]);
+  for (std::size_t index = 0; index < params.size(); ++index) {
+    const Ty formal = params[index].type();
+    const Ty& actual = store.vals[op.args[index]].data.type;
+    if (!unify(formal, actual, generics, bindings) && diagnose)
+      detail::add_diag(
+          store.diags,
+          "argument " + std::to_string(index + 1) + " of '" +
+              std::string(op.callee) + "' has type '" +
+              std::string(actual.text()) + "', expected '" +
+              std::string(substitute(formal, generics, bindings).text()) + "'",
+          op.loc);
+  }
+  if (returns.size() != op.outs.size()) {
+    if (diagnose)
+      detail::add_diag(store.diags,
+                       "result count of '" + std::string(op.callee) +
+                           "' does not match its declaration",
+                       op.loc);
+    return;
+  }
+  for (std::size_t index = 0; index < returns.size(); ++index)
+    store.vals[op.outs[index]].data.type =
+        substitute(returns[index], generics, bindings);
+}
+
+void infer_regions(detail::Store& store, const detail::OpData& op) {
+  if (op.kind == Op::Kind::loop && op.blocks.size() == 1) {
+    auto& args = store.blocks[op.blocks.front()].data.args;
+    for (std::size_t index = 0; index < op.iter_names.size(); ++index) {
+      const Ty& source = store.vals[op.args[index]].data.type;
+      store.vals[args[index]].data.type =
+          source.name() == "list" && source.args().size() == 1
+              ? source.args().front()
+          : source.name() == "range" ? Ty("index")
+                                     : Ty("_");
+    }
+    for (std::size_t index = 0; index < op.carried_count; ++index) {
+      const Ty type =
+          store.vals[op.args[op.iter_names.size() + index]].data.type;
+      store.vals[args[op.iter_names.size() + index]].data.type = type;
+      store.vals[op.outs[index]].data.type = type;
+    }
+  } else if (op.kind == Op::Kind::branch) {
+    for (const std::uint32_t block : op.blocks)
+      for (std::size_t index = 0; index < op.carried_count; ++index)
+        store.vals[store.blocks[block].data.args[index]].data.type =
+            store.vals[op.args[index + 1]].data.type;
+    for (std::size_t index = 0; index < op.carried_count; ++index)
+      store.vals[op.outs[index]].data.type =
+          store.vals[op.args[index + 1]].data.type;
+  }
+}
+
+}  // namespace
+
+bool Mod::verify(const Env& env) {
   detail::Store& store = impl_->store;
   store.diags.clear();
   detail::rebuild_uses(store);
   if (store.name.empty())
     detail::add_diag(store.diags, "module has no name");
+  for (std::size_t iteration = 0; iteration <= store.ops.size(); ++iteration) {
+    std::vector<Ty> before;
+    before.reserve(store.vals.size());
+    for (const auto& value : store.vals)
+      before.push_back(value.data.type);
+    for (auto& op : store.ops) {
+      if (!op.live)
+        continue;
+      if (op.data.kind == Op::Kind::call)
+        infer_call(store, *this, env, op.data, false);
+      infer_regions(store, op.data);
+    }
+    bool stable = before.size() == store.vals.size();
+    for (std::size_t index = 0; stable && index < before.size(); ++index)
+      stable = before[index] == store.vals[index].data.type;
+    if (stable)
+      break;
+  }
+  for (auto& op : store.ops)
+    if (op.live && op.data.kind == Op::Kind::call)
+      infer_call(store, *this, env, op.data, true);
   for (const auto& fn_slot : store.fns) {
     if (!fn_slot.live || fn_slot.data.external)
       continue;

@@ -1,6 +1,7 @@
 #include "detail.h"
 
 #include <algorithm>
+#include <cctype>
 #include <unordered_set>
 #include <utility>
 
@@ -12,6 +13,69 @@ template <class T>
 const detail::Slot<T>* slot(const std::vector<detail::Slot<T>>& slots,
                             std::uint32_t id, std::uint32_t generation) {
   return detail::live(slots, id, generation) ? &slots[id] : nullptr;
+}
+
+std::string_view trim(std::string_view text) {
+  while (!text.empty() &&
+         std::isspace(static_cast<unsigned char>(text.front())))
+    text.remove_prefix(1);
+  while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())))
+    text.remove_suffix(1);
+  return text;
+}
+
+bool valid_atom(std::string_view text) {
+  return !text.empty() &&
+         text.find_first_of("<>[],()") == std::string_view::npos &&
+         std::none_of(text.begin(), text.end(), [](char ch) {
+           return std::isspace(static_cast<unsigned char>(ch));
+         });
+}
+
+std::optional<std::vector<std::string_view>>
+split_terms(std::string_view text) {
+  std::vector<std::string_view> terms;
+  std::size_t start = 0;
+  std::vector<char> closes;
+  for (std::size_t index = 0; index < text.size(); ++index) {
+    switch (text[index]) {
+    case '<':
+      closes.push_back('>');
+      break;
+    case '[':
+      closes.push_back(']');
+      break;
+    case '(':
+      closes.push_back(')');
+      break;
+    case '>':
+    case ']':
+    case ')':
+      if (closes.empty() || closes.back() != text[index])
+        return std::nullopt;
+      closes.pop_back();
+      break;
+    case ',':
+      if (closes.empty()) {
+        const std::string_view term = trim(text.substr(start, index - start));
+        if (term.empty())
+          return std::nullopt;
+        terms.push_back(term);
+        start = index + 1;
+      }
+      break;
+    default:
+      break;
+    }
+  }
+  if (!closes.empty())
+    return std::nullopt;
+  const std::string_view tail = trim(text.substr(start));
+  if (!tail.empty())
+    terms.push_back(tail);
+  else if (start != 0)
+    return std::nullopt;
+  return terms;
 }
 
 }  // namespace
@@ -55,9 +119,69 @@ const Attr::Dict* Attr::dict() const& noexcept {
   return std::get_if<Dict>(&data_);
 }
 
-Ty::Ty(std::string text) : text_(std::move(text)) {}
+Ty::Ty(std::string text) {
+  const std::string_view source = trim(text);
+  text_ = std::string(source);
+  if (source.empty())
+    return;
+  std::size_t open = std::string_view::npos;
+  char close = '\0';
+  if (source.front() == '[' && source.back() == ']') {
+    name_ = "[]";
+    open = 0;
+    close = ']';
+  } else {
+    open = source.find('<');
+    if (open != std::string_view::npos && source.back() == '>') {
+      name_ = std::string(trim(source.substr(0, open)));
+      close = '>';
+    } else if (open == std::string_view::npos)
+      open = std::string_view::npos;
+    else
+      return;
+  }
+  if (open == std::string_view::npos) {
+    if (!valid_atom(source)) {
+      name_.clear();
+      return;
+    }
+    name_ = std::string(source);
+    text_ = name_;
+    valid_ = true;
+    return;
+  }
+  if (name_ != "[]" && !valid_atom(name_))
+    return;
+  const std::size_t first = open + 1;
+  const std::size_t count = source.size() - first - 1;
+  const auto terms = split_terms(source.substr(first, count));
+  if (!terms || (close == '>' && terms->empty())) {
+    name_.clear();
+    return;
+  }
+  for (std::string_view term : *terms) {
+    Ty arg{std::string(term)};
+    if (!arg.valid()) {
+      name_.clear();
+      args_.clear();
+      return;
+    }
+    args_.push_back(std::move(arg));
+  }
+  text_ = name_ == "[]" ? "[" : name_ + '<';
+  for (std::size_t index = 0; index < args_.size(); ++index) {
+    if (index)
+      text_ += ", ";
+    text_ += args_[index].text();
+  }
+  text_ += close;
+  valid_ = true;
+}
 bool Ty::empty() const noexcept { return text_.empty(); }
+bool Ty::valid() const noexcept { return valid_; }
 std::string_view Ty::text() const noexcept { return text_; }
+std::string_view Ty::name() const noexcept { return name_; }
+const std::vector<Ty>& Ty::args() const noexcept { return args_; }
 
 Val::Val(detail::Store* store, std::uint32_t id,
          std::uint32_t generation) noexcept
@@ -191,6 +315,9 @@ std::string_view Fn::name() const noexcept {
   return valid() ? std::string_view(store_->fns[id_].data.name)
                  : std::string_view{};
 }
+std::string_view Fn::module() const noexcept {
+  return valid() ? std::string_view(store_->name) : std::string_view{};
+}
 std::vector<std::string> Fn::generics() const {
   return valid() ? store_->fns[id_].data.generics : std::vector<std::string>{};
 }
@@ -266,7 +393,7 @@ Val Mod::call(Op before, std::string callee, std::span<const Val> args,
               Ty type) {
   auto& store = impl_->store;
   if (!before.valid() || before.store_ != &store || callee.empty() ||
-      type.empty()) {
+      !type.valid()) {
     detail::add_diag(
         store.diags,
         "call requires a live insertion point, callee, and result type");

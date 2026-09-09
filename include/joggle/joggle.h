@@ -142,12 +142,20 @@ public:
   explicit Ty(std::string text);
 
   bool empty() const noexcept;
+  bool valid() const noexcept;
   std::string_view text() const noexcept;
+  std::string_view name() const noexcept;
+  const std::vector<Ty>& args() const noexcept;
 
-  friend bool operator==(const Ty&, const Ty&) = default;
+  friend bool operator==(const Ty& left, const Ty& right) {
+    return left.text_ == right.text_;
+  }
 
 private:
   std::string text_;
+  std::string name_;
+  std::vector<Ty> args_;
+  bool valid_ = false;
 };
 
 namespace detail {
@@ -250,6 +258,7 @@ public:
   bool valid() const noexcept;
   explicit operator bool() const noexcept;
   std::string_view name() const noexcept;
+  std::string_view module() const noexcept;
   std::vector<std::string> generics() const;
   std::vector<Val> params() const;
   std::vector<Ty> returns() const;
@@ -287,6 +296,7 @@ public:
   bool load(std::string_view name);
   bool loaded(std::string_view name) const noexcept;
   Fn find_fn(std::string_view symbol) const noexcept;
+  Fn resolve(const Mod& from, std::string_view symbol) const noexcept;
   bool bound(std::string_view symbol) const noexcept;
   bool call(std::string_view symbol, std::span<const Attr> args,
             std::vector<Attr>& returns);

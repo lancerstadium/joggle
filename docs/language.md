@@ -43,6 +43,39 @@ implemented. Operators normalize to ordinary function calls such as
 `operator +` and `operator []`; adding a concrete overload does not add a new
 IR operation kind.
 
+Types are immutable structural values rather than uninterpreted spellings. A
+type has a constructor name and zero or more type/value arguments; bracketed
+shapes use the same recursive representation:
+
+```text
+tensor<f32, [2, N]>
+  tensor
+    f32
+    []
+      2
+      N
+```
+
+Whitespace is canonicalized when a `Ty` is constructed. `Ty::valid`,
+`Ty::name`, and `Ty::args` expose validation and structure to embedding code
+without introducing a class per type constructor. Malformed nesting and empty
+arguments are rejected while parsing declarations. Constructor meaning is
+supplied by modules; the core only needs the tree for matching and substitution.
+
+During verification, a call to a known local or qualified module function is
+checked against its declaration. Generic arguments may be written explicitly
+or inferred recursively from argument types, and the resulting substitution is
+applied to every call result. Conflicting bindings, wrong argument counts, and
+wrong concrete types receive source-located diagnostics. For example,
+`sat.add(a, b)` over two `sat<8>` values has result type `sat<8>`, while mixing
+`sat<8>` and `sat<16>` is rejected. Unknown calls remain valid open IR so a
+frontend can transport source operations before a semantic bridge is loaded.
+
+List literal element types and loop-element types participate in the same
+fixed-point propagation. This is what lets `for op in ir.ops(block)` type `op`
+as `Op` without a special loop form. `Attr` is the one intentionally dynamic
+compile-time value type: its runtime tag is checked by the consuming function.
+
 List literals may contain any compile-time value, including IR handles, and
 `+` concatenates lists. This makes structural selections concise without a
 second pattern language:
@@ -103,8 +136,9 @@ are errors. `Fn::meta` exposes the same data to C++, while `ir.has` and
 No metadata name changes parsing, binding, or the IR shape. A native library
 may bind any matching body-less declaration; no marker is required and a
 function with a body cannot be rebound. Useful module-defined keys include
-`role`, `stage`, `target`, and `cost`, but none is owned by the core. User type
-declarations and full typed overload resolution remain for later slices.
+`role`, `stage`, `target`, and `cost`, but none is owned by the core. Named type
+constructor declarations and overload-set resolution remain M6 work; structural
+parametric matching and result inference are already implemented.
 
 Metadata becomes behavior only when an explicitly selected function queries
 it. A transform may use `[rewrite: "lab.fused"]` to choose a replacement call;

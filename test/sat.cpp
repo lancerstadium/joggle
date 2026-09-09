@@ -38,6 +38,56 @@ int main(int argc, char** argv) {
   env.path(argv[2]);
   CHECK(env.load("sat"));
 
+  joggle::Mod typed;
+  constexpr std::string_view typed_source =
+      "module typed\n"
+      "use sat\n"
+      "fn inferred(a: sat<8>, b: sat<8>) -> sat<8> {\n"
+      "  return sat.add(a, b)\n"
+      "}\n"
+      "fn explicit(a: sat<16>, b: sat<16>) -> sat<16> {\n"
+      "  return sat.add<16>(a, b)\n"
+      "}\n";
+  CHECK(joggle::parse(env, typed_source, typed, "typed.jog"));
+  CHECK(typed.verify(env));
+  for (const std::string_view name : {"inferred", "explicit"}) {
+    const joggle::Op ret = typed.find_fn(name).body().ops().back();
+    CHECK(ret.args().size() == 1);
+    CHECK(ret.args().front().type().name() == "sat");
+  }
+
+  joggle::Mod wrong_arity;
+  CHECK(joggle::parse(env,
+                      "module wrong\nuse sat\n"
+                      "fn f(a: sat<8>) -> sat<8> { return sat.add(a) }\n",
+                      wrong_arity, "wrong-arity.jog"));
+  CHECK(!wrong_arity.verify(env));
+  CHECK(!wrong_arity.diags().empty());
+  CHECK(wrong_arity.diags().front().message.find("expects 2 arguments") !=
+        std::string::npos);
+
+  joggle::Mod wrong_type;
+  CHECK(joggle::parse(
+      env,
+      "module wrong\nuse sat\n"
+      "fn f(a: sat<8>, b: sat<16>) -> sat<8> { return sat.add(a, b) }\n",
+      wrong_type, "wrong-type.jog"));
+  CHECK(!wrong_type.verify(env));
+  CHECK(!wrong_type.diags().empty());
+  CHECK(wrong_type.diags().front().message.find("expected 'sat<8>'") !=
+        std::string::npos);
+
+  joggle::Mod missing_use;
+  CHECK(joggle::parse(
+      env,
+      "module wrong\n"
+      "fn f(a: sat<8>, b: sat<8>) -> sat<8> { return sat.add(a, b) }\n",
+      missing_use, "missing-use.jog"));
+  CHECK(!missing_use.verify(env));
+  CHECK(!missing_use.diags().empty());
+  CHECK(missing_use.diags().front().message.find("requires 'use sat'") !=
+        std::string::npos);
+
   joggle::Mod mod;
   CHECK(joggle::parse(env, source.str(), mod, argv[1]));
   CHECK(mod.verify(env));

@@ -42,6 +42,14 @@ bool fold_add_zero(joggle::Mod& mod, joggle::Op* removed = nullptr) {
 
 int main(int argc, char** argv) {
   CHECK(argc == 4);
+  const joggle::Ty tensor_type("tensor< f32, [2,N] >");
+  CHECK(tensor_type.text() == "tensor<f32, [2, N]>");
+  CHECK(tensor_type.name() == "tensor");
+  CHECK(tensor_type.args().size() == 2);
+  CHECK(tensor_type.args()[1].name() == "[]");
+  CHECK(tensor_type.args()[1].args().size() == 2);
+  CHECK(!joggle::Ty("tensor<i32,>").valid());
+
   std::ifstream input(argv[1]);
   CHECK(input);
   std::ostringstream source;
@@ -50,6 +58,28 @@ int main(int argc, char** argv) {
   joggle::Env env;
   env.path(argv[2]);
   env.path(argv[3]);
+
+  joggle::Mod types;
+  constexpr std::string_view type_source =
+      "module types\n"
+      "fn id<E, S>(x: tensor<E, S>) -> tensor<E, S>;\n"
+      "fn apply(x: tensor<f32, [2, 3]>) -> tensor<f32, [2, 3]> {\n"
+      "  return id(x)\n"
+      "}\n"
+      "fn last(xs: list<int>) -> int {\n"
+      "  var out = 0\n"
+      "  for x in xs { out = x }\n"
+      "  return out\n"
+      "}\n";
+  CHECK(joggle::parse(env, type_source, types, "types.jog"));
+  CHECK(types.verify(env));
+  const joggle::Val applied =
+      types.find_fn("apply").body().ops().back().args().front();
+  CHECK(applied.type() == joggle::Ty("tensor<f32, [2, 3]>"));
+  const std::vector<joggle::Blk> last_blocks = types.find_fn("last").blocks();
+  CHECK(last_blocks.size() == 2);
+  CHECK(last_blocks[1].args().front().type() == joggle::Ty("int"));
+
   CHECK(env.load("tensor"));
   CHECK(env.loaded("base"));
   CHECK(env.loaded("tensor"));
@@ -58,6 +88,7 @@ int main(int argc, char** argv) {
   CHECK(env.bound("sample.ping"));
   const joggle::Fn ping = env.find_fn("sample.ping");
   CHECK(ping && ping.external());
+  CHECK(ping.module() == "sample");
   CHECK(!ping.meta("host"));
   CHECK(ping.meta("role") && ping.meta("role")->string() == "test");
   const joggle::Fn echo = env.find_fn("sample.echo");
@@ -140,6 +171,12 @@ int main(int argc, char** argv) {
       env, "module bad\nfn f() -> int { return 999999999999999999999999 }\n",
       invalid_number, "number.jog"));
   CHECK(!invalid_number.diags().empty());
+
+  joggle::Mod invalid_type;
+  CHECK(!joggle::parse(
+      env, "module bad\nfn f(x: tensor<i32,>) -> i32 { return 0 }\n",
+      invalid_type, "type.jog"));
+  CHECK(!invalid_type.diags().empty());
 
   joggle::Mod attrs;
   constexpr std::string_view attr_source =

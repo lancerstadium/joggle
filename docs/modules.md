@@ -68,6 +68,16 @@ It never runs a transform as a side effect. The caller selects an ordinary
 function with `joggle::run` or `joggle run`; this keeps module installation,
 function definition, and execution as three separate operations.
 
+Qualified calls resolve through the explicit and transitive `use` closure,
+while unqualified calls refer to functions in the current `Mod`. Merely loading
+another module into the same `Env` does not make its declarations visible;
+missing `use` edges are diagnosed. Resolution checks arity and structural
+types, infers generic arguments, and computes result types. It is independent
+of native binding: a declaration may define model semantics, a textual
+transform, or a native compile-time service. Unknown calls are preserved
+deliberately for frontend transport, but code that needs a declaration must
+load or invoke an explicit semantic bridge.
+
 The built-in `ir` module is the complete reflection boundary:
 
 | Function | Meaning |

@@ -411,6 +411,34 @@ Fn Env::find_fn(std::string_view symbol) const noexcept {
   return result;
 }
 
+Fn Env::resolve(const Mod& from, std::string_view symbol) const noexcept {
+  if (symbol.find('.') == std::string_view::npos)
+    return from.find_fn(symbol);
+  const std::string own_prefix = std::string(from.name()) + ".";
+  if (symbol.starts_with(own_prefix))
+    return from.find_fn(symbol.substr(own_prefix.size()));
+
+  const Fn candidate = find_fn(symbol);
+  if (!candidate)
+    return {};
+  std::vector<std::string> pending = from.uses();
+  std::set<std::string, std::less<>> visited;
+  while (!pending.empty()) {
+    std::string name = std::move(pending.back());
+    pending.pop_back();
+    if (!visited.insert(name).second)
+      continue;
+    if (name == candidate.module())
+      return candidate;
+    const auto dependency = impl_->modules.find(name);
+    if (dependency == impl_->modules.end())
+      continue;
+    const auto next = dependency->second->uses();
+    pending.insert(pending.end(), next.begin(), next.end());
+  }
+  return {};
+}
+
 bool Env::bound(std::string_view symbol) const noexcept {
   return impl_->natives.contains(symbol);
 }

@@ -174,3 +174,22 @@ or NN operator names. A test-only bridge applies the helper to the pinned
 MobileNetV2 import and replaces 36 Conv-BatchNormalization-ReLU chains with 36
 user-named calls, reducing those 108 calls to 36. The optimized 28.4 MB module
 then verifies, prints, reparses, and remains structurally equal.
+
+## M6 first slice
+
+`Ty` now preserves canonical text while exposing a recursive constructor tree.
+Known local and qualified calls are resolved against their module declaration;
+generic bindings are inferred structurally and substituted into result types.
+The verifier also propagates list element and region argument types to a fixed
+point, so compile-time traversal code is checked with the same mechanism as
+model code. Qualified resolution follows only explicit and transitive `use`
+edges, preventing unrelated modules already present in an `Env` from changing
+the meaning of a source file.
+
+The generic `sat.add<W>` declaration is the first module-defined parametric
+gate: inferred and explicit widths succeed, conflicting widths and wrong arity
+fail with located diagnostics, and no saturating-arithmetic case exists in the
+core. Language normalizations (`base.copy`, list construction, and indexing)
+retain only the minimal intrinsic rules needed to recover ordinary source
+bindings and iteration. Overload sets, named constructor declarations, and
+explicit unresolved-call state remain before the M6 exit gate.
