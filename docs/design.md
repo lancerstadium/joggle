@@ -492,15 +492,18 @@ This permits `nn.conv2d` to state one grouped NCHW computation as an ordinary
 function body. Its stride, padding, dilation, and group are values, while input,
 weight, and output dimensions are structural generics. The body uses the same
 loops, conditions, tensor indexing, and scalar operators as user code.
-`nn.global_avg_pool2d` uses the same representation for a spatial reduction.
-A test resolves output-only dimensions from an annotated convolution call,
-expands both bodies, verifies the resulting nested loops, and round-trips them.
+`nn.global_avg_pool2d`, `nn.batch_norm`, and `tensor.reshape` use the same
+representation for spatial reduction, channel normalization, and shape change.
+Only square root remains a named scalar primitive in the narrow `math` module.
+Tests expand each body, verify the resulting nested structure, and round-trip
+it.
 
 The optional `onnx.nn` module owns the frontend/library relationship. Its
 `infer` function propagates the supported MobileNetV2 shapes in graph order;
 its separately invoked `convert` function materializes Conv attributes as
-ordinary operands and maps Conv, ReLU, Add, and GlobalAveragePool to shared
-semantics. The codec remains name-agnostic, unknown calls remain open, and
-neither action happens on load. The official model gate requires every
-intermediate node result to become typed, all supported calls to convert and
-verify, and repeated inference and conversion to be textually unchanged.
+ordinary operands and maps Conv, BatchNormalization, ReLU, Add,
+GlobalAveragePool, and Reshape to shared semantics. The codec remains
+name-agnostic, unknown calls remain open, and neither action happens on load.
+The official model gate requires every intermediate node result to become
+typed, every compute node to leave the ONNX namespace, conversion to verify and
+round-trip, and repeated inference and conversion to be textually unchanged.

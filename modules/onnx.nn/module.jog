@@ -121,20 +121,62 @@ fn convert_conv(m: Mod, op: Op) -> bool {
   return ir.rename(m, op, "nn.conv2d")
 }
 
+fn convert_norm(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 5 || len(outputs) != 1 ||
+     name(ir.type(outputs[0])) != "tensor" {
+    return false
+  }
+  let meta = ir.meta(op, "onnx")
+  if base.get(meta, "spatial", 1) != 1 {
+    return false
+  }
+  inputs += [
+    ir.constant(m, op, base.get(meta, "epsilon", 0.00001), "f64")
+  ]
+  if !ir.args(m, op, inputs) {
+    return false
+  }
+  return ir.rename(m, op, "nn.batch_norm")
+}
+
+fn convert_reshape(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 1 ||
+     name(ir.type(inputs[0])) != "tensor" ||
+     name(ir.type(outputs[0])) != "tensor" {
+    return false
+  }
+  if !ir.args(m, op, [inputs[0]]) {
+    return false
+  }
+  return ir.rename(m, op, "tensor.reshape")
+}
+
 fn convert(m: Mod) -> bool {
   var changed = ir.use(m, "nn")
   for op in ir.ops(m) {
     if ir.callee(op) == "onnx.Conv" {
       changed = convert_conv(m, op) || changed
     } else {
-      if ir.callee(op) == "onnx.Relu" {
-        changed = ir.rename(m, op, "nn.relu") || changed
+      if ir.callee(op) == "onnx.BatchNormalization" {
+        changed = convert_norm(m, op) || changed
       } else {
-        if ir.callee(op) == "onnx.Add" {
-          changed = ir.rename(m, op, "operator +") || changed
+        if ir.callee(op) == "onnx.Relu" {
+          changed = ir.rename(m, op, "nn.relu") || changed
         } else {
-          if ir.callee(op) == "onnx.GlobalAveragePool" {
-            changed = ir.rename(m, op, "nn.global_avg_pool2d") || changed
+          if ir.callee(op) == "onnx.Add" {
+            changed = ir.rename(m, op, "operator +") || changed
+          } else {
+            if ir.callee(op) == "onnx.GlobalAveragePool" {
+              changed = ir.rename(m, op, "nn.global_avg_pool2d") || changed
+            } else {
+              if ir.callee(op) == "onnx.Reshape" {
+                changed = convert_reshape(m, op) || changed
+              }
+            }
           }
         }
       }

@@ -231,6 +231,67 @@ int main(int argc, char** argv) {
   CHECK(pool_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(pool_network, pool_roundtrip));
 
+  joggle::Mod norm_network;
+  constexpr std::string_view norm_network_source =
+      "module norm.network\n"
+      "use nn\n"
+      "fn main(\n"
+      "  x: tensor<f32, [1, 8, 4, 4]>,\n"
+      "  scale: tensor<f32, [8]>, bias: tensor<f32, [8]>,\n"
+      "  mean: tensor<f32, [8]>, variance: tensor<f32, [8]>, epsilon: f64\n"
+      ") -> tensor<f32, [1, 8, 4, 4]> {\n"
+      "  return nn.batch_norm(x, scale, bias, mean, variance, epsilon)\n"
+      "}\n";
+  CHECK(joggle::parse(env, norm_network_source, norm_network,
+                      "norm-network.jog"));
+  CHECK(norm_network.verify(env));
+  joggle::Op norm_call;
+  for (joggle::Op op : norm_network.ops())
+    if (op.callee() == "nn.batch_norm")
+      norm_call = op;
+  CHECK(norm_call);
+  const joggle::Fn norm_fn = env.resolve(norm_network, norm_call);
+  CHECK(norm_fn && norm_network.expand(norm_call, norm_fn));
+  CHECK(norm_network.verify(env));
+  std::size_t sqrt_calls = 0;
+  for (joggle::Op op : norm_network.ops()) {
+    CHECK(op.callee() != "nn.batch_norm");
+    sqrt_calls += op.callee() == "math.sqrt" ? 1 : 0;
+  }
+  CHECK(sqrt_calls == 1);
+  joggle::Mod norm_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(norm_network), norm_roundtrip,
+                      "norm-network-roundtrip.jog"));
+  CHECK(norm_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(norm_network, norm_roundtrip));
+
+  joggle::Mod reshape_network;
+  constexpr std::string_view reshape_network_source =
+      "module reshape.network\n"
+      "use tensor\n"
+      "fn main(x: tensor<f32, [1, 2, 3]>) -> tensor<f32, [1, 6]> {\n"
+      "  let y: tensor<f32, [1, 6]> = tensor.reshape(x)\n"
+      "  return y\n"
+      "}\n";
+  CHECK(joggle::parse(env, reshape_network_source, reshape_network,
+                      "reshape-network.jog"));
+  CHECK(reshape_network.verify(env));
+  joggle::Op reshape_call;
+  for (joggle::Op op : reshape_network.ops())
+    if (op.callee() == "tensor.reshape")
+      reshape_call = op;
+  CHECK(reshape_call);
+  const joggle::Fn reshape_fn = env.resolve(reshape_network, reshape_call);
+  CHECK(reshape_fn && reshape_network.expand(reshape_call, reshape_fn));
+  CHECK(reshape_network.verify(env));
+  for (joggle::Op op : reshape_network.ops())
+    CHECK(op.callee() != "tensor.reshape");
+  joggle::Mod reshape_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(reshape_network), reshape_roundtrip,
+                      "reshape-network-roundtrip.jog"));
+  CHECK(reshape_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(reshape_network, reshape_roundtrip));
+
   joggle::Mod linear_network;
   constexpr std::string_view linear_network_source =
       "module linear.network\n"

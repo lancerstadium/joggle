@@ -1,0 +1,4 @@
+module math
+use base
+
+fn sqrt<T: Ty>(x: T) -> T;

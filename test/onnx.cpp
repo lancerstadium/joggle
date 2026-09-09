@@ -163,22 +163,35 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "onnx.nn.infer", semantic));
   CHECK(joggle::print(semantic) == typed_text);
   const std::size_t network_convs = count_calls(semantic, "onnx.Conv");
+  const std::size_t network_norms =
+      count_calls(semantic, "onnx.BatchNormalization");
   const std::size_t network_relus = count_calls(semantic, "onnx.Relu");
   const std::size_t network_adds = count_calls(semantic, "onnx.Add");
   const std::size_t network_pools =
       count_calls(semantic, "onnx.GlobalAveragePool");
-  CHECK(network_convs > 0 && network_relus > 0 && network_adds > 0 &&
-        network_pools > 0);
+  const std::size_t network_reshapes = count_calls(semantic, "onnx.Reshape");
+  CHECK(network_convs > 0 && network_norms > 0 && network_relus > 0 &&
+        network_adds > 0 && network_pools > 0 && network_reshapes > 0);
   CHECK(joggle::run(env, "onnx.nn.convert", semantic));
   CHECK(semantic.verify(env));
   CHECK(count_calls(semantic, "onnx.Conv") == 0);
+  CHECK(count_calls(semantic, "onnx.BatchNormalization") == 0);
   CHECK(count_calls(semantic, "onnx.Relu") == 0);
   CHECK(count_calls(semantic, "onnx.Add") == 0);
   CHECK(count_calls(semantic, "onnx.GlobalAveragePool") == 0);
+  CHECK(count_calls(semantic, "onnx.Reshape") == 0);
   CHECK(count_calls(semantic, "nn.conv2d") == network_convs);
+  CHECK(count_calls(semantic, "nn.batch_norm") == network_norms);
   CHECK(count_calls(semantic, "nn.relu") == network_relus);
   CHECK(count_calls(semantic, "operator +") == network_adds);
   CHECK(count_calls(semantic, "nn.global_avg_pool2d") == network_pools);
+  CHECK(count_calls(semantic, "tensor.reshape") == network_reshapes);
+  std::size_t remaining_nodes = 0;
+  for (joggle::Op op : semantic.ops())
+    if (op.callee().starts_with("onnx.") &&
+        op.callee() != "onnx.model" && op.callee() != "onnx.tensor")
+      ++remaining_nodes;
+  CHECK(remaining_nodes == 0);
   const std::string semantic_text = joggle::print(semantic);
   CHECK(joggle::run(env, "onnx.nn.convert", semantic));
   CHECK(joggle::print(semantic) == semantic_text);

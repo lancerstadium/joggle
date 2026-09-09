@@ -1,5 +1,6 @@
 module nn
 use tensor
+use math
 
 fn conv2d<
   E: Ty,
@@ -49,6 +50,22 @@ fn global_avg_pool2d<
       sum += x[n, c, h, w]
     }
     out[n, c, 0, 0] = sum / E(H * W)
+  }
+  return out
+}
+
+fn batch_norm<E: Ty, N: int, C: int, H: int, W: int>(
+  x: tensor<E, [N, C, H, W]>,
+  scale: tensor<E, [C]>,
+  bias: tensor<E, [C]>,
+  mean: tensor<E, [C]>,
+  variance: tensor<E, [C]>,
+  epsilon: f64
+) -> tensor<E, [N, C, H, W]> {
+  var out = tensor<E, [N, C, H, W]>(E(0))
+  for n in 0..N, c in 0..C, h in 0..H, w in 0..W {
+    out[n, c, h, w] = (x[n, c, h, w] - mean[c]) /
+                      math.sqrt(variance[c] + E(epsilon)) * scale[c] + bias[c]
   }
   return out
 }

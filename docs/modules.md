@@ -49,10 +49,10 @@ and `bytes`; embedded zero bytes are preserved.
 
 The standard modules are deliberately narrow. `base` declares scalar/list/dict
 fundamentals, `ir` is universal reflection and editing, `opt` contains reusable
-textual transforms, `tensor` defines storage-neutral tensor computation, and
-`nn` contains network semantics. The optional `onnx` module only transports a
-binary model. MLIR, JIT, simulation, hardware description, and target
-experiments remain removable modules.
+textual transforms, `math` names scalar math primitives, `tensor` defines
+storage-neutral tensor computation, and `nn` contains network semantics. The
+optional `onnx` module only transports a binary model. MLIR, JIT, simulation,
+hardware description, and target experiments remain removable modules.
 
 Version 0.1 searches explicit local paths. Installation means placing or
 linking a directory on one of those paths; removal means taking it off the path.
@@ -145,7 +145,10 @@ condition over the same tensor primitives. `nn.conv2d` defines grouped NCHW
 convolution with explicit stride, padding, dilation, and group values; output
 dimensions that occur only in its result are inferred from the call's result
 annotation. `nn.global_avg_pool2d` reduces each spatial plane with ordinary
-loops and scalar arithmetic. Transforms can therefore keep a network call
+loops and scalar arithmetic. `nn.batch_norm` exposes inference-time channel
+normalization down to scalar algebra and the single `math.sqrt` primitive;
+`tensor.reshape` is a linear element copy whose result shape comes from the
+annotated call. Transforms can therefore keep a network call
 abstract or expose one function body at a time using the same
 `Fn/Blk/Op/Val` representation.
 
@@ -169,10 +172,12 @@ The optional `onnx.nn` module is that relationship, not another IR layer.
 `onnx.nn.infer` walks operations in source order and propagates 4-D tensor
 types through Conv, BatchNormalization, ReLU, Add, and GlobalAveragePool.
 Unsupported ranks and `auto_pad` are left unchanged rather than guessed.
-`onnx.nn.convert` then maps supported Conv, ReLU, Add, and GlobalAveragePool
-calls, materializing Conv attributes as ordinary operands. It does not run
-inference implicitly, does not alter the codec, and leaves all other calls
-untouched.
+`onnx.nn.convert` then maps Conv, BatchNormalization, ReLU, Add,
+GlobalAveragePool, and Reshape calls, materializing schema attributes as
+ordinary operands and removing the schema-only Reshape shape input. It does
+not run inference implicitly and does not alter the codec. On the pinned
+MobileNetV2 this covers every compute node; unsupported calls in other models
+remain untouched.
 
 `ir.call` inserts an arbitrary call immediately before an existing operation.
 A `str` result-type argument returns the single `Val` convenience form; a

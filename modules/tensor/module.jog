@@ -54,6 +54,16 @@ fn numel<S: list<int>>() -> int {
   return size
 }
 
+fn reshape<E: Ty, S: list<int>, T: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, T> {
+  var out = tensor<E, T>(E(0))
+  for i in 0..numel<T>() {
+    out[i] = x[i]
+  }
+  return out
+}
+
 fn +<E: Ty, S: list<int>>(
   a: tensor<E, S>, b: tensor<E, S>
 ) -> tensor<E, S> {
