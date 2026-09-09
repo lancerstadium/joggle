@@ -229,6 +229,14 @@ yielded update, or the structure result renames the whole chain atomically.
 Calling it on a loop iterator also updates the loop header. This makes generic
 block traversal safe to edit without exposing the printer's bookkeeping.
 
+Function bodies are exposed by an explicit edit, never by loading a module.
+`ir.resolve(m, op)` applies normal import, qualification, overload, and generic
+resolution to a call. `ir.expand(m, op, fn)` substitutes the selected ordinary
+function body at that call, remaps its parameters and nested control flow, and
+preserves the caller's visible result bindings. The edit is atomic; a missing
+body, signature mismatch, unrepresentable compile-time argument, or metadata
+whose policy has not been chosen leaves the module unchanged.
+
 Generic compile-time helpers use the same syntax and bindings. In
 `fn below<N: int>(x: int) -> bool { return x < N }`, a call to `below<4>(3)`
 binds the generic `Val` `N` to the integer `4` in the function frame. `Ty` and

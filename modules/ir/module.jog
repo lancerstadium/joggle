@@ -20,6 +20,7 @@ fn live(v: Val) -> bool;
 fn kind(op: Op) -> str;
 fn callee(op: Op) -> str;
 fn type(v: Val) -> str;
+fn resolve(m: Mod, op: Op) -> Fn;
 fn has(f: Fn, key: str) -> bool;
 fn has(op: Op, key: str) -> bool;
 fn meta(f: Fn) -> Attr;
@@ -38,6 +39,7 @@ fn branch(
   m: Mod, before: Op, condition: Val, carried: list<Val>
 ) -> Op;
 fn clone(m: Mod, op: Op, before: Op) -> Op;
+fn expand(m: Mod, call: Op, callee: Fn) -> bool;
 fn move(m: Mod, op: Op, before: Op) -> bool;
 fn args(m: Mod, op: Op, values: list<Val>) -> bool;
 fn fuse(m: Mod, ops: list<Op>, callee: str) -> bool;

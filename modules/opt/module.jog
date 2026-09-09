@@ -143,6 +143,25 @@ fn count(m: Mod, callee: str) -> int {
   return total
 }
 
+fn expand(m: Mod, callees: list<str>) -> bool {
+  var changed = false
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" {
+      var selected = false
+      for callee in callees {
+        if !selected {
+          if ir.callee(op) == callee {
+            selected = true
+            let fn = ir.resolve(m, op)
+            changed = ir.expand(m, op, fn) || changed
+          }
+        }
+      }
+    }
+  }
+  return changed
+}
+
 fn fuse(m: Mod, pattern: list<str>, replacement: str) -> bool {
   var changed = false
   if len(pattern) > 1 {

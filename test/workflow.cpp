@@ -105,6 +105,157 @@ int main(int argc, char** argv) {
                       "network-roundtrip.jog"));
   CHECK(network_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(network, network_roundtrip));
+  joggle::Mod network_cpp;
+  CHECK(joggle::parse(env, network_source, network_cpp, "network-cpp.jog"));
+  for (joggle::Op op : network_cpp.ops()) {
+    if (op.kind() != joggle::Op::Kind::call)
+      continue;
+    if (op.callee() != "operator +" && op.callee() != "nn.relu")
+      continue;
+    const joggle::Fn callee = env.resolve(network_cpp, op);
+    CHECK(callee && network_cpp.expand(op, callee));
+  }
+  CHECK(network_cpp.verify(env));
+  CHECK(env.load("script"));
+  CHECK(joggle::run(env, "script.expand_network", network));
+  CHECK(network.verify(env));
+  bool expanded_loop = false;
+  bool expanded_branch = false;
+  for (joggle::Op op : network.find_fn("block").ops()) {
+    CHECK(op.callee() != "nn.relu");
+    expanded_loop = expanded_loop || op.kind() == joggle::Op::Kind::loop;
+    expanded_branch =
+        expanded_branch || op.kind() == joggle::Op::Kind::branch;
+  }
+  CHECK(expanded_loop && expanded_branch);
+  joggle::Mod expanded_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(network), expanded_roundtrip,
+                      "expanded-roundtrip.jog"));
+  CHECK(expanded_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(network, expanded_roundtrip));
+  CHECK(joggle::structurally_equal(network, network_cpp));
+
+  joggle::Mod generic_matmul;
+  constexpr std::string_view generic_matmul_source =
+      "module generic.matmul\n"
+      "use tensor\n"
+      "fn main(a: tensor<f32, [2, 3]>, b: tensor<f32, [3, 4]>) "
+      "-> tensor<f32, [2, 4]> {\n"
+      "  return tensor.matmul(a, b)\n}\n";
+  CHECK(joggle::parse(env, generic_matmul_source, generic_matmul,
+                      "generic-matmul.jog"));
+  joggle::Op matmul_call;
+  for (joggle::Op op : generic_matmul.ops())
+    if (op.callee() == "tensor.matmul")
+      matmul_call = op;
+  CHECK(matmul_call);
+  const joggle::Fn matmul_fn = env.resolve(generic_matmul, matmul_call);
+  CHECK(matmul_fn && generic_matmul.expand(matmul_call, matmul_fn));
+  CHECK(generic_matmul.verify(env));
+  std::size_t matmul_loops = 0;
+  for (joggle::Op op : generic_matmul.ops()) {
+    CHECK(op.callee() != "tensor.matmul");
+    matmul_loops += op.kind() == joggle::Op::Kind::loop ? 1 : 0;
+  }
+  CHECK(matmul_loops == 2);
+  joggle::Mod generic_matmul_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(generic_matmul),
+                      generic_matmul_roundtrip,
+                      "generic-matmul-roundtrip.jog"));
+  CHECK(generic_matmul_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(generic_matmul,
+                                   generic_matmul_roundtrip));
+
+  joggle::Mod linear_network;
+  constexpr std::string_view linear_network_source =
+      "module linear.network\n"
+      "use nn\n"
+      "fn block(\n"
+      "  x: tensor<f32, [2, 3]>,\n"
+      "  weight: tensor<f32, [3, 4]>,\n"
+      "  bias: tensor<f32, [4]>\n"
+      ") -> tensor<f32, [2, 4]> {\n"
+      "  return nn.relu(nn.linear(x, weight, bias))\n}\n";
+  CHECK(joggle::parse(env, linear_network_source, linear_network,
+                      "linear-network.jog"));
+  CHECK(linear_network.verify(env));
+  for (joggle::Op op : linear_network.ops()) {
+    if (op.callee() != "nn.linear" && op.callee() != "nn.relu")
+      continue;
+    const joggle::Fn callee = env.resolve(linear_network, op);
+    CHECK(callee && linear_network.expand(op, callee));
+  }
+  CHECK(linear_network.verify(env));
+  joggle::Op exposed_matmul;
+  for (joggle::Op op : linear_network.ops()) {
+    CHECK(op.callee() != "nn.linear" && op.callee() != "nn.relu");
+    if (op.callee() == "tensor.matmul")
+      exposed_matmul = op;
+  }
+  CHECK(exposed_matmul);
+  const joggle::Fn exposed_matmul_fn =
+      env.resolve(linear_network, exposed_matmul);
+  CHECK(exposed_matmul_fn &&
+        linear_network.expand(exposed_matmul, exposed_matmul_fn));
+  CHECK(linear_network.verify(env));
+  for (joggle::Op op : linear_network.ops())
+    CHECK(op.callee() != "tensor.matmul");
+  joggle::Mod linear_network_roundtrip;
+  const std::string linear_network_text = joggle::print(linear_network);
+  CHECK(joggle::parse(env, linear_network_text,
+                      linear_network_roundtrip,
+                      "linear-network-roundtrip.jog"));
+  CHECK(linear_network_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(linear_network,
+                                   linear_network_roundtrip));
+
+  joggle::Mod local_expand;
+  constexpr std::string_view local_expand_source =
+      "module local.expand\n"
+      "fn pair(x: i32) -> (i32, i32) {\n"
+      "  return x, x + 1\n}\n"
+      "fn main(x: i32) -> i32 {\n"
+      "  let first, second = pair(x)\n"
+      "  return first + second\n}\n";
+  CHECK(joggle::parse(env, local_expand_source, local_expand,
+                      "local-expand.jog"));
+  CHECK(local_expand.verify(env));
+  joggle::Op pair_call;
+  for (joggle::Op op : local_expand.find_fn("main").ops())
+    if (op.callee() == "pair")
+      pair_call = op;
+  const joggle::Fn pair_fn = env.resolve(local_expand, pair_call);
+  CHECK(pair_call && pair_fn && local_expand.expand(pair_call, pair_fn));
+  CHECK(local_expand.verify(env));
+  CHECK(joggle::print(local_expand).find("pair(x)") == std::string::npos);
+  joggle::Mod local_expand_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(local_expand),
+                      local_expand_roundtrip, "local-expand-roundtrip.jog"));
+  CHECK(local_expand_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(local_expand, local_expand_roundtrip));
+
+  joggle::Mod rejected_expand;
+  constexpr std::string_view rejected_expand_source =
+      "module rejected.expand\n"
+      "use nn\n"
+      "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
+      "  [keep]\n"
+      "  let y = nn.relu(x)\n"
+      "  return y\n}\n";
+  CHECK(joggle::parse(env, rejected_expand_source, rejected_expand,
+                      "rejected-expand.jog"));
+  joggle::Op rejected_relu;
+  for (joggle::Op op : rejected_expand.ops())
+    if (op.callee() == "nn.relu")
+      rejected_relu = op;
+  CHECK(rejected_relu && rejected_relu.meta("keep"));
+  const std::string rejected_text = joggle::print(rejected_expand);
+  const std::uint64_t rejected_revision = rejected_expand.revision();
+  CHECK(!rejected_expand.expand(rejected_relu, relu));
+  CHECK(joggle::print(rejected_expand) == rejected_text);
+  CHECK(rejected_expand.revision() == rejected_revision);
+  rejected_expand.clear_diags();
+  CHECK(rejected_expand.verify(env));
 
   joggle::Mod precedence;
   constexpr std::string_view precedence_source =

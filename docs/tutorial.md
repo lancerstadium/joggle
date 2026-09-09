@@ -64,9 +64,24 @@ fn block(x: tensor<f32, [4]>, skip: tensor<f32, [4]>)
 
 The tensor-specific `+` wins over the generic base overload by structural
 specificity. Its body is a linear element loop; `nn.relu` is another loop with
-a condition. Loading the functions does not inline or lower them. A selected
-transform can preserve the calls, inspect the bodies, or replace them with
-target functions using the same IR editing API.
+a condition. Loading the functions does not expand them. A project chooses
+the level it wants with an ordinary transform:
+
+```jog
+module expose
+use opt
+
+fn network(m: Mod) -> bool {
+  return opt.expand(m, ["operator +", "nn.relu"])
+}
+```
+
+Running `expose.network` replaces only those two calls by their resolved
+bodies. A later invocation can expose `tensor.matmul`, while an experiment
+that maps the abstract call directly to a target primitive can leave it
+untouched. Body expansion is generic: the core contains no tensor or NN name,
+and C++ can perform the same edit with `env.resolve(mod, op)` followed by
+`mod.expand(op, fn)`.
 
 Frontend attributes are structural dictionaries. A bridge can use
 `has(attrs, key)`, strict `attrs[key]`, `get(attrs, key, fallback)`, and

@@ -972,6 +972,14 @@ private:
     } else if (name == "type" && args.size() == 1) {
       if (const auto* value = as<Val>(args[0]))
         return Items{Item(Attr(std::string(value->type().text())))};
+    } else if (name == "resolve" && args.size() == 2) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* op = as<Op>(args[1]);
+      if (mod && *mod && op) {
+        const Fn target = env_.resolve(**mod, *op);
+        if (target)
+          return Items{Item(target)};
+      }
     } else if (name == "meta" && args.size() == 1) {
       if (const auto* fn = as<Fn>(args[0]); fn && *fn)
         return Items{Item(Attr(fn->meta()))};
@@ -1082,6 +1090,12 @@ private:
         if (result)
           return Items{Item(result)};
       }
+    } else if (name == "expand" && args.size() == 3) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* op = as<Op>(args[1]);
+      const auto* fn = as<Fn>(args[2]);
+      if (mod && *mod && op && fn)
+        return Items{Item(Attr((*mod)->expand(*op, *fn)))};
     } else if (name == "move" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* op = as<Op>(args[1]);

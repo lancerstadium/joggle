@@ -33,9 +33,12 @@ The core contains no ONNX, device, instruction-set, runtime, or code-generation
 policy; those capabilities belong in removable modules.
 The optional ONNX transport preserves typed intermediate values and native
 multi-result/multi-output structure without defining any ONNX operator in core.
-The standard `tensor` and `nn` modules now contain inspectable loop/condition
-bodies for basic tensor algebra and ReLU, while `base` dictionary access lets
-ordinary bridge functions interpret frontend attributes.
+The standard `tensor` and `nn` modules contain inspectable bodies for tensor
+algebra, linear layers, and ReLU. A generic body-expansion edit can expose a
+selected network call as tensor calls and later expose those calls as loops;
+it resolves ordinary overloads and has no NN-operator switch. `base`
+dictionary access lets ordinary bridge functions interpret frontend
+attributes.
 
 ## Build
 

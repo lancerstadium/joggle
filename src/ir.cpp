@@ -1,6 +1,7 @@
 #include "detail.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cctype>
 #include <unordered_map>
 #include <unordered_set>
@@ -124,6 +125,34 @@ void touch(detail::Store& store) {
   if (store.revision != std::numeric_limits<std::uint64_t>::max())
     ++store.revision;
   store.queries.clear();
+}
+
+using Bindings = std::unordered_map<std::string, Ty>;
+
+Ty substitute(const Ty& type, const Bindings& bindings) {
+  if (type.args().empty()) {
+    const auto found = bindings.find(std::string(type.name()));
+    return found == bindings.end() ? type : found->second;
+  }
+  std::string text =
+      type.name() == "[]" ? "[" : std::string(type.name()) + '<';
+  for (std::size_t index = 0; index < type.args().size(); ++index) {
+    if (index)
+      text += ", ";
+    text += substitute(type.args()[index], bindings).text();
+  }
+  text += type.name() == "[]" ? ']' : '>';
+  return Ty(std::move(text));
+}
+
+std::optional<std::int64_t> integer(const Ty& value) {
+  const std::string_view text = value.text();
+  std::int64_t result = 0;
+  const auto parsed =
+      std::from_chars(text.data(), text.data() + text.size(), result);
+  return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size()
+             ? std::optional<std::int64_t>(result)
+             : std::nullopt;
 }
 
 }  // namespace
@@ -904,6 +933,297 @@ Op Mod::clone(Op source, Op before) {
   detail::rebuild_uses(store);
   touch(store);
   return Op(&store, cloned_id, store.ops[cloned_id].generation);
+}
+
+bool Mod::expand(Op call, Fn callee) {
+  auto& store = impl_->store;
+  if (!call.valid() || call.store_ != &store ||
+      call.kind() != Op::Kind::call) {
+    detail::add_diag(store.diags,
+                     "expand requires a live call in this module");
+    return false;
+  }
+  if (!callee.valid() || callee.external() || !callee.body()) {
+    detail::add_diag(store.diags,
+                     "expand requires a function with a body", call.loc());
+    return false;
+  }
+  if (!call.meta().empty()) {
+    detail::add_diag(store.diags,
+                     "expand requires call metadata to be handled explicitly",
+                     call.loc());
+    return false;
+  }
+
+  detail::Store backup = store;
+  const auto reject = [&](std::string message, Loc loc = {}) {
+    store = backup;
+    detail::add_diag(store.diags, std::move(message), std::move(loc));
+    return false;
+  };
+  const Ty applied{std::string(call.callee())};
+  const std::string_view symbol =
+      applied.args().empty() ? call.callee() : applied.name();
+  const std::string qualified =
+      std::string(callee.module()) + "." + std::string(callee.name());
+  if (symbol != callee.name() && symbol != qualified)
+    return reject("expanded function does not match the call", call.loc());
+
+  std::vector<Ty> arguments;
+  for (Val value : call.args())
+    arguments.push_back(value.type());
+  const std::vector<Ty> explicit_arguments =
+      applied.args().empty() ? std::vector<Ty>{} : applied.args();
+  const std::vector<Fn> candidates{callee};
+  const std::vector<Val> context = call.block().fn().generics();
+  std::vector<Ty> result_types;
+  std::vector<Ty> generic_values;
+  if (!detail::resolve_overload(candidates, arguments, explicit_arguments,
+                                &result_types, nullptr, context,
+                                &generic_values))
+    return reject("call arguments do not match the expanded function",
+                  call.loc());
+  const std::vector<Val> params = callee.params();
+  const std::vector<Val> generics = callee.generics();
+  const std::vector<Val> call_args = call.args();
+  const std::vector<Val> call_outs = call.outs();
+  if (params.size() != call_args.size() ||
+      result_types.size() != call_outs.size() ||
+      generics.size() != generic_values.size())
+    return reject("expanded function signature is inconsistent", call.loc());
+
+  Bindings bindings;
+  std::unordered_map<std::uint32_t, std::uint32_t> values;
+  for (std::size_t index = 0; index < params.size(); ++index)
+    values.emplace(params[index].id_, call_args[index].id_);
+  for (std::size_t index = 0; index < generics.size(); ++index)
+    bindings.emplace(std::string(generics[index].name()),
+                     generic_values[index]);
+
+  for (std::size_t index = 0; index < generics.size(); ++index) {
+    const Val generic = generics[index];
+    if (generic.users().empty())
+      continue;
+    const Ty value = generic_values[index];
+    bool mapped = false;
+    for (Val outer : context) {
+      if (value.args().empty() && value.name() == outer.name()) {
+        values.emplace(generic.id_, outer.id_);
+        mapped = true;
+        break;
+      }
+    }
+    if (mapped)
+      continue;
+    if (generic.type().name() == "int") {
+      const auto number = integer(value);
+      if (!number)
+        return reject("cannot materialize an expanded integer parameter",
+                      call.loc());
+      const Val constant = this->constant(call, Attr(*number), Ty("int"));
+      if (!constant)
+        return reject("cannot materialize an expanded integer parameter",
+                      call.loc());
+      values.emplace(generic.id_, constant.id_);
+      continue;
+    }
+    if (generic.type().name() == "list" && value.name() == "[]") {
+      std::vector<Val> items;
+      for (const Ty& item : value.args()) {
+        const auto number = integer(item);
+        if (!number)
+          return reject("cannot materialize an expanded list parameter",
+                        call.loc());
+        const Val constant = this->constant(call, Attr(*number), Ty("int"));
+        if (!constant)
+          return reject("cannot materialize an expanded list parameter",
+                        call.loc());
+        items.push_back(constant);
+      }
+      const Val list = this->call(call, "base.list", items, generic.type());
+      if (!list)
+        return reject("cannot materialize an expanded list parameter",
+                      call.loc());
+      values.emplace(generic.id_, list.id_);
+      continue;
+    }
+    return reject("expanded generic parameter is not representable as a value",
+                  call.loc());
+  }
+
+  const detail::Store& source = *callee.store_;
+  const std::uint32_t destination = call.block().id_;
+  const std::uint32_t owner = store.blks[destination].data.fn;
+  std::unordered_set<std::string> used_names;
+  for (const auto& slot : store.vals)
+    if (slot.live && !slot.data.name.empty())
+      used_names.insert(slot.data.name);
+  std::unordered_map<std::string, std::string> copied_names;
+  const auto copy_name = [&](std::string_view source_name) {
+    if (source_name.empty())
+      return std::string{};
+    const auto found = copied_names.find(std::string(source_name));
+    if (found != copied_names.end())
+      return found->second;
+    std::string candidate(source_name);
+    for (std::size_t suffix = 1; used_names.contains(candidate); ++suffix)
+      candidate = std::string(source_name) + '_' + std::to_string(suffix);
+    used_names.insert(candidate);
+    copied_names.emplace(std::string(source_name), candidate);
+    return candidate;
+  };
+
+  bool failed = false;
+  const auto copy_op = [&](const auto& self, std::uint32_t old_id,
+                           std::uint32_t block) -> std::uint32_t {
+    const detail::OpData old = source.ops[old_id].data;
+    detail::OpData next = old;
+    next.block = block;
+    next.args.clear();
+    next.outs.clear();
+    next.blks.clear();
+    if (next.kind == Op::Kind::call) {
+      const Ty spelling(next.callee);
+      if (spelling.valid())
+        next.callee = std::string(substitute(spelling, bindings).text());
+    }
+    for (const std::uint32_t arg : old.args) {
+      const auto mapped = values.find(arg);
+      if (mapped == values.end()) {
+        failed = true;
+        return detail::none;
+      }
+      next.args.push_back(mapped->second);
+    }
+    const auto next_id = static_cast<std::uint32_t>(store.ops.size());
+    store.ops.push_back({std::move(next), 1, true});
+    store.blks[block].data.ops.push_back(next_id);
+
+    for (const std::uint32_t old_value : old.outs) {
+      detail::ValData value = source.vals[old_value].data;
+      value.name = copy_name(value.name);
+      value.type = substitute(value.type, bindings);
+      value.def = next_id;
+      value.index = store.ops[next_id].data.outs.size();
+      value.users.clear();
+      const auto value_id = static_cast<std::uint32_t>(store.vals.size());
+      store.vals.push_back({std::move(value), 1, true});
+      store.ops[next_id].data.outs.push_back(value_id);
+      values.emplace(old_value, value_id);
+    }
+
+    for (const std::uint32_t old_block : old.blks) {
+      detail::BlkData body;
+      body.fn = owner;
+      body.parent_op = next_id;
+      const auto body_id = static_cast<std::uint32_t>(store.blks.size());
+      store.blks.push_back({std::move(body), 1, true});
+      store.fns[owner].data.blks.push_back(body_id);
+      store.ops[next_id].data.blks.push_back(body_id);
+      const std::vector<std::uint32_t> old_args =
+          source.blks[old_block].data.args;
+      const std::vector<std::uint32_t> old_ops =
+          source.blks[old_block].data.ops;
+      for (std::size_t index = 0; index < old_args.size(); ++index) {
+        const std::uint32_t old_arg = old_args[index];
+        detail::ValData value = source.vals[old_arg].data;
+        value.name = copy_name(value.name);
+        value.type = substitute(value.type, bindings);
+        value.users.clear();
+        const auto value_id = static_cast<std::uint32_t>(store.vals.size());
+        store.vals.push_back({std::move(value), 1, true});
+        store.blks[body_id].data.args.push_back(value_id);
+        values.emplace(old_arg, value_id);
+        if (store.ops[next_id].data.kind == Op::Kind::loop &&
+            index < store.ops[next_id].data.iter_names.size())
+          store.ops[next_id].data.iter_names[index] =
+              store.vals[value_id].data.name;
+      }
+      for (const std::uint32_t child : old_ops) {
+        self(self, child, body_id);
+        if (failed)
+          return detail::none;
+      }
+    }
+    return next_id;
+  };
+
+  const std::vector<Op> body = callee.body().ops();
+  if (body.empty() || body.back().kind() != Op::Kind::ret)
+    return reject("expanded function has no final return", callee.loc());
+  std::vector<std::uint32_t> roots;
+  for (std::size_t index = 0; index + 1 < body.size(); ++index) {
+    if (body[index].kind() == Op::Kind::ret)
+      return reject("expanded function has an early return", body[index].loc());
+    roots.push_back(copy_op(copy_op, body[index].id_, destination));
+    if (failed)
+      return reject("expanded function contains an unmapped value",
+                    body[index].loc());
+  }
+
+  const std::vector<Val> returned = body.back().args();
+  if (returned.size() != call_outs.size())
+    return reject("expanded return count does not match the call", call.loc());
+  std::vector<std::uint32_t> replacements;
+  replacements.reserve(returned.size());
+  for (std::size_t index = 0; index < returned.size(); ++index) {
+    const auto mapped = values.find(returned[index].id_);
+    if (mapped == values.end())
+      return reject("expanded return value is not available", call.loc());
+    const Ty& old_type = store.vals[call_outs[index].id_].data.type;
+    const Ty& new_type = store.vals[mapped->second].data.type;
+    if (old_type.text() != "_" && new_type.text() != "_" &&
+        old_type != new_type)
+      return reject("expanded return type does not match the call", call.loc());
+    replacements.push_back(mapped->second);
+  }
+
+  auto& order = store.blks[destination].data.ops;
+  for (const std::uint32_t root : roots)
+    order.erase(std::remove(order.begin(), order.end(), root), order.end());
+  const auto position = std::find(order.begin(), order.end(), call.id_);
+  if (position == order.end())
+    return reject("expanded call is not in its block", call.loc());
+  order.insert(position, roots.begin(), roots.end());
+  for (auto& slot : store.ops) {
+    if (!slot.live)
+      continue;
+    for (std::uint32_t& arg : slot.data.args) {
+      for (std::size_t index = 0; index < call_outs.size(); ++index)
+        if (arg == call_outs[index].id_)
+          arg = replacements[index];
+    }
+  }
+  detail::rebuild_uses(store);
+  for (std::size_t index = 0; index < call_outs.size(); ++index) {
+    const std::string name = store.vals[call_outs[index].id_].data.name;
+    if (name.empty())
+      continue;
+    Val replacement(&store, replacements[index],
+                    store.vals[replacements[index]].generation);
+    if (!rename(replacement, name))
+      return reject("expanded result cannot preserve its binding",
+                    call.loc());
+  }
+  order.erase(std::remove(order.begin(), order.end(), call.id_), order.end());
+  for (Val output : call_outs) {
+    store.vals[output.id_].live = false;
+    ++store.vals[output.id_].generation;
+  }
+  store.ops[call.id_].live = false;
+  ++store.ops[call.id_].generation;
+  detail::rebuild_uses(store);
+  for (std::uint32_t id = 0; id < store.ops.size(); ++id) {
+    if (!store.ops[id].live)
+      continue;
+    for (const std::uint32_t arg : store.ops[id].data.args)
+      if (!detail::dominates(store, arg, id))
+        return reject("expanded body violates value dominance",
+                      store.ops[id].data.loc);
+  }
+  store.revision = backup.revision;
+  touch(store);
+  return true;
 }
 
 bool Mod::move(Op op, Op before) {

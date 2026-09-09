@@ -391,11 +391,11 @@ single-output.
 
 The first reusable network library remains deliberately small but is no longer
 declaration-only. `tensor` supplies storage-neutral indexing, shape-product,
-elementwise addition, and matrix multiplication; `nn.relu` is defined through
-those primitives. Their `.jog` bodies lower abstraction by ordinary function
-structure—calls, loops, conditions, and value updates—so a later transform can
-inspect or replace any level without switching IRs or asking core what a neural
-operator means.
+elementwise addition, and matrix multiplication; `nn.linear` and `nn.relu` are
+defined through those primitives. Their `.jog` bodies lower abstraction by
+ordinary function structure—calls, loops, conditions, and value updates—so a
+later transform can inspect or replace any level without switching IRs or
+asking core what a neural operator means.
 
 Frontend bridges also need to read schema attributes. Deterministic list/dict
 operations now live in `base`: `len`, `keys`, `has`, `get`, and overloaded
@@ -404,3 +404,23 @@ normal function to interpret ONNX or TFLite attributes without per-frontend
 core hooks. The same change generalizes compound assignment and makes all
 explicitly imported overloads participate together, which is required for a
 specialized tensor/format overload to reuse base scalar algebra in its body.
+
+## M10 body-expansion slice
+
+The bridge between abstraction levels is an explicit function-body edit.
+`Env::resolve(mod, op)` applies the same import, qualification, overload, and
+generic rules as verification. `Mod::expand(op, fn)` substitutes that ordinary
+body at the call, remaps nested control flow and dataflow, specializes type and
+shape parameters, and preserves visible result bindings. The textual surface
+is the ordinary pair `ir.resolve` and `ir.expand`.
+
+`opt.expand` adds only caller-selected policy: it exposes one level of the
+named callees from a traversal snapshot. It does not recursively expand calls
+created during the same invocation. A network may therefore expose
+`nn.linear` into a `tensor.matmul` plus bias loop, optimize at that boundary,
+then expose `tensor.matmul` into explicit nested loops in a later step.
+
+The workflow gate requires C++ and `.jog` selection to create structurally
+identical IR, concrete `M/N/K` specialization to round-trip through text, and
+rejected metadata-bearing expansion to leave both bytes and revision intact.
+No operator, frontend, target, or schedule name appears in the core mechanism.

@@ -1,6 +1,24 @@
 module nn
 use tensor
 
+fn linear<E: Ty, M: int, N: int, K: int>(
+  x: tensor<E, [M, K]>, weight: tensor<E, [K, N]>
+) -> tensor<E, [M, N]> {
+  return tensor.matmul(x, weight)
+}
+
+fn linear<E: Ty, M: int, N: int, K: int>(
+  x: tensor<E, [M, K]>,
+  weight: tensor<E, [K, N]>,
+  bias: tensor<E, [N]>
+) -> tensor<E, [M, N]> {
+  var out = tensor.matmul(x, weight)
+  for i in 0..M, j in 0..N {
+    out[i, j] = out[i, j] + bias[j]
+  }
+  return out
+}
+
 fn relu<E: Ty, S: list<int>>(
   x: tensor<E, S>
 ) -> tensor<E, S> {

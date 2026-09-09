@@ -103,10 +103,11 @@ The built-in `ir` module is the complete reflection boundary:
 | `fns`, `params`, `blks`, `ops` | Traverse function and structural ownership. |
 | `args`, `outs`, `users` | Read operation dataflow. |
 | `live`, `block`, `kind`, `callee`, `type` | Query handle state and structure. |
+| `resolve` | Resolve a call to its visible function declaration. |
 | `is_const`, `constant` | Query constant IR values. |
 | `has`, `meta` | Query open function or operation attributes. |
 | `call`, `constant`, `loop`, `branch` | Construct leaves and structured control flow. |
-| `clone`, `move`, `args` | Copy, place, or reconnect existing IR. |
+| `clone`, `expand`, `move`, `args` | Copy, substitute a function body, place, or reconnect IR. |
 | `replace`, `erase`, `rename` | Rewrite dataflow, ownership, and readable names. |
 | `set`, `unset` | Add, replace, or remove a function or operation attribute. |
 
@@ -126,10 +127,20 @@ diagnostic, while the three-argument `get` supplies a caller-chosen fallback.
 `tensor` defines `tensor<E, S>`, linear and two-dimensional indexing, `numel`,
 elementwise addition, and matrix multiplication. Addition and matrix
 multiplication have normal `.jog` bodies with loops and explicit value updates;
-they are not opaque operator records. `nn.relu` is likewise an ordinary
-function whose body is a loop and condition over the same tensor primitives.
-Transforms can therefore keep a call abstract, clone or inspect its body, or
-replace it with another function using the one `Fn/Blk/Op/Val` representation.
+they are not opaque operator records. `nn.linear` composes matrix
+multiplication with an optional bias loop, while `nn.relu` is a loop and
+condition over the same tensor primitives. Transforms can therefore keep a
+network call abstract or expose one function body at a time using the same
+`Fn/Blk/Op/Val` representation.
+
+`ir.resolve(m, op)` returns the declaration selected by the same structural
+overload rules used by verification. `ir.expand(m, op, fn)` then substitutes
+that normal function body, including nested loops and conditions. Generic
+type, shape, and integer bindings are specialized at the call site; visible
+result names and structured carried bindings remain printable. The C++ pair
+`env.resolve(mod, op)` and `mod.expand(op, fn)` performs the identical edit.
+`opt.expand` is only a policy helper over an explicit list of callees, not a
+built-in lowering stage.
 
 These definitions specify computation but deliberately do not choose layout,
 memory space, vector width, tiling, device, or instruction. Such choices belong
@@ -190,6 +201,12 @@ silently treated as removable. `fix` composes these transforms for at most the
 requested number of rounds, while `basic` supplies a small algebra-only entry
 point. A research module can call the individual functions or wrap `fix` with
 its own purity policy using normal `.jog` code.
+
+`opt.expand(m, callees)` exposes one level of the named function bodies. A
+snapshot traversal deliberately does not recurse into calls created by the
+same invocation, so the caller controls abstraction: one step may expose
+`nn.linear` as `tensor.matmul` plus a bias loop, and a later step may expose
+`tensor.matmul` as explicit nested loops.
 
 The C++ embedding API can call the same function as
 `run(env, "module.fn", mod)` or request a structural report with

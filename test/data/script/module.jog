@@ -231,6 +231,10 @@ fn prepare(m: Mod) -> bool {
   return changed
 }
 
+fn expand_network(m: Mod) -> bool {
+  return opt.expand(m, ["operator +", "nn.relu"])
+}
+
 fn bad_entry(m: Mod) -> int {
   return 0
 }

@@ -356,6 +356,7 @@ public:
           std::span<const Val> sources, std::span<const Val> carried);
   Op branch(Op before, Val condition, std::span<const Val> carried);
   Op clone(Op op, Op before);
+  bool expand(Op call, Fn callee);
   bool move(Op op, Op before);
   bool args(Op op, std::span<const Val> values);
   bool fuse(std::span<const Op> ops, std::string callee);
