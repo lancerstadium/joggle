@@ -664,7 +664,7 @@ private:
              loc);
         return std::nullopt;
       }
-      return Items{Item(found->second)};
+      return Items{materialize(found->second)};
     }
     if (name == ".." && args.size() == 2) {
       const auto first = integer(args[0]);
@@ -835,7 +835,7 @@ private:
       if (value && value->dict() && key) {
         const auto found = value->dict()->find(*key);
         if (found != value->dict()->end())
-          return Items{Item(found->second)};
+          return Items{materialize(found->second)};
         if (args.size() == 3)
           return Items{args[2]};
         return Items{Item(Attr{})};
@@ -1064,7 +1064,7 @@ private:
         if (node) {
           if (name == "has")
             return Items{Item(Attr(value != nullptr))};
-          return Items{Item(value ? *value : Attr{})};
+          return Items{value ? materialize(*value) : Item(Attr{})};
         }
       }
     } else if (name == "is_const" && args.size() == 1) {

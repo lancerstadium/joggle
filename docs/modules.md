@@ -128,11 +128,15 @@ type tree; `ty` reconstructs one from text, an integer term, or a constructor
 name plus child types; `str` is the explicit conversion back to canonical text.
 The overloaded `ir.type(m, value, type)` records an inferred type while keeping
 loop/condition-carried versions consistent and printable.
+Typed empty lists retain their explicit element type, so module functions can
+build structural shapes incrementally. Lists retrieved from `Attr`
+dictionaries or IR metadata are ordinary iterable compile-time lists; callers
+do not need a frontend-specific projection primitive.
 
 ### Tensor and network semantics
 
-`tensor` defines `tensor<E, S>`, linear and two-dimensional indexing, `numel`,
-elementwise addition, and matrix multiplication. Addition and matrix
+`tensor` defines `tensor<E, S>`, structural `elem`/`shape`/`type` helpers,
+linear and two-dimensional indexing, `numel`, elementwise addition, and matrix
 multiplication have normal `.jog` bodies with loops and explicit value updates;
 they are not opaque operator records. `nn.linear` composes matrix
 multiplication with an optional bias loop, while `nn.relu` is a loop and
@@ -274,7 +278,10 @@ initializers become explicit result annotations where available. Missing
 optional node outputs retain their result position through an unused binding.
 Unsupported sparse, string, external-data, and nested-graph forms fail with a
 diagnostic rather than being dropped. Operator names and attributes are
-transported generically; their semantics belong to later modules.
+transported generically; their semantics belong to later modules. Data inputs
+remain call operands, while node names and schema attributes live under the
+single open `onnx` metadata dictionary. This preserves source information
+without changing a call's semantic arity.
 
 ### A hardware extension
 

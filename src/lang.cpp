@@ -1824,6 +1824,12 @@ std::vector<Fn> declarations(const Mod& mod, const Env& env,
 }
 
 void infer_list(detail::Store& store, detail::OpData& op) {
+  if (op.args.empty() && !op.outs.empty()) {
+    detail::ValData& out = store.vals[op.outs.front()].data;
+    if (out.type_annotation && out.type.name() == "list" &&
+        out.type.args().size() == 1)
+      return;
+  }
   Ty element("_");
   if (!op.args.empty()) {
     element = store.vals[op.args.front()].data.type;

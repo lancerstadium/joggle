@@ -116,6 +116,11 @@ upgraded compatibly, and removed without editing or rebuilding Joggle.
 
 ### M10 — neural-network workflow
 
+Status: in progress. Binary ONNX transport, real-model generic fusion,
+same-signature semantic bridging, progressive body expansion, and structural
+tensor type construction are complete; broader operator semantics, shape
+propagation, a second frontend, and target gates remain.
+
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.
 - Define reusable tensor and scalar computation libraries with function bodies

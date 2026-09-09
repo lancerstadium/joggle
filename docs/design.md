@@ -456,3 +456,21 @@ walking the resulting tree. A direct C++ edit produces structurally identical
 IR; invalid types leave bytes and revision unchanged. This is the substrate
 for later shape, custom-bitwidth, and layout inference modules without adding
 those policies to core.
+
+## M10 network-transport slice
+
+ONNX node attributes are source facts, not tensors flowing into an operator.
+The codec now places the complete node dictionary under an open `onnx`
+operation attribute and leaves only declared node inputs on the call. It still
+does not inspect operator names. On the pinned official MobileNetV2, every
+`onnx.Relu` consequently has its real one-argument signature and the existing
+generic bridge maps the complete set to `nn.relu`; verification, canonical
+round-trip, and a no-change second run are required.
+
+Attribute list projection is likewise representation-neutral. Dictionary
+indexing, `get`, and `ir.meta` materialize stored lists as ordinary compile-time
+lists, so a module can iterate schema dimensions directly. Explicitly typed
+empty lists retain their annotation during inference. These two rules let the
+`tensor` module implement `elem`, `shape`, and `type` as normal `.jog`
+functions, with no tensor case in the evaluator and no string parsing in the
+module.

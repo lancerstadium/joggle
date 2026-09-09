@@ -35,6 +35,12 @@ fn generic_probe(m: Mod) -> bool {
   return below<4>(3) && extent<[2, 3]>() == 2 && type_same<i32>()
 }
 
+fn tensor_type_probe(m: Mod) -> bool {
+  let original = tensor.type(ty("f32"), [2, 3, 5])
+  return tensor.elem(original) == ty("f32") &&
+         tensor.shape(original) == [2, 3, 5]
+}
+
 fn divmod(x: int, y: int) -> (int, int) {
   return x / y, x % y
 }
@@ -300,6 +306,14 @@ fn attr_query(m: Mod, attrs: dict) -> Attr {
 
 fn attr_keys(m: Mod, attrs: dict) -> list<str> {
   return keys(attrs)
+}
+
+fn attr_sum(m: Mod, attrs: dict) -> int {
+  var total = 0
+  for value in attrs["values"] {
+    total += value
+  }
+  return total
 }
 
 fn fail_after_control_rename(m: Mod) -> bool {

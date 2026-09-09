@@ -4,6 +4,26 @@ use base
 fn tensor<E: Ty, S: list<int>>() -> Ty;
 fn tensor<E: Ty, S: list<int>>(fill: E) -> tensor<E, S>;
 
+fn elem(type: Ty) -> Ty {
+  return args(type)[0]
+}
+
+fn shape(type: Ty) -> list<int> {
+  var out: list<int> = []
+  for dim in args(args(type)[1]) {
+    out += [int(dim)]
+  }
+  return out
+}
+
+fn type(elem: Ty, shape: list<int>) -> Ty {
+  var dims: list<Ty> = []
+  for extent in shape {
+    dims += [ty(extent)]
+  }
+  return ty("tensor", [elem, ty("[]", dims)])
+}
+
 fn []<E: Ty, S: list<int>>(x: tensor<E, S>, i: index) -> E;
 fn []<E: Ty, M: int, N: int>(
   x: tensor<E, [M, N]>, i: index, j: index

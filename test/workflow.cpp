@@ -117,6 +117,7 @@ int main(int argc, char** argv) {
   }
   CHECK(network_cpp.verify(env));
   CHECK(env.load("script"));
+  CHECK(joggle::run(env, "script.tensor_type_probe", network_cpp));
   CHECK(joggle::run(env, "script.expand_network", network));
   CHECK(network.verify(env));
   bool expanded_loop = false;
@@ -940,14 +941,21 @@ int main(int argc, char** argv) {
   CHECK(cleaned.revision() == before_bad_query_revision);
   CHECK(!env.diags().empty());
   env.clear_diags();
-  const joggle::Attr::Dict attr_map{{"axis", joggle::Attr(std::int64_t{2})},
-                                    {"mode", joggle::Attr("nearest")}};
+  const joggle::Attr::Dict attr_map{
+      {"axis", joggle::Attr(std::int64_t{2})},
+      {"mode", joggle::Attr("nearest")},
+      {"values", joggle::Attr(joggle::Attr::List{
+                     joggle::Attr(std::int64_t{2}),
+                     joggle::Attr(std::int64_t{3}),
+                     joggle::Attr(std::int64_t{5})})}};
   const std::vector<joggle::Attr> attr_args{joggle::Attr(attr_map)};
   CHECK(joggle::query(env, "script.attr_query", cleaned, count, attr_args));
   CHECK(count.integer() == 2);
   joggle::Attr keys;
   CHECK(joggle::query(env, "script.attr_keys", cleaned, keys, attr_args));
-  CHECK(keys.list() && keys.list()->size() == 2);
+  CHECK(keys.list() && keys.list()->size() == 3);
+  CHECK(joggle::query(env, "script.attr_sum", cleaned, count, attr_args));
+  CHECK(count.integer() == 10);
   const std::vector<joggle::Attr> missing_attr{
       joggle::Attr(joggle::Attr::Dict{})};
   CHECK(joggle::query(env, "script.attr_query", cleaned, count,
