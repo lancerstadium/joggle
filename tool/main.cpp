@@ -22,5 +22,7 @@ int main(int argc, char** argv) {
   joggle::Mod mod;
   if (!joggle::parse(env, source.str(), mod, argv[1]))
     return mod.print_diags(stderr);
+  if (!mod.verify(env))
+    return mod.print_diags(stderr);
   return joggle::print(stdout, mod) ? 0 : 1;
 }

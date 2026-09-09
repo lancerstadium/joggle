@@ -4,7 +4,7 @@
 modules, functions, types, control flow, and explicit compile-time workflows.
 It is intentionally not a second pipeline or kernel language.
 
-The planned surface is conventional:
+The implemented M1 surface is conventional:
 
 ```jog
 module demo
@@ -31,11 +31,29 @@ and `return`. It has generics, structural types, attributes, and overloadable
 operators. It has no `graph`, `kernel`, `compute`, `map`, `fold`, `rewrite`,
 `region`, or `pass` syntax.
 
-`@build(...)` at module scope enters compile-time evaluation. Calls inside the
-selected function remain ordinary calls; they do not repeat `@`. The evaluator
-will initially support only the values and control flow needed to compose and
-write transforms.
+Multiple loop variables denote a lexically nested Cartesian product. `return`
+is always an ordinary statement in the function block. Mutable values crossing
+a `for` or `if` boundary become block arguments, results, and an internal
+`yield`; these mechanics remain visible to C++ transforms but are recovered as
+normal source syntax by the printer.
 
-The current bootstrap accepts and canonically prints a module declaration.
-The rest of this document is the contract for M1, not a claim that every form
-is implemented yet.
+Calls, literals, indexing, unary operators, and common binary operators are
+implemented. Operators normalize to ordinary function calls such as
+`operator +` and `operator []`; adding a concrete overload does not add a new
+IR operation kind.
+
+`let` bindings are immutable. `var` bindings may be reassigned with `=` or
+`+=`, and tensor-like values may use `value[i, j] = next`. The latter normalizes
+to a call of `operator []=` returning the updated value, so mutation remains an
+explicit value flow.
+
+Canonical printing deliberately discards comments and incidental whitespace.
+Printing and reparsing must produce a structurally equal module.
+
+### Next language slice
+
+`@build(...)` will enter compile-time evaluation in M2. Calls inside the
+selected function will remain ordinary calls and will not repeat `@`. Function
+attributes beyond `[host]`, user type declarations, typed overload resolution,
+and the minimal reflection library also remain for later slices. They will
+extend this one language rather than introduce pipeline or kernel syntax.

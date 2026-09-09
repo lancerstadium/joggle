@@ -5,9 +5,13 @@ software co-design research. It gives experiments one readable IR, one module
 format, and one extension boundary without prescribing a target, scheduler, or
 paper mechanism.
 
-The project is being rebuilt from a deliberately small foundation. The core
-contains no ONNX, device, instruction-set, runtime, or code-generation policy.
-Those capabilities belong in removable modules.
+The rebuilt M1 core parses and verifies generic functions, calls, constants,
+structured loops and conditions, explicit returns, and loop-carried values. A
+tested C++ transform edits the same representation, while a separately built
+native module is discovered, signature-checked, loaded, and called through the
+single host-function ABI. The core contains no ONNX, device, instruction-set,
+runtime, or code-generation policy; those capabilities belong in removable
+modules.
 
 ## Build
 
@@ -15,10 +19,13 @@ Those capabilities belong in removable modules.
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
+cmake --install build --prefix /path/to/prefix
 ```
 
 The core and command-line tool require only a C++20 compiler and the standard
-library. Building does not download dependencies.
+library. Building does not download dependencies. Installation provides the
+`Joggle::joggle` CMake target, CLI, public header, and standard modules under
+`share/joggle/modules`.
 
 ## Shape of the project
 

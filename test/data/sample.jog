@@ -1,0 +1,4 @@
+module sample
+
+[host]
+fn ping(x: i32) -> i32;

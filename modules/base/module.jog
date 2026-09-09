@@ -1,0 +1,3 @@
+module base
+
+fn copy<T>(x: T) -> T;

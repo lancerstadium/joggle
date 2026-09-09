@@ -75,3 +75,16 @@ its own method and experiments justify that claim.
 
 Any failed gate reopens the relevant boundary; it does not justify silently
 adding another framework layer.
+
+## M1 baseline
+
+The first working M1 slice was measured on macOS with AppleClang 17 in Release
+mode on 2026-09-09. A clean configure took 0.25 s and a parallel build took
+2.10 s. Peak build resident memory was approximately 230 MB. The resulting
+dynamically linked CLI was 292,456 bytes and the static library was 396,728
+bytes. The installed header plus production source and CLI contained 2,466
+lines.
+
+These numbers are a local regression baseline, not cross-machine performance
+claims. Tests and the sample native module are excluded from the source-line
+count. The build made no network requests and used no third-party library.

@@ -1,0 +1,30 @@
+module test.linear
+use tensor
+
+fn add_zero(x: i32) -> i32 {
+  let y = x + 0
+  return y
+}
+
+fn choose(x: i32, flag: bool) -> i32 {
+  var y = x
+  if flag {
+    y += 1
+  }
+  return y
+}
+
+fn matmul<T, M, N, K>(
+  a: tensor<T, [M, K]>,
+  b: tensor<T, [K, N]>
+) -> tensor<T, [M, N]> {
+  var c = tensor<T, [M, N]>(0)
+  for i in 0..M, j in 0..N {
+    var sum = T(0)
+    for k in 0..K {
+      sum += a[i, k] * b[k, j]
+    }
+    c[i, j] = sum
+  }
+  return c
+}
