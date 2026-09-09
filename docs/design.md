@@ -21,7 +21,7 @@ Mod  Fn  Blk  Op  Val  Ty  Attr
 
 `Mod` owns storage. `Fn`, `Blk`, `Op`, and `Val` are stable handles. `Ty` and
 `Attr` are immutable structural values. Concrete computation is always a call
-to a `Fn`; only calls, constants, loops, conditions, returns, and block yields
+to a `Fn`; only calls, constants, loops, conditions, returns, and `Blk` yields
 are structural operations.
 
 A model graph is a view of calls and values in a function body. A lowered
@@ -247,7 +247,7 @@ target, scheduling, or layout concepts in the core.
 
 `Fn::ops`, `Mod::ops`, and the overloaded `ir.ops` provide one deterministic
 structural-preorder walk without forcing every transform to spell three nested
-ownership loops. Block-local traversal remains available when locality matters.
+ownership loops. `Blk`-local traversal remains available when locality matters.
 Use replacement now has an optional user operation, so a transform can redirect
 one edge without rewriting every consumer; both forms reject type or dominance
 violations before mutation. `Mod::revision` advances after successful edits and
@@ -258,7 +258,7 @@ unprintable hidden operations.
 ## M7 fourth slice
 
 The editor now constructs typed constants, deep-clones operation subtrees, and
-moves operations within a block through explicit `Op` positions. Deep cloning
+moves operations within a `Blk` through explicit `Op` positions. Deep cloning
 creates fresh results, `Blk`s, and `Blk` arguments, remaps internal dataflow,
 and works for nested loops and conditions; erasing the replaced source
 recursively invalidates its complete subtree. Motion is atomic and checks the
@@ -270,7 +270,7 @@ named when printed instead of being silently duplicated as inline literals.
 ## M7 fifth slice
 
 Direct construction now covers loops and two-way conditions as well as calls
-and constants. A loop constructor creates iterator and carried block arguments
+and constants. A loop constructor creates iterator and carried `Blk` arguments
 plus a valid forwarding `yield`; a branch constructor creates two such arms.
 The generic argument mutator reconnects calls, loops, branches, returns, and
 yields with arity, type, and dominance checks. Consequently a textual module
@@ -278,16 +278,16 @@ and embedding code can each build the same nested-loop-plus-condition function
 from a one-return seed, populate its bodies through their terminator insertion
 points, print ordinary source, and round-trip it. The textual path also proves
 that a failure after editing restores the complete nested structure and its
-revision. No public block builder, region descriptor, or source-form enum was
+revision. No public `Blk` builder, region descriptor, or source-form enum was
 introduced.
 
 ## M7 sixth slice
 
 Value renaming is now closed over structured control flow. Renaming any member
-of a loop- or branch-carried value chain updates its entry value, block
+of a loop- or branch-carried value chain updates its entry value, `Blk`
 arguments, yielded versions, and operation results together; renaming a loop
 iterator also updates the loop header. This keeps the single `Val` API honest:
-there is no separate block-argument naming hook, and every successful edit
+there is no separate `Blk`-argument naming hook, and every successful edit
 still prints as valid ordinary source. Binding names accepted by the editor are
 restricted to source-safe, non-keyword identifiers.
 
@@ -295,8 +295,8 @@ restricted to source-safe, non-keyword identifiers.
 
 The workflow test now has C++ and `.jog` implementations construct byte-for-byte
 identical nested-loop-plus-condition source from the same one-return seed. It
-also exercises multi-result creation, deep structured cloning, block-local
-motion, selective replacement, carried block-argument renaming, and rollback
+also exercises multi-result creation, deep structured cloning, `Blk`-local
+motion, selective replacement, carried `Blk`-argument renaming, and rollback
 after a nested-IR edit. The strict Release build, address sanitizer build,
 installed-header consumer, and pinned official ONNX model all pass. M7 is
 therefore closed; later additions to editing must be justified by a concrete
@@ -314,7 +314,7 @@ class, trait, or privileged attribute to the core.
 
 Deletion-aware transforms use `ir.live` when iterating an earlier operation
 snapshot. `ir.blk` and whole-dictionary `ir.meta` provide the remaining
-structural equality inputs: CSE only merges calls in one block with identical
+structural equality inputs: CSE only merges calls in one `Blk` with identical
 callee, operands, result types, and metadata. The test pipeline merges repeated
 open calls, removes newly dead calls to a fixed point, preserves calls whose
 metadata differs, and is revision-idempotent on a second run.
@@ -371,6 +371,23 @@ sequence are rolled back together. The workflow test runs the same two
 functions once through the C++ sequence overload and once through a textual
 wrapper, then requires byte-identical canonical IR; a deliberately bad second
 step exercises whole-sequence rollback.
+
+## M8 fifth slice
+
+Capability-driven exposure remains a library mechanism. `opt.legalize` accepts
+a plain list of function symbols and a round bound, keeps calls the consumer
+already accepts, and expands every other metadata-free call whose resolved
+`Fn` has a body. `ir.symbol` supplies stable module-qualified identity after
+normal overload and generic resolution, so an unqualified source call can be
+matched without string guessing. `opt.frontier` reports the deterministic,
+distinct remainder through the existing read-only query path.
+
+The mechanism adds no target, kernel, legality, or pattern object to core. A
+consumer module owns its capability list and wraps `opt.legalize` in a normal
+`fn(Mod) -> bool`; calls without definitions and calls whose operation metadata
+needs an explicit policy remain visible. A network test keeps `relu(x)` using
+the `nn.relu` capability, then removes that capability and exposes the ordinary
+loop body one bounded layer at a time.
 
 ## M9 local distribution slice
 
@@ -553,11 +570,17 @@ Only square root remains a named scalar primitive in the narrow `math` module.
 Tests expand each body, verify the resulting nested structure, and round-trip
 it.
 
+Average and maximum 2-D pooling share one explicit
+`kernel/stride/pad/dilation/axes` convention. Their ordinary bodies cover NCHW
+and NHWC without a layout enum; short overloads preserve the earlier unit-
+dilation spelling. ONNX AveragePool/MaxPool and TFLite AveragePool/MaxPool
+materialize their schema fields into these same calls before body expansion.
+
 The optional `onnx.nn` module owns the frontend/library relationship. Its
 `infer` function propagates the supported MobileNetV2 shapes in graph order;
 its separately invoked `convert` function materializes Conv attributes as
-ordinary operands and maps Conv, BatchNormalization, ReLU, Add,
-GlobalAveragePool, and Reshape to shared semantics. The codec remains
+ordinary operands and maps Conv, BatchNormalization, ReLU, Add, AveragePool,
+MaxPool, GlobalAveragePool, and Reshape to shared semantics. The codec remains
 name-agnostic, unknown calls remain open, and neither action happens on load.
 The official model gate requires every intermediate node result to become
 typed, every compute node to leave the ONNX namespace, conversion to verify and
@@ -604,6 +627,11 @@ fused activation are ordinary function composition. Conversion is explicit,
 idempotent, and removes source metadata only after its meaning is represented.
 The gate resolves and exposes one body for every converted call, verifies the
 nested IR, and requires a canonical structural round-trip.
+
+The same relation maps both TFLite average and maximum pooling to shared `nn`
+bodies. The pinned model exercises average pooling; a focused compiler test
+covers MaxPool conversion and expansion without treating the fixture as a
+model-quality or performance benchmark.
 
 ## M10 broadcast slice
 

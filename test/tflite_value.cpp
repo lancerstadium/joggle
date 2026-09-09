@@ -138,5 +138,31 @@ int main(int argc, char** argv) {
   CHECK(returned.kind() == joggle::Op::Kind::ret &&
         returned.args().size() == 1);
   CHECK(quant_matches(returned.args()[0], "sum", 0.75, 1));
+
+  constexpr std::string_view max_pool_source =
+      "module max.pool\n"
+      "use tflite\n"
+      "fn main(x: tensor<f32, [1, 4, 4, 1]>) "
+      "-> tensor<f32, [1, 2, 2, 1]> {\n"
+      "  [tflite: {options: {filter_height: 2, filter_width: 2, "
+      "stride_h: 2, stride_w: 2, padding: \"VALID\", "
+      "fused_activation_function: \"NONE\"}}]\n"
+      "  let y: tensor<f32, [1, 2, 2, 1]> = tflite.MAX_POOL_2D(x)\n"
+      "  return y\n"
+      "}\n";
+  joggle::Mod max_pool;
+  CHECK(joggle::parse(env, max_pool_source, max_pool,
+                      "tflite-max-pool.jog"));
+  CHECK(max_pool.verify(env));
+  CHECK(joggle::run(env, "tflite.nn.convert", max_pool));
+  CHECK(max_pool.verify(env));
+  joggle::Op max_pool_call;
+  for (joggle::Op op : max_pool.ops())
+    if (op.callee() == "nn.max_pool2d")
+      max_pool_call = op;
+  CHECK(max_pool_call && max_pool_call.args().size() == 7);
+  const joggle::Fn max_pool_fn = env.resolve(max_pool, max_pool_call);
+  CHECK(max_pool_fn && max_pool.expand(max_pool_call, max_pool_fn));
+  CHECK(max_pool.verify(env));
   return 0;
 }

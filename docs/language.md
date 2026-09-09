@@ -34,7 +34,7 @@ operators. It has no `graph`, `kernel`, `compute`, `map`, `fold`, `rewrite`,
 Multiple loop variables denote a lexically nested Cartesian product. A source
 may be a range or any compile-time list, so the same form traverses tensor
 indices and IR collections. `return` is always an ordinary statement in the
-function block. Mutable values crossing a `for` or `if` boundary become block
+function body. Mutable values crossing a `for` or `if` boundary become `Blk`
 arguments, results, and an internal `yield`; these mechanics remain visible to
 C++ transforms but are recovered as normal source syntax by the printer.
 
@@ -241,7 +241,7 @@ transforms while parsing.
 
 `ir.ops(m)` walks every function body in deterministic structural preorder,
 including nested loops and conditions. Use `ir.ops(f)` for one function or
-`ir.ops(b)` for one block. The optional fourth argument to `ir.replace` names a
+`ir.ops(b)` for one `Blk`. The optional fourth argument to `ir.replace` names a
 single user operation; omitting it redirects every use after checking type and
 dominance. Successful edits advance `Mod::revision()`, while a failed run
 restores both the IR and its prior revision.
@@ -252,22 +252,22 @@ operation and its nested `Blk`s, while `ir.move` changes `Blk`-local order only
 when all operands and users remain dominated. `ir.kind(op)` returns `call`,
 `constant`, `loop`, `branch`, `return`, or `yield`; `ir.blks(op)` exposes
 nested bodies. A terminator supplies an insertion point even for an otherwise
-empty block, so there is no stateful builder object.
+empty `Blk`, so there is no stateful builder object.
 
 Structured construction follows the same rule. `ir.loop` receives iterator
 names, source values, and carried values, then returns an `Op` with one body and
 an initial `yield`. `ir.branch` returns an `Op` with two initially forwarding
-arms. `ir.args(blk)` obtains block arguments and `ir.args(m, op, values)`
+arms. `ir.args(blk)` obtains `Blk` arguments and `ir.args(m, op, values)`
 reconnects any operation, including `return` and `yield`, while enforcing its
 structural arity and dominance. A named local selected as carried state prints
-as the corresponding ordinary `var`; users never construct block objects or
+as the corresponding ordinary `var`; users never construct `Blk` objects or
 source-presentation records themselves.
 
 `ir.rename` treats the versions of a carried mutable binding as one lexical
-name. Calling it on the incoming value, a loop or branch block argument, a
+name. Calling it on the incoming value, a loop or branch `Blk` argument, a
 yielded update, or the structure result renames the whole chain atomically.
 Calling it on a loop iterator also updates the loop header. This makes generic
-block traversal safe to edit without exposing the printer's bookkeeping.
+`Blk` traversal safe to edit without exposing the printer's bookkeeping.
 
 Function bodies are exposed by an explicit edit, never by loading a module.
 `ir.resolve(m, op)` applies normal import, qualification, overload, and generic

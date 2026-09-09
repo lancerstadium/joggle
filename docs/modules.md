@@ -126,7 +126,7 @@ The built-in `ir` module is the complete reflection boundary:
 | `fns`, `params`, `blks`, `ops`, `uses` | Traverse function, structure, and dependencies. |
 | `args`, `outs`, `users` | Read operation dataflow. |
 | `live`, `blk`, `kind`, `callee`, `type` | Query handle state, structure, and structural `Ty`. |
-| `resolve` | Resolve a call to its visible function declaration. |
+| `resolve`, `symbol` | Resolve a call and obtain a `Fn`'s canonical module-qualified name. |
 | `is_const`, `constant` | Query constant IR values. |
 | `has`, `meta` | Query open function, value, or operation attributes. |
 | `call`, `constant`, `loop`, `branch` | Construct leaves and structured control flow. |
@@ -176,10 +176,12 @@ condition over the same tensor primitives. The general `nn.conv2d` overload
 takes three logical-axis lists, so grouped convolution and depthwise
 convolution share one loop body across activation and weight layouts. The terse
 NCHW overload delegates to it. Bias and fused activation are ordinary composed
-functions rather than hidden operator fields. `nn.avg_pool2d`, broadcast-aware
-`nn.add`, and
+functions rather than hidden operator fields. `nn.avg_pool2d`, dilation-aware
+`nn.max_pool2d`, broadcast-aware `nn.add`, and
 `nn.softmax` provide the remaining shared semantics needed by the second
 real-network gate; `nn.global_avg_pool2d` is a normal NCHW specialization.
+Both spatial pool functions use explicit kernel, stride, pad, dilation, and
+logical-axis values, so ONNX NCHW and TFLite NHWC calls share the same bodies.
 `nn.batch_norm` exposes inference-time channel
 normalization down to scalar algebra and the single `math.sqrt` primitive;
 `tensor.reshape` is a linear element copy whose result shape comes from the
@@ -205,11 +207,12 @@ module function.
 
 The optional `onnx.nn` module is that relationship, not another IR layer.
 `onnx.nn.infer` walks operations in source order and propagates tensor types
-through Conv, BatchNormalization, ReLU, broadcast Add, and GlobalAveragePool.
+through Conv, BatchNormalization, ReLU, broadcast Add, spatial pooling, and
+GlobalAveragePool.
 Unsupported ranks and `auto_pad` are left unchanged rather than guessed.
-`onnx.nn.convert` then maps Conv, BatchNormalization, ReLU, Add,
-GlobalAveragePool, and Reshape calls, materializing schema attributes as
-ordinary operands and removing the schema-only Reshape shape input. It does
+`onnx.nn.convert` then maps Conv, BatchNormalization, ReLU, Add, AveragePool,
+MaxPool, GlobalAveragePool, and Reshape calls, materializing schema attributes
+as ordinary operands and removing the schema-only Reshape shape input. It does
 not run inference implicitly and does not alter the codec. On the pinned
 MobileNetV2 this covers every compute node; unsupported calls in other models
 remain untouched.
@@ -234,27 +237,27 @@ belongs entirely to the module that queries them.
 `ir.ops(m)` is the concise default traversal: it returns all operations in
 function order and structural preorder, including nested loops and conditions.
 `ir.ops(f)` restricts that walk to one function, while `ir.ops(b)` returns only
-the immediate operations of one block. `ir.replace` replaces all uses by
+the immediate operations of one `Blk`. `ir.replace` replaces all uses by
 default; its four-argument overload changes only uses in one named `Op`.
 Both forms check type compatibility and dominance before changing the IR.
 
-Every valid block ends in `return` or internal `yield`, so an existing `Op` is
+Every valid `Blk` ends in `return` or internal `yield`, so an existing `Op` is
 also a complete insertion position; no ambient builder or special append state
 is needed. `ir.constant` and `ir.call` insert leaves. `ir.clone` recursively
 copies a call, constant, loop, or condition, creates fresh `Blk`s/results, and
 remaps values defined inside the copied subtree. `ir.move` reorders an operation
-within its block atomically and rejects the change if any use would lose
+within its `Blk` atomically and rejects the change if any use would lose
 dominance. `ir.kind` and `ir.blks(op)` make structural selection explicit.
 
-`ir.loop` creates iterator and carried block arguments plus an initial
+`ir.loop` creates iterator and carried `Blk` arguments plus an initial
 forwarding yield. `ir.branch` creates two initially forwarding arms. A module
 populates either structure by inserting ordinary calls or constants before its
 yield, then reconnects the terminator with `ir.args(m, op, values)`. The same
 argument mutator updates an existing return. Named local carried values recover
 as ordinary `var` bindings when printed, so the construction API does not leak
-an auxiliary block syntax into `.jog`.
+an auxiliary `Blk` syntax into `.jog`.
 
-`ir.rename` may be applied directly to a block argument. Iterator renames are
+`ir.rename` may be applied directly to a `Blk` argument. Iterator renames are
 reflected in the loop header, while carried-value renames propagate through
 both arms, yields, and enclosing structured results. The operation therefore
 preserves printable lexical bindings rather than changing only one internal
@@ -268,7 +271,7 @@ so a frontend bridge or target can audit semantic coverage without a registry
 or a built-in operator catalogue. The hidden `base.list` normalization used by
 list literals is language structure and is not reported as an external call.
 `fold_identity` applies an explicit binary identity, `cse` merges structurally
-identical same-block calls, and `dce` removes unused calls. The latter two take
+identical same-`Blk` calls, and `dce` removes unused calls. The latter two take
 a list of callees the caller asserts are pure; no unknown computation is
 silently treated as removable. `fix` composes these transforms for at most the
 requested number of rounds, while `basic` supplies a small algebra-only entry
@@ -280,6 +283,37 @@ snapshot traversal deliberately does not recurse into calls created by the
 same invocation, so the caller controls abstraction: one step may expose
 `nn.linear` as `tensor.matmul` plus a bias loop, and a later step may expose
 `tensor.matmul` as explicit nested loops.
+
+`opt.legalize(m, caps, limit)` is the capability-driven form. `caps` contains
+ordinary function names accepted by a consumer. A call matching either its
+source spelling or its resolved module-qualified symbol is retained; every
+other metadata-free call with a visible body is expanded, one layer per round.
+The caller bounds recursion with `limit`. Calls with no visible body and calls
+carrying operation metadata remain intact because guessing either an
+implementation or a metadata distribution policy would change semantics.
+
+`opt.frontier(m, caps)` returns the distinct remaining calls not covered by the
+same capability list. It is a read-only query, so `len(opt.frontier(...)) == 0`
+is a simple readiness test. A target experiment can describe its accepted
+computation with ordinary functions:
+
+```jog
+module edge
+use opt
+
+fn caps() -> list<str> {
+  return ["edge.mac", "edge.load", "edge.store"]
+}
+
+fn prepare(m: Mod) -> bool {
+  return opt.legalize(m, caps(), 16)
+}
+```
+
+There is no capability registry or target base class. Renaming or selecting
+the retained calls remains another normal module function. `base.list`, the
+language's internal materialization of list literals, is structural and is
+ignored by capability checks.
 
 `opt.rename(m, rules)` applies exact call-name pairs supplied as
 `list<list<str>>`. It knows no frontend or network names. A bridge first calls
@@ -370,7 +404,7 @@ responsibility of a separately selected relationship module.
 That relationship is the pure `.jog` module `tflite.nn`. Its `convert`
 function materializes padding, stride, dilation, groups, logical axes, fused
 activation, and softmax scale as normal operands. Standard and depthwise Conv,
-Add, average pool, reshape, and softmax then resolve to shared functions. On
+Add, average/max pool, reshape, and softmax then resolve to shared functions. On
 the pinned MobileNetV2 this removes all 66 source compute calls while retaining
 the source model marker and payloads. A second invocation is unchanged, and
 all 66 converted bodies can be independently exposed and round-tripped.

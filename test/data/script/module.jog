@@ -254,6 +254,18 @@ fn expand_network(m: Mod) -> bool {
   return opt.expand(m, ["operator +", "nn.relu"])
 }
 
+fn keep_relu(m: Mod) -> bool {
+  return opt.legalize(m, ["nn.relu"], 8)
+}
+
+fn expose_network(m: Mod) -> bool {
+  return opt.legalize(m, [], 1)
+}
+
+fn network_frontier(m: Mod) -> list<str> {
+  return opt.frontier(m, [])
+}
+
 fn bridge_relu(m: Mod) -> bool {
   var changed = ir.use(m, "nn")
   changed = opt.rename(m, [["onnx.Relu", "nn.relu"]]) || changed

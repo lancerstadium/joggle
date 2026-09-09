@@ -76,7 +76,7 @@ fn conv_type(m: Mod, op: Op) -> bool {
   )
 }
 
-fn pool_type(m: Mod, op: Op) -> bool {
+fn global_pool_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -95,6 +95,45 @@ fn pool_type(m: Mod, op: Op) -> bool {
   )
 }
 
+fn pool_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let x = ir.type(inputs[0])
+  if name(x) != "tensor" {
+    return false
+  }
+  let shape = tensor.shape(x)
+  if len(shape) != 4 {
+    return false
+  }
+  let meta = ir.meta(op, "onnx")
+  if base.get(meta, "auto_pad", "NOTSET") != "NOTSET" ||
+     !base.has(meta, "kernel_shape") ||
+     base.get(meta, "ceil_mode", 0) != 0 {
+    return false
+  }
+  let kernel = meta["kernel_shape"]
+  let stride = base.get(meta, "strides", [1, 1])
+  let pad = base.get(meta, "pads", [0, 0, 0, 0])
+  let dilation = base.get(meta, "dilations", [1, 1])
+  if len(kernel) != 2 || len(stride) != 2 || len(pad) != 4 ||
+     len(dilation) != 2 {
+    return false
+  }
+  let h = (shape[2] + pad[0] + pad[2] -
+           dilation[0] * (kernel[0] - 1) - 1) / stride[0] + 1
+  let w = (shape[3] + pad[1] + pad[3] -
+           dilation[1] * (kernel[1] - 1) - 1) / stride[1] + 1
+  return set_type(
+    m, outputs[0], tensor.type(
+      tensor.elem(x), [shape[0], shape[1], h, w]
+    )
+  )
+}
+
 fn infer(m: Mod) -> bool {
   var changed = false
   for op in ir.ops(m) {
@@ -109,6 +148,10 @@ fn infer(m: Mod) -> bool {
       changed = add_type(m, op) || changed
     }
     if ir.callee(op) == "onnx.GlobalAveragePool" {
+      changed = global_pool_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.AveragePool" ||
+       ir.callee(op) == "onnx.MaxPool" {
       changed = pool_type(m, op) || changed
     }
   }
@@ -210,6 +253,47 @@ fn convert_add(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "nn.add")
 }
 
+fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 ||
+     name(ir.type(inputs[0])) != "tensor" ||
+     name(ir.type(outputs[0])) != "tensor" {
+    return false
+  }
+  let meta = ir.meta(op, "onnx")
+  if base.get(meta, "auto_pad", "NOTSET") != "NOTSET" ||
+     !base.has(meta, "kernel_shape") ||
+     base.get(meta, "ceil_mode", 0) != 0 {
+    return false
+  }
+  if callee == "nn.avg_pool2d" &&
+     base.get(meta, "count_include_pad", 0) != 0 {
+    return false
+  }
+  if callee == "nn.max_pool2d" &&
+     base.get(meta, "storage_order", 0) != 0 {
+    return false
+  }
+  let kernel = meta["kernel_shape"]
+  let stride = base.get(meta, "strides", [1, 1])
+  let pad = base.get(meta, "pads", [0, 0, 0, 0])
+  let dilation = base.get(meta, "dilations", [1, 1])
+  if len(kernel) != 2 || len(stride) != 2 || len(pad) != 4 ||
+     len(dilation) != 2 {
+    return false
+  }
+  inputs += [ints(m, op, kernel)]
+  inputs += [ints(m, op, stride)]
+  inputs += [ints(m, op, pad)]
+  inputs += [ints(m, op, dilation)]
+  inputs += [ints(m, op, [0, 1, 2, 3])]
+  if !ir.args(m, op, inputs) {
+    return false
+  }
+  return convert_call(m, op, callee)
+}
+
 fn convert(m: Mod) -> bool {
   var changed = ir.use(m, "nn")
   for op in ir.ops(m) {
@@ -227,6 +311,12 @@ fn convert(m: Mod) -> bool {
     }
     if ir.callee(op) == "onnx.GlobalAveragePool" {
       changed = convert_call(m, op, "nn.global_avg_pool2d") || changed
+    }
+    if ir.callee(op) == "onnx.AveragePool" {
+      changed = convert_pool(m, op, "nn.avg_pool2d") || changed
+    }
+    if ir.callee(op) == "onnx.MaxPool" {
+      changed = convert_pool(m, op, "nn.max_pool2d") || changed
     }
     if ir.callee(op) == "onnx.Reshape" {
       changed = convert_reshape(m, op) || changed

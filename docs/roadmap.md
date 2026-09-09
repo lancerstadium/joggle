@@ -74,9 +74,9 @@ incompatible programs fail with stable diagnostics.
 
 Status: complete.
 
-- Support multi-result calls and complete constant, call, block, loop, branch,
+- Support multi-result calls and complete constant, call, `Blk`, loop, branch,
   return, and yield construction.
-- Add nested walking, selective use replacement, cloning, moving, and block
+- Add nested walking, selective use replacement, cloning, moving, and `Blk`
   argument editing with explicit insertion points.
 - Give every successful mutation a module revision and make compound edits
   atomic.
@@ -137,6 +137,8 @@ Grouped 2-D convolution now has an
 inspectable body, and the explicit `onnx.nn` relation propagates all official
 MobileNetV2 intermediate types before converting every compute node through
 shared Conv, BatchNormalization, ReLU, Add, global-pool, and reshape semantics.
+Average and maximum 2-D pooling now share dilation- and layout-explicit
+semantics across ONNX and TFLite.
 The complete converted ONNX model also expands one semantic body per compute
 node and round-trips as ordinary nested IR. The second real frontend imports
 the official TensorFlow Hub MobileNetV2 with reflection-driven options and no

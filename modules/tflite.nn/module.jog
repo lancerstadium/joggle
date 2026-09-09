@@ -160,7 +160,7 @@ fn convert_add(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "nn.add")
 }
 
-fn convert_pool(m: Mod, op: Op) -> bool {
+fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -203,12 +203,13 @@ fn convert_pool(m: Mod, op: Op) -> bool {
   inputs += [ints(m, op, kernel)]
   inputs += [ints(m, op, stride)]
   inputs += [ints(m, op, pad)]
+  inputs += [ints(m, op, [1, 1])]
   inputs += [ints(m, op, [0, 2, 3, 1])]
   inputs += [ir.constant(m, op, act, "str")]
   if !ir.args(m, op, inputs) {
     return false
   }
-  return convert_call(m, op, "nn.avg_pool2d")
+  return convert_call(m, op, callee)
 }
 
 fn convert_reshape(m: Mod, op: Op) -> bool {
@@ -252,7 +253,10 @@ fn convert(m: Mod) -> bool {
         changed = convert_add(m, op) || changed
       }
       if ir.callee(op) == "tflite.AVERAGE_POOL_2D" {
-        changed = convert_pool(m, op) || changed
+        changed = convert_pool(m, op, "nn.avg_pool2d") || changed
+      }
+      if ir.callee(op) == "tflite.MAX_POOL_2D" {
+        changed = convert_pool(m, op, "nn.max_pool2d") || changed
       }
       if ir.callee(op) == "tflite.RESHAPE" {
         changed = convert_reshape(m, op) || changed

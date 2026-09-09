@@ -440,7 +440,7 @@ private:
   Flow blk(Blk blk, const Items& args, Frame& frame) {
     const std::vector<Val> params = blk.args();
     if (params.size() != args.size()) {
-      fail("compile-time block argument count is inconsistent");
+      fail("compile-time Blk argument count is inconsistent");
       return {FlowKind::fail, {}};
     }
     for (std::size_t index = 0; index < params.size(); ++index)
@@ -1043,6 +1043,10 @@ private:
         const Fn target = env_.resolve(**mod, *op);
         return Items{Item(target)};
       }
+    } else if (name == "symbol" && args.size() == 1) {
+      if (const auto* fn = as<Fn>(args[0]); fn && *fn)
+        return Items{Item(Attr(std::string(fn->module()) + "." +
+                               std::string(fn->name())))};
     } else if (name == "meta" && args.size() == 1) {
       if (const auto* fn = as<Fn>(args[0]); fn && *fn)
         return Items{Item(Attr(fn->meta()))};

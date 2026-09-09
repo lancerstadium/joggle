@@ -165,6 +165,73 @@ fn unresolved(m: Mod) -> list<str> {
   return out
 }
 
+fn supports(m: Mod, op: Op, caps: list<str>) -> bool {
+  if ir.callee(op) == "base.list" {
+    return true
+  }
+  for cap in caps {
+    if ir.callee(op) == cap {
+      return true
+    }
+  }
+  let target = ir.resolve(m, op)
+  if ir.live(target) {
+    let symbol = ir.symbol(target)
+    for cap in caps {
+      if symbol == cap {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+fn frontier(m: Mod, caps: list<str>) -> list<str> {
+  var out: list<str> = []
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" &&
+       !supports(m, op, caps) {
+      var symbol = ir.callee(op)
+      let target = ir.resolve(m, op)
+      if ir.live(target) {
+        symbol = ir.symbol(target)
+      }
+      var seen = false
+      for item in out {
+        if item == symbol {
+          seen = true
+        }
+      }
+      if !seen {
+        out += [symbol]
+      }
+    }
+  }
+  return out
+}
+
+fn legalize(m: Mod, caps: list<str>, limit: int) -> bool {
+  var changed = false
+  var again = true
+  for round in 0..limit {
+    if again {
+      again = false
+      for op in ir.ops(m) {
+        if ir.live(op) && ir.kind(op) == "call" &&
+           !supports(m, op, caps) && len(ir.meta(op)) == 0 {
+          let target = ir.resolve(m, op)
+          if ir.live(target) && len(ir.blks(target)) != 0 {
+            let expanded = ir.expand(m, op, target)
+            again = expanded || again
+            changed = expanded || changed
+          }
+        }
+      }
+    }
+  }
+  return changed
+}
+
 fn rename(m: Mod, rules: list<list<str>>) -> bool {
   var changed = false
   for op in ir.ops(m) {

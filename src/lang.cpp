@@ -776,7 +776,7 @@ private:
       } else if (!parse_assignment(blk, scope, std::move(meta)))
         return false;
     }
-    return !(nested && at_end()) || fail("unterminated block");
+    return !(nested && at_end()) || fail("unterminated Blk");
   }
 
   std::vector<std::pair<std::string, Binding>> carried(const Scope& scope) {
@@ -2365,7 +2365,7 @@ bool Mod::verify(const Env& env) {
       continue;
     const auto& ops = blk_slot.data.ops;
     if (ops.empty() || store.ops[ops.back()].data.kind != Op::Kind::yield) {
-      detail::add_diag(store.diags, "nested block must end with yield");
+      detail::add_diag(store.diags, "nested Blk must end with yield");
       continue;
     }
     const auto& parent = store.ops[blk_slot.data.parent_op].data;
@@ -2379,7 +2379,7 @@ bool Mod::verify(const Env& env) {
       continue;
     const detail::OpData& op = op_slot.data;
     if (op.blk >= store.blks.size() || !store.blks[op.blk].live)
-      detail::add_diag(store.diags, "operation has an invalid parent block",
+      detail::add_diag(store.diags, "operation has an invalid parent Blk",
                        op.loc);
     if (op.kind == Op::Kind::call && op.callee.empty())
       detail::add_diag(store.diags, "call has no callee", op.loc);

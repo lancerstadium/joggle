@@ -75,7 +75,7 @@ can stay concise while the referenced implementation remains inspectable:
 module network
 use nn
 
-fn block(x: tensor<f32, [4]>, skip: tensor<f32, [4]>)
+fn residual(x: tensor<f32, [4]>, skip: tensor<f32, [4]>)
     -> tensor<f32, [4]> {
   return nn.relu(x + skip)
 }
@@ -101,6 +101,32 @@ that maps the abstract call directly to a target primitive can leave it
 untouched. Body expansion is generic: the core contains no tensor or NN name,
 and C++ can perform the same edit with `env.resolve(mod, op)` followed by
 `mod.expand(op, fn)`.
+
+For a larger model, list the calls a consumer can already implement and let
+`opt` expose everything else to that boundary:
+
+```jog
+module edge
+use opt
+
+fn caps() -> list<str> {
+  return ["edge.load", "edge.mac", "edge.store"]
+}
+
+fn prepare(m: Mod) -> bool {
+  return opt.legalize(m, caps(), 16)
+}
+
+fn missing(m: Mod) -> list<str> {
+  return opt.frontier(m, caps())
+}
+```
+
+`prepare` is an ordinary transform and `missing` is an ordinary read-only
+query. The capability list may equally retain `nn.conv2d`, `tensor.matmul`, or
+custom functions; Joggle does not prescribe an abstraction level. Resolved
+names are module-qualified, so source code may call `relu(x)` while the list
+states the unambiguous symbol `nn.relu`.
 
 Frontend attributes are structural dictionaries. A bridge can use
 `has(attrs, key)`, strict `attrs[key]`, `get(attrs, key, fallback)`, and

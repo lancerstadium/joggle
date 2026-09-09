@@ -43,12 +43,14 @@ MobileNetV2 gate maps every one-input ReLU through the same data-driven relation
 used by small models and proves that a second bridge run is unchanged.
 The standard `math`, `tensor`, and `nn` modules contain scalar math primitives
 and inspectable bodies for tensor algebra, grouped 2-D convolution, batch
-normalization, global pooling, reshape, linear layers, and ReLU. A generic
+normalization, average/max pooling, reshape, linear layers, and ReLU. A generic
 NumPy-style broadcast relation supports rank extension and singleton
 dimensions in shared tensor code, so ONNX and TFLite Add reuse the same
 inspectable semantics. A generic body-expansion edit can expose a
-selected network call as tensor calls and later expose those calls as loops;
-it resolves ordinary overloads and has no NN-operator switch. `base`
+selected network call as tensor calls and later expose those calls as loops.
+`opt.legalize` can instead retain a consumer's function capabilities and expose
+everything else to a bounded depth; `opt.frontier` reports the remainder. Both
+resolve ordinary overloads and have no NN-operator switch. `base`
 dictionary access lets ordinary bridge functions interpret frontend
 attributes. A bridge may add a module dependency and apply a data-driven call
 mapping, so frontend-to-network relationships stay outside both codecs and
@@ -118,6 +120,25 @@ cmake -S . -B build -DJOGGLE_BUILD_ONNX=ON
 cmake --build build
 ./build/joggle read onnx.read model.onnx -M build/modules > model.jog
 ```
+
+After a frontend bridge, a consumer can retain exactly the functions it
+supports and expose the rest through ordinary function bodies:
+
+```jog
+module edge
+use opt
+
+fn caps() -> list<str> {
+  return ["edge.load", "edge.mac", "edge.store"]
+}
+
+fn prepare(m: Mod) -> bool {
+  return opt.legalize(m, caps(), 16)
+}
+```
+
+`opt.frontier(m, caps())` reports the remaining unsupported calls. This is a
+module function, not a target registry or a second IR.
 
 The optional TFLite codec similarly keeps FlatBuffers private to its module.
 Its opt-in build requires a FlatBuffers package that provides both the library

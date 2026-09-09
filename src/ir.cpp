@@ -671,7 +671,7 @@ Op Mod::call(Op before, std::string callee, std::span<const Val> args,
   auto& order = store.blks[blk].data.ops;
   const auto position = std::find(order.begin(), order.end(), before.id_);
   if (position == order.end()) {
-    detail::add_diag(store.diags, "call insertion point is not in its block",
+    detail::add_diag(store.diags, "call insertion point is not in its Blk",
                      before.loc());
     return {};
   }
@@ -725,7 +725,7 @@ Val Mod::constant(Op before, Attr literal, Ty type) {
   const auto position = std::find(order.begin(), order.end(), before.id_);
   if (position == order.end()) {
     detail::add_diag(store.diags,
-                     "constant insertion point is not in its block",
+                     "constant insertion point is not in its Blk",
                      before.loc());
     return {};
   }
@@ -774,7 +774,7 @@ Op Mod::loop(Op before, std::span<const std::string> names,
   const auto position = std::find(parent_ops.begin(), parent_ops.end(),
                                   before.id_);
   if (position == parent_ops.end())
-    return reject("loop insertion point is not in its block");
+    return reject("loop insertion point is not in its Blk");
   for (Val value : carried) {
     if (value.name().empty())
       return reject("loop-carried values must be named local bindings");
@@ -876,7 +876,7 @@ Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
   const auto position = std::find(parent_ops.begin(), parent_ops.end(),
                                   before.id_);
   if (position == parent_ops.end())
-    return reject("branch insertion point is not in its block");
+    return reject("branch insertion point is not in its Blk");
   for (Val value : carried) {
     if (value.name().empty())
       return reject("branch-carried values must be named local bindings");
@@ -958,7 +958,7 @@ Op Mod::clone(Op source, Op before) {
       before.store_ != &store)
     return reject("clone requires live operations in this module");
   if (source.kind() == Op::Kind::ret || source.kind() == Op::Kind::yield)
-    return reject("clone does not duplicate block terminators", source.loc());
+    return reject("clone does not duplicate Blk terminators", source.loc());
 
   std::unordered_set<std::uint32_t> subtree_ops;
   std::unordered_set<std::uint32_t> subtree_values;
@@ -992,7 +992,7 @@ Op Mod::clone(Op source, Op before) {
                                    store.blks[destination].data.ops.end(),
                                    before.id_);
   if (insertion == store.blks[destination].data.ops.end())
-    return reject("clone insertion point is not in its block", before.loc());
+    return reject("clone insertion point is not in its Blk", before.loc());
   std::unordered_map<std::uint32_t, std::uint32_t> values;
   const auto copy_op = [&](const auto& self, std::uint32_t old_id,
                            std::uint32_t blk) -> std::uint32_t {
@@ -1052,7 +1052,7 @@ Op Mod::clone(Op source, Op before) {
   order.pop_back();
   const auto position = std::find(order.begin(), order.end(), before.id_);
   if (position == order.end())
-    return reject("clone insertion point is not in its block", before.loc());
+    return reject("clone insertion point is not in its Blk", before.loc());
   order.insert(position, cloned_id);
   detail::rebuild_uses(store);
   touch(store);
@@ -1328,7 +1328,7 @@ bool Mod::expand(Op call, Fn callee) {
     order.erase(std::remove(order.begin(), order.end(), root), order.end());
   const auto position = std::find(order.begin(), order.end(), call.id_);
   if (position == order.end())
-    return reject("expanded call is not in its block", call.loc());
+    return reject("expanded call is not in its Blk", call.loc());
   order.insert(position, roots.begin(), roots.end());
   for (auto& slot : store.ops) {
     if (!slot.live)
@@ -1383,13 +1383,13 @@ bool Mod::move(Op op, Op before) {
     return true;
   if (op.blk() != before.blk()) {
     detail::add_diag(store.diags,
-                     "move currently requires one destination block",
+                     "move currently requires one destination Blk",
                      before.loc());
     return false;
   }
   if (op.kind() == Op::Kind::ret || op.kind() == Op::Kind::yield ||
       before.kind() == Op::Kind::yield) {
-    detail::add_diag(store.diags, "move cannot reorder a block terminator",
+    detail::add_diag(store.diags, "move cannot reorder a Blk terminator",
                      op.loc());
     return false;
   }
@@ -1399,7 +1399,7 @@ bool Mod::move(Op op, Op before) {
   const auto position = std::find(order.begin(), order.end(), before.id_);
   if (position == order.end()) {
     order = old_order;
-    detail::add_diag(store.diags, "move insertion point is not in its block",
+    detail::add_diag(store.diags, "move insertion point is not in its Blk",
                      before.loc());
     return false;
   }
@@ -1509,10 +1509,10 @@ bool Mod::fuse(std::span<const Op> ops, std::string callee) {
     const Op op = ops[index];
     if (!op.valid() || op.store_ != &store || op.blk() != blk ||
         op.kind() != Op::Kind::call || !selected.insert(op.id_).second)
-      return reject("fuse requires distinct calls in one block", op.loc());
+      return reject("fuse requires distinct calls in one Blk", op.loc());
     const auto position = std::find(order.begin(), order.end(), op);
     if (position == order.end())
-      return reject("fuse call is not in its block", op.loc());
+      return reject("fuse call is not in its Blk", op.loc());
     const auto at = static_cast<std::size_t>(position - order.begin());
     if (index && at <= previous)
       return reject("fuse calls must be in program order", op.loc());
@@ -1687,7 +1687,7 @@ bool Mod::erase(Op op) {
     return false;
   }
   if (op.kind() == Op::Kind::ret || op.kind() == Op::Kind::yield) {
-    detail::add_diag(store.diags, "cannot erase a block terminator", op.loc());
+    detail::add_diag(store.diags, "cannot erase a Blk terminator", op.loc());
     return false;
   }
 
@@ -1724,7 +1724,7 @@ bool Mod::erase(Op op) {
     const auto found = std::find(order.begin(), order.end(), op.id_);
     if (found == order.end()) {
       detail::add_diag(store.diags,
-                       "erase operation is not in its parent block", op.loc());
+                       "erase operation is not in its parent Blk", op.loc());
       return false;
     }
     order.erase(found);
@@ -1805,7 +1805,7 @@ bool Mod::rename(Val value, std::string name) {
   }
   for (const auto& slot : store.blks)
     if (slot.live && conflicts(slot.data.args)) {
-      detail::add_diag(store.diags, "rename would duplicate a block binding");
+      detail::add_diag(store.diags, "rename would duplicate a Blk binding");
       return false;
     }
 

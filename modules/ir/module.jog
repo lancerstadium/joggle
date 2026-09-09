@@ -23,6 +23,7 @@ fn callee(op: Op) -> str;
 fn type(v: Val) -> Ty;
 fn type(m: Mod, v: Val, type: Ty) -> bool;
 fn resolve(m: Mod, op: Op) -> Fn;
+fn symbol(f: Fn) -> str;
 fn has(f: Fn, key: str) -> bool;
 fn has(v: Val, key: str) -> bool;
 fn has(op: Op, key: str) -> bool;
