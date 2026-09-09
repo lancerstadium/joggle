@@ -41,7 +41,10 @@ C++ transforms but are recovered as normal source syntax by the printer.
 Calls, literals, indexing, unary operators, and common binary operators are
 implemented. Operators normalize to ordinary function calls such as
 `operator +` and `operator []`; adding a concrete overload does not add a new
-IR operation kind. Operator functions use the symbol directly:
+IR operation kind. `&&` and `||` are the deliberate exception: they normalize
+to ordinary structured branches so their right operand is evaluated only in
+the selected `Blk`. The printer recovers the source expression, while passes
+see the actual control flow. Operator functions use the symbol directly:
 
 ```jog
 fn +<T: Ty>(a: T, b: T) -> T;
@@ -302,6 +305,10 @@ transforms safely consume a traversal snapshot, while `ir.blk` and
 Canonical printing preserves expression trees with precedence-aware
 parentheses. In particular, `a && (b || c)`, `(a + b) * c`, and
 `a - (b - c)` retain their meaning after print and reparse.
+Logical expressions preserve true short-circuit behavior, including during
+compile-time execution; a missing or mutating call in an unselected operand is
+never evaluated. Nested `yield` values are type-checked against the carried
+result, so malformed logical and user-constructed control flow is rejected.
 
 The embedding overload `run(env, name, mod, report)` returns execution detail
 in an `Attr` dictionary. `ok` denotes successful execution, `reported` is the

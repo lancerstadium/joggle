@@ -1011,6 +1011,44 @@ private:
     return true;
   }
 
+  std::uint32_t logical(std::uint32_t blk, Scope& scope, std::uint32_t left,
+                        const Token& token, int minimum) {
+    detail::OpData data;
+    data.kind = Op::Kind::branch;
+    data.args = {left, left};
+    data.carried_count = 1;
+    data.logic = token.text == "&&" ? detail::Logic::and_ : detail::Logic::or_;
+    data.loc = token.loc;
+    const auto op = add_op(blk, std::move(data), {{"", Ty("bool")}});
+    const auto fn = store_.blks[blk].data.fn;
+
+    for (std::size_t arm = 0; arm < 2; ++arm) {
+      const auto body = add_blk(fn, op);
+      store_.ops[op].data.blks.push_back(body);
+      detail::ValData carried;
+      carried.kind = detail::ValKind::blk_arg;
+      carried.type = Ty("bool");
+      const auto carried_id = add_val(std::move(carried));
+      store_.blks[body].data.args.push_back(carried_id);
+
+      const bool active =
+          (token.text == "&&" && arm == 0) ||
+          (token.text == "||" && arm == 1);
+      std::uint32_t value = carried_id;
+      if (active) {
+        value = expression(body, scope, minimum);
+        if (value == detail::none)
+          return detail::none;
+      }
+      detail::OpData yield;
+      yield.kind = Op::Kind::yield;
+      yield.args = {value};
+      yield.loc = token.loc;
+      add_op(body, std::move(yield));
+    }
+    return store_.ops[op].data.outs.front();
+  }
+
   std::uint32_t expression(std::uint32_t blk, Scope& scope, int minimum = 0) {
     std::uint32_t left = unary(blk, scope);
     if (left == detail::none)
@@ -1020,13 +1058,18 @@ private:
       if (level < minimum)
         break;
       const Token op = take();
+      if (op.text == "&&" || op.text == "||") {
+        left = logical(blk, scope, left, op, level + 1);
+        if (left == detail::none)
+          return left;
+        continue;
+      }
       const auto right = expression(blk, scope, level + 1);
       if (right == detail::none)
         return right;
       Ty type = store_.vals[left].data.type;
       if (op.text == "==" || op.text == "!=" || op.text == "<" ||
-          op.text == "<=" || op.text == ">" || op.text == ">=" ||
-          op.text == "&&" || op.text == "||")
+          op.text == "<=" || op.text == ">" || op.text == ">=")
         type = Ty("bool");
       left =
           add_call(blk, operator_name(op.text), {left, right}, type, op.loc);
@@ -1348,6 +1391,25 @@ std::string render_value(const detail::Store& store, std::uint32_t value,
   if (data.def == detail::none)
     return data.name;
   const detail::OpData& op = store.ops[data.def].data;
+  if (op.kind == Op::Kind::branch && op.logic != detail::Logic::none &&
+      op.args.size() == 2 && op.blks.size() == 2) {
+    const std::size_t arm = op.logic == detail::Logic::and_ ? 0 : 1;
+    const auto& ops = store.blks[op.blks[arm]].data.ops;
+    if (!ops.empty()) {
+      const detail::OpData& yield = store.ops[ops.back()].data;
+      if (yield.kind == Op::Kind::yield && yield.args.size() == 1) {
+        const std::string_view symbol =
+            op.logic == detail::Logic::and_ ? "&&" : "||";
+        const int level = precedence(symbol);
+        std::string text = render_value(store, op.args[0], level) + " " +
+                           std::string(symbol) + " " +
+                           render_value(store, yield.args[0], level, true);
+        if (level < parent || (right && level == parent))
+          return "(" + text + ")";
+        return text;
+      }
+    }
+  }
   if (op.kind == Op::Kind::constant && op.form == detail::Form::hidden)
     return attr_text(op.literal);
   if (op.kind == Op::Kind::call && op.form == detail::Form::hidden) {
@@ -1407,7 +1469,9 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
     if (id >= store.ops.size() || !store.ops[id].live)
       continue;
     const detail::OpData& op = store.ops[id].data;
-    if (((op.kind == Op::Kind::call || op.kind == Op::Kind::constant) &&
+    if (((op.kind == Op::Kind::call || op.kind == Op::Kind::constant ||
+          (op.kind == Op::Kind::branch &&
+           op.logic != detail::Logic::none)) &&
          op.form == detail::Form::hidden) ||
         op.kind == Op::Kind::yield)
       continue;
@@ -1463,6 +1527,17 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
       render_blk(out, store, op.blks.front(), depth + 1);
       indent(out, depth);
       out << "}\n";
+    } else if (op.kind == Op::Kind::branch &&
+               op.logic != detail::Logic::none) {
+      const detail::ValData& value = store.vals[op.outs.front()].data;
+      if (op.form == detail::Form::let || op.form == detail::Form::var) {
+        out << (op.form == detail::Form::var ? "var " : "let ")
+            << value.name;
+        if (value.type_annotation)
+          out << ": " << value.type.text();
+        out << " = ";
+      }
+      out << render_value(store, op.outs.front()) << '\n';
     } else if (op.kind == Op::Kind::branch) {
       out << "if " << render_value(store, op.args.front()) << " {\n";
       render_blk(out, store, op.blks[0], depth + 1);
@@ -2370,9 +2445,30 @@ bool Mod::verify(const Env& env) {
       continue;
     }
     const auto& parent = store.ops[blk_slot.data.parent_op].data;
-    if (store.ops[ops.back()].data.args.size() != parent.carried_count)
+    const auto& yield = store.ops[ops.back()].data;
+    if (yield.args.size() != parent.carried_count) {
       detail::add_diag(store.diags,
                        "yield arity does not match carried values");
+      continue;
+    }
+    for (std::size_t index = 0; index < yield.args.size(); ++index) {
+      if (index >= parent.outs.size() || yield.args[index] >= store.vals.size() ||
+          parent.outs[index] >= store.vals.size() ||
+          !store.vals[yield.args[index]].live ||
+          !store.vals[parent.outs[index]].live)
+        continue;
+      const Ty& actual = store.vals[yield.args[index]].data.type;
+      const Ty& expected = store.vals[parent.outs[index]].data.type;
+      Bindings bindings;
+      if (!actual.empty() && actual.text() != "_" && !expected.empty() &&
+          expected.text() != "_" &&
+          !unify(expected, actual, {}, bindings))
+        detail::add_diag(store.diags,
+                         "yield type '" + std::string(actual.text()) +
+                             "' does not match carried type '" +
+                             std::string(expected.text()) + "'",
+                         yield.loc);
+    }
   }
   for (std::uint32_t op_id = 0; op_id < store.ops.size(); ++op_id) {
     const auto& op_slot = store.ops[op_id];

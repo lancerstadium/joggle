@@ -1,5 +1,6 @@
 #include "joggle/joggle.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -135,6 +136,36 @@ int main(int argc, char** argv) {
   CHECK(expanded_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(network, expanded_roundtrip));
   CHECK(joggle::structurally_equal(network, network_cpp));
+
+  constexpr std::string_view logical_source =
+      "module logical\n"
+      "fn choose(a: bool, b: bool, c: bool) -> bool {\n"
+      "  let out: bool = a && (b || c)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod logical;
+  CHECK(joggle::parse(env, logical_source, logical, "logical.jog"));
+  CHECK(logical.verify(env));
+  std::size_t logical_branches = 0;
+  for (joggle::Op op : logical.ops())
+    logical_branches += op.kind() == joggle::Op::Kind::branch ? 1 : 0;
+  CHECK(logical_branches == 2);
+  const std::string logical_text = joggle::print(logical);
+  CHECK(logical_text.find("a && (b || c)") != std::string::npos);
+  joggle::Mod logical_roundtrip;
+  CHECK(joggle::parse(env, logical_text, logical_roundtrip,
+                      "logical-roundtrip.jog"));
+  CHECK(logical_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(logical, logical_roundtrip));
+  joggle::Mod invalid_logical;
+  CHECK(joggle::parse(
+      env, "module invalid.logical\n"
+           "fn bad(a: bool) -> bool { return a && 1 }\n",
+      invalid_logical, "invalid-logical.jog"));
+  CHECK(!invalid_logical.verify(env));
+  CHECK(!invalid_logical.diags().empty());
+  CHECK(invalid_logical.diags().front().message.find("yield type") !=
+        std::string::npos);
 
   joggle::Mod generic_matmul;
   constexpr std::string_view generic_matmul_source =
@@ -1159,6 +1190,11 @@ int main(int argc, char** argv) {
   joggle::Mod overload_execution;
   CHECK(joggle::parse(env, source.str(), overload_execution, argv[1]));
   CHECK(joggle::run(env, "script.overload_probe", overload_execution));
+  CHECK(joggle::run(env, "script.short_circuit_probe", overload_execution));
+  CHECK(joggle::run(env, "script.short_circuit_edit", overload_execution));
+  const std::vector<std::string> short_uses = overload_execution.uses();
+  CHECK(std::find(short_uses.begin(), short_uses.end(), "skipped") ==
+        short_uses.end());
   CHECK(joggle::run(env, "script.generic_probe", overload_execution));
   CHECK(joggle::run(env, "script.multi_probe", overload_execution));
   CHECK(joggle::run(env, "script.compound_probe", overload_execution));

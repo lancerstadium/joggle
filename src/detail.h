@@ -20,6 +20,7 @@ template <class T> struct Slot {
 };
 
 enum class ValKind : std::uint8_t { generic, param, blk_arg, result };
+enum class Logic : std::uint8_t { none, and_, or_ };
 enum class Form : std::uint8_t {
   hidden,
   expr,
@@ -50,6 +51,7 @@ struct OpData {
   std::vector<std::uint32_t> blks;
   std::vector<std::string> iter_names;
   std::size_t carried_count = 0;
+  Logic logic = Logic::none;
   Attr literal;
   Attr::Dict meta;
   Form form = Form::hidden;

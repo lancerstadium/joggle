@@ -281,6 +281,12 @@ that a failure after editing restores the complete nested structure and its
 revision. No public `Blk` builder, region descriptor, or source-form enum was
 introduced.
 
+Boolean `&&` and `||` use the same branch representation rather than eager
+operator calls. Only the selected arm evaluates its right operand; canonical
+printing reconstructs the compact expression, and structural traversal still
+observes its nested `Blk`s. Yielded values are verified against their carried
+result types for both parsed and programmatically constructed control flow.
+
 ## M7 sixth slice
 
 Value renaming is now closed over structured control flow. Renaming any member

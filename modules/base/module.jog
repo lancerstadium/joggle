@@ -42,6 +42,4 @@ fn < <A: Ty, B: Ty>(a: A, b: B) -> bool;
 fn <= <A: Ty, B: Ty>(a: A, b: B) -> bool;
 fn ><A: Ty, B: Ty>(a: A, b: B) -> bool;
 fn >=<A: Ty, B: Ty>(a: A, b: B) -> bool;
-fn &&(a: bool, b: bool) -> bool;
-fn ||(a: bool, b: bool) -> bool;
 fn ..<A: Ty, B: Ty>(a: A, b: B) -> range;

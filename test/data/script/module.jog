@@ -19,6 +19,17 @@ fn overload_probe(m: Mod) -> bool {
   return probe(1)
 }
 
+fn short_circuit_probe(m: Mod) -> bool {
+  return !(false && missing(true)) && (true || missing(false))
+}
+
+fn short_circuit_edit(m: Mod) -> bool {
+  let before = len(ir.uses(m))
+  false && ir.use(m, "skipped")
+  true || ir.use(m, "skipped")
+  return len(ir.uses(m)) == before
+}
+
 fn below<N: int>(x: int) -> bool {
   return x < N
 }
