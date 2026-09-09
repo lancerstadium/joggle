@@ -243,7 +243,10 @@ std::string attr_text(const Attr& value) {
     out.imbue(std::locale::classic());
     out << std::setprecision(std::numeric_limits<double>::max_digits10)
         << *item;
-    return out.str();
+    std::string text = out.str();
+    if (text.find_first_of(".eE") == std::string::npos)
+      text += ".0";
+    return text;
   }
   if (const auto item = value.string()) {
     std::string out = "\"";

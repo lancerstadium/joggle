@@ -63,6 +63,10 @@ official TensorFlow Hub MobileNetV2. Its FlatBuffer schema generates a private
 build header with mini-reflection, so schema-known operator option tables are
 transported without a switch over operator names or a checked-in generated API.
 This second frontend adds no dependency or case to the core.
+The separately selected `tflite.nn` relation then converts all 66 compute calls
+in that model to shared `nn`/`tensor` functions. Logical-axis operands retain
+NHWC and both TFLite weight layouts without creating a second IR or a
+layout-specific core operation.
 
 ## Build
 
@@ -96,6 +100,7 @@ and `flatc`:
 cmake -S . -B build -DJOGGLE_BUILD_TFLITE=ON
 cmake --build build
 ./build/joggle read tflite.read model.tflite -M build/modules > model.jog
+./build/joggle run tflite.nn.convert model.jog -M build/modules > network.jog
 ```
 
 The pinned integration model can be fetched and checked independently:

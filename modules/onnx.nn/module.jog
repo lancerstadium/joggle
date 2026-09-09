@@ -78,15 +78,13 @@ fn infer(m: Mod) -> bool {
   for op in ir.ops(m) {
     if ir.callee(op) == "onnx.Conv" {
       changed = conv_type(m, op) || changed
-    } else {
-      if ir.callee(op) == "onnx.BatchNormalization" ||
-         ir.callee(op) == "onnx.Relu" || ir.callee(op) == "onnx.Add" {
-        changed = same_type(m, op) || changed
-      } else {
-        if ir.callee(op) == "onnx.GlobalAveragePool" {
-          changed = pool_type(m, op) || changed
-        }
-      }
+    }
+    if ir.callee(op) == "onnx.BatchNormalization" ||
+       ir.callee(op) == "onnx.Relu" || ir.callee(op) == "onnx.Add" {
+      changed = same_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.GlobalAveragePool" {
+      changed = pool_type(m, op) || changed
     }
   }
   return changed
@@ -104,7 +102,7 @@ fn convert_call(m: Mod, op: Op, callee: str) -> bool {
   if !ir.rename(m, op, callee) {
     return false
   }
-  let removed = ir.unset(m, op, "onnx")
+  ir.unset(m, op, "onnx")
   return true
 }
 
@@ -168,26 +166,21 @@ fn convert(m: Mod) -> bool {
   for op in ir.ops(m) {
     if ir.callee(op) == "onnx.Conv" {
       changed = convert_conv(m, op) || changed
-    } else {
-      if ir.callee(op) == "onnx.BatchNormalization" {
-        changed = convert_norm(m, op) || changed
-      } else {
-        if ir.callee(op) == "onnx.Relu" {
-          changed = convert_call(m, op, "nn.relu") || changed
-        } else {
-          if ir.callee(op) == "onnx.Add" {
-            changed = convert_call(m, op, "operator +") || changed
-          } else {
-            if ir.callee(op) == "onnx.GlobalAveragePool" {
-              changed = convert_call(m, op, "nn.global_avg_pool2d") || changed
-            } else {
-              if ir.callee(op) == "onnx.Reshape" {
-                changed = convert_reshape(m, op) || changed
-              }
-            }
-          }
-        }
-      }
+    }
+    if ir.callee(op) == "onnx.BatchNormalization" {
+      changed = convert_norm(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Relu" {
+      changed = convert_call(m, op, "nn.relu") || changed
+    }
+    if ir.callee(op) == "onnx.Add" {
+      changed = convert_call(m, op, "operator +") || changed
+    }
+    if ir.callee(op) == "onnx.GlobalAveragePool" {
+      changed = convert_call(m, op, "nn.global_avg_pool2d") || changed
+    }
+    if ir.callee(op) == "onnx.Reshape" {
+      changed = convert_reshape(m, op) || changed
     }
   }
   return changed

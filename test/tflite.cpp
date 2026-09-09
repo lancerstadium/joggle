@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <fstream>
+#include <initializer_list>
 #include <iterator>
 #include <string>
 #include <string_view>
@@ -23,6 +24,21 @@ std::size_t count(const joggle::Mod& mod, std::string_view callee) {
   for (joggle::Op op : mod.ops())
     result += op.kind() == joggle::Op::Kind::call && op.callee() == callee;
   return result;
+}
+
+bool integers(joggle::Val value,
+              std::initializer_list<std::int64_t> expected) {
+  const joggle::Op list = value.def();
+  if (!list || list.callee() != "base.list" ||
+      list.args().size() != expected.size())
+    return false;
+  std::size_t index = 0;
+  for (const std::int64_t item : expected) {
+    const joggle::Attr value = list.args()[index++].constant();
+    if (value.integer() != item)
+      return false;
+  }
+  return true;
 }
 
 }  // namespace
@@ -108,5 +124,88 @@ int main(int argc, char** argv) {
   CHECK(joggle::parse(env, canonical, roundtrip, "tflite-roundtrip.jog"));
   CHECK(roundtrip.verify(env));
   CHECK(joggle::structurally_equal(model, roundtrip));
+
+  CHECK(env.load("tflite.nn"));
+  joggle::Mod semantic;
+  CHECK(joggle::parse(env, canonical, semantic, "tflite-semantic.jog"));
+  CHECK(semantic.verify(env));
+  CHECK(joggle::run(env, "tflite.nn.convert", semantic));
+  CHECK(semantic.verify(env));
+  CHECK(count(semantic, "tflite.CONV_2D") == 0);
+  CHECK(count(semantic, "tflite.DEPTHWISE_CONV_2D") == 0);
+  CHECK(count(semantic, "tflite.ADD") == 0);
+  CHECK(count(semantic, "tflite.AVERAGE_POOL_2D") == 0);
+  CHECK(count(semantic, "tflite.RESHAPE") == 0);
+  CHECK(count(semantic, "tflite.SOFTMAX") == 0);
+  CHECK(count(semantic, "nn.conv2d") == 53);
+  CHECK(count(semantic, "nn.add") == 10);
+  CHECK(count(semantic, "nn.avg_pool2d") == 1);
+  CHECK(count(semantic, "tensor.reshape") == 1);
+  CHECK(count(semantic, "nn.softmax") == 1);
+  std::size_t standard_layouts = 0;
+  std::size_t depthwise_layouts = 0;
+  for (joggle::Op op : semantic.ops()) {
+    if (op.callee() == "nn.conv2d") {
+      CHECK(op.args().size() == 11);
+      CHECK(integers(op.args()[7], {0, 2, 3, 1}));
+      CHECK(integers(op.args()[9], {0, 2, 3, 1}));
+      if (integers(op.args()[8], {0, 2, 3, 1}))
+        ++standard_layouts;
+      else if (integers(op.args()[8], {-1, 2, 3, 0}))
+        ++depthwise_layouts;
+      else
+        CHECK(false);
+      CHECK(op.meta("tflite") == nullptr);
+    }
+  }
+  CHECK(standard_layouts == 36 && depthwise_layouts == 17);
+  const std::string converted = joggle::print(semantic);
+  CHECK(joggle::run(env, "tflite.nn.convert", semantic));
+  CHECK(joggle::print(semantic) == converted);
+  joggle::Mod semantic_roundtrip;
+  CHECK(joggle::parse(env, converted, semantic_roundtrip,
+                      "tflite-semantic-roundtrip.jog"));
+  if (!semantic_roundtrip.verify(env))
+    return semantic_roundtrip.print_diags(stderr);
+  CHECK(joggle::structurally_equal(semantic, semantic_roundtrip));
+
+  std::size_t exposed = 0;
+  for (joggle::Op op : semantic_roundtrip.ops()) {
+    const std::string_view callee = op.callee();
+    const bool selected =
+        callee == "nn.conv2d" || callee == "nn.add" ||
+        callee == "nn.avg_pool2d" || callee == "tensor.reshape" ||
+        callee == "nn.softmax";
+    if (!selected)
+      continue;
+    const joggle::Fn fn = env.resolve(semantic_roundtrip, op);
+    CHECK(fn && semantic_roundtrip.expand(op, fn));
+    ++exposed;
+  }
+  CHECK(exposed == 66);
+  CHECK(semantic_roundtrip.verify(env));
+  const std::string exposed_text = joggle::print(semantic_roundtrip);
+  joggle::Mod exposed_roundtrip;
+  CHECK(joggle::parse(env, exposed_text, exposed_roundtrip,
+                      "tflite-exposed-roundtrip.jog"));
+  CHECK(exposed_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(semantic_roundtrip, exposed_roundtrip));
+
+  constexpr std::string_view unsupported_source =
+      "module unsupported\n"
+      "use tflite\n"
+      "fn main(x: tensor<f32, [1, 2]>) -> tensor<f32, [1, 2]> {\n"
+      "  [tflite: {options: {fused_activation_function: \"TANH\"}}]\n"
+      "  let y: tensor<f32, [1, 2]> = tflite.ADD(x, x)\n"
+      "  return y\n"
+      "}\n";
+  joggle::Mod unsupported;
+  CHECK(joggle::parse(env, unsupported_source, unsupported,
+                      "tflite-unsupported.jog"));
+  CHECK(unsupported.verify(env));
+  CHECK(joggle::run(env, "tflite.nn.convert", unsupported));
+  CHECK(unsupported.verify(env));
+  CHECK(count(unsupported, "tflite.ADD") == 1);
+  CHECK(count(unsupported, "nn.add") == 0);
   return 0;
 }

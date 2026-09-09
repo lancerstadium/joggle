@@ -1,0 +1,258 @@
+module tflite.nn
+use tflite
+use nn
+use ir
+
+fn ints(m: Mod, before: Op, value: Attr) -> Val {
+  var items: list<Val> = []
+  for item in value {
+    items += [ir.constant(m, before, item, "int")]
+  }
+  return ir.call(m, before, "base.list", items, "list<int>")
+}
+
+fn options(op: Op) -> Attr {
+  return base.get(ir.meta(op, "tflite"), "options", {})
+}
+
+fn supports_activation(kind: str) -> bool {
+  return kind == "NONE" || kind == "RELU" || kind == "RELU6" ||
+         kind == "RELU_N1_TO_1"
+}
+
+fn padding(
+  input: list<int>,
+  output: list<int>,
+  kernel: list<int>,
+  stride: list<int>,
+  dilation: list<int>,
+  kind: str
+) -> list<int> {
+  var top = 0
+  var bottom = 0
+  var left = 0
+  var right = 0
+  if kind == "SAME" {
+    var height = (output[0] - 1) * stride[0] +
+                 dilation[0] * (kernel[0] - 1) + 1 - input[0]
+    var width = (output[1] - 1) * stride[1] +
+                dilation[1] * (kernel[1] - 1) + 1 - input[1]
+    if height < 0 {
+      height = 0
+    }
+    if width < 0 {
+      width = 0
+    }
+    top = height / 2
+    bottom = height - top
+    left = width / 2
+    right = width - left
+  }
+  return [top, left, bottom, right]
+}
+
+fn convert_call(m: Mod, op: Op, callee: str) -> bool {
+  if !ir.rename(m, op, callee) {
+    return false
+  }
+  ir.unset(m, op, "tflite")
+  return true
+}
+
+fn convert_conv(m: Mod, op: Op, depthwise: bool) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 {
+    return false
+  }
+  let x = ir.type(inputs[0])
+  let weight = ir.type(inputs[1])
+  let bias = ir.type(inputs[2])
+  let y = ir.type(outputs[0])
+  if name(x) != "tensor" || name(weight) != "tensor" ||
+     name(bias) != "tensor" || name(y) != "tensor" {
+    return false
+  }
+  if tensor.elem(x) != tensor.elem(weight) ||
+     tensor.elem(x) != tensor.elem(bias) || tensor.elem(x) != tensor.elem(y) {
+    return false
+  }
+  let xs = tensor.shape(x)
+  let ks = tensor.shape(weight)
+  let bs = tensor.shape(bias)
+  let ys = tensor.shape(y)
+  if len(xs) != 4 || len(ks) != 4 || len(bs) != 1 || len(ys) != 4 {
+    return false
+  }
+  if xs[0] != ys[0] || bs[0] != ys[3] {
+    return false
+  }
+  let opts = options(op)
+  let act = base.get(opts, "fused_activation_function", "NONE")
+  let pad_kind = base.get(opts, "padding", "SAME")
+  if !supports_activation(act) ||
+     (pad_kind != "SAME" && pad_kind != "VALID") {
+    return false
+  }
+  let stride = [
+    base.get(opts, "stride_h", 1), base.get(opts, "stride_w", 1)
+  ]
+  let dilation = [
+    base.get(opts, "dilation_h_factor", 1),
+    base.get(opts, "dilation_w_factor", 1)
+  ]
+  let pad = padding(
+    [xs[1], xs[2]], [ys[1], ys[2]], [ks[1], ks[2]],
+    stride, dilation, pad_kind
+  )
+  inputs += [ints(m, op, stride)]
+  inputs += [ints(m, op, pad)]
+  inputs += [ints(m, op, dilation)]
+  var groups = 1
+  var weight_axes = [0, 2, 3, 1]
+  if depthwise {
+    let multiplier = base.get(opts, "depth_multiplier", 1)
+    if ks[0] != 1 || ks[3] != ys[3] || ys[3] != xs[3] * multiplier {
+      return false
+    }
+    groups = xs[3]
+    weight_axes = [-1, 2, 3, 0]
+  } else {
+    if ks[0] != ys[3] || ks[3] != xs[3] {
+      return false
+    }
+  }
+  inputs += [ir.constant(m, op, groups, "int")]
+  inputs += [ints(m, op, [0, 2, 3, 1])]
+  inputs += [ints(m, op, weight_axes)]
+  inputs += [ints(m, op, [0, 2, 3, 1])]
+  inputs += [ir.constant(m, op, act, "str")]
+  if !ir.args(m, op, inputs) {
+    return false
+  }
+  return convert_call(m, op, "nn.conv2d")
+}
+
+fn convert_add(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 1 ||
+     ir.type(inputs[0]) != ir.type(inputs[1]) ||
+     ir.type(inputs[0]) != ir.type(outputs[0]) {
+    return false
+  }
+  let act = base.get(options(op), "fused_activation_function", "NONE")
+  if !supports_activation(act) {
+    return false
+  }
+  inputs += [ir.constant(m, op, act, "str")]
+  if !ir.args(m, op, inputs) {
+    return false
+  }
+  return convert_call(m, op, "nn.add")
+}
+
+fn convert_pool(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let x = ir.type(inputs[0])
+  let y = ir.type(outputs[0])
+  if name(x) != "tensor" || name(y) != "tensor" {
+    return false
+  }
+  if tensor.elem(x) != tensor.elem(y) {
+    return false
+  }
+  let xs = tensor.shape(x)
+  let ys = tensor.shape(y)
+  if len(xs) != 4 || len(ys) != 4 {
+    return false
+  }
+  if xs[0] != ys[0] || xs[3] != ys[3] {
+    return false
+  }
+  let opts = options(op)
+  let act = base.get(opts, "fused_activation_function", "NONE")
+  let pad_kind = base.get(opts, "padding", "SAME")
+  if !supports_activation(act) ||
+     (pad_kind != "SAME" && pad_kind != "VALID") {
+    return false
+  }
+  let kernel = [
+    base.get(opts, "filter_height", 1),
+    base.get(opts, "filter_width", 1)
+  ]
+  let stride = [
+    base.get(opts, "stride_h", 1), base.get(opts, "stride_w", 1)
+  ]
+  let pad = padding(
+    [xs[1], xs[2]], [ys[1], ys[2]], kernel, stride, [1, 1],
+    pad_kind
+  )
+  inputs += [ints(m, op, kernel)]
+  inputs += [ints(m, op, stride)]
+  inputs += [ints(m, op, pad)]
+  inputs += [ints(m, op, [0, 2, 3, 1])]
+  inputs += [ir.constant(m, op, act, "str")]
+  if !ir.args(m, op, inputs) {
+    return false
+  }
+  return convert_call(m, op, "nn.avg_pool2d")
+}
+
+fn convert_reshape(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  if len(inputs) < 1 || len(ir.outs(op)) != 1 {
+    return false
+  }
+  if !ir.args(m, op, [inputs[0]]) {
+    return false
+  }
+  return convert_call(m, op, "tensor.reshape")
+}
+
+fn convert_softmax(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 ||
+     ir.type(inputs[0]) != ir.type(outputs[0]) {
+    return false
+  }
+  inputs += [
+    ir.constant(m, op, base.get(options(op), "beta", 1.0), "f64")
+  ]
+  if !ir.args(m, op, inputs) {
+    return false
+  }
+  return convert_call(m, op, "nn.softmax")
+}
+
+fn convert(m: Mod) -> bool {
+  var changed = ir.use(m, "nn")
+  for op in ir.ops(m) {
+    if ir.live(op) {
+      if ir.callee(op) == "tflite.CONV_2D" {
+        changed = convert_conv(m, op, false) || changed
+      }
+      if ir.callee(op) == "tflite.DEPTHWISE_CONV_2D" {
+        changed = convert_conv(m, op, true) || changed
+      }
+      if ir.callee(op) == "tflite.ADD" {
+        changed = convert_add(m, op) || changed
+      }
+      if ir.callee(op) == "tflite.AVERAGE_POOL_2D" {
+        changed = convert_pool(m, op) || changed
+      }
+      if ir.callee(op) == "tflite.RESHAPE" {
+        changed = convert_reshape(m, op) || changed
+      }
+      if ir.callee(op) == "tflite.SOFTMAX" {
+        changed = convert_softmax(m, op) || changed
+      }
+    }
+  }
+  return changed
+}

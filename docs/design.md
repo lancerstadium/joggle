@@ -530,3 +530,22 @@ preservation, canonical round-trip, and rejection of truncated input. Semantic
 conversion is deliberately not guessed by the codec: TFLite's NHWC layouts,
 fused activations, bias operands, and quantization metadata must become an
 explicit `tflite.nn` relationship rather than hidden reader policy.
+
+## M10 layout-relation slice
+
+Layout is expressed as data at the network/tensor boundary rather than as a
+new IR kind. A logical-axis list labels each physical dimension; for example,
+NHWC is `[0, 2, 3, 1]`. The value `-1` marks a fixed singleton dimension, which
+lets the same convolution body cover TFLite's `[1,H,W,O]` depthwise weights.
+The ordinary `tensor.extent`, `tensor.offset`, and `tensor.coord` functions are
+the complete interpretation mechanism. A research module may construct a new
+axis list without registering a layout or changing core.
+
+The pure `.jog` `tflite.nn` relation materializes axis lists and schema options
+as operands, then converts all 66 MobileNetV2 compute calls to `nn.conv2d`,
+`nn.add`, `nn.avg_pool2d`, `tensor.reshape`, and `nn.softmax`. Standard and
+depthwise convolution differ only in weight axes and group count; bias and
+fused activation are ordinary function composition. Conversion is explicit,
+idempotent, and removes source metadata only after its meaning is represented.
+The gate resolves and exposes one body for every converted call, verifies the
+nested IR, and requires a canonical structural round-trip.

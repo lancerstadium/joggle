@@ -137,15 +137,23 @@ do not need a frontend-specific projection primitive.
 
 `tensor` defines `tensor<E, S>`, structural `elem`/`shape`/`type` helpers,
 linear, two-dimensional, and four-dimensional indexing, `numel`, elementwise
-addition, and matrix multiplication. These computations have normal `.jog`
-bodies with loops and explicit value updates; they are not opaque operator
-records. `nn.linear` composes matrix
+addition, and matrix multiplication. `extent`, `offset`, and `coord` interpret
+a physical shape through an explicit logical-axis list. Each physical dimension
+names its logical axis; `-1` denotes a fixed singleton dimension. Thus NCHW is
+`[0, 1, 2, 3]`, NHWC is `[0, 2, 3, 1]`, and TFLite's depthwise `[1,H,W,O]`
+weight is `[-1, 2, 3, 0]`. These are ordinary values, not layout classes or
+registered compiler cases. The computations have normal `.jog` bodies with
+loops and explicit value updates; they are not opaque operator records.
+`nn.linear` composes matrix
 multiplication with an optional bias loop, while `nn.relu` is a loop and
-condition over the same tensor primitives. `nn.conv2d` defines grouped NCHW
-convolution with explicit stride, padding, dilation, and group values; output
-dimensions that occur only in its result are inferred from the call's result
-annotation. `nn.global_avg_pool2d` reduces each spatial plane with ordinary
-loops and scalar arithmetic. `nn.batch_norm` exposes inference-time channel
+condition over the same tensor primitives. The general `nn.conv2d` overload
+takes three logical-axis lists, so grouped convolution and depthwise
+convolution share one loop body across activation and weight layouts. The terse
+NCHW overload delegates to it. Bias and fused activation are ordinary composed
+functions rather than hidden operator fields. `nn.avg_pool2d`, `nn.add`, and
+`nn.softmax` provide the remaining shared semantics needed by the second
+real-network gate; `nn.global_avg_pool2d` is a normal NCHW specialization.
+`nn.batch_norm` exposes inference-time channel
 normalization down to scalar algebra and the single `math.sqrt` primitive;
 `tensor.reshape` is a linear element copy whose result shape comes from the
 annotated call. Transforms can therefore keep a network call
@@ -315,6 +323,14 @@ input slots remain `nil`, and multiple outputs remain ordinary call results.
 The checked-in schema is upstream source; its large generated C++ interface is
 private build output. As with ONNX, mapping those source calls to `nn` is the
 responsibility of a separately selected relationship module.
+
+That relationship is the pure `.jog` module `tflite.nn`. Its `convert`
+function materializes padding, stride, dilation, groups, logical axes, fused
+activation, and softmax scale as normal operands. Standard and depthwise Conv,
+Add, average pool, reshape, and softmax then resolve to shared functions. On
+the pinned MobileNetV2 this removes all 66 source compute calls while retaining
+the source model marker and payloads. A second invocation is unchanged, and
+all 66 converted bodies can be independently exposed and round-tripped.
 
 ### A hardware extension
 

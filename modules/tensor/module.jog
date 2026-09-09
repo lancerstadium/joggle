@@ -54,6 +54,47 @@ fn numel<S: list<int>>() -> int {
   return size
 }
 
+fn extent(shape: list<int>, axes: list<int>, axis: int) -> int {
+  var out = 1
+  for i in 0..len(shape) {
+    if axes[i] == axis {
+      out = shape[i]
+    }
+  }
+  return out
+}
+
+fn offset<I: Ty>(
+  shape: list<int>, axes: list<int>, coords: list<I>
+) -> int {
+  var out = 0
+  var stride = 1
+  for reverse in 0..len(shape) {
+    let i = len(shape) - reverse - 1
+    let axis = axes[i]
+    if axis >= 0 {
+      out += coords[axis] * stride
+    }
+    stride *= shape[i]
+  }
+  return out
+}
+
+fn coord(
+  shape: list<int>, axes: list<int>, linear: int, axis: int
+) -> int {
+  var out = 0
+  var stride = 1
+  for reverse in 0..len(shape) {
+    let i = len(shape) - reverse - 1
+    if axes[i] == axis {
+      out = (linear / stride) % shape[i]
+    }
+    stride *= shape[i]
+  }
+  return out
+}
+
 fn reshape<E: Ty, S: list<int>, T: list<int>>(
   x: tensor<E, S>
 ) -> tensor<E, T> {

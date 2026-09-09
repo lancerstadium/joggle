@@ -4,6 +4,51 @@ use math
 
 fn conv2d<
   E: Ty,
+  X: list<int>,
+  K: list<int>,
+  Y: list<int>
+>(
+  x: tensor<E, X>,
+  weight: tensor<E, K>,
+  stride: list<int>,
+  pad: list<int>,
+  dilation: list<int>,
+  groups: int,
+  x_axes: list<int>,
+  weight_axes: list<int>,
+  out_axes: list<int>
+) -> tensor<E, Y> {
+  let n_size = tensor.extent(X, x_axes, 0)
+  let h_size = tensor.extent(X, x_axes, 2)
+  let w_size = tensor.extent(X, x_axes, 3)
+  let m_size = tensor.extent(Y, out_axes, 1)
+  let q_size = tensor.extent(K, weight_axes, 1)
+  let r_size = tensor.extent(K, weight_axes, 2)
+  let s_size = tensor.extent(K, weight_axes, 3)
+  let oh_size = tensor.extent(Y, out_axes, 2)
+  let ow_size = tensor.extent(Y, out_axes, 3)
+  var out = tensor<E, Y>(E(0))
+  for n in 0..n_size, m in 0..m_size,
+      oh in 0..oh_size, ow in 0..ow_size {
+    var sum = E(0)
+    for q in 0..q_size, r in 0..r_size, s in 0..s_size {
+      let h = oh * stride[0] + r * dilation[0] - pad[0]
+      let w = ow * stride[1] + s * dilation[1] - pad[1]
+      if h >= 0 && h < h_size && w >= 0 && w < w_size {
+        let c = (m / (m_size / groups)) * q_size + q
+        let xi = tensor.offset(X, x_axes, [n, c, h, w])
+        let wi = tensor.offset(K, weight_axes, [m, q, r, s])
+        sum += x[xi] * weight[wi]
+      }
+    }
+    let yi = tensor.offset(Y, out_axes, [n, m, oh, ow])
+    out[yi] = sum
+  }
+  return out
+}
+
+fn conv2d<
+  E: Ty,
   N: int,
   C: int,
   H: int,
@@ -22,20 +67,122 @@ fn conv2d<
   dilation: list<int>,
   groups: int
 ) -> tensor<E, [N, M, OH, OW]> {
-  var out = tensor<E, [N, M, OH, OW]>(E(0))
-  for n in 0..N, m in 0..M, oh in 0..OH, ow in 0..OW {
-    var sum = E(0)
-    for q in 0..Q, r in 0..R, s in 0..S {
-      let h = oh * stride[0] + r * dilation[0] - pad[0]
-      let w = ow * stride[1] + s * dilation[1] - pad[1]
-      if h >= 0 && h < H && w >= 0 && w < W {
-        let c = (m / (M / groups)) * Q + q
-        sum += x[n, c, h, w] * weight[m, q, r, s]
-      }
-    }
-    out[n, m, oh, ow] = sum
+  let out: tensor<E, [N, M, OH, OW]> = conv2d(
+    x, weight, stride, pad, dilation, groups,
+    [0, 1, 2, 3], [0, 1, 2, 3], [0, 1, 2, 3]
+  )
+  return out
+}
+
+fn bias<E: Ty, S: list<int>, B: list<int>>(
+  x: tensor<E, S>, values: tensor<E, B>, axes: list<int>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    let channel = tensor.coord(S, axes, i, 1)
+    out[i] = x[i] + values[channel]
   }
   return out
+}
+
+fn activate<E: Ty, S: list<int>>(
+  x: tensor<E, S>, kind: str
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    var value = x[i]
+    if kind == "RELU" || kind == "RELU6" {
+      if value < E(0) {
+        value = E(0)
+      }
+    }
+    if kind == "RELU6" {
+      if value > E(6) {
+        value = E(6)
+      }
+    }
+    if kind == "RELU_N1_TO_1" {
+      if value < E(-1) {
+        value = E(-1)
+      }
+      if value > E(1) {
+        value = E(1)
+      }
+    }
+    out[i] = value
+  }
+  return out
+}
+
+fn conv2d<
+  E: Ty,
+  X: list<int>,
+  K: list<int>,
+  B: list<int>,
+  Y: list<int>
+>(
+  x: tensor<E, X>,
+  weight: tensor<E, K>,
+  values: tensor<E, B>,
+  stride: list<int>,
+  pad: list<int>,
+  dilation: list<int>,
+  groups: int,
+  x_axes: list<int>,
+  weight_axes: list<int>,
+  out_axes: list<int>,
+  activation: str
+) -> tensor<E, Y> {
+  let convolved: tensor<E, Y> = conv2d(
+    x, weight, stride, pad, dilation, groups,
+    x_axes, weight_axes, out_axes
+  )
+  return activate(bias(convolved, values, out_axes), activation)
+}
+
+fn avg_pool2d<E: Ty, X: list<int>, Y: list<int>>(
+  x: tensor<E, X>,
+  kernel: list<int>,
+  stride: list<int>,
+  pad: list<int>,
+  axes: list<int>
+) -> tensor<E, Y> {
+  let n_size = tensor.extent(X, axes, 0)
+  let c_size = tensor.extent(X, axes, 1)
+  let h_size = tensor.extent(X, axes, 2)
+  let w_size = tensor.extent(X, axes, 3)
+  let oh_size = tensor.extent(Y, axes, 2)
+  let ow_size = tensor.extent(Y, axes, 3)
+  var out = tensor<E, Y>(E(0))
+  for n in 0..n_size, c in 0..c_size,
+      oh in 0..oh_size, ow in 0..ow_size {
+    var sum = E(0)
+    var count = 0
+    for r in 0..kernel[0], s in 0..kernel[1] {
+      let h = oh * stride[0] + r - pad[0]
+      let w = ow * stride[1] + s - pad[1]
+      if h >= 0 && h < h_size && w >= 0 && w < w_size {
+        let xi = tensor.offset(X, axes, [n, c, h, w])
+        sum += x[xi]
+        count += 1
+      }
+    }
+    let yi = tensor.offset(Y, axes, [n, c, oh, ow])
+    out[yi] = sum / E(count)
+  }
+  return out
+}
+
+fn avg_pool2d<E: Ty, X: list<int>, Y: list<int>>(
+  x: tensor<E, X>,
+  kernel: list<int>,
+  stride: list<int>,
+  pad: list<int>,
+  axes: list<int>,
+  activation: str
+) -> tensor<E, Y> {
+  let pooled: tensor<E, Y> = avg_pool2d(x, kernel, stride, pad, axes)
+  return activate(pooled, activation)
 }
 
 fn global_avg_pool2d<
@@ -43,14 +190,9 @@ fn global_avg_pool2d<
 >(
   x: tensor<E, [N, C, H, W]>
 ) -> tensor<E, [N, C, 1, 1]> {
-  var out = tensor<E, [N, C, 1, 1]>(E(0))
-  for n in 0..N, c in 0..C {
-    var sum = E(0)
-    for h in 0..H, w in 0..W {
-      sum += x[n, c, h, w]
-    }
-    out[n, c, 0, 0] = sum / E(H * W)
-  }
+  let out: tensor<E, [N, C, 1, 1]> = avg_pool2d(
+    x, [H, W], [1, 1], [0, 0, 0, 0], [0, 1, 2, 3]
+  )
   return out
 }
 
@@ -95,6 +237,39 @@ fn relu<E: Ty, S: list<int>>(
   for i in 0..tensor.numel<S>() {
     if x[i] > E(0) {
       out[i] = x[i]
+    }
+  }
+  return out
+}
+
+fn add<E: Ty, S: list<int>>(
+  left: tensor<E, S>, right: tensor<E, S>, activation: str
+) -> tensor<E, S> {
+  return activate(left + right, activation)
+}
+
+fn softmax<E: Ty, S: list<int>>(
+  x: tensor<E, S>, beta: f64
+) -> tensor<E, S> {
+  let width = S[len(S) - 1]
+  let rows = tensor.numel<S>() / width
+  var out = tensor<E, S>(E(0))
+  for row in 0..rows {
+    let start = row * width
+    var peak = x[start]
+    for column in 1..width {
+      if x[start + column] > peak {
+        peak = x[start + column]
+      }
+    }
+    var sum = E(0)
+    for column in 0..width {
+      let value = math.exp((x[start + column] - peak) * E(beta))
+      out[start + column] = value
+      sum += value
+    }
+    for column in 0..width {
+      out[start + column] = out[start + column] / sum
     }
   }
   return out

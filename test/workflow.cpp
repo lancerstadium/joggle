@@ -192,6 +192,14 @@ int main(int argc, char** argv) {
   const joggle::Fn conv_fn = env.resolve(conv_network, conv_call);
   CHECK(conv_fn && conv_network.expand(conv_call, conv_fn));
   CHECK(conv_network.verify(env));
+  joggle::Op layout_conv;
+  for (joggle::Op op : conv_network.ops())
+    if (op.callee() == "conv2d" || op.callee() == "nn.conv2d")
+      layout_conv = op;
+  CHECK(layout_conv);
+  const joggle::Fn layout_conv_fn = env.resolve(conv_network, layout_conv);
+  CHECK(layout_conv_fn && conv_network.expand(layout_conv, layout_conv_fn));
+  CHECK(conv_network.verify(env));
   std::size_t conv_loops = 0;
   for (joggle::Op op : conv_network.ops()) {
     CHECK(op.callee() != "nn.conv2d");

@@ -85,6 +85,12 @@ if(JOGGLE_BUILD_TFLITE)
     "${CMAKE_CURRENT_BINARY_DIR}/modules/tflite/module.jog"
     COPYONLY
   )
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/tflite.nn")
+  configure_file(
+    modules/tflite.nn/module.jog
+    "${CMAKE_CURRENT_BINARY_DIR}/modules/tflite.nn/module.jog"
+    COPYONLY
+  )
   install(
     TARGETS joggle-tflite
     LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/tflite/native
@@ -93,6 +99,10 @@ if(JOGGLE_BUILD_TFLITE)
   install(
     FILES modules/tflite/module.jog modules/tflite/LICENSE
     DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/tflite
+  )
+  install(
+    DIRECTORY modules/tflite.nn
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules
   )
 endif()
 

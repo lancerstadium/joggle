@@ -2,3 +2,4 @@ module math
 use base
 
 fn sqrt<T: Ty>(x: T) -> T;
+fn exp<T: Ty>(x: T) -> T;
