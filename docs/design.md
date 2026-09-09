@@ -254,3 +254,15 @@ violations before mutation. `Mod::revision` advances after successful edits and
 is restored by failed compile-time runs, providing the invalidation key needed
 by later cached analyses. Zero-result calls are visible statements rather than
 unprintable hidden operations.
+
+## M7 fourth slice
+
+The editor now constructs typed constants, deep-clones operation subtrees, and
+moves operations within a block through explicit `Op` positions. Deep cloning
+creates fresh results, blocks, and block arguments, remaps internal dataflow,
+and works for nested loops and conditions; erasing the replaced source
+recursively invalidates its complete subtree. Motion is atomic and checks the
+whole module's dominance before commit. The identical operations are available
+through `ir.constant`, `ir.clone`, and `ir.move`, with `ir.kind` and
+`ir.blocks(op)` completing structural discovery. Named constants now remain
+named when printed instead of being silently duplicated as inline literals.

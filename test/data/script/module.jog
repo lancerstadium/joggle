@@ -86,6 +86,50 @@ fn replace_first_use(m: Mod) -> bool {
   return false
 }
 
+fn clone_loop(m: Mod) -> bool {
+  for op in ir.ops(m) {
+    if ir.kind(op) == "loop" {
+      let copy = ir.clone(m, op, op)
+      let old = ir.outs(op)
+      let next = ir.outs(copy)
+      if ir.len(old) == 1 && ir.len(next) == 1 {
+        var changed = ir.replace(m, old[0], next[0])
+        changed = ir.erase(m, op)
+        return changed
+      }
+    }
+  }
+  return false
+}
+
+fn return_three(m: Mod) -> bool {
+  for op in ir.ops(m) {
+    if ir.kind(op) == "return" {
+      let args = ir.args(op)
+      if ir.len(args) == 1 {
+        let three = ir.constant(m, op, 3, "i32")
+        var changed = ir.rename(m, three, "three")
+        changed = ir.replace(m, args[0], three, op)
+        return changed
+      }
+    }
+  }
+  return false
+}
+
+fn move_second_first(m: Mod) -> bool {
+  for op in ir.ops(m) {
+    if ir.callee(op) == "second" {
+      for before in ir.ops(m) {
+        if ir.callee(before) == "first" {
+          return ir.move(m, op, before)
+        }
+      }
+    }
+  }
+  return false
+}
+
 fn rebuild_tagged(m: Mod) -> bool {
   var changed = false
   for f in ir.fns(m) {

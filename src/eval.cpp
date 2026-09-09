@@ -695,12 +695,19 @@ private:
         return Items{Item(std::move(out))};
       }
     } else if (name == "blocks" && args.size() == 1) {
-      if (const auto* fn = as<Fn>(args[0])) {
-        Items out;
-        for (Blk block : fn->blocks())
-          out.emplace_back(block);
-        return Items{Item(std::move(out))};
+      std::vector<Blk> blocks;
+      if (const auto* fn = as<Fn>(args[0]))
+        blocks = fn->blocks();
+      else if (const auto* op = as<Op>(args[0]))
+        blocks = op->blocks();
+      else {
+        fail("invalid ir.blocks compile-time call", loc);
+        return std::nullopt;
       }
+      Items out;
+      for (Blk block : blocks)
+        out.emplace_back(block);
+      return Items{Item(std::move(out))};
     } else if (name == "ops" && args.size() == 1) {
       std::vector<Op> ops;
       if (const auto* mod = as<Mod*>(args[0]); mod && *mod)
@@ -732,6 +739,31 @@ private:
           out.emplace_back(user);
         return Items{Item(std::move(out))};
       }
+    } else if (name == "kind" && args.size() == 1) {
+      if (const auto* op = as<Op>(args[0])) {
+        std::string_view value;
+        switch (op->kind()) {
+        case Op::Kind::call:
+          value = "call";
+          break;
+        case Op::Kind::constant:
+          value = "constant";
+          break;
+        case Op::Kind::loop:
+          value = "loop";
+          break;
+        case Op::Kind::branch:
+          value = "branch";
+          break;
+        case Op::Kind::ret:
+          value = "return";
+          break;
+        case Op::Kind::yield:
+          value = "yield";
+          break;
+        }
+        return Items{Item(Attr(std::string(value)))};
+      }
     } else if (name == "callee" && args.size() == 1) {
       if (const auto* op = as<Op>(args[0]))
         return Items{Item(Attr(std::string(op->callee())))};
@@ -759,9 +791,22 @@ private:
     } else if (name == "is_const" && args.size() == 1) {
       if (const auto* value = as<Val>(args[0]))
         return Items{Item(Attr(value->is_const()))};
-    } else if (name == "constant" && args.size() == 1) {
-      if (const auto* value = as<Val>(args[0]); value && value->is_const())
-        return Items{Item(value->constant())};
+    } else if (name == "constant") {
+      if (args.size() == 1) {
+        if (const auto* value = as<Val>(args[0]); value && value->is_const())
+          return Items{Item(value->constant())};
+      } else if (args.size() == 4) {
+        const auto* mod = as<Mod*>(args[0]);
+        const auto* before = as<Op>(args[1]);
+        auto value = attribute(args[2]);
+        const auto type = string(args[3]);
+        if (mod && *mod && before && value && type) {
+          Val result = (*mod)->constant(*before, std::move(*value),
+                                        Ty(std::string(*type)));
+          if (result)
+            return Items{Item(result)};
+        }
+      }
     } else if (name == "len" && args.size() == 1) {
       if (const Items* values = list(args[0]))
         return Items{Item(Attr(static_cast<std::int64_t>(values->size())))};
@@ -803,6 +848,21 @@ private:
             return Items{Item(result)};
         }
       }
+    } else if (name == "clone" && args.size() == 3) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* op = as<Op>(args[1]);
+      const auto* before = as<Op>(args[2]);
+      if (mod && *mod && op && before) {
+        Op result = (*mod)->clone(*op, *before);
+        if (result)
+          return Items{Item(result)};
+      }
+    } else if (name == "move" && args.size() == 3) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* op = as<Op>(args[1]);
+      const auto* before = as<Op>(args[2]);
+      if (mod && *mod && op && before)
+        return Items{Item(Attr((*mod)->move(*op, *before)))};
     } else if (name == "fuse" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
       const Items* values = list(args[1]);

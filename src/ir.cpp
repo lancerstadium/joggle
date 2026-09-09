@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -264,7 +265,8 @@ std::vector<Blk> Op::blocks() const {
   if (!valid())
     return out;
   for (const std::uint32_t id : store_->ops[id_].data.blocks)
-    out.push_back(Blk(store_, id, store_->blocks[id].generation));
+    if (id < store_->blocks.size() && store_->blocks[id].live)
+      out.push_back(Blk(store_, id, store_->blocks[id].generation));
   return out;
 }
 Blk Op::block() const noexcept {
@@ -299,7 +301,8 @@ std::vector<Val> Blk::args() const {
   if (!valid())
     return out;
   for (const std::uint32_t id : store_->blocks[id_].data.args)
-    out.push_back(Val(store_, id, store_->vals[id].generation));
+    if (id < store_->vals.size() && store_->vals[id].live)
+      out.push_back(Val(store_, id, store_->vals[id].generation));
   return out;
 }
 std::vector<Op> Blk::ops() const {
@@ -378,7 +381,8 @@ std::vector<Blk> Fn::blocks() const {
   if (!valid())
     return out;
   for (const std::uint32_t id : store_->fns[id_].data.blocks)
-    out.push_back(Blk(store_, id, store_->blocks[id].generation));
+    if (id < store_->blocks.size() && store_->blocks[id].live)
+      out.push_back(Blk(store_, id, store_->blocks[id].generation));
   return out;
 }
 std::vector<Op> Fn::ops() const {
@@ -515,6 +519,204 @@ Val Mod::call(Op before, std::string callee, std::span<const Val> args,
       call(before, std::move(callee), args, std::span<const Ty>(&type, 1));
   const std::vector<Val> outs = op.outs();
   return outs.size() == 1 ? outs.front() : Val{};
+}
+
+Val Mod::constant(Op before, Attr literal, Ty type) {
+  auto& store = impl_->store;
+  if (!before.valid() || before.store_ != &store || !type.valid()) {
+    detail::add_diag(
+        store.diags,
+        "constant requires a live insertion point and a valid result type");
+    return {};
+  }
+  const std::uint32_t block = store.ops[before.id_].data.block;
+  auto& order = store.blocks[block].data.ops;
+  const auto position = std::find(order.begin(), order.end(), before.id_);
+  if (position == order.end()) {
+    detail::add_diag(store.diags,
+                     "constant insertion point is not in its block",
+                     before.loc());
+    return {};
+  }
+
+  const auto op_id = static_cast<std::uint32_t>(store.ops.size());
+  const auto value_id = static_cast<std::uint32_t>(store.vals.size());
+  detail::ValData value;
+  value.type = std::move(type);
+  value.def = op_id;
+  value.type_annotation = true;
+  detail::OpData op;
+  op.kind = Op::Kind::constant;
+  op.block = block;
+  op.literal = std::move(literal);
+  op.outs.push_back(value_id);
+  op.loc = before.loc();
+  store.vals.push_back({std::move(value), 1, true});
+  store.ops.push_back({std::move(op), 1, true});
+  order.insert(position, op_id);
+  touch(store);
+  return Val(&store, value_id, store.vals[value_id].generation);
+}
+
+Op Mod::clone(Op source, Op before) {
+  auto& store = impl_->store;
+  const auto reject = [&](std::string message, Loc loc = {}) {
+    detail::add_diag(store.diags, std::move(message), std::move(loc));
+    return Op{};
+  };
+  if (!source.valid() || !before.valid() || source.store_ != &store ||
+      before.store_ != &store)
+    return reject("clone requires live operations in this module");
+  if (source.kind() == Op::Kind::ret || source.kind() == Op::Kind::yield)
+    return reject("clone does not duplicate block terminators", source.loc());
+
+  std::unordered_set<std::uint32_t> subtree_ops;
+  std::unordered_set<std::uint32_t> subtree_values;
+  const auto collect = [&](const auto& self, Op op) -> void {
+    subtree_ops.insert(op.id_);
+    for (Val value : op.outs())
+      subtree_values.insert(value.id_);
+    for (Blk block : op.blocks()) {
+      for (Val value : block.args())
+        subtree_values.insert(value.id_);
+      for (Op child : block.ops())
+        self(self, child);
+    }
+  };
+  collect(collect, source);
+  if (before != source && subtree_ops.contains(before.id_))
+    return reject("clone insertion point cannot be inside the source",
+                  before.loc());
+  for (const std::uint32_t id : subtree_ops) {
+    for (const std::uint32_t arg : store.ops[id].data.args) {
+      if (!subtree_values.contains(arg) &&
+          !detail::dominates(store, arg, before.id_))
+        return reject("clone operand must dominate the insertion point",
+                      before.loc());
+    }
+  }
+
+  const std::uint32_t destination = store.ops[before.id_].data.block;
+  const std::uint32_t fn = store.blocks[destination].data.fn;
+  const auto insertion = std::find(store.blocks[destination].data.ops.begin(),
+                                   store.blocks[destination].data.ops.end(),
+                                   before.id_);
+  if (insertion == store.blocks[destination].data.ops.end())
+    return reject("clone insertion point is not in its block", before.loc());
+  std::unordered_map<std::uint32_t, std::uint32_t> values;
+  const auto copy_op = [&](const auto& self, std::uint32_t old_id,
+                           std::uint32_t block) -> std::uint32_t {
+    const detail::OpData old = store.ops[old_id].data;
+    detail::OpData next = old;
+    next.block = block;
+    next.args.clear();
+    next.outs.clear();
+    next.blocks.clear();
+    for (const std::uint32_t arg : old.args) {
+      const auto mapped = values.find(arg);
+      next.args.push_back(mapped == values.end() ? arg : mapped->second);
+    }
+    const auto next_id = static_cast<std::uint32_t>(store.ops.size());
+    store.ops.push_back({std::move(next), 1, true});
+    store.blocks[block].data.ops.push_back(next_id);
+
+    for (const std::uint32_t old_value : old.outs) {
+      detail::ValData value = store.vals[old_value].data;
+      value.def = next_id;
+      value.index = store.ops[next_id].data.outs.size();
+      value.users.clear();
+      const auto value_id = static_cast<std::uint32_t>(store.vals.size());
+      store.vals.push_back({std::move(value), 1, true});
+      store.ops[next_id].data.outs.push_back(value_id);
+      values.emplace(old_value, value_id);
+    }
+
+    for (const std::uint32_t old_block : old.blocks) {
+      detail::BlkData body;
+      body.fn = fn;
+      body.parent_op = next_id;
+      const auto body_id = static_cast<std::uint32_t>(store.blocks.size());
+      store.blocks.push_back({std::move(body), 1, true});
+      store.fns[fn].data.blocks.push_back(body_id);
+      store.ops[next_id].data.blocks.push_back(body_id);
+      const std::vector<std::uint32_t> old_args =
+          store.blocks[old_block].data.args;
+      const std::vector<std::uint32_t> old_ops =
+          store.blocks[old_block].data.ops;
+      for (const std::uint32_t old_arg : old_args) {
+        detail::ValData value = store.vals[old_arg].data;
+        value.users.clear();
+        const auto value_id = static_cast<std::uint32_t>(store.vals.size());
+        store.vals.push_back({std::move(value), 1, true});
+        store.blocks[body_id].data.args.push_back(value_id);
+        values.emplace(old_arg, value_id);
+      }
+      for (const std::uint32_t child : old_ops)
+        self(self, child, body_id);
+    }
+    return next_id;
+  };
+
+  const std::uint32_t cloned_id = copy_op(copy_op, source.id_, destination);
+  auto& order = store.blocks[destination].data.ops;
+  order.pop_back();
+  const auto position = std::find(order.begin(), order.end(), before.id_);
+  if (position == order.end())
+    return reject("clone insertion point is not in its block", before.loc());
+  order.insert(position, cloned_id);
+  detail::rebuild_uses(store);
+  touch(store);
+  return Op(&store, cloned_id, store.ops[cloned_id].generation);
+}
+
+bool Mod::move(Op op, Op before) {
+  auto& store = impl_->store;
+  if (!op.valid() || !before.valid() || op.store_ != &store ||
+      before.store_ != &store) {
+    detail::add_diag(store.diags,
+                     "move requires live operations in this module");
+    return false;
+  }
+  if (op == before)
+    return true;
+  if (op.block() != before.block()) {
+    detail::add_diag(store.diags,
+                     "move currently requires one destination block",
+                     before.loc());
+    return false;
+  }
+  if (op.kind() == Op::Kind::ret || op.kind() == Op::Kind::yield ||
+      before.kind() == Op::Kind::yield) {
+    detail::add_diag(store.diags, "move cannot reorder a block terminator",
+                     op.loc());
+    return false;
+  }
+  auto& order = store.blocks[op.block().id_].data.ops;
+  const std::vector<std::uint32_t> old_order = order;
+  order.erase(std::remove(order.begin(), order.end(), op.id_), order.end());
+  const auto position = std::find(order.begin(), order.end(), before.id_);
+  if (position == order.end()) {
+    order = old_order;
+    detail::add_diag(store.diags, "move insertion point is not in its block",
+                     before.loc());
+    return false;
+  }
+  order.insert(position, op.id_);
+  for (std::uint32_t id = 0; id < store.ops.size(); ++id) {
+    if (!store.ops[id].live)
+      continue;
+    for (const std::uint32_t arg : store.ops[id].data.args) {
+      if (!detail::dominates(store, arg, id)) {
+        order = old_order;
+        detail::add_diag(store.diags,
+                         "move would violate value dominance",
+                         store.ops[id].data.loc);
+        return false;
+      }
+    }
+  }
+  touch(store);
+  return true;
 }
 
 bool Mod::fuse(std::span<const Op> ops, std::string callee) {
@@ -712,24 +914,66 @@ bool Mod::erase(Op op) {
                      "erase requires a live operation in this module");
     return false;
   }
-  for (const std::uint32_t value : store.ops[op.id_].data.outs) {
-    if (!store.vals[value].data.users.empty()) {
-      detail::add_diag(store.diags, "cannot erase an operation with live users",
-                       store.ops[op.id_].data.loc);
-      return false;
+  if (op.kind() == Op::Kind::ret || op.kind() == Op::Kind::yield) {
+    detail::add_diag(store.diags, "cannot erase a block terminator", op.loc());
+    return false;
+  }
+
+  std::unordered_set<std::uint32_t> ops;
+  std::unordered_set<std::uint32_t> blocks;
+  std::unordered_set<std::uint32_t> values;
+  const auto collect = [&](const auto& self, std::uint32_t id) -> void {
+    ops.insert(id);
+    for (const std::uint32_t value : store.ops[id].data.outs)
+      values.insert(value);
+    for (const std::uint32_t block : store.ops[id].data.blocks) {
+      blocks.insert(block);
+      for (const std::uint32_t value : store.blocks[block].data.args)
+        values.insert(value);
+      for (const std::uint32_t child : store.blocks[block].data.ops)
+        self(self, child);
+    }
+  };
+  collect(collect, op.id_);
+  for (const std::uint32_t value : values) {
+    for (const std::uint32_t user : store.vals[value].data.users) {
+      if (!ops.contains(user)) {
+        detail::add_diag(store.diags,
+                         "cannot erase an operation with live external users",
+                         store.ops[op.id_].data.loc);
+        return false;
+      }
     }
   }
-  const std::uint32_t block = store.ops[op.id_].data.block;
-  if (block != detail::none) {
-    auto& order = store.blocks[block].data.ops;
-    order.erase(std::remove(order.begin(), order.end(), op.id_), order.end());
+
+  const std::uint32_t parent = store.ops[op.id_].data.block;
+  if (parent != detail::none) {
+    auto& order = store.blocks[parent].data.ops;
+    const auto found = std::find(order.begin(), order.end(), op.id_);
+    if (found == order.end()) {
+      detail::add_diag(store.diags,
+                       "erase operation is not in its parent block", op.loc());
+      return false;
+    }
+    order.erase(found);
   }
-  for (const std::uint32_t value : store.ops[op.id_].data.outs) {
+  for (const std::uint32_t block : blocks) {
+    const std::uint32_t fn = store.blocks[block].data.fn;
+    if (fn < store.fns.size()) {
+      auto& owned = store.fns[fn].data.blocks;
+      owned.erase(std::remove(owned.begin(), owned.end(), block), owned.end());
+    }
+    store.blocks[block].live = false;
+    ++store.blocks[block].generation;
+  }
+  for (const std::uint32_t value : values) {
     store.vals[value].live = false;
     ++store.vals[value].generation;
   }
-  store.ops[op.id_].live = false;
-  ++store.ops[op.id_].generation;
+  for (const std::uint32_t id : ops) {
+    store.ops[id].live = false;
+    ++store.ops[id].generation;
+  }
   detail::rebuild_uses(store);
   touch(store);
   return true;

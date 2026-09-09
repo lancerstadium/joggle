@@ -194,6 +194,87 @@ int main(int argc, char** argv) {
   CHECK(selective_text.find("let left = x + 1") != std::string::npos);
   CHECK(selective_text.find("let right = shared + 2") != std::string::npos);
 
+  joggle::Mod cloned_loop;
+  constexpr std::string_view loop_source =
+      "module looped\n"
+      "fn sum(n: int) -> int {\n"
+      "  var total = 0\n"
+      "  for i in 0..n {\n"
+      "    total += i\n"
+      "  }\n"
+      "  return total\n"
+      "}\n";
+  CHECK(joggle::parse(env, loop_source, cloned_loop, "looped.jog"));
+  CHECK(cloned_loop.verify(env));
+  joggle::Op old_loop;
+  for (joggle::Op op : cloned_loop.ops())
+    if (op.kind() == joggle::Op::Kind::loop)
+      old_loop = op;
+  CHECK(old_loop && old_loop.outs().size() == 1);
+  const joggle::Blk old_body = old_loop.blocks().front();
+  const joggle::Op copied_loop = cloned_loop.clone(old_loop, old_loop);
+  CHECK(copied_loop && copied_loop.blocks().size() == 1);
+  CHECK(cloned_loop.replace(old_loop.outs()[0], copied_loop.outs()[0]));
+  CHECK(cloned_loop.erase(old_loop));
+  CHECK(!old_loop.valid() && !old_body.valid());
+  CHECK(cloned_loop.verify(env));
+  joggle::Mod cloned_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(cloned_loop), cloned_roundtrip,
+                      "cloned-roundtrip.jog"));
+  CHECK(cloned_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(cloned_loop, cloned_roundtrip));
+
+  joggle::Mod scheduled;
+  constexpr std::string_view schedule_source =
+      "module scheduled\n"
+      "fn schedule(x: i32) -> i32 {\n"
+      "  let a = first(x)\n"
+      "  let b = second(x)\n"
+      "  return a + b\n"
+      "}\n";
+  CHECK(joggle::parse(env, schedule_source, scheduled, "scheduled.jog"));
+  CHECK(scheduled.verify(env));
+  const std::vector<joggle::Op> schedule_ops =
+      scheduled.find_fn("schedule").body().ops();
+  const std::uint64_t before_move = scheduled.revision();
+  CHECK(scheduled.move(schedule_ops[1], schedule_ops[0]));
+  CHECK(scheduled.revision() == before_move + 1);
+  CHECK(scheduled.verify(env));
+  const std::string scheduled_text = joggle::print(scheduled);
+  CHECK(scheduled_text.find("let b = second(x)") <
+        scheduled_text.find("let a = first(x)"));
+  const std::uint64_t before_bad_move = scheduled.revision();
+  CHECK(!scheduled.move(schedule_ops[2], schedule_ops[0]));
+  CHECK(scheduled.revision() == before_bad_move);
+  scheduled.clear_diags();
+  CHECK(scheduled.verify(env));
+
+  joggle::Mod cloned_branch;
+  constexpr std::string_view branch_source =
+      "module branched\n"
+      "fn choose(x: i32, flag: bool) -> i32 {\n"
+      "  var result = x\n"
+      "  if flag {\n"
+      "    result += 1\n"
+      "  } else {\n"
+      "    result += 2\n"
+      "  }\n"
+      "  return result\n"
+      "}\n";
+  CHECK(joggle::parse(env, branch_source, cloned_branch, "branched.jog"));
+  CHECK(cloned_branch.verify(env));
+  joggle::Op old_branch;
+  for (joggle::Op op : cloned_branch.ops())
+    if (op.kind() == joggle::Op::Kind::branch)
+      old_branch = op;
+  CHECK(old_branch && old_branch.blocks().size() == 2);
+  const joggle::Op copied_branch = cloned_branch.clone(old_branch, old_branch);
+  CHECK(copied_branch && copied_branch.blocks().size() == 2);
+  CHECK(cloned_branch.replace(old_branch.outs()[0],
+                              copied_branch.outs()[0]));
+  CHECK(cloned_branch.erase(old_branch));
+  CHECK(cloned_branch.verify(env));
+
   joggle::Mod wrong_result_type;
   CHECK(joggle::parse(env,
                       "module wrong_result\n"
@@ -419,6 +500,26 @@ int main(int argc, char** argv) {
         std::string::npos);
   CHECK(joggle::print(scripted_selective)
             .find("let right = shared + 2") != std::string::npos);
+  joggle::Mod scripted_loop;
+  CHECK(joggle::parse(env, loop_source, scripted_loop, "scripted-loop.jog"));
+  CHECK(joggle::run(env, "script.clone_loop", scripted_loop));
+  CHECK(scripted_loop.verify(env));
+  CHECK(joggle::print(scripted_loop) == joggle::print(cloned_loop));
+  joggle::Mod returned_constant;
+  CHECK(joggle::parse(env,
+                      "module returned\n"
+                      "fn value(x: i32) -> i32 { return x }\n",
+                      returned_constant, "returned.jog"));
+  CHECK(joggle::run(env, "script.return_three", returned_constant));
+  CHECK(joggle::print(returned_constant).find("let three: i32 = 3") !=
+        std::string::npos);
+  CHECK(joggle::print(returned_constant).find("return three") !=
+        std::string::npos);
+  joggle::Mod scripted_schedule;
+  CHECK(joggle::parse(env, schedule_source, scripted_schedule,
+                      "scripted-schedule.jog"));
+  CHECK(joggle::run(env, "script.move_second_first", scripted_schedule));
+  CHECK(joggle::print(scripted_schedule) == scheduled_text);
   joggle::Mod rolled_back;
   CHECK(joggle::parse(env, source.str(), rolled_back, argv[1]));
   const std::string before_failure = joggle::print(rolled_back);

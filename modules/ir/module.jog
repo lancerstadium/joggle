@@ -3,12 +3,14 @@ use base
 
 fn fns(m: Mod) -> list<Fn>;
 fn blocks(f: Fn) -> list<Blk>;
+fn blocks(op: Op) -> list<Blk>;
 fn ops(m: Mod) -> list<Op>;
 fn ops(f: Fn) -> list<Op>;
 fn ops(b: Blk) -> list<Op>;
 fn args(op: Op) -> list<Val>;
 fn outs(op: Op) -> list<Val>;
 fn users(v: Val) -> list<Op>;
+fn kind(op: Op) -> str;
 fn callee(op: Op) -> str;
 fn type(v: Val) -> str;
 fn has(f: Fn, key: str) -> bool;
@@ -20,6 +22,9 @@ fn constant(v: Val) -> Attr;
 fn len<T: Ty>(xs: list<T>) -> int;
 fn call(m: Mod, before: Op, callee: str, args: list<Val>, type: str) -> Val;
 fn call(m: Mod, before: Op, callee: str, args: list<Val>, types: list<str>) -> Op;
+fn constant(m: Mod, before: Op, value: Attr, type: str) -> Val;
+fn clone(m: Mod, op: Op, before: Op) -> Op;
+fn move(m: Mod, op: Op, before: Op) -> bool;
 fn fuse(m: Mod, ops: list<Op>, callee: str) -> bool;
 fn replace(m: Mod, old: Val, next: Val) -> bool;
 fn replace(m: Mod, old: Val, next: Val, user: Op) -> bool;

@@ -102,9 +102,10 @@ The built-in `ir` module is the complete reflection boundary:
 | --- | --- |
 | `fns`, `blocks`, `ops` | Traverse structural ownership; `ops(Mod/Fn)` walks nested bodies. |
 | `args`, `outs`, `users` | Read operation dataflow. |
-| `callee`, `type`, `is_const`, `constant`, `len` | Query calls, values, and lists. |
+| `kind`, `callee`, `type`, `is_const`, `constant`, `len` | Query operations, values, and lists. |
 | `has`, `meta` | Query open function or operation attributes. |
-| `call`, `replace`, `erase`, `rename` | Build and rewrite calls through the same checked mutations as C++. |
+| `call`, `constant`, `clone`, `move` | Construct or place IR at an explicit operation position. |
+| `replace`, `erase`, `rename` | Rewrite dataflow, ownership, and readable names. |
 | `set`, `unset` | Add, replace, or remove a function or operation attribute. |
 
 These functions operate on generic handles and contain no NN operator names.
@@ -130,6 +131,14 @@ function order and structural preorder, including nested loops and conditions.
 the immediate operations of one block. `ir.replace` replaces all uses by
 default; its four-argument overload changes only uses in one named `Op`.
 Both forms check type compatibility and dominance before changing the IR.
+
+Every valid block ends in `return` or internal `yield`, so an existing `Op` is
+also a complete insertion position; no ambient builder or special append state
+is needed. `ir.constant` and `ir.call` insert leaves. `ir.clone` recursively
+copies a call, constant, loop, or condition, creates fresh blocks/results, and
+remaps values defined inside the copied subtree. `ir.move` reorders an operation
+within its block atomically and rejects the change if any use would lose
+dominance. `ir.kind` and `ir.blocks(op)` make structural selection explicit.
 
 The bracket syntax is not a `host` special case. Any module may define its own
 keys and attach them to a function or operation statement. Version and ABI

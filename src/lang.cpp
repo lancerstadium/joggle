@@ -1295,7 +1295,7 @@ std::string render_value(const detail::Store& store, std::uint32_t value) {
   if (data.def == detail::none)
     return data.name;
   const detail::OpData& op = store.ops[data.def].data;
-  if (op.kind == Op::Kind::constant)
+  if (op.kind == Op::Kind::constant && op.form == detail::Form::hidden)
     return attr_text(op.literal);
   if (op.kind == Op::Kind::call && op.form == detail::Form::hidden)
     return render_call(store, op);

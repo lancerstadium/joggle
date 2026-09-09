@@ -188,6 +188,14 @@ single user operation; omitting it redirects every use after checking type and
 dominance. Successful edits advance `Mod::revision()`, while a failed run
 restores both the IR and its prior revision.
 
+Construction also uses ordinary overloaded functions. `ir.constant` and
+`ir.call` insert leaves before a named operation. `ir.clone` deep-copies an
+operation and its nested blocks, while `ir.move` changes block-local order only
+when all operands and users remain dominated. `ir.kind(op)` returns `call`,
+`constant`, `loop`, `branch`, `return`, or `yield`; `ir.blocks(op)` exposes
+nested bodies. A terminator supplies an insertion point even for an otherwise
+empty block, so there is no stateful builder object.
+
 Generic compile-time helpers use the same syntax and bindings. In
 `fn below<N: int>(x: int) -> bool { return x < N }`, a call to `below<4>(3)`
 binds the generic `Val` `N` to the integer `4` in the function frame. `Ty` and
