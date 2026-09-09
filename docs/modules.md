@@ -164,7 +164,9 @@ linear, two-dimensional, and four-dimensional indexing, `numel`, elementwise
 addition, subtraction, multiplication, and matrix multiplication. `valid`
 recognizes the structural constructor without projecting it; `static` further
 requires integer-literal extents. Shape-arithmetic passes use the latter and
-leave symbolic or not-yet-inferred calls intact. `broadcast_shape` and `broadcastable`
+leave symbolic or not-yet-inferred calls intact. `permutation`, `permuted`, and
+the inspectable `permute` body provide rank-generic axis reordering.
+`broadcast_shape` and `broadcastable`
 express trailing-axis compatibility, while `broadcast_offset` and `broadcast`
 provide its inspectable index and copy semantics. `extent`, `offset`, and
 `coord` interpret
@@ -217,9 +219,10 @@ Unsupported ranks and `auto_pad` are left unchanged rather than guessed. Open
 intermediate types and symbolic extents are likewise retained instead of
 causing an unsafe projection or inventing a concrete shape.
 `onnx.nn.convert` then maps Conv, BatchNormalization, ReLU, Add/Sub/Mul,
-AveragePool, MaxPool, GlobalAveragePool, and Reshape calls, materializing schema
-attributes as ordinary operands and removing the schema-only Reshape shape
-input. It does
+AveragePool, MaxPool, GlobalAveragePool, Reshape, Flatten, and the strict 2-D
+subset of MatMul. Flatten reuses `tensor.reshape`; MatMul reuses
+`tensor.matmul`; Transpose reuses `tensor.permute`. The relation materializes
+schema attributes as ordinary operands and removes schema-only shape inputs. It does
 not run inference implicitly and does not alter the codec. On the pinned
 MobileNetV2 this covers every compute node; unsupported calls in other models
 remain untouched.

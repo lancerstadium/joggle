@@ -43,6 +43,105 @@ fn binary_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], tensor.type(tensor.elem(left), shape))
 }
 
+fn flattened(input: Ty, axis: int) -> Ty {
+  let shape = tensor.shape(input)
+  var outer = 1
+  var inner = 1
+  for i in 0..len(shape) {
+    if i < axis {
+      outer *= shape[i]
+    } else {
+      inner *= shape[i]
+    }
+  }
+  return tensor.type(tensor.elem(input), [outer, inner])
+}
+
+fn infer_flatten(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.static(input) {
+    return false
+  }
+  let shape = tensor.shape(input)
+  var axis = base.get(ir.meta(op, "onnx"), "axis", 1)
+  if axis < 0 {
+    axis += len(shape)
+  }
+  if axis < 0 || axis > len(shape) {
+    return false
+  }
+  return set_type(m, outputs[0], flattened(input, axis))
+}
+
+fn matmul_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 1 {
+    return false
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[1])
+  if !tensor.static(left) || !tensor.static(right) {
+    return false
+  }
+  if tensor.elem(left) != tensor.elem(right) {
+    return false
+  }
+  let ls = tensor.shape(left)
+  let rs = tensor.shape(right)
+  if len(ls) != 2 || len(rs) != 2 {
+    return false
+  }
+  if ls[1] != rs[0] {
+    return false
+  }
+  return set_type(
+    m, outputs[0], tensor.type(tensor.elem(left), [ls[0], rs[1]])
+  )
+}
+
+fn transpose_axes(op: Op, rank: int) -> list<int> {
+  let meta = ir.meta(op, "onnx")
+  var axes: list<int> = []
+  if base.has(meta, "perm") {
+    for axis in meta["perm"] {
+      axes += [axis]
+    }
+  } else {
+    for axis in 0..rank {
+      axes += [rank - axis - 1]
+    }
+  }
+  return axes
+}
+
+fn transpose_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.static(input) {
+    return false
+  }
+  let shape = tensor.shape(input)
+  let axes = transpose_axes(op, len(shape))
+  if !tensor.permutation(axes, len(shape)) {
+    return false
+  }
+  return set_type(
+    m, outputs[0], tensor.type(
+      tensor.elem(input), tensor.permuted(shape, axes)
+    )
+  )
+}
+
 fn conv_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -149,6 +248,15 @@ fn infer(m: Mod) -> bool {
     if ir.callee(op) == "onnx.Add" || ir.callee(op) == "onnx.Sub" ||
        ir.callee(op) == "onnx.Mul" {
       changed = binary_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Flatten" {
+      changed = infer_flatten(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.MatMul" {
+      changed = matmul_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Transpose" {
+      changed = transpose_type(m, op) || changed
     }
     if ir.callee(op) == "onnx.GlobalAveragePool" {
       changed = global_pool_type(m, op) || changed
@@ -269,6 +377,86 @@ fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
   return convert_call(m, op, callee)
 }
 
+fn convert_flatten(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let result = ir.type(outputs[0])
+  if !tensor.static(input) || !tensor.static(result) {
+    return false
+  }
+  let shape = tensor.shape(input)
+  var axis = base.get(ir.meta(op, "onnx"), "axis", 1)
+  if axis < 0 {
+    axis += len(shape)
+  }
+  if axis < 0 || axis > len(shape) {
+    return false
+  }
+  if result != flattened(input, axis) {
+    return false
+  }
+  return convert_call(m, op, "tensor.reshape")
+}
+
+fn convert_matmul(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 1 {
+    return false
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[1])
+  let result = ir.type(outputs[0])
+  if !tensor.static(left) || !tensor.static(right) ||
+     !tensor.static(result) {
+    return false
+  }
+  if tensor.elem(left) != tensor.elem(right) ||
+     tensor.elem(left) != tensor.elem(result) {
+    return false
+  }
+  let ls = tensor.shape(left)
+  let rs = tensor.shape(right)
+  let ys = tensor.shape(result)
+  if len(ls) != 2 || len(rs) != 2 || len(ys) != 2 {
+    return false
+  }
+  if ls[1] != rs[0] || ys[0] != ls[0] || ys[1] != rs[1] {
+    return false
+  }
+  return convert_call(m, op, "tensor.matmul")
+}
+
+fn convert_transpose(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let result = ir.type(outputs[0])
+  if !tensor.static(input) || !tensor.static(result) {
+    return false
+  }
+  let shape = tensor.shape(input)
+  let axes = transpose_axes(op, len(shape))
+  if !tensor.permutation(axes, len(shape)) {
+    return false
+  }
+  if result != tensor.type(tensor.elem(input), tensor.permuted(shape, axes)) {
+    return false
+  }
+  inputs += [ints(m, op, axes)]
+  if !ir.args(m, op, inputs) {
+    return false
+  }
+  return convert_call(m, op, "tensor.permute")
+}
+
 fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -332,6 +520,15 @@ fn convert(m: Mod) -> bool {
     }
     if ir.callee(op) == "onnx.Mul" {
       changed = convert_binary(m, op, "nn.mul") || changed
+    }
+    if ir.callee(op) == "onnx.Flatten" {
+      changed = convert_flatten(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.MatMul" {
+      changed = convert_matmul(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Transpose" {
+      changed = convert_transpose(m, op) || changed
     }
     if ir.callee(op) == "onnx.GlobalAveragePool" {
       changed = convert_call(m, op, "nn.global_avg_pool2d") || changed

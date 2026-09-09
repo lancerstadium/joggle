@@ -127,6 +127,58 @@ fn reshape<E: Ty, S: list<int>, T: list<int>>(
   return out
 }
 
+fn permutation(axes: list<int>, rank: int) -> bool {
+  if len(axes) != rank {
+    return false
+  }
+  for axis in 0..rank {
+    var count = 0
+    for item in axes {
+      if item == axis {
+        count += 1
+      }
+    }
+    if count != 1 {
+      return false
+    }
+  }
+  return true
+}
+
+fn permuted(shape: list<int>, axes: list<int>) -> list<int> {
+  var out: list<int> = []
+  for axis in axes {
+    out += [shape[axis]]
+  }
+  return out
+}
+
+fn permute<E: Ty, S: list<int>, T: list<int>>(
+  x: tensor<E, S>, axes: list<int>
+) -> tensor<E, T> {
+  var inverse: list<int> = []
+  var identity: list<int> = []
+  for input_axis in 0..len(S) {
+    var output_axis = -1
+    for candidate in 0..len(axes) {
+      if axes[candidate] == input_axis {
+        output_axis = candidate
+      }
+    }
+    inverse += [output_axis]
+    identity += [input_axis]
+  }
+  var out = tensor<E, T>(E(0))
+  for i in 0..numel<T>() {
+    var coords: list<int> = []
+    for axis in 0..len(T) {
+      coords += [coord(T, identity, i, axis)]
+    }
+    out[i] = x[offset(S, inverse, coords)]
+  }
+  return out
+}
+
 fn broadcastable(from: list<int>, to: list<int>) -> bool {
   if len(from) > len(to) {
     return false

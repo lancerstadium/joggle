@@ -257,6 +257,40 @@ int main(int argc, char** argv) {
   for (joggle::Op op : binary_bridge.ops())
     CHECK(op.callee() != "nn.mul" && op.callee() != "nn.sub");
 
+  constexpr std::string_view matrix_bridge_source =
+      "module matrix.bridge\n"
+      "use onnx\n"
+      "fn main(\n"
+      "  x: tensor<f32, [2, 3, 4]>, w: tensor<f32, [4, 5]>\n"
+      ") -> tensor<f32, [5, 6]> {\n"
+      "  [onnx: {axis: -1}]\n"
+      "  let flat = onnx.Flatten(x)\n"
+      "  let product = onnx.MatMul(flat, w)\n"
+      "  [onnx: {perm: [1, 0]}]\n"
+      "  let out = onnx.Transpose(product)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod matrix_bridge;
+  CHECK(joggle::parse(env, matrix_bridge_source, matrix_bridge,
+                      "matrix-bridge.jog"));
+  CHECK(matrix_bridge.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", matrix_bridge));
+  CHECK(matrix_bridge.verify(env));
+  CHECK(matrix_bridge.find_fn("main").body().ops().back().args()[0].type() ==
+        joggle::Ty("tensor<f32, [5, 6]>"));
+  CHECK(joggle::run(env, "onnx.nn.convert", matrix_bridge));
+  CHECK(matrix_bridge.verify(env));
+  std::size_t matrix_calls = 0;
+  for (joggle::Op op : matrix_bridge.ops()) {
+    if (op.callee() != "tensor.reshape" && op.callee() != "tensor.matmul" &&
+        op.callee() != "tensor.permute")
+      continue;
+    const joggle::Fn fn = env.resolve(matrix_bridge, op);
+    CHECK(fn && matrix_bridge.expand(op, fn));
+    ++matrix_calls;
+  }
+  CHECK(matrix_calls == 3 && matrix_bridge.verify(env));
+
   constexpr std::string_view pool_bridge_source =
       "module pool.bridge\n"
       "use onnx\n"
