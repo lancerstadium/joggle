@@ -360,6 +360,16 @@ fn *<E: Ty, S: list<int>>(
   return out
 }
 
+fn /<E: Ty, S: list<int>>(
+  a: tensor<E, S>, b: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..numel<S>() {
+    out[i] = a[i] / b[i]
+  }
+  return out
+}
+
 fn matmul<E: Ty, M: int, N: int, K: int>(
   a: tensor<E, [M, K]>, b: tensor<E, [K, N]>
 ) -> tensor<E, [M, N]> {

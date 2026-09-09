@@ -437,11 +437,15 @@ fn infer(m: Mod) -> bool {
     }
     if ir.callee(op) == "onnx.BatchNormalization" ||
        ir.callee(op) == "onnx.Relu" ||
-       ir.callee(op) == "onnx.Softmax" {
+       ir.callee(op) == "onnx.Softmax" ||
+       ir.callee(op) == "onnx.Sqrt" ||
+       ir.callee(op) == "onnx.Reciprocal" ||
+       ir.callee(op) == "onnx.Tanh" {
       changed = same_type(m, op) || changed
     }
     if ir.callee(op) == "onnx.Add" || ir.callee(op) == "onnx.Sub" ||
-       ir.callee(op) == "onnx.Mul" {
+       ir.callee(op) == "onnx.Mul" || ir.callee(op) == "onnx.Div" ||
+       ir.callee(op) == "onnx.Pow" {
       changed = binary_type(m, op) || changed
     }
     if ir.callee(op) == "onnx.Flatten" {
@@ -481,6 +485,19 @@ fn convert_call(m: Mod, op: Op, callee: str) -> bool {
   }
   ir.unset(m, op, "onnx")
   return true
+}
+
+fn convert_unary(m: Mod, op: Op, callee: str) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) || ir.type(outputs[0]) != input {
+    return false
+  }
+  return convert_call(m, op, callee)
 }
 
 fn convert_conv(m: Mod, op: Op) -> bool {
@@ -600,11 +617,6 @@ fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
   }
   if !tensor.broadcastable(tensor.dims(left), tensor.dims(result)) ||
      !tensor.broadcastable(tensor.dims(right), tensor.dims(result)) {
-    return false
-  }
-  var next = inputs
-  next += [ir.constant(m, op, "NONE", "str")]
-  if !ir.args(m, op, next) {
     return false
   }
   return convert_call(m, op, callee)
@@ -748,7 +760,7 @@ fn convert(m: Mod) -> bool {
       changed = convert_softmax(m, op) || changed
     }
     if ir.callee(op) == "onnx.Relu" {
-      changed = convert_call(m, op, "nn.relu") || changed
+      changed = convert_unary(m, op, "nn.relu") || changed
     }
     if ir.callee(op) == "onnx.Add" {
       changed = convert_binary(m, op, "nn.add") || changed
@@ -758,6 +770,21 @@ fn convert(m: Mod) -> bool {
     }
     if ir.callee(op) == "onnx.Mul" {
       changed = convert_binary(m, op, "nn.mul") || changed
+    }
+    if ir.callee(op) == "onnx.Div" {
+      changed = convert_binary(m, op, "nn.div") || changed
+    }
+    if ir.callee(op) == "onnx.Pow" {
+      changed = convert_binary(m, op, "nn.pow") || changed
+    }
+    if ir.callee(op) == "onnx.Sqrt" {
+      changed = convert_unary(m, op, "nn.sqrt") || changed
+    }
+    if ir.callee(op) == "onnx.Reciprocal" {
+      changed = convert_unary(m, op, "nn.recip") || changed
+    }
+    if ir.callee(op) == "onnx.Tanh" {
+      changed = convert_unary(m, op, "nn.tanh") || changed
     }
     if ir.callee(op) == "onnx.Flatten" {
       changed = convert_flatten(m, op) || changed

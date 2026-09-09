@@ -344,6 +344,22 @@ fn relu<E: Ty, S: list<int>>(
 }
 
 fn add<E: Ty, S: list<int>>(
+  left: tensor<E, S>, right: tensor<E, S>
+) -> tensor<E, S> {
+  return left + right
+}
+
+fn add<
+  E: Ty, L: list<int>, R: list<int>, Y: list<int>
+>(
+  left: tensor<E, L>, right: tensor<E, R>
+) -> tensor<E, Y> {
+  let a: tensor<E, Y> = tensor.broadcast(left)
+  let b: tensor<E, Y> = tensor.broadcast(right)
+  return a + b
+}
+
+fn add<E: Ty, S: list<int>>(
   left: tensor<E, S>, right: tensor<E, S>, activation: str
 ) -> tensor<E, S> {
   return activate(left + right, activation)
@@ -357,6 +373,22 @@ fn add<
   let a: tensor<E, Y> = tensor.broadcast(left)
   let b: tensor<E, Y> = tensor.broadcast(right)
   return activate(a + b, activation)
+}
+
+fn sub<E: Ty, S: list<int>>(
+  left: tensor<E, S>, right: tensor<E, S>
+) -> tensor<E, S> {
+  return left - right
+}
+
+fn sub<
+  E: Ty, L: list<int>, R: list<int>, Y: list<int>
+>(
+  left: tensor<E, L>, right: tensor<E, R>
+) -> tensor<E, Y> {
+  let a: tensor<E, Y> = tensor.broadcast(left)
+  let b: tensor<E, Y> = tensor.broadcast(right)
+  return a - b
 }
 
 fn sub<E: Ty, S: list<int>>(
@@ -376,6 +408,22 @@ fn sub<
 }
 
 fn mul<E: Ty, S: list<int>>(
+  left: tensor<E, S>, right: tensor<E, S>
+) -> tensor<E, S> {
+  return left * right
+}
+
+fn mul<
+  E: Ty, L: list<int>, R: list<int>, Y: list<int>
+>(
+  left: tensor<E, L>, right: tensor<E, R>
+) -> tensor<E, Y> {
+  let a: tensor<E, Y> = tensor.broadcast(left)
+  let b: tensor<E, Y> = tensor.broadcast(right)
+  return a * b
+}
+
+fn mul<E: Ty, S: list<int>>(
   left: tensor<E, S>, right: tensor<E, S>, activation: str
 ) -> tensor<E, S> {
   return activate(left * right, activation)
@@ -389,6 +437,72 @@ fn mul<
   let a: tensor<E, Y> = tensor.broadcast(left)
   let b: tensor<E, Y> = tensor.broadcast(right)
   return activate(a * b, activation)
+}
+
+fn div<E: Ty, S: list<int>>(
+  left: tensor<E, S>, right: tensor<E, S>
+) -> tensor<E, S> {
+  return left / right
+}
+
+fn div<
+  E: Ty, L: list<int>, R: list<int>, Y: list<int>
+>(
+  left: tensor<E, L>, right: tensor<E, R>
+) -> tensor<E, Y> {
+  let a: tensor<E, Y> = tensor.broadcast(left)
+  let b: tensor<E, Y> = tensor.broadcast(right)
+  return a / b
+}
+
+fn pow<E: Ty, S: list<int>>(
+  left: tensor<E, S>, right: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = math.pow(left[i], right[i])
+  }
+  return out
+}
+
+fn pow<
+  E: Ty, L: list<int>, R: list<int>, Y: list<int>
+>(
+  left: tensor<E, L>, right: tensor<E, R>
+) -> tensor<E, Y> {
+  let a: tensor<E, Y> = tensor.broadcast(left)
+  let b: tensor<E, Y> = tensor.broadcast(right)
+  return pow(a, b)
+}
+
+fn sqrt<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = math.sqrt(x[i])
+  }
+  return out
+}
+
+fn recip<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = E(1) / x[i]
+  }
+  return out
+}
+
+fn tanh<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = math.tanh(x[i])
+  }
+  return out
 }
 
 fn softmax<E: Ty, S: list<int>>(

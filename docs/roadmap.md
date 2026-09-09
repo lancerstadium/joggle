@@ -178,6 +178,12 @@ retains duplicate or out-of-range axes. A symbolic multi-axis reduction expands
 through the same generic body. The imported quantized BERT graph supplies the
 next coverage gate: its 50 `ReduceMean` nodes are downstream of unresolved shape
 and integer-quantized subgraphs, so conversion is intentionally not yet claimed.
+The shared library also covers broadcast division and power plus elementwise
+square root, reciprocal, and hyperbolic tangent. A symbolic decomposed
+normalization/GELU chain passes inference, conversion, body expansion, and
+verification without introducing fused operator classes. Reaching those paths
+in the imported BERT model still requires the separate dynamic-shape and
+integer-quantization relations below them.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

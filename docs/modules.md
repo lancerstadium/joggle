@@ -201,6 +201,11 @@ that relation for single- or multi-axis reduction without a transpose or
 rank-specific case; output singleton dimensions are a type relation rather
 than a second computation. `nn.global_avg_pool2d` is a normal NCHW
 specialization.
+The two-operand `nn.add`, `nn.sub`, `nn.mul`, and `nn.div` overloads express
+plain broadcasting. Separate three-operand Add/Sub/Mul overloads retain a
+frontend's fused activation only when one actually exists. `nn.pow`, `nn.sqrt`,
+`nn.recip`, and `nn.tanh` expose the scalar `math` calls inside their loops, so
+normalization and GELU decompositions remain visible to later transforms.
 Both spatial pool functions use explicit kernel, stride, pad, dilation, and
 logical-axis values, so ONNX NCHW and TFLite NHWC calls share the same bodies.
 `nn.batch_norm` exposes inference-time channel

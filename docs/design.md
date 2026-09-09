@@ -741,3 +741,11 @@ retained or removed dimensions. ONNX negative-axis normalization and
 `keepdims` interpretation stay in `onnx.nn`, while the reusable computation has
 no frontend fields. Duplicate and out-of-range axes are rejected before any IR
 edit.
+
+The neighboring point-algebra slice deliberately does not add LayerNorm or
+GELU records. ONNX `Div` and `Pow` reuse broadcast-aware `nn` functions, while
+`Sqrt`, `Reciprocal`, and `Tanh` map to elementwise bodies over ordinary scalar
+math declarations. A complete typed normalization chain can therefore be
+inferred, converted, and exposed one function at a time. Plain ONNX
+Add/Sub/Mul select two-operand overloads; the activation operand belongs only
+to frontend operations that encode a fused activation.

@@ -82,13 +82,13 @@ int main(int argc, char** argv) {
   constexpr std::string_view network_source =
       "module network\n"
       "use nn\n"
-      "fn block(x: tensor<f32, [4]>, skip: tensor<f32, [4]>) "
+      "fn stage(x: tensor<f32, [4]>, skip: tensor<f32, [4]>) "
       "-> tensor<f32, [4]> {\n"
       "  return nn.relu(x + skip)\n}\n";
   CHECK(joggle::parse(env, network_source, network, "network.jog"));
   CHECK(network.verify(env));
   joggle::Op tensor_add;
-  for (joggle::Op op : network.find_fn("block").ops())
+  for (joggle::Op op : network.find_fn("stage").ops())
     if (op.callee() == "operator +")
       tensor_add = op;
   CHECK(tensor_add && env.resolve(network, tensor_add).module() == "tensor");
@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
   CHECK(network.verify(env));
   bool expanded_loop = false;
   bool expanded_branch = false;
-  for (joggle::Op op : network.find_fn("block").ops()) {
+  for (joggle::Op op : network.find_fn("stage").ops()) {
     CHECK(op.callee() != "nn.relu");
     expanded_loop = expanded_loop || op.kind() == joggle::Op::Kind::loop;
     expanded_branch =
@@ -335,7 +335,7 @@ int main(int argc, char** argv) {
   constexpr std::string_view linear_network_source =
       "module linear.network\n"
       "use nn\n"
-      "fn block(\n"
+      "fn stage(\n"
       "  x: tensor<f32, [2, 3]>,\n"
       "  weight: tensor<f32, [3, 4]>,\n"
       "  bias: tensor<f32, [4]>\n"

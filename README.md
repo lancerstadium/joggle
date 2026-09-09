@@ -80,6 +80,11 @@ coordinates without transposing the tensor; the inspectable `tensor.mean` body
 therefore covers arbitrary normalized axes and either retained or removed
 dimensions. The ONNX bridge derives the result shape and conservatively keeps
 malformed reductions in the source namespace.
+Broadcast-aware division and power plus elementwise square root, reciprocal,
+and hyperbolic tangent complete a decomposed normalization/GELU path without a
+fused model-specific call. ONNX Add/Sub/Mul use the two-operand semantic
+overloads; activation-bearing overloads remain available to TFLite instead of
+injecting a synthetic `"NONE"` operand into every frontend.
 The optional `onnx.nn` relation module is selected explicitly. On the official
 MobileNetV2 it propagates all intermediate tensor types, then converts every
 compute node to shared semantics. The model marker and tensor payloads remain

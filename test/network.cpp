@@ -213,7 +213,7 @@ int main(int argc, char** argv) {
   for (joggle::Op op : bridge.ops())
     if (op.callee() == "nn.add")
       semantic_add = op;
-  CHECK(semantic_add && semantic_add.args().size() == 3);
+  CHECK(semantic_add && semantic_add.args().size() == 2);
   const joggle::Fn semantic_fn = env.resolve(bridge, semantic_add);
   CHECK(semantic_fn && bridge.expand(semantic_add, semantic_fn));
   CHECK(bridge.verify(env));
@@ -248,7 +248,7 @@ int main(int argc, char** argv) {
   for (joggle::Op op : binary_bridge.ops()) {
     if (op.callee() != "nn.mul" && op.callee() != "nn.sub")
       continue;
-    CHECK(op.args().size() == 3 && op.meta().empty());
+    CHECK(op.args().size() == 2 && op.meta().empty());
     const joggle::Fn fn = env.resolve(binary_bridge, op);
     CHECK(fn && binary_bridge.expand(op, fn));
     ++binaries;
@@ -591,6 +591,54 @@ int main(int argc, char** argv) {
   for (joggle::Op op : invalid_mean.ops())
     retained_mean = retained_mean || op.callee() == "onnx.ReduceMean";
   CHECK(retained_mean && invalid_mean.verify(env));
+
+  constexpr std::string_view norm_source =
+      "module norm.chain\n"
+      "use onnx\n"
+      "fn main<N: int>(\n"
+      "  x: tensor<f32, [N, 2, 4]>, epsilon: tensor<f32, [1]>,\n"
+      "  exponent: tensor<f32, [1]>\n"
+      ") -> tensor<f32, [N, 2, 4]> {\n"
+      "  [onnx: {axes: [-1], keepdims: 1}]\n"
+      "  let mean = onnx.ReduceMean(x)\n"
+      "  let centered = onnx.Sub(x, mean)\n"
+      "  let squared = onnx.Mul(centered, centered)\n"
+      "  [onnx: {axes: [-1], keepdims: 1}]\n"
+      "  let variance = onnx.ReduceMean(squared)\n"
+      "  let shifted = onnx.Add(variance, epsilon)\n"
+      "  let scale = onnx.Sqrt(shifted)\n"
+      "  let normalized = onnx.Div(centered, scale)\n"
+      "  let powered = onnx.Pow(normalized, exponent)\n"
+      "  let out = onnx.Tanh(powered)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod norm;
+  CHECK(joggle::parse(env, norm_source, norm, "norm-chain.jog"));
+  CHECK(norm.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", norm));
+  CHECK(norm.verify(env));
+  CHECK(norm.find_fn("main").body().ops().back().args()[0].type() ==
+        joggle::Ty("tensor<f32, [N, 2, 4]>"));
+  CHECK(joggle::run(env, "onnx.nn.convert", norm));
+  CHECK(norm.verify(env));
+  const std::string norm_once = joggle::print(norm);
+  CHECK(joggle::run(env, "onnx.nn.convert", norm));
+  CHECK(joggle::print(norm) == norm_once);
+  std::vector<joggle::Op> norm_calls;
+  for (joggle::Op op : norm.ops()) {
+    const std::string_view callee = op.callee();
+    if (callee == "tensor.mean" || callee == "nn.sub" ||
+        callee == "nn.mul" || callee == "nn.add" ||
+        callee == "nn.sqrt" || callee == "nn.div" ||
+        callee == "nn.pow" || callee == "nn.tanh")
+      norm_calls.push_back(op);
+  }
+  CHECK(norm_calls.size() == 9);
+  for (joggle::Op op : norm_calls) {
+    const joggle::Fn fn = env.resolve(norm, op);
+    CHECK(fn && norm.expand(op, fn));
+  }
+  CHECK(norm.verify(env));
 
   constexpr std::string_view implicit_softmax_source =
       "module implicit.softmax\n"
