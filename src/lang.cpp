@@ -357,7 +357,7 @@ private:
   bool parse_meta(Attr::Dict& out) {
     while (match("[")) {
       if (is("]"))
-        return fail("function metadata cannot be empty");
+        return fail("attribute list cannot be empty");
       do {
         const Token key = take();
         if (key.kind != Tk::name)
@@ -371,8 +371,7 @@ private:
           value = std::move(*parsed);
         }
         if (!out.emplace(key.text, std::move(value)).second)
-          return fail("duplicate function metadata '" + key.text + "'",
-                      key.loc);
+          return fail("duplicate attribute '" + key.text + "'", key.loc);
       } while (match(","));
       if (!expect("]"))
         return false;
@@ -440,6 +439,16 @@ private:
       val.name = std::move(name);
     if (val.def != detail::none)
       store_.ops[val.def].data.form = form;
+  }
+
+  bool attach(std::uint32_t value, Attr::Dict meta) {
+    if (meta.empty())
+      return true;
+    if (value >= store_.vals.size() ||
+        store_.vals[value].data.def == detail::none)
+      return fail("attributes require an operation statement");
+    store_.ops[store_.vals[value].data.def].data.meta = std::move(meta);
+    return true;
   }
 
   std::string type_text(std::string_view close) {
@@ -650,6 +659,9 @@ private:
   bool parse_block(std::uint32_t fn, std::uint32_t block, Scope& scope,
                    bool nested) {
     while (!at_end() && !is("}")) {
+      Attr::Dict meta;
+      if (!parse_meta(meta))
+        return false;
       if (word("let") || word("var")) {
         const bool mut = tokens_[pos_ - 1].text == "var";
         const detail::Form form = mut ? detail::Form::var : detail::Form::let;
@@ -704,6 +716,8 @@ private:
           store_.vals[value].data.type_annotation = true;
         }
         show(value, form, names.front().first);
+        if (!attach(value, std::move(meta)))
+          return false;
         const std::vector<std::uint32_t>& outs = store_.ops[def].data.outs;
         for (std::size_t index = 0; index < names.size(); ++index) {
           store_.vals[outs[index]].data.name = names[index].first;
@@ -711,14 +725,15 @@ private:
         }
         semi();
       } else if (word("for")) {
-        if (!parse_for(fn, block, scope))
+        if (!parse_for(fn, block, scope, std::move(meta)))
           return false;
       } else if (word("if")) {
-        if (!parse_if(fn, block, scope))
+        if (!parse_if(fn, block, scope, std::move(meta)))
           return false;
       } else if (word("return")) {
         detail::OpData data;
         data.kind = Op::Kind::ret;
+        data.meta = std::move(meta);
         data.loc = tokens_[pos_ - 1].loc;
         if (!is(";") && !is("}")) {
           do {
@@ -730,7 +745,7 @@ private:
         }
         add_op(block, std::move(data));
         semi();
-      } else if (!parse_assignment(block, scope))
+      } else if (!parse_assignment(block, scope, std::move(meta)))
         return false;
     }
     return !(nested && at_end()) || fail("unterminated block");
@@ -746,9 +761,11 @@ private:
     return out;
   }
 
-  bool parse_for(std::uint32_t fn, std::uint32_t block, Scope& scope) {
+  bool parse_for(std::uint32_t fn, std::uint32_t block, Scope& scope,
+                 Attr::Dict meta) {
     detail::OpData data;
     data.kind = Op::Kind::loop;
+    data.meta = std::move(meta);
     data.loc = tokens_[pos_ - 1].loc;
     do {
       const std::string iter = take_name("loop variable");
@@ -812,9 +829,11 @@ private:
     return true;
   }
 
-  bool parse_if(std::uint32_t fn, std::uint32_t block, Scope& scope) {
+  bool parse_if(std::uint32_t fn, std::uint32_t block, Scope& scope,
+                Attr::Dict meta) {
     detail::OpData data;
     data.kind = Op::Kind::branch;
+    data.meta = std::move(meta);
     data.loc = tokens_[pos_ - 1].loc;
     const auto condition = expression(block, scope);
     if (condition == detail::none)
@@ -866,7 +885,7 @@ private:
     return true;
   }
 
-  bool parse_assignment(std::uint32_t block, Scope& scope) {
+  bool parse_assignment(std::uint32_t block, Scope& scope, Attr::Dict meta) {
     const std::size_t start = pos_;
     if (peek().kind == Tk::name &&
         (peek(1).text == "=" || peek(1).text == "+=")) {
@@ -890,6 +909,8 @@ private:
         value = add_call(block, "base.copy", {rhs},
                          store_.vals[found->second.value].data.type, name.loc);
       show(value, form, name.text);
+      if (!attach(value, std::move(meta)))
+        return false;
       found->second.value = value;
       semi();
       return true;
@@ -924,6 +945,8 @@ private:
           add_call(block, operator_name("[]="), std::move(args),
                    store_.vals[found->second.value].data.type, base.loc);
       show(value, detail::Form::index_assign, base.text);
+      if (!attach(value, std::move(meta)))
+        return false;
       found->second.value = value;
       semi();
       return true;
@@ -934,6 +957,8 @@ private:
     if (value == detail::none)
       return false;
     show(value, detail::Form::expr);
+    if (!attach(value, std::move(meta)))
+      return false;
     semi();
     return true;
   }
@@ -977,7 +1002,7 @@ private:
     std::uint32_t value = primary(block, scope);
     if (value == detail::none)
       return value;
-    while (is("[")) {
+    while (is("[") && peek().loc.line == tokens_[pos_ - 1].loc.line) {
       const Token open = take();
       std::vector<std::uint32_t> args{value};
       if (!is("]")) {
@@ -1281,6 +1306,23 @@ void indent(std::ostringstream& out, unsigned depth) {
   out << std::string(depth * 2, ' ');
 }
 
+void render_meta(std::ostringstream& out, const Attr::Dict& meta,
+                 unsigned depth) {
+  if (meta.empty())
+    return;
+  indent(out, depth);
+  out << '[';
+  std::size_t index = 0;
+  for (const auto& [name, value] : meta) {
+    if (index++)
+      out << ", ";
+    out << name;
+    if (value.boolean() != true)
+      out << ": " << attr_text(value);
+  }
+  out << "]\n";
+}
+
 void render_block(std::ostringstream& out, const detail::Store& store,
                   std::uint32_t block, unsigned depth) {
   for (const auto id : store.blocks[block].data.ops) {
@@ -1291,6 +1333,7 @@ void render_block(std::ostringstream& out, const detail::Store& store,
          op.form == detail::Form::hidden) ||
         op.kind == Op::Kind::yield)
       continue;
+    render_meta(out, op.meta, depth);
     indent(out, depth);
     if (op.kind == Op::Kind::call || op.kind == Op::Kind::constant) {
       const auto result = op.outs.empty() ? detail::none : op.outs[0];
@@ -1383,18 +1426,7 @@ std::string print(const Mod& mod) {
       out << '\n';
     first = false;
     const detail::FnData& fn = entry.data;
-    if (!fn.meta.empty()) {
-      out << '[';
-      std::size_t index = 0;
-      for (const auto& [name, value] : fn.meta) {
-        if (index++)
-          out << ", ";
-        out << name;
-        if (value.boolean() != true)
-          out << ": " << attr_text(value);
-      }
-      out << "]\n";
-    }
+    render_meta(out, fn.meta, 0);
     out << "fn ";
     const bool symbolic = std::string_view(fn.name).starts_with("operator ");
     const std::string_view spelling = symbolic
@@ -1566,7 +1598,8 @@ bool merge_binding(Ty& bound, const Ty& actual) {
 bool unify(const Ty& formal, const Ty& actual,
            const std::vector<std::string>& generics, Bindings& bindings) {
   if (formal.empty() || actual.empty() || formal.name() == "_" ||
-      actual.name() == "_" || actual.name() == "Attr")
+      formal.name() == "Attr" || actual.name() == "_" ||
+      actual.name() == "Attr")
     return true;
   if (formal.args().empty() && generic(generics, formal.name())) {
     const auto found = bindings.find(std::string(formal.name()));

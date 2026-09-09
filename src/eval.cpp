@@ -63,6 +63,23 @@ const Items* list(const Item& item) {
   return value && *value ? &(*value)->items : nullptr;
 }
 
+std::optional<Attr> attribute(const Item& item) {
+  if (const auto* value = as<Attr>(item))
+    return *value;
+  const Items* values = list(item);
+  if (!values)
+    return std::nullopt;
+  Attr::List out;
+  out.reserve(values->size());
+  for (const Item& value : *values) {
+    auto converted = attribute(value);
+    if (!converted)
+      return std::nullopt;
+    out.push_back(std::move(*converted));
+  }
+  return Attr(std::move(out));
+}
+
 std::optional<std::int64_t> integer(const Item& item) {
   const Attr* value = as<Attr>(item);
   return value ? value->integer() : std::nullopt;
@@ -713,13 +730,22 @@ private:
       if (const auto* value = as<Val>(args[0]))
         return Items{Item(Attr(std::string(value->type().text())))};
     } else if ((name == "has" || name == "meta") && args.size() == 2) {
-      const auto* fn = as<Fn>(args[0]);
       const auto key = string(args[1]);
-      if (fn && key) {
-        const Attr* value = fn->meta(*key);
-        if (name == "has")
-          return Items{Item(Attr(value != nullptr))};
-        return Items{Item(value ? *value : Attr{})};
+      if (key) {
+        const Attr* value = nullptr;
+        bool node = false;
+        if (const auto* fn = as<Fn>(args[0])) {
+          value = fn->meta(*key);
+          node = true;
+        } else if (const auto* op = as<Op>(args[0])) {
+          value = op->meta(*key);
+          node = true;
+        }
+        if (node) {
+          if (name == "has")
+            return Items{Item(Attr(value != nullptr))};
+          return Items{Item(value ? *value : Attr{})};
+        }
       }
     } else if (name == "is_const" && args.size() == 1) {
       if (const auto* value = as<Val>(args[0]))
@@ -804,6 +830,27 @@ private:
           return Items{Item(Attr((*mod)->rename(*op, std::string(*value))))};
         if (const auto* val = as<Val>(args[1]))
           return Items{Item(Attr((*mod)->rename(*val, std::string(*value))))};
+      }
+    } else if (name == "set" && args.size() == 4) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto key = string(args[2]);
+      auto value = attribute(args[3]);
+      if (mod && *mod && key && value) {
+        if (const auto* fn = as<Fn>(args[1]))
+          return Items{Item(Attr((*mod)->set(*fn, std::string(*key),
+                                             std::move(*value))))};
+        if (const auto* op = as<Op>(args[1]))
+          return Items{Item(Attr((*mod)->set(*op, std::string(*key),
+                                             std::move(*value))))};
+      }
+    } else if (name == "unset" && args.size() == 3) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto key = string(args[2]);
+      if (mod && *mod && key) {
+        if (const auto* fn = as<Fn>(args[1]))
+          return Items{Item(Attr((*mod)->unset(*fn, *key)))};
+        if (const auto* op = as<Op>(args[1]))
+          return Items{Item(Attr((*mod)->unset(*op, *key)))};
       }
     }
     fail("invalid ir." + std::string(name) + " compile-time call", loc);

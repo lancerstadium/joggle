@@ -268,6 +268,17 @@ Blk Op::block() const noexcept {
   const std::uint32_t id = store_->ops[id_].data.block;
   return Blk(store_, id, store_->blocks[id].generation);
 }
+const Attr::Dict& Op::meta() const noexcept {
+  static const Attr::Dict empty;
+  return valid() ? store_->ops[id_].data.meta : empty;
+}
+const Attr* Op::meta(std::string_view key) const noexcept {
+  if (!valid())
+    return nullptr;
+  const auto& values = store_->ops[id_].data.meta;
+  const auto found = values.find(key);
+  return found == values.end() ? nullptr : &found->second;
+}
 Loc Op::loc() const { return valid() ? store_->ops[id_].data.loc : Loc{}; }
 
 Blk::Blk(detail::Store* store, std::uint32_t id,
@@ -646,6 +657,56 @@ bool Mod::rename(Op call, std::string callee) {
   }
   store.ops[call.id_].data.callee = std::move(callee);
   return true;
+}
+
+bool Mod::set(Fn fn, std::string key, Attr value) {
+  auto& store = impl_->store;
+  if (!fn.valid() || fn.store_ != &store || key.empty()) {
+    detail::add_diag(store.diags,
+                     "set requires a live function and non-empty key");
+    return false;
+  }
+  store.fns[fn.id_].data.meta[std::move(key)] = std::move(value);
+  return true;
+}
+
+bool Mod::set(Op op, std::string key, Attr value) {
+  auto& store = impl_->store;
+  if (!op.valid() || op.store_ != &store || key.empty()) {
+    detail::add_diag(store.diags,
+                     "set requires a live operation and non-empty key");
+    return false;
+  }
+  const detail::OpData& data = store.ops[op.id_].data;
+  if ((data.kind == Op::Kind::call || data.kind == Op::Kind::constant) &&
+      data.form == detail::Form::hidden) {
+    detail::add_diag(store.diags,
+                     "cannot annotate an operation nested in an expression",
+                     data.loc);
+    return false;
+  }
+  store.ops[op.id_].data.meta[std::move(key)] = std::move(value);
+  return true;
+}
+
+bool Mod::unset(Fn fn, std::string_view key) {
+  auto& store = impl_->store;
+  if (!fn.valid() || fn.store_ != &store || key.empty()) {
+    detail::add_diag(store.diags,
+                     "unset requires a live function and non-empty key");
+    return false;
+  }
+  return store.fns[fn.id_].data.meta.erase(std::string(key)) != 0;
+}
+
+bool Mod::unset(Op op, std::string_view key) {
+  auto& store = impl_->store;
+  if (!op.valid() || op.store_ != &store || key.empty()) {
+    detail::add_diag(store.diags,
+                     "unset requires a live operation and non-empty key");
+    return false;
+  }
+  return store.ops[op.id_].data.meta.erase(std::string(key)) != 0;
 }
 
 bool Mod::ok() const noexcept { return impl_->store.diags.empty(); }

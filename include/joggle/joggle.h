@@ -211,6 +211,8 @@ public:
   std::vector<Val> outs() const;
   std::vector<Blk> blocks() const;
   Blk block() const noexcept;
+  const Attr::Dict& meta() const noexcept;
+  const Attr* meta(std::string_view key) const noexcept;
   Loc loc() const;
 
   friend bool operator==(const Op&, const Op&) = default;
@@ -345,6 +347,10 @@ public:
   bool erase(Op op);
   bool rename(Val value, std::string name);
   bool rename(Op call, std::string callee);
+  bool set(Fn fn, std::string key, Attr value);
+  bool set(Op op, std::string key, Attr value);
+  bool unset(Fn fn, std::string_view key);
+  bool unset(Op op, std::string_view key);
   bool verify(const Env& env);
 
   bool ok() const noexcept;

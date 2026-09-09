@@ -50,6 +50,7 @@ struct OpData {
   std::vector<std::string> iter_names;
   std::size_t carried_count = 0;
   Attr literal;
+  Attr::Dict meta;
   Form form = Form::hidden;
   Loc loc;
 };

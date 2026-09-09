@@ -103,8 +103,9 @@ The built-in `ir` module is the complete reflection boundary:
 | `fns`, `blocks`, `ops` | Traverse structural ownership in stable order. |
 | `args`, `outs`, `users` | Read operation dataflow. |
 | `callee`, `type`, `is_const`, `constant`, `len` | Query calls, values, and lists. |
-| `has`, `meta` | Query open function metadata. |
+| `has`, `meta` | Query open function or operation attributes. |
 | `call`, `replace`, `erase`, `rename` | Build and rewrite calls through the same checked mutations as C++. |
+| `set`, `unset` | Add, replace, or remove a function or operation attribute. |
 
 These functions operate on generic handles and contain no NN operator names.
 Adding an importer, optimization, or target module therefore does not extend
@@ -121,6 +122,11 @@ calls, create `my.fused(...)`, redirect uses, and erase the old calls. The same
 metadata mechanism can describe entry points, optimization stages, target
 capabilities, cost hints, provenance, or test groups; their interpretation
 belongs entirely to the module that queries them.
+
+The bracket syntax is not a `host` special case. Any module may define its own
+keys and attach them to a function or operation statement. Version and ABI
+information remains in package/API data; it is not encoded in function names
+or required in module source.
 
 `ir.fuse` is likewise operator-neutral. It accepts an ordered `list<Op>`,
 derives unique live-ins and the single live-out, inserts the requested call,

@@ -188,32 +188,44 @@ binds the generic `Val` `N` to the integer `4` in the function frame. `Ty` and
 modules can write reusable shape and format helpers without a second evaluator
 API.
 
-### Function metadata
+### Open attributes
 
-Square brackets hold an open metadata dictionary rather than a fixed set of
-compiler keywords:
+Square brackets hold an open attribute dictionary rather than a fixed set of
+compiler keywords. They may precede a function or an operation statement:
 
 ```jog
 [entry, stage: "select", policy: {modes: ["fast", "small"]}]
 fn choose(m: Mod) -> bool { return true }
+
+fn placed(x: tensor<f32, [4]>) -> tensor<f32, [4]> {
+  [place: "edge", layout: "packed"]
+  let y = transform(x)
+  [trace]
+  return y
+}
 ```
 
 A bare name means `true`; values use normal `Attr` literals. Repeated brackets
 are accepted and canonical printing merges them in key order. Duplicate keys
-are errors. `Fn::meta` exposes the same data to C++, while `ir.has` and
-`ir.meta` expose it to textual functions.
+are errors. On a statement, the dictionary belongs to its root `Op`, whether
+that operation is a call, loop, condition, or return. `Fn::meta` and `Op::meta`
+expose the same data to C++, while overloaded `ir.has` and `ir.meta` expose it
+to textual functions. `ir.set` and `ir.unset` edit function or operation
+attributes.
 
-No metadata name changes parsing, binding, or the IR shape. A native library
-may bind any matching body-less declaration; no marker is required and a
-function with a body cannot be rebound. Useful module-defined keys include
+No attribute name changes parsing, binding, or the IR shape. In particular,
+`host`, `target`, `place`, and `layout` have no built-in meaning. A native
+library may bind any matching body-less declaration; no marker is required and
+a function with a body cannot be rebound. Useful module-defined keys include
 `role`, `stage`, `target`, and `cost`, but none is owned by the core. Structural
 type constructors, parametric matching, result inference, and overload-set
 resolution use the same function declarations. Return types do not distinguish
 overloads, and parameter signatures that differ only in generic names are
 rejected as duplicates.
 
-Metadata becomes behavior only when an explicitly selected function queries
-it. A transform may use `[rewrite: "lab.fused"]` to choose a replacement call;
-an emitter may use `[target: "board-name"]`; a search procedure may attach a
-structural `cost` dictionary. Installing such a module does not register a new
-language keyword or silently execute any of these policies.
+An attribute becomes behavior only when an explicitly selected function
+queries it. A transform may use `[rewrite: "lab.fused"]` to choose a
+replacement call; an emitter may use `[target: "board-name"]`; a search
+procedure may attach a structural `cost` dictionary. Installing such a module
+does not register a new language keyword or silently execute any of these
+policies.

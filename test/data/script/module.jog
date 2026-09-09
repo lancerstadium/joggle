@@ -60,6 +60,22 @@ fn make_pair(m: Mod) -> bool {
   return false
 }
 
+fn mark_add(m: Mod) -> bool {
+  for f in ir.fns(m) {
+    for b in ir.blocks(f) {
+      for op in ir.ops(b) {
+        if ir.callee(op) == "operator +" {
+          var changed = ir.set(m, op, "place", "edge")
+          changed = ir.set(m, op, "tile", [4, 8])
+          return changed && ir.has(op, "place") &&
+                 ir.meta(op, "place") == "edge"
+        }
+      }
+    }
+  }
+  return false
+}
+
 fn rebuild_tagged(m: Mod) -> bool {
   var changed = false
   for f in ir.fns(m) {

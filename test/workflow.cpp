@@ -136,6 +136,39 @@ int main(int argc, char** argv) {
   CHECK(multi_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(multi, multi_roundtrip));
 
+  joggle::Mod annotated;
+  constexpr std::string_view annotated_source =
+      "module annotated\n"
+      "fn add(x: i32) -> i32 {\n"
+      "  [cost: 3, place: \"edge\"]\n"
+      "  let y = x + 1\n"
+      "  [trace]\n"
+      "  return y\n"
+      "}\n";
+  CHECK(joggle::parse(env, annotated_source, annotated, "annotated.jog"));
+  CHECK(annotated.verify(env));
+  const joggle::Fn annotated_fn = annotated.find_fn("add");
+  const std::vector<joggle::Op> annotated_ops = annotated_fn.body().ops();
+  CHECK(annotated_ops.size() == 3);
+  CHECK(annotated_ops[1].meta("place") &&
+        annotated_ops[1].meta("place")->string() == "edge");
+  CHECK(annotated_ops.back().meta("trace") &&
+        annotated_ops.back().meta("trace")->boolean() == true);
+  CHECK(annotated.set(annotated_ops[1], "layout", joggle::Attr("packed")));
+  CHECK(annotated.unset(annotated_ops[1], "cost"));
+  CHECK(!annotated_ops[1].meta("cost"));
+  CHECK(annotated.set(annotated_fn, "pipeline", joggle::Attr("fast")));
+  CHECK(annotated_fn.meta("pipeline") &&
+        annotated_fn.meta("pipeline")->string() == "fast");
+  const std::string annotated_text = joggle::print(annotated);
+  CHECK(annotated_text.find("[layout: \"packed\", place: \"edge\"]") !=
+        std::string::npos);
+  joggle::Mod annotated_roundtrip;
+  CHECK(joggle::parse(env, annotated_text, annotated_roundtrip,
+                      "annotated-roundtrip.jog"));
+  CHECK(annotated_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(annotated, annotated_roundtrip));
+
   joggle::Mod wrong_result_type;
   CHECK(joggle::parse(env,
                       "module wrong_result\n"
@@ -336,6 +369,14 @@ int main(int argc, char** argv) {
   CHECK(joggle::print(overload_execution)
             .find("let left: i32, right: i32 = test.pair(x, 0)") !=
         std::string::npos);
+  joggle::Mod marked;
+  CHECK(joggle::parse(env, source.str(), marked, argv[1]));
+  CHECK(joggle::run(env, "script.mark_add", marked));
+  const joggle::Op marked_add = marked.find_fn("add_zero").body().ops()[1];
+  CHECK(marked_add.meta("place") &&
+        marked_add.meta("place")->string() == "edge");
+  CHECK(marked_add.meta("tile") && marked_add.meta("tile")->list() &&
+        marked_add.meta("tile")->list()->size() == 2);
   joggle::Mod rolled_back;
   CHECK(joggle::parse(env, source.str(), rolled_back, argv[1]));
   const std::string before_failure = joggle::print(rolled_back);

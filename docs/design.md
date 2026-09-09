@@ -45,6 +45,12 @@ does not reserve tag names. Selection, scheduling, testing, cost models, and
 research modules may define their own tags. Native binding depends only on an
 external declaration and a matching native symbol; it needs no marker.
 
+Operations use the same open dictionary and square-bracket syntax. Placement,
+layout, specialization, provenance, and cost experiments can therefore carry
+their decisions through the common IR without a new operation kind. These
+attributes are inert until an explicitly selected module function reads them;
+even names such as `host` have no privileged behavior.
+
 An importer, transform, analysis, simulator, or emitter is therefore an
 ordinary compile-time function. `run` interprets the same structured function
 body over compile-time scalars, lists, and IR handles. The `ir` module exposes a
@@ -227,3 +233,12 @@ compile-time execution. Optional result annotations such as
 calls and are checked against known declarations. Thus binary frontends and
 later semantic modules can transport multi-result operations without a
 frontend-specific core case.
+
+## M7 second slice
+
+Open attributes now apply uniformly to function declarations and visible
+operation statements. Calls, loops, conditions, and returns preserve their
+attribute dictionaries through canonical printing, and both C++ and `.jog`
+transforms can query or edit function and operation attributes. This
+generalizes the useful `[name: value]` notation without reserving `host`,
+target, scheduling, or layout concepts in the core.
