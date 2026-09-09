@@ -1,0 +1,144 @@
+module onnx.nn
+use onnx
+use nn
+use ir
+
+fn set_type(m: Mod, value: Val, type: Ty) -> bool {
+  if ir.type(value) != type {
+    return ir.type(m, value, type)
+  }
+  return false
+}
+
+fn same_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 0 && len(outputs) == 1 {
+    return set_type(m, outputs[0], ir.type(inputs[0]))
+  }
+  return false
+}
+
+fn conv_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 2 || len(outputs) != 1 {
+    return false
+  }
+  let x = ir.type(inputs[0])
+  let weight = ir.type(inputs[1])
+  if name(x) != "tensor" || name(weight) != "tensor" {
+    return false
+  }
+  let xs = tensor.shape(x)
+  let ws = tensor.shape(weight)
+  if len(xs) != 4 || len(ws) != 4 {
+    return false
+  }
+  let meta = ir.meta(op, "onnx")
+  if base.has(meta, "auto_pad") {
+    return false
+  }
+  let stride = base.get(meta, "strides", [1, 1])
+  let pad = base.get(meta, "pads", [0, 0, 0, 0])
+  let dilation = base.get(meta, "dilations", [1, 1])
+  if len(stride) != 2 || len(pad) != 4 || len(dilation) != 2 {
+    return false
+  }
+  let h = (xs[2] + pad[0] + pad[2] - dilation[0] * (ws[2] - 1) - 1) /
+          stride[0] + 1
+  let w = (xs[3] + pad[1] + pad[3] - dilation[1] * (ws[3] - 1) - 1) /
+          stride[1] + 1
+  return set_type(
+    m, outputs[0], tensor.type(tensor.elem(x), [xs[0], ws[0], h, w])
+  )
+}
+
+fn pool_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let x = ir.type(inputs[0])
+  if name(x) != "tensor" {
+    return false
+  }
+  let shape = tensor.shape(x)
+  if len(shape) != 4 {
+    return false
+  }
+  return set_type(
+    m, outputs[0], tensor.type(tensor.elem(x), [shape[0], shape[1], 1, 1])
+  )
+}
+
+fn infer(m: Mod) -> bool {
+  var changed = false
+  for op in ir.ops(m) {
+    if ir.callee(op) == "onnx.Conv" {
+      changed = conv_type(m, op) || changed
+    } else {
+      if ir.callee(op) == "onnx.BatchNormalization" ||
+         ir.callee(op) == "onnx.Relu" || ir.callee(op) == "onnx.Add" {
+        changed = same_type(m, op) || changed
+      } else {
+        if ir.callee(op) == "onnx.GlobalAveragePool" {
+          changed = pool_type(m, op) || changed
+        }
+      }
+    }
+  }
+  return changed
+}
+
+fn ints(m: Mod, before: Op, value: Attr) -> Val {
+  var items: list<Val> = []
+  for item in value {
+    items += [ir.constant(m, before, item, "int")]
+  }
+  return ir.call(m, before, "base.list", items, "list<int>")
+}
+
+fn convert_conv(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 1 ||
+     name(ir.type(outputs[0])) != "tensor" {
+    return false
+  }
+  let meta = ir.meta(op, "onnx")
+  if base.has(meta, "auto_pad") {
+    return false
+  }
+  inputs += [ints(m, op, base.get(meta, "strides", [1, 1]))]
+  inputs += [ints(m, op, base.get(meta, "pads", [0, 0, 0, 0]))]
+  inputs += [ints(m, op, base.get(meta, "dilations", [1, 1]))]
+  inputs += [ir.constant(m, op, base.get(meta, "group", 1), "int")]
+  if !ir.args(m, op, inputs) {
+    return false
+  }
+  return ir.rename(m, op, "nn.conv2d")
+}
+
+fn convert(m: Mod) -> bool {
+  var changed = ir.use(m, "nn")
+  for op in ir.ops(m) {
+    if ir.callee(op) == "onnx.Conv" {
+      changed = convert_conv(m, op) || changed
+    } else {
+      if ir.callee(op) == "onnx.Relu" {
+        changed = ir.rename(m, op, "nn.relu") || changed
+      } else {
+        if ir.callee(op) == "onnx.Add" {
+          changed = ir.rename(m, op, "operator +") || changed
+        } else {
+          if ir.callee(op) == "onnx.GlobalAveragePool" {
+            changed = ir.rename(m, op, "nn.global_avg_pool2d") || changed
+          }
+        }
+      }
+    }
+  }
+  return changed
+}

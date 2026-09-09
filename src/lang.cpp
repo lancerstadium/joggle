@@ -1615,6 +1615,11 @@ bool sized_integer(std::string_view name) {
   });
 }
 
+bool index_integer(std::string_view left, std::string_view right) {
+  return (left == "index" && (right == "int" || sized_integer(right))) ||
+         (right == "index" && (left == "int" || sized_integer(left)));
+}
+
 bool merge_binding(Ty& bound, const Ty& actual) {
   if (bound == actual || actual.name() == "_")
     return true;
@@ -1644,7 +1649,8 @@ bool unify(const Ty& formal, const Ty& actual,
     return merge_binding(found->second, actual);
   }
   if ((formal.name() == "int" && sized_integer(actual.name())) ||
-      (actual.name() == "int" && sized_integer(formal.name())))
+      (actual.name() == "int" && sized_integer(formal.name())) ||
+      index_integer(formal.name(), actual.name()))
     return true;
   if (formal.name() != actual.name())
     return false;
@@ -1741,7 +1747,8 @@ Fn select_overload(std::span<const Fn> candidates,
                    std::span<const Ty> explicit_arguments,
                    std::vector<Ty>* returns, bool* ambiguous,
                    std::span<const GenericInfo> context,
-                   std::vector<Ty>* resolved_generics = nullptr) {
+                   std::vector<Ty>* resolved_generics = nullptr,
+                   std::span<const Ty> expected_returns = {}) {
   Fn best;
   std::vector<Ty> best_returns;
   std::vector<Ty> best_generics;
@@ -1749,9 +1756,12 @@ Fn select_overload(std::span<const Fn> candidates,
   bool tied = false;
   for (const Fn candidate : candidates) {
     const std::vector<Val> params = candidate.params();
+    const std::vector<Ty> candidate_returns = candidate.returns();
     const std::vector<GenericInfo> info = generic_info(candidate);
     const std::vector<std::string> generics = generic_names(info);
     if (params.size() != arguments.size() ||
+        (!expected_returns.empty() &&
+         candidate_returns.size() != expected_returns.size()) ||
         (!explicit_arguments.empty() &&
          explicit_arguments.size() != generics.size()))
       continue;
@@ -1768,6 +1778,15 @@ Fn select_overload(std::span<const Fn> candidates,
         break;
       }
     }
+    for (std::size_t index = 0;
+         matches && index < expected_returns.size(); ++index) {
+      if (expected_returns[index].text() == "_")
+        continue;
+      const Ty& formal = candidate_returns[index];
+      Bindings inferred = bindings;
+      if (unify(formal, expected_returns[index], generics, inferred))
+        bindings = std::move(inferred);
+    }
     for (std::size_t index = 0; matches && index < info.size(); ++index) {
       const auto bound = bindings.find(std::string(info[index].name));
       if (bound != bindings.end() &&
@@ -1779,7 +1798,7 @@ Fn select_overload(std::span<const Fn> candidates,
     score =
         score * 1024 + (1023 - std::min<std::size_t>(generics.size(), 1023));
     std::vector<Ty> substituted;
-    for (const Ty& type : candidate.returns())
+    for (const Ty& type : candidate_returns)
       substituted.push_back(substitute(type, generics, bindings));
     std::vector<Ty> bound_generics;
     bound_generics.reserve(generics.size());
@@ -1882,13 +1901,20 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
   for (const std::uint32_t argument : op.args)
     arguments.push_back(store.vals[argument].data.type);
   std::vector<Ty> returns;
+  std::vector<Ty> expected_returns;
+  expected_returns.reserve(op.outs.size());
+  for (const std::uint32_t output : op.outs) {
+    const detail::ValData& value = store.vals[output].data;
+    expected_returns.push_back(value.type_annotation ? value.type : Ty("_"));
+  }
   bool ambiguous = false;
   const std::uint32_t owner = store.blks[op.block].data.fn;
   const std::vector<GenericInfo> context =
       owner == detail::none ? std::vector<GenericInfo>{}
                             : generic_info(store, store.fns[owner].data);
   const Fn fn = select_overload(candidates, arguments, explicit_args, &returns,
-                                &ambiguous, context);
+                                &ambiguous, context, nullptr,
+                                expected_returns);
   if (!fn) {
     if (diagnose) {
       std::string message;
@@ -2172,13 +2198,14 @@ Fn detail::resolve_overload(std::span<const Fn> candidates,
                             std::span<const Ty> explicit_arguments,
                             std::vector<Ty>* returns, bool* ambiguous,
                             std::span<const Val> context,
-                            std::vector<Ty>* generics) {
+                            std::vector<Ty>* generics,
+                            std::span<const Ty> expected_returns) {
   std::vector<GenericInfo> info;
   info.reserve(context.size());
   for (const Val generic : context)
     info.push_back({generic.name(), generic.type()});
   return select_overload(candidates, arguments, explicit_arguments, returns,
-                         ambiguous, info, generics);
+                         ambiguous, info, generics, expected_returns);
 }
 
 bool Mod::verify(const Env& env) {

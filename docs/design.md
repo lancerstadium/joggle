@@ -474,3 +474,33 @@ empty lists retain their annotation during inference. These two rules let the
 `tensor` module implement `elem`, `shape`, and `type` as normal `.jog`
 functions, with no tensor case in the evaluator and no string parsing in the
 module.
+
+## M10 network-semantics slice
+
+Some useful function generics occur only in the result. Overload resolution now
+uses an explicit result annotation as an additional structural constraint after
+matching inputs. The same binding is observed by verification,
+`Env::resolve`, and body expansion. Concrete result mismatches still select the
+input-compatible declaration and produce the existing precise diagnostic;
+result types are not a separate overloading axis.
+
+Mixed scalar/index arithmetic preserves the left operand type, allowing normal
+loop-index address expressions while leaving more specific module overloads in
+control.
+
+This permits `nn.conv2d` to state one grouped NCHW computation as an ordinary
+function body. Its stride, padding, dilation, and group are values, while input,
+weight, and output dimensions are structural generics. The body uses the same
+loops, conditions, tensor indexing, and scalar operators as user code.
+`nn.global_avg_pool2d` uses the same representation for a spatial reduction.
+A test resolves output-only dimensions from an annotated convolution call,
+expands both bodies, verifies the resulting nested loops, and round-trips them.
+
+The optional `onnx.nn` module owns the frontend/library relationship. Its
+`infer` function propagates the supported MobileNetV2 shapes in graph order;
+its separately invoked `convert` function materializes Conv attributes as
+ordinary operands and maps Conv, ReLU, Add, and GlobalAveragePool to shared
+semantics. The codec remains name-agnostic, unknown calls remain open, and
+neither action happens on load. The official model gate requires every
+intermediate node result to become typed, all supported calls to convert and
+verify, and repeated inference and conversion to be textually unchanged.

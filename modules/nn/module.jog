@@ -1,6 +1,58 @@
 module nn
 use tensor
 
+fn conv2d<
+  E: Ty,
+  N: int,
+  C: int,
+  H: int,
+  W: int,
+  M: int,
+  Q: int,
+  R: int,
+  S: int,
+  OH: int,
+  OW: int
+>(
+  x: tensor<E, [N, C, H, W]>,
+  weight: tensor<E, [M, Q, R, S]>,
+  stride: list<int>,
+  pad: list<int>,
+  dilation: list<int>,
+  groups: int
+) -> tensor<E, [N, M, OH, OW]> {
+  var out = tensor<E, [N, M, OH, OW]>(E(0))
+  for n in 0..N, m in 0..M, oh in 0..OH, ow in 0..OW {
+    var sum = E(0)
+    for q in 0..Q, r in 0..R, s in 0..S {
+      let h = oh * stride[0] + r * dilation[0] - pad[0]
+      let w = ow * stride[1] + s * dilation[1] - pad[1]
+      if h >= 0 && h < H && w >= 0 && w < W {
+        let c = (m / (M / groups)) * Q + q
+        sum += x[n, c, h, w] * weight[m, q, r, s]
+      }
+    }
+    out[n, m, oh, ow] = sum
+  }
+  return out
+}
+
+fn global_avg_pool2d<
+  E: Ty, N: int, C: int, H: int, W: int
+>(
+  x: tensor<E, [N, C, H, W]>
+) -> tensor<E, [N, C, 1, 1]> {
+  var out = tensor<E, [N, C, 1, 1]>(E(0))
+  for n in 0..N, c in 0..C {
+    var sum = E(0)
+    for h in 0..H, w in 0..W {
+      sum += x[n, c, h, w]
+    }
+    out[n, c, 0, 0] = sum / E(H * W)
+  }
+  return out
+}
+
 fn linear<E: Ty, M: int, N: int, K: int>(
   x: tensor<E, [M, K]>, weight: tensor<E, [K, N]>
 ) -> tensor<E, [M, N]> {

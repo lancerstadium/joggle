@@ -111,7 +111,8 @@ Fn resolve_overload(std::span<const Fn> candidates,
                     std::span<const Ty> explicit_arguments,
                     std::vector<Ty>* returns, bool* ambiguous,
                     std::span<const Val> context = {},
-                    std::vector<Ty>* generics = nullptr);
+                    std::vector<Ty>* generics = nullptr,
+                    std::span<const Ty> expected_returns = {});
 
 }  // namespace joggle::detail
 

@@ -87,6 +87,12 @@ if(JOGGLE_BUILD_ONNX)
     "${CMAKE_CURRENT_BINARY_DIR}/modules/onnx/module.jog"
     COPYONLY
   )
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/onnx.nn")
+  configure_file(
+    modules/onnx.nn/module.jog
+    "${CMAKE_CURRENT_BINARY_DIR}/modules/onnx.nn/module.jog"
+    COPYONLY
+  )
   install(
     TARGETS joggle-onnx
     LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/onnx/native
@@ -95,6 +101,10 @@ if(JOGGLE_BUILD_ONNX)
   install(
     FILES modules/onnx/module.jog
     DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/onnx
+  )
+  install(
+    DIRECTORY modules/onnx.nn
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules
   )
 endif()
 

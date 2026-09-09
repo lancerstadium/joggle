@@ -118,8 +118,11 @@ upgraded compatibly, and removed without editing or rebuilding Joggle.
 
 Status: in progress. Binary ONNX transport, real-model generic fusion,
 same-signature semantic bridging, progressive body expansion, and structural
-tensor type construction are complete; broader operator semantics, shape
-propagation, a second frontend, and target gates remain.
+tensor type construction are complete. Grouped 2-D convolution now has an
+inspectable body, and the explicit `onnx.nn` relation propagates all official
+MobileNetV2 intermediate types before converting its supported Conv/ReLU/Add
+and global-pool subset. Broader operator semantics, a second frontend, and
+target gates remain.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

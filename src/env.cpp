@@ -519,10 +519,13 @@ Fn Env::resolve(const Mod& from, Op call) const {
   std::vector<Ty> arguments;
   for (const Val value : call.args())
     arguments.push_back(value.type());
+  std::vector<Ty> returns;
+  for (const Val value : call.outs())
+    returns.push_back(value.type());
   const std::vector<Fn> candidates = resolve_fns(from, symbol);
   const std::vector<Val> context = call.block().fn().generics();
   return detail::resolve_overload(candidates, arguments, explicit_arguments,
-                                  nullptr, nullptr, context);
+                                  nullptr, nullptr, context, nullptr, returns);
 }
 
 bool Env::bound(std::string_view symbol) const noexcept {

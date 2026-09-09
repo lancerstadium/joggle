@@ -38,7 +38,8 @@ so ordinary signature matching can bridge a real imported network. The pinned
 MobileNetV2 gate maps every one-input ReLU through the same data-driven relation
 used by small models and proves that a second bridge run is unchanged.
 The standard `tensor` and `nn` modules contain inspectable bodies for tensor
-algebra, linear layers, and ReLU. A generic body-expansion edit can expose a
+algebra, grouped 2-D convolution, linear layers, and ReLU. A generic
+body-expansion edit can expose a
 selected network call as tensor calls and later expose those calls as loops;
 it resolves ordinary overloads and has no NN-operator switch. `base`
 dictionary access lets ordinary bridge functions interpret frontend
@@ -48,6 +49,10 @@ core. Compile-time functions can inspect, construct, and write structural `Ty`
 trees. `tensor.elem`, `tensor.shape`, and `tensor.type` provide the common
 tensor projections and constructor, enabling shape and custom-format reasoning
 without parsing type strings.
+The optional `onnx.nn` relation module is selected explicitly. On the official
+MobileNetV2 it propagates all intermediate tensor types, then converts supported
+Conv, ReLU, Add, and global-pool calls to shared semantics while leaving
+BatchNormalization, reshape, and unknown calls intact for later relations.
 
 ## Build
 

@@ -66,6 +66,18 @@ std::size_t count_calls(const joggle::Mod& mod, std::string_view callee) {
   return count;
 }
 
+std::size_t count_unknown_node_outputs(const joggle::Mod& mod) {
+  std::size_t count = 0;
+  for (joggle::Op op : mod.ops()) {
+    if (!op.callee().starts_with("onnx.") ||
+        op.callee() == "onnx.model" || op.callee() == "onnx.tensor")
+      continue;
+    for (joggle::Val output : op.outs())
+      count += output.type().text() == "_" ? 1 : 0;
+  }
+  return count;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -125,17 +137,56 @@ int main(int argc, char** argv) {
       CHECK(op.meta("onnx") && op.meta("onnx")->dict());
     }
 
-  CHECK(env.load("script"));
-  joggle::Mod bridged;
-  CHECK(joggle::parse(env, canonical, bridged, "mobilenet-bridge.jog"));
-  const std::size_t network_relus = count_calls(bridged, "onnx.Relu");
-  CHECK(network_relus > 0);
-  CHECK(joggle::run(env, "script.bridge_relu", bridged));
-  CHECK(count_calls(bridged, "onnx.Relu") == 0);
-  CHECK(count_calls(bridged, "nn.relu") == network_relus);
-  const std::string bridged_text = joggle::print(bridged);
-  CHECK(joggle::run(env, "script.bridge_relu", bridged));
-  CHECK(joggle::print(bridged) == bridged_text);
+  CHECK(env.load("onnx.nn"));
+  joggle::Mod semantic;
+  CHECK(joggle::parse(env, canonical, semantic, "mobilenet-semantic.jog"));
+  CHECK(count_unknown_node_outputs(semantic) > 0);
+  CHECK(joggle::run(env, "onnx.nn.infer", semantic));
+  CHECK(semantic.verify(env));
+  CHECK(count_unknown_node_outputs(semantic) == 0);
+  bool checked_first_conv = false;
+  bool checked_pool = false;
+  for (joggle::Op op : semantic.ops()) {
+    if (op.callee() == "onnx.Conv" && !checked_first_conv) {
+      CHECK(op.outs().front().type() ==
+            joggle::Ty("tensor<f32, [1, 32, 112, 112]>"));
+      checked_first_conv = true;
+    }
+    if (op.callee() == "onnx.GlobalAveragePool") {
+      CHECK(op.outs().front().type() ==
+            joggle::Ty("tensor<f32, [1, 1280, 1, 1]>"));
+      checked_pool = true;
+    }
+  }
+  CHECK(checked_first_conv && checked_pool);
+  const std::string typed_text = joggle::print(semantic);
+  CHECK(joggle::run(env, "onnx.nn.infer", semantic));
+  CHECK(joggle::print(semantic) == typed_text);
+  const std::size_t network_convs = count_calls(semantic, "onnx.Conv");
+  const std::size_t network_relus = count_calls(semantic, "onnx.Relu");
+  const std::size_t network_adds = count_calls(semantic, "onnx.Add");
+  const std::size_t network_pools =
+      count_calls(semantic, "onnx.GlobalAveragePool");
+  CHECK(network_convs > 0 && network_relus > 0 && network_adds > 0 &&
+        network_pools > 0);
+  CHECK(joggle::run(env, "onnx.nn.convert", semantic));
+  CHECK(semantic.verify(env));
+  CHECK(count_calls(semantic, "onnx.Conv") == 0);
+  CHECK(count_calls(semantic, "onnx.Relu") == 0);
+  CHECK(count_calls(semantic, "onnx.Add") == 0);
+  CHECK(count_calls(semantic, "onnx.GlobalAveragePool") == 0);
+  CHECK(count_calls(semantic, "nn.conv2d") == network_convs);
+  CHECK(count_calls(semantic, "nn.relu") == network_relus);
+  CHECK(count_calls(semantic, "operator +") == network_adds);
+  CHECK(count_calls(semantic, "nn.global_avg_pool2d") == network_pools);
+  const std::string semantic_text = joggle::print(semantic);
+  CHECK(joggle::run(env, "onnx.nn.convert", semantic));
+  CHECK(joggle::print(semantic) == semantic_text);
+  joggle::Mod semantic_roundtrip;
+  CHECK(joggle::parse(env, semantic_text, semantic_roundtrip,
+                      "mobilenet-semantic-roundtrip.jog"));
+  CHECK(semantic_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(semantic, semantic_roundtrip));
 
   const std::vector<joggle::Attr> multi_args{
       joggle::Attr(multi_output_model())};
@@ -170,6 +221,7 @@ int main(int argc, char** argv) {
   const std::size_t norms = count_calls(model, "onnx.BatchNormalization");
   const std::size_t relus = count_calls(model, "onnx.Relu");
   CHECK(convs > 0 && norms > 0 && relus > 0);
+  CHECK(env.load("script"));
   CHECK(joggle::run(env, "script.fuse_onnx", model));
   const std::size_t fused = count_calls(model, "test.conv_bn_relu");
   CHECK(fused == 36);

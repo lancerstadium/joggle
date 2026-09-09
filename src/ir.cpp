@@ -1061,6 +1061,9 @@ bool Mod::expand(Op call, Fn callee) {
   std::vector<Ty> arguments;
   for (Val value : call.args())
     arguments.push_back(value.type());
+  std::vector<Ty> expected_returns;
+  for (Val value : call.outs())
+    expected_returns.push_back(value.type());
   const std::vector<Ty> explicit_arguments =
       applied.args().empty() ? std::vector<Ty>{} : applied.args();
   const std::vector<Fn> candidates{callee};
@@ -1069,7 +1072,7 @@ bool Mod::expand(Op call, Fn callee) {
   std::vector<Ty> generic_values;
   if (!detail::resolve_overload(candidates, arguments, explicit_arguments,
                                 &result_types, nullptr, context,
-                                &generic_values))
+                                &generic_values, expected_returns))
     return reject("call arguments do not match the expanded function",
                   call.loc());
   const std::vector<Val> params = callee.params();

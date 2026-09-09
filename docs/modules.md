@@ -136,12 +136,17 @@ do not need a frontend-specific projection primitive.
 ### Tensor and network semantics
 
 `tensor` defines `tensor<E, S>`, structural `elem`/`shape`/`type` helpers,
-linear and two-dimensional indexing, `numel`, elementwise addition, and matrix
-multiplication have normal `.jog` bodies with loops and explicit value updates;
-they are not opaque operator records. `nn.linear` composes matrix
+linear, two-dimensional, and four-dimensional indexing, `numel`, elementwise
+addition, and matrix multiplication. These computations have normal `.jog`
+bodies with loops and explicit value updates; they are not opaque operator
+records. `nn.linear` composes matrix
 multiplication with an optional bias loop, while `nn.relu` is a loop and
-condition over the same tensor primitives. Transforms can therefore keep a
-network call abstract or expose one function body at a time using the same
+condition over the same tensor primitives. `nn.conv2d` defines grouped NCHW
+convolution with explicit stride, padding, dilation, and group values; output
+dimensions that occur only in its result are inferred from the call's result
+annotation. `nn.global_avg_pool2d` reduces each spatial plane with ordinary
+loops and scalar arithmetic. Transforms can therefore keep a network call
+abstract or expose one function body at a time using the same
 `Fn/Blk/Op/Val` representation.
 
 `ir.resolve(m, op)` returns the declaration selected by the same structural
@@ -159,6 +164,15 @@ to separately loaded research modules and can use open attributes or explicit
 function arguments. The ONNX codec does not import `nn`; conversion between a
 frontend schema and these functions must remain an explicit user-selected
 module function.
+
+The optional `onnx.nn` module is that relationship, not another IR layer.
+`onnx.nn.infer` walks operations in source order and propagates 4-D tensor
+types through Conv, BatchNormalization, ReLU, Add, and GlobalAveragePool.
+Unsupported ranks and `auto_pad` are left unchanged rather than guessed.
+`onnx.nn.convert` then maps supported Conv, ReLU, Add, and GlobalAveragePool
+calls, materializing Conv attributes as ordinary operands. It does not run
+inference implicitly, does not alter the codec, and leaves all other calls
+untouched.
 
 `ir.call` inserts an arbitrary call immediately before an existing operation.
 A `str` result-type argument returns the single `Val` convenience form; a

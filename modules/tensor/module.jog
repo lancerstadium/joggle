@@ -28,12 +28,23 @@ fn []<E: Ty, S: list<int>>(x: tensor<E, S>, i: index) -> E;
 fn []<E: Ty, M: int, N: int>(
   x: tensor<E, [M, N]>, i: index, j: index
 ) -> E;
+fn []<E: Ty, N: int, C: int, H: int, W: int>(
+  x: tensor<E, [N, C, H, W]>, n: index, c: index, h: index, w: index
+) -> E;
 fn []=<E: Ty, S: list<int>>(
   x: tensor<E, S>, i: index, value: E
 ) -> tensor<E, S>;
 fn []=<E: Ty, M: int, N: int>(
   x: tensor<E, [M, N]>, i: index, j: index, value: E
 ) -> tensor<E, [M, N]>;
+fn []=<E: Ty, N: int, C: int, H: int, W: int>(
+  x: tensor<E, [N, C, H, W]>,
+  n: index,
+  c: index,
+  h: index,
+  w: index,
+  value: E
+) -> tensor<E, [N, C, H, W]>;
 
 fn numel<S: list<int>>() -> int {
   var size = 1

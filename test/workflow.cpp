@@ -167,6 +167,70 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(generic_matmul,
                                    generic_matmul_roundtrip));
 
+  joggle::Mod conv_network;
+  constexpr std::string_view conv_network_source =
+      "module conv.network\n"
+      "use nn\n"
+      "fn main(\n"
+      "  x: tensor<f32, [1, 3, 5, 5]>,\n"
+      "  weight: tensor<f32, [4, 3, 3, 3]>,\n"
+      "  stride: list<int>, pad: list<int>, dilation: list<int>\n"
+      ") -> tensor<f32, [1, 4, 3, 3]> {\n"
+      "  let y: tensor<f32, [1, 4, 3, 3]> = nn.conv2d(\n"
+      "    x, weight, stride, pad, dilation, 1\n"
+      "  )\n"
+      "  return y\n"
+      "}\n";
+  CHECK(joggle::parse(env, conv_network_source, conv_network,
+                      "conv-network.jog"));
+  CHECK(conv_network.verify(env));
+  joggle::Op conv_call;
+  for (joggle::Op op : conv_network.ops())
+    if (op.callee() == "nn.conv2d")
+      conv_call = op;
+  CHECK(conv_call);
+  const joggle::Fn conv_fn = env.resolve(conv_network, conv_call);
+  CHECK(conv_fn && conv_network.expand(conv_call, conv_fn));
+  CHECK(conv_network.verify(env));
+  std::size_t conv_loops = 0;
+  for (joggle::Op op : conv_network.ops()) {
+    CHECK(op.callee() != "nn.conv2d");
+    conv_loops += op.kind() == joggle::Op::Kind::loop ? 1 : 0;
+  }
+  CHECK(conv_loops == 2);
+  joggle::Mod conv_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(conv_network), conv_roundtrip,
+                      "conv-network-roundtrip.jog"));
+  CHECK(conv_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(conv_network, conv_roundtrip));
+
+  joggle::Mod pool_network;
+  constexpr std::string_view pool_network_source =
+      "module pool.network\n"
+      "use nn\n"
+      "fn main(x: tensor<f32, [1, 8, 4, 4]>) "
+      "-> tensor<f32, [1, 8, 1, 1]> {\n"
+      "  return nn.global_avg_pool2d(x)\n"
+      "}\n";
+  CHECK(joggle::parse(env, pool_network_source, pool_network,
+                      "pool-network.jog"));
+  CHECK(pool_network.verify(env));
+  joggle::Op pool_call;
+  for (joggle::Op op : pool_network.ops())
+    if (op.callee() == "nn.global_avg_pool2d")
+      pool_call = op;
+  CHECK(pool_call);
+  const joggle::Fn pool_fn = env.resolve(pool_network, pool_call);
+  CHECK(pool_fn && pool_network.expand(pool_call, pool_fn));
+  CHECK(pool_network.verify(env));
+  for (joggle::Op op : pool_network.ops())
+    CHECK(op.callee() != "nn.global_avg_pool2d");
+  joggle::Mod pool_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(pool_network), pool_roundtrip,
+                      "pool-network-roundtrip.jog"));
+  CHECK(pool_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(pool_network, pool_roundtrip));
+
   joggle::Mod linear_network;
   constexpr std::string_view linear_network_source =
       "module linear.network\n"
@@ -378,8 +442,13 @@ int main(int argc, char** argv) {
       "module types\n"
       "use tensor\n"
       "fn id<E: Ty, S: list<int>>(x: tensor<E, S>) -> tensor<E, S>;\n"
+      "fn make<T: Ty>(x: i32) -> T;\n"
       "fn apply(x: tensor<f32, [2, 3]>) -> tensor<f32, [2, 3]> {\n"
       "  return id(x)\n"
+      "}\n"
+      "fn choose(x: i32) -> f32 {\n"
+      "  let y: f32 = make(x)\n"
+      "  return y\n"
       "}\n"
       "fn last(xs: list<int>) -> int {\n"
       "  var out = 0\n"
@@ -391,6 +460,10 @@ int main(int argc, char** argv) {
   const joggle::Val applied =
       types.find_fn("apply").body().ops().back().args().front();
   CHECK(applied.type() == joggle::Ty("tensor<f32, [2, 3]>"));
+  const joggle::Op make = types.find_fn("choose").body().ops().front();
+  CHECK(make.callee() == "make");
+  CHECK(env.resolve(types, make));
+  CHECK(make.outs().front().type() == joggle::Ty("f32"));
   const std::vector<joggle::Blk> last_blocks = types.find_fn("last").blks();
   CHECK(last_blocks.size() == 2);
   CHECK(last_blocks[1].args().front().type() == joggle::Ty("int"));
