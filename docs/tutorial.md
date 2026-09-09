@@ -76,3 +76,19 @@ ctest --test-dir build --output-on-failure
 The `onnx` test checks the official model's 267 tensor constants, 155 nodes,
 14,156,560 initializer bytes, verifier result, and canonical round trip. The
 download is never part of a normal configure or build.
+
+## Add a data format and primitive
+
+Build the optional saturating-integer module and run its type-directed selector:
+
+```sh
+cmake -S . -B build -DJOGGLE_BUILD_SAT=ON
+cmake --build build
+./build/joggle run sat.select test/data/sat.jog -M build/modules
+```
+
+The `sat<8>` addition becomes `sat.add(a, b)` while the `i32` addition remains
+an ordinary `a + b`. `Env::call` invokes `sat.sim(8, 100, 100)` to obtain the
+saturated result `127`, or `sat.emit(8)` to obtain a standalone SystemVerilog
+implementation. `test/sat.cpp` exercises selection, idempotence, both saturation
+limits, type rejection, and emitter structure.

@@ -1,0 +1,32 @@
+module sat
+use ir
+
+fn add<W>(a: sat<W>, b: sat<W>) -> sat<W>;
+
+[host]
+fn supports(type: str) -> bool;
+
+[host]
+fn sim(width: int, a: int, b: int) -> int;
+
+[host]
+fn emit(width: int) -> str;
+
+fn select(m: Mod) -> bool {
+  var changed = false
+  for f in ir.fns(m) {
+    for b in ir.blocks(f) {
+      for op in ir.ops(b) {
+        if ir.callee(op) == "operator +" {
+          let outs = ir.outs(op)
+          if ir.len(outs) == 1 {
+            if sat.supports(ir.type(outs[0])) {
+              changed = ir.rename(m, op, "sat.add")
+            }
+          }
+        }
+      }
+    }
+  }
+  return changed
+}

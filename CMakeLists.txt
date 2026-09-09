@@ -7,7 +7,17 @@ include(CMakePackageConfigHelpers)
 
 option(JOGGLE_BUILD_TESTS "Build Joggle tests" ON)
 option(JOGGLE_BUILD_ONNX "Build the optional ONNX module" OFF)
+option(JOGGLE_BUILD_SAT "Build the optional saturating-integer module" OFF)
 set(JOGGLE_TEST_ONNX_MODEL "" CACHE FILEPATH "Official ONNX model used by tests")
+
+foreach(module base ir opt tensor)
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/${module}")
+  configure_file(
+    "modules/${module}/module.jog"
+    "${CMAKE_CURRENT_BINARY_DIR}/modules/${module}/module.jog"
+    COPYONLY
+  )
+endforeach()
 
 add_library(joggle src/env.cpp src/eval.cpp src/ir.cpp src/lang.cpp)
 add_library(Joggle::joggle ALIAS joggle)
@@ -75,6 +85,46 @@ if(JOGGLE_BUILD_ONNX)
     LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/onnx/native
     RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/onnx/native
   )
+  install(
+    FILES modules/onnx/module.jog
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/onnx
+  )
+endif()
+
+if(JOGGLE_BUILD_SAT)
+  add_library(joggle-sat MODULE modules/sat/src/sat.cpp)
+  target_compile_features(joggle-sat PRIVATE cxx_std_20)
+  target_include_directories(
+    joggle-sat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+  if(MSVC)
+    target_compile_options(joggle-sat PRIVATE /W4)
+  else()
+    target_compile_options(joggle-sat PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+  set_target_properties(
+    joggle-sat
+    PROPERTIES
+      PREFIX ""
+      OUTPUT_NAME "joggle_sat"
+      LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/sat/native"
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/sat/native"
+  )
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/sat")
+  configure_file(
+    modules/sat/module.jog
+    "${CMAKE_CURRENT_BINARY_DIR}/modules/sat/module.jog"
+    COPYONLY
+  )
+  install(
+    TARGETS joggle-sat
+    LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/sat/native
+    RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/sat/native
+  )
+  install(
+    FILES modules/sat/module.jog
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/sat
+  )
 endif()
 
 add_executable(joggle-tool tool/main.cpp)
@@ -84,9 +134,8 @@ target_link_libraries(joggle-tool PRIVATE Joggle::joggle)
 install(TARGETS joggle joggle-tool EXPORT JoggleTargets)
 install(FILES include/joggle/joggle.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/joggle)
 install(
-  DIRECTORY modules/
+  DIRECTORY modules/base modules/ir modules/opt modules/tensor
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules
-  PATTERN src EXCLUDE
   PATTERN .DS_Store EXCLUDE
 )
 install(
@@ -173,6 +222,17 @@ if(JOGGLE_BUILD_TESTS)
       NAME onnx
       COMMAND joggle-onnx-test
               ${JOGGLE_TEST_ONNX_MODEL}
+              ${CMAKE_CURRENT_BINARY_DIR}/modules
+    )
+  endif()
+  if(JOGGLE_BUILD_SAT)
+    add_executable(joggle-sat-test test/sat.cpp)
+    target_link_libraries(joggle-sat-test PRIVATE Joggle::joggle)
+    add_dependencies(joggle-sat-test joggle-sat)
+    add_test(
+      NAME sat
+      COMMAND joggle-sat-test
+              ${CMAKE_CURRENT_SOURCE_DIR}/test/data/sat.jog
               ${CMAKE_CURRENT_BINARY_DIR}/modules
     )
   endif()

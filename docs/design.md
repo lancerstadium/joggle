@@ -136,3 +136,16 @@ preserved in typed tensor constants. A Release run on the M1 reference machine
 imports and prints the self-contained 28.4 MB module in approximately 0.49 s;
 the second parse-print takes approximately 0.31 s. These are local regression
 measurements, not general performance claims.
+
+## M4 slice
+
+The optional `sat` module is the extension-boundary gate. Its `sat<W>` type and
+`sat.add` primitive are ordinary signatures. Its textual `sat.select` function
+uses `ir.type` to select only matching additions; integer additions remain
+untouched. Three native scalar functions recognize supported formats, execute
+the saturating reference semantics, and emit a concrete SystemVerilog adder.
+
+SystemVerilog is an output of that removable module, not a core backend or IR.
+After the generic `ir.type` query completed the reflection boundary, the whole
+format, policy, simulator, and emitter were added without changing the core
+library, parser, evaluator, public header, or operation vocabulary.

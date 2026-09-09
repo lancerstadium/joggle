@@ -89,6 +89,25 @@ Unsupported sparse, string, external-data, nested-graph, or multi-output forms
 fail with a diagnostic rather than being dropped. Operator names and attributes
 are transported generically; their semantics belong to later modules.
 
+### A hardware extension
+
+`sat` is a complete, intentionally small module for signed saturating integers.
+It demonstrates the five pieces a hardware experiment commonly needs without
+turning them into five plugin kinds:
+
+| Function | Role |
+| --- | --- |
+| `sat.add<W>` | Primitive over the module-defined `sat<W>` format. |
+| `sat.supports` | Type predicate used by selection policy. |
+| `sat.select` | Textual transform from matching `operator +` calls. |
+| `sat.sim` | Bit-exact scalar reference semantics. |
+| `sat.emit` | SystemVerilog text for the selected-width primitive. |
+
+Build it with `JOGGLE_BUILD_SAT=ON`. The declaration, transformation policy,
+reference semantics, and emitted representation stay together in the module;
+the core knows none of their names. A research module can replace any or all of
+these functions without adopting a target class hierarchy.
+
 `module.jog` contains the module header and imports. Files in `lib/*.jog` are
 appended in lexical path order and contain further declarations without another
 module header. This gives one deterministic in-memory `Mod`, not one IR per

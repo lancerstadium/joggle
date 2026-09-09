@@ -1,0 +1,10 @@
+module kernel
+use sat
+
+fn add8(a: sat<8>, b: sat<8>) -> sat<8> {
+  return a + b
+}
+
+fn add32(a: i32, b: i32) -> i32 {
+  return a + b
+}

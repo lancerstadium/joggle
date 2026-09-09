@@ -39,6 +39,16 @@ cmake --build build
 ./build/joggle read onnx.read model.onnx -M build/modules > model.jog
 ```
 
+The optional `sat` module is a compact extension example rather than a built-in
+target. It adds a parameterized saturating integer, a type-directed selection
+function, a scalar reference model, and a SystemVerilog emitter:
+
+```sh
+cmake -S . -B build -DJOGGLE_BUILD_SAT=ON
+cmake --build build
+./build/joggle run sat.select test/data/sat.jog -M build/modules
+```
+
 The core and command-line tool require only a C++20 compiler and the standard
 library. Building does not download dependencies. Installation provides the
 `Joggle::joggle` CMake target, CLI, public header, and standard modules under
