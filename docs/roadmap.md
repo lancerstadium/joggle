@@ -184,6 +184,13 @@ normalization/GELU chain passes inference, conversion, body expansion, and
 verification without introducing fused operator classes. Reaching those paths
 in the imported BERT model still requires the separate dynamic-shape and
 integer-quantization relations below them.
+The first shape-program mechanism is now present without a second IR. Textual
+modules can traverse `Val -> Op`, inspect bounded byte constants, and derive
+symbolic Reshape types through Shape/Gather/Unsqueeze/Squeeze/Concat/Cast
+chains. On the imported quantized BERT this safely exposes one additional
+Reshape; the remaining 69 confirm that Gather typing, integer MatMul, and
+dynamic quantization—not the representation of shape programs—are the next
+coverage boundary.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

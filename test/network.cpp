@@ -485,6 +485,69 @@ int main(int argc, char** argv) {
   }
   CHECK(symbolic_matrix_calls == 3 && symbolic_matrix.verify(env));
 
+  constexpr std::string_view shape_program_source =
+      "module shape.program\n"
+      "use onnx\n"
+      "fn main<N: int>(x: tensor<f32, [N, 3, 4]>) "
+      "-> tensor<f32, [N, 12]> {\n"
+      "  let shape = onnx.Shape(x)\n"
+      "  let index: tensor<i64, [1]> = "
+      "onnx.tensor(7, [1], hex\"0000000000000000\")\n"
+      "  [onnx: {axis: 0}]\n"
+      "  let batch = onnx.Gather(shape, index)\n"
+      "  [onnx: {axes: [0]}]\n"
+      "  let vector = onnx.Unsqueeze(batch)\n"
+      "  let tail: tensor<i64, [1]> = "
+      "onnx.tensor(7, [1], hex\"0c00000000000000\")\n"
+      "  [onnx: {axis: 0}]\n"
+      "  let target = onnx.Concat(vector, tail)\n"
+      "  [onnx: {to: 7}]\n"
+      "  let cast = onnx.Cast(target)\n"
+      "  let out = onnx.Reshape(x, cast)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod shape_program;
+  CHECK(joggle::parse(env, shape_program_source, shape_program,
+                      "shape-program.jog"));
+  CHECK(shape_program.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", shape_program));
+  CHECK(shape_program.verify(env));
+  CHECK(shape_program.find_fn("main").body().ops().back().args()[0].type() ==
+        joggle::Ty("tensor<f32, [N, 12]>"));
+  CHECK(joggle::run(env, "onnx.nn.convert", shape_program));
+  CHECK(shape_program.verify(env));
+  joggle::Op semantic_reshape;
+  for (joggle::Op op : shape_program.ops())
+    if (op.callee() == "tensor.reshape")
+      semantic_reshape = op;
+  CHECK(semantic_reshape && semantic_reshape.args().size() == 1);
+  const joggle::Fn shape_reshape_fn =
+      env.resolve(shape_program, semantic_reshape);
+  CHECK(shape_reshape_fn &&
+        shape_program.expand(semantic_reshape, shape_reshape_fn));
+  CHECK(shape_program.verify(env));
+
+  constexpr std::string_view invalid_reshape_source =
+      "module invalid.reshape\n"
+      "use onnx\n"
+      "fn main(x: tensor<f32, [2, 3]>) -> tensor<f32, [5, 5]> {\n"
+      "  let shape: tensor<i64, [2]> = onnx.tensor(\n"
+      "    7, [2], hex\"05000000000000000500000000000000\"\n"
+      "  )\n"
+      "  let out: tensor<f32, [5, 5]> = onnx.Reshape(x, shape)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod invalid_reshape;
+  CHECK(joggle::parse(env, invalid_reshape_source, invalid_reshape,
+                      "invalid-reshape.jog"));
+  CHECK(invalid_reshape.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", invalid_reshape));
+  CHECK(joggle::run(env, "onnx.nn.convert", invalid_reshape));
+  bool retained_reshape = false;
+  for (joggle::Op op : invalid_reshape.ops())
+    retained_reshape = retained_reshape || op.callee() == "onnx.Reshape";
+  CHECK(retained_reshape && invalid_reshape.verify(env));
+
   constexpr std::string_view batched_matmul_source =
       "module batched.matmul\n"
       "use onnx\n"

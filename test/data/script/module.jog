@@ -73,6 +73,22 @@ fn tensor_type_probe(m: Mod) -> bool {
          !tensor.valid(ty("tensor"))
 }
 
+fn byte_probe(m: Mod) -> bool {
+  let data = hex"00ff80"
+  return base.size(data) == 3 && base.byte(data, 0) == 0 &&
+         base.byte(data, 1) == 255 && base.byte(data, 2) == 128
+}
+
+fn def_probe(m: Mod) -> bool {
+  for op in ir.ops(m) {
+    let outputs = ir.outs(op)
+    if len(outputs) != 0 {
+      return ir.def(outputs[0]) == op
+    }
+  }
+  return false
+}
+
 fn divmod(x: int, y: int) -> (int, int) {
   return x / y, x % y
 }

@@ -801,9 +801,9 @@ private:
 
   bool fundamental(std::string_view name) const noexcept {
     return name == "len" || name == "keys" || name == "has" ||
-           name == "get" || name == "kind" || name == "name" ||
-           name == "args" || name == "int" || name == "str" ||
-           name == "ty";
+           name == "get" || name == "size" || name == "byte" ||
+           name == "kind" || name == "name" || name == "args" ||
+           name == "int" || name == "str" || name == "ty";
   }
 
   std::optional<Items> fundamental(std::string_view name, const Items& args,
@@ -814,6 +814,17 @@ private:
       if (const auto* value = as<Attr>(args[0]); value && value->dict())
         return Items{
             Item(Attr(static_cast<std::int64_t>(value->dict()->size())))};
+    } else if (name == "size" && args.size() == 1) {
+      if (const auto* value = as<Attr>(args[0]); value && value->bytes())
+        return Items{
+            Item(Attr(static_cast<std::int64_t>(value->bytes()->size())))};
+    } else if (name == "byte" && args.size() == 2) {
+      const auto* value = as<Attr>(args[0]);
+      const auto index = integer(args[1]);
+      if (value && value->bytes() && index && *index >= 0 &&
+          static_cast<std::size_t>(*index) < value->bytes()->size())
+        return Items{Item(Attr(static_cast<std::int64_t>(
+            (*value->bytes())[static_cast<std::size_t>(*index)])))};
     } else if (name == "keys" && args.size() == 1) {
       if (const auto* value = as<Attr>(args[0]); value && value->dict()) {
         Items out;
@@ -993,6 +1004,9 @@ private:
           out.emplace_back(value);
         return Items{Item(std::move(out))};
       }
+    } else if (name == "def" && args.size() == 1) {
+      if (const auto* value = as<Val>(args[0]))
+        return Items{Item(value->def())};
     } else if (name == "users" && args.size() == 1) {
       if (const auto* value = as<Val>(args[0])) {
         Items out;

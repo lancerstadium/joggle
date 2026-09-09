@@ -749,3 +749,20 @@ math declarations. A complete typed normalization chain can therefore be
 inferred, converted, and exposed one function at a time. Plain ONNX
 Add/Sub/Mul select two-operand overloads; the activation operand belongs only
 to frontend operations that encode a fused activation.
+
+## M10 shape-program slice
+
+Shape computation remains ordinary dataflow. The textual reflection boundary
+now exposes `ir.def(value)`, matching the existing C++ `Val::def`, and checked
+byte size/index queries let a module inspect compact constants without a native
+callback or container ABI. `onnx.nn.shape_terms` recursively interprets only
+shape-producing calls: tensor constants, Shape, axis-zero Gather and Concat,
+Unsqueeze/Squeeze, Identity, and Cast. It returns structural `Ty` terms, so a
+dimension such as `N` is never flattened into a string or frozen to an integer.
+
+`reshape_result` applies ONNX zero and inferred-dimension rules conservatively,
+then conversion requires the existing result type to equal that relation. The
+test builds `[N, 12]` through a realistic Shape/Gather/Unsqueeze/Concat/Cast
+chain before exposing `tensor.reshape`. Unsupported shape programs simply
+leave the source call intact; there is no durable shape dialect, metadata
+cache, or core operator switch.

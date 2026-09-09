@@ -91,6 +91,204 @@ fn binary_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], tensor.type(tensor.elem(left), shape))
 }
 
+fn signed(data: Attr, offset: int, width: int) -> int {
+  var value = base.byte(data, offset + width - 1)
+  if value >= 128 {
+    value -= 256
+  }
+  for reverse in 1..width {
+    value = value * 256 + base.byte(data, offset + width - reverse - 1)
+  }
+  return value
+}
+
+fn const_ints(value: Val) -> list<int> {
+  var out: list<int> = []
+  let type = ir.type(value)
+  if !tensor.valid(type) {
+    return out
+  }
+  var width = 0
+  if tensor.elem(type) == ty("i32") {
+    width = 4
+  }
+  if tensor.elem(type) == ty("i64") {
+    width = 8
+  }
+  if width == 0 {
+    return out
+  }
+  let producer = ir.def(value)
+  if !ir.live(producer) || ir.callee(producer) != "onnx.tensor" {
+    return out
+  }
+  let inputs = ir.args(producer)
+  if len(inputs) != 3 || !ir.is_const(inputs[2]) {
+    return out
+  }
+  let data = ir.constant(inputs[2])
+  if base.size(data) % width != 0 {
+    return out
+  }
+  for i in 0..base.size(data) / width {
+    out += [signed(data, i * width, width)]
+  }
+  return out
+}
+
+fn shape_terms(value: Val) -> list<Ty> {
+  var out: list<Ty> = []
+  let literal = const_ints(value)
+  if len(literal) != 0 {
+    for item in literal {
+      out += [ty(item)]
+    }
+    return out
+  }
+  let producer = ir.def(value)
+  if !ir.live(producer) {
+    return out
+  }
+  let inputs = ir.args(producer)
+  if ir.callee(producer) == "onnx.Shape" && len(inputs) == 1 {
+    let input = ir.type(inputs[0])
+    if tensor.valid(input) {
+      return tensor.dims(input)
+    }
+  }
+  if (ir.callee(producer) == "onnx.Cast" ||
+      ir.callee(producer) == "onnx.Identity" ||
+      ir.callee(producer) == "onnx.Squeeze" ||
+      ir.callee(producer) == "onnx.Unsqueeze") && len(inputs) >= 1 {
+    return shape_terms(inputs[0])
+  }
+  if ir.callee(producer) == "onnx.Gather" && len(inputs) == 2 &&
+     base.get(attrs(producer), "axis", 0) == 0 {
+    let source = shape_terms(inputs[0])
+    let indices = const_ints(inputs[1])
+    if len(source) == 0 || len(indices) == 0 {
+      return out
+    }
+    for raw in indices {
+      var index = raw
+      if index < 0 {
+        index += len(source)
+      }
+      if index < 0 || index >= len(source) {
+        return []
+      }
+      out += [source[index]]
+    }
+    return out
+  }
+  if ir.callee(producer) == "onnx.Concat" &&
+     base.get(attrs(producer), "axis", 0) == 0 {
+    for input in inputs {
+      let part = shape_terms(input)
+      if len(part) == 0 {
+        return []
+      }
+      out += part
+    }
+  }
+  return out
+}
+
+fn reshape_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) != 2 {
+    return ty("_")
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return ty("_")
+  }
+  let source = tensor.dims(input)
+  let requested = shape_terms(inputs[1])
+  if len(requested) == 0 {
+    return ty("_")
+  }
+  let allowzero = base.get(attrs(op), "allowzero", 0)
+  if allowzero != 0 && allowzero != 1 {
+    return ty("_")
+  }
+  var inferred = -1
+  var known = 1
+  var symbolic = false
+  for i in 0..len(requested) {
+    if kind(requested[i]) == "int" {
+      let extent = int(requested[i])
+      if extent == -1 {
+        if inferred != -1 {
+          return ty("_")
+        }
+        inferred = i
+      } else {
+        if extent == 0 && allowzero == 0 {
+          if i >= len(source) {
+            return ty("_")
+          }
+          if kind(source[i]) == "int" {
+            known *= int(source[i])
+          } else {
+            symbolic = true
+          }
+        } else {
+          if extent >= 0 {
+            known *= extent
+          } else {
+            return ty("_")
+          }
+        }
+      }
+    } else {
+      symbolic = true
+    }
+  }
+  var missing = ty("_")
+  if inferred != -1 {
+    let total = tensor.product(source, 0, len(source))
+    if kind(total) == "int" && !symbolic && known != 0 &&
+       int(total) % known == 0 {
+      missing = ty(int(total) / known)
+    } else {
+      if kind(total) != "int" && !symbolic && known == 1 {
+        missing = total
+      } else {
+        return ty("_")
+      }
+    }
+  }
+  var shape: list<Ty> = []
+  for i in 0..len(requested) {
+    if kind(requested[i]) == "int" && int(requested[i]) == -1 {
+      shape += [missing]
+    } else {
+      if kind(requested[i]) == "int" &&
+         int(requested[i]) == 0 && allowzero == 0 {
+        shape += [source[i]]
+      } else {
+        shape += [requested[i]]
+      }
+    }
+  }
+  let source_total = tensor.product(source, 0, len(source))
+  let result_total = tensor.product(shape, 0, len(shape))
+  if kind(source_total) == "int" && kind(result_total) == "int" &&
+     source_total != result_total {
+    return ty("_")
+  }
+  return tensor.type(tensor.elem(input), shape)
+}
+
+fn reshape_type(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  return set_type(m, outputs[0], reshape_result(op))
+}
+
 fn flattened(input: Ty, axis: int) -> Ty {
   let dims = tensor.dims(input)
   let outer = tensor.product(dims, 0, axis)
@@ -451,6 +649,9 @@ fn infer(m: Mod) -> bool {
     if ir.callee(op) == "onnx.Flatten" {
       changed = infer_flatten(m, op) || changed
     }
+    if ir.callee(op) == "onnx.Reshape" {
+      changed = reshape_type(m, op) || changed
+    }
     if ir.callee(op) == "onnx.MatMul" {
       changed = matmul_type(m, op) || changed
     }
@@ -590,6 +791,10 @@ fn convert_reshape(m: Mod, op: Op) -> bool {
   }
   if !tensor.valid(ir.type(inputs[0])) ||
      !tensor.valid(ir.type(outputs[0])) {
+    return false
+  }
+  let expected = reshape_result(op)
+  if expected == ty("_") || ir.type(outputs[0]) != expected {
     return false
   }
   if !ir.args(m, op, [inputs[0]]) {

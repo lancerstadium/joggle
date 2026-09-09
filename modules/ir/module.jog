@@ -13,6 +13,7 @@ fn ops(b: Blk) -> list<Op>;
 fn args(b: Blk) -> list<Val>;
 fn args(op: Op) -> list<Val>;
 fn outs(op: Op) -> list<Val>;
+fn def(v: Val) -> Op;
 fn users(v: Val) -> list<Op>;
 fn live(f: Fn) -> bool;
 fn live(b: Blk) -> bool;

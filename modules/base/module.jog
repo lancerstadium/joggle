@@ -4,6 +4,8 @@ fn copy<T: Ty>(x: T) -> T;
 
 fn len<T: Ty>(xs: list<T>) -> int;
 fn len(xs: dict) -> int;
+fn size(x: Attr) -> int;
+fn byte(x: Attr, index: int) -> int;
 fn keys(xs: dict) -> list<str>;
 fn has(xs: dict, key: str) -> bool;
 fn get(xs: dict, key: str) -> Attr;

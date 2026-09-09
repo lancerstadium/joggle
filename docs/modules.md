@@ -124,7 +124,7 @@ The built-in `ir` module is the complete reflection boundary:
 | Function | Meaning |
 | --- | --- |
 | `fns`, `params`, `blks`, `ops`, `uses` | Traverse function, structure, and dependencies. |
-| `args`, `outs`, `users` | Read operation dataflow. |
+| `args`, `outs`, `def`, `users` | Read operation dataflow in both directions. |
 | `live`, `blk`, `kind`, `callee`, `type` | Query handle state, structure, and structural `Ty`. |
 | `resolve`, `symbol` | Resolve a call and obtain a `Fn`'s canonical module-qualified name. |
 | `is_const`, `constant` | Query constant IR values. |
@@ -138,6 +138,11 @@ The built-in `ir` module is the complete reflection boundary:
 These functions operate on generic handles and contain no NN operator names.
 Adding an importer, optimization, or target module therefore does not extend
 the reflection ABI or add a parser case.
+
+The `base.size` and `base.byte` functions provide bounds-checked inspection of
+an `Attr` byte payload. This deliberately small primitive is sufficient for a
+frontend module to decode compact integer constants; bulk tensor payloads stay
+opaque and are never copied into a second core representation.
 
 General compile-time values live in `base`, not `ir`. `len` covers lists and
 dictionaries; `keys`, `has`, and `get` expose deterministic dictionary access;

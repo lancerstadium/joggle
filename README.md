@@ -85,6 +85,12 @@ and hyperbolic tangent complete a decomposed normalization/GELU path without a
 fused model-specific call. ONNX Add/Sub/Mul use the two-operand semantic
 overloads; activation-bearing overloads remain available to TFLite instead of
 injecting a synthetic `"NONE"` operand into every frontend.
+Shape programs do not introduce a second shape IR. `ir.def` exposes a value's
+ordinary defining operation, while bounded byte access lets a module decode
+small integer tensor constants. `onnx.nn` recursively evaluates the shape-only
+subset of Shape, Gather, Unsqueeze/Squeeze, Concat, and Cast when deriving a
+Reshape result. A symbolic target such as `[N, 12]` therefore remains a normal
+tensor type and the converted Reshape still expands through `tensor.reshape`.
 The optional `onnx.nn` relation module is selected explicitly. On the official
 MobileNetV2 it propagates all intermediate tensor types, then converts every
 compute node to shared semantics. The model marker and tensor payloads remain

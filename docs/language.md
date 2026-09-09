@@ -249,6 +249,13 @@ single user operation; omitting it redirects every use after checking type and
 dominance. Successful edits advance `Mod::revision()`, while a failed run
 restores both the IR and its prior revision.
 
+`ir.def(v)` returns the operation defining a value; parameters have an invalid
+definition detectable with `ir.live`. Together with `ir.users`, this completes
+both directions of ordinary dataflow traversal. Byte attributes remain opaque
+storage by default, but `base.size(value)` and `base.byte(value, index)` provide
+checked compile-time access when a codec relation must interpret a small
+payload. They do not add file or ambient-memory access.
+
 Construction also uses ordinary overloaded functions. `ir.constant` and
 `ir.call` insert leaves before a named operation. `ir.clone` deep-copies an
 operation and its nested `Blk`s, while `ir.move` changes `Blk`-local order only

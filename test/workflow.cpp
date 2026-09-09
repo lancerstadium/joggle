@@ -119,6 +119,8 @@ int main(int argc, char** argv) {
   CHECK(network_cpp.verify(env));
   CHECK(env.load("script"));
   CHECK(joggle::run(env, "script.tensor_type_probe", network_cpp));
+  CHECK(joggle::run(env, "script.byte_probe", network_cpp));
+  CHECK(joggle::run(env, "script.def_probe", network_cpp));
   CHECK(joggle::run(env, "script.expand_network", network));
   CHECK(network.verify(env));
   bool expanded_loop = false;
