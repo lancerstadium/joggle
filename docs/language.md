@@ -134,7 +134,7 @@ Resolution from a `Fn` uses that function's module and transitive imports, so
 compile-time execution and verification have identical visibility rules.
 
 List literal element types and loop-element types participate in the same
-fixed-point propagation. This is what lets `for op in ir.ops(block)` type `op`
+fixed-point propagation. This is what lets `for op in ir.ops(blk)` type `op`
 as `Op` without a special loop form. `Attr` is the one intentionally dynamic
 compile-time value type: its runtime tag is checked by the consuming function.
 Integer values are accepted where an `index` is required, so literal zero and
@@ -231,7 +231,7 @@ empty block, so there is no stateful builder object.
 Structured construction follows the same rule. `ir.loop` receives iterator
 names, source values, and carried values, then returns an `Op` with one body and
 an initial `yield`. `ir.branch` returns an `Op` with two initially forwarding
-arms. `ir.args(block)` obtains block arguments and `ir.args(m, op, values)`
+arms. `ir.args(blk)` obtains block arguments and `ir.args(m, op, values)`
 reconnects any operation, including `return` and `yield`, while enforcing its
 structural arity and dominance. A named local selected as carried state prints
 as the corresponding ordinary `var`; users never construct block objects or

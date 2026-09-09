@@ -127,10 +127,10 @@ std::unordered_set<std::uint32_t> family(const detail::Store& store,
       for (std::size_t index = 0; index < op.carried_count; ++index) {
         std::vector<std::uint32_t> ids{op.args[offset + index],
                                        op.outs[index]};
-        for (const std::uint32_t block : op.blks) {
-          if (block >= store.blks.size() || !store.blks[block].live)
+        for (const std::uint32_t blk : op.blks) {
+          if (blk >= store.blks.size() || !store.blks[blk].live)
             continue;
-          const detail::BlkData& body = store.blks[block].data;
+          const detail::BlkData& body = store.blks[blk].data;
           const std::size_t arg =
               op.kind == Op::Kind::loop ? offset + index : index;
           if (arg >= body.args.size())
@@ -415,9 +415,9 @@ std::vector<Blk> Op::blks() const {
   return out;
 }
 Blk Op::blk() const noexcept {
-  if (!valid() || store_->ops[id_].data.block == detail::none)
+  if (!valid() || store_->ops[id_].data.blk == detail::none)
     return {};
-  const std::uint32_t id = store_->ops[id_].data.block;
+  const std::uint32_t id = store_->ops[id_].data.blk;
   return Blk(store_, id, store_->blks[id].generation);
 }
 const Attr::Dict& Op::meta() const noexcept {
@@ -534,8 +534,8 @@ std::vector<Op> Fn::ops() const {
   std::vector<Op> out;
   if (!valid() || !body())
     return out;
-  const auto visit = [&](const auto& self, Blk block) -> void {
-    for (Op op : block.ops()) {
+  const auto visit = [&](const auto& self, Blk blk) -> void {
+    for (Op op : blk.ops()) {
       out.push_back(op);
       for (Blk child : op.blks())
         self(self, child);
@@ -636,8 +636,8 @@ Op Mod::call(Op before, std::string callee, std::span<const Val> args,
     }
   }
 
-  const std::uint32_t block = store.ops[before.id_].data.block;
-  auto& order = store.blks[block].data.ops;
+  const std::uint32_t blk = store.ops[before.id_].data.blk;
+  auto& order = store.blks[blk].data.ops;
   const auto position = std::find(order.begin(), order.end(), before.id_);
   if (position == order.end()) {
     detail::add_diag(store.diags, "call insertion point is not in its block",
@@ -648,7 +648,7 @@ Op Mod::call(Op before, std::string callee, std::span<const Val> args,
   const auto op_id = static_cast<std::uint32_t>(store.ops.size());
   detail::OpData op;
   op.kind = Op::Kind::call;
-  op.block = block;
+  op.blk = blk;
   op.callee = std::move(callee);
   op.form = types.empty() ? detail::Form::expr : detail::Form::hidden;
   op.loc = before.loc();
@@ -689,8 +689,8 @@ Val Mod::constant(Op before, Attr literal, Ty type) {
         "constant requires a live insertion point and a valid result type");
     return {};
   }
-  const std::uint32_t block = store.ops[before.id_].data.block;
-  auto& order = store.blks[block].data.ops;
+  const std::uint32_t blk = store.ops[before.id_].data.blk;
+  auto& order = store.blks[blk].data.ops;
   const auto position = std::find(order.begin(), order.end(), before.id_);
   if (position == order.end()) {
     detail::add_diag(store.diags,
@@ -707,7 +707,7 @@ Val Mod::constant(Op before, Attr literal, Ty type) {
   value.type_annotation = true;
   detail::OpData op;
   op.kind = Op::Kind::constant;
-  op.block = block;
+  op.blk = blk;
   op.literal = std::move(literal);
   op.outs.push_back(value_id);
   op.loc = before.loc();
@@ -738,7 +738,7 @@ Op Mod::loop(Op before, std::span<const std::string> names,
     if (!value.valid() || value.store_ != &store ||
         !detail::dominates(store, value.id_, before.id_))
       return reject("loop inputs must dominate the insertion point");
-  const std::uint32_t parent = store.ops[before.id_].data.block;
+  const std::uint32_t parent = store.ops[before.id_].data.blk;
   auto& parent_ops = store.blks[parent].data.ops;
   const auto position = std::find(parent_ops.begin(), parent_ops.end(),
                                   before.id_);
@@ -760,7 +760,7 @@ Op Mod::loop(Op before, std::span<const std::string> names,
 
   detail::OpData data;
   data.kind = Op::Kind::loop;
-  data.block = parent;
+  data.blk = parent;
   data.iter_names.assign(names.begin(), names.end());
   data.carried_count = carried.size();
   data.loc = before.loc();
@@ -784,38 +784,38 @@ Op Mod::loop(Op before, std::span<const std::string> names,
   detail::BlkData body;
   body.fn = store.blks[parent].data.fn;
   body.parent_op = op_id;
-  const auto block_id = static_cast<std::uint32_t>(store.blks.size());
+  const auto blk_id = static_cast<std::uint32_t>(store.blks.size());
   store.blks.push_back({std::move(body), 1, true});
-  store.fns[store.blks[parent].data.fn].data.blks.push_back(block_id);
-  store.ops[op_id].data.blks.push_back(block_id);
+  store.fns[store.blks[parent].data.fn].data.blks.push_back(blk_id);
+  store.ops[op_id].data.blks.push_back(blk_id);
   for (const std::string& name : names) {
     detail::ValData arg;
-    arg.kind = detail::ValKind::block_arg;
+    arg.kind = detail::ValKind::blk_arg;
     arg.name = name;
     arg.type = Ty("index");
     const auto id = static_cast<std::uint32_t>(store.vals.size());
     store.vals.push_back({std::move(arg), 1, true});
-    store.blks[block_id].data.args.push_back(id);
+    store.blks[blk_id].data.args.push_back(id);
   }
   std::vector<std::uint32_t> yielded;
   for (Val value : carried) {
     detail::ValData arg;
-    arg.kind = detail::ValKind::block_arg;
+    arg.kind = detail::ValKind::blk_arg;
     arg.name = std::string(value.name());
     arg.type = value.type();
     const auto id = static_cast<std::uint32_t>(store.vals.size());
     store.vals.push_back({std::move(arg), 1, true});
-    store.blks[block_id].data.args.push_back(id);
+    store.blks[blk_id].data.args.push_back(id);
     yielded.push_back(id);
   }
   detail::OpData yield;
   yield.kind = Op::Kind::yield;
-  yield.block = block_id;
+  yield.blk = blk_id;
   yield.args = std::move(yielded);
   yield.loc = before.loc();
   const auto yield_id = static_cast<std::uint32_t>(store.ops.size());
   store.ops.push_back({std::move(yield), 1, true});
-  store.blks[block_id].data.ops.push_back(yield_id);
+  store.blks[blk_id].data.ops.push_back(yield_id);
   detail::rebuild_uses(store);
   touch(store);
   return Op(&store, op_id, store.ops[op_id].generation);
@@ -838,7 +838,7 @@ Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
     if (!value.valid() || value.store_ != &store ||
         !detail::dominates(store, value.id_, before.id_))
       return reject("branch inputs must dominate the insertion point");
-  const std::uint32_t parent = store.ops[before.id_].data.block;
+  const std::uint32_t parent = store.ops[before.id_].data.blk;
   auto& parent_ops = store.blks[parent].data.ops;
   const auto position = std::find(parent_ops.begin(), parent_ops.end(),
                                   before.id_);
@@ -860,7 +860,7 @@ Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
 
   detail::OpData data;
   data.kind = Op::Kind::branch;
-  data.block = parent;
+  data.blk = parent;
   data.carried_count = carried.size();
   data.loc = before.loc();
   for (Val value : inputs)
@@ -884,29 +884,29 @@ Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
     detail::BlkData body;
     body.fn = fn;
     body.parent_op = op_id;
-    const auto block_id = static_cast<std::uint32_t>(store.blks.size());
+    const auto blk_id = static_cast<std::uint32_t>(store.blks.size());
     store.blks.push_back({std::move(body), 1, true});
-    store.fns[fn].data.blks.push_back(block_id);
-    store.ops[op_id].data.blks.push_back(block_id);
+    store.fns[fn].data.blks.push_back(blk_id);
+    store.ops[op_id].data.blks.push_back(blk_id);
     std::vector<std::uint32_t> yielded;
     for (Val value : carried) {
       detail::ValData arg;
-      arg.kind = detail::ValKind::block_arg;
+      arg.kind = detail::ValKind::blk_arg;
       arg.name = std::string(value.name());
       arg.type = value.type();
       const auto id = static_cast<std::uint32_t>(store.vals.size());
       store.vals.push_back({std::move(arg), 1, true});
-      store.blks[block_id].data.args.push_back(id);
+      store.blks[blk_id].data.args.push_back(id);
       yielded.push_back(id);
     }
     detail::OpData yield;
     yield.kind = Op::Kind::yield;
-    yield.block = block_id;
+    yield.blk = blk_id;
     yield.args = std::move(yielded);
     yield.loc = before.loc();
     const auto yield_id = static_cast<std::uint32_t>(store.ops.size());
     store.ops.push_back({std::move(yield), 1, true});
-    store.blks[block_id].data.ops.push_back(yield_id);
+    store.blks[blk_id].data.ops.push_back(yield_id);
   }
   detail::rebuild_uses(store);
   touch(store);
@@ -931,10 +931,10 @@ Op Mod::clone(Op source, Op before) {
     subtree_ops.insert(op.id_);
     for (Val value : op.outs())
       subtree_values.insert(value.id_);
-    for (Blk block : op.blks()) {
-      for (Val value : block.args())
+    for (Blk blk : op.blks()) {
+      for (Val value : blk.args())
         subtree_values.insert(value.id_);
-      for (Op child : block.ops())
+      for (Op child : blk.ops())
         self(self, child);
     }
   };
@@ -951,7 +951,7 @@ Op Mod::clone(Op source, Op before) {
     }
   }
 
-  const std::uint32_t destination = store.ops[before.id_].data.block;
+  const std::uint32_t destination = store.ops[before.id_].data.blk;
   const std::uint32_t fn = store.blks[destination].data.fn;
   const auto insertion = std::find(store.blks[destination].data.ops.begin(),
                                    store.blks[destination].data.ops.end(),
@@ -960,10 +960,10 @@ Op Mod::clone(Op source, Op before) {
     return reject("clone insertion point is not in its block", before.loc());
   std::unordered_map<std::uint32_t, std::uint32_t> values;
   const auto copy_op = [&](const auto& self, std::uint32_t old_id,
-                           std::uint32_t block) -> std::uint32_t {
+                           std::uint32_t blk) -> std::uint32_t {
     const detail::OpData old = store.ops[old_id].data;
     detail::OpData next = old;
-    next.block = block;
+    next.blk = blk;
     next.args.clear();
     next.outs.clear();
     next.blks.clear();
@@ -973,7 +973,7 @@ Op Mod::clone(Op source, Op before) {
     }
     const auto next_id = static_cast<std::uint32_t>(store.ops.size());
     store.ops.push_back({std::move(next), 1, true});
-    store.blks[block].data.ops.push_back(next_id);
+    store.blks[blk].data.ops.push_back(next_id);
 
     for (const std::uint32_t old_value : old.outs) {
       detail::ValData value = store.vals[old_value].data;
@@ -986,7 +986,7 @@ Op Mod::clone(Op source, Op before) {
       values.emplace(old_value, value_id);
     }
 
-    for (const std::uint32_t old_block : old.blks) {
+    for (const std::uint32_t old_blk : old.blks) {
       detail::BlkData body;
       body.fn = fn;
       body.parent_op = next_id;
@@ -995,9 +995,9 @@ Op Mod::clone(Op source, Op before) {
       store.fns[fn].data.blks.push_back(body_id);
       store.ops[next_id].data.blks.push_back(body_id);
       const std::vector<std::uint32_t> old_args =
-          store.blks[old_block].data.args;
+          store.blks[old_blk].data.args;
       const std::vector<std::uint32_t> old_ops =
-          store.blks[old_block].data.ops;
+          store.blks[old_blk].data.ops;
       for (const std::uint32_t old_arg : old_args) {
         detail::ValData value = store.vals[old_arg].data;
         value.users.clear();
@@ -1167,10 +1167,10 @@ bool Mod::expand(Op call, Fn callee) {
 
   bool failed = false;
   const auto copy_op = [&](const auto& self, std::uint32_t old_id,
-                           std::uint32_t block) -> std::uint32_t {
+                           std::uint32_t blk) -> std::uint32_t {
     const detail::OpData old = source.ops[old_id].data;
     detail::OpData next = old;
-    next.block = block;
+    next.blk = blk;
     next.args.clear();
     next.outs.clear();
     next.blks.clear();
@@ -1189,7 +1189,7 @@ bool Mod::expand(Op call, Fn callee) {
     }
     const auto next_id = static_cast<std::uint32_t>(store.ops.size());
     store.ops.push_back({std::move(next), 1, true});
-    store.blks[block].data.ops.push_back(next_id);
+    store.blks[blk].data.ops.push_back(next_id);
 
     for (const std::uint32_t old_value : old.outs) {
       detail::ValData value = source.vals[old_value].data;
@@ -1204,7 +1204,7 @@ bool Mod::expand(Op call, Fn callee) {
       values.emplace(old_value, value_id);
     }
 
-    for (const std::uint32_t old_block : old.blks) {
+    for (const std::uint32_t old_blk : old.blks) {
       detail::BlkData body;
       body.fn = owner;
       body.parent_op = next_id;
@@ -1213,9 +1213,9 @@ bool Mod::expand(Op call, Fn callee) {
       store.fns[owner].data.blks.push_back(body_id);
       store.ops[next_id].data.blks.push_back(body_id);
       const std::vector<std::uint32_t> old_args =
-          source.blks[old_block].data.args;
+          source.blks[old_blk].data.args;
       const std::vector<std::uint32_t> old_ops =
-          source.blks[old_block].data.ops;
+          source.blks[old_blk].data.ops;
       for (std::size_t index = 0; index < old_args.size(); ++index) {
         const std::uint32_t old_arg = old_args[index];
         detail::ValData value = source.vals[old_arg].data;
@@ -1390,12 +1390,12 @@ bool Mod::args(Op op, std::span<const Val> values) {
   else if (data.kind == Op::Kind::branch)
     expected = 1 + data.carried_count;
   else if (data.kind == Op::Kind::ret) {
-    const std::uint32_t block = data.block;
-    const std::uint32_t fn = store.blks[block].data.fn;
+    const std::uint32_t blk = data.blk;
+    const std::uint32_t fn = store.blks[blk].data.fn;
     expected = store.fns[fn].data.returns.size();
   } else if (data.kind == Op::Kind::yield) {
-    const std::uint32_t block = data.block;
-    const std::uint32_t parent = store.blks[block].data.parent_op;
+    const std::uint32_t blk = data.blk;
+    const std::uint32_t parent = store.blks[blk].data.parent_op;
     expected = parent == detail::none ? 0 : store.ops[parent].data.carried_count;
   }
   if (values.size() != expected)
@@ -1409,13 +1409,13 @@ bool Mod::args(Op op, std::span<const Val> values) {
     return left.text() == "_" || right.text() == "_" || left == right;
   };
   if (data.kind == Op::Kind::ret) {
-    const std::uint32_t fn = store.blks[data.block].data.fn;
+    const std::uint32_t fn = store.blks[data.blk].data.fn;
     const std::vector<Ty>& returns = store.fns[fn].data.returns;
     for (std::size_t index = 0; index < values.size(); ++index)
       if (!compatible(values[index].type(), returns[index]))
         return reject("return argument type does not match its function");
   } else if (data.kind == Op::Kind::yield) {
-    const std::uint32_t parent = store.blks[data.block].data.parent_op;
+    const std::uint32_t parent = store.blks[data.blk].data.parent_op;
     if (parent != detail::none) {
       const std::vector<std::uint32_t>& outs = store.ops[parent].data.outs;
       for (std::size_t index = 0; index < values.size(); ++index)
@@ -1446,15 +1446,15 @@ bool Mod::fuse(std::span<const Op> ops, std::string callee) {
   if (ops.size() < 2 || callee.empty())
     return reject("fuse requires at least two calls and a callee");
 
-  const Blk block = ops.front().blk();
-  if (!block || block.store_ != &store)
+  const Blk blk = ops.front().blk();
+  if (!blk || blk.store_ != &store)
     return reject("fuse requires live calls in this module");
-  const std::vector<Op> order = block.ops();
+  const std::vector<Op> order = blk.ops();
   std::unordered_set<std::uint32_t> selected;
   std::size_t previous = 0;
   for (std::size_t index = 0; index < ops.size(); ++index) {
     const Op op = ops[index];
-    if (!op.valid() || op.store_ != &store || op.blk() != block ||
+    if (!op.valid() || op.store_ != &store || op.blk() != blk ||
         op.kind() != Op::Kind::call || !selected.insert(op.id_).second)
       return reject("fuse requires distinct calls in one block", op.loc());
     const auto position = std::find(order.begin(), order.end(), op);
@@ -1644,11 +1644,11 @@ bool Mod::erase(Op op) {
     ops.insert(id);
     for (const std::uint32_t value : store.ops[id].data.outs)
       values.insert(value);
-    for (const std::uint32_t block : store.ops[id].data.blks) {
-      blks.insert(block);
-      for (const std::uint32_t value : store.blks[block].data.args)
+    for (const std::uint32_t blk : store.ops[id].data.blks) {
+      blks.insert(blk);
+      for (const std::uint32_t value : store.blks[blk].data.args)
         values.insert(value);
-      for (const std::uint32_t child : store.blks[block].data.ops)
+      for (const std::uint32_t child : store.blks[blk].data.ops)
         self(self, child);
     }
   };
@@ -1664,7 +1664,7 @@ bool Mod::erase(Op op) {
     }
   }
 
-  const std::uint32_t parent = store.ops[op.id_].data.block;
+  const std::uint32_t parent = store.ops[op.id_].data.blk;
   if (parent != detail::none) {
     auto& order = store.blks[parent].data.ops;
     const auto found = std::find(order.begin(), order.end(), op.id_);
@@ -1675,14 +1675,14 @@ bool Mod::erase(Op op) {
     }
     order.erase(found);
   }
-  for (const std::uint32_t block : blks) {
-    const std::uint32_t fn = store.blks[block].data.fn;
+  for (const std::uint32_t blk : blks) {
+    const std::uint32_t fn = store.blks[blk].data.fn;
     if (fn < store.fns.size()) {
       auto& owned = store.fns[fn].data.blks;
-      owned.erase(std::remove(owned.begin(), owned.end(), block), owned.end());
+      owned.erase(std::remove(owned.begin(), owned.end(), blk), owned.end());
     }
-    store.blks[block].live = false;
-    ++store.blks[block].generation;
+    store.blks[blk].live = false;
+    ++store.blks[blk].generation;
   }
   for (const std::uint32_t value : values) {
     store.vals[value].live = false;
@@ -1767,15 +1767,15 @@ bool Mod::rename(Val value, std::string name) {
         op.form == detail::Form::hidden)
       op.form = detail::Form::let;
   }
-  for (const auto& block_slot : store.blks) {
-    if (!block_slot.live || block_slot.data.parent_op == detail::none ||
-        block_slot.data.parent_op >= store.ops.size() ||
-        !store.ops[block_slot.data.parent_op].live)
+  for (const auto& blk_slot : store.blks) {
+    if (!blk_slot.live || blk_slot.data.parent_op == detail::none ||
+        blk_slot.data.parent_op >= store.ops.size() ||
+        !store.ops[blk_slot.data.parent_op].live)
       continue;
-    detail::OpData& parent = store.ops[block_slot.data.parent_op].data;
+    detail::OpData& parent = store.ops[blk_slot.data.parent_op].data;
     if (parent.kind != Op::Kind::loop)
       continue;
-    const auto& args = block_slot.data.args;
+    const auto& args = blk_slot.data.args;
     for (std::size_t index = 0;
          index < parent.iter_names.size() && index < args.size(); ++index) {
       if (!related.contains(args[index]))

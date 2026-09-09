@@ -18,8 +18,8 @@ namespace {
 
 bool fold_add_zero(joggle::Mod& mod, joggle::Op* removed = nullptr) {
   for (joggle::Fn fn : mod.fns()) {
-    for (joggle::Blk block : fn.blks()) {
-      for (joggle::Op op : block.ops()) {
+    for (joggle::Blk blk : fn.blks()) {
+      for (joggle::Op op : blk.ops()) {
         if (op.kind() != joggle::Op::Kind::call || op.callee() != "operator +")
           continue;
         const std::vector<joggle::Val> args = op.args();
@@ -525,9 +525,9 @@ int main(int argc, char** argv) {
   CHECK(make.callee() == "make");
   CHECK(env.resolve(types, make));
   CHECK(make.outs().front().type() == joggle::Ty("f32"));
-  const std::vector<joggle::Blk> last_blocks = types.find_fn("last").blks();
-  CHECK(last_blocks.size() == 2);
-  CHECK(last_blocks[1].args().front().type() == joggle::Ty("int"));
+  const std::vector<joggle::Blk> last_blks = types.find_fn("last").blks();
+  CHECK(last_blks.size() == 2);
+  CHECK(last_blks[1].args().front().type() == joggle::Ty("int"));
   joggle::Mod types_roundtrip;
   CHECK(joggle::parse(env, joggle::print(types), types_roundtrip,
                       "types-roundtrip.jog"));
@@ -755,13 +755,13 @@ int main(int argc, char** argv) {
   const joggle::Op built_branch = built_control.branch(
       build_ret, build_fn.params()[1], built_loop.outs());
   CHECK(built_branch && built_branch.blks().size() == 2);
-  const joggle::Blk then_block = built_branch.blks().front();
-  const joggle::Op then_yield = then_block.ops().back();
+  const joggle::Blk then_blk = built_branch.blks().front();
+  const joggle::Op then_yield = then_blk.ops().back();
   const joggle::Val one =
       built_control.constant(then_yield, joggle::Attr(std::int64_t{1}),
                              joggle::Ty("int"));
   CHECK(one && built_control.rename(one, "one"));
-  const std::vector<joggle::Val> then_args{then_block.args().front(), one};
+  const std::vector<joggle::Val> then_args{then_blk.args().front(), one};
   const joggle::Val increment = built_control.call(
       then_yield, "operator +", then_args, joggle::Ty("int"));
   CHECK(increment && built_control.rename(increment, "total"));

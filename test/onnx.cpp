@@ -61,8 +61,8 @@ joggle::Attr::Bytes multi_output_model() {
 std::size_t count_calls(const joggle::Mod& mod, std::string_view callee) {
   std::size_t count = 0;
   for (joggle::Fn fn : mod.fns())
-    for (joggle::Blk block : fn.blks())
-      for (joggle::Op op : block.ops())
+    for (joggle::Blk blk : fn.blks())
+      for (joggle::Op op : blk.ops())
         count += op.kind() == joggle::Op::Kind::call && op.callee() == callee;
   return count;
 }
@@ -106,8 +106,8 @@ int main(int argc, char** argv) {
   std::size_t tensors = 0;
   std::size_t nodes = 0;
   std::size_t weight_bytes = 0;
-  for (joggle::Blk block : main.blks()) {
-    for (joggle::Op op : block.ops()) {
+  for (joggle::Blk blk : main.blks()) {
+    for (joggle::Op op : blk.ops()) {
       if (op.kind() != joggle::Op::Kind::call)
         continue;
       if (op.callee() == "onnx.tensor") {

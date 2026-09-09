@@ -388,7 +388,7 @@ private:
     return id;
   }
 
-  std::uint32_t add_block(std::uint32_t fn, std::uint32_t parent) {
+  std::uint32_t add_blk(std::uint32_t fn, std::uint32_t parent) {
     const auto id = static_cast<std::uint32_t>(store_.blks.size());
     detail::BlkData data;
     data.fn = fn;
@@ -398,10 +398,10 @@ private:
     return id;
   }
 
-  std::uint32_t add_op(std::uint32_t block, detail::OpData data,
+  std::uint32_t add_op(std::uint32_t blk, detail::OpData data,
                        std::vector<std::pair<std::string, Ty>> results = {}) {
     const auto id = static_cast<std::uint32_t>(store_.ops.size());
-    data.block = block;
+    data.blk = blk;
     for (std::size_t index = 0; index < results.size(); ++index) {
       detail::ValData value;
       value.name = std::move(results[index].first);
@@ -411,11 +411,11 @@ private:
       data.outs.push_back(add_val(std::move(value)));
     }
     store_.ops.push_back({std::move(data), 1, true});
-    store_.blks[block].data.ops.push_back(id);
+    store_.blks[blk].data.ops.push_back(id);
     return id;
   }
 
-  std::uint32_t add_call(std::uint32_t block, std::string callee,
+  std::uint32_t add_call(std::uint32_t blk, std::string callee,
                          std::vector<std::uint32_t> args, Ty type,
                          Loc loc = {}) {
     detail::OpData data;
@@ -423,16 +423,16 @@ private:
     data.callee = std::move(callee);
     data.args = std::move(args);
     data.loc = std::move(loc);
-    const auto op = add_op(block, std::move(data), {{"", std::move(type)}});
+    const auto op = add_op(blk, std::move(data), {{"", std::move(type)}});
     return store_.ops[op].data.outs.front();
   }
 
-  std::uint32_t add_const(std::uint32_t block, Attr value, Ty type, Loc loc) {
+  std::uint32_t add_const(std::uint32_t blk, Attr value, Ty type, Loc loc) {
     detail::OpData data;
     data.kind = Op::Kind::constant;
     data.literal = std::move(value);
     data.loc = std::move(loc);
-    const auto op = add_op(block, std::move(data), {{"", std::move(type)}});
+    const auto op = add_op(blk, std::move(data), {{"", std::move(type)}});
     return store_.ops[op].data.outs.front();
   }
 
@@ -652,14 +652,14 @@ private:
     }
     if (!expect("{"))
       return false;
-    const auto body = add_block(fn, detail::none);
-    if (!parse_block(fn, body, scope, false) || !expect("}"))
+    const auto body = add_blk(fn, detail::none);
+    if (!parse_blk(fn, body, scope, false) || !expect("}"))
       return false;
     semi();
     return true;
   }
 
-  bool parse_block(std::uint32_t fn, std::uint32_t block, Scope& scope,
+  bool parse_blk(std::uint32_t fn, std::uint32_t blk, Scope& scope,
                    bool nested) {
     while (!at_end() && !is("}")) {
       Attr::Dict meta;
@@ -689,7 +689,7 @@ private:
         } while (match(","));
         if (!expect("="))
           return false;
-        std::uint32_t value = expression(block, scope);
+        std::uint32_t value = expression(blk, scope);
         if (value == detail::none)
           return false;
         if (names.size() > 1) {
@@ -711,7 +711,7 @@ private:
         if (store_.vals[value].data.def == detail::none ||
             store_.ops[store_.vals[value].data.def].data.form !=
                 detail::Form::hidden)
-          value = add_call(block, "base.copy", {value},
+          value = add_call(blk, "base.copy", {value},
                            store_.vals[value].data.type, peek().loc);
         const std::uint32_t def = store_.vals[value].data.def;
         if (names.front().second.text() != "_") {
@@ -728,10 +728,10 @@ private:
         }
         semi();
       } else if (word("for")) {
-        if (!parse_for(fn, block, scope, std::move(meta)))
+        if (!parse_for(fn, blk, scope, std::move(meta)))
           return false;
       } else if (word("if")) {
-        if (!parse_if(fn, block, scope, std::move(meta)))
+        if (!parse_if(fn, blk, scope, std::move(meta)))
           return false;
       } else if (word("return")) {
         detail::OpData data;
@@ -740,15 +740,15 @@ private:
         data.loc = tokens_[pos_ - 1].loc;
         if (!is(";") && !is("}")) {
           do {
-            const auto value = expression(block, scope);
+            const auto value = expression(blk, scope);
             if (value == detail::none)
               return false;
             data.args.push_back(value);
           } while (match(","));
         }
-        add_op(block, std::move(data));
+        add_op(blk, std::move(data));
         semi();
-      } else if (!parse_assignment(block, scope, std::move(meta)))
+      } else if (!parse_assignment(blk, scope, std::move(meta)))
         return false;
     }
     return !(nested && at_end()) || fail("unterminated block");
@@ -764,7 +764,7 @@ private:
     return out;
   }
 
-  bool parse_for(std::uint32_t fn, std::uint32_t block, Scope& scope,
+  bool parse_for(std::uint32_t fn, std::uint32_t blk, Scope& scope,
                  Attr::Dict meta) {
     detail::OpData data;
     data.kind = Op::Kind::loop;
@@ -774,15 +774,15 @@ private:
       const std::string iter = take_name("loop variable");
       if (iter.empty() || !word("in"))
         return fail("expected 'in' after loop variable");
-      auto source = expression(block, scope);
+      auto source = expression(blk, scope);
       if (source == detail::none)
         return false;
       if (match("..")) {
-        const auto upper = expression(block, scope);
+        const auto upper = expression(blk, scope);
         if (upper == detail::none)
           return false;
         source =
-            add_call(block, operator_name(".."), {source, upper}, Ty("range"));
+            add_call(blk, operator_name(".."), {source, upper}, Ty("range"));
       }
       data.iter_names.push_back(iter);
       data.args.push_back(source);
@@ -795,14 +795,14 @@ private:
       data.args.push_back(binding.value);
       results.emplace_back(name, store_.vals[binding.value].data.type);
     }
-    const auto op = add_op(block, std::move(data), std::move(results));
-    const auto body = add_block(fn, op);
+    const auto op = add_op(blk, std::move(data), std::move(results));
+    const auto body = add_blk(fn, op);
     store_.ops[op].data.blks.push_back(body);
 
     Scope inner = scope;
     for (const std::string& iter : store_.ops[op].data.iter_names) {
       detail::ValData value;
-      value.kind = detail::ValKind::block_arg;
+      value.kind = detail::ValKind::blk_arg;
       value.name = iter;
       value.type = Ty("index");
       const auto id = add_val(std::move(value));
@@ -811,14 +811,14 @@ private:
     }
     for (const auto& [name, binding] : captures) {
       detail::ValData value;
-      value.kind = detail::ValKind::block_arg;
+      value.kind = detail::ValKind::blk_arg;
       value.name = name;
       value.type = store_.vals[binding.value].data.type;
       const auto id = add_val(std::move(value));
       store_.blks[body].data.args.push_back(id);
       inner[name] = {id, true};
     }
-    if (!expect("{") || !parse_block(fn, body, inner, true) || !expect("}"))
+    if (!expect("{") || !parse_blk(fn, body, inner, true) || !expect("}"))
       return false;
     detail::OpData yield;
     yield.kind = Op::Kind::yield;
@@ -832,13 +832,13 @@ private:
     return true;
   }
 
-  bool parse_if(std::uint32_t fn, std::uint32_t block, Scope& scope,
+  bool parse_if(std::uint32_t fn, std::uint32_t blk, Scope& scope,
                 Attr::Dict meta) {
     detail::OpData data;
     data.kind = Op::Kind::branch;
     data.meta = std::move(meta);
     data.loc = tokens_[pos_ - 1].loc;
-    const auto condition = expression(block, scope);
+    const auto condition = expression(blk, scope);
     if (condition == detail::none)
       return false;
     data.args.push_back(condition);
@@ -849,22 +849,22 @@ private:
       data.args.push_back(binding.value);
       results.emplace_back(name, store_.vals[binding.value].data.type);
     }
-    const auto op = add_op(block, std::move(data), std::move(results));
+    const auto op = add_op(blk, std::move(data), std::move(results));
 
     auto arm = [&](bool present) {
-      const auto body = add_block(fn, op);
+      const auto body = add_blk(fn, op);
       store_.ops[op].data.blks.push_back(body);
       Scope inner = scope;
       for (const auto& [name, binding] : captures) {
         detail::ValData value;
-        value.kind = detail::ValKind::block_arg;
+        value.kind = detail::ValKind::blk_arg;
         value.name = name;
         value.type = store_.vals[binding.value].data.type;
         const auto id = add_val(std::move(value));
         store_.blks[body].data.args.push_back(id);
         inner[name] = {id, true};
       }
-      if (present && !parse_block(fn, body, inner, true))
+      if (present && !parse_blk(fn, body, inner, true))
         return false;
       detail::OpData yield;
       yield.kind = Op::Kind::yield;
@@ -888,7 +888,7 @@ private:
     return true;
   }
 
-  bool parse_assignment(std::uint32_t block, Scope& scope, Attr::Dict meta) {
+  bool parse_assignment(std::uint32_t blk, Scope& scope, Attr::Dict meta) {
     const std::size_t start = pos_;
     static constexpr std::string_view assignments[] = {
         "=",  "+=", "-=", "*=",  "/=",  "%=",
@@ -904,20 +904,20 @@ private:
         return fail("unknown name '" + name.text + "'", name.loc);
       if (!found->second.mutable_value)
         return fail("cannot assign to immutable '" + name.text + "'", name.loc);
-      const auto rhs = expression(block, scope);
+      const auto rhs = expression(blk, scope);
       if (rhs == detail::none)
         return false;
       std::uint32_t value = rhs;
       detail::Form form = detail::Form::assign;
       if (assignment != "=") {
-        value = add_call(block,
+        value = add_call(blk,
                          operator_name(assignment.substr(0,
                                                          assignment.size() - 1)),
                          {found->second.value, rhs},
                          store_.vals[found->second.value].data.type, name.loc);
         form = detail::Form::compound;
       } else
-        value = add_call(block, "base.copy", {rhs},
+        value = add_call(blk, "base.copy", {rhs},
                          store_.vals[found->second.value].data.type, name.loc);
       show(value, form, name.text);
       if (!attach(value, std::move(meta)))
@@ -940,7 +940,7 @@ private:
       std::vector<std::uint32_t> args{found->second.value};
       if (!is("]")) {
         do {
-          const auto index = expression(block, scope);
+          const auto index = expression(blk, scope);
           if (index == detail::none)
             return false;
           args.push_back(index);
@@ -948,12 +948,12 @@ private:
       }
       if (!expect("]") || !expect("="))
         return false;
-      const auto rhs = expression(block, scope);
+      const auto rhs = expression(blk, scope);
       if (rhs == detail::none)
         return false;
       args.push_back(rhs);
       const auto value =
-          add_call(block, operator_name("[]="), std::move(args),
+          add_call(blk, operator_name("[]="), std::move(args),
                    store_.vals[found->second.value].data.type, base.loc);
       show(value, detail::Form::index_assign, base.text);
       if (!attach(value, std::move(meta)))
@@ -964,7 +964,7 @@ private:
     }
 
     pos_ = start;
-    const auto value = expression(block, scope);
+    const auto value = expression(blk, scope);
     if (value == detail::none)
       return false;
     show(value, detail::Form::expr);
@@ -974,8 +974,8 @@ private:
     return true;
   }
 
-  std::uint32_t expression(std::uint32_t block, Scope& scope, int minimum = 0) {
-    std::uint32_t left = unary(block, scope);
+  std::uint32_t expression(std::uint32_t blk, Scope& scope, int minimum = 0) {
+    std::uint32_t left = unary(blk, scope);
     if (left == detail::none)
       return left;
     for (;;) {
@@ -983,7 +983,7 @@ private:
       if (level < minimum)
         break;
       const Token op = take();
-      const auto right = expression(block, scope, level + 1);
+      const auto right = expression(blk, scope, level + 1);
       if (right == detail::none)
         return right;
       Ty type = store_.vals[left].data.type;
@@ -992,25 +992,25 @@ private:
           op.text == "&&" || op.text == "||")
         type = Ty("bool");
       left =
-          add_call(block, operator_name(op.text), {left, right}, type, op.loc);
+          add_call(blk, operator_name(op.text), {left, right}, type, op.loc);
     }
     return left;
   }
 
-  std::uint32_t unary(std::uint32_t block, Scope& scope) {
+  std::uint32_t unary(std::uint32_t blk, Scope& scope) {
     if (is("+") || is("-") || is("!") || is("~")) {
       const Token op = take();
-      const auto arg = unary(block, scope);
+      const auto arg = unary(blk, scope);
       if (arg == detail::none)
         return arg;
-      return add_call(block, operator_name(op.text), {arg},
+      return add_call(blk, operator_name(op.text), {arg},
                       store_.vals[arg].data.type, op.loc);
     }
-    return postfix(block, scope);
+    return postfix(blk, scope);
   }
 
-  std::uint32_t postfix(std::uint32_t block, Scope& scope) {
-    std::uint32_t value = primary(block, scope);
+  std::uint32_t postfix(std::uint32_t blk, Scope& scope) {
+    std::uint32_t value = primary(blk, scope);
     if (value == detail::none)
       return value;
     while (is("[") && peek().loc.line == tokens_[pos_ - 1].loc.line) {
@@ -1018,7 +1018,7 @@ private:
       std::vector<std::uint32_t> args{value};
       if (!is("]")) {
         do {
-          const auto index = expression(block, scope);
+          const auto index = expression(blk, scope);
           if (index == detail::none)
             return index;
           args.push_back(index);
@@ -1026,7 +1026,7 @@ private:
       }
       if (!expect("]"))
         return detail::none;
-      value = add_call(block, operator_name("[]"), std::move(args), Ty("_"),
+      value = add_call(blk, operator_name("[]"), std::move(args), Ty("_"),
                        open.loc);
     }
     return value;
@@ -1181,13 +1181,13 @@ private:
     return std::nullopt;
   }
 
-  std::uint32_t primary(std::uint32_t block, Scope& scope) {
+  std::uint32_t primary(std::uint32_t blk, Scope& scope) {
     if (match("[")) {
       const Loc loc = tokens_[pos_ - 1].loc;
       std::vector<std::uint32_t> items;
       if (!is("]")) {
         do {
-          const auto item = expression(block, scope);
+          const auto item = expression(blk, scope);
           if (item == detail::none)
             return detail::none;
           items.push_back(item);
@@ -1195,19 +1195,19 @@ private:
       }
       if (!expect("]"))
         return detail::none;
-      return add_call(block, "base.list", std::move(items), Ty("list"), loc);
+      return add_call(blk, "base.list", std::move(items), Ty("list"), loc);
     }
     if (peek().kind == Tk::number || peek().kind == Tk::string || is("true") ||
         is("false") || is("{") || is("hex") || is("nil")) {
       const Loc loc = peek().loc;
       Ty type;
       auto value = attr_literal(type);
-      return value ? add_const(block, std::move(*value), std::move(type), loc)
+      return value ? add_const(blk, std::move(*value), std::move(type), loc)
                    : detail::none;
     }
     const Token token = take();
     if (token.text == "(") {
-      const auto value = expression(block, scope);
+      const auto value = expression(blk, scope);
       return expect(")") ? value : detail::none;
     }
     if (token.kind != Tk::name) {
@@ -1228,7 +1228,7 @@ private:
       std::vector<std::uint32_t> args;
       if (!is(")")) {
         do {
-          const auto arg = expression(block, scope);
+          const auto arg = expression(blk, scope);
           if (arg == detail::none)
             return arg;
           args.push_back(arg);
@@ -1239,7 +1239,7 @@ private:
       Ty result("_");
       if (callee.find('<') != std::string::npos || scope.contains(callee))
         result = Ty(callee);
-      return add_call(block, std::move(callee), std::move(args),
+      return add_call(blk, std::move(callee), std::move(args),
                       std::move(result), token.loc);
     }
 
@@ -1352,9 +1352,9 @@ void render_meta(std::ostringstream& out, const Attr::Dict& meta,
   out << "]\n";
 }
 
-void render_block(std::ostringstream& out, const detail::Store& store,
-                  std::uint32_t block, unsigned depth) {
-  for (const auto id : store.blks[block].data.ops) {
+void render_blk(std::ostringstream& out, const detail::Store& store,
+                std::uint32_t blk, unsigned depth) {
+  for (const auto id : store.blks[blk].data.ops) {
     if (id >= store.ops.size() || !store.ops[id].live)
       continue;
     const detail::OpData& op = store.ops[id].data;
@@ -1410,12 +1410,12 @@ void render_block(std::ostringstream& out, const detail::Store& store,
             << render_value(store, op.args[index]);
       }
       out << " {\n";
-      render_block(out, store, op.blks.front(), depth + 1);
+      render_blk(out, store, op.blks.front(), depth + 1);
       indent(out, depth);
       out << "}\n";
     } else if (op.kind == Op::Kind::branch) {
       out << "if " << render_value(store, op.args.front()) << " {\n";
-      render_block(out, store, op.blks[0], depth + 1);
+      render_blk(out, store, op.blks[0], depth + 1);
       indent(out, depth);
       out << "}";
       const auto& else_ops = store.blks[op.blks[1]].data.ops;
@@ -1424,7 +1424,7 @@ void render_block(std::ostringstream& out, const detail::Store& store,
           store.ops[else_ops.front()].data.kind == Op::Kind::yield;
       if (!empty_else) {
         out << " else {\n";
-        render_block(out, store, op.blks[1], depth + 1);
+        render_blk(out, store, op.blks[1], depth + 1);
         indent(out, depth);
         out << "}";
       }
@@ -1507,7 +1507,7 @@ std::string print(const Mod& mod) {
       continue;
     }
     out << " {\n";
-    render_block(out, store, fn.blks.front(), 1);
+    render_blk(out, store, fn.blks.front(), 1);
     out << "}\n";
   }
   return out.str();
@@ -1524,7 +1524,7 @@ bool structurally_equal(const Mod& left, const Mod& right) {
 
 namespace {
 
-std::uint32_t arg_block(const detail::Store& store, std::uint32_t value) {
+std::uint32_t arg_blk(const detail::Store& store, std::uint32_t value) {
   for (std::uint32_t id = 0; id < store.blks.size(); ++id) {
     const auto& args = store.blks[id].data.args;
     if (std::find(args.begin(), args.end(), value) != args.end())
@@ -1544,22 +1544,22 @@ std::uint32_t arg_fn(const detail::Store& store, std::uint32_t value) {
   return detail::none;
 }
 
-std::size_t op_index(const detail::Store& store, std::uint32_t block,
+std::size_t op_index(const detail::Store& store, std::uint32_t blk,
                      std::uint32_t op) {
-  const auto& ops = store.blks[block].data.ops;
+  const auto& ops = store.blks[blk].data.ops;
   const auto found = std::find(ops.begin(), ops.end(), op);
   return found == ops.end() ? ops.size()
                             : static_cast<std::size_t>(found - ops.begin());
 }
 
-bool block_within(const detail::Store& store, std::uint32_t child,
-                  std::uint32_t ancestor) {
+bool blk_within(const detail::Store& store, std::uint32_t child,
+                std::uint32_t ancestor) {
   while (child != detail::none) {
     if (child == ancestor)
       return true;
     const auto parent = store.blks[child].data.parent_op;
     child =
-        parent == detail::none ? detail::none : store.ops[parent].data.block;
+        parent == detail::none ? detail::none : store.ops[parent].data.blk;
   }
   return false;
 }
@@ -1569,32 +1569,32 @@ bool block_within(const detail::Store& store, std::uint32_t child,
 bool detail::dominates(const detail::Store& store, std::uint32_t value,
                        std::uint32_t use) {
   const detail::ValData& val = store.vals[value].data;
-  const std::uint32_t use_block = store.ops[use].data.block;
+  const std::uint32_t use_blk = store.ops[use].data.blk;
   if (val.kind == detail::ValKind::generic ||
       val.kind == detail::ValKind::param)
-    return arg_fn(store, value) == store.blks[use_block].data.fn;
-  if (val.kind == detail::ValKind::block_arg) {
-    const std::uint32_t def_block = arg_block(store, value);
-    return def_block != detail::none &&
-           block_within(store, use_block, def_block);
+    return arg_fn(store, value) == store.blks[use_blk].data.fn;
+  if (val.kind == detail::ValKind::blk_arg) {
+    const std::uint32_t def_blk = arg_blk(store, value);
+    return def_blk != detail::none &&
+           blk_within(store, use_blk, def_blk);
   }
   if (val.def == detail::none || val.def >= store.ops.size())
     return false;
-  const std::uint32_t def_block = store.ops[val.def].data.block;
-  if (def_block == use_block)
-    return op_index(store, def_block, val.def) <
-           op_index(store, use_block, use);
+  const std::uint32_t def_blk = store.ops[val.def].data.blk;
+  if (def_blk == use_blk)
+    return op_index(store, def_blk, val.def) <
+           op_index(store, use_blk, use);
 
-  std::uint32_t child = use_block;
+  std::uint32_t child = use_blk;
   while (child != detail::none) {
     const std::uint32_t parent = store.blks[child].data.parent_op;
     if (parent == detail::none)
       return false;
-    const std::uint32_t parent_block = store.ops[parent].data.block;
-    if (parent_block == def_block)
-      return op_index(store, def_block, val.def) <
-             op_index(store, parent_block, parent);
-    child = parent_block;
+    const std::uint32_t parent_blk = store.ops[parent].data.blk;
+    if (parent_blk == def_blk)
+      return op_index(store, def_blk, val.def) <
+             op_index(store, parent_blk, parent);
+    child = parent_blk;
   }
   return false;
 }
@@ -1908,7 +1908,7 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
     expected_returns.push_back(value.type_annotation ? value.type : Ty("_"));
   }
   bool ambiguous = false;
-  const std::uint32_t owner = store.blks[op.block].data.fn;
+  const std::uint32_t owner = store.blks[op.blk].data.fn;
   const std::vector<GenericInfo> context =
       owner == detail::none ? std::vector<GenericInfo>{}
                             : generic_info(store, store.fns[owner].data);
@@ -2015,9 +2015,9 @@ void infer_regions(detail::Store& store, const detail::OpData& op) {
       store.vals[op.outs[index]].data.type = type;
     }
   } else if (op.kind == Op::Kind::branch) {
-    for (const std::uint32_t block : op.blks)
+    for (const std::uint32_t blk : op.blks)
       for (std::size_t index = 0; index < op.carried_count; ++index)
-        store.vals[store.blks[block].data.args[index]].data.type =
+        store.vals[store.blks[blk].data.args[index]].data.type =
             store.vals[op.args[index + 1]].data.type;
     for (std::size_t index = 0; index < op.carried_count; ++index)
       store.vals[op.outs[index]].data.type =
@@ -2285,15 +2285,15 @@ bool Mod::verify(const Env& env) {
                          ret.loc);
     }
   }
-  for (const auto& block_slot : store.blks) {
-    if (!block_slot.live || block_slot.data.parent_op == detail::none)
+  for (const auto& blk_slot : store.blks) {
+    if (!blk_slot.live || blk_slot.data.parent_op == detail::none)
       continue;
-    const auto& ops = block_slot.data.ops;
+    const auto& ops = blk_slot.data.ops;
     if (ops.empty() || store.ops[ops.back()].data.kind != Op::Kind::yield) {
       detail::add_diag(store.diags, "nested block must end with yield");
       continue;
     }
-    const auto& parent = store.ops[block_slot.data.parent_op].data;
+    const auto& parent = store.ops[blk_slot.data.parent_op].data;
     if (store.ops[ops.back()].data.args.size() != parent.carried_count)
       detail::add_diag(store.diags,
                        "yield arity does not match carried values");
@@ -2303,7 +2303,7 @@ bool Mod::verify(const Env& env) {
     if (!op_slot.live)
       continue;
     const detail::OpData& op = op_slot.data;
-    if (op.block >= store.blks.size() || !store.blks[op.block].live)
+    if (op.blk >= store.blks.size() || !store.blks[op.blk].live)
       detail::add_diag(store.diags, "operation has an invalid parent block",
                        op.loc);
     if (op.kind == Op::Kind::call && op.callee.empty())
@@ -2323,7 +2323,7 @@ bool Mod::verify(const Env& env) {
                          "multi-result operation has an unnamed result",
                          op.loc);
     }
-    const auto block_args = [&](std::size_t index, std::size_t count) {
+    const auto blk_args = [&](std::size_t index, std::size_t count) {
       if (index >= op.blks.size() || op.blks[index] >= store.blks.size())
         return false;
       const auto& child = store.blks[op.blks[index]];
@@ -2334,12 +2334,12 @@ bool Mod::verify(const Env& env) {
         (op.blks.size() != 1 ||
          op.args.size() != op.iter_names.size() + op.carried_count ||
          op.outs.size() != op.carried_count ||
-         !block_args(0, op.iter_names.size() + op.carried_count)))
+         !blk_args(0, op.iter_names.size() + op.carried_count)))
       detail::add_diag(store.diags, "loop structure is inconsistent", op.loc);
     if (op.kind == Op::Kind::branch &&
         (op.blks.size() != 2 || op.args.size() != 1 + op.carried_count ||
          op.outs.size() != op.carried_count ||
-         !block_args(0, op.carried_count) || !block_args(1, op.carried_count)))
+         !blk_args(0, op.carried_count) || !blk_args(1, op.carried_count)))
       detail::add_diag(store.diags, "if structure is inconsistent", op.loc);
     for (const auto arg : op.args) {
       if (arg >= store.vals.size() || !store.vals[arg].live) {

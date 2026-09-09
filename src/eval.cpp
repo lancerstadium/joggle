@@ -426,7 +426,7 @@ private:
       put(frame, generics[index], generic_args[index]);
     for (std::size_t index = 0; index < params.size(); ++index)
       put(frame, params[index], args[index]);
-    Flow flow = block(fn.body(), {}, frame);
+    Flow flow = blk(fn.body(), {}, frame);
     if (flow.kind == FlowKind::ret) {
       if (observed)
         record(fn, *observed, before, flow.values);
@@ -437,8 +437,8 @@ private:
     return std::nullopt;
   }
 
-  Flow block(Blk block, const Items& args, Frame& frame) {
-    const std::vector<Val> params = block.args();
+  Flow blk(Blk blk, const Items& args, Frame& frame) {
+    const std::vector<Val> params = blk.args();
     if (params.size() != args.size()) {
       fail("compile-time block argument count is inconsistent");
       return {FlowKind::fail, {}};
@@ -446,7 +446,7 @@ private:
     for (std::size_t index = 0; index < params.size(); ++index)
       put(frame, params[index], args[index]);
 
-    for (Op op : block.ops()) {
+    for (Op op : blk.ops()) {
       const Loc loc = op.loc();
       if (op.kind() == Op::Kind::constant) {
         const std::vector<Val> outs = op.outs();
@@ -461,7 +461,7 @@ private:
         const auto call_args = values(frame, op.args(), loc);
         if (!call_args)
           return {FlowKind::fail, {}};
-        const auto result = call(block.fn(), op.callee(), *call_args, loc);
+        const auto result = call(blk.fn(), op.callee(), *call_args, loc);
         if (!result)
           return {FlowKind::fail, {}};
         const std::vector<Val> outs = op.outs();
@@ -509,7 +509,7 @@ private:
     const Blk arm = blks[*condition ? 0 : 1];
     Items carried(args->begin() + 1, args->end());
     Frame nested = frame;
-    Flow flow = block(arm, carried, nested);
+    Flow flow = blk(arm, carried, nested);
     if (flow.kind == FlowKind::ret || flow.kind == FlowKind::fail)
       return flow;
     if (flow.kind != FlowKind::yield) {
@@ -562,10 +562,10 @@ private:
         }
         return;
       }
-      Items block_args = indices;
-      block_args.insert(block_args.end(), carried.begin(), carried.end());
+      Items blk_args = indices;
+      blk_args.insert(blk_args.end(), carried.begin(), carried.end());
       Frame nested = frame;
-      Flow flow = block(op.blks().front(), block_args, nested);
+      Flow flow = blk(op.blks().front(), blk_args, nested);
       if (flow.kind == FlowKind::yield)
         carried = std::move(flow.values);
       else if (flow.kind != FlowKind::next)
@@ -943,8 +943,8 @@ private:
         return std::nullopt;
       }
       Items out;
-      for (Blk block : blks)
-        out.emplace_back(block);
+      for (Blk blk : blks)
+        out.emplace_back(blk);
       return Items{Item(std::move(out))};
     } else if (name == "blk" && args.size() == 1) {
       if (const auto* op = as<Op>(args[0]); op && op->blk())
@@ -955,8 +955,8 @@ private:
         ops = (*mod)->ops();
       else if (const auto* fn = as<Fn>(args[0]))
         ops = fn->ops();
-      else if (const auto* block = as<Blk>(args[0]))
-        ops = block->ops();
+      else if (const auto* blk = as<Blk>(args[0]))
+        ops = blk->ops();
       else {
         fail("invalid ir.ops compile-time call", loc);
         return std::nullopt;
@@ -972,8 +972,8 @@ private:
         vals = name == "args" ? op->args() : op->outs();
         node = true;
       } else if (name == "args") {
-        if (const auto* block = as<Blk>(args[0])) {
-          vals = block->args();
+        if (const auto* blk = as<Blk>(args[0])) {
+          vals = blk->args();
           node = true;
         }
       }
@@ -993,8 +993,8 @@ private:
     } else if (name == "live" && args.size() == 1) {
       if (const auto* fn = as<Fn>(args[0]))
         return Items{Item(Attr(fn->valid()))};
-      if (const auto* block = as<Blk>(args[0]))
-        return Items{Item(Attr(block->valid()))};
+      if (const auto* blk = as<Blk>(args[0]))
+        return Items{Item(Attr(blk->valid()))};
       if (const auto* op = as<Op>(args[0]))
         return Items{Item(Attr(op->valid()))};
       if (const auto* value = as<Val>(args[0]))

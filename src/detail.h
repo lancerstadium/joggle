@@ -19,7 +19,7 @@ template <class T> struct Slot {
   bool live = true;
 };
 
-enum class ValKind : std::uint8_t { generic, param, block_arg, result };
+enum class ValKind : std::uint8_t { generic, param, blk_arg, result };
 enum class Form : std::uint8_t {
   hidden,
   expr,
@@ -42,7 +42,7 @@ struct ValData {
 
 struct OpData {
   Op::Kind kind = Op::Kind::call;
-  std::uint32_t block = none;
+  std::uint32_t blk = none;
   std::string callee;
   std::vector<std::uint32_t> args;
   std::vector<std::uint32_t> outs;
