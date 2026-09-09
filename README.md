@@ -40,7 +40,9 @@ used by small models and proves that a second bridge run is unchanged.
 The standard `math`, `tensor`, and `nn` modules contain scalar math primitives
 and inspectable bodies for tensor algebra, grouped 2-D convolution, batch
 normalization, global pooling, reshape, linear layers, and ReLU. A generic
-body-expansion edit can expose a
+NumPy-style broadcast relation supports rank extension and singleton
+dimensions in shared tensor code, so ONNX and TFLite Add reuse the same
+inspectable semantics. A generic body-expansion edit can expose a
 selected network call as tensor calls and later expose those calls as loops;
 it resolves ordinary overloads and has no NN-operator switch. `base`
 dictionary access lets ordinary bridge functions interpret frontend
@@ -83,6 +85,22 @@ Check a module or run a textual transform:
 ./build/joggle check test/data/matmul.jog
 ./build/joggle run opt.fold_add_zero test/data/matmul.jog -M modules
 ```
+
+Module directories remain the only distribution unit. The CLI can discover,
+validate, inspect, install, and uninstall them without a registry or another
+manifest:
+
+```sh
+./build/joggle module list -M modules
+./build/joggle module info tensor -M modules
+./build/joggle module check nn -M modules
+./build/joggle module install path/to/my.module local-modules -M modules
+./build/joggle module uninstall my.module local-modules
+```
+
+Installation refuses to overwrite an existing module and commits a staged copy
+only after its declarations, dependencies, and optional native binding load
+successfully.
 
 The optional ONNX codec keeps Protobuf out of the core build:
 

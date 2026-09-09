@@ -103,6 +103,14 @@ produce identical results, and expose which step changed the module.
 
 ### M9 — distributable modules
 
+Status: in progress. Deterministic local discovery, inspection, dependency and
+native-binding validation, staged installation, collision rejection, and
+validated removal are implemented without a registry or second manifest. The
+installed package is exercised by a clean external CMake consumer. An
+out-of-tree native module is also built against that package, installed through
+the installed CLI, loaded, called, and removed. The explicit
+compatibility-upgrade gate remains.
+
 - Specify source, native library, tests, documentation, dependencies, and
   compatibility metadata in one module directory.
 - Add deterministic discovery, inspection, validation, installation, and
@@ -116,8 +124,9 @@ upgraded compatibly, and removed without editing or rebuilding Joggle.
 
 ### M10 — neural-network workflow
 
-Status: in progress. Binary ONNX and TFLite transport, real-model generic fusion,
-same-signature semantic bridging, progressive body expansion, and structural
+Status: in progress. Binary ONNX and TFLite transport, real-model generic
+fusion, same-signature semantic bridging, progressive body expansion, and
+structural
 tensor type construction are complete. Grouped 2-D convolution now has an
 inspectable body, and the explicit `onnx.nn` relation propagates all official
 MobileNetV2 intermediate types before converting every compute node through
@@ -127,8 +136,10 @@ node and round-trips as ordinary nested IR. The second real frontend imports
 the official TensorFlow Hub MobileNetV2 with reflection-driven options and no
 core or reader operator switches. Its independent `.jog` bridge converts all
 66 compute calls through explicit logical-axis operands and exposes every
-shared body. `opt.unresolved` reports six open source call families before that
-bridge and none afterward. The two target gates remain.
+shared body. Shared tensor functions now define trailing-axis broadcasting;
+both frontend bridges validate against that relation and lower Add to the same
+inspectable `nn.add` body. `opt.unresolved` reports six open source call
+families before that bridge and none afterward. The two target gates remain.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

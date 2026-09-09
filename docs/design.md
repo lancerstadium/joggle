@@ -373,6 +373,21 @@ functions once through the C++ sequence overload and once through a textual
 wrapper, then requires byte-identical canonical IR; a deliberately bad second
 step exercises whole-sequence rollback.
 
+## M9 local distribution slice
+
+The module directory is now executable tooling rather than a prose convention.
+`joggle module list/info/check/install/uninstall` discovers explicit roots,
+loads full dependency closures, and reports the exact source and native files
+selected by path precedence. There is still no registry, generated manifest,
+or process-global search path.
+
+Installation rejects links and special files, refuses collisions, copies into
+a same-filesystem staging root, validates the staged module through `Env`, and
+only then renames it into place. Removal parses the selected `module.jog` and
+checks its declared name before detaching the exact directory. Tests cover a
+real native module, failed validation without residue, duplicate rejection,
+and a fresh external CMake consumer of the installed library and modules.
+
 ## M10 transport slice
 
 The ONNX codec now exercises the core's general multi-result functions rather
@@ -549,6 +564,23 @@ fused activation are ordinary function composition. Conversion is explicit,
 idempotent, and removes source metadata only after its meaning is represented.
 The gate resolves and exposes one body for every converted call, verifies the
 nested IR, and requires a canonical structural round-trip.
+
+## M10 broadcast slice
+
+Broadcasting is shared computation rather than frontend policy. The ordinary
+`tensor.broadcast_shape` and `tensor.broadcastable` functions define
+right-aligned rank extension and singleton dimensions. `broadcast_offset`
+maps one output linear index to its source index, and `broadcast` exposes that
+mapping as a normal loop body. None is an intrinsic or a new operation kind.
+
+`nn.add` accepts two independently shaped tensors and materializes both through
+that relation before ordinary elementwise addition and activation. The ONNX
+bridge uses `broadcast_shape` for type propagation; both ONNX and TFLite
+bridges require each input shape to be broadcastable to the declared result
+before conversion. An incompatible source call therefore remains visible
+instead of acquiring guessed semantics. The dedicated network gate covers a
+`[1,3,1] + [2,1,4] -> [2,3,4]` network, expands the two broadcast bodies to
+loops, and round-trips the result.
 
 Coverage is queried rather than declared. `opt.unresolved` walks ordinary calls,
 uses the normal resolver, and returns each unresolved callee once in structural

@@ -212,7 +212,7 @@ if(JOGGLE_BUILD_SAT)
   )
 endif()
 
-add_executable(joggle-tool tool/main.cpp)
+add_executable(joggle-tool tool/main.cpp tool/module.cpp)
 set_target_properties(joggle-tool PROPERTIES OUTPUT_NAME joggle)
 target_link_libraries(joggle-tool PRIVATE Joggle::joggle)
 
@@ -308,6 +308,29 @@ if(JOGGLE_BUILD_TESTS)
   set_tests_properties(
     cli-run PROPERTIES PASS_REGULAR_EXPRESSION "return x"
   )
+  add_test(
+    NAME cli-module
+    COMMAND
+      ${CMAKE_COMMAND}
+      -DTOOL=$<TARGET_FILE:joggle-tool>
+      -DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/modules
+      -DBUILD_ROOT=${CMAKE_CURRENT_BINARY_DIR}/modules
+      -DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/module-test
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/module.cmake
+  )
+  if(NOT CMAKE_CXX_FLAGS MATCHES "sanitize")
+    add_test(
+      NAME install-consumer
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DBUILD_ROOT=${CMAKE_CURRENT_BINARY_DIR}
+        -DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}
+        -DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/consumer-test
+        -DSUFFIX=${CMAKE_EXECUTABLE_SUFFIX}
+        -DCONFIG=$<CONFIG>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/install.cmake
+    )
+  endif()
   if(JOGGLE_BUILD_ONNX AND NOT JOGGLE_TEST_ONNX_MODEL STREQUAL "")
     file(SHA256 "${JOGGLE_TEST_ONNX_MODEL}" onnx_model_sha256)
     if(NOT onnx_model_sha256 STREQUAL

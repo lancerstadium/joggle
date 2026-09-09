@@ -54,16 +54,39 @@ storage-neutral tensor computation, and `nn` contains network semantics. The
 optional `onnx` module only transports a binary model. MLIR, JIT, simulation,
 hardware description, and target experiments remain removable modules.
 
-Version 0.1 searches explicit local paths. Installation means placing or
-linking a directory on one of those paths; removal means taking it off the path.
-Native libraries remain loaded for the lifetime of their `Env`. Network package
-resolution, lockfiles, and in-process hot unloading are out of scope.
+Version 0.1 searches explicit local paths. The CLI exposes that same local
+model directly:
+
+```sh
+joggle module list -M modules
+joggle module info example -M modules
+joggle module check example -M modules
+joggle module install path/to/example local-modules -M modules
+joggle module uninstall example local-modules
+```
+
+`list` is deterministic across the supplied roots, with the first root taking
+precedence for duplicate names. `info` performs a real load, then reports the
+selected path, dependencies, source fragments, and native library files.
+`check` loads and verifies the full dependency closure.
+
+Installation validates the source tree: symbolic links and special files are
+rejected, an existing target is never overwritten, and the copy is loaded from
+a same-filesystem staging directory before an atomic rename makes it visible.
+Uninstallation first parses the installed declaration and refuses to remove it
+when its declared name differs from the requested name. There is no registry
+database or generated manifest to become stale. `info`, `check`, and `install`
+load an optional native entry, so native modules are executable code and must
+come from a trusted source. Native libraries remain loaded for the lifetime of
+an `Env`. Network package resolution, lockfiles, upgrades, and in-process hot
+unloading are out of scope.
 
 The bundled declarations install under `share/joggle/modules`. Applications
 choose their module roots explicitly with `Env::path`; the core does not depend
 on a process-global environment variable or a compile-time installation path.
 
-Loading a module parses and verifies its declarations after loading dependencies.
+Loading a module parses and verifies its declarations after loading
+dependencies.
 It never runs a transform as a side effect. The caller selects an ordinary
 function with `joggle::run` or `joggle run`; this keeps module installation,
 function definition, and execution as three separate operations.
@@ -137,7 +160,10 @@ do not need a frontend-specific projection primitive.
 
 `tensor` defines `tensor<E, S>`, structural `elem`/`shape`/`type` helpers,
 linear, two-dimensional, and four-dimensional indexing, `numel`, elementwise
-addition, and matrix multiplication. `extent`, `offset`, and `coord` interpret
+addition, and matrix multiplication. `broadcast_shape` and `broadcastable`
+express trailing-axis compatibility, while `broadcast_offset` and `broadcast`
+provide its inspectable index and copy semantics. `extent`, `offset`, and
+`coord` interpret
 a physical shape through an explicit logical-axis list. Each physical dimension
 names its logical axis; `-1` denotes a fixed singleton dimension. Thus NCHW is
 `[0, 1, 2, 3]`, NHWC is `[0, 2, 3, 1]`, and TFLite's depthwise `[1,H,W,O]`
@@ -150,7 +176,8 @@ condition over the same tensor primitives. The general `nn.conv2d` overload
 takes three logical-axis lists, so grouped convolution and depthwise
 convolution share one loop body across activation and weight layouts. The terse
 NCHW overload delegates to it. Bias and fused activation are ordinary composed
-functions rather than hidden operator fields. `nn.avg_pool2d`, `nn.add`, and
+functions rather than hidden operator fields. `nn.avg_pool2d`, broadcast-aware
+`nn.add`, and
 `nn.softmax` provide the remaining shared semantics needed by the second
 real-network gate; `nn.global_avg_pool2d` is a normal NCHW specialization.
 `nn.batch_norm` exposes inference-time channel
@@ -177,8 +204,8 @@ frontend schema and these functions must remain an explicit user-selected
 module function.
 
 The optional `onnx.nn` module is that relationship, not another IR layer.
-`onnx.nn.infer` walks operations in source order and propagates 4-D tensor
-types through Conv, BatchNormalization, ReLU, Add, and GlobalAveragePool.
+`onnx.nn.infer` walks operations in source order and propagates tensor types
+through Conv, BatchNormalization, ReLU, broadcast Add, and GlobalAveragePool.
 Unsupported ranks and `auto_pad` are left unchanged rather than guessed.
 `onnx.nn.convert` then maps Conv, BatchNormalization, ReLU, Add,
 GlobalAveragePool, and Reshape calls, materializing schema attributes as

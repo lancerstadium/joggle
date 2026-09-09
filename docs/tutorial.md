@@ -20,6 +20,25 @@ Run the textual add-zero transform and print its result:
 ./build/joggle run opt.fold_add_zero test/data/matmul.jog -M modules
 ```
 
+Inspect the modules available on the same explicit search path:
+
+```sh
+./build/joggle module list -M modules
+./build/joggle module info nn -M modules
+./build/joggle module check nn -M modules
+```
+
+An external module needs only its directory. Install and remove it from an
+explicit local root as follows:
+
+```sh
+./build/joggle module install path/to/my.module local-modules -M modules
+./build/joggle module uninstall my.module local-modules
+```
+
+The install command validates a staged copy before it becomes visible and does
+not replace an existing directory.
+
 The equivalent embedded use is:
 
 ```cpp

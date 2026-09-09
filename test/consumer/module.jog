@@ -1,0 +1,3 @@
+module probe
+
+fn twice(x: i32) -> i32;

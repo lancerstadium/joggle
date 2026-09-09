@@ -1,24 +1,43 @@
+#include "module.h"
+
 #include "joggle/joggle.h"
 
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
+
+namespace fs = std::filesystem;
 
 int usage() {
   std::cerr << "usage:\n"
                "  joggle check <file.jog>\n"
                "  joggle read <module.fn> <file> [-M <module-dir>]...\n"
-               "  joggle run <module.fn> <file.jog> [-M <module-dir>]...\n";
+               "  joggle run <module.fn> <file.jog> [-M <module-dir>]...\n"
+               "  joggle module list [-M <module-dir>]...\n"
+               "  joggle module info <name> [-M <module-dir>]...\n"
+               "  joggle module check <name> [-M <module-dir>]...\n"
+               "  joggle module install <directory> <module-dir> "
+               "[-M <dependency-dir>]...\n"
+               "  joggle module uninstall <name> <module-dir>\n";
   return 2;
 }
 
-}  // namespace
+bool paths(int argc, char** argv, int first, std::vector<fs::path>& out) {
+  for (int index = first; index < argc; index += 2) {
+    if (std::string_view(argv[index]) != "-M" || index + 1 >= argc)
+      return false;
+    out.emplace_back(argv[index + 1]);
+  }
+  return true;
+}
 
-int main(int argc, char** argv) {
+int process(int argc, char** argv) {
   if (argc < 3)
     return usage();
 
@@ -32,12 +51,9 @@ int main(int argc, char** argv) {
 
   const std::string function = execute || decode ? argv[2] : "";
   const std::string file = execute || decode ? argv[3] : argv[2];
-  std::vector<std::string> paths;
-  for (int index = execute || decode ? 4 : 3; index < argc; index += 2) {
-    if (std::string_view(argv[index]) != "-M" || index + 1 >= argc)
-      return usage();
-    paths.emplace_back(argv[index + 1]);
-  }
+  std::vector<fs::path> roots;
+  if (!paths(argc, argv, execute || decode ? 4 : 3, roots))
+    return usage();
 
   std::ifstream input(file, std::ios::binary);
   if (!input) {
@@ -49,8 +65,8 @@ int main(int argc, char** argv) {
   std::string source = contents.str();
 
   joggle::Env env;
-  for (std::string& path : paths)
-    env.path(std::move(path));
+  for (const fs::path& root : roots)
+    env.path(root.string());
   if (execute || decode) {
     const std::size_t dot = function.rfind('.');
     if (dot == std::string::npos || !env.load(function.substr(0, dot))) {
@@ -88,4 +104,14 @@ int main(int argc, char** argv) {
     return 1;
   }
   return joggle::print(stdout, mod) ? 0 : 1;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  if (argc >= 2 && std::string_view(argv[1]) == "module") {
+    const int result = joggle::tool::module(argc, argv);
+    return result == 2 ? usage() : result;
+  }
+  return process(argc, argv);
 }
