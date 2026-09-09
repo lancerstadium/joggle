@@ -33,6 +33,9 @@ The core contains no ONNX, device, instruction-set, runtime, or code-generation
 policy; those capabilities belong in removable modules.
 The optional ONNX transport preserves typed intermediate values and native
 multi-result/multi-output structure without defining any ONNX operator in core.
+Named ONNX dimensions become ordinary integer generics on the imported
+function, while anonymous dynamic dimensions remain `_`; both preserve one
+tensor type instead of introducing a dynamic-shape IR.
 Node attributes remain operation metadata rather than fake dataflow operands,
 so ordinary signature matching can bridge a real imported network. The pinned
 MobileNetV2 gate maps every one-input ReLU through the same data-driven relation

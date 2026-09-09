@@ -349,6 +349,17 @@ if(JOGGLE_BUILD_TESTS)
               ${CMAKE_CURRENT_BINARY_DIR}/modules
     )
   endif()
+  if(JOGGLE_BUILD_ONNX)
+    add_executable(joggle-onnx-dynamic-test test/onnx_dynamic.cpp)
+    target_link_libraries(
+      joggle-onnx-dynamic-test PRIVATE Joggle::joggle joggle-onnx-proto
+    )
+    add_dependencies(joggle-onnx-dynamic-test joggle-onnx)
+    add_test(
+      NAME onnx-dynamic
+      COMMAND joggle-onnx-dynamic-test ${CMAKE_CURRENT_BINARY_DIR}/modules
+    )
+  endif()
   if(JOGGLE_BUILD_TFLITE AND NOT JOGGLE_TEST_TFLITE_MODEL STREQUAL "")
     file(SHA256 "${JOGGLE_TEST_TFLITE_MODEL}" tflite_model_sha256)
     if(NOT tflite_model_sha256 STREQUAL

@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -60,6 +61,8 @@ public:
     return name;
   }
 
+  void reserve(std::string_view name) { used_.insert(std::string(name)); }
+
 private:
   std::map<std::string, std::string, std::less<>> names_;
   std::set<std::string, std::less<>> used_;
@@ -92,7 +95,7 @@ std::string shape(const google::protobuf::RepeatedField<std::int64_t>& dims) {
   return out + "]";
 }
 
-std::string type(const jogonnx::ValueInfoProto& value) {
+std::string type(const jogonnx::ValueInfoProto& value, Names& dimensions) {
   if (!value.has_type() || !value.type().has_tensor_type())
     return "_";
   const auto& tensor = value.type().tensor_type();
@@ -104,8 +107,8 @@ std::string type(const jogonnx::ValueInfoProto& value) {
       const auto& dim = tensor.shape().dim(index);
       if (dim.has_dim_value())
         dims += std::to_string(dim.dim_value());
-      else if (dim.has_dim_param())
-        dims += atom(dim.dim_param());
+      else if (dim.has_dim_param() && !dim.dim_param().empty())
+        dims += dimensions.get(dim.dim_param());
       else
         dims += "_";
     }
@@ -382,14 +385,37 @@ std::string emit(const jogonnx::ModelProto& model) {
   const auto& graph = model.graph();
   if (graph.sparse_initializer_size())
     throw std::runtime_error("sparse initializers are not supported yet");
+  Names dimensions;
+  std::vector<std::string> dimension_names;
+  std::set<std::string, std::less<>> dimension_params;
+  const auto remember_dimensions = [&](const jogonnx::ValueInfoProto& value) {
+    if (!value.has_type() || !value.type().has_tensor_type() ||
+        !value.type().tensor_type().has_shape())
+      return;
+    for (const auto& dim : value.type().tensor_type().shape().dim()) {
+      if (!dim.has_dim_param() || dim.dim_param().empty() ||
+          !dimension_params.insert(dim.dim_param()).second)
+        continue;
+      dimension_names.push_back(dimensions.get(dim.dim_param()));
+    }
+  };
+  for (const auto& value : graph.input())
+    remember_dimensions(value);
+  for (const auto& value : graph.value_info())
+    remember_dimensions(value);
+  for (const auto& value : graph.output())
+    remember_dimensions(value);
+
   Names names;
+  for (const std::string& name : dimension_names)
+    names.reserve(name);
   std::set<std::string, std::less<>> initialized;
   for (const auto& value : graph.initializer())
     initialized.insert(value.name());
   std::map<std::string, std::string, std::less<>> types;
   const auto remember_type = [&](const jogonnx::ValueInfoProto& value) {
     if (value.has_name() && !value.name().empty()) {
-      const std::string value_type = type(value);
+      const std::string value_type = type(value, dimensions);
       const auto found = types.find(value.name());
       if (found == types.end() || value_type != "_")
         types.insert_or_assign(value.name(), value_type);
@@ -407,7 +433,17 @@ std::string emit(const jogonnx::ModelProto& model) {
 
   std::ostringstream out;
   out.imbue(std::locale::classic());
-  out << "module model\nuse onnx\n\nfn main(";
+  out << "module model\nuse onnx\n\nfn main";
+  if (!dimension_names.empty()) {
+    out << '<';
+    for (std::size_t index = 0; index < dimension_names.size(); ++index) {
+      if (index)
+        out << ", ";
+      out << dimension_names[index] << ": int";
+    }
+    out << '>';
+  }
+  out << '(';
   bool first = true;
   for (const auto& input : graph.input()) {
     if (initialized.contains(input.name()))
@@ -415,7 +451,7 @@ std::string emit(const jogonnx::ModelProto& model) {
     if (!first)
       out << ", ";
     first = false;
-    out << names.get(input.name()) << ": " << type(input);
+    out << names.get(input.name()) << ": " << type(input, dimensions);
   }
   if (!graph.output_size())
     throw std::runtime_error("ONNX graph has no output");
@@ -425,7 +461,7 @@ std::string emit(const jogonnx::ModelProto& model) {
   for (int index = 0; index < graph.output_size(); ++index) {
     if (index)
       out << ", ";
-    out << type(graph.output(index));
+    out << type(graph.output(index), dimensions);
   }
   if (graph.output_size() > 1)
     out << ')';

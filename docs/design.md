@@ -260,7 +260,7 @@ unprintable hidden operations.
 
 The editor now constructs typed constants, deep-clones operation subtrees, and
 moves operations within a block through explicit `Op` positions. Deep cloning
-creates fresh results, blocks, and block arguments, remaps internal dataflow,
+creates fresh results, `Blk`s, and `Blk` arguments, remaps internal dataflow,
 and works for nested loops and conditions; erasing the replaced source
 recursively invalidates its complete subtree. Motion is atomic and checks the
 whole module's dominance before commit. The identical operations are available
@@ -489,6 +489,24 @@ empty lists retain their annotation during inference. These two rules let the
 `tensor` module implement `elem`, `shape`, and `type` as normal `.jog`
 functions, with no tensor case in the evaluator and no string parsing in the
 module.
+
+## M10 dynamic-shape transport slice
+
+Dynamic shape transport reuses structural terms. `_` is an open term even when
+nested inside a list, so `tensor<f32, [_, 3]>` satisfies the tensor
+constructor's `list<int>` constraint without creating a dynamic tensor class.
+Named extents use the existing stronger form: an integer function generic such
+as `N` may occur in every tensor type that shares that dimension.
+
+The ONNX codec collects `dim_param` identities across the graph and emits them
+as ordered `int` generics on the imported function. One collision-safe mapping
+is shared with value naming, preventing a tensor binding from shadowing a
+dimension. The optional-module test builds a binary model containing two
+colliding symbolic spellings plus an anonymous extent, calls the real native
+reader, verifies `tensor<f32, [batch_size, batch_size_1, _]>`, and requires a
+canonical round-trip. TFLite `shape_signature` already maps negative extents to
+the same `_` term. This slice preserves named identity and anonymous openness;
+it does not ask static-only network transforms to guess a runtime extent.
 
 ## M10 network-semantics slice
 

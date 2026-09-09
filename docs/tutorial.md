@@ -130,7 +130,7 @@ if (!env.load("opt") || !joggle::run(env, "opt.fold_add_zero", mod))
 ```
 
 `modules/opt/module.jog` is the complete transform. It iterates functions,
-blocks, and operations through `ir`, replaces the result of `x + 0`, and erases
+`Blk`s and operations through `ir`, replaces the result of `x + 0`, and erases
 the dead call. No C++ registration is required for that transform.
 
 ## Define a fusion policy

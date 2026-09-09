@@ -20,6 +20,21 @@ int main(int argc, char** argv) {
   env.path(argv[2]);
   CHECK(env.load("nn"));
 
+  constexpr std::string_view dynamic_source =
+      "module dynamic.network\n"
+      "use tensor\n"
+      "fn keep(x: tensor<f32, [_, 3]>) -> tensor<f32, [_, 3]> {\n"
+      "  return x\n"
+      "}\n";
+  joggle::Mod dynamic;
+  CHECK(joggle::parse(env, dynamic_source, dynamic, "dynamic.jog"));
+  CHECK(dynamic.verify(env));
+  joggle::Mod dynamic_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(dynamic), dynamic_roundtrip,
+                      "dynamic-roundtrip.jog"));
+  CHECK(dynamic_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(dynamic, dynamic_roundtrip));
+
   constexpr std::string_view broadcast_source =
       "module broadcast.network\n"
       "use nn\n"

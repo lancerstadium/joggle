@@ -126,8 +126,10 @@ upgraded compatibly, and removed without editing or rebuilding Joggle.
 
 Status: in progress. Binary ONNX and TFLite transport, real-model generic
 fusion, same-signature semantic bridging, progressive body expansion, and
-structural
-tensor type construction are complete. Grouped 2-D convolution now has an
+structural tensor type construction are complete. Named ONNX dimensions now
+reuse integer function generics and anonymous dynamic dimensions remain open
+terms; a dependency-local codec test covers both without a downloaded model.
+Grouped 2-D convolution now has an
 inspectable body, and the explicit `onnx.nn` relation propagates all official
 MobileNetV2 intermediate types before converting every compute node through
 shared Conv, BatchNormalization, ReLU, Add, global-pool, and reshape semantics.

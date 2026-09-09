@@ -1709,6 +1709,8 @@ bool integer_term(std::string_view text) {
 
 Ty term_kind(const Ty& term, std::span<const GenericInfo> context) {
   if (term.args().empty()) {
+    if (term.name() == "_")
+      return Ty("_");
     for (const GenericInfo& generic : context)
       if (generic.name == term.name())
         return generic.type;

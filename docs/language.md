@@ -102,6 +102,12 @@ arguments, inferred bindings, and type-constructor arguments; no separate kind
 or trait registry exists. `Fn::generics()` exposes the parameter values, so
 embedding code reads both `name()` and `type()` through the normal `Val` API.
 
+The `_` term remains open when nested in a structural argument. Consequently
+`tensor<f32, [_, 3]>` satisfies a `list<int>` shape constraint without claiming
+that the unknown extent is a type. A named relation uses an ordinary generic,
+for example `fn f<N: int>(x: tensor<f32, [N, 3]>)`; repeated `N` occurrences
+retain equality through the existing unifier.
+
 Type construction and value construction may share one name. For example,
 `fn tensor<E: Ty, S: list<int>>() -> Ty` declares the type spelling while
 `fn tensor<E: Ty, S: list<int>>(fill: E) -> tensor<E, S>` constructs a value.
@@ -224,7 +230,7 @@ restores both the IR and its prior revision.
 
 Construction also uses ordinary overloaded functions. `ir.constant` and
 `ir.call` insert leaves before a named operation. `ir.clone` deep-copies an
-operation and its nested blocks, while `ir.move` changes block-local order only
+operation and its nested `Blk`s, while `ir.move` changes `Blk`-local order only
 when all operands and users remain dominated. `ir.kind(op)` returns `call`,
 `constant`, `loop`, `branch`, `return`, or `yield`; `ir.blks(op)` exposes
 nested bodies. A terminator supplies an insertion point even for an otherwise

@@ -241,7 +241,7 @@ Both forms check type compatibility and dominance before changing the IR.
 Every valid block ends in `return` or internal `yield`, so an existing `Op` is
 also a complete insertion position; no ambient builder or special append state
 is needed. `ir.constant` and `ir.call` insert leaves. `ir.clone` recursively
-copies a call, constant, loop, or condition, creates fresh blocks/results, and
+copies a call, constant, loop, or condition, creates fresh `Blk`s/results, and
 remaps values defined inside the copied subtree. `ir.move` reorders an operation
 within its block atomically and rejects the change if any use would lose
 dominance. `ir.kind` and `ir.blks(op)` make structural selection explicit.
@@ -318,7 +318,7 @@ or required in module source.
 
 `ir.fuse` is likewise operator-neutral. It accepts an ordered `list<Op>`,
 derives unique live-ins and the single live-out, inserts the requested call,
-and removes the region transactionally. It rejects mixed blocks, reordered or
+and removes the region transactionally. It rejects mixed `Blk`s, reordered or
 duplicate operations, multiple live-outs, invalid dominance, and fusion across
 an unselected executable operation. `opt.fuse` is a normal `.jog` helper that
 finds a single-use call chain from a user-supplied list of callee names; a
@@ -338,6 +338,11 @@ scalar/list/tensor node attributes, arbitrary node result counts, and multiple
 graph outputs. Types from graph inputs, outputs, intermediate `value_info`, and
 initializers become explicit result annotations where available. Missing
 optional node outputs retain their result position through an unused binding.
+Each distinct ONNX `dim_param` becomes an `int` generic on the imported
+function, so repeated symbolic dimensions retain identity across inputs,
+intermediates, and outputs. Sanitized name collisions are resolved once and
+value bindings cannot shadow those generics. An unnamed dynamic dimension is
+the ordinary open term `_`.
 Unsupported sparse, string, external-data, and nested-graph forms fail with a
 diagnostic rather than being dropped. Operator names and attributes are
 transported generically; their semantics belong to later modules. Data inputs
@@ -351,6 +356,8 @@ tensors as payload calls, and operators as open `tflite.*` calls. FlatBuffers
 mini-reflection transports every schema-known option table into the operation's
 `tflite` metadata dictionary without dispatching on operator names. Optional
 input slots remain `nil`, and multiple outputs remain ordinary call results.
+Negative extents in `shape_signature` become `_`, which now satisfies the same
+open integer-term rule as an anonymous ONNX dimension.
 The checked-in schema is upstream source; its large generated C++ interface is
 private build output. As with ONNX, mapping those source calls to `nn` is the
 responsibility of a separately selected relationship module.
