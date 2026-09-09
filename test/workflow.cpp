@@ -169,6 +169,31 @@ int main(int argc, char** argv) {
   CHECK(annotated_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(annotated, annotated_roundtrip));
 
+  joggle::Mod selective;
+  constexpr std::string_view selective_source =
+      "module selective\n"
+      "fn choose(x: i32) -> i32 {\n"
+      "  let shared = x + 0\n"
+      "  let left = shared + 1\n"
+      "  let right = shared + 2\n"
+      "  return left + right\n"
+      "}\n";
+  CHECK(joggle::parse(env, selective_source, selective, "selective.jog"));
+  CHECK(selective.verify(env));
+  const joggle::Fn choose = selective.find_fn("choose");
+  CHECK(choose.ops().size() == choose.body().ops().size());
+  CHECK(selective.ops().size() == choose.ops().size());
+  const joggle::Val shared = choose.body().ops()[1].outs().front();
+  const std::vector<joggle::Op> shared_users = shared.users();
+  CHECK(shared_users.size() == 2);
+  const std::uint64_t before_replace = selective.revision();
+  CHECK(selective.replace(shared, choose.params().front(), shared_users[0]));
+  CHECK(selective.revision() == before_replace + 1);
+  CHECK(selective.verify(env));
+  const std::string selective_text = joggle::print(selective);
+  CHECK(selective_text.find("let left = x + 1") != std::string::npos);
+  CHECK(selective_text.find("let right = shared + 2") != std::string::npos);
+
   joggle::Mod wrong_result_type;
   CHECK(joggle::parse(env,
                       "module wrong_result\n"
@@ -186,6 +211,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::parse(env,
                       "module built\n"
                       "fn split(x: i32) -> (i32, bool);\n"
+                      "fn observe(x: i32) -> ();\n"
                       "fn first(x: i32) -> i32 { return x }\n",
                       built_multi, "built-multi.jog"));
   const joggle::Fn built_first = built_multi.find_fn("first");
@@ -193,15 +219,22 @@ int main(int argc, char** argv) {
   const std::vector<joggle::Val> split_args{built_first.params().front()};
   const std::vector<joggle::Ty> split_types{joggle::Ty("i32"),
                                             joggle::Ty("bool")};
+  const std::uint64_t before_calls = built_multi.revision();
   const joggle::Op built_split =
       built_multi.call(before, "split", split_args, split_types);
   CHECK(built_split && built_split.outs().size() == 2);
+  CHECK(built_multi.revision() == before_calls + 1);
+  const std::vector<joggle::Ty> no_types;
+  const joggle::Op observe =
+      built_multi.call(before, "observe", split_args, no_types);
+  CHECK(observe && observe.outs().empty());
   CHECK(built_multi.rename(built_split.outs()[0], "value"));
   CHECK(built_multi.rename(built_split.outs()[1], "valid"));
   CHECK(built_multi.verify(env));
   CHECK(joggle::print(built_multi)
             .find("let value: i32, valid: bool = split(x)") !=
         std::string::npos);
+  CHECK(joggle::print(built_multi).find("observe(x)") != std::string::npos);
 
   joggle::Mod overloaded;
   constexpr std::string_view overload_source =
@@ -329,6 +362,7 @@ int main(int argc, char** argv) {
   CHECK(matmul.generics()[1].type() == joggle::Ty("int"));
   CHECK(matmul.params().size() == 2);
   CHECK(matmul.blocks().size() == 3);
+  CHECK(matmul.ops().size() > matmul.body().ops().size());
 
   const std::string canonical = joggle::print(mod);
   CHECK(canonical.find("for i in 0..M, j in 0..N") != std::string::npos);
@@ -377,11 +411,21 @@ int main(int argc, char** argv) {
         marked_add.meta("place")->string() == "edge");
   CHECK(marked_add.meta("tile") && marked_add.meta("tile")->list() &&
         marked_add.meta("tile")->list()->size() == 2);
+  joggle::Mod scripted_selective;
+  CHECK(joggle::parse(env, selective_source, scripted_selective,
+                      "scripted-selective.jog"));
+  CHECK(joggle::run(env, "script.replace_first_use", scripted_selective));
+  CHECK(joggle::print(scripted_selective).find("let left = x + 1") !=
+        std::string::npos);
+  CHECK(joggle::print(scripted_selective)
+            .find("let right = shared + 2") != std::string::npos);
   joggle::Mod rolled_back;
   CHECK(joggle::parse(env, source.str(), rolled_back, argv[1]));
   const std::string before_failure = joggle::print(rolled_back);
+  const std::uint64_t before_failure_revision = rolled_back.revision();
   CHECK(!joggle::run(env, "script.fail_after_edit", rolled_back));
   CHECK(joggle::print(rolled_back) == before_failure);
+  CHECK(rolled_back.revision() == before_failure_revision);
   CHECK(!env.diags().empty());
 
   joggle::Mod immutable;

@@ -100,7 +100,7 @@ The built-in `ir` module is the complete reflection boundary:
 
 | Function | Meaning |
 | --- | --- |
-| `fns`, `blocks`, `ops` | Traverse structural ownership in stable order. |
+| `fns`, `blocks`, `ops` | Traverse structural ownership; `ops(Mod/Fn)` walks nested bodies. |
 | `args`, `outs`, `users` | Read operation dataflow. |
 | `callee`, `type`, `is_const`, `constant`, `len` | Query calls, values, and lists. |
 | `has`, `meta` | Query open function or operation attributes. |
@@ -114,14 +114,22 @@ the reflection ABI or add a parser case.
 `ir.call` inserts an arbitrary call immediately before an existing operation.
 A `str` result-type argument returns the single `Val` convenience form; a
 `list<str>` returns the created `Op`, whose values are available through
-`ir.outs`. `ir.rename` is likewise overloaded for a call target or a result
-name. The insertion point makes order explicit and lets the core reject
-non-dominating operands without a stateful builder object. For example, a
+`ir.outs`; an empty list creates a visible zero-result call. `ir.rename` is
+likewise overloaded for a call target or a result name. The insertion point
+makes order explicit and lets the core reject non-dominating operands without
+a stateful builder object. For example, a
 module can select functions carrying `[rewrite: "my.fused"]`, inspect their
 calls, create `my.fused(...)`, redirect uses, and erase the old calls. The same
 metadata mechanism can describe entry points, optimization stages, target
 capabilities, cost hints, provenance, or test groups; their interpretation
 belongs entirely to the module that queries them.
+
+`ir.ops(m)` is the concise default traversal: it returns all operations in
+function order and structural preorder, including nested loops and conditions.
+`ir.ops(f)` restricts that walk to one function, while `ir.ops(b)` returns only
+the immediate operations of one block. `ir.replace` replaces all uses by
+default; its four-argument overload changes only uses in one named `Op`.
+Both forms check type compatibility and dominance before changing the IR.
 
 The bracket syntax is not a `host` special case. Any module may define its own
 keys and attach them to a function or operation statement. Version and ABI

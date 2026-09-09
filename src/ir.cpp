@@ -78,6 +78,11 @@ split_terms(std::string_view text) {
   return terms;
 }
 
+void touch(detail::Store& store) {
+  if (store.revision != std::numeric_limits<std::uint64_t>::max())
+    ++store.revision;
+}
+
 }  // namespace
 
 Attr::Attr(bool value) : data_(value) {}
@@ -376,6 +381,20 @@ std::vector<Blk> Fn::blocks() const {
     out.push_back(Blk(store_, id, store_->blocks[id].generation));
   return out;
 }
+std::vector<Op> Fn::ops() const {
+  std::vector<Op> out;
+  if (!valid() || !body())
+    return out;
+  const auto visit = [&](const auto& self, Blk block) -> void {
+    for (Op op : block.ops()) {
+      out.push_back(op);
+      for (Blk child : op.blocks())
+        self(self, child);
+    }
+  };
+  visit(visit, body());
+  return out;
+}
 Loc Fn::loc() const { return valid() ? store_->fns[id_].data.loc : Loc{}; }
 
 Mod::Mod() : impl_(std::make_unique<Impl>()) {}
@@ -384,7 +403,12 @@ Mod::Mod(Mod&&) noexcept = default;
 Mod& Mod::operator=(Mod&&) noexcept = default;
 
 std::string_view Mod::name() const noexcept { return impl_->store.name; }
-void Mod::name(std::string name) { impl_->store.name = std::move(name); }
+void Mod::name(std::string name) {
+  if (impl_->store.name == name)
+    return;
+  impl_->store.name = std::move(name);
+  touch(impl_->store);
+}
 std::vector<std::string> Mod::uses() const { return impl_->store.uses; }
 
 std::vector<Fn> Mod::fns() const {
@@ -393,6 +417,15 @@ std::vector<Fn> Mod::fns() const {
     const auto& entry = impl_->store.fns[id];
     if (entry.live)
       out.push_back(Fn(&impl_->store, id, entry.generation));
+  }
+  return out;
+}
+
+std::vector<Op> Mod::ops() const {
+  std::vector<Op> out;
+  for (Fn fn : fns()) {
+    std::vector<Op> nested = fn.ops();
+    out.insert(out.end(), nested.begin(), nested.end());
   }
   return out;
 }
@@ -412,6 +445,10 @@ std::vector<Fn> Mod::find_fns(std::string_view name) const {
 Fn Mod::find_fn(std::string_view name) const {
   const std::vector<Fn> matches = find_fns(name);
   return matches.size() == 1 ? matches.front() : Fn{};
+}
+
+std::uint64_t Mod::revision() const noexcept {
+  return impl_->store.revision;
 }
 
 Op Mod::call(Op before, std::string callee, std::span<const Val> args,
@@ -449,6 +486,7 @@ Op Mod::call(Op before, std::string callee, std::span<const Val> args,
   op.kind = Op::Kind::call;
   op.block = block;
   op.callee = std::move(callee);
+  op.form = types.empty() ? detail::Form::expr : detail::Form::hidden;
   op.loc = before.loc();
   op.args.reserve(args.size());
   for (Val arg : args)
@@ -467,6 +505,7 @@ Op Mod::call(Op before, std::string callee, std::span<const Val> args,
   store.ops.push_back({std::move(op), 1, true});
   order.insert(position, op_id);
   detail::rebuild_uses(store);
+  touch(store);
   return Op(&store, op_id, store.ops[op_id].generation);
 }
 
@@ -558,25 +597,27 @@ bool Mod::fuse(std::span<const Op> ops, std::string callee) {
                   output.def().loc());
 
   detail::Store backup = store;
-  Val fused = call(ops.back(), std::move(callee), inputs, output.type());
-  if (!fused) {
-    const std::vector<Diag> diags = store.diags;
-    store = std::move(backup);
-    store.diags = diags;
+  const auto rollback = [&]() {
+    std::vector<Diag> diags = store.diags;
+    store = backup;
+    store.diags = std::move(diags);
     return false;
-  }
+  };
+  Val fused = call(ops.back(), std::move(callee), inputs, output.type());
+  if (!fused)
+    return rollback();
   store.vals[fused.id_].data.name = std::string(output.name());
   store.ops[fused.def().id_].data.form = old_form;
-  if (!replace(output, fused)) {
-    store = std::move(backup);
-    return false;
-  }
+  store.ops[fused.def().id_].data.meta =
+      store.ops[output.def().id_].data.meta;
+  if (!replace(output, fused))
+    return rollback();
   for (auto it = ops.rbegin(); it != ops.rend(); ++it) {
-    if (!erase(*it)) {
-      store = std::move(backup);
-      return false;
-    }
+    if (!erase(*it))
+      return rollback();
   }
+  store.revision = backup.revision;
+  touch(store);
   return true;
 }
 
@@ -588,15 +629,79 @@ bool Mod::replace(Val old_value, Val new_value) {
                      "replace requires two live values in this module");
     return false;
   }
+  if (old_value == new_value)
+    return true;
+  const Ty old_type = old_value.type();
+  const Ty new_type = new_value.type();
+  if (old_type.text() != "_" && new_type.text() != "_" &&
+      old_type != new_type) {
+    detail::add_diag(store.diags, "replacement values have different types");
+    return false;
+  }
+  const std::vector<Op> users = old_value.users();
+  for (Op user : users) {
+    if (!detail::dominates(store, new_value.id_, user.id_)) {
+      detail::add_diag(store.diags,
+                       "replacement value must dominate every selected use",
+                       user.loc());
+      return false;
+    }
+  }
+  bool changed = false;
   for (auto& entry : store.ops) {
     if (!entry.live)
       continue;
     for (std::uint32_t& arg : entry.data.args) {
-      if (arg == old_value.id_)
+      if (arg == old_value.id_) {
         arg = new_value.id_;
+        changed = true;
+      }
     }
   }
   detail::rebuild_uses(store);
+  if (changed)
+    touch(store);
+  return true;
+}
+
+bool Mod::replace(Val old_value, Val new_value, Op user) {
+  auto& store = impl_->store;
+  if (!old_value.valid() || !new_value.valid() || !user.valid() ||
+      old_value.store_ != &store || new_value.store_ != &store ||
+      user.store_ != &store) {
+    detail::add_diag(
+        store.diags,
+        "selective replace requires live values and a live operation in this "
+        "module");
+    return false;
+  }
+  if (old_value == new_value)
+    return true;
+  const Ty old_type = old_value.type();
+  const Ty new_type = new_value.type();
+  if (old_type.text() != "_" && new_type.text() != "_" &&
+      old_type != new_type) {
+    detail::add_diag(store.diags, "replacement values have different types",
+                     user.loc());
+    return false;
+  }
+  if (!detail::dominates(store, new_value.id_, user.id_)) {
+    detail::add_diag(store.diags,
+                     "replacement value must dominate every selected use",
+                     user.loc());
+    return false;
+  }
+  bool changed = false;
+  for (std::uint32_t& arg : store.ops[user.id_].data.args) {
+    if (arg == old_value.id_) {
+      arg = new_value.id_;
+      changed = true;
+    }
+  }
+  if (changed) {
+    detail::rebuild_uses(store);
+    touch(store);
+  }
   return true;
 }
 
@@ -626,6 +731,7 @@ bool Mod::erase(Op op) {
   store.ops[op.id_].live = false;
   ++store.ops[op.id_].generation;
   detail::rebuild_uses(store);
+  touch(store);
   return true;
 }
 
@@ -637,6 +743,7 @@ bool Mod::rename(Val value, std::string name) {
     return false;
   }
   detail::ValData& data = store.vals[value.id_].data;
+  const bool changed = data.name != name;
   data.name = std::move(name);
   if (data.def != detail::none) {
     detail::OpData& op = store.ops[data.def].data;
@@ -644,6 +751,8 @@ bool Mod::rename(Val value, std::string name) {
         op.form == detail::Form::hidden)
       op.form = detail::Form::let;
   }
+  if (changed)
+    touch(store);
   return true;
 }
 
@@ -655,7 +764,10 @@ bool Mod::rename(Op call, std::string callee) {
                      "rename requires a live call and non-empty callee");
     return false;
   }
-  store.ops[call.id_].data.callee = std::move(callee);
+  if (store.ops[call.id_].data.callee != callee) {
+    store.ops[call.id_].data.callee = std::move(callee);
+    touch(store);
+  }
   return true;
 }
 
@@ -666,7 +778,12 @@ bool Mod::set(Fn fn, std::string key, Attr value) {
                      "set requires a live function and non-empty key");
     return false;
   }
-  store.fns[fn.id_].data.meta[std::move(key)] = std::move(value);
+  Attr::Dict& meta = store.fns[fn.id_].data.meta;
+  const auto found = meta.find(key);
+  if (found == meta.end() || found->second != value) {
+    meta[std::move(key)] = std::move(value);
+    touch(store);
+  }
   return true;
 }
 
@@ -685,7 +802,12 @@ bool Mod::set(Op op, std::string key, Attr value) {
                      data.loc);
     return false;
   }
-  store.ops[op.id_].data.meta[std::move(key)] = std::move(value);
+  Attr::Dict& meta = store.ops[op.id_].data.meta;
+  const auto found = meta.find(key);
+  if (found == meta.end() || found->second != value) {
+    meta[std::move(key)] = std::move(value);
+    touch(store);
+  }
   return true;
 }
 
@@ -696,7 +818,10 @@ bool Mod::unset(Fn fn, std::string_view key) {
                      "unset requires a live function and non-empty key");
     return false;
   }
-  return store.fns[fn.id_].data.meta.erase(std::string(key)) != 0;
+  if (!store.fns[fn.id_].data.meta.erase(std::string(key)))
+    return false;
+  touch(store);
+  return true;
 }
 
 bool Mod::unset(Op op, std::string_view key) {
@@ -706,7 +831,10 @@ bool Mod::unset(Op op, std::string_view key) {
                      "unset requires a live operation and non-empty key");
     return false;
   }
-  return store.ops[op.id_].data.meta.erase(std::string(key)) != 0;
+  if (!store.ops[op.id_].data.meta.erase(std::string(key)))
+    return false;
+  touch(store);
+  return true;
 }
 
 bool Mod::ok() const noexcept { return impl_->store.diags.empty(); }

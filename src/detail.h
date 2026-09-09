@@ -75,6 +75,7 @@ struct FnData {
 
 struct Store {
   std::string name;
+  std::uint64_t revision = 0;
   std::vector<std::string> uses;
   std::vector<Slot<FnData>> fns;
   std::vector<Slot<BlkData>> blocks;

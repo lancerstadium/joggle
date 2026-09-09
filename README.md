@@ -15,11 +15,12 @@ Compile-time functions traverse universal IR handles and run transactionally;
 they are functions, not instances of a pass class. A separately built native
 module is also discovered, signature-checked, loaded, and called through the
 single native-function ABI. Functions and operations may carry open,
-user-defined attributes without adding parser cases. Generic call construction
-and checked region fusion let
-such modules make real graph changes; the pinned MobileNetV2 test fuses 36
-three-call chains. The core contains no ONNX, device, instruction-set, runtime,
-or code-generation policy; those capabilities belong in removable modules.
+user-defined attributes without adding parser cases. Generic zero/multi-result
+call construction, nested traversal, selective use replacement, and checked
+region fusion let such modules make real graph changes; the pinned MobileNetV2
+test fuses 36 three-call chains. The core contains no ONNX, device,
+instruction-set, runtime, or code-generation policy; those capabilities belong
+in removable modules.
 
 ## Build
 

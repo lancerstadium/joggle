@@ -242,3 +242,15 @@ attribute dictionaries through canonical printing, and both C++ and `.jog`
 transforms can query or edit function and operation attributes. This
 generalizes the useful `[name: value]` notation without reserving `host`,
 target, scheduling, or layout concepts in the core.
+
+## M7 third slice
+
+`Fn::ops`, `Mod::ops`, and the overloaded `ir.ops` provide one deterministic
+structural-preorder walk without forcing every transform to spell three nested
+ownership loops. Block-local traversal remains available when locality matters.
+Use replacement now has an optional user operation, so a transform can redirect
+one edge without rewriting every consumer; both forms reject type or dominance
+violations before mutation. `Mod::revision` advances after successful edits and
+is restored by failed compile-time runs, providing the invalidation key needed
+by later cached analyses. Zero-result calls are visible statements rather than
+unprintable hidden operations.

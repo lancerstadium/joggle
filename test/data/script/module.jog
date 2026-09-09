@@ -44,31 +44,41 @@ fn multi_probe(m: Mod) -> bool {
 }
 
 fn make_pair(m: Mod) -> bool {
-  for f in ir.fns(m) {
-    for b in ir.blocks(f) {
-      for op in ir.ops(b) {
-        if ir.callee(op) == "operator +" {
-          let pair = ir.call(m, op, "test.pair", ir.args(op), ["i32", "i32"])
-          let outs = ir.outs(pair)
-          var named = ir.rename(m, outs[0], "left")
-          named = ir.rename(m, outs[1], "right")
-          return named
-        }
-      }
+  for op in ir.ops(m) {
+    if ir.callee(op) == "operator +" {
+      let pair = ir.call(m, op, "test.pair", ir.args(op), ["i32", "i32"])
+      let outs = ir.outs(pair)
+      var named = ir.rename(m, outs[0], "left")
+      named = ir.rename(m, outs[1], "right")
+      return named
     }
   }
   return false
 }
 
 fn mark_add(m: Mod) -> bool {
-  for f in ir.fns(m) {
-    for b in ir.blocks(f) {
-      for op in ir.ops(b) {
-        if ir.callee(op) == "operator +" {
-          var changed = ir.set(m, op, "place", "edge")
-          changed = ir.set(m, op, "tile", [4, 8])
-          return changed && ir.has(op, "place") &&
-                 ir.meta(op, "place") == "edge"
+  for op in ir.ops(m) {
+    if ir.callee(op) == "operator +" {
+      var changed = ir.set(m, op, "place", "edge")
+      changed = ir.set(m, op, "tile", [4, 8])
+      return changed && ir.has(op, "place") &&
+             ir.meta(op, "place") == "edge"
+    }
+  }
+  return false
+}
+
+fn replace_first_use(m: Mod) -> bool {
+  for op in ir.ops(m) {
+    if ir.callee(op) == "operator +" {
+      let args = ir.args(op)
+      let outs = ir.outs(op)
+      if ir.len(args) == 2 && ir.len(outs) == 1 {
+        if ir.is_const(args[1]) && ir.constant(args[1]) == 0 {
+          let users = ir.users(outs[0])
+          if ir.len(users) > 1 {
+            return ir.replace(m, outs[0], args[0], users[0])
+          }
         }
       }
     }

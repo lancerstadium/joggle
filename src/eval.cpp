@@ -702,12 +702,21 @@ private:
         return Items{Item(std::move(out))};
       }
     } else if (name == "ops" && args.size() == 1) {
-      if (const auto* block = as<Blk>(args[0])) {
-        Items out;
-        for (Op op : block->ops())
-          out.emplace_back(op);
-        return Items{Item(std::move(out))};
+      std::vector<Op> ops;
+      if (const auto* mod = as<Mod*>(args[0]); mod && *mod)
+        ops = (*mod)->ops();
+      else if (const auto* fn = as<Fn>(args[0]))
+        ops = fn->ops();
+      else if (const auto* block = as<Blk>(args[0]))
+        ops = block->ops();
+      else {
+        fail("invalid ir.ops compile-time call", loc);
+        return std::nullopt;
       }
+      Items out;
+      for (Op op : ops)
+        out.emplace_back(op);
+      return Items{Item(std::move(out))};
     } else if ((name == "args" || name == "outs") && args.size() == 1) {
       if (const auto* op = as<Op>(args[0])) {
         Items out;
@@ -811,12 +820,18 @@ private:
         }
         return Items{Item(Attr((*mod)->fuse(ops, std::string(*callee))))};
       }
-    } else if (name == "replace" && args.size() == 3) {
+    } else if (name == "replace" &&
+               (args.size() == 3 || args.size() == 4)) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* old_value = as<Val>(args[1]);
       const auto* new_value = as<Val>(args[2]);
-      if (mod && *mod && old_value && new_value)
-        return Items{Item(Attr((*mod)->replace(*old_value, *new_value)))};
+      if (mod && *mod && old_value && new_value) {
+        if (args.size() == 3)
+          return Items{Item(Attr((*mod)->replace(*old_value, *new_value)))};
+        if (const auto* user = as<Op>(args[3]))
+          return Items{
+              Item(Attr((*mod)->replace(*old_value, *new_value, *user)))};
+      }
     } else if (name == "erase" && args.size() == 2) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* op = as<Op>(args[1]);

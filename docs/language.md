@@ -181,6 +181,13 @@ supports structured `for` and `if`, scalar operators, lists, and the universal
 transactional. It does not evaluate arbitrary model functions or silently run
 transforms while parsing.
 
+`ir.ops(m)` walks every function body in deterministic structural preorder,
+including nested loops and conditions. Use `ir.ops(f)` for one function or
+`ir.ops(b)` for one block. The optional fourth argument to `ir.replace` names a
+single user operation; omitting it redirects every use after checking type and
+dominance. Successful edits advance `Mod::revision()`, while a failed run
+restores both the IR and its prior revision.
+
 Generic compile-time helpers use the same syntax and bindings. In
 `fn below<N: int>(x: int) -> bool { return x < N }`, a call to `below<4>(3)`
 binds the generic `Val` `N` to the integer `4` in the function frame. `Ty` and
