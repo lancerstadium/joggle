@@ -58,8 +58,18 @@ fn tensor_type_probe(m: Mod) -> bool {
          tensor.valid(dynamic) && !tensor.static(dynamic) &&
          tensor.type(ty("f32"), dims) == dynamic &&
          reversed == [ty(3), ty("N")] && broadcast == dims &&
+         tensor.refined(ty("tensor<f32, [_, 3]>"), dynamic) == dynamic &&
+         tensor.refined(ty("tensor<i32, [_, 3]>"), dynamic) == ty("_") &&
          tensor.product(dims, 0, 1) == ty("N") &&
          tensor.product(dims, 1, 2) == ty(3) &&
+         tensor.quotient([ty("N"), ty(256)], [ty(256)]) == ty("N") &&
+         tensor.quotient(
+           [ty("N"), ty(256)], [ty("N"), ty(64)]
+         ) == ty(4) &&
+         tensor.inserted(dims, 1, ty(2)) == [ty("N"), ty(2), ty(3)] &&
+         tensor.replaced(dims, 0, ty(4)) == [ty(4), ty(3)] &&
+         tensor.gathered(dims, [ty(5), ty(6)], 1) ==
+           [ty("N"), ty(5), ty(6)] &&
          tensor.matmul_offset([7, 3, 4], [2, 7, 3, 5], 11, 2, 3) == 59 &&
          tensor.matmul_offset([2, 1, 4, 5], [2, 7, 3, 5], 11, 2, 4) == 34 &&
          tensor.line_offset([2, 3, 4], 1, 6, 1) == 18 &&
@@ -392,6 +402,15 @@ fn attr_sum(m: Mod, attrs: dict) -> int {
 fn fail_after_control_rename(m: Mod) -> bool {
   let changed = rename_control(m)
   return missing(changed)
+}
+
+fn invalidate_call(m: Mod) -> bool {
+  for op in ir.ops(m) {
+    if ir.callee(op) == "pure" {
+      return ir.rename(m, op, "base.len")
+    }
+  }
+  return false
 }
 
 fn rebuild_tagged(m: Mod) -> bool {

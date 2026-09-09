@@ -7,14 +7,23 @@ fn set_type(m: Mod, value: Val, type: Ty) -> bool {
   if type == ty("_") {
     return false
   }
-  if ir.type(value) != type {
+  let current = ir.type(value)
+  if current == ty("_") {
     return ir.type(m, value, type)
+  }
+  let refined = tensor.refined(current, type)
+  if refined != ty("_") && refined != current {
+    return ir.type(m, value, refined)
   }
   return false
 }
 
 fn attrs(op: Op) -> Attr {
   return base.get(ir.meta(op), "onnx", {})
+}
+
+fn shaped(elem: Ty, dims: list<Ty>) -> Ty {
+  return ty("tensor", [elem, ty("[]", dims)])
 }
 
 fn same_type(m: Mod, op: Op) -> bool {
@@ -48,7 +57,7 @@ fn quant_type(m: Mod, op: Op) -> bool {
     }
     elem = tensor.elem(zero)
   }
-  return set_type(m, outputs[0], tensor.type(elem, tensor.dims(input)))
+  return set_type(m, outputs[0], shaped(elem, tensor.dims(input)))
 }
 
 fn dequant_type(m: Mod, op: Op) -> bool {
@@ -63,7 +72,7 @@ fn dequant_type(m: Mod, op: Op) -> bool {
     return false
   }
   return set_type(
-    m, outputs[0], tensor.type(tensor.elem(scale), tensor.dims(input))
+    m, outputs[0], shaped(tensor.elem(scale), tensor.dims(input))
   )
 }
 
@@ -81,6 +90,12 @@ fn binary_type(m: Mod, op: Op) -> bool {
   if tensor.elem(left) != tensor.elem(right) {
     return false
   }
+  if len(tensor.dims(left)) == 0 {
+    return set_type(m, outputs[0], right)
+  }
+  if len(tensor.dims(right)) == 0 {
+    return set_type(m, outputs[0], left)
+  }
   let shape = tensor.broadcast_shape(
     tensor.dims(left), tensor.dims(right)
   )
@@ -88,7 +103,7 @@ fn binary_type(m: Mod, op: Op) -> bool {
      !tensor.broadcastable(tensor.dims(right), shape) {
     return false
   }
-  return set_type(m, outputs[0], tensor.type(tensor.elem(left), shape))
+  return set_type(m, outputs[0], shaped(tensor.elem(left), shape))
 }
 
 fn signed(data: Attr, offset: int, width: int) -> int {
@@ -181,6 +196,46 @@ fn shape_terms(value: Val) -> list<Ty> {
     }
     return out
   }
+  if ir.callee(producer) == "onnx.Slice" &&
+     len(inputs) >= 3 && len(inputs) <= 5 {
+    let source = shape_terms(inputs[0])
+    let starts = const_ints(inputs[1])
+    let ends = const_ints(inputs[2])
+    var axes: list<int> = [0]
+    var steps: list<int> = [1]
+    if len(inputs) >= 4 {
+      axes = const_ints(inputs[3])
+    }
+    if len(inputs) == 5 {
+      steps = const_ints(inputs[4])
+    }
+    if len(source) == 0 || len(starts) != 1 || len(ends) != 1 ||
+       len(axes) != 1 || len(steps) != 1 || axes[0] != 0 ||
+       steps[0] != 1 {
+      return out
+    }
+    var first = starts[0]
+    var last = ends[0]
+    if first < 0 {
+      first += len(source)
+    }
+    if last < 0 {
+      last += len(source)
+    }
+    if first < 0 {
+      first = 0
+    }
+    if last > len(source) {
+      last = len(source)
+    }
+    if first > last || first >= len(source) {
+      return out
+    }
+    for i in first..last {
+      out += [source[i]]
+    }
+    return out
+  }
   if ir.callee(producer) == "onnx.Concat" &&
      base.get(attrs(producer), "axis", 0) == 0 {
     for input in inputs {
@@ -190,8 +245,451 @@ fn shape_terms(value: Val) -> list<Ty> {
       }
       out += part
     }
+    return out
+  }
+  let type = ir.type(value)
+  if tensor.valid(type) {
+    let shape = tensor.dims(type)
+    var count = -1
+    if len(shape) == 0 {
+      count = 1
+    }
+    if len(shape) == 1 && kind(shape[0]) == "int" {
+      count = int(shape[0])
+    }
+    if count >= 0 {
+      for i in 0..count {
+        out += [ty("_")]
+      }
+    }
   }
   return out
+}
+
+fn element(code: int) -> Ty {
+  var out = ty("_")
+  if code == 1 {
+    out = ty("f32")
+  }
+  if code == 2 {
+    out = ty("u8")
+  }
+  if code == 3 {
+    out = ty("i8")
+  }
+  if code == 4 {
+    out = ty("u16")
+  }
+  if code == 5 {
+    out = ty("i16")
+  }
+  if code == 6 {
+    out = ty("i32")
+  }
+  if code == 7 {
+    out = ty("i64")
+  }
+  if code == 9 {
+    out = ty("bool")
+  }
+  if code == 10 {
+    out = ty("f16")
+  }
+  if code == 11 {
+    out = ty("f64")
+  }
+  if code == 12 {
+    out = ty("u32")
+  }
+  if code == 13 {
+    out = ty("u64")
+  }
+  if code == 16 {
+    out = ty("bf16")
+  }
+  return out
+}
+
+fn cast_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let elem = element(base.get(attrs(op), "to", 0))
+  if !tensor.valid(input) || elem == ty("_") {
+    return false
+  }
+  return set_type(m, outputs[0], shaped(elem, tensor.dims(input)))
+}
+
+fn shape_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 ||
+     !tensor.valid(ir.type(inputs[0])) {
+    return false
+  }
+  let rank = len(tensor.dims(ir.type(inputs[0])))
+  let shape: list<Ty> = [ty(rank)]
+  return set_type(m, outputs[0], shaped(ty("i64"), shape))
+}
+
+fn gather_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) != 2 {
+    return ty("_")
+  }
+  let data = ir.type(inputs[0])
+  let indices = ir.type(inputs[1])
+  if !tensor.valid(data) || !tensor.valid(indices) {
+    return ty("_")
+  }
+  let shape = tensor.dims(data)
+  var axis = base.get(attrs(op), "axis", 0)
+  if axis < 0 {
+    axis += len(shape)
+  }
+  if axis < 0 || axis >= len(shape) {
+    return ty("_")
+  }
+  return shaped(
+    tensor.elem(data), tensor.gathered(shape, tensor.dims(indices), axis)
+  )
+}
+
+fn gather_type(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  return set_type(m, outputs[0], gather_result(op))
+}
+
+fn axes(op: Op) -> list<int> {
+  let meta = attrs(op)
+  var out: list<int> = []
+  if base.has(meta, "axes") {
+    for axis in meta["axes"] {
+      out += [axis]
+    }
+    return out
+  }
+  let inputs = ir.args(op)
+  if len(inputs) >= 2 {
+    return const_ints(inputs[1])
+  }
+  return out
+}
+
+fn unsqueeze_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) != 1 && len(inputs) != 2 {
+    return ty("_")
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return ty("_")
+  }
+  let source = tensor.dims(input)
+  let raw = axes(op)
+  let rank = len(source) + len(raw)
+  var normalized: list<int> = []
+  for value in raw {
+    var axis = value
+    if axis < 0 {
+      axis += rank
+    }
+    normalized += [axis]
+  }
+  if !tensor.valid_axes(normalized, rank) {
+    return ty("_")
+  }
+  var shape: list<Ty> = []
+  var source_axis = 0
+  for axis in 0..rank {
+    var selected = false
+    for value in normalized {
+      if value == axis {
+        selected = true
+      }
+    }
+    if selected {
+      shape += [ty(1)]
+    } else {
+      shape += [source[source_axis]]
+      source_axis += 1
+    }
+  }
+  return shaped(tensor.elem(input), shape)
+}
+
+fn squeeze_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) != 1 && len(inputs) != 2 {
+    return ty("_")
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return ty("_")
+  }
+  let source = tensor.dims(input)
+  let raw = axes(op)
+  var normalized: list<int> = []
+  if len(raw) == 0 {
+    for axis in 0..len(source) {
+      if source[axis] == ty(1) {
+        normalized += [axis]
+      }
+    }
+  } else {
+    for value in raw {
+      var axis = value
+      if axis < 0 {
+        axis += len(source)
+      }
+      normalized += [axis]
+    }
+  }
+  if !tensor.valid_axes(normalized, len(source)) {
+    return ty("_")
+  }
+  var shape: list<Ty> = []
+  for axis in 0..len(source) {
+    var selected = false
+    for value in normalized {
+      if value == axis {
+        selected = true
+      }
+    }
+    if selected {
+      if source[axis] != ty(1) {
+        return ty("_")
+      }
+    } else {
+      shape += [source[axis]]
+    }
+  }
+  return shaped(tensor.elem(input), shape)
+}
+
+fn unary_shape_type(m: Mod, op: Op, squeeze: bool) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  var result = unsqueeze_result(op)
+  if squeeze {
+    result = squeeze_result(op)
+  }
+  return set_type(m, outputs[0], result)
+}
+
+fn slice_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 3 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let values = shape_terms(outputs[0])
+  if !tensor.valid(input) || len(tensor.dims(input)) != 1 ||
+     len(values) == 0 {
+    return false
+  }
+  let shape: list<Ty> = [ty(len(values))]
+  return set_type(m, outputs[0], shaped(tensor.elem(input), shape))
+}
+
+fn concat_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) == 0 {
+    return ty("_")
+  }
+  let first = ir.type(inputs[0])
+  if !tensor.valid(first) {
+    return ty("_")
+  }
+  let source = tensor.dims(first)
+  var axis = base.get(attrs(op), "axis", 0)
+  if axis < 0 {
+    axis += len(source)
+  }
+  if axis < 0 || axis >= len(source) {
+    return ty("_")
+  }
+  var extent = 0
+  for input in inputs {
+    let type = ir.type(input)
+    if !tensor.valid(type) || tensor.elem(type) != tensor.elem(first) ||
+       len(tensor.dims(type)) != len(source) {
+      return ty("_")
+    }
+    let shape = tensor.dims(type)
+    for dim in 0..len(source) {
+      if dim != axis && shape[dim] != source[dim] {
+        return ty("_")
+      }
+    }
+    if kind(shape[axis]) != "int" {
+      return ty("_")
+    }
+    extent += int(shape[axis])
+  }
+  var shape: list<Ty> = []
+  for dim in 0..len(source) {
+    if dim == axis {
+      shape += [ty(extent)]
+    } else {
+      shape += [source[dim]]
+    }
+  }
+  return shaped(tensor.elem(first), shape)
+}
+
+fn concat_type(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  return set_type(m, outputs[0], concat_result(op))
+}
+
+fn split_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if (len(inputs) != 1 && len(inputs) != 2) || len(outputs) == 0 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return false
+  }
+  let shape = tensor.dims(input)
+  var axis = base.get(attrs(op), "axis", 0)
+  if axis < 0 {
+    axis += len(shape)
+  }
+  if axis < 0 || axis >= len(shape) {
+    return false
+  }
+  var sizes: list<int> = []
+  if len(inputs) == 2 {
+    sizes = const_ints(inputs[1])
+  } else {
+    let meta = attrs(op)
+    if base.has(meta, "split") {
+      for size in meta["split"] {
+        sizes += [size]
+      }
+    }
+  }
+  if len(sizes) == 0 && kind(shape[axis]) == "int" &&
+     int(shape[axis]) % len(outputs) == 0 {
+    let size = int(shape[axis]) / len(outputs)
+    for output in outputs {
+      sizes += [size]
+    }
+  }
+  if len(sizes) != len(outputs) {
+    return false
+  }
+  var total = 0
+  for size in sizes {
+    if size < 0 {
+      return false
+    }
+    total += size
+  }
+  if kind(shape[axis]) == "int" && total != int(shape[axis]) {
+    return false
+  }
+  var changed = false
+  for i in 0..len(outputs) {
+    changed = set_type(
+      m, outputs[i], shaped(
+        tensor.elem(input), tensor.replaced(shape, axis, ty(sizes[i]))
+      )
+    ) || changed
+  }
+  return changed
+}
+
+fn one_hot_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 {
+    return false
+  }
+  let indices = ir.type(inputs[0])
+  let values = ir.type(inputs[2])
+  let depth = const_ints(inputs[1])
+  if !tensor.valid(indices) || !tensor.valid(values) || len(depth) != 1 ||
+     depth[0] <= 0 {
+    return false
+  }
+  let value_shape = tensor.dims(values)
+  if len(value_shape) != 1 || value_shape[0] != ty(2) {
+    return false
+  }
+  let source = tensor.dims(indices)
+  var axis = base.get(attrs(op), "axis", -1)
+  if axis < 0 {
+    axis += len(source) + 1
+  }
+  if axis < 0 || axis > len(source) {
+    return false
+  }
+  return set_type(
+    m, outputs[0], shaped(
+      tensor.elem(values), tensor.inserted(source, axis, ty(depth[0]))
+    )
+  )
+}
+
+fn dynamic_quant_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 3 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return false
+  }
+  let shape = tensor.dims(input)
+  var changed = set_type(
+    m, outputs[0], shaped(ty("u8"), shape)
+  )
+  changed = set_type(
+    m, outputs[1], ty("tensor<f32, []>")
+  ) || changed
+  changed = set_type(
+    m, outputs[2], ty("tensor<u8, []>")
+  ) || changed
+  return changed
+}
+
+fn constant_shape_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let shape = shape_terms(inputs[0])
+  if len(shape) == 0 {
+    return false
+  }
+  var elem = ty("f32")
+  let meta = attrs(op)
+  if base.has(meta, "value") {
+    elem = element(base.get(meta["value"], "type", 1))
+  }
+  if elem == ty("_") {
+    return false
+  }
+  return set_type(m, outputs[0], shaped(elem, shape))
 }
 
 fn reshape_result(op: Op) -> Ty {
@@ -213,8 +711,7 @@ fn reshape_result(op: Op) -> Ty {
     return ty("_")
   }
   var inferred = -1
-  var known = 1
-  var symbolic = false
+  var factors: list<Ty> = []
   for i in 0..len(requested) {
     if kind(requested[i]) == "int" {
       let extent = int(requested[i])
@@ -228,36 +725,29 @@ fn reshape_result(op: Op) -> Ty {
           if i >= len(source) {
             return ty("_")
           }
-          if kind(source[i]) == "int" {
-            known *= int(source[i])
-          } else {
-            symbolic = true
-          }
+          factors += [source[i]]
         } else {
           if extent >= 0 {
-            known *= extent
+            factors += [requested[i]]
           } else {
             return ty("_")
           }
         }
       }
     } else {
-      symbolic = true
+      factors += [requested[i]]
     }
   }
   var missing = ty("_")
   if inferred != -1 {
-    let total = tensor.product(source, 0, len(source))
-    if kind(total) == "int" && !symbolic && known != 0 &&
-       int(total) % known == 0 {
-      missing = ty(int(total) / known)
-    } else {
-      if kind(total) != "int" && !symbolic && known == 1 {
-        missing = total
-      } else {
-        return ty("_")
-      }
+    let source_total = tensor.product(source, 0, len(source))
+    let factor_total = tensor.product(factors, 0, len(factors))
+    if kind(source_total) == "int" && kind(factor_total) == "int" &&
+       (int(factor_total) <= 0 ||
+        int(source_total) % int(factor_total) != 0) {
+      return ty("_")
     }
+    missing = tensor.quotient(source, factors)
   }
   var shape: list<Ty> = []
   for i in 0..len(requested) {
@@ -278,7 +768,7 @@ fn reshape_result(op: Op) -> Ty {
      source_total != result_total {
     return ty("_")
   }
-  return tensor.type(tensor.elem(input), shape)
+  return shaped(tensor.elem(input), shape)
 }
 
 fn reshape_type(m: Mod, op: Op) -> bool {
@@ -297,7 +787,7 @@ fn flattened(input: Ty, axis: int) -> Ty {
     return ty("_")
   }
   let shape: list<Ty> = [outer, inner]
-  return tensor.type(tensor.elem(input), shape)
+  return shaped(tensor.elem(input), shape)
 }
 
 fn infer_flatten(m: Mod, op: Op) -> bool {
@@ -325,26 +815,32 @@ fn infer_flatten(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], result)
 }
 
-fn matmul_result(op: Op) -> Ty {
-  let inputs = ir.args(op)
-  if len(inputs) != 2 {
-    return ty("_")
-  }
-  let left = ir.type(inputs[0])
-  let right = ir.type(inputs[1])
+fn matmul_shape(
+  left: Ty, right: Ty, transpose_left: bool, transpose_right: bool
+) -> list<Ty> {
+  var none: list<Ty> = []
   if !tensor.valid(left) || !tensor.valid(right) {
-    return ty("_")
-  }
-  if tensor.elem(left) != tensor.elem(right) {
-    return ty("_")
+    return none
   }
   let ls = tensor.dims(left)
   let rs = tensor.dims(right)
   if len(ls) < 2 || len(rs) < 2 {
-    return ty("_")
+    return none
   }
-  if ls[len(ls) - 1] != rs[len(rs) - 2] {
-    return ty("_")
+  var rows = ls[len(ls) - 2]
+  var left_depth = ls[len(ls) - 1]
+  var right_depth = rs[len(rs) - 2]
+  var columns = rs[len(rs) - 1]
+  if transpose_left {
+    rows = ls[len(ls) - 1]
+    left_depth = ls[len(ls) - 2]
+  }
+  if transpose_right {
+    right_depth = rs[len(rs) - 1]
+    columns = rs[len(rs) - 2]
+  }
+  if left_depth != right_depth {
+    return none
   }
   var left_batch: list<Ty> = []
   var right_batch: list<Ty> = []
@@ -355,15 +851,49 @@ fn matmul_result(op: Op) -> Ty {
     right_batch += [rs[i]]
   }
   var shape: list<Ty> = []
-  if len(left_batch) != 0 || len(right_batch) != 0 {
-    shape = tensor.broadcast_shape(left_batch, right_batch)
-    if !tensor.broadcastable(left_batch, shape) ||
-       !tensor.broadcastable(right_batch, shape) {
-      return ty("_")
+  if len(left_batch) == 0 {
+    shape = right_batch
+  } else {
+    if len(right_batch) == 0 {
+      shape = left_batch
+    } else {
+      shape = tensor.broadcast_shape(left_batch, right_batch)
     }
   }
-  shape += [ls[len(ls) - 2], rs[len(rs) - 1]]
-  return tensor.type(tensor.elem(left), shape)
+  if len(left_batch) != 0 {
+    if !tensor.broadcastable(left_batch, shape) {
+      return none
+    }
+  }
+  if len(right_batch) != 0 {
+    if !tensor.broadcastable(right_batch, shape) {
+      return none
+    }
+  }
+  shape += [rows, columns]
+  return shape
+}
+
+fn matmul_shape(left: Ty, right: Ty) -> list<Ty> {
+  return matmul_shape(left, right, false, false)
+}
+
+fn matmul_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) != 2 {
+    return ty("_")
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[1])
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     tensor.elem(left) != tensor.elem(right) {
+    return ty("_")
+  }
+  let shape = matmul_shape(left, right)
+  if len(shape) == 0 {
+    return ty("_")
+  }
+  return shaped(tensor.elem(left), shape)
 }
 
 fn matmul_type(m: Mod, op: Op) -> bool {
@@ -372,6 +902,58 @@ fn matmul_type(m: Mod, op: Op) -> bool {
     return false
   }
   return set_type(m, outputs[0], matmul_result(op))
+}
+
+fn integer_matmul_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 2 || len(inputs) > 4 || len(outputs) != 1 {
+    return false
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[1])
+  if !tensor.valid(left) || !tensor.valid(right) {
+    return false
+  }
+  let le = tensor.elem(left)
+  let re = tensor.elem(right)
+  if (le != ty("i8") && le != ty("u8")) ||
+     (re != ty("i8") && re != ty("u8")) {
+    return false
+  }
+  let shape = matmul_shape(left, right)
+  if len(shape) == 0 {
+    return false
+  }
+  return set_type(m, outputs[0], shaped(ty("i32"), shape))
+}
+
+fn fused_matmul_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 1 {
+    return false
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[1])
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     tensor.elem(left) != tensor.elem(right) {
+    return false
+  }
+  let meta = attrs(op)
+  let trans_a = base.get(meta, "transA", 0)
+  let trans_b = base.get(meta, "transB", 0)
+  if (trans_a != 0 && trans_a != 1) ||
+     (trans_b != 0 && trans_b != 1) ||
+     base.get(meta, "transBatchA", 0) != 0 ||
+     base.get(meta, "transBatchB", 0) != 0 {
+    return false
+  }
+  let shape = matmul_shape(left, right, trans_a == 1, trans_b == 1)
+  if len(shape) == 0 {
+    return false
+  }
+  return set_type(m, outputs[0], shaped(tensor.elem(left), shape))
 }
 
 fn transpose_axes(op: Op, rank: int) -> list<int> {
@@ -405,7 +987,7 @@ fn transpose_type(m: Mod, op: Op) -> bool {
     return false
   }
   return set_type(
-    m, outputs[0], tensor.type(
+    m, outputs[0], shaped(
       tensor.elem(input), tensor.permuted(shape, axes)
     )
   )
@@ -448,7 +1030,7 @@ fn reduce_result(op: Op) -> Ty {
   if keep != 0 && keep != 1 {
     return ty("_")
   }
-  return tensor.type(
+  return shaped(
     tensor.elem(input), tensor.reduced(shape, axes, keep == 1)
   )
 }
@@ -544,7 +1126,7 @@ fn conv_result(op: Op) -> Ty {
     return ty("_")
   }
   let shape: list<Ty> = [xs[0], ws[0], ty(h), ty(w)]
-  return tensor.type(tensor.elem(x), shape)
+  return shaped(tensor.elem(x), shape)
 }
 
 fn conv_type(m: Mod, op: Op) -> bool {
@@ -571,7 +1153,7 @@ fn global_pool_type(m: Mod, op: Op) -> bool {
   }
   let result: list<Ty> = [shape[0], shape[1], ty(1), ty(1)]
   return set_type(
-    m, outputs[0], tensor.type(tensor.elem(x), result)
+    m, outputs[0], shaped(tensor.elem(x), result)
   )
 }
 
@@ -617,7 +1199,7 @@ fn pool_type(m: Mod, op: Op) -> bool {
   }
   let result: list<Ty> = [shape[0], shape[1], ty(h), ty(w)]
   return set_type(
-    m, outputs[0], tensor.type(tensor.elem(x), result)
+    m, outputs[0], shaped(tensor.elem(x), result)
   )
 }
 
@@ -630,6 +1212,12 @@ fn infer(m: Mod) -> bool {
     if ir.callee(op) == "onnx.DequantizeLinear" {
       changed = dequant_type(m, op) || changed
     }
+    if ir.callee(op) == "onnx.DynamicQuantizeLinear" {
+      changed = dynamic_quant_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.ConstantOfShape" {
+      changed = constant_shape_type(m, op) || changed
+    }
     if ir.callee(op) == "onnx.Conv" {
       changed = conv_type(m, op) || changed
     }
@@ -638,7 +1226,8 @@ fn infer(m: Mod) -> bool {
        ir.callee(op) == "onnx.Softmax" ||
        ir.callee(op) == "onnx.Sqrt" ||
        ir.callee(op) == "onnx.Reciprocal" ||
-       ir.callee(op) == "onnx.Tanh" {
+       ir.callee(op) == "onnx.Tanh" ||
+       ir.callee(op) == "onnx.Identity" {
       changed = same_type(m, op) || changed
     }
     if ir.callee(op) == "onnx.Add" || ir.callee(op) == "onnx.Sub" ||
@@ -652,8 +1241,41 @@ fn infer(m: Mod) -> bool {
     if ir.callee(op) == "onnx.Reshape" {
       changed = reshape_type(m, op) || changed
     }
+    if ir.callee(op) == "onnx.Cast" {
+      changed = cast_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Shape" {
+      changed = shape_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Gather" {
+      changed = gather_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Unsqueeze" {
+      changed = unary_shape_type(m, op, false) || changed
+    }
+    if ir.callee(op) == "onnx.Squeeze" {
+      changed = unary_shape_type(m, op, true) || changed
+    }
+    if ir.callee(op) == "onnx.Slice" {
+      changed = slice_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Concat" {
+      changed = concat_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Split" {
+      changed = split_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.OneHot" {
+      changed = one_hot_type(m, op) || changed
+    }
     if ir.callee(op) == "onnx.MatMul" {
       changed = matmul_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.MatMulInteger" {
+      changed = integer_matmul_type(m, op) || changed
+    }
+    if ir.callee(op) == "com_microsoft.FusedMatMul" {
+      changed = fused_matmul_type(m, op) || changed
     }
     if ir.callee(op) == "onnx.Transpose" {
       changed = transpose_type(m, op) || changed
@@ -681,7 +1303,17 @@ fn ints(m: Mod, before: Op, value: Attr) -> Val {
 }
 
 fn convert_call(m: Mod, op: Op, callee: str) -> bool {
-  if !ir.rename(m, op, callee) {
+  if !ir.retarget(m, op, callee, ir.args(op)) {
+    return false
+  }
+  ir.unset(m, op, "onnx")
+  return true
+}
+
+fn convert_call(
+  m: Mod, op: Op, callee: str, inputs: list<Val>
+) -> bool {
+  if !ir.retarget(m, op, callee, inputs) {
     return false
   }
   ir.unset(m, op, "onnx")
@@ -724,10 +1356,7 @@ fn convert_conv(m: Mod, op: Op) -> bool {
     inputs += [ints(m, op, [0, 1, 2, 3])]
     inputs += [ir.constant(m, op, "NONE", "str")]
   }
-  if !ir.args(m, op, inputs) {
-    return false
-  }
-  return convert_call(m, op, "nn.conv2d")
+  return convert_call(m, op, "nn.conv2d", inputs)
 }
 
 fn convert_norm(m: Mod, op: Op) -> bool {
@@ -746,10 +1375,7 @@ fn convert_norm(m: Mod, op: Op) -> bool {
   inputs += [
     ir.constant(m, op, base.get(meta, "epsilon", 0.00001), "f64")
   ]
-  if !ir.args(m, op, inputs) {
-    return false
-  }
-  return convert_call(m, op, "nn.batch_norm")
+  return convert_call(m, op, "nn.batch_norm", inputs)
 }
 
 fn convert_softmax(m: Mod, op: Op) -> bool {
@@ -777,10 +1403,7 @@ fn convert_softmax(m: Mod, op: Op) -> bool {
   }
   inputs += [ir.constant(m, op, axis, "int")]
   inputs += [ir.constant(m, op, 1.0, "f64")]
-  if !ir.args(m, op, inputs) {
-    return false
-  }
-  return convert_call(m, op, "nn.softmax")
+  return convert_call(m, op, "nn.softmax", inputs)
 }
 
 fn convert_reshape(m: Mod, op: Op) -> bool {
@@ -797,10 +1420,7 @@ fn convert_reshape(m: Mod, op: Op) -> bool {
   if expected == ty("_") || ir.type(outputs[0]) != expected {
     return false
   }
-  if !ir.args(m, op, [inputs[0]]) {
-    return false
-  }
-  return convert_call(m, op, "tensor.reshape")
+  return convert_call(m, op, "tensor.reshape", [inputs[0]])
 }
 
 fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
@@ -820,8 +1440,19 @@ fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
      tensor.elem(left) != tensor.elem(result) {
     return false
   }
-  if !tensor.broadcastable(tensor.dims(left), tensor.dims(result)) ||
-     !tensor.broadcastable(tensor.dims(right), tensor.dims(result)) {
+  var left_ok = len(tensor.dims(left)) == 0
+  var right_ok = len(tensor.dims(right)) == 0
+  if !left_ok {
+    left_ok = tensor.broadcastable(
+      tensor.dims(left), tensor.dims(result)
+    )
+  }
+  if !right_ok {
+    right_ok = tensor.broadcastable(
+      tensor.dims(right), tensor.dims(result)
+    )
+  }
+  if !left_ok || !right_ok {
     return false
   }
   return convert_call(m, op, callee)
@@ -881,14 +1512,11 @@ fn convert_transpose(m: Mod, op: Op) -> bool {
   if !tensor.permutation(axes, len(shape)) {
     return false
   }
-  if result != tensor.type(tensor.elem(input), tensor.permuted(shape, axes)) {
+  if result != shaped(tensor.elem(input), tensor.permuted(shape, axes)) {
     return false
   }
   inputs += [ints(m, op, axes)]
-  if !ir.args(m, op, inputs) {
-    return false
-  }
-  return convert_call(m, op, "tensor.permute")
+  return convert_call(m, op, "tensor.permute", inputs)
 }
 
 fn convert_mean(m: Mod, op: Op) -> bool {
@@ -903,10 +1531,7 @@ fn convert_mean(m: Mod, op: Op) -> bool {
   }
   let axes = reduce_axes(op, len(tensor.dims(ir.type(inputs[0]))))
   inputs += [ints(m, op, axes)]
-  if !ir.args(m, op, inputs) {
-    return false
-  }
-  return convert_call(m, op, "tensor.mean")
+  return convert_call(m, op, "tensor.mean", inputs)
 }
 
 fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
@@ -946,10 +1571,7 @@ fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
   inputs += [ints(m, op, pad)]
   inputs += [ints(m, op, dilation)]
   inputs += [ints(m, op, [0, 1, 2, 3])]
-  if !ir.args(m, op, inputs) {
-    return false
-  }
-  return convert_call(m, op, callee)
+  return convert_call(m, op, callee, inputs)
 }
 
 fn convert(m: Mod) -> bool {

@@ -1238,6 +1238,14 @@ private:
       const auto* op = as<Op>(args[1]);
       if (mod && *mod && op)
         return Items{Item(Attr((*mod)->erase(*op)))};
+    } else if (name == "retarget" && args.size() == 4) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* op = as<Op>(args[1]);
+      const auto callee = string(args[2]);
+      const auto values = value_handles(args[3]);
+      if (mod && *mod && op && callee && values)
+        return Items{Item(Attr((*mod)->retarget(
+            env_, *op, std::string(*callee), *values)))};
     } else if (name == "rename" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
       const auto value = string(args[2]);
@@ -1444,7 +1452,10 @@ bool run(Env& env, std::string_view function, Mod& mod, Attr& report) {
     return false;
   }
   if (!mod.verify(env)) {
+    const std::vector<Diag> diagnostics = mod.diags();
     mod.impl_->store = std::move(before);
+    for (const Diag& diagnostic : diagnostics)
+      env.error(diagnostic.message, diagnostic.loc);
     env.error("compile-time function produced an invalid module: " +
               std::string(function));
     return false;

@@ -1267,6 +1267,26 @@ int main(int argc, char** argv) {
   CHECK(joggle::print(rolled_back) == before_failure);
   CHECK(rolled_back.revision() == before_failure_revision);
   CHECK(!env.diags().empty());
+  env.clear_diags();
+  joggle::Mod invalid_run;
+  CHECK(joggle::parse(env,
+                      "module invalid.run\n"
+                      "fn main(x: i32) -> i32 {\n"
+                      "  let y: i32 = pure(x)\n"
+                      "  return y\n"
+                      "}\n",
+                      invalid_run, "invalid-run.jog"));
+  CHECK(invalid_run.verify(env));
+  const std::string before_invalid_run = joggle::print(invalid_run);
+  const std::uint64_t before_invalid_run_revision = invalid_run.revision();
+  CHECK(!joggle::run(env, "script.invalidate_call", invalid_run));
+  CHECK(joggle::print(invalid_run) == before_invalid_run);
+  CHECK(invalid_run.revision() == before_invalid_run_revision);
+  bool kept_verify_detail = false;
+  for (const joggle::Diag& diag : env.diags())
+    kept_verify_detail = kept_verify_detail ||
+                         diag.message.find("base.len") != std::string::npos;
+  CHECK(kept_verify_detail);
 
   joggle::Mod immutable;
   CHECK(!joggle::parse(env,

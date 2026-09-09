@@ -131,6 +131,7 @@ The built-in `ir` module is the complete reflection boundary:
 | `has`, `meta` | Query open function, value, or operation attributes. |
 | `call`, `constant`, `loop`, `branch` | Construct leaves and structured control flow. |
 | `clone`, `expand`, `move`, `args` | Copy, substitute a function body, place, or reconnect IR. |
+| `retarget` | Atomically change one call and its operands after normal overload resolution. |
 | `replace`, `erase`, `rename` | Rewrite dataflow, ownership, and readable names. |
 | `set`, `unset` | Edit a function, value, or operation attribute. |
 | `use` | Add an idempotent module dependency. |
@@ -175,6 +176,11 @@ a symbolic-expression class. `permutation`, `permuted`, and the inspectable
 `permute` body provide rank-generic axis reordering. `product` proves a
 partition extent when it is concrete or contains one unscaled symbolic term;
 otherwise it returns `_` instead of inventing an expression language.
+`quotient` cancels equal symbolic factors and exact integer factors, while
+`inserted`, `replaced`, and `gathered` perform reusable structural dimension
+edits. `refined` fills only `_` tensor holes and rejects a conflicting element,
+rank, or dimension. These relations are ordinary module functions and are
+available to any frontend or research transform.
 `broadcast_shape` and `broadcastable` are overloaded for concrete shapes and
 raw dimension terms. They express trailing-axis compatibility by exact term
 equality and singleton expansion, while `broadcast_offset` and `broadcast`
@@ -243,11 +249,11 @@ module function.
 
 The optional `onnx.nn` module is that relationship, not another IR layer.
 `onnx.nn.infer` walks operations in source order and propagates tensor types
-through QuantizeLinear/DequantizeLinear, Conv, BatchNormalization, ReLU,
-broadcast Add/Sub/Mul, spatial pooling, and GlobalAveragePool. Quantization
-nodes contribute only their provable shape and element type here; they remain
-source calls until a quantization module supplies rounding and rescaling
-semantics.
+through quantization boundaries, convolution, normalization point algebra,
+broadcast arithmetic, pooling, matrix operations, tensor rearrangement, and
+shape dataflow. Quantization nodes contribute only their provable shape and
+element type here; they remain source calls until a quantization module
+supplies rounding and rescaling semantics.
 Unsupported ranks and `auto_pad` are left unchanged rather than guessed. Open
 intermediate types are likewise retained instead of causing an unsafe
 projection. Named symbolic extents now flow through Add/Sub/Mul, Flatten,
@@ -260,12 +266,15 @@ literals. Conv accepts its schema's optional one-dimensional bias and maps it
 through the existing layout-explicit `nn.conv2d` composition. A mismatched bias,
 channel relation, nonpositive stride/dilation, or non-`NOTSET` automatic padding
 keeps the source call intact.
-`onnx.nn.convert` then maps Conv, BatchNormalization, ReLU, Add/Sub/Mul,
-AveragePool, MaxPool, GlobalAveragePool, Softmax, Reshape, Flatten, and the
-rank-two-or-higher subset of MatMul. Flatten reuses `tensor.reshape`; MatMul reuses
-`tensor.matmul`; Transpose reuses `tensor.permute`. The relation materializes
-schema attributes as ordinary operands and removes schema-only shape inputs. It does
-not run inference implicitly and does not alter the codec. On the pinned
+`onnx.nn.convert` then maps Conv, BatchNormalization, ReLU, Add/Sub/Mul/Div/Pow,
+Sqrt/Reciprocal/Tanh, AveragePool, MaxPool, GlobalAveragePool, ReduceMean,
+Softmax, Reshape, Flatten, rank-two-or-higher MatMul, and Transpose. Flatten
+reuses `tensor.reshape`; MatMul reuses `tensor.matmul`; Transpose reuses
+`tensor.permute`. The relation materializes schema attributes as ordinary
+operands and removes schema-only shape inputs. It does not run inference
+implicitly and does not alter the codec. `ir.retarget` accepts each prospective
+call through the ordinary resolver before committing it, so partial or
+anonymous shapes retain only the unsupported source call. On the pinned
 MobileNetV2 this covers every compute node; unsupported calls in other models
 remain untouched.
 Softmax conversion accepts an explicit, in-range ONNX axis and normalizes a

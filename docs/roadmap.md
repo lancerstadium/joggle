@@ -159,8 +159,9 @@ broadcast-batched MatMul, and Transpose using structural type terms.
 Generic-list expansion
 reuses caller dimension bindings, so those converted calls can expose their
 normal tensor bodies without requiring a concrete batch size. Shape relations
-that need an unrepresentable symbolic product remain open rather than being
-special-cased for a model.
+cancel exact factors and retain anonymous dimensions when a runtime product is
+not representable as one existing term; rank information no longer disappears
+with that product.
 QuantizeLinear and DequantizeLinear now propagate shape and element type without
 being semantically converted. Conv and pooling require concrete spatial
 arithmetic but preserve a symbolic batch dimension; optional Conv bias is
@@ -175,22 +176,24 @@ ONNX's version-dependent omitted-axis default remains open.
 A multi-axis coordinate relation now supports an inspectable tensor mean body.
 The ONNX relation normalizes negative axes, models `keepdims` structurally, and
 retains duplicate or out-of-range axes. A symbolic multi-axis reduction expands
-through the same generic body. The imported quantized BERT graph supplies the
-next coverage gate: its 50 `ReduceMean` nodes are downstream of unresolved shape
-and integer-quantized subgraphs, so conversion is intentionally not yet claimed.
+through the same generic body. The imported quantized BERT graph now exercises
+all 50 `ReduceMean` nodes after shape and integer-quantized type propagation.
+Their computation is converted to the shared multi-axis mean body while the
+quantized operators themselves remain explicit frontier calls.
 The shared library also covers broadcast division and power plus elementwise
 square root, reciprocal, and hyperbolic tangent. A symbolic decomposed
 normalization/GELU chain passes inference, conversion, body expansion, and
-verification without introducing fused operator classes. Reaching those paths
-in the imported BERT model still requires the separate dynamic-shape and
-integer-quantization relations below them.
+verification without introducing fused operator classes. Those paths now reach
+every transformer layer in the imported BERT model.
 The first shape-program mechanism is now present without a second IR. Textual
 modules can traverse `Val -> Op`, inspect bounded byte constants, and derive
-symbolic Reshape types through Shape/Gather/Unsqueeze/Squeeze/Concat/Cast
-chains. On the imported quantized BERT this safely exposes one additional
-Reshape; the remaining 69 confirm that Gather typing, integer MatMul, and
-dynamic quantization—not the representation of shape programs—are the next
-coverage boundary.
+symbolic Reshape types through Shape/Gather/Slice/Unsqueeze/Squeeze/Concat/Cast
+chains. Compatible tensor holes are refined without overwriting imported type
+contracts; ConstantOfShape, OneHot, DynamicQuantizeLinear, MatMulInteger,
+Split, and transposed batched MatMul complete structural propagation through a
+12-layer quantized BERT graph. All 70 Reshape calls and 774 other covered
+floating tensor calls convert through shared semantics. Quantized execution
+semantics and vendor fused computation deliberately remain later module work.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

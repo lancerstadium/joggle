@@ -257,6 +257,31 @@ int main(int argc, char** argv) {
   for (joggle::Op op : binary_bridge.ops())
     CHECK(op.callee() != "nn.mul" && op.callee() != "nn.sub");
 
+  constexpr std::string_view scalar_bridge_source =
+      "module scalar.bridge\n"
+      "use onnx\n"
+      "fn main(values: tensor<f32, [768]>) -> tensor<f32, [768]> {\n"
+      "  let scalar: tensor<f32, []> = source()\n"
+      "  let out: tensor<f32, [768]> = onnx.Mul(scalar, values)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod scalar_bridge;
+  CHECK(joggle::parse(env, scalar_bridge_source, scalar_bridge,
+                      "scalar-bridge.jog"));
+  CHECK(scalar_bridge.verify(env));
+  joggle::Op scalar_mul;
+  for (joggle::Op op : scalar_bridge.ops())
+    if (op.callee() == "onnx.Mul")
+      scalar_mul = op;
+  CHECK(scalar_mul && scalar_bridge.use("nn"));
+  const std::string before_bad_retarget = joggle::print(scalar_bridge);
+  CHECK(!scalar_bridge.retarget(env, scalar_mul, "nn.relu",
+                                scalar_mul.args()));
+  CHECK(joggle::print(scalar_bridge) == before_bad_retarget);
+  CHECK(joggle::run(env, "onnx.nn.convert", scalar_bridge));
+  CHECK(scalar_bridge.verify(env));
+  CHECK(scalar_mul.callee() == "nn.mul");
+
   constexpr std::string_view matrix_bridge_source =
       "module matrix.bridge\n"
       "use onnx\n"
@@ -490,20 +515,33 @@ int main(int argc, char** argv) {
       "use onnx\n"
       "fn main<N: int>(x: tensor<f32, [N, 3, 4]>) "
       "-> tensor<f32, [N, 12]> {\n"
-      "  let shape = onnx.Shape(x)\n"
+      "  let inferred_target: tensor<i64, [3]> = onnx.tensor(\n"
+      "    7, [3], "
+      "hex\"ffffffffffffffff03000000000000000400000000000000\"\n"
+      "  )\n"
+      "  let expanded = onnx.Reshape(x, inferred_target)\n"
+      "  let shape = onnx.Shape(expanded)\n"
       "  let index: tensor<i64, [1]> = "
       "onnx.tensor(7, [1], hex\"0000000000000000\")\n"
       "  [onnx: {axis: 0}]\n"
       "  let batch = onnx.Gather(shape, index)\n"
       "  [onnx: {axes: [0]}]\n"
       "  let vector = onnx.Unsqueeze(batch)\n"
-      "  let tail: tensor<i64, [1]> = "
-      "onnx.tensor(7, [1], hex\"0c00000000000000\")\n"
+      "  let tail_data: tensor<i64, [2]> = onnx.tensor(\n"
+      "    7, [2], hex\"0c000000000000006300000000000000\"\n"
+      "  )\n"
+      "  let start: tensor<i64, [1]> = "
+      "onnx.tensor(7, [1], hex\"0000000000000000\")\n"
+      "  let end: tensor<i64, [1]> = "
+      "onnx.tensor(7, [1], hex\"0100000000000000\")\n"
+      "  let axis: tensor<i64, [1]> = "
+      "onnx.tensor(7, [1], hex\"0000000000000000\")\n"
+      "  let tail = onnx.Slice(tail_data, start, end, axis)\n"
       "  [onnx: {axis: 0}]\n"
       "  let target = onnx.Concat(vector, tail)\n"
       "  [onnx: {to: 7}]\n"
       "  let cast = onnx.Cast(target)\n"
-      "  let out = onnx.Reshape(x, cast)\n"
+      "  let out = onnx.Reshape(expanded, cast)\n"
       "  return out\n"
       "}\n";
   joggle::Mod shape_program;
@@ -526,6 +564,62 @@ int main(int argc, char** argv) {
   CHECK(shape_reshape_fn &&
         shape_program.expand(semantic_reshape, shape_reshape_fn));
   CHECK(shape_program.verify(env));
+
+  constexpr std::string_view transformer_source =
+      "module transformer.shape\n"
+      "use onnx\n"
+      "fn main<N: int>(\n"
+      "  query: tensor<f32, [N, 12, 256, 64]>,\n"
+      "  key: tensor<f32, [N, 12, 256, 64]>\n"
+      ") -> tensor<f32, [N, 12, 256, 256]> {\n"
+      "  let shape = onnx.Shape(query)\n"
+      "  [onnx: {value: {type: 1}}]\n"
+      "  let filled: tensor<f32, [_, 12, 256, 64]> = "
+      "onnx.ConstantOfShape(shape)\n"
+      "  [onnx: {alpha: 0.125, transA: 0, transB: 1}]\n"
+      "  let scores = com_microsoft.FusedMatMul(query, key)\n"
+      "  return scores\n"
+      "}\n";
+  joggle::Mod transformer;
+  CHECK(joggle::parse(env, transformer_source, transformer,
+                      "transformer-shape.jog"));
+  CHECK(transformer.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", transformer));
+  CHECK(transformer.verify(env));
+  joggle::Op filled;
+  joggle::Op scores;
+  for (joggle::Op op : transformer.ops()) {
+    if (op.callee() == "onnx.ConstantOfShape")
+      filled = op;
+    if (op.callee() == "com_microsoft.FusedMatMul")
+      scores = op;
+  }
+  CHECK(filled && filled.outs()[0].type() ==
+                      joggle::Ty("tensor<f32, [N, 12, 256, 64]>"));
+  CHECK(scores && scores.outs()[0].type() ==
+                      joggle::Ty("tensor<f32, [N, 12, 256, 256]>"));
+
+  constexpr std::string_view split_source =
+      "module split.shape\n"
+      "use onnx\n"
+      "fn main<N: int>(x: tensor<f32, [2, N, 256]>) "
+      "-> (tensor<f32, [1, N, 256]>, tensor<f32, [1, N, 256]>) {\n"
+      "  [onnx: {axis: 0}]\n"
+      "  let left, right = onnx.Split(x)\n"
+      "  return left, right\n"
+      "}\n";
+  joggle::Mod split;
+  CHECK(joggle::parse(env, split_source, split, "split-shape.jog"));
+  CHECK(split.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", split));
+  CHECK(split.verify(env));
+  joggle::Op split_call;
+  for (joggle::Op op : split.ops())
+    if (op.callee() == "onnx.Split")
+      split_call = op;
+  CHECK(split_call && split_call.outs().size() == 2);
+  for (joggle::Val value : split_call.outs())
+    CHECK(value.type() == joggle::Ty("tensor<f32, [1, N, 256]>"));
 
   constexpr std::string_view invalid_reshape_source =
       "module invalid.reshape\n"
@@ -583,6 +677,29 @@ int main(int argc, char** argv) {
   CHECK(batched_matmul_fn &&
         batched_matmul.expand(semantic_batched_matmul, batched_matmul_fn));
   CHECK(batched_matmul.verify(env));
+
+  constexpr std::string_view mixed_matmul_source =
+      "module mixed.matmul\n"
+      "use onnx\n"
+      "fn main<N: int>(\n"
+      "  left: tensor<f32, [3, 4]>,\n"
+      "  right: tensor<f32, [N, 4, 5]>\n"
+      ") -> tensor<f32, [N, 3, 5]> {\n"
+      "  return onnx.MatMul(left, right)\n"
+      "}\n";
+  joggle::Mod mixed_matmul;
+  CHECK(joggle::parse(env, mixed_matmul_source, mixed_matmul,
+                      "mixed-matmul.jog"));
+  CHECK(mixed_matmul.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", mixed_matmul));
+  CHECK(joggle::run(env, "onnx.nn.convert", mixed_matmul));
+  CHECK(mixed_matmul.verify(env));
+  joggle::Op mixed_call;
+  for (joggle::Op op : mixed_matmul.ops())
+    if (op.callee() == "tensor.matmul")
+      mixed_call = op;
+  CHECK(mixed_call && mixed_call.outs()[0].type() ==
+                          joggle::Ty("tensor<f32, [N, 3, 5]>"));
 
   constexpr std::string_view softmax_source =
       "module axis.softmax\n"

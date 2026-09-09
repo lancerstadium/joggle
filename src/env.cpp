@@ -508,16 +508,23 @@ Fn Env::resolve(Fn from, std::string_view symbol) const {
 }
 
 Fn Env::resolve(const Mod& from, Op call) const {
+  if (!call)
+    return {};
+  const std::vector<Val> values = call.args();
+  return resolve(from, call, call.callee(), values);
+}
+
+Fn Env::resolve(const Mod& from, Op call, std::string_view callee,
+                std::span<const Val> values) const {
   if (!call || call.kind() != Op::Kind::call)
     return {};
-  const std::string_view callee = call.callee();
   const Ty applied{std::string(callee)};
   const std::string_view symbol =
       applied.args().empty() ? callee : applied.name();
   const std::vector<Ty> explicit_arguments =
       applied.args().empty() ? std::vector<Ty>{} : applied.args();
   std::vector<Ty> arguments;
-  for (const Val value : call.args())
+  for (const Val value : values)
     arguments.push_back(value.type());
   std::vector<Ty> returns;
   for (const Val value : call.outs())

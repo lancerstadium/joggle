@@ -1833,6 +1833,16 @@ bool integer_term(std::string_view text) {
 }
 
 Ty term_kind(const Ty& term, std::span<const GenericInfo> context) {
+  if (term.name() == "[]") {
+    Ty element("_");
+    if (!term.args().empty()) {
+      element = term_kind(term.args().front(), context);
+      for (std::size_t index = 1; index < term.args().size(); ++index)
+        if (term_kind(term.args()[index], context) != element)
+          element = Ty("_");
+    }
+    return Ty("list<" + std::string(element.text()) + ">");
+  }
   if (term.args().empty()) {
     if (term.name() == "_")
       return Ty("_");
@@ -1845,16 +1855,7 @@ Ty term_kind(const Ty& term, std::span<const GenericInfo> context) {
       return Ty("bool");
     return Ty("Ty");
   }
-  if (term.name() != "[]")
-    return Ty("Ty");
-  Ty element("_");
-  if (!term.args().empty()) {
-    element = term_kind(term.args().front(), context);
-    for (std::size_t index = 1; index < term.args().size(); ++index)
-      if (term_kind(term.args()[index], context) != element)
-        element = Ty("_");
-  }
-  return Ty("list<" + std::string(element.text()) + ">");
+  return Ty("Ty");
 }
 
 bool accepts_kind(const Ty& expected, const Ty& actual) {

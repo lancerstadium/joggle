@@ -279,6 +279,13 @@ yielded update, or the structure result renames the whole chain atomically.
 Calling it on a loop iterator also updates the loop header. This makes generic
 `Blk` traversal safe to edit without exposing the printer's bookkeeping.
 
+Call conversion uses `ir.retarget(m, op, callee, args)`. It applies the same
+visibility, overload, generic, argument, result, and dominance checks as an
+ordinary source call before changing either the callee or its operands. A
+failed match returns `false` with the original call intact. Bridge modules can
+therefore try a semantic function without constructing a parallel legality
+system or relying on whole-pipeline rollback.
+
 Function bodies are exposed by an explicit edit, never by loading a module.
 `ir.resolve(m, op)` applies normal import, qualification, overload, and generic
 resolution to a call and returns an invalid `Fn` when the call remains open.

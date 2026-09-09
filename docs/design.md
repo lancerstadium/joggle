@@ -757,12 +757,41 @@ now exposes `ir.def(value)`, matching the existing C++ `Val::def`, and checked
 byte size/index queries let a module inspect compact constants without a native
 callback or container ABI. `onnx.nn.shape_terms` recursively interprets only
 shape-producing calls: tensor constants, Shape, axis-zero Gather and Concat,
-Unsqueeze/Squeeze, Identity, and Cast. It returns structural `Ty` terms, so a
-dimension such as `N` is never flattened into a string or frozen to an integer.
+one-dimensional Slice, Unsqueeze/Squeeze, Identity, and Cast. It returns
+structural `Ty` terms, so a dimension such as `N` is never flattened into a
+string or frozen to an integer. When a shape scalar is computed but not
+representable as one existing term, the evaluator retains one `_` extent
+rather than discarding the known rank.
 
 `reshape_result` applies ONNX zero and inferred-dimension rules conservatively,
 then conversion requires the existing result type to equal that relation. The
-test builds `[N, 12]` through a realistic Shape/Gather/Unsqueeze/Concat/Cast
-chain before exposing `tensor.reshape`. Unsupported shape programs simply
-leave the source call intact; there is no durable shape dialect, metadata
-cache, or core operator switch.
+test builds `[N, 12]` through a realistic
+Shape/Gather/Slice/Unsqueeze/Concat/Cast chain before exposing
+`tensor.reshape`. Exact factors such as `[N, 256] / [256]` recover `N` through
+the reusable `tensor.quotient` relation. Unsupported shape programs simply
+retain partial dimensions or leave the source call intact; there is no durable
+shape dialect, metadata cache, or core operator switch.
+
+## M10 transformer-network slice
+
+Tensor refinement merges only compatible holes, so inferred structure cannot
+overwrite an imported interface contract. Shape-of-shape relations now cover
+Gather, Slice, Squeeze/Unsqueeze, Concat, ConstantOfShape, and Split. OneHot,
+DynamicQuantizeLinear, MatMulInteger, and the transposed-batched shape of
+`com.microsoft.FusedMatMul` propagate types without pretending that their
+quantization or vendor semantics have already been converted.
+
+Call conversion now uses the general `ir.retarget` edit. It checks a proposed
+callee and operand list with normal module visibility and overload resolution,
+then commits both together; a mismatch changes nothing. This removes the gap
+between a bridge's local shape checks and final module verification. It also
+exposed and fixed empty type-list classification, allowing scalar tensor shape
+`[]` to bind an ordinary `list<int>` generic.
+
+On the locally imported 12-layer quantized BERT graph, inference leaves no open
+result binding. Conversion maps all 844 covered floating tensor operations:
+70 Reshape, 50 ReduceMean, 49 Transpose, 185 Add, 62 Sub, 342 Mul, and the
+remaining Pow, Sqrt, Reciprocal, Tanh, and Softmax calls. Integer quantization,
+source shape transport, Split, and the Microsoft fused MatMul stay explicit
+frontier calls for later research modules. Both inference and conversion are
+byte-idempotent.

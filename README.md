@@ -88,9 +88,19 @@ injecting a synthetic `"NONE"` operand into every frontend.
 Shape programs do not introduce a second shape IR. `ir.def` exposes a value's
 ordinary defining operation, while bounded byte access lets a module decode
 small integer tensor constants. `onnx.nn` recursively evaluates the shape-only
-subset of Shape, Gather, Unsqueeze/Squeeze, Concat, and Cast when deriving a
-Reshape result. A symbolic target such as `[N, 12]` therefore remains a normal
-tensor type and the converted Reshape still expands through `tensor.reshape`.
+subset of Shape, Gather, Slice, Unsqueeze/Squeeze, Concat, and Cast when
+deriving a Reshape result. Known rank and unknown extents remain ordinary `_`
+dimension terms, while exact symbolic factors are cancelled without adding an
+expression dialect. A symbolic target such as `[N, 12]` therefore remains a
+normal tensor type and the converted Reshape still expands through
+`tensor.reshape`.
+Type refinement fills only open tensor elements or dimensions and rejects
+conflicting facts. Structural relations for ConstantOfShape, OneHot, dynamic
+quantization, integer MatMul, Split, and transposed batched MatMul let a
+12-layer quantized BERT graph reach the same shared floating-point semantics.
+`ir.retarget` atomically changes a call and its operands only when the ordinary
+overload resolver accepts the prospective call, so an unsupported mapping
+leaves that call unchanged rather than invalidating a complete transform.
 The optional `onnx.nn` relation module is selected explicitly. On the official
 MobileNetV2 it propagates all intermediate tensor types, then converts every
 compute node to shared semantics. The model marker and tensor payloads remain

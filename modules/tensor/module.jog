@@ -42,6 +42,38 @@ fn dims(type: Ty) -> list<Ty> {
   return args(args(type)[1])
 }
 
+fn refined(current: Ty, candidate: Ty) -> Ty {
+  if !valid(current) || !valid(candidate) {
+    return ty("_")
+  }
+  var element = elem(current)
+  if element == ty("_") {
+    element = elem(candidate)
+  } else {
+    if elem(candidate) != ty("_") && elem(candidate) != element {
+      return ty("_")
+    }
+  }
+  let before = dims(current)
+  let after = dims(candidate)
+  if len(before) != len(after) {
+    return ty("_")
+  }
+  var shape: list<Ty> = []
+  for i in 0..len(before) {
+    var dim = before[i]
+    if dim == ty("_") {
+      dim = after[i]
+    } else {
+      if after[i] != ty("_") && after[i] != dim {
+        return ty("_")
+      }
+    }
+    shape += [dim]
+  }
+  return ty("tensor", [element, ty("[]", shape)])
+}
+
 fn type(elem: Ty, shape: list<int>) -> Ty {
   var dims: list<Ty> = []
   for extent in shape {
@@ -77,6 +109,86 @@ fn product(dims: list<Ty>, first: int, last: int) -> Ty {
     return symbol
   }
   return ty(value)
+}
+
+fn quotient(numerator: list<Ty>, denominator: list<Ty>) -> Ty {
+  var top = 1
+  var bottom = 1
+  var top_symbols: list<Ty> = []
+  var bottom_symbols: list<Ty> = []
+  for dim in numerator {
+    if kind(dim) == "int" {
+      if int(dim) < 0 {
+        return ty("_")
+      }
+      top *= int(dim)
+    } else {
+      if dim == ty("_") {
+        return ty("_")
+      }
+      top_symbols += [dim]
+    }
+  }
+  for dim in denominator {
+    if kind(dim) == "int" {
+      if int(dim) <= 0 {
+        return ty("_")
+      }
+      bottom *= int(dim)
+    } else {
+      if dim == ty("_") {
+        return ty("_")
+      }
+      bottom_symbols += [dim]
+    }
+  }
+  for symbol in bottom_symbols {
+    var available = 0
+    var required = 0
+    for item in top_symbols {
+      if item == symbol {
+        available += 1
+      }
+    }
+    for item in bottom_symbols {
+      if item == symbol {
+        required += 1
+      }
+    }
+    if available < required {
+      return ty("_")
+    }
+  }
+  var remaining: list<Ty> = []
+  for i in 0..len(top_symbols) {
+    let symbol = top_symbols[i]
+    var occurrence = 0
+    var cancelled = 0
+    for j in 0..i + 1 {
+      if top_symbols[j] == symbol {
+        occurrence += 1
+      }
+    }
+    for item in bottom_symbols {
+      if item == symbol {
+        cancelled += 1
+      }
+    }
+    if occurrence > cancelled {
+      remaining += [symbol]
+    }
+  }
+  if bottom == 0 || top % bottom != 0 || len(remaining) > 1 {
+    return ty("_")
+  }
+  let scale = top / bottom
+  if len(remaining) == 0 {
+    return ty(scale)
+  }
+  if scale == 1 {
+    return remaining[0]
+  }
+  return ty("_")
 }
 
 fn []<E: Ty, S: list<int>>(x: tensor<E, S>, i: index) -> E;
@@ -190,6 +302,48 @@ fn permuted(shape: list<Ty>, axes: list<int>) -> list<Ty> {
   var out: list<Ty> = []
   for axis in axes {
     out += [shape[axis]]
+  }
+  return out
+}
+
+fn inserted(shape: list<Ty>, axis: int, dim: Ty) -> list<Ty> {
+  var out: list<Ty> = []
+  for i in 0..len(shape) + 1 {
+    if i == axis {
+      out += [dim]
+    } else {
+      var source = i
+      if i > axis {
+        source -= 1
+      }
+      out += [shape[source]]
+    }
+  }
+  return out
+}
+
+fn replaced(shape: list<Ty>, axis: int, dim: Ty) -> list<Ty> {
+  var out: list<Ty> = []
+  for i in 0..len(shape) {
+    if i == axis {
+      out += [dim]
+    } else {
+      out += [shape[i]]
+    }
+  }
+  return out
+}
+
+fn gathered(
+  data: list<Ty>, indices: list<Ty>, axis: int
+) -> list<Ty> {
+  var out: list<Ty> = []
+  for i in 0..axis {
+    out += [data[i]]
+  }
+  out += indices
+  for i in axis + 1..len(data) {
+    out += [data[i]]
   }
   return out
 }

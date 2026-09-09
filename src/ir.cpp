@@ -1868,6 +1868,42 @@ bool Mod::rename(Op call, std::string callee) {
   return true;
 }
 
+bool Mod::retarget(const Env& env, Op call, std::string callee,
+                   std::span<const Val> args) {
+  auto& store = impl_->store;
+  if (!call.valid() || call.store_ != &store ||
+      call.kind() != Op::Kind::call || callee.empty()) {
+    detail::add_diag(store.diags,
+                     "retarget requires a live call and nonempty callee");
+    return false;
+  }
+  for (Val value : args)
+    if (!value.valid() || value.store_ != &store ||
+        !detail::dominates(store, value.id_, call.id_)) {
+      detail::add_diag(store.diags,
+                       "retarget arguments must dominate their call",
+                       call.loc());
+      return false;
+    }
+  if (!env.resolve(*this, call, callee, args))
+    return false;
+
+  std::vector<std::uint32_t> values;
+  values.reserve(args.size());
+  for (Val value : args)
+    values.push_back(value.id_);
+  detail::OpData& op = store.ops[call.id_].data;
+  if (op.callee == callee && op.args == values)
+    return true;
+  const bool changed_args = op.args != values;
+  op.callee = std::move(callee);
+  op.args = std::move(values);
+  if (changed_args)
+    detail::rebuild_uses(store);
+  touch(store);
+  return true;
+}
+
 bool Mod::set(Fn fn, std::string key, Attr value) {
   auto& store = impl_->store;
   if (!fn.valid() || fn.store_ != &store || key.empty()) {

@@ -322,6 +322,8 @@ private:
   void error(std::string message, Loc loc = {});
   std::uint64_t cache_id() const noexcept;
   std::uint64_t cache_epoch() const noexcept;
+  Fn resolve(const Mod& from, Op call, std::string_view callee,
+             std::span<const Val> args) const;
 
   friend class Parser;
   friend class Mod;
@@ -369,6 +371,8 @@ public:
   bool type(Val value, Ty type);
   bool rename(Val value, std::string name);
   bool rename(Op call, std::string callee);
+  bool retarget(const Env& env, Op call, std::string callee,
+                std::span<const Val> args);
   bool set(Fn fn, std::string key, Attr value);
   bool set(Val item, std::string key, Attr value);
   bool set(Op op, std::string key, Attr value);
