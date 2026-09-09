@@ -110,8 +110,11 @@ These functions operate on generic handles and contain no NN operator names.
 Adding an importer, optimization, or target module therefore does not extend
 the reflection ABI or add a parser case.
 
-`ir.call` inserts an arbitrary one-result call immediately before an existing
-operation. The insertion point makes order explicit and lets the core reject
+`ir.call` inserts an arbitrary call immediately before an existing operation.
+A `str` result-type argument returns the single `Val` convenience form; a
+`list<str>` returns the created `Op`, whose values are available through
+`ir.outs`. `ir.rename` is likewise overloaded for a call target or a result
+name. The insertion point makes order explicit and lets the core reject
 non-dominating operands without a stateful builder object. For example, a
 module can select functions carrying `[rewrite: "my.fused"]`, inspect their
 calls, create `my.fused(...)`, redirect uses, and erase the old calls. The same

@@ -653,19 +653,62 @@ private:
       if (word("let") || word("var")) {
         const bool mut = tokens_[pos_ - 1].text == "var";
         const detail::Form form = mut ? detail::Form::var : detail::Form::let;
-        const std::string name = take_name("binding name");
-        if (name.empty() || !expect("="))
+        std::vector<std::pair<std::string, Ty>> names;
+        do {
+          std::string name = take_name("binding name");
+          if (name.empty())
+            return false;
+          if (std::any_of(names.begin(), names.end(),
+                          [&](const auto& item) { return item.first == name; }))
+            return fail("duplicate binding '" + name + "'");
+          Ty type("_");
+          if (match(":")) {
+            const std::string text = type_text("=");
+            if (text.empty())
+              return fail("expected binding type");
+            type = Ty(text);
+            if (!type.valid())
+              return fail("malformed binding type '" + text + "'");
+          }
+          names.emplace_back(std::move(name), std::move(type));
+        } while (match(","));
+        if (!expect("="))
           return false;
         std::uint32_t value = expression(block, scope);
         if (value == detail::none)
           return false;
+        if (names.size() > 1) {
+          const std::uint32_t def = store_.vals[value].data.def;
+          if (def == detail::none ||
+              store_.ops[def].data.kind != Op::Kind::call ||
+              store_.ops[def].data.form != detail::Form::hidden ||
+              store_.ops[def].data.outs.size() != 1)
+            return fail("multiple bindings require one direct call");
+          for (std::size_t index = 1; index < names.size(); ++index) {
+            detail::ValData result;
+            result.type = names[index].second;
+            result.def = def;
+            result.index = index;
+            result.type_annotation = names[index].second.text() != "_";
+            store_.ops[def].data.outs.push_back(add_val(std::move(result)));
+          }
+        }
         if (store_.vals[value].data.def == detail::none ||
             store_.ops[store_.vals[value].data.def].data.form !=
                 detail::Form::hidden)
           value = add_call(block, "base.copy", {value},
                            store_.vals[value].data.type, peek().loc);
-        show(value, form, name);
-        scope[name] = {value, mut};
+        const std::uint32_t def = store_.vals[value].data.def;
+        if (names.front().second.text() != "_") {
+          store_.vals[value].data.type = names.front().second;
+          store_.vals[value].data.type_annotation = true;
+        }
+        show(value, form, names.front().first);
+        const std::vector<std::uint32_t>& outs = store_.ops[def].data.outs;
+        for (std::size_t index = 0; index < names.size(); ++index) {
+          store_.vals[outs[index]].data.name = names[index].first;
+          scope[names[index].first] = {outs[index], mut};
+        }
         semi();
       } else if (word("for")) {
         if (!parse_for(fn, block, scope))
@@ -1254,7 +1297,16 @@ void render_block(std::ostringstream& out, const detail::Store& store,
       const std::string name =
           result == detail::none ? "" : store.vals[result].data.name;
       if (op.form == detail::Form::let || op.form == detail::Form::var) {
-        out << (op.form == detail::Form::var ? "var " : "let ") << name << " = "
+        out << (op.form == detail::Form::var ? "var " : "let ");
+        for (std::size_t index = 0; index < op.outs.size(); ++index) {
+          if (index)
+            out << ", ";
+          const detail::ValData& value = store.vals[op.outs[index]].data;
+          out << value.name;
+          if (value.type_annotation)
+            out << ": " << value.type.text();
+        }
+        out << " = "
             << (op.kind == Op::Kind::constant ? attr_text(op.literal)
                                               : render_call(store, op));
       } else if (op.form == detail::Form::assign)
@@ -1829,8 +1881,20 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
                        op.loc);
     return;
   }
-  for (std::size_t index = 0; index < returns.size(); ++index)
-    store.vals[op.outs[index]].data.type = returns[index];
+  for (std::size_t index = 0; index < returns.size(); ++index) {
+    detail::ValData& result = store.vals[op.outs[index]].data;
+    Ty& type = result.type;
+    if (!result.type_annotation || type.empty() || type.text() == "_")
+      type = returns[index];
+    else if (!returns[index].empty() && returns[index].text() != "_" &&
+             type != returns[index] && diagnose)
+      detail::add_diag(store.diags,
+                       "result " + std::to_string(index + 1) + " of '" +
+                           std::string(op.callee) + "' has declared type '" +
+                           std::string(type.text()) + "', expected '" +
+                           std::string(returns[index].text()) + "'",
+                       op.loc);
+  }
 }
 
 void infer_regions(detail::Store& store, const detail::OpData& op) {
@@ -2143,6 +2207,21 @@ bool Mod::verify(const Env& env) {
                        op.loc);
     if (op.kind == Op::Kind::call && op.callee.empty())
       detail::add_diag(store.diags, "call has no callee", op.loc);
+    if ((op.kind == Op::Kind::call || op.kind == Op::Kind::constant) &&
+        op.outs.size() > 1) {
+      if (op.form == detail::Form::hidden)
+        detail::add_diag(store.diags,
+                         "multi-result operation must have named bindings",
+                         op.loc);
+      else if (std::any_of(op.outs.begin(), op.outs.end(),
+                           [&](std::uint32_t id) {
+                             return id >= store.vals.size() ||
+                                    store.vals[id].data.name.empty();
+                           }))
+        detail::add_diag(store.diags,
+                         "multi-result operation has an unnamed result",
+                         op.loc);
+    }
     const auto block_args = [&](std::size_t index, std::size_t count) {
       if (index >= op.blocks.size() || op.blocks[index] >= store.blocks.size())
         return false;

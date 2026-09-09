@@ -5,8 +5,9 @@ software co-design research. It gives experiments one readable IR, one module
 format, and one extension boundary without prescribing a target, scheduler, or
 paper mechanism.
 
-The rebuilt core parses and verifies typed generic functions, calls, constants,
-structured loops and conditions, explicit returns, and loop-carried values.
+The rebuilt core parses and verifies typed generic functions, multi-result
+calls, constants, structured loops and conditions, explicit returns, and
+loop-carried values.
 Generic parameters are ordinary `Val`s, so custom widths, element types, and
 shapes use the same type checker instead of a trait or kind registry. A tested
 C++ transform and an ordinary `.jog` function edit the same representation.

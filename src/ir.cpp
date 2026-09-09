@@ -403,14 +403,15 @@ Fn Mod::find_fn(std::string_view name) const {
   return matches.size() == 1 ? matches.front() : Fn{};
 }
 
-Val Mod::call(Op before, std::string callee, std::span<const Val> args,
-              Ty type) {
+Op Mod::call(Op before, std::string callee, std::span<const Val> args,
+             std::span<const Ty> types) {
   auto& store = impl_->store;
   if (!before.valid() || before.store_ != &store || callee.empty() ||
-      !type.valid()) {
-    detail::add_diag(
-        store.diags,
-        "call requires a live insertion point, callee, and result type");
+      std::any_of(types.begin(), types.end(),
+                  [](const Ty& type) { return !type.valid(); })) {
+    detail::add_diag(store.diags,
+                     "call requires a live insertion point, callee, and valid "
+                     "result types");
     return {};
   }
   for (Val arg : args) {
@@ -433,24 +434,37 @@ Val Mod::call(Op before, std::string callee, std::span<const Val> args,
   }
 
   const auto op_id = static_cast<std::uint32_t>(store.ops.size());
-  const auto value_id = static_cast<std::uint32_t>(store.vals.size());
-  detail::ValData value;
-  value.type = std::move(type);
-  value.def = op_id;
   detail::OpData op;
   op.kind = Op::Kind::call;
   op.block = block;
   op.callee = std::move(callee);
-  op.outs.push_back(value_id);
   op.loc = before.loc();
   op.args.reserve(args.size());
   for (Val arg : args)
     op.args.push_back(arg.id_);
-  store.vals.push_back({std::move(value), 1, true});
+  op.outs.reserve(types.size());
+  for (std::size_t index = 0; index < types.size(); ++index) {
+    const auto value_id = static_cast<std::uint32_t>(store.vals.size());
+    detail::ValData value;
+    value.type = types[index];
+    value.def = op_id;
+    value.index = index;
+    value.type_annotation = types.size() > 1;
+    store.vals.push_back({std::move(value), 1, true});
+    op.outs.push_back(value_id);
+  }
   store.ops.push_back({std::move(op), 1, true});
   order.insert(position, op_id);
   detail::rebuild_uses(store);
-  return Val(&store, value_id, store.vals[value_id].generation);
+  return Op(&store, op_id, store.ops[op_id].generation);
+}
+
+Val Mod::call(Op before, std::string callee, std::span<const Val> args,
+              Ty type) {
+  const Op op =
+      call(before, std::move(callee), args, std::span<const Ty>(&type, 1));
+  const std::vector<Val> outs = op.outs();
+  return outs.size() == 1 ? outs.front() : Val{};
 }
 
 bool Mod::fuse(std::span<const Op> ops, std::string callee) {
@@ -601,6 +615,24 @@ bool Mod::erase(Op op) {
   store.ops[op.id_].live = false;
   ++store.ops[op.id_].generation;
   detail::rebuild_uses(store);
+  return true;
+}
+
+bool Mod::rename(Val value, std::string name) {
+  auto& store = impl_->store;
+  if (!value.valid() || value.store_ != &store || name.empty()) {
+    detail::add_diag(store.diags,
+                     "rename requires a live value and non-empty name");
+    return false;
+  }
+  detail::ValData& data = store.vals[value.id_].data;
+  data.name = std::move(name);
+  if (data.def != detail::none) {
+    detail::OpData& op = store.ops[data.def].data;
+    if ((op.kind == Op::Kind::call || op.kind == Op::Kind::constant) &&
+        op.form == detail::Form::hidden)
+      op.form = detail::Form::let;
+  }
   return true;
 }
 

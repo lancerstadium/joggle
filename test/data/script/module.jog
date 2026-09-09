@@ -34,6 +34,32 @@ fn generic_probe(m: Mod) -> bool {
   return below<4>(3) && extent<[2, 3]>() == 2 && type_same<i32>()
 }
 
+fn divmod(x: int, y: int) -> (int, int) {
+  return x / y, x % y
+}
+
+fn multi_probe(m: Mod) -> bool {
+  let quotient, remainder = divmod(7, 3)
+  return quotient == 2 && remainder == 1
+}
+
+fn make_pair(m: Mod) -> bool {
+  for f in ir.fns(m) {
+    for b in ir.blocks(f) {
+      for op in ir.ops(b) {
+        if ir.callee(op) == "operator +" {
+          let pair = ir.call(m, op, "test.pair", ir.args(op), ["i32", "i32"])
+          let outs = ir.outs(pair)
+          var named = ir.rename(m, outs[0], "left")
+          named = ir.rename(m, outs[1], "right")
+          return named
+        }
+      }
+    }
+  }
+  return false
+}
+
 fn rebuild_tagged(m: Mod) -> bool {
   var changed = false
   for f in ir.fns(m) {

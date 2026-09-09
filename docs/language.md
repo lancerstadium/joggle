@@ -140,6 +140,19 @@ group += [last]
 to a call of `operator []=` returning the updated value, so mutation remains an
 explicit value flow.
 
+Multiple results use ordinary comma-separated bindings rather than tuple or
+result operations:
+
+```jog
+let quotient, remainder = divmod(7, 3)
+let data: tensor<f32, [4]>, token: i32 = source()
+```
+
+Known function declarations infer the result types. Explicit annotations keep
+types for open calls whose semantics have not yet been imported. A call is
+still one `Op`; its ordered values are returned by `outs()`. The same form is
+used by model functions and executable compile-time helpers.
+
 Canonical printing deliberately discards comments and incidental whitespace.
 Printing and reparsing must produce a structurally equal module.
 

@@ -337,10 +337,13 @@ public:
   std::vector<Fn> find_fns(std::string_view name) const;
   Fn find_fn(std::string_view name) const;
 
+  Op call(Op before, std::string callee, std::span<const Val> args,
+          std::span<const Ty> types);
   Val call(Op before, std::string callee, std::span<const Val> args, Ty type);
   bool fuse(std::span<const Op> ops, std::string callee);
   bool replace(Val old_value, Val new_value);
   bool erase(Op op);
+  bool rename(Val value, std::string name);
   bool rename(Op call, std::string callee);
   bool verify(const Env& env);
 

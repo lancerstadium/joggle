@@ -211,3 +211,19 @@ wrong parameter types, and wrong arity fail with located diagnostics, and no
 saturating-arithmetic case exists in the core. Language normalizations
 (`base.copy`, list construction, and indexing) retain only the minimal
 intrinsic rules needed to recover ordinary source bindings and iteration.
+
+## M7 first slice
+
+A call now has zero or more ordered results in both the public C++ editor and
+textual reflection boundary. The five-argument `ir.call` name is overloaded by
+its last parameter: `str` preserves the concise one-result form, while
+`list<str>` returns the created `Op`. Results remain ordinary `Val`s and are
+named with the overloaded `ir.rename`; no tuple operation or result wrapper was
+added.
+
+Source destructuring uses `let a, b = f()` and works in model code and
+compile-time execution. Optional result annotations such as
+`let a: i32, b: bool = source()` preserve types across canonical text for open
+calls and are checked against known declarations. Thus binary frontends and
+later semantic modules can transport multi-result operations without a
+frontend-specific core case.

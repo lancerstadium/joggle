@@ -379,12 +379,12 @@ private:
         if (!result)
           return {FlowKind::fail, {}};
         const std::vector<Val> outs = op.outs();
-        if (result->size() > 1 || outs.size() > 1) {
-          fail("multiple call results are not supported yet", loc);
+        if (result->size() != outs.size()) {
+          fail("compile-time call result count is inconsistent", loc);
           return {FlowKind::fail, {}};
         }
-        if (!outs.empty())
-          put(frame, outs.front(), result->empty() ? Item{} : result->front());
+        for (std::size_t index = 0; index < outs.size(); ++index)
+          put(frame, outs[index], (*result)[index]);
         continue;
       }
       if (op.kind() == Op::Kind::branch) {
@@ -735,8 +735,7 @@ private:
       const auto* before = as<Op>(args[1]);
       const auto callee = string(args[2]);
       const Items* values = list(args[3]);
-      const auto type = string(args[4]);
-      if (mod && *mod && before && callee && values && type) {
+      if (mod && *mod && before && callee && values) {
         std::vector<Val> inputs;
         inputs.reserve(values->size());
         for (const Item& item : *values) {
@@ -747,10 +746,27 @@ private:
           }
           inputs.push_back(*value);
         }
-        Val result = (*mod)->call(*before, std::string(*callee), inputs,
-                                  Ty(std::string(*type)));
-        if (result)
-          return Items{Item(result)};
+        if (const auto type = string(args[4])) {
+          Val result = (*mod)->call(*before, std::string(*callee), inputs,
+                                    Ty(std::string(*type)));
+          if (result)
+            return Items{Item(result)};
+        } else if (const Items* type_items = list(args[4])) {
+          std::vector<Ty> types;
+          types.reserve(type_items->size());
+          for (const Item& item : *type_items) {
+            const auto type = string(item);
+            if (!type) {
+              fail("ir.call result types must be strings", loc);
+              return std::nullopt;
+            }
+            types.emplace_back(std::string(*type));
+          }
+          Op result =
+              (*mod)->call(*before, std::string(*callee), inputs, types);
+          if (result)
+            return Items{Item(result)};
+        }
       }
     } else if (name == "fuse" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
@@ -782,10 +798,13 @@ private:
         return Items{Item(Attr((*mod)->erase(*op)))};
     } else if (name == "rename" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
-      const auto* op = as<Op>(args[1]);
       const auto value = string(args[2]);
-      if (mod && *mod && op && value)
-        return Items{Item(Attr((*mod)->rename(*op, std::string(*value))))};
+      if (mod && *mod && value) {
+        if (const auto* op = as<Op>(args[1]))
+          return Items{Item(Attr((*mod)->rename(*op, std::string(*value))))};
+        if (const auto* val = as<Val>(args[1]))
+          return Items{Item(Attr((*mod)->rename(*val, std::string(*value))))};
+      }
     }
     fail("invalid ir." + std::string(name) + " compile-time call", loc);
     return std::nullopt;

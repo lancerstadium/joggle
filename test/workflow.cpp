@@ -114,6 +114,62 @@ int main(int argc, char** argv) {
   CHECK(wrong_shape.diags().front().message.find("expected 'list<int>'") !=
         std::string::npos);
 
+  joggle::Mod multi;
+  constexpr std::string_view multi_source =
+      "module multi\n"
+      "fn split(x: i32) -> (i32, bool);\n"
+      "fn first(x: i32) -> i32 {\n"
+      "  let value: i32, valid: bool = split(x)\n"
+      "  return value\n"
+      "}\n";
+  CHECK(joggle::parse(env, multi_source, multi, "multi.jog"));
+  CHECK(multi.verify(env));
+  const joggle::Op split = multi.find_fn("first").body().ops().front();
+  CHECK(split.outs().size() == 2);
+  CHECK(split.outs()[0].type() == joggle::Ty("i32"));
+  CHECK(split.outs()[1].type() == joggle::Ty("bool"));
+  const std::string multi_text = joggle::print(multi);
+  CHECK(multi_text.find("let value: i32, valid: bool = split(x)") !=
+        std::string::npos);
+  joggle::Mod multi_roundtrip;
+  CHECK(joggle::parse(env, multi_text, multi_roundtrip, "multi-roundtrip.jog"));
+  CHECK(multi_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(multi, multi_roundtrip));
+
+  joggle::Mod wrong_result_type;
+  CHECK(joggle::parse(env,
+                      "module wrong_result\n"
+                      "fn split(x: i32) -> (i32, bool);\n"
+                      "fn bad(x: i32) -> str {\n"
+                      "  let value: str, ok: bool = split(x)\n"
+                      "  return value\n}\n",
+                      wrong_result_type, "wrong-result.jog"));
+  CHECK(!wrong_result_type.verify(env));
+  CHECK(!wrong_result_type.diags().empty());
+  CHECK(wrong_result_type.diags().front().message.find("expected 'i32'") !=
+        std::string::npos);
+
+  joggle::Mod built_multi;
+  CHECK(joggle::parse(env,
+                      "module built\n"
+                      "fn split(x: i32) -> (i32, bool);\n"
+                      "fn first(x: i32) -> i32 { return x }\n",
+                      built_multi, "built-multi.jog"));
+  const joggle::Fn built_first = built_multi.find_fn("first");
+  const joggle::Op before = built_first.body().ops().back();
+  const std::vector<joggle::Val> split_args{built_first.params().front()};
+  const std::vector<joggle::Ty> split_types{joggle::Ty("i32"),
+                                            joggle::Ty("bool")};
+  const joggle::Op built_split =
+      built_multi.call(before, "split", split_args, split_types);
+  CHECK(built_split && built_split.outs().size() == 2);
+  CHECK(built_multi.rename(built_split.outs()[0], "value"));
+  CHECK(built_multi.rename(built_split.outs()[1], "valid"));
+  CHECK(built_multi.verify(env));
+  CHECK(joggle::print(built_multi)
+            .find("let value: i32, valid: bool = split(x)") !=
+        std::string::npos);
+
   joggle::Mod overloaded;
   constexpr std::string_view overload_source =
       "module overloads\n"
@@ -275,6 +331,11 @@ int main(int argc, char** argv) {
   CHECK(joggle::parse(env, source.str(), overload_execution, argv[1]));
   CHECK(joggle::run(env, "script.overload_probe", overload_execution));
   CHECK(joggle::run(env, "script.generic_probe", overload_execution));
+  CHECK(joggle::run(env, "script.multi_probe", overload_execution));
+  CHECK(joggle::run(env, "script.make_pair", overload_execution));
+  CHECK(joggle::print(overload_execution)
+            .find("let left: i32, right: i32 = test.pair(x, 0)") !=
+        std::string::npos);
   joggle::Mod rolled_back;
   CHECK(joggle::parse(env, source.str(), rolled_back, argv[1]));
   const std::string before_failure = joggle::print(rolled_back);

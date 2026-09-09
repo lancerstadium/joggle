@@ -37,6 +37,7 @@ struct ValData {
   std::uint32_t def = none;
   std::size_t index = 0;
   std::vector<std::uint32_t> users;
+  bool type_annotation = false;
 };
 
 struct OpData {
