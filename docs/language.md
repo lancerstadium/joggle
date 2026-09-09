@@ -76,6 +76,23 @@ supports structured `for` and `if`, scalar operators, lists, and the universal
 transactional. It does not evaluate arbitrary model functions or silently run
 transforms while parsing.
 
-Function attributes beyond `[host]`, user type declarations, and full typed
-overload resolution remain for later slices. They will extend this one language
-rather than introduce pipeline or kernel syntax.
+### Function metadata
+
+Square brackets hold an open metadata dictionary rather than a fixed set of
+compiler keywords:
+
+```jog
+[entry, stage: "select", policy: {modes: ["fast", "small"]}]
+fn choose(m: Mod) -> bool { return true }
+```
+
+A bare name means `true`; values use normal `Attr` literals. Repeated brackets
+are accepted and canonical printing merges them in key order. Duplicate keys
+are errors. `Fn::meta` exposes the same data to C++, while `ir.has` and
+`ir.meta` expose it to textual functions.
+
+No metadata name changes parsing or the IR shape. `[host]` is a conventional
+description for a native implementation, not a distinct function kind. A
+native library may bind any matching body-less declaration; a function with a
+body cannot be rebound. User type declarations and full typed overload
+resolution remain for later slices.

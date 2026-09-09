@@ -42,7 +42,7 @@ The complete tested workflow is in `test/workflow.cpp`. It loads `base` and
 `tensor`, parses and verifies the generic nested-loop matmul, round-trips its
 canonical form, and walks the same `Fn/Blk/Op/Val` representation to fold
 `x + 0` by replacing uses and erasing the call. The test also loads an actual
-native module and calls its declared host function.
+native module and calls its declared native function.
 
 There is no hidden lowering step in this workflow. Loops, calls, mutable source
 bindings, and pass edits all refer to one `Mod`.

@@ -8,24 +8,24 @@
 
 namespace {
 
-bool integer(const jog_call_v1* call, std::size_t index, std::int64_t& out) {
-  jog_value_v1 value{};
-  if (!call->api->arg(call, index, &value) || value.kind != JOG_I64_V1)
+bool integer(const jog_call* call, std::size_t index, std::int64_t& out) {
+  jog_value value{};
+  if (!call->api->arg(call, index, &value) || value.kind != JOG_I64)
     return false;
   out = value.data.integer;
   return true;
 }
 
-bool result(jog_call_v1* call, std::int64_t value) {
-  jog_value_v1 out{};
-  out.kind = JOG_I64_V1;
+bool result(jog_call* call, std::int64_t value) {
+  jog_value out{};
+  out.kind = JOG_I64;
   out.data.integer = value;
   return call->api->ret(call, 0, &out);
 }
 
-bool result(jog_call_v1* call, std::string_view value) {
-  jog_value_v1 out{};
-  out.kind = JOG_STR_V1;
+bool result(jog_call* call, std::string_view value) {
+  jog_value out{};
+  out.kind = JOG_STR;
   out.data.string = {value.data(), value.size()};
   return call->api->ret(call, 0, &out);
 }
@@ -41,21 +41,21 @@ bool width(std::string_view type, std::int64_t& out) {
          out >= 2 && out <= 63;
 }
 
-bool supports(jog_call_v1* call, void*) {
-  jog_value_v1 value{};
+bool supports(jog_call* call, void*) {
+  jog_value value{};
   if (call->api->arg_count(call) != 1 || !call->api->arg(call, 0, &value) ||
-      value.kind != JOG_STR_V1)
+      value.kind != JOG_STR)
     return call->api->fail(call, "expected one type string");
   std::int64_t bits = 0;
   const bool accepted = width(
       std::string_view(value.data.string.data, value.data.string.size), bits);
-  jog_value_v1 out{};
-  out.kind = JOG_BOOL_V1;
+  jog_value out{};
+  out.kind = JOG_BOOL;
   out.data.boolean = accepted;
   return call->api->ret(call, 0, &out);
 }
 
-bool sim(jog_call_v1* call, void*) {
+bool sim(jog_call* call, void*) {
   std::int64_t bits = 0;
   std::int64_t left = 0;
   std::int64_t right = 0;
@@ -75,7 +75,7 @@ bool sim(jog_call_v1* call, void*) {
   return result(call, left + right);
 }
 
-bool emit(jog_call_v1* call, void*) {
+bool emit(jog_call* call, void*) {
   std::int64_t bits = 0;
   if (call->api->arg_count(call) != 1 || !integer(call, 0, bits) || bits < 2 ||
       bits > 63)
@@ -102,9 +102,9 @@ bool emit(jog_call_v1* call, void*) {
 
 }  // namespace
 
-JOGGLE_MODULE_EXPORT bool joggle_module_v1(const jog_api_v1* api,
-                                           jog_module_v1* module) {
-  return api && api->abi_version == joggle::module_abi_version &&
+JOGGLE_MODULE_EXPORT bool joggle_module(const jog_api* api,
+                                        jog_module* module) {
+  return joggle::compatible(api) &&
          api->bind(module, "sat.supports", supports, nullptr) &&
          api->bind(module, "sat.sim", sim, nullptr) &&
          api->bind(module, "sat.emit", emit, nullptr);

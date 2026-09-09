@@ -67,8 +67,8 @@ struct FnData {
   std::vector<std::uint32_t> params;
   std::vector<Ty> returns;
   std::vector<std::uint32_t> blocks;
+  Attr::Dict meta;
   bool external = false;
-  bool host = false;
   Loc loc;
 };
 

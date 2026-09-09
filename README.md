@@ -11,7 +11,8 @@ tested C++ transform and an ordinary `.jog` function edit the same
 representation. Compile-time functions traverse universal IR handles and run
 transactionally; they are functions, not instances of a pass class. A
 separately built native module is also discovered, signature-checked, loaded,
-and called through the single host-function ABI. The core contains no ONNX,
+and called through the single native-function ABI. Functions may carry
+user-defined metadata without adding parser cases. The core contains no ONNX,
 device, instruction-set, runtime, or code-generation policy; those capabilities
 belong in removable modules.
 

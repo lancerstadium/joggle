@@ -56,6 +56,13 @@ int main(int argc, char** argv) {
   CHECK((env.modules() == std::vector<std::string>{"base", "tensor"}));
   CHECK(env.load("sample"));
   CHECK(env.bound("sample.ping"));
+  const joggle::Fn ping = env.find_fn("sample.ping");
+  CHECK(ping && ping.external());
+  CHECK(ping.meta("host") && ping.meta("host")->boolean() == true);
+  CHECK(ping.meta("role") && ping.meta("role")->string() == "test");
+  const joggle::Fn echo = env.find_fn("sample.echo");
+  CHECK(echo && echo.external() && echo.meta().empty());
+  CHECK(env.bound("sample.echo"));
   const std::vector<joggle::Attr> arguments{joggle::Attr(std::int64_t{41})};
   std::vector<joggle::Attr> returns;
   CHECK(env.call("sample.ping", arguments, returns));
@@ -136,7 +143,10 @@ int main(int argc, char** argv) {
 
   joggle::Mod attrs;
   constexpr std::string_view attr_source =
-      "module attrs\nfn payload() -> dict {\n"
+      "module attrs\n"
+      "[entry]\n"
+      "[policy: {name: \"roundtrip\", levels: [1, 2]}]\n"
+      "fn payload() -> dict {\n"
       "  return {axis: 1, epsilon: 9.9999997473787516e-06, "
       "pads: [0, -1], raw: hex\"007fff\"}\n}\n";
   CHECK(joggle::parse(env, attr_source, attrs, "attrs.jog"));
@@ -150,10 +160,38 @@ int main(int argc, char** argv) {
   CHECK(dict->at("epsilon").real() == 9.9999997473787516e-06);
   CHECK(dict->at("pads").list() && dict->at("pads").list()->size() == 2);
   CHECK(dict->at("raw").bytes() && dict->at("raw").bytes()->size() == 3);
+  const joggle::Fn payload_fn = attrs.find_fn("payload");
+  CHECK(payload_fn.meta().size() == 2);
+  CHECK(payload_fn.meta("entry") &&
+        payload_fn.meta("entry")->boolean() == true);
+  CHECK(payload_fn.meta("policy") && payload_fn.meta("policy")->dict());
   joggle::Mod attrs_roundtrip;
   CHECK(joggle::parse(env, joggle::print(attrs), attrs_roundtrip,
                       "attrs-roundtrip.jog"));
   CHECK(joggle::structurally_equal(attrs, attrs_roundtrip));
+
+  joggle::Mod tagged;
+  constexpr std::string_view tagged_source =
+      "module tagged\n"
+      "[entry, rename: \"custom.add\"]\n"
+      "fn add(x: i32, y: i32) -> i32 { return x + y }\n"
+      "fn plain(x: i32, y: i32) -> i32 { return x + y }\n";
+  CHECK(joggle::parse(env, tagged_source, tagged, "tagged.jog"));
+  CHECK(tagged.verify(env));
+  CHECK(joggle::run(env, "script.rename_tagged", tagged));
+  const joggle::Op renamed =
+      tagged.find_fn("add").body().ops().back().args().front().def();
+  const joggle::Op plain =
+      tagged.find_fn("plain").body().ops().back().args().front().def();
+  CHECK(renamed.callee() == "custom.add");
+  CHECK(plain.callee() == "operator +");
+
+  joggle::Mod duplicate_meta;
+  CHECK(!joggle::parse(env,
+                       "module bad\n[a, a: 1]\n"
+                       "fn f() -> int { return 0 }\n",
+                       duplicate_meta, "duplicate-meta.jog"));
+  CHECK(!duplicate_meta.diags().empty());
 
   joggle::Mod missing_return;
   CHECK(joggle::parse(env, "module bad\nfn f(x: i32) -> i32 { x + 1 }\n",

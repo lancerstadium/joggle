@@ -210,7 +210,8 @@ private:
       return std::nullopt;
     }
     if (fn.external()) {
-      if (!fn.host()) {
+      const std::string symbol = fn.store_->name + "." + std::string(fn.name());
+      if (!env_.bound(symbol)) {
         fail("compile-time function has no implementation: " + fn.store_->name +
                  "." + std::string(fn.name()),
              fn.loc());
@@ -221,15 +222,14 @@ private:
       for (const Item& item : args) {
         const Attr* value = as<Attr>(item);
         if (!value) {
-          fail("native host functions accept scalar compile-time values only",
+          fail("native functions accept scalar compile-time values only",
                fn.loc());
           return std::nullopt;
         }
         scalar_args.push_back(*value);
       }
       std::vector<Attr> scalar_returns;
-      if (!env_.call(fn.store_->name + "." + std::string(fn.name()),
-                     scalar_args, scalar_returns)) {
+      if (!env_.call(symbol, scalar_args, scalar_returns)) {
         failed_ = true;
         return std::nullopt;
       }
@@ -564,6 +564,15 @@ private:
     } else if (name == "type" && args.size() == 1) {
       if (const auto* value = as<Val>(args[0]))
         return Items{Item(Attr(std::string(value->type().text())))};
+    } else if ((name == "has" || name == "meta") && args.size() == 2) {
+      const auto* fn = as<Fn>(args[0]);
+      const auto key = string(args[1]);
+      if (fn && key) {
+        const Attr* value = fn->meta(*key);
+        if (name == "has")
+          return Items{Item(Attr(value != nullptr))};
+        return Items{Item(value ? *value : Attr{})};
+      }
     } else if (name == "is_const" && args.size() == 1) {
       if (const auto* value = as<Val>(args[0]))
         return Items{Item(Attr(value->is_const()))};

@@ -7,6 +7,8 @@ fn args(op: Op) -> list<Val>;
 fn outs(op: Op) -> list<Val>;
 fn callee(op: Op) -> str;
 fn type(v: Val) -> str;
+fn has(f: Fn, key: str) -> bool;
+fn meta(f: Fn, key: str) -> Attr;
 fn is_const(v: Val) -> bool;
 fn constant(v: Val) -> Attr;
 fn len<T>(xs: list<T>) -> int;

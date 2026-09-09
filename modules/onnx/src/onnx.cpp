@@ -38,8 +38,8 @@ std::string atom(std::string_view text) {
   if (std::isdigit(static_cast<unsigned char>(out.front())))
     out.insert(out.begin(), '_');
   static const std::set<std::string, std::less<>> keywords{
-      "else", "false",  "fn",  "for",    "hex",  "host", "if", "in",
-      "let",  "module", "nil", "return", "true", "use",  "var"};
+      "else", "false",  "fn",  "for",    "hex",  "if",  "in",
+      "let",  "module", "nil", "return", "true", "use", "var"};
   if (keywords.contains(out))
     out.insert(out.begin(), '_');
   return out;
@@ -438,10 +438,10 @@ std::string emit(const jogonnx::ModelProto& model) {
   return out.str();
 }
 
-bool read(jog_call_v1* call, void*) {
-  jog_value_v1 input{};
+bool read(jog_call* call, void*) {
+  jog_value input{};
   if (call->api->arg_count(call) != 1 || !call->api->arg(call, 0, &input) ||
-      input.kind != JOG_BYTES_V1)
+      input.kind != JOG_BYTES)
     return call->api->fail(call, "expected serialized ONNX bytes");
   try {
     jogonnx::ModelProto model;
@@ -451,8 +451,8 @@ bool read(jog_call_v1* call, void*) {
                               static_cast<int>(input.data.bytes.size)))
       return call->api->fail(call, "invalid ONNX ModelProto");
     const std::string source = emit(model);
-    jog_value_v1 output{};
-    output.kind = JOG_STR_V1;
+    jog_value output{};
+    output.kind = JOG_STR;
     output.data.string = {source.data(), source.size()};
     return call->api->ret(call, 0, &output);
   } catch (const std::exception& error) {
@@ -462,8 +462,8 @@ bool read(jog_call_v1* call, void*) {
 
 }  // namespace
 
-JOGGLE_MODULE_EXPORT bool joggle_module_v1(const jog_api_v1* api,
-                                           jog_module_v1* module) {
-  return api && api->abi_version == joggle::module_abi_version &&
+JOGGLE_MODULE_EXPORT bool joggle_module(const jog_api* api,
+                                        jog_module* module) {
+  return joggle::compatible(api) &&
          api->bind(module, "onnx.read", read, nullptr);
 }

@@ -3,15 +3,16 @@ use ir
 
 fn add<W>(a: sat<W>, b: sat<W>) -> sat<W>;
 
-[host]
+[host, role: "match"]
 fn supports(type: str) -> bool;
 
-[host]
+[host, role: "sim"]
 fn sim(width: int, a: int, b: int) -> int;
 
-[host]
+[host, role: "emit", format: "sv"]
 fn emit(width: int) -> str;
 
+[stage: "select"]
 fn select(m: Mod) -> bool {
   var changed = false
   for f in ir.fns(m) {

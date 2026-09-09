@@ -5,3 +5,20 @@ fn fail_after_edit(m: Mod) -> bool {
   let changed = opt.fold_add_zero(m)
   return missing(changed)
 }
+
+fn rename_tagged(m: Mod) -> bool {
+  var changed = false
+  for f in ir.fns(m) {
+    if ir.has(f, "rename") {
+      let target = ir.meta(f, "rename")
+      for b in ir.blocks(f) {
+        for op in ir.ops(b) {
+          if ir.callee(op) == "operator +" {
+            changed = ir.rename(m, op, target)
+          }
+        }
+      }
+    }
+  }
+  return changed
+}

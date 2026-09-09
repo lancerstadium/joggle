@@ -7,7 +7,7 @@ software co-design experiments. Its core is infrastructure, not a fixed
 optimization method or deployment stack.
 
 The engineering hypothesis is falsifiable: one structured function IR and one
-typed host-function extension boundary should support model import, graph and
+typed native-function extension boundary should support model import, graph and
 loop transforms, custom data formats, and target experiments without changing
 the core, adding per-operator classes, or maintaining a second public IR.
 
@@ -35,8 +35,16 @@ objects, never global registries.
 ## Extension boundary
 
 Modules declare types and functions in `.jog`. An optional native library may
-attach an implementation to a declared host function through one versioned C
-ABI. The declaration remains the single source of its signature.
+attach an implementation to any external function declaration through one
+size-checked C ABI. The declaration remains the single source of its signature.
+The exported entry is always `joggle_module`; ABI evolution is represented in
+the API record instead of encoded in public symbol and type names.
+
+Function metadata is an open `Attr` dictionary. The parser preserves it but
+does not reserve tag names. Native modules conventionally use `[host]` to state
+intent, while selection, scheduling, testing, cost models, and research modules
+may define their own tags. Binding depends on an external declaration and a
+matching native symbol, not on the presence of `[host]`.
 
 An importer, transform, analysis, simulator, or emitter is therefore an
 ordinary compile-time function. `run` interprets the same structured function
@@ -75,7 +83,7 @@ its own method and experiments justify that claim.
 
 1. A generic, nested-loop matrix multiplication must parse, print, reparse, and
    verify without another IR.
-2. A C++ host function and a `.jog` compile-time function must both rewrite the
+2. A C++ native function and a `.jog` compile-time function must both rewrite the
    same function representation.
 3. An ONNX module must import an official model without a core operator switch.
 4. A target module must add a number type, primitive, selection transform,

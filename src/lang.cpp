@@ -251,13 +251,8 @@ public:
       semi();
     }
     while (!at_end()) {
-      bool host = false;
-      if (match("[")) {
-        if (!word("host") || !expect("]"))
-          return false;
-        host = true;
-      }
-      if (!parse_fn(host))
+      Attr::Dict meta;
+      if (!parse_meta(meta) || !parse_fn(std::move(meta)))
         return false;
     }
     detail::rebuild_uses(store_);
@@ -300,6 +295,32 @@ private:
       return {};
     }
     return take().text;
+  }
+
+  bool parse_meta(Attr::Dict& out) {
+    while (match("[")) {
+      if (is("]"))
+        return fail("function metadata cannot be empty");
+      do {
+        const Token key = take();
+        if (key.kind != Tk::name)
+          return fail("expected metadata name", key.loc);
+        Attr value(true);
+        if (match(":")) {
+          Ty ignored;
+          auto parsed = attr_literal(ignored);
+          if (!parsed)
+            return false;
+          value = std::move(*parsed);
+        }
+        if (!out.emplace(key.text, std::move(value)).second)
+          return fail("duplicate function metadata '" + key.text + "'",
+                      key.loc);
+      } while (match(","));
+      if (!expect("]"))
+        return false;
+    }
+    return true;
   }
 
   std::uint32_t add_val(detail::ValData data) {
@@ -396,7 +417,7 @@ private:
     return out;
   }
 
-  bool parse_fn(bool host) {
+  bool parse_fn(Attr::Dict meta) {
     if (!word("fn"))
       return fail("expected function declaration");
     const Loc loc = peek().loc;
@@ -407,7 +428,7 @@ private:
     detail::FnData data;
     data.name = name;
     data.loc = loc;
-    data.host = host;
+    data.meta = std::move(meta);
     if (match("<")) {
       do {
         data.generics.push_back(take_name("generic parameter"));
@@ -1148,8 +1169,18 @@ std::string print(const Mod& mod) {
       out << '\n';
     first = false;
     const detail::FnData& fn = entry.data;
-    if (fn.host)
-      out << "[host]\n";
+    if (!fn.meta.empty()) {
+      out << '[';
+      std::size_t index = 0;
+      for (const auto& [name, value] : fn.meta) {
+        if (index++)
+          out << ", ";
+        out << name;
+        if (value.boolean() != true)
+          out << ": " << attr_text(value);
+      }
+      out << "]\n";
+    }
     out << "fn " << fn.name;
     if (!fn.generics.empty()) {
       out << '<';

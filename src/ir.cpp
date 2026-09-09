@@ -207,7 +207,17 @@ std::vector<Ty> Fn::returns() const {
 bool Fn::external() const noexcept {
   return valid() && store_->fns[id_].data.external;
 }
-bool Fn::host() const noexcept { return valid() && store_->fns[id_].data.host; }
+const Attr::Dict& Fn::meta() const noexcept {
+  static const Attr::Dict empty;
+  return valid() ? store_->fns[id_].data.meta : empty;
+}
+const Attr* Fn::meta(std::string_view key) const noexcept {
+  if (!valid())
+    return nullptr;
+  const auto& values = store_->fns[id_].data.meta;
+  const auto found = values.find(key);
+  return found == values.end() ? nullptr : &found->second;
+}
 Blk Fn::body() const noexcept {
   if (!valid() || store_->fns[id_].data.blocks.empty())
     return {};

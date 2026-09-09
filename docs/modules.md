@@ -14,29 +14,35 @@ The directory is a distribution form, not a second IR object. Loading its
 sources produces ordinary declarations visible in an `Env`; parsing a model
 produces an ordinary `Mod`.
 
-Pure `.jog` modules need no compiler toolchain. Native modules have one explicit
-versioned C entry point and attach callbacks only to functions declared with
-`[host]` in `.jog`. C++ STL containers, exceptions, RTTI, and virtual tables do
-not cross that boundary.
+Pure `.jog` modules need no compiler toolchain. Native modules have one stable C
+entry point and attach callbacks to body-less function declarations. C++ STL
+containers, exceptions, RTTI, and virtual tables do not cross that boundary.
 
 ```jog
 module sample
 
-[host]
+[host, role: "example"]
 fn ping(x: i32) -> i32;
 ```
 
 ```cpp
-JOGGLE_MODULE_EXPORT bool joggle_module_v1(const jog_api_v1* api,
-                                           jog_module_v1* module) {
-  return api->abi_version == joggle::module_abi_version &&
+JOGGLE_MODULE_EXPORT bool joggle_module(const jog_api* api,
+                                        jog_module* module) {
+  return joggle::compatible(api) &&
          api->bind(module, "sample.ping", ping, nullptr);
 }
 ```
 
-The callback receives one versioned call frame for arguments, returns, and
-diagnostics. Loading rejects bindings outside the declaring module, bindings to
-unknown or non-host functions, duplicate bindings, missing entry points, and
+`[host]` above is ordinary metadata and may be omitted; it documents intent for
+humans and tools. The native binding itself requires a matching external
+declaration. This keeps model primitives, native implementations, and textual
+functions in one function model.
+
+The callback receives one call frame for arguments, returns, and diagnostics.
+The API record carries its ABI version and byte size, hidden behind
+`joggle::compatible`; neither the entry symbol nor public C type names contain a
+version suffix. Loading rejects bindings outside the declaring module, bindings
+to unknown or body-bearing functions, duplicate bindings, missing entries, and
 ABI mismatches reported by the module. Calls validate scalar arguments and
 returns against the `.jog` declaration. Scalars include length-delimited `str`
 and `bytes`; embedded zero bytes are preserved.
@@ -69,6 +75,7 @@ The built-in `ir` module is the complete reflection boundary:
 | `fns`, `blocks`, `ops` | Traverse structural ownership in stable order. |
 | `args`, `outs` | Read operation dataflow. |
 | `callee`, `type`, `is_const`, `constant`, `len` | Query calls, values, and lists. |
+| `has`, `meta` | Query open function metadata. |
 | `replace`, `erase`, `rename` | Apply the same checked mutations as C++. |
 
 These functions operate on generic handles and contain no NN operator names.
@@ -78,7 +85,7 @@ the reflection ABI or add a parser case.
 ### Binary codecs
 
 `joggle read module.function input` is the common frontend boundary. It reads
-the input as `bytes`, invokes a declared host function returning `str`, then
+the input as `bytes`, invokes a bound native function returning `str`, then
 parses and verifies that string as an ordinary `Mod`. The optional ONNX module
 implements `onnx.read` with generated Protobuf Lite code. Protobuf is linked only
 into `joggle_onnx`; the core library and normal build remain dependency-free.

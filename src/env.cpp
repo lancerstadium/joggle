@@ -14,7 +14,7 @@
 #include <dlfcn.h>
 #endif
 
-struct jog_module_v1 {
+struct jog_module {
   void* state;
 };
 
@@ -22,8 +22,8 @@ namespace joggle {
 
 namespace {
 
-struct Host {
-  jog_host_fn_v1 function = nullptr;
+struct Native {
+  jog_fn function = nullptr;
   void* data = nullptr;
   Fn declaration;
 };
@@ -38,7 +38,7 @@ struct CallState {
 };
 
 struct LoadState {
-  std::map<std::string, Host, std::less<>>* hosts = nullptr;
+  std::map<std::string, Native, std::less<>>* natives = nullptr;
   std::vector<Diag>* diags = nullptr;
   Mod* module = nullptr;
   std::string name;
@@ -69,18 +69,17 @@ void* open_library(const std::filesystem::path& path, std::string& error) {
   return handle;
 }
 
-jog_module_entry_v1 entry(void* handle) {
+jog_module_entry entry(void* handle) {
 #if defined(_WIN32)
-  return reinterpret_cast<jog_module_entry_v1>(
-      GetProcAddress(static_cast<HMODULE>(handle), "joggle_module_v1"));
+  return reinterpret_cast<jog_module_entry>(
+      GetProcAddress(static_cast<HMODULE>(handle), "joggle_module"));
 #else
-  return reinterpret_cast<jog_module_entry_v1>(
-      dlsym(handle, "joggle_module_v1"));
+  return reinterpret_cast<jog_module_entry>(dlsym(handle, "joggle_module"));
 #endif
 }
 
-bool bind_host(jog_module_v1* opaque, const char* symbol,
-               jog_host_fn_v1 function, void* data) {
+bool bind_native(jog_module* opaque, const char* symbol, jog_fn function,
+                 void* data) {
   if (!opaque || !opaque->state || !symbol || !function)
     return false;
   auto& state = *static_cast<LoadState*>(opaque->state);
@@ -93,43 +92,44 @@ bool bind_host(jog_module_v1* opaque, const char* symbol,
   }
   const std::string local = full.substr(prefix.size());
   const Fn fn = state.module->find_fn(local);
-  if (!fn || !fn.host()) {
+  if (!fn || !fn.external()) {
     detail::add_diag(*state.diags,
-                     "native binding has no matching [host] function: " + full);
+                     "native binding has no matching external function: " +
+                         full);
     return false;
   }
-  if (state.hosts->contains(full)) {
+  if (state.natives->contains(full)) {
     detail::add_diag(*state.diags, "duplicate native binding: " + full);
     return false;
   }
-  state.hosts->emplace(full, Host{function, data, fn});
+  state.natives->emplace(full, Native{function, data, fn});
   return true;
 }
 
-std::size_t call_arg_count(const jog_call_v1* call) {
+std::size_t call_arg_count(const jog_call* call) {
   if (!call || !call->state)
     return 0;
   return static_cast<const CallState*>(call->state)->args.size();
 }
 
-bool encode(const Attr& input, jog_value_v1& output) {
+bool encode(const Attr& input, jog_value& output) {
   if (input.empty()) {
-    output.kind = JOG_NIL_V1;
+    output.kind = JOG_NIL;
     output.data.handle = nullptr;
   } else if (const auto value = input.boolean()) {
-    output.kind = JOG_BOOL_V1;
+    output.kind = JOG_BOOL;
     output.data.boolean = *value;
   } else if (const auto value = input.integer()) {
-    output.kind = JOG_I64_V1;
+    output.kind = JOG_I64;
     output.data.integer = *value;
   } else if (const auto value = input.real()) {
-    output.kind = JOG_F64_V1;
+    output.kind = JOG_F64;
     output.data.real = *value;
   } else if (const auto value = input.string()) {
-    output.kind = JOG_STR_V1;
+    output.kind = JOG_STR;
     output.data.string = {value->data(), value->size()};
   } else if (const auto* value = input.bytes()) {
-    output.kind = JOG_BYTES_V1;
+    output.kind = JOG_BYTES;
     output.data.bytes = {reinterpret_cast<const char*>(value->data()),
                          value->size()};
   } else
@@ -137,28 +137,28 @@ bool encode(const Attr& input, jog_value_v1& output) {
   return true;
 }
 
-bool decode(const jog_value_v1& input, Attr& output) {
+bool decode(const jog_value& input, Attr& output) {
   switch (input.kind) {
-  case JOG_NIL_V1:
+  case JOG_NIL:
     output = Attr{};
     return true;
-  case JOG_BOOL_V1:
+  case JOG_BOOL:
     output = Attr(input.data.boolean);
     return true;
-  case JOG_I64_V1:
+  case JOG_I64:
     output = Attr(input.data.integer);
     return true;
-  case JOG_F64_V1:
+  case JOG_F64:
     output = Attr(input.data.real);
     return true;
-  case JOG_STR_V1:
+  case JOG_STR:
     if (!input.data.string.data && input.data.string.size)
       return false;
     output = Attr(std::string(input.data.string.data, input.data.string.size));
     return true;
-  case JOG_HANDLE_V1:
+  case JOG_HANDLE:
     return false;
-  case JOG_BYTES_V1:
+  case JOG_BYTES:
     if (!input.data.bytes.data && input.data.bytes.size)
       return false;
     if (!input.data.bytes.size) {
@@ -173,14 +173,14 @@ bool decode(const jog_value_v1& input, Attr& output) {
   return false;
 }
 
-bool call_arg(const jog_call_v1* call, std::size_t index, jog_value_v1* value) {
+bool call_arg(const jog_call* call, std::size_t index, jog_value* value) {
   if (!call || !call->state || !value)
     return false;
   const auto& state = *static_cast<const CallState*>(call->state);
   return index < state.args.size() && encode(state.args[index], *value);
 }
 
-bool call_ret(jog_call_v1* call, std::size_t index, const jog_value_v1* value) {
+bool call_ret(jog_call* call, std::size_t index, const jog_value* value) {
   if (!call || !call->state || !value)
     return false;
   auto& state = *static_cast<CallState*>(call->state);
@@ -191,18 +191,19 @@ bool call_ret(jog_call_v1* call, std::size_t index, const jog_value_v1* value) {
   return true;
 }
 
-bool call_fail(jog_call_v1* call, const char* message) {
+bool call_fail(jog_call* call, const char* message) {
   if (!call || !call->state || !message)
     return false;
   auto& state = *static_cast<CallState*>(call->state);
   detail::add_diag(*state.diags,
-                   "host function '" + state.symbol + "': " + message);
+                   "native function '" + state.symbol + "': " + message);
   state.failed = true;
   return false;
 }
 
-const jog_api_v1 host_api{module_abi_version, bind_host, call_arg_count,
-                          call_arg,           call_ret,  call_fail};
+const jog_api native_api{abi_version,    sizeof(jog_api), bind_native,
+                         call_arg_count, call_arg,        call_ret,
+                         call_fail};
 
 bool scalar_matches(const Ty& type, const Attr& value) {
   const std::string_view name = type.text();
@@ -242,7 +243,7 @@ struct Env::Impl {
   std::vector<Diag> diags;
   std::map<std::string, std::unique_ptr<Mod>, std::less<>> modules;
   std::set<std::string, std::less<>> loading;
-  std::map<std::string, Host, std::less<>> hosts;
+  std::map<std::string, Native, std::less<>> natives;
   std::vector<void*> libraries;
 
   ~Impl() {
@@ -358,23 +359,23 @@ bool Env::load(std::string_view name) {
       impl_->loading.erase(key);
       return false;
     }
-    const jog_module_entry_v1 init = entry(handle);
+    const jog_module_entry init = entry(handle);
     if (!init) {
       impl_->diags.push_back(
           {Severity::error,
-           "native module has no joggle_module_v1 entry: " + native.string(),
+           "native module has no joggle_module entry: " + native.string(),
            {}});
       close_library(handle);
       impl_->modules.erase(key);
       impl_->loading.erase(key);
       return false;
     }
-    LoadState state{&impl_->hosts, &impl_->diags, module_ptr, key};
-    jog_module_v1 opaque{&state};
+    LoadState state{&impl_->natives, &impl_->diags, module_ptr, key};
+    jog_module opaque{&state};
     const std::size_t diag_count = impl_->diags.size();
-    if (!init(&host_api, &opaque) || impl_->diags.size() != diag_count) {
+    if (!init(&native_api, &opaque) || impl_->diags.size() != diag_count) {
       const std::string prefix = key + ".";
-      std::erase_if(impl_->hosts, [&](const auto& item) {
+      std::erase_if(impl_->natives, [&](const auto& item) {
         return item.first.starts_with(prefix);
       });
       detail::add_diag(impl_->diags,
@@ -411,55 +412,55 @@ Fn Env::find_fn(std::string_view symbol) const noexcept {
 }
 
 bool Env::bound(std::string_view symbol) const noexcept {
-  return impl_->hosts.contains(symbol);
+  return impl_->natives.contains(symbol);
 }
 
 bool Env::call(std::string_view symbol, std::span<const Attr> args,
                std::vector<Attr>& returns) {
-  const auto found = impl_->hosts.find(symbol);
-  if (found == impl_->hosts.end()) {
+  const auto found = impl_->natives.find(symbol);
+  if (found == impl_->natives.end()) {
     detail::add_diag(impl_->diags,
-                     "host function is not bound: " + std::string(symbol));
+                     "native function is not bound: " + std::string(symbol));
     return false;
   }
-  const Host& host = found->second;
-  const std::vector<Val> params = host.declaration.params();
+  const Native& native = found->second;
+  const std::vector<Val> params = native.declaration.params();
   if (params.size() != args.size()) {
     detail::add_diag(impl_->diags,
-                     "argument count does not match host declaration: " +
+                     "argument count does not match native declaration: " +
                          std::string(symbol));
     return false;
   }
   for (std::size_t index = 0; index < args.size(); ++index) {
     if (!scalar_matches(params[index].type(), args[index])) {
       detail::add_diag(impl_->diags,
-                       "argument type does not match host declaration: " +
+                       "argument type does not match native declaration: " +
                            std::string(symbol));
       return false;
     }
   }
-  returns.assign(host.declaration.returns().size(), Attr{});
+  returns.assign(native.declaration.returns().size(), Attr{});
   CallState state{args,
                   &returns,
                   std::vector<bool>(returns.size(), false),
                   &impl_->diags,
                   std::string(symbol),
                   false};
-  jog_call_v1 call{&host_api, &state};
-  if (!host.function(&call, host.data) || state.failed)
+  jog_call call{&native_api, &state};
+  if (!native.function(&call, native.data) || state.failed)
     return false;
   if (std::find(state.written.begin(), state.written.end(), false) !=
       state.written.end()) {
     detail::add_diag(impl_->diags,
-                     "host function did not write every return: " +
+                     "native function did not write every return: " +
                          std::string(symbol));
     return false;
   }
-  const std::vector<Ty> types = host.declaration.returns();
+  const std::vector<Ty> types = native.declaration.returns();
   for (std::size_t index = 0; index < returns.size(); ++index) {
     if (!scalar_matches(types[index], returns[index])) {
       detail::add_diag(impl_->diags,
-                       "return type does not match host declaration: " +
+                       "return type does not match native declaration: " +
                            std::string(symbol));
       return false;
     }

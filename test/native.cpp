@@ -2,30 +2,30 @@
 
 namespace {
 
-bool ping(jog_call_v1* call, void*) {
-  jog_value_v1 input{};
+bool ping(jog_call* call, void*) {
+  jog_value input{};
   if (call->api->arg_count(call) != 1 || !call->api->arg(call, 0, &input) ||
-      input.kind != JOG_I64_V1)
+      input.kind != JOG_I64)
     return call->api->fail(call, "expected one integer");
-  jog_value_v1 output{};
-  output.kind = JOG_I64_V1;
+  jog_value output{};
+  output.kind = JOG_I64;
   output.data.integer = input.data.integer + 1;
   return call->api->ret(call, 0, &output);
 }
 
-bool echo(jog_call_v1* call, void*) {
-  jog_value_v1 value{};
+bool echo(jog_call* call, void*) {
+  jog_value value{};
   if (call->api->arg_count(call) != 1 || !call->api->arg(call, 0, &value) ||
-      value.kind != JOG_BYTES_V1)
+      value.kind != JOG_BYTES)
     return call->api->fail(call, "expected one byte string");
   return call->api->ret(call, 0, &value);
 }
 
 }  // namespace
 
-JOGGLE_MODULE_EXPORT bool joggle_module_v1(const jog_api_v1* api,
-                                           jog_module_v1* module) {
-  return api && api->abi_version == joggle::module_abi_version &&
+JOGGLE_MODULE_EXPORT bool joggle_module(const jog_api* api,
+                                        jog_module* module) {
+  return joggle::compatible(api) &&
          api->bind(module, "sample.ping", ping, nullptr) &&
          api->bind(module, "sample.echo", echo, nullptr);
 }
