@@ -1,7 +1,9 @@
 #include "joggle/joggle.h"
+#include "onnx.pb.h"
 
 #include <cstdio>
 #include <fstream>
+#include <initializer_list>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -16,6 +18,39 @@
   } while (false)
 
 namespace {
+
+void tensor_type(jogonnx::ValueInfoProto* value, std::string name,
+                 std::initializer_list<std::int64_t> shape) {
+  value->set_name(std::move(name));
+  auto* tensor = value->mutable_type()->mutable_tensor_type();
+  tensor->set_elem_type(1);
+  for (const std::int64_t extent : shape)
+    tensor->mutable_shape()->add_dim()->set_dim_value(extent);
+}
+
+joggle::Attr::Bytes multi_output_model() {
+  jogonnx::ModelProto model;
+  model.set_ir_version(8);
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+  auto* graph = model.mutable_graph();
+  graph->set_name("multi");
+  tensor_type(graph->add_input(), "x", {2});
+  tensor_type(graph->add_value_info(), "left", {1});
+  tensor_type(graph->add_value_info(), "right", {1});
+  tensor_type(graph->add_output(), "left", {1});
+  tensor_type(graph->add_output(), "right", {1});
+  auto* split = graph->add_node();
+  split->set_op_type("Split");
+  split->add_input("x");
+  split->add_output("left");
+  split->add_output("right");
+  std::string bytes;
+  if (!model.SerializeToString(&bytes))
+    return {};
+  return {bytes.begin(), bytes.end()};
+}
 
 std::size_t count_calls(const joggle::Mod& mod, std::string_view callee) {
   std::size_t count = 0;
@@ -78,6 +113,30 @@ int main(int argc, char** argv) {
   CHECK(joggle::parse(env, canonical, roundtrip, "mobilenet-roundtrip.jog"));
   CHECK(roundtrip.verify(env));
   CHECK(joggle::structurally_equal(model, roundtrip));
+
+  const std::vector<joggle::Attr> multi_args{
+      joggle::Attr(multi_output_model())};
+  CHECK(env.call("onnx.read", multi_args, returns));
+  CHECK(returns.size() == 1 && returns.front().string());
+  joggle::Mod multi;
+  CHECK(joggle::parse(env, *returns.front().string(), multi,
+                      "multi-output.onnx"));
+  CHECK(multi.verify(env));
+  const joggle::Fn multi_main = multi.find_fn("main");
+  CHECK(multi_main && multi_main.returns().size() == 2);
+  joggle::Op split;
+  for (joggle::Op op : multi_main.ops())
+    if (op.callee() == "onnx.Split")
+      split = op;
+  CHECK(split && split.outs().size() == 2);
+  CHECK(split.outs()[0].type() == joggle::Ty("tensor<f32, [1]>"));
+  CHECK(split.outs()[1].type() == joggle::Ty("tensor<f32, [1]>"));
+  const std::string multi_text = joggle::print(multi);
+  joggle::Mod multi_roundtrip;
+  CHECK(joggle::parse(env, multi_text, multi_roundtrip,
+                      "multi-output-roundtrip.jog"));
+  CHECK(multi_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(multi, multi_roundtrip));
 
   const std::size_t convs = count_calls(model, "onnx.Conv");
   const std::size_t norms = count_calls(model, "onnx.BatchNormalization");

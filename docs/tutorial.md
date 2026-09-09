@@ -102,7 +102,9 @@ The `onnx` test checks the official model's 267 tensor constants, 155 nodes,
 14,156,560 initializer bytes, verifier result, and canonical round trip. It
 also uses a test bridge built from `opt.fuse` to combine 36
 Conv-BatchNormalization-ReLU chains, then verifies and round-trips the changed
-module. The download is never part of a normal configure or build.
+module. A separate in-memory protocol case checks typed multi-result nodes and
+multiple graph returns. The codec does not interpret either case's operator
+names. The download is never part of a normal configure or build.
 
 ## Add a data format and primitive
 

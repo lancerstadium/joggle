@@ -29,6 +29,8 @@ by function, explicit inputs, environment epoch, and module revision, while an
 attempted mutation is isolated and rejected.
 The core contains no ONNX, device, instruction-set, runtime, or code-generation
 policy; those capabilities belong in removable modules.
+The optional ONNX transport preserves typed intermediate values and native
+multi-result/multi-output structure without defining any ONNX operator in core.
 
 ## Build
 

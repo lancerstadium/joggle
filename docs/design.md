@@ -355,3 +355,18 @@ clears the module-local cache, and loading another source/native module advances
 the environment epoch, so cached overload resolution cannot survive a changed
 function environment. `opt.count` is a small reusable example rather than a
 privileged analysis primitive.
+
+## M10 transport slice
+
+The ONNX codec now exercises the core's general multi-result functions rather
+than imposing a single-output subset. It transports any node result count and
+any non-empty graph output list, preserves optional result positions, and adds
+explicit tensor types from inputs, outputs, intermediate `value_info`, and
+initializers. The implementation still has no switch over ONNX operator names:
+codec-level structure and type facts cross the boundary, while interpretation
+remains the responsibility of an explicit semantic module.
+
+The pinned official MobileNetV2 remains the real-model regression gate. A tiny
+in-memory protocol fixture separately covers two-result/two-output structure so
+that this compatibility path cannot regress merely because the pinned model is
+single-output.

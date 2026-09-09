@@ -113,6 +113,11 @@ std::string type(const jogonnx::ValueInfoProto& value) {
   return "tensor<" + element(tensor.elem_type()) + ", " + dims + "]>";
 }
 
+std::string type(const jogonnx::TensorProto& value) {
+  return "tensor<" + element(value.data_type()) + ", " +
+         shape(value.dims()) + ">";
+}
+
 template <class UInt> void append_le(std::string& out, UInt value) {
   for (std::size_t index = 0; index < sizeof(UInt); ++index)
     out.push_back(static_cast<char>((value >> (index * 8)) & 0xff));
@@ -381,6 +386,24 @@ std::string emit(const jogonnx::ModelProto& model) {
   std::set<std::string, std::less<>> initialized;
   for (const auto& value : graph.initializer())
     initialized.insert(value.name());
+  std::map<std::string, std::string, std::less<>> types;
+  const auto remember_type = [&](const jogonnx::ValueInfoProto& value) {
+    if (value.has_name() && !value.name().empty()) {
+      const std::string value_type = type(value);
+      const auto found = types.find(value.name());
+      if (found == types.end() || value_type != "_")
+        types.insert_or_assign(value.name(), value_type);
+    }
+  };
+  for (const auto& value : graph.input())
+    remember_type(value);
+  for (const auto& value : graph.value_info())
+    remember_type(value);
+  for (const auto& value : graph.output())
+    remember_type(value);
+  for (const auto& value : graph.initializer())
+    if (value.has_name() && !value.name().empty())
+      types.insert_or_assign(value.name(), type(value));
 
   std::ostringstream out;
   out.imbue(std::locale::classic());
@@ -394,10 +417,19 @@ std::string emit(const jogonnx::ModelProto& model) {
     first = false;
     out << names.get(input.name()) << ": " << type(input);
   }
+  if (!graph.output_size())
+    throw std::runtime_error("ONNX graph has no output");
   out << ") -> ";
-  if (graph.output_size() != 1)
-    throw std::runtime_error("only one graph output is supported yet");
-  out << type(graph.output(0)) << " {\n";
+  if (graph.output_size() > 1)
+    out << '(';
+  for (int index = 0; index < graph.output_size(); ++index) {
+    if (index)
+      out << ", ";
+    out << type(graph.output(index));
+  }
+  if (graph.output_size() > 1)
+    out << ')';
+  out << " {\n";
 
   out << "  onnx.model({ir: " << model.ir_version()
       << ", producer: " << quote(model.producer_name()) << ", opsets: [";
@@ -411,17 +443,34 @@ std::string emit(const jogonnx::ModelProto& model) {
   out << "]})\n";
 
   for (const auto& value : graph.initializer())
-    out << "  let " << names.get(value.name()) << " = onnx.tensor("
+    out << "  let " << names.get(value.name()) << ": " << type(value)
+        << " = onnx.tensor("
         << value.data_type() << ", " << shape(value.dims()) << ", "
         << hex(data(value)) << ")\n";
 
+  std::size_t unnamed = 0;
   for (const auto& node : graph.node()) {
-    if (node.output_size() != 1 || node.output(0).empty())
-      throw std::runtime_error("only named single-output nodes are supported");
     const std::string domain =
         node.domain().empty() ? "onnx" : atom(node.domain());
-    out << "  let " << names.get(node.output(0)) << " = " << domain << '.'
-        << atom(node.op_type()) << '(';
+    out << "  ";
+    if (node.output_size()) {
+      out << "let ";
+      for (int index = 0; index < node.output_size(); ++index) {
+        if (index)
+          out << ", ";
+        const std::string& output = node.output(index);
+        const std::string binding = output.empty()
+                                        ? names.get("$unused_" +
+                                                    std::to_string(unnamed++))
+                                        : names.get(output);
+        out << binding;
+        const auto found = types.find(output);
+        if (found != types.end() && found->second != "_")
+          out << ": " << found->second;
+      }
+      out << " = ";
+    }
+    out << domain << '.' << atom(node.op_type()) << '(';
     for (int index = 0; index < node.input_size(); ++index) {
       if (index)
         out << ", ";
@@ -434,7 +483,15 @@ std::string emit(const jogonnx::ModelProto& model) {
     }
     out << ")\n";
   }
-  out << "  return " << names.get(graph.output(0).name()) << "\n}\n";
+  out << "  return ";
+  for (int index = 0; index < graph.output_size(); ++index) {
+    if (index)
+      out << ", ";
+    if (graph.output(index).name().empty())
+      throw std::runtime_error("ONNX graph has an unnamed output");
+    out << names.get(graph.output(index).name());
+  }
+  out << "\n}\n";
   return out.str();
 }
 

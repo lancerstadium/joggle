@@ -205,10 +205,13 @@ implements `onnx.read` with generated Protobuf Lite code. Protobuf is linked onl
 into `joggle_onnx`; the core library and normal build remain dependency-free.
 
 The current codec accepts dense ONNX tensors, tensor-shaped graph values,
-scalar/list/tensor node attributes, single-output nodes, and one graph output.
-Unsupported sparse, string, external-data, nested-graph, or multi-output forms
-fail with a diagnostic rather than being dropped. Operator names and attributes
-are transported generically; their semantics belong to later modules.
+scalar/list/tensor node attributes, arbitrary node result counts, and multiple
+graph outputs. Types from graph inputs, outputs, intermediate `value_info`, and
+initializers become explicit result annotations where available. Missing
+optional node outputs retain their result position through an unused binding.
+Unsupported sparse, string, external-data, and nested-graph forms fail with a
+diagnostic rather than being dropped. Operator names and attributes are
+transported generically; their semantics belong to later modules.
 
 ### A hardware extension
 

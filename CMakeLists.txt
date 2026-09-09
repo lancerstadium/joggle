@@ -44,28 +44,35 @@ if(JOGGLE_BUILD_ONNX)
     find_package(Protobuf REQUIRED)
   endif()
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/onnx-generated")
-  add_library(joggle-onnx MODULE modules/onnx/src/onnx.cpp)
-  target_compile_features(joggle-onnx PRIVATE cxx_std_20)
+  add_library(joggle-onnx-proto STATIC)
+  target_link_libraries(joggle-onnx-proto PUBLIC protobuf::libprotobuf-lite)
   target_include_directories(
-    joggle-onnx
-    PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/include
-      ${CMAKE_CURRENT_BINARY_DIR}/onnx-generated
+    joggle-onnx-proto PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/onnx-generated
   )
-  target_link_libraries(joggle-onnx PRIVATE protobuf::libprotobuf-lite)
-  if(MSVC)
-    target_compile_options(joggle-onnx PRIVATE /W4)
-  else()
-    target_compile_options(joggle-onnx PRIVATE -Wall -Wextra -Wpedantic)
-  endif()
+  set_target_properties(
+    joggle-onnx-proto PROPERTIES POSITION_INDEPENDENT_CODE ON
+  )
   protobuf_generate(
-    TARGET joggle-onnx
+    TARGET joggle-onnx-proto
     LANGUAGE cpp
     PROTOS ${CMAKE_CURRENT_SOURCE_DIR}/modules/onnx/src/onnx.proto
     IMPORT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/modules/onnx/src
     PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/onnx-generated
     APPEND_PATH
   )
+  add_library(joggle-onnx MODULE modules/onnx/src/onnx.cpp)
+  target_compile_features(joggle-onnx PRIVATE cxx_std_20)
+  target_include_directories(
+    joggle-onnx
+    PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+  target_link_libraries(joggle-onnx PRIVATE joggle-onnx-proto)
+  if(MSVC)
+    target_compile_options(joggle-onnx PRIVATE /W4)
+  else()
+    target_compile_options(joggle-onnx PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
   set_target_properties(
     joggle-onnx
     PROPERTIES
@@ -216,7 +223,9 @@ if(JOGGLE_BUILD_TESTS)
       message(FATAL_ERROR "JOGGLE_TEST_ONNX_MODEL is not the pinned model")
     endif()
     add_executable(joggle-onnx-test test/onnx.cpp)
-    target_link_libraries(joggle-onnx-test PRIVATE Joggle::joggle)
+    target_link_libraries(
+      joggle-onnx-test PRIVATE Joggle::joggle joggle-onnx-proto
+    )
     add_dependencies(joggle-onnx-test joggle-onnx)
     add_test(
       NAME onnx
