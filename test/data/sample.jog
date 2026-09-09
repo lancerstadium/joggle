@@ -2,3 +2,6 @@ module sample
 
 [host]
 fn ping(x: i32) -> i32;
+
+[host]
+fn echo(data: bytes) -> bytes;

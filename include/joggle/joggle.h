@@ -24,7 +24,8 @@ enum jog_value_kind_v1 : std::uint32_t {
   JOG_I64_V1,
   JOG_F64_V1,
   JOG_STR_V1,
-  JOG_HANDLE_V1
+  JOG_HANDLE_V1,
+  JOG_BYTES_V1
 };
 
 struct jog_str_v1 {
@@ -39,6 +40,7 @@ struct jog_value_v1 {
     std::int64_t integer;
     double real;
     jog_str_v1 string;
+    jog_str_v1 bytes;
     void* handle;
   } data;
 };
@@ -94,10 +96,11 @@ struct Diag {
 
 class Attr {
 public:
+  using Bytes = std::vector<std::uint8_t>;
   using List = std::vector<Attr>;
   using Dict = std::map<std::string, Attr, std::less<>>;
   using Data = std::variant<std::monostate, bool, std::int64_t, double,
-                            std::string, List, Dict>;
+                            std::string, Bytes, List, Dict>;
 
   Attr() = default;
   Attr(bool value);
@@ -105,6 +108,7 @@ public:
   Attr(double value);
   Attr(std::string value);
   Attr(const char* value);
+  Attr(Bytes value);
   Attr(List value);
   Attr(Dict value);
 
@@ -115,6 +119,8 @@ public:
   std::optional<double> real() const noexcept;
   std::optional<std::string_view> string() const& noexcept;
   std::optional<std::string_view> string() const&& = delete;
+  const Bytes* bytes() const& noexcept;
+  const Bytes* bytes() const&& = delete;
   const List* list() const& noexcept;
   const List* list() const&& = delete;
   const Dict* dict() const& noexcept;

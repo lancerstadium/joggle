@@ -128,6 +128,10 @@ bool encode(const Attr& input, jog_value_v1& output) {
   } else if (const auto value = input.string()) {
     output.kind = JOG_STR_V1;
     output.data.string = {value->data(), value->size()};
+  } else if (const auto* value = input.bytes()) {
+    output.kind = JOG_BYTES_V1;
+    output.data.bytes = {reinterpret_cast<const char*>(value->data()),
+                         value->size()};
   } else
     return false;
   return true;
@@ -154,6 +158,17 @@ bool decode(const jog_value_v1& input, Attr& output) {
     return true;
   case JOG_HANDLE_V1:
     return false;
+  case JOG_BYTES_V1:
+    if (!input.data.bytes.data && input.data.bytes.size)
+      return false;
+    if (!input.data.bytes.size) {
+      output = Attr(Attr::Bytes{});
+      return true;
+    }
+    const auto* first =
+        reinterpret_cast<const std::uint8_t*>(input.data.bytes.data);
+    output = Attr(Attr::Bytes(first, first + input.data.bytes.size));
+    return true;
   }
   return false;
 }
@@ -197,6 +212,8 @@ bool scalar_matches(const Ty& type, const Attr& value) {
     return value.real().has_value();
   if (name == "str")
     return value.string().has_value();
+  if (name == "bytes")
+    return value.bytes() != nullptr;
   if (name == "int" || name == "index" ||
       (name.size() > 1 && (name.front() == 'i' || name.front() == 'u')))
     return value.integer().has_value();

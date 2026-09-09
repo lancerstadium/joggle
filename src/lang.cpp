@@ -175,9 +175,41 @@ std::string attr_text(const Attr& value) {
     for (const char ch : *item) {
       if (ch == '"' || ch == '\\')
         out.push_back('\\');
-      out.push_back(ch);
+      if (ch == '\n')
+        out += "\\n";
+      else
+        out.push_back(ch);
     }
     return out + '"';
+  }
+  if (const auto* item = value.bytes()) {
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string out = "hex\"";
+    out.reserve(item->size() * 2 + 5);
+    for (const std::uint8_t byte : *item) {
+      out.push_back(digits[byte >> 4]);
+      out.push_back(digits[byte & 15]);
+    }
+    return out + '"';
+  }
+  if (const auto* item = value.list()) {
+    std::string out = "[";
+    for (std::size_t index = 0; index < item->size(); ++index) {
+      if (index)
+        out += ", ";
+      out += attr_text((*item)[index]);
+    }
+    return out + ']';
+  }
+  if (const auto* item = value.dict()) {
+    std::string out = "{";
+    std::size_t index = 0;
+    for (const auto& [name, entry] : *item) {
+      if (index++)
+        out += ", ";
+      out += attr_text(Attr(name)) + ": " + attr_text(entry);
+    }
+    return out + '}';
   }
   return "nil";
 }
@@ -766,39 +798,146 @@ private:
     return out;
   }
 
-  std::uint32_t primary(std::uint32_t block, Scope& scope) {
-    const Token token = take();
-    if (token.kind == Tk::number) {
+  std::optional<Attr> attr_literal(Ty& type) {
+    const bool negative = match("-");
+    if (peek().kind == Tk::number) {
+      const Token token = take();
+      const std::string text = negative ? "-" + token.text : token.text;
       if (token.text.find('.') != std::string::npos) {
         double value = 0;
         std::size_t consumed = 0;
         try {
-          value = std::stod(token.text, &consumed);
+          value = std::stod(text, &consumed);
         } catch (const std::exception&) {
           fail("invalid real literal", token.loc);
-          return detail::none;
+          return std::nullopt;
         }
-        if (consumed != token.text.size()) {
+        if (consumed != text.size()) {
           fail("invalid real literal", token.loc);
-          return detail::none;
+          return std::nullopt;
         }
-        return add_const(block, Attr(value), Ty("f64"), token.loc);
+        type = Ty("f64");
+        return Attr(value);
       }
       std::int64_t value = 0;
-      const auto result = std::from_chars(
-          token.text.data(), token.text.data() + token.text.size(), value);
-      if (result.ec != std::errc{} ||
-          result.ptr != token.text.data() + token.text.size()) {
+      const auto result =
+          std::from_chars(text.data(), text.data() + text.size(), value);
+      if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) {
         fail("invalid integer literal", token.loc);
-        return detail::none;
+        return std::nullopt;
       }
-      return add_const(block, Attr(value), Ty("int"), token.loc);
+      type = Ty("int");
+      return Attr(value);
     }
-    if (token.kind == Tk::string)
-      return add_const(block, Attr(token.text), Ty("str"), token.loc);
-    if (token.text == "true" || token.text == "false")
-      return add_const(block, Attr(token.text == "true"), Ty("bool"),
-                       token.loc);
+    if (negative) {
+      fail("expected a number after '-'");
+      return std::nullopt;
+    }
+    if (peek().kind == Tk::string) {
+      type = Ty("str");
+      return Attr(take().text);
+    }
+    if (word("true")) {
+      type = Ty("bool");
+      return Attr(true);
+    }
+    if (word("false")) {
+      type = Ty("bool");
+      return Attr(false);
+    }
+    if (word("nil")) {
+      type = Ty("nil");
+      return Attr{};
+    }
+    if (word("hex")) {
+      if (peek().kind != Tk::string) {
+        fail("expected a string after 'hex'");
+        return std::nullopt;
+      }
+      const Token token = take();
+      if (token.text.size() % 2) {
+        fail("hex literal must contain whole bytes", token.loc);
+        return std::nullopt;
+      }
+      auto nibble = [](char ch) -> int {
+        if (ch >= '0' && ch <= '9')
+          return ch - '0';
+        if (ch >= 'a' && ch <= 'f')
+          return ch - 'a' + 10;
+        if (ch >= 'A' && ch <= 'F')
+          return ch - 'A' + 10;
+        return -1;
+      };
+      Attr::Bytes bytes;
+      bytes.reserve(token.text.size() / 2);
+      for (std::size_t index = 0; index < token.text.size(); index += 2) {
+        const int high = nibble(token.text[index]);
+        const int low = nibble(token.text[index + 1]);
+        if (high < 0 || low < 0) {
+          fail("hex literal contains a non-hex digit", token.loc);
+          return std::nullopt;
+        }
+        bytes.push_back(static_cast<std::uint8_t>((high << 4) | low));
+      }
+      type = Ty("bytes");
+      return Attr(std::move(bytes));
+    }
+    if (match("[")) {
+      Attr::List list;
+      if (!is("]")) {
+        do {
+          Ty ignored;
+          auto item = attr_literal(ignored);
+          if (!item)
+            return std::nullopt;
+          list.push_back(std::move(*item));
+        } while (match(","));
+      }
+      if (!expect("]"))
+        return std::nullopt;
+      type = Ty("list");
+      return Attr(std::move(list));
+    }
+    if (match("{")) {
+      Attr::Dict dict;
+      if (!is("}")) {
+        do {
+          if (peek().kind != Tk::name && peek().kind != Tk::string) {
+            fail("expected attribute name");
+            return std::nullopt;
+          }
+          const Token name = take();
+          if (!expect(":"))
+            return std::nullopt;
+          Ty ignored;
+          auto item = attr_literal(ignored);
+          if (!item)
+            return std::nullopt;
+          if (!dict.emplace(name.text, std::move(*item)).second) {
+            fail("duplicate attribute '" + name.text + "'", name.loc);
+            return std::nullopt;
+          }
+        } while (match(","));
+      }
+      if (!expect("}"))
+        return std::nullopt;
+      type = Ty("dict");
+      return Attr(std::move(dict));
+    }
+    fail("expected attribute literal");
+    return std::nullopt;
+  }
+
+  std::uint32_t primary(std::uint32_t block, Scope& scope) {
+    if (peek().kind == Tk::number || peek().kind == Tk::string || is("true") ||
+        is("false") || is("[") || is("{") || is("hex") || is("nil")) {
+      const Loc loc = peek().loc;
+      Ty type;
+      auto value = attr_literal(type);
+      return value ? add_const(block, std::move(*value), std::move(type), loc)
+                   : detail::none;
+    }
+    const Token token = take();
     if (token.text == "(") {
       const auto value = expression(block, scope);
       return expect(")") ? value : detail::none;

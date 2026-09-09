@@ -34,6 +34,17 @@ struct Item {
   Item(Items value) : data(std::make_shared<List>(List{std::move(value)})) {}
 };
 
+Item materialize(Attr value) {
+  if (const Attr::List* list = value.list()) {
+    Items items;
+    items.reserve(list->size());
+    for (const Attr& item : *list)
+      items.push_back(materialize(item));
+    return Item(std::move(items));
+  }
+  return Item(std::move(value));
+}
+
 enum class FlowKind : std::uint8_t { next, ret, yield, fail };
 
 struct Flow {
@@ -256,7 +267,7 @@ private:
           fail("constant result count is inconsistent", loc);
           return {FlowKind::fail, {}};
         }
-        put(frame, outs.front(), Item(outs.front().constant()));
+        put(frame, outs.front(), materialize(outs.front().constant()));
         continue;
       }
       if (op.kind() == Op::Kind::call) {

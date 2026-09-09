@@ -20,6 +20,7 @@ Attr::Attr(std::int64_t value) : data_(value) {}
 Attr::Attr(double value) : data_(value) {}
 Attr::Attr(std::string value) : data_(std::move(value)) {}
 Attr::Attr(const char* value) : data_(std::string(value)) {}
+Attr::Attr(Bytes value) : data_(std::move(value)) {}
 Attr::Attr(List value) : data_(std::move(value)) {}
 Attr::Attr(Dict value) : data_(std::move(value)) {}
 
@@ -42,6 +43,9 @@ std::optional<double> Attr::real() const noexcept {
 std::optional<std::string_view> Attr::string() const& noexcept {
   const auto* value = std::get_if<std::string>(&data_);
   return value ? std::optional<std::string_view>(*value) : std::nullopt;
+}
+const Attr::Bytes* Attr::bytes() const& noexcept {
+  return std::get_if<Bytes>(&data_);
 }
 const Attr::List* Attr::list() const& noexcept {
   return std::get_if<List>(&data_);

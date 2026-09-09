@@ -38,7 +38,8 @@ The callback receives one versioned call frame for arguments, returns, and
 diagnostics. Loading rejects bindings outside the declaring module, bindings to
 unknown or non-host functions, duplicate bindings, missing entry points, and
 ABI mismatches reported by the module. Calls validate scalar arguments and
-returns against the `.jog` declaration.
+returns against the `.jog` declaration. Scalars include length-delimited `str`
+and `bytes`; embedded zero bytes are preserved.
 
 The current standard modules are deliberately narrow: `base` declares value
 copying, `tensor` establishes the tensor dependency boundary, `ir` declares

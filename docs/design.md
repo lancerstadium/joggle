@@ -104,3 +104,27 @@ M2 adds collection iteration and transactional compile-time function execution.
 forms and `ir` reflection calls. The workflow test applies the same rewrite once
 from direct C++ traversal and once from the textual function, then checks a
 forced post-edit failure rolls back byte-for-byte to the canonical input.
+
+## M3 contract
+
+The first external frontend target is the official ONNX Model Zoo
+`mobilenetv2-7` model mirrored by the ONNX organization on Hugging Face. The
+test input is pinned to repository revision
+`b055c14ebe95ca2df473547484e4d447867951ed`; its 14,246,826-byte model has
+SHA-256 `c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f`.
+`test/model.cmake` downloads and verifies it only when explicitly invoked, so a
+normal build remains offline.
+
+Inspection with the official ONNX 1.19 schema reports IR version 3, opset 7,
+155 nodes, 267 initializers, 268 declared inputs, and one graph output. All 155
+nodes have one output. The graph contains Conv, BatchNormalization, Relu, Add,
+GlobalAveragePool, and Reshape; all initializers use typed fields rather than
+`raw_data`. The importer must therefore exclude initializer-backed legacy graph
+inputs and normalize typed tensor payloads without losing their bits.
+
+The ONNX module will use Protobuf as an optional module dependency, not a core
+dependency. It will map graph inputs to function parameters, initializers to
+typed tensor constants with preserved bytes, nodes to calls named by ONNX
+domain and operator, node attributes to structural `Attr` dictionaries, and
+graph outputs to returns. Operator meaning is not decoded by a core switch.
+The same codec boundary must be usable by a later TFLite module.

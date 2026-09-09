@@ -61,6 +61,11 @@ int main(int argc, char** argv) {
   CHECK(env.call("sample.ping", arguments, returns));
   CHECK(returns.size() == 1);
   CHECK(returns[0].integer() == 42);
+  const std::vector<joggle::Attr> bytes{
+      joggle::Attr(joggle::Attr::Bytes{0, 127, 255})};
+  CHECK(env.call("sample.echo", bytes, returns));
+  CHECK(returns.size() == 1);
+  CHECK(returns[0].bytes() && *returns[0].bytes() == *bytes[0].bytes());
   CHECK(!env.load("bad"));
   CHECK(!env.loaded("bad"));
   CHECK(!env.diags().empty());
@@ -128,6 +133,25 @@ int main(int argc, char** argv) {
       env, "module bad\nfn f() -> int { return 999999999999999999999999 }\n",
       invalid_number, "number.jog"));
   CHECK(!invalid_number.diags().empty());
+
+  joggle::Mod attrs;
+  constexpr std::string_view attr_source =
+      "module attrs\nfn payload() -> dict {\n"
+      "  return {axis: 1, pads: [0, -1], raw: hex\"007fff\"}\n}\n";
+  CHECK(joggle::parse(env, attr_source, attrs, "attrs.jog"));
+  CHECK(attrs.verify(env));
+  const joggle::Val payload =
+      attrs.find_fn("payload").body().ops().back().args()[0];
+  const joggle::Attr payload_attr = payload.constant();
+  const joggle::Attr::Dict* dict = payload_attr.dict();
+  CHECK(dict && dict->size() == 3);
+  CHECK(dict->at("axis").integer() == 1);
+  CHECK(dict->at("pads").list() && dict->at("pads").list()->size() == 2);
+  CHECK(dict->at("raw").bytes() && dict->at("raw").bytes()->size() == 3);
+  joggle::Mod attrs_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(attrs), attrs_roundtrip,
+                      "attrs-roundtrip.jog"));
+  CHECK(joggle::structurally_equal(attrs, attrs_roundtrip));
 
   joggle::Mod missing_return;
   CHECK(joggle::parse(env, "module bad\nfn f(x: i32) -> i32 { x + 1 }\n",

@@ -13,10 +13,19 @@ bool ping(jog_call_v1* call, void*) {
   return call->api->ret(call, 0, &output);
 }
 
+bool echo(jog_call_v1* call, void*) {
+  jog_value_v1 value{};
+  if (call->api->arg_count(call) != 1 || !call->api->arg(call, 0, &value) ||
+      value.kind != JOG_BYTES_V1)
+    return call->api->fail(call, "expected one byte string");
+  return call->api->ret(call, 0, &value);
+}
+
 }  // namespace
 
 JOGGLE_MODULE_EXPORT bool joggle_module_v1(const jog_api_v1* api,
                                            jog_module_v1* module) {
   return api && api->abi_version == joggle::module_abi_version &&
-         api->bind(module, "sample.ping", ping, nullptr);
+         api->bind(module, "sample.ping", ping, nullptr) &&
+         api->bind(module, "sample.echo", echo, nullptr);
 }

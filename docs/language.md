@@ -51,6 +51,16 @@ explicit value flow.
 Canonical printing deliberately discards comments and incidental whitespace.
 Printing and reparsing must produce a structurally equal module.
 
+Attributes use the same literal syntax wherever constant metadata is needed:
+
+```jog
+{axis: 1, pads: [0, -1], raw: hex"007fff", label: "weight"}
+```
+
+The structural `Attr` values are `nil`, `bool`, signed integer, `f64`, `str`,
+`bytes`, list, and string-keyed dictionary. Byte strings print as lowercase hex
+and cross the native ABI without being treated as UTF-8.
+
 ### Compile-time functions
 
 There is no separate pass syntax. Any ordinary function accepting a `Mod` may
