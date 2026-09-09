@@ -55,6 +55,9 @@ MobileNetV2 it propagates all intermediate tensor types, then converts every
 compute node to shared semantics. The model marker and tensor payloads remain
 ONNX transport calls; unknown operators in other models remain open rather
 than acquiring guessed semantics.
+Conversion removes source-schema metadata only after its values have become
+ordinary operands. The same official model is then expanded one function body
+per compute node and verified and round-tripped as loop/tensor IR.
 
 ## Build
 

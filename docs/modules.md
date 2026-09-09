@@ -178,6 +178,10 @@ ordinary operands and removing the schema-only Reshape shape input. It does
 not run inference implicitly and does not alter the codec. On the pinned
 MobileNetV2 this covers every compute node; unsupported calls in other models
 remain untouched.
+After a successful mapping, source metadata is removed because its semantic
+fields are now explicit operands and the readable result binding already
+preserves node identity. Consequently the normal `ir.expand` operation can
+expose any converted function body without a special metadata exception.
 
 `ir.call` inserts an arbitrary call immediately before an existing operation.
 A `str` result-type argument returns the single `Val` convenience form; a

@@ -122,7 +122,9 @@ tensor type construction are complete. Grouped 2-D convolution now has an
 inspectable body, and the explicit `onnx.nn` relation propagates all official
 MobileNetV2 intermediate types before converting every compute node through
 shared Conv, BatchNormalization, ReLU, Add, global-pool, and reshape semantics.
-Broader operator semantics, a second frontend, and target gates remain.
+The complete converted model also expands one semantic body per compute node
+and round-trips as ordinary nested IR. Broader operator semantics, a second
+frontend, and target gates remain.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

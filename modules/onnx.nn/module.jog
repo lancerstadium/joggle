@@ -100,6 +100,14 @@ fn ints(m: Mod, before: Op, value: Attr) -> Val {
   return ir.call(m, before, "base.list", items, "list<int>")
 }
 
+fn convert_call(m: Mod, op: Op, callee: str) -> bool {
+  if !ir.rename(m, op, callee) {
+    return false
+  }
+  let removed = ir.unset(m, op, "onnx")
+  return true
+}
+
 fn convert_conv(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -118,7 +126,7 @@ fn convert_conv(m: Mod, op: Op) -> bool {
   if !ir.args(m, op, inputs) {
     return false
   }
-  return ir.rename(m, op, "nn.conv2d")
+  return convert_call(m, op, "nn.conv2d")
 }
 
 fn convert_norm(m: Mod, op: Op) -> bool {
@@ -138,7 +146,7 @@ fn convert_norm(m: Mod, op: Op) -> bool {
   if !ir.args(m, op, inputs) {
     return false
   }
-  return ir.rename(m, op, "nn.batch_norm")
+  return convert_call(m, op, "nn.batch_norm")
 }
 
 fn convert_reshape(m: Mod, op: Op) -> bool {
@@ -152,7 +160,7 @@ fn convert_reshape(m: Mod, op: Op) -> bool {
   if !ir.args(m, op, [inputs[0]]) {
     return false
   }
-  return ir.rename(m, op, "tensor.reshape")
+  return convert_call(m, op, "tensor.reshape")
 }
 
 fn convert(m: Mod) -> bool {
@@ -165,13 +173,13 @@ fn convert(m: Mod) -> bool {
         changed = convert_norm(m, op) || changed
       } else {
         if ir.callee(op) == "onnx.Relu" {
-          changed = ir.rename(m, op, "nn.relu") || changed
+          changed = convert_call(m, op, "nn.relu") || changed
         } else {
           if ir.callee(op) == "onnx.Add" {
-            changed = ir.rename(m, op, "operator +") || changed
+            changed = convert_call(m, op, "operator +") || changed
           } else {
             if ir.callee(op) == "onnx.GlobalAveragePool" {
-              changed = ir.rename(m, op, "nn.global_avg_pool2d") || changed
+              changed = convert_call(m, op, "nn.global_avg_pool2d") || changed
             } else {
               if ir.callee(op) == "onnx.Reshape" {
                 changed = convert_reshape(m, op) || changed

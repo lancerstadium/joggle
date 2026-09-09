@@ -507,3 +507,8 @@ name-agnostic, unknown calls remain open, and neither action happens on load.
 The official model gate requires every intermediate node result to become
 typed, every compute node to leave the ONNX namespace, conversion to verify and
 round-trip, and repeated inference and conversion to be textually unchanged.
+Conversion discards the `onnx` metadata only after materializing its semantic
+values, making the boundary explicit instead of teaching expansion how to
+reinterpret frontend provenance. A second official-model gate expands all 155
+compute calls from one pre-edit snapshot, verifies the resulting nested loop
+IR, and round-trips it structurally.

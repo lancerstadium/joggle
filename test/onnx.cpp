@@ -5,6 +5,7 @@
 #include <fstream>
 #include <initializer_list>
 #include <iterator>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -200,6 +201,34 @@ int main(int argc, char** argv) {
                       "mobilenet-semantic-roundtrip.jog"));
   CHECK(semantic_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(semantic, semantic_roundtrip));
+
+  const std::set<std::string, std::less<>> expandable{
+      "nn.conv2d", "nn.batch_norm", "nn.relu", "operator +",
+      "nn.global_avg_pool2d", "tensor.reshape"};
+  std::size_t expanded = 0;
+  for (joggle::Op op : semantic_roundtrip.ops()) {
+    if (!expandable.contains(op.callee()))
+      continue;
+    CHECK(!op.meta("onnx"));
+    const joggle::Fn callee = env.resolve(semantic_roundtrip, op);
+    CHECK(callee && semantic_roundtrip.expand(op, callee));
+    ++expanded;
+  }
+  CHECK(expanded == nodes);
+  CHECK(semantic_roundtrip.verify(env));
+  for (joggle::Op op : semantic_roundtrip.ops()) {
+    CHECK(op.callee() != "nn.conv2d");
+    CHECK(op.callee() != "nn.batch_norm");
+    CHECK(op.callee() != "nn.relu");
+    CHECK(op.callee() != "nn.global_avg_pool2d");
+    CHECK(op.callee() != "tensor.reshape");
+  }
+  const std::string expanded_text = joggle::print(semantic_roundtrip);
+  joggle::Mod expanded_roundtrip;
+  CHECK(joggle::parse(env, expanded_text, expanded_roundtrip,
+                      "mobilenet-expanded-roundtrip.jog"));
+  CHECK(expanded_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(semantic_roundtrip, expanded_roundtrip));
 
   const std::vector<joggle::Attr> multi_args{
       joggle::Attr(multi_output_model())};
