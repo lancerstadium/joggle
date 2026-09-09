@@ -1,0 +1,7 @@
+module script
+use opt
+
+fn fail_after_edit(m: Mod) -> bool {
+  let changed = opt.fold_add_zero(m)
+  return missing(changed)
+}

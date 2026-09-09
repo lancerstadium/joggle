@@ -377,6 +377,22 @@ bool Env::loaded(std::string_view name) const noexcept {
   return impl_->modules.contains(name);
 }
 
+Fn Env::find_fn(std::string_view symbol) const noexcept {
+  std::size_t best = 0;
+  Fn result;
+  for (const auto& [name, module] : impl_->modules) {
+    if (name.size() <= best || symbol.size() <= name.size() ||
+        !symbol.starts_with(name) || symbol[name.size()] != '.')
+      continue;
+    Fn candidate = module->find_fn(symbol.substr(name.size() + 1));
+    if (candidate) {
+      best = name.size();
+      result = candidate;
+    }
+  }
+  return result;
+}
+
 bool Env::bound(std::string_view symbol) const noexcept {
   return impl_->hosts.contains(symbol);
 }
@@ -446,6 +462,10 @@ std::vector<std::string> Env::modules() const {
 
 const std::vector<Diag>& Env::diags() const noexcept { return impl_->diags; }
 void Env::clear_diags() noexcept { impl_->diags.clear(); }
+
+void Env::error(std::string message, Loc loc) {
+  detail::add_diag(impl_->diags, std::move(message), std::move(loc));
+}
 
 int Env::print_diags(std::FILE* file) const {
   return detail::print_diags(file, impl_->diags);

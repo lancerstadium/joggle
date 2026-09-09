@@ -1,0 +1,14 @@
+module ir
+
+fn fns(m: Mod) -> list<Fn>;
+fn blocks(f: Fn) -> list<Blk>;
+fn ops(b: Blk) -> list<Op>;
+fn args(op: Op) -> list<Val>;
+fn outs(op: Op) -> list<Val>;
+fn callee(op: Op) -> str;
+fn is_const(v: Val) -> bool;
+fn constant(v: Val) -> Attr;
+fn len<T>(xs: list<T>) -> int;
+fn replace(m: Mod, old: Val, next: Val) -> bool;
+fn erase(m: Mod, op: Op) -> bool;
+fn rename(m: Mod, op: Op, callee: str) -> bool;

@@ -8,10 +8,16 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Then parse and canonically print the real matrix-multiplication fixture:
+Then verify and canonically print the real matrix-multiplication fixture:
 
 ```sh
-./build/joggle test/data/matmul.jog
+./build/joggle check test/data/matmul.jog
+```
+
+Run the textual add-zero transform and print its result:
+
+```sh
+./build/joggle run opt.fold_add_zero test/data/matmul.jog -M modules
 ```
 
 The equivalent embedded use is:
@@ -40,3 +46,15 @@ native module and calls its declared host function.
 
 There is no hidden lowering step in this workflow. Loops, calls, mutable source
 bindings, and pass edits all refer to one `Mod`.
+
+The textual equivalent loads a module and selects one of its normal functions:
+
+```cpp
+env.path("modules");
+if (!env.load("opt") || !joggle::run(env, "opt.fold_add_zero", mod))
+  return env.print_diags(stderr);
+```
+
+`modules/opt/module.jog` is the complete transform. It iterates functions,
+blocks, and operations through `ir`, replaces the result of `x + 0`, and erases
+the dead call. No C++ registration is required for that transform.

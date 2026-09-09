@@ -40,10 +40,12 @@ unknown or non-host functions, duplicate bindings, missing entry points, and
 ABI mismatches reported by the module. Calls validate scalar arguments and
 returns against the `.jog` declaration.
 
-The first standard modules will be `base`, `tensor`, `nn`, `opt`, and `onnx`.
-M1 currently ships minimal `base` and `tensor` declarations solely to exercise
-deterministic discovery and dependency loading. MLIR, JIT, simulation, hardware
-description, and target experiments remain optional.
+The current standard modules are deliberately narrow: `base` declares value
+copying, `tensor` establishes the tensor dependency boundary, `ir` declares
+universal reflection functions, and `opt` contains a real textual transform.
+Future `nn` and `onnx` modules may add model semantics and import without core
+operator switches. MLIR, JIT, simulation, hardware description, and target
+experiments remain optional.
 
 Version 0.1 searches explicit local paths. Installation means placing or
 linking a directory on one of those paths; removal means taking it off the path.
@@ -53,6 +55,24 @@ resolution, lockfiles, and in-process hot unloading are out of scope.
 The bundled declarations install under `share/joggle/modules`. Applications
 choose their module roots explicitly with `Env::path`; the core does not depend
 on a process-global environment variable or a compile-time installation path.
+
+Loading a module parses and verifies its declarations after loading dependencies.
+It never runs a transform as a side effect. The caller selects an ordinary
+function with `joggle::run` or `joggle run`; this keeps module installation,
+function definition, and execution as three separate operations.
+
+The built-in `ir` module is the complete reflection boundary:
+
+| Function | Meaning |
+| --- | --- |
+| `fns`, `blocks`, `ops` | Traverse structural ownership in stable order. |
+| `args`, `outs` | Read operation dataflow. |
+| `callee`, `is_const`, `constant`, `len` | Query calls, values, and lists. |
+| `replace`, `erase`, `rename` | Apply the same checked mutations as C++. |
+
+These functions operate on generic handles and contain no NN operator names.
+Adding an importer, optimization, or target module therefore does not extend
+the reflection ABI or add a parser case.
 
 `module.jog` contains the module header and imports. Files in `lib/*.jog` are
 appended in lexical path order and contain further declarations without another

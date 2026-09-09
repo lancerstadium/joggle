@@ -4,7 +4,7 @@ project(Joggle VERSION 0.1.0 LANGUAGES CXX)
 
 option(JOGGLE_BUILD_TESTS "Build Joggle tests" ON)
 
-add_library(joggle src/env.cpp src/ir.cpp src/lang.cpp)
+add_library(joggle src/env.cpp src/eval.cpp src/ir.cpp src/lang.cpp)
 add_library(Joggle::joggle ALIAS joggle)
 
 target_compile_features(joggle PUBLIC cxx_std_20)
@@ -74,6 +74,12 @@ if(JOGGLE_BUILD_TESTS)
     "${CMAKE_CURRENT_BINARY_DIR}/modules/bad/module.jog"
     COPYONLY
   )
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/script")
+  configure_file(
+    test/data/script/module.jog
+    "${CMAKE_CURRENT_BINARY_DIR}/modules/script/module.jog"
+    COPYONLY
+  )
   add_executable(joggle-workflow-test test/workflow.cpp)
   target_link_libraries(joggle-workflow-test PRIVATE Joggle::joggle)
   add_test(
@@ -82,5 +88,19 @@ if(JOGGLE_BUILD_TESTS)
             ${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
             ${CMAKE_CURRENT_SOURCE_DIR}/modules
             ${CMAKE_CURRENT_BINARY_DIR}/modules
+  )
+  add_test(
+    NAME cli-check
+    COMMAND $<TARGET_FILE:joggle-tool> check
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
+  )
+  add_test(
+    NAME cli-run
+    COMMAND $<TARGET_FILE:joggle-tool> run opt.fold_add_zero
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
+            -M ${CMAKE_CURRENT_SOURCE_DIR}/modules
+  )
+  set_tests_properties(
+    cli-run PROPERTIES PASS_REGULAR_EXPRESSION "return x"
   )
 endif()

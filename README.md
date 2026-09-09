@@ -5,13 +5,15 @@ software co-design research. It gives experiments one readable IR, one module
 format, and one extension boundary without prescribing a target, scheduler, or
 paper mechanism.
 
-The rebuilt M1 core parses and verifies generic functions, calls, constants,
+The rebuilt core parses and verifies generic functions, calls, constants,
 structured loops and conditions, explicit returns, and loop-carried values. A
-tested C++ transform edits the same representation, while a separately built
-native module is discovered, signature-checked, loaded, and called through the
-single host-function ABI. The core contains no ONNX, device, instruction-set,
-runtime, or code-generation policy; those capabilities belong in removable
-modules.
+tested C++ transform and an ordinary `.jog` function edit the same
+representation. Compile-time functions traverse universal IR handles and run
+transactionally; they are functions, not instances of a pass class. A
+separately built native module is also discovered, signature-checked, loaded,
+and called through the single host-function ABI. The core contains no ONNX,
+device, instruction-set, runtime, or code-generation policy; those capabilities
+belong in removable modules.
 
 ## Build
 
@@ -20,6 +22,13 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
 cmake --install build --prefix /path/to/prefix
+```
+
+Check a module or run a textual transform:
+
+```sh
+./build/joggle check test/data/matmul.jog
+./build/joggle run opt.fold_add_zero test/data/matmul.jog -M modules
 ```
 
 The core and command-line tool require only a C++20 compiler and the standard

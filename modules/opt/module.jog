@@ -1,0 +1,25 @@
+module opt
+use ir
+
+fn fold_add_zero(m: Mod) -> bool {
+  var changed = false
+  for f in ir.fns(m) {
+    for b in ir.blocks(f) {
+      for op in ir.ops(b) {
+        if ir.callee(op) == "operator +" {
+          let args = ir.args(op)
+          let outs = ir.outs(op)
+          if ir.len(args) == 2 && ir.len(outs) == 1 {
+            if ir.is_const(args[1]) {
+              if ir.constant(args[1]) == 0 {
+                changed = ir.replace(m, outs[0], args[0])
+                changed = ir.erase(m, op)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return changed
+}

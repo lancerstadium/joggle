@@ -39,8 +39,16 @@ attach an implementation to a declared host function through one versioned C
 ABI. The declaration remains the single source of its signature.
 
 An importer, transform, analysis, simulator, or emitter is therefore an
-ordinary compile-time function. Core has no codec, pass, target, device,
-analysis, emitter, or artifact class family.
+ordinary compile-time function. `run` interprets the same structured function
+body over compile-time scalars, lists, and IR handles. The `ir` module exposes a
+small, representation-complete reflection vocabulary; it is not another IR or
+an operator catalog. Core has no codec, pass, target, device, analysis, emitter,
+or artifact class family.
+
+Compile-time execution is explicit, deterministic, and in-place on success.
+It has no ambient file, network, clock, or process access. A failed function or
+invalid result restores the input `Mod`, so experiments do not leave partially
+rewritten IR behind.
 
 ## Invariants
 
@@ -88,3 +96,11 @@ lines.
 These numbers are a local regression baseline, not cross-machine performance
 claims. Tests and the sample native module are excluded from the source-line
 count. The build made no network requests and used no third-party library.
+
+## M2 slice
+
+M2 adds collection iteration and transactional compile-time function execution.
+`modules/opt/module.jog` implements add-zero folding using only normal language
+forms and `ir` reflection calls. The workflow test applies the same rewrite once
+from direct C++ traversal and once from the textual function, then checks a
+forced post-edit failure rolls back byte-for-byte to the canonical input.

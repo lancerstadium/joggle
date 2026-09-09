@@ -4,7 +4,7 @@
 modules, functions, types, control flow, and explicit compile-time workflows.
 It is intentionally not a second pipeline or kernel language.
 
-The implemented M1 surface is conventional:
+The implemented surface is conventional:
 
 ```jog
 module demo
@@ -31,11 +31,12 @@ and `return`. It has generics, structural types, attributes, and overloadable
 operators. It has no `graph`, `kernel`, `compute`, `map`, `fold`, `rewrite`,
 `region`, or `pass` syntax.
 
-Multiple loop variables denote a lexically nested Cartesian product. `return`
-is always an ordinary statement in the function block. Mutable values crossing
-a `for` or `if` boundary become block arguments, results, and an internal
-`yield`; these mechanics remain visible to C++ transforms but are recovered as
-normal source syntax by the printer.
+Multiple loop variables denote a lexically nested Cartesian product. A source
+may be a range or any compile-time list, so the same form traverses tensor
+indices and IR collections. `return` is always an ordinary statement in the
+function block. Mutable values crossing a `for` or `if` boundary become block
+arguments, results, and an internal `yield`; these mechanics remain visible to
+C++ transforms but are recovered as normal source syntax by the printer.
 
 Calls, literals, indexing, unary operators, and common binary operators are
 implemented. Operators normalize to ordinary function calls such as
@@ -50,10 +51,21 @@ explicit value flow.
 Canonical printing deliberately discards comments and incidental whitespace.
 Printing and reparsing must produce a structurally equal module.
 
-### Next language slice
+### Compile-time functions
 
-`@build(...)` will enter compile-time evaluation in M2. Calls inside the
-selected function will remain ordinary calls and will not repeat `@`. Function
-attributes beyond `[host]`, user type declarations, typed overload resolution,
-and the minimal reflection library also remain for later slices. They will
-extend this one language rather than introduce pipeline or kernel syntax.
+There is no separate pass syntax. Any ordinary function accepting a `Mod` may
+be selected explicitly by the embedding API or CLI:
+
+```sh
+joggle run opt.fold_add_zero model.jog -M modules
+```
+
+Calls inside that function remain ordinary calls. Compile-time execution
+supports structured `for` and `if`, scalar operators, lists, and the universal
+`Mod`, `Fn`, `Blk`, `Op`, and `Val` handles exposed by `ir`. Failed execution is
+transactional. It does not evaluate arbitrary model functions or silently run
+transforms while parsing.
+
+Function attributes beyond `[host]`, user type declarations, and full typed
+overload resolution remain for later slices. They will extend this one language
+rather than introduce pipeline or kernel syntax.

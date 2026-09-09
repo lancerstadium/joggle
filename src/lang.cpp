@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cctype>
+#include <exception>
 #include <sstream>
 #include <unordered_map>
 #include <utility>
@@ -505,17 +506,19 @@ private:
       const std::string iter = take_name("loop variable");
       if (iter.empty() || !word("in"))
         return fail("expected 'in' after loop variable");
-      const auto lower = expression(block, scope);
-      if (lower == detail::none || !expect(".."))
+      auto source = expression(block, scope);
+      if (source == detail::none)
         return false;
-      const auto upper = expression(block, scope);
-      if (upper == detail::none)
-        return false;
+      if (match("..")) {
+        const auto upper = expression(block, scope);
+        if (upper == detail::none)
+          return false;
+        source =
+            add_call(block, operator_name(".."), {source, upper}, Ty("range"));
+      }
       data.iter_names.push_back(iter);
-      data.args.push_back(lower);
-      data.args.push_back(upper);
+      data.args.push_back(source);
     } while (match(","));
-    data.range_count = data.iter_names.size();
 
     const auto captures = carried(scope);
     data.carried_count = captures.size();
@@ -726,7 +729,8 @@ private:
     std::uint32_t value = primary(block, scope);
     if (value == detail::none)
       return value;
-    while (match("[")) {
+    while (is("[")) {
+      const Token open = take();
       std::vector<std::uint32_t> args{value};
       if (!is("]")) {
         do {
@@ -738,7 +742,8 @@ private:
       }
       if (!expect("]"))
         return detail::none;
-      value = add_call(block, operator_name("[]"), std::move(args), Ty("_"));
+      value = add_call(block, operator_name("[]"), std::move(args), Ty("_"),
+                       open.loc);
     }
     return value;
   }
@@ -764,12 +769,29 @@ private:
   std::uint32_t primary(std::uint32_t block, Scope& scope) {
     const Token token = take();
     if (token.kind == Tk::number) {
-      if (token.text.find('.') != std::string::npos)
-        return add_const(block, Attr(std::stod(token.text)), Ty("f64"),
-                         token.loc);
+      if (token.text.find('.') != std::string::npos) {
+        double value = 0;
+        std::size_t consumed = 0;
+        try {
+          value = std::stod(token.text, &consumed);
+        } catch (const std::exception&) {
+          fail("invalid real literal", token.loc);
+          return detail::none;
+        }
+        if (consumed != token.text.size()) {
+          fail("invalid real literal", token.loc);
+          return detail::none;
+        }
+        return add_const(block, Attr(value), Ty("f64"), token.loc);
+      }
       std::int64_t value = 0;
-      std::from_chars(token.text.data(), token.text.data() + token.text.size(),
-                      value);
+      const auto result = std::from_chars(
+          token.text.data(), token.text.data() + token.text.size(), value);
+      if (result.ec != std::errc{} ||
+          result.ptr != token.text.data() + token.text.size()) {
+        fail("invalid integer literal", token.loc);
+        return detail::none;
+      }
       return add_const(block, Attr(value), Ty("int"), token.loc);
     }
     if (token.kind == Tk::string)
@@ -843,6 +865,9 @@ std::string render_call(const detail::Store& store, const detail::OpData& op) {
       }
       return out + "]";
     }
+    if (symbol == ".." && op.args.size() == 2)
+      return render_value(store, op.args[0]) + ".." +
+             render_value(store, op.args[1]);
     if (op.args.size() == 1)
       return std::string(symbol) + render_value(store, op.args[0]);
     if (op.args.size() == 2)
@@ -912,12 +937,11 @@ void render_block(std::ostringstream& out, const detail::Store& store,
       out << '\n';
     } else if (op.kind == Op::Kind::loop) {
       out << "for ";
-      for (std::size_t index = 0; index < op.range_count; ++index) {
+      for (std::size_t index = 0; index < op.iter_names.size(); ++index) {
         if (index)
           out << ", ";
         out << op.iter_names[index] << " in "
-            << render_value(store, op.args[index * 2]) << ".."
-            << render_value(store, op.args[index * 2 + 1]);
+            << render_value(store, op.args[index]);
       }
       out << " {\n";
       render_block(out, store, op.blocks.front(), depth + 1);
@@ -1160,14 +1184,23 @@ bool Mod::verify(const Env&) {
                        op.loc);
     if (op.kind == Op::Kind::call && op.callee.empty())
       detail::add_diag(store.diags, "call has no callee", op.loc);
+    const auto block_args = [&](std::size_t index, std::size_t count) {
+      if (index >= op.blocks.size() || op.blocks[index] >= store.blocks.size())
+        return false;
+      const auto& child = store.blocks[op.blocks[index]];
+      return child.live && child.data.parent_op == op_id &&
+             child.data.args.size() == count;
+    };
     if (op.kind == Op::Kind::loop &&
         (op.blocks.size() != 1 ||
-         op.args.size() != op.range_count * 2 + op.carried_count ||
-         op.outs.size() != op.carried_count))
+         op.args.size() != op.iter_names.size() + op.carried_count ||
+         op.outs.size() != op.carried_count ||
+         !block_args(0, op.iter_names.size() + op.carried_count)))
       detail::add_diag(store.diags, "loop structure is inconsistent", op.loc);
     if (op.kind == Op::Kind::branch &&
         (op.blocks.size() != 2 || op.args.size() != 1 + op.carried_count ||
-         op.outs.size() != op.carried_count))
+         op.outs.size() != op.carried_count ||
+         !block_args(0, op.carried_count) || !block_args(1, op.carried_count)))
       detail::add_diag(store.diags, "if structure is inconsistent", op.loc);
     for (const auto arg : op.args) {
       if (arg >= store.vals.size() || !store.vals[arg].live) {

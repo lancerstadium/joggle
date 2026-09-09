@@ -142,7 +142,8 @@ private:
 
 namespace detail {
 struct Store;
-}
+class Eval;
+}  // namespace detail
 
 class Mod;
 class Fn;
@@ -259,6 +260,7 @@ private:
   friend class Mod;
   friend class Blk;
   friend class Parser;
+  friend class detail::Eval;
 };
 
 class Env {
@@ -273,6 +275,7 @@ public:
   void path(std::string path);
   bool load(std::string_view name);
   bool loaded(std::string_view name) const noexcept;
+  Fn find_fn(std::string_view symbol) const noexcept;
   bool bound(std::string_view symbol) const noexcept;
   bool call(std::string_view symbol, std::span<const Attr> args,
             std::vector<Attr>& returns);
@@ -285,8 +288,11 @@ private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
 
+  void error(std::string message, Loc loc = {});
+
   friend class Parser;
   friend class Mod;
+  friend bool run(Env&, std::string_view, Mod&);
 };
 
 class Mod {
@@ -320,6 +326,7 @@ private:
 
   friend class Parser;
   friend class Env;
+  friend bool run(Env&, std::string_view, Mod&);
   friend std::string print(const Mod&);
 };
 
@@ -328,6 +335,7 @@ bool parse(Env& env, std::string_view source, Mod& out,
 std::string print(const Mod& mod);
 bool print(std::FILE* file, const Mod& mod);
 bool structurally_equal(const Mod& left, const Mod& right);
+bool run(Env& env, std::string_view function, Mod& mod);
 
 }  // namespace joggle
 

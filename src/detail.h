@@ -47,7 +47,6 @@ struct OpData {
   std::vector<std::uint32_t> outs;
   std::vector<std::uint32_t> blocks;
   std::vector<std::string> iter_names;
-  std::size_t range_count = 0;
   std::size_t carried_count = 0;
   Attr literal;
   Form form = Form::hidden;

@@ -1,9 +1,18 @@
 #include "joggle/joggle.h"
 
-#include <cassert>
+#include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <string>
+
+#define CHECK(expression)                                                      \
+  do {                                                                         \
+    if (!(expression)) {                                                       \
+      std::fprintf(stderr, "%s:%d: check failed: %s\n", __FILE__, __LINE__,    \
+                   #expression);                                               \
+      return 1;                                                                \
+    }                                                                          \
+  } while (false)
 
 namespace {
 
@@ -32,79 +41,103 @@ bool fold_add_zero(joggle::Mod& mod, joggle::Op* removed = nullptr) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  assert(argc == 4);
+  CHECK(argc == 4);
   std::ifstream input(argv[1]);
-  assert(input);
+  CHECK(input);
   std::ostringstream source;
   source << input.rdbuf();
 
   joggle::Env env;
   env.path(argv[2]);
   env.path(argv[3]);
-  assert(env.load("tensor"));
-  assert(env.loaded("base"));
-  assert(env.loaded("tensor"));
-  assert((env.modules() == std::vector<std::string>{"base", "tensor"}));
-  assert(env.load("sample"));
-  assert(env.bound("sample.ping"));
+  CHECK(env.load("tensor"));
+  CHECK(env.loaded("base"));
+  CHECK(env.loaded("tensor"));
+  CHECK((env.modules() == std::vector<std::string>{"base", "tensor"}));
+  CHECK(env.load("sample"));
+  CHECK(env.bound("sample.ping"));
   const std::vector<joggle::Attr> arguments{joggle::Attr(std::int64_t{41})};
   std::vector<joggle::Attr> returns;
-  assert(env.call("sample.ping", arguments, returns));
-  assert(returns.size() == 1);
-  assert(returns[0].integer() == 42);
-  assert(!env.load("bad"));
-  assert(!env.loaded("bad"));
-  assert(!env.diags().empty());
+  CHECK(env.call("sample.ping", arguments, returns));
+  CHECK(returns.size() == 1);
+  CHECK(returns[0].integer() == 42);
+  CHECK(!env.load("bad"));
+  CHECK(!env.loaded("bad"));
+  CHECK(!env.diags().empty());
   env.clear_diags();
   joggle::Mod mod;
-  assert(joggle::parse(env, source.str(), mod, argv[1]));
-  assert(mod.verify(env));
-  assert(mod.name() == "test.linear");
-  assert(mod.uses() == std::vector<std::string>{"tensor"});
-  assert(mod.fns().size() == 3);
+  CHECK(joggle::parse(env, source.str(), mod, argv[1]));
+  CHECK(mod.verify(env));
+  CHECK(mod.name() == "test.linear");
+  CHECK(mod.uses() == std::vector<std::string>{"tensor"});
+  CHECK(mod.fns().size() == 3);
 
   joggle::Fn matmul = mod.find_fn("matmul");
-  assert(matmul);
-  assert(matmul.generics().size() == 4);
-  assert(matmul.params().size() == 2);
-  assert(matmul.blocks().size() == 3);
+  CHECK(matmul);
+  CHECK(matmul.generics().size() == 4);
+  CHECK(matmul.params().size() == 2);
+  CHECK(matmul.blocks().size() == 3);
 
   const std::string canonical = joggle::print(mod);
-  assert(canonical.find("for i in 0..M, j in 0..N") != std::string::npos);
-  assert(canonical.find("for k in 0..K") != std::string::npos);
-  assert(canonical.find("sum += a[i, k] * b[k, j]") != std::string::npos);
-  assert(canonical.find("if flag") != std::string::npos);
+  CHECK(canonical.find("for i in 0..M, j in 0..N") != std::string::npos);
+  CHECK(canonical.find("for k in 0..K") != std::string::npos);
+  CHECK(canonical.find("sum += a[i, k] * b[k, j]") != std::string::npos);
+  CHECK(canonical.find("if flag") != std::string::npos);
 
   joggle::Mod reparsed;
-  assert(joggle::parse(env, canonical, reparsed, "canonical.jog"));
-  assert(reparsed.verify(env));
-  assert(joggle::structurally_equal(mod, reparsed));
+  CHECK(joggle::parse(env, canonical, reparsed, "canonical.jog"));
+  CHECK(reparsed.verify(env));
+  CHECK(joggle::structurally_equal(mod, reparsed));
 
   joggle::Op removed;
-  assert(fold_add_zero(mod, &removed));
-  assert(!removed.valid());
-  assert(mod.verify(env));
+  CHECK(fold_add_zero(mod, &removed));
+  CHECK(!removed.valid());
+  CHECK(mod.verify(env));
   const std::string folded = joggle::print(mod);
-  assert(folded.find("let y = x + 0") == std::string::npos);
-  assert(folded.find("return x") != std::string::npos);
+  CHECK(folded.find("let y = x + 0") == std::string::npos);
+  CHECK(folded.find("return x") != std::string::npos);
+
+  CHECK(env.load("opt"));
+  CHECK(env.loaded("ir"));
+  joggle::Mod scripted;
+  CHECK(joggle::parse(env, source.str(), scripted, argv[1]));
+  if (!joggle::run(env, "opt.fold_add_zero", scripted))
+    return env.print_diags(stderr);
+  const std::string scripted_text = joggle::print(scripted);
+  CHECK(scripted_text.find("let y = x + 0") == std::string::npos);
+  CHECK(scripted_text.find("return x") != std::string::npos);
+
+  CHECK(env.load("script"));
+  joggle::Mod rolled_back;
+  CHECK(joggle::parse(env, source.str(), rolled_back, argv[1]));
+  const std::string before_failure = joggle::print(rolled_back);
+  CHECK(!joggle::run(env, "script.fail_after_edit", rolled_back));
+  CHECK(joggle::print(rolled_back) == before_failure);
+  CHECK(!env.diags().empty());
 
   joggle::Mod immutable;
-  assert(!joggle::parse(env,
-                        "module bad\nfn f(x: i32) -> i32 {\n"
-                        "  let y = x\n  y = 1\n  return y\n}\n",
-                        immutable, "immutable.jog"));
-  assert(!immutable.diags().empty());
-  assert(immutable.diags().front().loc.line == 4);
+  CHECK(!joggle::parse(env,
+                       "module bad\nfn f(x: i32) -> i32 {\n"
+                       "  let y = x\n  y = 1\n  return y\n}\n",
+                       immutable, "immutable.jog"));
+  CHECK(!immutable.diags().empty());
+  CHECK(immutable.diags().front().loc.line == 4);
+
+  joggle::Mod invalid_number;
+  CHECK(!joggle::parse(
+      env, "module bad\nfn f() -> int { return 999999999999999999999999 }\n",
+      invalid_number, "number.jog"));
+  CHECK(!invalid_number.diags().empty());
 
   joggle::Mod missing_return;
-  assert(joggle::parse(env, "module bad\nfn f(x: i32) -> i32 { x + 1 }\n",
-                       missing_return, "return.jog"));
-  assert(!missing_return.verify(env));
-  assert(!missing_return.diags().empty());
+  CHECK(joggle::parse(env, "module bad\nfn f(x: i32) -> i32 { x + 1 }\n",
+                      missing_return, "return.jog"));
+  CHECK(!missing_return.verify(env));
+  CHECK(!missing_return.diags().empty());
 
   env.clear_diags();
   const std::vector<joggle::Attr> wrong{joggle::Attr("not an integer")};
-  assert(!env.call("sample.ping", wrong, returns));
-  assert(!env.diags().empty());
+  CHECK(!env.call("sample.ping", wrong, returns));
+  CHECK(!env.diags().empty());
   return 0;
 }
