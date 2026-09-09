@@ -68,7 +68,7 @@ The built-in `ir` module is the complete reflection boundary:
 | --- | --- |
 | `fns`, `blocks`, `ops` | Traverse structural ownership in stable order. |
 | `args`, `outs` | Read operation dataflow. |
-| `callee`, `is_const`, `constant`, `len` | Query calls, values, and lists. |
+| `callee`, `type`, `is_const`, `constant`, `len` | Query calls, values, and lists. |
 | `replace`, `erase`, `rename` | Apply the same checked mutations as C++. |
 
 These functions operate on generic handles and contain no NN operator names.

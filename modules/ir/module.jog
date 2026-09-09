@@ -6,6 +6,7 @@ fn ops(b: Blk) -> list<Op>;
 fn args(op: Op) -> list<Val>;
 fn outs(op: Op) -> list<Val>;
 fn callee(op: Op) -> str;
+fn type(v: Val) -> str;
 fn is_const(v: Val) -> bool;
 fn constant(v: Val) -> Attr;
 fn len<T>(xs: list<T>) -> int;

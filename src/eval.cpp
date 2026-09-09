@@ -561,6 +561,9 @@ private:
     } else if (name == "callee" && args.size() == 1) {
       if (const auto* op = as<Op>(args[0]))
         return Items{Item(Attr(std::string(op->callee())))};
+    } else if (name == "type" && args.size() == 1) {
+      if (const auto* value = as<Val>(args[0]))
+        return Items{Item(Attr(std::string(value->type().text())))};
     } else if (name == "is_const" && args.size() == 1) {
       if (const auto* value = as<Val>(args[0]))
         return Items{Item(Attr(value->is_const()))};
