@@ -1,23 +1,134 @@
 module opt
 use ir
 
-fn fold_add_zero(m: Mod) -> bool {
+fn fold_identity(m: Mod, callee: str, identity: Attr, side: int) -> bool {
   var changed = false
   for op in ir.ops(m) {
-    if ir.callee(op) == "operator +" {
+    if ir.callee(op) == callee && (side == 0 || side == 1) {
       let args = ir.args(op)
       let outs = ir.outs(op)
       if ir.len(args) == 2 && ir.len(outs) == 1 {
-        if ir.is_const(args[1]) {
-          if ir.constant(args[1]) == 0 {
-            changed = ir.replace(m, outs[0], args[0])
-            changed = ir.erase(m, op)
+        if ir.is_const(args[side]) {
+          if ir.constant(args[side]) == identity {
+            let keep = args[1 - side]
+            if ir.type(outs[0]) == ir.type(keep) {
+              changed = ir.replace(m, outs[0], keep)
+              changed = ir.erase(m, op)
+            }
           }
         }
       }
     }
   }
   return changed
+}
+
+fn fold_add_zero(m: Mod) -> bool {
+  var changed = fold_identity(m, "operator +", 0, 1)
+  changed = fold_identity(m, "operator +", 0, 0) || changed
+  return changed
+}
+
+fn dce(m: Mod, pure: list<str>) -> bool {
+  var changed = false
+  for op in ir.ops(m) {
+    if ir.live(op) {
+      var allowed = false
+      for callee in pure {
+        if callee == ir.callee(op) {
+          allowed = true
+        }
+      }
+      if ir.kind(op) == "call" && allowed {
+        var unused = true
+        for value in ir.outs(op) {
+          if ir.len(ir.users(value)) != 0 {
+            unused = false
+          }
+        }
+        if unused {
+          changed = ir.erase(m, op) || changed
+        }
+      }
+    }
+  }
+  return changed
+}
+
+fn cse(m: Mod, pure: list<str>) -> bool {
+  var changed = false
+  let ops = ir.ops(m)
+  for i in 0..ir.len(ops) {
+    let op = ops[i]
+    if ir.live(op) {
+      var allowed = false
+      for callee in pure {
+        if callee == ir.callee(op) {
+          allowed = true
+        }
+      }
+      if ir.kind(op) == "call" && allowed {
+        var merged = false
+        for j in 0..i {
+          if !merged {
+            let prior = ops[j]
+            if ir.live(prior) {
+              if ir.kind(prior) == "call" && ir.block(prior) == ir.block(op) {
+                let left = ir.outs(prior)
+                let right = ir.outs(op)
+                var same = ir.len(left) == ir.len(right)
+                if same {
+                  for k in 0..ir.len(left) {
+                    if ir.type(left[k]) != ir.type(right[k]) {
+                      same = false
+                    }
+                  }
+                }
+                if same && ir.callee(prior) == ir.callee(op) &&
+                   ir.args(prior) == ir.args(op) &&
+                   ir.meta(prior) == ir.meta(op) {
+                  var replaced = true
+                  for k in 0..ir.len(ir.outs(op)) {
+                    replaced = ir.replace(
+                      m, ir.outs(op)[k], ir.outs(prior)[k]
+                    ) && replaced
+                  }
+                  if replaced {
+                    merged = ir.erase(m, op)
+                    changed = merged || changed
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return changed
+}
+
+fn fix(m: Mod, pure: list<str>, limit: int) -> bool {
+  let safe = pure + ["operator +", "operator *"]
+  var changed = false
+  var again = true
+  for i in 0..limit {
+    if again {
+      again = false
+      again = fold_identity(m, "operator +", 0, 0) || again
+      again = fold_identity(m, "operator +", 0, 1) || again
+      again = fold_identity(m, "operator *", 1, 0) || again
+      again = fold_identity(m, "operator *", 1, 1) || again
+      again = cse(m, safe) || again
+      again = dce(m, safe) || again
+      changed = again || changed
+    }
+  }
+  return changed
+}
+
+fn basic(m: Mod) -> bool {
+  return fix(m, [], 8)
 }
 
 fn fuse(m: Mod, pattern: list<str>, replacement: str) -> bool {

@@ -1247,7 +1247,8 @@ private:
 
 namespace {
 
-std::string render_value(const detail::Store& store, std::uint32_t value);
+std::string render_value(const detail::Store& store, std::uint32_t value,
+                         int parent = 0, bool right = false);
 
 std::string render_call(const detail::Store& store, const detail::OpData& op) {
   if (op.callee == "base.list") {
@@ -1262,7 +1263,7 @@ std::string render_call(const detail::Store& store, const detail::OpData& op) {
   if (op.callee.starts_with("operator ")) {
     const std::string_view symbol(op.callee.data() + 9, op.callee.size() - 9);
     if (symbol == "[]" && !op.args.empty()) {
-      std::string out = render_value(store, op.args.front()) + "[";
+      std::string out = render_value(store, op.args.front(), 10) + "[";
       for (std::size_t index = 1; index < op.args.size(); ++index) {
         if (index != 1)
           out += ", ";
@@ -1274,10 +1275,13 @@ std::string render_call(const detail::Store& store, const detail::OpData& op) {
       return render_value(store, op.args[0]) + ".." +
              render_value(store, op.args[1]);
     if (op.args.size() == 1)
-      return std::string(symbol) + render_value(store, op.args[0]);
-    if (op.args.size() == 2)
-      return render_value(store, op.args[0]) + " " + std::string(symbol) + " " +
-             render_value(store, op.args[1]);
+      return std::string(symbol) + render_value(store, op.args[0], 9, true);
+    if (op.args.size() == 2) {
+      const int level = precedence(symbol);
+      return render_value(store, op.args[0], level) + " " +
+             std::string(symbol) + " " +
+             render_value(store, op.args[1], level, true);
+    }
   }
   std::string out = op.callee + "(";
   for (std::size_t index = 0; index < op.args.size(); ++index) {
@@ -1288,7 +1292,8 @@ std::string render_call(const detail::Store& store, const detail::OpData& op) {
   return out + ")";
 }
 
-std::string render_value(const detail::Store& store, std::uint32_t value) {
+std::string render_value(const detail::Store& store, std::uint32_t value,
+                         int parent, bool right) {
   if (value >= store.vals.size() || !store.vals[value].live)
     return "<invalid>";
   const detail::ValData& data = store.vals[value].data;
@@ -1297,8 +1302,21 @@ std::string render_value(const detail::Store& store, std::uint32_t value) {
   const detail::OpData& op = store.ops[data.def].data;
   if (op.kind == Op::Kind::constant && op.form == detail::Form::hidden)
     return attr_text(op.literal);
-  if (op.kind == Op::Kind::call && op.form == detail::Form::hidden)
-    return render_call(store, op);
+  if (op.kind == Op::Kind::call && op.form == detail::Form::hidden) {
+    std::string text = render_call(store, op);
+    int level = 10;
+    if (op.callee.starts_with("operator ")) {
+      const std::string_view symbol(op.callee.data() + 9,
+                                    op.callee.size() - 9);
+      if (op.args.size() == 1)
+        level = 9;
+      else if (op.args.size() == 2 && precedence(symbol) >= 0)
+        level = precedence(symbol);
+    }
+    if (level < parent || (right && level == parent))
+      return "(" + text + ")";
+    return text;
+  }
   return data.name.empty() ? "value" : data.name;
 }
 

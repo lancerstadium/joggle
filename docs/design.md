@@ -301,3 +301,24 @@ after a nested-IR edit. The strict Release build, address sanitizer build,
 installed-header consumer, and pinned official ONNX model all pass. M7 is
 therefore closed; later additions to editing must be justified by a concrete
 module rather than by expanding a generic builder surface.
+
+## M8 first slice
+
+The first composition slice stays entirely in ordinary module functions.
+`opt.fold_identity`, `opt.cse`, and `opt.dce` are directly callable transforms;
+`opt.fix` composes them into a caller-bounded fixed point, and `opt.basic` is a
+zero-policy entry point. CSE and dead-call elimination require an explicit list
+of pure callees. This makes effect assumptions visible at the call site and
+keeps unknown frontend or target calls conservative without adding an effect
+class, trait, or privileged attribute to the core.
+
+Deletion-aware transforms use `ir.live` when iterating an earlier operation
+snapshot. `ir.block` and whole-dictionary `ir.meta` provide the remaining
+structural equality inputs: CSE only merges calls in one block with identical
+callee, operands, result types, and metadata. The test pipeline merges repeated
+open calls, removes newly dead calls to a fixed point, preserves calls whose
+metadata differs, and is revision-idempotent on a second run.
+
+While exercising composed conditions, the canonical printer was also made
+precedence-aware. It now restores the minimal parentheses needed to preserve
+operator trees, including right-nested operators of equal precedence.

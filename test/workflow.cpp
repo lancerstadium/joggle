@@ -76,6 +76,26 @@ int main(int argc, char** argv) {
   CHECK(base_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(base, base_roundtrip));
 
+  joggle::Mod precedence;
+  constexpr std::string_view precedence_source =
+      "module precedence\n"
+      "use base\n"
+      "fn logic(a: bool, b: bool, c: bool) -> bool {\n"
+      "  return a && (b || c)\n}\n"
+      "fn math(a: int, b: int, c: int) -> int {\n"
+      "  return (a + b) * (c - (a - b))\n}\n";
+  CHECK(joggle::parse(env, precedence_source, precedence, "precedence.jog"));
+  CHECK(precedence.verify(env));
+  const std::string precedence_text = joggle::print(precedence);
+  CHECK(precedence_text.find("a && (b || c)") != std::string::npos);
+  CHECK(precedence_text.find("(a + b) * (c - (a - b))") !=
+        std::string::npos);
+  joggle::Mod precedence_roundtrip;
+  CHECK(joggle::parse(env, precedence_text, precedence_roundtrip,
+                      "precedence-roundtrip.jog"));
+  CHECK(precedence_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(precedence, precedence_roundtrip));
+
   joggle::Mod types;
   constexpr std::string_view type_source =
       "module types\n"
@@ -587,6 +607,44 @@ int main(int argc, char** argv) {
   CHECK(scripted_text.find("return x") != std::string::npos);
 
   CHECK(env.load("script"));
+  joggle::Mod cleaned;
+  constexpr std::string_view clean_source =
+      "module clean\n"
+      "fn work(x: i32) -> i32 {\n"
+      "  let first: i32 = pure(x)\n"
+      "  let same: i32 = pure(x)\n"
+      "  let dead: i32 = pure(first)\n"
+      "  return same\n}\n";
+  CHECK(joggle::parse(env, clean_source, cleaned, "clean.jog"));
+  CHECK(cleaned.verify(env));
+  CHECK(joggle::run(env, "script.clean_pure", cleaned));
+  CHECK(cleaned.verify(env));
+  std::size_t pure_calls = 0;
+  for (joggle::Op op : cleaned.ops())
+    pure_calls += op.callee() == "pure" ? 1 : 0;
+  CHECK(pure_calls == 1);
+  const std::uint64_t clean_revision = cleaned.revision();
+  CHECK(joggle::run(env, "script.clean_pure", cleaned));
+  CHECK(cleaned.revision() == clean_revision);
+
+  joggle::Mod distinct_meta;
+  constexpr std::string_view distinct_meta_source =
+      "module distinct\n"
+      "fn work(x: i32) -> i32 {\n"
+      "  [variant: 0]\n"
+      "  let first: i32 = pure(x)\n"
+      "  [variant: 1]\n"
+      "  let second: i32 = pure(x)\n"
+      "  return join(first, second)\n}\n";
+  CHECK(joggle::parse(env, distinct_meta_source, distinct_meta,
+                      "distinct-meta.jog"));
+  CHECK(distinct_meta.verify(env));
+  CHECK(joggle::run(env, "script.clean_pure", distinct_meta));
+  pure_calls = 0;
+  for (joggle::Op op : distinct_meta.ops())
+    pure_calls += op.callee() == "pure" ? 1 : 0;
+  CHECK(pure_calls == 2);
+
   joggle::Mod overload_execution;
   CHECK(joggle::parse(env, source.str(), overload_execution, argv[1]));
   CHECK(joggle::run(env, "script.overload_probe", overload_execution));

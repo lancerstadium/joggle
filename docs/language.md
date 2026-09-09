@@ -218,6 +218,18 @@ binds the generic `Val` `N` to the integer `4` in the function frame. `Ty` and
 modules can write reusable shape and format helpers without a second evaluator
 API.
 
+Composition is ordinary function composition. A module may call transforms
+directly and use a bounded `for` to reach a fixed point; no function runs merely
+because it is tagged or installed. The bundled `opt.fix(m, pure, limit)` is one
+such function. Its `pure` list is explicit policy: an unknown call is never
+merged or deleted unless the caller names it. `ir.live` lets deletion-based
+transforms safely consume a traversal snapshot, while `ir.block` and
+`ir.meta(op)` support structural comparison.
+
+Canonical printing preserves expression trees with precedence-aware
+parentheses. In particular, `a && (b || c)`, `(a + b) * c`, and
+`a - (b - c)` retain their meaning after print and reparse.
+
 ### Open attributes
 
 Square brackets hold an open attribute dictionary rather than a fixed set of

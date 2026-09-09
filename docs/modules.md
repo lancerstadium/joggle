@@ -102,7 +102,8 @@ The built-in `ir` module is the complete reflection boundary:
 | --- | --- |
 | `fns`, `params`, `blocks`, `ops` | Traverse function and structural ownership. |
 | `args`, `outs`, `users` | Read operation dataflow. |
-| `kind`, `callee`, `type`, `is_const`, `constant`, `len` | Query operations, values, and lists. |
+| `live`, `block`, `kind`, `callee`, `type` | Query handle state and structure. |
+| `is_const`, `constant`, `len` | Query values and lists. |
 | `has`, `meta` | Query open function or operation attributes. |
 | `call`, `constant`, `loop`, `branch` | Construct leaves and structured control flow. |
 | `clone`, `move`, `args` | Copy, place, or reconnect existing IR. |
@@ -154,6 +155,17 @@ reflected in the loop header, while carried-value renames propagate through
 both arms, yields, and enclosing structured results. The operation therefore
 preserves printable lexical bindings rather than changing only one internal
 handle label.
+
+### Optimization functions
+
+The bundled `opt` module demonstrates composition without a pass hierarchy.
+`fold_identity` applies an explicit binary identity, `cse` merges structurally
+identical same-block calls, and `dce` removes unused calls. The latter two take
+a list of callees the caller asserts are pure; no unknown computation is
+silently treated as removable. `fix` composes these transforms for at most the
+requested number of rounds, while `basic` supplies a small algebra-only entry
+point. A research module can call the individual functions or wrap `fix` with
+its own purity policy using normal `.jog` code.
 
 The bracket syntax is not a `host` special case. Any module may define its own
 keys and attach them to a function or operation statement. Version and ABI

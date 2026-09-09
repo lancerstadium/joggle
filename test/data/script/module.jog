@@ -202,6 +202,10 @@ fn rename_control(m: Mod) -> bool {
   return changed
 }
 
+fn clean_pure(m: Mod) -> bool {
+  return opt.fix(m, ["pure"], 8)
+}
+
 fn fail_after_control_rename(m: Mod) -> bool {
   let changed = rename_control(m)
   return missing(changed)

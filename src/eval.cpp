@@ -746,6 +746,9 @@ private:
       for (Blk block : blocks)
         out.emplace_back(block);
       return Items{Item(std::move(out))};
+    } else if (name == "block" && args.size() == 1) {
+      if (const auto* op = as<Op>(args[0]); op && op->block())
+        return Items{Item(op->block())};
     } else if (name == "ops" && args.size() == 1) {
       std::vector<Op> ops;
       if (const auto* mod = as<Mod*>(args[0]); mod && *mod)
@@ -787,6 +790,15 @@ private:
           out.emplace_back(user);
         return Items{Item(std::move(out))};
       }
+    } else if (name == "live" && args.size() == 1) {
+      if (const auto* fn = as<Fn>(args[0]))
+        return Items{Item(Attr(fn->valid()))};
+      if (const auto* block = as<Blk>(args[0]))
+        return Items{Item(Attr(block->valid()))};
+      if (const auto* op = as<Op>(args[0]))
+        return Items{Item(Attr(op->valid()))};
+      if (const auto* value = as<Val>(args[0]))
+        return Items{Item(Attr(value->valid()))};
     } else if (name == "kind" && args.size() == 1) {
       if (const auto* op = as<Op>(args[0])) {
         std::string_view value;
@@ -818,6 +830,11 @@ private:
     } else if (name == "type" && args.size() == 1) {
       if (const auto* value = as<Val>(args[0]))
         return Items{Item(Attr(std::string(value->type().text())))};
+    } else if (name == "meta" && args.size() == 1) {
+      if (const auto* fn = as<Fn>(args[0]); fn && *fn)
+        return Items{Item(Attr(fn->meta()))};
+      if (const auto* op = as<Op>(args[0]); op && *op)
+        return Items{Item(Attr(op->meta()))};
     } else if ((name == "has" || name == "meta") && args.size() == 2) {
       const auto key = string(args[1]);
       if (key) {
