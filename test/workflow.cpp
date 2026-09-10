@@ -983,6 +983,27 @@ int main(int argc, char** argv) {
   CHECK(wrong_generic_kind.diags().front().message.find("expected 'int'") !=
         std::string::npos);
 
+  joggle::Attr load_count;
+  const std::vector<joggle::Attr> choose_query{joggle::Attr("choose")};
+  bool load_cached = true;
+  CHECK(joggle::query(env, "opt.count", overloaded, load_count,
+                      choose_query, &load_cached));
+  CHECK(!load_cached && load_count.integer() == 2);
+  CHECK(joggle::query(env, "opt.count", overloaded, load_count,
+                      choose_query, &load_cached));
+  CHECK(load_cached);
+
+  CHECK(!env.loaded("sample"));
+  CHECK(!env.load("bad"));
+  CHECK(!env.loaded("bad"));
+  CHECK(!env.loaded("sample"));
+  CHECK(!env.bound("sample.ping"));
+  CHECK(!env.diags().empty());
+  env.clear_diags();
+  CHECK(joggle::query(env, "opt.count", overloaded, load_count,
+                      choose_query, &load_cached));
+  CHECK(load_cached && load_count.integer() == 2);
+
   CHECK(env.load("sample"));
   CHECK(env.bound("sample.ping"));
   const joggle::Fn ping = env.find_fn("sample.ping");
@@ -1009,10 +1030,6 @@ int main(int argc, char** argv) {
   const std::vector<joggle::Attr> text{joggle::Attr("hello")};
   CHECK(env.call("sample.echo", text, returns));
   CHECK(returns.size() == 1 && returns[0].string() == "hello");
-  CHECK(!env.load("bad"));
-  CHECK(!env.loaded("bad"));
-  CHECK(!env.diags().empty());
-  env.clear_diags();
   joggle::Mod mod;
   CHECK(joggle::parse(env, source.str(), mod, argv[1]));
   CHECK(mod.verify(env));

@@ -14,7 +14,10 @@ C++ transform and an ordinary `.jog` function edit the same representation.
 Compile-time functions traverse universal IR handles and run transactionally;
 they are functions, not instances of a pass class. A separately built native
 module is also discovered, signature-checked, loaded, and called through the
-single native-function ABI. Functions, operations, and values may carry open,
+single native-function ABI. Module loading is transactional across the complete
+dependency closure: a failed parent restores newly loaded modules, native
+bindings, dynamic libraries, and the environment epoch. Functions, operations,
+and values may carry open,
 user-defined attributes without adding parser cases. Generic zero/multi-result
 call, constant, loop, and branch construction, deep cloning, checked motion,
 nested traversal, selective use replacement, and region fusion let such modules

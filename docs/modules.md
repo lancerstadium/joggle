@@ -107,6 +107,11 @@ algebra in its own body. Merely loading another module into the same `Env` does
 not make its declarations visible, and missing `use` edges are diagnosed.
 Resolution checks arity and structural types, infers generic arguments, ranks
 specificity, and computes result types.
+`Env::load` commits the requested module and its transitive dependencies as one
+transaction. Failure after a dependency or native library has loaded removes
+only state introduced by that request, restores the prior environment epoch,
+and retains diagnostics. Previously loaded modules and bindings are untouched;
+a failed load therefore does not invalidate reusable query-cache entries.
 It is independent of native binding: a declaration may define model semantics,
 a textual transform, or a native compile-time service. Unknown calls are
 preserved deliberately for frontend transport, but code that needs a

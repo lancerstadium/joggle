@@ -1,4 +1,5 @@
 module bad
+use sample
 
 fn incomplete(x: i32) -> i32 {
   x + 1

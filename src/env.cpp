@@ -296,6 +296,57 @@ bool Env::load(std::string_view name) {
   const std::string key(name);
   if (impl_->modules.contains(key))
     return true;
+
+  struct Rollback {
+    Impl& env;
+    std::set<std::string, std::less<>> modules;
+    std::set<std::string, std::less<>> natives;
+    std::set<std::string, std::less<>> loading;
+    std::size_t libraries = 0;
+    std::uint64_t epoch = 0;
+    bool active = true;
+
+    explicit Rollback(Impl& state)
+        : env(state), loading(state.loading), libraries(state.libraries.size()),
+          epoch(state.epoch) {
+      for (const auto& [module, ignored] : state.modules) {
+        (void)ignored;
+        modules.insert(module);
+      }
+      for (const auto& [symbol, ignored] : state.natives) {
+        (void)ignored;
+        natives.insert(symbol);
+      }
+    }
+
+    ~Rollback() {
+      if (!active)
+        return;
+      std::erase_if(env.natives, [&](const auto& item) {
+        return !natives.contains(item.first);
+      });
+      while (env.libraries.size() > libraries) {
+        close_library(env.libraries.back());
+        env.libraries.pop_back();
+      }
+      std::erase_if(env.modules, [&](const auto& item) {
+        return !modules.contains(item.first);
+      });
+      env.loading = std::move(loading);
+      env.epoch = epoch;
+    }
+  } rollback(*impl_);
+
+  const bool loaded = load_one(name);
+  if (loaded)
+    rollback.active = false;
+  return loaded;
+}
+
+bool Env::load_one(std::string_view name) {
+  const std::string key(name);
+  if (impl_->modules.contains(key))
+    return true;
   if (impl_->loading.contains(key)) {
     impl_->diags.push_back(
         {Severity::error, "module dependency cycle at: " + key, {}});
@@ -353,7 +404,7 @@ bool Env::load(std::string_view name) {
     return false;
   }
   for (const std::string& dependency : module->uses()) {
-    if (!load(dependency)) {
+    if (!load_one(dependency)) {
       impl_->loading.erase(key);
       return false;
     }

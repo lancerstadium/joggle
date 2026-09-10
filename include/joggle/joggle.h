@@ -325,6 +325,7 @@ private:
   std::unique_ptr<Impl> impl_;
 
   void error(std::string message, Loc loc = {});
+  bool load_one(std::string_view name);
   std::uint64_t cache_id() const noexcept;
   std::uint64_t cache_epoch() const noexcept;
   Fn resolve(const Mod& from, Op call, std::string_view callee,

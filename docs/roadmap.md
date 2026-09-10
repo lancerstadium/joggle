@@ -112,6 +112,9 @@ dependency/native closure, and restores the installed directory on a failed
 commit. The installed package is exercised by a clean external CMake consumer.
 An out-of-tree native module is also built against that package, installed
 through the installed CLI, loaded, called, upgraded, and removed.
+Runtime loading is likewise transactional across its complete dependency
+closure, including module maps, native bindings, dynamic-library handles,
+loading state, and the environment epoch.
 
 - Keep source, native library, tests, documentation, dependencies, and the
   public compatibility surface in one module directory.

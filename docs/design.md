@@ -32,6 +32,12 @@ target calls. Neither requires another durable IR.
 native function bindings, and environment diagnostics. Environments are local
 objects, never global registries.
 
+Loading one requested module is an environment transaction over its full
+dependency closure. If a dependency, parent verifier, native library, or native
+initializer fails, every module, binding, library handle, loading marker, and
+epoch change introduced by that request is restored. Previously loaded state
+remains intact and diagnostics remain available.
+
 ## Extension boundary
 
 Modules declare types and functions in `.jog`. An optional native library may
