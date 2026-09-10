@@ -83,7 +83,11 @@ incompatible schema forms visible.
 The same tensor library supplies broadcast-batched MatMul and an axis-generic
 line-offset relation. `nn.softmax` uses the latter directly, allowing frontend
 bridges to materialize an axis as an ordinary operand instead of choosing a
-rank-specific kernel class. A complementary multi-axis relation maps reduction
+rank-specific kernel class. Its axis-list overload jointly normalizes any
+selected dimensions. `onnx.opset` reads the imported model descriptor, so
+pre-13 Softmax maps its flattened suffix to an axis list while version 13 and
+later map one axis; an absent model version is not guessed. A complementary
+multi-axis relation maps reduction
 coordinates without transposing the tensor; the inspectable `tensor.mean` body
 therefore covers arbitrary normalized axes and either retained or removed
 dimensions. The ONNX bridge derives the result shape and conservatively keeps
@@ -145,7 +149,9 @@ materialize its rescaling semantics through `quant`.
 The separately selected `tflite.nn` relation then converts all 66 compute calls
 in that model to shared `nn`/`tensor` functions. Logical-axis operands retain
 NHWC and both TFLite weight layouts without creating a second IR or a
-layout-specific core operation.
+layout-specific core operation. Like the ONNX relation, it commits a new
+callee and every materialized operand through one checked `ir.retarget`; a
+failed relation cannot leave a call with half-updated arguments.
 
 ## Build
 

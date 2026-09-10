@@ -175,7 +175,10 @@ Leading MatMul dimensions now use the shared broadcast relation and one
 rank-generic tensor body, while the 2-D overload remains the compact case.
 An axis-generic line-offset relation supports shared Softmax semantics; TFLite
 materializes its last axis and ONNX converts an explicit normalized axis.
-ONNX's version-dependent omitted-axis default remains open.
+An axis-list overload now also expresses joint reduction across a suffix.
+`onnx.opset` reads the model descriptor, allowing pre-13 ONNX Softmax to use
+the flattened suffix and version 13 or later to use one axis. Missing versions
+remain open rather than inheriting an accidental default.
 A multi-axis coordinate relation now supports an inspectable tensor mean body.
 The ONNX relation normalizes negative axes, models `keepdims` structurally, and
 retains duplicate or out-of-range axes. A symbolic multi-axis reduction expands

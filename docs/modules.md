@@ -224,9 +224,9 @@ takes three logical-axis lists, so grouped convolution and depthwise
 convolution share one loop body across activation and weight layouts. The terse
 NCHW overload delegates to it. Bias and fused activation are ordinary composed
 functions rather than hidden operator fields. `nn.avg_pool2d`, dilation-aware
-`nn.max_pool2d`, broadcast-aware `nn.add`/`nn.sub`/`nn.mul`, and
-axis-explicit `nn.softmax` provide the remaining shared semantics needed by the
-second real-network gate. `tensor.line_offset` enumerates all lines orthogonal
+`nn.max_pool2d`, broadcast-aware `nn.add`/`nn.sub`/`nn.mul`, and axis-explicit
+and axis-list `nn.softmax` overloads provide the remaining shared semantics
+needed by the second real-network gate. `tensor.line_offset` enumerates all lines orthogonal
 to an axis, while `tensor.reduce_offset` separates ordinary and reduced
 coordinates for any unique axis set. The inspectable `tensor.mean` body uses
 that relation for single- or multi-axis reduction without a transpose or
@@ -269,6 +269,9 @@ frontend schema and these functions must remain an explicit user-selected
 module function.
 
 The optional `onnx.nn` module is that relationship, not another IR layer.
+The transport module's `onnx.opset(m, domain)` query reads the ordinary
+`onnx.model` descriptor, giving every relationship module one version source
+without versioned function names or parser state.
 `onnx.nn.infer` walks operations in source order and propagates tensor types
 through quantization boundaries, convolution, normalization point algebra,
 broadcast arithmetic, pooling, matrix operations, tensor rearrangement, and
@@ -276,6 +279,11 @@ shape dataflow. Quantization nodes contribute only their provable shape and
 element type here. Compatible three-input QuantizeLinear and DequantizeLinear
 calls are then converted through `quant`; unsupported parameter layouts or
 element formats remain source calls.
+Softmax conversion follows the schema boundary explicitly. Before opset 13,
+the selected axis begins a flattened suffix, so the bridge supplies that suffix
+to the axis-list overload. From opset 13 onward it supplies one axis. A model
+without an opset declaration stays at the source boundary rather than adopting
+the current schema by accident.
 Its structural conversion phase runs only after shape-dependent Reshape
 relations have been derived. It then maps compatible Shape, Gather, Slice,
 Squeeze/Unsqueeze, Concat, Split, OneHot, Identity, Cast, and
@@ -502,6 +510,9 @@ functions. On
 the pinned MobileNetV2 this removes all 66 source compute calls while retaining
 the source model marker and payloads. A second invocation is unchanged, and
 all 66 converted bodies can be independently exposed and round-tripped.
+Each successful mapping uses the same atomic `ir.retarget` operation as the
+ONNX bridge, so adding layout, padding, activation, or axis operands cannot
+expose an intermediate call with the source callee and target arguments.
 
 The same bridge maps unquantized Add, Sub, and Mul through the shared broadcast
 semantics. Before any conversion it checks every operand and result for

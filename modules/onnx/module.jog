@@ -1,8 +1,30 @@
 module onnx
 use tensor
+use ir
 
 [role: "read"]
 fn read(data: bytes) -> str;
 
 fn model(info: dict) -> _;
 fn tensor(type: int, shape: list<int>, data: bytes) -> _;
+
+fn opset(m: Mod, domain: str) -> int {
+  for op in ir.ops(m) {
+    if ir.callee(op) == "onnx.model" {
+      let inputs = ir.args(op)
+      if len(inputs) == 1 && ir.is_const(inputs[0]) {
+        let info = ir.constant(inputs[0])
+        if base.has(info, "opsets") {
+          for entry in info["opsets"] {
+            if base.has(entry, "domain") && base.has(entry, "version") {
+              if entry["domain"] == domain {
+                return base.int(entry["version"])
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return -1
+}

@@ -508,27 +508,36 @@ fn tanh<E: Ty, S: list<int>>(
 fn softmax<E: Ty, S: list<int>>(
   x: tensor<E, S>, axis: int, beta: f64
 ) -> tensor<E, S> {
-  let width = S[axis]
+  return softmax(x, [axis], beta)
+}
+
+fn softmax<E: Ty, S: list<int>>(
+  x: tensor<E, S>, axes: list<int>, beta: f64
+) -> tensor<E, S> {
+  var width = 1
+  for axis in axes {
+    width *= S[axis]
+  }
   let lines = tensor.numel<S>() / width
   var out = tensor<E, S>(E(0))
   for line in 0..lines {
-    let first = tensor.line_offset(S, axis, line, 0)
+    let first = tensor.reduce_offset(S, axes, line, 0)
     var peak = x[first]
     for column in 1..width {
-      let offset = tensor.line_offset(S, axis, line, column)
+      let offset = tensor.reduce_offset(S, axes, line, column)
       if x[offset] > peak {
         peak = x[offset]
       }
     }
     var sum = E(0)
     for column in 0..width {
-      let offset = tensor.line_offset(S, axis, line, column)
+      let offset = tensor.reduce_offset(S, axes, line, column)
       let value = math.exp((x[offset] - peak) * E(beta))
       out[offset] = value
       sum += value
     }
     for column in 0..width {
-      let offset = tensor.line_offset(S, axis, line, column)
+      let offset = tensor.reduce_offset(S, axes, line, column)
       out[offset] = out[offset] / sum
     }
   }

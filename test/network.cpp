@@ -882,6 +882,7 @@ int main(int argc, char** argv) {
       "use onnx\n"
       "fn main<N: int>(x: tensor<f32, [N, 2, 3]>) "
       "-> tensor<f32, [N, 2, 3]> {\n"
+      "  onnx.model({opsets: [{domain: \"\", version: 13}]})\n"
       "  [onnx: {axis: 1}]\n"
       "  let out = onnx.Softmax(x)\n"
       "  return out\n"
@@ -901,6 +902,32 @@ int main(int argc, char** argv) {
   const joggle::Fn softmax_fn = env.resolve(softmax, semantic_softmax);
   CHECK(softmax_fn && softmax.expand(semantic_softmax, softmax_fn));
   CHECK(softmax.verify(env));
+
+  constexpr std::string_view legacy_softmax_source =
+      "module legacy.softmax\n"
+      "use onnx\n"
+      "fn main<N: int>(x: tensor<f32, [N, 2, 3]>) "
+      "-> tensor<f32, [N, 2, 3]> {\n"
+      "  onnx.model({opsets: [{domain: \"\", version: 12}]})\n"
+      "  let out = onnx.Softmax(x)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod legacy_softmax;
+  CHECK(joggle::parse(env, legacy_softmax_source, legacy_softmax,
+                      "legacy-softmax.jog"));
+  CHECK(legacy_softmax.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", legacy_softmax));
+  CHECK(joggle::run(env, "onnx.nn.convert", legacy_softmax));
+  CHECK(legacy_softmax.verify(env));
+  joggle::Op legacy_call;
+  for (joggle::Op op : legacy_softmax.ops())
+    if (op.callee() == "nn.softmax")
+      legacy_call = op;
+  CHECK(legacy_call && legacy_call.args().size() == 3);
+  CHECK(legacy_call.args()[1].type() == joggle::Ty("list<int>"));
+  const joggle::Fn legacy_fn = env.resolve(legacy_softmax, legacy_call);
+  CHECK(legacy_fn && legacy_softmax.expand(legacy_call, legacy_fn));
+  CHECK(legacy_softmax.verify(env));
 
   constexpr std::string_view mean_source =
       "module axis.mean\n"

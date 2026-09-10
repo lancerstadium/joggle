@@ -1723,17 +1723,32 @@ fn convert_softmax(m: Mod, op: Op) -> bool {
   }
   let rank = len(tensor.dims(type))
   let meta = attrs(op)
-  if rank == 0 || !base.has(meta, "axis") {
+  let version = onnx.opset(m, "")
+  if rank == 0 || version < 0 {
     return false
   }
-  var axis = meta["axis"]
+  var axis = 1
+  if version >= 13 {
+    axis = -1
+  }
+  if base.has(meta, "axis") {
+    axis = meta["axis"]
+  }
   if axis < 0 {
     axis += rank
   }
   if axis < 0 || axis >= rank {
     return false
   }
-  inputs += [ir.constant(m, op, axis, "int")]
+  if version < 13 {
+    var axes: list<int> = []
+    for value in axis..rank {
+      axes += [value]
+    }
+    inputs += [ints(m, op, axes)]
+  } else {
+    inputs += [ir.constant(m, op, axis, "int")]
+  }
   inputs += [ir.constant(m, op, 1.0, "f64")]
   return convert_call(m, op, "nn.softmax", inputs)
 }

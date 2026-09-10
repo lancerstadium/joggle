@@ -81,7 +81,17 @@ fn padding(
 }
 
 fn convert_call(m: Mod, op: Op, callee: str) -> bool {
-  if !ir.rename(m, op, callee) {
+  if !ir.retarget(m, op, callee, ir.args(op)) {
+    return false
+  }
+  ir.unset(m, op, "tflite")
+  return true
+}
+
+fn convert_call(
+  m: Mod, op: Op, callee: str, inputs: list<Val>
+) -> bool {
+  if !ir.retarget(m, op, callee, inputs) {
     return false
   }
   ir.unset(m, op, "tflite")
@@ -156,10 +166,7 @@ fn convert_conv(m: Mod, op: Op, depthwise: bool) -> bool {
   inputs += [ints(m, op, weight_axes)]
   inputs += [ints(m, op, [0, 2, 3, 1])]
   inputs += [ir.constant(m, op, act, "str")]
-  if !ir.args(m, op, inputs) {
-    return false
-  }
-  return convert_call(m, op, "nn.conv2d")
+  return convert_call(m, op, "nn.conv2d", inputs)
 }
 
 fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
@@ -188,10 +195,7 @@ fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
     return false
   }
   inputs += [ir.constant(m, op, act, "str")]
-  if !ir.args(m, op, inputs) {
-    return false
-  }
-  return convert_call(m, op, callee)
+  return convert_call(m, op, callee, inputs)
 }
 
 fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
@@ -240,10 +244,7 @@ fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
   inputs += [ints(m, op, [1, 1])]
   inputs += [ints(m, op, [0, 2, 3, 1])]
   inputs += [ir.constant(m, op, act, "str")]
-  if !ir.args(m, op, inputs) {
-    return false
-  }
-  return convert_call(m, op, callee)
+  return convert_call(m, op, callee, inputs)
 }
 
 fn convert_reshape(m: Mod, op: Op) -> bool {
@@ -251,10 +252,8 @@ fn convert_reshape(m: Mod, op: Op) -> bool {
   if len(inputs) < 1 || len(ir.outs(op)) != 1 {
     return false
   }
-  if !ir.args(m, op, [inputs[0]]) {
-    return false
-  }
-  return convert_call(m, op, "tensor.reshape")
+  let values: list<Val> = [inputs[0]]
+  return convert_call(m, op, "tensor.reshape", values)
 }
 
 fn convert_softmax(m: Mod, op: Op) -> bool {
@@ -274,10 +273,7 @@ fn convert_softmax(m: Mod, op: Op) -> bool {
   inputs += [
     ir.constant(m, op, base.get(options(op), "beta", 1.0), "f64")
   ]
-  if !ir.args(m, op, inputs) {
-    return false
-  }
-  return convert_call(m, op, "nn.softmax")
+  return convert_call(m, op, "nn.softmax", inputs)
 }
 
 fn convert(m: Mod) -> bool {

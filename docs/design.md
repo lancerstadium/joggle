@@ -815,3 +815,16 @@ the decomposed operation are copied without treating `host`, `place`, or
 Two Squeezes and one Identity retain conflicting imported symbolic contracts
 and deliberately stay explicit. Both inference and conversion remain
 byte-idempotent.
+
+## M10 schema-version slice
+
+Frontend compatibility is data, not a version suffix in a function name.
+`onnx.opset(m, domain)` reads the imported `onnx.model` descriptor through
+ordinary `ir` and `Attr` operations. The first consumer is Softmax: the
+[pre-13 schema](https://onnx.ai/onnx/operators/onnx__Softmax.html) flattens the
+dimensions from `axis` onward, whereas version 13 and later normalize one axis.
+The shared `nn.softmax` axis-list overload expresses the former directly with
+`tensor.reduce_offset`; its scalar-axis overload delegates to the same body.
+The bridge therefore chooses an explicit axis list from the model's opset and
+refuses to infer a missing version. A rank-three regression distinguishes the
+two semantics, and imported opset-12 BERT retains all 12 Softmax conversions.
