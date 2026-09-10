@@ -81,8 +81,11 @@ ordinary rank-generic tensor permutation.
 Unrepresentable symbolic products remain source calls instead of triggering a
 model-specific guess.
 Convolution and pooling likewise keep symbolic batch dimensions while checking
-only the extents used by spatial arithmetic. ONNX Conv's optional bias reuses
-the existing layout-explicit `nn.conv2d` composition. The frontend-neutral
+only the extents used by spatial arithmetic. Explicit and SAME/VALID padding
+forms share one relation, while ONNX Conv's optional bias reuses the existing
+layout-explicit `nn.conv2d` composition. General Gemm, LeakyReLU, and
+inference-mode Dropout cover residual classifiers and compact detectors without
+introducing frontend operations into `nn`. The frontend-neutral
 `quant` module defines per-tensor and per-axis zero-point subtraction,
 rescaling, round-to-nearest-even, saturation, and conversion as ordinary
 functions. Quantized element type and bounds are explicit operands, so custom

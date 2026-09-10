@@ -308,33 +308,39 @@ Squeeze/Unsqueeze, Concat, Split, OneHot, Identity, Cast, and
 ConstantOfShape computations into the shared tensor algebra. Decompositions
 copy readable result names and all non-frontend operation attributes; the
 `onnx` operation descriptor is removed only after its values are materialized.
-Unsupported ranks and `auto_pad` are left unchanged rather than guessed. Open
-intermediate types are likewise retained instead of causing an unsafe
-projection. Named symbolic extents now flow through Add/Sub/Mul, Flatten,
-rank-two-or-higher MatMul, and Transpose when equality, singleton broadcasting,
-permutation, or a directly representable partition product proves the result;
-ambiguous symbolic arithmetic remains at the ONNX frontier.
+Unsupported ranks and malformed spatial attributes are left unchanged rather
+than guessed. `NOTSET`, `VALID`, `SAME_UPPER`, and `SAME_LOWER` padding share
+one explicit two-dimensional padding relation used by both convolution and
+pooling. Open intermediate types are likewise retained instead of causing an
+unsafe projection. Named symbolic extents now flow through Add/Sub/Mul,
+Flatten, rank-two-or-higher MatMul, Gemm, and Transpose when equality,
+singleton broadcasting, permutation, or a directly representable partition
+product proves the result; ambiguous symbolic arithmetic remains at the ONNX
+frontier.
 Convolution and pooling preserve symbolic batch or channel terms while
 requiring only the spatial extents used by their arithmetic to be integer
 literals. Conv accepts its schema's optional one-dimensional bias and maps it
 through the existing layout-explicit `nn.conv2d` composition. A mismatched bias,
-channel relation, nonpositive stride/dilation, or non-`NOTSET` automatic padding
+channel relation, nonpositive stride/dilation, or malformed automatic padding
 keeps the source call intact.
 `onnx.nn.convert` first runs that deterministic source-order propagation, then
 maps static and dynamic quantization, integer and scaled
-transposed MatMul, Cast, Conv, BatchNormalization, ReLU, Add/Sub/Mul/Div/Pow,
+transposed MatMul, Cast, Conv, BatchNormalization, ReLU, LeakyReLU, inference
+Dropout, Add/Sub/Mul/Div/Pow, Gemm,
 Sqrt/Reciprocal/Tanh, AveragePool, MaxPool, GlobalAveragePool, ReduceMean,
 Softmax, Reshape, Flatten, rank-two-or-higher MatMul, and Transpose. Flatten
 reuses `tensor.reshape`; MatMul reuses `tensor.matmul`; Transpose reuses
-`tensor.permute`. The relation materializes schema attributes as ordinary
-operands and removes schema-only shape inputs. `infer` remains separately
-callable when a researcher wants to inspect or transform the typed source graph,
+`tensor.permute`; Gemm reuses a general `nn.gemm` body with transpose flags,
+alpha/beta scaling, and broadcast bias. The relation materializes schema
+attributes as ordinary operands and removes schema-only shape inputs. `infer`
+remains separately callable when a researcher wants to inspect or transform the
+typed source graph,
 but the common conversion path needs only one explicit function call and never
 runs during import or module loading. `ir.retarget` accepts each prospective
 call through the ordinary resolver before committing it, so partial or
 anonymous shapes retain only the unsupported source call. On the pinned
-MobileNetV2 this covers every compute node; unsupported calls in other models
-remain untouched.
+MobileNetV2, SqueezeNet 1.1, ResNet-18, and Tiny-YOLOv2 suite this covers every
+compute node; unsupported calls in other models remain untouched.
 Softmax conversion accepts an explicit, in-range ONNX axis and normalizes a
 negative value before calling the shared body. An omitted axis stays in the
 source namespace because its default depends on the imported opset.

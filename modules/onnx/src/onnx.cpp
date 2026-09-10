@@ -77,7 +77,10 @@ std::string number(double value) {
   std::ostringstream out;
   out.imbue(std::locale::classic());
   out << std::setprecision(std::numeric_limits<double>::max_digits10) << value;
-  return out.str();
+  std::string text = out.str();
+  if (text.find_first_of(".eE") == std::string::npos)
+    text += ".0";
+  return text;
 }
 
 std::string element(int type) {

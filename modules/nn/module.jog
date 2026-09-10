@@ -331,6 +331,35 @@ fn linear<E: Ty, M: int, N: int, K: int>(
   return out
 }
 
+fn gemm<
+  E: Ty, A: list<int>, B: list<int>, Y: list<int>
+>(
+  a: tensor<E, A>, b: tensor<E, B>,
+  transpose_a: bool, transpose_b: bool, alpha: f64
+) -> tensor<E, Y> {
+  return tensor.matmul(a, b, transpose_a, transpose_b, alpha)
+}
+
+fn gemm<
+  E: Ty,
+  A: list<int>,
+  B: list<int>,
+  C: list<int>,
+  Y: list<int>
+>(
+  a: tensor<E, A>, b: tensor<E, B>, c: tensor<E, C>,
+  transpose_a: bool, transpose_b: bool, alpha: f64, beta: f64
+) -> tensor<E, Y> {
+  var out: tensor<E, Y> = tensor.matmul(
+    a, b, transpose_a, transpose_b, alpha
+  )
+  let bias: tensor<E, Y> = tensor.broadcast(c)
+  for i in 0..tensor.numel<Y>() {
+    out[i] = out[i] + E(beta) * bias[i]
+  }
+  return out
+}
+
 fn relu<E: Ty, S: list<int>>(
   x: tensor<E, S>
 ) -> tensor<E, S> {
@@ -339,6 +368,20 @@ fn relu<E: Ty, S: list<int>>(
     if x[i] > E(0) {
       out[i] = x[i]
     }
+  }
+  return out
+}
+
+fn leaky_relu<E: Ty, S: list<int>>(
+  x: tensor<E, S>, alpha: f64
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    var value = x[i]
+    if value < E(0) {
+      value = E(alpha) * value
+    }
+    out[i] = value
   }
   return out
 }

@@ -39,6 +39,66 @@ fn same_type(m: Mod, op: Op) -> bool {
   return false
 }
 
+fn spatial_pad(op: Op, kernel: list<int>) -> list<int> {
+  var none: list<int> = []
+  let inputs = ir.args(op)
+  if len(inputs) == 0 || len(kernel) != 2 {
+    return none
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return none
+  }
+  let shape = tensor.dims(input)
+  if len(shape) != 4 || kind(shape[2]) != "int" ||
+     kind(shape[3]) != "int" || kernel[0] <= 0 || kernel[1] <= 0 {
+    return none
+  }
+  let meta = attrs(op)
+  let stride = base.get(meta, "strides", [1, 1])
+  let dilation = base.get(meta, "dilations", [1, 1])
+  if len(stride) != 2 || len(dilation) != 2 ||
+     stride[0] <= 0 || stride[1] <= 0 ||
+     dilation[0] <= 0 || dilation[1] <= 0 {
+    return none
+  }
+  let mode = base.get(meta, "auto_pad", "NOTSET")
+  if mode == "NOTSET" {
+    let pad = base.get(meta, "pads", [0, 0, 0, 0])
+    if len(pad) == 4 {
+      return pad
+    }
+    return none
+  }
+  if mode == "VALID" {
+    return [0, 0, 0, 0]
+  }
+  if mode != "SAME_UPPER" && mode != "SAME_LOWER" {
+    return none
+  }
+  let h = int(shape[2])
+  let w = int(shape[3])
+  let oh = (h + stride[0] - 1) / stride[0]
+  let ow = (w + stride[1] - 1) / stride[1]
+  let kh = dilation[0] * (kernel[0] - 1) + 1
+  let kw = dilation[1] * (kernel[1] - 1) + 1
+  var ph = (oh - 1) * stride[0] + kh - h
+  var pw = (ow - 1) * stride[1] + kw - w
+  if ph < 0 {
+    ph = 0
+  }
+  if pw < 0 {
+    pw = 0
+  }
+  var top = ph / 2
+  var left = pw / 2
+  if mode == "SAME_LOWER" {
+    top = (ph + 1) / 2
+    left = (pw + 1) / 2
+  }
+  return [top, left, ph - top, pw - left]
+}
+
 fn quant_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -921,6 +981,45 @@ fn matmul_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], matmul_result(op))
 }
 
+fn gemm_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) != 2 && len(inputs) != 3 {
+    return ty("_")
+  }
+  let left = ir.type(inputs[0])
+  let right = ir.type(inputs[1])
+  if !tensor.valid(left) || !tensor.valid(right) ||
+     tensor.elem(left) != tensor.elem(right) ||
+     len(tensor.dims(left)) != 2 || len(tensor.dims(right)) != 2 {
+    return ty("_")
+  }
+  let meta = attrs(op)
+  let shape = matmul_shape(
+    left, right,
+    base.get(meta, "transA", 0) == 1,
+    base.get(meta, "transB", 0) == 1
+  )
+  if len(shape) != 2 {
+    return ty("_")
+  }
+  if len(inputs) == 3 {
+    let bias = ir.type(inputs[2])
+    if !tensor.valid(bias) || tensor.elem(bias) != tensor.elem(left) ||
+       !tensor.broadcastable(tensor.dims(bias), shape) {
+      return ty("_")
+    }
+  }
+  return shaped(tensor.elem(left), shape)
+}
+
+fn gemm_type(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  return set_type(m, outputs[0], gemm_result(op))
+}
+
 fn integer_matmul_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1127,12 +1226,9 @@ fn conv_result(op: Op) -> Ty {
      !positive(ws[2]) || !positive(ws[3]) {
     return ty("_")
   }
-  if base.get(meta, "auto_pad", "NOTSET") != "NOTSET" {
-    return ty("_")
-  }
   let stride = base.get(meta, "strides", [1, 1])
-  let pad = base.get(meta, "pads", [0, 0, 0, 0])
   let dilation = base.get(meta, "dilations", [1, 1])
+  let pad = spatial_pad(op, [int(ws[2]), int(ws[3])])
   if len(stride) != 2 || len(pad) != 4 || len(dilation) != 2 {
     return ty("_")
   }
@@ -1196,15 +1292,14 @@ fn pool_type(m: Mod, op: Op) -> bool {
     return false
   }
   let meta = attrs(op)
-  if base.get(meta, "auto_pad", "NOTSET") != "NOTSET" ||
-     !base.has(meta, "kernel_shape") ||
+  if !base.has(meta, "kernel_shape") ||
      base.get(meta, "ceil_mode", 0) != 0 {
     return false
   }
   let kernel = meta["kernel_shape"]
   let stride = base.get(meta, "strides", [1, 1])
-  let pad = base.get(meta, "pads", [0, 0, 0, 0])
   let dilation = base.get(meta, "dilations", [1, 1])
+  let pad = spatial_pad(op, kernel)
   if len(kernel) != 2 || len(stride) != 2 || len(pad) != 4 ||
      len(dilation) != 2 {
     return false
@@ -1247,6 +1342,8 @@ fn infer(m: Mod) -> bool {
     }
     if ir.callee(op) == "onnx.BatchNormalization" ||
        ir.callee(op) == "onnx.Relu" ||
+       ir.callee(op) == "onnx.LeakyRelu" ||
+       ir.callee(op) == "onnx.Dropout" ||
        ir.callee(op) == "onnx.Softmax" ||
        ir.callee(op) == "onnx.Sqrt" ||
        ir.callee(op) == "onnx.Reciprocal" ||
@@ -1294,6 +1391,9 @@ fn infer(m: Mod) -> bool {
     }
     if ir.callee(op) == "onnx.MatMul" {
       changed = matmul_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Gemm" {
+      changed = gemm_type(m, op) || changed
     }
     if ir.callee(op) == "onnx.MatMulInteger" {
       changed = integer_matmul_type(m, op) || changed
@@ -1665,6 +1765,19 @@ fn convert_unary(m: Mod, op: Op, callee: str) -> bool {
   return convert_call(m, op, callee)
 }
 
+fn convert_leaky_relu(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 ||
+     ir.type(inputs[0]) != ir.type(outputs[0]) ||
+     !tensor.valid(ir.type(inputs[0])) {
+    return false
+  }
+  let alpha = base.get(attrs(op), "alpha", 0.01)
+  inputs += [ir.constant(m, op, alpha, "f64")]
+  return convert_call(m, op, "nn.leaky_relu", inputs)
+}
+
 fn convert_conv(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1679,7 +1792,16 @@ fn convert_conv(m: Mod, op: Op) -> bool {
     return false
   }
   inputs += [ints(m, op, base.get(meta, "strides", [1, 1]))]
-  inputs += [ints(m, op, base.get(meta, "pads", [0, 0, 0, 0]))]
+  let weight = ir.type(inputs[1])
+  if !tensor.valid(weight) || len(tensor.dims(weight)) != 4 {
+    return false
+  }
+  let weights = tensor.dims(weight)
+  let pad = spatial_pad(op, [int(weights[2]), int(weights[3])])
+  if len(pad) != 4 {
+    return false
+  }
+  inputs += [ints(m, op, pad)]
   inputs += [ints(m, op, base.get(meta, "dilations", [1, 1]))]
   inputs += [ir.constant(m, op, groups, "int")]
   if biased {
@@ -2036,6 +2158,34 @@ fn convert_matmul(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.matmul")
 }
 
+fn convert_gemm(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if (len(inputs) != 2 && len(inputs) != 3) || len(outputs) != 1 {
+    return false
+  }
+  let expected = gemm_result(op)
+  if expected == ty("_") || ir.type(outputs[0]) != expected {
+    return false
+  }
+  let meta = attrs(op)
+  inputs += [
+    ir.constant(m, op, base.get(meta, "transA", 0) == 1, "bool")
+  ]
+  inputs += [
+    ir.constant(m, op, base.get(meta, "transB", 0) == 1, "bool")
+  ]
+  inputs += [
+    ir.constant(m, op, base.get(meta, "alpha", 1.0), "f64")
+  ]
+  if len(ir.args(op)) == 3 {
+    inputs += [
+      ir.constant(m, op, base.get(meta, "beta", 1.0), "f64")
+    ]
+  }
+  return convert_call(m, op, "nn.gemm", inputs)
+}
+
 fn convert_transpose(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -2085,8 +2235,7 @@ fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
     return false
   }
   let meta = attrs(op)
-  if base.get(meta, "auto_pad", "NOTSET") != "NOTSET" ||
-     !base.has(meta, "kernel_shape") ||
+  if !base.has(meta, "kernel_shape") ||
      base.get(meta, "ceil_mode", 0) != 0 {
     return false
   }
@@ -2100,8 +2249,8 @@ fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
   }
   let kernel = meta["kernel_shape"]
   let stride = base.get(meta, "strides", [1, 1])
-  let pad = base.get(meta, "pads", [0, 0, 0, 0])
   let dilation = base.get(meta, "dilations", [1, 1])
+  let pad = spatial_pad(op, kernel)
   if len(kernel) != 2 || len(stride) != 2 || len(pad) != 4 ||
      len(dilation) != 2 {
     return false
@@ -2146,6 +2295,12 @@ fn convert(m: Mod) -> bool {
     if ir.callee(op) == "onnx.Relu" {
       changed = convert_unary(m, op, "nn.relu") || changed
     }
+    if ir.callee(op) == "onnx.LeakyRelu" {
+      changed = convert_leaky_relu(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Dropout" {
+      changed = convert_unary(m, op, "base.copy") || changed
+    }
     if ir.callee(op) == "onnx.Add" {
       changed = convert_binary(m, op, "nn.add") || changed
     }
@@ -2175,6 +2330,9 @@ fn convert(m: Mod) -> bool {
     }
     if ir.callee(op) == "onnx.MatMul" {
       changed = convert_matmul(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Gemm" {
+      changed = convert_gemm(m, op) || changed
     }
     if ir.callee(op) == "onnx.Transpose" {
       changed = convert_transpose(m, op) || changed

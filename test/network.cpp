@@ -1,6 +1,8 @@
 #include "joggle/joggle.h"
 
 #include <cstdio>
+#include <set>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -535,6 +537,51 @@ int main(int argc, char** argv) {
   CHECK(semantic_pool_fn &&
         pool_bridge.expand(semantic_pool, semantic_pool_fn));
   CHECK(pool_bridge.verify(env));
+
+  constexpr std::string_view zoo_slice_source =
+      "module zoo.slice\n"
+      "use onnx\n"
+      "fn main<N: int>(\n"
+      "  x: tensor<f32, [N, 3, 8, 8]>,\n"
+      "  weight: tensor<f32, [4, 3, 3, 3]>,\n"
+      "  matrix: tensor<f32, [5, 16]>, bias: tensor<f32, [5]>\n"
+      ") -> tensor<f32, [N, 5]> {\n"
+      "  [onnx: {auto_pad: \"SAME_UPPER\", strides: [2, 2]}]\n"
+      "  let convolved = onnx.Conv(x, weight)\n"
+      "  [onnx: {alpha: 0.1}]\n"
+      "  let activated = onnx.LeakyRelu(convolved)\n"
+      "  [onnx: {auto_pad: \"SAME_UPPER\", kernel_shape: [2, 2], "
+      "strides: [2, 2]}]\n"
+      "  let pooled = onnx.MaxPool(activated)\n"
+      "  [onnx: {ratio: 0.5}]\n"
+      "  let kept = onnx.Dropout(pooled)\n"
+      "  let flat = onnx.Flatten(kept)\n"
+      "  [onnx: {alpha: 1.0, beta: 1.0, transB: 1}]\n"
+      "  let out = onnx.Gemm(flat, matrix, bias)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod zoo_slice;
+  CHECK(joggle::parse(env, zoo_slice_source, zoo_slice, "zoo-slice.jog"));
+  CHECK(zoo_slice.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", zoo_slice));
+  CHECK(zoo_slice.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.convert", zoo_slice));
+  CHECK(zoo_slice.verify(env));
+  const std::set<std::string, std::less<>> zoo_calls{
+      "nn.conv2d",       "nn.leaky_relu", "nn.max_pool2d",
+      "base.copy",       "tensor.reshape", "nn.gemm"};
+  std::set<std::string, std::less<>> seen_zoo_calls;
+  for (joggle::Op op : zoo_slice.ops()) {
+    CHECK(!op.callee().starts_with("onnx."));
+    if (zoo_calls.contains(op.callee()))
+      seen_zoo_calls.emplace(op.callee());
+  }
+  CHECK(seen_zoo_calls == zoo_calls);
+  joggle::Mod zoo_slice_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(zoo_slice), zoo_slice_roundtrip,
+                      "zoo-slice-roundtrip.jog"));
+  CHECK(zoo_slice_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(zoo_slice, zoo_slice_roundtrip));
 
   constexpr std::string_view symbolic_source =
       "module symbolic.bridge\n"
