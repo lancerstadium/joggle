@@ -278,7 +278,7 @@ an ordinary function, with lexical captures exposed as parameters and call
 operands. `onnx.graph` recovers that `Fn`; the semantic module derives
 loop-carried and scan types from its signature. This closes all eight Loop
 outputs and four dependent Reshapes, reducing the current open frontier from
-280 results to 228 without pretending the remaining operators are supported.
+280 results to 219 without pretending the remaining operators are supported.
 A separate in-memory protocol case checks the exact capture mapping, typed
 multi-result nodes, scan rank, and multiple graph returns. The codec does not
 interpret their operator names. Downloads remain an explicit test setup step
@@ -286,11 +286,16 @@ and never occur during configure or build. The pinned 1.2 MB UltraFace RFB-320
 adds a shape-heavy edge detector rather than another classifier: its 244 tensor
 constants and 242 calls infer from 240 open results to zero, then convert,
 verify, and round-trip. It covers both tensor-valued Constant nodes and the
-legacy attribute-form Slice schema. All three GitHub-hosted models use immutable
-repository commits and SHA-256 checks. The matrix also includes the 28 MiB
-SSD-MobileNetV1-12 detector as an import-only stress gate: 1,567 constants,
-5,985 nodes, eight nested graphs, Resize, and NonMaxSuppression must verify and
-round-trip without claiming that its full execution semantics are implemented.
+legacy attribute-form Slice schema. All GitHub-hosted models use immutable
+repository commits and SHA-256 checks. The 28 MiB SSD-MobileNetV1-12 detector
+is a partial semantic stress gate: 1,567 constants, 5,985 nodes, eight nested
+graphs, Resize, and NonMaxSuppression must verify and round-trip, while type
+propagation reduces 6,790 open results to the pinned frontier of 4,682. This is
+deliberately not a full execution claim. ShuffleNet V2 independently requires
+complete inference, conversion, verification, and round trip. DenseNet-121
+removes every imported intermediate result type before inference and requires
+all 910 to be reconstructed from the model signature and constants, preventing
+value-info-rich models from producing a false positive.
 
 ## Add a data format and primitive
 

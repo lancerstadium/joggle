@@ -301,6 +301,11 @@ shape dataflow. Quantization nodes contribute only their provable shape and
 element type here. Compatible three-input QuantizeLinear and DequantizeLinear
 calls are then converted through `quant`; unsupported parameter layouts or
 element formats remain source calls.
+Nested graph interfaces use the same relation: lexical capture operands and
+Loop iteration, condition, and carried operands refine ordinary child `Fn`
+parameters. The complete capture map is validated before any type changes. No
+graph-specific IR is introduced, so normal relations continue inside the child
+function.
 Softmax conversion follows the schema boundary explicitly. Before opset 13,
 the selected axis begins a flattened suffix, so the bridge supplies that suffix
 to the axis-list overload. From opset 13 onward it supplies one axis. A model
@@ -321,6 +326,13 @@ Flatten, rank-two-or-higher MatMul, Gemm, and Transpose when equality,
 singleton broadcasting, permutation, or a directly representable partition
 product proves the result; ambiguous symbolic arithmetic remains at the ONNX
 frontier.
+Schema-only result facts remain usable under partial information: NonZero
+preserves its rank-by-count matrix, NonMaxSuppression preserves its three-column
+index result, and Range preserves a known scalar element type. Expand, Tile,
+TopK, Resize-by-`sizes`, symbolic equal Split, and Squeeze contribute shapes
+when their constant operands or selected axes prove them. Resize-by-runtime
+`scales` and arithmetic over unrelated symbolic extents intentionally remain
+open.
 Convolution and pooling preserve symbolic batch or channel terms while
 requiring only the spatial extents used by their arithmetic to be integer
 literals. Conv accepts its schema's optional one-dimensional bias and maps it
@@ -350,9 +362,13 @@ relations cannot silently regress complex control-flow graphs. UltraFace is a
 full semantic gate: initializer and Constant tensor literals share one decoder,
 and old attribute-form and current input-form Slice share one relation before
 conversion to explicit operands.
-The larger SSD-MobileNetV1 fixture is a separate structural gate. Its eight
-nested graphs and nearly six thousand calls validate generic transport and
-references without coupling the ONNX codec to detector operators.
+The larger SSD-MobileNetV1 fixture is a partial semantic gate. Its eight nested
+graphs and nearly six thousand calls validate transport, graph-interface type
+flow, and conservative partial shapes. The pinned frontier falls from 6,790 to
+4,682 unknown results; unsupported relations remain measurable source calls.
+ShuffleNet V2 is a full inference/conversion gate. DenseNet-121 adds an
+inference-from-signature gate that erases all 910 intermediate annotations and
+requires the module to recover every one from inputs and constants.
 Softmax conversion accepts an explicit, in-range ONNX axis and normalizes a
 negative value before calling the shared body. An omitted axis stays in the
 source namespace because its default depends on the imported opset.

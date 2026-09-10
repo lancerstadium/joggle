@@ -23,6 +23,62 @@ fn attrs(op: Op) -> Attr {
   return base.get(ir.meta(op), "onnx", {})
 }
 
+fn refine_graph_ref(m: Mod, op: Op, ref: Attr) -> bool {
+  if base.kind(ref) != "dict" || !base.has(ref, "fn") ||
+     !base.has(ref, "inputs") || !base.has(ref, "captures") ||
+     base.kind(ref["fn"]) != "str" ||
+     base.kind(ref["inputs"]) != "int" ||
+     base.kind(ref["captures"]) != "list" {
+    return false
+  }
+  let graph = ir.find(m, base.str(ref["fn"]))
+  if !ir.live(graph) {
+    return false
+  }
+  let first = base.int(ref["inputs"])
+  let params = ir.params(graph)
+  let inputs = ir.args(op)
+  if first < 0 || first + len(ref["captures"]) > len(params) {
+    return false
+  }
+  for capture in ref["captures"] {
+    if base.kind(capture) != "int" {
+      return false
+    }
+    let index = base.int(capture)
+    if index < 0 || index >= len(inputs) {
+      return false
+    }
+  }
+  var changed = false
+  var offset = 0
+  for capture in ref["captures"] {
+    let index = base.int(capture)
+    changed = set_type(
+      m, params[first + offset], ir.type(inputs[index])
+    ) || changed
+    offset += 1
+  }
+  return changed
+}
+
+fn refine_graphs(m: Mod, op: Op) -> bool {
+  var changed = false
+  let meta = attrs(op)
+  for key in base.keys(meta) {
+    let value = meta[key]
+    if base.kind(value) == "dict" {
+      changed = refine_graph_ref(m, op, value) || changed
+    }
+    if base.kind(value) == "list" {
+      for item in value {
+        changed = refine_graph_ref(m, op, item) || changed
+      }
+    }
+  }
+  return changed
+}
+
 fn shaped(elem: Ty, dims: list<Ty>) -> Ty {
   return ty("tensor", [elem, ty("[]", dims)])
 }
@@ -62,7 +118,7 @@ fn infer_unary(m: Mod, op: Op) -> bool {
   }
   if callee == "onnx.BatchNormalization" ||
      callee == "onnx.LeakyRelu" || callee == "onnx.Softmax" ||
-     callee == "onnx.Identity" {
+     callee == "onnx.Identity" || callee == "onnx.Clip" {
     return same_type(m, op)
   }
   return false
@@ -79,8 +135,7 @@ fn spatial_pad(op: Op, kernel: list<int>) -> list<int> {
     return none
   }
   let shape = tensor.dims(input)
-  if len(shape) != 4 || kind(shape[2]) != "int" ||
-     kind(shape[3]) != "int" || kernel[0] <= 0 || kernel[1] <= 0 {
+  if len(shape) != 4 || kernel[0] <= 0 || kernel[1] <= 0 {
     return none
   }
   let meta = attrs(op)
@@ -103,6 +158,9 @@ fn spatial_pad(op: Op, kernel: list<int>) -> list<int> {
     return [0, 0, 0, 0]
   }
   if mode != "SAME_UPPER" && mode != "SAME_LOWER" {
+    return none
+  }
+  if kind(shape[2]) != "int" || kind(shape[3]) != "int" {
     return none
   }
   let h = int(shape[2])
@@ -166,34 +224,50 @@ fn dequant_type(m: Mod, op: Op) -> bool {
   )
 }
 
-fn binary_type(m: Mod, op: Op) -> bool {
+fn broadcast_type(m: Mod, op: Op, result_elem: Ty) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
-  if len(inputs) != 2 || len(outputs) != 1 {
+  if len(inputs) == 0 || len(outputs) != 1 {
     return false
   }
-  let left = ir.type(inputs[0])
-  let right = ir.type(inputs[1])
-  if !tensor.valid(left) || !tensor.valid(right) {
+  let first = ir.type(inputs[0])
+  if !tensor.valid(first) {
     return false
   }
-  if tensor.elem(left) != tensor.elem(right) {
+  let source_elem = tensor.elem(first)
+  var shape: list<Ty> = tensor.dims(first)
+  for input in inputs {
+    let type = ir.type(input)
+    if !tensor.valid(type) || tensor.elem(type) != source_elem {
+      return false
+    }
+    let dims: list<Ty> = tensor.dims(type)
+    let next: list<Ty> = tensor.broadcast_shape(shape, dims)
+    if !tensor.broadcastable(shape, next) ||
+       !tensor.broadcastable(dims, next) {
+      return false
+    }
+    shape = next
+  }
+  var elem = result_elem
+  if elem == ty("_") {
+    elem = source_elem
+  }
+  return set_type(m, outputs[0], shaped(elem, shape))
+}
+
+fn binary_type(m: Mod, op: Op) -> bool {
+  if len(ir.args(op)) != 2 {
     return false
   }
-  if len(tensor.dims(left)) == 0 {
-    return set_type(m, outputs[0], right)
-  }
-  if len(tensor.dims(right)) == 0 {
-    return set_type(m, outputs[0], left)
-  }
-  let shape = tensor.broadcast_shape(
-    tensor.dims(left), tensor.dims(right)
-  )
-  if !tensor.broadcastable(tensor.dims(left), shape) ||
-     !tensor.broadcastable(tensor.dims(right), shape) {
+  return broadcast_type(m, op, ty("_"))
+}
+
+fn compare_type(m: Mod, op: Op) -> bool {
+  if len(ir.args(op)) != 2 {
     return false
   }
-  return set_type(m, outputs[0], shaped(tensor.elem(left), shape))
+  return broadcast_type(m, op, ty("bool"))
 }
 
 fn signed(data: Attr, offset: int, width: int) -> int {
@@ -719,7 +793,7 @@ fn squeeze_result(op: Op) -> Ty {
       }
     }
     if selected {
-      if source[axis] != ty(1) {
+      if kind(source[axis]) == "int" && source[axis] != ty(1) {
         return ty("_")
       }
     } else {
@@ -759,6 +833,178 @@ fn slice_type(m: Mod, op: Op) -> bool {
     return false
   }
   return set_type(m, outputs[0], shaped(tensor.elem(input), shape))
+}
+
+fn resize_result(op: Op) -> Ty {
+  let inputs = ir.args(op)
+  if len(inputs) != 4 {
+    return ty("_")
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return ty("_")
+  }
+  let shape = shape_terms(inputs[3])
+  if len(shape) != len(tensor.dims(input)) {
+    return ty("_")
+  }
+  for dim in shape {
+    if kind(dim) == "int" && int(dim) <= 0 {
+      return ty("_")
+    }
+  }
+  return shaped(tensor.elem(input), shape)
+}
+
+fn resize_type(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  return set_type(m, outputs[0], resize_result(op))
+}
+
+fn nonzero_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  var rank = ty("_")
+  if tensor.valid(input) {
+    rank = ty(len(tensor.dims(input)))
+  }
+  let shape: list<Ty> = [rank, ty("_")]
+  return set_type(m, outputs[0], shaped(ty("i64"), shape))
+}
+
+fn range_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 {
+    return false
+  }
+  let first = ir.type(inputs[0])
+  if !tensor.valid(first) || len(tensor.dims(first)) != 0 {
+    return false
+  }
+  for input in inputs {
+    let type = ir.type(input)
+    if !tensor.valid(type) || len(tensor.dims(type)) != 0 ||
+       tensor.elem(type) != tensor.elem(first) {
+      return false
+    }
+  }
+  let shape: list<Ty> = [ty("_")]
+  return set_type(m, outputs[0], shaped(tensor.elem(first), shape))
+}
+
+fn nms_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 2 || len(inputs) > 5 || len(outputs) != 1 {
+    return false
+  }
+  let shape: list<Ty> = [ty("_"), ty(3)]
+  return set_type(m, outputs[0], shaped(ty("i64"), shape))
+}
+
+fn expand_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let shape = shape_terms(inputs[1])
+  if !tensor.valid(input) {
+    return false
+  }
+  let source_shape = tensor.dims(input)
+  if len(shape) < len(source_shape) {
+    return false
+  }
+  for dim in shape {
+    if kind(dim) == "int" && int(dim) < 0 {
+      return false
+    }
+  }
+  let shift = len(shape) - len(source_shape)
+  for axis in 0..len(source_shape) {
+    let source = source_shape[axis]
+    let target = shape[shift + axis]
+    if kind(source) == "int" && kind(target) == "int" &&
+       source != ty(1) && source != target {
+      return false
+    }
+  }
+  return set_type(m, outputs[0], shaped(tensor.elem(input), shape))
+}
+
+fn tile_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return false
+  }
+  let source = tensor.dims(input)
+  let repeats = const_ints(inputs[1])
+  if len(repeats) != len(source) {
+    return false
+  }
+  var shape: list<Ty> = []
+  for axis in 0..len(source) {
+    if repeats[axis] < 0 {
+      return false
+    }
+    if kind(source[axis]) == "int" {
+      shape += [ty(int(source[axis]) * repeats[axis])]
+    } else {
+      if repeats[axis] == 1 {
+        shape += [source[axis]]
+      } else {
+        shape += [ty("_")]
+      }
+    }
+  }
+  return set_type(m, outputs[0], shaped(tensor.elem(input), shape))
+}
+
+fn topk_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 2 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let count = const_ints(inputs[1])
+  if !tensor.valid(input) || len(count) != 1 || count[0] <= 0 {
+    return false
+  }
+  let source = tensor.dims(input)
+  var axis = base.get(attrs(op), "axis", -1)
+  if axis < 0 {
+    axis += len(source)
+  }
+  if axis < 0 || axis >= len(source) {
+    return false
+  }
+  if kind(source[axis]) == "int" && count[0] > int(source[axis]) {
+    return false
+  }
+  let shape = tensor.replaced(source, axis, ty(count[0]))
+  var changed = set_type(
+    m, outputs[0], shaped(tensor.elem(input), shape)
+  )
+  changed = set_type(
+    m, outputs[1], shaped(ty("i64"), shape)
+  ) || changed
+  return changed
 }
 
 fn concat_result(op: Op) -> Ty {
@@ -834,6 +1080,7 @@ fn split_type(m: Mod, op: Op) -> bool {
     return false
   }
   var sizes: list<int> = []
+  var symbolic = false
   if len(inputs) == 2 {
     sizes = const_ints(inputs[1])
   } else {
@@ -851,24 +1098,36 @@ fn split_type(m: Mod, op: Op) -> bool {
       sizes += [size]
     }
   }
+  if len(sizes) == 0 && kind(shape[axis]) != "int" {
+    symbolic = true
+    for output in outputs {
+      sizes += [-1]
+    }
+  }
   if len(sizes) != len(outputs) {
     return false
   }
   var total = 0
   for size in sizes {
-    if size < 0 {
+    if size < 0 && !symbolic {
       return false
     }
-    total += size
+    if size >= 0 {
+      total += size
+    }
   }
   if kind(shape[axis]) == "int" && total != int(shape[axis]) {
     return false
   }
   var changed = false
   for i in 0..len(outputs) {
+    var extent = ty("_")
+    if sizes[i] >= 0 {
+      extent = ty(sizes[i])
+    }
     changed = set_type(
       m, outputs[i], shaped(
-        tensor.elem(input), tensor.replaced(shape, axis, ty(sizes[i]))
+        tensor.elem(input), tensor.replaced(shape, axis, extent)
       )
     ) || changed
   }
@@ -1357,20 +1616,29 @@ fn loop_type(m: Mod, op: Op) -> bool {
   let inputs = base.get(info, "inputs", -1)
   let params = ir.params(body)
   let results = ir.returns(body)
+  let args = ir.args(op)
   let outputs = ir.outs(op)
   if inputs < 2 || len(params) < inputs ||
-     len(results) != len(outputs) + 1 {
+     len(args) < inputs {
     return false
+  }
+  var changed = set_type(m, params[0], ty("tensor<i64, []>"))
+  changed = set_type(m, params[1], ty("tensor<bool, []>")) || changed
+  for i in 2..inputs {
+    changed = set_type(m, params[i], ir.type(args[i])) || changed
+  }
+  if len(results) != len(outputs) + 1 {
+    return changed
   }
   let carried = inputs - 2
   if carried > len(outputs) {
-    return false
+    return changed
   }
   var types: list<Ty> = []
   for i in 0..len(outputs) {
     var type = results[i + 1]
     if !tensor.valid(type) {
-      return false
+      return changed
     }
     if i >= carried {
       type = shaped(
@@ -1379,7 +1647,6 @@ fn loop_type(m: Mod, op: Op) -> bool {
     }
     types += [type]
   }
-  var changed = false
   for i in 0..len(outputs) {
     changed = set_type(m, outputs[i], types[i]) || changed
   }
@@ -1388,6 +1655,10 @@ fn loop_type(m: Mod, op: Op) -> bool {
 
 fn positive(dim: Ty) -> bool {
   return kind(dim) == "int" && int(dim) > 0
+}
+
+fn known_mismatch(left: Ty, right: Ty) -> bool {
+  return kind(left) == "int" && kind(right) == "int" && left != right
 }
 
 fn conv_inputs(x: Ty, weight: Ty, bias: Ty, groups: int) -> bool {
@@ -1403,11 +1674,17 @@ fn conv_inputs(x: Ty, weight: Ty, bias: Ty, groups: int) -> bool {
     return false
   }
   if groups == 1 {
-    if xs[1] != ws[1] {
+    if known_mismatch(xs[1], ws[1]) {
       return false
     }
   } else {
-    if !positive(xs[1]) || !positive(ws[1]) ||
+    if kind(xs[1]) == "int" && int(xs[1]) <= 0 {
+      return false
+    }
+    if kind(ws[1]) == "int" && int(ws[1]) <= 0 {
+      return false
+    }
+    if positive(xs[1]) && positive(ws[1]) &&
        int(xs[1]) != int(ws[1]) * groups {
       return false
     }
@@ -1417,11 +1694,39 @@ fn conv_inputs(x: Ty, weight: Ty, bias: Ty, groups: int) -> bool {
       return false
     }
     let bs = tensor.dims(bias)
-    if len(bs) != 1 || bs[0] != ws[0] {
+    if len(bs) != 1 || known_mismatch(bs[0], ws[0]) {
       return false
     }
   }
   return true
+}
+
+fn conv_extent(
+  input: Ty, low: int, high: int,
+  kernel: int, stride: int, dilation: int
+) -> Ty {
+  if kind(input) == "int" {
+    let result = (int(input) + low + high -
+                  dilation * (kernel - 1) - 1) / stride + 1
+    if result > 0 {
+      return ty(result)
+    }
+    return ty("_")
+  }
+  if stride == 1 && low + high == dilation * (kernel - 1) {
+    return input
+  }
+  return ty("_")
+}
+
+fn same_extent(input: Ty, stride: int) -> Ty {
+  if kind(input) == "int" {
+    return ty((int(input) + stride - 1) / stride)
+  }
+  if stride == 1 {
+    return input
+  }
+  return ty("_")
 }
 
 fn conv_result(op: Op) -> Ty {
@@ -1442,30 +1747,43 @@ fn conv_result(op: Op) -> Ty {
   }
   let xs = tensor.dims(x)
   let ws = tensor.dims(weight)
-  if !positive(xs[2]) || !positive(xs[3]) ||
-     !positive(ws[2]) || !positive(ws[3]) {
+  if !positive(ws[2]) || !positive(ws[3]) ||
+     (kind(xs[2]) == "int" && int(xs[2]) <= 0) ||
+     (kind(xs[3]) == "int" && int(xs[3]) <= 0) {
     return ty("_")
   }
   let stride = base.get(meta, "strides", [1, 1])
   let dilation = base.get(meta, "dilations", [1, 1])
-  let pad = spatial_pad(op, [int(ws[2]), int(ws[3])])
-  if len(stride) != 2 || len(pad) != 4 || len(dilation) != 2 {
+  if len(stride) != 2 || len(dilation) != 2 {
     return ty("_")
   }
   if stride[0] <= 0 || stride[1] <= 0 ||
      dilation[0] <= 0 || dilation[1] <= 0 {
     return ty("_")
   }
-  let h = (int(xs[2]) + pad[0] + pad[2] -
-           dilation[0] * (int(ws[2]) - 1) - 1) /
-          stride[0] + 1
-  let w = (int(xs[3]) + pad[1] + pad[3] -
-           dilation[1] * (int(ws[3]) - 1) - 1) /
-          stride[1] + 1
-  if h <= 0 || w <= 0 {
+  var h = ty("_")
+  var w = ty("_")
+  let mode = base.get(meta, "auto_pad", "NOTSET")
+  if mode == "SAME_UPPER" || mode == "SAME_LOWER" {
+    h = same_extent(xs[2], stride[0])
+    w = same_extent(xs[3], stride[1])
+  } else {
+    let pad = spatial_pad(op, [int(ws[2]), int(ws[3])])
+    if len(pad) != 4 {
+      return ty("_")
+    }
+    h = conv_extent(
+      xs[2], pad[0], pad[2], int(ws[2]), stride[0], dilation[0]
+    )
+    w = conv_extent(
+      xs[3], pad[1], pad[3], int(ws[3]), stride[1], dilation[1]
+    )
+  }
+  if (kind(xs[2]) == "int" && h == ty("_")) ||
+     (kind(xs[3]) == "int" && w == ty("_")) {
     return ty("_")
   }
-  let shape: list<Ty> = [xs[0], ws[0], ty(h), ty(w)]
+  let shape: list<Ty> = [xs[0], ws[0], h, w]
   return shaped(tensor.elem(x), shape)
 }
 
@@ -1545,6 +1863,7 @@ fn pool_type(m: Mod, op: Op) -> bool {
 fn infer(m: Mod) -> bool {
   var changed = false
   for op in ir.ops(m) {
+    changed = refine_graphs(m, op) || changed
     if ir.callee(op) == "onnx.QuantizeLinear" {
       changed = quant_type(m, op) || changed
     }
@@ -1569,6 +1888,14 @@ fn infer(m: Mod) -> bool {
        ir.callee(op) == "onnx.Pow" {
       changed = binary_type(m, op) || changed
     }
+    if ir.callee(op) == "onnx.Max" || ir.callee(op) == "onnx.Min" {
+      changed = broadcast_type(m, op, ty("_")) || changed
+    }
+    if ir.callee(op) == "onnx.Equal" ||
+       ir.callee(op) == "onnx.Greater" ||
+       ir.callee(op) == "onnx.Less" {
+      changed = compare_type(m, op) || changed
+    }
     if ir.callee(op) == "onnx.Flatten" {
       changed = infer_flatten(m, op) || changed
     }
@@ -1592,6 +1919,27 @@ fn infer(m: Mod) -> bool {
     }
     if ir.callee(op) == "onnx.Slice" {
       changed = slice_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Resize" {
+      changed = resize_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.NonZero" {
+      changed = nonzero_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Range" {
+      changed = range_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.NonMaxSuppression" {
+      changed = nms_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Expand" {
+      changed = expand_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Tile" {
+      changed = tile_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.TopK" {
+      changed = topk_type(m, op) || changed
     }
     if ir.callee(op) == "onnx.Concat" {
       changed = concat_type(m, op) || changed

@@ -135,12 +135,12 @@ structural tensor type construction are complete. Named ONNX dimensions now
 reuse integer function generics and anonymous dynamic dimensions remain open
 terms; a dependency-local codec test covers both without a downloaded model.
 ONNX graph attributes now become ordinary functions with explicit lexical
-captures. The official Tiny-YOLOv3-11 structural gate covers 269 tensor
+captures. The official Tiny-YOLOv3-11 partial semantic gate covers 269 tensor
 constants, 291 calls, and four `Loop` bodies without adding a second region IR.
 Exact local-function and result-signature reflection lets the semantic module
 derive both loop-carried and scan outputs from those bodies. This closes all
 eight Loop results and four dependent Reshapes, moving the model's pinned type
-frontier from 280 open results to 228; the remaining frontier is retained as an
+frontier from 280 open results to 219; the remaining frontier is retained as an
 explicit complex-network gate rather than mislabeled as full support. The
 semantic matrix remains separate from that protocol claim.
 The 1.2 MB official UltraFace RFB-320 model adds a different edge-oriented,
@@ -152,9 +152,14 @@ remains the explicit partial frontier; UltraFace is a complete semantic gate
 for the relations it contains.
 The official SSD-MobileNetV1-12 model extends the matrix beyond compact graphs:
 1,567 constants, 5,985 nodes, eight nested graphs, Resize, and
-NonMaxSuppression must survive import, verification, and canonical round trip.
-It is currently an explicit structural gate; semantic closure is a later
-milestone and is not implied by successful transport.
+NonMaxSuppression survive import, verification, canonical round trip, and a
+pinned semantic frontier. Graph captures and Loop protocol operands now refine
+ordinary child-function parameters. Partial symbolic Conv, Split/Squeeze,
+Resize, and post-processing relations reduce 6,790 open results to 4,682
+without claiming full execution support. ShuffleNet V2 closes and converts a
+channel split/shuffle network. DenseNet-121 erases all 910 intermediate
+annotations and recovers them solely from signature, constants, and schema
+relations.
 The frontend-neutral `opt.untyped` query exposes the remaining type frontier,
 and the CLI can invoke any no-extra-argument analysis through the same cached,
 read-only `query` boundary used by embedding code. A data-driven unary relation

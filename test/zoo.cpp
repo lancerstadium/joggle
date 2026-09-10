@@ -112,7 +112,10 @@ GraphRefs graph_refs(const joggle::Mod& mod) {
 int main(int argc, char** argv) {
   CHECK(argc >= 4);
   const bool import_only = std::string_view(argv[3]) == "--import-only";
-  const bool frontier = std::string_view(argv[3]) == "--frontier";
+  const bool from_signature =
+      std::string_view(argv[3]) == "--frontier-from-signature";
+  const bool frontier =
+      std::string_view(argv[3]) == "--frontier" || from_signature;
   CHECK(!frontier || argc >= 5);
   std::size_t expected_frontier = 0;
   if (frontier) {
@@ -141,7 +144,7 @@ int main(int argc, char** argv) {
   CHECK(model.verify(env));
   const joggle::Fn main = model.find_fn("main");
   CHECK(main && !main.params().empty() && !main.returns().empty());
-  const Stats source = inspect(model);
+  Stats source = inspect(model);
   CHECK(source.tensors > 0 && source.nodes > 0);
   for (int index = first_expected; index < argc; ++index)
     CHECK(source.calls.contains(argv[index]));
@@ -151,6 +154,18 @@ int main(int argc, char** argv) {
   CHECK(joggle::parse(env, canonical, roundtrip, "zoo-roundtrip.jog"));
   CHECK(roundtrip.verify(env));
   CHECK(joggle::structurally_equal(model, roundtrip));
+
+  if (from_signature) {
+    for (joggle::Op op : model.ops()) {
+      if (op.kind() != joggle::Op::Kind::call ||
+          op.callee() == "onnx.tensor" || op.callee() == "onnx.model")
+        continue;
+      for (joggle::Val output : op.outs())
+        (void)model.type(output, joggle::Ty("_"));
+    }
+    CHECK(model.verify(env));
+    source = inspect(model);
+  }
 
   const GraphRefs graphs = graph_refs(model);
   CHECK(graphs.valid);

@@ -252,6 +252,11 @@ supports structured `for` and `if`, scalar operators, lists, and the universal
 transactional. It does not evaluate arbitrary model functions or silently run
 transforms while parsing.
 
+Compile-time overload resolution retains the declared element type of an empty
+list. Thus `let dims: list<Ty> = []` selects a `list<Ty>` overload even though
+the runtime value has no member from which to recover `Ty`. This is part of the
+ordinary type system, not a tensor-specific evaluator case.
+
 `assert(condition, message)` is the ordinary failure boundary for module code.
 A true condition returns `true`; a false condition stops compile-time execution
 with the supplied message. When invoked through `run`, it participates in the

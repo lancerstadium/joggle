@@ -478,6 +478,30 @@ int main(int argc, char** argv) {
   CHECK(scalar_bridge.verify(env));
   CHECK(scalar_mul.callee() == "nn.mul");
 
+  constexpr std::string_view broadcast_relations_source =
+      "module broadcast.relations\n"
+      "use onnx\n"
+      "fn main(\n"
+      "  scalar: tensor<f32, []>, left: tensor<f32, [1, 3]>,\n"
+      "  right: tensor<f32, [2, 1]>\n"
+      ") -> (tensor<f32, [2, 3]>, tensor<bool, [2, 3]>) {\n"
+      "  let maximum = onnx.Max(scalar, left, right)\n"
+      "  let less = onnx.Less(maximum, right)\n"
+      "  return maximum, less\n"
+      "}\n";
+  joggle::Mod broadcast_relations;
+  CHECK(joggle::parse(env, broadcast_relations_source, broadcast_relations,
+                      "broadcast-relations.jog"));
+  CHECK(broadcast_relations.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", broadcast_relations));
+  CHECK(broadcast_relations.verify(env));
+  for (joggle::Op op : broadcast_relations.ops()) {
+    if (op.callee() == "onnx.Max")
+      CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [2, 3]>"));
+    if (op.callee() == "onnx.Less")
+      CHECK(op.outs()[0].type() == joggle::Ty("tensor<bool, [2, 3]>"));
+  }
+
   constexpr std::string_view unary_bridge_source =
       "module unary.bridge\n"
       "use onnx\n"
@@ -807,6 +831,122 @@ int main(int argc, char** argv) {
         symbolic_conv.expand(semantic_global_pool, symbolic_pool_fn));
   CHECK(symbolic_conv.verify(env));
 
+  constexpr std::string_view partial_conv_source =
+      "module partial.conv\n"
+      "use onnx\n"
+      "fn main<N: int, C: int, H: int, W: int>(\n"
+      "  x: tensor<f32, [N, C, H, W]>,\n"
+      "  weight: tensor<f32, [4, 3, 3, 3]>\n"
+      ") -> tensor<f32, [N, 4, _, _]> {\n"
+      "  [onnx: {pads: [0, 0, 1, 1], strides: [2, 2]}]\n"
+      "  let out = onnx.Conv(x, weight)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod partial_conv;
+  CHECK(joggle::parse(env, partial_conv_source, partial_conv,
+                      "partial-conv.jog"));
+  CHECK(partial_conv.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", partial_conv));
+  CHECK(partial_conv.verify(env));
+  joggle::Op partial_call;
+  for (joggle::Op op : partial_conv.ops())
+    if (op.callee() == "onnx.Conv")
+      partial_call = op;
+  CHECK(partial_call && partial_call.outs()[0].type() ==
+                            joggle::Ty("tensor<f32, [N, 4, _, _]>"));
+
+  constexpr std::string_view resize_source =
+      "module resize.shape\n"
+      "use onnx\n"
+      "fn main<N: int, H: int, W: int>(\n"
+      "  x: tensor<f32, [N, 3, H, W]>\n"
+      ") -> tensor<f32, [1, 3, 300, 300]> {\n"
+      "  let roi: tensor<f32, [0]> = onnx.tensor(1, [0], hex\"\")\n"
+      "  let scales: tensor<f32, [0]> = onnx.tensor(1, [0], hex\"\")\n"
+      "  let sizes: tensor<i64, [4]> = onnx.tensor(\n"
+      "    7, [4],\n"
+      "    hex\"01000000000000000300000000000000"
+      "2c010000000000002c01000000000000\"\n"
+      "  )\n"
+      "  let out = onnx.Resize(x, roi, scales, sizes)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod resize;
+  CHECK(joggle::parse(env, resize_source, resize, "resize-shape.jog"));
+  CHECK(resize.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", resize));
+  CHECK(resize.verify(env));
+  joggle::Op resize_call;
+  for (joggle::Op op : resize.ops())
+    if (op.callee() == "onnx.Resize")
+      resize_call = op;
+  CHECK(resize_call && resize_call.outs()[0].type() ==
+                           joggle::Ty("tensor<f32, [1, 3, 300, 300]>"));
+
+  constexpr std::string_view shape_relations_source =
+      "module shape.relations\n"
+      "use onnx\n"
+      "fn nonzero(x: tensor<bool, [2, 3]>) -> tensor<i64, [2, _]> {\n"
+      "  let out = onnx.NonZero(x)\n"
+      "  return out\n"
+      "}\n"
+      "fn range(\n"
+      "  start: tensor<f32, []>, stop: tensor<f32, []>,\n"
+      "  step: tensor<f32, []>\n"
+      ") -> tensor<f32, [_]> {\n"
+      "  let out = onnx.Range(start, stop, step)\n"
+      "  return out\n"
+      "}\n"
+      "fn nms(\n"
+      "  boxes: tensor<f32, [1, 10, 4]>,\n"
+      "  scores: tensor<f32, [1, 2, 10]>\n"
+      ") -> tensor<i64, [_, 3]> {\n"
+      "  let out = onnx.NonMaxSuppression(boxes, scores)\n"
+      "  return out\n"
+      "}\n"
+      "fn expand(x: tensor<f32, [1, 3]>) -> tensor<f32, [2, 3]> {\n"
+      "  let shape: tensor<i64, [2]> = onnx.tensor(\n"
+      "    7, [2], hex\"02000000000000000300000000000000\"\n"
+      "  )\n"
+      "  let out = onnx.Expand(x, shape)\n"
+      "  return out\n"
+      "}\n"
+      "fn tile(x: tensor<f32, [1, 3]>) -> tensor<f32, [2, 3]> {\n"
+      "  let repeats: tensor<i64, [2]> = onnx.tensor(\n"
+      "    7, [2], hex\"02000000000000000100000000000000\"\n"
+      "  )\n"
+      "  let out = onnx.Tile(x, repeats)\n"
+      "  return out\n"
+      "}\n"
+      "fn topk(x: tensor<f32, [2, 5]>) "
+      "-> (tensor<f32, [2, 3]>, tensor<i64, [2, 3]>) {\n"
+      "  let count: tensor<i64, [1]> = onnx.tensor(\n"
+      "    7, [1], hex\"0300000000000000\"\n"
+      "  )\n"
+      "  let values, indices = onnx.TopK(x, count)\n"
+      "  return values, indices\n"
+      "}\n";
+  joggle::Mod shape_relations;
+  CHECK(joggle::parse(env, shape_relations_source, shape_relations,
+                      "shape-relations.jog"));
+  CHECK(shape_relations.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", shape_relations));
+  CHECK(shape_relations.verify(env));
+  for (joggle::Op op : shape_relations.ops()) {
+    if (op.callee() == "onnx.NonZero")
+      CHECK(op.outs()[0].type() == joggle::Ty("tensor<i64, [2, _]>"));
+    if (op.callee() == "onnx.Range")
+      CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [_]>"));
+    if (op.callee() == "onnx.NonMaxSuppression")
+      CHECK(op.outs()[0].type() == joggle::Ty("tensor<i64, [_, 3]>"));
+    if (op.callee() == "onnx.Expand" || op.callee() == "onnx.Tile")
+      CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [2, 3]>"));
+    if (op.callee() == "onnx.TopK") {
+      CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [2, 3]>"));
+      CHECK(op.outs()[1].type() == joggle::Ty("tensor<i64, [2, 3]>"));
+    }
+  }
+
   constexpr std::string_view invalid_conv_source =
       "module invalid.conv\n"
       "use onnx\n"
@@ -1053,6 +1193,37 @@ int main(int argc, char** argv) {
     CHECK(fn && split.expand(op, fn));
   }
   CHECK(split.verify(env));
+
+  constexpr std::string_view symbolic_split_source =
+      "module symbolic.split\n"
+      "use onnx\n"
+      "fn main<N: int, K: int>(x: tensor<f32, [N, K]>) "
+      "-> tensor<f32, [N]> {\n"
+      "  [onnx: {axis: 1}]\n"
+      "  let first, second, third = onnx.Split(x)\n"
+      "  [onnx: {axes: [1]}]\n"
+      "  let out = onnx.Squeeze(first)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod symbolic_split;
+  CHECK(joggle::parse(env, symbolic_split_source, symbolic_split,
+                      "symbolic-split.jog"));
+  CHECK(symbolic_split.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", symbolic_split));
+  CHECK(symbolic_split.verify(env));
+  joggle::Op symbolic_split_call;
+  joggle::Op symbolic_squeeze_call;
+  for (joggle::Op op : symbolic_split.ops()) {
+    if (op.callee() == "onnx.Split")
+      symbolic_split_call = op;
+    if (op.callee() == "onnx.Squeeze")
+      symbolic_squeeze_call = op;
+  }
+  CHECK(symbolic_split_call && symbolic_split_call.outs().size() == 3);
+  for (joggle::Val value : symbolic_split_call.outs())
+    CHECK(value.type() == joggle::Ty("tensor<f32, [N, _]>"));
+  CHECK(symbolic_squeeze_call && symbolic_squeeze_call.outs()[0].type() ==
+                                     joggle::Ty("tensor<f32, [N]>"));
 
   constexpr std::string_view one_hot_source =
       "module one.hot\n"

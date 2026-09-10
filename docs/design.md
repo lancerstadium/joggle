@@ -128,33 +128,38 @@ forced post-edit failure rolls back byte-for-byte to the canonical input.
 ## M3 contract
 
 The external frontend gate uses the official ONNX Model Zoo catalog.
-`test/zoo.cmake` downloads immutable artifacts from the ONNX organization's
-Hugging Face mirrors and GitHub media store, then validates the SHA-256 values
-published by the Git LFS manifests. Configure and normal builds remain
+`test/zoo.cmake` downloads immutable artifacts directly from one pinned commit
+in the official ONNX Model Zoo GitHub media store, then validates the SHA-256
+values published by its Git LFS manifests. Configure and normal builds remain
 offline.
 
 The matrix contains `mobilenetv2-7`, `squeezenet1.1-7`,
 `squeezenet1.0-13-qdq`, `resnet18-v1-7`, `tinyyolov2-8`, and
-`tiny-yolov3-11`, `ultraface-rfb-320`, and `ssd-mobilenetv1-12`. These are
+`tiny-yolov3-11`, `ultraface-rfb-320`, `ssd-mobilenetv1-12`,
+`shufflenet-v2-12`, and `densenet-12`. These are
 deliberately different topology classes: separable convolution with residual
-paths, Fire blocks with concatenation, a full QDQ network, a residual
+paths, Fire `Blk`s with concatenation, a full QDQ network, a residual
 classification backbone, a compact detector using max pooling and leaky
 activation, a detector post-processing graph with four `Loop` bodies, and a
 small face detector with a large dynamic shape program. SSD-MobileNetV1 adds a
 full detection pipeline with 1,567 constants, 5,985 nodes, eight nested graphs,
-Resize, and NonMaxSuppression.
+Resize, and NonMaxSuppression. ShuffleNet V2 adds channel split/shuffle
+structure, while DenseNet-121 adds a long concatenative dependency graph.
 MobileNetV2 remains the deep semantic gate; the next four and UltraFace all
 pass binary import, canonical round trip, source-order type inference,
 relationship conversion, idempotence, verification, and converted round trip.
 Tiny-YOLOv3 remains a pinned partial-frontier gate. It imports
 269 tensors, 291 calls, and four nested functions, then reduces 280 open results
-to 228. UltraFace imports 244 tensors and 242 calls and closes all 240 initially
+to 219. UltraFace imports 244 tensors and 242 calls and closes all 240 initially
 open results. Its full conversion gate also exercises tensor-valued Constant,
 legacy attribute-form Slice, and Softmax.
-SSD-MobileNetV1 is deliberately an import-only structural gate: it must import,
-verify, round-trip, retain valid graph references, and expose its representative
-operators. Its much larger semantic frontier remains visible work rather than a
-false end-to-end support claim.
+SSD-MobileNetV1 is a pinned partial semantic gate. Generic capture and
+loop-carried parameter propagation plus conservative partial shape relations
+reduce 6,790 initially open results to 4,682; the remainder stays visible
+rather than being mislabeled as end-to-end support. ShuffleNet V2 closes 273
+open results and completes conversion and round trip. DenseNet-121 is tested
+after all 910 intermediate result annotations are erased: its signature,
+constants, and schema relations reconstruct every result type.
 
 Inspection with the official ONNX 1.19 schema reports IR version 3, opset 7,
 155 nodes, 267 initializers, 268 declared inputs, and one graph output. All 155
@@ -907,12 +912,16 @@ formal input count, and capture operand positions; `onnx.graph` decodes that
 record back to the ordinary function handle. The core remains unaware of ONNX
 and of control-flow operator names.
 
-The first consumer is Loop result inference. The relation treats the first two
-body parameters and first body result as the ONNX iteration/condition protocol,
-maps the remaining leading body results to loop-carried values, and prepends one
-unknown trip extent to scan results. A malformed signature remains unchanged.
-The in-memory test covers one capture, one carried scalar, and one scan output.
+The first consumer is Loop interface inference. The relation treats the first
+two body parameters and first body result as the ONNX iteration/condition
+protocol, propagates explicit loop-carried operands into child parameters, maps the
+remaining leading body results back to loop-carried outputs, and prepends one
+unknown trip extent to scan results. Lexical captures use the same checked
+parent-operand-to-parameter mapping. A malformed interface remains unchanged,
+and capture validation completes before mutation. The in-memory test starts
+with untyped carried and captured parameters, then checks both are refined.
 On the pinned official Tiny-YOLOv3-11 model the relation closes all eight Loop
-results and unlocks four Reshapes, reducing the observable frontier from 280 to
-228. CI pins that partial frontier: it can improve deliberately, but cannot
+results and unlocks dependent Reshapes, reducing the observable frontier from
+280 to 219. CI pins that partial frontier: it can improve deliberately, but
+cannot
 silently regress or be reported as full model support.

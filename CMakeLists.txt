@@ -367,6 +367,8 @@ if(JOGGLE_BUILD_TESTS)
       tiny-yolov3-11
       ultraface-rfb-320
       ssd-mobilenetv1-12
+      shufflenet-v2-12
+      densenet-12
     )
     set(onnx_zoo_hashes
       c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f
@@ -377,6 +379,8 @@ if(JOGGLE_BUILD_TESTS)
       f715cc2d99740d22d312777e20d9de2b2ecdc250155be8fd3752ce7e8b823521
       34cd7e60aeff28744c657de7a3dc64e872d506741de66987f3426f2b79f88017
       b8fba5e404077d4048d27fcd1667e85e27e192eb9bf51e696c46a3acd7d21058
+      ea69821b4dd374ae2f33f9710dd1229ac263d0ee5b5a46ca3521f6483e1ba035
+      0294e7e88e5b3360de9b0fdc321baf9e6ef18b7f058c4536caae3b9f18ed9ed5
     )
     list(LENGTH onnx_zoo_names onnx_zoo_count)
     math(EXPR onnx_zoo_last "${onnx_zoo_count} - 1")
@@ -444,7 +448,7 @@ if(JOGGLE_BUILD_TESTS)
               ${JOGGLE_TEST_ONNX_ZOO}/tiny-yolov3-11.onnx
               ${CMAKE_CURRENT_BINARY_DIR}/modules
               --frontier
-              228
+              219
               onnx.Loop
     )
     add_test(
@@ -461,10 +465,29 @@ if(JOGGLE_BUILD_TESTS)
       COMMAND joggle-onnx-zoo-test
               ${JOGGLE_TEST_ONNX_ZOO}/ssd-mobilenetv1-12.onnx
               ${CMAKE_CURRENT_BINARY_DIR}/modules
-              --import-only
+              --frontier
+              4682
               onnx.Loop
               onnx.NonMaxSuppression
               onnx.Resize
+    )
+    add_test(
+      NAME onnx-zoo-shufflenet
+      COMMAND joggle-onnx-zoo-test
+              ${JOGGLE_TEST_ONNX_ZOO}/shufflenet-v2-12.onnx
+              ${CMAKE_CURRENT_BINARY_DIR}/modules
+              onnx.Split
+              onnx.Concat
+    )
+    add_test(
+      NAME onnx-zoo-densenet
+      COMMAND joggle-onnx-zoo-test
+              ${JOGGLE_TEST_ONNX_ZOO}/densenet-12.onnx
+              ${CMAKE_CURRENT_BINARY_DIR}/modules
+              --frontier-from-signature
+              0
+              onnx.Concat
+              onnx.BatchNormalization
     )
   endif()
   if(JOGGLE_BUILD_ONNX)

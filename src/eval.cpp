@@ -483,10 +483,12 @@ private:
         continue;
       }
       if (op.kind() == Op::Kind::call) {
-        const auto call_args = values(frame, op.args(), loc);
+        const std::vector<Val> operands = op.args();
+        const auto call_args = values(frame, operands, loc);
         if (!call_args)
           return {FlowKind::fail, {}};
-        const auto result = call(blk.fn(), op.callee(), *call_args, loc);
+        const auto result =
+            call(blk.fn(), op.callee(), *call_args, operands, loc);
         if (!result)
           return {FlowKind::fail, {}};
         const std::vector<Val> outs = op.outs();
@@ -614,7 +616,8 @@ private:
   }
 
   std::optional<Items> call(Fn current, std::string_view name,
-                            const Items& args, Loc loc) {
+                            const Items& args,
+                            std::span<const Val> operands, Loc loc) {
     if (name == "base.copy" && args.size() == 1)
       return args;
     if (name == "base.list")
@@ -630,8 +633,20 @@ private:
     const std::vector<Fn> candidates = env_.resolve_fns(current, symbol);
     std::vector<Ty> argument_types;
     argument_types.reserve(args.size());
-    for (const Item& item : args)
-      argument_types.push_back(runtime_type(item));
+    for (std::size_t index = 0; index < args.size(); ++index) {
+      Ty type = runtime_type(args[index]);
+      if (index < operands.size()) {
+        const Ty declared = operands[index].type();
+        const bool unknown = type.name() == "_";
+        const bool empty_list =
+            type.name() == "list" && type.args().size() == 1 &&
+            type.args().front().name() == "_" &&
+            declared.name() == "list";
+        if (unknown || empty_list)
+          type = declared;
+      }
+      argument_types.push_back(std::move(type));
+    }
     bool ambiguous = false;
     const std::vector<Val> context = current.generics();
     std::vector<Ty> generic_values;

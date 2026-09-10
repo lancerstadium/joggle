@@ -11,6 +11,8 @@ set(known
   tiny-yolov3-11
   ultraface-rfb-320
   ssd-mobilenetv1-12
+  shufflenet-v2-12
+  densenet-12
 )
 if(NOT DEFINED MODELS OR MODELS STREQUAL "")
   set(MODELS ${known})
@@ -22,29 +24,6 @@ foreach(model IN LISTS MODELS)
 endforeach()
 
 file(MAKE_DIRECTORY "${OUT}")
-
-function(fetch name revision sha256)
-  if(NOT name IN_LIST MODELS)
-    return()
-  endif()
-  set(url
-    "https://huggingface.co/onnxmodelzoo/${name}/resolve/${revision}/${name}.onnx?download=true"
-  )
-  set(output "${OUT}/${name}.onnx")
-  message(STATUS "Downloading ${name}")
-  file(
-    DOWNLOAD "${url}" "${output}"
-    EXPECTED_HASH "SHA256=${sha256}"
-    SHOW_PROGRESS
-    STATUS status
-    TLS_VERIFY ON
-  )
-  list(GET status 0 code)
-  list(GET status 1 message)
-  if(NOT code EQUAL 0)
-    message(FATAL_ERROR "${name} download failed: ${message}")
-  endif()
-endfunction()
 
 function(fetch_github name revision source sha256)
   if(NOT name IN_LIST MODELS)
@@ -67,40 +46,45 @@ function(fetch_github name revision source sha256)
   endif()
 endfunction()
 
-fetch(
+fetch_github(
   mobilenetv2-7
-  b055c14ebe95ca2df473547484e4d447867951ed
+  4f43949841cb55a0b98dc8fcd045431ccafd9f96
+  validated/vision/classification/mobilenet/model/mobilenetv2-7.onnx
   c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f
 )
-fetch(
+fetch_github(
   squeezenet1.1-7
-  61e525224ad479521059f4586bcacf50ad3627ca
+  4f43949841cb55a0b98dc8fcd045431ccafd9f96
+  validated/vision/classification/squeezenet/model/squeezenet1.1-7.onnx
   1eeff551a67ae8d565ca33b572fc4b66e3ef357b0eb2863bb9ff47a918cc4088
 )
-fetch(
+fetch_github(
   squeezenet1.0-13-qdq
-  dce102eb665be44d95321bf86fd9244014755195
+  4f43949841cb55a0b98dc8fcd045431ccafd9f96
+  validated/vision/classification/squeezenet/model/squeezenet1.0-13-qdq.onnx
   4a567dd7542ef440890d57268fabf47211174c593d7a1837bd7f16a1067169e7
 )
-fetch(
+fetch_github(
   resnet18-v1-7
-  e7cb849a949bdceba02356b8b923d53cc01108e1
+  4f43949841cb55a0b98dc8fcd045431ccafd9f96
+  validated/vision/classification/resnet/model/resnet18-v1-7.onnx
   4e8f8653e7a2222b3904cc3fe8e304cd8b339ce1d05fd24688162f86fb6df52c
 )
-fetch(
+fetch_github(
   tinyyolov2-8
-  869707e16e57006f97d98af54cfdc8a1d388ae61
+  4f43949841cb55a0b98dc8fcd045431ccafd9f96
+  validated/vision/object_detection_segmentation/tiny-yolov2/model/tinyyolov2-8.onnx
   583fb7fdc948435ceac9fa82efc7708701efe8382a859a3dd46526b155f5f2ae
 )
 fetch_github(
   tiny-yolov3-11
-  4c46cd00fbdb7cd30b6c1c17ab54f2e1f4f7b177
+  4f43949841cb55a0b98dc8fcd045431ccafd9f96
   validated/vision/object_detection_segmentation/tiny-yolov3/model/tiny-yolov3-11.onnx
   f715cc2d99740d22d312777e20d9de2b2ecdc250155be8fd3752ce7e8b823521
 )
 fetch_github(
   ultraface-rfb-320
-  4c46cd00fbdb7cd30b6c1c17ab54f2e1f4f7b177
+  4f43949841cb55a0b98dc8fcd045431ccafd9f96
   validated/vision/body_analysis/ultraface/models/version-RFB-320.onnx
   34cd7e60aeff28744c657de7a3dc64e872d506741de66987f3426f2b79f88017
 )
@@ -109,4 +93,16 @@ fetch_github(
   4f43949841cb55a0b98dc8fcd045431ccafd9f96
   validated/vision/object_detection_segmentation/ssd-mobilenetv1/model/ssd_mobilenet_v1_12.onnx
   b8fba5e404077d4048d27fcd1667e85e27e192eb9bf51e696c46a3acd7d21058
+)
+fetch_github(
+  shufflenet-v2-12
+  4f43949841cb55a0b98dc8fcd045431ccafd9f96
+  validated/vision/classification/shufflenet/model/shufflenet-v2-12.onnx
+  ea69821b4dd374ae2f33f9710dd1229ac263d0ee5b5a46ca3521f6483e1ba035
+)
+fetch_github(
+  densenet-12
+  4f43949841cb55a0b98dc8fcd045431ccafd9f96
+  validated/vision/classification/densenet-121/model/densenet-12.onnx
+  0294e7e88e5b3360de9b0fdc321baf9e6ef18b7f058c4536caae3b9f18ed9ed5
 )

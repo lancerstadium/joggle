@@ -69,9 +69,18 @@ joggle::Attr::Bytes loop_model() {
   tensor_type(graph->add_input(), "trip", {}, 7);
   tensor_type(graph->add_input(), "condition", {}, 9);
   tensor_type(graph->add_input(), "start", {}, 6);
-  tensor_type(graph->add_input(), "delta", {}, 6);
+  tensor_type(graph->add_input(), "delta_raw", {}, 2);
   graph->add_output()->set_name("final");
   graph->add_output()->set_name("history");
+
+  auto* cast = graph->add_node();
+  cast->set_op_type("Cast");
+  cast->add_input("delta_raw");
+  cast->add_output("delta");
+  auto* to = cast->add_attribute();
+  to->set_name("to");
+  to->set_type(jogonnx::AttributeProto::INT);
+  to->set_i(6);
 
   auto* loop = graph->add_node();
   loop->set_op_type("Loop");
@@ -87,7 +96,7 @@ joggle::Attr::Bytes loop_model() {
   body->set_name("body");
   tensor_type(body->add_input(), "iteration", {}, 7);
   tensor_type(body->add_input(), "keep_going", {}, 9);
-  tensor_type(body->add_input(), "previous", {}, 6);
+  body->add_input()->set_name("previous");
   tensor_type(body->add_output(), "condition_out", {}, 9);
   tensor_type(body->add_output(), "current", {}, 6);
   tensor_type(body->add_output(), "sample", {}, 6);
@@ -341,7 +350,8 @@ int main(int argc, char** argv) {
   CHECK(loop && loop.args().size() == 4 && loop.outs().size() == 2);
   CHECK(loop.outs()[0].type() == joggle::Ty("_"));
   CHECK(loop.outs()[1].type() == joggle::Ty("_"));
-  CHECK(loop.args()[3] == loop_main.params()[3]);
+  CHECK(loop.args()[3] != loop_main.params()[3]);
+  CHECK(loop.args()[3].def().callee() == "onnx.Cast");
   const joggle::Attr* loop_meta = loop.meta("onnx");
   CHECK(loop_meta && loop_meta->dict());
   const joggle::Attr::Dict* body_ref = loop_meta->dict()->at("body").dict();
@@ -352,6 +362,8 @@ int main(int argc, char** argv) {
   CHECK(body_ref->at("captures").list()->front().integer() == 3);
   const joggle::Fn body = loop_model.find_fn(*body_ref->at("fn").string());
   CHECK(body && body.params().size() == 4 && body.returns().size() == 3);
+  CHECK(body.params()[2].type() == joggle::Ty("_"));
+  CHECK(body.params()[3].type() == joggle::Ty("_"));
   CHECK(body.meta("onnx") && body.meta("onnx")->dict());
   CHECK(body.meta("onnx")->dict()->at("graph").string() == "body");
   CHECK(body.params()[3].meta("onnx") && body.params()[3].meta("onnx")->dict());
@@ -364,6 +376,9 @@ int main(int argc, char** argv) {
   CHECK(body_add && body_add.args().size() == 2);
   CHECK(body_add.args()[1] == body.params()[3]);
   CHECK(joggle::run(env, "onnx.nn.infer", loop_model));
+  CHECK(loop.args()[3].type() == joggle::Ty("tensor<i32, []>"));
+  CHECK(body.params()[2].type() == joggle::Ty("tensor<i32, []>"));
+  CHECK(body.params()[3].type() == joggle::Ty("tensor<i32, []>"));
   CHECK(loop.outs()[0].type() == joggle::Ty("tensor<i32, []>"));
   CHECK(loop.outs()[1].type() == joggle::Ty("tensor<i32, [_]>"));
   CHECK(loop_model.verify(env));
