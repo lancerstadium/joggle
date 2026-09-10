@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -18,7 +19,8 @@ int usage() {
   std::cerr << "usage:\n"
                "  joggle check <file.jog>\n"
                "  joggle read <module.fn> <file> [-M <module-dir>]...\n"
-               "  joggle run <module.fn> <file.jog> [-M <module-dir>]...\n"
+               "  joggle run <module.fn> <file.jog> "
+               "[--report <file>] [-M <module-dir>]...\n"
                "  joggle module list [-M <module-dir>]...\n"
                "  joggle module info <name> [-M <module-dir>]...\n"
                "  joggle module check <name> [-M <module-dir>]...\n"
@@ -30,11 +32,20 @@ int usage() {
   return 2;
 }
 
-bool paths(int argc, char** argv, int first, std::vector<fs::path>& out) {
+bool options(int argc, char** argv, int first, bool allow_report,
+             std::vector<fs::path>& roots,
+             std::optional<fs::path>& report) {
   for (int index = first; index < argc; index += 2) {
-    if (std::string_view(argv[index]) != "-M" || index + 1 >= argc)
+    if (index + 1 >= argc)
       return false;
-    out.emplace_back(argv[index + 1]);
+    const std::string_view option = argv[index];
+    if (option == "-M") {
+      roots.emplace_back(argv[index + 1]);
+    } else if (allow_report && option == "--report" && !report) {
+      report.emplace(argv[index + 1]);
+    } else {
+      return false;
+    }
   }
   return true;
 }
@@ -54,7 +65,9 @@ int process(int argc, char** argv) {
   const std::string function = execute || decode ? argv[2] : "";
   const std::string file = execute || decode ? argv[3] : argv[2];
   std::vector<fs::path> roots;
-  if (!paths(argc, argv, execute || decode ? 4 : 3, roots))
+  std::optional<fs::path> report_file;
+  if (!options(argc, argv, execute || decode ? 4 : 3, execute, roots,
+               report_file))
     return usage();
 
   std::ifstream input(file, std::ios::binary);
@@ -100,10 +113,22 @@ int process(int argc, char** argv) {
     return mod.print_diags(stderr);
   if (!mod.verify(env))
     return mod.print_diags(stderr);
-  if (execute && !joggle::run(env, function, mod)) {
-    mod.print_diags(stderr);
-    env.print_diags(stderr);
-    return 1;
+  joggle::Attr report;
+  if (execute) {
+    const bool ran = report_file ? joggle::run(env, function, mod, report)
+                                 : joggle::run(env, function, mod);
+    if (!ran) {
+      mod.print_diags(stderr);
+      env.print_diags(stderr);
+      return 1;
+    }
+  }
+  if (report_file) {
+    std::ofstream output(*report_file, std::ios::binary | std::ios::trunc);
+    if (!output || !(output << joggle::print(report) << '\n')) {
+      std::cerr << "joggle: cannot write report " << *report_file << '\n';
+      return 1;
+    }
   }
   return joggle::print(stdout, mod) ? 0 : 1;
 }

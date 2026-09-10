@@ -30,6 +30,10 @@ by function, explicit inputs, environment epoch, and module revision, while an
 attempted mutation is isolated and rejected.
 Host code may also pass an ordered span of function names to `run`; the complete
 sequence is transactional and returns the individual structural reports.
+The CLI exposes the same evidence with `joggle run ... --report run.attr` while
+keeping the transformed `Mod` on standard output. Both `Mod` and `Attr` use
+overloaded `print` functions, so embedding and command-line tools share their
+canonical text rather than maintaining a report serializer.
 Attribute keys are entirely module-owned: the same square-bracket form can
 describe placement, schedule, memory, format, cost, provenance, or a user's
 own experiment state. `host` has no privileged parser, verifier, or runtime

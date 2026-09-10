@@ -1569,6 +1569,13 @@ bool parse(Env& env, std::string_view source, Mod& out, std::string_view file) {
   return Parser(env, source, out, file).run();
 }
 
+std::string print(const Attr& value) { return attr_text(value); }
+
+bool print(std::FILE* file, const Attr& value) {
+  const std::string text = print(value);
+  return std::fwrite(text.data(), 1, text.size(), file) == text.size();
+}
+
 std::string print(const Mod& mod) {
   const detail::Store& store = mod.impl_->store;
   std::ostringstream out;

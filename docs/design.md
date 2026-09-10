@@ -342,6 +342,9 @@ with the resolved source symbol, concrete implementation symbol, full overload
 type patterns, and revision delta, so selection evidence comes from the actual
 edit rather than a parallel planning engine. The original three-argument call
 remains the terse success/failure API.
+The command line exposes this exact report with `--report <file>`. It keeps
+canonical `Mod` output on stdout and uses the same public `print(Attr)` overload
+as embedding code, preserving one reporting representation.
 
 Compile-time entry points are now checked against the promised
 `fn(Mod) -> bool` contract before execution. A false return still means “ran

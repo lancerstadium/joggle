@@ -411,6 +411,8 @@ bool parse(Env& env, std::string_view source, Mod& out,
            std::string_view file = {});
 std::string print(const Mod& mod);
 bool print(std::FILE* file, const Mod& mod);
+std::string print(const Attr& value);
+bool print(std::FILE* file, const Attr& value);
 bool structurally_equal(const Mod& left, const Mod& right);
 bool run(Env& env, std::string_view function, Mod& mod);
 bool run(Env& env, std::string_view function, Mod& mod, Attr& report);

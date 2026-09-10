@@ -498,6 +498,10 @@ include nested transform completions. Entries use `kind: "fn"`; successful
 `source`, `impl`, `params`, `returns`, and the exact revision interval. This is
 enough to audit overload selection without an implementation-plan object or a
 second dry-run algorithm.
+`joggle run module.fn model.jog --report run.attr -M modules` writes that same
+structural report separately while preserving the transformed module on
+standard output. The implementation reuses the public `print(Attr)` overload,
+so the CLI does not own a second serialization schema.
 
 A read-only module function is invoked with `query(env, "module.fn", mod,
 result, args, cached)`. It is still declared with ordinary `fn` syntax. The

@@ -20,6 +20,14 @@ Run the textual add-zero transform and print its result:
 ./build/joggle run opt.fold_add_zero test/data/matmul.jog -M modules
 ```
 
+Keep the transformed IR on standard output and write deterministic execution
+evidence separately when an experiment needs it:
+
+```sh
+./build/joggle run opt.fold_add_zero test/data/matmul.jog \
+  --report run.attr -M modules
+```
+
 Inspect the modules available on the same explicit search path:
 
 ```sh

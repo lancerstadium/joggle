@@ -362,6 +362,14 @@ does not add a pipeline object to the language. Every step has a `kind`:
 the source semantic symbol, selected implementation symbol, parameter and
 return type patterns, and its exact revision delta. These are structural
 dictionary fields, not a second event class or callback interface.
+The same report is available from the CLI without mixing it into printed IR:
+
+```sh
+joggle run edge.prepare model.jog --report run.attr -M modules
+```
+
+`print(Attr)` and `print(Mod)` are ordinary overloads in the embedding API;
+the CLI writes their corresponding deterministic textual forms.
 
 `query(env, name, mod, result, args, cached)` embeds an ordinary function as a
 read-only analysis. Its first parameter is `Mod`; subsequent parameters receive
