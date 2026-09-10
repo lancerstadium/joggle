@@ -199,6 +199,15 @@ floating tensor calls convert through shared semantics. All 72 dynamic
 quantizers, 84 integer matrix multiplications, 150 casts, and 12 Microsoft
 scaled/transposed MatMul calls also convert to generic `quant` and `tensor`
 bodies; the vendor namespace is no longer a compute boundary.
+Shape computation is no longer only inferred. Shared bodies now cover Shape,
+Gather, positive-step Slice, OneHot, fill, and binary Concat. The ONNX relation
+folds each N-input Concat into that binary algebra and expresses each Split
+result as a slice, preserving result names and arbitrary non-frontend tags.
+On the imported BERT graph this converts all 55 Concats, all 5 Shapes, the
+Gather, all 5 source Slices, the 2-result Split, OneHot, and
+ConstantOfShape. Only two Squeezes and one Identity with conflicting imported
+symbolic result contracts remain explicit; a repeated conversion is
+byte-identical.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

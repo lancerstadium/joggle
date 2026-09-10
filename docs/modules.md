@@ -126,7 +126,7 @@ The built-in `ir` module is the complete reflection boundary:
 | --- | --- |
 | `fns`, `params`, `blks`, `ops`, `uses` | Traverse function, structure, and dependencies. |
 | `args`, `outs`, `def`, `users` | Read operation dataflow in both directions. |
-| `live`, `blk`, `kind`, `callee`, `type` | Query handle state, structure, and structural `Ty`. |
+| `live`, `blk`, `kind`, `callee`, `name`, `type` | Query handle state, readable identity, structure, and structural `Ty`. |
 | `resolve`, `symbol` | Resolve a call and obtain a `Fn`'s canonical module-qualified name. |
 | `is_const`, `constant` | Query constant IR values. |
 | `has`, `meta` | Query open function, value, or operation attributes. |
@@ -211,6 +211,12 @@ without fixing a bit width, storage class, or target implementation.
 `quant.dynamic` returns values, scale, and zero point through the normal
 multi-result function model. `quant.matmul` accumulates differing integer input
 types into `i32` and accepts scalar, per-row, and per-column zero points.
+Runtime tensor structure uses the same model. `tensor.shape`, `tensor.gather`,
+`tensor.slice`, `tensor.one_hot`, and `tensor.fill` have inspectable bodies.
+`tensor.concat` is deliberately binary: a bridge folds any source arity into a
+chain, while a source Split is a set of slices. This small algebra avoids both
+variadic operation machinery and declarations specialized to a frontend's
+input or result count.
 `nn.linear` composes matrix
 multiplication with an optional bias loop, while `nn.relu` is a loop and
 condition over the same tensor primitives. The general `nn.conv2d` overload
@@ -270,6 +276,12 @@ shape dataflow. Quantization nodes contribute only their provable shape and
 element type here. Compatible three-input QuantizeLinear and DequantizeLinear
 calls are then converted through `quant`; unsupported parameter layouts or
 element formats remain source calls.
+Its structural conversion phase runs only after shape-dependent Reshape
+relations have been derived. It then maps compatible Shape, Gather, Slice,
+Squeeze/Unsqueeze, Concat, Split, OneHot, Identity, Cast, and
+ConstantOfShape computations into the shared tensor algebra. Decompositions
+copy readable result names and all non-frontend operation attributes; the
+`onnx` operation descriptor is removed only after its values are materialized.
 Unsupported ranks and `auto_pad` are left unchanged rather than guessed. Open
 intermediate types are likewise retained instead of causing an unsafe
 projection. Named symbolic extents now flow through Add/Sub/Mul, Flatten,

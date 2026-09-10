@@ -801,6 +801,17 @@ remaining Pow, Sqrt, Reciprocal, Tanh, and Softmax calls. The quantized path,
 Cast, and scaled/transposed MatMul add 72 dynamic quantizers, 84 integer
 matrix multiplications, 150 element conversions, and 12 scaled matrix
 multiplications through generic `quant` and `tensor` bodies. Cast conversion is
-deferred until shape consumers have read their source programs. Source shape
-transport, OneHot, ConstantOfShape, and Split stay explicit boundaries. Both
-inference and conversion are byte-idempotent.
+deferred until shape consumers have read their source programs.
+
+The next phase gives runtime shape transport ordinary tensor semantics rather
+than inventing a shape IR. `tensor.shape`, `gather`, positive-step `slice`,
+`one_hot`, and `fill` are inspectable functions. Binary `tensor.concat` is the
+single composition primitive: the bridge folds any source arity into a chain,
+and expresses every Split result as a slice. `ir.name` completes the editing
+symmetry needed to keep source-readable result names, while arbitrary tags on
+the decomposed operation are copied without treating `host`, `place`, or
+`schedule` specially. On BERT this converts 55 Concats into 133 binary calls,
+5 Shapes, Gather, 5 Slices, the 2-result Split, OneHot, and ConstantOfShape.
+Two Squeezes and one Identity retain conflicting imported symbolic contracts
+and deliberately stay explicit. Both inference and conversion remain
+byte-idempotent.

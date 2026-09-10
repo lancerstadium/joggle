@@ -29,6 +29,10 @@ by function, explicit inputs, environment epoch, and module revision, while an
 attempted mutation is isolated and rejected.
 Host code may also pass an ordered span of function names to `run`; the complete
 sequence is transactional and returns the individual structural reports.
+Attribute keys are entirely module-owned: the same square-bracket form can
+describe placement, schedule, memory, format, cost, provenance, or a user's
+own experiment state. `host` has no privileged parser, verifier, or runtime
+meaning.
 The core contains no ONNX, device, instruction-set, runtime, or code-generation
 policy; those capabilities belong in removable modules.
 The optional ONNX transport preserves typed intermediate values and native
@@ -98,6 +102,12 @@ dimension terms, while exact symbolic factors are cancelled without adding an
 expression dialect. A symbolic target such as `[N, 12]` therefore remains a
 normal tensor type and the converted Reshape still expands through
 `tensor.reshape`.
+The shared tensor module also gives Shape, Gather, positive-step Slice,
+OneHot, fill, and binary Concat normal function bodies. An N-input frontend
+Concat becomes a chain of that single binary primitive; a multi-result Split
+becomes independent slices. This covers arbitrary arity without variadic
+operator classes or arity-specific declarations, and preserves ordinary user
+attributes on the replacement computation.
 Type refinement fills only open tensor elements or dimensions and rejects
 conflicting facts. Structural relations for ConstantOfShape, OneHot, dynamic
 quantization, integer MatMul, Split, and transposed batched MatMul let a
@@ -105,6 +115,11 @@ quantization, integer MatMul, Split, and transposed batched MatMul let a
 normal multi-result function, integer MatMul exposes zero-point subtraction and
 `i32` accumulation, Cast is an element loop, and a parameterized
 `tensor.matmul` absorbs transpose/scale instead of preserving a vendor call.
+On the imported BERT model, all 55 source Concats become 133 binary
+compositions, and Shape, Gather, Slice, Split, OneHot, and ConstantOfShape lose
+their schema names. Three calls with conflicting imported symbolic result
+contracts remain explicit instead of being silently coerced; a second
+conversion is byte-identical.
 `ir.retarget` atomically changes a call and its operands only when the ordinary
 overload resolver accepts the prospective call, so an unsupported mapping
 leaves that call unchanged rather than invalidating a complete transform.

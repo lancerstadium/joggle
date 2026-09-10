@@ -272,6 +272,123 @@ fn reshape<E: Ty, S: list<int>, T: list<int>>(
   return out
 }
 
+fn shape<E: Ty, S: list<int>, R: int>(
+  x: tensor<E, S>
+) -> tensor<i64, [R]> {
+  var out = tensor<i64, [R]>(i64(0))
+  for axis in 0..R {
+    out[axis] = i64(S[axis])
+  }
+  return out
+}
+
+fn gather<E: Ty, D: list<int>, S: list<int>, Y: list<int>>(
+  data: tensor<E, D>, indices: tensor<index, S>, axis: int
+) -> tensor<E, Y> {
+  var inner = 1
+  for dim in axis + 1..len(D) {
+    inner *= D[dim]
+  }
+  var outer = 1
+  for dim in 0..axis {
+    outer *= D[dim]
+  }
+  let count = numel<S>()
+  var out = tensor<E, Y>(E(0))
+  for group in 0..outer, item in 0..count, offset in 0..inner {
+    var selected = indices[item]
+    if selected < 0 {
+      selected += D[axis]
+    }
+    let source =
+      (group * D[axis] + selected) * inner + offset
+    let target = (group * count + item) * inner + offset
+    out[target] = data[source]
+  }
+  return out
+}
+
+fn slice_offset(
+  source: list<int>, result: list<int>, starts: list<int>,
+  axes: list<int>, steps: list<int>, linear: int
+) -> int {
+  var out = 0
+  var source_stride = 1
+  var result_stride = 1
+  for reverse in 0..len(source) {
+    let dim = len(source) - reverse - 1
+    var start = 0
+    var step = 1
+    for item in 0..len(axes) {
+      if axes[item] == dim {
+        start = starts[item]
+        step = steps[item]
+        if start < 0 {
+          start += source[dim]
+        }
+      }
+    }
+    let coordinate = (linear / result_stride) % result[dim]
+    out += (start + coordinate * step) * source_stride
+    source_stride *= source[dim]
+    result_stride *= result[dim]
+  }
+  return out
+}
+
+fn slice<E: Ty, S: list<int>, Y: list<int>>(
+  x: tensor<E, S>, starts: list<int>, axes: list<int>, steps: list<int>
+) -> tensor<E, Y> {
+  var out = tensor<E, Y>(E(0))
+  for i in 0..numel<Y>() {
+    out[i] = x[slice_offset(S, Y, starts, axes, steps, i)]
+  }
+  return out
+}
+
+fn concat<E: Ty, L: list<int>, R: list<int>, Y: list<int>>(
+  left: tensor<E, L>, right: tensor<E, R>, axis: int
+) -> tensor<E, Y> {
+  var inner = 1
+  for dim in axis + 1..len(Y) {
+    inner *= Y[dim]
+  }
+  var out = tensor<E, Y>(E(0))
+  for i in 0..numel<Y>() {
+    let coordinate = (i / inner) % Y[axis]
+    let group = i / (Y[axis] * inner)
+    let offset = i % inner
+    if coordinate < L[axis] {
+      out[i] = left[(group * L[axis] + coordinate) * inner + offset]
+    } else {
+      out[i] = right[
+        (group * R[axis] + coordinate - L[axis]) * inner + offset
+      ]
+    }
+  }
+  return out
+}
+
+fn one_hot<E: Ty, S: list<int>, Y: list<int>>(
+  indices: tensor<index, S>, depth: int, values: tensor<E, [2]>, axis: int
+) -> tensor<E, Y> {
+  var inner = 1
+  for dim in axis..len(S) {
+    inner *= S[dim]
+  }
+  var out = tensor<E, Y>(E(0))
+  for i in 0..numel<Y>() {
+    let category = (i / inner) % depth
+    let source = (i / (inner * depth)) * inner + i % inner
+    if indices[source] == category {
+      out[i] = values[1]
+    } else {
+      out[i] = values[0]
+    }
+  }
+  return out
+}
+
 fn permutation(axes: list<int>, rank: int) -> bool {
   if len(axes) != rank {
     return false
@@ -346,6 +463,90 @@ fn gathered(
     out += [data[i]]
   }
   return out
+}
+
+fn sliced(
+  source: list<Ty>, starts: list<int>, ends: list<int>,
+  axes: list<int>, steps: list<int>
+) -> list<Ty> {
+  if len(starts) == 0 || len(starts) != len(ends) ||
+     len(starts) != len(axes) || len(starts) != len(steps) {
+    var invalid: list<Ty> = []
+    return invalid
+  }
+  var out = source
+  for item in 0..len(axes) {
+    var axis = axes[item]
+    if axis < 0 {
+      axis += len(source)
+    }
+    if axis < 0 || axis >= len(source) || steps[item] <= 0 ||
+       kind(source[axis]) != "int" {
+      return []
+    }
+    for previous in 0..item {
+      var before = axes[previous]
+      if before < 0 {
+        before += len(source)
+      }
+      if before == axis {
+        return []
+      }
+    }
+    let extent = int(source[axis])
+    var first = starts[item]
+    var last = ends[item]
+    if first < 0 {
+      first += extent
+    }
+    if last < 0 {
+      last += extent
+    }
+    if first < 0 {
+      first = 0
+    }
+    if first > extent {
+      first = extent
+    }
+    if last < 0 {
+      last = 0
+    }
+    if last > extent {
+      last = extent
+    }
+    var size = 0
+    if last > first {
+      size = (last - first + steps[item] - 1) / steps[item]
+    }
+    out = replaced(out, axis, ty(size))
+  }
+  return out
+}
+
+fn concatenated(
+  left: list<Ty>, right: list<Ty>, axis: int
+) -> list<Ty> {
+  if len(left) == 0 || len(left) != len(right) {
+    var invalid: list<Ty> = []
+    return invalid
+  }
+  var dim = axis
+  if dim < 0 {
+    dim += len(left)
+  }
+  if dim < 0 || dim >= len(left) ||
+     kind(left[dim]) != "int" || kind(right[dim]) != "int" {
+    return []
+  }
+  var out = left
+  for item in 0..len(left) {
+    if item != dim && left[item] != right[item] {
+      return []
+    }
+  }
+  return replaced(
+    out, dim, ty(int(left[dim]) + int(right[dim]))
+  )
 }
 
 fn permute<E: Ty, S: list<int>, T: list<int>>(
@@ -492,6 +693,12 @@ fn cast<A: Ty, B: Ty, S: list<int>>(
     out[i] = B(x[i])
   }
   return out
+}
+
+fn fill<E: Ty, S: list<int>>(
+  value: tensor<E, [1]>
+) -> tensor<E, S> {
+  return tensor<E, S>(value[0])
 }
 
 fn +<E: Ty, S: list<int>>(

@@ -608,7 +608,7 @@ int main(int argc, char** argv) {
       "  let axis: tensor<i64, [1]> = "
       "onnx.tensor(7, [1], hex\"0000000000000000\")\n"
       "  let tail = onnx.Slice(tail_data, start, end, axis)\n"
-      "  [onnx: {axis: 0}]\n"
+      "  [place: \"edge\", schedule: {width: 4}, onnx: {axis: 0}]\n"
       "  let target = onnx.Concat(vector, tail)\n"
       "  [onnx: {to: 7}]\n"
       "  let cast = onnx.Cast(target)\n"
@@ -626,9 +626,30 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "onnx.nn.convert", shape_program));
   CHECK(shape_program.verify(env));
   joggle::Op semantic_reshape;
-  for (joggle::Op op : shape_program.ops())
+  std::vector<joggle::Op> structure_calls;
+  for (joggle::Op op : shape_program.ops()) {
     if (op.callee() == "tensor.reshape")
       semantic_reshape = op;
+    if (op.callee() == "tensor.shape" ||
+        op.callee() == "tensor.gather" ||
+        op.callee() == "tensor.slice" ||
+        op.callee() == "tensor.concat")
+      structure_calls.push_back(op);
+    if (op.callee() == "tensor.concat") {
+      CHECK(!op.meta("onnx"));
+      CHECK(op.meta("place") && op.meta("place")->string() == "edge");
+      CHECK(op.meta("schedule") && op.meta("schedule")->dict());
+    }
+    CHECK(op.callee() != "onnx.Shape" && op.callee() != "onnx.Gather" &&
+          op.callee() != "onnx.Slice" && op.callee() != "onnx.Concat" &&
+          op.callee() != "onnx.Unsqueeze");
+  }
+  CHECK(structure_calls.size() == 4);
+  for (joggle::Op op : structure_calls) {
+    const joggle::Fn fn = env.resolve(shape_program, op);
+    CHECK(fn && shape_program.expand(op, fn));
+  }
+  CHECK(shape_program.verify(env));
   CHECK(semantic_reshape && semantic_reshape.args().size() == 1);
   const joggle::Fn shape_reshape_fn =
       env.resolve(shape_program, semantic_reshape);
@@ -644,7 +665,7 @@ int main(int argc, char** argv) {
       "  key: tensor<f32, [N, 12, 256, 64]>\n"
       ") -> tensor<f32, [N, 12, 256, 256]> {\n"
       "  let shape = onnx.Shape(query)\n"
-      "  [onnx: {value: {type: 1}}]\n"
+      "  [onnx: {value: {data: hex\"0000803f\", shape: [1], type: 1}}]\n"
       "  let filled: tensor<f32, [_, 12, 256, 64]> = "
       "onnx.ConstantOfShape(shape)\n"
       "  [onnx: {alpha: 0.125, transA: 0, transB: 1}]\n"
@@ -672,9 +693,43 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "onnx.nn.convert", transformer));
   CHECK(transformer.verify(env));
   CHECK(scores.callee() == "tensor.matmul");
+  joggle::Op semantic_fill;
+  for (joggle::Op op : transformer.ops())
+    if (op.callee() == "tensor.fill")
+      semantic_fill = op;
+  CHECK(semantic_fill && semantic_fill.outs()[0].type() ==
+                             joggle::Ty(
+                                 "tensor<f32, [N, 12, 256, 64]>"));
+  const joggle::Fn fill_fn = env.resolve(transformer, semantic_fill);
+  CHECK(fill_fn && transformer.expand(semantic_fill, fill_fn));
+  CHECK(transformer.verify(env));
   const joggle::Fn scaled_matmul = env.resolve(transformer, scores);
   CHECK(scaled_matmul && transformer.expand(scores, scaled_matmul));
   CHECK(transformer.verify(env));
+
+  constexpr std::string_view default_fill_source =
+      "module default.fill\n"
+      "use onnx\n"
+      "fn main<N: int>(x: tensor<f32, [N, 4]>) "
+      "-> tensor<f32, [N, 4]> {\n"
+      "  let shape = onnx.Shape(x)\n"
+      "  let out = onnx.ConstantOfShape(shape)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod default_fill;
+  CHECK(joggle::parse(env, default_fill_source, default_fill,
+                      "default-fill.jog"));
+  CHECK(default_fill.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", default_fill));
+  CHECK(joggle::run(env, "onnx.nn.convert", default_fill));
+  CHECK(default_fill.verify(env));
+  bool default_tensor = false;
+  for (joggle::Op op : default_fill.ops()) {
+    CHECK(op.callee() != "onnx.Shape" &&
+          op.callee() != "onnx.ConstantOfShape");
+    default_tensor = default_tensor || op.callee() == "tensor.tensor";
+  }
+  CHECK(default_tensor);
 
   constexpr std::string_view split_source =
       "module split.shape\n"
@@ -697,6 +752,50 @@ int main(int argc, char** argv) {
   CHECK(split_call && split_call.outs().size() == 2);
   for (joggle::Val value : split_call.outs())
     CHECK(value.type() == joggle::Ty("tensor<f32, [1, N, 256]>"));
+  CHECK(joggle::run(env, "onnx.nn.convert", split));
+  CHECK(split.verify(env));
+  std::vector<joggle::Op> split_slices;
+  for (joggle::Op op : split.ops()) {
+    CHECK(op.callee() != "onnx.Split");
+    if (op.callee() == "tensor.slice")
+      split_slices.push_back(op);
+  }
+  CHECK(split_slices.size() == 2);
+  CHECK(split_slices[0].outs()[0].name() == "left");
+  CHECK(split_slices[1].outs()[0].name() == "right");
+  for (joggle::Op op : split_slices) {
+    const joggle::Fn fn = env.resolve(split, op);
+    CHECK(fn && split.expand(op, fn));
+  }
+  CHECK(split.verify(env));
+
+  constexpr std::string_view one_hot_source =
+      "module one.hot\n"
+      "use onnx\n"
+      "fn main<N: int>(x: tensor<i64, [N]>) "
+      "-> tensor<f32, [N, 3]> {\n"
+      "  let depth: tensor<i64, [1]> = "
+      "onnx.tensor(7, [1], hex\"0300000000000000\")\n"
+      "  let values: tensor<f32, [2]> = "
+      "onnx.tensor(1, [2], hex\"000000000000803f\")\n"
+      "  [onnx: {axis: -1}]\n"
+      "  let out = onnx.OneHot(x, depth, values)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod one_hot;
+  CHECK(joggle::parse(env, one_hot_source, one_hot, "one-hot.jog"));
+  CHECK(one_hot.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.infer", one_hot));
+  CHECK(joggle::run(env, "onnx.nn.convert", one_hot));
+  CHECK(one_hot.verify(env));
+  joggle::Op semantic_one_hot;
+  for (joggle::Op op : one_hot.ops())
+    if (op.callee() == "tensor.one_hot")
+      semantic_one_hot = op;
+  CHECK(semantic_one_hot && semantic_one_hot.args().size() == 4);
+  const joggle::Fn one_hot_fn = env.resolve(one_hot, semantic_one_hot);
+  CHECK(one_hot_fn && one_hot.expand(semantic_one_hot, one_hot_fn));
+  CHECK(one_hot.verify(env));
 
   constexpr std::string_view invalid_reshape_source =
       "module invalid.reshape\n"

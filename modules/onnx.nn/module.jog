@@ -311,6 +311,22 @@ fn element(code: int) -> Ty {
   return out
 }
 
+fn element_bytes(code: int) -> int {
+  if code == 2 || code == 3 || code == 9 {
+    return 1
+  }
+  if code == 4 || code == 5 || code == 10 || code == 16 {
+    return 2
+  }
+  if code == 1 || code == 6 || code == 12 {
+    return 4
+  }
+  if code == 7 || code == 11 || code == 13 {
+    return 8
+  }
+  return 0
+}
+
 fn cast_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1328,6 +1344,314 @@ fn convert_call(
   return true
 }
 
+fn carry(m: Mod, source: Val, target: Val) -> bool {
+  var changed = false
+  let value_name = ir.name(source)
+  if value_name != "" {
+    changed = ir.rename(m, target, value_name) || changed
+  }
+  let metadata = ir.meta(source)
+  for key in base.keys(metadata) {
+    changed = ir.set(m, target, key, metadata[key]) || changed
+  }
+  return changed
+}
+
+fn carry(m: Mod, source: Op, target: Op) -> bool {
+  var changed = false
+  let metadata = ir.meta(source)
+  for key in base.keys(metadata) {
+    if key != "onnx" {
+      changed = ir.set(m, target, key, metadata[key]) || changed
+    }
+  }
+  return changed
+}
+
+fn convert_shape(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let output = ir.type(outputs[0])
+  let metadata = attrs(op)
+  if base.has(metadata, "start") || base.has(metadata, "end") ||
+     !tensor.valid(input) ||
+     output != shaped(ty("i64"), [ty(len(tensor.dims(input)))]) {
+    return false
+  }
+  return convert_call(m, op, "tensor.shape")
+}
+
+fn convert_gather(m: Mod, op: Op) -> bool {
+  var inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 2 || len(outputs) != 1 {
+    return false
+  }
+  let expected = gather_result(op)
+  if expected == ty("_") || ir.type(outputs[0]) != expected {
+    return false
+  }
+  let rank = len(tensor.dims(ir.type(inputs[0])))
+  var axis = base.get(attrs(op), "axis", 0)
+  if axis < 0 {
+    axis += rank
+  }
+  inputs += [ir.constant(m, op, axis, "int")]
+  return convert_call(m, op, "tensor.gather", inputs)
+}
+
+fn convert_reshape_view(m: Mod, op: Op, expected: Ty) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 1 || len(inputs) > 2 || len(outputs) != 1 ||
+     expected == ty("_") || ir.type(outputs[0]) != expected {
+    return false
+  }
+  let values: list<Val> = [inputs[0]]
+  return convert_call(m, op, "tensor.reshape", values)
+}
+
+fn convert_slice(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 3 || len(inputs) > 5 || len(outputs) != 1 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  let output = ir.type(outputs[0])
+  if !tensor.valid(input) || !tensor.valid(output) ||
+     tensor.elem(input) != tensor.elem(output) {
+    return false
+  }
+  let starts = const_ints(inputs[1])
+  let ends = const_ints(inputs[2])
+  var slice_axes: list<int> = []
+  var steps: list<int> = []
+  if len(inputs) >= 4 {
+    slice_axes = const_ints(inputs[3])
+  } else {
+    for axis in 0..len(starts) {
+      slice_axes += [axis]
+    }
+  }
+  if len(inputs) == 5 {
+    steps = const_ints(inputs[4])
+  } else {
+    for start in starts {
+      steps += [1]
+    }
+  }
+  let expected = tensor.sliced(
+    tensor.dims(input), starts, ends, slice_axes, steps
+  )
+  if len(expected) == 0 || tensor.dims(output) != expected {
+    return false
+  }
+  var values: list<Val> = [inputs[0]]
+  values += [ints(m, op, starts)]
+  values += [ints(m, op, slice_axes)]
+  values += [ints(m, op, steps)]
+  return convert_call(m, op, "tensor.slice", values)
+}
+
+fn convert_concat(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) == 0 || len(outputs) != 1 {
+    return false
+  }
+  let expected = concat_result(op)
+  if expected == ty("_") || ir.type(outputs[0]) != expected {
+    return false
+  }
+  if len(inputs) == 1 {
+    let values: list<Val> = [inputs[0]]
+    return convert_call(m, op, "base.copy", values)
+  }
+  let first = ir.type(inputs[0])
+  var axis = base.get(attrs(op), "axis", 0)
+  if axis < 0 {
+    axis += len(tensor.dims(first))
+  }
+  let axis_value = ir.constant(m, op, axis, "int")
+  var value = inputs[0]
+  var type = first
+  for i in 1..len(inputs) {
+    let right = ir.type(inputs[i])
+    let dims = tensor.concatenated(
+      tensor.dims(type), tensor.dims(right), axis
+    )
+    type = shaped(tensor.elem(type), dims)
+    value = ir.call(
+      m, op, "tensor.concat", [value, inputs[i], axis_value], str(type)
+    )
+  }
+  carry(m, outputs[0], value)
+  carry(m, op, ir.def(value))
+  if !ir.replace(m, outputs[0], value) {
+    return false
+  }
+  return ir.erase(m, op)
+}
+
+fn convert_split(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if (len(inputs) != 1 && len(inputs) != 2) || len(outputs) == 0 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return false
+  }
+  let shape = tensor.dims(input)
+  var axis = base.get(attrs(op), "axis", 0)
+  if axis < 0 {
+    axis += len(shape)
+  }
+  if axis < 0 || axis >= len(shape) {
+    return false
+  }
+  var sizes: list<int> = []
+  if len(inputs) == 2 {
+    sizes = const_ints(inputs[1])
+  } else {
+    let metadata = attrs(op)
+    if base.has(metadata, "split") {
+      for size in metadata["split"] {
+        sizes += [size]
+      }
+    }
+  }
+  if len(sizes) == 0 && kind(shape[axis]) == "int" &&
+     int(shape[axis]) % len(outputs) == 0 {
+    let size = int(shape[axis]) / len(outputs)
+    for output in outputs {
+      sizes += [size]
+    }
+  }
+  if len(sizes) != len(outputs) {
+    return false
+  }
+  var total = 0
+  for size in sizes {
+    if size < 0 {
+      return false
+    }
+    total += size
+  }
+  if kind(shape[axis]) == "int" && total != int(shape[axis]) {
+    return false
+  }
+  var start = 0
+  for i in 0..len(outputs) {
+    let expected = shaped(
+      tensor.elem(input), tensor.replaced(shape, axis, ty(sizes[i]))
+    )
+    if ir.type(outputs[i]) != expected {
+      return false
+    }
+  }
+  for i in 0..len(outputs) {
+    let next = ir.call(
+      m, op, "tensor.slice",
+      [inputs[0], ints(m, op, [start]), ints(m, op, [axis]),
+       ints(m, op, [1])],
+      str(ir.type(outputs[i]))
+    )
+    carry(m, outputs[i], next)
+    carry(m, op, ir.def(next))
+    if !ir.replace(m, outputs[i], next) {
+      return false
+    }
+    start += sizes[i]
+  }
+  return ir.erase(m, op)
+}
+
+fn convert_one_hot(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 3 || len(outputs) != 1 {
+    return false
+  }
+  let depth = const_ints(inputs[1])
+  let indices = ir.type(inputs[0])
+  let values = ir.type(inputs[2])
+  let output = ir.type(outputs[0])
+  if len(depth) != 1 || depth[0] <= 0 || !tensor.valid(indices) ||
+     !tensor.valid(values) || !tensor.valid(output) ||
+     tensor.dims(values) != [ty(2)] ||
+     tensor.elem(values) != tensor.elem(output) {
+    return false
+  }
+  var axis = base.get(attrs(op), "axis", -1)
+  if axis < 0 {
+    axis += len(tensor.dims(indices)) + 1
+  }
+  if axis < 0 || axis > len(tensor.dims(indices)) {
+    return false
+  }
+  let expected = shaped(
+    tensor.elem(values),
+    tensor.inserted(tensor.dims(indices), axis, ty(depth[0]))
+  )
+  if output != expected {
+    return false
+  }
+  var values_in: list<Val> = [inputs[0]]
+  values_in += [ir.constant(m, op, depth[0], "int")]
+  values_in += [inputs[2]]
+  values_in += [ir.constant(m, op, axis, "int")]
+  return convert_call(m, op, "tensor.one_hot", values_in)
+}
+
+fn convert_constant_shape(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 ||
+     !tensor.valid(ir.type(outputs[0])) {
+    return false
+  }
+  let output = ir.type(outputs[0])
+  let metadata = attrs(op)
+  if !base.has(metadata, "value") {
+    if tensor.elem(output) != ty("f32") {
+      return false
+    }
+    let zero = ir.constant(m, op, 0.0, str(tensor.elem(output)))
+    let values: list<Val> = [zero]
+    return convert_call(m, op, "tensor.tensor", values)
+  }
+  let literal = metadata["value"]
+  if base.kind(literal) != "dict" || !base.has(literal, "type") ||
+     !base.has(literal, "shape") || !base.has(literal, "data") {
+    return false
+  }
+  let code = base.int(literal["type"])
+  let width = element_bytes(code)
+  let literal_shape = literal["shape"]
+  if len(literal_shape) != 1 || literal_shape[0] != 1 ||
+     width == 0 || base.size(literal["data"]) != width ||
+     element(code) != tensor.elem(output) ||
+     base.kind(literal["data"]) != "bytes" {
+    return false
+  }
+  let code_value = ir.constant(m, op, code, "int")
+  let shape_value = ints(m, op, literal_shape)
+  let data_value = ir.constant(m, op, literal["data"], "bytes")
+  let packed = ir.call(
+    m, op, "onnx.tensor", [code_value, shape_value, data_value],
+    str(shaped(tensor.elem(output), [ty(1)]))
+  )
+  let values: list<Val> = [packed]
+  return convert_call(m, op, "tensor.fill", values)
+}
+
 fn convert_unary(m: Mod, op: Op, callee: str) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1856,6 +2180,40 @@ fn convert(m: Mod) -> bool {
     }
   }
   for op in ir.ops(m) {
+    if ir.callee(op) == "onnx.Shape" {
+      changed = convert_shape(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Gather" {
+      changed = convert_gather(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Slice" {
+      changed = convert_slice(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Unsqueeze" {
+      changed = convert_reshape_view(
+        m, op, unsqueeze_result(op)
+      ) || changed
+    }
+    if ir.callee(op) == "onnx.Squeeze" {
+      changed = convert_reshape_view(
+        m, op, squeeze_result(op)
+      ) || changed
+    }
+    if ir.callee(op) == "onnx.Concat" {
+      changed = convert_concat(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Split" {
+      changed = convert_split(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.OneHot" {
+      changed = convert_one_hot(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.ConstantOfShape" {
+      changed = convert_constant_shape(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Identity" {
+      changed = convert_unary(m, op, "base.copy") || changed
+    }
     if ir.callee(op) == "onnx.Cast" {
       changed = convert_cast(m, op) || changed
     }

@@ -1057,6 +1057,9 @@ private:
     } else if (name == "callee" && args.size() == 1) {
       if (const auto* op = as<Op>(args[0]))
         return Items{Item(Attr(std::string(op->callee())))};
+    } else if (name == "name" && args.size() == 1) {
+      if (const auto* value = as<Val>(args[0]); value && *value)
+        return Items{Item(Attr(std::string(value->name())))};
     } else if (name == "type" && args.size() == 1) {
       if (const auto* value = as<Val>(args[0]))
         return Items{Item(value->type())};

@@ -257,6 +257,11 @@ storage by default, but `base.size(value)` and `base.byte(value, index)` provide
 checked compile-time access when a codec relation must interpret a small
 payload. They do not add file or ambient-memory access.
 
+`ir.name(v)` and `ir.rename(m, v, name)` are the symmetric readable-name
+operations. They matter when one source call is decomposed into several normal
+calls: a module can preserve the externally meaningful result name without
+accessing internal storage or generated identifiers.
+
 Construction also uses ordinary overloaded functions. `ir.constant` and
 `ir.call` insert leaves before a named operation. `ir.clone` deep-copies an
 operation and its nested `Blk`s, while `ir.move` changes `Blk`-local order only
