@@ -24,7 +24,7 @@ int main(int argc, char** argv) {
   constexpr std::string_view legal_source =
       "module legal.network\n"
       "use nn\n"
-      "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
+      "fn main(x: tensor<i8, [4]>) -> tensor<i8, [4]> {\n"
       "  return relu(x)\n"
       "}\n";
   joggle::Mod legal;
@@ -33,11 +33,9 @@ int main(int argc, char** argv) {
   const std::string before_keep = joggle::print(legal);
   CHECK(joggle::run(env, "script.keep_relu", legal));
   CHECK(joggle::print(legal) == before_keep);
-  const std::vector<joggle::Attr> supported_args{
-      joggle::Attr(joggle::Attr::List{joggle::Attr("nn.relu")})};
   joggle::Attr supported_frontier;
-  CHECK(joggle::query(env, "opt.frontier", legal, supported_frontier,
-                      supported_args));
+  CHECK(joggle::query(env, "script.typed_frontier", legal,
+                      supported_frontier));
   CHECK(supported_frontier.list() && supported_frontier.list()->empty());
   joggle::Attr open_frontier;
   CHECK(joggle::query(env, "script.network_frontier", legal,
@@ -56,6 +54,49 @@ int main(int argc, char** argv) {
                       "legal-network-roundtrip.jog"));
   CHECK(legal_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(legal, legal_roundtrip));
+
+  constexpr std::string_view typed_source =
+      "module typed.network\n"
+      "use nn\n"
+      "fn main(a: tensor<i8, [2, 2]>, b: tensor<f32, [4]>) "
+      "-> (tensor<i8, [2, 2]>, tensor<f32, [4]>) {\n"
+      "  let x = nn.relu(a)\n"
+      "  let y = nn.relu(b)\n"
+      "  return x, y\n"
+      "}\n";
+  joggle::Mod typed;
+  CHECK(joggle::parse(env, typed_source, typed, "typed-network.jog"));
+  CHECK(typed.verify(env));
+  const std::vector<joggle::Fn> script_fns = env.fns("script");
+  joggle::Fn relu_cap;
+  for (joggle::Fn fn : script_fns)
+    if (fn.name() == "nn.relu")
+      relu_cap = fn;
+  CHECK(relu_cap);
+  std::vector<joggle::Op> typed_relus;
+  for (joggle::Op op : typed.ops())
+    if (op.callee() == "nn.relu")
+      typed_relus.push_back(op);
+  CHECK(typed_relus.size() == 2);
+  CHECK(env.accepts(typed_relus[0], relu_cap));
+  CHECK(!env.accepts(typed_relus[1], relu_cap));
+  joggle::Attr typed_frontier;
+  CHECK(joggle::query(env, "script.typed_frontier", typed, typed_frontier));
+  CHECK(typed_frontier.list() && typed_frontier.list()->size() == 1);
+  CHECK(typed_frontier.list()->front().string() == "nn.relu");
+  CHECK(joggle::run(env, "script.typed_legalize", typed));
+  CHECK(typed.verify(env));
+  typed_relus.clear();
+  for (joggle::Op op : typed.ops())
+    if (op.callee() == "nn.relu")
+      typed_relus.push_back(op);
+  CHECK(typed_relus.size() == 1);
+  CHECK(env.accepts(typed_relus.front(), relu_cap));
+  joggle::Mod typed_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(typed), typed_roundtrip,
+                      "typed-network-roundtrip.jog"));
+  CHECK(typed_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(typed, typed_roundtrip));
 
   constexpr std::string_view annotated_legal_source =
       "module annotated.legal\n"

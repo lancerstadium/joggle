@@ -108,9 +108,15 @@ For a larger model, list the calls a consumer can already implement and let
 ```jog
 module edge
 use opt
+use ir
+use tensor
 
-fn caps() -> list<str> {
-  return ["edge.load", "edge.mac", "edge.store"]
+fn tensor.matmul<M: int, N: int, K: int>(
+  a: tensor<i8, [M, K]>, b: tensor<i8, [K, N]>
+) -> tensor<i8, [M, N]>;
+
+fn caps() -> list<Fn> {
+  return ir.fns("edge")
 }
 
 fn prepare(m: Mod) -> bool {
@@ -123,10 +129,11 @@ fn missing(m: Mod) -> list<str> {
 ```
 
 `prepare` is an ordinary transform and `missing` is an ordinary read-only
-query. The capability list may equally retain `nn.conv2d`, `tensor.matmul`, or
-custom functions; Joggle does not prescribe an abstraction level. Resolved
-names are module-qualified, so source code may call `relu(x)` while the list
-states the unambiguous symbol `nn.relu`.
+query. A bodyless declaration is both the semantic name and the accepted type
+contract. The example retains rank-two `i8` matrix products with compatible
+symbolic dimensions; other `tensor.matmul` calls remain visible or expand.
+The same form can describe `nn.conv2d` or a custom function, so Joggle does not
+prescribe an abstraction level.
 
 Frontend attributes are structural dictionaries. A bridge can use
 `has(attrs, key)`, strict `attrs[key]`, `get(attrs, key, fallback)`, and

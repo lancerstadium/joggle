@@ -2,6 +2,20 @@ module script
 use opt
 use tensor
 
+fn nn.relu<S: list<int>>(x: tensor<i8, S>) -> tensor<i8, S>;
+
+fn typed_caps() -> list<Fn> {
+  return ir.fns("script")
+}
+
+fn typed_frontier(m: Mod) -> list<str> {
+  return opt.frontier(m, typed_caps())
+}
+
+fn typed_legalize(m: Mod) -> bool {
+  return opt.legalize(m, typed_caps(), 1)
+}
+
 fn fail_after_edit(m: Mod) -> bool {
   let changed = fold_add_zero(m)
   return missing(changed)
@@ -313,15 +327,17 @@ fn expand_network(m: Mod) -> bool {
 }
 
 fn keep_relu(m: Mod) -> bool {
-  return opt.legalize(m, ["nn.relu"], 8)
+  return opt.legalize(m, typed_caps(), 8)
 }
 
 fn expose_network(m: Mod) -> bool {
-  return opt.legalize(m, [], 1)
+  let caps: list<Fn> = []
+  return opt.legalize(m, caps, 1)
 }
 
 fn network_frontier(m: Mod) -> list<str> {
-  return opt.frontier(m, [])
+  let caps: list<Fn> = []
+  return opt.frontier(m, caps)
 }
 
 fn bridge_relu(m: Mod) -> bool {

@@ -53,9 +53,10 @@ NumPy-style broadcast relation supports rank extension and singleton
 dimensions in shared tensor code, so ONNX and TFLite Add reuse the same
 inspectable semantics. A generic body-expansion edit can expose a
 selected network call as tensor calls and later expose those calls as loops.
-`opt.legalize` can instead retain a consumer's function capabilities and expose
-everything else to a bounded depth; `opt.frontier` reports the remainder. Both
-resolve ordinary overloads and have no NN-operator switch. `base`
+`opt.legalize` can instead retain calls accepted by a consumer's ordinary
+function signatures and expose everything else to a bounded depth;
+`opt.frontier` reports the remainder. Both reuse generic overload matching and
+have no NN-operator switch. `base`
 dictionary access lets ordinary bridge functions interpret frontend
 attributes. A bridge may add a module dependency and apply a data-driven call
 mapping, so frontend-to-network relationships stay outside both codecs and
@@ -199,9 +200,15 @@ supports and expose the rest through ordinary function bodies:
 ```jog
 module edge
 use opt
+use ir
+use tensor
 
-fn caps() -> list<str> {
-  return ["edge.load", "edge.mac", "edge.store"]
+fn tensor.matmul<M: int, N: int, K: int>(
+  a: tensor<i8, [M, K]>, b: tensor<i8, [K, N]>
+) -> tensor<i8, [M, N]>;
+
+fn caps() -> list<Fn> {
+  return ir.fns("edge")
 }
 
 fn prepare(m: Mod) -> bool {
@@ -209,8 +216,11 @@ fn prepare(m: Mod) -> bool {
 }
 ```
 
-`opt.frontier(m, caps())` reports the remaining unsupported calls. This is a
-module function, not a target registry or a second IR.
+`opt.frontier(m, caps())` reports the remaining unsupported calls. Here the
+bodyless `tensor.matmul` declaration is a contract: its ordinary generic
+signature accepts matching `i8` matrix products and rejects other element
+types or ranks. This is a module function, not a target registry or a second
+IR.
 
 The optional TFLite codec similarly keeps FlatBuffers private to its module.
 Its opt-in build requires a FlatBuffers package that provides both the library

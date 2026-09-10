@@ -938,10 +938,14 @@ private:
   std::optional<Items> intrinsic(std::string_view name, const Items& args,
                                  Loc loc) {
     if (name == "fns" && args.size() == 1) {
-      const auto* mod = as<Mod*>(args[0]);
-      if (mod && *mod) {
+      if (const auto* mod = as<Mod*>(args[0]); mod && *mod) {
         Items out;
         for (Fn fn : (*mod)->fns())
+          out.emplace_back(fn);
+        return Items{Item(std::move(out))};
+      } else if (const auto module = string(args[0])) {
+        Items out;
+        for (Fn fn : env_.fns(*module))
           out.emplace_back(fn);
         return Items{Item(std::move(out))};
       }
@@ -1058,6 +1062,8 @@ private:
       if (const auto* op = as<Op>(args[0]))
         return Items{Item(Attr(std::string(op->callee())))};
     } else if (name == "name" && args.size() == 1) {
+      if (const auto* fn = as<Fn>(args[0]); fn && *fn)
+        return Items{Item(Attr(std::string(fn->name())))};
       if (const auto* value = as<Val>(args[0]); value && *value)
         return Items{Item(Attr(std::string(value->name())))};
     } else if (name == "type" && args.size() == 1) {
@@ -1076,6 +1082,11 @@ private:
         const Fn target = env_.resolve(**mod, *op);
         return Items{Item(target)};
       }
+    } else if (name == "accepts" && args.size() == 2) {
+      const auto* op = as<Op>(args[0]);
+      const auto* fn = as<Fn>(args[1]);
+      if (op && fn)
+        return Items{Item(Attr(env_.accepts(*op, *fn)))};
     } else if (name == "symbol" && args.size() == 1) {
       if (const auto* fn = as<Fn>(args[0]); fn && *fn)
         return Items{Item(Attr(std::string(fn->module()) + "." +

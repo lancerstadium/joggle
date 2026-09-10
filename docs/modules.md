@@ -124,10 +124,10 @@ The built-in `ir` module is the complete reflection boundary:
 
 | Function | Meaning |
 | --- | --- |
-| `fns`, `params`, `blks`, `ops`, `uses` | Traverse function, structure, and dependencies. |
+| `fns`, `params`, `blks`, `ops`, `uses` | Traverse loaded modules, functions, structure, and dependencies. |
 | `args`, `outs`, `def`, `users` | Read operation dataflow in both directions. |
 | `live`, `blk`, `kind`, `callee`, `name`, `type` | Query handle state, readable identity, structure, and structural `Ty`. |
-| `resolve`, `symbol` | Resolve a call and obtain a `Fn`'s canonical module-qualified name. |
+| `resolve`, `symbol`, `accepts` | Resolve calls, identify functions, and match a call against a signature. |
 | `is_const`, `constant` | Query constant IR values. |
 | `has`, `meta` | Query open function, value, or operation attributes. |
 | `call`, `constant`, `loop`, `branch` | Construct leaves and structured control flow. |
@@ -385,9 +385,10 @@ same invocation, so the caller controls abstraction: one step may expose
 `nn.linear` as `tensor.matmul` plus a bias loop, and a later step may expose
 `tensor.matmul` as explicit nested loops.
 
-`opt.legalize(m, caps, limit)` is the capability-driven form. `caps` contains
-ordinary function names accepted by a consumer. A call matching either its
-source spelling or its resolved module-qualified symbol is retained; every
+`opt.legalize(m, caps, limit)` is the capability-driven form. `caps` is a
+`list<Fn>` owned by the consumer. A call is retained only when its resolved
+semantic symbol matches a declaration's local name and `ir.accepts` proves its
+argument and result types satisfy that declaration's generic signature. Every
 other metadata-free call with a visible body is expanded, one layer per round.
 The caller bounds recursion with `limit`. Calls with no visible body and calls
 carrying operation metadata remain intact because guessing either an
@@ -401,9 +402,15 @@ computation with ordinary functions:
 ```jog
 module edge
 use opt
+use ir
+use tensor
 
-fn caps() -> list<str> {
-  return ["edge.mac", "edge.load", "edge.store"]
+fn tensor.matmul<M: int, N: int, K: int>(
+  a: tensor<i8, [M, K]>, b: tensor<i8, [K, N]>
+) -> tensor<i8, [M, N]>;
+
+fn caps() -> list<Fn> {
+  return ir.fns("edge")
 }
 
 fn prepare(m: Mod) -> bool {
@@ -411,9 +418,11 @@ fn prepare(m: Mod) -> bool {
 }
 ```
 
-There is no capability registry or target base class. Renaming or selecting
-the retained calls remains another normal module function. `base.list`, the
-language's internal materialization of list literals, is structural and is
+There is no capability registry or target base class. `ir.fns("edge")`
+enumerates the loaded module without importing it into the model; unrelated
+helper functions cannot match a source symbol and are ignored. Renaming or
+selecting retained calls remains another normal module function. `base.list`,
+the language's internal materialization of list literals, is structural and is
 ignored by capability checks.
 
 `opt.rename(m, rules)` applies exact call-name pairs supplied as

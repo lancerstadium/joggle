@@ -165,28 +165,24 @@ fn unresolved(m: Mod) -> list<str> {
   return out
 }
 
-fn supports(m: Mod, op: Op, caps: list<str>) -> bool {
+fn supports(m: Mod, op: Op, caps: list<Fn>) -> bool {
   if ir.callee(op) == "base.list" {
     return true
   }
-  for cap in caps {
-    if ir.callee(op) == cap {
-      return true
-    }
-  }
+  var symbol = ir.callee(op)
   let target = ir.resolve(m, op)
   if ir.live(target) {
-    let symbol = ir.symbol(target)
-    for cap in caps {
-      if symbol == cap {
-        return true
-      }
+    symbol = ir.symbol(target)
+  }
+  for cap in caps {
+    if ir.name(cap) == symbol && ir.accepts(op, cap) {
+      return true
     }
   }
   return false
 }
 
-fn frontier(m: Mod, caps: list<str>) -> list<str> {
+fn frontier(m: Mod, caps: list<Fn>) -> list<str> {
   var out: list<str> = []
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" &&
@@ -210,7 +206,7 @@ fn frontier(m: Mod, caps: list<str>) -> list<str> {
   return out
 }
 
-fn legalize(m: Mod, caps: list<str>, limit: int) -> bool {
+fn legalize(m: Mod, caps: list<Fn>, limit: int) -> bool {
   var changed = false
   var again = true
   for round in 0..limit {

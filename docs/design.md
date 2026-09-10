@@ -381,19 +381,23 @@ step exercises whole-sequence rollback.
 ## M8 fifth slice
 
 Capability-driven exposure remains a library mechanism. `opt.legalize` accepts
-a plain list of function symbols and a round bound, keeps calls the consumer
-already accepts, and expands every other metadata-free call whose resolved
-`Fn` has a body. `ir.symbol` supplies stable module-qualified identity after
-normal overload and generic resolution, so an unqualified source call can be
-matched without string guessing. `opt.frontier` reports the deterministic,
-distinct remainder through the existing read-only query path.
+a list of ordinary `Fn` declarations and a round bound, keeps calls whose
+resolved symbol and signature the consumer accepts, and expands every other
+metadata-free call whose resolved `Fn` has a body. `ir.name(Fn)` supplies the
+declared semantic symbol, while `ir.accepts` reuses the same recursive generic
+unifier as normal call resolution. A capability can therefore constrain
+element type, rank, dimensions, and a user-defined structural type without a
+parallel legality language. `opt.frontier` reports the deterministic, distinct
+remainder through the existing read-only query path.
 
 The mechanism adds no target, kernel, legality, or pattern object to core. A
-consumer module owns its capability list and wraps `opt.legalize` in a normal
-`fn(Mod) -> bool`; calls without definitions and calls whose operation metadata
-needs an explicit policy remain visible. A network test keeps `relu(x)` using
-the `nn.relu` capability, then removes that capability and exposes the ordinary
-loop body one bounded layer at a time.
+consumer module writes bodyless functions whose local names mirror canonical
+source symbols, obtains them with `ir.fns(module)`, and wraps `opt.legalize` in
+a normal `fn(Mod) -> bool`. The capability module is inspected but is not added
+to the model's dependency closure. Calls without definitions and calls whose
+operation metadata needs an explicit policy remain visible. A network test
+retains `nn.relu` for `tensor<i8, [4]>` while expanding the same symbol for
+`tensor<f32, [4]>`, then checks canonical round-trip stability.
 
 ## M9 local distribution slice
 

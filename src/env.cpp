@@ -1,6 +1,7 @@
 #include "detail.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <filesystem>
 #include <fstream>
@@ -428,6 +429,12 @@ bool Env::loaded(std::string_view name) const noexcept {
   return impl_->modules.contains(name);
 }
 
+std::vector<Fn> Env::fns(std::string_view module) const {
+  const auto found = impl_->modules.find(module);
+  return found == impl_->modules.end() ? std::vector<Fn>{}
+                                       : found->second->fns();
+}
+
 std::vector<Fn> Env::find_fns(std::string_view symbol) const {
   std::size_t best = 0;
   std::vector<Fn> result;
@@ -512,6 +519,21 @@ Fn Env::resolve(const Mod& from, Op call) const {
     return {};
   const std::vector<Val> values = call.args();
   return resolve(from, call, call.callee(), values);
+}
+
+bool Env::accepts(Op call, Fn candidate) const {
+  if (!call || call.kind() != Op::Kind::call || !candidate)
+    return false;
+  std::vector<Ty> arguments;
+  for (const Val value : call.args())
+    arguments.push_back(value.type());
+  std::vector<Ty> returns;
+  for (const Val value : call.outs())
+    returns.push_back(value.type());
+  const std::vector<Val> context = call.blk().fn().generics();
+  const std::array candidates{candidate};
+  return static_cast<bool>(detail::resolve_overload(
+      candidates, arguments, {}, nullptr, nullptr, context, nullptr, returns));
 }
 
 Fn Env::resolve(const Mod& from, Op call, std::string_view callee,

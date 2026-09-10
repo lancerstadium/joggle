@@ -144,6 +144,14 @@ as verification, allowing tools to distinguish a resolved call from open IR.
 Resolution from a `Fn` uses that function's module and transitive imports, so
 compile-time execution and verification have identical visibility rules.
 
+Ordinary function signatures also describe a consumer boundary. A bodyless
+declaration may use a dotted local name such as `tensor.matmul`; `ir.name(fn)`
+returns that local semantic name, `ir.fns("edge")` enumerates declarations in a
+loaded module, and `ir.accepts(op, fn)` applies the normal generic unifier to an
+existing call. This supports precise element, shape, width, and custom-format
+constraints without adding a target hierarchy or a second pattern language.
+Inspecting a module this way does not add a `use` edge to the transformed model.
+
 List literal element types and loop-element types participate in the same
 fixed-point propagation. This is what lets `for op in ir.ops(blk)` type `op`
 as `Op` without a special loop form. `Attr` is the one intentionally dynamic

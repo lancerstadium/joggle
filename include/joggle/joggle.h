@@ -300,6 +300,7 @@ public:
   void path(std::string path);
   bool load(std::string_view name);
   bool loaded(std::string_view name) const noexcept;
+  std::vector<Fn> fns(std::string_view module) const;
   std::vector<Fn> find_fns(std::string_view symbol) const;
   Fn find_fn(std::string_view symbol) const;
   std::vector<Fn> resolve_fns(const Mod& from, std::string_view symbol) const;
@@ -307,6 +308,7 @@ public:
   Fn resolve(const Mod& from, std::string_view symbol) const;
   Fn resolve(Fn from, std::string_view symbol) const;
   Fn resolve(const Mod& from, Op call) const;
+  bool accepts(Op call, Fn candidate) const;
   bool bound(std::string_view symbol) const noexcept;
   bool call(std::string_view symbol, std::span<const Attr> args,
             std::vector<Attr>& returns);

@@ -2,6 +2,7 @@ module ir
 use base
 
 fn fns(m: Mod) -> list<Fn>;
+fn fns(module: str) -> list<Fn>;
 fn uses(m: Mod) -> list<str>;
 fn params(f: Fn) -> list<Val>;
 fn blks(f: Fn) -> list<Blk>;
@@ -21,10 +22,12 @@ fn live(op: Op) -> bool;
 fn live(v: Val) -> bool;
 fn kind(op: Op) -> str;
 fn callee(op: Op) -> str;
+fn name(f: Fn) -> str;
 fn name(v: Val) -> str;
 fn type(v: Val) -> Ty;
 fn type(m: Mod, v: Val, type: Ty) -> bool;
 fn resolve(m: Mod, op: Op) -> Fn;
+fn accepts(op: Op, f: Fn) -> bool;
 fn symbol(f: Fn) -> str;
 fn has(f: Fn, key: str) -> bool;
 fn has(v: Val, key: str) -> bool;
