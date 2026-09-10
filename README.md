@@ -228,6 +228,35 @@ signature accepts matching `i8` matrix products and rejects other element
 types or ranks. This is a module function, not a target registry or a second
 IR.
 
+The same declaration may have a body, making it an implementation rather than
+only a boundary:
+
+```jog
+module edge
+use tensor
+use opt
+use ir
+
+fn dot<M: int, N: int, K: int>(
+  a: tensor<i8, [M, K]>, b: tensor<i8, [K, N]>
+) -> tensor<i8, [M, N]>;
+
+fn tensor.matmul<M: int, N: int, K: int>(
+  a: tensor<i8, [M, K]>, b: tensor<i8, [K, N]>
+) -> tensor<i8, [M, N]> {
+  return dot(a, b)
+}
+
+fn prepare(m: Mod) -> bool {
+  return opt.apply(m, ir.fns("edge"))
+}
+```
+
+`opt.apply` selects the most specific matching ordinary overload, expands its
+body, and adds `use edge` only when that implementation was not already
+visible. `dot` may later be interpreted, simulated, or emitted by this module;
+Joggle core does not know that it is a hardware primitive.
+
 The optional TFLite codec similarly keeps FlatBuffers private to its module.
 Its opt-in build requires a FlatBuffers package that provides both the library
 and `flatc`:

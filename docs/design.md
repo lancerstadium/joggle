@@ -399,6 +399,17 @@ operation metadata needs an explicit policy remain visible. A network test
 retains `nn.relu` for `tensor<i8, [4]>` while expanding the same symbol for
 `tensor<f32, [4]>`, then checks canonical round-trip stability.
 
+The same explicit `Fn` set can supply implementations. `ir.match` performs the
+ordinary overload ranking inside that set, while the environment-aware
+`ir.expand` permits a function whose local name equals the source call's
+resolved symbol. It adds the implementation module only when not already
+visible, then specializes and copies the normal function body. Dependency and
+body edits roll back together. `opt.apply` is merely the traversal policy over
+these primitives: it skips bodyless declarations and metadata-bearing calls,
+rejects ambiguous implementation sets, and contains no target or NN names. A
+network regression chooses a shape-specialized i8 ReLU implementation over a
+generic i8 overload and uses the generic body at another shape.
+
 ## M9 local distribution slice
 
 The module directory is now executable tooling rather than a prose convention.

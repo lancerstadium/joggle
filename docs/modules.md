@@ -135,7 +135,7 @@ The built-in `ir` module is the complete reflection boundary:
 | `fns`, `params`, `blks`, `ops`, `uses` | Traverse loaded modules, functions, structure, and dependencies. |
 | `args`, `outs`, `def`, `users` | Read operation dataflow in both directions. |
 | `live`, `blk`, `kind`, `callee`, `name`, `type` | Query handle state, readable identity, structure, and structural `Ty`. |
-| `resolve`, `symbol`, `accepts` | Resolve calls, identify functions, and match a call against a signature. |
+| `resolve`, `symbol`, `accepts`, `match` | Resolve calls, identify functions, and select against explicit signatures. |
 | `is_const`, `constant` | Query constant IR values. |
 | `has`, `meta` | Query open function, value, or operation attributes. |
 | `call`, `constant`, `loop`, `branch` | Construct leaves and structured control flow. |
@@ -435,6 +435,43 @@ helper functions cannot match a source symbol and are ignored. Renaming or
 selecting retained calls remains another normal module function. `base.list`,
 the language's internal materialization of list literals, is structural and is
 ignored by capability checks.
+
+A body-bearing declaration is also an alternative implementation. `opt.apply`
+groups declarations by the resolved source symbol, asks `ir.match` to choose
+the most specific compatible overload, and expands that body. Bodyless
+declarations are ignored by `apply` and remain useful to `legalize`. If an
+implementation module is not visible from the model, the environment adds one
+`use` edge before expansion so unqualified helper calls in the copied body keep
+their defining visibility. Dependency insertion and expansion are one
+transaction; a mismatch or unrepresentable generic restores the original IR
+and revision. Metadata-bearing calls remain explicit until the owning module
+chooses how their tags should be distributed.
+
+```jog
+module edge
+use tensor
+use opt
+use ir
+
+fn dot<M: int, N: int, K: int>(
+  a: tensor<i8, [M, K]>, b: tensor<i8, [K, N]>
+) -> tensor<i8, [M, N]>;
+
+fn tensor.matmul<M: int, N: int, K: int>(
+  a: tensor<i8, [M, K]>, b: tensor<i8, [K, N]>
+) -> tensor<i8, [M, N]> {
+  return dot(a, b)
+}
+
+fn prepare(m: Mod) -> bool {
+  return opt.apply(m, ir.fns("edge"))
+}
+```
+
+More-specific overloads can describe a fixed vector width, tile shape, number
+format, or fused implementation while a generic overload remains the fallback.
+The resulting calls are still ordinary `Op`s in ordinary `Fn` bodies; `dot`
+has no built-in target meaning.
 
 `opt.rename(m, rules)` applies exact call-name pairs supplied as
 `list<list<str>>`. It knows no frontend or network names. A bridge first calls

@@ -228,6 +228,30 @@ fn legalize(m: Mod, caps: list<Fn>, limit: int) -> bool {
   return changed
 }
 
+fn apply(m: Mod, impls: list<Fn>) -> bool {
+  var changed = false
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" && len(ir.meta(op)) == 0 {
+      var symbol = ir.callee(op)
+      let source = ir.resolve(m, op)
+      if ir.live(source) {
+        symbol = ir.symbol(source)
+      }
+      var candidates: list<Fn> = []
+      for impl in impls {
+        if ir.name(impl) == symbol && len(ir.blks(impl)) != 0 {
+          candidates += [impl]
+        }
+      }
+      let selected = ir.match(op, candidates)
+      if ir.live(selected) {
+        changed = ir.expand(m, op, selected) || changed
+      }
+    }
+  }
+  return changed
+}
+
 fn rename(m: Mod, rules: list<list<str>>) -> bool {
   var changed = false
   for op in ir.ops(m) {

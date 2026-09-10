@@ -1060,6 +1060,10 @@ Op Mod::clone(Op source, Op before) {
 }
 
 bool Mod::expand(Op call, Fn callee) {
+  return expand(call, callee, {});
+}
+
+bool Mod::expand(Op call, Fn callee, std::string_view semantic) {
   auto& store = impl_->store;
   if (!call.valid() || call.store_ != &store ||
       call.kind() != Op::Kind::call) {
@@ -1090,7 +1094,8 @@ bool Mod::expand(Op call, Fn callee) {
       applied.args().empty() ? call.callee() : applied.name();
   const std::string qualified =
       std::string(callee.module()) + "." + std::string(callee.name());
-  if (symbol != callee.name() && symbol != qualified)
+  if (symbol != callee.name() && symbol != qualified &&
+      semantic != callee.name())
     return reject("expanded function does not match the call", call.loc());
 
   std::vector<Ty> arguments;

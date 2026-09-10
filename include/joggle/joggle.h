@@ -308,7 +308,10 @@ public:
   Fn resolve(const Mod& from, std::string_view symbol) const;
   Fn resolve(Fn from, std::string_view symbol) const;
   Fn resolve(const Mod& from, Op call) const;
+  Fn match(Op call, std::span<const Fn> candidates,
+           bool* ambiguous = nullptr) const;
   bool accepts(Op call, Fn candidate) const;
+  bool expand(Mod& mod, Op call, Fn implementation) const;
   bool bound(std::string_view symbol) const noexcept;
   bool call(std::string_view symbol, std::span<const Attr> args,
             std::vector<Attr>& returns);
@@ -391,6 +394,8 @@ public:
 private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
+
+  bool expand(Op call, Fn callee, std::string_view semantic);
 
   friend class Parser;
   friend class Env;

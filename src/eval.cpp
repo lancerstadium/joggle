@@ -1087,6 +1087,28 @@ private:
       const auto* fn = as<Fn>(args[1]);
       if (op && fn)
         return Items{Item(Attr(env_.accepts(*op, *fn)))};
+    } else if (name == "match" && args.size() == 2) {
+      const auto* op = as<Op>(args[0]);
+      const Items* items = list(args[1]);
+      if (op && items) {
+        std::vector<Fn> candidates;
+        candidates.reserve(items->size());
+        for (const Item& item : *items) {
+          const auto* fn = as<Fn>(item);
+          if (!fn) {
+            fail("ir.match candidates must be functions", loc);
+            return std::nullopt;
+          }
+          candidates.push_back(*fn);
+        }
+        bool ambiguous = false;
+        const Fn selected = env_.match(*op, candidates, &ambiguous);
+        if (ambiguous) {
+          fail("ir.match has equally specific candidates", loc);
+          return std::nullopt;
+        }
+        return Items{Item(selected)};
+      }
     } else if (name == "symbol" && args.size() == 1) {
       if (const auto* fn = as<Fn>(args[0]); fn && *fn)
         return Items{Item(Attr(std::string(fn->module()) + "." +
@@ -1211,7 +1233,7 @@ private:
       const auto* op = as<Op>(args[1]);
       const auto* fn = as<Fn>(args[2]);
       if (mod && *mod && op && fn)
-        return Items{Item(Attr((*mod)->expand(*op, *fn)))};
+        return Items{Item(Attr(env_.expand(**mod, *op, *fn)))};
     } else if (name == "move" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* op = as<Op>(args[1]);

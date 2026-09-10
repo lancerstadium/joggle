@@ -103,7 +103,9 @@ bodies. A later invocation can expose `tensor.matmul`, while an experiment
 that maps the abstract call directly to a target primitive can leave it
 untouched. Body expansion is generic: the core contains no tensor or NN name,
 and C++ can perform the same edit with `env.resolve(mod, op)` followed by
-`mod.expand(op, fn)`.
+`mod.expand(op, fn)`. For an alternative implementation from another module,
+use `env.expand(mod, op, implementation)` so dependency visibility and body
+expansion commit together.
 
 For a larger model, list the calls a consumer can already implement and let
 `opt` expose everything else to that boundary:
@@ -137,6 +139,29 @@ contract. The example retains rank-two `i8` matrix products with compatible
 symbolic dimensions; other `tensor.matmul` calls remain visible or expand.
 The same form can describe `nn.conv2d` or a custom function, so Joggle does not
 prescribe an abstraction level.
+
+To provide an implementation instead of only retaining the call, give that
+same declaration a normal body and apply the module's functions:
+
+```jog
+fn dot<M: int, N: int, K: int>(
+  a: tensor<i8, [M, K]>, b: tensor<i8, [K, N]>
+) -> tensor<i8, [M, N]>;
+
+fn tensor.matmul<M: int, N: int, K: int>(
+  a: tensor<i8, [M, K]>, b: tensor<i8, [K, N]>
+) -> tensor<i8, [M, N]> {
+  return dot(a, b)
+}
+
+fn apply(m: Mod) -> bool {
+  return opt.apply(m, ir.fns("edge"))
+}
+```
+
+The ordinary overload rules choose among generic and shape- or format-specific
+implementations. An ambiguity fails the transform and restores the complete
+input module; declaration order is never a selection policy.
 
 Frontend attributes are structural dictionaries. A bridge can use
 `has(attrs, key)`, strict `attrs[key]`, `get(attrs, key, fallback)`, and

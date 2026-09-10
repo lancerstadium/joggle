@@ -2,7 +2,13 @@ module script
 use opt
 use tensor
 
-fn nn.relu<S: list<int>>(x: tensor<i8, S>) -> tensor<i8, S>;
+fn nn.relu<S: list<int>>(x: tensor<i8, S>) -> tensor<i8, S> {
+  return edge.relu(x)
+}
+
+fn nn.relu(x: tensor<i8, [4]>) -> tensor<i8, [4]> {
+  return edge.relu4(x)
+}
 
 fn typed_caps() -> list<Fn> {
   return ir.fns("script")
@@ -14,6 +20,15 @@ fn typed_frontier(m: Mod) -> list<str> {
 
 fn typed_legalize(m: Mod) -> bool {
   return opt.legalize(m, typed_caps(), 1)
+}
+
+fn apply_impls(m: Mod) -> bool {
+  return opt.apply(m, typed_caps())
+}
+
+fn apply_ambiguous(m: Mod) -> bool {
+  let impls = typed_caps()
+  return opt.apply(m, impls + impls)
 }
 
 fn fail_after_edit(m: Mod) -> bool {

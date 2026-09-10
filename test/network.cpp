@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
   const std::vector<joggle::Fn> script_fns = env.fns("script");
   joggle::Fn relu_cap;
   for (joggle::Fn fn : script_fns)
-    if (fn.name() == "nn.relu")
+    if (fn.name() == "nn.relu" && !fn.generics().empty())
       relu_cap = fn;
   CHECK(relu_cap);
   std::vector<joggle::Op> typed_relus;
@@ -91,6 +91,14 @@ int main(int argc, char** argv) {
   CHECK(typed_relus.size() == 2);
   CHECK(env.accepts(typed_relus[0], relu_cap));
   CHECK(!env.accepts(typed_relus[1], relu_cap));
+  const std::string before_failed_impl = joggle::print(typed);
+  const std::uint64_t before_failed_revision = typed.revision();
+  CHECK(!env.expand(typed, typed_relus[1], relu_cap));
+  CHECK(joggle::print(typed) == before_failed_impl);
+  CHECK(typed.revision() == before_failed_revision);
+  for (const std::string& dependency : typed.uses())
+    CHECK(dependency != "script");
+  typed.clear_diags();
   joggle::Attr typed_frontier;
   CHECK(joggle::query(env, "script.typed_frontier", typed, typed_frontier));
   CHECK(typed_frontier.list() && typed_frontier.list()->size() == 1);
@@ -108,6 +116,62 @@ int main(int argc, char** argv) {
                       "typed-network-roundtrip.jog"));
   CHECK(typed_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(typed, typed_roundtrip));
+
+  constexpr std::string_view implementation_source =
+      "module implementation.network\n"
+      "use nn\n"
+      "fn main(a: tensor<i8, [4]>, b: tensor<i8, [8]>) "
+      "-> (tensor<i8, [4]>, tensor<i8, [8]>) {\n"
+      "  let x = relu(a)\n"
+      "  let y = relu(b)\n"
+      "  return x, y\n"
+      "}\n";
+  joggle::Mod implementation;
+  CHECK(joggle::parse(env, implementation_source, implementation,
+                      "implementation-network.jog"));
+  CHECK(implementation.verify(env));
+  std::vector<joggle::Fn> relu_impls;
+  for (joggle::Fn fn : script_fns)
+    if (fn.name() == "nn.relu")
+      relu_impls.push_back(fn);
+  CHECK(relu_impls.size() == 2);
+  std::vector<joggle::Op> implementation_calls;
+  for (joggle::Op op : implementation.ops())
+    if (op.callee() == "relu")
+      implementation_calls.push_back(op);
+  CHECK(implementation_calls.size() == 2);
+  bool ambiguous = true;
+  const joggle::Fn vector_impl =
+      env.match(implementation_calls[0], relu_impls, &ambiguous);
+  CHECK(vector_impl && !ambiguous && vector_impl.generics().empty());
+  const joggle::Fn generic_impl =
+      env.match(implementation_calls[1], relu_impls, &ambiguous);
+  CHECK(generic_impl && !ambiguous && !generic_impl.generics().empty());
+  CHECK(joggle::run(env, "script.apply_impls", implementation));
+  CHECK(implementation.verify(env));
+  CHECK(count(implementation, "relu") == 0);
+  CHECK(count(implementation, "edge.relu4") == 1);
+  CHECK(count(implementation, "edge.relu") == 1);
+  bool uses_script = false;
+  for (const std::string& dependency : implementation.uses())
+    uses_script = dependency == "script" || uses_script;
+  CHECK(uses_script);
+  joggle::Mod implementation_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(implementation),
+                      implementation_roundtrip,
+                      "implementation-network-roundtrip.jog"));
+  CHECK(implementation_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(implementation,
+                                   implementation_roundtrip));
+  joggle::Mod ambiguous_impl;
+  CHECK(joggle::parse(env, implementation_source, ambiguous_impl,
+                      "ambiguous-implementation-network.jog"));
+  CHECK(ambiguous_impl.verify(env));
+  const std::string before_ambiguous = joggle::print(ambiguous_impl);
+  const std::uint64_t ambiguous_revision = ambiguous_impl.revision();
+  CHECK(!joggle::run(env, "script.apply_ambiguous", ambiguous_impl));
+  CHECK(joggle::print(ambiguous_impl) == before_ambiguous);
+  CHECK(ambiguous_impl.revision() == ambiguous_revision);
 
   constexpr std::string_view annotated_legal_source =
       "module annotated.legal\n"

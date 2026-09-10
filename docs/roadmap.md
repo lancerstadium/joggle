@@ -213,6 +213,12 @@ Gather, all 5 source Slices, the 2-result Split, OneHot, and
 ConstantOfShape. Only two Squeezes and one Identity with conflicting imported
 symbolic result contracts remain explicit; a repeated conversion is
 byte-identical.
+Consumer capability declarations can now carry ordinary function bodies.
+`ir.match` reuses overload specificity across an explicit implementation set,
+and environment-aware expansion preserves the implementation module's helper
+visibility transactionally. `opt.apply` therefore selects shape-, format-, or
+width-specific implementations without a target registry, kernel syntax, or
+one-operator C++ binding.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

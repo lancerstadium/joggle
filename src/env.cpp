@@ -522,8 +522,18 @@ Fn Env::resolve(const Mod& from, Op call) const {
 }
 
 bool Env::accepts(Op call, Fn candidate) const {
-  if (!call || call.kind() != Op::Kind::call || !candidate)
+  if (!candidate)
     return false;
+  const std::array candidates{candidate};
+  return static_cast<bool>(match(call, candidates));
+}
+
+Fn Env::match(Op call, std::span<const Fn> candidates,
+              bool* ambiguous) const {
+  if (ambiguous)
+    *ambiguous = false;
+  if (!call || call.kind() != Op::Kind::call)
+    return {};
   std::vector<Ty> arguments;
   for (const Val value : call.args())
     arguments.push_back(value.type());
@@ -531,9 +541,38 @@ bool Env::accepts(Op call, Fn candidate) const {
   for (const Val value : call.outs())
     returns.push_back(value.type());
   const std::vector<Val> context = call.blk().fn().generics();
-  const std::array candidates{candidate};
-  return static_cast<bool>(detail::resolve_overload(
-      candidates, arguments, {}, nullptr, nullptr, context, nullptr, returns));
+  std::vector<Fn> live;
+  for (Fn candidate : candidates)
+    if (candidate)
+      live.push_back(candidate);
+  return detail::resolve_overload(live, arguments, {}, nullptr,
+                                  ambiguous, context, nullptr, returns);
+}
+
+bool Env::expand(Mod& mod, Op call, Fn implementation) const {
+  if (!call || !implementation)
+    return false;
+  std::string semantic;
+  const Fn source = resolve(mod, call);
+  if (source)
+    semantic = std::string(source.module()) + "." +
+               std::string(source.name());
+
+  detail::Store backup = mod.impl_->store;
+  const std::string implementation_symbol =
+      std::string(implementation.module()) + "." +
+      std::string(implementation.name());
+  const std::vector<Fn> visible = resolve_fns(mod, implementation_symbol);
+  if (std::find(visible.begin(), visible.end(), implementation) ==
+      visible.end())
+    mod.use(std::string(implementation.module()));
+  if (mod.expand(call, implementation, semantic))
+    return true;
+
+  std::vector<Diag> diagnostics = std::move(mod.impl_->store.diags);
+  mod.impl_->store = std::move(backup);
+  mod.impl_->store.diags = std::move(diagnostics);
+  return false;
 }
 
 Fn Env::resolve(const Mod& from, Op call, std::string_view callee,

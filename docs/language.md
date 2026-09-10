@@ -309,6 +309,15 @@ preserves the caller's visible result bindings. The edit is atomic; a missing
 body, signature mismatch, unrepresentable compile-time argument, or metadata
 whose policy has not been chosen leaves the module unchanged.
 
+`ir.match(op, fns)` applies the same specificity ordering to an explicit list
+of function handles. No match returns an invalid `Fn`; equally specific matches
+are an execution error rather than a declaration-order choice. When the chosen
+function comes from another module and its local name denotes the resolved
+source symbol, `ir.expand` treats it as an alternative implementation, adds its
+owning module only if not already visible, and rolls back both changes on
+failure. Thus an unqualified source call and a module-supplied implementation
+still use ordinary symbol resolution rather than a string alias table.
+
 `ir.uses(m)` returns the module's declared dependencies and
 `ir.use(m, name)` adds one idempotently. Dependency edits advance the same
 module revision and participate in compile-time rollback. This lets an
