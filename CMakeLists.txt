@@ -9,7 +9,8 @@ option(JOGGLE_BUILD_TESTS "Build Joggle tests" ON)
 option(JOGGLE_BUILD_ONNX "Build the optional ONNX module" OFF)
 option(JOGGLE_BUILD_TFLITE "Build the optional TFLite module" OFF)
 option(JOGGLE_BUILD_SAT "Build the optional saturating-integer module" OFF)
-set(JOGGLE_TEST_ONNX_MODEL "" CACHE FILEPATH "Official ONNX model used by tests")
+set(JOGGLE_TEST_ONNX_ZOO "" CACHE PATH
+    "Directory containing the pinned ONNX Model Zoo test set")
 set(JOGGLE_TEST_TFLITE_MODEL "" CACHE FILEPATH
     "Official TFLite model used by tests")
 
@@ -128,6 +129,11 @@ if(JOGGLE_BUILD_ONNX)
     PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/onnx-generated
     APPEND_PATH
   )
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(
+      joggle-onnx-proto PRIVATE -Wno-nullability-extension
+    )
+  endif()
   add_library(joggle-onnx MODULE modules/onnx/src/onnx.cpp)
   target_compile_features(joggle-onnx PRIVATE cxx_std_20)
   target_include_directories(
@@ -342,22 +348,70 @@ if(JOGGLE_BUILD_TESTS)
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/install.cmake
     )
   endif()
-  if(JOGGLE_BUILD_ONNX AND NOT JOGGLE_TEST_ONNX_MODEL STREQUAL "")
-    file(SHA256 "${JOGGLE_TEST_ONNX_MODEL}" onnx_model_sha256)
-    if(NOT onnx_model_sha256 STREQUAL
-       "c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f")
-      message(FATAL_ERROR "JOGGLE_TEST_ONNX_MODEL is not the pinned model")
-    endif()
+  if(JOGGLE_BUILD_ONNX AND NOT JOGGLE_TEST_ONNX_ZOO STREQUAL "")
+    set(onnx_zoo_names
+      mobilenetv2-7
+      squeezenet1.1-7
+      resnet18-v1-7
+      tinyyolov2-8
+    )
+    set(onnx_zoo_hashes
+      c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f
+      1eeff551a67ae8d565ca33b572fc4b66e3ef357b0eb2863bb9ff47a918cc4088
+      4e8f8653e7a2222b3904cc3fe8e304cd8b339ce1d05fd24688162f86fb6df52c
+      583fb7fdc948435ceac9fa82efc7708701efe8382a859a3dd46526b155f5f2ae
+    )
+    list(LENGTH onnx_zoo_names onnx_zoo_count)
+    math(EXPR onnx_zoo_last "${onnx_zoo_count} - 1")
+    foreach(index RANGE ${onnx_zoo_last})
+      list(GET onnx_zoo_names ${index} name)
+      list(GET onnx_zoo_hashes ${index} expected)
+      set(model "${JOGGLE_TEST_ONNX_ZOO}/${name}.onnx")
+      if(NOT EXISTS "${model}")
+        message(FATAL_ERROR "missing pinned ONNX Model Zoo file: ${model}")
+      endif()
+      file(SHA256 "${model}" actual)
+      if(NOT actual STREQUAL expected)
+        message(FATAL_ERROR "ONNX Model Zoo hash mismatch: ${model}")
+      endif()
+    endforeach()
     add_executable(joggle-onnx-test test/onnx.cpp)
     target_link_libraries(
       joggle-onnx-test PRIVATE Joggle::joggle joggle-onnx-proto
     )
     add_dependencies(joggle-onnx-test joggle-onnx)
     add_test(
-      NAME onnx
+      NAME onnx-zoo-mobilenet
       COMMAND joggle-onnx-test
-              ${JOGGLE_TEST_ONNX_MODEL}
+              ${JOGGLE_TEST_ONNX_ZOO}/mobilenetv2-7.onnx
               ${CMAKE_CURRENT_BINARY_DIR}/modules
+    )
+    add_executable(joggle-onnx-zoo-test test/zoo.cpp)
+    target_link_libraries(joggle-onnx-zoo-test PRIVATE Joggle::joggle)
+    add_dependencies(joggle-onnx-zoo-test joggle-onnx)
+    add_test(
+      NAME onnx-zoo-squeezenet
+      COMMAND joggle-onnx-zoo-test
+              ${JOGGLE_TEST_ONNX_ZOO}/squeezenet1.1-7.onnx
+              ${CMAKE_CURRENT_BINARY_DIR}/modules
+              onnx.Concat
+              onnx.Dropout
+    )
+    add_test(
+      NAME onnx-zoo-resnet
+      COMMAND joggle-onnx-zoo-test
+              ${JOGGLE_TEST_ONNX_ZOO}/resnet18-v1-7.onnx
+              ${CMAKE_CURRENT_BINARY_DIR}/modules
+              onnx.Add
+              onnx.Gemm
+    )
+    add_test(
+      NAME onnx-zoo-tinyyolo
+      COMMAND joggle-onnx-zoo-test
+              ${JOGGLE_TEST_ONNX_ZOO}/tinyyolov2-8.onnx
+              ${CMAKE_CURRENT_BINARY_DIR}/modules
+              onnx.LeakyRelu
+              onnx.MaxPool
     )
   endif()
   if(JOGGLE_BUILD_ONNX)

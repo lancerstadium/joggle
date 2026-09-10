@@ -127,13 +127,19 @@ forced post-edit failure rolls back byte-for-byte to the canonical input.
 
 ## M3 contract
 
-The first external frontend target is the official ONNX Model Zoo
-`mobilenetv2-7` model mirrored by the ONNX organization on Hugging Face. The
-test input is pinned to repository revision
-`b055c14ebe95ca2df473547484e4d447867951ed`; its 14,246,826-byte model has
-SHA-256 `c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f`.
-`test/model.cmake` downloads and verifies it only when explicitly invoked, so a
-normal build remains offline.
+The external frontend gate uses the official ONNX Model Zoo catalog. Since the
+catalog stopped serving Git LFS artifacts in July 2025, `test/zoo.cmake`
+downloads the ONNX organization's official Hugging Face mirrors at exact
+repository revisions and validates the SHA-256 values published in the GitHub
+manifest. Configure and normal builds remain offline.
+
+The matrix contains `mobilenetv2-7`, `squeezenet1.1-7`, `resnet18-v1-7`, and
+`tinyyolov2-8`. These are deliberately different topology classes: separable
+convolution with residual paths, Fire blocks with concatenation, a residual
+classification backbone, and a compact detector using max pooling and leaky
+activation. MobileNetV2 remains the deep semantic gate; the other three all
+pass binary import, canonical round trip, source-order type inference,
+relationship conversion, idempotence, verification, and converted round trip.
 
 Inspection with the official ONNX 1.19 schema reports IR version 3, opset 7,
 155 nodes, 267 initializers, 268 declared inputs, and one graph output. All 155
@@ -149,10 +155,10 @@ domain and operator, node attributes to structural `Attr` dictionaries, and
 graph outputs to returns. Operator meaning is not decoded by a core switch.
 The same codec boundary is now independently exercised by the TFLite module.
 
-The pinned model now passes the complete codec gate: binary decode, generation
-of 267 tensor constants and 155 calls, parse, verify, canonical print, reparse,
-and structural equality. Its 14,156,560 bytes of initializer payload are
-preserved in typed tensor constants. A Release run on the M1 reference machine
+The pinned MobileNetV2 model passes the complete codec gate: binary decode,
+generation of 267 tensor constants and 155 calls, parse, verify, canonical
+print, reparse, and structural equality. Its 14,156,560 bytes of initializer
+payload are preserved in typed tensor constants. A Release run on the M1 reference machine
 imports and prints the self-contained 28.4 MB module in approximately 0.49 s;
 the second parse-print takes approximately 0.31 s. These are local regression
 measurements, not general performance claims.

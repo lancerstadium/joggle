@@ -243,25 +243,28 @@ before committing the rewrite.
 
 ## Import an official ONNX model
 
-Download the pinned official MobileNetV2 model and enable the optional codec:
+Download the pinned official model matrix and enable the optional codec:
 
 ```sh
-cmake -DOUT=/tmp/mobilenetv2-7.onnx -P test/model.cmake
+cmake -DOUT=/tmp/joggle-onnx-zoo -P test/zoo.cmake
 cmake -S . -B build -DJOGGLE_BUILD_ONNX=ON \
-  -DJOGGLE_TEST_ONNX_MODEL=/tmp/mobilenetv2-7.onnx
+  -DJOGGLE_TEST_ONNX_ZOO=/tmp/joggle-onnx-zoo
 cmake --build build
 ctest --test-dir build --output-on-failure
-./build/joggle read onnx.read /tmp/mobilenetv2-7.onnx \
+./build/joggle read onnx.read /tmp/joggle-onnx-zoo/mobilenetv2-7.onnx \
   -M build/modules > /tmp/mobilenet.jog
 ```
 
-The `onnx` test checks the official model's 267 tensor constants, 155 nodes,
+The MobileNetV2 gate checks 267 tensor constants, 155 nodes,
 14,156,560 initializer bytes, verifier result, and canonical round trip. It
-also uses a test bridge built from `opt.fuse` to combine 36
+also uses a test function built from `opt.fuse` to combine 36
 Conv-BatchNormalization-ReLU chains, then verifies and round-trips the changed
-module. A separate in-memory protocol case checks typed multi-result nodes and
-multiple graph returns. The codec does not interpret either case's operator
-names. The download is never part of a normal configure or build.
+module. The model-matrix gate independently imports, infers, converts, verifies,
+and round-trips SqueezeNet 1.1, ResNet-18, and Tiny-YOLOv2. They exercise
+Concat, residual Add, and detection-oriented MaxPool/LeakyReLU structure. A
+separate in-memory protocol case checks typed multi-result nodes and multiple
+graph returns. The codec does not interpret their operator names. Downloads
+remain an explicit test setup step and never occur during configure or build.
 
 ## Add a data format and primitive
 
