@@ -133,11 +133,12 @@ downloads the ONNX organization's official Hugging Face mirrors at exact
 repository revisions and validates the SHA-256 values published in the GitHub
 manifest. Configure and normal builds remain offline.
 
-The matrix contains `mobilenetv2-7`, `squeezenet1.1-7`, `resnet18-v1-7`, and
-`tinyyolov2-8`. These are deliberately different topology classes: separable
-convolution with residual paths, Fire blocks with concatenation, a residual
+The matrix contains `mobilenetv2-7`, `squeezenet1.1-7`,
+`squeezenet1.0-13-qdq`, `resnet18-v1-7`, and `tinyyolov2-8`. These are
+deliberately different topology classes: separable convolution with residual
+paths, Fire blocks with concatenation, a full QDQ network, a residual
 classification backbone, and a compact detector using max pooling and leaky
-activation. MobileNetV2 remains the deep semantic gate; the other three all
+activation. MobileNetV2 remains the deep semantic gate; the other four all
 pass binary import, canonical round trip, source-order type inference,
 relationship conversion, idempotence, verification, and converted round trip.
 

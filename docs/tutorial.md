@@ -260,8 +260,9 @@ The MobileNetV2 gate checks 267 tensor constants, 155 nodes,
 also uses a test function built from `opt.fuse` to combine 36
 Conv-BatchNormalization-ReLU chains, then verifies and round-trips the changed
 module. The model-matrix gate independently imports, infers, converts, verifies,
-and round-trips SqueezeNet 1.1, ResNet-18, and Tiny-YOLOv2. They exercise
-Concat, residual Add, and detection-oriented MaxPool/LeakyReLU structure. A
+and round-trips SqueezeNet 1.1, QDQ SqueezeNet 1.0, ResNet-18, and
+Tiny-YOLOv2. They exercise Concat, whole-network QDQ boundaries, residual Add,
+and detection-oriented MaxPool/LeakyReLU structure. A
 separate in-memory protocol case checks typed multi-result nodes and multiple
 graph returns. The codec does not interpret their operator names. Downloads
 remain an explicit test setup step and never occur during configure or build.

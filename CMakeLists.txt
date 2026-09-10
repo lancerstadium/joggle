@@ -352,12 +352,14 @@ if(JOGGLE_BUILD_TESTS)
     set(onnx_zoo_names
       mobilenetv2-7
       squeezenet1.1-7
+      squeezenet1.0-13-qdq
       resnet18-v1-7
       tinyyolov2-8
     )
     set(onnx_zoo_hashes
       c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f
       1eeff551a67ae8d565ca33b572fc4b66e3ef357b0eb2863bb9ff47a918cc4088
+      4a567dd7542ef440890d57268fabf47211174c593d7a1837bd7f16a1067169e7
       4e8f8653e7a2222b3904cc3fe8e304cd8b339ce1d05fd24688162f86fb6df52c
       583fb7fdc948435ceac9fa82efc7708701efe8382a859a3dd46526b155f5f2ae
     )
@@ -396,6 +398,14 @@ if(JOGGLE_BUILD_TESTS)
               ${CMAKE_CURRENT_BINARY_DIR}/modules
               onnx.Concat
               onnx.Dropout
+    )
+    add_test(
+      NAME onnx-zoo-squeezenet-qdq
+      COMMAND joggle-onnx-zoo-test
+              ${JOGGLE_TEST_ONNX_ZOO}/squeezenet1.0-13-qdq.onnx
+              ${CMAKE_CURRENT_BINARY_DIR}/modules
+              onnx.QuantizeLinear
+              onnx.DequantizeLinear
     )
     add_test(
       NAME onnx-zoo-resnet

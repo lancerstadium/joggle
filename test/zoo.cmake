@@ -5,6 +5,7 @@ endif()
 set(known
   mobilenetv2-7
   squeezenet1.1-7
+  squeezenet1.0-13-qdq
   resnet18-v1-7
   tinyyolov2-8
 )
@@ -51,6 +52,11 @@ fetch(
   squeezenet1.1-7
   61e525224ad479521059f4586bcacf50ad3627ca
   1eeff551a67ae8d565ca33b572fc4b66e3ef357b0eb2863bb9ff47a918cc4088
+)
+fetch(
+  squeezenet1.0-13-qdq
+  dce102eb665be44d95321bf86fd9244014755195
+  4a567dd7542ef440890d57268fabf47211174c593d7a1837bd7f16a1067169e7
 )
 fetch(
   resnet18-v1-7

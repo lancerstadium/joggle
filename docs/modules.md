@@ -339,8 +339,9 @@ but the common conversion path needs only one explicit function call and never
 runs during import or module loading. `ir.retarget` accepts each prospective
 call through the ordinary resolver before committing it, so partial or
 anonymous shapes retain only the unsupported source call. On the pinned
-MobileNetV2, SqueezeNet 1.1, ResNet-18, and Tiny-YOLOv2 suite this covers every
-compute node; unsupported calls in other models remain untouched.
+MobileNetV2, SqueezeNet 1.1, QDQ SqueezeNet 1.0, ResNet-18, and Tiny-YOLOv2
+suite this covers every compute node; unsupported calls in other models remain
+untouched.
 Softmax conversion accepts an explicit, in-range ONNX axis and normalizes a
 negative value before calling the shared body. An omitted axis stays in the
 source namespace because its default depends on the imported opset.
