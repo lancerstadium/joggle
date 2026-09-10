@@ -8,6 +8,7 @@ set(known
   squeezenet1.0-13-qdq
   resnet18-v1-7
   tinyyolov2-8
+  tiny-yolov3-11
 )
 if(NOT DEFINED MODELS OR MODELS STREQUAL "")
   set(MODELS ${known})
@@ -27,6 +28,27 @@ function(fetch name revision sha256)
   set(url
     "https://huggingface.co/onnxmodelzoo/${name}/resolve/${revision}/${name}.onnx?download=true"
   )
+  set(output "${OUT}/${name}.onnx")
+  message(STATUS "Downloading ${name}")
+  file(
+    DOWNLOAD "${url}" "${output}"
+    EXPECTED_HASH "SHA256=${sha256}"
+    SHOW_PROGRESS
+    STATUS status
+    TLS_VERIFY ON
+  )
+  list(GET status 0 code)
+  list(GET status 1 message)
+  if(NOT code EQUAL 0)
+    message(FATAL_ERROR "${name} download failed: ${message}")
+  endif()
+endfunction()
+
+function(fetch_github name revision source sha256)
+  if(NOT name IN_LIST MODELS)
+    return()
+  endif()
+  set(url "https://media.githubusercontent.com/media/onnx/models/${revision}/${source}")
   set(output "${OUT}/${name}.onnx")
   message(STATUS "Downloading ${name}")
   file(
@@ -67,4 +89,10 @@ fetch(
   tinyyolov2-8
   869707e16e57006f97d98af54cfdc8a1d388ae61
   583fb7fdc948435ceac9fa82efc7708701efe8382a859a3dd46526b155f5f2ae
+)
+fetch_github(
+  tiny-yolov3-11
+  4c46cd00fbdb7cd30b6c1c17ab54f2e1f4f7b177
+  validated/vision/object_detection_segmentation/tiny-yolov3/model/tiny-yolov3-11.onnx
+  f715cc2d99740d22d312777e20d9de2b2ecdc250155be8fd3752ce7e8b823521
 )

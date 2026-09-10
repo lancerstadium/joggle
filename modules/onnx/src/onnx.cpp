@@ -31,8 +31,7 @@ std::string quote(std::string_view text) {
 }
 
 std::string value_meta(std::string_view name) {
-  return name.empty() ? std::string{}
-                      : "[onnx: {name: " + quote(name) + "}] ";
+  return name.empty() ? std::string{} : "[onnx: {name: " + quote(name) + "}] ";
 }
 
 std::string atom(std::string_view text) {
@@ -125,8 +124,8 @@ std::string type(const jogonnx::ValueInfoProto& value, Names& dimensions) {
 }
 
 std::string type(const jogonnx::TensorProto& value) {
-  return "tensor<" + element(value.data_type()) + ", " +
-         shape(value.dims()) + ">";
+  return "tensor<" + element(value.data_type()) + ", " + shape(value.dims()) +
+         ">";
 }
 
 template <class UInt> void append_le(std::string& out, UInt value) {
@@ -366,175 +365,337 @@ std::string attr(const jogonnx::AttributeProto& value) {
   case jogonnx::AttributeProto::STRINGS:
     return list(value.strings(),
                 [](const std::string& item) { return quote(item); });
+  case jogonnx::AttributeProto::TENSORS:
+    return list(value.tensors(),
+                [](const jogonnx::TensorProto& item) { return tensor(item); });
   default:
     throw std::runtime_error("unsupported ONNX attribute kind");
   }
 }
 
-std::string attrs(const jogonnx::NodeProto& node) {
-  std::string out = "{";
-  bool first = true;
-  if (node.has_name() && !node.name().empty()) {
-    out += quote("$node") + ": " + quote(node.name());
-    first = false;
+using Types = std::map<std::string, std::string, std::less<>>;
+
+std::vector<std::string> captures(const jogonnx::GraphProto& graph) {
+  std::set<std::string, std::less<>> local;
+  for (const auto& value : graph.input())
+    local.insert(value.name());
+  for (const auto& value : graph.initializer())
+    local.insert(value.name());
+  for (const auto& node : graph.node())
+    for (const std::string& output : node.output())
+      if (!output.empty())
+        local.insert(output);
+
+  std::vector<std::string> out;
+  std::set<std::string, std::less<>> seen;
+  const auto remember = [&](const std::string& name) {
+    if (!name.empty() && !local.contains(name) && seen.insert(name).second)
+      out.push_back(name);
+  };
+  for (const auto& node : graph.node()) {
+    for (const std::string& input : node.input())
+      remember(input);
+    for (const auto& value : node.attribute()) {
+      if (value.type() == jogonnx::AttributeProto::GRAPH) {
+        for (const std::string& name : captures(value.g()))
+          remember(name);
+      } else if (value.type() == jogonnx::AttributeProto::GRAPHS) {
+        for (const auto& nested : value.graphs())
+          for (const std::string& name : captures(nested))
+            remember(name);
+      }
+    }
   }
-  for (const auto& value : node.attribute()) {
-    if (!first)
-      out += ", ";
-    first = false;
-    out += quote(value.name()) + ": " + attr(value);
-  }
-  return out + "}";
+  return out;
 }
 
-std::string emit(const jogonnx::ModelProto& model) {
-  if (!model.has_graph())
-    throw std::runtime_error("ONNX model has no graph");
-  const auto& graph = model.graph();
-  if (graph.sparse_initializer_size())
-    throw std::runtime_error("sparse initializers are not supported yet");
-  Names dimensions;
-  std::vector<std::string> dimension_names;
-  std::set<std::string, std::less<>> dimension_params;
-  const auto remember_dimensions = [&](const jogonnx::ValueInfoProto& value) {
-    if (!value.has_type() || !value.type().has_tensor_type() ||
-        !value.type().tensor_type().has_shape())
-      return;
-    for (const auto& dim : value.type().tensor_type().shape().dim()) {
-      if (!dim.has_dim_param() || dim.dim_param().empty() ||
-          !dimension_params.insert(dim.dim_param()).second)
-        continue;
-      dimension_names.push_back(dimensions.get(dim.dim_param()));
-    }
-  };
-  for (const auto& value : graph.input())
-    remember_dimensions(value);
-  for (const auto& value : graph.value_info())
-    remember_dimensions(value);
-  for (const auto& value : graph.output())
-    remember_dimensions(value);
+class Emitter {
+public:
+  std::string emit(const jogonnx::ModelProto& model) {
+    if (!model.has_graph())
+      throw std::runtime_error("ONNX model has no graph");
+    const Rendered main = graph(model.graph(), "main", "", {}, {}, &model);
+    std::string out = "module model\nuse onnx\n\n" + main.text;
+    for (const std::string& nested : nested_)
+      out += "\n" + nested;
+    return out;
+  }
 
-  Names names;
-  for (const std::string& name : dimension_names)
-    names.reserve(name);
-  std::set<std::string, std::less<>> initialized;
-  for (const auto& value : graph.initializer())
-    initialized.insert(value.name());
-  std::map<std::string, std::string, std::less<>> types;
-  const auto remember_type = [&](const jogonnx::ValueInfoProto& value) {
-    if (value.has_name() && !value.name().empty()) {
-      const std::string value_type = type(value, dimensions);
-      const auto found = types.find(value.name());
-      if (found == types.end() || value_type != "_")
-        types.insert_or_assign(value.name(), value_type);
-    }
+private:
+  struct Rendered {
+    std::string text;
+    std::vector<std::string> captures;
+    std::size_t inputs = 0;
+    std::string name;
   };
-  for (const auto& value : graph.input())
-    remember_type(value);
-  for (const auto& value : graph.value_info())
-    remember_type(value);
-  for (const auto& value : graph.output())
-    remember_type(value);
-  for (const auto& value : graph.initializer())
-    if (value.has_name() && !value.name().empty())
-      types.insert_or_assign(value.name(), type(value));
 
-  std::ostringstream out;
-  out.imbue(std::locale::classic());
-  out << "module model\nuse onnx\n\nfn main";
-  if (!dimension_names.empty()) {
-    out << '<';
-    for (std::size_t index = 0; index < dimension_names.size(); ++index) {
+  std::vector<std::string>
+  dimensions(const jogonnx::GraphProto& graph,
+             const std::vector<std::string>& inherited) {
+    std::vector<std::string> out = inherited;
+    std::set<std::string, std::less<>> seen(out.begin(), out.end());
+    const auto remember = [&](const jogonnx::ValueInfoProto& value) {
+      if (!value.has_type() || !value.type().has_tensor_type() ||
+          !value.type().tensor_type().has_shape())
+        return;
+      for (const auto& dim : value.type().tensor_type().shape().dim()) {
+        if (!dim.has_dim_param() || dim.dim_param().empty())
+          continue;
+        const std::string name = dimensions_.get(dim.dim_param());
+        if (seen.insert(name).second)
+          out.push_back(name);
+      }
+    };
+    for (const auto& value : graph.input())
+      remember(value);
+    for (const auto& value : graph.value_info())
+      remember(value);
+    for (const auto& value : graph.output())
+      remember(value);
+    return out;
+  }
+
+  Types types(const jogonnx::GraphProto& graph, const Types& inherited) {
+    Types local;
+    const auto remember = [&](const jogonnx::ValueInfoProto& value) {
+      if (!value.has_name() || value.name().empty())
+        return;
+      const std::string value_type = type(value, dimensions_);
+      const auto found = local.find(value.name());
+      if (found == local.end() || value_type != "_")
+        local.insert_or_assign(value.name(), value_type);
+    };
+    for (const auto& value : graph.input())
+      remember(value);
+    for (const auto& value : graph.value_info())
+      remember(value);
+    for (const auto& value : graph.output())
+      remember(value);
+    for (const auto& value : graph.initializer())
+      if (value.has_name() && !value.name().empty())
+        local.insert_or_assign(value.name(), type(value));
+
+    Types out = inherited;
+    for (auto& [name, value] : local)
+      out.insert_or_assign(std::move(name), std::move(value));
+    return out;
+  }
+
+  std::string fresh_graph_name(const jogonnx::NodeProto& node,
+                               const jogonnx::AttributeProto& value) {
+    std::string base = atom(node.op_type()) + "_" + atom(value.name());
+    return base + "_" + std::to_string(graph_count_++);
+  }
+
+  std::string
+  graph_ref(const jogonnx::GraphProto& value, std::string function,
+            std::string role, const Types& parent_types,
+            const std::vector<std::string>& parent_dimensions,
+            std::vector<std::string>& operands,
+            std::map<std::string, std::size_t, std::less<>>& slots) {
+    const Rendered nested = graph(value, std::move(function), role,
+                                  parent_types, parent_dimensions, nullptr);
+    nested_.push_back(nested.text);
+    std::string positions = "[";
+    for (std::size_t index = 0; index < nested.captures.size(); ++index) {
       if (index)
-        out << ", ";
-      out << dimension_names[index] << ": int";
+        positions += ", ";
+      const std::string& capture = nested.captures[index];
+      auto found = slots.find(capture);
+      if (found == slots.end()) {
+        const std::size_t slot = operands.size();
+        operands.push_back(capture);
+        found = slots.emplace(capture, slot).first;
+      }
+      positions += std::to_string(found->second);
     }
-    out << '>';
+    positions += "]";
+    return "{fn: " + quote(nested.name) +
+           ", inputs: " + std::to_string(nested.inputs) +
+           ", captures: " + positions + "}";
   }
-  out << '(';
-  bool first = true;
-  for (const auto& input : graph.input()) {
-    if (initialized.contains(input.name()))
-      continue;
-    if (!first)
-      out << ", ";
-    first = false;
-    out << value_meta(input.name()) << names.get(input.name()) << ": "
-        << type(input, dimensions);
-  }
-  if (!graph.output_size())
-    throw std::runtime_error("ONNX graph has no output");
-  out << ") -> ";
-  if (graph.output_size() > 1)
-    out << '(';
-  for (int index = 0; index < graph.output_size(); ++index) {
-    if (index)
-      out << ", ";
-    out << type(graph.output(index), dimensions);
-  }
-  if (graph.output_size() > 1)
-    out << ')';
-  out << " {\n";
 
-  out << "  onnx.model({ir: " << model.ir_version()
-      << ", producer: " << quote(model.producer_name()) << ", opsets: [";
-  for (int index = 0; index < model.opset_import_size(); ++index) {
-    if (index)
-      out << ", ";
-    const auto& opset = model.opset_import(index);
-    out << "{domain: " << quote(opset.domain())
-        << ", version: " << opset.version() << "}";
+  std::string attrs(const jogonnx::NodeProto& node, const Types& parent_types,
+                    const std::vector<std::string>& parent_dimensions,
+                    std::vector<std::string>& operands) {
+    std::map<std::string, std::size_t, std::less<>> slots;
+    for (std::size_t index = 0; index < operands.size(); ++index)
+      if (!operands[index].empty() && !slots.contains(operands[index]))
+        slots.emplace(operands[index], index);
+
+    std::string out = "{";
+    bool first = true;
+    if (node.has_name() && !node.name().empty()) {
+      out += quote("$node") + ": " + quote(node.name());
+      first = false;
+    }
+    for (const auto& value : node.attribute()) {
+      if (!first)
+        out += ", ";
+      first = false;
+      out += quote(value.name()) + ": ";
+      if (value.type() == jogonnx::AttributeProto::GRAPH) {
+        out += graph_ref(value.g(), fresh_graph_name(node, value), value.name(),
+                         parent_types, parent_dimensions, operands, slots);
+      } else if (value.type() == jogonnx::AttributeProto::GRAPHS) {
+        out += "[";
+        for (int index = 0; index < value.graphs_size(); ++index) {
+          if (index)
+            out += ", ";
+          out += graph_ref(value.graphs(index), fresh_graph_name(node, value),
+                           value.name(), parent_types, parent_dimensions,
+                           operands, slots);
+        }
+        out += "]";
+      } else {
+        out += attr(value);
+      }
+    }
+    return out + "}";
   }
-  out << "]})\n";
 
-  for (const auto& value : graph.initializer())
-    out << "  let " << value_meta(value.name()) << names.get(value.name())
-        << ": " << type(value) << " = onnx.tensor("
-        << value.data_type() << ", " << shape(value.dims()) << ", "
-        << hex(data(value)) << ")\n";
+  Rendered graph(const jogonnx::GraphProto& source, std::string name,
+                 std::string role, const Types& inherited_types,
+                 const std::vector<std::string>& inherited_dimensions,
+                 const jogonnx::ModelProto* model) {
+    if (source.sparse_initializer_size())
+      throw std::runtime_error("sparse initializers are not supported yet");
+    if (!source.output_size())
+      throw std::runtime_error("ONNX graph has no output");
 
-  std::size_t unnamed = 0;
-  for (const auto& node : graph.node()) {
-    const std::string domain =
-        node.domain().empty() ? "onnx" : atom(node.domain());
-    if (node.attribute_size() || (node.has_name() && !node.name().empty()))
-      out << "  [onnx: " << attrs(node) << "]\n";
-    out << "  ";
-    if (node.output_size()) {
-      out << "let ";
-      for (int index = 0; index < node.output_size(); ++index) {
+    const std::vector<std::string> dimension_names =
+        dimensions(source, inherited_dimensions);
+    const Types value_types = types(source, inherited_types);
+    const std::vector<std::string> captured = captures(source);
+    std::set<std::string, std::less<>> initialized;
+    for (const auto& value : source.initializer())
+      initialized.insert(value.name());
+
+    Names names;
+    for (const std::string& dimension : dimension_names)
+      names.reserve(dimension);
+    std::ostringstream out;
+    out.imbue(std::locale::classic());
+    if (!model) {
+      out << "[onnx: {graph: " << quote(source.name())
+          << ", role: " << quote(role) << "}]\n";
+    }
+    out << "fn " << name;
+    if (!dimension_names.empty()) {
+      out << '<';
+      for (std::size_t index = 0; index < dimension_names.size(); ++index) {
         if (index)
           out << ", ";
-        const std::string& output = node.output(index);
-        const std::string binding = output.empty()
-                                        ? names.get("$unused_" +
-                                                    std::to_string(unnamed++))
-                                        : names.get(output);
-        out << value_meta(output) << binding;
-        const auto found = types.find(output);
-        if (found != types.end() && found->second != "_")
-          out << ": " << found->second;
+        out << dimension_names[index] << ": int";
       }
-      out << " = ";
+      out << '>';
     }
-    out << domain << '.' << atom(node.op_type()) << '(';
-    for (int index = 0; index < node.input_size(); ++index) {
+    out << '(';
+    bool first = true;
+    std::size_t input_count = 0;
+    for (const auto& input : source.input()) {
+      if (initialized.contains(input.name()))
+        continue;
+      if (!first)
+        out << ", ";
+      first = false;
+      ++input_count;
+      out << value_meta(input.name()) << names.get(input.name()) << ": "
+          << type(input, dimensions_);
+    }
+    for (const std::string& capture : captured) {
+      if (!first)
+        out << ", ";
+      first = false;
+      out << "[onnx: {name: " << quote(capture) << ", capture: true}] "
+          << names.get(capture) << ": ";
+      const auto found = value_types.find(capture);
+      out << (found == value_types.end() ? "_" : found->second);
+    }
+    out << ") -> ";
+    if (source.output_size() > 1)
+      out << '(';
+    for (int index = 0; index < source.output_size(); ++index) {
       if (index)
         out << ", ";
-      out << (node.input(index).empty() ? "nil" : names.get(node.input(index)));
+      out << type(source.output(index), dimensions_);
     }
-    out << ")\n";
+    if (source.output_size() > 1)
+      out << ')';
+    out << " {\n";
+
+    if (model) {
+      out << "  onnx.model({ir: " << model->ir_version()
+          << ", producer: " << quote(model->producer_name()) << ", opsets: [";
+      for (int index = 0; index < model->opset_import_size(); ++index) {
+        if (index)
+          out << ", ";
+        const auto& opset = model->opset_import(index);
+        out << "{domain: " << quote(opset.domain())
+            << ", version: " << opset.version() << "}";
+      }
+      out << "]})\n";
+    }
+
+    for (const auto& value : source.initializer())
+      out << "  let " << value_meta(value.name()) << names.get(value.name())
+          << ": " << type(value) << " = onnx.tensor(" << value.data_type()
+          << ", " << shape(value.dims()) << ", " << hex(data(value)) << ")\n";
+
+    std::size_t unnamed = 0;
+    for (const auto& node : source.node()) {
+      std::vector<std::string> operands(node.input().begin(),
+                                        node.input().end());
+      const std::string metadata =
+          attrs(node, value_types, dimension_names, operands);
+      const std::string domain =
+          node.domain().empty() ? "onnx" : atom(node.domain());
+      if (node.attribute_size() || (node.has_name() && !node.name().empty()))
+        out << "  [onnx: " << metadata << "]\n";
+      out << "  ";
+      if (node.output_size()) {
+        out << "let ";
+        for (int index = 0; index < node.output_size(); ++index) {
+          if (index)
+            out << ", ";
+          const std::string& output = node.output(index);
+          const std::string binding =
+              output.empty() ? names.get("$unused_" + std::to_string(unnamed++))
+                             : names.get(output);
+          out << value_meta(output) << binding;
+          const auto found = value_types.find(output);
+          if (found != value_types.end() && found->second != "_")
+            out << ": " << found->second;
+        }
+        out << " = ";
+      }
+      out << domain << '.' << atom(node.op_type()) << '(';
+      for (std::size_t index = 0; index < operands.size(); ++index) {
+        if (index)
+          out << ", ";
+        out << (operands[index].empty() ? "nil" : names.get(operands[index]));
+      }
+      out << ")\n";
+    }
+    out << "  return ";
+    for (int index = 0; index < source.output_size(); ++index) {
+      if (index)
+        out << ", ";
+      if (source.output(index).name().empty())
+        throw std::runtime_error("ONNX graph has an unnamed output");
+      out << names.get(source.output(index).name());
+    }
+    out << "\n}\n";
+    return {out.str(), captured, input_count, name};
   }
-  out << "  return ";
-  for (int index = 0; index < graph.output_size(); ++index) {
-    if (index)
-      out << ", ";
-    if (graph.output(index).name().empty())
-      throw std::runtime_error("ONNX graph has an unnamed output");
-    out << names.get(graph.output(index).name());
-  }
-  out << "\n}\n";
-  return out.str();
+
+  Names dimensions_;
+  std::vector<std::string> nested_;
+  std::size_t graph_count_ = 0;
+};
+
+std::string emit(const jogonnx::ModelProto& model) {
+  return Emitter{}.emit(model);
 }
 
 bool read(jog_call* call, void*) {

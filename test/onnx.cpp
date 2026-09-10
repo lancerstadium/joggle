@@ -21,10 +21,10 @@
 namespace {
 
 void tensor_type(jogonnx::ValueInfoProto* value, std::string name,
-                 std::initializer_list<std::int64_t> shape) {
+                 std::initializer_list<std::int64_t> shape, int element = 1) {
   value->set_name(std::move(name));
   auto* tensor = value->mutable_type()->mutable_tensor_type();
-  tensor->set_elem_type(1);
+  tensor->set_elem_type(element);
   for (const std::int64_t extent : shape)
     tensor->mutable_shape()->add_dim()->set_dim_value(extent);
 }
@@ -58,6 +58,52 @@ joggle::Attr::Bytes multi_output_model() {
   return {bytes.begin(), bytes.end()};
 }
 
+joggle::Attr::Bytes loop_model() {
+  jogonnx::ModelProto model;
+  model.set_ir_version(8);
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+  auto* graph = model.mutable_graph();
+  graph->set_name("loop-capture");
+  tensor_type(graph->add_input(), "trip", {}, 7);
+  tensor_type(graph->add_input(), "condition", {}, 9);
+  tensor_type(graph->add_input(), "start", {}, 6);
+  tensor_type(graph->add_input(), "delta", {}, 6);
+  tensor_type(graph->add_output(), "final", {}, 6);
+
+  auto* loop = graph->add_node();
+  loop->set_op_type("Loop");
+  loop->add_input("trip");
+  loop->add_input("condition");
+  loop->add_input("start");
+  loop->add_output("final");
+  auto* body_attr = loop->add_attribute();
+  body_attr->set_name("body");
+  body_attr->set_type(jogonnx::AttributeProto::GRAPH);
+  auto* body = body_attr->mutable_g();
+  body->set_name("body");
+  tensor_type(body->add_input(), "iteration", {}, 7);
+  tensor_type(body->add_input(), "keep_going", {}, 9);
+  tensor_type(body->add_input(), "previous", {}, 6);
+  tensor_type(body->add_output(), "condition_out", {}, 9);
+  tensor_type(body->add_output(), "current", {}, 6);
+  auto* add = body->add_node();
+  add->set_op_type("Add");
+  add->add_input("previous");
+  add->add_input("delta");
+  add->add_output("current");
+  auto* identity = body->add_node();
+  identity->set_op_type("Identity");
+  identity->add_input("keep_going");
+  identity->add_output("condition_out");
+
+  std::string bytes;
+  if (!model.SerializeToString(&bytes))
+    return {};
+  return {bytes.begin(), bytes.end()};
+}
+
 std::size_t count_calls(const joggle::Mod& mod, std::string_view callee) {
   std::size_t count = 0;
   for (joggle::Fn fn : mod.fns())
@@ -70,8 +116,8 @@ std::size_t count_calls(const joggle::Mod& mod, std::string_view callee) {
 std::size_t count_unknown_node_outputs(const joggle::Mod& mod) {
   std::size_t count = 0;
   for (joggle::Op op : mod.ops()) {
-    if (!op.callee().starts_with("onnx.") ||
-        op.callee() == "onnx.model" || op.callee() == "onnx.tensor")
+    if (!op.callee().starts_with("onnx.") || op.callee() == "onnx.model" ||
+        op.callee() == "onnx.tensor")
       continue;
     for (joggle::Val output : op.outs())
       count += output.type().text() == "_" ? 1 : 0;
@@ -102,8 +148,7 @@ int main(int argc, char** argv) {
   CHECK(model.verify(env));
   const joggle::Fn main = model.find_fn("main");
   CHECK(main && main.params().size() == 1);
-  CHECK(main.params()[0].meta("onnx") &&
-        main.params()[0].meta("onnx")->dict());
+  CHECK(main.params()[0].meta("onnx") && main.params()[0].meta("onnx")->dict());
 
   std::size_t tensors = 0;
   std::size_t nodes = 0;
@@ -197,8 +242,8 @@ int main(int argc, char** argv) {
   CHECK(count_calls(semantic, "tensor.reshape") == network_reshapes);
   std::size_t remaining_nodes = 0;
   for (joggle::Op op : semantic.ops())
-    if (op.callee().starts_with("onnx.") &&
-        op.callee() != "onnx.model" && op.callee() != "onnx.tensor")
+    if (op.callee().starts_with("onnx.") && op.callee() != "onnx.model" &&
+        op.callee() != "onnx.tensor")
       ++remaining_nodes;
   CHECK(remaining_nodes == 0);
   CHECK(joggle::structurally_equal(direct, semantic));
@@ -212,8 +257,8 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(semantic, semantic_roundtrip));
 
   const std::set<std::string, std::less<>> expandable{
-      "nn.conv2d", "nn.batch_norm", "nn.relu", "nn.add",
-      "nn.global_avg_pool2d", "tensor.reshape"};
+      "nn.conv2d", "nn.batch_norm",        "nn.relu",
+      "nn.add",    "nn.global_avg_pool2d", "tensor.reshape"};
   std::size_t expanded = 0;
   for (joggle::Op op : semantic_roundtrip.ops()) {
     if (!expandable.contains(op.callee()))
@@ -264,14 +309,57 @@ int main(int argc, char** argv) {
   CHECK(split.outs()[0].meta("onnx") &&
         split.outs()[0].meta("onnx")->dict()->at("name").string() == "left");
   CHECK(split.outs()[1].meta("onnx") &&
-        split.outs()[1].meta("onnx")->dict()->at("name").string() ==
-            "right");
+        split.outs()[1].meta("onnx")->dict()->at("name").string() == "right");
   const std::string multi_text = joggle::print(multi);
   joggle::Mod multi_roundtrip;
   CHECK(joggle::parse(env, multi_text, multi_roundtrip,
                       "multi-output-roundtrip.jog"));
   CHECK(multi_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(multi, multi_roundtrip));
+
+  const std::vector<joggle::Attr> loop_args{joggle::Attr(loop_model())};
+  CHECK(env.call("onnx.read", loop_args, returns));
+  CHECK(returns.size() == 1 && returns.front().string());
+  joggle::Mod loop_model;
+  CHECK(joggle::parse(env, *returns.front().string(), loop_model,
+                      "loop-capture.onnx"));
+  CHECK(loop_model.verify(env));
+  CHECK(loop_model.fns().size() == 2);
+  const joggle::Fn loop_main = loop_model.find_fn("main");
+  CHECK(loop_main && loop_main.params().size() == 4);
+  joggle::Op loop;
+  for (joggle::Op op : loop_main.ops())
+    if (op.callee() == "onnx.Loop")
+      loop = op;
+  CHECK(loop && loop.args().size() == 4);
+  CHECK(loop.args()[3] == loop_main.params()[3]);
+  const joggle::Attr* loop_meta = loop.meta("onnx");
+  CHECK(loop_meta && loop_meta->dict());
+  const joggle::Attr::Dict* body_ref = loop_meta->dict()->at("body").dict();
+  CHECK(body_ref && body_ref->at("fn").string());
+  CHECK(body_ref->at("inputs").integer() == 3);
+  CHECK(body_ref->at("captures").list() &&
+        body_ref->at("captures").list()->size() == 1);
+  CHECK(body_ref->at("captures").list()->front().integer() == 3);
+  const joggle::Fn body = loop_model.find_fn(*body_ref->at("fn").string());
+  CHECK(body && body.params().size() == 4 && body.returns().size() == 2);
+  CHECK(body.meta("onnx") && body.meta("onnx")->dict());
+  CHECK(body.meta("onnx")->dict()->at("graph").string() == "body");
+  CHECK(body.params()[3].meta("onnx") && body.params()[3].meta("onnx")->dict());
+  CHECK(body.params()[3].meta("onnx")->dict()->at("name").string() == "delta");
+  CHECK(body.params()[3].meta("onnx")->dict()->at("capture").boolean() == true);
+  joggle::Op body_add;
+  for (joggle::Op op : body.ops())
+    if (op.callee() == "onnx.Add")
+      body_add = op;
+  CHECK(body_add && body_add.args().size() == 2);
+  CHECK(body_add.args()[1] == body.params()[3]);
+  const std::string loop_text = joggle::print(loop_model);
+  joggle::Mod loop_roundtrip;
+  CHECK(joggle::parse(env, loop_text, loop_roundtrip,
+                      "loop-capture-roundtrip.jog"));
+  CHECK(loop_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(loop_model, loop_roundtrip));
 
   const std::size_t convs = count_calls(model, "onnx.Conv");
   const std::size_t norms = count_calls(model, "onnx.BatchNormalization");

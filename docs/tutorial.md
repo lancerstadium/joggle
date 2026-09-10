@@ -262,10 +262,14 @@ Conv-BatchNormalization-ReLU chains, then verifies and round-trips the changed
 module. The model-matrix gate independently imports, infers, converts, verifies,
 and round-trips SqueezeNet 1.1, QDQ SqueezeNet 1.0, ResNet-18, and
 Tiny-YOLOv2. They exercise Concat, whole-network QDQ boundaries, residual Add,
-and detection-oriented MaxPool/LeakyReLU structure. A
-separate in-memory protocol case checks typed multi-result nodes and multiple
-graph returns. The codec does not interpret their operator names. Downloads
-remain an explicit test setup step and never occur during configure or build.
+and detection-oriented MaxPool/LeakyReLU structure. Tiny-YOLOv3 is the complex
+structural gate: 269 tensor constants, 291 calls, and four `Loop` body graphs
+must import, verify, and round-trip. Each body is an ordinary function, with
+lexical captures exposed as parameters and call operands. A separate in-memory
+protocol case checks the exact capture mapping as well as typed multi-result
+nodes and multiple graph returns. The codec does not interpret their operator
+names. Downloads remain an explicit test setup step and never occur during
+configure or build.
 
 ## Add a data format and primitive
 

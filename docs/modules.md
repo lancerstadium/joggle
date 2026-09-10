@@ -555,17 +555,22 @@ implements `onnx.read` with generated Protobuf Lite code. Protobuf is linked onl
 into `joggle_onnx`; the core library and normal build remain dependency-free.
 
 The current codec accepts dense ONNX tensors, tensor-shaped graph values,
-scalar/list/tensor node attributes, arbitrary node result counts, and multiple
-graph outputs. Types from graph inputs, outputs, intermediate `value_info`, and
-initializers become explicit result annotations where available. Missing
+scalar/list/tensor/graph node attributes, arbitrary node result counts, and
+multiple graph outputs. Every graph-valued attribute becomes an ordinary local
+`Fn`. Values read from an enclosing ONNX graph become explicit trailing
+parameters, and the graph reference records their positions in the owning
+call's operands. Recursive captures propagate through nested functions, so no
+frontend-only region tree is required. Types from graph inputs, outputs,
+intermediate `value_info`, and initializers become explicit result annotations
+where available. Missing
 optional node outputs retain their result position through an unused binding.
 Each distinct ONNX `dim_param` becomes an `int` generic on the imported
 function, so repeated symbolic dimensions retain identity across inputs,
 intermediates, and outputs. Sanitized name collisions are resolved once and
 value bindings cannot shadow those generics. An unnamed dynamic dimension is
 the ordinary open term `_`.
-Unsupported sparse, string, external-data, and nested-graph forms fail with a
-diagnostic rather than being dropped. Operator names and attributes are
+Unsupported sparse, string, and external-data forms fail with a diagnostic
+rather than being dropped. Operator names and attributes are
 transported generically; their semantics belong to later modules. Data inputs
 remain call operands. Node names and schema attributes live on the `Op`, while
 each nonempty original value name lives on its `Val` under the same open

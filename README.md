@@ -48,6 +48,11 @@ multi-result/multi-output structure without defining any ONNX operator in core.
 Named ONNX dimensions become ordinary integer generics on the imported
 function, while anonymous dynamic dimensions remain `_`; both preserve one
 tensor type instead of introducing a dynamic-shape IR.
+Control-flow graph attributes use the same rule: each nested graph becomes an
+ordinary function. ONNX lexical captures become explicit trailing parameters,
+and the owning call records the corresponding operand positions. Optimizers
+therefore traverse one `Fn`/`Blk`/`Op`/`Val` structure rather than a private
+frontend region tree.
 Node attributes remain operation metadata rather than fake dataflow operands,
 while original value identity remains value metadata, so ordinary signature
 matching can bridge a real imported network. The pinned

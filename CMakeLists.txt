@@ -355,6 +355,7 @@ if(JOGGLE_BUILD_TESTS)
       squeezenet1.0-13-qdq
       resnet18-v1-7
       tinyyolov2-8
+      tiny-yolov3-11
     )
     set(onnx_zoo_hashes
       c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f
@@ -362,6 +363,7 @@ if(JOGGLE_BUILD_TESTS)
       4a567dd7542ef440890d57268fabf47211174c593d7a1837bd7f16a1067169e7
       4e8f8653e7a2222b3904cc3fe8e304cd8b339ce1d05fd24688162f86fb6df52c
       583fb7fdc948435ceac9fa82efc7708701efe8382a859a3dd46526b155f5f2ae
+      f715cc2d99740d22d312777e20d9de2b2ecdc250155be8fd3752ce7e8b823521
     )
     list(LENGTH onnx_zoo_names onnx_zoo_count)
     math(EXPR onnx_zoo_last "${onnx_zoo_count} - 1")
@@ -422,6 +424,14 @@ if(JOGGLE_BUILD_TESTS)
               ${CMAKE_CURRENT_BINARY_DIR}/modules
               onnx.LeakyRelu
               onnx.MaxPool
+    )
+    add_test(
+      NAME onnx-zoo-tinyyolov3
+      COMMAND joggle-onnx-zoo-test
+              ${JOGGLE_TEST_ONNX_ZOO}/tiny-yolov3-11.onnx
+              ${CMAKE_CURRENT_BINARY_DIR}/modules
+              --import-only
+              onnx.Loop
     )
   endif()
   if(JOGGLE_BUILD_ONNX)
