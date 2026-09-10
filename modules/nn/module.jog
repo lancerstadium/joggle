@@ -548,6 +548,46 @@ fn tanh<E: Ty, S: list<int>>(
   return out
 }
 
+fn exp<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = math.exp(x[i])
+  }
+  return out
+}
+
+fn sigmoid<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = E(1) / (E(1) + math.exp(E(0) - x[i]))
+  }
+  return out
+}
+
+fn ceil<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = math.ceil(x[i])
+  }
+  return out
+}
+
+fn round_even<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = math.round_even(x[i])
+  }
+  return out
+}
+
 fn softmax<E: Ty, S: list<int>>(
   x: tensor<E, S>, axis: int, beta: f64
 ) -> tensor<E, S> {

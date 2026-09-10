@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -23,6 +24,7 @@ struct Stats {
   std::size_t nodes = 0;
   std::size_t unknown = 0;
   std::set<std::string, std::less<>> calls;
+  std::map<std::string, std::size_t, std::less<>> open;
 };
 
 Stats inspect(const joggle::Mod& mod) {
@@ -38,8 +40,12 @@ Stats inspect(const joggle::Mod& mod) {
     if (!op.callee().starts_with("onnx.") || op.callee() == "onnx.model")
       continue;
     ++stats.nodes;
-    for (joggle::Val output : op.outs())
-      stats.unknown += output.type().text() == "_" ? 1 : 0;
+    for (joggle::Val output : op.outs()) {
+      if (output.type().text() == "_") {
+        ++stats.unknown;
+        ++stats.open[std::string(op.callee())];
+      }
+    }
   }
   return stats;
 }
@@ -149,6 +155,11 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "onnx.nn.infer", model));
   CHECK(model.verify(env));
   const Stats inferred = inspect(model);
+  std::printf("%s: %zu tensors, %zu nodes, %zu unknown before, %zu after\n",
+              argv[1], source.tensors, source.nodes, source.unknown,
+              inferred.unknown);
+  for (const auto& [callee, count] : inferred.open)
+    std::printf("  %s: %zu\n", callee.c_str(), count);
   CHECK(inferred.tensors == source.tensors);
   CHECK(inferred.nodes == source.nodes);
   CHECK(inferred.unknown == 0);
@@ -168,8 +179,5 @@ int main(int argc, char** argv) {
     return converted_roundtrip.print_diags(stderr);
   CHECK(joggle::structurally_equal(model, converted_roundtrip));
 
-  std::printf("%s: %zu tensors, %zu nodes, %zu unknown before, %zu after\n",
-              argv[1], source.tensors, source.nodes, source.unknown,
-              inferred.unknown);
   return 0;
 }

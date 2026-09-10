@@ -478,6 +478,50 @@ int main(int argc, char** argv) {
   CHECK(scalar_bridge.verify(env));
   CHECK(scalar_mul.callee() == "nn.mul");
 
+  constexpr std::string_view unary_bridge_source =
+      "module unary.bridge\n"
+      "use onnx\n"
+      "fn main(x: tensor<f32, [2, 3]>) -> (_, _, _, _) {\n"
+      "  let sigmoid = onnx.Sigmoid(x)\n"
+      "  let exponent = onnx.Exp(sigmoid)\n"
+      "  let ceiling = onnx.Ceil(exponent)\n"
+      "  let rounded = onnx.Round(ceiling)\n"
+      "  return sigmoid, exponent, ceiling, rounded\n"
+      "}\n";
+  joggle::Mod unary_bridge;
+  CHECK(joggle::parse(env, unary_bridge_source, unary_bridge,
+                      "unary-bridge.jog"));
+  CHECK(unary_bridge.verify(env));
+  joggle::Attr untyped;
+  CHECK(joggle::query(env, "opt.untyped", unary_bridge, untyped));
+  CHECK(untyped.list() && untyped.list()->size() == 4);
+  CHECK(joggle::run(env, "onnx.nn.infer", unary_bridge));
+  CHECK(unary_bridge.verify(env));
+  CHECK(joggle::query(env, "opt.untyped", unary_bridge, untyped));
+  CHECK(untyped.list() && untyped.list()->empty());
+  for (joggle::Op op : unary_bridge.ops())
+    if (op.callee().starts_with("onnx.")) {
+      CHECK(op.outs().size() == 1);
+      CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [2, 3]>"));
+    }
+  CHECK(joggle::run(env, "onnx.nn.convert", unary_bridge));
+  CHECK(unary_bridge.verify(env));
+  CHECK(count(unary_bridge, "nn.sigmoid") == 1);
+  CHECK(count(unary_bridge, "nn.exp") == 1);
+  CHECK(count(unary_bridge, "nn.ceil") == 1);
+  CHECK(count(unary_bridge, "nn.round_even") == 1);
+  for (joggle::Op op : unary_bridge.ops()) {
+    if (!op.callee().starts_with("nn."))
+      continue;
+    const joggle::Fn fn = env.resolve(unary_bridge, op);
+    CHECK(fn && unary_bridge.expand(op, fn));
+  }
+  CHECK(unary_bridge.verify(env));
+  CHECK(count(unary_bridge, "nn.sigmoid") == 0);
+  CHECK(count(unary_bridge, "nn.exp") == 0);
+  CHECK(count(unary_bridge, "nn.ceil") == 0);
+  CHECK(count(unary_bridge, "nn.round_even") == 0);
+
   constexpr std::string_view matrix_bridge_source =
       "module matrix.bridge\n"
       "use onnx\n"

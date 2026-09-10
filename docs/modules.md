@@ -254,8 +254,12 @@ specialization.
 The two-operand `nn.add`, `nn.sub`, `nn.mul`, and `nn.div` overloads express
 plain broadcasting. Separate three-operand Add/Sub/Mul overloads retain a
 frontend's fused activation only when one actually exists. `nn.pow`, `nn.sqrt`,
-`nn.recip`, and `nn.tanh` expose the scalar `math` calls inside their loops, so
-normalization and GELU decompositions remain visible to later transforms.
+`nn.recip`, `nn.tanh`, `nn.exp`, `nn.sigmoid`, `nn.ceil`, and `nn.round_even`
+expose scalar `math` calls inside their loops, so normalization, GELU,
+activation, and shape-derived arithmetic remain visible to later transforms.
+The ONNX bridge keeps the same-signature unary subset in one data-driven
+source/destination table; adding one relation does not add another inference
+branch.
 Both spatial pool functions use explicit kernel, stride, pad, dilation, and
 logical-axis values, so ONNX NCHW and TFLite NHWC calls share the same bodies.
 `nn.batch_norm` exposes inference-time channel
@@ -516,6 +520,11 @@ second dry-run algorithm.
 structural report separately while preserving the transformed module on
 standard output. The implementation reuses the public `print(Attr)` overload,
 so the CLI does not own a second serialization schema.
+`joggle query module.fn model.jog -M modules` invokes a no-extra-argument
+analysis and writes its canonical `Attr` result. `opt.unresolved` reports calls
+without a visible declaration; the complementary `opt.untyped` reports calls
+whose outputs still have the open `_` type. The distinction separates symbol
+coverage from type-propagation coverage.
 
 A read-only module function is invoked with `query(env, "module.fn", mod,
 result, args, cached)`. It is still declared with ordinary `fn` syntax. The

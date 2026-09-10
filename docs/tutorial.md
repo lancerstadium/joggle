@@ -28,6 +28,15 @@ evidence separately when an experiment needs it:
   --report run.attr -M modules
 ```
 
+Run a read-only analysis without rewriting or reprinting the module:
+
+```sh
+./build/joggle query opt.untyped test/data/matmul.jog -M modules
+```
+
+The result is a canonical `Attr` list of call names whose outputs still have
+the open `_` type. `opt.unresolved` is the separate symbol-visibility frontier.
+
 Inspect the modules available on the same explicit search path:
 
 ```sh

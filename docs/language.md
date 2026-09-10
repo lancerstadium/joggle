@@ -243,6 +243,7 @@ be selected explicitly by the embedding API or CLI:
 
 ```sh
 joggle run opt.fold_add_zero model.jog -M modules
+joggle query opt.untyped model.jog -M modules
 ```
 
 Calls inside that function remain ordinary calls. Compile-time execution
@@ -378,6 +379,10 @@ the explicit `Attr` arguments, and it returns one value representable as
 the call fail without changing the original module. Successful results are
 revision-aware and may be reused; the optional `cached` output reports whether
 that happened.
+The CLI `query` command invokes the same boundary for a function whose only
+argument is `Mod` and prints its canonical `Attr` result. Analyses needing
+explicit arguments continue to use the embedding overload; the command line
+does not invent an argument mini-language.
 
 For a host-selected sequence, the embedding API also accepts
 `run(env, span_of_names, mod, report)`. It executes the same ordinary functions

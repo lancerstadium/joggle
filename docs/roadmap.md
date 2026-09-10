@@ -138,6 +138,11 @@ ONNX graph attributes now become ordinary functions with explicit lexical
 captures. The official Tiny-YOLOv3-11 structural gate covers 269 tensor
 constants, 291 calls, and four `Loop` bodies without adding a second region IR;
 the five-model semantic matrix remains separate from that protocol claim.
+The frontend-neutral `opt.untyped` query exposes the remaining type frontier,
+and the CLI can invoke any no-extra-argument analysis through the same cached,
+read-only `query` boundary used by embedding code. A data-driven unary relation
+now covers Exp, Sigmoid, Ceil, and round-to-even in addition to the existing
+normalization primitives, with ordinary inspectable function bodies.
 Open attributes now cover `Val` as well as `Fn` and `Op`, separating tensor
 quantization, layout, and provenance from computation options. ONNX preserves
 source value identity, and a dependency-local quantized TFLite Add gate proves

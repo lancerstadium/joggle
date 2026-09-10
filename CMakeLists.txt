@@ -316,6 +316,15 @@ if(JOGGLE_BUILD_TESTS)
     cli-run PROPERTIES PASS_REGULAR_EXPRESSION "return x"
   )
   add_test(
+    NAME cli-query
+    COMMAND $<TARGET_FILE:joggle-tool> query opt.untyped
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
+            -M ${CMAKE_CURRENT_SOURCE_DIR}/modules
+  )
+  set_tests_properties(
+    cli-query PROPERTIES PASS_REGULAR_EXPRESSION "operator"
+  )
+  add_test(
     NAME cli-report
     COMMAND
       ${CMAKE_COMMAND}

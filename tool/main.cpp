@@ -2,6 +2,7 @@
 
 #include "joggle/joggle.h"
 
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -21,6 +22,8 @@ int usage() {
                "  joggle read <module.fn> <file> [-M <module-dir>]...\n"
                "  joggle run <module.fn> <file.jog> "
                "[--report <file>] [-M <module-dir>]...\n"
+               "  joggle query <module.fn> <file.jog> "
+               "[-M <module-dir>]...\n"
                "  joggle module list [-M <module-dir>]...\n"
                "  joggle module info <name> [-M <module-dir>]...\n"
                "  joggle module check <name> [-M <module-dir>]...\n"
@@ -57,16 +60,18 @@ int process(int argc, char** argv) {
   const std::string command = argv[1];
   const bool execute = command == "run";
   const bool decode = command == "read";
-  if (command != "check" && !execute && !decode)
+  const bool inspect = command == "query";
+  if (command != "check" && !execute && !decode && !inspect)
     return usage();
-  if ((!execute && !decode && argc != 3) || ((execute || decode) && argc < 4))
+  if ((!execute && !decode && !inspect && argc != 3) ||
+      ((execute || decode || inspect) && argc < 4))
     return usage();
 
-  const std::string function = execute || decode ? argv[2] : "";
-  const std::string file = execute || decode ? argv[3] : argv[2];
+  const std::string function = execute || decode || inspect ? argv[2] : "";
+  const std::string file = execute || decode || inspect ? argv[3] : argv[2];
   std::vector<fs::path> roots;
   std::optional<fs::path> report_file;
-  if (!options(argc, argv, execute || decode ? 4 : 3, execute, roots,
+  if (!options(argc, argv, execute || decode || inspect ? 4 : 3, execute, roots,
                report_file))
     return usage();
 
@@ -82,7 +87,7 @@ int process(int argc, char** argv) {
   joggle::Env env;
   for (const fs::path& root : roots)
     env.path(root.string());
-  if (execute || decode) {
+  if (execute || decode || inspect) {
     const std::size_t dot = function.rfind('.');
     if (dot == std::string::npos || !env.load(function.substr(0, dot))) {
       env.print_diags(stderr);
@@ -113,6 +118,16 @@ int process(int argc, char** argv) {
     return mod.print_diags(stderr);
   if (!mod.verify(env))
     return mod.print_diags(stderr);
+  if (inspect) {
+    joggle::Attr result;
+    if (!joggle::query(env, function, mod, result)) {
+      env.print_diags(stderr);
+      return 1;
+    }
+    if (!joggle::print(stdout, result) || std::fputc('\n', stdout) == EOF)
+      return 1;
+    return 0;
+  }
   joggle::Attr report;
   if (execute) {
     const bool ran = report_file ? joggle::run(env, function, mod, report)

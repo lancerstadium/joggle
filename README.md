@@ -31,6 +31,9 @@ and actual revision deltas without another result type.
 Ordinary read-only functions can be invoked through `query`; results are cached
 by function, explicit inputs, environment epoch, and module revision, while an
 attempted mutation is isolated and rejected.
+The same no-argument analysis boundary is available as
+`joggle query module.fn model.jog`; `opt.untyped` reports the distinct calls
+whose result types remain open after a chosen inference step.
 Host code may also pass an ordered span of function names to `run`; the complete
 sequence is transactional and returns the individual structural reports.
 The CLI exposes the same evidence with `joggle run ... --report run.attr` while
@@ -214,6 +217,7 @@ The optional ONNX codec keeps Protobuf out of the core build:
 cmake -S . -B build -DJOGGLE_BUILD_ONNX=ON
 cmake --build build
 ./build/joggle read onnx.read model.onnx -M build/modules > model.jog
+./build/joggle query opt.untyped model.jog -M modules
 ```
 
 After a frontend bridge, a consumer can retain exactly the functions it

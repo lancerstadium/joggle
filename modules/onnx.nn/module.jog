@@ -39,6 +39,35 @@ fn same_type(m: Mod, op: Op) -> bool {
   return false
 }
 
+fn unary_rules() -> list<list<str>> {
+  return [
+    ["onnx.Relu", "nn.relu"],
+    ["onnx.Dropout", "base.copy"],
+    ["onnx.Sqrt", "nn.sqrt"],
+    ["onnx.Reciprocal", "nn.recip"],
+    ["onnx.Tanh", "nn.tanh"],
+    ["onnx.Exp", "nn.exp"],
+    ["onnx.Sigmoid", "nn.sigmoid"],
+    ["onnx.Ceil", "nn.ceil"],
+    ["onnx.Round", "nn.round_even"]
+  ]
+}
+
+fn infer_unary(m: Mod, op: Op) -> bool {
+  let callee = ir.callee(op)
+  for rule in unary_rules() {
+    if callee == rule[0] {
+      return same_type(m, op)
+    }
+  }
+  if callee == "onnx.BatchNormalization" ||
+     callee == "onnx.LeakyRelu" || callee == "onnx.Softmax" ||
+     callee == "onnx.Identity" {
+    return same_type(m, op)
+  }
+  return false
+}
+
 fn spatial_pad(op: Op, kernel: list<int>) -> list<int> {
   var none: list<int> = []
   let inputs = ir.args(op)
@@ -1340,17 +1369,7 @@ fn infer(m: Mod) -> bool {
     if ir.callee(op) == "onnx.Conv" {
       changed = conv_type(m, op) || changed
     }
-    if ir.callee(op) == "onnx.BatchNormalization" ||
-       ir.callee(op) == "onnx.Relu" ||
-       ir.callee(op) == "onnx.LeakyRelu" ||
-       ir.callee(op) == "onnx.Dropout" ||
-       ir.callee(op) == "onnx.Softmax" ||
-       ir.callee(op) == "onnx.Sqrt" ||
-       ir.callee(op) == "onnx.Reciprocal" ||
-       ir.callee(op) == "onnx.Tanh" ||
-       ir.callee(op) == "onnx.Identity" {
-      changed = same_type(m, op) || changed
-    }
+    changed = infer_unary(m, op) || changed
     if ir.callee(op) == "onnx.Add" || ir.callee(op) == "onnx.Sub" ||
        ir.callee(op) == "onnx.Mul" || ir.callee(op) == "onnx.Div" ||
        ir.callee(op) == "onnx.Pow" {
@@ -1763,6 +1782,16 @@ fn convert_unary(m: Mod, op: Op, callee: str) -> bool {
     return false
   }
   return convert_call(m, op, callee)
+}
+
+fn convert_unary(m: Mod, op: Op) -> bool {
+  let source = ir.callee(op)
+  for rule in unary_rules() {
+    if source == rule[0] {
+      return convert_unary(m, op, rule[1])
+    }
+  }
+  return false
 }
 
 fn convert_leaky_relu(m: Mod, op: Op) -> bool {
@@ -2268,6 +2297,7 @@ fn convert(m: Mod) -> bool {
   changed = ir.use(m, "nn") || changed
   changed = ir.use(m, "quant") || changed
   for op in ir.ops(m) {
+    changed = convert_unary(m, op) || changed
     if ir.callee(op) == "onnx.QuantizeLinear" {
       changed = convert_quantize(m, op) || changed
     }
@@ -2292,14 +2322,8 @@ fn convert(m: Mod) -> bool {
     if ir.callee(op) == "onnx.Softmax" {
       changed = convert_softmax(m, op) || changed
     }
-    if ir.callee(op) == "onnx.Relu" {
-      changed = convert_unary(m, op, "nn.relu") || changed
-    }
     if ir.callee(op) == "onnx.LeakyRelu" {
       changed = convert_leaky_relu(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Dropout" {
-      changed = convert_unary(m, op, "base.copy") || changed
     }
     if ir.callee(op) == "onnx.Add" {
       changed = convert_binary(m, op, "nn.add") || changed
@@ -2315,15 +2339,6 @@ fn convert(m: Mod) -> bool {
     }
     if ir.callee(op) == "onnx.Pow" {
       changed = convert_binary(m, op, "nn.pow") || changed
-    }
-    if ir.callee(op) == "onnx.Sqrt" {
-      changed = convert_unary(m, op, "nn.sqrt") || changed
-    }
-    if ir.callee(op) == "onnx.Reciprocal" {
-      changed = convert_unary(m, op, "nn.recip") || changed
-    }
-    if ir.callee(op) == "onnx.Tanh" {
-      changed = convert_unary(m, op, "nn.tanh") || changed
     }
     if ir.callee(op) == "onnx.Flatten" {
       changed = convert_flatten(m, op) || changed
@@ -2385,11 +2400,11 @@ fn convert(m: Mod) -> bool {
     if ir.callee(op) == "onnx.ConstantOfShape" {
       changed = convert_constant_shape(m, op) || changed
     }
-    if ir.callee(op) == "onnx.Identity" {
-      changed = convert_unary(m, op, "base.copy") || changed
-    }
     if ir.callee(op) == "onnx.Cast" {
       changed = convert_cast(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Identity" {
+      changed = convert_unary(m, op, "base.copy") || changed
     }
   }
   return changed

@@ -391,6 +391,10 @@ clears the module-local cache, and loading another source/native module advances
 the environment epoch, so cached overload resolution cannot survive a changed
 function environment. `opt.count` is a small reusable example rather than a
 privileged analysis primitive.
+The command line exposes the no-extra-argument subset through
+`joggle query module.fn model.jog`. It prints the same canonical `Attr` as the
+embedding overload. `opt.untyped` uses this path to report distinct calls with
+open result types, complementing the symbol-oriented `opt.unresolved` query.
 
 ## M8 fourth slice
 
@@ -805,8 +809,10 @@ edit.
 
 The neighboring point-algebra slice deliberately does not add LayerNorm or
 GELU records. ONNX `Div` and `Pow` reuse broadcast-aware `nn` functions, while
-`Sqrt`, `Reciprocal`, and `Tanh` map to elementwise bodies over ordinary scalar
-math declarations. A complete typed normalization chain can therefore be
+`Sqrt`, `Reciprocal`, `Tanh`, `Exp`, `Sigmoid`, `Ceil`, and `Round` map to
+elementwise bodies over ordinary scalar math declarations. The same-signature
+subset is held in one source/destination relation table used by both inference
+and conversion. A complete typed normalization chain can therefore be
 inferred, converted, and exposed one function at a time. Plain ONNX
 Add/Sub/Mul select two-operand overloads; the activation operand belongs only
 to frontend operations that encode a fused activation.
