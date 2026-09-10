@@ -284,8 +284,13 @@ multi-result nodes, scan rank, and multiple graph returns. The codec does not
 interpret their operator names. Downloads remain an explicit test setup step
 and never occur during configure or build. The pinned 1.2 MB UltraFace RFB-320
 adds a shape-heavy edge detector rather than another classifier: its 244 tensor
-constants and 242 calls infer from 240 open results to a pinned frontier of 98.
-Both GitHub-hosted models use immutable repository commits and SHA-256 checks.
+constants and 242 calls infer from 240 open results to zero, then convert,
+verify, and round-trip. It covers both tensor-valued Constant nodes and the
+legacy attribute-form Slice schema. All three GitHub-hosted models use immutable
+repository commits and SHA-256 checks. The matrix also includes the 28 MiB
+SSD-MobileNetV1-12 detector as an import-only stress gate: 1,567 constants,
+5,985 nodes, eight nested graphs, Resize, and NonMaxSuppression must verify and
+round-trip without claiming that its full execution semantics are implemented.
 
 ## Add a data format and primitive
 

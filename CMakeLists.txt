@@ -366,6 +366,7 @@ if(JOGGLE_BUILD_TESTS)
       tinyyolov2-8
       tiny-yolov3-11
       ultraface-rfb-320
+      ssd-mobilenetv1-12
     )
     set(onnx_zoo_hashes
       c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f
@@ -375,6 +376,7 @@ if(JOGGLE_BUILD_TESTS)
       583fb7fdc948435ceac9fa82efc7708701efe8382a859a3dd46526b155f5f2ae
       f715cc2d99740d22d312777e20d9de2b2ecdc250155be8fd3752ce7e8b823521
       34cd7e60aeff28744c657de7a3dc64e872d506741de66987f3426f2b79f88017
+      b8fba5e404077d4048d27fcd1667e85e27e192eb9bf51e696c46a3acd7d21058
     )
     list(LENGTH onnx_zoo_names onnx_zoo_count)
     math(EXPR onnx_zoo_last "${onnx_zoo_count} - 1")
@@ -450,21 +452,30 @@ if(JOGGLE_BUILD_TESTS)
       COMMAND joggle-onnx-zoo-test
               ${JOGGLE_TEST_ONNX_ZOO}/ultraface-rfb-320.onnx
               ${CMAKE_CURRENT_BINARY_DIR}/modules
-              --frontier
-              98
-              onnx.Conv
               onnx.Constant
+              onnx.Slice
+              onnx.Softmax
+    )
+    add_test(
+      NAME onnx-zoo-ssd-mobilenet
+      COMMAND joggle-onnx-zoo-test
+              ${JOGGLE_TEST_ONNX_ZOO}/ssd-mobilenetv1-12.onnx
+              ${CMAKE_CURRENT_BINARY_DIR}/modules
+              --import-only
+              onnx.Loop
+              onnx.NonMaxSuppression
+              onnx.Resize
     )
   endif()
   if(JOGGLE_BUILD_ONNX)
-    add_executable(joggle-onnx-dynamic-test test/onnx_dynamic.cpp)
+    add_executable(joggle-onnx-codec-test test/onnx_codec.cpp)
     target_link_libraries(
-      joggle-onnx-dynamic-test PRIVATE Joggle::joggle joggle-onnx-proto
+      joggle-onnx-codec-test PRIVATE Joggle::joggle joggle-onnx-proto
     )
-    add_dependencies(joggle-onnx-dynamic-test joggle-onnx)
+    add_dependencies(joggle-onnx-codec-test joggle-onnx)
     add_test(
-      NAME onnx-dynamic
-      COMMAND joggle-onnx-dynamic-test ${CMAKE_CURRENT_BINARY_DIR}/modules
+      NAME onnx-codec
+      COMMAND joggle-onnx-codec-test ${CMAKE_CURRENT_BINARY_DIR}/modules
     )
   endif()
   if(JOGGLE_BUILD_TFLITE AND NOT JOGGLE_TEST_TFLITE_MODEL STREQUAL "")

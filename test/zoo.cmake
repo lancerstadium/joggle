@@ -10,6 +10,7 @@ set(known
   tinyyolov2-8
   tiny-yolov3-11
   ultraface-rfb-320
+  ssd-mobilenetv1-12
 )
 if(NOT DEFINED MODELS OR MODELS STREQUAL "")
   set(MODELS ${known})
@@ -102,4 +103,10 @@ fetch_github(
   4c46cd00fbdb7cd30b6c1c17ab54f2e1f4f7b177
   validated/vision/body_analysis/ultraface/models/version-RFB-320.onnx
   34cd7e60aeff28744c657de7a3dc64e872d506741de66987f3426f2b79f88017
+)
+fetch_github(
+  ssd-mobilenetv1-12
+  4f43949841cb55a0b98dc8fcd045431ccafd9f96
+  validated/vision/object_detection_segmentation/ssd-mobilenetv1/model/ssd_mobilenet_v1_12.onnx
+  b8fba5e404077d4048d27fcd1667e85e27e192eb9bf51e696c46a3acd7d21058
 )

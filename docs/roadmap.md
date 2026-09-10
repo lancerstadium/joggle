@@ -142,11 +142,19 @@ derive both loop-carried and scan outputs from those bodies. This closes all
 eight Loop results and four dependent Reshapes, moving the model's pinned type
 frontier from 280 open results to 228; the remaining frontier is retained as an
 explicit complex-network gate rather than mislabeled as full support. The
-five-model semantic matrix remains separate from that protocol claim.
+semantic matrix remains separate from that protocol claim.
 The 1.2 MB official UltraFace RFB-320 model adds a different edge-oriented,
-shape-heavy detector: 244 tensor constants and 242 calls move from 240 open
-results to a pinned frontier of 98. Both partial gates are regression evidence,
-not claims of executable end-to-end coverage.
+shape-heavy detector. Its 244 tensor constants and 242 calls move from 240 open
+results to zero, then convert, verify, and round-trip. This is implemented by
+one tensor-literal decoder shared by initializer and Constant encodings and one
+Slice relation shared by attribute- and input-based ONNX schemas. Tiny-YOLOv3
+remains the explicit partial frontier; UltraFace is a complete semantic gate
+for the relations it contains.
+The official SSD-MobileNetV1-12 model extends the matrix beyond compact graphs:
+1,567 constants, 5,985 nodes, eight nested graphs, Resize, and
+NonMaxSuppression must survive import, verification, and canonical round trip.
+It is currently an explicit structural gate; semantic closure is a later
+milestone and is not implied by successful transport.
 The frontend-neutral `opt.untyped` query exposes the remaining type frontier,
 and the CLI can invoke any no-extra-argument analysis through the same cached,
 read-only `query` boundary used by embedding code. A data-driven unary relation

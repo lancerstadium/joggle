@@ -207,6 +207,40 @@ fn signed(data: Attr, offset: int, width: int) -> int {
   return value
 }
 
+fn tensor_literal(op: Op) -> Attr {
+  let meta = attrs(op)
+  if !base.has(meta, "value") {
+    return {}
+  }
+  let literal = meta["value"]
+  if base.kind(literal) != "dict" ||
+     !base.has(literal, "type") ||
+     !base.has(literal, "shape") ||
+     !base.has(literal, "data") ||
+     base.kind(literal["type"]) != "int" ||
+     base.kind(literal["shape"]) != "list" ||
+     base.kind(literal["data"]) != "bytes" {
+    return {}
+  }
+  return literal
+}
+
+fn tensor_data(op: Op) -> Attr {
+  if ir.callee(op) == "onnx.tensor" {
+    let inputs = ir.args(op)
+    if len(inputs) == 3 && ir.is_const(inputs[2]) {
+      return ir.constant(inputs[2])
+    }
+  }
+  if ir.callee(op) == "onnx.Constant" {
+    let literal = tensor_literal(op)
+    if base.kind(literal) == "dict" {
+      return literal["data"]
+    }
+  }
+  return ir.meta(op)
+}
+
 fn const_ints(value: Val) -> list<int> {
   var out: list<int> = []
   let type = ir.type(value)
@@ -224,19 +258,95 @@ fn const_ints(value: Val) -> list<int> {
     return out
   }
   let producer = ir.def(value)
-  if !ir.live(producer) || ir.callee(producer) != "onnx.tensor" {
+  if !ir.live(producer) {
     return out
   }
-  let inputs = ir.args(producer)
-  if len(inputs) != 3 || !ir.is_const(inputs[2]) {
+  let data = tensor_data(producer)
+  if base.kind(data) != "bytes" {
     return out
   }
-  let data = ir.constant(inputs[2])
   if base.size(data) % width != 0 {
     return out
   }
   for i in 0..base.size(data) / width {
     out += [signed(data, i * width, width)]
+  }
+  return out
+}
+
+fn attr_ints(value: Attr) -> list<int> {
+  var out: list<int> = []
+  if base.kind(value) != "list" {
+    return out
+  }
+  for item in value {
+    if base.kind(item) != "int" {
+      var invalid: list<int> = []
+      return invalid
+    }
+    out += [base.int(item)]
+  }
+  return out
+}
+
+fn slice_starts(op: Op) -> list<int> {
+  let inputs = ir.args(op)
+  if len(inputs) >= 3 && len(inputs) <= 5 {
+    return const_ints(inputs[1])
+  }
+  let meta = attrs(op)
+  if len(inputs) == 1 && base.has(meta, "starts") {
+    return attr_ints(meta["starts"])
+  }
+  var missing: list<int> = []
+  return missing
+}
+
+fn slice_ends(op: Op) -> list<int> {
+  let inputs = ir.args(op)
+  if len(inputs) >= 3 && len(inputs) <= 5 {
+    return const_ints(inputs[2])
+  }
+  let meta = attrs(op)
+  if len(inputs) == 1 && base.has(meta, "ends") {
+    return attr_ints(meta["ends"])
+  }
+  var missing: list<int> = []
+  return missing
+}
+
+fn slice_axes(op: Op) -> list<int> {
+  let inputs = ir.args(op)
+  var out: list<int> = []
+  if len(inputs) >= 4 && len(inputs) <= 5 {
+    out = const_ints(inputs[3])
+  }
+  let meta = attrs(op)
+  if len(inputs) == 1 && base.has(meta, "axes") {
+    out = attr_ints(meta["axes"])
+  }
+  if len(out) == 0 {
+    for axis in 0..len(slice_starts(op)) {
+      out += [axis]
+    }
+  }
+  return out
+}
+
+fn slice_steps(op: Op) -> list<int> {
+  let inputs = ir.args(op)
+  var out: list<int> = []
+  if len(inputs) == 5 {
+    out = const_ints(inputs[4])
+  }
+  let meta = attrs(op)
+  if len(inputs) == 1 && base.has(meta, "steps") {
+    out = attr_ints(meta["steps"])
+  }
+  if len(out) == 0 {
+    for start in slice_starts(op) {
+      out += [1]
+    }
   }
   return out
 }
@@ -286,22 +396,15 @@ fn shape_terms(value: Val) -> list<Ty> {
     }
     return out
   }
-  if ir.callee(producer) == "onnx.Slice" &&
-     len(inputs) >= 3 && len(inputs) <= 5 {
+  if ir.callee(producer) == "onnx.Slice" && len(inputs) >= 1 {
     let source = shape_terms(inputs[0])
-    let starts = const_ints(inputs[1])
-    let ends = const_ints(inputs[2])
-    var axes: list<int> = [0]
-    var steps: list<int> = [1]
-    if len(inputs) >= 4 {
-      axes = const_ints(inputs[3])
-    }
-    if len(inputs) == 5 {
-      steps = const_ints(inputs[4])
-    }
-    if len(source) == 0 || len(starts) != 1 || len(ends) != 1 ||
-       len(axes) != 1 || len(steps) != 1 || axes[0] != 0 ||
-       steps[0] != 1 {
+    let starts = slice_starts(producer)
+    let ends = slice_ends(producer)
+    let selected = slice_axes(producer)
+    let steps = slice_steps(producer)
+    if len(source) == 0 || len(starts) != 1 ||
+       len(ends) != 1 || len(selected) != 1 || len(steps) != 1 ||
+       selected[0] != 0 || steps[0] != 1 {
       return out
     }
     var first = starts[0]
@@ -414,6 +517,52 @@ fn element_bytes(code: int) -> int {
     return 8
   }
   return 0
+}
+
+fn constant_result(op: Op) -> Ty {
+  let literal = tensor_literal(op)
+  if base.kind(literal) != "dict" {
+    return ty("_")
+  }
+  let code = base.int(literal["type"])
+  let elem = element(code)
+  let width = element_bytes(code)
+  if elem == ty("_") || width == 0 {
+    return ty("_")
+  }
+  let bytes = base.size(literal["data"])
+  var count = 1
+  var shape: list<Ty> = []
+  for item in literal["shape"] {
+    if base.kind(item) != "int" {
+      return ty("_")
+    }
+    let dim = base.int(item)
+    if dim < 0 {
+      return ty("_")
+    }
+    if dim == 0 {
+      count = 0
+    } else {
+      if count > bytes / width / dim {
+        return ty("_")
+      }
+      count *= dim
+    }
+    shape += [ty(dim)]
+  }
+  if count * width != bytes {
+    return ty("_")
+  }
+  return shaped(elem, shape)
+}
+
+fn constant_type(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return false
+  }
+  return set_type(m, outputs[0], constant_result(op))
 }
 
 fn cast_type(m: Mod, op: Op) -> bool {
@@ -595,16 +744,20 @@ fn unary_shape_type(m: Mod, op: Op, squeeze: bool) -> bool {
 fn slice_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
-  if len(inputs) < 3 || len(outputs) != 1 {
+  if len(inputs) == 0 || len(outputs) != 1 {
     return false
   }
   let input = ir.type(inputs[0])
-  let values = shape_terms(outputs[0])
-  if !tensor.valid(input) || len(tensor.dims(input)) != 1 ||
-     len(values) == 0 {
+  if !tensor.valid(input) {
     return false
   }
-  let shape: list<Ty> = [ty(len(values))]
+  let shape = tensor.sliced(
+    tensor.dims(input), slice_starts(op), slice_ends(op),
+    slice_axes(op), slice_steps(op)
+  )
+  if len(shape) == 0 {
+    return false
+  }
   return set_type(m, outputs[0], shaped(tensor.elem(input), shape))
 }
 
@@ -1401,6 +1554,9 @@ fn infer(m: Mod) -> bool {
     if ir.callee(op) == "onnx.DynamicQuantizeLinear" {
       changed = dynamic_quant_type(m, op) || changed
     }
+    if ir.callee(op) == "onnx.Constant" {
+      changed = constant_type(m, op) || changed
+    }
     if ir.callee(op) == "onnx.ConstantOfShape" {
       changed = constant_shape_type(m, op) || changed
     }
@@ -1578,7 +1734,7 @@ fn convert_reshape_view(m: Mod, op: Op, expected: Ty) -> bool {
 fn convert_slice(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
-  if len(inputs) < 3 || len(inputs) > 5 || len(outputs) != 1 {
+  if len(inputs) == 0 || len(outputs) != 1 {
     return false
   }
   let input = ir.type(inputs[0])
@@ -1587,33 +1743,19 @@ fn convert_slice(m: Mod, op: Op) -> bool {
      tensor.elem(input) != tensor.elem(output) {
     return false
   }
-  let starts = const_ints(inputs[1])
-  let ends = const_ints(inputs[2])
-  var slice_axes: list<int> = []
-  var steps: list<int> = []
-  if len(inputs) >= 4 {
-    slice_axes = const_ints(inputs[3])
-  } else {
-    for axis in 0..len(starts) {
-      slice_axes += [axis]
-    }
-  }
-  if len(inputs) == 5 {
-    steps = const_ints(inputs[4])
-  } else {
-    for start in starts {
-      steps += [1]
-    }
-  }
+  let starts = slice_starts(op)
+  let ends = slice_ends(op)
+  let selected = slice_axes(op)
+  let steps = slice_steps(op)
   let expected = tensor.sliced(
-    tensor.dims(input), starts, ends, slice_axes, steps
+    tensor.dims(input), starts, ends, selected, steps
   )
   if len(expected) == 0 || tensor.dims(output) != expected {
     return false
   }
   var values: list<Val> = [inputs[0]]
   values += [ints(m, op, starts)]
-  values += [ints(m, op, slice_axes)]
+  values += [ints(m, op, selected)]
   values += [ints(m, op, steps)]
   return convert_call(m, op, "tensor.slice", values)
 }
@@ -1810,6 +1952,22 @@ fn convert_constant_shape(m: Mod, op: Op) -> bool {
   )
   let values: list<Val> = [packed]
   return convert_call(m, op, "tensor.fill", values)
+}
+
+fn convert_constant(m: Mod, op: Op) -> bool {
+  let outputs = ir.outs(op)
+  let literal = tensor_literal(op)
+  let expected = constant_result(op)
+  if len(outputs) != 1 || base.kind(literal) != "dict" ||
+     expected == ty("_") || ir.type(outputs[0]) != expected {
+    return false
+  }
+  let inputs: list<Val> = [
+    ir.constant(m, op, base.int(literal["type"]), "int"),
+    ints(m, op, literal["shape"]),
+    ir.constant(m, op, literal["data"], "bytes")
+  ]
+  return convert_call(m, op, "onnx.tensor", inputs)
 }
 
 fn convert_unary(m: Mod, op: Op, callee: str) -> bool {
@@ -2437,6 +2595,9 @@ fn convert(m: Mod) -> bool {
     }
     if ir.callee(op) == "onnx.OneHot" {
       changed = convert_one_hot(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Constant" {
+      changed = convert_constant(m, op) || changed
     }
     if ir.callee(op) == "onnx.ConstantOfShape" {
       changed = convert_constant_shape(m, op) || changed

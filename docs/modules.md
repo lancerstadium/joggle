@@ -345,9 +345,14 @@ call through the ordinary resolver before committing it, so partial or
 anonymous shapes retain only the unsupported source call. On the pinned
 MobileNetV2, SqueezeNet 1.1, QDQ SqueezeNet 1.0, ResNet-18, and Tiny-YOLOv2
 suite this covers every compute node; unsupported calls in other models remain
-untouched. Tiny-YOLOv3 and UltraFace instead pin their current incomplete type
-frontiers so new relations cannot silently regress complex control-flow and
-shape-heavy graphs.
+untouched. Tiny-YOLOv3 pins its current incomplete type frontier so new
+relations cannot silently regress complex control-flow graphs. UltraFace is a
+full semantic gate: initializer and Constant tensor literals share one decoder,
+and old attribute-form and current input-form Slice share one relation before
+conversion to explicit operands.
+The larger SSD-MobileNetV1 fixture is a separate structural gate. Its eight
+nested graphs and nearly six thousand calls validate generic transport and
+references without coupling the ONNX codec to detector operators.
 Softmax conversion accepts an explicit, in-range ONNX axis and normalizes a
 negative value before calling the shared body. An omitted axis stays in the
 source namespace because its default depends on the imported opset.

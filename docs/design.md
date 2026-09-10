@@ -135,19 +135,26 @@ offline.
 
 The matrix contains `mobilenetv2-7`, `squeezenet1.1-7`,
 `squeezenet1.0-13-qdq`, `resnet18-v1-7`, `tinyyolov2-8`, and
-`tiny-yolov3-11`, plus `ultraface-rfb-320`. These are
+`tiny-yolov3-11`, `ultraface-rfb-320`, and `ssd-mobilenetv1-12`. These are
 deliberately different topology classes: separable convolution with residual
 paths, Fire blocks with concatenation, a full QDQ network, a residual
 classification backbone, a compact detector using max pooling and leaky
 activation, a detector post-processing graph with four `Loop` bodies, and a
-small face detector with a large dynamic shape program.
-MobileNetV2 remains the deep semantic gate; the next four all
+small face detector with a large dynamic shape program. SSD-MobileNetV1 adds a
+full detection pipeline with 1,567 constants, 5,985 nodes, eight nested graphs,
+Resize, and NonMaxSuppression.
+MobileNetV2 remains the deep semantic gate; the next four and UltraFace all
 pass binary import, canonical round trip, source-order type inference,
 relationship conversion, idempotence, verification, and converted round trip.
-Tiny-YOLOv3 and UltraFace are pinned partial-frontier gates. The former imports
+Tiny-YOLOv3 remains a pinned partial-frontier gate. It imports
 269 tensors, 291 calls, and four nested functions, then reduces 280 open results
-to 228; the latter imports 244 tensors and 242 calls, then reduces 240 to 98.
-Neither number is presented as complete semantic coverage.
+to 228. UltraFace imports 244 tensors and 242 calls and closes all 240 initially
+open results. Its full conversion gate also exercises tensor-valued Constant,
+legacy attribute-form Slice, and Softmax.
+SSD-MobileNetV1 is deliberately an import-only structural gate: it must import,
+verify, round-trip, retain valid graph references, and expose its representative
+operators. Its much larger semantic frontier remains visible work rather than a
+false end-to-end support claim.
 
 Inspection with the official ONNX 1.19 schema reports IR version 3, opset 7,
 155 nodes, 267 initializers, 268 declared inputs, and one graph output. All 155
