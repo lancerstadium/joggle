@@ -162,6 +162,9 @@ are enough for an
 explicit bridge function to interpret frontend attributes without adding an
 ONNX/TFLite field API or string-key cases to core. A missing strict key is a
 diagnostic, while the three-argument `get` supplies a caller-chosen fallback.
+`assert(condition, message)` lets any module reject an invalid policy or a
+bounded computation that did not converge; failure is located and rolls back
+the enclosing compile-time transaction.
 
 `Ty` is also a normal compile-time value. `name`, `args`, and `int` decompose a
 type tree; the `kind` overload distinguishes integer, Boolean, list, and type
@@ -438,7 +441,11 @@ ignored by capability checks.
 
 A body-bearing declaration is also an alternative implementation. `opt.apply`
 groups declarations by the resolved source symbol, asks `ir.match` to choose
-the most specific compatible overload, and expands that body. Bodyless
+the most specific compatible overload, and expands that body to a fixed point.
+The default bound is derived from the number of supplied implementations;
+`opt.apply(m, impls, limit)` makes it explicit for recursive specialization.
+One extra convergence probe detects a still-changing final round; failure
+diagnoses the bound and rolls the complete invocation back. Bodyless
 declarations are ignored by `apply` and remain useful to `legalize`. If an
 implementation module is not visible from the model, the environment adds one
 `use` edge before expansion so unqualified helper calls in the copied body keep

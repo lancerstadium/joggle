@@ -252,10 +252,14 @@ fn prepare(m: Mod) -> bool {
 }
 ```
 
-`opt.apply` selects the most specific matching ordinary overload, expands its
-body, and adds `use edge` only when that implementation was not already
-visible. `dot` may later be interpreted, simulated, or emitted by this module;
-Joggle core does not know that it is a hardware primitive.
+`opt.apply` selects the most specific matching ordinary overload and keeps
+applying newly exposed implementations until the network reaches a fixed
+point. The two-argument form derives a bound from the implementation set; an
+explicit third argument controls the bound for recursive specialization. A
+non-converging set is diagnosed and the complete transform rolls back. The
+expander adds `use edge` only when that implementation was not already visible.
+`dot` may later be interpreted, simulated, or emitted by this module; Joggle
+core does not know that it is a hardware primitive.
 
 The optional TFLite codec similarly keeps FlatBuffers private to its module.
 Its opt-in build requires a FlatBuffers package that provides both the library

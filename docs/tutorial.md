@@ -160,8 +160,10 @@ fn apply(m: Mod) -> bool {
 ```
 
 The ordinary overload rules choose among generic and shape- or format-specific
-implementations. An ambiguity fails the transform and restores the complete
-input module; declaration order is never a selection policy.
+implementations. Newly exposed matching calls are applied to a fixed point.
+Use `opt.apply(m, impls, limit)` when a recursive specialization needs an
+explicit bound; ambiguity or bound exhaustion restores the complete input
+module, and declaration order is never a selection policy.
 
 Frontend attributes are structural dictionaries. A bridge can use
 `has(attrs, key)`, strict `attrs[key]`, `get(attrs, key, fallback)`, and

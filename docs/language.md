@@ -251,6 +251,11 @@ supports structured `for` and `if`, scalar operators, lists, and the universal
 transactional. It does not evaluate arbitrary model functions or silently run
 transforms while parsing.
 
+`assert(condition, message)` is the ordinary failure boundary for module code.
+A true condition returns `true`; a false condition stops compile-time execution
+with the supplied message. When invoked through `run`, it participates in the
+same whole-module rollback as every other runtime failure.
+
 `ir.ops(m)` walks every function body in deterministic structural preorder,
 including nested loops and conditions. Use `ir.ops(f)` for one function or
 `ir.ops(b)` for one `Blk`. The optional fourth argument to `ir.replace` names a

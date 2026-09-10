@@ -150,6 +150,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "script.apply_impls", implementation));
   CHECK(implementation.verify(env));
   CHECK(count(implementation, "relu") == 0);
+  CHECK(count(implementation, "mid.relu") == 0);
   CHECK(count(implementation, "edge.relu4") == 1);
   CHECK(count(implementation, "edge.relu") == 1);
   bool uses_script = false;
@@ -172,6 +173,27 @@ int main(int argc, char** argv) {
   CHECK(!joggle::run(env, "script.apply_ambiguous", ambiguous_impl));
   CHECK(joggle::print(ambiguous_impl) == before_ambiguous);
   CHECK(ambiguous_impl.revision() == ambiguous_revision);
+
+  constexpr std::string_view cyclic_source =
+      "module cyclic.network\n"
+      "use nn\n"
+      "fn main(x: tensor<i8, [4]>) -> tensor<i8, [4]> {\n"
+      "  return loop.relu(x)\n"
+      "}\n";
+  joggle::Mod cyclic;
+  CHECK(joggle::parse(env, cyclic_source, cyclic, "cyclic-network.jog"));
+  CHECK(cyclic.verify(env));
+  const std::string before_cycle = joggle::print(cyclic);
+  const std::uint64_t cycle_revision = cyclic.revision();
+  CHECK(!joggle::run(env, "script.apply_cycle", cyclic));
+  CHECK(joggle::print(cyclic) == before_cycle);
+  CHECK(cyclic.revision() == cycle_revision);
+  bool diagnosed_cycle = false;
+  for (const joggle::Diag& diag : env.diags())
+    diagnosed_cycle =
+        diag.message.find("did not converge") != std::string::npos ||
+        diagnosed_cycle;
+  CHECK(diagnosed_cycle);
 
   constexpr std::string_view annotated_legal_source =
       "module annotated.legal\n"

@@ -404,11 +404,14 @@ ordinary overload ranking inside that set, while the environment-aware
 `ir.expand` permits a function whose local name equals the source call's
 resolved symbol. It adds the implementation module only when not already
 visible, then specializes and copies the normal function body. Dependency and
-body edits roll back together. `opt.apply` is merely the traversal policy over
-these primitives: it skips bodyless declarations and metadata-bearing calls,
-rejects ambiguous implementation sets, and contains no target or NN names. A
-network regression chooses a shape-specialized i8 ReLU implementation over a
-generic i8 overload and uses the generic body at another shape.
+body edits roll back together. `opt.apply` is merely the bounded fixed-point
+policy over these primitives: it skips bodyless declarations and
+metadata-bearing calls, rejects ambiguous or non-converging implementation
+sets, and contains no target or NN names. The general `base.assert` primitive
+turns bound exhaustion into a located transactional failure. A network
+regression chooses a shape-specialized i8 ReLU implementation over a generic
+i8 overload, follows a second implementation layer at another shape, and
+proves a recursive implementation restores the exact input and revision.
 
 ## M9 local distribution slice
 

@@ -3,11 +3,19 @@ use opt
 use tensor
 
 fn nn.relu<S: list<int>>(x: tensor<i8, S>) -> tensor<i8, S> {
-  return edge.relu(x)
+  return mid.relu(x)
 }
 
 fn nn.relu(x: tensor<i8, [4]>) -> tensor<i8, [4]> {
   return edge.relu4(x)
+}
+
+fn mid.relu<S: list<int>>(x: tensor<i8, S>) -> tensor<i8, S> {
+  return edge.relu(x)
+}
+
+fn loop.relu<S: list<int>>(x: tensor<i8, S>) -> tensor<i8, S> {
+  return loop.relu(x)
 }
 
 fn typed_caps() -> list<Fn> {
@@ -31,9 +39,14 @@ fn apply_ambiguous(m: Mod) -> bool {
   return opt.apply(m, impls + impls)
 }
 
+fn apply_cycle(m: Mod) -> bool {
+  return opt.apply(m, typed_caps(), 2)
+}
+
 fn fail_after_edit(m: Mod) -> bool {
   let changed = fold_add_zero(m)
-  return missing(changed)
+  assert(false, "forced failure after edit")
+  return changed
 }
 
 fn probe(x: int) -> bool {

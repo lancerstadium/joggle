@@ -802,8 +802,9 @@ private:
   bool fundamental(std::string_view name) const noexcept {
     return name == "len" || name == "keys" || name == "has" ||
            name == "get" || name == "size" || name == "byte" ||
-           name == "kind" || name == "name" || name == "args" ||
-           name == "int" || name == "str" || name == "ty";
+           name == "kind" || name == "assert" || name == "name" ||
+           name == "args" || name == "int" || name == "str" ||
+           name == "ty";
   }
 
   std::optional<Items> fundamental(std::string_view name, const Items& args,
@@ -874,6 +875,16 @@ private:
                                       : value->dict()    ? "dict"
                                                          : "nil";
         return Items{Item(Attr(std::string(type)))};
+      }
+    } else if (name == "assert" && args.size() == 2) {
+      const auto condition = boolean(args[0]);
+      const auto message = string(args[1]);
+      if (condition && message) {
+        if (!*condition) {
+          fail(std::string(*message), loc);
+          return std::nullopt;
+        }
+        return Items{Item(Attr(true))};
       }
     } else if (name == "name" && args.size() == 1) {
       if (const auto* type = as<Ty>(args[0]); type && type->valid())
