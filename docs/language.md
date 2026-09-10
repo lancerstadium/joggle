@@ -357,7 +357,11 @@ in an `Attr` dictionary. `ok` denotes successful execution, `reported` is the
 entry function's boolean return, `changed` compares module revisions, `edits`
 is the revision delta, and `steps` contains the same fields for nested
 `Mod`-accepting calls in completion order. This keeps reporting optional and
-does not add a pipeline object to the language.
+does not add a pipeline object to the language. Every step has a `kind`:
+`fn` identifies an ordinary nested function completion, while `expand` records
+the source semantic symbol, selected implementation symbol, parameter and
+return type patterns, and its exact revision delta. These are structural
+dictionary fields, not a second event class or callback interface.
 
 `query(env, name, mod, result, args, cached)` embeds an ordinary function as a
 read-only analysis. Its first parameter is `Mod`; subsequent parameters receive

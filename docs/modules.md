@@ -493,7 +493,11 @@ The C++ embedding API can call the same function as
 `run(env, "module.fn", mod, report)`. Reports are `Attr` dictionaries, so tools
 can serialize or extend them without linking to a report-class ABI. They expose
 the returned change claim separately from the observed revision delta and
-include nested transform completions.
+include nested transform completions. Entries use `kind: "fn"`; successful
+`ir.expand` edits additionally contribute `kind: "expand"` entries containing
+`source`, `impl`, `params`, `returns`, and the exact revision interval. This is
+enough to audit overload selection without an implementation-plan object or a
+second dry-run algorithm.
 
 A read-only module function is invoked with `query(env, "module.fn", mod,
 result, args, cached)`. It is still declared with ordinary `fn` syntax. The

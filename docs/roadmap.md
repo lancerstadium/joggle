@@ -220,6 +220,9 @@ visibility transactionally. `opt.apply` therefore selects shape-, format-, or
 width-specific implementations to a bounded fixed point without a target
 registry, kernel syntax, or one-operator C++ binding. Bound exhaustion uses the
 general compile-time `assert` boundary and restores the exact input module.
+Successful expansions are recorded in the existing structural `run` report
+with their source symbol, selected implementation signature, and revision
+delta, keeping observation on the real execution path.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

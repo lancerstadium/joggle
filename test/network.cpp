@@ -147,7 +147,9 @@ int main(int argc, char** argv) {
   const joggle::Fn generic_impl =
       env.match(implementation_calls[1], relu_impls, &ambiguous);
   CHECK(generic_impl && !ambiguous && !generic_impl.generics().empty());
-  CHECK(joggle::run(env, "script.apply_impls", implementation));
+  joggle::Attr implementation_report;
+  CHECK(joggle::run(env, "script.apply_impls", implementation,
+                    implementation_report));
   CHECK(implementation.verify(env));
   CHECK(count(implementation, "relu") == 0);
   CHECK(count(implementation, "mid.relu") == 0);
@@ -157,6 +159,49 @@ int main(int argc, char** argv) {
   for (const std::string& dependency : implementation.uses())
     uses_script = dependency == "script" || uses_script;
   CHECK(uses_script);
+  const joggle::Attr::Dict* implementation_summary =
+      implementation_report.dict();
+  CHECK(implementation_summary);
+  const joggle::Attr::List* implementation_steps =
+      implementation_summary->at("steps").list();
+  CHECK(implementation_steps);
+  std::size_t expansion_events = 0;
+  std::size_t nn_expansions = 0;
+  std::size_t mid_expansions = 0;
+  bool saw_generic = false;
+  bool saw_specialized = false;
+  for (const joggle::Attr& step : *implementation_steps) {
+    const joggle::Attr::Dict* event = step.dict();
+    if (!event || event->at("kind").string() != "expand")
+      continue;
+    ++expansion_events;
+    CHECK(event->at("edits").integer() &&
+          *event->at("edits").integer() > 0);
+    const auto source = event->at("source").string();
+    nn_expansions += source == "nn.relu" ? 1 : 0;
+    mid_expansions += source == "mid.relu" ? 1 : 0;
+    const auto impl = event->at("impl").string();
+    CHECK(impl);
+    if (source == "nn.relu")
+      CHECK(impl == "script.nn.relu");
+    if (source == "mid.relu")
+      CHECK(impl == "script.mid.relu");
+    const joggle::Attr::List* params = event->at("params").list();
+    CHECK(params && params->size() == 1 && params->front().string());
+    const joggle::Attr::List* returns = event->at("returns").list();
+    CHECK(returns && returns->size() == 1 && returns->front().string());
+    const std::string_view param = *params->front().string();
+    if (source == "nn.relu") {
+      saw_generic =
+          param.find(", S>") != std::string_view::npos || saw_generic;
+      saw_specialized =
+          param.find("[4]") != std::string_view::npos || saw_specialized;
+    }
+  }
+  CHECK(expansion_events == 3);
+  CHECK(nn_expansions == 2);
+  CHECK(mid_expansions == 1);
+  CHECK(saw_generic && saw_specialized);
   joggle::Mod implementation_roundtrip;
   CHECK(joggle::parse(env, joggle::print(implementation),
                       implementation_roundtrip,

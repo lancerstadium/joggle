@@ -295,6 +295,7 @@ private:
       return;
     const std::uint64_t after = mod.revision();
     Attr::Dict event;
+    event["kind"] = Attr("fn");
     event["fn"] =
         Attr(std::string(fn.module()) + "." + std::string(fn.name()));
     event["before"] = Attr(static_cast<std::int64_t>(before));
@@ -304,6 +305,30 @@ private:
     if (results.size() == 1)
       if (const auto* value = as<Attr>(results.front()); value && value->boolean())
         event["reported"] = *value;
+    trace_->emplace_back(std::move(event));
+  }
+
+  void record_expand(Mod& mod, std::string source, Fn implementation,
+                     std::uint64_t before) {
+    if (!trace_)
+      return;
+    const std::uint64_t after = mod.revision();
+    Attr::List params;
+    for (Val param : implementation.params())
+      params.emplace_back(std::string(param.type().text()));
+    Attr::List returns;
+    for (const Ty& type : implementation.returns())
+      returns.emplace_back(std::string(type.text()));
+    Attr::Dict event;
+    event["kind"] = Attr("expand");
+    event["source"] = Attr(std::move(source));
+    event["impl"] = Attr(std::string(implementation.module()) + "." +
+                          std::string(implementation.name()));
+    event["params"] = Attr(std::move(params));
+    event["returns"] = Attr(std::move(returns));
+    event["before"] = Attr(static_cast<std::int64_t>(before));
+    event["after"] = Attr(static_cast<std::int64_t>(after));
+    event["edits"] = Attr(static_cast<std::int64_t>(after - before));
     trace_->emplace_back(std::move(event));
   }
 
@@ -1243,8 +1268,17 @@ private:
       const auto* mod = as<Mod*>(args[0]);
       const auto* op = as<Op>(args[1]);
       const auto* fn = as<Fn>(args[2]);
-      if (mod && *mod && op && fn)
-        return Items{Item(Attr(env_.expand(**mod, *op, *fn)))};
+      if (mod && *mod && op && fn) {
+        std::string source(op->callee());
+        if (const Fn resolved = env_.resolve(**mod, *op))
+          source = std::string(resolved.module()) + "." +
+                   std::string(resolved.name());
+        const std::uint64_t before = (*mod)->revision();
+        const bool expanded = env_.expand(**mod, *op, *fn);
+        if (expanded)
+          record_expand(**mod, std::move(source), *fn, before);
+        return Items{Item(Attr(expanded))};
+      }
     } else if (name == "move" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* op = as<Op>(args[1]);

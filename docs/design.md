@@ -336,8 +336,12 @@ four-argument `run(env, function, mod, report)` overload. The report is an
 ordinary structural `Attr` dictionary rather than a pipeline, result, or event
 class. It distinguishes the function's returned `reported` flag from actual
 IR mutation (`changed` and `edits`, derived from revisions) and lists every
-nested function that accepted the same `Mod` in completion order. The original
-three-argument call remains the terse success/failure API.
+nested function that accepted the same `Mod` in completion order. Each entry
+has an additive `kind` field. Generic body expansion adds an `expand` entry
+with the resolved source symbol, concrete implementation symbol, full overload
+type patterns, and revision delta, so selection evidence comes from the actual
+edit rather than a parallel planning engine. The original three-argument call
+remains the terse success/failure API.
 
 Compile-time entry points are now checked against the promised
 `fn(Mod) -> bool` contract before execution. A false return still means “ran
@@ -411,7 +415,9 @@ sets, and contains no target or NN names. The general `base.assert` primitive
 turns bound exhaustion into a located transactional failure. A network
 regression chooses a shape-specialized i8 ReLU implementation over a generic
 i8 overload, follows a second implementation layer at another shape, and
-proves a recursive implementation restores the exact input and revision.
+proves a recursive implementation restores the exact input and revision. Its
+ordinary execution report also proves all three selected expansions, including
+both overload signatures and the intermediate implementation layer.
 
 ## M9 local distribution slice
 
