@@ -128,11 +128,13 @@ conversion is byte-identical.
 `ir.retarget` atomically changes a call and its operands only when the ordinary
 overload resolver accepts the prospective call, so an unsupported mapping
 leaves that call unchanged rather than invalidating a complete transform.
-The optional `onnx.nn` relation module is selected explicitly. On the official
-MobileNetV2 it propagates all intermediate tensor types, then converts every
-compute node to shared semantics. The model marker and tensor payloads remain
-ONNX transport calls; unknown operators in other models remain open rather
-than acquiring guessed semantics.
+The optional `onnx.nn` relation module is selected explicitly. One `convert`
+call propagates intermediate tensor types and then converts every supported
+compute node to shared semantics; `infer` remains available independently for
+typed source-graph experiments. Neither function runs during import or module
+loading. On the official MobileNetV2 this covers every compute node. The model
+marker and tensor payloads remain ONNX transport calls; unknown operators in
+other models remain open rather than acquiring guessed semantics.
 Conversion removes source-schema metadata only after its values have become
 ordinary operands. The same official model is then expanded one function body
 per compute node and verified and round-tripped as loop/tensor IR.

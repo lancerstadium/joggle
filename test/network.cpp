@@ -13,6 +13,17 @@
     }                                                                          \
   } while (false)
 
+namespace {
+
+std::size_t count(const joggle::Mod& mod, std::string_view callee) {
+  std::size_t result = 0;
+  for (joggle::Op op : mod.ops())
+    result += op.callee() == callee;
+  return result;
+}
+
+}  // namespace
+
 int main(int argc, char** argv) {
   CHECK(argc == 3);
   joggle::Env env;
@@ -239,6 +250,16 @@ int main(int argc, char** argv) {
   joggle::Mod bridge;
   CHECK(joggle::parse(env, bridge_source, bridge, "broadcast-bridge.jog"));
   CHECK(bridge.verify(env));
+  joggle::Mod direct_bridge;
+  CHECK(joggle::parse(env, bridge_source, direct_bridge,
+                      "direct-broadcast-bridge.jog"));
+  CHECK(direct_bridge.verify(env));
+  CHECK(joggle::run(env, "onnx.nn.convert", direct_bridge));
+  CHECK(direct_bridge.verify(env));
+  CHECK(count(direct_bridge, "onnx.Add") == 0);
+  CHECK(count(direct_bridge, "onnx.Relu") == 0);
+  CHECK(count(direct_bridge, "nn.add") == 1);
+  CHECK(count(direct_bridge, "nn.relu") == 1);
   CHECK(joggle::run(env, "onnx.nn.infer", bridge));
   CHECK(bridge.verify(env));
   joggle::Op source_add;
@@ -250,6 +271,7 @@ int main(int argc, char** argv) {
         joggle::Ty("tensor<f32, [2, 3, 4]>"));
   CHECK(joggle::run(env, "onnx.nn.convert", bridge));
   CHECK(bridge.verify(env));
+  CHECK(joggle::structurally_equal(direct_bridge, bridge));
   joggle::Op semantic_add;
   for (joggle::Op op : bridge.ops())
     if (op.callee() == "nn.add")

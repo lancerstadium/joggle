@@ -143,6 +143,10 @@ int main(int argc, char** argv) {
     }
 
   CHECK(env.load("onnx.nn"));
+  joggle::Mod direct;
+  CHECK(joggle::parse(env, canonical, direct, "mobilenet-direct.jog"));
+  CHECK(joggle::run(env, "onnx.nn.convert", direct));
+  CHECK(direct.verify(env));
   joggle::Mod semantic;
   CHECK(joggle::parse(env, canonical, semantic, "mobilenet-semantic.jog"));
   CHECK(count_unknown_node_outputs(semantic) > 0);
@@ -197,6 +201,7 @@ int main(int argc, char** argv) {
         op.callee() != "onnx.model" && op.callee() != "onnx.tensor")
       ++remaining_nodes;
   CHECK(remaining_nodes == 0);
+  CHECK(joggle::structurally_equal(direct, semantic));
   const std::string semantic_text = joggle::print(semantic);
   CHECK(joggle::run(env, "onnx.nn.convert", semantic));
   CHECK(joggle::print(semantic) == semantic_text);

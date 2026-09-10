@@ -310,14 +310,17 @@ literals. Conv accepts its schema's optional one-dimensional bias and maps it
 through the existing layout-explicit `nn.conv2d` composition. A mismatched bias,
 channel relation, nonpositive stride/dilation, or non-`NOTSET` automatic padding
 keeps the source call intact.
-`onnx.nn.convert` then maps static and dynamic quantization, integer and scaled
+`onnx.nn.convert` first runs that deterministic source-order propagation, then
+maps static and dynamic quantization, integer and scaled
 transposed MatMul, Cast, Conv, BatchNormalization, ReLU, Add/Sub/Mul/Div/Pow,
 Sqrt/Reciprocal/Tanh, AveragePool, MaxPool, GlobalAveragePool, ReduceMean,
 Softmax, Reshape, Flatten, rank-two-or-higher MatMul, and Transpose. Flatten
 reuses `tensor.reshape`; MatMul reuses `tensor.matmul`; Transpose reuses
 `tensor.permute`. The relation materializes schema attributes as ordinary
-operands and removes schema-only shape inputs. It does not run inference
-implicitly and does not alter the codec. `ir.retarget` accepts each prospective
+operands and removes schema-only shape inputs. `infer` remains separately
+callable when a researcher wants to inspect or transform the typed source graph,
+but the common conversion path needs only one explicit function call and never
+runs during import or module loading. `ir.retarget` accepts each prospective
 call through the ordinary resolver before committing it, so partial or
 anonymous shapes retain only the unsupported source call. On the pinned
 MobileNetV2 this covers every compute node; unsupported calls in other models

@@ -2115,7 +2115,8 @@ fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
 }
 
 fn convert(m: Mod) -> bool {
-  var changed = ir.use(m, "nn")
+  var changed = infer(m)
+  changed = ir.use(m, "nn") || changed
   changed = ir.use(m, "quant") || changed
   for op in ir.ops(m) {
     if ir.callee(op) == "onnx.QuantizeLinear" {
