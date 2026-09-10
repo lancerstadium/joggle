@@ -105,6 +105,8 @@ closure. Local and imported declarations form one deterministic visible
 overload set, allowing a specialized overload to reuse less-specific imported
 algebra in its own body. Merely loading another module into the same `Env` does
 not make its declarations visible, and missing `use` edges are diagnosed.
+Resolution from a `Fn` handle uses the function's owning `Mod` directly, so a
+parsed module need not be installed or loaded under its own name first.
 Resolution checks arity and structural types, infers generic arguments, ranks
 specificity, and computes result types.
 `Env::load` commits the requested module and its transitive dependencies as one

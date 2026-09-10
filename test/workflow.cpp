@@ -1039,6 +1039,12 @@ int main(int argc, char** argv) {
 
   joggle::Fn matmul = mod.find_fn("matmul");
   CHECK(matmul);
+  CHECK(!env.loaded("test.linear"));
+  CHECK(env.resolve(matmul, "add_zero") == mod.find_fn("add_zero"));
+  CHECK(env.resolve(matmul, "test.linear.add_zero") ==
+        mod.find_fn("add_zero"));
+  const joggle::Fn tensor_valid = env.resolve(matmul, "tensor.valid");
+  CHECK(tensor_valid && tensor_valid.module() == "tensor");
   CHECK(matmul.generics().size() == 4);
   CHECK(matmul.generics()[0].type() == joggle::Ty("Ty"));
   CHECK(matmul.generics()[1].type() == joggle::Ty("int"));

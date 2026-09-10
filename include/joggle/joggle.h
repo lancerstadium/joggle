@@ -284,6 +284,7 @@ private:
   Fn(detail::Store*, std::uint32_t, std::uint32_t) noexcept;
   friend class Mod;
   friend class Blk;
+  friend class Env;
   friend class Parser;
   friend class detail::Eval;
 };
@@ -326,6 +327,8 @@ private:
 
   void error(std::string message, Loc loc = {});
   bool load_one(std::string_view name);
+  std::vector<Fn> resolve_fns(const detail::Store& from,
+                              std::string_view symbol) const;
   std::uint64_t cache_id() const noexcept;
   std::uint64_t cache_epoch() const noexcept;
   Fn resolve(const Mod& from, Op call, std::string_view callee,

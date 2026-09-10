@@ -510,11 +510,29 @@ Fn Env::find_fn(std::string_view symbol) const {
 
 std::vector<Fn> Env::resolve_fns(const Mod& from,
                                  std::string_view symbol) const {
-  const std::string own_prefix = std::string(from.name()) + ".";
-  if (symbol.starts_with(own_prefix))
-    return from.find_fns(symbol.substr(own_prefix.size()));
+  return resolve_fns(from.impl_->store, symbol);
+}
 
-  std::vector<std::string> pending = from.uses();
+std::vector<Fn> Env::resolve_fns(const detail::Store& from,
+                                 std::string_view symbol) const {
+  const auto local = [&](std::string_view name) {
+    std::vector<Fn> result;
+    const auto found = from.symbols.find(std::string(name));
+    if (found == from.symbols.end())
+      return result;
+    result.reserve(found->second.size());
+    for (const std::uint32_t id : found->second)
+      if (id < from.fns.size() && from.fns[id].live)
+        result.push_back(Fn(const_cast<detail::Store*>(&from), id,
+                            from.fns[id].generation));
+    return result;
+  };
+
+  const std::string own_prefix = from.name + ".";
+  if (symbol.starts_with(own_prefix))
+    return local(symbol.substr(own_prefix.size()));
+
+  std::vector<std::string> pending = from.uses;
   std::set<std::string, std::less<>> visited;
   while (!pending.empty()) {
     std::string name = std::move(pending.back());
@@ -536,7 +554,7 @@ std::vector<Fn> Env::resolve_fns(const Mod& from,
     return {};
   }
 
-  std::vector<Fn> matches = from.find_fns(symbol);
+  std::vector<Fn> matches = local(symbol);
   for (const std::string& name : visited) {
     const auto module = impl_->modules.find(name);
     if (module == impl_->modules.end())
@@ -550,9 +568,7 @@ std::vector<Fn> Env::resolve_fns(const Mod& from,
 std::vector<Fn> Env::resolve_fns(Fn from, std::string_view symbol) const {
   if (!from)
     return {};
-  const auto module = impl_->modules.find(std::string(from.module()));
-  return module == impl_->modules.end() ? std::vector<Fn>{}
-                                        : resolve_fns(*module->second, symbol);
+  return resolve_fns(*from.store_, symbol);
 }
 
 Fn Env::resolve(const Mod& from, std::string_view symbol) const {
