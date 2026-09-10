@@ -139,7 +139,7 @@ The built-in `ir` module is the complete reflection boundary:
 
 | Function | Meaning |
 | --- | --- |
-| `fns`, `params`, `blks`, `ops`, `uses` | Traverse loaded modules, functions, structure, and dependencies. |
+| `fns`, `find`, `params`, `returns`, `blks`, `ops`, `uses` | Find and traverse loaded functions, signatures, structure, and dependencies. |
 | `args`, `outs`, `def`, `users` | Read operation dataflow in both directions. |
 | `live`, `blk`, `kind`, `callee`, `name`, `type` | Query handle state, readable identity, structure, and structural `Ty`. |
 | `resolve`, `symbol`, `accepts`, `match` | Resolve calls, identify functions, and select against explicit signatures. |
@@ -345,7 +345,9 @@ call through the ordinary resolver before committing it, so partial or
 anonymous shapes retain only the unsupported source call. On the pinned
 MobileNetV2, SqueezeNet 1.1, QDQ SqueezeNet 1.0, ResNet-18, and Tiny-YOLOv2
 suite this covers every compute node; unsupported calls in other models remain
-untouched.
+untouched. Tiny-YOLOv3 and UltraFace instead pin their current incomplete type
+frontiers so new relations cannot silently regress complex control-flow and
+shape-heavy graphs.
 Softmax conversion accepts an explicit, in-range ONNX axis and normalizes a
 negative value before calling the shared body. An omitted axis stays in the
 source namespace because its default depends on the imported opset.
@@ -373,6 +375,12 @@ function order and structural preorder, including nested loops and conditions.
 the immediate operations of one `Blk`. `ir.replace` replaces all uses by
 default; its four-argument overload changes only uses in one named `Op`.
 Both forms check type compatibility and dominance before changing the IR.
+
+`ir.find(m, name)` performs exact local function lookup and returns an invalid
+`Fn` when the symbol is absent; `ir.live` is the uniform validity test.
+`ir.params(f)` and `ir.returns(f)` expose both sides of the same declared
+signature. Together they let format modules reflect nested source graphs or
+other function-valued metadata without a format-specific function handle.
 
 Every valid `Blk` ends in `return` or internal `yield`, so an existing `Op` is
 also a complete insertion position; no ambient builder or special append state

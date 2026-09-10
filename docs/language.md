@@ -299,6 +299,12 @@ yielded update, or the structure result renames the whole chain atomically.
 Calling it on a loop iterator also updates the loop header. This makes generic
 `Blk` traversal safe to edit without exposing the printer's bookkeeping.
 
+Function signatures are reflectable without a second symbol API.
+`ir.find(m, "body")` returns the exact local `Fn`, `ir.live` tests whether it
+was present, and `ir.params`/`ir.returns` expose its inputs and result types.
+This is enough for a transport module to represent a nested source graph as an
+ordinary function and for a separate relation module to reason about it.
+
 Call conversion uses `ir.retarget(m, op, callee, args)`. It applies the same
 visibility, overload, generic, argument, result, and dominance checks as an
 ordinary source call before changing either the callee or its operands. A

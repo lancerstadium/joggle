@@ -272,13 +272,20 @@ module. The model-matrix gate independently imports, infers, converts, verifies,
 and round-trips SqueezeNet 1.1, QDQ SqueezeNet 1.0, ResNet-18, and
 Tiny-YOLOv2. They exercise Concat, whole-network QDQ boundaries, residual Add,
 and detection-oriented MaxPool/LeakyReLU structure. Tiny-YOLOv3 is the complex
-structural gate: 269 tensor constants, 291 calls, and four `Loop` body graphs
-must import, verify, and round-trip. Each body is an ordinary function, with
-lexical captures exposed as parameters and call operands. A separate in-memory
-protocol case checks the exact capture mapping as well as typed multi-result
-nodes and multiple graph returns. The codec does not interpret their operator
-names. Downloads remain an explicit test setup step and never occur during
-configure or build.
+control-flow gate: 269 tensor constants, 291 calls, and four `Loop` body graphs
+must import, verify, round-trip, and retain an exact type frontier. Each body is
+an ordinary function, with lexical captures exposed as parameters and call
+operands. `onnx.graph` recovers that `Fn`; the semantic module derives
+loop-carried and scan types from its signature. This closes all eight Loop
+outputs and four dependent Reshapes, reducing the current open frontier from
+280 results to 228 without pretending the remaining operators are supported.
+A separate in-memory protocol case checks the exact capture mapping, typed
+multi-result nodes, scan rank, and multiple graph returns. The codec does not
+interpret their operator names. Downloads remain an explicit test setup step
+and never occur during configure or build. The pinned 1.2 MB UltraFace RFB-320
+adds a shape-heavy edge detector rather than another classifier: its 244 tensor
+constants and 242 calls infer from 240 open results to a pinned frontier of 98.
+Both GitHub-hosted models use immutable repository commits and SHA-256 checks.
 
 ## Add a data format and primitive
 

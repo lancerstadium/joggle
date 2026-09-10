@@ -9,6 +9,7 @@ set(known
   resnet18-v1-7
   tinyyolov2-8
   tiny-yolov3-11
+  ultraface-rfb-320
 )
 if(NOT DEFINED MODELS OR MODELS STREQUAL "")
   set(MODELS ${known})
@@ -95,4 +96,10 @@ fetch_github(
   4c46cd00fbdb7cd30b6c1c17ab54f2e1f4f7b177
   validated/vision/object_detection_segmentation/tiny-yolov3/model/tiny-yolov3-11.onnx
   f715cc2d99740d22d312777e20d9de2b2ecdc250155be8fd3752ce7e8b823521
+)
+fetch_github(
+  ultraface-rfb-320
+  4c46cd00fbdb7cd30b6c1c17ab54f2e1f4f7b177
+  validated/vision/body_analysis/ultraface/models/version-RFB-320.onnx
+  34cd7e60aeff28744c657de7a3dc64e872d506741de66987f3426f2b79f88017
 )

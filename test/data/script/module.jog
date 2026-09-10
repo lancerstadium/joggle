@@ -268,6 +268,13 @@ fn move_second_first(m: Mod) -> bool {
   return false
 }
 
+fn reflect_fn(m: Mod) -> bool {
+  let f = ir.find(m, "add_zero")
+  return ir.live(f) && len(ir.params(f)) == 1 &&
+         ir.returns(f) == [ty("i32")] &&
+         !ir.live(ir.find(m, "missing"))
+}
+
 fn build_control(m: Mod) -> bool {
   for f in ir.fns(m) {
     let params = ir.params(f)

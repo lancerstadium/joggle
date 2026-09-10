@@ -55,7 +55,11 @@ Control-flow graph attributes use the same rule: each nested graph becomes an
 ordinary function. ONNX lexical captures become explicit trailing parameters,
 and the owning call records the corresponding operand positions. Optimizers
 therefore traverse one `Fn`/`Blk`/`Op`/`Val` structure rather than a private
-frontend region tree.
+frontend region tree. Module code can recover that function with ordinary
+`ir.find` reflection and inspect its declared results with `ir.returns`; the
+ONNX helper `onnx.graph` only decodes transport metadata. Loop-carried and scan
+result types are consequently derived from the body signature instead of an
+importer switch or a second control-flow type system.
 Node attributes remain operation metadata rather than fake dataflow operands,
 while original value identity remains value metadata, so ordinary signature
 matching can bridge a real imported network. The pinned

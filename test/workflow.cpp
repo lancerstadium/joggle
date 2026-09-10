@@ -1082,6 +1082,12 @@ int main(int argc, char** argv) {
   CHECK(scripted_text.find("return x") != std::string::npos);
 
   CHECK(env.load("script"));
+  joggle::Mod reflected;
+  CHECK(joggle::parse(env, source.str(), reflected, "matmul-reflection.jog"));
+  CHECK(reflected.verify(env));
+  joggle::Attr reflected_result;
+  CHECK(joggle::query(env, "script.reflect_fn", reflected, reflected_result));
+  CHECK(reflected_result.boolean() == true);
   joggle::Mod embedded_sequence;
   joggle::Mod source_sequence;
   CHECK(joggle::parse(env, source.str(), embedded_sequence, argv[1]));

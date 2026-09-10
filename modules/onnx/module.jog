@@ -8,6 +8,17 @@ fn read(data: bytes) -> str;
 fn model(info: dict) -> _;
 fn tensor(type: int, shape: list<int>, data: bytes) -> _;
 
+fn graph(m: Mod, op: Op, name: str) -> Fn {
+  let values = base.get(ir.meta(op), "onnx", {})
+  if base.has(values, name) {
+    let info = values[name]
+    if base.has(info, "fn") {
+      return ir.find(m, base.str(info["fn"]))
+    }
+  }
+  return ir.find(m, "")
+}
+
 fn opset(m: Mod, domain: str) -> int {
   for op in ir.ops(m) {
     if ir.callee(op) == "onnx.model" {

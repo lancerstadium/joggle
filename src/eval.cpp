@@ -985,6 +985,11 @@ private:
           out.emplace_back(fn);
         return Items{Item(std::move(out))};
       }
+    } else if (name == "find" && args.size() == 2) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto symbol = string(args[1]);
+      if (mod && *mod && symbol)
+        return Items{Item((*mod)->find_fn(*symbol))};
     } else if (name == "uses" && args.size() == 1) {
       if (const auto* mod = as<Mod*>(args[0]); mod && *mod) {
         Items out;
@@ -997,6 +1002,13 @@ private:
         Items out;
         for (Val value : fn->params())
           out.emplace_back(value);
+        return Items{Item(std::move(out))};
+      }
+    } else if (name == "returns" && args.size() == 1) {
+      if (const auto* fn = as<Fn>(args[0])) {
+        Items out;
+        for (const Ty& type : fn->returns())
+          out.emplace_back(type);
         return Items{Item(std::move(out))};
       }
     } else if (name == "blks" && args.size() == 1) {

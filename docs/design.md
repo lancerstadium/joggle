@@ -135,17 +135,19 @@ offline.
 
 The matrix contains `mobilenetv2-7`, `squeezenet1.1-7`,
 `squeezenet1.0-13-qdq`, `resnet18-v1-7`, `tinyyolov2-8`, and
-`tiny-yolov3-11`. These are
+`tiny-yolov3-11`, plus `ultraface-rfb-320`. These are
 deliberately different topology classes: separable convolution with residual
 paths, Fire blocks with concatenation, a full QDQ network, a residual
 classification backbone, a compact detector using max pooling and leaky
-activation, and a detector post-processing graph with four `Loop` bodies.
+activation, a detector post-processing graph with four `Loop` bodies, and a
+small face detector with a large dynamic shape program.
 MobileNetV2 remains the deep semantic gate; the next four all
 pass binary import, canonical round trip, source-order type inference,
 relationship conversion, idempotence, verification, and converted round trip.
-Tiny-YOLOv3 is a separate structural gate: its 269 tensors, 291 calls, and four
-nested graphs must import, verify, and round-trip without claiming that every
-post-processing operator already has a semantic relationship.
+Tiny-YOLOv3 and UltraFace are pinned partial-frontier gates. The former imports
+269 tensors, 291 calls, and four nested functions, then reduces 280 open results
+to 228; the latter imports 244 tensors and 242 calls, then reduces 240 to 98.
+Neither number is presented as complete semantic coverage.
 
 Inspection with the official ONNX 1.19 schema reports IR version 3, opset 7,
 155 nodes, 267 initializers, 268 declared inputs, and one graph output. All 155
@@ -888,3 +890,22 @@ The shared `nn.softmax` axis-list overload expresses the former directly with
 The bridge therefore chooses an explicit axis list from the model's opset and
 refuses to infer a missing version. A rank-three regression distinguishes the
 two semantics, and imported opset-12 BERT retains all 12 Softmax conversions.
+
+## M10 subgraph-signature slice
+
+Nested frontend graphs do not justify another IR object. `ir.find` performs
+exact local `Fn` lookup, while `ir.params` and `ir.returns` expose the complete
+signature. ONNX transport metadata records only a body function name, its
+formal input count, and capture operand positions; `onnx.graph` decodes that
+record back to the ordinary function handle. The core remains unaware of ONNX
+and of control-flow operator names.
+
+The first consumer is Loop result inference. The relation treats the first two
+body parameters and first body result as the ONNX iteration/condition protocol,
+maps the remaining leading body results to loop-carried values, and prepends one
+unknown trip extent to scan results. A malformed signature remains unchanged.
+The in-memory test covers one capture, one carried scalar, and one scan output.
+On the pinned official Tiny-YOLOv3-11 model the relation closes all eight Loop
+results and unlocks four Reshapes, reducing the observable frontier from 280 to
+228. CI pins that partial frontier: it can improve deliberately, but cannot
+silently regress or be reported as full model support.

@@ -1195,6 +1195,44 @@ fn reduce_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], reduce_result(op))
 }
 
+fn loop_type(m: Mod, op: Op) -> bool {
+  let body = onnx.graph(m, op, "body")
+  if !ir.live(body) {
+    return false
+  }
+  let info = base.get(attrs(op), "body", {})
+  let inputs = base.get(info, "inputs", -1)
+  let params = ir.params(body)
+  let results = ir.returns(body)
+  let outputs = ir.outs(op)
+  if inputs < 2 || len(params) < inputs ||
+     len(results) != len(outputs) + 1 {
+    return false
+  }
+  let carried = inputs - 2
+  if carried > len(outputs) {
+    return false
+  }
+  var types: list<Ty> = []
+  for i in 0..len(outputs) {
+    var type = results[i + 1]
+    if !tensor.valid(type) {
+      return false
+    }
+    if i >= carried {
+      type = shaped(
+        tensor.elem(type), [ty("_")] + tensor.dims(type)
+      )
+    }
+    types += [type]
+  }
+  var changed = false
+  for i in 0..len(outputs) {
+    changed = set_type(m, outputs[i], types[i]) || changed
+  }
+  return changed
+}
+
 fn positive(dim: Ty) -> bool {
   return kind(dim) == "int" && int(dim) > 0
 }
@@ -1422,6 +1460,9 @@ fn infer(m: Mod) -> bool {
     }
     if ir.callee(op) == "onnx.Transpose" {
       changed = transpose_type(m, op) || changed
+    }
+    if ir.callee(op) == "onnx.Loop" {
+      changed = loop_type(m, op) || changed
     }
     if ir.callee(op) == "onnx.ReduceMean" {
       changed = reduce_type(m, op) || changed

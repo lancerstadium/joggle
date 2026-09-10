@@ -1,5 +1,6 @@
 #include "joggle/joggle.h"
 
+#include <charconv>
 #include <cstdio>
 #include <fstream>
 #include <iterator>
@@ -111,7 +112,16 @@ GraphRefs graph_refs(const joggle::Mod& mod) {
 int main(int argc, char** argv) {
   CHECK(argc >= 4);
   const bool import_only = std::string_view(argv[3]) == "--import-only";
-  const int first_expected = import_only ? 4 : 3;
+  const bool frontier = std::string_view(argv[3]) == "--frontier";
+  CHECK(!frontier || argc >= 5);
+  std::size_t expected_frontier = 0;
+  if (frontier) {
+    const std::string_view text(argv[4]);
+    const auto parsed = std::from_chars(text.data(), text.data() + text.size(),
+                                        expected_frontier);
+    CHECK(parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size());
+  }
+  const int first_expected = frontier ? 5 : (import_only ? 4 : 3);
   std::ifstream input(argv[1], std::ios::binary);
   CHECK(input);
   const std::vector<unsigned char> raw{std::istreambuf_iterator<char>(input),
@@ -162,6 +172,10 @@ int main(int argc, char** argv) {
     std::printf("  %s: %zu\n", callee.c_str(), count);
   CHECK(inferred.tensors == source.tensors);
   CHECK(inferred.nodes == source.nodes);
+  if (frontier) {
+    CHECK(inferred.unknown == expected_frontier);
+    return 0;
+  }
   CHECK(inferred.unknown == 0);
 
   CHECK(joggle::run(env, "onnx.nn.convert", model));
