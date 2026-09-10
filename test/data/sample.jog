@@ -5,3 +5,4 @@ fn ping(x: i32) -> i32;
 
 fn echo(data: bytes) -> bytes;
 fn echo(data: str) -> str;
+fn keep<T: Ty>(x: T) -> T;

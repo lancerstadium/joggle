@@ -103,18 +103,20 @@ produce identical results, and expose which step changed the module.
 
 ### M9 — distributable modules
 
-Status: in progress. Deterministic local discovery, inspection, dependency and
-native-binding validation, staged installation, collision rejection, and
-validated removal are implemented without a registry or second manifest. The
-installed package is exercised by a clean external CMake consumer. An
-out-of-tree native module is also built against that package, installed through
-the installed CLI, loaded, called, and removed. The explicit
-compatibility-upgrade gate remains.
+Status: complete. Deterministic local discovery, inspection, dependency and
+native-binding validation, staged installation, collision rejection,
+source-compatible staged upgrade, and validated removal are implemented without
+a registry or second manifest. Upgrade alpha-normalizes generic names, accepts
+additive overloads, rejects removed or changed declarations, validates the new
+dependency/native closure, and restores the installed directory on a failed
+commit. The installed package is exercised by a clean external CMake consumer.
+An out-of-tree native module is also built against that package, installed
+through the installed CLI, loaded, called, upgraded, and removed.
 
-- Specify source, native library, tests, documentation, dependencies, and
-  compatibility metadata in one module directory.
+- Keep source, native library, tests, documentation, dependencies, and the
+  public compatibility surface in one module directory.
 - Add deterministic discovery, inspection, validation, installation, and
-  removal commands; loading remains explicit and side-effect free.
+  upgrade/removal commands; loading remains explicit and side-effect free.
 - Keep the exported native entry stable and evolve the size-tagged ABI by
   append-only fields until a deliberate major break.
 - Test installed use from an external CMake consumer on supported platforms.

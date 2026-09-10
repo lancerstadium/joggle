@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -126,6 +127,104 @@ fs::path stage(const fs::path& root, std::string_view action,
                  std::string(name) + "-" + std::to_string(stamp));
 }
 
+std::string type_key(const Ty& type,
+                     const std::map<std::string, std::string>& generics) {
+  const auto generic = generics.find(std::string(type.name()));
+  if (type.args().empty() && generic != generics.end())
+    return generic->second;
+  std::string result(type.name());
+  if (!type.args().empty()) {
+    result += '<';
+    for (std::size_t index = 0; index < type.args().size(); ++index) {
+      if (index)
+        result += ',';
+      result += type_key(type.args()[index], generics);
+    }
+    result += '>';
+  }
+  return result;
+}
+
+std::string signature(Fn fn) {
+  std::map<std::string, std::string> generics;
+  const std::vector<Val> parameters = fn.generics();
+  for (std::size_t index = 0; index < parameters.size(); ++index)
+    generics.emplace(parameters[index].name(), "$" + std::to_string(index));
+
+  std::string result(fn.name());
+  if (!parameters.empty()) {
+    result += '<';
+    for (std::size_t index = 0; index < parameters.size(); ++index) {
+      if (index)
+        result += ',';
+      result += "$" + std::to_string(index) + ':' +
+                type_key(parameters[index].type(), generics);
+    }
+    result += '>';
+  }
+  result += '(';
+  const std::vector<Val> inputs = fn.params();
+  for (std::size_t index = 0; index < inputs.size(); ++index) {
+    if (index)
+      result += ',';
+    result += type_key(inputs[index].type(), generics);
+  }
+  result += ")->(";
+  const std::vector<Ty> outputs = fn.returns();
+  for (std::size_t index = 0; index < outputs.size(); ++index) {
+    if (index)
+      result += ',';
+    result += type_key(outputs[index], generics);
+  }
+  result += ')';
+  return result;
+}
+
+bool compatible(const Mod& installed, const Mod& replacement) {
+  std::multiset<std::string> available;
+  for (Fn fn : replacement.fns())
+    available.insert(signature(fn));
+  for (Fn fn : installed.fns()) {
+    const std::string required = signature(fn);
+    const auto found = available.find(required);
+    if (found == available.end()) {
+      std::cerr << "joggle: incompatible upgrade removes declaration: "
+                << installed.name() << '.' << required << '\n';
+      return false;
+    }
+    available.erase(found);
+  }
+  return true;
+}
+
+bool copy_module(const fs::path& source, const fs::path& staging,
+                 std::string_view name) {
+  std::error_code error;
+  fs::create_directories(staging, error);
+  if (!error)
+    fs::copy(source, staging / name, fs::copy_options::recursive, error);
+  if (!error)
+    return true;
+  fs::remove_all(staging);
+  std::cerr << "joggle: cannot stage module: " << error.message() << '\n';
+  return false;
+}
+
+bool validate(const fs::path& staging, const fs::path& root,
+              const fs::path& source,
+              const std::vector<fs::path>& dependencies,
+              std::string_view name) {
+  Env env;
+  env.path(staging.string());
+  env.path(root.string());
+  env.path(source.parent_path().string());
+  add_paths(env, dependencies);
+  const bool valid = env.load(name);
+  if (!valid)
+    env.print_diags(stderr);
+  return valid;
+}
+
 int list(const std::vector<fs::path>& roots) {
   for (const auto& [name, ignored] : available(roots)) {
     (void)ignored;
@@ -214,27 +313,10 @@ int install(const fs::path& source, const fs::path& root,
 
   const fs::path staging = stage(root, "install", name);
   const fs::path staged = staging / name;
-  fs::create_directories(staging, error);
-  if (!error)
-    fs::copy(source, staged, fs::copy_options::recursive, error);
-  if (error) {
-    fs::remove_all(staging);
-    std::cerr << "joggle: cannot stage module: " << error.message() << '\n';
+  if (!copy_module(source, staging, name))
     return 1;
-  }
 
-  bool valid = false;
-  {
-    Env env;
-    env.path(staging.string());
-    env.path(root.string());
-    env.path(source.parent_path().string());
-    add_paths(env, dependencies);
-    valid = env.load(name);
-    if (!valid)
-      env.print_diags(stderr);
-  }
-  if (!valid) {
+  if (!validate(staging, root, source, dependencies, name)) {
     fs::remove_all(staging);
     return 1;
   }
@@ -247,6 +329,87 @@ int install(const fs::path& source, const fs::path& root,
   }
   fs::remove(staging, error);
   std::cout << "installed " << name << " in " << root.string() << '\n';
+  return 0;
+}
+
+int upgrade(const fs::path& source, const fs::path& root,
+            const std::vector<fs::path>& dependencies) {
+  if (!safe_tree(source)) {
+    std::cerr << "joggle: module must contain only regular files and "
+                 "directories: "
+              << source << '\n';
+    return 1;
+  }
+
+  Mod replacement;
+  std::vector<fs::path> replacement_files;
+  if (!read(source, replacement, replacement_files))
+    return 1;
+  const std::string name(replacement.name());
+  if (name.empty()) {
+    std::cerr << "joggle: module has no name\n";
+    return 1;
+  }
+
+  const fs::path target = root / name;
+  if (!safe_tree(target)) {
+    std::cerr << "joggle: module is not safely installed: " << name << '\n';
+    return 1;
+  }
+  Mod installed;
+  std::vector<fs::path> installed_files;
+  if (!read(target, installed, installed_files))
+    return 1;
+  if (installed.name() != name) {
+    std::cerr << "joggle: installed directory declares '" << installed.name()
+              << "', refusing to upgrade it as '" << name << "'\n";
+    return 1;
+  }
+  if (!compatible(installed, replacement))
+    return 1;
+
+  const fs::path staging = stage(root, "upgrade", name);
+  const fs::path staged = staging / name;
+  if (!copy_module(source, staging, name))
+    return 1;
+  if (!validate(staging, root, source, dependencies, name)) {
+    std::error_code ignored;
+    fs::remove_all(staging, ignored);
+    return 1;
+  }
+
+  const fs::path backup = stage(root, "backup", name);
+  std::error_code error;
+  fs::rename(target, backup, error);
+  if (error) {
+    fs::remove_all(staging);
+    std::cerr << "joggle: cannot detach installed module: "
+              << error.message() << '\n';
+    return 1;
+  }
+  fs::rename(staged, target, error);
+  if (error) {
+    std::error_code rollback;
+    fs::rename(backup, target, rollback);
+    if (rollback) {
+      std::cerr << "joggle: upgrade failed and the prior module remains at "
+                << backup << ": " << rollback.message() << '\n';
+      return 1;
+    }
+    fs::remove_all(staging);
+    std::cerr << "joggle: cannot commit upgrade: " << error.message() << '\n';
+    return 1;
+  }
+
+  fs::remove_all(backup, error);
+  if (!error)
+    fs::remove(staging, error);
+  if (error) {
+    std::cerr << "joggle: module was upgraded but cleanup failed: "
+              << error.message() << '\n';
+    return 1;
+  }
+  std::cout << "upgraded " << name << " in " << root.string() << '\n';
   return 0;
 }
 
@@ -296,10 +459,11 @@ int module(int argc, char** argv) {
       return 2;
     return action == "info" ? info(argv[3], roots) : check(argv[3], roots);
   }
-  if (action == "install") {
+  if (action == "install" || action == "upgrade") {
     if (argc < 5 || !paths(argc, argv, 5, roots))
       return 2;
-    return install(argv[3], argv[4], roots);
+    return action == "install" ? install(argv[3], argv[4], roots)
+                               : upgrade(argv[3], argv[4], roots);
   }
   if (action == "uninstall") {
     if (argc != 5)

@@ -28,16 +28,19 @@ Inspect the modules available on the same explicit search path:
 ./build/joggle module check nn -M modules
 ```
 
-An external module needs only its directory. Install and remove it from an
-explicit local root as follows:
+An external module needs only its directory. Install, upgrade, and remove it
+from an explicit local root as follows:
 
 ```sh
 ./build/joggle module install path/to/my.module local-modules -M modules
+./build/joggle module upgrade path/to/my.module local-modules -M modules
 ./build/joggle module uninstall my.module local-modules
 ```
 
-The install command validates a staged copy before it becomes visible and does
-not replace an existing directory.
+Install validates a staged copy before it becomes visible and does not replace
+an existing directory. Upgrade retains every installed signature modulo
+generic-parameter names, validates new dependencies and native code in staging,
+and restores the prior directory if commit fails.
 
 The equivalent embedded use is:
 

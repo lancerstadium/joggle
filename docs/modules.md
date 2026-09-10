@@ -63,6 +63,7 @@ joggle module list -M modules
 joggle module info example -M modules
 joggle module check example -M modules
 joggle module install path/to/example local-modules -M modules
+joggle module upgrade path/to/example local-modules -M modules
 joggle module uninstall example local-modules
 ```
 
@@ -74,13 +75,20 @@ selected path, dependencies, source fragments, and native library files.
 Installation validates the source tree: symbolic links and special files are
 rejected, an existing target is never overwritten, and the copy is loaded from
 a same-filesystem staging directory before an atomic rename makes it visible.
+Upgrade reads the installed and replacement declarations, alpha-normalizes
+generic parameter names, and requires the replacement to retain every existing
+function signature. New functions and overloads are compatible. A compatible
+replacement is then copied and fully loaded from staging, including its
+dependency closure and optional native ABI. Only after validation does the CLI
+detach the old directory and commit the replacement; a failed commit restores
+the old directory.
 Uninstallation first parses the installed declaration and refuses to remove it
 when its declared name differs from the requested name. There is no registry
 database or generated manifest to become stale. `info`, `check`, and `install`
-load an optional native entry, so native modules are executable code and must
-come from a trusted source. Native libraries remain loaded for the lifetime of
-an `Env`. Network package resolution, lockfiles, upgrades, and in-process hot
-unloading are out of scope.
+and `upgrade` load an optional native entry, so native modules are executable
+code and must come from a trusted source. Native libraries remain loaded for
+the lifetime of an `Env`. Network package resolution, lockfiles, dependency
+solving, and in-process hot unloading are out of scope.
 
 The bundled declarations install under `share/joggle/modules`. Applications
 choose their module roots explicitly with `Env::path`; the core does not depend

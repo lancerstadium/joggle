@@ -171,20 +171,24 @@ Check a module or run a textual transform:
 ```
 
 Module directories remain the only distribution unit. The CLI can discover,
-validate, inspect, install, and uninstall them without a registry or another
-manifest:
+validate, inspect, install, upgrade, and uninstall them without a registry or
+another manifest:
 
 ```sh
 ./build/joggle module list -M modules
 ./build/joggle module info tensor -M modules
 ./build/joggle module check nn -M modules
 ./build/joggle module install path/to/my.module local-modules -M modules
+./build/joggle module upgrade path/to/my.module local-modules -M modules
 ./build/joggle module uninstall my.module local-modules
 ```
 
 Installation refuses to overwrite an existing module and commits a staged copy
 only after its declarations, dependencies, and optional native binding load
-successfully.
+successfully. Upgrade additionally requires every installed function signature
+to remain available; adding overloads and renaming generic parameters are
+compatible, while removing or changing a declaration is rejected before the
+staged copy can replace the installed directory.
 
 The optional ONNX codec keeps Protobuf out of the core build:
 

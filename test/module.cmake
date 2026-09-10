@@ -51,6 +51,53 @@ if(NOT COMMAND_OUTPUT MATCHES "native joggle_sample\\.(so|dylib|dll)\n")
   message(FATAL_ERROR "native library is not reported:\n${COMMAND_OUTPUT}")
 endif()
 
+set(upgrade_source "${TEST_ROOT}.upgrade")
+set(incompatible_source "${TEST_ROOT}.incompatible")
+set(invalid_source "${TEST_ROOT}.invalid-upgrade")
+file(REMOVE_RECURSE "${upgrade_source}" "${incompatible_source}"
+                    "${invalid_source}")
+file(MAKE_DIRECTORY "${upgrade_source}" "${incompatible_source}"
+                    "${invalid_source}")
+file(COPY "${BUILD_ROOT}/sample/" DESTINATION "${upgrade_source}")
+file(READ "${upgrade_source}/module.jog" upgrade_module)
+string(REPLACE "fn keep<T: Ty>(x: T) -> T;"
+               "fn keep<U: Ty>(x: U) -> U;"
+               upgrade_module "${upgrade_module}")
+file(WRITE "${upgrade_source}/module.jog"
+     "${upgrade_module}\nfn added(x: i32) -> i32;\n")
+invoke(ok "${TOOL}" module upgrade "${upgrade_source}" "${TEST_ROOT}"
+       -M "${BUILD_ROOT}")
+invoke(ok "${TOOL}" module check sample -M "${TEST_ROOT}")
+file(READ "${TEST_ROOT}/sample/module.jog" upgraded_source)
+if(NOT upgraded_source MATCHES "fn added\\(x: i32\\) -> i32;")
+  message(FATAL_ERROR "compatible upgrade was not committed")
+endif()
+
+file(COPY "${upgrade_source}/" DESTINATION "${incompatible_source}")
+file(READ "${incompatible_source}/module.jog" incompatible_module)
+string(REPLACE "fn ping(x: i32) -> i32;"
+               "fn ping(x: i64) -> i64;"
+               incompatible_module "${incompatible_module}")
+file(WRITE "${incompatible_source}/module.jog" "${incompatible_module}")
+invoke(fail "${TOOL}" module upgrade "${incompatible_source}" "${TEST_ROOT}"
+       -M "${BUILD_ROOT}")
+file(READ "${TEST_ROOT}/sample/module.jog" retained_source)
+if(NOT retained_source STREQUAL upgraded_source)
+  message(FATAL_ERROR "failed upgrade changed the installed module")
+endif()
+
+file(COPY "${upgrade_source}/" DESTINATION "${invalid_source}")
+file(READ "${invalid_source}/module.jog" invalid_module)
+string(REPLACE "module sample\n" "module sample\nuse absent\n"
+               invalid_module "${invalid_module}")
+file(WRITE "${invalid_source}/module.jog" "${invalid_module}")
+invoke(fail "${TOOL}" module upgrade "${invalid_source}" "${TEST_ROOT}"
+       -M "${BUILD_ROOT}")
+file(READ "${TEST_ROOT}/sample/module.jog" retained_source)
+if(NOT retained_source STREQUAL upgraded_source)
+  message(FATAL_ERROR "invalid staged upgrade changed the installed module")
+endif()
+
 invoke(fail "${TOOL}" module install "${BUILD_ROOT}/bad" "${TEST_ROOT}"
        -M "${BUILD_ROOT}")
 if(EXISTS "${TEST_ROOT}/bad")
@@ -62,6 +109,9 @@ if(EXISTS "${TEST_ROOT}/sample")
   message(FATAL_ERROR "uninstalled module remains")
 endif()
 invoke(fail "${TOOL}" module uninstall sample "${TEST_ROOT}")
+
+file(REMOVE_RECURSE "${upgrade_source}" "${incompatible_source}"
+                    "${invalid_source}")
 
 file(GLOB residue "${TEST_ROOT}/*" "${TEST_ROOT}/.*")
 foreach(path IN LISTS residue)

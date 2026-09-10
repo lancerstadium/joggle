@@ -44,6 +44,13 @@ invoke("${tool}" module install "${build}/package" "${modules}"
 invoke("${tool}" module check probe -M "${modules}")
 invoke("${build}/bin/consumer${SUFFIX}"
        "${modules}" "${standard}")
+file(APPEND "${build}/package/module.jog"
+     "\nfn keep<T: Ty>(x: T) -> T {\n  return x\n}\n")
+invoke("${tool}" module upgrade "${build}/package" "${modules}"
+       -M "${standard}")
+invoke("${tool}" module check probe -M "${modules}")
+invoke("${build}/bin/consumer${SUFFIX}"
+       "${modules}" "${standard}")
 invoke("${tool}" module uninstall probe "${modules}")
 
 file(REMOVE_RECURSE "${TEST_ROOT}")

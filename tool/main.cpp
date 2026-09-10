@@ -24,6 +24,8 @@ int usage() {
                "  joggle module check <name> [-M <module-dir>]...\n"
                "  joggle module install <directory> <module-dir> "
                "[-M <dependency-dir>]...\n"
+               "  joggle module upgrade <directory> <module-dir> "
+               "[-M <dependency-dir>]...\n"
                "  joggle module uninstall <name> <module-dir>\n";
   return 2;
 }

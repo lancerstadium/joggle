@@ -402,17 +402,21 @@ retains `nn.relu` for `tensor<i8, [4]>` while expanding the same symbol for
 ## M9 local distribution slice
 
 The module directory is now executable tooling rather than a prose convention.
-`joggle module list/info/check/install/uninstall` discovers explicit roots,
-loads full dependency closures, and reports the exact source and native files
-selected by path precedence. There is still no registry, generated manifest,
-or process-global search path.
+`joggle module list/info/check/install/upgrade/uninstall` discovers explicit
+roots, loads full dependency closures, and reports the exact source and native
+files selected by path precedence. There is still no registry, generated
+manifest, or process-global search path.
 
 Installation rejects links and special files, refuses collisions, copies into
 a same-filesystem staging root, validates the staged module through `Env`, and
 only then renames it into place. Removal parses the selected `module.jog` and
-checks its declared name before detaching the exact directory. Tests cover a
-real native module, failed validation without residue, duplicate rejection,
-and a fresh external CMake consumer of the installed library and modules.
+checks its declared name before detaching the exact directory. Upgrade retains
+all installed signatures after alpha-normalizing generic names, permits additive
+overloads, validates the full replacement in staging, and restores the prior
+directory if commit fails. Tests cover a real native module, additive and
+incompatible upgrades, failed dependency validation without residue, duplicate
+rejection, and a fresh external CMake consumer of the installed library and
+modules.
 
 ## M10 transport slice
 
