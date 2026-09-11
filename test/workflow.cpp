@@ -2309,6 +2309,16 @@ int main(int argc, char** argv) {
   CHECK(matmul.params().size() == 2);
   CHECK(matmul.blks().size() == 3);
   CHECK(matmul.ops().size() > matmul.body().ops().size());
+  CHECK(!matmul.body().op());
+  for (joggle::Blk blk : matmul.blks()) {
+    if (blk != matmul.body()) {
+      const joggle::Op owner = blk.op();
+      CHECK(owner);
+      CHECK(owner.kind() == joggle::Op::Kind::loop);
+      const std::vector<joggle::Blk> children = owner.blks();
+      CHECK(std::find(children.begin(), children.end(), blk) != children.end());
+    }
+  }
   std::size_t matmul_values = matmul.params().size();
   for (joggle::Blk blk : matmul.blks())
     matmul_values += blk.args().size();
@@ -2372,6 +2382,9 @@ int main(int argc, char** argv) {
   joggle::Mod reflected;
   CHECK(joggle::parse(env, source.str(), reflected, "matmul-reflection.jog"));
   CHECK(reflected.verify(env));
+  joggle::Attr owner_result;
+  CHECK(joggle::query(env, "script.owner_probe", reflected, owner_result));
+  CHECK(owner_result.boolean() && *owner_result.boolean());
   joggle::Attr reflected_result;
   CHECK(joggle::query(env, "script.reflect_fn", reflected, reflected_result));
   CHECK(reflected_result.boolean() == true);

@@ -748,6 +748,25 @@ fn rebuild_tagged(m: Mod) -> bool {
   return changed
 }
 
+fn owner_probe(m: Mod) -> bool {
+  for f in ir.fns(m) {
+    let bodies = ir.blks(f)
+    if len(bodies) != 0 {
+      assert(!ir.live(ir.op(bodies[0])), "root block must not have an owner op")
+      for i in 1..len(bodies) {
+        let owner = ir.op(bodies[i])
+        assert(ir.live(owner), "nested block must have an owner op")
+        var found = false
+        for body in ir.blks(owner) {
+          found = found || body == bodies[i]
+        }
+        assert(found, "block owner must contain the nested block")
+      }
+    }
+  }
+  return true
+}
+
 fn mutating_cap(m: Mod, op: Op) -> bool {
   return ir.set(m, op, "invalid_capability_side_effect", true)
 }

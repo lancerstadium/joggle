@@ -14,6 +14,7 @@ fn generics(op: Op) -> list<Ty>;
 fn blks(f: Fn) -> list<Blk>;
 fn blks(op: Op) -> list<Blk>;
 fn blk(op: Op) -> Blk;
+fn op(b: Blk) -> Op;
 fn ops(m: Mod) -> list<Op>;
 fn ops(f: Fn) -> list<Op>;
 fn ops(b: Blk) -> list<Op>;

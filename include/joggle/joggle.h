@@ -256,6 +256,7 @@ public:
   explicit operator bool() const noexcept;
   std::vector<Val> args() const;
   std::vector<Op> ops() const;
+  Op op() const noexcept;
   Fn fn() const noexcept;
 
   friend bool operator==(const Blk&, const Blk&) = default;

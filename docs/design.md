@@ -369,6 +369,10 @@ value universe as parameters, nested block arguments, and operation results.
 They exclude compile-time generic bindings, which remain explicitly available
 through `generics`, so range, storage, and cost modules cannot accidentally
 disagree about which values execute.
+`Blk::op` / `ir.op` complete the inverse ownership edge: nested blocks point to
+their loop or branch, while a function root returns an invalid operation.
+Together with `Op::blk` / `ir.blk`, extensions can move both up and down the
+same structure without rebuilding parent maps.
 Use replacement now has an optional user operation, so a transform can redirect
 one edge without rewriting every consumer; both forms reject type or dominance
 violations before mutation. `Mod::revision` advances after successful edits and

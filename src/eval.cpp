@@ -1602,6 +1602,9 @@ private:
     } else if (name == "blk" && args.size() == 1) {
       if (const auto* op = as<Op>(args[0]); op && op->blk())
         return Items{Item(op->blk())};
+    } else if (name == "op" && args.size() == 1) {
+      if (const auto* blk = as<Blk>(args[0]))
+        return Items{Item(blk->op())};
     } else if (name == "ops" && args.size() == 1) {
       std::vector<Op> ops;
       if (const auto* mod = as<Mod*>(args[0]); mod && *mod)

@@ -161,7 +161,7 @@ The built-in `ir` module is the complete reflection boundary:
 | --- | --- |
 | `fns`, `find`, `params`, `returns`, `generics`, `blks`, `ops`, `vals`, `uses` | Find local or exactly qualified loaded functions and traverse signatures, explicit call terms, structure, runtime values, and dependencies. |
 | `args`, `outs`, `def`, `users` | Read operation dataflow in both directions. |
-| `live`, `blk`, `kind`, `form`, `callee`, `name`, `key`, `type` | Query handle state, operation kind and binding form, readable or ephemeral identity, and structural `Ty`. |
+| `live`, `blk`, `op`, `kind`, `form`, `callee`, `name`, `key`, `type` | Query handle state, bidirectional block ownership, operation kind and binding form, readable or ephemeral identity, and structural `Ty`. |
 | `resolve`, `symbol`, `accepts`, `match` | Resolve calls, identify functions, and select against explicit signatures. |
 | `where`, `invoke<R>` | Select functions by open metadata and execute an ordinary typed `fn(Mod, Op) -> R` transactionally. |
 | `is_const`, `constant` | Query constant IR values. |
@@ -183,6 +183,12 @@ parameters are compile-time bindings and remain available only through
 `ir.generics(f)`. `ir.vals(m)` concatenates that view for local functions. This
 single traversal keeps analyses and transforms from rebuilding subtly different
 notions of a function's value set.
+
+`ir.blk(op)` returns the block containing an operation; `ir.op(blk)` returns
+the loop or branch owning a nested block. A function's root block has no owner
+operation and therefore yields an invalid handle detectable with `ir.live`.
+This makes structural ascent as complete as structural descent without a
+parent scan in every extension.
 
 `Op::kind()` / `ir.kind` describe computation structure (`call`, `constant`,
 `loop`, branch, return, or yield); `Op::form()` / `ir.form` describe how a call

@@ -647,6 +647,16 @@ std::vector<Op> Blk::ops() const {
   }
   return out;
 }
+
+Op Blk::op() const noexcept {
+  if (!valid() || store_->blks[id_].data.parent_op == detail::none)
+    return {};
+  const std::uint32_t id = store_->blks[id_].data.parent_op;
+  if (id >= store_->ops.size() || !store_->ops[id].live)
+    return {};
+  return Op(store_, id, store_->ops[id].generation);
+}
+
 Fn Blk::fn() const noexcept {
   if (!valid() || store_->blks[id_].data.fn == detail::none)
     return {};
