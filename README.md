@@ -128,6 +128,10 @@ monomorphic function through the same operation.
 call, so an extension does not reimplement dtype or shape inference.
 Function overloads of `ir.rename` and `ir.erase` let later transforms maintain
 or remove those helpers while preserving resolved calls and live handles.
+`ir.generics(op)` reflects explicit call arguments as structural `Ty` values,
+and `ir.generics(m, op, types)` changes them through normal overload checking.
+Format and layout modules can therefore recursively rewrite types carried both
+by values and by constructor calls without parsing callee strings.
 
 Local module lifecycle commands are deterministic and registry-free:
 
@@ -204,7 +208,8 @@ structured loops, and conditions; unsupported IR fails with a diagnostic.
 With `JOGGLE_BUILD_SAT=ON`, the separate `sat.c.prepare` bridge recursively
 maps concrete `sat<W>` types to C storage, materializes width-specialized
 saturating helpers, and then calls `c.prepare`. The C module contains no
-`sat` name or format case.
+`sat` name or format case. The executable regression covers scalar values and
+a fixed-shape tensor whose element format is defined entirely by the module.
 
 ## Guarantees and boundaries
 

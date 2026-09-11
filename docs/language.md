@@ -396,8 +396,20 @@ Calling it on a loop iterator also updates the loop header. This makes generic
 Function signatures are reflectable without a second symbol API.
 `ir.find(m, "body")` returns the exact local `Fn`, `ir.live` tests whether it
 was present, and `ir.params`/`ir.returns` expose its inputs and result types.
-This is enough for a transport module to represent a nested source graph as an
-ordinary function and for a separate relation module to reason about it.
+`ir.generics(fn)` exposes the declared generic `Val`s. `ir.generics(op)` instead
+returns the explicit structural `Ty` terms written on a call, or an empty list
+when none were written. This is enough for a transport module to represent a
+nested source graph as an ordinary function and for a separate relation module
+to reason about it.
+
+Value and function contracts are edited through `ir.type(m, value, type)` and
+`ir.returns(m, fn, types)`. Explicit call terms use
+`ir.generics(m, op, types)`. The latter reconstructs the call from its base
+symbol and structural terms, then applies the same visibility, generic-kind,
+argument, and result checks as `ir.rename`. An invalid binding leaves the call
+and module revision unchanged. A format module can consequently recurse over
+`Ty` once and apply the result to values, function results, and type-constructor
+calls without inspecting printable callee text.
 
 Renaming a call checks any visible destination against the existing arguments
 and results; an unknown destination remains an open call. Call conversion that

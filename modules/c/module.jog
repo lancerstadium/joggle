@@ -376,11 +376,15 @@ fn constant(op: Op, depth: int) -> str {
   let outputs = ir.outs(op)
   assert(len(outputs) == 1, "c: constant must have one result")
   let output = outputs[0]
-  if ir.name(output) == "" {
-    return ""
+  for user in ir.users(output) {
+    for next in ir.outs(user) {
+      if update(next, ir.args(user)) {
+        return pad(depth) + scalar(ir.type(output)) + " " + val(output) +
+               " = " + text(ir.constant(output)) + ";\n"
+      }
+    }
   }
-  return pad(depth) + scalar(ir.type(output)) + " " + val(output) + " = " +
-         text(ir.constant(output)) + ";\n"
+  return ""
 }
 
 fn loop(m: Mod, op: Op, depth: int) -> str {

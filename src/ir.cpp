@@ -550,6 +550,12 @@ std::string_view Op::callee() const noexcept {
   return valid() ? std::string_view(store_->ops[id_].data.callee)
                  : std::string_view{};
 }
+std::vector<Ty> Op::generics() const {
+  if (!valid() || kind() != Kind::call)
+    return {};
+  const Ty applied{std::string(callee())};
+  return applied.valid() ? applied.args() : std::vector<Ty>{};
+}
 std::vector<Val> Op::args() const {
   std::vector<Val> out;
   if (!valid())
@@ -2404,6 +2410,37 @@ bool Mod::returns(Fn fn, std::span<const Ty> types) {
   store.fns[fn.id_].data.returns = next;
   touch(store);
   return true;
+}
+
+bool Mod::generics(const Env& env, Op call, std::span<const Ty> types) {
+  auto& store = impl_->store;
+  if (!call.valid() || call.store_ != &store ||
+      call.kind() != Op::Kind::call ||
+      std::any_of(types.begin(), types.end(),
+                  [](const Ty& type) { return !type.valid(); })) {
+    detail::add_diag(store.diags,
+                     "generics requires a live call and valid types");
+    return false;
+  }
+  const std::string current(call.callee());
+  const Ty applied{current};
+  if (!applied.valid()) {
+    detail::add_diag(store.diags,
+                     "call callee is not a structural type application",
+                     call.loc());
+    return false;
+  }
+  std::string next(applied.args().empty() ? applied.text() : applied.name());
+  if (!types.empty()) {
+    next += '<';
+    for (std::size_t index = 0; index < types.size(); ++index) {
+      if (index)
+        next += ", ";
+      next += types[index].text();
+    }
+    next += '>';
+  }
+  return rename(env, call, std::move(next));
 }
 
 bool Mod::rename(const Env& env, Fn fn, std::string name) {

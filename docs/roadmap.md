@@ -82,6 +82,8 @@ Status: complete.
   uniqueness, nested ownership, and handle invalidation.
 - Retype values and function result contracts, and validate every return in
   nested control flow before a transform commits.
+- Reflect and edit explicit call generic terms structurally, reusing ordinary
+  overload checks instead of requiring modules to parse callee spelling.
 - Add nested walking, selective use replacement, cloning, moving, and `Blk`
   argument editing with explicit insertion points.
 - Give every successful mutation a module revision and make compound edits
@@ -311,9 +313,10 @@ with two physical buffers for three logical intermediates. Dynamic allocation,
 inter-function planning, and a genuinely different second target remain open.
 The optional `sat.c` bridge now proves that a module-defined parametric format
 can be recursively retyped, specialized into local helpers, emitted through C,
-compiled, and executed without adding a format case to either core or the C
-module. This strengthens the first target gate but is not counted as the still
-missing second target.
+compiled, and executed for both scalar and fixed-shape tensor values without
+adding a format case to either core or the C module. Constructor-call generic
+terms travel through the same structural edit boundary. This strengthens the
+first target gate but is not counted as the still missing second target.
 
 Exit gate: official models from two frontends pass through one shared semantic
 library and run through at least two targets without core operator switches.

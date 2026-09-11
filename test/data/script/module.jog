@@ -429,6 +429,19 @@ fn break_identity_return(m: Mod) -> bool {
   return ir.returns(m, ir.find(m, "identity"), [ty("bool")])
 }
 
+fn rewrite_call_generics(m: Mod) -> bool {
+  let helper = ir.find(m, "helper")
+  base.assert(len(ir.generics(helper)) == 1,
+              "helper must declare one generic")
+  for op in ir.ops(m) {
+    let applied = ir.generics(op)
+    if len(applied) == 1 && applied[0] == ty("4") {
+      return ir.generics(m, op, [ty("5")])
+    }
+  }
+  return false
+}
+
 fn return_three(m: Mod) -> bool {
   for op in ir.ops(m) {
     if ir.kind(op) == "return" {

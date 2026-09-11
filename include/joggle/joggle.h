@@ -209,6 +209,7 @@ public:
   explicit operator bool() const noexcept;
   Kind kind() const noexcept;
   std::string_view callee() const noexcept;
+  std::vector<Ty> generics() const;
   std::vector<Val> args() const;
   std::vector<Val> outs() const;
   std::vector<Blk> blks() const;
@@ -385,6 +386,7 @@ public:
   bool erase(const Env& env, Fn fn);
   bool type(Val value, Ty type);
   bool returns(Fn fn, std::span<const Ty> types);
+  bool generics(const Env& env, Op call, std::span<const Ty> types);
   bool rename(const Env& env, Fn fn, std::string name);
   bool rename(Val value, std::string name);
   bool rename(const Env& env, Op call, std::string callee);

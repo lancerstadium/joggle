@@ -151,7 +151,7 @@ The built-in `ir` module is the complete reflection boundary:
 
 | Function | Meaning |
 | --- | --- |
-| `fns`, `find`, `params`, `returns`, `blks`, `ops`, `uses` | Find and traverse loaded functions, signatures, structure, and dependencies. |
+| `fns`, `find`, `params`, `returns`, `generics`, `blks`, `ops`, `uses` | Find and traverse loaded functions, signatures, explicit call terms, structure, and dependencies. |
 | `args`, `outs`, `def`, `users` | Read operation dataflow in both directions. |
 | `live`, `blk`, `kind`, `callee`, `name`, `type` | Query handle state, readable identity, structure, and structural `Ty`. |
 | `resolve`, `symbol`, `accepts`, `match` | Resolve calls, identify functions, and select against explicit signatures. |
@@ -435,9 +435,12 @@ Both forms check type compatibility and dominance before changing the IR.
 
 `ir.find(m, name)` performs exact local function lookup and returns an invalid
 `Fn` when the symbol is absent; `ir.live` is the uniform validity test.
-`ir.params(f)` and `ir.returns(f)` expose both sides of the same declared
-signature. Together they let format modules reflect nested source graphs or
-other function-valued metadata without a format-specific function handle.
+`ir.params(f)`, `ir.returns(f)`, and `ir.generics(f)` expose the complete
+declared signature. `ir.generics(op)` exposes explicit call terms, while its
+three-argument edit overload validates replacements through ordinary call
+resolution. Together they let format modules reflect nested source graphs and
+rewrite structural type applications without a format-specific handle or
+callee-string parser.
 
 Every valid `Blk` ends in `return` or internal `yield`, so an existing `Op` is
 also a complete insertion position; no ambient builder or special append state
@@ -773,7 +776,9 @@ retypes ordinary values and function contracts, specializes a generic
 saturating-add body through `ir.clone`, and retargets resolved format calls.
 `prepare` then invokes the unchanged C preparation function. Repeating the
 bridge is byte-identical, and generated C is compiled and checked at 5-, 8-,
-and 12-bit saturation boundaries.
+and 12-bit saturation boundaries. The same regression executes a
+`tensor<sat<5>, [4]>` kernel after recursively changing both value types and
+the tensor-constructor call to `i8` storage.
 
 `module.jog` contains the module header and imports. Files in `lib/*.jog` are
 appended in lexical path order and contain further declarations without another

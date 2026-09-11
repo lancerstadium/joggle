@@ -143,6 +143,22 @@ fn lower(m: Mod) -> bool {
     }
   }
 
+  for op in ir.ops(m) {
+    if ir.kind(op) == "call" {
+      var types: list<Ty> = []
+      var changed = false
+      for type in ir.generics(op) {
+        let next = lowered(type)
+        types += [next]
+        changed = next != type || changed
+      }
+      if changed {
+        assert(ir.generics(m, op, types),
+               "sat.c: could not retype call generics")
+      }
+    }
+  }
+
   for i in 0..len(additions) {
     let op = additions[i]
     let output = ir.outs(op)[0]

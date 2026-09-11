@@ -364,6 +364,33 @@ int main(int argc, char** argv) {
   CHECK(return_edit.revision() == stable_return_edit);
   return_edit.clear_diags();
 
+  joggle::Mod generic_edit;
+  constexpr std::string_view generic_edit_source =
+      "module generic_edit\n"
+      "fn helper<N: int>(x: i32) -> i32 { return x }\n"
+      "fn main(x: i32) -> i32 { return helper<4>(x) }\n";
+  CHECK(joggle::parse(env, generic_edit_source, generic_edit,
+                      "generic-edit.jog"));
+  CHECK(generic_edit.verify(env));
+  const joggle::Op generic_call =
+      generic_edit.find_fn("main").body().ops().front();
+  CHECK(generic_call.generics() ==
+        std::vector<joggle::Ty>{joggle::Ty("4")});
+  const std::uint64_t before_generic_edit = generic_edit.revision();
+  CHECK(generic_edit.generics(
+      env, generic_call, std::vector<joggle::Ty>{joggle::Ty("6")}));
+  CHECK(generic_call.callee() == "helper<6>" &&
+        generic_call.generics() ==
+            std::vector<joggle::Ty>{joggle::Ty("6")});
+  CHECK(generic_edit.revision() == before_generic_edit + 1);
+  CHECK(generic_edit.verify(env));
+  const std::uint64_t rejected_generic_edit = generic_edit.revision();
+  CHECK(!generic_edit.generics(
+      env, generic_call, std::vector<joggle::Ty>{joggle::Ty("i32")}));
+  CHECK(generic_call.callee() == "helper<6>" &&
+        generic_edit.revision() == rejected_generic_edit);
+  generic_edit.clear_diags();
+
   joggle::Op tensor_add;
   joggle::Op relu_call;
   for (joggle::Op op : network.find_fn("stage").ops())
@@ -402,6 +429,17 @@ int main(int argc, char** argv) {
   }
   CHECK(network_cpp.verify(env));
   CHECK(env.load("script"));
+  joggle::Mod scripted_generic_edit;
+  CHECK(joggle::parse(env, generic_edit_source, scripted_generic_edit,
+                      "scripted-generic-edit.jog"));
+  CHECK(joggle::run(env, "script.rewrite_call_generics",
+                    scripted_generic_edit));
+  CHECK(scripted_generic_edit.verify(env));
+  const joggle::Op scripted_generic_call =
+      scripted_generic_edit.find_fn("main").body().ops().front();
+  CHECK(scripted_generic_call.callee() == "helper<5>" &&
+        scripted_generic_call.generics() ==
+            std::vector<joggle::Ty>{joggle::Ty("5")});
   joggle::Mod matched_fn;
   CHECK(joggle::parse(env, network_source, matched_fn, "matched-fn.jog"));
   joggle::Attr matched_report;

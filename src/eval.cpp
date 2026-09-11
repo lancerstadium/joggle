@@ -1120,6 +1120,19 @@ private:
           out.emplace_back(type);
         return Items{Item(std::move(out))};
       }
+    } else if (name == "generics" && args.size() == 1) {
+      Items out;
+      if (const auto* fn = as<Fn>(args[0])) {
+        for (Val value : fn->generics())
+          out.emplace_back(value);
+      } else if (const auto* op = as<Op>(args[0])) {
+        for (const Ty& type : op->generics())
+          out.emplace_back(type);
+      } else {
+        fail("invalid ir.generics compile-time call", loc);
+        return std::nullopt;
+      }
+      return Items{Item(std::move(out))};
     } else if (name == "blks" && args.size() == 1) {
       std::vector<Blk> blks;
       if (const auto* fn = as<Fn>(args[0]))
@@ -1531,6 +1544,13 @@ private:
       auto result_types = types(args[2]);
       if (mod && *mod && fn && result_types)
         return Items{Item(Attr((*mod)->returns(*fn, *result_types)))};
+    } else if (name == "generics" && args.size() == 3) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* op = as<Op>(args[1]);
+      auto applied_types = types(args[2]);
+      if (mod && *mod && op && applied_types)
+        return Items{
+            Item(Attr((*mod)->generics(env_, *op, *applied_types)))};
     } else if (name == "retarget" && args.size() == 4) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* op = as<Op>(args[1]);

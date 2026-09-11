@@ -1,5 +1,6 @@
 module sat_kernel
 use sat
+use tensor
 
 fn add5(a: sat<5>, b: sat<5>) -> sat<5> {
   return sat.add(a, b)
@@ -11,4 +12,15 @@ fn add8(a: sat<8>, b: sat<8>) -> sat<8> {
 
 fn add12(a: sat<12>, b: sat<12>) -> sat<12> {
   return sat.add(a, b)
+}
+
+fn add_vec5(
+  a: tensor<sat<5>, [4]>, b: tensor<sat<5>, [4]>
+) -> tensor<sat<5>, [4]> {
+  let zero: sat<5> = 0
+  var out = tensor<sat<5>, [4]>(zero)
+  for i in 0..4 {
+    out[i] = sat.add(a[i], b[i])
+  }
+  return out
 }
