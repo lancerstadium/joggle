@@ -10,6 +10,10 @@ fn affine(x: f32) -> f32 {
   return doubled + f32(1)
 }
 
+fn direct(x: f32) -> f32 {
+  return twice(x)
+}
+
 fn relu(x: f32) -> f32 {
   if x < f32(0) {
     return f32(0)

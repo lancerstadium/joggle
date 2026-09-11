@@ -208,6 +208,12 @@ if(JOGGLE_BUILD_SAT)
     "${CMAKE_CURRENT_BINARY_DIR}/modules/sat/module.jog"
     COPYONLY
   )
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/sat.c")
+  configure_file(
+    modules/sat.c/module.jog
+    "${CMAKE_CURRENT_BINARY_DIR}/modules/sat.c/module.jog"
+    COPYONLY
+  )
   install(
     TARGETS joggle-sat
     LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/sat/native
@@ -216,6 +222,10 @@ if(JOGGLE_BUILD_SAT)
   install(
     FILES modules/sat/module.jog
     DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/sat
+  )
+  install(
+    DIRECTORY modules/sat.c
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules
   )
 endif()
 
@@ -653,5 +663,19 @@ if(JOGGLE_BUILD_TESTS)
               ${CMAKE_CURRENT_SOURCE_DIR}/test/data/sat.jog
               ${CMAKE_CURRENT_BINARY_DIR}/modules
     )
+    if(JOGGLE_TEST_C_COMPILER)
+      add_test(
+        NAME sat-c-execution
+        COMMAND
+          ${CMAKE_COMMAND}
+          -DTOOL=$<TARGET_FILE:joggle-tool>
+          -DCC=${JOGGLE_TEST_C_COMPILER}
+          -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/sat_c.jog
+          -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/sat_c_main.c
+          -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+          -DROOT=${CMAKE_CURRENT_BINARY_DIR}/sat-c
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/test/sat_c.cmake
+      )
+    endif()
   endif()
 endif()

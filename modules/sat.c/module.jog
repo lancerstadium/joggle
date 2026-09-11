@@ -1,0 +1,161 @@
+module sat.c
+use base
+use c
+use ir
+use sat
+
+fn storage(type: Ty) -> Ty {
+  assert(sat.supports(type), "sat.c: expected a concrete sat type")
+  let width = int(args(type)[0])
+  if width <= 8 {
+    return ty("i8")
+  }
+  if width <= 16 {
+    return ty("i16")
+  }
+  if width <= 32 {
+    return ty("i32")
+  }
+  return ty("i64")
+}
+
+fn lowered(type: Ty) -> Ty {
+  if sat.supports(type) {
+    return storage(type)
+  }
+  let children = args(type)
+  if len(children) == 0 {
+    return type
+  }
+  var next: list<Ty> = []
+  var changed = false
+  for child in children {
+    let value = lowered(child)
+    next += [value]
+    changed = value != child || changed
+  }
+  if changed {
+    return ty(name(type), next)
+  }
+  return type
+}
+
+fn add<W: int, S: Ty>(a: S, b: S) -> S {
+  let left: i64 = i64(a)
+  let right: i64 = i64(b)
+  let wide: i64 = left + right
+  let limit: i64 = i64(1) << (W - 1)
+  if wide < -limit {
+    return S(-limit)
+  }
+  if wide > limit - 1 {
+    return S(limit - 1)
+  }
+  return S(wide)
+}
+
+fn add_template() -> Fn {
+  for candidate in ir.fns("sat.c") {
+    if ir.name(candidate) == "add" {
+      return candidate
+    }
+  }
+  assert(false, "sat.c: helper template is missing")
+  return ir.fns("sat.c")[0]
+}
+
+fn helper(m: Mod, width: int, type: Ty) -> Fn {
+  let name = "sat_add_" + text(width)
+  let existing = ir.find(m, name)
+  if ir.live(existing) {
+    let params = ir.params(existing)
+    let returns = ir.returns(existing)
+    assert(ir.has(existing, "sat.width") &&
+           ir.meta(existing, "sat.width") == width &&
+           len(params) == 2 && ir.type(params[0]) == type &&
+           ir.type(params[1]) == type &&
+           len(returns) == 1 && returns[0] == type,
+           "sat.c: helper name collides with another function")
+    return existing
+  }
+  let created = ir.clone(m, add_template(), name, [ty(width), type])
+  if ir.live(created) {
+    assert(ir.set(m, created, "sat.width", width),
+           "sat.c: could not mark a materialized helper")
+  }
+  return created
+}
+
+fn lower_value(m: Mod, value: Val) -> bool {
+  let before = ir.type(value)
+  let after = lowered(before)
+  if after == before {
+    return false
+  }
+  assert(ir.type(m, value, after), "sat.c: could not retype a value")
+  return true
+}
+
+fn lower(m: Mod) -> bool {
+  let before = ir.revision(m)
+  var additions: list<Op> = []
+  var widths: list<int> = []
+  for op in ir.ops(m) {
+    if ir.kind(op) == "call" {
+      let outputs = ir.outs(op)
+      if len(outputs) == 1 && sat.supports(ir.type(outputs[0])) {
+        let target = ir.resolve(m, op)
+        if ir.live(target) {
+          let symbol = ir.symbol(target)
+          if symbol == "sat.add" || symbol == "sat.operator +" {
+            additions += [op]
+            widths += [int(args(ir.type(outputs[0]))[0])]
+          }
+        }
+      }
+    }
+  }
+
+  for f in ir.fns(m) {
+    for param in ir.params(f) {
+      lower_value(m, param)
+    }
+    for block in ir.blks(f) {
+      for arg in ir.args(block) {
+        lower_value(m, arg)
+      }
+      for op in ir.ops(block) {
+        for output in ir.outs(op) {
+          lower_value(m, output)
+        }
+      }
+    }
+    var returns: list<Ty> = []
+    var changed = false
+    for type in ir.returns(f) {
+      let next = lowered(type)
+      returns += [next]
+      changed = next != type || changed
+    }
+    if changed {
+      assert(ir.returns(m, f, returns),
+             "sat.c: could not retype function results")
+    }
+  }
+
+  for i in 0..len(additions) {
+    let op = additions[i]
+    let output = ir.outs(op)[0]
+    let implementation = helper(m, widths[i], ir.type(output))
+    assert(ir.live(implementation), "sat.c: could not materialize helper")
+    assert(ir.retarget(m, op, ir.name(implementation), ir.args(op)),
+           "sat.c: could not retarget addition")
+  }
+  return ir.revision(m) != before
+}
+
+fn prepare(m: Mod) -> bool {
+  var changed = lower(m)
+  changed = c.prepare(m) || changed
+  return changed
+}

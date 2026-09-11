@@ -766,6 +766,15 @@ in the module;
 the core knows none of their names. A research module can replace any or all of
 these functions without adopting a target class hierarchy.
 
+The optional `sat.c` bridge demonstrates target composition rather than adding
+`sat` to the C emitter. Its `lowered` function recursively rewrites structural
+types, so `sat<W>` is handled equally as a scalar or a tensor element. `lower`
+retypes ordinary values and function contracts, specializes a generic
+saturating-add body through `ir.clone`, and retargets resolved format calls.
+`prepare` then invokes the unchanged C preparation function. Repeating the
+bridge is byte-identical, and generated C is compiled and checked at 5-, 8-,
+and 12-bit saturation boundaries.
+
 `module.jog` contains the module header and imports. Files in `lib/*.jog` are
 appended in lexical path order and contain further declarations without another
 module header. This gives one deterministic in-memory `Mod`, not one IR per

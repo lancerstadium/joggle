@@ -404,6 +404,21 @@ if (!target)
   return mod.print_diags(stderr);
 ```
 
+The target bridge is separate from both the format and emitter:
+
+```sh
+./build/joggle run sat.c.prepare test/data/sat_c.jog \
+  -M build/modules > prepared-sat.jog
+./build/joggle emit c.source prepared-sat.jog \
+  -M build/modules > prepared-sat.c
+```
+
+`sat.c` recursively replaces concrete format types, clones one generic helper
+per encountered width, and leaves ordinary local calls for `c.source`. A
+second preparation produces identical IR. Another target can define a
+different bridge without changing `sat`, while another format can target C
+without changing `c`.
+
 The predicate uses ordinary `Ty` reflection rather than a native string parser.
 The `sat<8>` addition becomes `sat.add(a, b)` while the `i32` addition remains
 an ordinary `a + b`. `Env::call` invokes `sat.sim(8, 100, 100)` to obtain the

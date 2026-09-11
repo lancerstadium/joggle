@@ -1,0 +1,14 @@
+module sat_kernel
+use sat
+
+fn add5(a: sat<5>, b: sat<5>) -> sat<5> {
+  return sat.add(a, b)
+}
+
+fn add8(a: sat<8>, b: sat<8>) -> sat<8> {
+  return a + b
+}
+
+fn add12(a: sat<12>, b: sat<12>) -> sat<12> {
+  return sat.add(a, b)
+}

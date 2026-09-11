@@ -201,6 +201,10 @@ Emitters return `str` or `bytes` through the same read-only boundary:
 Emission never triggers hidden lowering or planning. The current C module
 supports fixed-shape tensor kernels, scalar expressions, local calls,
 structured loops, and conditions; unsupported IR fails with a diagnostic.
+With `JOGGLE_BUILD_SAT=ON`, the separate `sat.c.prepare` bridge recursively
+maps concrete `sat<W>` types to C storage, materializes width-specialized
+saturating helpers, and then calls `c.prepare`. The C module contains no
+`sat` name or format case.
 
 ## Guarantees and boundaries
 

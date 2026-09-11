@@ -37,6 +37,7 @@ int main(int argc, char** argv) {
   joggle::Env env;
   env.path(argv[2]);
   CHECK(env.load("sat"));
+  CHECK(env.load("sat.c"));
 
   joggle::Mod typed;
   constexpr std::string_view typed_source =
@@ -161,5 +162,43 @@ int main(int argc, char** argv) {
   CHECK(returns[0].string()->find("[7:0]") != std::string_view::npos);
   CHECK(returns[0].string()->find("{a[7], a} + {b[7], b}") !=
         std::string_view::npos);
+
+  joggle::Mod collision;
+  constexpr std::string_view collision_source =
+      "module collision\n"
+      "use sat\n"
+      "[sat.width: 5]\n"
+      "fn sat_add_5(a: i16, b: i16) -> i16 { return a }\n"
+      "fn add5(a: sat<5>, b: sat<5>) -> sat<5> {\n"
+      "  return sat.add(a, b)\n"
+      "}\n";
+  CHECK(joggle::parse(env, collision_source, collision, "collision.jog"));
+  CHECK(collision.verify(env));
+  const std::string before_collision = joggle::print(collision);
+  const std::uint64_t before_collision_revision = collision.revision();
+  CHECK(!joggle::run(env, "sat.c.lower", collision));
+  CHECK(joggle::print(collision) == before_collision);
+  CHECK(collision.revision() == before_collision_revision);
+
+  joggle::Mod nested_format;
+  constexpr std::string_view nested_format_source =
+      "module nested_format\n"
+      "use sat\n"
+      "use tensor\n"
+      "fn keep(x: tensor<sat<5>, [2]>) -> tensor<sat<5>, [2]> {\n"
+      "  return x\n"
+      "}\n";
+  CHECK(joggle::parse(env, nested_format_source, nested_format,
+                      "nested-format.jog"));
+  CHECK(nested_format.verify(env));
+  CHECK(joggle::run(env, "sat.c.lower", nested_format));
+  CHECK(nested_format.verify(env));
+  const joggle::Fn keep = nested_format.find_fn("keep");
+  const joggle::Ty lowered_tensor("tensor<i8, [2]>");
+  CHECK(keep.params().front().type() == lowered_tensor);
+  CHECK(keep.returns() == std::vector<joggle::Ty>{lowered_tensor});
+  const std::string once_lowered = joggle::print(nested_format);
+  CHECK(joggle::run(env, "sat.c.lower", nested_format));
+  CHECK(joggle::print(nested_format) == once_lowered);
   return 0;
 }

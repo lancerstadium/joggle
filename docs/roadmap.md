@@ -309,6 +309,11 @@ intervals and reusable same-element-type slots as open metadata. The C module
 optionally consumes the plan; a three-stage tensor chain compiles and executes
 with two physical buffers for three logical intermediates. Dynamic allocation,
 inter-function planning, and a genuinely different second target remain open.
+The optional `sat.c` bridge now proves that a module-defined parametric format
+can be recursively retyped, specialized into local helpers, emitted through C,
+compiled, and executed without adding a format case to either core or the C
+module. This strengthens the first target gate but is not counted as the still
+missing second target.
 
 Exit gate: official models from two frontends pass through one shared semantic
 library and run through at least two targets without core operator switches.

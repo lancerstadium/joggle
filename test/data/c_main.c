@@ -3,6 +3,7 @@
 
 void jog_matmul(const float* a, const float* b, float* out);
 float jog_affine(float x);
+float jog_direct(float x);
 float jog_relu(float x);
 
 int main(void) {
@@ -16,8 +17,10 @@ int main(void) {
       return 1;
   if (fabsf(jog_affine(3.0f) - 7.0f) > 1e-6f)
     return 2;
+  if (fabsf(jog_direct(3.0f) - 6.0f) > 1e-6f)
+    return 3;
   if (fabsf(jog_relu(-2.0f)) > 1e-6f ||
       fabsf(jog_relu(3.0f) - 3.0f) > 1e-6f)
-    return 3;
+    return 4;
   return 0;
 }
