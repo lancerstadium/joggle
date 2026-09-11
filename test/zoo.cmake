@@ -3,6 +3,7 @@ if(NOT DEFINED OUT OR OUT STREQUAL "")
 endif()
 
 set(known
+  mnist-8
   mobilenetv2-7
   squeezenet1.1-7
   squeezenet1.0-13-qdq
@@ -51,6 +52,12 @@ function(fetch_github name revision source sha256)
   endif()
 endfunction()
 
+fetch_github(
+  mnist-8
+  4f43949841cb55a0b98dc8fcd045431ccafd9f96
+  validated/vision/classification/mnist/model/mnist-8.onnx
+  2f06e72de813a8635c9bc0397ac447a601bdbfa7df4bebc278723b958831c9bf
+)
 fetch_github(
   mobilenetv2-7
   4f43949841cb55a0b98dc8fcd045431ccafd9f96
@@ -136,14 +143,18 @@ fetch_github(
   dfc317b56d065a3e297240a9e9b9118ff2260790b5850f4be2bc6ea1bcc65e80
 )
 
-if(DEFINED APP AND APP)
-  set(archive "${OUT}/mobilenetv2-7.tar.gz")
+function(fetch_app name source top sha256)
+  if(NOT name IN_LIST MODELS)
+    return()
+  endif()
+  set(archive "${OUT}/${name}.tar.gz")
+  set(stage "${OUT}/.app-${name}")
   file(
     DOWNLOAD
-      "https://media.githubusercontent.com/media/onnx/models/4f43949841cb55a0b98dc8fcd045431ccafd9f96/validated/vision/classification/mobilenet/model/mobilenetv2-7.tar.gz"
+      "https://media.githubusercontent.com/media/onnx/models/4f43949841cb55a0b98dc8fcd045431ccafd9f96/${source}"
       "${archive}"
     EXPECTED_HASH
-      "SHA256=b463ad62dae99f13afd88549ca7d43e9bda6876614f3592ebb41177e1db0fcc5"
+      "SHA256=${sha256}"
     SHOW_PROGRESS
     STATUS status
     TLS_VERIFY ON
@@ -151,9 +162,30 @@ if(DEFINED APP AND APP)
   list(GET status 0 code)
   list(GET status 1 message)
   if(NOT code EQUAL 0)
-    message(FATAL_ERROR "MobileNetV2 application download failed: ${message}")
+    message(FATAL_ERROR "${name} application download failed: ${message}")
   endif()
-  file(MAKE_DIRECTORY "${OUT}/app")
-  file(ARCHIVE_EXTRACT INPUT "${archive}" DESTINATION "${OUT}/app")
+  file(REMOVE_RECURSE "${stage}" "${OUT}/app/${name}")
+  file(MAKE_DIRECTORY "${stage}" "${OUT}/app")
+  file(ARCHIVE_EXTRACT INPUT "${archive}" DESTINATION "${stage}")
+  if(NOT IS_DIRECTORY "${stage}/${top}")
+    message(FATAL_ERROR "${name} archive has no ${top} directory")
+  endif()
+  file(RENAME "${stage}/${top}" "${OUT}/app/${name}")
+  file(REMOVE_RECURSE "${stage}")
   file(REMOVE "${archive}")
+endfunction()
+
+if(DEFINED APP AND APP)
+  fetch_app(
+    mnist-8
+    validated/vision/classification/mnist/model/mnist-8.tar.gz
+    model
+    2f47e338faddbb30488abd83e8179ce44882de465165bb3a5b2640719f64f70c
+  )
+  fetch_app(
+    mobilenetv2-7
+    validated/vision/classification/mobilenet/model/mobilenetv2-7.tar.gz
+    mobilenetv2-7
+    b463ad62dae99f13afd88549ca7d43e9bda6876614f3592ebb41177e1db0fcc5
+  )
 endif()

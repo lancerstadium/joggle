@@ -27,6 +27,7 @@ fn live(b: Blk) -> bool;
 fn live(op: Op) -> bool;
 fn live(v: Val) -> bool;
 fn kind(op: Op) -> str;
+fn form(op: Op) -> str;
 fn callee(op: Op) -> str;
 fn name(f: Fn) -> str;
 fn name(v: Val) -> str;

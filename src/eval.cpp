@@ -1680,6 +1680,34 @@ private:
         }
         return Items{Item(Attr(std::string(value)))};
       }
+    } else if (name == "form" && args.size() == 1) {
+      if (const auto* op = as<Op>(args[0]); op && *op) {
+        std::string_view value;
+        switch (op->store_->ops[op->id_].data.form) {
+        case detail::Form::hidden:
+          value = "hidden";
+          break;
+        case detail::Form::expr:
+          value = "expr";
+          break;
+        case detail::Form::let:
+          value = "let";
+          break;
+        case detail::Form::var:
+          value = "var";
+          break;
+        case detail::Form::assign:
+          value = "assign";
+          break;
+        case detail::Form::compound:
+          value = "compound";
+          break;
+        case detail::Form::index_assign:
+          value = "index_assign";
+          break;
+        }
+        return Items{Item(Attr(std::string(value)))};
+      }
     } else if (name == "callee" && args.size() == 1) {
       if (const auto* op = as<Op>(args[0]))
         return Items{Item(Attr(std::string(op->callee())))};

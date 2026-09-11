@@ -1638,16 +1638,28 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
         out << " = "
             << (op.kind == Op::Kind::constant ? attr_text(op.literal)
                                               : render_call(store, op));
-      } else if (op.form == detail::Form::assign)
-        out << name << " = " << render_value(store, op.args.back());
-      else if (op.form == detail::Form::compound) {
-        const std::string_view symbol(
-            op.callee.data() + std::string_view("operator ").size(),
-            op.callee.size() - std::string_view("operator ").size());
-        out << name << ' ' << symbol << "= "
-            << render_value(store, op.args.back());
-      }
-      else if (op.form == detail::Form::index_assign) {
+      } else if (op.form == detail::Form::assign) {
+        out << name << " = ";
+        if (op.kind == Op::Kind::constant)
+          out << attr_text(op.literal);
+        else if (!op.args.empty())
+          out << render_value(store, op.args.back());
+        else
+          out << "<invalid>";
+      } else if (op.form == detail::Form::compound) {
+        if (op.kind == Op::Kind::constant) {
+          out << name << " = " << attr_text(op.literal);
+        } else if (!op.args.empty() &&
+                   std::string_view(op.callee).starts_with("operator ")) {
+          const std::string_view symbol(
+              op.callee.data() + std::string_view("operator ").size(),
+              op.callee.size() - std::string_view("operator ").size());
+          out << name << ' ' << symbol << "= "
+              << render_value(store, op.args.back());
+        } else {
+          out << name << " = <invalid>";
+        }
+      } else if (op.form == detail::Form::index_assign) {
         out << name << "[";
         for (std::size_t index = 1; index + 1 < op.args.size(); ++index) {
           if (index != 1)
@@ -2872,6 +2884,37 @@ bool Mod::verify(const Env& env) {
                        op.loc);
     if (op.kind == Op::Kind::call && op.callee.empty())
       detail::add_diag(store.diags, "call has no callee", op.loc);
+    const bool binds = op.form == detail::Form::let ||
+                       op.form == detail::Form::var ||
+                       op.form == detail::Form::assign ||
+                       op.form == detail::Form::compound ||
+                       op.form == detail::Form::index_assign;
+    if (binds &&
+        (op.outs.empty() ||
+         std::any_of(op.outs.begin(), op.outs.end(), [&](std::uint32_t id) {
+           return id >= store.vals.size() ||
+                  store.vals[id].data.name.empty();
+         })))
+      detail::add_diag(store.diags,
+                       "visible operation requires named results", op.loc);
+    if ((op.form == detail::Form::assign ||
+         op.form == detail::Form::compound ||
+         op.form == detail::Form::index_assign) &&
+        op.outs.size() != 1)
+      detail::add_diag(store.diags,
+                       "assignment must produce exactly one result", op.loc);
+    if (op.kind == Op::Kind::call && op.form == detail::Form::assign &&
+        op.args.empty())
+      detail::add_diag(store.diags, "assignment call has no value", op.loc);
+    if (op.kind == Op::Kind::call && op.form == detail::Form::compound &&
+        (op.args.size() < 2 ||
+         !std::string_view(op.callee).starts_with("operator ")))
+      detail::add_diag(store.diags,
+                       "compound assignment call is inconsistent", op.loc);
+    if (op.form == detail::Form::index_assign &&
+        (op.kind != Op::Kind::call || op.args.size() < 3))
+      detail::add_diag(store.diags,
+                       "indexed assignment is inconsistent", op.loc);
     if ((op.kind == Op::Kind::call || op.kind == Op::Kind::constant) &&
         op.outs.size() > 1) {
       if (op.form == detail::Form::hidden)

@@ -161,7 +161,7 @@ The built-in `ir` module is the complete reflection boundary:
 | --- | --- |
 | `fns`, `find`, `params`, `returns`, `generics`, `blks`, `ops`, `uses` | Find local or exactly qualified loaded functions and traverse signatures, explicit call terms, structure, and dependencies. |
 | `args`, `outs`, `def`, `users` | Read operation dataflow in both directions. |
-| `live`, `blk`, `kind`, `callee`, `name`, `key`, `type` | Query handle state, readable or ephemeral identity, structure, and structural `Ty`. |
+| `live`, `blk`, `kind`, `form`, `callee`, `name`, `key`, `type` | Query handle state, operation kind and binding form, readable or ephemeral identity, and structural `Ty`. |
 | `resolve`, `symbol`, `accepts`, `match` | Resolve calls, identify functions, and select against explicit signatures. |
 | `where`, `invoke<R>` | Select functions by open metadata and execute an ordinary typed `fn(Mod, Op) -> R` transactionally. |
 | `is_const`, `constant` | Query constant IR values. |
@@ -176,6 +176,13 @@ The built-in `ir` module is the complete reflection boundary:
 These functions operate on generic handles and contain no NN operator names.
 Adding an importer, optimization, or target module therefore does not extend
 the reflection ABI or add a parser case.
+
+`kind` describes computation structure (`call`, `constant`, `loop`, branch,
+return, or yield); `form` describes how a call or constant is bound (`let`,
+`var`, assignment, compound assignment, expression, or hidden intermediate).
+This distinction is semantic for mutable source bindings. Emitters consume it
+directly instead of guessing declaration or update behavior from repeated
+value names.
 
 ### Deterministic VM boundary
 
@@ -199,11 +206,11 @@ covers `bool`, `i64`, `index`, `int`, `f32`, and `f64`, static tensors of those
 elements, typed arithmetic and conversion, comparisons, Boolean/bitwise
 operations, structured conditions and range loops, allocation/fill, and
 checked scalar-list selection and linear or multidimensional tensor indexing.
-It covers the complete current `math` surface: `sqrt`, `exp`, `ceil`, `pow`,
-`tanh`, and ties-to-even rounding for both floating formats. C and VM execute
-the same scalar conformance cases. These operations use the host standard
-library; their presence does not claim cross-platform bit identity for
-transcendentals.
+It covers the complete current `math` surface: `abs`, `ceil`, `erf`, `exp`,
+`floor`, `log`, `pow`, `round_even`, `sqrt`, and `tanh` for both floating
+formats. C and VM execute the same scalar conformance cases. These operations
+use the host standard library; their presence does not claim cross-platform
+bit identity for transcendentals.
 Invalid integer division, shifts, images, entries, input sizes, shapes, indices,
 or out-of-range conversions fail through the normal module diagnostic boundary.
 The native runner tokenizes and decodes the selected function once per call,
@@ -841,8 +848,10 @@ range loop, indexing, and scalar addition; that prepared model is then emitted,
 compiled, and executed. `c.source` does not invoke the transform.
 Each preparation round first composes `opt.fold` and `opt.copy`, so exposed
 static shape expressions are simplified without erasing nested assignments
-that the readable surface form must retain. The C module directly prints those
-remaining scalar or tensor copies. It otherwise owns only actual C
+that the readable surface form must retain. The C module reads `ir.form` for
+declarations and updates; it does not infer mutation from callee names or
+dataflow coincidences. It directly prints remaining scalar or tensor copies
+and otherwise owns only actual C
 capabilities: scalar/list and
 tensor access, standard floating-point math calls, structured control, and
 fixed tensor storage. Structured short-circuit branches are recovered as C

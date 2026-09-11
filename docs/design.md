@@ -142,7 +142,7 @@ in the official ONNX Model Zoo GitHub media store, then validates the SHA-256
 values published by its Git LFS manifests. Configure and normal builds remain
 offline.
 
-The normal matrix contains `mobilenetv2-7`, `squeezenet1.1-7`,
+The normal matrix contains `mnist-8`, `mobilenetv2-7`, `squeezenet1.1-7`,
 `squeezenet1.0-13-qdq`, `resnet18-v1-7`, `tinyyolov2-8`,
 `tiny-yolov3-11`, `ultraface-rfb-320`, `ssd-mobilenetv1-12`,
 `shufflenet-v2-12`, `densenet-12`, `googlenet-12`, and both the QDQ and
@@ -859,9 +859,9 @@ weight, and output dimensions are structural generics. The body uses the same
 loops, conditions, tensor indexing, and scalar operators as user code.
 `nn.global_avg_pool2d`, `nn.batch_norm`, and `tensor.reshape` use the same
 representation for spatial reduction, channel normalization, and shape change.
-Only square root remains a named scalar primitive in the narrow `math` module.
-Tests expand each body, verify the resulting nested structure, and round-trip
-it.
+Scalar nonlinearities remain named primitives in the narrow `math` module
+rather than being hidden inside NN operators. Tests expand each body, verify
+the resulting nested structure, and round-trip it.
 
 Average and maximum 2-D pooling share one explicit
 `kernel/stride/pad/dilation/axes` convention. Their ordinary bodies cover NCHW
@@ -1200,6 +1200,13 @@ comparison of all 1,000 official outputs. Logical `&&` and `||` values remain
 structured branches in the IR and
 are recovered from their forwarding arm by the C module; the core has no C
 expression case.
+
+Operation kind and source binding form remain separate reflected facts. In
+particular, a folded constant can still be a mutable declaration or an
+assignment. `ir.form` exposes that fact to C and other consumers, preventing an
+emitter from guessing updates through equal names or call operands. The normal
+MNIST application gate caught this class of error when a folded
+`found = true` inside max pooling was omitted by the former heuristic.
 
 ## M10 deterministic-VM slice
 

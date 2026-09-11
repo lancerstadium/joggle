@@ -2509,6 +2509,32 @@ int main(int argc, char** argv) {
   CHECK(partial_text.find("let extent: int = 3") != std::string::npos);
   CHECK(partial_text.find("return x + extent") != std::string::npos);
 
+  constexpr std::string_view folded_assignment_source =
+      "module folded_assignment\n"
+      "use base\n"
+      "fn work() -> int {\n"
+      "  var value: int = 1\n"
+      "  value = base.copy(2)\n"
+      "  value += 3\n"
+      "  return value\n"
+      "}\n";
+  joggle::Mod folded_assignment;
+  CHECK(joggle::parse(env, folded_assignment_source, folded_assignment,
+                      "folded-assignment.jog"));
+  CHECK(folded_assignment.verify(env));
+  CHECK(joggle::run(env, "opt.fold", folded_assignment));
+  CHECK(folded_assignment.verify(env));
+  const std::string folded_assignment_text = joggle::print(folded_assignment);
+  CHECK(folded_assignment_text.find("value = 2") != std::string::npos);
+  CHECK(folded_assignment_text.find("value += 3") != std::string::npos);
+  joggle::Mod folded_assignment_roundtrip;
+  CHECK(joggle::parse(env, folded_assignment_text,
+                      folded_assignment_roundtrip,
+                      "folded-assignment-roundtrip.jog"));
+  CHECK(folded_assignment_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(folded_assignment,
+                                   folded_assignment_roundtrip));
+
   joggle::Attr clean_report;
   CHECK(joggle::run(env, "script.clean_pure", cleaned, clean_report));
   CHECK(cleaned.verify(env));

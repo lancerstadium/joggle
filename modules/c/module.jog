@@ -91,7 +91,10 @@ fn pad(depth: int) -> str {
 
 fn expr(m: Mod, value: Val) -> str {
   if ir.is_const(value) {
-    return text(ir.constant(value))
+    let source = ir.def(value)
+    if ir.form(source) != "var" && !reuses(source) {
+      return text(ir.constant(value))
+    }
   }
   if ir.name(value) != "" {
     return val(value)
@@ -162,17 +165,13 @@ fn expr(m: Mod, value: Val) -> str {
   return ""
 }
 
-fn update(output: Val, inputs: list<Val>) -> bool {
-  for input in inputs {
-    if ir.name(output) == ir.name(input) && ir.name(output) != "" {
-      return true
-    }
-  }
-  return false
+fn reuses(op: Op) -> bool {
+  let form = ir.form(op)
+  return form == "assign" || form == "compound" || form == "index_assign"
 }
 
-fn lhs(output: Val, inputs: list<Val>) -> str {
-  if update(output, inputs) {
+fn lhs(op: Op, output: Val) -> str {
+  if reuses(op) {
     return val(output)
   }
   return scalar(ir.type(output)) + " " + val(output)
@@ -409,7 +408,7 @@ fn tensor_new(m: Mod, op: Op, depth: int) -> str {
   let n = count(type)
   let indent = pad(depth)
   var out = ""
-  if !mem.planned(output) {
+  if !reuses(op) && !mem.planned(output) {
     out = indent + scalar(tensor.elem(type)) + " " + val(output) + "[" +
           text(n) + "];\n"
   }
@@ -438,7 +437,7 @@ fn tensor_literal(op: Op, depth: int) -> str {
     storage = 1
   }
   var out = ""
-  if !mem.planned(output) {
+  if !reuses(op) && !mem.planned(output) {
     out = indent + scalar(tensor.elem(type)) + " " + val(output) + "[" +
           text(storage) + "];\n"
   }
@@ -453,33 +452,6 @@ fn tensor_literal(op: Op, depth: int) -> str {
   return out
 }
 
-fn defined(op: Op, output: Val) -> bool {
-  let name = ir.name(output)
-  if name == "" {
-    return false
-  }
-  let body = ir.blk(op)
-  for value in ir.args(body) {
-    if ir.name(value) == name {
-      return true
-    }
-  }
-  var before = true
-  for prior in ir.ops(body) {
-    if prior == op {
-      before = false
-    }
-    if before {
-      for value in ir.outs(prior) {
-        if ir.name(value) == name {
-          return true
-        }
-      }
-    }
-  }
-  return false
-}
-
 fn copy(m: Mod, op: Op, depth: int) -> str {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -491,7 +463,7 @@ fn copy(m: Mod, op: Op, depth: int) -> str {
   let indent = pad(depth)
   if tensor.valid(type) {
     var out = ""
-    if !defined(op, output) && !mem.planned(output) {
+    if !reuses(op) && !mem.planned(output) {
       out = indent + scalar(tensor.elem(type)) + " " + val(output) + "[" +
             text(count(type)) + "];\n"
     }
@@ -501,10 +473,7 @@ fn copy(m: Mod, op: Op, depth: int) -> str {
     }
     return out
   }
-  if defined(op, output) {
-    return indent + val(output) + " = " + expr(m, input) + ";\n"
-  }
-  return indent + scalar(type) + " " + val(output) + " = " +
+  return indent + lhs(op, output) + " = " +
          expr(m, input) + ";\n"
 }
 
@@ -526,7 +495,7 @@ fn call(m: Mod, op: Op, depth: int) -> str {
     if ir.name(outputs[0]) == "" {
       return ""
     }
-    return indent + scalar(ir.type(outputs[0])) + " " + val(outputs[0]) +
+    return indent + lhs(op, outputs[0]) +
            " = " + index(m, inputs[0], inputs) + ";\n"
   }
   if name == "operator []=" {
@@ -556,7 +525,7 @@ fn call(m: Mod, op: Op, depth: int) -> str {
     if ir.name(outputs[0]) == "" {
       return ""
     }
-    return indent + lhs(outputs[0], inputs) + " = " +
+    return indent + lhs(op, outputs[0]) + " = " +
            expr(m, inputs[0]) + " " + binary_op + " " +
            expr(m, inputs[1]) + ";\n"
   }
@@ -567,7 +536,7 @@ fn call(m: Mod, op: Op, depth: int) -> str {
     if ir.name(outputs[0]) == "" {
       return ""
     }
-    return indent + lhs(outputs[0], inputs) + " = " + unary_op +
+    return indent + lhs(op, outputs[0]) + " = " + unary_op +
            expr(m, inputs[0]) + ";\n"
   }
 
@@ -576,7 +545,7 @@ fn call(m: Mod, op: Op, depth: int) -> str {
     if ir.name(outputs[0]) == "" {
       return ""
     }
-    return indent + lhs(outputs[0], inputs) + " = (" + scalar(ty(name)) + ")(" +
+    return indent + lhs(op, outputs[0]) + " = (" + scalar(ty(name)) + ")(" +
            expr(m, inputs[0]) + ");\n"
   }
 
@@ -586,7 +555,7 @@ fn call(m: Mod, op: Op, depth: int) -> str {
       if ir.name(outputs[0]) == "" {
         return ""
       }
-      return indent + lhs(outputs[0], inputs) + " = " + math_name + "(" +
+      return indent + lhs(op, outputs[0]) + " = " + math_name + "(" +
              args(m, inputs) + ");\n"
     }
   }
@@ -600,7 +569,7 @@ fn call(m: Mod, op: Op, depth: int) -> str {
   if tensor.valid(ir.type(output)) {
     let type = ir.type(output)
     var out = ""
-    if !mem.planned(output) {
+    if !reuses(op) && !mem.planned(output) {
       out = indent + scalar(tensor.elem(type)) + " " + val(output) + "[" +
             text(count(type)) + "];\n"
     }
@@ -613,7 +582,7 @@ fn call(m: Mod, op: Op, depth: int) -> str {
   if ir.name(output) == "" {
     return ""
   }
-  return indent + lhs(output, inputs) + " = " + callee + "(" +
+  return indent + lhs(op, output) + " = " + callee + "(" +
          actuals + ");\n"
 }
 
@@ -638,14 +607,17 @@ fn constant(op: Op, depth: int) -> str {
   if ir.name(output) == "" {
     return ""
   }
-  for user in ir.users(output) {
-    for next in ir.outs(user) {
-      if update(next, ir.args(user)) {
-        return pad(depth) + scalar(ir.type(output)) + " " + val(output) +
-               " = " + text(ir.constant(output)) + ";\n"
-      }
-    }
+  let form = ir.form(op)
+  if form == "var" {
+    return pad(depth) + scalar(ir.type(output)) + " " + val(output) +
+           " = " + text(ir.constant(output)) + ";\n"
   }
+  if reuses(op) {
+    return pad(depth) + val(output) + " = " + text(ir.constant(output)) +
+           ";\n"
+  }
+  assert(form == "hidden" || form == "expr" || form == "let",
+         "c: unsupported constant form " + form)
   return ""
 }
 

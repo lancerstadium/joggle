@@ -347,6 +347,13 @@ intervals and reusable same-element-type slots as open metadata. The C module
 optionally consumes the plan; a three-stage tensor chain compiles and executes
 with two physical buffers for three logical intermediates. Dynamic allocation,
 inter-function planning, and production-grade target runtimes remain open.
+The official MNIST application is the normal whole-network numerical gate. It
+passes one protobuf input through import, semantic conversion, VM execution,
+memory planning, generated C and generated header compilation, then compares
+all ten outputs with the official protobuf result. This medium case is fast
+enough for routine validation and caught an emitter bug where a folded literal
+assignment inside max pooling was lost. The fix exposes the operation's binding
+form through generic `ir.form`; C no longer infers mutation from equal names.
 After full semantic-body exposure, the official MobileNetV2 model completes C
 preparation, static memory planning, C99 emission, strict compilation, and an
 all-output comparison against the official ONNX Zoo protobuf result. The gate

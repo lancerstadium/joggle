@@ -57,6 +57,12 @@ fn select() -> i64 {
   return value
 }
 
+fn assign_literal() -> bool {
+  var value = false
+  value = true
+  return value
+}
+
 fn weights() -> tensor<f32, [2]> {
   let values: tensor<f32, [2]> = tensor.literal(hex"0000803f00000040")
   return values

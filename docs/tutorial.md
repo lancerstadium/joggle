@@ -377,9 +377,21 @@ runs the same ordinary IR through VM and compiled C, and checks both results
 against that output. Normal builds
 remain offline; neither download runs during configure.
 
-The application-sized numerical gate is separately opt-in because it expands
-and executes a complete network. Fetch the hash-pinned ONNX Zoo archive with
-its official protobuf input and output, then enable its extracted case:
+The normal numerical application gate uses official MNIST data. It is a real
+convolutional network but remains small enough to inspect and execute through
+the scalar reference VM:
+
+```sh
+cmake -DOUT=.cache/onnx-zoo -DMODELS=mnist-8 -DAPP=ON \
+  -P test/zoo.cmake
+cmake -S . -B build -DJOGGLE_BUILD_ONNX=ON \
+  -DJOGGLE_EXAMPLE_MNIST=.cache/onnx-zoo/app/mnist-8
+cmake --build build
+ctest --test-dir build -R onnx-app-mnist --output-on-failure
+```
+
+The application-sized MobileNetV2 stress gate uses the same driver and is
+separately opt-in because its fully exposed scalar execution is much longer:
 
 ```sh
 cmake -DOUT=.cache/onnx-zoo -DMODELS=mobilenetv2-7 -DAPP=ON \

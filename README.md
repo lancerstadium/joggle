@@ -223,10 +223,12 @@ subgraphs remain ordinary internal functions.
 
 The test matrix downloads pinned files only when its explicit ONNX Zoo gate is
 configured. Normal configure and build remain offline. Covered models include
-MobileNetV2, SqueezeNet, ResNet-18, Tiny YOLO, UltraFace, SSD-MobileNet,
+MNIST, MobileNetV2, SqueezeNet, ResNet-18, Tiny YOLO, UltraFace, SSD-MobileNet,
 ShuffleNet, DenseNet, GoogLeNet, EfficientNet QDQ/INT8, and BiDAF. Coverage is
 reported conservatively: an imported or typed source call is not described as
-executable semantic support. MobileNetV2 additionally exercises atomic
+executable semantic support. MNIST is the normal end-to-end application gate;
+it executes official data through both VM and generated C without reducing the
+example to one synthetic operator. MobileNetV2 additionally exercises atomic
 network-wide body expansion and canonical round trip on the resulting
 loop-level IR. An independent, opt-in application gate executes its official
 ONNX Zoo input through both the deterministic VM and compiled C, then compares
@@ -234,10 +236,9 @@ all 1,000 outputs with the official result. Source construction carries only
 mutable bindings actually
 changed by nested control flow, so readable `var` syntax does not replicate
 every in-scope binding across every exposed tensor loop.
-The complete driver, generated-C harness, reproducible pipeline, and artifact
-guide live together in the runnable
-[`examples/mobilenet`](examples/mobilenet) application rather than being hidden
-as test-only code.
+The shared driver, generated-C harness, reproducible pipelines, and artifact
+guide live together in [`examples/onnx`](examples/onnx) rather than being
+duplicated between model-specific examples or hidden as test-only code.
 
 ## Analyze and emit
 
@@ -280,7 +281,8 @@ literal-list indexing, and the standard floating-point functions declared by
 reusable static evaluator and copy propagation before exposing remaining
 calls. C and VM cover the same current ten-primitive `math` surface through
 exact `f32` and `f64` overloads; host-libm transcendentals are not presented as
-cross-platform bit-exact implementations. Generic NN bodies defer only calls
+cross-platform bit-exact implementations. This is a defined portable subset,
+not yet a complete numerical library. Generic NN bodies defer only calls
 that depend on their element type, allowing specialization to select a precise
 built-in or user-supplied overload instead of accepting every `Ty` eagerly.
 The preparation policy is not a second target interface. `c.accepts(Mod, Op)`

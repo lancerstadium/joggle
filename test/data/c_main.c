@@ -55,5 +55,7 @@ int main(void) {
     return 10;
   if (jog_select() != 7)
     return 11;
+  if (!jog_assign_literal())
+    return 14;
   return 0;
 }
