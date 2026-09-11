@@ -164,8 +164,10 @@ Its inference and conversion relations are ordinary `fn(Mod, Op) -> bool`
 functions selected through open metadata. Conversion preserves its explicit
 compute-then-shape order through module-owned `phase` attributes, not a core
 pipeline kind. The two-argument `onnx.nn.convert(m, rules)` accepts an explicit
-function list, so an extension module can contribute another relation without
-editing `onnx.nn`.
+function list and performs its own phase selection, so an extension module can
+append inference and conversion relations without editing `onnx.nn` or
+reimplementing its driver. The one-argument overload supplies the built-in
+module functions as that list.
 On the official MobileNetV2 this covers every compute node. The model
 marker and tensor payloads remain ONNX transport calls; unknown operators in
 other models remain open rather than acquiring guessed semantics.
@@ -187,7 +189,8 @@ The separately selected `tflite.nn` relation then converts all 66 compute calls
 in that model to shared `nn`/`tensor` functions. Its mappings are ordinary
 metadata-selected functions using the same open relation boundary as ONNX,
 without sharing a frontend dispatch table. The corresponding two-argument
-`tflite.nn.convert` overload likewise accepts an explicit relation list.
+`tflite.nn.convert` overload likewise owns dependency preparation while
+accepting an explicit relation list.
 Logical-axis operands retain NHWC and both TFLite weight layouts without
 creating a second IR or a layout-specific core operation. Like the ONNX
 relation, it commits a new

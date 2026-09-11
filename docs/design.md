@@ -226,8 +226,10 @@ evaluator knows neither the attribute key nor the operator vocabulary. The
 module-owned `phase` value preserves its two conversion sweeps. Its
 two-argument `convert` overload accepts an explicit `Fn` list, so a separate
 module can contribute a new conversion relation without editing the built-in
-bridge. Another module may choose different metadata and policy without a
-registry, callback class, or parser extension.
+bridge. It filters inference, compute conversion, and shape conversion phases
+itself; callers compose function sets rather than copying the driver. Another
+module may choose different metadata and policy without a registry, callback
+class, or parser extension.
 
 The independently authored `tflite.nn` bridge uses the same two primitives for
 semantic conversion, despite different source metadata and layout rules. Its

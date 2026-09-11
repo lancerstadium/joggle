@@ -170,9 +170,9 @@ int main(int argc, char** argv) {
   constexpr std::string_view custom_onnx_source =
       "module custom.onnx\n"
       "use onnx\n"
-      "fn main(x: i32) -> i32 {\n"
+      "fn main(x: i32) -> _ {\n"
       "  [onnx: {}]\n"
-      "  let y: i32 = onnx.Custom(x)\n"
+      "  let y = onnx.Custom(x)\n"
       "  return y\n"
       "}\n";
   joggle::Mod custom_onnx;
@@ -185,7 +185,11 @@ int main(int argc, char** argv) {
   std::size_t copies = 0;
   for (joggle::Op op : custom_onnx.ops()) {
     custom_calls += op.callee() == "onnx.Custom" ? 1 : 0;
-    copies += op.callee() == "base.copy" ? 1 : 0;
+    if (op.callee() == "base.copy") {
+      copies += 1;
+      CHECK(op.outs().size() == 1 &&
+            op.outs()[0].type() == joggle::Ty("i32"));
+    }
   }
   CHECK(custom_calls == 0 && copies == 1);
   CHECK(joggle::run(env, "script.tensor_type_probe", network_cpp));

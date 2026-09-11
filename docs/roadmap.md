@@ -275,11 +275,13 @@ Open function metadata now also supports semantic relation discovery.
 ONNX inference and conversion relations self-identify in their owning module,
 removing both central operator-name dispatch chains while leaving import and
 conversion explicit. Module-owned phases preserve conversion order, and an
-explicit relation-list entry allows out-of-module extension. The separate
-TFLite bridge uses the same boundary while retaining a different quantization
-policy. A malformed relation signature is rejected without changing model text
-or revision. Host transform entry selection now uses normal `Mod` overload
-resolution, so the default and explicit-relation forms share the same symbol.
+explicit relation-list entry performs its own phase selection, allowing an
+external module to append type and conversion relations without copying the
+driver. The separate TFLite bridge uses the same boundary while retaining a
+different quantization policy. A malformed relation signature is rejected
+without changing model text or revision. Host transform entry selection uses
+normal `Mod` overload resolution, so the default and explicit-relation forms
+share the same symbol.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

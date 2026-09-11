@@ -2021,20 +2021,20 @@ fn pool_type(m: Mod, op: Op) -> bool {
   )
 }
 
-fn infer_once(m: Mod) -> bool {
+fn infer_once(m: Mod, rules: list<Fn>) -> bool {
   var changed = false
-  let rules = ir.where(ir.fns("onnx.nn"), "phase", "infer")
-  let common = ir.where(rules, "on", "*")
+  let selected = ir.where(rules, "phase", "infer")
+  let common = ir.where(selected, "on", "*")
   for op in ir.ops(m) {
-    let selected = common + ir.where(rules, "on", ir.callee(op))
-    for rule in selected {
+    let matches = common + ir.where(selected, "on", ir.callee(op))
+    for rule in matches {
       changed = ir.invoke(m, op, rule) || changed
     }
   }
   return changed
 }
 
-fn infer(m: Mod) -> bool {
+fn infer(m: Mod, rules: list<Fn>) -> bool {
   var changed = false
   var again = true
   var exhausted = false
@@ -2042,7 +2042,7 @@ fn infer(m: Mod) -> bool {
   for round in 0..limit {
     if again {
       let before = ir.revision(m)
-      infer_once(m)
+      infer_once(m, rules)
       again = ir.revision(m) != before
       changed = again || changed
       if round == limit - 1 && again {
@@ -2052,6 +2052,10 @@ fn infer(m: Mod) -> bool {
   }
   base.assert(!exhausted, "onnx.nn.infer did not converge")
   return changed
+}
+
+fn infer(m: Mod) -> bool {
+  return infer(m, ir.fns("onnx.nn"))
 }
 
 fn ints(m: Mod, before: Op, value: Attr) -> Val {
@@ -2995,21 +2999,20 @@ fn convert_identity(m: Mod, op: Op) -> bool {
 }
 
 fn convert(m: Mod, rules: list<Fn>) -> bool {
-  var changed = false
-  for op in ir.ops(m) {
-    for rule in ir.where(rules, "on", ir.callee(op)) {
-      changed = ir.invoke(m, op, rule) || changed
+  var changed = infer(m, rules)
+  changed = ir.use(m, "nn") || changed
+  changed = ir.use(m, "quant") || changed
+  for phase in ["compute", "shape"] {
+    let selected = ir.where(rules, "phase", phase)
+    for op in ir.ops(m) {
+      for rule in ir.where(selected, "on", ir.callee(op)) {
+        changed = ir.invoke(m, op, rule) || changed
+      }
     }
   }
   return changed
 }
 
 fn convert(m: Mod) -> bool {
-  var changed = infer(m)
-  changed = ir.use(m, "nn") || changed
-  changed = ir.use(m, "quant") || changed
-  let rules = ir.fns("onnx.nn")
-  changed = convert(m, ir.where(rules, "phase", "compute")) || changed
-  changed = convert(m, ir.where(rules, "phase", "shape")) || changed
-  return changed
+  return convert(m, ir.fns("onnx.nn"))
 }

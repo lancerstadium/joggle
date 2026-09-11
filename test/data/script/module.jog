@@ -54,6 +54,16 @@ fn reject_bad_rule(m: Mod) -> bool {
   return false
 }
 
+[phase: "infer", on: "onnx.Custom"]
+fn infer_custom_onnx(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 {
+    return false
+  }
+  return ir.type(m, outputs[0], ir.type(inputs[0]))
+}
+
 [phase: "compute", on: "onnx.Custom"]
 fn custom_onnx(m: Mod, op: Op) -> bool {
   if !ir.retarget(m, op, "base.copy", ir.args(op)) {
@@ -64,7 +74,7 @@ fn custom_onnx(m: Mod, op: Op) -> bool {
 }
 
 fn extend_onnx(m: Mod) -> bool {
-  let rules = ir.where(ir.fns("script"), "phase", "compute")
+  let rules = ir.fns("onnx.nn") + ir.fns("script")
   return onnx.nn.convert(m, rules)
 }
 
