@@ -3,7 +3,9 @@
 [`module.jog`](module.jog) declares one monomorphic tensor function without a
 body. That ordinary `Fn` is the complete ABI contract. The portable C module
 emits a qualified prototype and calls it; no operator registration or C-emitter
-edit is required. [`kernel.c`](kernel.c) provides the implementation.
+edit is required. [`kernel.c`](kernel.c) provides the implementation. The test
+harness contains no handwritten model prototype; the generated `model.h` is
+force-included for both the implementation and its callers.
 
 From the repository root:
 
