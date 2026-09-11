@@ -607,6 +607,9 @@ Fn Env::match(Op call, std::span<const Fn> candidates,
   std::vector<Ty> returns;
   for (const Val value : call.outs())
     returns.push_back(value.type());
+  const Ty applied{std::string(call.callee())};
+  const std::vector<Ty> explicit_arguments =
+      applied.args().empty() ? std::vector<Ty>{} : applied.args();
   const std::vector<Val> context = call.blk().fn().generics();
   std::vector<Fn> live;
   for (Fn candidate : candidates)
@@ -614,8 +617,8 @@ Fn Env::match(Op call, std::span<const Fn> candidates,
       live.push_back(candidate);
   std::vector<Ty> resolved_returns;
   const Fn result = detail::resolve_overload(
-      live, arguments, {}, &resolved_returns, ambiguous, context, nullptr,
-      returns);
+      live, arguments, explicit_arguments, &resolved_returns, ambiguous,
+      context, nullptr, returns);
   if (!result || resolved_returns.size() != returns.size())
     return {};
   for (std::size_t index = 0; index < returns.size(); ++index) {

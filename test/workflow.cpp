@@ -1094,6 +1094,26 @@ int main(int argc, char** argv) {
   CHECK(incompatible_result.diags().back().message.find(
             "result types do not match") != std::string::npos);
 
+  joggle::Mod explicit_match;
+  CHECK(joggle::parse(env,
+                      "module explicit_match\n"
+                      "fn candidate<T: Ty>(x: T) -> T;\n"
+                      "fn incompatible(x: i32) -> i32 {\n"
+                      "  let y: i32 = source<f32>(x)\n"
+                      "  return y\n"
+                      "}\n"
+                      "fn compatible(x: i32) -> i32 {\n"
+                      "  let y: i32 = source<i32>(x)\n"
+                      "  return y\n"
+                      "}\n",
+                      explicit_match, "explicit-match.jog"));
+  CHECK(explicit_match.verify(env));
+  const joggle::Fn explicit_candidate = explicit_match.find_fn("candidate");
+  CHECK(!env.accepts(explicit_match.find_fn("incompatible").body().ops()[0],
+                     explicit_candidate));
+  CHECK(env.accepts(explicit_match.find_fn("compatible").body().ops()[0],
+                    explicit_candidate));
+
   joggle::Mod args_safety;
   CHECK(joggle::parse(env,
                       "module args_safety\n"

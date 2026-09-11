@@ -496,10 +496,11 @@ retains `nn.relu` for `tensor<i8, [4]>` while expanding the same symbol for
 `tensor<f32, [4]>`, then checks canonical round-trip stability.
 
 The same explicit `Fn` set can supply implementations. `ir.match` performs the
-ordinary overload ranking inside that set and rejects a selected function when
-its substituted results conflict with known call results. The environment-aware
-`ir.expand` permits a function whose local name equals the source call's
-resolved symbol. It adds the implementation module only when not already
+ordinary overload ranking inside that set, honors generic arguments written on
+the source call, and rejects a selected function when its substituted results
+conflict with known call results. The environment-aware `ir.expand` permits a
+function whose local name equals the source call's resolved symbol. It adds the
+implementation module only when not already
 visible, then specializes and copies the normal function body. Dependency and
 body edits roll back together. `opt.apply` is merely the bounded fixed-point
 policy over these primitives: it skips bodyless declarations and

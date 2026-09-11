@@ -547,6 +547,8 @@ fn prepare(m: Mod) -> bool {
 
 More-specific overloads can describe a fixed vector width, tile shape, number
 format, or fused implementation while a generic overload remains the fallback.
+Generic arguments written on the source call constrain implementation matching
+through the same structural rules as ordinary call resolution.
 The resulting calls are still ordinary `Op`s in ordinary `Fn` bodies; `dot`
 has no built-in target meaning.
 
