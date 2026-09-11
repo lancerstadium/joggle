@@ -4,7 +4,7 @@ use nn
 use quant
 use ir
 
-fn set_type(m: Mod, value: Val, type: Ty) -> bool {
+local fn set_type(m: Mod, value: Val, type: Ty) -> bool {
   if type == ty("_") {
     return false
   }
@@ -19,11 +19,11 @@ fn set_type(m: Mod, value: Val, type: Ty) -> bool {
   return false
 }
 
-fn attrs(op: Op) -> Attr {
+local fn attrs(op: Op) -> Attr {
   return base.get(ir.meta(op), "onnx", {})
 }
 
-fn refine_graph_ref(m: Mod, op: Op, ref: Attr) -> bool {
+local fn refine_graph_ref(m: Mod, op: Op, ref: Attr) -> bool {
   if base.kind(ref) != "dict" || !base.has(ref, "fn") ||
      !base.has(ref, "inputs") || !base.has(ref, "captures") ||
      base.kind(ref["fn"]) != "str" ||
@@ -63,7 +63,7 @@ fn refine_graph_ref(m: Mod, op: Op, ref: Attr) -> bool {
 }
 
 [phase: "infer", on: "*"]
-fn refine_graphs(m: Mod, op: Op) -> bool {
+local fn refine_graphs(m: Mod, op: Op) -> bool {
   var changed = false
   let meta = attrs(op)
   for key in base.keys(meta) {
@@ -80,11 +80,11 @@ fn refine_graphs(m: Mod, op: Op) -> bool {
   return changed
 }
 
-fn shaped(elem: Ty, dims: list<Ty>) -> Ty {
+local fn shaped(elem: Ty, dims: list<Ty>) -> Ty {
   return ty("tensor", [elem, ty("[]", dims)])
 }
 
-fn same_type(m: Mod, op: Op) -> bool {
+local fn same_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 0 && len(outputs) == 1 {
@@ -96,7 +96,7 @@ fn same_type(m: Mod, op: Op) -> bool {
   return false
 }
 
-fn dropout_type(m: Mod, op: Op) -> bool {
+local fn dropout_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) < 1 || len(inputs) > 3 ||
@@ -116,7 +116,7 @@ fn dropout_type(m: Mod, op: Op) -> bool {
   return changed
 }
 
-fn unary_rules() -> list<list<str>> {
+local fn unary_rules() -> list<list<str>> {
   return [
     ["onnx.Relu", "nn.relu"],
     ["onnx.Dropout", "base.copy"],
@@ -140,7 +140,7 @@ fn unary_rules() -> list<list<str>> {
   "onnx.BatchNormalization", "onnx.LeakyRelu", "onnx.Softmax",
   "onnx.Identity", "onnx.Clip", "onnx.LRN"
 ]]
-fn infer_unary(m: Mod, op: Op) -> bool {
+local fn infer_unary(m: Mod, op: Op) -> bool {
   let callee = ir.callee(op)
   if callee == "onnx.Dropout" {
     return dropout_type(m, op)
@@ -159,7 +159,7 @@ fn infer_unary(m: Mod, op: Op) -> bool {
   return false
 }
 
-fn spatial_pad(op: Op, kernel: list<int>) -> list<int> {
+local fn spatial_pad(op: Op, kernel: list<int>) -> list<int> {
   var none: list<int> = []
   let inputs = ir.args(op)
   if len(inputs) == 0 || len(kernel) != 2 {
@@ -222,7 +222,7 @@ fn spatial_pad(op: Op, kernel: list<int>) -> list<int> {
 }
 
 [phase: "infer", on: "onnx.QuantizeLinear"]
-fn quant_type(m: Mod, op: Op) -> bool {
+local fn quant_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if (len(inputs) != 2 && len(inputs) != 3) || len(outputs) != 1 {
@@ -245,7 +245,7 @@ fn quant_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: "onnx.DequantizeLinear"]
-fn dequant_type(m: Mod, op: Op) -> bool {
+local fn dequant_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if (len(inputs) != 2 && len(inputs) != 3) || len(outputs) != 1 {
@@ -261,7 +261,7 @@ fn dequant_type(m: Mod, op: Op) -> bool {
   )
 }
 
-fn broadcast_type(m: Mod, op: Op, result_elem: Ty) -> bool {
+local fn broadcast_type(m: Mod, op: Op, result_elem: Ty) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) == 0 || len(outputs) != 1 {
@@ -294,7 +294,7 @@ fn broadcast_type(m: Mod, op: Op, result_elem: Ty) -> bool {
 }
 
 [phase: "infer", on: ["onnx.Add", "onnx.Sub", "onnx.Mul", "onnx.Div", "onnx.Pow"]]
-fn binary_type(m: Mod, op: Op) -> bool {
+local fn binary_type(m: Mod, op: Op) -> bool {
   if len(ir.args(op)) != 2 {
     return false
   }
@@ -302,7 +302,7 @@ fn binary_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: ["onnx.Equal", "onnx.Greater", "onnx.Less"]]
-fn compare_type(m: Mod, op: Op) -> bool {
+local fn compare_type(m: Mod, op: Op) -> bool {
   if len(ir.args(op)) != 2 {
     return false
   }
@@ -310,11 +310,11 @@ fn compare_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: ["onnx.Max", "onnx.Min"]]
-fn extrema_type(m: Mod, op: Op) -> bool {
+local fn extrema_type(m: Mod, op: Op) -> bool {
   return broadcast_type(m, op, ty("_"))
 }
 
-fn signed(data: Attr, offset: int, width: int) -> int {
+local fn signed(data: Attr, offset: int, width: int) -> int {
   var value = base.byte(data, offset + width - 1)
   if value >= 128 {
     value -= 256
@@ -325,7 +325,7 @@ fn signed(data: Attr, offset: int, width: int) -> int {
   return value
 }
 
-fn tensor_literal(op: Op) -> Attr {
+local fn tensor_literal(op: Op) -> Attr {
   let meta = attrs(op)
   if !base.has(meta, "value") {
     return {}
@@ -343,7 +343,7 @@ fn tensor_literal(op: Op) -> Attr {
   return literal
 }
 
-fn tensor_data(op: Op) -> Attr {
+local fn tensor_data(op: Op) -> Attr {
   if ir.callee(op) == "onnx.tensor" || ir.callee(op) == "tensor.literal" {
     let inputs = ir.args(op)
     var index = 2
@@ -363,7 +363,7 @@ fn tensor_data(op: Op) -> Attr {
   return ir.meta(op)
 }
 
-fn const_ints(value: Val) -> list<int> {
+local fn const_ints(value: Val) -> list<int> {
   var out: list<int> = []
   let type = ir.type(value)
   if !tensor.valid(type) {
@@ -396,7 +396,7 @@ fn const_ints(value: Val) -> list<int> {
   return out
 }
 
-fn int_vector_len(value: Val) -> int {
+local fn int_vector_len(value: Val) -> int {
   let type = ir.type(value)
   if !tensor.valid(type) ||
      (tensor.elem(type) != ty("i32") && tensor.elem(type) != ty("i64")) {
@@ -409,7 +409,7 @@ fn int_vector_len(value: Val) -> int {
   return int(shape[0])
 }
 
-fn attr_ints(value: Attr) -> list<int> {
+local fn attr_ints(value: Attr) -> list<int> {
   var out: list<int> = []
   if base.kind(value) != "list" {
     return out
@@ -424,7 +424,7 @@ fn attr_ints(value: Attr) -> list<int> {
   return out
 }
 
-fn slice_starts(op: Op) -> list<int> {
+local fn slice_starts(op: Op) -> list<int> {
   let inputs = ir.args(op)
   if len(inputs) >= 3 && len(inputs) <= 5 {
     return const_ints(inputs[1])
@@ -437,7 +437,7 @@ fn slice_starts(op: Op) -> list<int> {
   return missing
 }
 
-fn slice_ends(op: Op) -> list<int> {
+local fn slice_ends(op: Op) -> list<int> {
   let inputs = ir.args(op)
   if len(inputs) >= 3 && len(inputs) <= 5 {
     return const_ints(inputs[2])
@@ -450,7 +450,7 @@ fn slice_ends(op: Op) -> list<int> {
   return missing
 }
 
-fn slice_axes(op: Op) -> list<int> {
+local fn slice_axes(op: Op) -> list<int> {
   let inputs = ir.args(op)
   var out: list<int> = []
   if len(inputs) >= 4 && len(inputs) <= 5 {
@@ -468,7 +468,7 @@ fn slice_axes(op: Op) -> list<int> {
   return out
 }
 
-fn slice_steps(op: Op) -> list<int> {
+local fn slice_steps(op: Op) -> list<int> {
   let inputs = ir.args(op)
   var out: list<int> = []
   if len(inputs) == 5 {
@@ -594,7 +594,7 @@ fn shape_terms(value: Val) -> list<Ty> {
   return out
 }
 
-fn element(code: int) -> Ty {
+local fn element(code: int) -> Ty {
   var out = ty("_")
   if code == 1 {
     out = ty("f32")
@@ -638,7 +638,7 @@ fn element(code: int) -> Ty {
   return out
 }
 
-fn element_bytes(code: int) -> int {
+local fn element_bytes(code: int) -> int {
   if code == 2 || code == 3 || code == 9 {
     return 1
   }
@@ -654,7 +654,7 @@ fn element_bytes(code: int) -> int {
   return 0
 }
 
-fn constant_result(op: Op) -> Ty {
+local fn constant_result(op: Op) -> Ty {
   let literal = tensor_literal(op)
   if base.kind(literal) != "dict" {
     return ty("_")
@@ -693,7 +693,7 @@ fn constant_result(op: Op) -> Ty {
 }
 
 [phase: "infer", on: "onnx.Constant"]
-fn constant_type(m: Mod, op: Op) -> bool {
+local fn constant_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
     return false
@@ -702,7 +702,7 @@ fn constant_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: "onnx.Cast"]
-fn cast_type(m: Mod, op: Op) -> bool {
+local fn cast_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -717,7 +717,7 @@ fn cast_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: "onnx.Shape"]
-fn shape_type(m: Mod, op: Op) -> bool {
+local fn shape_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 ||
@@ -729,7 +729,7 @@ fn shape_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], shaped(ty("i64"), shape))
 }
 
-fn gather_result(op: Op) -> Ty {
+local fn gather_result(op: Op) -> Ty {
   let inputs = ir.args(op)
   if len(inputs) != 2 {
     return ty("_")
@@ -753,7 +753,7 @@ fn gather_result(op: Op) -> Ty {
 }
 
 [phase: "infer", on: "onnx.Gather"]
-fn gather_type(m: Mod, op: Op) -> bool {
+local fn gather_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
     return false
@@ -761,7 +761,7 @@ fn gather_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], gather_result(op))
 }
 
-fn axes(op: Op) -> list<int> {
+local fn axes(op: Op) -> list<int> {
   let meta = attrs(op)
   var out: list<int> = []
   if base.has(meta, "axes") {
@@ -777,7 +777,7 @@ fn axes(op: Op) -> list<int> {
   return out
 }
 
-fn unsqueeze_result(op: Op) -> Ty {
+local fn unsqueeze_result(op: Op) -> Ty {
   let inputs = ir.args(op)
   if len(inputs) != 1 && len(inputs) != 2 {
     return ty("_")
@@ -819,7 +819,7 @@ fn unsqueeze_result(op: Op) -> Ty {
   return shaped(tensor.elem(input), shape)
 }
 
-fn squeeze_result(op: Op) -> Ty {
+local fn squeeze_result(op: Op) -> Ty {
   let inputs = ir.args(op)
   if len(inputs) != 1 && len(inputs) != 2 {
     return ty("_")
@@ -868,7 +868,7 @@ fn squeeze_result(op: Op) -> Ty {
   return shaped(tensor.elem(input), shape)
 }
 
-fn unary_shape_type(m: Mod, op: Op, squeeze: bool) -> bool {
+local fn unary_shape_type(m: Mod, op: Op, squeeze: bool) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
     return false
@@ -881,17 +881,17 @@ fn unary_shape_type(m: Mod, op: Op, squeeze: bool) -> bool {
 }
 
 [phase: "infer", on: "onnx.Unsqueeze"]
-fn unsqueeze_type(m: Mod, op: Op) -> bool {
+local fn unsqueeze_type(m: Mod, op: Op) -> bool {
   return unary_shape_type(m, op, false)
 }
 
 [phase: "infer", on: "onnx.Squeeze"]
-fn squeeze_type(m: Mod, op: Op) -> bool {
+local fn squeeze_type(m: Mod, op: Op) -> bool {
   return unary_shape_type(m, op, true)
 }
 
 [phase: "infer", on: "onnx.Slice"]
-fn slice_type(m: Mod, op: Op) -> bool {
+local fn slice_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) == 0 || len(outputs) != 1 {
@@ -955,7 +955,7 @@ fn slice_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], shaped(tensor.elem(input), open))
 }
 
-fn resize_result(op: Op) -> Ty {
+local fn resize_result(op: Op) -> Ty {
   let inputs = ir.args(op)
   if len(inputs) != 4 {
     return ty("_")
@@ -977,7 +977,7 @@ fn resize_result(op: Op) -> Ty {
 }
 
 [phase: "infer", on: "onnx.Resize"]
-fn resize_type(m: Mod, op: Op) -> bool {
+local fn resize_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
     return false
@@ -986,7 +986,7 @@ fn resize_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: "onnx.NonZero"]
-fn nonzero_type(m: Mod, op: Op) -> bool {
+local fn nonzero_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -1002,7 +1002,7 @@ fn nonzero_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: "onnx.Range"]
-fn range_type(m: Mod, op: Op) -> bool {
+local fn range_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 3 || len(outputs) != 1 {
@@ -1024,7 +1024,7 @@ fn range_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: "onnx.NonMaxSuppression"]
-fn nms_type(m: Mod, op: Op) -> bool {
+local fn nms_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) < 2 || len(inputs) > 5 || len(outputs) != 1 {
@@ -1035,7 +1035,7 @@ fn nms_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: "onnx.Expand"]
-fn expand_type(m: Mod, op: Op) -> bool {
+local fn expand_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 2 || len(outputs) != 1 {
@@ -1068,7 +1068,7 @@ fn expand_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: "onnx.Tile"]
-fn tile_type(m: Mod, op: Op) -> bool {
+local fn tile_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 2 || len(outputs) != 1 {
@@ -1117,7 +1117,7 @@ fn tile_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: "onnx.TopK"]
-fn topk_type(m: Mod, op: Op) -> bool {
+local fn topk_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 2 || len(outputs) != 2 {
@@ -1159,7 +1159,7 @@ fn topk_type(m: Mod, op: Op) -> bool {
   return changed
 }
 
-fn concat_result(op: Op) -> Ty {
+local fn concat_result(op: Op) -> Ty {
   let inputs = ir.args(op)
   if len(inputs) == 0 {
     return ty("_")
@@ -1193,7 +1193,7 @@ fn concat_result(op: Op) -> Ty {
 }
 
 [phase: "infer", on: "onnx.Concat"]
-fn concat_type(m: Mod, op: Op) -> bool {
+local fn concat_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
     return false
@@ -1202,7 +1202,7 @@ fn concat_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: "onnx.Split"]
-fn split_type(m: Mod, op: Op) -> bool {
+local fn split_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if (len(inputs) != 1 && len(inputs) != 2) || len(outputs) == 0 {
@@ -1276,7 +1276,7 @@ fn split_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: "onnx.OneHot"]
-fn one_hot_type(m: Mod, op: Op) -> bool {
+local fn one_hot_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 3 || len(outputs) != 1 {
@@ -1309,7 +1309,7 @@ fn one_hot_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: "onnx.DynamicQuantizeLinear"]
-fn dynamic_quant_type(m: Mod, op: Op) -> bool {
+local fn dynamic_quant_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 3 {
@@ -1333,7 +1333,7 @@ fn dynamic_quant_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: "onnx.ConstantOfShape"]
-fn constant_shape_type(m: Mod, op: Op) -> bool {
+local fn constant_shape_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -1354,7 +1354,7 @@ fn constant_shape_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], shaped(elem, shape))
 }
 
-fn reshape_result(op: Op) -> Ty {
+local fn reshape_result(op: Op) -> Ty {
   let inputs = ir.args(op)
   if len(inputs) != 2 {
     return ty("_")
@@ -1447,7 +1447,7 @@ fn reshape_result(op: Op) -> Ty {
 }
 
 [phase: "infer", on: "onnx.Reshape"]
-fn reshape_type(m: Mod, op: Op) -> bool {
+local fn reshape_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
     return false
@@ -1455,7 +1455,7 @@ fn reshape_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], reshape_result(op))
 }
 
-fn flattened(input: Ty, axis: int) -> Ty {
+local fn flattened(input: Ty, axis: int) -> Ty {
   let dims = tensor.dims(input)
   let outer = tensor.product(dims, 0, axis)
   let inner = tensor.product(dims, axis, len(dims))
@@ -1467,7 +1467,7 @@ fn flattened(input: Ty, axis: int) -> Ty {
 }
 
 [phase: "infer", on: "onnx.Flatten"]
-fn infer_flatten(m: Mod, op: Op) -> bool {
+local fn infer_flatten(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -1492,7 +1492,7 @@ fn infer_flatten(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], result)
 }
 
-fn matmul_shape(
+local fn matmul_shape(
   left: Ty, right: Ty, transpose_left: bool, transpose_right: bool
 ) -> list<Ty> {
   var none: list<Ty> = []
@@ -1551,11 +1551,11 @@ fn matmul_shape(
   return shape
 }
 
-fn matmul_shape(left: Ty, right: Ty) -> list<Ty> {
+local fn matmul_shape(left: Ty, right: Ty) -> list<Ty> {
   return matmul_shape(left, right, false, false)
 }
 
-fn matmul_result(op: Op) -> Ty {
+local fn matmul_result(op: Op) -> Ty {
   let inputs = ir.args(op)
   if len(inputs) != 2 {
     return ty("_")
@@ -1574,7 +1574,7 @@ fn matmul_result(op: Op) -> Ty {
 }
 
 [phase: "infer", on: "onnx.MatMul"]
-fn matmul_type(m: Mod, op: Op) -> bool {
+local fn matmul_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
     return false
@@ -1582,7 +1582,7 @@ fn matmul_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], matmul_result(op))
 }
 
-fn gemm_result(op: Op) -> Ty {
+local fn gemm_result(op: Op) -> Ty {
   let inputs = ir.args(op)
   if len(inputs) != 2 && len(inputs) != 3 {
     return ty("_")
@@ -1614,7 +1614,7 @@ fn gemm_result(op: Op) -> Ty {
 }
 
 [phase: "infer", on: "onnx.Gemm"]
-fn gemm_type(m: Mod, op: Op) -> bool {
+local fn gemm_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
     return false
@@ -1623,7 +1623,7 @@ fn gemm_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: "onnx.MatMulInteger"]
-fn integer_matmul_type(m: Mod, op: Op) -> bool {
+local fn integer_matmul_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) < 2 || len(inputs) > 4 || len(outputs) != 1 {
@@ -1647,7 +1647,7 @@ fn integer_matmul_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], shaped(ty("i32"), shape))
 }
 
-fn fused_matmul_result(op: Op) -> Ty {
+local fn fused_matmul_result(op: Op) -> Ty {
   let inputs = ir.args(op)
   if len(inputs) != 2 {
     return ty("_")
@@ -1675,7 +1675,7 @@ fn fused_matmul_result(op: Op) -> Ty {
 }
 
 [phase: "infer", on: "com_microsoft.FusedMatMul"]
-fn fused_matmul_type(m: Mod, op: Op) -> bool {
+local fn fused_matmul_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
     return false
@@ -1683,7 +1683,7 @@ fn fused_matmul_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], fused_matmul_result(op))
 }
 
-fn transpose_axes(op: Op, rank: int) -> list<int> {
+local fn transpose_axes(op: Op, rank: int) -> list<int> {
   let meta = attrs(op)
   var axes: list<int> = []
   if base.has(meta, "perm") {
@@ -1699,7 +1699,7 @@ fn transpose_axes(op: Op, rank: int) -> list<int> {
 }
 
 [phase: "infer", on: "onnx.Transpose"]
-fn transpose_type(m: Mod, op: Op) -> bool {
+local fn transpose_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -1721,7 +1721,7 @@ fn transpose_type(m: Mod, op: Op) -> bool {
   )
 }
 
-fn reduce_axes(op: Op, rank: int) -> list<int> {
+local fn reduce_axes(op: Op, rank: int) -> list<int> {
   let meta = attrs(op)
   var axes: list<int> = []
   if base.has(meta, "axes") {
@@ -1740,7 +1740,7 @@ fn reduce_axes(op: Op, rank: int) -> list<int> {
   return axes
 }
 
-fn reduce_result(op: Op) -> Ty {
+local fn reduce_result(op: Op) -> Ty {
   let inputs = ir.args(op)
   if len(inputs) != 1 {
     return ty("_")
@@ -1764,7 +1764,7 @@ fn reduce_result(op: Op) -> Ty {
 }
 
 [phase: "infer", on: "onnx.ReduceMean"]
-fn reduce_type(m: Mod, op: Op) -> bool {
+local fn reduce_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
     return false
@@ -1773,7 +1773,7 @@ fn reduce_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: "onnx.Loop"]
-fn loop_type(m: Mod, op: Op) -> bool {
+local fn loop_type(m: Mod, op: Op) -> bool {
   let body = onnx.graph(m, op, "body")
   if !ir.live(body) {
     return false
@@ -1819,15 +1819,15 @@ fn loop_type(m: Mod, op: Op) -> bool {
   return changed
 }
 
-fn positive(dim: Ty) -> bool {
+local fn positive(dim: Ty) -> bool {
   return kind(dim) == "int" && int(dim) > 0
 }
 
-fn known_mismatch(left: Ty, right: Ty) -> bool {
+local fn known_mismatch(left: Ty, right: Ty) -> bool {
   return kind(left) == "int" && kind(right) == "int" && left != right
 }
 
-fn conv_inputs(x: Ty, weight: Ty, bias: Ty, groups: int) -> bool {
+local fn conv_inputs(x: Ty, weight: Ty, bias: Ty, groups: int) -> bool {
   if !tensor.valid(x) || !tensor.valid(weight) || groups <= 0 {
     return false
   }
@@ -1867,7 +1867,7 @@ fn conv_inputs(x: Ty, weight: Ty, bias: Ty, groups: int) -> bool {
   return true
 }
 
-fn conv_extent(
+local fn conv_extent(
   input: Ty, low: int, high: int,
   kernel: int, stride: int, dilation: int
 ) -> Ty {
@@ -1885,7 +1885,7 @@ fn conv_extent(
   return ty("_")
 }
 
-fn same_extent(input: Ty, stride: int) -> Ty {
+local fn same_extent(input: Ty, stride: int) -> Ty {
   if kind(input) == "int" {
     return ty((int(input) + stride - 1) / stride)
   }
@@ -1895,7 +1895,7 @@ fn same_extent(input: Ty, stride: int) -> Ty {
   return ty("_")
 }
 
-fn conv_result(op: Op) -> Ty {
+local fn conv_result(op: Op) -> Ty {
   let inputs = ir.args(op)
   if len(inputs) != 2 && len(inputs) != 3 {
     return ty("_")
@@ -1954,7 +1954,7 @@ fn conv_result(op: Op) -> Ty {
 }
 
 [phase: "infer", on: "onnx.Conv"]
-fn conv_type(m: Mod, op: Op) -> bool {
+local fn conv_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
     return false
@@ -1963,7 +1963,7 @@ fn conv_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: "onnx.GlobalAveragePool"]
-fn global_pool_type(m: Mod, op: Op) -> bool {
+local fn global_pool_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -1984,7 +1984,7 @@ fn global_pool_type(m: Mod, op: Op) -> bool {
 }
 
 [phase: "infer", on: ["onnx.AveragePool", "onnx.MaxPool"]]
-fn pool_type(m: Mod, op: Op) -> bool {
+local fn pool_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -2029,7 +2029,7 @@ fn pool_type(m: Mod, op: Op) -> bool {
   )
 }
 
-fn infer_once(m: Mod, rules: list<Fn>) -> bool {
+local fn infer_once(m: Mod, rules: list<Fn>) -> bool {
   var changed = false
   let selected = ir.where(rules, "phase", "infer")
   let common = ir.where(selected, "on", "*")
@@ -2066,7 +2066,7 @@ fn infer(m: Mod) -> bool {
   return infer(m, ir.fns("onnx.nn"))
 }
 
-fn ints(m: Mod, before: Op, value: Attr) -> Val {
+local fn ints(m: Mod, before: Op, value: Attr) -> Val {
   var items: list<Val> = []
   for item in value {
     items += [ir.constant(m, before, item, ty("int"))]
@@ -2074,7 +2074,7 @@ fn ints(m: Mod, before: Op, value: Attr) -> Val {
   return ir.call(m, before, "base.list", items, ty("list", [ty("int")]))
 }
 
-fn convert_call(m: Mod, op: Op, callee: str) -> bool {
+local fn convert_call(m: Mod, op: Op, callee: str) -> bool {
   if !ir.retarget(m, op, callee, ir.args(op)) {
     return false
   }
@@ -2082,7 +2082,7 @@ fn convert_call(m: Mod, op: Op, callee: str) -> bool {
   return true
 }
 
-fn convert_call(
+local fn convert_call(
   m: Mod, op: Op, callee: str, inputs: list<Val>
 ) -> bool {
   if !ir.retarget(m, op, callee, inputs) {
@@ -2093,7 +2093,7 @@ fn convert_call(
 }
 
 [phase: "data", on: "onnx.tensor"]
-fn convert_tensor(m: Mod, op: Op) -> bool {
+local fn convert_tensor(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 3 || len(outputs) != 1 ||
@@ -2105,7 +2105,7 @@ fn convert_tensor(m: Mod, op: Op) -> bool {
 }
 
 [phase: "cleanup", on: "onnx.model"]
-fn convert_model(m: Mod, op: Op) -> bool {
+local fn convert_model(m: Mod, op: Op) -> bool {
   for candidate in ir.ops(m) {
     if ir.live(candidate) && candidate != op && ir.has(candidate, "onnx") {
       return false
@@ -2114,7 +2114,7 @@ fn convert_model(m: Mod, op: Op) -> bool {
   return ir.erase(m, op)
 }
 
-fn carry(m: Mod, source: Val, target: Val) -> bool {
+local fn carry(m: Mod, source: Val, target: Val) -> bool {
   var changed = false
   let value_name = ir.name(source)
   if value_name != "" {
@@ -2127,7 +2127,7 @@ fn carry(m: Mod, source: Val, target: Val) -> bool {
   return changed
 }
 
-fn carry(m: Mod, source: Op, target: Op) -> bool {
+local fn carry(m: Mod, source: Op, target: Op) -> bool {
   var changed = false
   let metadata = ir.meta(source)
   for key in base.keys(metadata) {
@@ -2139,7 +2139,7 @@ fn carry(m: Mod, source: Op, target: Op) -> bool {
 }
 
 [phase: "shape", on: "onnx.Shape"]
-fn convert_shape(m: Mod, op: Op) -> bool {
+local fn convert_shape(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -2157,7 +2157,7 @@ fn convert_shape(m: Mod, op: Op) -> bool {
 }
 
 [phase: "shape", on: "onnx.Gather"]
-fn convert_gather(m: Mod, op: Op) -> bool {
+local fn convert_gather(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 2 || len(outputs) != 1 {
@@ -2176,7 +2176,7 @@ fn convert_gather(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.gather", inputs)
 }
 
-fn convert_reshape_view(m: Mod, op: Op, expected: Ty) -> bool {
+local fn convert_reshape_view(m: Mod, op: Op, expected: Ty) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) < 1 || len(inputs) > 2 || len(outputs) != 1 ||
@@ -2188,17 +2188,17 @@ fn convert_reshape_view(m: Mod, op: Op, expected: Ty) -> bool {
 }
 
 [phase: "shape", on: "onnx.Unsqueeze"]
-fn convert_unsqueeze(m: Mod, op: Op) -> bool {
+local fn convert_unsqueeze(m: Mod, op: Op) -> bool {
   return convert_reshape_view(m, op, unsqueeze_result(op))
 }
 
 [phase: "shape", on: "onnx.Squeeze"]
-fn convert_squeeze(m: Mod, op: Op) -> bool {
+local fn convert_squeeze(m: Mod, op: Op) -> bool {
   return convert_reshape_view(m, op, squeeze_result(op))
 }
 
 [phase: "shape", on: "onnx.Slice"]
-fn convert_slice(m: Mod, op: Op) -> bool {
+local fn convert_slice(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) == 0 || len(outputs) != 1 {
@@ -2228,7 +2228,7 @@ fn convert_slice(m: Mod, op: Op) -> bool {
 }
 
 [phase: "shape", on: "onnx.Concat"]
-fn convert_concat(m: Mod, op: Op) -> bool {
+local fn convert_concat(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) == 0 || len(outputs) != 1 {
@@ -2269,7 +2269,7 @@ fn convert_concat(m: Mod, op: Op) -> bool {
 }
 
 [phase: "shape", on: "onnx.Split"]
-fn convert_split(m: Mod, op: Op) -> bool {
+local fn convert_split(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if (len(inputs) != 1 && len(inputs) != 2) || len(outputs) == 0 {
@@ -2345,7 +2345,7 @@ fn convert_split(m: Mod, op: Op) -> bool {
 }
 
 [phase: "shape", on: "onnx.OneHot"]
-fn convert_one_hot(m: Mod, op: Op) -> bool {
+local fn convert_one_hot(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 3 || len(outputs) != 1 {
@@ -2383,7 +2383,7 @@ fn convert_one_hot(m: Mod, op: Op) -> bool {
 }
 
 [phase: "shape", on: "onnx.ConstantOfShape"]
-fn convert_constant_shape(m: Mod, op: Op) -> bool {
+local fn convert_constant_shape(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 ||
@@ -2424,7 +2424,7 @@ fn convert_constant_shape(m: Mod, op: Op) -> bool {
 }
 
 [phase: "shape", on: "onnx.Constant"]
-fn convert_constant(m: Mod, op: Op) -> bool {
+local fn convert_constant(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   let literal = tensor_literal(op)
   let expected = constant_result(op)
@@ -2438,7 +2438,7 @@ fn convert_constant(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.literal", inputs)
 }
 
-fn convert_unary(m: Mod, op: Op, callee: str) -> bool {
+local fn convert_unary(m: Mod, op: Op, callee: str) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -2456,7 +2456,7 @@ fn convert_unary(m: Mod, op: Op, callee: str) -> bool {
   "onnx.Tanh", "onnx.Exp", "onnx.Floor", "onnx.Log", "onnx.Erf",
   "onnx.Sigmoid", "onnx.Ceil", "onnx.Round"
 ]]
-fn convert_unary(m: Mod, op: Op) -> bool {
+local fn convert_unary(m: Mod, op: Op) -> bool {
   let source = ir.callee(op)
   for rule in unary_rules() {
     if source == rule[0] {
@@ -2467,7 +2467,7 @@ fn convert_unary(m: Mod, op: Op) -> bool {
 }
 
 [phase: "compute", on: "onnx.LeakyRelu"]
-fn convert_leaky_relu(m: Mod, op: Op) -> bool {
+local fn convert_leaky_relu(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 ||
@@ -2481,7 +2481,7 @@ fn convert_leaky_relu(m: Mod, op: Op) -> bool {
 }
 
 [phase: "compute", on: "onnx.Conv"]
-fn convert_conv(m: Mod, op: Op) -> bool {
+local fn convert_conv(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if (len(inputs) != 2 && len(inputs) != 3) || len(outputs) != 1 {
@@ -2517,7 +2517,7 @@ fn convert_conv(m: Mod, op: Op) -> bool {
 }
 
 [phase: "compute", on: "onnx.BatchNormalization"]
-fn convert_norm(m: Mod, op: Op) -> bool {
+local fn convert_norm(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 5 || len(outputs) != 1 {
@@ -2537,7 +2537,7 @@ fn convert_norm(m: Mod, op: Op) -> bool {
 }
 
 [phase: "compute", on: "onnx.Softmax"]
-fn convert_softmax(m: Mod, op: Op) -> bool {
+local fn convert_softmax(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 ||
@@ -2581,7 +2581,7 @@ fn convert_softmax(m: Mod, op: Op) -> bool {
 }
 
 [phase: "compute", on: "onnx.Reshape"]
-fn convert_reshape(m: Mod, op: Op) -> bool {
+local fn convert_reshape(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 2 || len(outputs) != 1 {
@@ -2598,7 +2598,7 @@ fn convert_reshape(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.reshape", [inputs[0]])
 }
 
-fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
+local fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 2 || len(outputs) != 1 {
@@ -2634,31 +2634,31 @@ fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
 }
 
 [phase: "compute", on: "onnx.Add"]
-fn convert_add(m: Mod, op: Op) -> bool {
+local fn convert_add(m: Mod, op: Op) -> bool {
   return convert_binary(m, op, "nn.add")
 }
 
 [phase: "compute", on: "onnx.Sub"]
-fn convert_sub(m: Mod, op: Op) -> bool {
+local fn convert_sub(m: Mod, op: Op) -> bool {
   return convert_binary(m, op, "nn.sub")
 }
 
 [phase: "compute", on: "onnx.Mul"]
-fn convert_mul(m: Mod, op: Op) -> bool {
+local fn convert_mul(m: Mod, op: Op) -> bool {
   return convert_binary(m, op, "nn.mul")
 }
 
 [phase: "compute", on: "onnx.Div"]
-fn convert_div(m: Mod, op: Op) -> bool {
+local fn convert_div(m: Mod, op: Op) -> bool {
   return convert_binary(m, op, "nn.div")
 }
 
 [phase: "compute", on: "onnx.Pow"]
-fn convert_pow(m: Mod, op: Op) -> bool {
+local fn convert_pow(m: Mod, op: Op) -> bool {
   return convert_binary(m, op, "nn.pow")
 }
 
-fn quant_axis(op: Op, data: Ty, params: Ty) -> int {
+local fn quant_axis(op: Op, data: Ty, params: Ty) -> int {
   if !tensor.valid(data) || !tensor.valid(params) {
     return -1
   }
@@ -2682,7 +2682,7 @@ fn quant_axis(op: Op, data: Ty, params: Ty) -> int {
   return axis
 }
 
-fn quant_bounds(elem: Ty) -> list<int> {
+local fn quant_bounds(elem: Ty) -> list<int> {
   if elem == ty("u8") {
     return [0, 255]
   }
@@ -2700,7 +2700,7 @@ fn quant_bounds(elem: Ty) -> list<int> {
 }
 
 [phase: "compute", on: "onnx.QuantizeLinear"]
-fn convert_quantize(m: Mod, op: Op) -> bool {
+local fn convert_quantize(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 3 || len(outputs) != 1 {
@@ -2730,7 +2730,7 @@ fn convert_quantize(m: Mod, op: Op) -> bool {
 }
 
 [phase: "compute", on: "onnx.DequantizeLinear"]
-fn convert_dequantize(m: Mod, op: Op) -> bool {
+local fn convert_dequantize(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 3 || len(outputs) != 1 {
@@ -2757,7 +2757,7 @@ fn convert_dequantize(m: Mod, op: Op) -> bool {
 }
 
 [phase: "compute", on: "onnx.DynamicQuantizeLinear"]
-fn convert_dynamic_quant(m: Mod, op: Op) -> bool {
+local fn convert_dynamic_quant(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 3 {
@@ -2778,7 +2778,7 @@ fn convert_dynamic_quant(m: Mod, op: Op) -> bool {
 }
 
 [phase: "shape", on: "onnx.Cast"]
-fn convert_cast(m: Mod, op: Op) -> bool {
+local fn convert_cast(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -2794,7 +2794,7 @@ fn convert_cast(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.cast")
 }
 
-fn matmul_param(type: Ty, elem: Ty, extent: Ty) -> bool {
+local fn matmul_param(type: Ty, elem: Ty, extent: Ty) -> bool {
   if !tensor.valid(type) || tensor.elem(type) != elem {
     return false
   }
@@ -2805,7 +2805,7 @@ fn matmul_param(type: Ty, elem: Ty, extent: Ty) -> bool {
 }
 
 [phase: "compute", on: "onnx.MatMulInteger"]
-fn convert_integer_matmul(m: Mod, op: Op) -> bool {
+local fn convert_integer_matmul(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 4 || len(outputs) != 1 {
@@ -2834,7 +2834,7 @@ fn convert_integer_matmul(m: Mod, op: Op) -> bool {
 }
 
 [phase: "compute", on: "com_microsoft.FusedMatMul"]
-fn convert_fused_matmul(m: Mod, op: Op) -> bool {
+local fn convert_fused_matmul(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 2 || len(outputs) != 1 {
@@ -2858,7 +2858,7 @@ fn convert_fused_matmul(m: Mod, op: Op) -> bool {
 }
 
 [phase: "compute", on: "onnx.Flatten"]
-fn convert_flatten(m: Mod, op: Op) -> bool {
+local fn convert_flatten(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -2885,7 +2885,7 @@ fn convert_flatten(m: Mod, op: Op) -> bool {
 }
 
 [phase: "compute", on: "onnx.MatMul"]
-fn convert_matmul(m: Mod, op: Op) -> bool {
+local fn convert_matmul(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
     return false
@@ -2898,7 +2898,7 @@ fn convert_matmul(m: Mod, op: Op) -> bool {
 }
 
 [phase: "compute", on: "onnx.Gemm"]
-fn convert_gemm(m: Mod, op: Op) -> bool {
+local fn convert_gemm(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if (len(inputs) != 2 && len(inputs) != 3) || len(outputs) != 1 {
@@ -2927,7 +2927,7 @@ fn convert_gemm(m: Mod, op: Op) -> bool {
 }
 
 [phase: "compute", on: "onnx.Transpose"]
-fn convert_transpose(m: Mod, op: Op) -> bool {
+local fn convert_transpose(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -2951,7 +2951,7 @@ fn convert_transpose(m: Mod, op: Op) -> bool {
 }
 
 [phase: "compute", on: "onnx.ReduceMean"]
-fn convert_mean(m: Mod, op: Op) -> bool {
+local fn convert_mean(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -2966,7 +2966,7 @@ fn convert_mean(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.mean", inputs)
 }
 
-fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
+local fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -3006,22 +3006,22 @@ fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
 }
 
 [phase: "compute", on: "onnx.GlobalAveragePool"]
-fn convert_global_pool(m: Mod, op: Op) -> bool {
+local fn convert_global_pool(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "nn.global_avg_pool2d")
 }
 
 [phase: "compute", on: "onnx.AveragePool"]
-fn convert_avg_pool(m: Mod, op: Op) -> bool {
+local fn convert_avg_pool(m: Mod, op: Op) -> bool {
   return convert_pool(m, op, "nn.avg_pool2d")
 }
 
 [phase: "compute", on: "onnx.MaxPool"]
-fn convert_max_pool(m: Mod, op: Op) -> bool {
+local fn convert_max_pool(m: Mod, op: Op) -> bool {
   return convert_pool(m, op, "nn.max_pool2d")
 }
 
 [phase: "shape", on: "onnx.Identity"]
-fn convert_identity(m: Mod, op: Op) -> bool {
+local fn convert_identity(m: Mod, op: Op) -> bool {
   return convert_unary(m, op, "base.copy")
 }
 

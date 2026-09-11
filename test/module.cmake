@@ -46,6 +46,21 @@ if(NOT COMMAND_OUTPUT MATCHES "fn source\\(m: Mod\\) -> str;\n" OR
           "module info did not isolate the C module API:\n${COMMAND_OUTPUT}")
 endif()
 
+invoke(ok "${TOOL}" module info onnx.nn -M "${SOURCE_ROOT}")
+if(NOT COMMAND_OUTPUT MATCHES "fn infer\\(m: Mod\\) -> bool;\n" OR
+   NOT COMMAND_OUTPUT MATCHES "fn convert\\(m: Mod\\) -> bool;\n" OR
+   COMMAND_OUTPUT MATCHES "fn (conv_type|convert_conv|infer_once)\\(")
+  message(FATAL_ERROR
+          "module info exposed ONNX bridge implementation:\n${COMMAND_OUTPUT}")
+endif()
+
+invoke(ok "${TOOL}" module info tflite.nn -M "${SOURCE_ROOT}")
+if(NOT COMMAND_OUTPUT MATCHES "fn convert\\(m: Mod\\) -> bool;\n" OR
+   COMMAND_OUTPUT MATCHES "fn (convert_conv|convert_binary|convert_tensor)\\(")
+  message(FATAL_ERROR
+          "module info exposed TFLite bridge implementation:\n${COMMAND_OUTPUT}")
+endif()
+
 invoke(ok "${TOOL}" module install "${BUILD_ROOT}/sample" "${TEST_ROOT}"
        -M "${BUILD_ROOT}")
 if(NOT EXISTS "${TEST_ROOT}/sample/module.jog")

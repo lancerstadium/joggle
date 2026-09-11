@@ -308,7 +308,10 @@ Open function metadata now also supports semantic relation discovery.
 `ir.invoke<R>` transactionally executes a typed `fn(Mod, Op) -> R` boundary.
 ONNX inference and conversion relations self-identify in their owning module,
 removing both central operator-name dispatch chains while leaving import and
-conversion explicit. Module-owned phases preserve conversion order, and an
+conversion explicit. Those relations are module-local implementation while
+the owning module can still discover them through explicit reflection; module
+inspection and cross-module resolution expose only the small bridge API.
+Module-owned phases preserve conversion order, and an
 explicit relation-list entry performs its own phase selection, allowing an
 external module to append type and conversion relations without copying the
 driver. The separate TFLite bridge uses the same boundary while retaining a

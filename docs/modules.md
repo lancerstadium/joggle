@@ -492,6 +492,11 @@ open.
 Each ONNX inference and conversion relation is an ordinary function carrying
 open attributes owned by `onnx.nn`. The driver discovers those functions with
 `ir.fns`, selects them with `ir.where`, and executes them with `ir.invoke`.
+The relation functions and their supporting calculations are `local fn`s:
+explicit reflection by their owning module can still discover the metadata,
+but importing code and `module info` see only the supported `infer`, `convert`,
+and shape-query surface. This keeps automatic relation discovery without
+turning every schema rule into a public API or maintaining a second registry.
 Conversion relations use `phase` only to preserve the module's explicit
 compute-then-shape order. `onnx.nn.convert(m, rules)` executes an explicitly
 provided relation set, selecting its inference and ordered conversion phases
@@ -1001,7 +1006,10 @@ activation, and softmax axis/scale as normal operands. Standard and depthwise Co
 Add/Sub/Mul, average/max pool, reshape, and softmax then resolve to shared
 functions. Each mapping is an ordinary function selected by its module-owned
 `on` attribute through the same `ir.where`/`ir.invoke` boundary as ONNX; there
-is no frontend-wide operator dispatch chain. Its two-argument `convert`
+is no frontend-wide operator dispatch chain. These relation implementations
+are likewise module-local and remain visible to the owning module's explicit
+reflection, while `convert` is the bridge's small public surface. Its
+two-argument `convert`
 overload lets a caller supply a composed relation set while retaining this
 module's dependency preparation and quantization guard. On the pinned
 MobileNetV2 this removes all 66 source compute calls and retargets all 107

@@ -3,7 +3,7 @@ use tflite
 use nn
 use ir
 
-fn ints(m: Mod, before: Op, value: Attr) -> Val {
+local fn ints(m: Mod, before: Op, value: Attr) -> Val {
   var items: list<Val> = []
   for item in value {
     items += [ir.constant(m, before, item, ty("int"))]
@@ -11,11 +11,11 @@ fn ints(m: Mod, before: Op, value: Attr) -> Val {
   return ir.call(m, before, "base.list", items, ty("list", [ty("int")]))
 }
 
-fn options(op: Op) -> Attr {
+local fn options(op: Op) -> Attr {
   return base.get(ir.meta(op, "tflite"), "options", {})
 }
 
-fn quantized(value: Val) -> bool {
+local fn quantized(value: Val) -> bool {
   if !ir.has(value, "tflite") {
     return false
   }
@@ -30,7 +30,7 @@ fn quantized(value: Val) -> bool {
   return len(quant["scale"]) != 0 && len(quant["zero_point"]) != 0
 }
 
-fn quantized(op: Op) -> bool {
+local fn quantized(op: Op) -> bool {
   for value in ir.args(op) {
     if quantized(value) {
       return true
@@ -44,12 +44,12 @@ fn quantized(op: Op) -> bool {
   return false
 }
 
-fn supports_activation(kind: str) -> bool {
+local fn supports_activation(kind: str) -> bool {
   return kind == "NONE" || kind == "RELU" || kind == "RELU6" ||
          kind == "RELU_N1_TO_1"
 }
 
-fn padding(
+local fn padding(
   input: list<int>,
   output: list<int>,
   kernel: list<int>,
@@ -80,7 +80,7 @@ fn padding(
   return [top, left, bottom, right]
 }
 
-fn convert_call(m: Mod, op: Op, callee: str) -> bool {
+local fn convert_call(m: Mod, op: Op, callee: str) -> bool {
   if !ir.retarget(m, op, callee, ir.args(op)) {
     return false
   }
@@ -88,7 +88,7 @@ fn convert_call(m: Mod, op: Op, callee: str) -> bool {
   return true
 }
 
-fn convert_call(
+local fn convert_call(
   m: Mod, op: Op, callee: str, inputs: list<Val>
 ) -> bool {
   if !ir.retarget(m, op, callee, inputs) {
@@ -99,7 +99,7 @@ fn convert_call(
 }
 
 [phase: "data", on: "tflite.tensor"]
-fn convert_tensor(m: Mod, op: Op) -> bool {
+local fn convert_tensor(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 ||
@@ -111,7 +111,7 @@ fn convert_tensor(m: Mod, op: Op) -> bool {
 }
 
 [phase: "cleanup", on: "tflite.model"]
-fn convert_model(m: Mod, op: Op) -> bool {
+local fn convert_model(m: Mod, op: Op) -> bool {
   for candidate in ir.ops(m) {
     if ir.live(candidate) && candidate != op && ir.has(candidate, "tflite") {
       return false
@@ -120,7 +120,7 @@ fn convert_model(m: Mod, op: Op) -> bool {
   return ir.erase(m, op)
 }
 
-fn convert_conv(m: Mod, op: Op, depthwise: bool) -> bool {
+local fn convert_conv(m: Mod, op: Op, depthwise: bool) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 3 || len(outputs) != 1 {
@@ -192,16 +192,16 @@ fn convert_conv(m: Mod, op: Op, depthwise: bool) -> bool {
 }
 
 [phase: "compute", on: "tflite.CONV_2D"]
-fn conv(m: Mod, op: Op) -> bool {
+local fn conv(m: Mod, op: Op) -> bool {
   return convert_conv(m, op, false)
 }
 
 [phase: "compute", on: "tflite.DEPTHWISE_CONV_2D"]
-fn depthwise_conv(m: Mod, op: Op) -> bool {
+local fn depthwise_conv(m: Mod, op: Op) -> bool {
   return convert_conv(m, op, true)
 }
 
-fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
+local fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 2 || len(outputs) != 1 {
@@ -231,21 +231,21 @@ fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
 }
 
 [phase: "compute", on: "tflite.ADD"]
-fn add(m: Mod, op: Op) -> bool {
+local fn add(m: Mod, op: Op) -> bool {
   return convert_binary(m, op, "nn.add")
 }
 
 [phase: "compute", on: "tflite.SUB"]
-fn sub(m: Mod, op: Op) -> bool {
+local fn sub(m: Mod, op: Op) -> bool {
   return convert_binary(m, op, "nn.sub")
 }
 
 [phase: "compute", on: "tflite.MUL"]
-fn mul(m: Mod, op: Op) -> bool {
+local fn mul(m: Mod, op: Op) -> bool {
   return convert_binary(m, op, "nn.mul")
 }
 
-fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
+local fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 {
@@ -295,17 +295,17 @@ fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
 }
 
 [phase: "compute", on: "tflite.AVERAGE_POOL_2D"]
-fn avg_pool(m: Mod, op: Op) -> bool {
+local fn avg_pool(m: Mod, op: Op) -> bool {
   return convert_pool(m, op, "nn.avg_pool2d")
 }
 
 [phase: "compute", on: "tflite.MAX_POOL_2D"]
-fn max_pool(m: Mod, op: Op) -> bool {
+local fn max_pool(m: Mod, op: Op) -> bool {
   return convert_pool(m, op, "nn.max_pool2d")
 }
 
 [phase: "compute", on: "tflite.RESHAPE"]
-fn convert_reshape(m: Mod, op: Op) -> bool {
+local fn convert_reshape(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   if len(inputs) < 1 || len(ir.outs(op)) != 1 {
     return false
@@ -315,7 +315,7 @@ fn convert_reshape(m: Mod, op: Op) -> bool {
 }
 
 [phase: "compute", on: "tflite.SOFTMAX"]
-fn convert_softmax(m: Mod, op: Op) -> bool {
+local fn convert_softmax(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
   if len(inputs) != 1 || len(outputs) != 1 ||
