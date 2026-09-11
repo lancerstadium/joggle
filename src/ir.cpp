@@ -2010,10 +2010,14 @@ bool Mod::retarget(const Env& env, Op call, std::string callee,
                        "retarget arguments must dominate their call",
                        call.loc());
       return false;
-    }
+  }
   std::vector<Ty> returns;
-  if (!env.resolve(*this, call, callee, args, &returns))
+  if (!env.resolve(*this, call, callee, args, &returns)) {
+    detail::add_diag(store.diags,
+                     "retarget target does not accept the call signature",
+                     call.loc());
     return false;
+  }
   const std::vector<Val> outputs = call.outs();
   if (returns.size() != outputs.size()) {
     detail::add_diag(store.diags,

@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #define CHECK(expression)                                                      \
   do {                                                                         \
@@ -1015,7 +1016,7 @@ int main(int argc, char** argv) {
                       wrong_result_type, "wrong-result.jog"));
   CHECK(!wrong_result_type.verify(env));
   CHECK(!wrong_result_type.diags().empty());
-  CHECK(wrong_result_type.diags().front().message.find("expected 'i32'") !=
+  CHECK(wrong_result_type.diags().front().message.find("requires type 'str'") !=
         std::string::npos);
 
   constexpr std::string_view failed_inference_source =
@@ -1108,11 +1109,33 @@ int main(int argc, char** argv) {
   CHECK(overload_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(overloaded, overload_roundtrip));
 
+  constexpr std::string_view result_context_source =
+      "module result_context\n"
+      "fn choose<T: Ty>(x: i32) -> T;\n"
+      "fn choose(x: i32) -> i32;\n"
+      "fn use(x: i32) -> f32 { return choose(x) }\n";
+  constexpr std::string_view reversed_result_context_source =
+      "module reversed_result_context\n"
+      "fn choose(x: i32) -> i32;\n"
+      "fn choose<T: Ty>(x: i32) -> T;\n"
+      "fn use(x: i32) -> f32 { return choose(x) }\n";
+  for (const auto& [source, file] :
+       {std::pair{result_context_source, "result-context.jog"},
+        std::pair{reversed_result_context_source,
+                  "reversed-result-context.jog"}}) {
+    joggle::Mod result_context;
+    CHECK(joggle::parse(env, source, result_context, file));
+    CHECK(result_context.verify(env));
+    const joggle::Val returned =
+        result_context.find_fn("use").body().ops().back().args().front();
+    CHECK(returned.type() == joggle::Ty("f32"));
+  }
+
   joggle::Mod ambiguous;
   constexpr std::string_view ambiguous_source =
       "module ambiguous\n"
       "fn pick<A>(x: pair<A, i32>) -> int;\n"
-      "fn pick<B>(x: pair<i32, B>) -> str;\n"
+      "fn pick<B>(x: pair<i32, B>) -> int;\n"
       "fn use(x: pair<i32, i32>) -> int { return pick(x) }\n";
   CHECK(joggle::parse(env, ambiguous_source, ambiguous, "ambiguous.jog"));
   CHECK(!ambiguous.verify(env));
@@ -1163,7 +1186,18 @@ int main(int argc, char** argv) {
   CHECK(!wrong_result.verify(env));
   CHECK(!wrong_result.diags().empty());
   CHECK(wrong_result.diags().front().message.find(
-            "return type 'f32' does not match 'i32'") != std::string::npos);
+            "requires type 'i32'") != std::string::npos);
+
+  joggle::Mod wrong_result_count;
+  CHECK(joggle::parse(env,
+                      "module wrong_result_count\n"
+                      "fn split() -> (i32, bool);\n"
+                      "fn bad() -> i32 { return split() }\n",
+                      wrong_result_count, "wrong-result-count.jog"));
+  CHECK(!wrong_result_count.verify(env));
+  CHECK(!wrong_result_count.diags().empty());
+  CHECK(wrong_result_count.diags().front().message.find(
+            "expects 2 results, got 1") != std::string::npos);
 
   joggle::Mod incompatible_result;
   CHECK(joggle::parse(env,
@@ -1188,7 +1222,7 @@ int main(int argc, char** argv) {
   CHECK(incompatible_result.revision() == before_retarget_revision);
   CHECK(!incompatible_result.diags().empty());
   CHECK(incompatible_result.diags().back().message.find(
-            "result types do not match") != std::string::npos);
+            "does not accept the call signature") != std::string::npos);
 
   joggle::Mod explicit_match;
   CHECK(joggle::parse(env,

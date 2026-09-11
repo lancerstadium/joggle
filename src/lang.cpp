@@ -1926,8 +1926,11 @@ Fn select_overload(std::span<const Fn> candidates,
         continue;
       const Ty& formal = candidate_returns[index];
       Bindings inferred = bindings;
-      if (unify(formal, expected_returns[index], generics, inferred))
-        bindings = std::move(inferred);
+      if (!unify(formal, expected_returns[index], generics, inferred)) {
+        matches = false;
+        break;
+      }
+      bindings = std::move(inferred);
     }
     for (std::size_t index = 0; matches && index < info.size(); ++index) {
       const auto bound = bindings.find(std::string(info[index].name));
@@ -2086,12 +2089,19 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
       else if (candidates.size() == 1) {
         const Fn candidate = candidates.front();
         const std::vector<Val> params = candidate.params();
+        const std::vector<Ty> candidate_returns = candidate.returns();
         const std::vector<std::string> generics =
             generic_names(generic_info(candidate));
         if (params.size() != arguments.size())
           message = "call to '" + std::string(op.callee) + "' expects " +
                     std::to_string(params.size()) + " arguments, got " +
                     std::to_string(arguments.size());
+        else if (!expected_returns.empty() &&
+                 candidate_returns.size() != expected_returns.size())
+          message = "call to '" + std::string(op.callee) + "' expects " +
+                    std::to_string(candidate_returns.size()) +
+                    " results, got " +
+                    std::to_string(expected_returns.size());
         else if (!explicit_args.empty() &&
                  explicit_args.size() != generics.size())
           message = "call to '" + std::string(op.callee) + "' expects " +
@@ -2113,6 +2123,24 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
                 std::string(substitute(formal, generics, bindings).text()) +
                 "'";
             break;
+          }
+          for (std::size_t index = 0;
+               message.empty() && index < expected_returns.size(); ++index) {
+            if (expected_returns[index].text() == "_")
+              continue;
+            Bindings inferred = bindings;
+            if (unify(candidate_returns[index], expected_returns[index],
+                      generics, inferred)) {
+              bindings = std::move(inferred);
+              continue;
+            }
+            const Ty actual = substitute(candidate_returns[index], generics,
+                                         bindings);
+            message = "result " + std::to_string(index + 1) + " of '" +
+                      std::string(op.callee) + "' requires type '" +
+                      std::string(expected_returns[index].text()) +
+                      "', but the overload returns '" +
+                      std::string(actual.text()) + "'";
           }
           const std::vector<GenericInfo> info = generic_info(candidate);
           for (std::size_t index = 0; message.empty() && index < info.size();

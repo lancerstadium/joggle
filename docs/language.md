@@ -131,6 +131,9 @@ the enclosing function result when a call is returned directly. The resulting
 substitution is applied to every call result. This permits a shape-producing
 function to infer dimensions that occur only in its result without encoding
 them in the function name or forcing an otherwise redundant `let` binding.
+Return constraints also remove incompatible overloads before specificity is
+compared, so a concrete but wrong-result candidate cannot hide a valid generic
+candidate. The choice is independent of declaration order.
 Conflicting bindings, wrong argument counts, and wrong concrete types receive
 source-located diagnostics.
 For example,
