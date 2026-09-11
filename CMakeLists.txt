@@ -14,6 +14,8 @@ set(JOGGLE_TEST_ONNX_ZOO "" CACHE PATH
     "Directory containing the pinned ONNX Model Zoo test set")
 set(JOGGLE_TEST_ONNX_BACKEND "" CACHE PATH
     "Directory containing official ONNX backend test cases")
+set(JOGGLE_TEST_ONNX_APP "" CACHE PATH
+    "Extracted official MobileNetV2 ONNX application case")
 set(JOGGLE_TEST_TFLITE_MODEL "" CACHE FILEPATH
     "Official TFLite model used by tests")
 
@@ -714,6 +716,50 @@ if(JOGGLE_BUILD_TESTS)
         "ASAN_OPTIONS=detect_container_overflow=0"
       )
     endif()
+  endif()
+  if(JOGGLE_BUILD_ONNX AND JOGGLE_TEST_C_COMPILER AND
+     NOT JOGGLE_TEST_ONNX_APP STREQUAL "")
+    set(onnx_app_files
+      mobilenetv2-7.onnx
+      test_data_set_0/input_0.pb
+      test_data_set_0/output_0.pb
+    )
+    set(onnx_app_hashes
+      c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f
+      8d2dd7bc0a81404c443315a7cdcec81b502082cf3f450cec204b7278be85a254
+      55c3689e6946111fd78ad250e857c36d58fd383819dd0d3997cd1332c7d86cbd
+    )
+    foreach(index RANGE 2)
+      list(GET onnx_app_files ${index} file)
+      list(GET onnx_app_hashes ${index} expected)
+      if(NOT EXISTS "${JOGGLE_TEST_ONNX_APP}/${file}")
+        message(FATAL_ERROR "missing pinned ONNX application file: ${file}")
+      endif()
+      file(SHA256 "${JOGGLE_TEST_ONNX_APP}/${file}" actual)
+      if(NOT actual STREQUAL expected)
+        message(FATAL_ERROR "ONNX application hash mismatch: ${file}")
+      endif()
+    endforeach()
+    add_executable(joggle-onnx-app-test test/onnx_app.cpp)
+    target_link_libraries(
+      joggle-onnx-app-test PRIVATE Joggle::joggle joggle-onnx-proto
+    )
+    add_dependencies(joggle-onnx-app-test joggle-onnx)
+    add_test(
+      NAME onnx-app-mobilenet
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DTEST=$<TARGET_FILE:joggle-onnx-app-test>
+        -DCC=${JOGGLE_TEST_C_COMPILER}
+        -DCASE=${JOGGLE_TEST_ONNX_APP}
+        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mobilenet_main.c
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/onnx-app
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/onnx_app.cmake
+    )
+    set_tests_properties(
+      onnx-app-mobilenet PROPERTIES LABELS "heavy;onnx;execution" TIMEOUT 1200
+    )
   endif()
   if(JOGGLE_BUILD_TFLITE AND NOT JOGGLE_TEST_TFLITE_MODEL STREQUAL "")
     file(SHA256 "${JOGGLE_TEST_TFLITE_MODEL}" tflite_model_sha256)

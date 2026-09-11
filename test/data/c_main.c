@@ -13,6 +13,7 @@ float jog_relu(float x);
 bool jog_logical(int64_t a, int64_t b);
 float jog_root(float x);
 int64_t jog_steps(void);
+int64_t jog_select(void);
 
 int main(void) {
   float weights[2] = {0.0f, 0.0f};
@@ -57,5 +58,7 @@ int main(void) {
     return 9;
   if (jog_steps() != 3)
     return 10;
+  if (jog_select() != 7)
+    return 11;
   return 0;
 }

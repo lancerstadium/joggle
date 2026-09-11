@@ -35,8 +35,24 @@ fn copy(m: Mod) -> bool {
        ir.callee(op) == "base.copy" && len(ir.meta(op)) == 0 {
       let args = ir.args(op)
       let outs = ir.outs(op)
+      var root = false
+      for fn in ir.fns(m) {
+        let blocks = ir.blks(fn)
+        if len(blocks) != 0 && ir.blk(op) == blocks[0] {
+          root = true
+        }
+      }
+      var carried = false
+      if len(outs) == 1 {
+        for user in ir.users(outs[0]) {
+          let kind = ir.kind(user)
+          if kind == "loop" || kind == "branch" || kind == "yield" {
+            carried = true
+          }
+        }
+      }
       if len(args) == 1 && len(outs) == 1 &&
-         ir.type(args[0]) == ir.type(outs[0]) {
+         ir.type(args[0]) == ir.type(outs[0]) && root && !carried {
         calls += [op]
         old += [outs[0]]
         next += [args[0]]

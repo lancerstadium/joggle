@@ -1,5 +1,16 @@
 module open
+use base
 use tensor
+
+fn carry(seed: i64) -> i64 {
+  var value: i64 = base.copy(seed)
+  for i in 0..2 {
+    if i >= 1 {
+      value = seed + i64(7)
+    }
+  }
+  return value
+}
 
 fn add(
   a: tensor<f32, [4]>,

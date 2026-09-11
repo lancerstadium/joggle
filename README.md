@@ -194,7 +194,9 @@ ShuffleNet, DenseNet, GoogLeNet, EfficientNet QDQ/INT8, and BiDAF. Coverage is
 reported conservatively: an imported or typed source call is not described as
 executable semantic support. MobileNetV2 additionally exercises atomic
 network-wide body expansion and canonical round trip on the resulting
-loop-level IR.
+loop-level IR. An independent, opt-in application gate compiles its official
+ONNX Zoo input through the C module and compares all 1,000 outputs with the
+official result.
 
 ## Analyze and emit
 
@@ -224,6 +226,11 @@ literal-list indexing, and the standard floating-point functions declared by
 `math`; unsupported IR fails with a diagnostic. Preparation composes the
 reusable static evaluator and copy propagation before exposing remaining
 calls.
+After `mem.plan`, the ordinary parameterized transform
+`c.place(m, "static")` can request static C workspace storage through open
+function metadata. Local storage remains the default. Placement is explicit:
+neither planning nor emission chooses it implicitly, and another target is free
+to interpret the target-neutral slots differently.
 With `JOGGLE_BUILD_SAT=ON`, the separate `sat.c.prepare` bridge recursively
 maps concrete `sat<W>` types to C storage, materializes width-specialized
 saturating helpers, and then calls `c.prepare`. The C module contains no

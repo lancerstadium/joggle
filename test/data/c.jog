@@ -38,6 +38,16 @@ fn steps() -> i64 {
   return count
 }
 
+fn select() -> i64 {
+  var value: i64 = i64(1)
+  for i in 0..4 {
+    if i >= 2 {
+      value = i64(7)
+    }
+  }
+  return value
+}
+
 fn weights() -> tensor<f32, [2]> {
   let values: tensor<f32, [2]> = tensor.literal(hex"0000803f00000040")
   return values

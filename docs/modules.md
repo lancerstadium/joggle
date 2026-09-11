@@ -740,13 +740,21 @@ through the shared `tensor` body into a constructor, scalar-list shape loop,
 range loop, indexing, and scalar addition; that prepared model is then emitted,
 compiled, and executed. `c.source` does not invoke the transform.
 Each preparation round first composes `opt.fold` and `opt.copy`, so exposed
-static shape expressions do not become target-specific `len` or assignment
-cases. The C module itself owns only actual C capabilities: scalar/list and
+static shape expressions are simplified without erasing nested assignments
+that the readable surface form must retain. The C module directly prints those
+remaining scalar or tensor copies. It otherwise owns only actual C
+capabilities: scalar/list and
 tensor access, standard floating-point math calls, structured control, and
 fixed tensor storage. Structured short-circuit branches are recovered as C
 logical expressions from their forwarding arm, without a parser or core
 special case. Large byte literals use `base.hex` rather than an interpreted
 loop per byte.
+
+When `mem.plan` has attached target-neutral reusable slots, `c.place(m,
+"static")` records an explicit C-only workspace choice on each emitted
+function; `"local"` removes it. The emitter reads this open metadata but never
+runs either transform. Static placement avoids a large call stack at the cost
+of reentrancy, so it is an opt-in policy rather than a core storage class.
 
 A read-only module function is invoked with `query(env, "module.fn", mod,
 result, args, cached)`. It is still declared with ordinary `fn` syntax. The

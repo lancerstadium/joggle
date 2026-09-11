@@ -264,6 +264,10 @@ fn supported(m: Mod, op: Op) -> bool {
   if name == "base.list" || name == "operator .." {
     return true
   }
+  if name == "base.copy" {
+    return len(inputs) == 1 && len(outputs) == 1 &&
+           ir.type(inputs[0]) == ir.type(outputs[0])
+  }
   if name == "operator []" {
     if len(outputs) != 1 || len(inputs) < 2 ||
        tensor.valid(ir.type(outputs[0])) {
@@ -352,6 +356,24 @@ fn prepare(m: Mod) -> bool {
   return changed
 }
 
+fn place(m: Mod, scope: str) -> bool {
+  assert(scope == "local" || scope == "static",
+         "c.place expects local or static storage")
+  var changed = false
+  for fn in ir.fns(m) {
+    if len(ir.blks(fn)) != 0 {
+      if scope == "static" {
+        changed = ir.set(m, fn, "c.place", scope) || changed
+      } else {
+        if ir.has(fn, "c.place") {
+          changed = ir.unset(m, fn, "c.place") || changed
+        }
+      }
+    }
+  }
+  return changed
+}
+
 fn tensor_new(m: Mod, op: Op, depth: int) -> str {
   let outputs = ir.outs(op)
   let inputs = ir.args(op)
@@ -405,6 +427,61 @@ fn tensor_literal(op: Op, depth: int) -> str {
   return out
 }
 
+fn defined(op: Op, output: Val) -> bool {
+  let name = ir.name(output)
+  if name == "" {
+    return false
+  }
+  let body = ir.blk(op)
+  for value in ir.args(body) {
+    if ir.name(value) == name {
+      return true
+    }
+  }
+  var before = true
+  for prior in ir.ops(body) {
+    if prior == op {
+      before = false
+    }
+    if before {
+      for value in ir.outs(prior) {
+        if ir.name(value) == name {
+          return true
+        }
+      }
+    }
+  }
+  return false
+}
+
+fn copy(m: Mod, op: Op, depth: int) -> str {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  assert(len(inputs) == 1 && len(outputs) == 1,
+         "c: copy requires one input and one output")
+  let input = inputs[0]
+  let output = outputs[0]
+  let type = ir.type(output)
+  let indent = pad(depth)
+  if tensor.valid(type) {
+    var out = ""
+    if !defined(op, output) && !mem.planned(output) {
+      out = indent + scalar(tensor.elem(type)) + " " + val(output) + "[" +
+            text(count(type)) + "];\n"
+    }
+    if val(output) != val(input) {
+      out += indent + "memcpy(" + val(output) + ", " + val(input) + ", " +
+             text(count(type) * width(tensor.elem(type))) + ");\n"
+    }
+    return out
+  }
+  if defined(op, output) {
+    return indent + val(output) + " = " + expr(m, input) + ";\n"
+  }
+  return indent + scalar(type) + " " + val(output) + " = " +
+         expr(m, input) + ";\n"
+}
+
 fn call(m: Mod, op: Op, depth: int) -> str {
   let name = ir.callee(op)
   let inputs = ir.args(op)
@@ -413,6 +490,9 @@ fn call(m: Mod, op: Op, depth: int) -> str {
   assert(supported(m, op), "c: call must be prepared: " + name)
   if name == "base.list" || name == "operator .." {
     return ""
+  }
+  if name == "base.copy" {
+    return copy(m, op, depth)
   }
   if name == "operator []" {
     assert(len(outputs) == 1 && len(inputs) >= 2,
@@ -674,10 +754,17 @@ fn definition(m: Mod, fn: Fn) -> str {
   let bodies = ir.blks(fn)
   assert(len(bodies) >= 1, "c: function has no body")
   var memory = ""
+  var storage = ""
+  if ir.has(fn, "c.place") {
+    let place = str(ir.meta(fn, "c.place"))
+    assert(place == "static", "c: unsupported storage placement " + place)
+    storage = "static "
+  }
   for slot in 0..mem.slots(fn) {
     let type = mem.type(fn, slot)
-    memory += pad(1) + scalar(type) + " jog_mem_" + id(base.name(type)) +
-              "_" + text(slot) + "[" + text(mem.count(fn, slot)) + "];\n"
+    memory += pad(1) + storage + scalar(type) + " jog_mem_" +
+              id(base.name(type)) + "_" + text(slot) + "[" +
+              text(mem.count(fn, slot)) + "];\n"
   }
   return signature(fn) + " {\n" + memory + block(m, bodies[0], 1) + "}\n"
 }

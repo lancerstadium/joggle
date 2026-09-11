@@ -124,7 +124,9 @@ revisions, rejects non-positive bounds, and rolls back when the last permitted
 round still changes IR. Its zero-policy entry derives a sufficient bound from
 the graph size; a deep reverse dead-use chain guards against silent partial
 cleanup. The same module now exposes partial evaluation over an explicit set of
-ordinary functions and batch copy propagation. Batch value replacement and
+ordinary functions and source-preserving root-block copy propagation. Nested
+copies retain the assignments required by the imperative surface form. Batch
+value replacement and
 operation erasure collapse chains, check dominance once, and rebuild use lists
 once, making application-sized rewrites independent of the number of selected
 calls.
@@ -328,13 +330,15 @@ intervals and reusable same-element-type slots as open metadata. The C module
 optionally consumes the plan; a three-stage tensor chain compiles and executes
 with two physical buffers for three logical intermediates. Dynamic allocation,
 inter-function planning, and a genuinely different second target remain open.
-After full semantic-body exposure, the official MobileNetV2 model now completes
-C preparation, emits one C99 translation unit, and passes `-Wall -Wextra
--Werror -fsyntax-only`. This is a compilation coverage gate, not an inference
-result. The same module also completes static memory planning: the emitted
+After full semantic-body exposure, the official MobileNetV2 model completes C
+preparation, static memory planning, C99 emission, strict compilation, and an
+all-output comparison against the official ONNX Zoo protobuf result. The gate
+also caught and now guards a source-preservation error in nested assignment
+copy propagation. The emitted
 function uses 268 typed slots instead of 422 separate tensor arrays, reducing
-declared mutable tensor storage from 119,677,248 to 27,198,592 bytes. Output
-comparison against the official model remains open.
+declared mutable tensor storage from 119,677,248 to 27,198,592 bytes. The
+ordinary `c.place` transform can place those slots in static C storage without
+giving placement metadata a core meaning.
 The optional `sat.c` bridge now proves that a module-defined parametric format
 can be recursively retyped, specialized into local helpers, emitted through C,
 compiled, and executed for both scalar and fixed-shape tensor values without
@@ -355,8 +359,9 @@ official ONNX Zoo model gates and the official TFLite MobileNet gate. Core
 gained no frontend, target, or tensor-literal case. The hash-pinned ONNX v1.19.0
 backend MatMul case now completes binary import, conversion, dead-data cleanup,
 ordinary body expansion, and output comparison through both VM and compiled C.
-This is not yet the second target exit gate: module-defined formats and an
-application-sized official-model execution comparison remain open.
+This is not yet the second target exit gate: application-sized execution
+through the independent VM and a module-defined format on that scale remain
+open.
 
 Exit gate: official models from two frontends pass through one shared semantic
 library and run through at least two targets without core operator switches.

@@ -135,3 +135,25 @@ fetch_github(
   validated/text/machine_comprehension/bidirectional_attention_flow/model/bidaf-9.onnx
   dfc317b56d065a3e297240a9e9b9118ff2260790b5850f4be2bc6ea1bcc65e80
 )
+
+if(DEFINED APP AND APP)
+  set(archive "${OUT}/mobilenetv2-7.tar.gz")
+  file(
+    DOWNLOAD
+      "https://media.githubusercontent.com/media/onnx/models/4f43949841cb55a0b98dc8fcd045431ccafd9f96/validated/vision/classification/mobilenet/model/mobilenetv2-7.tar.gz"
+      "${archive}"
+    EXPECTED_HASH
+      "SHA256=b463ad62dae99f13afd88549ca7d43e9bda6876614f3592ebb41177e1db0fcc5"
+    SHOW_PROGRESS
+    STATUS status
+    TLS_VERIFY ON
+  )
+  list(GET status 0 code)
+  list(GET status 1 message)
+  if(NOT code EQUAL 0)
+    message(FATAL_ERROR "MobileNetV2 application download failed: ${message}")
+  endif()
+  file(MAKE_DIRECTORY "${OUT}/app")
+  file(ARCHIVE_EXTRACT INPUT "${archive}" DESTINATION "${OUT}/app")
+  file(REMOVE "${archive}")
+endif()

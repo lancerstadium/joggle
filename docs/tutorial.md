@@ -366,6 +366,24 @@ gate converts and expands the imported model, runs the same ordinary IR through
 VM and compiled C, and checks both results against that output. Normal builds
 remain offline; neither download runs during configure.
 
+The application-sized numerical gate is separately opt-in because it expands
+and executes a complete network. Fetch the hash-pinned ONNX Zoo archive with
+its official protobuf input and output, then enable its extracted case:
+
+```sh
+cmake -DOUT=/tmp/joggle-onnx-zoo -DMODELS=mobilenetv2-7 -DAPP=ON \
+  -P test/zoo.cmake
+cmake -S . -B build -DJOGGLE_BUILD_ONNX=ON \
+  -DJOGGLE_TEST_ONNX_APP=/tmp/joggle-onnx-zoo/app/mobilenetv2-7
+cmake --build build
+ctest --test-dir build -R onnx-app-mobilenet --output-on-failure
+```
+
+That test performs import, explicit semantic conversion, body exposure, static
+memory planning, explicit C storage placement, strict C99 compilation, and a
+comparison of all 1,000 outputs. The model, input, output, and archive hashes
+are checked before execution.
+
 The MobileNetV2 gate checks 267 tensor constants, 155 nodes,
 14,156,560 initializer bytes, verifier result, and canonical round trip. It
 also uses a test function built from `opt.fuse` to combine 36
@@ -496,6 +514,12 @@ tensors, excludes parameters and constants, and reuses a slot only after the
 prior binding's last real use. `c.source` reads `mem.slot` metadata if present;
 it does not run the planner. A device-specific module may instead interpret or
 replace the same open metadata with its own allocation policy.
+
+The parameterized `c.place(m, "static")` transform changes only the C module's
+workspace placement metadata. It is useful when a large deterministic
+workspace must not consume the host stack; `"local"` removes that request.
+Static placement is deliberately explicit because it trades reentrancy for a
+fixed program-lifetime workspace.
 
 Inspect deterministic structural measurements before or after any step:
 

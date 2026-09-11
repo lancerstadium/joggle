@@ -1,6 +1,8 @@
 #include <math.h>
+#include <stdint.h>
 
 void jog_add(const float* a, const float* b, float* out);
+int64_t jog_carry(int64_t seed);
 
 int main(void) {
   const float a[4] = {1.0f, 2.0f, 3.0f, 4.0f};
@@ -11,5 +13,7 @@ int main(void) {
   for (int i = 0; i < 4; ++i)
     if (fabsf(out[i] - expected[i]) > 1e-6f)
       return 1;
+  if (jog_carry(3) != 10)
+    return 2;
   return 0;
 }
