@@ -196,7 +196,9 @@ executable semantic support. MobileNetV2 additionally exercises atomic
 network-wide body expansion and canonical round trip on the resulting
 loop-level IR. An independent, opt-in application gate compiles its official
 ONNX Zoo input through the C module and compares all 1,000 outputs with the
-official result.
+official result. Source construction carries only mutable bindings actually
+changed by nested control flow, so readable `var` syntax does not replicate
+every in-scope binding across every exposed tensor loop.
 
 ## Analyze and emit
 

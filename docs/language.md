@@ -196,6 +196,13 @@ by the same value update; it does not add an operation kind. Tensor-like values
 may use `value[i, j] = next`, which normalizes to `operator []=` returning the
 updated value, so mutation remains explicit value flow.
 
+Structured control carries only mutable bindings that an enclosed `for` or
+`if` can change. A read-only `var` use refers directly to its dominating outer
+value, and a binding forwarded unchanged by every body is omitted from the
+operation inputs, block arguments, yields, and results. This normalization is
+performed while the source is constructed; users keep normal lexical mutation
+without paying one carried IR value per in-scope binding and control level.
+
 Multiple results use ordinary comma-separated bindings rather than tuple or
 result operations:
 
@@ -220,7 +227,8 @@ Position is the only distinction. Attributes before `fn` describe the `Fn`,
 attributes before a statement describe its root `Op`, and inline attributes
 before a generic, parameter, or local name describe that `Val`. No key is
 reserved. Mutable bindings carry their value attributes through the internal
-`Blk` arguments and results created by `for` and `if`.
+`Blk` arguments and results created by `for` and `if` when they are changed in
+that structure.
 
 Known function declarations infer the result types. Explicit annotations keep
 types for open calls whose semantics have not yet been imported. A call is

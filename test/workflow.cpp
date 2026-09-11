@@ -1436,6 +1436,44 @@ int main(int argc, char** argv) {
   CHECK(cloned_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(cloned_loop, cloned_roundtrip));
 
+  joggle::Mod sparse_control;
+  constexpr std::string_view sparse_control_source =
+      "module sparse.control\n"
+      "fn run(n: int, flag: bool) -> int {\n"
+      "  var acc = 0\n"
+      "  var seen = n\n"
+      "  var idle = n\n"
+      "  for i in 0..n { acc += seen + i }\n"
+      "  if flag { acc += seen }\n"
+      "  return acc + idle\n"
+      "}\n";
+  CHECK(joggle::parse(env, sparse_control_source, sparse_control,
+                      "sparse-control.jog"));
+  CHECK(sparse_control.verify(env));
+  joggle::Op sparse_loop;
+  joggle::Op sparse_branch;
+  for (joggle::Op op : sparse_control.ops()) {
+    if (op.kind() == joggle::Op::Kind::loop)
+      sparse_loop = op;
+    if (op.kind() == joggle::Op::Kind::branch)
+      sparse_branch = op;
+  }
+  CHECK(sparse_loop && sparse_loop.args().size() == 2 &&
+        sparse_loop.outs().size() == 1 &&
+        sparse_loop.blks()[0].args().size() == 2 &&
+        sparse_loop.blks()[0].args()[1].name() == "acc");
+  CHECK(sparse_branch && sparse_branch.args().size() == 2 &&
+        sparse_branch.outs().size() == 1 &&
+        sparse_branch.blks()[0].args().size() == 1 &&
+        sparse_branch.blks()[1].args().size() == 1 &&
+        sparse_branch.blks()[0].args()[0].name() == "acc" &&
+        sparse_branch.blks()[1].args()[0].name() == "acc");
+  joggle::Mod sparse_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(sparse_control), sparse_roundtrip,
+                      "sparse-control-roundtrip.jog"));
+  CHECK(sparse_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(sparse_control, sparse_roundtrip));
+
   joggle::Mod cloned_binding;
   constexpr std::string_view binding_source =
       "module binding\n"

@@ -407,6 +407,14 @@ that a failure after editing restores the complete nested structure and its
 revision. No public `Blk` builder, region descriptor, or source-form enum was
 introduced.
 
+Source construction canonicalizes carried state before exposing the module.
+Only a mutable binding whose yielded value differs from its corresponding
+block argument remains a loop or branch result. Read-only uses are reconnected
+to the dominating outer value, unused provisional values are reclaimed during
+parsing, and the final value store is compacted once. This is a property of the
+single structured IR, not an effect annotation, optimization pass, or second
+control-flow representation.
+
 Boolean `&&` and `||` use the same branch representation rather than eager
 operator calls. Only the selected arm evaluates its right operand; canonical
 printing reconstructs the compact expression, and structural traversal still

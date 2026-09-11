@@ -404,7 +404,8 @@ fn expand(m: Mod, callees: list<str>) -> bool {
       var selected = false
       for callee in callees {
         if !selected {
-          if ir.callee(op) == callee || symbol == callee {
+          if (ir.callee(op) == callee || symbol == callee) &&
+             ir.live(target) && len(ir.blks(target)) != 0 {
             selected = true
             calls += [op]
             bodies += [target]

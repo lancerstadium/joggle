@@ -17,8 +17,8 @@ string(CONCAT expected
     "\"consts\": 7, \"fns\": 3, \"loops\": 2, \"mem_elems\": 0, "
     "\"mem_slots\": 0, \"ops\": 31, \"returns\": 3, \"revision\": 1, "
     "\"static_tensor_elems\": 0, \"static_tensor_vals\": 0, "
-    "\"tensor_vals\": 8, \"unresolved\": 5, \"uses\": 1, "
-    "\"vals\": 38, \"yields\": 4}\n")
+    "\"tensor_vals\": 6, \"unresolved\": 5, \"uses\": 1, "
+    "\"vals\": 36, \"yields\": 4}\n")
 if(NOT output STREQUAL expected)
   message(FATAL_ERROR
           "stat query is not stable:\nexpected: ${expected}actual: ${output}")

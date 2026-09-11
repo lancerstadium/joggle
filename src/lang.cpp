@@ -306,6 +306,7 @@ public:
 
   bool run() {
     store_ = {};
+    free_vals_.clear();
     if (!word("module"))
       return fail("expected 'module'");
     if (peek().kind != Tk::name)
@@ -323,6 +324,7 @@ public:
       if (!parse_meta(meta) || !parse_fn(std::move(meta)))
         return false;
     }
+    compact_values();
     detail::rebuild_uses(store_);
     return store_.diags.empty();
   }
@@ -356,6 +358,38 @@ private:
   }
   bool expect(std::string_view text) {
     return match(text) ? true : fail("expected '" + std::string(text) + "'");
+  }
+
+  void compact_values() {
+    const std::size_t live = std::count_if(
+        store_.vals.begin(), store_.vals.end(),
+        [](const auto& slot) { return slot.live; });
+    if (live == store_.vals.size())
+      return;
+    std::vector<std::uint32_t> ids(store_.vals.size(), detail::none);
+    std::vector<detail::Slot<detail::ValData>> values;
+    values.reserve(live);
+    for (std::size_t old = 0; old < store_.vals.size(); ++old) {
+      if (!store_.vals[old].live)
+        continue;
+      ids[old] = static_cast<std::uint32_t>(values.size());
+      values.push_back(std::move(store_.vals[old]));
+    }
+    const auto remap = [&](std::vector<std::uint32_t>& refs) {
+      for (std::uint32_t& ref : refs)
+        ref = ids[ref];
+    };
+    for (auto& fn : store_.fns) {
+      remap(fn.data.generic_vals);
+      remap(fn.data.params);
+    }
+    for (auto& blk : store_.blks)
+      remap(blk.data.args);
+    for (auto& op : store_.ops) {
+      remap(op.data.args);
+      remap(op.data.outs);
+    }
+    store_.vals = std::move(values);
   }
   std::string take_name(std::string_view what) {
     if (peek().kind != Tk::name) {
@@ -391,9 +425,25 @@ private:
   }
 
   std::uint32_t add_val(detail::ValData data) {
+    if (!free_vals_.empty()) {
+      const std::uint32_t id = free_vals_.back();
+      free_vals_.pop_back();
+      store_.vals[id].data = std::move(data);
+      store_.vals[id].live = true;
+      return id;
+    }
     const auto id = static_cast<std::uint32_t>(store_.vals.size());
     store_.vals.push_back({std::move(data), 1, true});
     return id;
+  }
+
+  void drop_val(std::uint32_t id) {
+    if (id >= store_.vals.size() || !store_.vals[id].live)
+      return;
+    store_.vals[id].data = {};
+    store_.vals[id].live = false;
+    ++store_.vals[id].generation;
+    free_vals_.push_back(id);
   }
 
   std::uint32_t add_blk(std::uint32_t fn, std::uint32_t parent) {
@@ -788,6 +838,94 @@ private:
     return out;
   }
 
+  void replace_in(std::uint32_t blk, std::uint32_t old_value,
+                  std::uint32_t new_value) {
+    for (const std::uint32_t id : store_.blks[blk].data.ops) {
+      detail::OpData& op = store_.ops[id].data;
+      for (std::uint32_t& arg : op.args)
+        if (arg == old_value)
+          arg = new_value;
+      for (const std::uint32_t child : op.blks)
+        replace_in(child, old_value, new_value);
+    }
+  }
+
+  void prune_carried(
+      std::uint32_t id,
+      std::vector<std::pair<std::string, Binding>>& captures) {
+    detail::OpData& op = store_.ops[id].data;
+    const std::size_t count = captures.size();
+    const std::size_t iterators =
+        op.kind == Op::Kind::loop ? op.iter_names.size() : 0;
+    const std::size_t inputs =
+        op.kind == Op::Kind::loop ? iterators : std::size_t{1};
+    if (count == 0 || op.args.size() != inputs + count ||
+        op.outs.size() != count)
+      return;
+
+    std::vector<bool> keep(count, false);
+    for (const std::uint32_t blk : op.blks) {
+      const detail::BlkData& body = store_.blks[blk].data;
+      if (body.args.size() != iterators + count || body.ops.empty())
+        return;
+      const detail::OpData& yield = store_.ops[body.ops.back()].data;
+      if (yield.kind != Op::Kind::yield || yield.args.size() != count)
+        return;
+      for (std::size_t index = 0; index < count; ++index)
+        keep[index] = keep[index] ||
+                      yield.args[index] != body.args[iterators + index];
+    }
+    if (std::all_of(keep.begin(), keep.end(), [](bool item) { return item; }))
+      return;
+
+    for (const std::uint32_t blk : op.blks) {
+      detail::BlkData& body = store_.blks[blk].data;
+      const std::vector<std::uint32_t> old_args = body.args;
+      for (std::size_t index = 0; index < count; ++index)
+        if (!keep[index])
+          replace_in(blk, old_args[iterators + index],
+                     op.args[inputs + index]);
+
+      std::vector<std::uint32_t> next_args(old_args.begin(),
+                                           old_args.begin() + iterators);
+      detail::OpData& yield = store_.ops[body.ops.back()].data;
+      const std::vector<std::uint32_t> old_yield = yield.args;
+      std::vector<std::uint32_t> next_yield;
+      for (std::size_t index = 0; index < count; ++index) {
+        const std::uint32_t value = old_args[iterators + index];
+        if (keep[index]) {
+          next_args.push_back(value);
+          next_yield.push_back(old_yield[index]);
+        } else {
+          drop_val(value);
+        }
+      }
+      body.args = std::move(next_args);
+      yield.args = std::move(next_yield);
+    }
+
+    const std::vector<std::uint32_t> old_inputs = op.args;
+    const std::vector<std::uint32_t> old_outputs = op.outs;
+    std::vector<std::uint32_t> next_inputs(old_inputs.begin(),
+                                           old_inputs.begin() + inputs);
+    std::vector<std::uint32_t> next_outputs;
+    std::vector<std::pair<std::string, Binding>> next_captures;
+    for (std::size_t index = 0; index < count; ++index) {
+      if (keep[index]) {
+        next_inputs.push_back(old_inputs[inputs + index]);
+        store_.vals[old_outputs[index]].data.index = next_outputs.size();
+        next_outputs.push_back(old_outputs[index]);
+        next_captures.push_back(captures[index]);
+      } else {
+        drop_val(old_outputs[index]);
+      }
+    }
+    op.args = std::move(next_inputs);
+    op.outs = std::move(next_outputs);
+    op.carried_count = next_captures.size();
+    captures = std::move(next_captures);
+  }
+
   bool parse_for(std::uint32_t fn, std::uint32_t blk, Scope& scope,
                  Attr::Dict meta) {
     detail::OpData data;
@@ -812,7 +950,7 @@ private:
       data.args.push_back(source);
     } while (match(","));
 
-    const auto captures = carried(scope);
+    auto captures = carried(scope);
     data.carried_count = captures.size();
     std::vector<std::pair<std::string, Ty>> results;
     for (const auto& [name, binding] : captures) {
@@ -855,6 +993,7 @@ private:
       yield.args.push_back(inner.at(name).value);
     }
     add_op(body, std::move(yield));
+    prune_carried(op, captures);
     for (std::size_t index = 0; index < captures.size(); ++index)
       scope[captures[index].first].value = store_.ops[op].data.outs[index];
     return true;
@@ -870,7 +1009,7 @@ private:
     if (condition == detail::none)
       return false;
     data.args.push_back(condition);
-    const auto captures = carried(scope);
+    auto captures = carried(scope);
     data.carried_count = captures.size();
     std::vector<std::pair<std::string, Ty>> results;
     for (const auto& [name, binding] : captures) {
@@ -915,6 +1054,7 @@ private:
         return false;
     } else if (!arm(false))
       return false;
+    prune_carried(op, captures);
     for (std::size_t index = 0; index < captures.size(); ++index)
       scope[captures[index].first].value = store_.ops[op].data.outs[index];
     return true;
@@ -1335,6 +1475,7 @@ private:
 
   detail::Store& store_;
   std::vector<Token> tokens_;
+  std::vector<std::uint32_t> free_vals_;
   std::size_t pos_ = 0;
 };
 

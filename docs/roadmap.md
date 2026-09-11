@@ -125,7 +125,8 @@ round still changes IR. Its zero-policy entry derives a sufficient bound from
 the graph size; a deep reverse dead-use chain guards against silent partial
 cleanup. The same module now exposes partial evaluation over an explicit set of
 ordinary functions and source-preserving root-block copy propagation. Nested
-copies retain the assignments required by the imperative surface form. Batch
+copies and root initializers carried into structured control retain the
+assignments required by the imperative surface form. Batch
 value replacement and
 operation erasure collapse chains, check dominance once, and rebuild use lists
 once, making application-sized rewrites independent of the number of selected
@@ -339,6 +340,13 @@ function uses 268 typed slots instead of 422 separate tensor arrays, reducing
 declared mutable tensor storage from 119,677,248 to 27,198,592 bytes. The
 ordinary `c.place` transform can place those slots in static C storage without
 giving placement metadata a core meaning.
+
+Construction-time carried-state pruning preserves that output gate while
+removing bindings that every nested body merely forwards. On the same expanded
+MobileNetV2 artifact, live IR values fall from 1,445,296 to 31,414 and a local
+Release `stat.summary` process falls from approximately 2.07 GB to 394 MB peak
+resident memory. These are application-gate observations rather than a general
+parser benchmark; operation and block counts are unchanged.
 The optional `sat.c` bridge now proves that a module-defined parametric format
 can be recursively retyped, specialized into local helpers, emitted through C,
 compiled, and executed for both scalar and fixed-shape tensor values without
@@ -375,6 +383,16 @@ claims.
 
 - Record pipeline decisions, costs, code size, memory use, and deterministic
   cycle estimates through module functions and stable structured output.
+- Report extension cost at the actual boundary: module source and native code,
+  core files changed, dependencies introduced, exposed functions, and tests.
+  Reconstruct the same measures for representative frontend, semantic,
+  optimization, format, and target additions rather than treating aggregate
+  repository size as an extensibility result.
+- Separate three empirical questions: which conventional models the shared
+  semantics can represent, whether independent modules compose without core
+  cases, and what resources complete pipelines consume. A partial import,
+  successful type closure, body exposure, compilation, and numerical execution
+  are distinct outcomes in every table.
 - Make cloud/edge partitioning, JIT specialization, custom formats, LUT/logic
   implementations, and WCET-oriented analysis independent research modules.
 - Provide reproducible experiment manifests and artifact hashes without making
