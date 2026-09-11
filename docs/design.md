@@ -222,9 +222,12 @@ The same boundary now supports module-owned semantic relations. `ir.where`
 filters ordinary `Fn` values using open metadata, and `ir.invoke` executes only
 the uniform `fn(Mod, Op) -> bool` shape inside the current transaction. The
 evaluator knows neither the attribute key nor the operator vocabulary. The
-`onnx.nn` module uses `[on: ...]` to replace its former centralized dispatch
-chain, while another module may choose a different key and policy without a
-registry, callback class, or parser extension.
+`onnx.nn` module uses `[on: ...]` for both inference and conversion, and a
+module-owned `phase` value preserves its two conversion sweeps. Its `apply`
+function accepts an explicit `Fn` list, so a separate module can contribute a
+new conversion relation without editing the built-in bridge. Another module
+may choose different metadata and policy without a registry, callback class,
+or parser extension.
 
 The independently authored `tflite.nn` bridge uses the same two primitives for
 semantic conversion, despite different source metadata and layout rules. Its

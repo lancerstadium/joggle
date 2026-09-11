@@ -1,6 +1,7 @@
 module script
 use opt
 use tensor
+use onnx.nn
 
 fn nn.relu<S: list<int>>(x: tensor<i8, S>) -> tensor<i8, S> {
   return mid.relu(x)
@@ -51,6 +52,20 @@ fn reject_bad_rule(m: Mod) -> bool {
     }
   }
   return false
+}
+
+[phase: "compute", on: "onnx.Custom"]
+fn custom_onnx(m: Mod, op: Op) -> bool {
+  if !ir.retarget(m, op, "base.copy", ir.args(op)) {
+    return false
+  }
+  ir.unset(m, op, "onnx")
+  return true
+}
+
+fn extend_onnx(m: Mod) -> bool {
+  let rules = ir.where(ir.fns("script"), "phase", "compute")
+  return onnx.nn.apply(m, rules)
 }
 
 fn typed_frontier(m: Mod) -> list<str> {

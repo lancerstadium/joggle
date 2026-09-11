@@ -313,9 +313,8 @@ fn convert_softmax(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "nn.softmax", inputs)
 }
 
-fn convert(m: Mod) -> bool {
-  var changed = ir.use(m, "nn")
-  let rules = ir.fns("tflite.nn")
+fn apply(m: Mod, rules: list<Fn>) -> bool {
+  var changed = false
   for op in ir.ops(m) {
     if ir.live(op) && !quantized(op) {
       for rule in ir.where(rules, "on", ir.callee(op)) {
@@ -323,5 +322,11 @@ fn convert(m: Mod) -> bool {
       }
     }
   }
+  return changed
+}
+
+fn convert(m: Mod) -> bool {
+  var changed = ir.use(m, "nn")
+  changed = apply(m, ir.fns("tflite.nn")) || changed
   return changed
 }

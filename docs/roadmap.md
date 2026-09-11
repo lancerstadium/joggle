@@ -266,12 +266,13 @@ written by the CLI through `--report` using the public canonical `Attr` printer.
 Open function metadata now also supports semantic relation discovery.
 `ir.where` selects `Fn` values without reserving a relation vocabulary, and
 `ir.invoke` transactionally executes the single `fn(Mod, Op) -> bool` boundary.
-ONNX inference relations self-identify in their owning module, removing the
-central operator-name dispatch chain while leaving import and conversion
-explicit. The separate TFLite bridge now discovers its conversion relations
-through the same boundary while retaining a different quantization policy. A
-malformed relation signature is rejected without changing model text or
-revision.
+ONNX inference and conversion relations self-identify in their owning module,
+removing both central operator-name dispatch chains while leaving import and
+conversion explicit. Module-owned phases preserve conversion order, and an
+explicit relation-list entry allows out-of-module extension. The separate
+TFLite bridge uses the same boundary while retaining a different quantization
+policy. A malformed relation signature is rejected without changing model text
+or revision.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

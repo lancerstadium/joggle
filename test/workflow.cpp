@@ -167,6 +167,27 @@ int main(int argc, char** argv) {
     nn_adds += op.callee() == "nn.add" ? 1 : 0;
   }
   CHECK(tflite_adds == 0 && nn_adds == 1);
+  constexpr std::string_view custom_onnx_source =
+      "module custom.onnx\n"
+      "use onnx\n"
+      "fn main(x: i32) -> i32 {\n"
+      "  [onnx: {}]\n"
+      "  let y: i32 = onnx.Custom(x)\n"
+      "  return y\n"
+      "}\n";
+  joggle::Mod custom_onnx;
+  CHECK(joggle::parse(env, custom_onnx_source, custom_onnx,
+                      "custom-onnx.jog"));
+  CHECK(custom_onnx.verify(env));
+  CHECK(joggle::run(env, "script.extend_onnx", custom_onnx));
+  CHECK(custom_onnx.verify(env));
+  std::size_t custom_calls = 0;
+  std::size_t copies = 0;
+  for (joggle::Op op : custom_onnx.ops()) {
+    custom_calls += op.callee() == "onnx.Custom" ? 1 : 0;
+    copies += op.callee() == "base.copy" ? 1 : 0;
+  }
+  CHECK(custom_calls == 0 && copies == 1);
   CHECK(joggle::run(env, "script.tensor_type_probe", network_cpp));
   CHECK(joggle::run(env, "script.byte_probe", network_cpp));
   CHECK(joggle::run(env, "script.def_probe", network_cpp));

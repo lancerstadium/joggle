@@ -336,13 +336,13 @@ TopK, Resize-by-`sizes`, symbolic equal Split, and Squeeze contribute shapes
 when their constant operands or selected axes prove them. Resize-by-runtime
 `scales` and arithmetic over unrelated symbolic extents intentionally remain
 open.
-Each ONNX inference relation is an ordinary function carrying an open `on`
-attribute owned by `onnx.nn`. The driver discovers those functions with
-`ir.fns`, selects exact or shared relations with `ir.where`, and executes them
-with `ir.invoke`. Supporting another source operator therefore adds or extends
-a module function; it does not edit a central operator dispatch chain or the
-core evaluator. This registration affects inference only: import remains a
-codec operation and conversion remains an explicit module function.
+Each ONNX inference and conversion relation is an ordinary function carrying
+open attributes owned by `onnx.nn`. The driver discovers those functions with
+`ir.fns`, selects them with `ir.where`, and executes them with `ir.invoke`.
+Conversion relations use `phase` only to preserve the module's explicit
+compute-then-shape order. `onnx.nn.apply(m, rules)` executes an explicitly
+provided relation set, allowing another module to extend conversion without
+editing this module. Import remains a separate codec operation.
 Convolution and pooling preserve symbolic batch or channel terms while
 requiring only the spatial extents used by their arithmetic to be integer
 literals. Conv accepts its schema's optional one-dimensional bias and maps it
@@ -647,7 +647,9 @@ activation, and softmax axis/scale as normal operands. Standard and depthwise Co
 Add/Sub/Mul, average/max pool, reshape, and softmax then resolve to shared
 functions. Each mapping is an ordinary function selected by its module-owned
 `on` attribute through the same `ir.where`/`ir.invoke` boundary as ONNX; there
-is no frontend-wide operator dispatch chain. On
+is no frontend-wide operator dispatch chain. `tflite.nn.apply(m, rules)` lets a
+caller supply a composed relation set while retaining this module's
+quantization guard. On
 the pinned MobileNetV2 this removes all 66 source compute calls while retaining
 the source model marker and payloads. A second invocation is unchanged, and
 all 66 converted bodies can be independently exposed and round-tripped.

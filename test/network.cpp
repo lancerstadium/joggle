@@ -594,7 +594,8 @@ int main(int argc, char** argv) {
   CHECK(joggle::parse(env, pool_bridge_source, pool_bridge,
                       "pool-bridge.jog"));
   CHECK(pool_bridge.verify(env));
-  CHECK(joggle::run(env, "onnx.nn.convert", pool_bridge));
+  if (!joggle::run(env, "onnx.nn.convert", pool_bridge))
+    return env.print_diags(stderr);
   CHECK(pool_bridge.verify(env));
   joggle::Op semantic_pool;
   for (joggle::Op op : pool_bridge.ops())
