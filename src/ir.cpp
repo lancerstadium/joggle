@@ -652,6 +652,11 @@ bool Mod::use(const Env& env, std::string module) {
                      "use requires the dependency module to be loaded");
     return false;
   }
+  if (env.reaches(module, store.name)) {
+    detail::add_diag(store.diags,
+                     "use would create a module dependency cycle");
+    return false;
+  }
   if (std::find(store.uses.begin(), store.uses.end(), module) !=
       store.uses.end())
     return true;

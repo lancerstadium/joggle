@@ -581,6 +581,35 @@ int main(int argc, char** argv) {
   dependencies.clear_diags();
   CHECK(dependencies.verify(env));
 
+  joggle::Mod indirect_cycle;
+  CHECK(joggle::parse(env,
+                      "module opt\n"
+                      "fn main() -> int { return 0 }\n",
+                      indirect_cycle, "indirect-cycle.jog"));
+  const std::string indirect_cycle_text = joggle::print(indirect_cycle);
+  const std::uint64_t indirect_cycle_revision = indirect_cycle.revision();
+  CHECK(!indirect_cycle.use(env, "script"));
+  CHECK(joggle::print(indirect_cycle) == indirect_cycle_text);
+  CHECK(indirect_cycle.uses().empty());
+  CHECK(indirect_cycle.revision() == indirect_cycle_revision);
+  CHECK(!indirect_cycle.diags().empty());
+  CHECK(indirect_cycle.diags().back().message.find("dependency cycle") !=
+        std::string::npos);
+
+  joggle::Mod parsed_indirect_cycle;
+  CHECK(joggle::parse(env,
+                      "module opt\n"
+                      "use script\n"
+                      "fn main() -> int { return 0 }\n",
+                      parsed_indirect_cycle, "parsed-indirect-cycle.jog"));
+  CHECK(!parsed_indirect_cycle.verify(env));
+  CHECK(std::any_of(
+      parsed_indirect_cycle.diags().begin(),
+      parsed_indirect_cycle.diags().end(), [](const joggle::Diag& diag) {
+        return diag.message.find("dependency cycle through: script") !=
+               std::string::npos;
+      }));
+
   joggle::Mod missing_dependency;
   CHECK(joggle::parse(env,
                       "module missing_dependency\n"

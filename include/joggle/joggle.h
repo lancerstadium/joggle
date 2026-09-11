@@ -329,6 +329,7 @@ private:
   bool load_one(std::string_view name);
   std::vector<Fn> resolve_fns(const detail::Store& from,
                               std::string_view symbol) const;
+  bool reaches(std::string_view from, std::string_view target) const;
   std::uint64_t cache_id() const noexcept;
   std::uint64_t cache_epoch() const noexcept;
   Fn resolve(const Mod& from, Op call, std::string_view callee,

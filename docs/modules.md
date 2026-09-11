@@ -160,7 +160,7 @@ The built-in `ir` module is the complete reflection boundary:
 | `retarget` | Atomically change one call and its operands after normal overload resolution. |
 | `replace`, `erase`, `rename` | Rewrite dataflow, ownership, and readable names. |
 | `set`, `unset` | Edit a function, value, or operation attribute. |
-| `use` | Add an already-loaded module as an idempotent dependency. |
+| `use` | Add an already-loaded module as an idempotent, cycle-checked dependency. |
 
 These functions operate on generic handles and contain no NN operator names.
 Adding an importer, optimization, or target module therefore does not extend

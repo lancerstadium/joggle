@@ -565,6 +565,25 @@ std::vector<Fn> Env::resolve_fns(const detail::Store& from,
   return matches;
 }
 
+bool Env::reaches(std::string_view from, std::string_view target) const {
+  std::vector<std::string> pending{std::string(from)};
+  std::set<std::string, std::less<>> visited;
+  while (!pending.empty()) {
+    std::string name = std::move(pending.back());
+    pending.pop_back();
+    if (name == target)
+      return true;
+    if (!visited.insert(name).second)
+      continue;
+    const auto module = impl_->modules.find(name);
+    if (module == impl_->modules.end())
+      continue;
+    const std::vector<std::string> dependencies = module->second->uses();
+    pending.insert(pending.end(), dependencies.begin(), dependencies.end());
+  }
+  return false;
+}
+
 std::vector<Fn> Env::resolve_fns(Fn from, std::string_view symbol) const {
   if (!from)
     return {};

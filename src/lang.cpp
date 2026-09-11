@@ -2473,6 +2473,10 @@ bool Mod::verify(const Env& env) {
     if (!env.loaded(dependency))
       detail::add_diag(store.diags,
                        "dependency module is not loaded: " + dependency);
+    else if (dependency != store.name &&
+             env.reaches(dependency, store.name))
+      detail::add_diag(store.diags,
+                       "module dependency cycle through: " + dependency);
   }
   for (const auto& fn_slot : store.fns) {
     if (!fn_slot.live)
