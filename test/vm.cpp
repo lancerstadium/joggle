@@ -191,6 +191,18 @@ int main(int argc, char** argv) {
   CHECK(!execute(env, std::string(*image.string()), "divide", {1, 0}, result,
                  shift_steps));
   CHECK(!execute(env, "not-a-vm", "main", {10, 5, 1}, result, else_steps));
+  CHECK(!execute_bytes(env,
+                       "joggle-vm 3\nfn bad\nconst i64 0 1\nif 0\n"
+                       "else\nelse\nend\nret 0 s i64\nendfn\n",
+                       "bad", {}, result, else_steps));
+  CHECK(!execute_bytes(env,
+                       "joggle-vm 3\nfn bad\nconst i64 0 0\n"
+                       "loop 1 0 0\nret 0 s i64\nendfn\n",
+                       "bad", {}, result, else_steps));
+  CHECK(!execute_bytes(env,
+                       "joggle-vm 3\nfn bad\nconst i64 0 0\nif 0\n"
+                       "unknown\nelse\nret 0 s i64\nend\nendfn\n",
+                       "bad", {}, result, else_steps));
   CHECK(!env.diags().empty());
 
   joggle::Attr::Bytes convert_input;

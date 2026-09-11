@@ -1132,8 +1132,8 @@ structure, emits local scalar calls and structured branches/loops, flattens
 static tensor indices, and uses caller-provided storage for tensor results.
 Scalar type spelling and byte width come from one ordinary ABI dictionary
 owned by the module; fixed C operator spellings are likewise module data, not
-core cases. Signed range values and nonnegative array-capacity indices use
-separately named representations rather than scattered C literals. The emitter
+core cases. Semantic indices and nonnegative array counts use separately named
+representations rather than scattered C literals. The emitter
 also recognizes optional `mem.slot`
 metadata; no C-specific field or storage object was added to core IR.
 
@@ -1165,11 +1165,11 @@ Those are handled before target legalization by two ordinary `opt` functions:
 performs batch identity propagation. Their commit path replaces values and
 erases operations in whole batches, so use lists and dominance are not rescanned
 once per selected call. The official expanded MobileNetV2 model now completes
-`c.prepare`, emits a C99 translation unit, and passes a strict compiler syntax
-check. Logical `&&` and `||` values remain structured branches in the IR and
+`c.prepare`, static storage planning, C99 emission, strict compilation, and
+comparison of all 1,000 official outputs. Logical `&&` and `||` values remain
+structured branches in the IR and
 are recovered from their forwarding arm by the C module; the core has no C
-expression case. Runtime output comparison and application-scale storage
-planning remain required before this becomes an end-to-end execution claim.
+expression case.
 
 ## M10 deterministic-VM slice
 
@@ -1177,9 +1177,11 @@ The second target starts as a closed scalar path rather than another emitter
 facade. The pure `.jog` `vm.image` function obtains constant-time, current-module
 value identities through `ir.key`, rejects unsupported structure, and emits a
 textual image. A key is never persisted as model semantics and is not stable
-across printing or reparsing. The matching native `vm.run` function executes an
-explicit entry with byte inputs. The image protocol and instruction meanings
-belong entirely to the module; core contains no VM operation or image format.
+across printing or reparsing. The matching native `vm.run` function decodes one
+selected entry into typed instructions, compact register slots, and precomputed
+structured-control bounds before executing byte inputs. The image protocol and
+instruction meanings belong entirely to the module; core contains no VM
+operation or image format.
 
 Image version 3 covers signed 64-bit arithmetic, `f32` and `f64` arithmetic and
 conversion, the current six-function floating `math` surface, Boolean values,
@@ -1213,21 +1215,25 @@ v1.19.0 backend `test_matmul_2d` case additionally exercises the complete
 binary-import, semantic-conversion, dead-data cleanup, body-expansion, VM, and
 compiled-C path against its official TensorProto output. The slice remains
 intentionally incomplete: the full second-target gate still requires a
-module-defined format path and an application-sized imported network. Those
-capabilities must extend modules and must not add VM, tensor, or operator cases
-to core.
+module-defined format path. Application-sized imported execution is now a
+closed numerical gate: the pinned official MobileNetV2 input produces all
+1,000 expected outputs through both VM and generated C.
 The high-level `tensor.operator +` path is separate from those handwritten
 loops: both parameterized `opt.expand` and the explicit `vm.prepare` function
 expose and execute its shared body. `vm.prepare` supplies `vm.accepts(Mod, Op)`
 to the same generic `opt.expose` library used by C; image emission stays
 read-only and performs no hidden lowering. A mismatched argument type and a
-mutating predicate are rollback gates. On the exposed MobileNetV2 application,
-VM-owned preparation completes in 5.8 seconds at about 357 MB peak RSS and
-emission produces a 28 MB image in 3.5 seconds at about 444 MB peak RSS on the
-local reference machine. Register lookup no longer rescans the full function
-for every operand. The interpreter did not complete the application input
-within the bounded local probe, so this is an application-scale representation
-result, not the still-open second-target numerical execution gate.
+mutating predicate are rollback gates. The VM parser now interns textual
+registers once, validates and decodes every selected instruction once, and
+matches branch and loop boundaries in one structural pass; execution uses
+compact slots rather than string parsing or register hash lookup. On an Apple
+M4 Release build, the exposed MobileNetV2 image contains 26,017 lines and
+28,794,453 bytes. Its official input completes in 399.674 seconds and exactly
+98,167,456,513 VM steps, after which every output passes the same tolerance as
+compiled C. This closes correctness at application scale while exposing the
+real structural bottleneck: eager scalar exposure inflates work by orders of
+magnitude, so future performance work belongs in retained computation and loop
+transformation rather than frontend- or operator-specific VM cases.
 
 ### Storage planning
 

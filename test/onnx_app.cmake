@@ -10,6 +10,8 @@ set(source "${ROOT}/model.c")
 set(input "${ROOT}/input.bin")
 set(expected "${ROOT}/expected.bin")
 set(program "${ROOT}/model")
+set(prepared "${ROOT}/model.jog")
+set(image "${ROOT}/model.vm")
 
 execute_process(
   COMMAND "${TEST}"
@@ -17,14 +19,16 @@ execute_process(
           "${CASE}/test_data_set_0/input_0.pb"
           "${CASE}/test_data_set_0/output_0.pb"
           "${source}" "${input}" "${expected}" "${MODULES}"
+          "${prepared}" "${image}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR
-          "MobileNet compilation failed (${result}):\n${output}${error}")
+          "MobileNet preparation or VM execution failed (${result}):\n${output}${error}")
 endif()
+set(vm_output "${output}")
 
 execute_process(
   COMMAND "${CC}" -std=c99 -O1 -Wall -Wextra -Werror
@@ -48,6 +52,5 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR
           "MobileNet output disagrees with ONNX Zoo (${result}):\n${output}${error}")
 endif()
-message(STATUS "${output}")
-
-file(REMOVE_RECURSE "${ROOT}")
+file(WRITE "${ROOT}/result.txt" "${vm_output}${output}")
+message(STATUS "${vm_output}${output}")

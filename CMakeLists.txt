@@ -782,7 +782,7 @@ if(JOGGLE_BUILD_TESTS)
     target_link_libraries(
       joggle-onnx-app-test PRIVATE Joggle::joggle joggle-onnx-proto
     )
-    add_dependencies(joggle-onnx-app-test joggle-onnx)
+    add_dependencies(joggle-onnx-app-test joggle-onnx joggle-vm)
     add_test(
       NAME onnx-app-mobilenet
       COMMAND

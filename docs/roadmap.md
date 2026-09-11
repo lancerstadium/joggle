@@ -386,12 +386,12 @@ official ONNX Zoo model gates and the official TFLite MobileNet gate. Core
 gained no frontend, target, or tensor-literal case. The hash-pinned ONNX v1.19.0
 backend MatMul case now completes binary import, conversion, dead-data cleanup,
 ordinary body expansion, and output comparison through both VM and compiled C.
-This is not yet the second target exit gate: application-sized execution
-through the independent VM and a module-defined format on that scale remain
-open. The same exposed MobileNetV2 now passes VM-owned preparation and emits a
-complete VM image after scalar-list selection and constant-time value identity
-removed two target-boundary bottlenecks, but its interpreter run has not
-completed the official input/output comparison.
+The same exposed MobileNetV2 now passes VM-owned preparation, emits a complete
+VM image, and completes the official input/output comparison through both VM
+and compiled C. The VM records exactly 98,167,456,513 steps; the magnitude is
+evidence against treating full scalar exposure as the optimized execution
+form. A module-defined non-native format through the independent second target
+remains open, so the broader exit gate is not yet claimed.
 
 Exit gate: official models from two frontends pass through one shared semantic
 library and run through at least two targets without core operator switches.

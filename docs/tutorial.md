@@ -390,10 +390,14 @@ cmake --build build
 ctest --test-dir build -R onnx-app-mobilenet --output-on-failure
 ```
 
-That test performs import, explicit semantic conversion, body exposure, static
-memory planning, explicit C storage placement, strict C99 compilation, and a
-comparison of all 1,000 outputs. The model, input, output, and archive hashes
-are checked before execution.
+That test performs import, explicit semantic conversion, dead-data cleanup,
+body exposure, deterministic VM execution, static memory planning, explicit C
+storage placement, strict C99 compilation, and comparison of both targets'
+1,000 outputs. The model, input, output, and archive hashes are checked before
+execution. Because the scalar VM path executes 98,167,456,513 instructions,
+this is intentionally a long application gate. Its inspectable `model.jog`,
+`model.vm`, `model.c`, input, expected output, executable, and `result.txt`
+remain under `build/onnx-app` after the test.
 
 The MobileNetV2 gate checks 267 tensor constants, 155 nodes,
 14,156,560 initializer bytes, verifier result, and canonical round trip. It

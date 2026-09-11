@@ -1,6 +1,9 @@
 #include "joggle/joggle.h"
 #include "onnx.pb.h"
 
+#include <bit>
+#include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -43,6 +46,26 @@ bool write(std::string_view path, const Bytes& contents) {
                          contents.size()));
 }
 
+bool close(const Bytes& actual, const Bytes& expected) {
+  if (actual.size() != expected.size() || actual.size() % sizeof(float) != 0)
+    return false;
+  for (std::size_t offset = 0; offset < actual.size(); offset += sizeof(float)) {
+    std::uint32_t actual_bits = 0;
+    std::uint32_t expected_bits = 0;
+    for (unsigned shift = 0; shift != 32; shift += 8) {
+      actual_bits |= std::uint32_t{actual[offset + shift / 8]} << shift;
+      expected_bits |= std::uint32_t{expected[offset + shift / 8]} << shift;
+    }
+    const float value = std::bit_cast<float>(actual_bits);
+    const float reference = std::bit_cast<float>(expected_bits);
+    if (!std::isfinite(value) ||
+        std::fabs(value - reference) >
+            1.0e-4F + 1.0e-4F * std::fabs(reference))
+      return false;
+  }
+  return true;
+}
+
 bool tensor(std::string_view path, std::string_view name,
             const std::vector<std::int64_t>& shape, Bytes& data) {
   const Bytes encoded = read(path);
@@ -74,7 +97,7 @@ bool tensor(std::string_view path, std::string_view name,
 }  // namespace
 
 int main(int argc, char** argv) {
-  CHECK(argc == 8);
+  CHECK(argc == 10);
   const Bytes encoded = read(argv[1]);
   CHECK(!encoded.empty());
   Bytes input;
@@ -92,20 +115,49 @@ int main(int argc, char** argv) {
   CHECK(read_result.size() == 1 && read_result.front().string());
 
   CHECK(env.load("onnx.nn"));
+  CHECK(env.load("opt"));
+  CHECK(env.load("vm"));
   CHECK(env.load("c"));
   CHECK(env.load("mem"));
   joggle::Mod model;
   CHECK(joggle::parse(env, *read_result.front().string(), model, argv[1]));
   CHECK(model.verify(env));
   CHECK(joggle::run(env, "onnx.nn.convert", model));
+  const std::vector<joggle::Attr> dce_args{
+      joggle::Attr(joggle::Attr::List{})};
+  CHECK(joggle::run(env, "opt.dce", model, dce_args));
   CHECK(model.verify(env));
+  CHECK(joggle::run(env, "vm.prepare", model));
+  CHECK(model.verify(env));
+  CHECK(write(argv[8], joggle::print(model)));
+
+  joggle::Attr image;
+  if (!joggle::query(env, "vm.image", model, image)) {
+    env.print_diags(stderr);
+    return 1;
+  }
+  CHECK(image.string() && write(argv[9], *image.string()));
+  const std::vector<joggle::Attr> vm_args{
+      joggle::Attr(std::string(*image.string())), joggle::Attr("main"),
+      joggle::Attr(input)};
+  std::vector<joggle::Attr> vm_result;
+  const auto started = std::chrono::steady_clock::now();
+  CHECK(env.call("vm.run", vm_args, vm_result));
+  const std::chrono::duration<double> elapsed =
+      std::chrono::steady_clock::now() - started;
+  CHECK(vm_result.size() == 2 && vm_result[0].bytes() &&
+        close(*vm_result[0].bytes(), expected) && vm_result[1].integer() &&
+        *vm_result[1].integer() > 0);
+  std::printf("VM: %lld steps in %.3f seconds\n",
+              static_cast<long long>(*vm_result[1].integer()),
+              elapsed.count());
+
   CHECK(joggle::run(env, "c.prepare", model));
   CHECK(model.verify(env));
   CHECK(joggle::run(env, "mem.plan", model));
   const std::vector<joggle::Attr> placement{joggle::Attr("static")};
   CHECK(joggle::run(env, "c.place", model, placement));
   CHECK(model.verify(env));
-
   joggle::Attr source;
   CHECK(joggle::query(env, "c.source", model, source));
   CHECK(source.string() && source.string()->find("onnx.") == std::string::npos);

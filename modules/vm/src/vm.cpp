@@ -208,8 +208,101 @@ Value scalar(Kind kind, std::uint64_t value) {
   return Value{kind, value, {}};
 }
 
+using Slot = std::size_t;
+constexpr Slot no_slot = std::numeric_limits<Slot>::max();
+
+enum class Tag {
+  constant,
+  alloc,
+  literal,
+  cast,
+  pick,
+  load,
+  store,
+  copy,
+  unary,
+  binary,
+  branch,
+  loop,
+  each,
+  otherwise,
+  end,
+  ret,
+};
+
+enum class Unary { neg, sqrt, exp, ceil, tanh, round_even, lnot, bnot };
+
+enum class Binary {
+  add,
+  sub,
+  mul,
+  div,
+  rem,
+  bit_and,
+  bit_or,
+  bit_xor,
+  shl,
+  shr,
+  eq,
+  ne,
+  lt,
+  le,
+  gt,
+  ge,
+  logical_and,
+  logical_or,
+  pow,
+};
+
+struct Inst {
+  Tag tag = Tag::end;
+  Kind kind = Kind::i64;
+  Unary unary = Unary::neg;
+  Binary binary = Binary::add;
+  Slot out = no_slot;
+  Slot left = no_slot;
+  Slot right = no_slot;
+  std::size_t count = 0;
+  std::size_t end = no_slot;
+  std::size_t alternative = no_slot;
+  std::uint64_t value = 0;
+  bool tensor = false;
+  std::vector<std::size_t> extents;
+  std::vector<Slot> items;
+  std::vector<std::uint64_t> literal;
+};
+
+struct Param {
+  Slot slot = no_slot;
+  Kind kind = Kind::i64;
+  std::size_t count = 1;
+  bool tensor = false;
+};
+
+struct Program {
+  std::vector<Param> params;
+  std::vector<Inst> code;
+  std::vector<int> ids;
+  std::unordered_map<int, Slot> slots;
+
+  Slot intern(int id) {
+    const auto found = slots.find(id);
+    if (found != slots.end())
+      return found->second;
+    const Slot slot = ids.size();
+    ids.push_back(id);
+    slots.emplace(id, slot);
+    return slot;
+  }
+};
+
 struct State {
-  std::unordered_map<int, Value> regs;
+  explicit State(const Program& program)
+      : program(program), regs(program.ids.size()), defined(program.ids.size()) {}
+
+  const Program& program;
+  std::vector<Value> regs;
+  std::vector<unsigned char> defined;
   Value result;
   std::int64_t steps = 0;
   bool returned = false;
@@ -224,25 +317,34 @@ struct State {
     return true;
   }
 
-  const Value* read(int id) {
-    const auto found = regs.find(id);
-    if (found == regs.end()) {
-      error = "read of undefined register " + std::to_string(id);
-      return nullptr;
-    }
-    return &found->second;
+  void write(Slot slot, Value value) {
+    regs[slot] = std::move(value);
+    defined[slot] = 1;
   }
 
-  bool read_scalar(int id, Kind expected, std::uint64_t& out) {
-    const Value* value = read(id);
+  const Value* read(Slot slot) {
+    if (slot >= regs.size() || !defined[slot]) {
+      const std::string id = slot < program.ids.size()
+                                 ? std::to_string(program.ids[slot])
+                                 : std::string("?");
+      error = "read of undefined register " + id;
+      return nullptr;
+    }
+    return &regs[slot];
+  }
+
+  bool read_scalar(Slot slot, Kind expected, std::uint64_t& out) {
+    const Value* value = read(slot);
     if (!value)
       return false;
     if (value->tensor) {
-      error = "register " + std::to_string(id) + " is not scalar";
+      error = "register " + std::to_string(program.ids[slot]) +
+              " is not scalar";
       return false;
     }
     if (value->kind != expected) {
-      error = "register " + std::to_string(id) + " has the wrong format";
+      error = "register " + std::to_string(program.ids[slot]) +
+              " has the wrong format";
       return false;
     }
     out = value->bits;
@@ -250,69 +352,20 @@ struct State {
   }
 };
 
-bool execute(const std::vector<Line>& code, std::size_t first,
-             std::size_t last, State& state);
-
-bool branch_bounds(const std::vector<Line>& code, std::size_t at,
-                   std::size_t last, std::size_t& otherwise,
-                   std::size_t& end, std::string& error) {
-  std::size_t depth = 0;
-  otherwise = last;
-  for (std::size_t index = at + 1; index < last; ++index) {
-    const std::string_view op = code[index].front();
-    if (op == "if" || op == "loop" || op == "each") {
-      ++depth;
-    } else if (op == "end") {
-      if (depth == 0) {
-        end = index;
-        return true;
-      }
-      --depth;
-    } else if (op == "else" && depth == 0) {
-      if (otherwise != last) {
-        error = "duplicate else";
-        return false;
-      }
-      otherwise = index;
-    }
-  }
-  error = "unterminated if";
-  return false;
-}
-
-bool loop_end(const std::vector<Line>& code, std::size_t at,
-              std::size_t last, std::size_t& end, std::string& error) {
-  std::size_t depth = 0;
-  for (std::size_t index = at + 1; index < last; ++index) {
-    const std::string_view op = code[index].front();
-    if (op == "if" || op == "loop" || op == "each") {
-      ++depth;
-    } else if (op == "end") {
-      if (depth == 0) {
-        end = index;
-        return true;
-      }
-      --depth;
-    }
-  }
-  error = "unterminated loop";
-  return false;
-}
-
 template <class T>
-bool floating_unary(std::string_view op, T input, Value& output, Kind kind) {
+bool floating_unary(Unary op, T input, Value& output, Kind kind) {
   T result{};
-  if (op == "neg")
+  if (op == Unary::neg)
     result = -input;
-  else if (op == "sqrt")
+  else if (op == Unary::sqrt)
     result = std::sqrt(input);
-  else if (op == "exp")
+  else if (op == Unary::exp)
     result = std::exp(input);
-  else if (op == "ceil")
+  else if (op == Unary::ceil)
     result = std::ceil(input);
-  else if (op == "tanh")
+  else if (op == Unary::tanh)
     result = std::tanh(input);
-  else if (op == "round_even")
+  else if (op == Unary::round_even)
     result = std::nearbyint(input);
   else
     return false;
@@ -320,17 +373,16 @@ bool floating_unary(std::string_view op, T input, Value& output, Kind kind) {
   return true;
 }
 
-bool unary(std::string_view op, Kind kind, std::uint64_t input,
-           Value& output) {
+bool unary(Unary op, Kind kind, std::uint64_t input, Value& output) {
   if (kind == Kind::f32)
     return floating_unary(op, float_value(input), output, kind);
   if (kind == Kind::f64)
     return floating_unary(op, double_value(input), output, kind);
-  if (op == "neg") {
+  if (op == Unary::neg) {
     output = scalar(kind, std::uint64_t{0} - input);
-  } else if (op == "lnot" && kind == Kind::i64) {
+  } else if (op == Unary::lnot && kind == Kind::i64) {
     output = scalar(Kind::i64, input == 0);
-  } else if (op == "bnot" && kind == Kind::i64) {
+  } else if (op == Unary::bnot && kind == Kind::i64) {
     output = scalar(kind, ~input);
   } else {
     return false;
@@ -339,36 +391,36 @@ bool unary(std::string_view op, Kind kind, std::uint64_t input,
 }
 
 template <class T>
-bool floating_binary(std::string_view op, T left, T right, Value& output,
+bool floating_binary(Binary op, T left, T right, Value& output,
                      Kind kind) {
-  if (op == "add")
+  if (op == Binary::add)
     output = scalar(kind, bits(left + right));
-  else if (op == "sub")
+  else if (op == Binary::sub)
     output = scalar(kind, bits(left - right));
-  else if (op == "mul")
+  else if (op == Binary::mul)
     output = scalar(kind, bits(left * right));
-  else if (op == "div")
+  else if (op == Binary::div)
     output = scalar(kind, bits(left / right));
-  else if (op == "pow")
+  else if (op == Binary::pow)
     output = scalar(kind, bits(std::pow(left, right)));
-  else if (op == "eq")
+  else if (op == Binary::eq)
     output = scalar(Kind::i64, left == right);
-  else if (op == "ne")
+  else if (op == Binary::ne)
     output = scalar(Kind::i64, left != right);
-  else if (op == "lt")
+  else if (op == Binary::lt)
     output = scalar(Kind::i64, left < right);
-  else if (op == "le")
+  else if (op == Binary::le)
     output = scalar(Kind::i64, left <= right);
-  else if (op == "gt")
+  else if (op == Binary::gt)
     output = scalar(Kind::i64, left > right);
-  else if (op == "ge")
+  else if (op == Binary::ge)
     output = scalar(Kind::i64, left >= right);
   else
     return false;
   return true;
 }
 
-bool binary(std::string_view op, Kind kind, std::uint64_t left,
+bool binary(Binary op, Kind kind, std::uint64_t left,
             std::uint64_t right, Value& output, std::string& error) {
   if (kind == Kind::f32)
     return floating_binary(op, float_value(left), float_value(right), output,
@@ -378,54 +430,55 @@ bool binary(std::string_view op, Kind kind, std::uint64_t left,
                            kind);
   const std::int64_t lhs = signed_value(left);
   const std::int64_t rhs = signed_value(right);
-  if (op == "add")
+  if (op == Binary::add)
     output = scalar(kind, left + right);
-  else if (op == "sub")
+  else if (op == Binary::sub)
     output = scalar(kind, left - right);
-  else if (op == "mul")
+  else if (op == Binary::mul)
     output = scalar(kind, left * right);
-  else if (op == "div" || op == "rem") {
+  else if (op == Binary::div || op == Binary::rem) {
     if (rhs == 0) {
       error = "division by zero";
       return false;
     }
     if (lhs == std::numeric_limits<std::int64_t>::min() && rhs == -1)
-      output = scalar(kind, op == "div" ? bits(lhs) : 0);
+      output = scalar(kind, op == Binary::div ? bits(lhs) : 0);
     else
-      output = scalar(kind, bits(op == "div" ? lhs / rhs : lhs % rhs));
-  } else if (op == "and")
+      output = scalar(kind,
+                      bits(op == Binary::div ? lhs / rhs : lhs % rhs));
+  } else if (op == Binary::bit_and)
     output = scalar(kind, left & right);
-  else if (op == "or")
+  else if (op == Binary::bit_or)
     output = scalar(kind, left | right);
-  else if (op == "xor")
+  else if (op == Binary::bit_xor)
     output = scalar(kind, left ^ right);
-  else if (op == "shl" || op == "shr") {
+  else if (op == Binary::shl || op == Binary::shr) {
     if (rhs < 0 || rhs >= 64) {
       error = "invalid shift count";
       return false;
     }
     const unsigned shift = static_cast<unsigned>(rhs);
-    if (op == "shl")
+    if (op == Binary::shl)
       output = scalar(kind, left << shift);
     else if ((left >> 63U) == 0 || shift == 0)
       output = scalar(kind, left >> shift);
     else
       output = scalar(kind, ~(~left >> shift));
-  } else if (op == "eq")
+  } else if (op == Binary::eq)
     output = scalar(Kind::i64, left == right);
-  else if (op == "ne")
+  else if (op == Binary::ne)
     output = scalar(Kind::i64, left != right);
-  else if (op == "lt")
+  else if (op == Binary::lt)
     output = scalar(Kind::i64, lhs < rhs);
-  else if (op == "le")
+  else if (op == Binary::le)
     output = scalar(Kind::i64, lhs <= rhs);
-  else if (op == "gt")
+  else if (op == Binary::gt)
     output = scalar(Kind::i64, lhs > rhs);
-  else if (op == "ge")
+  else if (op == Binary::ge)
     output = scalar(Kind::i64, lhs >= rhs);
-  else if (op == "land")
+  else if (op == Binary::logical_and)
     output = scalar(Kind::i64, left != 0 && right != 0);
-  else if (op == "lor")
+  else if (op == Binary::logical_or)
     output = scalar(Kind::i64, left != 0 || right != 0);
   else
     return false;
@@ -488,111 +541,355 @@ bool cast(Kind target, const Value& input, Value& output) {
   return true;
 }
 
-bool tensor_access(const Line& line, bool store, State& state) {
-  int out_id = -1;
-  int tensor_id = -1;
-  std::size_t rank = 0;
-  if (line.size() < 4 || !reg(line[1], out_id) ||
-      !reg(line[2], tensor_id) || !natural(line[3], rank) || rank == 0 ||
-      rank > (std::numeric_limits<std::size_t>::max() - 5) / 2 ||
-      line.size() != (store ? 5 : 4) + 2 * rank) {
-    state.error = "invalid tensor access instruction";
+bool unary_code(std::string_view text, Unary& out) {
+  if (text == "neg") out = Unary::neg;
+  else if (text == "sqrt") out = Unary::sqrt;
+  else if (text == "exp") out = Unary::exp;
+  else if (text == "ceil") out = Unary::ceil;
+  else if (text == "tanh") out = Unary::tanh;
+  else if (text == "round_even") out = Unary::round_even;
+  else if (text == "lnot") out = Unary::lnot;
+  else if (text == "bnot") out = Unary::bnot;
+  else return false;
+  return true;
+}
+
+bool binary_code(std::string_view text, Binary& out) {
+  if (text == "add") out = Binary::add;
+  else if (text == "sub") out = Binary::sub;
+  else if (text == "mul") out = Binary::mul;
+  else if (text == "div") out = Binary::div;
+  else if (text == "rem") out = Binary::rem;
+  else if (text == "and") out = Binary::bit_and;
+  else if (text == "or") out = Binary::bit_or;
+  else if (text == "xor") out = Binary::bit_xor;
+  else if (text == "shl") out = Binary::shl;
+  else if (text == "shr") out = Binary::shr;
+  else if (text == "eq") out = Binary::eq;
+  else if (text == "ne") out = Binary::ne;
+  else if (text == "lt") out = Binary::lt;
+  else if (text == "le") out = Binary::le;
+  else if (text == "gt") out = Binary::gt;
+  else if (text == "ge") out = Binary::ge;
+  else if (text == "land") out = Binary::logical_and;
+  else if (text == "lor") out = Binary::logical_or;
+  else if (text == "pow") out = Binary::pow;
+  else return false;
+  return true;
+}
+
+bool slot(Program& program, std::string_view text, Slot& out) {
+  int id = -1;
+  if (!reg(text, id))
+    return false;
+  out = program.intern(id);
+  return true;
+}
+
+struct Open {
+  Tag tag;
+  std::size_t at;
+  std::size_t otherwise = no_slot;
+};
+
+bool decode(const std::vector<Line>& lines, std::size_t first,
+            std::size_t last, Program& program, std::string& error) {
+  while (first < last && lines[first][0] == "param") {
+    const Line& line = lines[first++];
+    Param param;
+    if ((line.size() != 4 && line.size() != 5) ||
+        !slot(program, line[1], param.slot) ||
+        (line[2] != "s" && line[2] != "t") ||
+        !kind(line[3], param.kind) ||
+        (line[2] == "s" && line.size() != 4) ||
+        (line[2] == "t" &&
+         (line.size() != 5 || !natural(line[4], param.count)))) {
+      error = "invalid parameter instruction";
+      return false;
+    }
+    param.tensor = line[2] == "t";
+    program.params.push_back(param);
+  }
+
+  std::vector<Open> open;
+  for (; first < last; ++first) {
+    const Line& line = lines[first];
+    const std::string_view op = line.front();
+    Inst inst;
+    if (op == "if") {
+      if (line.size() != 2 || !slot(program, line[1], inst.left)) {
+        error = "invalid if instruction";
+        return false;
+      }
+      inst.tag = Tag::branch;
+      open.push_back({inst.tag, program.code.size()});
+    } else if (op == "loop") {
+      if (line.size() != 4 || !slot(program, line[1], inst.out) ||
+          !slot(program, line[2], inst.left) ||
+          !slot(program, line[3], inst.right)) {
+        error = "invalid loop instruction";
+        return false;
+      }
+      inst.tag = Tag::loop;
+      open.push_back({inst.tag, program.code.size()});
+    } else if (op == "each") {
+      if (line.size() < 4 || !slot(program, line[1], inst.out) ||
+          !kind(line[2], inst.kind) || !natural(line[3], inst.count) ||
+          inst.count > std::numeric_limits<std::size_t>::max() - 4 ||
+          line.size() != inst.count + 4) {
+        error = "invalid each instruction";
+        return false;
+      }
+      inst.tag = Tag::each;
+      inst.items.reserve(inst.count);
+      for (std::size_t item = 0; item < inst.count; ++item) {
+        Slot value = no_slot;
+        if (!slot(program, line[4 + item], value)) {
+          error = "invalid list-loop item register";
+          return false;
+        }
+        inst.items.push_back(value);
+      }
+      open.push_back({inst.tag, program.code.size()});
+    } else if (op == "else") {
+      if (line.size() != 1 || open.empty() ||
+          open.back().tag != Tag::branch ||
+          open.back().otherwise != no_slot) {
+        error = open.empty() || open.back().tag != Tag::branch
+                    ? "unexpected else"
+                    : "duplicate else";
+        return false;
+      }
+      inst.tag = Tag::otherwise;
+      open.back().otherwise = program.code.size();
+    } else if (op == "end") {
+      if (line.size() != 1 || open.empty()) {
+        error = "unexpected end";
+        return false;
+      }
+      inst.tag = Tag::end;
+      const Open closed = open.back();
+      open.pop_back();
+      program.code[closed.at].end = program.code.size();
+      if (closed.tag == Tag::branch && closed.otherwise != no_slot) {
+        program.code[closed.at].alternative = closed.otherwise + 1;
+        program.code[closed.otherwise].end = program.code.size();
+      }
+    } else if (op == "ret") {
+      if ((line.size() != 4 && line.size() != 5) ||
+          !slot(program, line[1], inst.left) ||
+          (line[2] != "s" && line[2] != "t") ||
+          !kind(line[3], inst.kind) ||
+          (line[2] == "s" && line.size() != 4) ||
+          (line[2] == "t" &&
+           (line.size() != 5 || !natural(line[4], inst.count)))) {
+        error = "invalid return instruction";
+        return false;
+      }
+      inst.tag = Tag::ret;
+      inst.tensor = line[2] == "t";
+    } else if (op == "const") {
+      Value value;
+      if (line.size() != 4 || !kind(line[1], inst.kind) ||
+          !slot(program, line[2], inst.out) ||
+          !constant(line[3], inst.kind, value)) {
+        error = "invalid const instruction";
+        return false;
+      }
+      inst.tag = Tag::constant;
+      inst.value = value.bits;
+    } else if (op == "alloc") {
+      if (line.size() != 5 || !kind(line[1], inst.kind) ||
+          !slot(program, line[2], inst.out) ||
+          !natural(line[3], inst.count) ||
+          !slot(program, line[4], inst.left)) {
+        error = "invalid alloc instruction";
+        return false;
+      }
+      inst.tag = Tag::alloc;
+    } else if (op == "literal") {
+      std::vector<std::uint8_t> data;
+      if (line.size() != 5 || !kind(line[1], inst.kind) ||
+          !slot(program, line[2], inst.out) ||
+          !natural(line[3], inst.count) || !byte_literal(line[4], data) ||
+          inst.count > std::numeric_limits<std::size_t>::max() /
+                           width(inst.kind) ||
+          data.size() != inst.count * width(inst.kind)) {
+        error = "invalid tensor literal instruction";
+        return false;
+      }
+      inst.tag = Tag::literal;
+      inst.literal.reserve(inst.count);
+      for (std::size_t item = 0; item < inst.count; ++item)
+        inst.literal.push_back(
+            load_value(data.data() + item * width(inst.kind), inst.kind));
+    } else if (op == "cast") {
+      if (line.size() != 4 || !kind(line[1], inst.kind) ||
+          !slot(program, line[2], inst.out) ||
+          !slot(program, line[3], inst.left)) {
+        error = "invalid cast instruction";
+        return false;
+      }
+      inst.tag = Tag::cast;
+    } else if (op == "pick") {
+      if (line.size() < 5 || !kind(line[1], inst.kind) ||
+          !slot(program, line[2], inst.out) ||
+          !slot(program, line[3], inst.left) ||
+          !natural(line[4], inst.count) ||
+          inst.count > std::numeric_limits<std::size_t>::max() - 5 ||
+          line.size() != inst.count + 5) {
+        error = "invalid list selection instruction";
+        return false;
+      }
+      inst.tag = Tag::pick;
+      inst.items.reserve(inst.count);
+      for (std::size_t item = 0; item < inst.count; ++item) {
+        Slot value = no_slot;
+        if (!slot(program, line[5 + item], value)) {
+          error = "invalid list selection item register";
+          return false;
+        }
+        inst.items.push_back(value);
+      }
+    } else if (op == "load" || op == "store") {
+      std::size_t rank = 0;
+      const bool store = op == "store";
+      if (line.size() < 4 || !slot(program, line[1], inst.out) ||
+          !slot(program, line[2], inst.left) || !natural(line[3], rank) ||
+          rank == 0 ||
+          rank > (std::numeric_limits<std::size_t>::max() - 5) / 2 ||
+          line.size() != (store ? 5 : 4) + 2 * rank) {
+        error = "invalid tensor access instruction";
+        return false;
+      }
+      inst.tag = store ? Tag::store : Tag::load;
+      inst.extents.reserve(rank);
+      inst.items.reserve(rank);
+      inst.count = 1;
+      for (std::size_t axis = 0; axis < rank; ++axis) {
+        std::size_t extent = 0;
+        Slot index = no_slot;
+        if (!natural(line[4 + axis], extent) ||
+            !slot(program, line[4 + rank + axis], index) ||
+            (extent != 0 &&
+             inst.count > std::numeric_limits<std::size_t>::max() / extent)) {
+          error = "invalid tensor access instruction";
+          return false;
+        }
+        inst.count *= extent;
+        inst.extents.push_back(extent);
+        inst.items.push_back(index);
+      }
+      if (store && !slot(program, line.back(), inst.right)) {
+        error = "invalid tensor access instruction";
+        return false;
+      }
+    } else if (op == "copy") {
+      if (line.size() != 3 || !slot(program, line[1], inst.out) ||
+          !slot(program, line[2], inst.left)) {
+        error = "invalid copy instruction";
+        return false;
+      }
+      inst.tag = Tag::copy;
+    } else if (line.size() == 4) {
+      if (!kind(line[1], inst.kind) || !slot(program, line[2], inst.out) ||
+          !slot(program, line[3], inst.left) ||
+          !unary_code(op, inst.unary)) {
+        error = "invalid unary instruction";
+        return false;
+      }
+      inst.tag = Tag::unary;
+    } else if (line.size() == 5) {
+      if (!kind(line[1], inst.kind) || !slot(program, line[2], inst.out) ||
+          !slot(program, line[3], inst.left) ||
+          !slot(program, line[4], inst.right) ||
+          !binary_code(op, inst.binary)) {
+        error = "invalid binary instruction";
+        return false;
+      }
+      inst.tag = Tag::binary;
+    } else {
+      error = "unknown instruction " + std::string(op);
+      return false;
+    }
+    program.code.push_back(std::move(inst));
+  }
+  if (!open.empty()) {
+    error = open.back().tag == Tag::branch ? "unterminated if"
+                                           : "unterminated loop";
     return false;
   }
-  const Value* source = state.read(tensor_id);
+  return true;
+}
+
+bool tensor_access(const Inst& inst, State& state) {
+  const Value* source = state.read(inst.left);
   if (!source)
     return false;
-  const Value tensor = *source;
+  const Value& tensor = *source;
   if (!tensor.tensor) {
     state.error = "tensor access on a scalar register";
     return false;
   }
   std::size_t offset = 0;
-  std::size_t extent_product = 1;
-  for (std::size_t axis = 0; axis < rank; ++axis) {
-    std::size_t extent = 0;
-    int index_id = -1;
+  for (std::size_t axis = 0; axis < inst.extents.size(); ++axis) {
     std::uint64_t index_bits = 0;
-    if (!natural(line[4 + axis], extent) ||
-        !reg(line[4 + rank + axis], index_id) ||
-        !state.read_scalar(index_id, Kind::i64, index_bits))
+    if (!state.read_scalar(inst.items[axis], Kind::i64, index_bits))
       return false;
     const std::int64_t index = signed_value(index_bits);
-    if (index < 0 || static_cast<std::uint64_t>(index) >= extent) {
+    if (index < 0 ||
+        static_cast<std::uint64_t>(index) >= inst.extents[axis]) {
       state.error = "tensor index is out of bounds";
       return false;
     }
-    if (extent != 0 &&
-        (extent_product > std::numeric_limits<std::size_t>::max() / extent ||
-         offset > std::numeric_limits<std::size_t>::max() / extent)) {
-      state.error = "tensor extent overflow";
-      return false;
-    }
-    extent_product *= extent;
-    offset = offset * extent + static_cast<std::size_t>(index);
+    offset = offset * inst.extents[axis] + static_cast<std::size_t>(index);
   }
-  if (extent_product != tensor.tensor->items.size() ||
+  if (inst.count != tensor.tensor->items.size() ||
       offset >= tensor.tensor->items.size()) {
     state.error = "tensor access shape does not match storage";
     return false;
   }
-  if (store) {
-    int value_id = -1;
-    if (!reg(line.back(), value_id))
-      return false;
-    const Value* value = state.read(value_id);
+  if (inst.tag == Tag::store) {
+    const Value* value = state.read(inst.right);
     if (!value || value->tensor || value->kind != tensor.tensor->kind) {
       state.error = "tensor store format does not match its element";
       return false;
     }
     tensor.tensor->items[offset] = value->bits;
-    state.regs[out_id] = tensor;
+    state.write(inst.out, *source);
   } else {
-    state.regs[out_id] =
-        scalar(tensor.tensor->kind, tensor.tensor->items[offset]);
+    state.write(inst.out,
+                scalar(tensor.tensor->kind, tensor.tensor->items[offset]));
   }
   return state.tick();
 }
 
-bool execute(const std::vector<Line>& code, std::size_t first,
-             std::size_t last, State& state) {
+bool execute(const Program& program, std::size_t first, std::size_t last,
+             State& state) {
   for (std::size_t at = first; at < last && !state.returned; ++at) {
-    const Line& line = code[at];
-    const std::string_view op = line.front();
-    if (op == "if") {
-      int condition_id = -1;
+    const Inst& inst = program.code[at];
+    if (inst.tag == Tag::branch) {
       std::uint64_t condition = 0;
-      std::size_t otherwise = last;
-      std::size_t end = last;
-      if (line.size() != 2 || !reg(line[1], condition_id) ||
-          !state.read_scalar(condition_id, Kind::i64, condition) ||
-          !branch_bounds(code, at, last, otherwise, end, state.error) ||
+      if (!state.read_scalar(inst.left, Kind::i64, condition) ||
           !state.tick())
         return false;
-      const std::size_t then_end = otherwise == last ? end : otherwise;
-      const std::size_t arm_first = condition ? at + 1 : otherwise + 1;
-      const std::size_t arm_last = condition ? then_end : end;
-      if (!condition && otherwise == last) {
-        at = end;
-        continue;
-      }
-      if (!execute(code, arm_first, arm_last, state))
+      const bool has_else = inst.alternative != no_slot;
+      const std::size_t then_end = has_else ? inst.alternative - 1 : inst.end;
+      if (condition) {
+        if (!execute(program, at + 1, then_end, state))
+          return false;
+      } else if (has_else &&
+                 !execute(program, inst.alternative, inst.end, state)) {
         return false;
-      at = end;
+      }
+      at = inst.end;
       continue;
     }
-    if (op == "loop") {
-      int iterator_id = -1;
-      int first_id = -1;
-      int last_id = -1;
+    if (inst.tag == Tag::loop) {
       std::uint64_t first_bits = 0;
       std::uint64_t last_bits = 0;
-      std::size_t end = last;
-      if (line.size() != 4 || !reg(line[1], iterator_id) ||
-          !reg(line[2], first_id) || !reg(line[3], last_id) ||
-          !state.read_scalar(first_id, Kind::i64, first_bits) ||
-          !state.read_scalar(last_id, Kind::i64, last_bits) ||
-          !loop_end(code, at, last, end, state.error))
+      if (!state.read_scalar(inst.left, Kind::i64, first_bits) ||
+          !state.read_scalar(inst.right, Kind::i64, last_bits))
         return false;
       std::int64_t value = signed_value(first_bits);
       const std::int64_t stop = signed_value(last_bits);
@@ -601,242 +898,145 @@ bool execute(const std::vector<Line>& code, std::size_t first,
           return false;
         if (value >= stop)
           break;
-        state.regs[iterator_id] = scalar(Kind::i64, bits(value));
-        if (!execute(code, at + 1, end, state))
+        state.write(inst.out, scalar(Kind::i64, bits(value)));
+        if (!execute(program, at + 1, inst.end, state))
           return false;
         ++value;
       }
-      at = end;
+      at = inst.end;
       continue;
     }
-    if (op == "each") {
-      int iterator_id = -1;
-      Kind format = Kind::i64;
-      std::size_t count = 0;
-      std::size_t end = last;
-      if (line.size() < 4 || !reg(line[1], iterator_id) ||
-          !kind(line[2], format) || !natural(line[3], count) ||
-          count > std::numeric_limits<std::size_t>::max() - 4 ||
-          line.size() != count + 4 ||
-          !loop_end(code, at, last, end, state.error))
-        return false;
-      for (std::size_t item = 0; item < count && !state.returned; ++item) {
+    if (inst.tag == Tag::each) {
+      for (const Slot item : inst.items) {
+        if (state.returned)
+          break;
         if (!state.tick())
           return false;
-        int item_id = -1;
-        if (!reg(line[4 + item], item_id)) {
-          state.error = "invalid list-loop item register";
-          return false;
-        }
-        const Value* value = state.read(item_id);
-        if (!value || value->tensor || value->kind != format) {
+        const Value* value = state.read(item);
+        if (!value || value->tensor || value->kind != inst.kind) {
           state.error = "list-loop item format does not match its iterator";
           return false;
         }
-        const Value copied = *value;
-        state.regs[iterator_id] = copied;
-        if (!execute(code, at + 1, end, state))
+        state.write(inst.out, *value);
+        if (!execute(program, at + 1, inst.end, state))
           return false;
       }
       if (!state.returned && !state.tick())
         return false;
-      at = end;
+      at = inst.end;
       continue;
     }
-    if (op == "else" || op == "end") {
-      state.error = "unexpected " + std::string(op);
+    if (inst.tag == Tag::otherwise || inst.tag == Tag::end) {
+      state.error = inst.tag == Tag::otherwise ? "unexpected else"
+                                               : "unexpected end";
       return false;
     }
-    if (op == "ret") {
-      int id = -1;
-      std::size_t count = 1;
-      Kind format = Kind::i64;
-      if ((line.size() != 4 && line.size() != 5) ||
-          !reg(line[1], id) ||
-          (line[2] != "s" && line[2] != "t") ||
-          !kind(line[3], format) ||
-          (line[2] == "s" && line.size() != 4) ||
-          (line[2] == "t" &&
-           (line.size() != 5 || !natural(line[4], count)))) {
-        state.error = "invalid return instruction";
-        return false;
-      }
-      const Value* value = state.read(id);
-      if (!value || value->kind != format ||
-          (line[2] == "s" && value->tensor) ||
-          (line[2] == "t" &&
-           (!value->tensor || value->tensor->kind != format ||
-            value->tensor->items.size() != count)) ||
+    if (inst.tag == Tag::ret) {
+      const Value* value = state.read(inst.left);
+      if (!value || value->kind != inst.kind ||
+          (!inst.tensor && value->tensor) ||
+          (inst.tensor &&
+           (!value->tensor || value->tensor->kind != inst.kind ||
+            value->tensor->items.size() != inst.count)) ||
           !state.tick())
         return false;
       state.result = *value;
       state.returned = true;
       continue;
     }
-    int out_id = -1;
-    int left_id = -1;
-    if (op == "const") {
-      Kind format = Kind::i64;
-      Value value;
-      if (line.size() != 4 || !kind(line[1], format) ||
-          !reg(line[2], out_id) || !constant(line[3], format, value) ||
-          !state.tick()) {
-        state.error = "invalid const instruction";
-        return false;
-      }
-      state.regs[out_id] = value;
-      continue;
-    }
-    if (op == "alloc") {
-      Kind format = Kind::i64;
-      std::size_t count = 0;
-      int fill_id = -1;
-      std::uint64_t fill = 0;
-      if (line.size() != 5 || !kind(line[1], format) ||
-          !reg(line[2], out_id) || !natural(line[3], count) ||
-          !reg(line[4], fill_id) ||
-          !state.read_scalar(fill_id, format, fill) || !state.tick()) {
-        if (state.error.empty())
-          state.error = "invalid alloc instruction";
-        return false;
-      }
-      auto tensor = std::make_shared<Tensor>();
-      tensor->kind = format;
-      tensor->items.assign(count, fill);
-      state.regs[out_id] = Value{format, 0, std::move(tensor)};
-      continue;
-    }
-    if (op == "literal") {
-      Kind format = Kind::i64;
-      std::size_t count = 0;
-      std::vector<std::uint8_t> data;
-      if (line.size() != 5 || !kind(line[1], format) ||
-          !reg(line[2], out_id) || !natural(line[3], count) ||
-          !byte_literal(line[4], data) ||
-          count > std::numeric_limits<std::size_t>::max() / width(format) ||
-          data.size() != count * width(format)) {
-        state.error = "invalid tensor literal instruction";
-        return false;
-      }
-      auto tensor = std::make_shared<Tensor>();
-      tensor->kind = format;
-      tensor->items.reserve(count);
-      for (std::size_t item = 0; item < count; ++item)
-        tensor->items.push_back(
-            load_value(data.data() + item * width(format), format));
+    if (inst.tag == Tag::constant) {
       if (!state.tick())
         return false;
-      state.regs[out_id] = Value{format, 0, std::move(tensor)};
+      state.write(inst.out, scalar(inst.kind, inst.value));
       continue;
     }
-    if (op == "cast") {
-      Kind target = Kind::i64;
-      if (line.size() != 4 || !kind(line[1], target) ||
-          !reg(line[2], out_id) || !reg(line[3], left_id)) {
-        state.error = "invalid cast instruction";
+    if (inst.tag == Tag::alloc) {
+      std::uint64_t fill = 0;
+      if (!state.read_scalar(inst.left, inst.kind, fill) || !state.tick())
         return false;
-      }
-      const Value* input = state.read(left_id);
+      auto tensor = std::make_shared<Tensor>();
+      tensor->kind = inst.kind;
+      tensor->items.assign(inst.count, fill);
+      state.write(inst.out, Value{inst.kind, 0, std::move(tensor)});
+      continue;
+    }
+    if (inst.tag == Tag::literal) {
+      if (!state.tick())
+        return false;
+      auto tensor = std::make_shared<Tensor>();
+      tensor->kind = inst.kind;
+      tensor->items = inst.literal;
+      state.write(inst.out, Value{inst.kind, 0, std::move(tensor)});
+      continue;
+    }
+    if (inst.tag == Tag::cast) {
+      const Value* input = state.read(inst.left);
       Value output;
-      if (!input || !cast(target, *input, output) || !state.tick()) {
+      if (!input || !cast(inst.kind, *input, output) || !state.tick()) {
         if (state.error.empty())
           state.error = "invalid scalar cast";
         return false;
       }
-      state.regs[out_id] = output;
+      state.write(inst.out, output);
       continue;
     }
-    if (op == "pick") {
-      Kind format = Kind::i64;
-      int index_id = -1;
-      std::size_t count = 0;
+    if (inst.tag == Tag::pick) {
       std::uint64_t index_bits = 0;
-      if (line.size() < 5 || !kind(line[1], format) ||
-          !reg(line[2], out_id) || !reg(line[3], index_id) ||
-          !natural(line[4], count) ||
-          count > std::numeric_limits<std::size_t>::max() - 5 ||
-          line.size() != count + 5 ||
-          !state.read_scalar(index_id, Kind::i64, index_bits)) {
-        if (state.error.empty())
-          state.error = "invalid list selection instruction";
+      if (!state.read_scalar(inst.left, Kind::i64, index_bits))
         return false;
-      }
       const std::int64_t index = signed_value(index_bits);
-      if (index < 0 || static_cast<std::uint64_t>(index) >= count) {
+      if (index < 0 || static_cast<std::uint64_t>(index) >= inst.count) {
         state.error = "list index is out of bounds";
         return false;
       }
-      int item_id = -1;
-      if (!reg(line[5 + static_cast<std::size_t>(index)], item_id)) {
-        state.error = "invalid list selection item register";
-        return false;
-      }
-      const Value* item = state.read(item_id);
-      if (!item || item->tensor || item->kind != format || !state.tick()) {
+      const Value* item = state.read(inst.items[static_cast<std::size_t>(index)]);
+      if (!item || item->tensor || item->kind != inst.kind || !state.tick()) {
         if (state.error.empty())
           state.error = "list selection item has the wrong format";
         return false;
       }
-      state.regs[out_id] = *item;
+      state.write(inst.out, *item);
       continue;
     }
-    if (op == "load" || op == "store") {
-      if (!tensor_access(line, op == "store", state))
+    if (inst.tag == Tag::load || inst.tag == Tag::store) {
+      if (!tensor_access(inst, state))
         return false;
       continue;
     }
-    if (op == "copy") {
-      if (line.size() != 3 || !reg(line[1], out_id) ||
-          !reg(line[2], left_id)) {
-        state.error = "invalid copy instruction";
+    if (inst.tag == Tag::copy) {
+      const Value* input = state.read(inst.left);
+      if (!input || !state.tick())
         return false;
-      }
-      const Value* input = state.read(left_id);
-      if (!input)
-        return false;
-      const Value copied = *input;
-      if (!state.tick())
-        return false;
-      state.regs[out_id] = copied;
+      state.write(inst.out, *input);
       continue;
     }
-    if (line.size() == 4) {
-      Kind format = Kind::i64;
+    if (inst.tag == Tag::unary) {
       std::uint64_t input = 0;
       Value output;
-      if (!kind(line[1], format) || !reg(line[2], out_id) ||
-          !reg(line[3], left_id) ||
-          !state.read_scalar(left_id, format, input) ||
-          !unary(op, format, input, output) ||
-          !state.tick()) {
+      if (!state.read_scalar(inst.left, inst.kind, input) ||
+          !unary(inst.unary, inst.kind, input, output) || !state.tick()) {
         if (state.error.empty())
           state.error = "invalid unary instruction";
         return false;
       }
-      state.regs[out_id] = output;
+      state.write(inst.out, output);
       continue;
     }
-    if (line.size() == 5) {
-      Kind format = Kind::i64;
-      int right_id = -1;
+    if (inst.tag == Tag::binary) {
       std::uint64_t left = 0;
       std::uint64_t right = 0;
       Value output;
-      if (!kind(line[1], format) || !reg(line[2], out_id) ||
-          !reg(line[3], left_id) || !reg(line[4], right_id) ||
-          !state.read_scalar(left_id, format, left) ||
-          !state.read_scalar(right_id, format, right) ||
-          !binary(op, format, left, right, output, state.error) ||
+      if (!state.read_scalar(inst.left, inst.kind, left) ||
+          !state.read_scalar(inst.right, inst.kind, right) ||
+          !binary(inst.binary, inst.kind, left, right, output, state.error) ||
           !state.tick()) {
         if (state.error.empty())
           state.error = "invalid binary instruction";
         return false;
       }
-      state.regs[out_id] = output;
+      state.write(inst.out, output);
       continue;
     }
-    state.error = "unknown instruction " + std::string(op);
-    return false;
   }
   return true;
 }
@@ -883,41 +1083,37 @@ bool run_image(jog_call* call) {
   if (first == code.size() || last == code.size())
     return fail(call, "entry function not found or unterminated");
 
-  State state;
+  Program program;
+  std::string decode_error;
+  if (!decode(code, first, last, program, decode_error))
+    return fail(call, decode_error);
+
+  State state(program);
   const auto* bytes =
       reinterpret_cast<const unsigned char*>(input.data.bytes.data);
   const std::size_t input_size = input.data.bytes.size;
   std::size_t offset = 0;
-  while (first < last && code[first][0] == "param") {
-    int id = -1;
-    Kind format = Kind::i64;
-    std::size_t count = 1;
-    if ((code[first].size() != 4 && code[first].size() != 5) ||
-        !reg(code[first][1], id) ||
-        (code[first][2] != "s" && code[first][2] != "t") ||
-        !kind(code[first][3], format) ||
-        (code[first][2] == "s" && code[first].size() != 4) ||
-        (code[first][2] == "t" &&
-         (code[first].size() != 5 || !natural(code[first][4], count))) ||
-        count > (input_size - offset) / width(format))
+  for (const Param& param : program.params) {
+    if (offset > input_size ||
+        param.count > (input_size - offset) / width(param.kind))
       return fail(call, "input does not match function parameters");
-    if (code[first][2] == "s") {
-      state.regs[id] = scalar(format, load_value(bytes + offset, format));
+    if (!param.tensor) {
+      state.write(param.slot,
+                  scalar(param.kind, load_value(bytes + offset, param.kind)));
     } else {
       auto values = std::make_shared<Tensor>();
-      values->kind = format;
-      values->items.reserve(count);
-      for (std::size_t item = 0; item < count; ++item)
+      values->kind = param.kind;
+      values->items.reserve(param.count);
+      for (std::size_t item = 0; item < param.count; ++item)
         values->items.push_back(
-            load_value(bytes + offset + item * width(format), format));
-      state.regs[id] = Value{format, 0, std::move(values)};
+            load_value(bytes + offset + item * width(param.kind), param.kind));
+      state.write(param.slot, Value{param.kind, 0, std::move(values)});
     }
-    offset += count * width(format);
-    ++first;
+    offset += param.count * width(param.kind);
   }
   if (offset != input_size)
     return fail(call, "input does not match function parameters");
-  if (!execute(code, first, last, state))
+  if (!execute(program, 0, program.code.size(), state))
     return fail(call, state.error.empty() ? "execution failed" : state.error);
   if (!state.returned)
     return fail(call, "function did not return");

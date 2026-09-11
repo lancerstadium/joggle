@@ -206,6 +206,10 @@ library; their presence does not claim cross-platform bit identity for
 transcendentals.
 Invalid integer division, shifts, images, entries, input sizes, shapes, indices,
 or out-of-range conversions fail through the normal module diagnostic boundary.
+The native runner tokenizes and decodes the selected function once per call,
+interns textual registers into compact slots, precomputes branch and loop
+bounds, and then dispatches typed instructions. This is an implementation
+detail of the VM module, not a second core IR or a public target hierarchy.
 Local function calls, dynamic tensors, module-defined storage formats, and
 format-aware costs are still open. A bit-reproducible approximation must remain
 an explicitly selected implementation module rather than silently replacing a
@@ -241,6 +245,11 @@ hash-checked, the bridge removes all ONNX computation, the out-of-tree
 `ikj.apply` module supplies the `tensor.matmul` body, and VM plus compiled C are
 checked against the official output tolerance. The VM result and instruction
 count are also repeatable.
+The opt-in official MobileNetV2 gate extends that evidence to a complete
+network and checks all 1,000 outputs through both targets. Its deterministic VM
+count is 98,167,456,513 steps; that number is evidence for retaining and
+transforming higher-level computation before target execution, not a cycle
+estimate or a performance claim for scalar interpretation.
 
 The `base.size` and `base.byte` functions provide bounds-checked inspection of
 an `Attr` byte payload. `base.hex` formats a complete payload with a chosen
@@ -779,9 +788,9 @@ them with a system C compiler under warnings-as-errors, and checks their
 numerical results.
 
 One `c.abi` dictionary is the source of both scalar spelling and byte width;
-`int` and range `index` currently choose signed 64-bit C storage, while static
-array-capacity loops use the separately named `size` representation. These are
-C-module policies, not core types. `c.header` emits the same checked prototypes
+`int` and semantic `index` currently choose signed 64-bit C storage, while
+static array-capacity loops use the separately named `count` role (`size_t`).
+These are C-module policies, not core types. `c.header` emits the same checked prototypes
 as `c.source`, wrapped for C++ linkage, through the ordinary read-only emit
 boundary. The test compiles the generated header and source together with
 strict-prototype warnings enabled. Generated files remain under the ignored

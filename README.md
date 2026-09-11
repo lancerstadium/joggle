@@ -226,9 +226,10 @@ ShuffleNet, DenseNet, GoogLeNet, EfficientNet QDQ/INT8, and BiDAF. Coverage is
 reported conservatively: an imported or typed source call is not described as
 executable semantic support. MobileNetV2 additionally exercises atomic
 network-wide body expansion and canonical round trip on the resulting
-loop-level IR. An independent, opt-in application gate compiles its official
-ONNX Zoo input through the C module and compares all 1,000 outputs with the
-official result. Source construction carries only mutable bindings actually
+loop-level IR. An independent, opt-in application gate executes its official
+ONNX Zoo input through both the deterministic VM and compiled C, then compares
+all 1,000 outputs with the official result. Source construction carries only
+mutable bindings actually
 changed by nested control flow, so readable `var` syntax does not replicate
 every in-scope binding across every exposed tensor loop.
 
@@ -301,10 +302,12 @@ step count is not presented as hardware cycles. Frontend bridges normalize
 ONNX and TFLite weight payloads to the shared `tensor.literal` primitive; C and
 VM both execute that primitive without knowing either frontend. The pinned official
 ONNX `test_matmul_2d` case now imports, converts, expands, and matches its
-official output through both VM and compiled C. A complete application-network
-execution comparison remains an open M10 gate. The fully exposed MobileNetV2
-passes VM-owned preparation and becomes a complete 28 MB VM image, but its
-interpreter run is not claimed as a completed application execution.
+official output through both VM and compiled C. The same gate now completes on
+the official MobileNetV2 application: its 28 MB image executes 98,167,456,513
+deterministic VM steps and all 1,000 outputs agree with both the official
+TensorProto result and generated C. The large step count is deliberately
+reported: complete scalar exposure is correct, but is not an efficient
+application execution strategy.
 
 ## Guarantees and boundaries
 
