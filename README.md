@@ -54,7 +54,8 @@ Check a program and run a transform:
 ```
 
 The output is normal `.jog` text and can be checked, transformed, or committed
-again.
+again. List several function names before the file to run an ad hoc sequence as
+one transaction; a failing later step restores all earlier edits.
 
 ## Language in one example
 

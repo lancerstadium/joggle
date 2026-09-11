@@ -395,7 +395,8 @@ if(JOGGLE_BUILD_TESTS)
       ${CMAKE_COMMAND}
       -DTOOL=$<TARGET_FILE:joggle-tool>
       -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
-      -DMODULES=${CMAKE_CURRENT_SOURCE_DIR}/modules
+      -DSOURCE_MODULES=${CMAKE_CURRENT_SOURCE_DIR}/modules
+      -DBUILD_MODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
       -DOUT=${CMAKE_CURRENT_BINARY_DIR}/run-report.attr
       -P ${CMAKE_CURRENT_SOURCE_DIR}/test/report.cmake
   )

@@ -517,10 +517,15 @@ The same report is available from the CLI without mixing it into printed IR:
 
 ```sh
 joggle run edge.prepare model.jog --report run.attr -M modules
+joggle run edge.convert edge.plan edge.prepare model.jog \
+  --report run.attr -M modules
 ```
 
 `print(Attr)` and `print(Mod)` are ordinary overloads in the embedding API;
-the CLI writes their corresponding deterministic textual forms.
+the CLI writes their corresponding deterministic textual forms. With multiple
+function names, `run` uses the same host-sequence overload described below:
+the report contains one entry per function and any failure rolls the complete
+sequence back.
 
 `query(env, name, mod, result, args, cached)` embeds an ordinary function as a
 read-only analysis. Its first parameter is `Mod`; subsequent parameters receive
@@ -542,9 +547,10 @@ output is sufficient to create text or binary artifacts.
 
 For a host-selected sequence, the embedding API also accepts
 `run(env, span_of_names, mod, report)`. It executes the same ordinary functions
-in order and rolls the complete sequence back if any step fails. A source
-wrapper and a host sequence therefore differ only in where the list of calls is
-chosen, not in their IR or function semantics.
+in order and rolls the complete sequence back if any step fails. The CLI form
+is `joggle run fn1 fn2 ... model.jog`. A source wrapper, embedding sequence, and
+CLI sequence therefore differ only in where the list of calls is chosen, not in
+their IR or function semantics.
 
 ### Open attributes
 

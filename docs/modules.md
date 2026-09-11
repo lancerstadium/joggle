@@ -618,6 +618,10 @@ equally auditable without a new reporting interface.
 structural report separately while preserving the transformed module on
 standard output. The implementation reuses the public `print(Attr)` overload,
 so the CLI does not own a second serialization schema.
+Several names may precede the model path:
+`joggle run bridge.convert opt.basic mem.plan model.jog`. They execute in order
+as one transaction and the report retains the separate result of every normal
+function; no wrapper file or pipeline format is required.
 `joggle query module.fn model.jog -M modules` invokes a no-extra-argument
 analysis and writes its canonical `Attr` result. `opt.unresolved` reports calls
 without a visible declaration; the complementary `opt.untyped` reports calls
@@ -661,8 +665,9 @@ Embedding code that chooses steps dynamically may pass a
 `span<const string_view>` to `run`. The overload executes the named functions
 in order, returns their ordinary reports in a `steps` list, and treats the
 whole sequence as one transaction. This is the host-side equivalent of writing
-a normal `.jog` wrapper function; it does not register, own, or serialize a
-pipeline object.
+a normal `.jog` wrapper function. The CLI exposes the same overload by accepting
+several function names before the input file; neither path registers, owns, or
+serializes a pipeline object.
 
 The bracket syntax is not a `host` special case. Any module may define its own
 keys and attach them to a function, value binding, or operation statement.

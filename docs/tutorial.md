@@ -28,6 +28,17 @@ evidence separately when an experiment needs it:
   --report run.attr -M modules
 ```
 
+For a temporary experiment, place several ordinary functions before the input
+instead of creating a wrapper module:
+
+```sh
+./build/joggle run opt.fold_add_zero opt.basic test/data/matmul.jog \
+  --report run.attr -M modules
+```
+
+The sequence commits once. If any function fails, none of its edits are
+printed and the report is not written.
+
 Run a read-only analysis without rewriting or reprinting the module:
 
 ```sh

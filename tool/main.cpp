@@ -20,7 +20,7 @@ int usage() {
   std::cerr << "usage:\n"
                "  joggle check <file.jog> [-M <module-dir>]...\n"
                "  joggle read <module.fn> <file> [-M <module-dir>]...\n"
-               "  joggle run <module.fn> <file.jog> "
+               "  joggle run <module.fn>... <file.jog> "
                "[--report <file>] [-M <module-dir>]...\n"
                "  joggle query <module.fn> <file.jog> "
                "[-M <module-dir>]...\n"
@@ -81,12 +81,32 @@ int process(int argc, char** argv) {
     return usage();
 
   const bool selects_function = execute || decode || inspect || emit;
-  const std::string function = selects_function ? argv[2] : "";
-  const std::string file = selects_function ? argv[3] : argv[2];
+  std::vector<std::string> functions;
+  std::string file;
+  int first_option = 0;
+  if (execute) {
+    int positional_end = 2;
+    while (positional_end < argc &&
+           std::string_view(argv[positional_end]) != "-M" &&
+           std::string_view(argv[positional_end]) != "--report")
+      ++positional_end;
+    if (positional_end < 4)
+      return usage();
+    file = argv[positional_end - 1];
+    for (int index = 2; index + 1 < positional_end; ++index)
+      functions.emplace_back(argv[index]);
+    first_option = positional_end;
+  } else if (selects_function) {
+    functions.emplace_back(argv[2]);
+    file = argv[3];
+    first_option = 4;
+  } else {
+    file = argv[2];
+    first_option = 3;
+  }
   std::vector<fs::path> roots;
   std::optional<fs::path> report_file;
-  if (!options(argc, argv, selects_function ? 4 : 3, execute, roots,
-               report_file))
+  if (!options(argc, argv, first_option, execute, roots, report_file))
     return usage();
 
   std::ifstream input(file, std::ios::binary);
@@ -102,12 +122,16 @@ int process(int argc, char** argv) {
   for (const fs::path& root : roots)
     env.path(root.string());
   if (selects_function) {
-    const std::size_t dot = function.rfind('.');
-    if (dot == std::string::npos || !env.load(function.substr(0, dot))) {
-      env.print_diags(stderr);
-      return 1;
+    for (const std::string& function : functions) {
+      const std::size_t dot = function.rfind('.');
+      if (dot == std::string::npos || !env.load(function.substr(0, dot))) {
+        env.print_diags(stderr);
+        return 1;
+      }
     }
   }
+
+  const std::string& function = functions.empty() ? file : functions.front();
 
   if (decode) {
     joggle::Attr::Bytes bytes;
@@ -157,8 +181,18 @@ int process(int argc, char** argv) {
   }
   joggle::Attr report;
   if (execute) {
-    const bool ran = report_file ? joggle::run(env, function, mod, report)
-                                 : joggle::run(env, function, mod);
+    bool ran = false;
+    if (functions.size() == 1) {
+      ran = report_file ? joggle::run(env, function, mod, report)
+                        : joggle::run(env, function, mod);
+    } else {
+      std::vector<std::string_view> names;
+      names.reserve(functions.size());
+      for (const std::string& name : functions)
+        names.emplace_back(name);
+      ran = report_file ? joggle::run(env, names, mod, report)
+                        : joggle::run(env, names, mod);
+    }
     if (!ran) {
       mod.print_diags(stderr);
       env.print_diags(stderr);

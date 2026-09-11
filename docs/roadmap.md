@@ -97,6 +97,13 @@ forced rollback.
 
 ### M8 — composition and analyses
 
+Status: in progress. Source wrappers, embedding sequences, and CLI sequences
+all invoke the same ordinary functions. Each sequence is one transaction and
+emits the same structural per-step report; bounded fixed points and
+revision-keyed read-only queries require no pass or analysis hierarchy. A
+timing observation boundary that does not make canonical reports
+nondeterministic remains open.
+
 - Compose ordinary transform functions into pipelines without a pass class or
   new surface keyword.
 - Provide bounded fixed-point execution, per-step diagnostics, change counts,
