@@ -238,6 +238,8 @@ fn prepare(m: Mod) -> bool {
   for round in 0..limit {
     if again {
       let before = ir.revision(m)
+      var calls: list<Op> = []
+      var bodies: list<Fn> = []
       for op in ir.ops(m) {
         if ir.live(op) && ir.kind(op) == "call" && !supported(m, op) {
           let target = ir.resolve(m, op)
@@ -246,8 +248,12 @@ fn prepare(m: Mod) -> bool {
           assert(len(ir.meta(op)) == 0,
                  "c: cannot expose a call carrying metadata: " +
                  ir.callee(op))
-          ir.expand(m, op, target)
+          calls += [op]
+          bodies += [target]
         }
+      }
+      if len(calls) != 0 {
+        ir.expand(m, calls, bodies)
       }
       again = ir.revision(m) != before
       changed = again || changed

@@ -160,6 +160,9 @@ the difference between QDQ and QLinear normalization boundaries.
 MobileNetV2 remains the deep semantic gate; the next four and UltraFace all
 pass binary import, canonical round trip, fixed-point type inference,
 relationship conversion, idempotence, verification, and converted round trip.
+Its 155 semantic calls are also expanded as one atomic batch and the resulting
+loop-level module must verify and round-trip. This keeps the scale gate on an
+official application model rather than a synthetic graph.
 Tiny-YOLOv3 remains a pinned partial-frontier gate. It imports
 269 tensors, 291 calls, and four nested functions, then reduces 280 open results
 to 219. UltraFace imports 244 tensors and 242 calls and closes all 240 initially
@@ -656,6 +659,14 @@ generic rules as verification. `Env::expand(mod, op, fn)` substitutes that
 ordinary body at the call, remaps nested control flow and dataflow, specializes
 type and shape parameters, and preserves visible result bindings. The textual
 surface is the ordinary pair `ir.resolve` and `ir.expand`.
+
+Network transforms may submit aligned `list<Op>` and `list<Fn>` values to the
+same `ir.expand` function. This is not a second lowering primitive: it applies
+the scalar edit in list order, records one expansion event per pair, and commits
+the complete list atomically. The C++ span overload has identical semantics.
+One snapshot and one indexed dominance validation replace a whole-module copy
+and repeated linear dominance searches per call, while a failed pair restores
+the exact input text, dependencies, and revision.
 
 `opt.expand` adds only caller-selected policy: it exposes one level of the
 named callees from a traversal snapshot. It does not recursively expand calls

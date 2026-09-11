@@ -850,7 +850,7 @@ Op Mod::call(Op before, std::string callee, std::span<const Val> args,
     value.type = types[index];
     value.def = op_id;
     value.index = index;
-    value.type_annotation = types.size() > 1;
+    value.type_annotation = types.size() > 1 || types[index].text() != "_";
     store.vals.push_back({std::move(value), 1, true});
     op.outs.push_back(value_id);
   }
@@ -1590,12 +1590,11 @@ bool Mod::expand(Op call, Fn callee, std::string_view semantic) {
     return false;
   }
 
-  detail::Store backup = store;
   const auto reject = [&](std::string message, Loc loc = {}) {
-    store = backup;
     detail::add_diag(store.diags, std::move(message), std::move(loc));
     return false;
   };
+  const std::uint64_t before = store.revision;
   const Ty applied{std::string(call.callee())};
   const std::string_view symbol =
       applied.args().empty() ? call.callee() : applied.name();
@@ -1880,15 +1879,7 @@ bool Mod::expand(Op call, Fn callee, std::string_view semantic) {
   store.ops[call.id_].live = false;
   ++store.ops[call.id_].generation;
   detail::rebuild_uses(store);
-  for (std::uint32_t id = 0; id < store.ops.size(); ++id) {
-    if (!store.ops[id].live)
-      continue;
-    for (const std::uint32_t arg : store.ops[id].data.args)
-      if (!detail::dominates(store, arg, id))
-        return reject("expanded body violates value dominance",
-                      store.ops[id].data.loc);
-  }
-  store.revision = backup.revision;
+  store.revision = before;
   touch(store);
   return true;
 }

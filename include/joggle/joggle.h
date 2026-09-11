@@ -317,6 +317,8 @@ public:
   std::vector<Ty> match(Op call, Fn candidate) const;
   bool accepts(Op call, Fn candidate) const;
   bool expand(Mod& mod, Op call, Fn implementation) const;
+  bool expand(Mod& mod, std::span<const Op> calls,
+              std::span<const Fn> implementations) const;
   bool bound(std::string_view symbol) const noexcept;
   bool call(std::string_view symbol, std::span<const Attr> args,
             std::vector<Attr>& returns);

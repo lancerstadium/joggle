@@ -139,6 +139,11 @@ and C++ performs the same edit with `env.resolve(mod, op)` followed by
 body and an alternative implementation, so dependency visibility and body
 expansion commit together.
 
+When one traversal selects several calls, collect the aligned call and body
+handles and invoke `ir.expand(m, calls, bodies)` once. The list form preserves
+the same per-call report entries but rolls back the whole frontier if any pair
+is invalid. The corresponding embedding API accepts two spans.
+
 For a larger model, list the calls a consumer can already implement and let
 `opt` expose everything else to that boundary:
 

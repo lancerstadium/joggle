@@ -666,14 +666,15 @@ std::vector<Ty> Env::match(Op call, Fn candidate) const {
 }
 
 bool Env::expand(Mod& mod, Op call, Fn implementation) const {
-  if (!call || !implementation)
-    return false;
-  std::string semantic;
-  const Fn source = resolve(mod, call);
-  if (source)
-    semantic = std::string(source.module()) + "." +
-               std::string(source.name());
+  const std::array calls{call};
+  const std::array implementations{implementation};
+  return expand(mod, calls, implementations);
+}
 
+bool Env::expand(Mod& mod, std::span<const Op> calls,
+                 std::span<const Fn> implementations) const {
+  if (calls.empty())
+    return false;
   detail::Store backup = mod.impl_->store;
   const auto rollback = [&]() {
     std::vector<Diag> diagnostics = std::move(mod.impl_->store.diags);
@@ -681,20 +682,52 @@ bool Env::expand(Mod& mod, Op call, Fn implementation) const {
     mod.impl_->store.diags = std::move(diagnostics);
     return false;
   };
-  const std::string implementation_symbol =
-      std::string(implementation.module()) + "." +
-      std::string(implementation.name());
-  const std::vector<Fn> visible = resolve_fns(mod, implementation_symbol);
-  if (std::find(visible.begin(), visible.end(), implementation) ==
-          visible.end() &&
-      !mod.use(*this, std::string(implementation.module())))
+  if (calls.size() != implementations.size()) {
+    detail::add_diag(mod.impl_->store.diags,
+                     "expand requires one implementation per call");
     return rollback();
-  if (mod.expand(call, implementation, semantic)) {
-    mod.impl_->store.revision = backup.revision;
-    detail::touch(mod.impl_->store);
-    return true;
   }
-  return rollback();
+
+  std::vector<std::string> semantics;
+  semantics.reserve(calls.size());
+  for (std::size_t index = 0; index < calls.size(); ++index) {
+    const Op call = calls[index];
+    const Fn implementation = implementations[index];
+    if (!call || !implementation)
+      return rollback();
+    const Fn source = resolve(mod, call);
+    semantics.push_back(source ? std::string(source.module()) + "." +
+                                     std::string(source.name())
+                               : std::string{});
+    const std::string implementation_symbol =
+        std::string(implementation.module()) + "." +
+        std::string(implementation.name());
+    const std::vector<Fn> visible = resolve_fns(mod, implementation_symbol);
+    if (std::find(visible.begin(), visible.end(), implementation) ==
+            visible.end() &&
+        !mod.use(*this, std::string(implementation.module())))
+      return rollback();
+  }
+
+  mod.impl_->store.revision = backup.revision;
+  mod.impl_->store.queries.clear();
+  for (std::size_t index = 0; index < calls.size(); ++index)
+    if (!mod.expand(calls[index], implementations[index], semantics[index]))
+      return rollback();
+  const detail::Dom dom(mod.impl_->store);
+  for (std::uint32_t id = 0; id < mod.impl_->store.ops.size(); ++id) {
+    const detail::OpData& op = mod.impl_->store.ops[id].data;
+    if (!mod.impl_->store.ops[id].live)
+      continue;
+    for (const std::uint32_t argument : op.args) {
+      if (dom.has(argument, id))
+        continue;
+      detail::add_diag(mod.impl_->store.diags,
+                       "expanded body violates value dominance", op.loc);
+      return rollback();
+    }
+  }
+  return true;
 }
 
 Fn Env::resolve(const Mod& from, Op call, std::string_view callee,

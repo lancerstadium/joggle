@@ -278,16 +278,22 @@ int main(int argc, char** argv) {
   const std::set<std::string, std::less<>> expandable{
       "nn.conv2d", "nn.batch_norm",        "nn.relu",
       "nn.add",    "nn.global_avg_pool2d", "tensor.reshape"};
-  std::size_t expanded = 0;
+  std::vector<joggle::Op> expansion_calls;
+  std::vector<joggle::Fn> expansion_bodies;
   for (joggle::Op op : semantic_roundtrip.ops()) {
     if (!expandable.contains(op.callee()))
       continue;
     CHECK(!op.meta("onnx"));
     const joggle::Fn callee = env.resolve(semantic_roundtrip, op);
-    CHECK(callee && env.expand(semantic_roundtrip, op, callee));
-    ++expanded;
+    CHECK(callee);
+    expansion_calls.push_back(op);
+    expansion_bodies.push_back(callee);
   }
-  CHECK(expanded == nodes);
+  CHECK(expansion_calls.size() == nodes);
+  const std::uint64_t expansion_revision = semantic_roundtrip.revision();
+  CHECK(env.expand(semantic_roundtrip, expansion_calls, expansion_bodies));
+  CHECK(semantic_roundtrip.revision() ==
+        expansion_revision + expansion_calls.size());
   CHECK(semantic_roundtrip.verify(env));
   for (joggle::Op op : semantic_roundtrip.ops()) {
     CHECK(op.callee() != "nn.conv2d");
@@ -398,6 +404,7 @@ int main(int argc, char** argv) {
   CHECK(convs > 0 && norms > 0 && relus > 0);
   CHECK(env.load("script"));
   CHECK(joggle::run(env, "script.fuse_onnx", model));
+  CHECK(model.verify(env));
   const std::size_t fused = count_calls(model, "test.conv_bn_relu");
   CHECK(fused == 36);
   CHECK(count_calls(model, "onnx.Conv") == convs - fused);

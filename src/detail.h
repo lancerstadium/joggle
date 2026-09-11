@@ -98,6 +98,18 @@ struct Store {
   mutable std::vector<QueryData> queries;
 };
 
+class Dom {
+public:
+  explicit Dom(const Store& store);
+  bool has(std::uint32_t value, std::uint32_t use) const;
+
+private:
+  const Store* store_;
+  std::vector<std::uint32_t> val_blks_;
+  std::vector<std::uint32_t> val_fns_;
+  std::vector<std::size_t> op_pos_;
+};
+
 bool same_type_pattern(const Ty& left,
                        const std::vector<std::string>& left_generics,
                        const Ty& right,

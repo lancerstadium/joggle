@@ -245,18 +245,20 @@ fn legalize(m: Mod, caps: list<Fn>, limit: int) -> bool {
   var again = true
   for round in 0..limit {
     if again {
-      again = false
+      var calls: list<Op> = []
+      var bodies: list<Fn> = []
       for op in ir.ops(m) {
         if ir.live(op) && ir.kind(op) == "call" &&
            !supports(m, op, caps) && len(ir.meta(op)) == 0 {
           let target = ir.resolve(m, op)
           if ir.live(target) && len(ir.blks(target)) != 0 {
-            let expanded = ir.expand(m, op, target)
-            again = expanded || again
-            changed = expanded || changed
+            calls += [op]
+            bodies += [target]
           }
         }
       }
+      again = len(calls) != 0 && ir.expand(m, calls, bodies)
+      changed = again || changed
     }
   }
   return changed
@@ -269,7 +271,8 @@ fn apply(m: Mod, impls: list<Fn>, limit: int) -> bool {
   var exceeded = false
   for round in 0..(limit + 1) {
     if again {
-      again = false
+      var calls: list<Op> = []
+      var bodies: list<Fn> = []
       for op in ir.ops(m) {
         if ir.live(op) && ir.kind(op) == "call" && len(ir.meta(op)) == 0 {
           var symbol = ir.callee(op)
@@ -285,12 +288,13 @@ fn apply(m: Mod, impls: list<Fn>, limit: int) -> bool {
           }
           let selected = ir.match(op, candidates)
           if ir.live(selected) {
-            let expanded = ir.expand(m, op, selected)
-            again = expanded || again
-            changed = expanded || changed
+            calls += [op]
+            bodies += [selected]
           }
         }
       }
+      again = len(calls) != 0 && ir.expand(m, calls, bodies)
+      changed = again || changed
       if round == limit && again {
         exceeded = true
       }
@@ -323,7 +327,8 @@ fn rename(m: Mod, rules: list<list<str>>) -> bool {
 }
 
 fn expand(m: Mod, callees: list<str>) -> bool {
-  var changed = false
+  var calls: list<Op> = []
+  var bodies: list<Fn> = []
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" {
       let target = ir.resolve(m, op)
@@ -336,13 +341,14 @@ fn expand(m: Mod, callees: list<str>) -> bool {
         if !selected {
           if ir.callee(op) == callee || symbol == callee {
             selected = true
-            changed = ir.expand(m, op, target) || changed
+            calls += [op]
+            bodies += [target]
           }
         }
       }
     }
   }
-  return changed
+  return len(calls) != 0 && ir.expand(m, calls, bodies)
 }
 
 fn fuse(m: Mod, pattern: list<str>, replacement: str) -> bool {

@@ -97,6 +97,21 @@ std::optional<std::vector<Val>> value_handles(const Item& item) {
   return out;
 }
 
+template <class T> std::optional<std::vector<T>> handles(const Item& item) {
+  const Items* items = list(item);
+  if (!items)
+    return std::nullopt;
+  std::vector<T> out;
+  out.reserve(items->size());
+  for (const Item& entry : *items) {
+    const auto* value = as<T>(entry);
+    if (!value)
+      return std::nullopt;
+    out.push_back(*value);
+  }
+  return out;
+}
+
 std::optional<std::vector<Ty>> types(const Item& item) {
   const Items* items = list(item);
   if (!items)
@@ -335,11 +350,10 @@ private:
     trace_->emplace_back(std::move(event));
   }
 
-  void record_expand(Mod& mod, std::string source, Fn implementation,
-                     std::uint64_t before) {
+  void record_expand(std::string source, Fn implementation,
+                     std::uint64_t before, std::uint64_t after) {
     if (!trace_)
       return;
-    const std::uint64_t after = mod.revision();
     Attr::List params;
     for (Val param : implementation.params())
       params.emplace_back(std::string(param.type().text()));
@@ -1481,7 +1495,27 @@ private:
         const std::uint64_t before = (*mod)->revision();
         const bool expanded = env_.expand(**mod, *op, *fn);
         if (expanded)
-          record_expand(**mod, std::move(source), *fn, before);
+          record_expand(std::move(source), *fn, before, (*mod)->revision());
+        return Items{Item(Attr(expanded))};
+      }
+      auto ops = handles<Op>(args[1]);
+      auto fns = handles<Fn>(args[2]);
+      if (mod && *mod && ops && fns) {
+        std::vector<std::string> sources;
+        sources.reserve(ops->size());
+        for (Op op : *ops) {
+          std::string source(op.callee());
+          if (const Fn resolved = env_.resolve(**mod, op))
+            source = std::string(resolved.module()) + "." +
+                     std::string(resolved.name());
+          sources.push_back(std::move(source));
+        }
+        const std::uint64_t before = (*mod)->revision();
+        const bool expanded = env_.expand(**mod, *ops, *fns);
+        if (expanded)
+          for (std::size_t index = 0; index < ops->size(); ++index)
+            record_expand(std::move(sources[index]), (*fns)[index],
+                          before + index, before + index + 1);
         return Items{Item(Attr(expanded))};
       }
     } else if (name == "move" && args.size() == 3) {

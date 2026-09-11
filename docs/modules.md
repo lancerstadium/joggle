@@ -370,6 +370,13 @@ body exposure.
 `opt.expand` is only a policy helper over an explicit list of callees, not a
 built-in lowering stage.
 
+The overload `ir.expand(m, calls, bodies)` accepts aligned handle lists. It is
+the transactional, network-scale form of the same edit: all pairs succeed or
+the module is restored, and reports still contain one event per call. `opt`
+and target preparation functions use this overload internally, so extension
+authors select policy while the core owns snapshot, ordering, and dominance
+validation.
+
 These definitions specify computation but deliberately do not choose layout,
 memory space, vector width, tiling, device, or instruction. Such choices belong
 to separately loaded research modules and can use open attributes or explicit

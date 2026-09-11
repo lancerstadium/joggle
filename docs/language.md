@@ -432,6 +432,12 @@ preserves the caller's visible result bindings. The edit is atomic; a missing
 body, signature mismatch, unrepresentable compile-time argument, or metadata
 whose policy has not been chosen leaves the module unchanged.
 
+`ir.expand(m, ops, fns)` performs the same edit for aligned `list<Op>` and
+`list<Fn>` arguments. Pairs are applied in order and commit as one transaction;
+length mismatch or failure of any pair restores the module. Use the list form
+when a traversal has already selected a network-wide frontier. It avoids one
+full module snapshot per call without introducing a pass class or another IR.
+
 `ir.match(op, fns)` applies the same specificity ordering to an explicit list
 of function handles. No match returns an invalid `Fn`; equally specific matches
 are an execution error rather than a declaration-order choice. When the chosen

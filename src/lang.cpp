@@ -273,6 +273,30 @@ std::string attr_text(const Attr& value) {
   return "nil";
 }
 
+bool intrinsic_cast(std::string_view name) {
+  static constexpr std::string_view names[] = {"f16", "f32", "f64"};
+  for (const std::string_view scalar : names)
+    if (scalar == name)
+      return true;
+  if (name.size() < 2 || (name.front() != 'i' && name.front() != 'u'))
+    return false;
+  return std::all_of(name.begin() + 1, name.end(), [](char ch) {
+    return std::isdigit(static_cast<unsigned char>(ch));
+  });
+}
+
+bool intrinsic_type(std::string_view name) {
+  static constexpr std::string_view names[] = {
+      "_",     "nil", "bool", "int", "index", "str", "bytes", "dict", "list",
+      "range", "Ty",  "Attr", "Mod", "Fn",    "Blk", "Op",    "Val",  "meta"};
+  if (intrinsic_cast(name))
+    return true;
+  for (const std::string_view intrinsic : names)
+    if (intrinsic == name)
+      return true;
+  return false;
+}
+
 }  // namespace
 
 class Parser {
@@ -1711,6 +1735,72 @@ bool detail::dominates(const detail::Store& store, std::uint32_t value,
   return false;
 }
 
+detail::Dom::Dom(const detail::Store& store)
+    : store_(&store), val_blks_(store.vals.size(), detail::none),
+      val_fns_(store.vals.size(), detail::none),
+      op_pos_(store.ops.size(), std::numeric_limits<std::size_t>::max()) {
+  for (std::uint32_t id = 0; id < store.fns.size(); ++id) {
+    if (!store.fns[id].live)
+      continue;
+    for (const std::uint32_t value : store.fns[id].data.generic_vals)
+      if (value < val_fns_.size())
+        val_fns_[value] = id;
+    for (const std::uint32_t value : store.fns[id].data.params)
+      if (value < val_fns_.size())
+        val_fns_[value] = id;
+  }
+  for (std::uint32_t id = 0; id < store.blks.size(); ++id) {
+    if (!store.blks[id].live)
+      continue;
+    for (const std::uint32_t value : store.blks[id].data.args)
+      if (value < val_blks_.size())
+        val_blks_[value] = id;
+    const auto& ops = store.blks[id].data.ops;
+    for (std::size_t index = 0; index < ops.size(); ++index)
+      if (ops[index] < op_pos_.size())
+        op_pos_[ops[index]] = index;
+  }
+}
+
+bool detail::Dom::has(std::uint32_t value, std::uint32_t use) const {
+  const detail::Store& store = *store_;
+  if (value >= store.vals.size() || !store.vals[value].live ||
+      use >= store.ops.size() || !store.ops[use].live)
+    return false;
+  const detail::ValData& val = store.vals[value].data;
+  const std::uint32_t use_blk = store.ops[use].data.blk;
+  if (use_blk >= store.blks.size() || !store.blks[use_blk].live)
+    return false;
+  if (val.kind == detail::ValKind::generic ||
+      val.kind == detail::ValKind::param)
+    return val_fns_[value] == store.blks[use_blk].data.fn;
+  if (val.kind == detail::ValKind::blk_arg) {
+    const std::uint32_t def_blk = val_blks_[value];
+    return def_blk != detail::none && blk_within(store, use_blk, def_blk);
+  }
+  if (val.def == detail::none || val.def >= store.ops.size() ||
+      !store.ops[val.def].live)
+    return false;
+  const std::uint32_t def_blk = store.ops[val.def].data.blk;
+  if (def_blk == use_blk)
+    return op_pos_[val.def] < op_pos_[use];
+
+  std::uint32_t child = use_blk;
+  while (child != detail::none) {
+    const std::uint32_t parent = store.blks[child].data.parent_op;
+    if (parent == detail::none || parent >= store.ops.size() ||
+        !store.ops[parent].live)
+      return false;
+    const std::uint32_t parent_blk = store.ops[parent].data.blk;
+    if (parent_blk == def_blk)
+      return op_pos_[val.def] < op_pos_[parent];
+    if (parent_blk >= store.blks.size() || !store.blks[parent_blk].live)
+      return false;
+    child = parent_blk;
+  }
+  return false;
+}
+
 namespace {
 
 using Bindings = std::map<std::string, Ty, std::less<>>;
@@ -2011,6 +2101,10 @@ bool statement_placeholder(const detail::Store& store,
 
 void infer_call(detail::Store& store, const Mod& mod, const Env& env,
                 detail::OpData& op, bool diagnose) {
+  if (intrinsic_cast(op.callee) && op.args.size() == 1 && op.outs.size() == 1) {
+    store.vals[op.outs.front()].data.type = Ty(op.callee);
+    return;
+  }
   if (op.callee == "base.copy" && op.args.size() == 1 && op.outs.size() == 1) {
     store.vals[op.outs.front()].data.type =
         store.vals[op.args.front()].data.type;
@@ -2144,9 +2238,15 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
           }
         }
       }
-      if (message.empty())
-        message = "no overload of '" + std::string(op.callee) +
-                  "' accepts the argument types";
+      if (message.empty()) {
+        message = "no overload of '" + std::string(op.callee) + "' accepts (";
+        for (std::size_t index = 0; index < arguments.size(); ++index) {
+          if (index)
+            message += ", ";
+          message += std::string(arguments[index].text());
+        }
+        message += ')';
+      }
       detail::add_diag(store.diags, std::move(message), op.loc);
     }
     return;
@@ -2241,21 +2341,6 @@ void infer_regions(detail::Store& store, const detail::OpData& op) {
       store.vals[op.outs[index]].data.type =
           store.vals[op.args[index + 1]].data.type;
   }
-}
-
-bool intrinsic_type(std::string_view name) {
-  static constexpr std::string_view names[] = {
-      "_",    "nil", "bool",  "int",  "index", "f16",   "f32",
-      "f64",  "str", "bytes", "dict", "list",  "range", "Ty",
-      "Attr", "Mod", "Fn",    "Blk",  "Op",    "Val",   "meta"};
-  for (const std::string_view intrinsic : names)
-    if (intrinsic == name)
-      return true;
-  if (name.size() < 2 || (name.front() != 'i' && name.front() != 'u'))
-    return false;
-  return std::all_of(name.begin() + 1, name.end(), [](char ch) {
-    return std::isdigit(static_cast<unsigned char>(ch));
-  });
 }
 
 struct TypeLookup {
@@ -2571,6 +2656,7 @@ bool Mod::verify(const Env& env) {
                          yield.loc);
     }
   }
+  const detail::Dom dom(store);
   for (std::uint32_t op_id = 0; op_id < store.ops.size(); ++op_id) {
     const auto& op_slot = store.ops[op_id];
     if (!op_slot.live)
@@ -2620,7 +2706,7 @@ bool Mod::verify(const Env& env) {
                          op.loc);
         continue;
       }
-      if (!detail::dominates(store, arg, op_id))
+      if (!dom.has(arg, op_id))
         detail::add_diag(store.diags, "value does not dominate its use",
                          op.loc);
     }

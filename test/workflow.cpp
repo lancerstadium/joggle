@@ -962,6 +962,61 @@ int main(int argc, char** argv) {
         std::vector<std::string>({"tensor", "nn"}));
   CHECK(imported_expand.verify(env));
 
+  joggle::Mod batch_expand;
+  constexpr std::string_view batch_expand_source =
+      "module batch.expand\n"
+      "use nn\n"
+      "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
+      "  let first = nn.relu(x)\n"
+      "  let second = nn.relu(first)\n"
+      "  return second\n}\n";
+  CHECK(joggle::parse(env, batch_expand_source, batch_expand,
+                      "batch-expand.jog"));
+  CHECK(batch_expand.verify(env));
+  std::vector<joggle::Op> batch_calls;
+  for (joggle::Op op : batch_expand.ops())
+    if (op.callee() == "nn.relu")
+      batch_calls.push_back(op);
+  CHECK(batch_calls.size() == 2);
+  const std::vector<joggle::Fn> batch_impls{relu, relu};
+  const std::uint64_t batch_revision = batch_expand.revision();
+  CHECK(env.expand(batch_expand, batch_calls, batch_impls));
+  CHECK(batch_expand.revision() == batch_revision + batch_calls.size());
+  CHECK(batch_expand.verify(env));
+  for (joggle::Op op : batch_expand.ops())
+    CHECK(op.callee() != "nn.relu");
+
+  joggle::Mod batch_rollback;
+  constexpr std::string_view batch_rollback_source =
+      "module batch.rollback\n"
+      "use nn\n"
+      "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
+      "  let first = nn.relu(x)\n"
+      "  [keep]\n"
+      "  let second = nn.relu(first)\n"
+      "  return second\n}\n";
+  CHECK(joggle::parse(env, batch_rollback_source, batch_rollback,
+                      "batch-rollback.jog"));
+  CHECK(batch_rollback.verify(env));
+  std::vector<joggle::Op> rollback_calls;
+  for (joggle::Op op : batch_rollback.ops())
+    if (op.callee() == "nn.relu")
+      rollback_calls.push_back(op);
+  CHECK(rollback_calls.size() == 2);
+  const std::string rollback_text = joggle::print(batch_rollback);
+  const std::uint64_t rollback_revision = batch_rollback.revision();
+  CHECK(!env.expand(batch_rollback, rollback_calls, batch_impls));
+  CHECK(joggle::print(batch_rollback) == rollback_text);
+  CHECK(batch_rollback.revision() == rollback_revision);
+  batch_rollback.clear_diags();
+  CHECK(batch_rollback.verify(env));
+  const std::array<joggle::Fn, 1> missing_impl{relu};
+  CHECK(!env.expand(batch_rollback, rollback_calls, missing_impl));
+  CHECK(joggle::print(batch_rollback) == rollback_text);
+  CHECK(batch_rollback.revision() == rollback_revision);
+  batch_rollback.clear_diags();
+  CHECK(batch_rollback.verify(env));
+
   joggle::Mod detached_implementation;
   CHECK(joggle::parse(env,
                       "module detached.impl\n"
@@ -1711,6 +1766,37 @@ int main(int argc, char** argv) {
                       "overloads-roundtrip.jog"));
   CHECK(overload_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(overloaded, overload_roundtrip));
+
+  joggle::Mod intrinsic_casts;
+  constexpr std::string_view intrinsic_cast_source =
+      "module intrinsic.casts\n"
+      "use tensor\n"
+      "fn average(x: tensor<f32, [1]>) -> tensor<f32, [1]> {\n"
+      "  var out = tensor<f32, [1]>(f32(0))\n"
+      "  for i in 0..1 {\n"
+      "    var sum = f32(0)\n"
+      "    sum += x[i]\n"
+      "    out[i] = sum / f32(i32(1))\n"
+      "  }\n"
+      "  return out\n"
+      "}\n";
+  CHECK(joggle::parse(env, intrinsic_cast_source, intrinsic_casts,
+                      "intrinsic-casts.jog"));
+  CHECK(intrinsic_casts.verify(env));
+  for (joggle::Op op : intrinsic_casts.ops()) {
+    if (op.callee() == "f32")
+      CHECK(op.outs().size() == 1 &&
+            op.outs().front().type() == joggle::Ty("f32"));
+    if (op.callee() == "i32")
+      CHECK(op.outs().size() == 1 &&
+            op.outs().front().type() == joggle::Ty("i32"));
+  }
+  joggle::Mod intrinsic_casts_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(intrinsic_casts),
+                      intrinsic_casts_roundtrip,
+                      "intrinsic-casts-roundtrip.jog"));
+  CHECK(intrinsic_casts_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(intrinsic_casts, intrinsic_casts_roundtrip));
 
   constexpr std::string_view result_context_source =
       "module result_context\n"

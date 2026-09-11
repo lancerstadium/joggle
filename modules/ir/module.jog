@@ -64,6 +64,7 @@ fn clone(m: Mod, op: Op, before: Op) -> Op;
 fn clone(m: Mod, fn: Fn, name: str) -> Fn;
 fn clone(m: Mod, fn: Fn, name: str, generics: list<Ty>) -> Fn;
 fn expand(m: Mod, call: Op, callee: Fn) -> bool;
+fn expand(m: Mod, calls: list<Op>, callees: list<Fn>) -> bool;
 fn move(m: Mod, op: Op, before: Op) -> bool;
 fn args(m: Mod, op: Op, values: list<Val>) -> bool;
 fn fuse(m: Mod, ops: list<Op>, callee: str) -> bool;

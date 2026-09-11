@@ -1095,8 +1095,8 @@ int main(int argc, char** argv) {
       "  )\n"
       "  let expanded = onnx.Reshape(x, inferred_target)\n"
       "  let shape = onnx.Shape(expanded)\n"
-      "  let index: tensor<i64, [1]> = "
-      "onnx.tensor(7, [1], hex\"0000000000000000\")\n"
+      "  let index: tensor<i64, []> = "
+      "onnx.tensor(7, [], hex\"0000000000000000\")\n"
       "  [onnx: {axis: 0}]\n"
       "  let batch = onnx.Gather(shape, index)\n"
       "  [onnx: {axes: [0]}]\n"
@@ -1142,6 +1142,8 @@ int main(int argc, char** argv) {
       CHECK(!op.meta("onnx"));
       CHECK(op.meta("place") && op.meta("place")->string() == "edge");
       CHECK(op.meta("schedule") && op.meta("schedule")->dict());
+      CHECK(shape_program.unset(op, "place"));
+      CHECK(shape_program.unset(op, "schedule"));
     }
     CHECK(op.callee() != "onnx.Shape" && op.callee() != "onnx.Gather" &&
           op.callee() != "onnx.Slice" && op.callee() != "onnx.Concat" &&

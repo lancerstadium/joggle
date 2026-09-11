@@ -185,7 +185,9 @@ configured. Normal configure and build remain offline. Covered models include
 MobileNetV2, SqueezeNet, ResNet-18, Tiny YOLO, UltraFace, SSD-MobileNet,
 ShuffleNet, DenseNet, GoogLeNet, EfficientNet QDQ/INT8, and BiDAF. Coverage is
 reported conservatively: an imported or typed source call is not described as
-executable semantic support.
+executable semantic support. MobileNetV2 additionally exercises atomic
+network-wide body expansion and canonical round trip on the resulting
+loop-level IR.
 
 ## Analyze and emit
 
