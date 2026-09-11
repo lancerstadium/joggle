@@ -1315,19 +1315,21 @@ private:
           const unsigned char byte =
               static_cast<unsigned char>((*input)[index]);
           if ((byte >= 'a' && byte <= 'z') ||
-              (byte >= 'A' && byte <= 'Z') ||
+              (byte >= 'A' && byte <= 'Y') ||
               (byte >= '0' && byte <= '9')) {
             out.push_back(static_cast<char>(byte));
+          } else if (byte == 'Z') {
+            out.append("ZZ");
           } else if (byte == '.') {
-            out.append("_D");
+            out.append("ZD");
           } else if (byte == '_') {
-            const bool ambiguous = index + 1 < input->size() &&
-                                   ((*input)[index + 1] == 'D' ||
-                                    (*input)[index + 1] == 'U' ||
-                                    (*input)[index + 1] == 'X');
-            out.append(ambiguous ? "_U" : "_");
+            const bool reserved = index == 0 ||
+                                  (index != 0 && (*input)[index - 1] == '_') ||
+                                  (index + 1 < input->size() &&
+                                   (*input)[index + 1] == '_');
+            out.append(reserved ? "ZU" : "_");
           } else {
-            out.append("_X");
+            out.append("ZX");
             out.push_back(digits[byte >> 4]);
             out.push_back(digits[byte & 15]);
           }

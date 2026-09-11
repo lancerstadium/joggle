@@ -349,11 +349,12 @@ complete payload in one bounded linear operation. They do not add file or
 ambient-memory access.
 
 `base.ident(text)` encodes a source name as an injective ASCII identifier
-fragment. Letters, digits, and ordinary underscores remain readable; dots use
-the `_D` namespace escape, ambiguous underscores use `_U`, and every other
-UTF-8 byte uses `_Xhh`. Emitters add their own non-reserved prefix. This keeps
-name policy outside core IR while preventing punctuation, Unicode, and prior
-underscore replacement from silently collapsing distinct source names.
+fragment. Letters, digits, and ordinary single underscores remain readable;
+`Z`, dots, reserved underscore runs, and other UTF-8 bytes use the unambiguous
+`ZZ`, `ZD`, `ZU`, and `ZXhh` escapes. Emitters add their own non-reserved
+prefix. This keeps name policy outside core IR while preventing punctuation,
+Unicode, and prior underscore replacement from silently collapsing distinct
+source names.
 
 `ir.name(v)` and `ir.rename(m, v, name)` are the symmetric readable-name
 operations. They matter when one source call is decomposed into several normal
