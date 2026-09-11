@@ -391,6 +391,10 @@ explicit frontend bridge introduce the semantic library whose qualified
 functions it selects; parsing a frontend never does so implicitly.
 Module verification likewise rejects declared dependencies absent from the
 environment, so embedding and command-line loading have the same closure rule.
+Verification may fill types that follow uniquely from visible signatures and
+structured control flow. Those refinements commit only when the complete
+module verifies; a failed verification restores every prior value type while
+retaining its diagnostics.
 `ir.revision(m)` exposes that monotonically increasing revision to module code.
 It is intended for convergence and invalidation checks; it is not serialized
 into the model and cannot be used as a stable model identifier.

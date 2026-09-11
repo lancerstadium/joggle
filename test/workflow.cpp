@@ -988,6 +988,31 @@ int main(int argc, char** argv) {
   CHECK(wrong_result_type.diags().front().message.find("expected 'i32'") !=
         std::string::npos);
 
+  constexpr std::string_view failed_inference_source =
+      "module failed.inference\n"
+      "use base\n"
+      "fn main(x: i32) -> i64 {\n"
+      "  let y = base.copy(x)\n"
+      "  return y\n"
+      "}\n";
+  joggle::Mod failed_inference;
+  CHECK(joggle::parse(env, failed_inference_source, failed_inference,
+                      "failed-inference.jog"));
+  joggle::Val inferred_on_failure;
+  for (joggle::Op op : failed_inference.ops()) {
+    if (op.kind() == joggle::Op::Kind::call &&
+        op.callee() == "base.copy")
+      inferred_on_failure = op.outs().front();
+  }
+  CHECK(inferred_on_failure && inferred_on_failure.type() == joggle::Ty("_"));
+  const std::string failed_inference_before = joggle::print(failed_inference);
+  const std::uint64_t failed_inference_revision = failed_inference.revision();
+  CHECK(!failed_inference.verify(env));
+  CHECK(inferred_on_failure.type() == joggle::Ty("_"));
+  CHECK(joggle::print(failed_inference) == failed_inference_before);
+  CHECK(failed_inference.revision() == failed_inference_revision);
+  CHECK(!failed_inference.diags().empty());
+
   joggle::Mod built_multi;
   CHECK(joggle::parse(env,
                       "module built\n"

@@ -2374,6 +2374,10 @@ bool Mod::verify(const Env& env) {
   detail::Store& store = impl_->store;
   store.diags.clear();
   detail::rebuild_uses(store);
+  std::vector<Ty> original_types;
+  original_types.reserve(store.vals.size());
+  for (const auto& value : store.vals)
+    original_types.push_back(value.data.type);
   if (store.name.empty())
     detail::add_diag(store.diags, "module has no name");
   for (const std::string& dependency : store.uses)
@@ -2547,7 +2551,14 @@ bool Mod::verify(const Env& env) {
                          op.loc);
     }
   }
-  return store.diags.empty();
+  if (store.diags.empty())
+    return true;
+
+  std::vector<Diag> diagnostics = std::move(store.diags);
+  for (std::size_t index = 0; index < original_types.size(); ++index)
+    store.vals[index].data.type = std::move(original_types[index]);
+  store.diags = std::move(diagnostics);
+  return false;
 }
 
 }  // namespace joggle
