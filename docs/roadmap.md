@@ -329,6 +329,13 @@ that one loop order is generally faster. The optional official ONNX MatMul gate
 applies the same module after semantic conversion and checks its result through
 both VM and compiled C against the pinned ONNX output.
 
+The complementary `examples/edge` gate treats a bodyless monomorphic tensor
+function as an external C ABI contract, automatically emits its qualified
+prototype, links a separately compiled implementation, and executes the
+result. It requires no core or emitter case for that kernel. Generic and
+dynamic external ABIs remain deliberately open rather than receiving an
+unstated specialization policy.
+
 The CLI now provides one target-neutral artifact boundary: `emit` executes an
 ordinary read-only `fn(Mod) -> str/bytes` and writes exactly those bytes. A
 pure `.jog` C99 module emits and executes fixed-shape tensor loops, local scalar

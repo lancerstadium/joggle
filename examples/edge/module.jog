@@ -1,0 +1,6 @@
+module edge
+use tensor
+
+fn matmul(
+  a: tensor<f32, [2, 3]>, b: tensor<f32, [3, 2]>
+) -> tensor<f32, [2, 2]>;

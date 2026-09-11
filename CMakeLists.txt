@@ -425,6 +425,20 @@ if(JOGGLE_BUILD_TESTS)
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/ikj.cmake
     )
     add_test(
+      NAME edge-example
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DTOOL=$<TARGET_FILE:joggle-tool>
+        -DCC=${JOGGLE_TEST_C_COMPILER}
+        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/examples/edge/model.jog
+        -DKERNEL=${CMAKE_CURRENT_SOURCE_DIR}/examples/edge/kernel.c
+        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/examples/edge/main.c
+        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DEXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/examples
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/edge-example
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/edge.cmake
+    )
+    add_test(
       NAME c-execution
       COMMAND
         ${CMAKE_COMMAND}

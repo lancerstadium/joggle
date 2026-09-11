@@ -18,7 +18,11 @@ fn val(value: Val) -> str {
     return "jog_mem_" + id(base.name(tensor.elem(type))) + "_" +
            text(mem.slot(value))
   }
-  return "v_" + id(ir.name(value))
+  let name = ir.name(value)
+  if name == "" {
+    return "v" + text(ir.key(value))
+  }
+  return "v_" + id(name)
 }
 
 fn abi() -> dict {
@@ -150,9 +154,9 @@ fn expr(m: Mod, value: Val) -> str {
     return math_name + "(" + args(m, inputs) + ")"
   }
   let target = ir.resolve(m, op)
-  if ir.live(target) && local(m, target) && len(ir.outs(op)) == 1 &&
+  if callable(m, target) && len(ir.outs(op)) == 1 &&
      len(ir.users(value)) == 1 {
-    return "jog_" + id(ir.name(target)) + "(" + args(m, inputs) + ")"
+    return symbol(m, target) + "(" + args(m, inputs) + ")"
   }
   assert(false, "c: unnamed call must be assigned or exposed: " + name)
   return ""
@@ -206,6 +210,38 @@ fn local(m: Mod, fn: Fn) -> bool {
     }
   }
   return false
+}
+
+fn supported(type: Ty) -> bool {
+  if tensor.valid(type) {
+    return tensor.static(type) && scalar_name(base.name(tensor.elem(type)))
+  }
+  return scalar_name(base.name(type))
+}
+
+fn callable(m: Mod, fn: Fn) -> bool {
+  if !ir.live(fn) || len(ir.generics(fn)) != 0 ||
+     len(ir.returns(fn)) != 1 || !supported(ir.returns(fn)[0]) {
+    return false
+  }
+  for param in ir.params(fn) {
+    if !supported(ir.type(param)) {
+      return false
+    }
+  }
+  return local(m, fn) || len(ir.blks(fn)) == 0
+}
+
+fn external(m: Mod, fn: Fn) -> bool {
+  return callable(m, fn) && !local(m, fn) && len(ir.blks(fn)) == 0
+}
+
+fn symbol(m: Mod, fn: Fn) -> str {
+  assert(callable(m, fn), "c: function has no representable ABI")
+  if local(m, fn) {
+    return "jog_" + id(ir.name(fn))
+  }
+  return "jog_" + id(ir.symbol(fn))
 }
 
 fn args(m: Mod, values: list<Val>) -> str {
@@ -314,7 +350,7 @@ fn accepts(m: Mod, op: Op) -> bool {
      (len(inputs) == 1 || len(inputs) == 2) {
     return true
   }
-  return ir.live(target) && local(m, target) && len(outputs) <= 1
+  return callable(m, target) && len(outputs) <= 1
 }
 
 fn prepare(m: Mod) -> bool {
@@ -539,7 +575,7 @@ fn call(m: Mod, op: Op, depth: int) -> str {
     }
   }
 
-  let callee = "jog_" + id(ir.name(target))
+  let callee = symbol(m, target)
   var actuals = args(m, inputs)
   if len(outputs) == 0 {
     return indent + callee + "(" + actuals + ");\n"
@@ -573,8 +609,6 @@ fn ret(m: Mod, op: Op, depth: int) -> str {
   if !tensor.valid(ir.type(value)) {
     return indent + "return " + expr(m, value) + ";\n"
   }
-  assert(ir.name(value) != "",
-         "c: returned tensor computation must be assigned or exposed")
   let n = count(ir.type(value))
   return indent + "for (" + size_type() +
          " jog_i = 0; jog_i < " + text(n) +
@@ -693,7 +727,8 @@ fn block(m: Mod, body: Blk, depth: int) -> str {
   return out
 }
 
-fn signature(fn: Fn) -> str {
+fn signature(m: Mod, fn: Fn) -> str {
+  assert(callable(m, fn), "c: function has no representable ABI")
   let returns = ir.returns(fn)
   assert(len(returns) == 1, "c: function must have exactly one result")
   let result = returns[0]
@@ -704,7 +739,7 @@ fn signature(fn: Fn) -> str {
   } else {
     out = scalar(result)
   }
-  out += " jog_" + id(ir.name(fn)) + "("
+  out += " " + symbol(m, fn) + "("
   let params = ir.params(fn)
   if len(params) == 0 && !tensor.valid(result) {
     out += "void"
@@ -746,31 +781,57 @@ fn definition(m: Mod, fn: Fn) -> str {
               id(base.name(type)) + "_" + text(slot) + "[" +
               text(mem.count(fn, slot)) + "];\n"
   }
-  return signature(fn) + " {\n" + memory + block(m, bodies[0], 1) + "}\n"
+  return signature(m, fn) + " {\n" + memory + block(m, bodies[0], 1) + "}\n"
 }
 
-fn prototypes(m: Mod) -> str {
-  var declarations = ""
-  var names: list<str> = []
-  var count = 0
+fn functions(m: Mod) -> list<Fn> {
+  var out: list<Fn> = []
   for fn in ir.fns(m) {
     if len(ir.blks(fn)) != 0 {
-      let name = id(ir.name(fn))
-      for existing in names {
-        assert(existing != name,
-               "c: overloaded or colliding function name " + name)
-      }
-      names += [name]
-      declarations += signature(fn) + ";\n"
-      count += 1
+      out += [fn]
     }
   }
-  assert(count != 0, "c: module has no function definitions")
+  return out
+}
+
+fn dependencies(m: Mod) -> list<Fn> {
+  var out: list<Fn> = []
+  for op in ir.ops(m) {
+    if ir.kind(op) == "call" {
+      let fn = ir.resolve(m, op)
+      if external(m, fn) {
+        var seen = false
+        for existing in out {
+          seen = existing == fn || seen
+        }
+        if !seen {
+          out += [fn]
+        }
+      }
+    }
+  }
+  return out
+}
+
+fn prototypes(m: Mod, fns: list<Fn>) -> str {
+  var declarations = ""
+  var names: list<str> = []
+  for fn in fns {
+    let name = symbol(m, fn)
+    for existing in names {
+      assert(existing != name,
+             "c: overloaded or colliding function name " + name)
+    }
+    names += [name]
+    declarations += signature(m, fn) + ";\n"
+  }
   return declarations
 }
 
 fn header(m: Mod) -> str {
-  let declarations = prototypes(m)
+  let fns = functions(m)
+  assert(len(fns) != 0, "c: module has no function definitions")
+  let declarations = prototypes(m, fns)
   return "#pragma once\n\n" +
          "#include <stdbool.h>\n#include <stdint.h>\n\n" +
          "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n" +
@@ -779,12 +840,12 @@ fn header(m: Mod) -> str {
 }
 
 fn source(m: Mod) -> str {
-  let declarations = prototypes(m)
+  let fns = functions(m)
+  assert(len(fns) != 0, "c: module has no function definitions")
+  let declarations = prototypes(m, dependencies(m) + fns)
   var definitions = ""
-  for fn in ir.fns(m) {
-    if len(ir.blks(fn)) != 0 {
-      definitions += definition(m, fn) + "\n"
-    }
+  for fn in fns {
+    definitions += definition(m, fn) + "\n"
   }
   return "#include <math.h>\n#include <stdbool.h>\n#include <stddef.h>\n" +
          "#include <stdint.h>\n" +

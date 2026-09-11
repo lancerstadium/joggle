@@ -787,6 +787,17 @@ boundary. The test compiles the generated header and source together with
 strict-prototype warnings enabled. Generated files remain under the ignored
 build tree for inspection.
 
+A resolved, bodyless, monomorphic `Fn` whose parameters and single result use
+representable scalar or fixed tensor types is also a C dependency declaration.
+`c.source` emits its prototype under a module-qualified symbol and uses the
+same tensor output-pointer convention as local functions. The public header
+contains the model's definitions; dependency prototypes stay in the source
+translation unit. This rule is structural—no callee name, operator registry,
+or per-kernel binding is required. [`examples/edge`](../examples/edge) links a
+separately compiled matrix kernel through this path. Anonymous tensor results
+use their ephemeral `Val` key for an internal temporary rather than forcing a
+source-level `let` solely for C emission.
+
 `c.prepare` is a separate, explicitly selected transform. It asks the same
 ordinary `c.accepts(Mod, Op)` predicate whether a call is directly printable and
 expands unsupported calls only when their ordinary resolved function has a

@@ -620,6 +620,16 @@ outside `modules`: it is a user extension and no project build is needed to
 discover it with `-M examples`. This case establishes inspectable kernel-body
 control, not a performance advantage for that loop order.
 
+The independent `examples/edge` package exercises the non-expanded boundary.
+A bodyless monomorphic `edge.matmul` declaration with fixed tensor types is the
+entire external ABI contract. The C module derives a qualified dependency
+prototype, emits the model wrapper, and links a separately compiled kernel.
+Anonymous tensor results receive ephemeral names from their structural value
+keys, so a direct `return edge.matmul(a, b)` needs no cosmetic binding. Generic,
+dynamic-shape, multi-result, or otherwise unrepresentable declarations remain
+outside this ABI instead of being guessed. Core contains neither the `edge`
+symbol nor an external-kernel registry.
+
 ## M8 sixth slice
 
 Optional embedding overloads measure each explicitly selected function with a

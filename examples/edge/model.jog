@@ -1,0 +1,9 @@
+module model
+use edge
+use tensor
+
+fn main(
+  a: tensor<f32, [2, 3]>, b: tensor<f32, [3, 2]>
+) -> tensor<f32, [2, 2]> {
+  return edge.matmul(a, b)
+}

@@ -83,6 +83,12 @@ The [example instructions](examples/ikj/README.md) generate inspectable IR and
 C in `build-dev/`, compile it with warnings as errors, and check its numerical
 result. The default test suite runs the same workflow.
 
+[`examples/edge`](examples/edge) covers the complementary case: a bodyless,
+monomorphic tensor `Fn` is an external kernel ABI declaration. `c.source`
+derives the qualified prototype and call directly from that signature, and a
+separate C file provides the implementation. No operator binding table or
+emitter edit is involved.
+
 ## Language in one example
 
 ```jog
