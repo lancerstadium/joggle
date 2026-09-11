@@ -2061,9 +2061,9 @@ fn infer(m: Mod) -> bool {
 fn ints(m: Mod, before: Op, value: Attr) -> Val {
   var items: list<Val> = []
   for item in value {
-    items += [ir.constant(m, before, item, "int")]
+    items += [ir.constant(m, before, item, ty("int"))]
   }
-  return ir.call(m, before, "base.list", items, "list<int>")
+  return ir.call(m, before, "base.list", items, ty("list", [ty("int")]))
 }
 
 fn convert_call(m: Mod, op: Op, callee: str) -> bool {
@@ -2142,7 +2142,7 @@ fn convert_gather(m: Mod, op: Op) -> bool {
   if axis < 0 {
     axis += rank
   }
-  inputs += [ir.constant(m, op, axis, "int")]
+  inputs += [ir.constant(m, op, axis, ty("int"))]
   return convert_call(m, op, "tensor.gather", inputs)
 }
 
@@ -2217,7 +2217,7 @@ fn convert_concat(m: Mod, op: Op) -> bool {
   if axis < 0 {
     axis += len(tensor.dims(first))
   }
-  let axis_value = ir.constant(m, op, axis, "int")
+  let axis_value = ir.constant(m, op, axis, ty("int"))
   var value = inputs[0]
   var type = first
   for i in 1..len(inputs) {
@@ -2227,7 +2227,7 @@ fn convert_concat(m: Mod, op: Op) -> bool {
     )
     type = shaped(tensor.elem(type), dims)
     value = ir.call(
-      m, op, "tensor.concat", [value, inputs[i], axis_value], str(type)
+      m, op, "tensor.concat", [value, inputs[i], axis_value], type
     )
   }
   carry(m, outputs[0], value)
@@ -2302,7 +2302,7 @@ fn convert_split(m: Mod, op: Op) -> bool {
       m, op, "tensor.slice",
       [inputs[0], ints(m, op, [start]), ints(m, op, [axis]),
        ints(m, op, [1])],
-      str(ir.type(outputs[i]))
+      ir.type(outputs[i])
     )
     carry(m, outputs[i], next)
     carry(m, op, ir.def(next))
@@ -2346,9 +2346,9 @@ fn convert_one_hot(m: Mod, op: Op) -> bool {
     return false
   }
   var values_in: list<Val> = [inputs[0]]
-  values_in += [ir.constant(m, op, depth[0], "int")]
+  values_in += [ir.constant(m, op, depth[0], ty("int"))]
   values_in += [inputs[2]]
-  values_in += [ir.constant(m, op, axis, "int")]
+  values_in += [ir.constant(m, op, axis, ty("int"))]
   return convert_call(m, op, "tensor.one_hot", values_in)
 }
 
@@ -2366,7 +2366,7 @@ fn convert_constant_shape(m: Mod, op: Op) -> bool {
     if tensor.elem(output) != ty("f32") {
       return false
     }
-    let zero = ir.constant(m, op, 0.0, str(tensor.elem(output)))
+    let zero = ir.constant(m, op, 0.0, tensor.elem(output))
     let values: list<Val> = [zero]
     return convert_call(m, op, "tensor.tensor", values)
   }
@@ -2384,12 +2384,12 @@ fn convert_constant_shape(m: Mod, op: Op) -> bool {
      base.kind(literal["data"]) != "bytes" {
     return false
   }
-  let code_value = ir.constant(m, op, code, "int")
+  let code_value = ir.constant(m, op, code, ty("int"))
   let shape_value = ints(m, op, literal_shape)
-  let data_value = ir.constant(m, op, literal["data"], "bytes")
+  let data_value = ir.constant(m, op, literal["data"], ty("bytes"))
   let packed = ir.call(
     m, op, "onnx.tensor", [code_value, shape_value, data_value],
-    str(shaped(tensor.elem(output), [ty(1)]))
+    shaped(tensor.elem(output), [ty(1)])
   )
   let values: list<Val> = [packed]
   return convert_call(m, op, "tensor.fill", values)
@@ -2405,9 +2405,9 @@ fn convert_constant(m: Mod, op: Op) -> bool {
     return false
   }
   let inputs: list<Val> = [
-    ir.constant(m, op, base.int(literal["type"]), "int"),
+    ir.constant(m, op, base.int(literal["type"]), ty("int")),
     ints(m, op, literal["shape"]),
-    ir.constant(m, op, literal["data"], "bytes")
+    ir.constant(m, op, literal["data"], ty("bytes"))
   ]
   return convert_call(m, op, "onnx.tensor", inputs)
 }
@@ -2449,7 +2449,7 @@ fn convert_leaky_relu(m: Mod, op: Op) -> bool {
     return false
   }
   let alpha = base.get(attrs(op), "alpha", 0.01)
-  inputs += [ir.constant(m, op, alpha, "f64")]
+  inputs += [ir.constant(m, op, alpha, ty("f64"))]
   return convert_call(m, op, "nn.leaky_relu", inputs)
 }
 
@@ -2479,12 +2479,12 @@ fn convert_conv(m: Mod, op: Op) -> bool {
   }
   inputs += [ints(m, op, pad)]
   inputs += [ints(m, op, base.get(meta, "dilations", [1, 1]))]
-  inputs += [ir.constant(m, op, groups, "int")]
+  inputs += [ir.constant(m, op, groups, ty("int"))]
   if biased {
     inputs += [ints(m, op, [0, 1, 2, 3])]
     inputs += [ints(m, op, [0, 1, 2, 3])]
     inputs += [ints(m, op, [0, 1, 2, 3])]
-    inputs += [ir.constant(m, op, "NONE", "str")]
+    inputs += [ir.constant(m, op, "NONE", ty("str"))]
   }
   return convert_call(m, op, "nn.conv2d", inputs)
 }
@@ -2504,7 +2504,7 @@ fn convert_norm(m: Mod, op: Op) -> bool {
     return false
   }
   inputs += [
-    ir.constant(m, op, base.get(meta, "epsilon", 0.00001), "f64")
+    ir.constant(m, op, base.get(meta, "epsilon", 0.00001), ty("f64"))
   ]
   return convert_call(m, op, "nn.batch_norm", inputs)
 }
@@ -2547,9 +2547,9 @@ fn convert_softmax(m: Mod, op: Op) -> bool {
     }
     inputs += [ints(m, op, axes)]
   } else {
-    inputs += [ir.constant(m, op, axis, "int")]
+    inputs += [ir.constant(m, op, axis, ty("int"))]
   }
-  inputs += [ir.constant(m, op, 1.0, "f64")]
+  inputs += [ir.constant(m, op, 1.0, ty("f64"))]
   return convert_call(m, op, "nn.softmax", inputs)
 }
 
@@ -2696,9 +2696,9 @@ fn convert_quantize(m: Mod, op: Op) -> bool {
   if axis < 0 || len(bounds) != 2 {
     return false
   }
-  inputs += [ir.constant(m, op, axis, "int")]
-  inputs += [ir.constant(m, op, bounds[0], "int")]
-  inputs += [ir.constant(m, op, bounds[1], "int")]
+  inputs += [ir.constant(m, op, axis, ty("int"))]
+  inputs += [ir.constant(m, op, bounds[0], ty("int"))]
+  inputs += [ir.constant(m, op, bounds[1], ty("int"))]
   return convert_call(m, op, "quant.quantize", inputs)
 }
 
@@ -2725,7 +2725,7 @@ fn convert_dequantize(m: Mod, op: Op) -> bool {
   if axis < 0 {
     return false
   }
-  inputs += [ir.constant(m, op, axis, "int")]
+  inputs += [ir.constant(m, op, axis, ty("int"))]
   return convert_call(m, op, "quant.dequantize", inputs)
 }
 
@@ -2819,13 +2819,13 @@ fn convert_fused_matmul(m: Mod, op: Op) -> bool {
   }
   let meta = attrs(op)
   inputs += [
-    ir.constant(m, op, base.get(meta, "transA", 0) == 1, "bool")
+    ir.constant(m, op, base.get(meta, "transA", 0) == 1, ty("bool"))
   ]
   inputs += [
-    ir.constant(m, op, base.get(meta, "transB", 0) == 1, "bool")
+    ir.constant(m, op, base.get(meta, "transB", 0) == 1, ty("bool"))
   ]
   inputs += [
-    ir.constant(m, op, base.get(meta, "alpha", 1.0), "f64")
+    ir.constant(m, op, base.get(meta, "alpha", 1.0), ty("f64"))
   ]
   return convert_call(m, op, "tensor.matmul", inputs)
 }
@@ -2883,17 +2883,17 @@ fn convert_gemm(m: Mod, op: Op) -> bool {
   }
   let meta = attrs(op)
   inputs += [
-    ir.constant(m, op, base.get(meta, "transA", 0) == 1, "bool")
+    ir.constant(m, op, base.get(meta, "transA", 0) == 1, ty("bool"))
   ]
   inputs += [
-    ir.constant(m, op, base.get(meta, "transB", 0) == 1, "bool")
+    ir.constant(m, op, base.get(meta, "transB", 0) == 1, ty("bool"))
   ]
   inputs += [
-    ir.constant(m, op, base.get(meta, "alpha", 1.0), "f64")
+    ir.constant(m, op, base.get(meta, "alpha", 1.0), ty("f64"))
   ]
   if len(ir.args(op)) == 3 {
     inputs += [
-      ir.constant(m, op, base.get(meta, "beta", 1.0), "f64")
+      ir.constant(m, op, base.get(meta, "beta", 1.0), ty("f64"))
     ]
   }
   return convert_call(m, op, "nn.gemm", inputs)

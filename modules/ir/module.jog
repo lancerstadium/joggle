@@ -46,9 +46,9 @@ fn meta(v: Val, key: str) -> Attr;
 fn meta(op: Op, key: str) -> Attr;
 fn is_const(v: Val) -> bool;
 fn constant(v: Val) -> Attr;
-fn call(m: Mod, before: Op, callee: str, args: list<Val>, type: str) -> Val;
-fn call(m: Mod, before: Op, callee: str, args: list<Val>, types: list<str>) -> Op;
-fn constant(m: Mod, before: Op, value: Attr, type: str) -> Val;
+fn call(m: Mod, before: Op, callee: str, args: list<Val>, type: Ty) -> Val;
+fn call(m: Mod, before: Op, callee: str, args: list<Val>, types: list<Ty>) -> Op;
+fn constant(m: Mod, before: Op, value: Attr, type: Ty) -> Val;
 fn loop(
   m: Mod, before: Op, names: list<str>, sources: list<Val>, carried: list<Val>
 ) -> Op;

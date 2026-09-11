@@ -294,10 +294,11 @@ intrinsic rules needed to recover ordinary source bindings and iteration.
 
 A call now has zero or more ordered results in both the public C++ editor and
 textual reflection boundary. The five-argument `ir.call` name is overloaded by
-its last parameter: `str` preserves the concise one-result form, while
-`list<str>` returns the created `Op`. Results remain ordinary `Val`s and are
+its last parameter: `Ty` preserves the concise one-result form, while
+`list<Ty>` returns the created `Op`. Results remain ordinary `Val`s and are
 named with the overloaded `ir.rename`; no tuple operation or result wrapper was
-added.
+added. Construction transports structural types directly instead of printing
+and reparsing them.
 
 Source destructuring uses `let a, b = f()` and works in model code and
 compile-time execution. Optional result annotations such as

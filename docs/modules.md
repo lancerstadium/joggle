@@ -407,8 +407,8 @@ preserves node identity. Consequently the normal `ir.expand` operation can
 expose any converted function body without a special metadata exception.
 
 `ir.call` inserts an arbitrary call immediately before an existing operation.
-A `str` result-type argument returns the single `Val` convenience form; a
-`list<str>` returns the created `Op`, whose values are available through
+A `Ty` result-type argument returns the single `Val` convenience form; a
+`list<Ty>` returns the created `Op`, whose values are available through
 `ir.outs`; an empty list creates a visible zero-result call. `ir.rename` is
 likewise overloaded for a call target or a result name. The insertion point
 makes order explicit and lets the core reject non-dominating operands without
@@ -440,7 +440,9 @@ remaps values defined inside the copied subtree. `ir.move` reorders an operation
 within its `Blk` atomically and rejects the change if any use would lose
 dominance. `ir.kind` and `ir.blks(op)` make structural selection explicit.
 Intrinsic constant types are checked against their attribute representation;
-custom types keep module-defined literal semantics.
+custom types keep module-defined literal semantics. Both `ir.constant` and
+`ir.call` accept structural `Ty` values, so a transform can reuse a reflected
+or computed type without a text round trip.
 Call construction and retargeting reject callee spellings that the language
 cannot print and parse back.
 

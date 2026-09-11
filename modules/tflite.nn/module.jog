@@ -6,9 +6,9 @@ use ir
 fn ints(m: Mod, before: Op, value: Attr) -> Val {
   var items: list<Val> = []
   for item in value {
-    items += [ir.constant(m, before, item, "int")]
+    items += [ir.constant(m, before, item, ty("int"))]
   }
-  return ir.call(m, before, "base.list", items, "list<int>")
+  return ir.call(m, before, "base.list", items, ty("list", [ty("int")]))
 }
 
 fn options(op: Op) -> Attr {
@@ -161,11 +161,11 @@ fn convert_conv(m: Mod, op: Op, depthwise: bool) -> bool {
       return false
     }
   }
-  inputs += [ir.constant(m, op, groups, "int")]
+  inputs += [ir.constant(m, op, groups, ty("int"))]
   inputs += [ints(m, op, [0, 2, 3, 1])]
   inputs += [ints(m, op, weight_axes)]
   inputs += [ints(m, op, [0, 2, 3, 1])]
-  inputs += [ir.constant(m, op, act, "str")]
+  inputs += [ir.constant(m, op, act, ty("str"))]
   return convert_call(m, op, "nn.conv2d", inputs)
 }
 
@@ -204,7 +204,7 @@ fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
   if !supports_activation(act) {
     return false
   }
-  inputs += [ir.constant(m, op, act, "str")]
+  inputs += [ir.constant(m, op, act, ty("str"))]
   return convert_call(m, op, callee, inputs)
 }
 
@@ -268,7 +268,7 @@ fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
   inputs += [ints(m, op, pad)]
   inputs += [ints(m, op, [1, 1])]
   inputs += [ints(m, op, [0, 2, 3, 1])]
-  inputs += [ir.constant(m, op, act, "str")]
+  inputs += [ir.constant(m, op, act, ty("str"))]
   return convert_call(m, op, callee, inputs)
 }
 
@@ -305,10 +305,10 @@ fn convert_softmax(m: Mod, op: Op) -> bool {
     return false
   }
   inputs += [
-    ir.constant(m, op, len(tensor.dims(type)) - 1, "int")
+    ir.constant(m, op, len(tensor.dims(type)) - 1, ty("int"))
   ]
   inputs += [
-    ir.constant(m, op, base.get(options(op), "beta", 1.0), "f64")
+    ir.constant(m, op, base.get(options(op), "beta", 1.0), ty("f64"))
   ]
   return convert_call(m, op, "nn.softmax", inputs)
 }

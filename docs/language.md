@@ -323,7 +323,9 @@ operation and its nested `Blk`s, while `ir.move` changes `Blk`-local order only
 when all operands and users remain dominated. `ir.kind(op)` returns `call`,
 `constant`, `loop`, `branch`, `return`, or `yield`; `ir.blks(op)` exposes
 nested bodies. A terminator supplies an insertion point even for an otherwise
-empty `Blk`, so there is no stateful builder object.
+empty `Blk`, so there is no stateful builder object. Constructed result types
+are `Ty` or `list<Ty>` values rather than strings; reflected and computed types
+therefore pass back into the editor without serialization.
 
 `ir.constant` checks the representation of intrinsic literals, including
 nested lists, before editing the module. User-defined type constructors retain

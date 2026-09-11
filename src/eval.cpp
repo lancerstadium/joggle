@@ -1310,10 +1310,9 @@ private:
         const auto* mod = as<Mod*>(args[0]);
         const auto* before = as<Op>(args[1]);
         auto value = attribute(args[2]);
-        const auto type = string(args[3]);
+        const auto* type = as<Ty>(args[3]);
         if (mod && *mod && before && value && type) {
-          Val result = (*mod)->constant(*before, std::move(*value),
-                                        Ty(std::string(*type)));
+          Val result = (*mod)->constant(*before, std::move(*value), *type);
           if (result)
             return Items{Item(result)};
         }
@@ -1334,21 +1333,21 @@ private:
           }
           inputs.push_back(*value);
         }
-        if (const auto type = string(args[4])) {
+        if (const auto* type = as<Ty>(args[4])) {
           Val result = (*mod)->call(*before, std::string(*callee), inputs,
-                                    Ty(std::string(*type)));
+                                    *type);
           if (result)
             return Items{Item(result)};
         } else if (const Items* type_items = list(args[4])) {
           std::vector<Ty> types;
           types.reserve(type_items->size());
           for (const Item& item : *type_items) {
-            const auto type = string(item);
+            const auto* type = as<Ty>(item);
             if (!type) {
-              fail("ir.call result types must be strings", loc);
+              fail("ir.call result types must be types", loc);
               return std::nullopt;
             }
-            types.emplace_back(std::string(*type));
+            types.push_back(*type);
           }
           Op result =
               (*mod)->call(*before, std::string(*callee), inputs, types);

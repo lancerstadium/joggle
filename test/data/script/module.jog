@@ -266,7 +266,9 @@ fn numel_probe(m: Mod) -> bool {
 fn make_pair(m: Mod) -> bool {
   for op in ir.ops(m) {
     if ir.callee(op) == "operator +" {
-      let pair = ir.call(m, op, "test.pair", ir.args(op), ["i32", "i32"])
+      let pair = ir.call(
+        m, op, "test.pair", ir.args(op), [ty("i32"), ty("i32")]
+      )
       let outs = ir.outs(pair)
       var named = ir.rename(m, outs[0], "left")
       named = ir.rename(m, outs[1], "right")
@@ -340,7 +342,7 @@ fn return_three(m: Mod) -> bool {
     if ir.kind(op) == "return" {
       let args = ir.args(op)
       if len(args) == 1 {
-        let three = ir.constant(m, op, 3, "i32")
+        let three = ir.constant(m, op, 3, ty("i32"))
         var changed = ir.rename(m, three, "three")
         changed = ir.replace(m, args[0], three, op)
         return changed
@@ -378,17 +380,17 @@ fn build_control(m: Mod) -> bool {
         if ir.kind(op) == "return" {
           let returned = ir.args(op)
           if len(returned) == 1 {
-            let zero = ir.constant(m, op, 0, "int")
+            let zero = ir.constant(m, op, 0, ty("int"))
             var changed = ir.rename(m, zero, "total")
             let range = ir.call(
-              m, op, "operator ..", [zero, returned[0]], "range"
+              m, op, "operator ..", [zero, returned[0]], ty("range")
             )
             let loop = ir.loop(m, op, ["i"], [range], [zero])
             let body = ir.blks(loop)[0]
             let values = ir.args(body)
             let outer_yield = ir.ops(body)[0]
             let inner_range = ir.call(
-              m, outer_yield, "operator ..", [zero, values[0]], "range"
+              m, outer_yield, "operator ..", [zero, values[0]], ty("range")
             )
             let inner_loop = ir.loop(
               m, outer_yield, ["j"], [inner_range], [values[1]]
@@ -398,7 +400,7 @@ fn build_control(m: Mod) -> bool {
             let inner_yield = ir.ops(inner_body)[0]
             let sum = ir.call(
               m, inner_yield, "operator +",
-              [inner_values[1], inner_values[0]], "int"
+              [inner_values[1], inner_values[0]], ty("int")
             )
             changed = ir.rename(m, sum, "total")
             changed = ir.args(m, inner_yield, [sum])
@@ -406,10 +408,10 @@ fn build_control(m: Mod) -> bool {
             let branch = ir.branch(m, op, params[1], ir.outs(loop))
             let then = ir.blks(branch)[0]
             let then_yield = ir.ops(then)[0]
-            let one = ir.constant(m, then_yield, 1, "int")
+            let one = ir.constant(m, then_yield, 1, ty("int"))
             changed = ir.rename(m, one, "one")
             let increment = ir.call(
-              m, then_yield, "operator +", [ir.args(then)[0], one], "int"
+              m, then_yield, "operator +", [ir.args(then)[0], one], ty("int")
             )
             changed = ir.rename(m, increment, "total")
             changed = ir.args(m, then_yield, [increment])
@@ -586,7 +588,7 @@ fn rebuild_tagged(m: Mod) -> bool {
             let outs = ir.outs(op)
             if len(outs) == 1 && len(ir.users(outs[0])) == 1 {
               let next = ir.call(
-                m, op, target, ir.args(op), str(ir.type(outs[0]))
+                m, op, target, ir.args(op), ir.type(outs[0])
               )
               changed = ir.replace(m, outs[0], next)
               changed = ir.erase(m, op)

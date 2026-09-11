@@ -1227,6 +1227,19 @@ int main(int argc, char** argv) {
                        duplicate_generic, "duplicate-generic.jog"));
   CHECK(!duplicate_generic.diags().empty());
 
+  joggle::Mod stringly_builder;
+  CHECK(joggle::parse(env,
+                      "module stringly.builder\n"
+                      "use ir\n"
+                      "fn build(m: Mod, before: Op, x: Val) -> Val {\n"
+                      "  return ir.call(m, before, \"copy\", [x], \"i32\")\n"
+                      "}\n",
+                      stringly_builder, "stringly-builder.jog"));
+  CHECK(!stringly_builder.verify(env));
+  CHECK(!stringly_builder.diags().empty());
+  CHECK(stringly_builder.diags().front().message.find("no overload") !=
+        std::string::npos);
+
   joggle::Mod duplicate_parameter;
   CHECK(!joggle::parse(env,
                        "module duplicate\n"
