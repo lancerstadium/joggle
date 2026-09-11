@@ -1,5 +1,6 @@
 module vm_case
 use base
+use math
 
 fn main(x: i64, y: i64, flag: bool) -> i64 {
   var value = x + y
@@ -31,4 +32,13 @@ fn truncate(x: f64) -> i64 {
 
 fn truth() -> bool {
   return true
+}
+
+fn root(x: f32) -> f32 {
+  return math.sqrt(x)
+}
+
+fn pick(at: index) -> int {
+  let values = [3, 5, 8]
+  return values[at]
 }

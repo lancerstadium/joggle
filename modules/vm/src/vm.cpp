@@ -312,6 +312,10 @@ bool unary(std::string_view op, Kind kind, std::uint64_t input,
     output = scalar(Kind::i64, input == 0);
   } else if (op == "bnot" && kind == Kind::i64) {
     output = scalar(kind, ~input);
+  } else if (op == "sqrt" && kind == Kind::f32) {
+    output = scalar(kind, bits(std::sqrt(float_value(input))));
+  } else if (op == "sqrt" && kind == Kind::f64) {
+    output = scalar(kind, bits(std::sqrt(double_value(input))));
   } else {
     return false;
   }
@@ -724,6 +728,40 @@ bool execute(const std::vector<Line>& code, std::size_t first,
       state.regs[out_id] = output;
       continue;
     }
+    if (op == "pick") {
+      Kind format = Kind::i64;
+      int index_id = -1;
+      std::size_t count = 0;
+      std::uint64_t index_bits = 0;
+      if (line.size() < 5 || !kind(line[1], format) ||
+          !reg(line[2], out_id) || !reg(line[3], index_id) ||
+          !natural(line[4], count) ||
+          count > std::numeric_limits<std::size_t>::max() - 5 ||
+          line.size() != count + 5 ||
+          !state.read_scalar(index_id, Kind::i64, index_bits)) {
+        if (state.error.empty())
+          state.error = "invalid list selection instruction";
+        return false;
+      }
+      const std::int64_t index = signed_value(index_bits);
+      if (index < 0 || static_cast<std::uint64_t>(index) >= count) {
+        state.error = "list index is out of bounds";
+        return false;
+      }
+      int item_id = -1;
+      if (!reg(line[5 + static_cast<std::size_t>(index)], item_id)) {
+        state.error = "invalid list selection item register";
+        return false;
+      }
+      const Value* item = state.read(item_id);
+      if (!item || item->tensor || item->kind != format || !state.tick()) {
+        if (state.error.empty())
+          state.error = "list selection item has the wrong format";
+        return false;
+      }
+      state.regs[out_id] = *item;
+      continue;
+    }
     if (op == "load" || op == "store") {
       if (!tensor_access(line, op == "store", state))
         return false;
@@ -800,7 +838,7 @@ bool run_image(jog_call* call) {
                                     entry.data.string.size);
   const std::vector<Line> code = lines(source);
   if (code.empty() || code.front().size() != 2 ||
-      code.front()[0] != "joggle-vm" || code.front()[1] != "2")
+      code.front()[0] != "joggle-vm" || code.front()[1] != "3")
     return fail(call, "invalid image header");
 
   std::size_t first = code.size();

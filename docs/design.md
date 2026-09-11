@@ -1128,16 +1128,17 @@ planning remain required before this becomes an end-to-end execution claim.
 ## M10 deterministic-VM slice
 
 The second target starts as a closed scalar path rather than another emitter
-facade. The pure `.jog` `vm.image` function assigns deterministic register
-numbers by walking `Fn`/`Blk`/`Op`/`Val`, rejects unsupported structure, and
-emits a small textual image. The matching native `vm.run` function executes an
+facade. The pure `.jog` `vm.image` function obtains constant-time, current-module
+value identities through `ir.key`, rejects unsupported structure, and emits a
+textual image. A key is never persisted as model semantics and is not stable
+across printing or reparsing. The matching native `vm.run` function executes an
 explicit entry with byte inputs. The image protocol and instruction meanings
-belong entirely to the module; core changes are limited to ordinary build and
-installation wiring.
+belong entirely to the module; core contains no VM operation or image format.
 
-Image version 2 covers signed 64-bit arithmetic, `f32` and `f64` arithmetic and
-conversion, Boolean values, comparisons, bitwise operations, structured
-branches and range loops, and static tensors of those elements. Every image
+Image version 3 covers signed 64-bit arithmetic, `f32` and `f64` arithmetic and
+conversion, floating square root, Boolean values, comparisons, bitwise
+operations, structured branches and range loops, scalar literal-list
+selection, and static tensors of those elements. Every image
 value carries an explicit primitive format. Integer and floating inputs retain
 their 8- or 4-byte widths; tensor parameters and results use row-major elements.
 Allocation, fill, multidimensional load, and versioned in-place update remain
@@ -1165,6 +1166,12 @@ The high-level `tensor.operator +` path is separate from those handwritten
 loops: embedding code calls parameterized `opt.expand` first, then emits and
 executes the exposed shared body. A mismatched argument type is a rollback gate.
 No VM-specific preparation function or second lowering protocol is introduced.
+As a bounded capability probe, the MobileNetV2 function produced by the current
+explicit C preparation policy also emits a complete 28.8 MB VM image; register
+lookup no longer rescans the full function for every operand. The interpreter
+did not complete the application input within the bounded local probe, so this
+is an application-scale representation result, not the still-open second-target
+numerical execution gate or a target-neutral preparation claim.
 
 ### Storage planning
 

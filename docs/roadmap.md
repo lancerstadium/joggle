@@ -369,7 +369,10 @@ backend MatMul case now completes binary import, conversion, dead-data cleanup,
 ordinary body expansion, and output comparison through both VM and compiled C.
 This is not yet the second target exit gate: application-sized execution
 through the independent VM and a module-defined format on that scale remain
-open.
+open. The same exposed MobileNetV2 can now be emitted as a complete VM image
+after scalar-list selection and constant-time value identity removed two
+target-boundary bottlenecks, but its interpreter run has not completed the
+official input/output comparison.
 
 Exit gate: official models from two frontends pass through one shared semantic
 library and run through at least two targets without core operator switches.

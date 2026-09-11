@@ -161,7 +161,7 @@ The built-in `ir` module is the complete reflection boundary:
 | --- | --- |
 | `fns`, `find`, `params`, `returns`, `generics`, `blks`, `ops`, `uses` | Find and traverse loaded functions, signatures, explicit call terms, structure, and dependencies. |
 | `args`, `outs`, `def`, `users` | Read operation dataflow in both directions. |
-| `live`, `blk`, `kind`, `callee`, `name`, `type` | Query handle state, readable identity, structure, and structural `Ty`. |
+| `live`, `blk`, `kind`, `callee`, `name`, `key`, `type` | Query handle state, readable or ephemeral identity, structure, and structural `Ty`. |
 | `resolve`, `symbol`, `accepts`, `match` | Resolve calls, identify functions, and select against explicit signatures. |
 | `where`, `invoke` | Select functions by open metadata and execute an ordinary `fn(Mod, Op) -> bool` transactionally. |
 | `is_const`, `constant` | Query constant IR values. |
@@ -182,12 +182,12 @@ the reflection ABI or add a parser case.
 `vm.image(m)` and `vm.image(m, entry)` are ordinary read-only module functions.
 The first emits every executable function; the second selects one exact local
 entry, so unrelated functions need not satisfy the VM contract. Both produce
-canonical text beginning with `joggle-vm 2`; unsupported types or structural
+canonical text beginning with `joggle-vm 3`; unsupported types or structural
 operations are diagnosed during emission. The version is image data, not a
 versioned source symbol. The core does not parse this format and has no VM
 instruction enum.
 
-`vm.run(image, entry, input)` is the matching native function. Image version 2
+`vm.run(image, entry, input)` is the matching native function. Image version 3
 tags each value as `i64`, `f32`, or `f64`. `bool`, `index`, and `int` use the
 `i64` representation; floating values retain their IEEE binary width. Input
 elements are little endian, tensor parameters are concatenated in signature
@@ -198,10 +198,12 @@ but it is not a wall-clock time or a hardware cycle estimate. The contract
 covers `bool`, `i64`, `index`, `int`, `f32`, and `f64`, static tensors of those
 elements, typed arithmetic and conversion, comparisons, Boolean/bitwise
 operations, structured conditions and range loops, allocation/fill, and
-checked linear or multidimensional indexing. Invalid integer division, shifts,
-images, entries, input sizes, shapes, indices, or out-of-range conversions fail
-through the normal module diagnostic boundary. Local function calls, dynamic
-tensors, module-defined storage formats, and format-aware costs are still open.
+checked scalar-list selection and linear or multidimensional tensor indexing.
+It also covers square root for floating-point batch-normalization bodies.
+Invalid integer division, shifts, images, entries, input sizes, shapes, indices,
+or out-of-range conversions fail through the normal module diagnostic boundary.
+Local function calls, dynamic tensors, module-defined storage formats, and
+format-aware costs are still open.
 
 `tensor.literal<E, S>(bytes)` is the frontend-neutral immutable tensor-data
 boundary. Its result type determines element format and shape; the payload

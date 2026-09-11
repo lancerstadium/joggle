@@ -509,6 +509,11 @@ retaining its diagnostics.
 `ir.revision(m)` exposes that monotonically increasing revision to module code.
 It is intended for convergence and invalidation checks; it is not serialized
 into the model and cannot be used as a stable model identifier.
+`ir.key(v)` similarly returns a constant-time identity for a live `Val` in the
+current `Mod`. It is useful for temporary maps and generated register names and
+remains valid only while that handle is live. It is not stable across printing,
+reparsing, or another construction history and must not enter a persisted
+semantic contract.
 
 Generic compile-time helpers use the same syntax and bindings. In
 `fn below<N: int>(x: int) -> bool { return x < N }`, a call to `below<4>(3)`

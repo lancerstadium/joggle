@@ -121,13 +121,15 @@ int main(int argc, char** argv) {
   joggle::Attr image;
   CHECK(joggle::query(env, "vm.image", model, image));
   CHECK(image.string());
-  CHECK(image.string()->starts_with("joggle-vm 2\nfn main\n"));
+  CHECK(image.string()->starts_with("joggle-vm 3\nfn main\n"));
   joggle::Attr repeated_image;
   CHECK(joggle::query(env, "vm.image", model, repeated_image));
   CHECK(repeated_image == image);
 
   joggle::Attr::Bytes result;
   std::int64_t then_steps = 0;
+  CHECK(!execute_bytes(env, "joggle-vm 2\n", "main", {}, result,
+                       then_steps));
   CHECK(execute(env, std::string(*image.string()), "main", {10, 5, 1}, result,
                 then_steps));
   CHECK(integers(result) == std::vector<std::int64_t>{30} && then_steps > 0);
@@ -142,6 +144,22 @@ int main(int argc, char** argv) {
                 else_steps));
   CHECK(integers(result) == std::vector<std::int64_t>{14} &&
         else_steps == then_steps);
+
+  std::int64_t pick_steps = 0;
+  CHECK(execute(env, std::string(*image.string()), "pick", {1}, result,
+                pick_steps));
+  CHECK(integers(result) == std::vector<std::int64_t>{5} && pick_steps > 0);
+  CHECK(!execute(env, std::string(*image.string()), "pick", {-1}, result,
+                 pick_steps));
+  CHECK(!execute(env, std::string(*image.string()), "pick", {3}, result,
+                 pick_steps));
+
+  joggle::Attr::Bytes root_input;
+  append(root_input, 9.0F);
+  std::int64_t root_steps = 0;
+  CHECK(execute_bytes(env, std::string(*image.string()), "root",
+                      std::move(root_input), result, root_steps));
+  CHECK(floats(result) == std::vector<float>{3.0F} && root_steps > 0);
 
   std::int64_t shift_steps = 0;
   CHECK(execute(env, std::string(*image.string()), "shift", {-8, 2}, result,
@@ -190,7 +208,7 @@ int main(int argc, char** argv) {
     return 1;
   }
   CHECK(tensor_image.string());
-  CHECK(tensor_image.string()->starts_with("joggle-vm 2\nfn int_add\n"));
+  CHECK(tensor_image.string()->starts_with("joggle-vm 3\nfn int_add\n"));
   std::int64_t tensor_steps = 0;
   CHECK(execute(env, std::string(*tensor_image.string()), "int_add",
                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, result,

@@ -55,36 +55,8 @@ fn storage(type: Ty) -> str {
   return "s " + format(type)
 }
 
-fn id(function: Fn, value: Val) -> int {
-  var at = 0
-  for param in ir.params(function) {
-    if param == value {
-      return at
-    }
-    at += 1
-  }
-  for body in ir.blks(function) {
-    for arg in ir.args(body) {
-      if arg == value {
-        return at
-      }
-      at += 1
-    }
-  }
-  for op in ir.ops(function) {
-    for out in ir.outs(op) {
-      if out == value {
-        return at
-      }
-      at += 1
-    }
-  }
-  assert(false, "vm: value is outside its function")
-  return -1
-}
-
-fn reg(function: Fn, value: Val) -> str {
-  return text(id(function, value))
+fn reg(value: Val) -> str {
+  return text(ir.key(value))
 }
 
 fn binary(name: str) -> str {
@@ -104,8 +76,8 @@ fn binary(name: str) -> str {
 
 fn unary(name: str) -> str {
   let ops = {
-    "operator +": "copy", "operator -": "neg",
-    "operator !": "lnot", "operator ~": "bnot"
+    "base.copy": "copy", "operator +": "copy", "operator -": "neg",
+    "operator !": "lnot", "operator ~": "bnot", "math.sqrt": "sqrt"
   }
   if has(ops, name) {
     return str(ops[name])
@@ -114,7 +86,7 @@ fn unary(name: str) -> str {
 }
 
 fn float_unary(code: str) -> bool {
-  return code == "copy" || code == "neg"
+  return code == "copy" || code == "neg" || code == "sqrt"
 }
 
 fn float_binary(code: str) -> bool {
@@ -123,7 +95,7 @@ fn float_binary(code: str) -> bool {
          code == "lt" || code == "le" || code == "gt" || code == "ge"
 }
 
-fn access(function: Fn, op: Op, store: bool) -> str {
+fn access(op: Op, store: bool) -> str {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   assert(len(outputs) == 1, "vm: tensor access must have one result")
@@ -133,7 +105,25 @@ fn access(function: Fn, op: Op, store: bool) -> str {
   }
   assert(indices >= 1, "vm: tensor access needs an index")
   let type = ir.type(inputs[0])
-  assert(tensor.static(type), "vm: tensor access requires a static tensor")
+  if base.name(type) == "list" {
+    let types = base.args(type)
+    assert(!store && indices == 1 && len(types) == 1 && scalar(types[0]),
+           "vm: only scalar list reads are supported")
+    let source = ir.def(inputs[0])
+    assert(ir.live(source) && ir.kind(source) == "call" &&
+           ir.callee(source) == "base.list",
+           "vm: list read requires a literal list")
+    let items = ir.args(source)
+    var out = "pick " + format(types[0]) + " " +
+              reg(outputs[0]) + " " +
+              reg(inputs[1]) + " " + text(len(items))
+    for item in items {
+      out += " " + reg(item)
+    }
+    return out + "\n"
+  }
+  assert(tensor.static(type),
+         "vm: tensor access requires a static tensor, got " + text(type))
   var shape = tensor.shape(type)
   if indices == 1 {
     shape = [count(type)]
@@ -144,21 +134,21 @@ fn access(function: Fn, op: Op, store: bool) -> str {
   if store {
     out = "store "
   }
-  out += reg(function, outputs[0]) + " " + reg(function, inputs[0]) +
+  out += reg(outputs[0]) + " " + reg(inputs[0]) +
          " " + text(len(shape))
   for extent in shape {
     out += " " + text(extent)
   }
   for i in 0..indices {
-    out += " " + reg(function, inputs[i + 1])
+    out += " " + reg(inputs[i + 1])
   }
   if store {
-    out += " " + reg(function, inputs[len(inputs) - 1])
+    out += " " + reg(inputs[len(inputs) - 1])
   }
   return out + "\n"
 }
 
-fn call(m: Mod, function: Fn, op: Op) -> str {
+fn call(m: Mod, op: Op) -> str {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   let name = ir.callee(op)
@@ -166,10 +156,10 @@ fn call(m: Mod, function: Fn, op: Op) -> str {
     return ""
   }
   if name == "operator []" {
-    return access(function, op, false)
+    return access(op, false)
   }
   if name == "operator []=" {
-    return access(function, op, true)
+    return access(op, true)
   }
   assert(len(outputs) == 1,
          "vm: scalar instruction must have one result")
@@ -180,9 +170,9 @@ fn call(m: Mod, function: Fn, op: Op) -> str {
     assert(len(inputs) == 1,
            "vm: tensor construction requires one fill value")
     return "alloc " + format(tensor.elem(ir.type(result))) + " " +
-           reg(function, result) + " " +
+           reg(result) + " " +
            text(count(ir.type(result))) + " " +
-           reg(function, inputs[0]) + "\n"
+           reg(inputs[0]) + "\n"
   }
   if tensor.valid(ir.type(result)) && ir.live(target) &&
      ir.symbol(target) == "tensor.literal" {
@@ -194,13 +184,13 @@ fn call(m: Mod, function: Fn, op: Op) -> str {
            width(tensor.elem(ir.type(result))),
            "vm: tensor literal byte size does not match its type")
     return "literal " + format(tensor.elem(ir.type(result))) + " " +
-           reg(function, result) + " " + text(count(ir.type(result))) +
+           reg(result) + " " + text(count(ir.type(result))) +
            " " + text(data) + "\n"
   }
   if len(inputs) == 1 && scalar(ty(name)) && scalar(ir.type(inputs[0])) {
     return "cast " + format(ty(name)) + " " +
-           reg(function, result) + " " +
-           reg(function, inputs[0]) + "\n"
+           reg(result) + " " +
+           reg(inputs[0]) + "\n"
   }
   assert(scalar(ir.type(result)),
          "vm: unsupported result type " + text(ir.type(result)) +
@@ -212,11 +202,11 @@ fn call(m: Mod, function: Fn, op: Op) -> str {
     assert(type == "i64" || float_unary(code),
            "vm: unsupported floating unary call " + name)
     if code == "copy" {
-      return "copy " + reg(function, result) + " " +
-             reg(function, inputs[0]) + "\n"
+      return "copy " + reg(result) + " " +
+             reg(inputs[0]) + "\n"
     }
-    return code + " " + type + " " + reg(function, result) + " " +
-           reg(function, inputs[0]) + "\n"
+    return code + " " + type + " " + reg(result) + " " +
+           reg(inputs[0]) + "\n"
   }
   if len(inputs) == 2 {
     let code = binary(name)
@@ -230,15 +220,15 @@ fn call(m: Mod, function: Fn, op: Op) -> str {
     }
     assert(type == "i64" || float_binary(code),
            "vm: unsupported floating binary call " + name)
-    return code + " " + type + " " + reg(function, result) + " " +
-           reg(function, inputs[0]) + " " + reg(function, inputs[1]) +
+    return code + " " + type + " " + reg(result) + " " +
+           reg(inputs[0]) + " " + reg(inputs[1]) +
            "\n"
   }
   assert(false, "vm: unsupported call " + name)
   return ""
 }
 
-fn constant(function: Fn, op: Op) -> str {
+fn constant(op: Op) -> str {
   let outputs = ir.outs(op)
   assert(len(outputs) == 1, "vm: constant must have one result")
   let result = outputs[0]
@@ -249,20 +239,20 @@ fn constant(function: Fn, op: Op) -> str {
     return ""
   }
   return "const " + format(ir.type(result)) + " " +
-         reg(function, result) + " " + text(ir.constant(result)) + "\n"
+         reg(result) + " " + text(ir.constant(result)) + "\n"
 }
 
-fn arm(m: Mod, function: Fn, body: Blk, carried: list<Val>,
+fn arm(m: Mod, body: Blk, carried: list<Val>,
        outputs: list<Val>) -> str {
   let args = ir.args(body)
   assert(len(args) == len(carried),
          "vm: branch carried values are inconsistent")
   var out = ""
   for i in 0..len(args) {
-    out += "copy " + reg(function, args[i]) + " " +
-           reg(function, carried[i]) + "\n"
+    out += "copy " + reg(args[i]) + " " +
+           reg(carried[i]) + "\n"
   }
-  out += block(m, function, body)
+  out += block(m, body)
   let ops = ir.ops(body)
   assert(len(ops) != 0 && ir.kind(ops[len(ops) - 1]) == "yield",
          "vm: branch arm must yield")
@@ -270,13 +260,13 @@ fn arm(m: Mod, function: Fn, body: Blk, carried: list<Val>,
   assert(len(yielded) == len(outputs),
          "vm: branch result count is inconsistent")
   for i in 0..len(outputs) {
-    out += "copy " + reg(function, outputs[i]) + " " +
-           reg(function, yielded[i]) + "\n"
+    out += "copy " + reg(outputs[i]) + " " +
+           reg(yielded[i]) + "\n"
   }
   return out
 }
 
-fn branch(m: Mod, function: Fn, op: Op) -> str {
+fn branch(m: Mod, op: Op) -> str {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   let bodies = ir.blks(op)
@@ -286,12 +276,12 @@ fn branch(m: Mod, function: Fn, op: Op) -> str {
   for i in 1..len(inputs) {
     carried += [inputs[i]]
   }
-  return "if " + reg(function, inputs[0]) + "\n" +
-         arm(m, function, bodies[0], carried, outputs) + "else\n" +
-         arm(m, function, bodies[1], carried, outputs) + "end\n"
+  return "if " + reg(inputs[0]) + "\n" +
+         arm(m, bodies[0], carried, outputs) + "else\n" +
+         arm(m, bodies[1], carried, outputs) + "end\n"
 }
 
-fn loop(m: Mod, function: Fn, op: Op) -> str {
+fn loop(m: Mod, op: Op) -> str {
   let bodies = ir.blks(op)
   assert(len(bodies) == 1, "vm: loop must have one body")
   let body = bodies[0]
@@ -303,8 +293,8 @@ fn loop(m: Mod, function: Fn, op: Op) -> str {
          "vm: loop interface is inconsistent")
   var out = ""
   for i in 0..len(outputs) {
-    out += "copy " + reg(function, outputs[i]) + " " +
-           reg(function, sources[iterators + i]) + "\n"
+    out += "copy " + reg(outputs[i]) + " " +
+           reg(sources[iterators + i]) + "\n"
   }
   for i in 0..iterators {
     let source = ir.def(sources[i])
@@ -313,25 +303,25 @@ fn loop(m: Mod, function: Fn, op: Op) -> str {
     let items = ir.args(source)
     if ir.callee(source) == "operator .." {
       assert(len(items) == 2, "vm: range must have two bounds")
-      out += "loop " + reg(function, args[i]) + " " +
-             reg(function, items[0]) + " " + reg(function, items[1]) +
+      out += "loop " + reg(args[i]) + " " +
+             reg(items[0]) + " " + reg(items[1]) +
              "\n"
     } else {
       assert(ir.callee(source) == "base.list",
              "vm: loop source must be a range or scalar list")
-      out += "each " + reg(function, args[i]) + " " +
+      out += "each " + reg(args[i]) + " " +
              format(ir.type(args[i])) + " " + text(len(items))
       for item in items {
-        out += " " + reg(function, item)
+        out += " " + reg(item)
       }
       out += "\n"
     }
   }
   for i in 0..len(outputs) {
-    out += "copy " + reg(function, args[iterators + i]) + " " +
-           reg(function, outputs[i]) + "\n"
+    out += "copy " + reg(args[iterators + i]) + " " +
+           reg(outputs[i]) + "\n"
   }
-  out += block(m, function, body)
+  out += block(m, body)
   let ops = ir.ops(body)
   assert(len(ops) != 0 && ir.kind(ops[len(ops) - 1]) == "yield",
          "vm: loop body must yield")
@@ -339,8 +329,8 @@ fn loop(m: Mod, function: Fn, op: Op) -> str {
   assert(len(yielded) == len(outputs),
          "vm: loop result count is inconsistent")
   for i in 0..len(outputs) {
-    out += "copy " + reg(function, outputs[i]) + " " +
-           reg(function, yielded[i]) + "\n"
+    out += "copy " + reg(outputs[i]) + " " +
+           reg(yielded[i]) + "\n"
   }
   for i in 0..iterators {
     out += "end\n"
@@ -348,27 +338,27 @@ fn loop(m: Mod, function: Fn, op: Op) -> str {
   return out
 }
 
-fn block(m: Mod, function: Fn, body: Blk) -> str {
+fn block(m: Mod, body: Blk) -> str {
   var out = ""
   for op in ir.ops(body) {
     let kind = ir.kind(op)
     if kind == "constant" {
-      out += constant(function, op)
+      out += constant(op)
     } else {
       if kind == "call" {
-        out += call(m, function, op)
+        out += call(m, op)
       } else {
         if kind == "loop" {
-          out += loop(m, function, op)
+          out += loop(m, op)
         } else {
           if kind == "branch" {
-            out += branch(m, function, op)
+            out += branch(m, op)
           } else {
             if kind == "return" {
               let values = ir.args(op)
               assert(len(values) == 1,
                      "vm: function must return one value")
-              out += "ret " + reg(function, values[0]) + " " +
+              out += "ret " + reg(values[0]) + " " +
                      storage(ir.type(values[0])) + "\n"
             } else {
               assert(kind == "yield", "vm: unsupported operation " + kind)
@@ -391,15 +381,15 @@ fn definition(m: Mod, function: Fn) -> str {
   for param in ir.params(function) {
     assert(supported(ir.type(param)),
            "vm: unsupported parameter type " + text(ir.type(param)))
-    out += "param " + reg(function, param) + " " +
+    out += "param " + reg(param) + " " +
            storage(ir.type(param)) + "\n"
   }
-  out += block(m, function, ir.blks(function)[0])
+  out += block(m, ir.blks(function)[0])
   return out + "endfn\n"
 }
 
 fn image(m: Mod) -> str {
-  var out = "joggle-vm 2\n"
+  var out = "joggle-vm 3\n"
   var count = 0
   for function in ir.fns(m) {
     if len(ir.blks(function)) != 0 {
@@ -415,5 +405,5 @@ fn image(m: Mod, entry: str) -> str {
   let function = ir.find(m, entry)
   assert(ir.live(function) && len(ir.blks(function)) != 0,
          "vm: executable entry not found: " + entry)
-  return "joggle-vm 2\n" + definition(m, function)
+  return "joggle-vm 3\n" + definition(m, function)
 }

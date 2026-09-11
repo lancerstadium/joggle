@@ -245,7 +245,8 @@ image, while its native `vm.run` implementation executes that image and returns
 both result bytes and an exact instruction-step count. It accepts scalar
 `bool`, `i64`, `index`, `int`, `f32`, and `f64` values plus static tensors of
 those elements, structured loops and branches, checked multidimensional
-indexing, and explicit numeric conversion. Integer and floating-point
+indexing, runtime selection from scalar literal lists, floating square root,
+and explicit numeric conversion. Integer and floating-point
 nested-loop matrix multiplication execute through both C and VM gates. The
 parameterized run boundary also expands the shared high-level tensor `+` body
 and executes it in the VM without a VM-specific preparation function. The step
@@ -254,7 +255,9 @@ TFLite weight payloads to the shared `tensor.literal` primitive; C and VM both
 execute that primitive without knowing either frontend. The pinned official
 ONNX `test_matmul_2d` case now imports, converts, expands, and matches its
 official output through both VM and compiled C. A complete application-network
-execution comparison remains an open M10 gate.
+execution comparison remains an open M10 gate. The fully exposed MobileNetV2
+can be represented as a VM image, but its interpreter run is not claimed as a
+completed application execution.
 
 ## Guarantees and boundaries
 

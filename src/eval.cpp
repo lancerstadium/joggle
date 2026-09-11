@@ -1629,6 +1629,9 @@ private:
         return Items{Item(Attr(std::string(fn->name())))};
       if (const auto* value = as<Val>(args[0]); value && *value)
         return Items{Item(Attr(std::string(value->name())))};
+    } else if (name == "key" && args.size() == 1) {
+      if (const auto* value = as<Val>(args[0]); value && *value)
+        return Items{Item(Attr(static_cast<std::int64_t>(value->id_)))};
     } else if (name == "type" && args.size() == 1) {
       if (const auto* value = as<Val>(args[0]))
         return Items{Item(value->type())};

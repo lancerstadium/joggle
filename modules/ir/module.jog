@@ -29,6 +29,7 @@ fn kind(op: Op) -> str;
 fn callee(op: Op) -> str;
 fn name(f: Fn) -> str;
 fn name(v: Val) -> str;
+fn key(v: Val) -> int;
 fn type(v: Val) -> Ty;
 fn type(m: Mod, v: Val, type: Ty) -> bool;
 fn returns(m: Mod, f: Fn, types: list<Ty>) -> bool;
