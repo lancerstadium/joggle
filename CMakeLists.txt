@@ -9,6 +9,7 @@ option(JOGGLE_BUILD_TESTS "Build Joggle tests" ON)
 option(JOGGLE_BUILD_ONNX "Build the optional ONNX module" OFF)
 option(JOGGLE_BUILD_TFLITE "Build the optional TFLite module" OFF)
 option(JOGGLE_BUILD_SAT "Build the optional saturating-integer module" OFF)
+option(JOGGLE_TEST_ONNX_HEAVY "Enable slow ONNX Model Zoo gates" OFF)
 set(JOGGLE_TEST_ONNX_ZOO "" CACHE PATH
     "Directory containing the pinned ONNX Model Zoo test set")
 set(JOGGLE_TEST_TFLITE_MODEL "" CACHE FILEPATH
@@ -369,6 +370,9 @@ if(JOGGLE_BUILD_TESTS)
       ssd-mobilenetv1-12
       shufflenet-v2-12
       densenet-12
+      googlenet-12
+      efficientnet-lite4-11-int8
+      efficientnet-lite4-11-qdq
     )
     set(onnx_zoo_hashes
       c1c513582d56afceff8516c73804e484c81c6a830712ab6d682253f4a3cd042f
@@ -381,7 +385,16 @@ if(JOGGLE_BUILD_TESTS)
       b8fba5e404077d4048d27fcd1667e85e27e192eb9bf51e696c46a3acd7d21058
       ea69821b4dd374ae2f33f9710dd1229ac263d0ee5b5a46ca3521f6483e1ba035
       0294e7e88e5b3360de9b0fdc321baf9e6ef18b7f058c4536caae3b9f18ed9ed5
+      c99c507058eaf41de8723408fdda7db8325cb57f0a89f2ee07a716d6e963e14e
+      2b3cbb5077262b20df565dacddecb3724c0976c35029a87e512d13aa4eff04a2
+      6837d0b19625d4aff8266d7197a7f3775afd82a8c40f9fd0283d52db4955566f
     )
+    if(JOGGLE_TEST_ONNX_HEAVY)
+      list(APPEND onnx_zoo_names bidaf-9)
+      list(APPEND onnx_zoo_hashes
+        dfc317b56d065a3e297240a9e9b9118ff2260790b5850f4be2bc6ea1bcc65e80
+      )
+    endif()
     list(LENGTH onnx_zoo_names onnx_zoo_count)
     math(EXPR onnx_zoo_last "${onnx_zoo_count} - 1")
     foreach(index RANGE ${onnx_zoo_last})
@@ -466,7 +479,7 @@ if(JOGGLE_BUILD_TESTS)
               ${JOGGLE_TEST_ONNX_ZOO}/ssd-mobilenetv1-12.onnx
               ${CMAKE_CURRENT_BINARY_DIR}/modules
               --frontier
-              4682
+              0
               onnx.Loop
               onnx.NonMaxSuppression
               onnx.Resize
@@ -489,6 +502,50 @@ if(JOGGLE_BUILD_TESTS)
               onnx.Concat
               onnx.BatchNormalization
     )
+    add_test(
+      NAME onnx-zoo-googlenet
+      COMMAND joggle-onnx-zoo-test
+              ${JOGGLE_TEST_ONNX_ZOO}/googlenet-12.onnx
+              ${CMAKE_CURRENT_BINARY_DIR}/modules
+              --frontier-from-signature
+              0
+              onnx.Concat
+              onnx.LRN
+              onnx.Dropout
+    )
+    add_test(
+      NAME onnx-zoo-efficientnet-qdq
+      COMMAND joggle-onnx-zoo-test
+              ${JOGGLE_TEST_ONNX_ZOO}/efficientnet-lite4-11-qdq.onnx
+              ${CMAKE_CURRENT_BINARY_DIR}/modules
+              --frontier-from-signature
+              0
+              onnx.QuantizeLinear
+              onnx.DequantizeLinear
+    )
+    add_test(
+      NAME onnx-zoo-efficientnet-int8
+      COMMAND joggle-onnx-zoo-test
+              ${JOGGLE_TEST_ONNX_ZOO}/efficientnet-lite4-11-int8.onnx
+              ${CMAKE_CURRENT_BINARY_DIR}/modules
+              --frontier-from-signature
+              95
+              onnx.QLinearConv
+              onnx.QLinearMatMul
+    )
+    if(JOGGLE_TEST_ONNX_HEAVY)
+      add_test(
+        NAME onnx-zoo-bidaf
+        COMMAND joggle-onnx-zoo-test
+                ${JOGGLE_TEST_ONNX_ZOO}/bidaf-9.onnx
+                ${CMAKE_CURRENT_BINARY_DIR}/modules
+                --roundtrip
+                onnx.Gather
+      )
+      set_tests_properties(
+        onnx-zoo-bidaf PROPERTIES LABELS "heavy;onnx-zoo" TIMEOUT 900
+      )
+    endif()
   endif()
   if(JOGGLE_BUILD_ONNX)
     add_executable(joggle-onnx-codec-test test/onnx_codec.cpp)

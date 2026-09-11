@@ -26,6 +26,7 @@ struct Stats {
   std::size_t unknown = 0;
   std::set<std::string, std::less<>> calls;
   std::map<std::string, std::size_t, std::less<>> open;
+  std::map<std::string, std::size_t, std::less<>> ready_open;
 };
 
 Stats inspect(const joggle::Mod& mod) {
@@ -41,10 +42,18 @@ Stats inspect(const joggle::Mod& mod) {
     if (!op.callee().starts_with("onnx.") || op.callee() == "onnx.model")
       continue;
     ++stats.nodes;
+    bool inputs_known = true;
+    for (joggle::Val input : op.args()) {
+      const joggle::Ty type = input.type();
+      inputs_known = type.valid() && type.text() != "_" && inputs_known;
+    }
     for (joggle::Val output : op.outs()) {
-      if (output.type().text() == "_") {
+      const joggle::Ty type = output.type();
+      if (!type.valid() || type.text() == "_") {
         ++stats.unknown;
         ++stats.open[std::string(op.callee())];
+        if (inputs_known)
+          ++stats.ready_open[std::string(op.callee())];
       }
     }
   }
@@ -107,11 +116,41 @@ GraphRefs graph_refs(const joggle::Mod& mod) {
   return result;
 }
 
+void print_ready_open(const joggle::Mod& mod) {
+  for (joggle::Op op : mod.ops()) {
+    if (!op.callee().starts_with("onnx.") ||
+        op.callee() == "onnx.tensor" || op.callee() == "onnx.model")
+      continue;
+    bool open = false;
+    for (joggle::Val output : op.outs()) {
+      const joggle::Ty type = output.type();
+      open = !type.valid() || type.text() == "_" || open;
+    }
+    bool ready = !op.args().empty();
+    for (joggle::Val input : op.args()) {
+      const joggle::Ty type = input.type();
+      ready = type.valid() && type.text() != "_" && ready;
+    }
+    if (!open || !ready)
+      continue;
+    std::printf("  %.*s(", static_cast<int>(op.callee().size()),
+                op.callee().data());
+    const std::vector<joggle::Val> inputs = op.args();
+    for (std::size_t index = 0; index < inputs.size(); ++index) {
+      const joggle::Ty input_type = inputs[index].type();
+      const std::string_view type = input_type.text();
+      std::printf("%s%.*s", index == 0 ? "" : ", ",
+                  static_cast<int>(type.size()), type.data());
+    }
+    std::printf(")\n");
+  }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   CHECK(argc >= 4);
-  const bool import_only = std::string_view(argv[3]) == "--import-only";
+  const bool roundtrip_only = std::string_view(argv[3]) == "--roundtrip";
   const bool from_signature =
       std::string_view(argv[3]) == "--frontier-from-signature";
   const bool frontier =
@@ -124,7 +163,7 @@ int main(int argc, char** argv) {
                                         expected_frontier);
     CHECK(parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size());
   }
-  const int first_expected = frontier ? 5 : (import_only ? 4 : 3);
+  const int first_expected = frontier ? 5 : (roundtrip_only ? 4 : 3);
   std::ifstream input(argv[1], std::ios::binary);
   CHECK(input);
   const std::vector<unsigned char> raw{std::istreambuf_iterator<char>(input),
@@ -140,7 +179,8 @@ int main(int argc, char** argv) {
   CHECK(returns.size() == 1 && returns.front().string());
 
   joggle::Mod model;
-  CHECK(joggle::parse(env, *returns.front().string(), model, argv[1]));
+  if (!joggle::parse(env, *returns.front().string(), model, argv[1]))
+    return model.print_diags(stderr);
   CHECK(model.verify(env));
   const joggle::Fn main = model.find_fn("main");
   CHECK(main && !main.params().empty() && !main.returns().empty());
@@ -169,8 +209,7 @@ int main(int argc, char** argv) {
 
   const GraphRefs graphs = graph_refs(model);
   CHECK(graphs.valid);
-  if (import_only) {
-    CHECK(graphs.count > 0);
+  if (roundtrip_only) {
     std::printf("%s: %zu tensors, %zu nodes, %zu nested graphs\n", argv[1],
                 source.tensors, source.nodes, graphs.count);
     return 0;
@@ -185,6 +224,12 @@ int main(int argc, char** argv) {
               inferred.unknown);
   for (const auto& [callee, count] : inferred.open)
     std::printf("  %s: %zu\n", callee.c_str(), count);
+  if (!inferred.ready_open.empty()) {
+    std::printf("ready open results:\n");
+    for (const auto& [callee, count] : inferred.ready_open)
+      std::printf("  %s: %zu\n", callee.c_str(), count);
+    print_ready_open(model);
+  }
   CHECK(inferred.tensors == source.tensors);
   CHECK(inferred.nodes == source.nodes);
   if (frontier) {

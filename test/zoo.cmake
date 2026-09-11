@@ -13,9 +13,14 @@ set(known
   ssd-mobilenetv1-12
   shufflenet-v2-12
   densenet-12
+  googlenet-12
+  efficientnet-lite4-11-int8
+  efficientnet-lite4-11-qdq
+  bidaf-9
 )
 if(NOT DEFINED MODELS OR MODELS STREQUAL "")
   set(MODELS ${known})
+  list(REMOVE_ITEM MODELS bidaf-9)
 endif()
 foreach(model IN LISTS MODELS)
   if(NOT model IN_LIST known)
@@ -105,4 +110,28 @@ fetch_github(
   4f43949841cb55a0b98dc8fcd045431ccafd9f96
   validated/vision/classification/densenet-121/model/densenet-12.onnx
   0294e7e88e5b3360de9b0fdc321baf9e6ef18b7f058c4536caae3b9f18ed9ed5
+)
+fetch_github(
+  googlenet-12
+  4f43949841cb55a0b98dc8fcd045431ccafd9f96
+  validated/vision/classification/inception_and_googlenet/googlenet/model/googlenet-12.onnx
+  c99c507058eaf41de8723408fdda7db8325cb57f0a89f2ee07a716d6e963e14e
+)
+fetch_github(
+  efficientnet-lite4-11-int8
+  4f43949841cb55a0b98dc8fcd045431ccafd9f96
+  validated/vision/classification/efficientnet-lite4/model/efficientnet-lite4-11-int8.onnx
+  2b3cbb5077262b20df565dacddecb3724c0976c35029a87e512d13aa4eff04a2
+)
+fetch_github(
+  efficientnet-lite4-11-qdq
+  4f43949841cb55a0b98dc8fcd045431ccafd9f96
+  validated/vision/classification/efficientnet-lite4/model/efficientnet-lite4-11-qdq.onnx
+  6837d0b19625d4aff8266d7197a7f3775afd82a8c40f9fd0283d52db4955566f
+)
+fetch_github(
+  bidaf-9
+  4f43949841cb55a0b98dc8fcd045431ccafd9f96
+  validated/text/machine_comprehension/bidirectional_attention_flow/model/bidaf-9.onnx
+  dfc317b56d065a3e297240a9e9b9118ff2260790b5850f4be2bc6ea1bcc65e80
 )

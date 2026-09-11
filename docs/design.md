@@ -133,10 +133,11 @@ in the official ONNX Model Zoo GitHub media store, then validates the SHA-256
 values published by its Git LFS manifests. Configure and normal builds remain
 offline.
 
-The matrix contains `mobilenetv2-7`, `squeezenet1.1-7`,
-`squeezenet1.0-13-qdq`, `resnet18-v1-7`, `tinyyolov2-8`, and
+The normal matrix contains `mobilenetv2-7`, `squeezenet1.1-7`,
+`squeezenet1.0-13-qdq`, `resnet18-v1-7`, `tinyyolov2-8`,
 `tiny-yolov3-11`, `ultraface-rfb-320`, `ssd-mobilenetv1-12`,
-`shufflenet-v2-12`, and `densenet-12`. These are
+`shufflenet-v2-12`, `densenet-12`, `googlenet-12`, and both the QDQ and
+operator-oriented INT8 encodings of `efficientnet-lite4-11`. These are
 deliberately different topology classes: separable convolution with residual
 paths, Fire `Blk`s with concatenation, a full QDQ network, a residual
 classification backbone, a compact detector using max pooling and leaky
@@ -144,22 +145,30 @@ activation, a detector post-processing graph with four `Loop` bodies, and a
 small face detector with a large dynamic shape program. SSD-MobileNetV1 adds a
 full detection pipeline with 1,567 constants, 5,985 nodes, eight nested graphs,
 Resize, and NonMaxSuppression. ShuffleNet V2 adds channel split/shuffle
-structure, while DenseNet-121 adds a long concatenative dependency graph.
+structure, DenseNet-121 adds a long concatenative dependency graph, GoogLeNet
+adds LRN and a two-result Dropout, and the two EfficientNet encodings expose
+the difference between QDQ and QLinear normalization boundaries.
 MobileNetV2 remains the deep semantic gate; the next four and UltraFace all
-pass binary import, canonical round trip, source-order type inference,
+pass binary import, canonical round trip, fixed-point type inference,
 relationship conversion, idempotence, verification, and converted round trip.
 Tiny-YOLOv3 remains a pinned partial-frontier gate. It imports
 269 tensors, 291 calls, and four nested functions, then reduces 280 open results
 to 219. UltraFace imports 244 tensors and 242 calls and closes all 240 initially
 open results. Its full conversion gate also exercises tensor-valued Constant,
 legacy attribute-form Slice, and Softmax.
-SSD-MobileNetV1 is a pinned partial semantic gate. Generic capture and
-loop-carried parameter propagation plus conservative partial shape relations
-reduce 6,790 initially open results to 4,682; the remainder stays visible
-rather than being mislabeled as end-to-end support. ShuffleNet V2 closes 273
-open results and completes conversion and round trip. DenseNet-121 is tested
-after all 910 intermediate result annotations are erased: its signature,
-constants, and schema relations reconstruct every result type.
+SSD-MobileNetV1 is a pinned type-closure gate. Generic capture and loop-carried
+parameter propagation plus conservative partial shape relations close all
+6,790 initially open results at a checked fixed point; this does not claim that
+every source operation has shared executable semantics. ShuffleNet V2 closes
+273 open results and completes conversion and round trip. DenseNet-121 is
+tested after all 910 intermediate result annotations are erased: its signature,
+constants, and schema relations reconstruct every result type. The same erased-
+signature gate closes all 144 GoogLeNet results and all 539 EfficientNet-QDQ
+results. The operator-oriented EfficientNet INT8 model deliberately pins a
+95-result frontier headed by `QLinearConv`; it is a normalization requirement,
+not mislabeled support. BiDAF is a separately enabled heavy codec gate because
+its large vocabulary attribute tests parser and canonical-text scalability
+rather than ordinary semantic coverage.
 
 Inspection with the official ONNX 1.19 schema reports IR version 3, opset 7,
 155 nodes, 267 initializers, 268 declared inputs, and one graph output. All 155
@@ -663,7 +672,8 @@ in their explicit bridge metadata and optional fused activation, not in their
 shared computation.
 
 The optional `onnx.nn` module owns the frontend/library relationship. Its
-`infer` function propagates the supported MobileNetV2 shapes in graph order;
+`infer` function propagates supported tensor facts to a revision-checked,
+graph-bounded fixed point;
 its separately invoked `convert` function materializes Conv attributes as
 ordinary operands and maps Conv, BatchNormalization, ReLU, Add/Sub/Mul,
 AveragePool, MaxPool, GlobalAveragePool, Reshape, Flatten, and rank-two-or-higher

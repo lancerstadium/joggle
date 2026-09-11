@@ -153,13 +153,17 @@ for the relations it contains.
 The official SSD-MobileNetV1-12 model extends the matrix beyond compact graphs:
 1,567 constants, 5,985 nodes, eight nested graphs, Resize, and
 NonMaxSuppression survive import, verification, canonical round trip, and a
-pinned semantic frontier. Graph captures and Loop protocol operands now refine
+pinned type-closure gate. Graph captures and Loop protocol operands now refine
 ordinary child-function parameters. Partial symbolic Conv, Split/Squeeze,
-Resize, and post-processing relations reduce 6,790 open results to 4,682
-without claiming full execution support. ShuffleNet V2 closes and converts a
-channel split/shuffle network. DenseNet-121 erases all 910 intermediate
-annotations and recovers them solely from signature, constants, and schema
-relations.
+Resize, and post-processing relations close all 6,790 open result types at a
+revision-checked fixed point without claiming full execution support.
+ShuffleNet V2 closes and converts a channel split/shuffle network. DenseNet-121
+erases all 910 intermediate annotations and recovers them solely from
+signature, constants, and schema relations. Erased-signature GoogLeNet and
+EfficientNet-QDQ likewise close to zero; operator-oriented EfficientNet INT8
+pins its still-unsupported QLinear boundary instead of guessing it. An optional
+heavy BiDAF round-trip gate isolates large-attribute parser scalability from
+the normal semantic matrix.
 The frontend-neutral `opt.untyped` query exposes the remaining type frontier,
 and the CLI can invoke any no-extra-argument analysis through the same cached,
 read-only `query` boundary used by embedding code. A data-driven unary relation

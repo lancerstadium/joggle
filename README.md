@@ -154,8 +154,10 @@ leaves that call unchanged rather than invalidating a complete transform.
 The optional `onnx.nn` relation module is selected explicitly. One `convert`
 call propagates intermediate tensor types and then converts every supported
 compute node to shared semantics; `infer` remains available independently for
-typed source-graph experiments. Neither function runs during import or module
-loading. On the official MobileNetV2 this covers every compute node. The model
+typed source-graph experiments. Inference repeats deterministic graph sweeps
+until the module revision stops changing and rejects non-convergence within a
+graph-derived bound. Neither function runs during import or module loading.
+On the official MobileNetV2 this covers every compute node. The model
 marker and tensor payloads remain ONNX transport calls; unknown operators in
 other models remain open rather than acquiring guessed semantics.
 Conversion removes source-schema metadata only after its values have become

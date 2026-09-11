@@ -96,7 +96,8 @@ fn tensor_type_probe(m: Mod) -> bool {
   let broadcast = tensor.broadcast_shape(dims, [ty(1), ty(3)])
   let empty: list<Ty> = []
   let empty_broadcast = tensor.broadcast_shape(empty, empty)
-  return tensor.valid(original) && tensor.static(original) &&
+  return ir.revision(m) >= 0 &&
+         tensor.valid(original) && tensor.static(original) &&
          tensor.elem(original) == ty("f32") &&
          tensor.shape(original) == [2, 3, 5] &&
          tensor.valid(dynamic) && !tensor.static(dynamic) &&
@@ -105,6 +106,7 @@ fn tensor_type_probe(m: Mod) -> bool {
          len(empty_broadcast) == 0 &&
          tensor.refined(ty("tensor<f32, [_, 3]>"), dynamic) == dynamic &&
          tensor.refined(ty("tensor<i32, [_, 3]>"), dynamic) == ty("_") &&
+         tensor.product([ty("_"), ty(2)], 0, 2) == ty("_") &&
          tensor.product(dims, 0, 1) == ty("N") &&
          tensor.product(dims, 1, 2) == ty(3) &&
          tensor.quotient([ty("N"), ty(256)], [ty(256)]) == ty("N") &&
@@ -115,6 +117,9 @@ fn tensor_type_probe(m: Mod) -> bool {
          tensor.replaced(dims, 0, ty(4)) == [ty(4), ty(3)] &&
          tensor.gathered(dims, [ty(5), ty(6)], 1) ==
            [ty("N"), ty(5), ty(6)] &&
+         tensor.concatenated(
+           [ty("_"), ty(4)], [ty("_"), ty(4)], 0
+         ) == [ty("_"), ty(4)] &&
          tensor.matmul_offset([7, 3, 4], [2, 7, 3, 5], 11, 2, 3) == 59 &&
          tensor.matmul_offset([2, 1, 4, 5], [2, 7, 3, 5], 11, 2, 4) == 34 &&
          tensor.line_offset([2, 3, 4], 1, 6, 1) == 18 &&

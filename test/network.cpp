@@ -393,7 +393,8 @@ int main(int argc, char** argv) {
   CHECK(count(direct_bridge, "onnx.Relu") == 0);
   CHECK(count(direct_bridge, "nn.add") == 1);
   CHECK(count(direct_bridge, "nn.relu") == 1);
-  CHECK(joggle::run(env, "onnx.nn.infer", bridge));
+  if (!joggle::run(env, "onnx.nn.infer", bridge))
+    return env.print_diags(stderr);
   CHECK(bridge.verify(env));
   joggle::Op source_add;
   for (joggle::Op op : bridge.ops())
@@ -925,6 +926,56 @@ int main(int argc, char** argv) {
       "  )\n"
       "  let values, indices = onnx.TopK(x, count)\n"
       "  return values, indices\n"
+      "}\n"
+      "fn dynamic_reshape(\n"
+      "  x: tensor<f32, [2, 3, 4]>, empty: tensor<i64, [0]>,\n"
+      "  shape: tensor<i64, [2]>\n"
+      ") -> tensor<f32, [_, _]> {\n"
+      "  [onnx: {axis: 0}]\n"
+      "  let joined = onnx.Concat(empty, shape)\n"
+      "  let out = onnx.Reshape(x, joined)\n"
+      "  return out\n"
+      "}\n"
+      "fn dynamic_tile(\n"
+      "  x: tensor<f32, [1, 3, 4]>, repeats: tensor<i64, [3]>\n"
+      ") -> tensor<f32, [_, _, _]> {\n"
+      "  let out = onnx.Tile(x, repeats)\n"
+      "  return out\n"
+      "}\n"
+      "fn partial_slice(\n"
+      "  x: tensor<f32, [_, 1917, 91]>\n"
+      ") -> tensor<f32, [_, 1917, 90]> {\n"
+      "  let starts: tensor<i64, [3]> = onnx.tensor(\n"
+      "    7, [3],\n"
+      "    hex\"00000000000000000000000000000000"
+      "0100000000000000\"\n"
+      "  )\n"
+      "  let ends: tensor<i64, [3]> = onnx.tensor(\n"
+      "    7, [3],\n"
+      "    hex\"ffffffffffffff7fffffffffffffff7f"
+      "ffffffffffffff7f\"\n"
+      "  )\n"
+      "  let out = onnx.Slice(x, starts, ends)\n"
+      "  return out\n"
+      "}\n"
+      "fn dynamic_slice(\n"
+      "  x: tensor<f32, [2, 3, 4]>, starts: tensor<i32, [2]>,\n"
+      "  ends: tensor<i32, [2]>\n"
+      ") -> tensor<f32, [_, _, 4]> {\n"
+      "  let out = onnx.Slice(x, starts, ends)\n"
+      "  return out\n"
+      "}\n"
+      "fn dynamic_topk(\n"
+      "  x: tensor<f32, [2, 5]>, count: tensor<i64, [1]>\n"
+      ") -> (tensor<f32, [2, _]>, tensor<i64, [2, _]>) {\n"
+      "  let values, indices = onnx.TopK(x, count)\n"
+      "  return values, indices\n"
+      "}\n"
+      "fn dropout(\n"
+      "  x: tensor<f32, [2, 3]>, ratio: tensor<f32, []>\n"
+      ") -> (tensor<f32, [2, 3]>, tensor<bool, [2, 3]>) {\n"
+      "  let value, mask = onnx.Dropout(x, ratio)\n"
+      "  return value, mask\n"
       "}\n";
   joggle::Mod shape_relations;
   CHECK(joggle::parse(env, shape_relations_source, shape_relations,
@@ -939,12 +990,37 @@ int main(int argc, char** argv) {
       CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [_]>"));
     if (op.callee() == "onnx.NonMaxSuppression")
       CHECK(op.outs()[0].type() == joggle::Ty("tensor<i64, [_, 3]>"));
-    if (op.callee() == "onnx.Expand" || op.callee() == "onnx.Tile")
+    if (op.callee() == "onnx.Expand" ||
+        (op.callee() == "onnx.Tile" && op.blk().fn().name() == "tile"))
       CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [2, 3]>"));
     if (op.callee() == "onnx.TopK") {
-      CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [2, 3]>"));
-      CHECK(op.outs()[1].type() == joggle::Ty("tensor<i64, [2, 3]>"));
+      if (op.blk().fn().name() == "topk") {
+        CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [2, 3]>"));
+        CHECK(op.outs()[1].type() == joggle::Ty("tensor<i64, [2, 3]>"));
+      }
+      if (op.blk().fn().name() == "dynamic_topk") {
+        CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [2, _]>"));
+        CHECK(op.outs()[1].type() == joggle::Ty("tensor<i64, [2, _]>"));
+      }
     }
+    if (op.callee() == "onnx.Dropout" &&
+        op.blk().fn().name() == "dropout") {
+      CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [2, 3]>"));
+      CHECK(op.outs()[1].type() == joggle::Ty("tensor<bool, [2, 3]>"));
+    }
+    if (op.callee() == "onnx.Reshape" &&
+        op.blk().fn().name() == "dynamic_reshape")
+      CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [_, _]>"));
+    if (op.callee() == "onnx.Tile" &&
+        op.blk().fn().name() == "dynamic_tile")
+      CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [_, _, _]>"));
+    if (op.callee() == "onnx.Slice" &&
+        op.blk().fn().name() == "partial_slice")
+      CHECK(op.outs()[0].type() ==
+            joggle::Ty("tensor<f32, [_, 1917, 90]>"));
+    if (op.callee() == "onnx.Slice" &&
+        op.blk().fn().name() == "dynamic_slice")
+      CHECK(op.outs()[0].type() == joggle::Ty("tensor<f32, [_, _, 4]>"));
   }
 
   constexpr std::string_view invalid_conv_source =

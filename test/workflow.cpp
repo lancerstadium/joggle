@@ -1347,18 +1347,20 @@ int main(int argc, char** argv) {
       "[policy: {name: \"roundtrip\", levels: [1, 2]}]\n"
       "fn payload() -> dict {\n"
       "  return {axis: 1, epsilon: 9.9999997473787516e-06, "
-      "pads: [0, -1], raw: hex\"007fff\"}\n}\n";
+      "pads: [0, -1], raw: hex\"007fff\", "
+      "words: [\"-\", \"[\", \"]\"]}\n}\n";
   CHECK(joggle::parse(env, attr_source, attrs, "attrs.jog"));
   CHECK(attrs.verify(env));
   const joggle::Val payload =
       attrs.find_fn("payload").body().ops().back().args()[0];
   const joggle::Attr payload_attr = payload.constant();
   const joggle::Attr::Dict* dict = payload_attr.dict();
-  CHECK(dict && dict->size() == 4);
+  CHECK(dict && dict->size() == 5);
   CHECK(dict->at("axis").integer() == 1);
   CHECK(dict->at("epsilon").real() == 9.9999997473787516e-06);
   CHECK(dict->at("pads").list() && dict->at("pads").list()->size() == 2);
   CHECK(dict->at("raw").bytes() && dict->at("raw").bytes()->size() == 3);
+  CHECK(dict->at("words").list() && dict->at("words").list()->size() == 3);
   const joggle::Fn payload_fn = attrs.find_fn("payload");
   CHECK(payload_fn.meta().size() == 2);
   CHECK(payload_fn.meta("entry") &&

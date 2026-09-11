@@ -92,17 +92,19 @@ fn product(dims: list<Ty>, first: int, last: int) -> Ty {
   }
   var value = 1
   var symbol = ty("_")
+  var has_symbol = false
   for i in first..last {
     if kind(dims[i]) == "int" {
       value *= int(dims[i])
     } else {
-      if symbol != ty("_") {
+      if dims[i] == ty("_") || has_symbol {
         return ty("_")
       }
       symbol = dims[i]
+      has_symbol = true
     }
   }
-  if symbol != ty("_") {
+  if has_symbol {
     if value != 1 {
       return ty("_")
     }
@@ -480,8 +482,7 @@ fn sliced(
     if axis < 0 {
       axis += len(source)
     }
-    if axis < 0 || axis >= len(source) || steps[item] <= 0 ||
-       kind(source[axis]) != "int" {
+    if axis < 0 || axis >= len(source) || steps[item] <= 0 {
       return []
     }
     for previous in 0..item {
@@ -493,32 +494,39 @@ fn sliced(
         return []
       }
     }
-    let extent = int(source[axis])
-    var first = starts[item]
-    var last = ends[item]
-    if first < 0 {
-      first += extent
+    if kind(source[axis]) != "int" {
+      if starts[item] != 0 ||
+         ends[item] != 9223372036854775807 || steps[item] != 1 {
+        out = replaced(out, axis, ty("_"))
+      }
+    } else {
+      let extent = int(source[axis])
+      var first = starts[item]
+      var last = ends[item]
+      if first < 0 {
+        first += extent
+      }
+      if last < 0 {
+        last += extent
+      }
+      if first < 0 {
+        first = 0
+      }
+      if first > extent {
+        first = extent
+      }
+      if last < 0 {
+        last = 0
+      }
+      if last > extent {
+        last = extent
+      }
+      var size = 0
+      if last > first {
+        size = (last - first + steps[item] - 1) / steps[item]
+      }
+      out = replaced(out, axis, ty(size))
     }
-    if last < 0 {
-      last += extent
-    }
-    if first < 0 {
-      first = 0
-    }
-    if first > extent {
-      first = extent
-    }
-    if last < 0 {
-      last = 0
-    }
-    if last > extent {
-      last = extent
-    }
-    var size = 0
-    if last > first {
-      size = (last - first + steps[item] - 1) / steps[item]
-    }
-    out = replaced(out, axis, ty(size))
   }
   return out
 }
@@ -534,19 +542,33 @@ fn concatenated(
   if dim < 0 {
     dim += len(left)
   }
-  if dim < 0 || dim >= len(left) ||
-     kind(left[dim]) != "int" || kind(right[dim]) != "int" {
+  if dim < 0 || dim >= len(left) {
     return []
   }
   var out = left
   for item in 0..len(left) {
-    if item != dim && left[item] != right[item] {
-      return []
+    if item != dim {
+      if out[item] == ty("_") {
+        out = replaced(out, item, right[item])
+      } else {
+        if right[item] != ty("_") && out[item] != right[item] {
+          return []
+        }
+      }
     }
   }
-  return replaced(
-    out, dim, ty(int(left[dim]) + int(right[dim]))
-  )
+  var extent = ty("_")
+  if kind(left[dim]) == "int" && kind(right[dim]) == "int" {
+    extent = ty(int(left[dim]) + int(right[dim]))
+  } else {
+    if left[dim] == ty(0) {
+      extent = right[dim]
+    }
+    if right[dim] == ty(0) {
+      extent = left[dim]
+    }
+  }
+  return replaced(out, dim, extent)
 }
 
 fn permute<E: Ty, S: list<int>, T: list<int>>(

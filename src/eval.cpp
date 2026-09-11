@@ -1012,6 +1012,9 @@ private:
           out.emplace_back(Attr(module));
         return Items{Item(std::move(out))};
       }
+    } else if (name == "revision" && args.size() == 1) {
+      if (const auto* mod = as<Mod*>(args[0]); mod && *mod)
+        return Items{Item(Attr(static_cast<std::int64_t>((*mod)->revision())))};
     } else if (name == "params" && args.size() == 1) {
       if (const auto* fn = as<Fn>(args[0])) {
         Items out;

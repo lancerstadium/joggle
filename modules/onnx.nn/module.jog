@@ -95,6 +95,26 @@ fn same_type(m: Mod, op: Op) -> bool {
   return false
 }
 
+fn dropout_type(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) < 1 || len(inputs) > 3 ||
+     len(outputs) < 1 || len(outputs) > 2 {
+    return false
+  }
+  let input = ir.type(inputs[0])
+  if !tensor.valid(input) {
+    return false
+  }
+  var changed = set_type(m, outputs[0], input)
+  if len(outputs) == 2 {
+    changed = set_type(
+      m, outputs[1], shaped(ty("bool"), tensor.dims(input))
+    ) || changed
+  }
+  return changed
+}
+
 fn unary_rules() -> list<list<str>> {
   return [
     ["onnx.Relu", "nn.relu"],
@@ -111,6 +131,9 @@ fn unary_rules() -> list<list<str>> {
 
 fn infer_unary(m: Mod, op: Op) -> bool {
   let callee = ir.callee(op)
+  if callee == "onnx.Dropout" {
+    return dropout_type(m, op)
+  }
   for rule in unary_rules() {
     if callee == rule[0] {
       return same_type(m, op)
@@ -118,7 +141,8 @@ fn infer_unary(m: Mod, op: Op) -> bool {
   }
   if callee == "onnx.BatchNormalization" ||
      callee == "onnx.LeakyRelu" || callee == "onnx.Softmax" ||
-     callee == "onnx.Identity" || callee == "onnx.Clip" {
+     callee == "onnx.Identity" || callee == "onnx.Clip" ||
+     callee == "onnx.LRN" {
     return same_type(m, op)
   }
   return false
@@ -346,6 +370,19 @@ fn const_ints(value: Val) -> list<int> {
     out += [signed(data, i * width, width)]
   }
   return out
+}
+
+fn int_vector_len(value: Val) -> int {
+  let type = ir.type(value)
+  if !tensor.valid(type) ||
+     (tensor.elem(type) != ty("i32") && tensor.elem(type) != ty("i64")) {
+    return -1
+  }
+  let shape = tensor.dims(type)
+  if len(shape) != 1 || kind(shape[0]) != "int" || int(shape[0]) < 0 {
+    return -1
+  }
+  return int(shape[0])
 }
 
 fn attr_ints(value: Attr) -> list<int> {
@@ -829,10 +866,54 @@ fn slice_type(m: Mod, op: Op) -> bool {
     tensor.dims(input), slice_starts(op), slice_ends(op),
     slice_axes(op), slice_steps(op)
   )
-  if len(shape) == 0 {
+  if len(shape) != 0 {
+    return set_type(m, outputs[0], shaped(tensor.elem(input), shape))
+  }
+  if len(inputs) < 3 || len(inputs) > 5 {
     return false
   }
-  return set_type(m, outputs[0], shaped(tensor.elem(input), shape))
+  let count = int_vector_len(inputs[1])
+  if count <= 0 || int_vector_len(inputs[2]) != count {
+    return false
+  }
+  if len(inputs) >= 4 && int_vector_len(inputs[3]) != count {
+    return false
+  }
+  if len(inputs) == 5 && int_vector_len(inputs[4]) != count {
+    return false
+  }
+  let source = tensor.dims(input)
+  if count > len(source) {
+    return false
+  }
+  var open = source
+  var selected = slice_axes(op)
+  if len(inputs) == 3 {
+    for axis in 0..count {
+      selected += [axis]
+    }
+  } else {
+    if len(selected) == 0 {
+      for axis in 0..len(source) {
+        open = tensor.replaced(open, axis, ty("_"))
+      }
+      return set_type(m, outputs[0], shaped(tensor.elem(input), open))
+    }
+  }
+  if len(selected) != count {
+    return false
+  }
+  for raw in selected {
+    var axis = raw
+    if axis < 0 {
+      axis += len(source)
+    }
+    if axis < 0 || axis >= len(source) {
+      return false
+    }
+    open = tensor.replaced(open, axis, ty("_"))
+  }
+  return set_type(m, outputs[0], shaped(tensor.elem(input), open))
 }
 
 fn resize_result(op: Op) -> Ty {
@@ -954,6 +1035,21 @@ fn tile_type(m: Mod, op: Op) -> bool {
   }
   let source = tensor.dims(input)
   let repeats = const_ints(inputs[1])
+  if len(repeats) == 0 {
+    let repeat_type = ir.type(inputs[1])
+    if !tensor.valid(repeat_type) || tensor.elem(repeat_type) != ty("i64") {
+      return false
+    }
+    let repeat_shape = tensor.dims(repeat_type)
+    if len(repeat_shape) != 1 || repeat_shape[0] != ty(len(source)) {
+      return false
+    }
+    var open: list<Ty> = []
+    for dim in source {
+      open += [ty("_")]
+    }
+    return set_type(m, outputs[0], shaped(tensor.elem(input), open))
+  }
   if len(repeats) != len(source) {
     return false
   }
@@ -983,7 +1079,7 @@ fn topk_type(m: Mod, op: Op) -> bool {
   }
   let input = ir.type(inputs[0])
   let count = const_ints(inputs[1])
-  if !tensor.valid(input) || len(count) != 1 || count[0] <= 0 {
+  if !tensor.valid(input) {
     return false
   }
   let source = tensor.dims(input)
@@ -994,10 +1090,20 @@ fn topk_type(m: Mod, op: Op) -> bool {
   if axis < 0 || axis >= len(source) {
     return false
   }
-  if kind(source[axis]) == "int" && count[0] > int(source[axis]) {
-    return false
+  var extent = ty("_")
+  if len(count) == 1 {
+    if count[0] <= 0 ||
+       (kind(source[axis]) == "int" && count[0] > int(source[axis])) {
+      return false
+    }
+    extent = ty(count[0])
+  } else {
+    if int_vector_len(inputs[1]) != 1 ||
+       tensor.elem(ir.type(inputs[1])) != ty("i64") {
+      return false
+    }
   }
-  let shape = tensor.replaced(source, axis, ty(count[0]))
+  let shape = tensor.replaced(source, axis, extent)
   var changed = set_type(
     m, outputs[0], shaped(tensor.elem(input), shape)
   )
@@ -1024,30 +1130,17 @@ fn concat_result(op: Op) -> Ty {
   if axis < 0 || axis >= len(source) {
     return ty("_")
   }
-  var extent = 0
-  for input in inputs {
+  var shape = source
+  for i in 1..len(inputs) {
+    let input = inputs[i]
     let type = ir.type(input)
     if !tensor.valid(type) || tensor.elem(type) != tensor.elem(first) ||
        len(tensor.dims(type)) != len(source) {
       return ty("_")
     }
-    let shape = tensor.dims(type)
-    for dim in 0..len(source) {
-      if dim != axis && shape[dim] != source[dim] {
-        return ty("_")
-      }
-    }
-    if kind(shape[axis]) != "int" {
+    shape = tensor.concatenated(shape, tensor.dims(type), axis)
+    if len(shape) == 0 {
       return ty("_")
-    }
-    extent += int(shape[axis])
-  }
-  var shape: list<Ty> = []
-  for dim in 0..len(source) {
-    if dim == axis {
-      shape += [ty(extent)]
-    } else {
-      shape += [source[dim]]
     }
   }
   return shaped(tensor.elem(first), shape)
@@ -1220,13 +1313,26 @@ fn reshape_result(op: Op) -> Ty {
     return ty("_")
   }
   let source = tensor.dims(input)
-  let requested = shape_terms(inputs[1])
-  if len(requested) == 0 {
-    return ty("_")
-  }
   let allowzero = base.get(attrs(op), "allowzero", 0)
   if allowzero != 0 && allowzero != 1 {
     return ty("_")
+  }
+  let requested = shape_terms(inputs[1])
+  if len(requested) == 0 {
+    let shape_type = ir.type(inputs[1])
+    if !tensor.valid(shape_type) || tensor.elem(shape_type) != ty("i64") {
+      return ty("_")
+    }
+    let shape_shape = tensor.dims(shape_type)
+    if len(shape_shape) != 1 || kind(shape_shape[0]) != "int" ||
+       int(shape_shape[0]) < 0 {
+      return ty("_")
+    }
+    var open: list<Ty> = []
+    for i in 0..int(shape_shape[0]) {
+      open += [ty("_")]
+    }
+    return shaped(tensor.elem(input), open)
   }
   var inferred = -1
   var factors: list<Ty> = []
@@ -1860,7 +1966,7 @@ fn pool_type(m: Mod, op: Op) -> bool {
   )
 }
 
-fn infer(m: Mod) -> bool {
+fn infer_once(m: Mod) -> bool {
   var changed = false
   for op in ir.ops(m) {
     changed = refine_graphs(m, op) || changed
@@ -1979,6 +2085,26 @@ fn infer(m: Mod) -> bool {
       changed = pool_type(m, op) || changed
     }
   }
+  return changed
+}
+
+fn infer(m: Mod) -> bool {
+  var changed = false
+  var again = true
+  var exhausted = false
+  let limit = len(ir.ops(m)) + 1
+  for round in 0..limit {
+    if again {
+      let before = ir.revision(m)
+      infer_once(m)
+      again = ir.revision(m) != before
+      changed = again || changed
+      if round == limit - 1 && again {
+        exhausted = true
+      }
+    }
+  }
+  base.assert(!exhausted, "onnx.nn.infer did not converge")
   return changed
 }
 

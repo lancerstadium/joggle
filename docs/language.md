@@ -340,6 +340,9 @@ still use ordinary symbol resolution rather than a string alias table.
 module revision and participate in compile-time rollback. This lets an
 explicit frontend bridge introduce the semantic library whose qualified
 functions it selects; parsing a frontend never does so implicitly.
+`ir.revision(m)` exposes that monotonically increasing revision to module code.
+It is intended for convergence and invalidation checks; it is not serialized
+into the model and cannot be used as a stable model identifier.
 
 Generic compile-time helpers use the same syntax and bindings. In
 `fn below<N: int>(x: int) -> bool { return x < N }`, a call to `below<4>(3)`

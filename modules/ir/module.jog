@@ -5,6 +5,7 @@ fn fns(m: Mod) -> list<Fn>;
 fn fns(module: str) -> list<Fn>;
 fn find(m: Mod, name: str) -> Fn;
 fn uses(m: Mod) -> list<str>;
+fn revision(m: Mod) -> int;
 fn params(f: Fn) -> list<Val>;
 fn returns(f: Fn) -> list<Ty>;
 fn blks(f: Fn) -> list<Blk>;

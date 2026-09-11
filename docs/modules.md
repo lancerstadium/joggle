@@ -294,13 +294,15 @@ The optional `onnx.nn` module is that relationship, not another IR layer.
 The transport module's `onnx.opset(m, domain)` query reads the ordinary
 `onnx.model` descriptor, giving every relationship module one version source
 without versioned function names or parser state.
-`onnx.nn.infer` walks operations in source order and propagates tensor types
-through quantization boundaries, convolution, normalization point algebra,
-broadcast arithmetic, pooling, matrix operations, tensor rearrangement, and
-shape dataflow. Quantization nodes contribute only their provable shape and
-element type here. Compatible three-input QuantizeLinear and DequantizeLinear
-calls are then converted through `quant`; unsupported parameter layouts or
-element formats remain source calls.
+`onnx.nn.infer` propagates tensor types through quantization boundaries,
+convolution, normalization point algebra, broadcast arithmetic, pooling,
+matrix operations, tensor rearrangement, and shape dataflow. It repeats a
+deterministic source-order sweep until the module revision stops changing and
+rejects a relation set that cannot converge within a graph-derived bound.
+Quantization nodes contribute only their provable shape and element type here.
+Compatible three-input QuantizeLinear and DequantizeLinear calls are then
+converted through `quant`; unsupported parameter layouts or element formats
+remain source calls.
 Nested graph interfaces use the same relation: lexical capture operands and
 Loop iteration, condition, and carried operands refine ordinary child `Fn`
 parameters. The complete capture map is validated before any type changes. No

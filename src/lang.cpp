@@ -337,7 +337,7 @@ private:
   bool at_end() const { return peek().kind == Tk::end; }
   bool is(std::string_view text) const { return peek().text == text; }
   bool match(std::string_view text) {
-    if (!is(text))
+    if (peek().kind != Tk::symbol || !is(text))
       return false;
     ++pos_;
     return true;
