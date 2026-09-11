@@ -616,6 +616,13 @@ bool Env::accepts(Op call, Fn candidate) const {
 
 Fn Env::match(Op call, std::span<const Fn> candidates,
               bool* ambiguous) const {
+  return match(call, candidates, ambiguous, nullptr);
+}
+
+Fn Env::match(Op call, std::span<const Fn> candidates, bool* ambiguous,
+              std::vector<Ty>* generics) const {
+  if (generics)
+    generics->clear();
   if (ambiguous)
     *ambiguous = false;
   if (!call || call.kind() != Op::Kind::call)
@@ -637,16 +644,25 @@ Fn Env::match(Op call, std::span<const Fn> candidates,
   std::vector<Ty> resolved_returns;
   const Fn result = detail::resolve_overload(
       live, arguments, explicit_arguments, &resolved_returns, ambiguous,
-      context, nullptr, returns);
-  if (!result || resolved_returns.size() != returns.size())
-    return {};
-  for (std::size_t index = 0; index < returns.size(); ++index) {
-    if (returns[index].text() != "_" &&
-        resolved_returns[index].text() != "_" &&
-        returns[index] != resolved_returns[index])
-      return {};
-  }
-  return result;
+      context, generics, returns);
+  bool valid = result && resolved_returns.size() == returns.size();
+  for (std::size_t index = 0; valid && index < returns.size(); ++index)
+    valid = returns[index].text() == "_" ||
+            resolved_returns[index].text() == "_" ||
+            returns[index] == resolved_returns[index];
+  if (valid)
+    return result;
+  if (generics)
+    generics->clear();
+  return {};
+}
+
+std::vector<Ty> Env::match(Op call, Fn candidate) const {
+  std::vector<Ty> generics;
+  const std::array candidates{candidate};
+  if (!match(call, candidates, nullptr, &generics))
+    generics.clear();
+  return generics;
 }
 
 bool Env::expand(Mod& mod, Op call, Fn implementation) const {

@@ -373,6 +373,19 @@ fn clone_relu4(m: Mod) -> bool {
   return false
 }
 
+fn clone_matched(m: Mod) -> bool {
+  for op in ir.ops(m) {
+    let fn = ir.resolve(m, op)
+    if ir.live(fn) && ir.symbol(fn) == "nn.relu" {
+      let generics = ir.match(op, fn)
+      if len(generics) == 2 {
+        return ir.live(ir.clone(m, fn, "relu_matched", generics))
+      }
+    }
+  }
+  return false
+}
+
 fn return_three(m: Mod) -> bool {
   for op in ir.ops(m) {
     if ir.kind(op) == "return" {

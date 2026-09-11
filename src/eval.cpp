@@ -1231,6 +1231,13 @@ private:
         return Items{Item(Attr(env_.accepts(*op, *fn)))};
     } else if (name == "match" && args.size() == 2) {
       const auto* op = as<Op>(args[0]);
+      const auto* fn = as<Fn>(args[1]);
+      if (op && fn) {
+        Items out;
+        for (const Ty& type : env_.match(*op, *fn))
+          out.emplace_back(type);
+        return Items{Item(std::move(out))};
+      }
       const Items* items = list(args[1]);
       if (op && items) {
         std::vector<Fn> candidates;

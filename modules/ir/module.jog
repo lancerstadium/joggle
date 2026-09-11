@@ -32,6 +32,7 @@ fn type(m: Mod, v: Val, type: Ty) -> bool;
 fn resolve(m: Mod, op: Op) -> Fn;
 fn accepts(op: Op, f: Fn) -> bool;
 fn match(op: Op, fns: list<Fn>) -> Fn;
+fn match(op: Op, fn: Fn) -> list<Ty>;
 fn where(fns: list<Fn>, key: str, value: Attr) -> list<Fn>;
 fn invoke(m: Mod, op: Op, fn: Fn) -> bool;
 fn symbol(f: Fn) -> str;

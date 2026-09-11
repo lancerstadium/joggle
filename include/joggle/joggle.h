@@ -311,6 +311,7 @@ public:
   Fn resolve(const Mod& from, Op call) const;
   Fn match(Op call, std::span<const Fn> candidates,
            bool* ambiguous = nullptr) const;
+  std::vector<Ty> match(Op call, Fn candidate) const;
   bool accepts(Op call, Fn candidate) const;
   bool expand(Mod& mod, Op call, Fn implementation) const;
   bool bound(std::string_view symbol) const noexcept;
@@ -332,6 +333,8 @@ private:
   bool reaches(std::string_view from, std::string_view target) const;
   std::uint64_t cache_id() const noexcept;
   std::uint64_t cache_epoch() const noexcept;
+  Fn match(Op call, std::span<const Fn> candidates, bool* ambiguous,
+           std::vector<Ty>* generics) const;
   Fn resolve(const Mod& from, Op call, std::string_view callee,
              std::span<const Val> args,
              std::vector<Ty>* returns = nullptr) const;

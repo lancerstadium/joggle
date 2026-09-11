@@ -277,12 +277,19 @@ int main(int argc, char** argv) {
   CHECK(joggle::structurally_equal(recursive_fn, recursive_roundtrip));
 
   joggle::Op tensor_add;
+  joggle::Op relu_call;
   for (joggle::Op op : network.find_fn("stage").ops())
     if (op.callee() == "operator +")
       tensor_add = op;
+    else if (op.callee() == "nn.relu")
+      relu_call = op;
   CHECK(tensor_add && env.resolve(network, tensor_add).module() == "tensor");
   const joggle::Fn relu = env.find_fn("nn.relu");
   CHECK(relu && !relu.external());
+  const std::vector<joggle::Ty> matched_generics =
+      env.match(relu_call, relu);
+  CHECK((matched_generics ==
+         std::vector<joggle::Ty>{joggle::Ty("f32"), joggle::Ty("[4]")}));
   bool relu_loop = false;
   bool relu_branch = false;
   for (joggle::Op op : relu.ops()) {
@@ -307,6 +314,16 @@ int main(int argc, char** argv) {
   }
   CHECK(network_cpp.verify(env));
   CHECK(env.load("script"));
+  joggle::Mod matched_fn;
+  CHECK(joggle::parse(env, network_source, matched_fn, "matched-fn.jog"));
+  joggle::Attr matched_report;
+  CHECK(joggle::run(env, "script.clone_matched", matched_fn, matched_report));
+  CHECK(matched_fn.verify(env));
+  const joggle::Fn matched_relu = matched_fn.find_fn("relu_matched");
+  CHECK(matched_relu && matched_relu.generics().empty());
+  CHECK(matched_relu.params().front().type() ==
+        joggle::Ty("tensor<f32, [4]>") &&
+        matched_relu.returns().front() == joggle::Ty("tensor<f32, [4]>"));
   joggle::Mod scripted_fn;
   constexpr std::string_view scripted_fn_source =
       "module scripted.generated\n"

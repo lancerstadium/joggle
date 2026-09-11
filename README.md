@@ -124,6 +124,8 @@ An extension may clone a normal module `fn` into the program with
 materialization without a separate kernel builder.
 Supplying a final `list<Ty>` binds the template generics and produces a
 monomorphic function through the same operation.
+`ir.match(call, fn)` supplies those terms directly from a resolved network
+call, so an extension does not reimplement dtype or shape inference.
 
 Local module lifecycle commands are deterministic and registry-free:
 

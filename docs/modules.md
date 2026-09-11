@@ -535,6 +535,9 @@ ignored by capability checks.
 A body-bearing declaration is also an alternative implementation. `opt.apply`
 groups declarations by the resolved source symbol, asks `ir.match` to choose
 the most specific compatible overload, and expands that body to a fixed point.
+Passing the chosen `Fn` rather than a list back to `ir.match` returns its
+inferred generic terms. A module may pass those terms directly to `ir.clone` to
+retain a named monomorphic function for later transforms or emission.
 The default bound is derived from the number of supplied implementations;
 `opt.apply(m, impls, limit)` makes it explicit for recursive specialization.
 One extra convergence probe detects a still-changing final round; failure

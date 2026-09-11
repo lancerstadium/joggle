@@ -271,6 +271,17 @@ ordinary values become constants or list literals in the entry block. Invalid
 bindings and collisions with an existing concrete overload leave the program
 unchanged.
 
+For a real call, the ordinary matcher already knows those terms:
+
+```jog
+let template = ir.resolve(m, call)
+let generics = ir.match(call, template)
+let local = ir.clone(m, template, "edge_relu", generics)
+```
+
+This retains the call-specific dtype and shape without a target descriptor or
+a second generic-inference interface.
+
 ## Define a fusion policy
 
 A project module can reuse the generic chain matcher while choosing its own

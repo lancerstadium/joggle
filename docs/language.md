@@ -410,12 +410,17 @@ whose policy has not been chosen leaves the module unchanged.
 `ir.match(op, fns)` applies the same specificity ordering to an explicit list
 of function handles. No match returns an invalid `Fn`; equally specific matches
 are an execution error rather than a declaration-order choice. When the chosen
-function comes from another module and its local name denotes the resolved
-source symbol, `ir.expand` treats it as an alternative implementation, adds its
-owning module only if not already visible, and rolls back both changes on
-failure. The dependency and substituted body form one revision commit. Thus an
-unqualified source call and a module-supplied implementation
-still use ordinary symbol resolution rather than a string alias table.
+function is passed back as `ir.match(op, fn)`, the result is the ordered
+`list<Ty>` of generic terms inferred for that exact call. The two overloads use
+one resolver, including explicit terms and known result types; the second form
+therefore feeds `ir.clone` without reconstructing shapes or element types.
+When the chosen function comes from another module and its local name denotes
+the resolved source symbol, `ir.expand` treats it as an alternative
+implementation, adds its owning module only if not already visible, and rolls
+back both changes on failure. The dependency and substituted body form one
+revision commit. Thus an unqualified source call and a module-supplied
+implementation still use ordinary symbol resolution rather than a string alias
+table.
 
 Open function attributes can also define module-owned relations without a
 second rule language. `ir.where(fns, key, value)` filters an explicit function

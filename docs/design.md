@@ -528,12 +528,14 @@ retains `nn.relu` for `tensor<i8, [4]>` while expanding the same symbol for
 The same explicit `Fn` set can supply implementations. `ir.match` performs the
 ordinary overload ranking inside that set, honors generic arguments written on
 the source call, and rejects a selected function when its substituted results
-conflict with known call results. The environment-aware `ir.expand` permits a
-function whose local name equals the source call's resolved symbol. It adds the
-implementation module only when not already
-visible, then specializes and copies the normal function body. Dependency and
-body edits roll back together. `opt.apply` is merely the bounded fixed-point
-policy over these primitives: it skips bodyless declarations and
+conflict with known call results. Its single-function overload returns the
+ordered inferred generic terms, so an extension can materialize that concrete
+function through `ir.clone` without a second inference path. The
+environment-aware `ir.expand` permits a function whose local name equals the
+source call's resolved symbol. It adds the implementation module only when not
+already visible, then specializes and copies the normal function body.
+Dependency and body edits roll back together. `opt.apply` is merely the bounded
+fixed-point policy over these primitives: it skips bodyless declarations and
 metadata-bearing calls, rejects ambiguous or non-converging implementation
 sets, and contains no target or NN names. The general `base.assert` primitive
 turns bound exhaustion into a located transactional failure. A network
