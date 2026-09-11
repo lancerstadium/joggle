@@ -244,6 +244,8 @@ int main(int argc, char** argv) {
         network_adds > 0 && network_pools > 0 && network_reshapes > 0);
   CHECK(joggle::run(env, "onnx.nn.convert", semantic));
   CHECK(semantic.verify(env));
+  CHECK(count_calls(semantic, "onnx.tensor") == 0);
+  CHECK(count_calls(semantic, "tensor.literal") == tensors);
   CHECK(count_calls(semantic, "onnx.Conv") == 0);
   CHECK(count_calls(semantic, "onnx.BatchNormalization") == 0);
   CHECK(count_calls(semantic, "onnx.Relu") == 0);

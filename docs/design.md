@@ -197,6 +197,12 @@ graph attribute records only the referenced function, its formal input count,
 and capture operand positions. No ONNX-only region or control-flow container is
 added to core.
 The same codec boundary is now independently exercised by the TFLite module.
+Semantic conversion then removes the codec-specific constant operations:
+ONNX initializers, ONNX Constant payloads, and TFLite buffers become the same
+result-typed `tensor.literal(bytes)` call. The tensor module owns that data
+primitive, while C and VM interpret it independently. This prevents target
+modules from accumulating frontend cases and preserves raw source bits until a
+representation-aware consumer is selected.
 
 The pinned MobileNetV2 model passes the complete codec gate: binary decode,
 generation of 267 tensor constants and 155 calls, parse, verify, canonical
@@ -1104,9 +1110,12 @@ branches and range loops, and static tensors of those elements. Every image
 value carries an explicit primitive format. Integer and floating inputs retain
 their 8- or 4-byte widths; tensor parameters and results use row-major elements.
 Allocation, fill, multidimensional load, and versioned in-place update remain
-explicit image instructions. Loop-carried scalar and tensor values retain the
-ordinary IR semantics. Arithmetic right shift is defined from unsigned bit
-operations rather than a host implementation-defined signed shift. Execution
+explicit image instructions. A tensor-literal instruction embeds the canonical
+hex payload produced by `tensor.literal`, validates its native byte width, and
+does not introduce an internal core tensor representation. Loop-carried scalar
+and tensor values retain the ordinary IR semantics. Arithmetic right shift is
+defined from unsigned bit operations rather than a host implementation-defined
+signed shift. Execution
 reports deterministic instruction steps, not hardware cycles. Malformed
 images, mismatched arguments, invalid shifts, integer division by zero,
 out-of-range casts, and invalid tensor accesses are negative gates. Repeated

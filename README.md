@@ -227,8 +227,10 @@ indexing, and explicit numeric conversion. Integer and floating-point
 nested-loop matrix multiplication execute through both C and VM gates. The
 parameterized run boundary also expands the shared high-level tensor `+` body
 and executes it in the VM without a VM-specific preparation function. The step
-count is not presented as hardware cycles, and a conventional imported network
-remains an open M10 gate.
+count is not presented as hardware cycles. Frontend bridges normalize ONNX and
+TFLite weight payloads to the shared `tensor.literal` primitive; C and VM both
+execute that primitive without knowing either frontend. A complete imported
+network execution comparison remains an open M10 gate.
 
 ## Guarantees and boundaries
 

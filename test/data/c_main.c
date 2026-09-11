@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 void jog_matmul(const float* a, const float* b, float* out);
+void jog_weights(float* out);
 void jog_int_add(const int64_t* a, const int64_t* b, int64_t* out);
 void jog_int_matmul(const int64_t* a, const int64_t* b, int64_t* out);
 float jog_affine(float x);
@@ -10,6 +11,11 @@ float jog_direct(float x);
 float jog_relu(float x);
 
 int main(void) {
+  float weights[2] = {0.0f, 0.0f};
+  jog_weights(weights);
+  if (weights[0] != 1.0f || weights[1] != 2.0f)
+    return 7;
+
   const int64_t integers_a[6] = {1, 2, 3, 4, 5, 6};
   const int64_t integers_b[6] = {7, 8, 9, 10, 11, 12};
   const int64_t integers_expected[6] = {8, 10, 12, 14, 16, 18};

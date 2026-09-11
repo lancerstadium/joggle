@@ -336,7 +336,12 @@ and range loops, and static tensors with an exact instruction-step count. The
 same integer and floating-point nested-loop matrix multiplications run through
 C and VM with their native element widths. Parameterized `opt.expand` also
 exposes and executes the existing shared tensor-add body without a target-owned
-lowering function. Core gained no target or instruction cases. This is not yet
+lowering function. ONNX initializers and Constant nodes plus TFLite buffers now
+retarget to one result-typed `tensor.literal(bytes)` data primitive. C and VM
+both execute its size-checked raw payload, so target modules no longer need
+frontend-specific weight operations. The conversion is exercised by thirteen
+official ONNX Zoo model gates and the official TFLite MobileNet gate. Core
+gained no frontend, target, or tensor-literal case. This is not yet
 the second target exit gate: module-defined formats and an official-model
 execution comparison remain open.
 

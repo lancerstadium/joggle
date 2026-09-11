@@ -86,6 +86,35 @@ bool natural(std::string_view text, std::size_t& out) {
   return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size();
 }
 
+int nibble(char value) {
+  if (value >= '0' && value <= '9')
+    return value - '0';
+  if (value >= 'a' && value <= 'f')
+    return value - 'a' + 10;
+  if (value >= 'A' && value <= 'F')
+    return value - 'A' + 10;
+  return -1;
+}
+
+bool byte_literal(std::string_view text, std::vector<std::uint8_t>& out) {
+  if (!text.starts_with("hex\"") || text.size() < 5 || text.back() != '"')
+    return false;
+  text.remove_prefix(4);
+  text.remove_suffix(1);
+  if (text.size() % 2 != 0)
+    return false;
+  out.clear();
+  out.reserve(text.size() / 2);
+  for (std::size_t at = 0; at < text.size(); at += 2) {
+    const int high = nibble(text[at]);
+    const int low = nibble(text[at + 1]);
+    if (high < 0 || low < 0)
+      return false;
+    out.push_back(static_cast<std::uint8_t>((high << 4) | low));
+  }
+  return true;
+}
+
 enum class Kind { i64, f32, f64 };
 
 bool kind(std::string_view text, Kind& out) {
@@ -652,6 +681,29 @@ bool execute(const std::vector<Line>& code, std::size_t first,
       auto tensor = std::make_shared<Tensor>();
       tensor->kind = format;
       tensor->items.assign(count, fill);
+      state.regs[out_id] = Value{format, 0, std::move(tensor)};
+      continue;
+    }
+    if (op == "literal") {
+      Kind format = Kind::i64;
+      std::size_t count = 0;
+      std::vector<std::uint8_t> data;
+      if (line.size() != 5 || !kind(line[1], format) ||
+          !reg(line[2], out_id) || !natural(line[3], count) ||
+          !byte_literal(line[4], data) ||
+          count > std::numeric_limits<std::size_t>::max() / width(format) ||
+          data.size() != count * width(format)) {
+        state.error = "invalid tensor literal instruction";
+        return false;
+      }
+      auto tensor = std::make_shared<Tensor>();
+      tensor->kind = format;
+      tensor->items.reserve(count);
+      for (std::size_t item = 0; item < count; ++item)
+        tensor->items.push_back(
+            load_value(data.data() + item * width(format), format));
+      if (!state.tick())
+        return false;
       state.regs[out_id] = Value{format, 0, std::move(tensor)};
       continue;
     }

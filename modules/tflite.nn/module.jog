@@ -98,6 +98,18 @@ fn convert_call(
   return true
 }
 
+[phase: "data", on: "tflite.tensor"]
+fn convert_tensor(m: Mod, op: Op) -> bool {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if len(inputs) != 1 || len(outputs) != 1 ||
+     !tensor.valid(ir.type(outputs[0])) || !ir.is_const(inputs[0]) ||
+     base.kind(ir.constant(inputs[0])) != "bytes" {
+    return false
+  }
+  return convert_call(m, op, "tensor.literal")
+}
+
 fn convert_conv(m: Mod, op: Op, depthwise: bool) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -169,12 +181,12 @@ fn convert_conv(m: Mod, op: Op, depthwise: bool) -> bool {
   return convert_call(m, op, "nn.conv2d", inputs)
 }
 
-[on: "tflite.CONV_2D"]
+[phase: "compute", on: "tflite.CONV_2D"]
 fn conv(m: Mod, op: Op) -> bool {
   return convert_conv(m, op, false)
 }
 
-[on: "tflite.DEPTHWISE_CONV_2D"]
+[phase: "compute", on: "tflite.DEPTHWISE_CONV_2D"]
 fn depthwise_conv(m: Mod, op: Op) -> bool {
   return convert_conv(m, op, true)
 }
@@ -208,17 +220,17 @@ fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
   return convert_call(m, op, callee, inputs)
 }
 
-[on: "tflite.ADD"]
+[phase: "compute", on: "tflite.ADD"]
 fn add(m: Mod, op: Op) -> bool {
   return convert_binary(m, op, "nn.add")
 }
 
-[on: "tflite.SUB"]
+[phase: "compute", on: "tflite.SUB"]
 fn sub(m: Mod, op: Op) -> bool {
   return convert_binary(m, op, "nn.sub")
 }
 
-[on: "tflite.MUL"]
+[phase: "compute", on: "tflite.MUL"]
 fn mul(m: Mod, op: Op) -> bool {
   return convert_binary(m, op, "nn.mul")
 }
@@ -272,17 +284,17 @@ fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
   return convert_call(m, op, callee, inputs)
 }
 
-[on: "tflite.AVERAGE_POOL_2D"]
+[phase: "compute", on: "tflite.AVERAGE_POOL_2D"]
 fn avg_pool(m: Mod, op: Op) -> bool {
   return convert_pool(m, op, "nn.avg_pool2d")
 }
 
-[on: "tflite.MAX_POOL_2D"]
+[phase: "compute", on: "tflite.MAX_POOL_2D"]
 fn max_pool(m: Mod, op: Op) -> bool {
   return convert_pool(m, op, "nn.max_pool2d")
 }
 
-[on: "tflite.RESHAPE"]
+[phase: "compute", on: "tflite.RESHAPE"]
 fn convert_reshape(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   if len(inputs) < 1 || len(ir.outs(op)) != 1 {
@@ -292,7 +304,7 @@ fn convert_reshape(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.reshape", values)
 }
 
-[on: "tflite.SOFTMAX"]
+[phase: "compute", on: "tflite.SOFTMAX"]
 fn convert_softmax(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -315,10 +327,14 @@ fn convert_softmax(m: Mod, op: Op) -> bool {
 
 fn convert(m: Mod, rules: list<Fn>) -> bool {
   var changed = ir.use(m, "nn")
-  for op in ir.ops(m) {
-    if ir.live(op) && !quantized(op) {
-      for rule in ir.where(rules, "on", ir.callee(op)) {
-        changed = ir.invoke(m, op, rule) || changed
+  changed = ir.use(m, "tensor") || changed
+  for phase in ["data", "compute"] {
+    let selected = ir.where(rules, "phase", phase)
+    for op in ir.ops(m) {
+      if ir.live(op) && (phase == "data" || !quantized(op)) {
+        for rule in ir.where(selected, "on", ir.callee(op)) {
+          changed = ir.invoke(m, op, rule) || changed
+        }
       }
     }
   }

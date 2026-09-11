@@ -3,6 +3,7 @@ use base
 
 fn tensor<E: Ty, S: list<int>>() -> Ty;
 fn tensor<E: Ty, S: list<int>>(fill: E) -> tensor<E, S>;
+fn literal<E: Ty, S: list<int>>(data: bytes) -> tensor<E, S>;
 
 fn valid(type: Ty) -> bool {
   if name(type) != "tensor" {

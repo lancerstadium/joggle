@@ -203,6 +203,16 @@ images, entries, input sizes, shapes, indices, or out-of-range conversions fail
 through the normal module diagnostic boundary. Local function calls, dynamic
 tensors, module-defined storage formats, and format-aware costs are still open.
 
+`tensor.literal<E, S>(bytes)` is the frontend-neutral immutable tensor-data
+boundary. Its result type determines element format and shape; the payload
+retains the source bits rather than becoming a second core tensor object. The C
+module copies a size-checked payload into static storage, while VM image version
+2 carries the same hex bytes and reconstructs native-width elements. Neither
+target contains an ONNX or TFLite data-node case. The current C reference gate
+expects the host scalar object representation to match the payload; portable
+cross-representation decoding remains target policy rather than hidden IR
+reinterpretation.
+
 This split is the target-extension test: source code owns selection and
 emission policy, native code owns execution, and neither requires a target
 abstraction in core. The C and VM tests consume the same ordinary integer and
@@ -268,6 +278,12 @@ otherwise it returns `_` instead of inventing an expression language.
 edits. `refined` fills only `_` tensor holes and rejects a conflicting element,
 rank, or dimension. These relations are ordinary module functions and are
 available to any frontend or research transform.
+The bodyless `literal<E, S>(bytes)` declaration is a low-level data capability,
+not a frontend codec. Result-type generic inference gives the payload its
+tensor type, and consumers validate its byte count against the selected
+representation. ONNX and TFLite bridges retarget their distinct source data
+nodes to this one operation before computation conversion; value metadata and
+names remain attached to the existing result.
 `broadcast_shape` and `broadcastable` are overloaded for concrete shapes and
 raw dimension terms. They express trailing-axis compatibility by exact term
 equality and singleton expansion, while `broadcast_offset` and `broadcast`

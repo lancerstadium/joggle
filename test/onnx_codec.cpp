@@ -201,7 +201,8 @@ int main(int argc, char** argv) {
   CHECK(calls(constant, "onnx.Constant") == 0);
   CHECK(calls(constant, "onnx.Reshape") == 0);
   CHECK(calls(constant, "onnx.Slice") == 0);
-  CHECK(calls(constant, "onnx.tensor") == 1);
+  CHECK(calls(constant, "onnx.tensor") == 0);
+  CHECK(calls(constant, "tensor.literal") == 1);
   CHECK(calls(constant, "tensor.reshape") == 1);
   CHECK(calls(constant, "tensor.slice") == 1);
   joggle::Mod constant_roundtrip;

@@ -21,6 +21,11 @@ fn relu(x: f32) -> f32 {
   return x
 }
 
+fn weights() -> tensor<f32, [2]> {
+  let values: tensor<f32, [2]> = tensor.literal(hex"0000803f00000040")
+  return values
+}
+
 fn int_add(
   a: tensor<i64, [2, 3]>,
   b: tensor<i64, [2, 3]>

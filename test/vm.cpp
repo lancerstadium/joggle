@@ -112,6 +112,7 @@ int main(int argc, char** argv) {
   env.path(argv[4]);
   CHECK(env.load("vm"));
   CHECK(env.load("opt"));
+  CHECK(env.load("c"));
   joggle::Mod model;
   CHECK(joggle::parse(env, source.str(), model, argv[1]));
   CHECK(model.verify(env));
@@ -236,6 +237,32 @@ int main(int argc, char** argv) {
   CHECK(!execute(env, std::string(*float_image.string()), "matmul",
                  {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, result,
                  float_steps));
+
+  const std::vector<joggle::Attr> weight_selection{joggle::Attr("weights")};
+  joggle::Attr weight_image;
+  CHECK(joggle::query(env, "vm.image", tensor_model, weight_image,
+                      weight_selection));
+  CHECK(weight_image.string());
+  std::int64_t weight_steps = 0;
+  CHECK(execute_bytes(env, std::string(*weight_image.string()), "weights", {},
+                      result, weight_steps));
+  CHECK(floats(result) == (std::vector<float>{1.0F, 2.0F}));
+  CHECK(weight_steps > 0);
+
+  constexpr std::string_view bad_literal_source =
+      "module bad.literal\n"
+      "use tensor\n"
+      "fn main() -> tensor<f32, [2]> {\n"
+      "  let x: tensor<f32, [2]> = tensor.literal(hex\"00\")\n"
+      "  return x\n"
+      "}\n";
+  joggle::Mod bad_literal;
+  CHECK(joggle::parse(env, bad_literal_source, bad_literal,
+                      "bad-literal.jog"));
+  CHECK(bad_literal.verify(env));
+  joggle::Attr rejected_literal;
+  CHECK(!joggle::query(env, "vm.image", bad_literal, rejected_literal));
+  CHECK(!joggle::query(env, "c.source", bad_literal, rejected_literal));
 
   std::ifstream open_input(argv[3]);
   CHECK(open_input);

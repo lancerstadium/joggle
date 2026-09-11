@@ -49,6 +49,19 @@ fn scalar_name(name: str) -> bool {
   return has(scalars(), name)
 }
 
+fn width(type: Ty) -> int {
+  let widths = {
+    bool: 1,
+    i8: 1, u8: 1,
+    i16: 2, u16: 2,
+    i32: 4, u32: 4, f32: 4,
+    i64: 8, u64: 8, index: 8, int: 8, f64: 8
+  }
+  let name = base.name(type)
+  assert(has(widths, name), "c: unsupported scalar width " + text(type))
+  return base.int(widths[name])
+}
+
 fn count(type: Ty) -> int {
   assert(tensor.static(type), "c: tensor shape must be static: " + text(type))
   var out = 1
@@ -198,6 +211,13 @@ fn supported(m: Mod, op: Op) -> bool {
      ir.live(target) && ir.symbol(target) == "tensor.tensor" {
     return true
   }
+  if len(inputs) == 1 && len(outputs) == 1 &&
+     tensor.static(ir.type(outputs[0])) && ir.is_const(inputs[0]) &&
+     base.kind(ir.constant(inputs[0])) == "bytes" &&
+     ir.live(target) && ir.symbol(target) == "tensor.literal" {
+    return base.size(ir.constant(inputs[0])) ==
+           count(ir.type(outputs[0])) * width(tensor.elem(ir.type(outputs[0])))
+  }
   if binary(name) != "" && len(inputs) == 2 && len(outputs) == 1 {
     return !tensor.valid(ir.type(outputs[0]))
   }
@@ -266,6 +286,45 @@ fn tensor_new(m: Mod, op: Op, depth: int) -> str {
   return out
 }
 
+fn tensor_literal(op: Op, depth: int) -> str {
+  let outputs = ir.outs(op)
+  let inputs = ir.args(op)
+  assert(len(outputs) == 1 && len(inputs) == 1 && ir.is_const(inputs[0]),
+         "c: tensor literal requires constant bytes")
+  let output = outputs[0]
+  let type = ir.type(output)
+  let data = ir.constant(inputs[0])
+  let indent = pad(depth)
+  let bytes = base.size(data)
+  let elements = count(type)
+  assert(bytes == elements * width(tensor.elem(type)),
+         "c: tensor literal byte size does not match its type")
+  var storage = elements
+  if storage == 0 {
+    storage = 1
+  }
+  var out = ""
+  if !mem.planned(output) {
+    out = indent + scalar(tensor.elem(type)) + " " + val(output) + "[" +
+          text(storage) + "];\n"
+  }
+  if bytes == 0 {
+    return out
+  }
+  out += indent + "static const unsigned char jog_data_" +
+         id(ir.name(output)) +
+         "[" + text(bytes) + "] = {"
+  for i in 0..bytes {
+    if i != 0 {
+      out += ", "
+    }
+    out += text(base.byte(data, i))
+  }
+  out += "};\n" + indent + "memcpy(" + val(output) + ", jog_data_" +
+         id(ir.name(output)) + ", " + text(bytes) + ");\n"
+  return out
+}
+
 fn call(m: Mod, op: Op, depth: int) -> str {
   let name = ir.callee(op)
   let inputs = ir.args(op)
@@ -299,6 +358,10 @@ fn call(m: Mod, op: Op, depth: int) -> str {
   if len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
      ir.live(target) && ir.symbol(target) == "tensor.tensor" {
     return tensor_new(m, op, depth)
+  }
+  if len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
+     ir.live(target) && ir.symbol(target) == "tensor.literal" {
+    return tensor_literal(op, depth)
   }
 
   let binary_op = binary(name)
@@ -544,6 +607,7 @@ fn source(m: Mod) -> str {
     }
   }
   assert(count != 0, "c: module has no function definitions")
-  return "#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n\n" +
+  return "#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n" +
+         "#include <string.h>\n\n" +
          declarations + "\n" + definitions
 }
