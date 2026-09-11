@@ -1111,9 +1111,11 @@ Those are handled before target legalization by two ordinary `opt` functions:
 performs batch identity propagation. Their commit path replaces values and
 erases operations in whole batches, so use lists and dominance are not rescanned
 once per selected call. The official expanded MobileNetV2 model now completes
-`c.prepare`; full `c.source` generation still exposes an unnamed structured-
-control capture that must be normalized before this becomes an application
-execution claim.
+`c.prepare`, emits a C99 translation unit, and passes a strict compiler syntax
+check. Logical `&&` and `||` values remain structured branches in the IR and
+are recovered from their forwarding arm by the C module; the core has no C
+expression case. Runtime output comparison and application-scale storage
+planning remain required before this becomes an end-to-end execution claim.
 
 ## M10 deterministic-VM slice
 

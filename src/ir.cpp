@@ -2805,6 +2805,125 @@ bool Mod::set(Val item, std::string key, Attr value) {
   return true;
 }
 
+bool Mod::set(std::span<const Val> items, std::string key,
+              std::span<const Attr> values) {
+  auto& store = impl_->store;
+  const auto reject = [&](std::string message) {
+    detail::add_diag(store.diags, std::move(message));
+    return false;
+  };
+  if (items.size() != values.size())
+    return reject("set requires one metadata value per IR value");
+  if (items.empty() || key.empty())
+    return reject("set requires values and a non-empty key");
+  for (Val item : items)
+    if (!item.valid() || item.store_ != &store)
+      return reject("set requires live values in this module");
+
+  std::vector<std::uint32_t> parents(store.vals.size());
+  std::vector<std::uint8_t> ranks(store.vals.size());
+  for (std::uint32_t id = 0; id < parents.size(); ++id)
+    parents[id] = id;
+  const auto root = [&](std::uint32_t id) {
+    while (parents[id] != id) {
+      parents[id] = parents[parents[id]];
+      id = parents[id];
+    }
+    return id;
+  };
+  const auto join = [&](std::uint32_t left, std::uint32_t right) {
+    if (left >= store.vals.size() || right >= store.vals.size() ||
+        !store.vals[left].live || !store.vals[right].live)
+      return;
+    left = root(left);
+    right = root(right);
+    if (left == right)
+      return;
+    if (ranks[left] < ranks[right])
+      std::swap(left, right);
+    parents[right] = left;
+    if (ranks[left] == ranks[right])
+      ++ranks[left];
+  };
+
+  for (const auto& slot : store.ops) {
+    if (!slot.live || (slot.data.kind != Op::Kind::loop &&
+                       slot.data.kind != Op::Kind::branch))
+      continue;
+    const detail::OpData& op = slot.data;
+    const std::size_t offset =
+        op.kind == Op::Kind::loop ? op.iter_names.size() : 1;
+    if (op.args.size() < offset + op.carried_count ||
+        op.outs.size() < op.carried_count)
+      continue;
+    for (std::size_t index = 0; index < op.carried_count; ++index) {
+      const std::uint32_t seed = op.args[offset + index];
+      join(seed, op.outs[index]);
+      for (const std::uint32_t blk : op.blks) {
+        if (blk >= store.blks.size() || !store.blks[blk].live)
+          continue;
+        const detail::BlkData& body = store.blks[blk].data;
+        const std::size_t arg =
+            op.kind == Op::Kind::loop ? offset + index : index;
+        if (arg < body.args.size())
+          join(seed, body.args[arg]);
+        if (!body.ops.empty()) {
+          const detail::OpData& end = store.ops[body.ops.back()].data;
+          if (end.kind == Op::Kind::yield && index < end.args.size())
+            join(seed, end.args[index]);
+        }
+      }
+    }
+  }
+
+  std::vector<bool> printable(store.vals.size());
+  for (std::uint32_t id = 0; id < store.vals.size(); ++id) {
+    if (!store.vals[id].live)
+      continue;
+    const detail::ValData& value = store.vals[id].data;
+    bool source = value.kind == detail::ValKind::generic ||
+                  value.kind == detail::ValKind::param;
+    if (value.kind == detail::ValKind::result && !value.name.empty() &&
+        value.def != detail::none && value.def < store.ops.size() &&
+        store.ops[value.def].live) {
+      const detail::Form form = store.ops[value.def].data.form;
+      source = source || form == detail::Form::let ||
+               form == detail::Form::var;
+    }
+    if (source)
+      printable[root(id)] = true;
+  }
+
+  std::unordered_map<std::uint32_t, Attr> assignments;
+  assignments.reserve(items.size());
+  for (std::size_t index = 0; index < items.size(); ++index) {
+    const std::uint32_t group = root(items[index].id_);
+    if (!printable[group])
+      return reject("cannot annotate a value without a source binding");
+    const auto [found, inserted] = assignments.emplace(group, values[index]);
+    if (!inserted && found->second != values[index])
+      return reject("set assigns conflicting metadata to one value family");
+  }
+
+  bool changed = false;
+  for (std::uint32_t id = 0; id < store.vals.size(); ++id) {
+    if (!store.vals[id].live)
+      continue;
+    const auto assigned = assignments.find(root(id));
+    if (assigned == assignments.end())
+      continue;
+    Attr::Dict& meta = store.vals[id].data.meta;
+    const auto found = meta.find(key);
+    if (found == meta.end() || found->second != assigned->second) {
+      meta[key] = assigned->second;
+      changed = true;
+    }
+  }
+  if (changed)
+    touch(store);
+  return true;
+}
+
 bool Mod::set(Op op, std::string key, Attr value) {
   auto& store = impl_->store;
   if (!op.valid() || op.store_ != &store || key.empty()) {

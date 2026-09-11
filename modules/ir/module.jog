@@ -82,6 +82,7 @@ fn rename(m: Mod, op: Op, callee: str) -> bool;
 fn retarget(m: Mod, op: Op, callee: str, args: list<Val>) -> bool;
 fn set(m: Mod, f: Fn, key: str, value: Attr) -> bool;
 fn set(m: Mod, v: Val, key: str, value: Attr) -> bool;
+fn set<T: Ty>(m: Mod, v: list<Val>, key: str, value: list<T>) -> bool;
 fn set(m: Mod, op: Op, key: str, value: Attr) -> bool;
 fn unset(m: Mod, f: Fn, key: str) -> bool;
 fn unset(m: Mod, v: Val, key: str) -> bool;

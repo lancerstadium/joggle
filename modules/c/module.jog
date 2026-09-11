@@ -88,7 +88,39 @@ fn expr(m: Mod, value: Val) -> str {
     return val(value)
   }
   let op = ir.def(value)
-  assert(ir.live(op) && ir.kind(op) == "call",
+  assert(ir.live(op),
+         "c: unnamed " + text(ir.type(value)) +
+         " value has no definition")
+  if ir.kind(op) == "branch" {
+    let inputs = ir.args(op)
+    let bodies = ir.blks(op)
+    assert(len(inputs) == 2 && len(bodies) == 2 &&
+           len(ir.outs(op)) == 1 && ir.type(value) == ty("bool"),
+           "c: unnamed branch value is not a logical expression")
+    let first_args = ir.args(bodies[0])
+    let second_args = ir.args(bodies[1])
+    let first_ops = ir.ops(bodies[0])
+    let second_ops = ir.ops(bodies[1])
+    assert(len(first_args) == 1 && len(second_args) == 1 &&
+           len(first_ops) != 0 && len(second_ops) != 0,
+           "c: logical expression has invalid arms")
+    let first_yield = first_ops[len(first_ops) - 1]
+    let second_yield = second_ops[len(second_ops) - 1]
+    assert(ir.kind(first_yield) == "yield" &&
+           ir.kind(second_yield) == "yield" &&
+           len(ir.args(first_yield)) == 1 &&
+           len(ir.args(second_yield)) == 1,
+           "c: logical expression arms must yield one value")
+    let first = ir.args(first_yield)[0]
+    let second = ir.args(second_yield)[0]
+    if second == second_args[0] && first != first_args[0] {
+      return "(" + expr(m, inputs[0]) + " && " + expr(m, first) + ")"
+    }
+    assert(first == first_args[0] && second != second_args[0],
+           "c: branch value cannot be emitted as a logical expression")
+    return "(" + expr(m, inputs[0]) + " || " + expr(m, second) + ")"
+  }
+  assert(ir.kind(op) == "call",
          "c: unnamed " + text(ir.type(value)) +
          " value is neither a constant nor a call result")
   let name = ir.callee(op)
@@ -107,6 +139,10 @@ fn expr(m: Mod, value: Val) -> str {
   }
   if len(inputs) == 1 && scalar_name(name) {
     return "((" + scalar(ty(name)) + ")(" + expr(m, inputs[0]) + "))"
+  }
+  let math_name = math(name, ir.type(value))
+  if math_name != "" && (len(inputs) == 1 || len(inputs) == 2) {
+    return math_name + "(" + args(m, inputs) + ")"
   }
   let target = ir.resolve(m, op)
   if ir.live(target) && local(m, target) && len(ir.outs(op)) == 1 &&
@@ -494,6 +530,9 @@ fn constant(op: Op, depth: int) -> str {
   let outputs = ir.outs(op)
   assert(len(outputs) == 1, "c: constant must have one result")
   let output = outputs[0]
+  if ir.name(output) == "" {
+    return ""
+  }
   for user in ir.users(output) {
     for next in ir.outs(user) {
       if update(next, ir.args(user)) {

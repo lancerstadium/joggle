@@ -1,4 +1,5 @@
 #include <math.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -9,6 +10,9 @@ void jog_int_matmul(const int64_t* a, const int64_t* b, int64_t* out);
 float jog_affine(float x);
 float jog_direct(float x);
 float jog_relu(float x);
+bool jog_logical(int64_t a, int64_t b);
+float jog_root(float x);
+int64_t jog_steps(void);
 
 int main(void) {
   float weights[2] = {0.0f, 0.0f};
@@ -46,5 +50,12 @@ int main(void) {
   if (fabsf(jog_relu(-2.0f)) > 1e-6f ||
       fabsf(jog_relu(3.0f) - 3.0f) > 1e-6f)
     return 4;
+  if (!jog_logical(2, 1) || jog_logical(2, -1) ||
+      jog_logical(-2, -2))
+    return 8;
+  if (fabsf(jog_root(9.0f) - 4.0f) > 1e-6f)
+    return 9;
+  if (jog_steps() != 3)
+    return 10;
   return 0;
 }

@@ -508,6 +508,10 @@ The list overloads batch whole-rewrite replacement and erasure, resolve
 replacement chains, and rebuild use lists only once. `opt.copy` demonstrates
 that boundary by removing any number of `base.copy` calls without a core
 operator case or repeated whole-module scans.
+The list overload of `ir.set` performs the analogous operation for value
+metadata: each selected value receives its corresponding item, while carried
+aliases are discovered in one pass and conflicting requests fail before any
+edit. `mem.plan` uses this form to commit all slot assignments together.
 
 Partial evaluation is likewise selected by a module. `ir.fold` pairs calls with
 ordinary `Fn` handles, executes only calls whose operands are statically
@@ -739,8 +743,10 @@ Each preparation round first composes `opt.fold` and `opt.copy`, so exposed
 static shape expressions do not become target-specific `len` or assignment
 cases. The C module itself owns only actual C capabilities: scalar/list and
 tensor access, standard floating-point math calls, structured control, and
-fixed tensor storage. Large byte literals use `base.hex` rather than an
-interpreted loop per byte.
+fixed tensor storage. Structured short-circuit branches are recovered as C
+logical expressions from their forwarding arm, without a parser or core
+special case. Large byte literals use `base.hex` rather than an interpreted
+loop per byte.
 
 A read-only module function is invoked with `query(env, "module.fn", mod,
 result, args, cached)`. It is still declared with ordinary `fn` syntax. The

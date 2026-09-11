@@ -404,6 +404,8 @@ public:
                 std::span<const Val> args);
   bool set(Fn fn, std::string key, Attr value);
   bool set(Val item, std::string key, Attr value);
+  bool set(std::span<const Val> items, std::string key,
+           std::span<const Attr> values);
   bool set(Op op, std::string key, Attr value);
   bool unset(Fn fn, std::string_view key);
   bool unset(Val item, std::string_view key);

@@ -3,69 +3,18 @@ use base
 use ir
 use tensor
 
-fn position(ops: list<Op>, target: Op) -> int {
-  for i in 0..len(ops) {
-    if ops[i] == target {
-      return i
-    }
-  }
-  return -1
-}
-
-fn values(fn: Fn) -> list<Val> {
-  var out = ir.params(fn)
-  for body in ir.blks(fn) {
-    for value in ir.args(body) {
-      var seen = false
-      for prior in out {
-        if prior == value {
-          seen = true
-        }
-      }
-      if !seen {
-        out += [value]
-      }
-    }
-  }
-  for op in ir.ops(fn) {
-    for value in ir.outs(op) {
-      var seen = false
-      for prior in out {
-        if prior == value {
-          seen = true
-        }
-      }
-      if !seen {
-        out += [value]
-      }
-    }
-  }
-  return out
-}
-
-fn parameter(params: list<Val>, name: str) -> bool {
-  for param in params {
-    if ir.name(param) == name {
-      return true
-    }
-  }
-  return false
-}
-
-fn group(names: list<str>, name: str) -> int {
-  for i in 0..len(names) {
-    if names[i] == name {
-      return i
-    }
-  }
-  return -1
-}
-
 fn plan(m: Mod, fn: Fn) -> bool {
+  let before = ir.revision(m)
   let ops = ir.ops(fn)
   let params = ir.params(fn)
-  let vals = values(fn)
+  var parameters: dict = {}
+  for param in params {
+    if ir.name(param) != "" {
+      parameters[ir.name(param)] = true
+    }
+  }
   var names: list<str> = []
+  var bindings: dict = {}
   var types: list<Ty> = []
   var counts: list<int> = []
   var firsts: list<int> = []
@@ -75,8 +24,9 @@ fn plan(m: Mod, fn: Fn) -> bool {
       let type = ir.type(value)
       let name = ir.name(value)
       if tensor.valid(type) && tensor.static(type) && name != "" &&
-         !ir.is_const(value) && !parameter(params, name) &&
-         group(names, name) < 0 {
+         !ir.is_const(value) && !has(parameters, name) &&
+         !has(bindings, name) {
+        bindings[name] = len(names)
         names += [name]
         types += [tensor.elem(type)]
         var count = 1
@@ -90,18 +40,19 @@ fn plan(m: Mod, fn: Fn) -> bool {
   }
 
   var lasts = firsts
-  for value in vals {
-    let at = group(names, ir.name(value))
-    if at >= 0 {
-      assert(tensor.valid(ir.type(value)) &&
-             tensor.elem(ir.type(value)) == types[at],
-             "mem: one binding changed tensor element type")
-      for user in ir.users(value) {
-        let kind = ir.kind(user)
-        if kind != "loop" && kind != "branch" && kind != "yield" {
-          let use = position(ops, user)
-          if use > lasts[at] {
-            lasts[at] = use
+  for at in 0..len(ops) {
+    let op = ops[at]
+    let kind = ir.kind(op)
+    if kind != "loop" && kind != "branch" && kind != "yield" {
+      for value in ir.args(op) {
+        let name = ir.name(value)
+        if has(bindings, name) {
+          let item = int(bindings[name])
+          assert(tensor.valid(ir.type(value)) &&
+                 tensor.elem(ir.type(value)) == types[item],
+                 "mem: one binding changed tensor element type")
+          if at > lasts[item] {
+            lasts[item] = int(at)
           }
         }
       }
@@ -134,22 +85,56 @@ fn plan(m: Mod, fn: Fn) -> bool {
     slots += [selected]
   }
 
-  var changed = false
-  for value in vals {
-    let at = group(names, ir.name(value))
-    if at >= 0 && tensor.valid(ir.type(value)) {
-      changed = ir.set(m, value, "mem.slot", slots[at]) || changed
-    } else {
-      changed = ir.unset(m, value, "mem.slot") || changed
+  var placed: dict = {}
+  var values: list<Val> = []
+  for value in params {
+    let name = ir.name(value)
+    if tensor.valid(ir.type(value)) && name != "" && !has(placed, name) {
+      placed[name] = true
+      values += [value]
     }
+  }
+  for body in ir.blks(fn) {
+    for value in ir.args(body) {
+      let name = ir.name(value)
+      if tensor.valid(ir.type(value)) && name != "" && !has(placed, name) {
+        placed[name] = true
+        values += [value]
+      }
+    }
+  }
+  for op in ops {
+    for value in ir.outs(op) {
+      let name = ir.name(value)
+      if tensor.valid(ir.type(value)) && name != "" && !has(placed, name) {
+        placed[name] = true
+        values += [value]
+      }
+    }
+  }
+  var assigned: list<Val> = []
+  var assigned_slots: list<int> = []
+  for value in values {
+    let name = ir.name(value)
+    if has(bindings, name) {
+      assigned += [value]
+      assigned_slots += [slots[int(bindings[name])]]
+    } else {
+      if ir.has(value, "mem.slot") {
+        ir.unset(m, value, "mem.slot")
+      }
+    }
+  }
+  if len(assigned) != 0 {
+    ir.set(m, assigned, "mem.slot", assigned_slots)
   }
   var type_names: list<str> = []
   for type in slot_types {
     type_names += [text(type)]
   }
-  changed = ir.set(m, fn, "mem.types", type_names) || changed
-  changed = ir.set(m, fn, "mem.counts", slot_counts) || changed
-  return changed
+  ir.set(m, fn, "mem.types", type_names)
+  ir.set(m, fn, "mem.counts", slot_counts)
+  return ir.revision(m) != before
 }
 
 fn plan(m: Mod) -> bool {

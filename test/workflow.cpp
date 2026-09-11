@@ -2647,6 +2647,20 @@ int main(int argc, char** argv) {
     if (member.name() == "value")
       CHECK(member.meta("bank") && member.meta("bank")->integer() == 2);
   CHECK(value_attrs.unset(value, "bank"));
+  const std::array batch_values{carry.generics()[0], carry.params()[0]};
+  const std::array batch_meta{joggle::Attr("compile"),
+                              joggle::Attr("runtime")};
+  CHECK(value_attrs.set(batch_values, "stage", batch_meta));
+  CHECK(carry.generics()[0].meta("stage") &&
+        carry.generics()[0].meta("stage")->string() == "compile");
+  CHECK(carry.params()[0].meta("stage") &&
+        carry.params()[0].meta("stage")->string() == "runtime");
+  const std::array conflict_values{value,
+                                   value_loop.blks()[0].args()[1]};
+  const std::array conflict_meta{joggle::Attr(std::int64_t{1}),
+                                 joggle::Attr(std::int64_t{2})};
+  CHECK(!value_attrs.set(conflict_values, "bank", conflict_meta));
+  value_attrs.clear_diags();
   CHECK(joggle::run(env, "script.mark_first_param", value_attrs));
   CHECK(carry.params()[0].meta("layout") &&
         carry.params()[0].meta("layout")->string() == "packed");

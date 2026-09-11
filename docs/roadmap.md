@@ -328,6 +328,13 @@ intervals and reusable same-element-type slots as open metadata. The C module
 optionally consumes the plan; a three-stage tensor chain compiles and executes
 with two physical buffers for three logical intermediates. Dynamic allocation,
 inter-function planning, and a genuinely different second target remain open.
+After full semantic-body exposure, the official MobileNetV2 model now completes
+C preparation, emits one C99 translation unit, and passes `-Wall -Wextra
+-Werror -fsyntax-only`. This is a compilation coverage gate, not an inference
+result. The same module also completes static memory planning: the emitted
+function uses 268 typed slots instead of 422 separate tensor arrays, reducing
+declared mutable tensor storage from 119,677,248 to 27,198,592 bytes. Output
+comparison against the official model remains open.
 The optional `sat.c` bridge now proves that a module-defined parametric format
 can be recursively retyped, specialized into local helpers, emitted through C,
 compiled, and executed for both scalar and fixed-shape tensor values without

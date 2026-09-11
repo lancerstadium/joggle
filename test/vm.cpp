@@ -113,6 +113,7 @@ int main(int argc, char** argv) {
   CHECK(env.load("vm"));
   CHECK(env.load("opt"));
   CHECK(env.load("c"));
+  CHECK(env.load("math"));
   joggle::Mod model;
   CHECK(joggle::parse(env, source.str(), model, argv[1]));
   CHECK(model.verify(env));

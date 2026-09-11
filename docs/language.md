@@ -318,6 +318,12 @@ redirected in one traversal, and all selected operations are removed together.
 This is the scalable primitive for a transform; a module does not need a
 special C++ rewrite class to avoid quadratic graph walks.
 
+`ir.set(m, values, key, data)` accepts one metadata item per selected `Val`.
+It computes loop- and branch-carried value families once, rejects conflicting
+assignments to the same family, and applies the batch atomically. Scalar
+`ir.set` remains convenient for one binding; analyses that annotate many
+bindings do not repeatedly rediscover the same structural families.
+
 `ir.fold(m, calls, fns)` is the explicit partial-evaluation primitive. Each
 selected `Fn` must accept its corresponding call. Calls whose operands are not
 static are left unchanged; successful scalar results replace their calls as a

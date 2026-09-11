@@ -2034,6 +2034,23 @@ private:
     } else if (name == "set" && args.size() == 4) {
       const auto* mod = as<Mod*>(args[0]);
       const auto key = string(args[2]);
+      auto vals = handles<Val>(args[1]);
+      const Items* items = list(args[3]);
+      if (mod && *mod && key && vals && items) {
+        std::vector<Attr> values;
+        values.reserve(items->size());
+        for (const Item& item : *items) {
+          auto value = attribute(item);
+          if (!value) {
+            values.clear();
+            break;
+          }
+          values.push_back(std::move(*value));
+        }
+        if (values.size() == items->size())
+          return Items{Item(Attr((*mod)->set(
+              *vals, std::string(*key), values)))};
+      }
       auto value = attribute(args[3]);
       if (mod && *mod && key && value) {
         if (const auto* fn = as<Fn>(args[1]))

@@ -129,7 +129,9 @@ same `Fn`/`Blk`/`Op`/`Val` representation through the same checks.
 is static; `opt.fold(m, fns)` applies the same mechanism to an explicitly
 selected set of user functions. It is a normal transform, not parser magic or
 a target hook. Batch `ir.replace` and `ir.erase` keep large rewrites linear in
-the size of the IR instead of requiring one whole-module scan per value.
+the size of the IR instead of requiring one whole-module scan per value. The
+list form of `ir.set` similarly propagates distinct metadata values across all
+selected value families in one structural traversal.
 An extension may clone a normal module `fn` into the program with
 `ir.clone(m, fn, name)`, providing generated helpers and local template
 materialization without a separate kernel builder.
@@ -217,10 +219,11 @@ Emitters return `str` or `bytes` through the same read-only boundary:
 `c.prepare`, `mem.plan`, and `c.source` are independent module functions.
 Emission never triggers hidden lowering or planning. The current C module
 supports fixed-shape tensor kernels, scalar expressions, local calls,
-structured loops and conditions, literal-list indexing, and the standard
-floating-point functions declared by `math`; unsupported IR fails with a
-diagnostic. Preparation composes the reusable static evaluator and copy
-propagation before exposing remaining calls.
+structured loops and conditions, short-circuit logical expressions,
+literal-list indexing, and the standard floating-point functions declared by
+`math`; unsupported IR fails with a diagnostic. Preparation composes the
+reusable static evaluator and copy propagation before exposing remaining
+calls.
 With `JOGGLE_BUILD_SAT=ON`, the separate `sat.c.prepare` bridge recursively
 maps concrete `sat<W>` types to C storage, materializes width-specialized
 saturating helpers, and then calls `c.prepare`. The C module contains no
