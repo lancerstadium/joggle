@@ -213,7 +213,8 @@ fn tensor_type_probe(m: Mod) -> bool {
 fn byte_probe(m: Mod) -> bool {
   let data = hex"00ff80"
   return base.size(data) == 3 && base.byte(data, 0) == 0 &&
-         base.byte(data, 1) == 255 && base.byte(data, 2) == 128
+         base.byte(data, 1) == 255 && base.byte(data, 2) == 128 &&
+         base.hex(data, "-") == "00-ff-80" && base.hex(hex"", "-") == ""
 }
 
 fn def_probe(m: Mod) -> bool {
@@ -257,6 +258,21 @@ fn collection_update_probe(m: Mod) -> bool {
   fields["second"] = 9
   return values == [1, 7, 3] && int(fields["first"]) == 7 &&
          int(fields["second"]) == 9
+}
+
+fn value_alias_probe(m: Mod) -> bool {
+  var text_value = "a"
+  let text_before = text_value
+  text_value += "b"
+  var items = [1]
+  let items_before = items
+  items += [2]
+  var fields = {value: 1}
+  let fields_before = fields
+  fields["value"] = 2
+  return text_before == "a" && text_value == "ab" &&
+         items_before == [1] && items == [1, 2] &&
+         int(fields_before["value"]) == 1 && int(fields["value"]) == 2
 }
 
 fn numel_probe(m: Mod) -> bool {

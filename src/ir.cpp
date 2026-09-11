@@ -196,44 +196,6 @@ bool printable_value(const detail::Store& store,
   return false;
 }
 
-bool literal_matches(const Attr& value, const Ty& type) {
-  const std::string_view name = type.name();
-  if (name == "_" || name == "Attr" || name == "meta")
-    return true;
-  if (name == "nil")
-    return value.empty();
-  if (name == "bool")
-    return value.boolean().has_value();
-  if (name == "int" || name == "index" ||
-      (name.size() > 1 && (name.front() == 'i' || name.front() == 'u') &&
-       std::all_of(name.begin() + 1, name.end(), [](char ch) {
-         return std::isdigit(static_cast<unsigned char>(ch));
-       })))
-    return value.integer().has_value();
-  if (name == "f16" || name == "f32" || name == "f64")
-    return value.real().has_value();
-  if (name == "str")
-    return value.string().has_value();
-  if (name == "bytes")
-    return value.bytes() != nullptr;
-  if (name == "dict")
-    return value.dict() != nullptr;
-  if (name == "list") {
-    const Attr::List* items = value.list();
-    if (!items || type.args().size() > 1)
-      return false;
-    if (type.args().empty())
-      return true;
-    return std::all_of(items->begin(), items->end(), [&](const Attr& item) {
-      return literal_matches(item, type.args().front());
-    });
-  }
-  if (name == "range" || name == "Ty" || name == "Mod" || name == "Fn" ||
-      name == "Blk" || name == "Op" || name == "Val")
-    return false;
-  return true;
-}
-
 std::optional<std::vector<std::string_view>>
 split_terms(std::string_view text) {
   std::vector<std::string_view> terms;
@@ -354,6 +316,44 @@ bool same_signature(const detail::Store& store,
 }
 
 }  // namespace
+
+bool detail::literal_matches(const Attr& value, const Ty& type) {
+  const std::string_view name = type.name();
+  if (name == "_" || name == "Attr" || name == "meta")
+    return true;
+  if (name == "nil")
+    return value.empty();
+  if (name == "bool")
+    return value.boolean().has_value();
+  if (name == "int" || name == "index" ||
+      (name.size() > 1 && (name.front() == 'i' || name.front() == 'u') &&
+       std::all_of(name.begin() + 1, name.end(), [](char ch) {
+         return std::isdigit(static_cast<unsigned char>(ch));
+       })))
+    return value.integer().has_value();
+  if (name == "f16" || name == "f32" || name == "f64")
+    return value.real().has_value();
+  if (name == "str")
+    return value.string().has_value();
+  if (name == "bytes")
+    return value.bytes() != nullptr;
+  if (name == "dict")
+    return value.dict() != nullptr;
+  if (name == "list") {
+    const Attr::List* items = value.list();
+    if (!items || type.args().size() > 1)
+      return false;
+    if (type.args().empty())
+      return true;
+    return std::all_of(items->begin(), items->end(), [&](const Attr& item) {
+      return literal_matches(item, type.args().front());
+    });
+  }
+  if (name == "range" || name == "Ty" || name == "Mod" || name == "Fn" ||
+      name == "Blk" || name == "Op" || name == "Val")
+    return false;
+  return true;
+}
 
 bool detail::same_type_pattern(
     const Ty& left, const std::vector<std::string>& left_generics,
@@ -877,7 +877,7 @@ Val Mod::constant(Op before, Attr literal, Ty type) {
         "constant requires a live insertion point and a valid result type");
     return {};
   }
-  if (!literal_matches(literal, type)) {
+  if (!detail::literal_matches(literal, type)) {
     detail::add_diag(store.diags,
                      "constant literal does not match result type '" +
                          std::string(type.text()) + "'",
@@ -2151,28 +2151,72 @@ bool Mod::fuse(const Env& env, std::span<const Op> ops, std::string callee) {
 }
 
 bool Mod::replace(Val old_value, Val new_value) {
+  const std::array old_values{old_value};
+  const std::array new_values{new_value};
+  return replace(old_values, new_values);
+}
+
+bool Mod::replace(std::span<const Val> old_values,
+                  std::span<const Val> new_values) {
   auto& store = impl_->store;
-  if (!old_value.valid() || !new_value.valid() || old_value.store_ != &store ||
-      new_value.store_ != &store) {
+  if (old_values.size() != new_values.size()) {
     detail::add_diag(store.diags,
-                     "replace requires two live values in this module");
+                     "replace requires one new value per old value");
     return false;
   }
-  if (old_value == new_value)
-    return true;
-  const Ty old_type = old_value.type();
-  const Ty new_type = new_value.type();
-  if (old_type != new_type) {
-    detail::add_diag(store.diags, "replacement values have different types");
+  if (old_values.empty())
     return false;
-  }
-  const std::vector<Op> users = old_value.users();
-  for (Op user : users) {
-    if (!detail::dominates(store, new_value.id_, user.id_)) {
+  std::unordered_map<std::uint32_t, std::uint32_t> replacements;
+  replacements.reserve(old_values.size());
+  for (std::size_t index = 0; index < old_values.size(); ++index) {
+    const Val old_value = old_values[index];
+    const Val new_value = new_values[index];
+    if (!old_value.valid() || !new_value.valid() ||
+        old_value.store_ != &store || new_value.store_ != &store) {
       detail::add_diag(store.diags,
-                       "replacement value must dominate every selected use",
-                       user.loc());
+                       "replace requires live values in this module");
       return false;
+    }
+    if (old_value.type() != new_value.type()) {
+      detail::add_diag(store.diags,
+                       "replacement values have different types");
+      return false;
+    }
+    if (old_value == new_value)
+      continue;
+    const auto [found, inserted] =
+        replacements.emplace(old_value.id_, new_value.id_);
+    if (!inserted && found->second != new_value.id_) {
+      detail::add_diag(store.diags,
+                       "replace assigns conflicting new values");
+      return false;
+    }
+  }
+  if (replacements.empty())
+    return true;
+
+  for (auto& [old_value, new_value] : replacements) {
+    std::unordered_set<std::uint32_t> path{old_value};
+    auto found = replacements.find(new_value);
+    while (found != replacements.end()) {
+      if (!path.insert(new_value).second) {
+        detail::add_diag(store.diags,
+                         "replacement values form a cycle");
+        return false;
+      }
+      new_value = found->second;
+      found = replacements.find(new_value);
+    }
+  }
+  for (const auto& [old_value, new_value] : replacements) {
+    for (const std::uint32_t user : store.vals[old_value].data.users) {
+      if (!detail::dominates(store, new_value, user)) {
+        detail::add_diag(
+            store.diags,
+            "replacement value must dominate every selected use",
+            store.ops[user].data.loc);
+        return false;
+      }
     }
   }
   bool changed = false;
@@ -2180,15 +2224,16 @@ bool Mod::replace(Val old_value, Val new_value) {
     if (!entry.live)
       continue;
     for (std::uint32_t& arg : entry.data.args) {
-      if (arg == old_value.id_) {
-        arg = new_value.id_;
+      const auto found = replacements.find(arg);
+      if (found != replacements.end() && arg != found->second) {
+        arg = found->second;
         changed = true;
       }
     }
   }
   detail::rebuild_uses(store);
   if (changed)
-    touch(store);
+    detail::touch(store);
   return true;
 }
 
@@ -2227,28 +2272,44 @@ bool Mod::replace(Val old_value, Val new_value, Op user) {
   }
   if (changed) {
     detail::rebuild_uses(store);
-    touch(store);
+    detail::touch(store);
   }
   return true;
 }
 
 bool Mod::erase(Op op) {
+  const std::array ops{op};
+  return erase(ops);
+}
+
+bool Mod::erase(std::span<const Op> roots) {
   auto& store = impl_->store;
-  if (!op.valid() || op.store_ != &store) {
-    detail::add_diag(store.diags,
-                     "erase requires a live operation in this module");
+  if (roots.empty())
     return false;
-  }
-  if (op.kind() == Op::Kind::ret || op.kind() == Op::Kind::yield) {
-    detail::add_diag(store.diags, "cannot erase a Blk terminator", op.loc());
+  const auto reject = [&](std::string message, Loc loc = {}) {
+    detail::add_diag(store.diags, std::move(message), std::move(loc));
     return false;
+  };
+  for (Op op : roots) {
+    if (!op.valid() || op.store_ != &store)
+      return reject("erase requires live operations in this module");
+    if (op.kind() == Op::Kind::ret || op.kind() == Op::Kind::yield)
+      return reject("cannot erase a Blk terminator", op.loc());
+    const std::uint32_t parent = store.ops[op.id_].data.blk;
+    if (parent == detail::none || parent >= store.blks.size() ||
+        !store.blks[parent].live ||
+        std::find(store.blks[parent].data.ops.begin(),
+                  store.blks[parent].data.ops.end(), op.id_) ==
+            store.blks[parent].data.ops.end())
+      return reject("erase operation is not in its parent Blk", op.loc());
   }
 
   std::unordered_set<std::uint32_t> ops;
   std::unordered_set<std::uint32_t> blks;
   std::unordered_set<std::uint32_t> values;
   const auto collect = [&](const auto& self, std::uint32_t id) -> void {
-    ops.insert(id);
+    if (!ops.insert(id).second)
+      return;
     for (const std::uint32_t value : store.ops[id].data.outs)
       values.insert(value);
     for (const std::uint32_t blk : store.ops[id].data.blks) {
@@ -2259,28 +2320,24 @@ bool Mod::erase(Op op) {
         self(self, child);
     }
   };
-  collect(collect, op.id_);
+  for (Op op : roots)
+    collect(collect, op.id_);
   for (const std::uint32_t value : values) {
     for (const std::uint32_t user : store.vals[value].data.users) {
-      if (!ops.contains(user)) {
-        detail::add_diag(store.diags,
-                         "cannot erase an operation with live external users",
-                         store.ops[op.id_].data.loc);
-        return false;
-      }
+      if (!ops.contains(user))
+        return reject("cannot erase an operation with live external users",
+                      store.ops[store.vals[value].data.def].data.loc);
     }
   }
-
-  const std::uint32_t parent = store.ops[op.id_].data.blk;
-  if (parent != detail::none) {
-    auto& order = store.blks[parent].data.ops;
-    const auto found = std::find(order.begin(), order.end(), op.id_);
-    if (found == order.end()) {
-      detail::add_diag(store.diags,
-                       "erase operation is not in its parent Blk", op.loc());
-      return false;
-    }
-    order.erase(found);
+  for (auto& slot : store.blks) {
+    if (!slot.live)
+      continue;
+    auto& order = slot.data.ops;
+    order.erase(std::remove_if(order.begin(), order.end(),
+                               [&](std::uint32_t id) {
+                                 return ops.contains(id);
+                               }),
+                order.end());
   }
   for (const std::uint32_t blk : blks) {
     const std::uint32_t fn = store.blks[blk].data.fn;
@@ -2300,7 +2357,7 @@ bool Mod::erase(Op op) {
     ++store.ops[id].generation;
   }
   detail::rebuild_uses(store);
-  touch(store);
+  detail::touch(store);
   return true;
 }
 

@@ -2349,6 +2349,32 @@ int main(int argc, char** argv) {
   CHECK(deep_dead.verify(env));
   CHECK(joggle::query(env, "opt.count", deep_dead, count, pure_query));
   CHECK(count.integer() == 0);
+
+  constexpr std::string_view partial_source =
+      "module partial\n"
+      "use base\n"
+      "fn work(x: int) -> int {\n"
+      "  let first: int = base.copy(x)\n"
+      "  let second: int = base.copy(first)\n"
+      "  let extent: int = len([2, 3, 5])\n"
+      "  return second + extent\n"
+      "}\n";
+  joggle::Mod partial;
+  CHECK(joggle::parse(env, partial_source, partial, "partial.jog"));
+  CHECK(partial.verify(env));
+  CHECK(joggle::run(env, "opt.fold", partial));
+  CHECK(joggle::run(env, "opt.copy", partial));
+  CHECK(partial.verify(env));
+  const std::vector<joggle::Attr> copy_query{joggle::Attr("base.copy")};
+  CHECK(joggle::query(env, "opt.count", partial, count, copy_query));
+  CHECK(count.integer() == 0);
+  const std::vector<joggle::Attr> len_query{joggle::Attr("len")};
+  CHECK(joggle::query(env, "opt.count", partial, count, len_query));
+  CHECK(count.integer() == 0);
+  const std::string partial_text = joggle::print(partial);
+  CHECK(partial_text.find("let extent: int = 3") != std::string::npos);
+  CHECK(partial_text.find("return x + extent") != std::string::npos);
+
   joggle::Attr clean_report;
   CHECK(joggle::run(env, "script.clean_pure", cleaned, clean_report));
   CHECK(cleaned.verify(env));
@@ -2421,6 +2447,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "script.compound_probe", overload_execution));
   CHECK(joggle::run(env, "script.collection_update_probe",
                     overload_execution));
+  CHECK(joggle::run(env, "script.value_alias_probe", overload_execution));
   CHECK(joggle::run(env, "script.numel_probe", overload_execution));
   CHECK(joggle::run(env, "script.make_pair", overload_execution));
   CHECK(joggle::print(overload_execution)

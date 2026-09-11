@@ -2,6 +2,7 @@ module c
 use base
 use ir
 use mem
+use opt
 use tensor
 
 fn id(text: str) -> str {
@@ -88,7 +89,8 @@ fn expr(m: Mod, value: Val) -> str {
   }
   let op = ir.def(value)
   assert(ir.live(op) && ir.kind(op) == "call",
-         "c: unnamed value has no callable definition")
+         "c: unnamed " + text(ir.type(value)) +
+         " value is neither a constant nor a call result")
   let name = ir.callee(op)
   let inputs = ir.args(op)
   if name == "operator []" {
@@ -131,18 +133,29 @@ fn lhs(output: Val, inputs: list<Val>) -> str {
   return scalar(ir.type(output)) + " " + val(output)
 }
 
-fn index(m: Mod, base: Val, args: list<Val>) -> str {
-  let shape = tensor.shape(ir.type(base))
-  assert(len(args) == 2 || len(args) == len(shape) + 1,
-         "c: tensor index must be linear or match its rank")
-  var out = expr(m, args[1])
-  if len(args) != 2 {
-    for i in 2..len(args) {
-      out = "(" + out + " * " + text(shape[i - 1]) + " + " +
-            expr(m, args[i]) + ")"
+fn index(m: Mod, value: Val, indices: list<Val>) -> str {
+  let type = ir.type(value)
+  if tensor.valid(type) {
+    let shape = tensor.shape(type)
+    assert(len(indices) == 2 || len(indices) == len(shape) + 1,
+           "c: tensor index must be linear or match its rank")
+    var out = expr(m, indices[1])
+    if len(indices) != 2 {
+      for i in 2..len(indices) {
+        out = "(" + out + " * " + text(shape[i - 1]) + " + " +
+              expr(m, indices[i]) + ")"
+      }
     }
+    return val(value) + "[" + out + "]"
   }
-  return val(base) + "[" + out + "]"
+  let source = ir.def(value)
+  let types = base.args(type)
+  assert(base.name(type) == "list" && len(types) == 1 &&
+         len(indices) == 2 &&
+         ir.live(source) && ir.callee(source) == "base.list",
+         "c: scalar index requires a literal list")
+  return "((const " + scalar(types[0]) + "[]){" +
+         args(m, ir.args(source)) + "})[" + expr(m, indices[1]) + "]"
 }
 
 fn local(m: Mod, fn: Fn) -> bool {
@@ -191,6 +204,23 @@ fn unary(op: str) -> str {
   return ""
 }
 
+fn math(op: str, type: Ty) -> str {
+  let names = {
+    "math.ceil": "ceil", "math.exp": "exp", "math.pow": "pow",
+    "math.round_even": "nearbyint", "math.sqrt": "sqrt",
+    "math.tanh": "tanh"
+  }
+  let name = base.name(type)
+  if base.has(names, op) && (name == "f32" || name == "f64") {
+    var suffix = ""
+    if name == "f32" {
+      suffix = "f"
+    }
+    return str(names[op]) + suffix
+  }
+  return ""
+}
+
 fn supported(m: Mod, op: Op) -> bool {
   let name = ir.callee(op)
   let inputs = ir.args(op)
@@ -199,8 +229,16 @@ fn supported(m: Mod, op: Op) -> bool {
     return true
   }
   if name == "operator []" {
-    return len(outputs) == 1 && len(inputs) >= 2 &&
-           !tensor.valid(ir.type(outputs[0]))
+    if len(outputs) != 1 || len(inputs) < 2 ||
+       tensor.valid(ir.type(outputs[0])) {
+      return false
+    }
+    if tensor.valid(ir.type(inputs[0])) {
+      return true
+    }
+    let source = ir.def(inputs[0])
+    return len(inputs) == 2 && ir.live(source) &&
+           ir.callee(source) == "base.list"
   }
   if name == "operator []=" {
     return len(outputs) == 1 && len(inputs) >= 3 &&
@@ -227,6 +265,10 @@ fn supported(m: Mod, op: Op) -> bool {
   if scalar_name(name) && len(inputs) == 1 && len(outputs) == 1 {
     return !tensor.valid(ir.type(outputs[0]))
   }
+  if len(outputs) == 1 && math(name, ir.type(outputs[0])) != "" &&
+     (len(inputs) == 1 || len(inputs) == 2) {
+    return true
+  }
   return ir.live(target) && local(m, target) && len(outputs) <= 1
 }
 
@@ -238,6 +280,8 @@ fn prepare(m: Mod) -> bool {
   for round in 0..limit {
     if again {
       let before = ir.revision(m)
+      opt.fold(m)
+      opt.copy(m)
       var calls: list<Op> = []
       var bodies: list<Fn> = []
       for op in ir.ops(m) {
@@ -319,14 +363,8 @@ fn tensor_literal(op: Op, depth: int) -> str {
   }
   out += indent + "static const unsigned char jog_data_" +
          id(ir.name(output)) +
-         "[" + text(bytes) + "] = {"
-  for i in 0..bytes {
-    if i != 0 {
-      out += ", "
-    }
-    out += text(base.byte(data, i))
-  }
-  out += "};\n" + indent + "memcpy(" + val(output) + ", jog_data_" +
+         "[" + text(bytes) + "] = \"\\x" + base.hex(data, "\\x") +
+         "\";\n" + indent + "memcpy(" + val(output) + ", jog_data_" +
          id(ir.name(output)) + ", " + text(bytes) + ");\n"
   return out
 }
@@ -398,6 +436,17 @@ fn call(m: Mod, op: Op, depth: int) -> str {
     }
     return indent + lhs(outputs[0], inputs) + " = (" + scalar(ty(name)) + ")(" +
            expr(m, inputs[0]) + ");\n"
+  }
+
+  if len(outputs) == 1 {
+    let math_name = math(name, ir.type(outputs[0]))
+    if math_name != "" && (len(inputs) == 1 || len(inputs) == 2) {
+      if ir.name(outputs[0]) == "" {
+        return ""
+      }
+      return indent + lhs(outputs[0], inputs) + " = " + math_name + "(" +
+             args(m, inputs) + ");\n"
+    }
   }
 
   let callee = "jog_" + id(ir.name(target))
@@ -613,7 +662,8 @@ fn source(m: Mod) -> str {
     }
   }
   assert(count != 0, "c: module has no function definitions")
-  return "#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n" +
+  return "#include <math.h>\n#include <stdbool.h>\n#include <stddef.h>\n" +
+         "#include <stdint.h>\n" +
          "#include <string.h>\n\n" +
          declarations + "\n" + definitions
 }

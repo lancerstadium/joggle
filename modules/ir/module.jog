@@ -63,14 +63,18 @@ fn branch(
 fn clone(m: Mod, op: Op, before: Op) -> Op;
 fn clone(m: Mod, fn: Fn, name: str) -> Fn;
 fn clone(m: Mod, fn: Fn, name: str, generics: list<Ty>) -> Fn;
+fn fold(m: Mod, call: Op, fn: Fn) -> bool;
+fn fold(m: Mod, calls: list<Op>, fns: list<Fn>) -> bool;
 fn expand(m: Mod, call: Op, callee: Fn) -> bool;
 fn expand(m: Mod, calls: list<Op>, callees: list<Fn>) -> bool;
 fn move(m: Mod, op: Op, before: Op) -> bool;
 fn args(m: Mod, op: Op, values: list<Val>) -> bool;
 fn fuse(m: Mod, ops: list<Op>, callee: str) -> bool;
 fn replace(m: Mod, old: Val, next: Val) -> bool;
+fn replace(m: Mod, old: list<Val>, next: list<Val>) -> bool;
 fn replace(m: Mod, old: Val, next: Val, user: Op) -> bool;
 fn erase(m: Mod, op: Op) -> bool;
+fn erase(m: Mod, ops: list<Op>) -> bool;
 fn erase(m: Mod, fn: Fn) -> bool;
 fn rename(m: Mod, fn: Fn, name: str) -> bool;
 fn rename(m: Mod, value: Val, name: str) -> bool;

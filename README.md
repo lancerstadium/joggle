@@ -125,6 +125,11 @@ deterministic run report; no wrapper pass or generated option class is needed.
 Compile-time execution is transactional. If the function fails or produces an
 invalid module, Joggle restores the input. C++ and `.jog` functions edit the
 same `Fn`/`Blk`/`Op`/`Val` representation through the same checks.
+`opt.fold(m)` evaluates calls to ordinary `base` functions when every operand
+is static; `opt.fold(m, fns)` applies the same mechanism to an explicitly
+selected set of user functions. It is a normal transform, not parser magic or
+a target hook. Batch `ir.replace` and `ir.erase` keep large rewrites linear in
+the size of the IR instead of requiring one whole-module scan per value.
 An extension may clone a normal module `fn` into the program with
 `ir.clone(m, fn, name)`, providing generated helpers and local template
 materialization without a separate kernel builder.
@@ -212,7 +217,10 @@ Emitters return `str` or `bytes` through the same read-only boundary:
 `c.prepare`, `mem.plan`, and `c.source` are independent module functions.
 Emission never triggers hidden lowering or planning. The current C module
 supports fixed-shape tensor kernels, scalar expressions, local calls,
-structured loops, and conditions; unsupported IR fails with a diagnostic.
+structured loops and conditions, literal-list indexing, and the standard
+floating-point functions declared by `math`; unsupported IR fails with a
+diagnostic. Preparation composes the reusable static evaluator and copy
+propagation before exposing remaining calls.
 With `JOGGLE_BUILD_SAT=ON`, the separate `sat.c.prepare` bridge recursively
 maps concrete `sat<W>` types to C storage, materializes width-specialized
 saturating helpers, and then calls `c.prepare`. The C module contains no

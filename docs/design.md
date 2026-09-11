@@ -1105,6 +1105,16 @@ scalar addition, and stores. A second execution gate compiles and runs that
 path, while direct emission of the unprepared call continues to fail. This
 keeps preparation inspectable and separate from read-only artifact generation.
 
+Application-scale exposure adds many static helper calls and assignment copies.
+Those are handled before target legalization by two ordinary `opt` functions:
+`fold` executes explicitly selected `Fn` handles on static operands, and `copy`
+performs batch identity propagation. Their commit path replaces values and
+erases operations in whole batches, so use lists and dominance are not rescanned
+once per selected call. The official expanded MobileNetV2 model now completes
+`c.prepare`; full `c.source` generation still exposes an unnamed structured-
+control capture that must be normalized before this becomes an application
+execution claim.
+
 ## M10 deterministic-VM slice
 
 The second target starts as a closed scalar path rather than another emitter

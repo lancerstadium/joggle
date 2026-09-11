@@ -99,6 +99,11 @@ struct Diag {
   Loc loc;
 };
 
+namespace detail {
+struct Store;
+class Eval;
+}  // namespace detail
+
 class Attr {
 public:
   using Bytes = std::vector<std::uint8_t>;
@@ -135,6 +140,8 @@ public:
 
 private:
   Data data_;
+
+  friend class detail::Eval;
 };
 
 class Ty {
@@ -159,11 +166,6 @@ private:
   std::vector<Ty> args_;
   bool valid_ = false;
 };
-
-namespace detail {
-struct Store;
-class Eval;
-}  // namespace detail
 
 class Mod;
 class Fn;
@@ -199,6 +201,7 @@ private:
   friend class Blk;
   friend class Op;
   friend class Parser;
+  friend class detail::Eval;
 };
 
 class Op {
@@ -232,6 +235,7 @@ private:
   friend class Val;
   friend class Blk;
   friend class Parser;
+  friend class detail::Eval;
 };
 
 class Blk {
@@ -256,6 +260,7 @@ private:
   friend class Fn;
   friend class Op;
   friend class Parser;
+  friend class detail::Eval;
 };
 
 class Fn {
@@ -383,8 +388,11 @@ public:
   bool args(const Env& env, Op op, std::span<const Val> values);
   bool fuse(const Env& env, std::span<const Op> ops, std::string callee);
   bool replace(Val old_value, Val new_value);
+  bool replace(std::span<const Val> old_values,
+               std::span<const Val> new_values);
   bool replace(Val old_value, Val new_value, Op user);
   bool erase(Op op);
+  bool erase(std::span<const Op> ops);
   bool erase(const Env& env, Fn fn);
   bool type(Val value, Ty type);
   bool returns(Fn fn, std::span<const Ty> types);

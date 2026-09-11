@@ -5,9 +5,13 @@
 #include <bit>
 #include <charconv>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 
@@ -20,22 +24,24 @@ using Items = std::vector<Item>;
 
 struct List {
   Items items;
+  Ty element{"_"};
 };
 
 struct Item {
-  using Data = std::variant<std::monostate, Attr, Ty, Mod*, Fn, Blk, Op, Val,
-                            std::shared_ptr<List>>;
+  using Data =
+      std::variant<std::monostate, std::shared_ptr<Attr>, Ty, Mod*, Fn, Blk,
+                   Op, Val, std::shared_ptr<List>>;
   Data data;
 
   Item() = default;
-  Item(Attr value) : data(std::move(value)) {}
+  Item(Attr value) : data(std::make_shared<Attr>(std::move(value))) {}
   Item(Ty value) : data(std::move(value)) {}
   Item(Mod* value) : data(value) {}
   Item(Fn value) : data(value) {}
   Item(Blk value) : data(value) {}
   Item(Op value) : data(value) {}
   Item(Val value) : data(value) {}
-  Item(Items value) : data(std::make_shared<List>(List{std::move(value)})) {}
+  Item(Items value);
 };
 
 Item materialize(Attr value) {
@@ -57,12 +63,31 @@ struct Flow {
 };
 
 template <class T> const T* as(const Item& item) {
-  return std::get_if<T>(&item.data);
+  if constexpr (std::is_same_v<T, Attr>) {
+    const auto* value = std::get_if<std::shared_ptr<Attr>>(&item.data);
+    return value && *value ? value->get() : nullptr;
+  } else {
+    return std::get_if<T>(&item.data);
+  }
+}
+
+template <class T> T* as(Item& item) {
+  if constexpr (std::is_same_v<T, Attr>) {
+    auto* value = std::get_if<std::shared_ptr<Attr>>(&item.data);
+    return value && *value ? value->get() : nullptr;
+  } else {
+    return std::get_if<T>(&item.data);
+  }
 }
 
 const Items* list(const Item& item) {
   const auto* value = as<std::shared_ptr<List>>(item);
   return value && *value ? &(*value)->items : nullptr;
+}
+
+const List* list_data(const Item& item) {
+  const auto* value = as<std::shared_ptr<List>>(item);
+  return value && *value ? value->get() : nullptr;
 }
 
 std::optional<Attr> attribute(const Item& item) {
@@ -198,18 +223,25 @@ Ty runtime_type(const Item& item) {
     return Ty("Op");
   if (as<Val>(item))
     return Ty("Val");
-  if (const Items* items = list(item)) {
-    Ty element("_");
-    if (!items->empty()) {
-      element = runtime_type(items->front());
-      for (std::size_t index = 1; index < items->size(); ++index)
-        if (runtime_type((*items)[index]) != element)
-          element = Ty("_");
-    }
-    const std::array<Ty, 1> args{element};
+  if (const List* value = list_data(item)) {
+    const std::array<Ty, 1> args{value->element};
     return Ty("list", args);
   }
   return Ty("_");
+}
+
+Item::Item(Items value) {
+  Ty element("_");
+  if (!value.empty()) {
+    element = runtime_type(value.front());
+    for (std::size_t index = 1; index < value.size(); ++index) {
+      if (runtime_type(value[index]) != element) {
+        element = Ty("_");
+        break;
+      }
+    }
+  }
+  data = std::make_shared<List>(List{std::move(value), std::move(element)});
 }
 
 bool same(const Item& left, const Item& right) {
@@ -289,7 +321,7 @@ public:
     values.reserve(args.size() + 1);
     for (const Attr& value : args)
       values.push_back(materialize(value));
-    return invoke(fn, values);
+    return invoke(fn, std::move(values));
   }
 
   std::optional<Items> query(Fn fn, Mod& mod,
@@ -298,11 +330,57 @@ public:
     values.reserve(args.size() + 1);
     for (const Attr& value : args)
       values.push_back(materialize(value));
-    return invoke(fn, values);
+    return invoke(fn, std::move(values));
   }
 
 private:
-  using Frame = std::vector<std::pair<Val, Item>>;
+  struct ValueKey {
+    const detail::Store* store = nullptr;
+    std::uint32_t value = 0;
+
+    friend bool operator==(const ValueKey&, const ValueKey&) = default;
+  };
+
+  struct ValueHash {
+    std::size_t operator()(const ValueKey& key) const noexcept {
+      const auto address = reinterpret_cast<std::uintptr_t>(key.store);
+      return static_cast<std::size_t>(address ^ (address >> 17) ^ key.value);
+    }
+  };
+
+  struct Frame {
+    explicit Frame(const Frame* parent = nullptr) : parent(parent) {}
+
+    const Frame* parent = nullptr;
+    std::vector<std::pair<Val, Item>> values;
+    std::unordered_map<ValueKey, std::size_t, ValueHash> index;
+  };
+
+  struct Site {
+    const detail::Store* store = nullptr;
+    std::uint32_t id = 0;
+
+    friend bool operator==(const Site&, const Site&) = default;
+  };
+
+  struct SiteHash {
+    std::size_t operator()(const Site& site) const noexcept {
+      const auto address = reinterpret_cast<std::uintptr_t>(site.store);
+      return static_cast<std::size_t>(address ^ (address >> 17) ^ site.id);
+    }
+  };
+
+  struct Dispatch {
+    std::vector<Ty> args;
+    std::vector<Ty> explicit_args;
+    Fn target;
+    std::vector<Ty> generics;
+  };
+
+  struct Folded {
+    Op op;
+    Attr value;
+  };
 
   void fail(std::string message, Loc loc = {}) {
     if (!failed_) {
@@ -312,23 +390,89 @@ private:
   }
 
   const Item* get(const Frame& frame, Val value, Loc loc = {}) {
-    const auto found =
-        std::find_if(frame.rbegin(), frame.rend(),
-                     [&](const auto& entry) { return entry.first == value; });
-    if (found != frame.rend())
-      return &found->second;
+    for (const Frame* scope = &frame; scope; scope = scope->parent) {
+      const auto found = scope->index.find({value.store_, value.id_});
+      if (found != scope->index.end())
+        return &scope->values[found->second].second;
+    }
     fail("compile-time value is not available", std::move(loc));
     return nullptr;
   }
 
+  Item* local(Frame& frame, Val value) {
+    const auto found = frame.index.find({value.store_, value.id_});
+    if (found != frame.index.end())
+      return &frame.values[found->second].second;
+    return nullptr;
+  }
+
+  Attr* write_attr(Item& item) {
+    auto* value = std::get_if<std::shared_ptr<Attr>>(&item.data);
+    if (!value || !*value)
+      return nullptr;
+    if (value->use_count() != 1)
+      *value = std::make_shared<Attr>(**value);
+    return value->get();
+  }
+
+  List* write_list(Item& item) {
+    auto* value = std::get_if<std::shared_ptr<List>>(&item.data);
+    if (!value || !*value)
+      return nullptr;
+    if (value->use_count() != 1)
+      *value = std::make_shared<List>(**value);
+    return value->get();
+  }
+
+  const std::vector<Val>& block_args(Blk block) {
+    const Site site{block.store_, block.id_};
+    const auto found = block_args_.find(site);
+    if (found != block_args_.end())
+      return found->second;
+    return block_args_.emplace(site, block.args()).first->second;
+  }
+
+  const std::vector<Op>& block_ops(Blk block) {
+    const Site site{block.store_, block.id_};
+    const auto found = block_ops_.find(site);
+    if (found != block_ops_.end())
+      return found->second;
+    return block_ops_.emplace(site, block.ops()).first->second;
+  }
+
+  const std::vector<Val>& op_args(Op op) {
+    const Site site{op.store_, op.id_};
+    const auto found = op_args_.find(site);
+    if (found != op_args_.end())
+      return found->second;
+    return op_args_.emplace(site, op.args()).first->second;
+  }
+
+  const std::vector<Val>& op_outs(Op op) {
+    const Site site{op.store_, op.id_};
+    const auto found = op_outs_.find(site);
+    if (found != op_outs_.end())
+      return found->second;
+    return op_outs_.emplace(site, op.outs()).first->second;
+  }
+
+  const std::vector<Blk>& op_blks(Op op) {
+    const Site site{op.store_, op.id_};
+    const auto found = op_blks_.find(site);
+    if (found != op_blks_.end())
+      return found->second;
+    return op_blks_.emplace(site, op.blks()).first->second;
+  }
+
   void put(Frame& frame, Val value, Item item) {
-    const auto found =
-        std::find_if(frame.begin(), frame.end(),
-                     [&](const auto& entry) { return entry.first == value; });
-    if (found == frame.end())
-      frame.emplace_back(value, std::move(item));
-    else
-      found->second = std::move(item);
+    const ValueKey key{value.store_, value.id_};
+    const auto found = frame.index.find(key);
+    if (found == frame.index.end()) {
+      frame.index.emplace(key, frame.values.size());
+      frame.values.emplace_back(value, std::move(item));
+    } else {
+      frame.values[found->second].second = std::move(item);
+    }
   }
 
   void record(Fn fn, Mod& mod, std::uint64_t before,
@@ -402,15 +546,23 @@ private:
     trace_->emplace_back(std::move(event));
   }
 
-  std::optional<Items> values(const Frame& frame, const std::vector<Val>& vals,
-                              Loc loc = {}) {
+  std::optional<Items> values(Frame& frame, const std::vector<Val>& vals,
+                              Op consumer, Loc loc = {}) {
     Items out;
     out.reserve(vals.size());
     for (Val value : vals) {
-      const Item* item = get(frame, value, loc);
+      Item* own = local(frame, value);
+      const Item* item = own;
+      if (!item && frame.parent)
+        item = get(*frame.parent, value, loc);
       if (!item)
         return std::nullopt;
-      out.push_back(*item);
+      const auto& users = value.store_->vals[value.id_].data.users;
+      if (own && consumer && value.store_ == consumer.store_ &&
+          users.size() == 1 && users.front() == consumer.id_)
+        out.push_back(std::move(*own));
+      else
+        out.push_back(*item);
     }
     return out;
   }
@@ -459,8 +611,8 @@ private:
     return std::nullopt;
   }
 
-  std::optional<Items> invoke(Fn fn, const Items& args,
-                              const Items& generic_args = {}) {
+  std::optional<Items> invoke(Fn fn, Items args,
+                              Items generic_args = {}) {
     if (!fn) {
       fail("compile-time function is invalid");
       return std::nullopt;
@@ -518,33 +670,33 @@ private:
     const std::uint64_t before = observed ? observed->revision() : 0;
     Frame frame;
     for (std::size_t index = 0; index < generics.size(); ++index)
-      put(frame, generics[index], generic_args[index]);
+      put(frame, generics[index], std::move(generic_args[index]));
     for (std::size_t index = 0; index < params.size(); ++index)
-      put(frame, params[index], args[index]);
+      put(frame, params[index], std::move(args[index]));
     Flow flow = blk(fn.body(), {}, frame);
     if (flow.kind == FlowKind::ret) {
       if (observed)
         record(fn, *observed, before, flow.values);
-      return flow.values;
+      return std::move(flow.values);
     }
     if (flow.kind != FlowKind::fail)
       fail("compile-time function reached the end without return", fn.loc());
     return std::nullopt;
   }
 
-  Flow blk(Blk blk, const Items& args, Frame& frame) {
-    const std::vector<Val> params = blk.args();
+  Flow blk(Blk blk, Items args, Frame& frame) {
+    const std::vector<Val>& params = block_args(blk);
     if (params.size() != args.size()) {
       fail("compile-time Blk argument count is inconsistent");
       return {FlowKind::fail, {}};
     }
     for (std::size_t index = 0; index < params.size(); ++index)
-      put(frame, params[index], args[index]);
+      put(frame, params[index], std::move(args[index]));
 
-    for (Op op : blk.ops()) {
+    for (Op op : block_ops(blk)) {
       const Loc loc = op.loc();
       if (op.kind() == Op::Kind::constant) {
-        const std::vector<Val> outs = op.outs();
+        const std::vector<Val>& outs = op_outs(op);
         if (outs.size() != 1) {
           fail("constant result count is inconsistent", loc);
           return {FlowKind::fail, {}};
@@ -553,97 +705,104 @@ private:
         continue;
       }
       if (op.kind() == Op::Kind::call) {
-        const std::vector<Val> operands = op.args();
-        const auto call_args = values(frame, operands, loc);
+        const std::vector<Val>& operands = op_args(op);
+        auto call_args = values(frame, operands, op, loc);
         if (!call_args)
           return {FlowKind::fail, {}};
-        const auto result =
-            call(blk.fn(), op.callee(), *call_args, operands, loc);
+        const auto result = call(blk.fn(), op, op.callee(),
+                                 std::move(*call_args), operands, loc);
         if (!result)
           return {FlowKind::fail, {}};
-        const std::vector<Val> outs = op.outs();
+        const std::vector<Val>& outs = op_outs(op);
         if (result->size() != outs.size()) {
           fail("compile-time call result count is inconsistent", loc);
           return {FlowKind::fail, {}};
         }
         for (std::size_t index = 0; index < outs.size(); ++index)
-          put(frame, outs[index], (*result)[index]);
+          put(frame, outs[index], std::move((*result)[index]));
         continue;
       }
       if (op.kind() == Op::Kind::branch) {
-        Flow flow = branch(op, frame);
+        auto branch_args = values(frame, op_args(op), op, loc);
+        if (!branch_args)
+          return {FlowKind::fail, {}};
+        Flow flow = branch(op, frame, std::move(*branch_args));
         if (flow.kind != FlowKind::next)
           return flow;
         continue;
       }
       if (op.kind() == Op::Kind::loop) {
-        Flow flow = loop(op, frame);
+        auto loop_args = values(frame, op_args(op), op, loc);
+        if (!loop_args)
+          return {FlowKind::fail, {}};
+        Flow flow = loop(op, frame, std::move(*loop_args));
         if (flow.kind != FlowKind::next)
           return flow;
         continue;
       }
       if (op.kind() == Op::Kind::ret || op.kind() == Op::Kind::yield) {
-        const auto result = values(frame, op.args(), loc);
+        auto result = values(frame, op_args(op), op, loc);
         if (!result)
           return {FlowKind::fail, {}};
         return {op.kind() == Op::Kind::ret ? FlowKind::ret : FlowKind::yield,
-                *result};
+                std::move(*result)};
       }
     }
     return {FlowKind::next, {}};
   }
 
-  Flow branch(Op op, Frame& frame) {
-    const auto args = values(frame, op.args(), op.loc());
-    if (!args || args->empty())
+  Flow branch(Op op, Frame& frame, Items args) {
+    if (args.empty())
       return {FlowKind::fail, {}};
-    const auto condition = boolean(args->front());
+    const auto condition = boolean(args.front());
     if (!condition) {
       fail("if condition is not a compile-time bool", op.loc());
       return {FlowKind::fail, {}};
     }
-    const std::vector<Blk> blks = op.blks();
+    const std::vector<Blk>& blks = op_blks(op);
     const Blk arm = blks[*condition ? 0 : 1];
-    Items carried(args->begin() + 1, args->end());
-    Frame nested = frame;
-    Flow flow = blk(arm, carried, nested);
+    Items carried(std::make_move_iterator(args.begin() + 1),
+                  std::make_move_iterator(args.end()));
+    Frame nested{&frame};
+    Flow flow = blk(arm, std::move(carried), nested);
     if (flow.kind == FlowKind::ret || flow.kind == FlowKind::fail)
       return flow;
     if (flow.kind != FlowKind::yield) {
       fail("compile-time if did not yield", op.loc());
       return {FlowKind::fail, {}};
     }
-    const std::vector<Val> outs = op.outs();
+    const std::vector<Val>& outs = op_outs(op);
     if (outs.size() != flow.values.size()) {
       fail("compile-time if result count is inconsistent", op.loc());
       return {FlowKind::fail, {}};
     }
     for (std::size_t index = 0; index < outs.size(); ++index)
-      put(frame, outs[index], flow.values[index]);
+      put(frame, outs[index], std::move(flow.values[index]));
     return {};
   }
 
-  Flow loop(Op op, Frame& frame) {
-    const auto args = values(frame, op.args(), op.loc());
-    if (!args)
-      return {FlowKind::fail, {}};
+  Flow loop(Op op, Frame& frame, Items args) {
+    const std::vector<Blk>& blks = op_blks(op);
+    const std::vector<Val>& outs = op_outs(op);
     const std::size_t iter_count =
-        op.blks().front().args().size() - op.outs().size();
-    if (iter_count > args->size()) {
+        block_args(blks.front()).size() - outs.size();
+    if (iter_count > args.size()) {
       fail("compile-time loop source count is inconsistent", op.loc());
       return {FlowKind::fail, {}};
     }
     std::vector<const Items*> sources;
     for (std::size_t index = 0; index < iter_count; ++index) {
-      const Items* source = list((*args)[index]);
+      const Items* source = list(args[index]);
       if (!source) {
         fail("compile-time loop source is not iterable", op.loc());
         return {FlowKind::fail, {}};
       }
       sources.push_back(source);
     }
-    Items carried(args->begin() + static_cast<std::ptrdiff_t>(iter_count),
-                  args->end());
+    Items carried(
+        std::make_move_iterator(args.begin() +
+                                static_cast<std::ptrdiff_t>(iter_count)),
+        std::make_move_iterator(args.end()));
     Items indices;
     Flow escaped;
     std::function<void(std::size_t)> visit = [&](std::size_t depth) {
@@ -660,9 +819,12 @@ private:
         return;
       }
       Items blk_args = indices;
-      blk_args.insert(blk_args.end(), carried.begin(), carried.end());
-      Frame nested = frame;
-      Flow flow = blk(op.blks().front(), blk_args, nested);
+      blk_args.insert(blk_args.end(),
+                      std::make_move_iterator(carried.begin()),
+                      std::make_move_iterator(carried.end()));
+      carried.clear();
+      Frame nested{&frame};
+      Flow flow = blk(blks.front(), std::move(blk_args), nested);
       if (flow.kind == FlowKind::yield)
         carried = std::move(flow.values);
       else if (flow.kind != FlowKind::next)
@@ -675,23 +837,22 @@ private:
     visit(0);
     if (escaped.kind != FlowKind::next)
       return escaped;
-    const std::vector<Val> outs = op.outs();
     if (outs.size() != carried.size()) {
       fail("compile-time loop result count is inconsistent", op.loc());
       return {FlowKind::fail, {}};
     }
     for (std::size_t index = 0; index < outs.size(); ++index)
-      put(frame, outs[index], carried[index]);
+      put(frame, outs[index], std::move(carried[index]));
     return {};
   }
 
-  std::optional<Items> call(Fn current, std::string_view name,
-                            const Items& args,
-                            std::span<const Val> operands, Loc loc) {
+  std::optional<Items> call(Fn current, Op site, std::string_view name,
+                            Items args, std::span<const Val> operands,
+                            Loc loc) {
     if (name == "base.copy" && args.size() == 1)
-      return args;
+      return std::move(args);
     if (name == "base.list")
-      return Items{Item(args)};
+      return Items{Item(std::move(args))};
     if (name.starts_with("ir."))
       return intrinsic(name.substr(3), args, std::move(loc));
 
@@ -720,12 +881,26 @@ private:
     bool ambiguous = false;
     const std::vector<Val> context = current.generics();
     std::vector<Ty> generic_values;
-    const Fn target =
-        resolve_overload(candidates, argument_types, explicit_arguments,
-                         nullptr, &ambiguous, context, &generic_values);
+    Fn target;
+    auto& dispatches = dispatch_[Site{site.store_, site.id_}];
+    const auto cached = std::find_if(
+        dispatches.begin(), dispatches.end(), [&](const Dispatch& dispatch) {
+          return dispatch.args == argument_types &&
+                 dispatch.explicit_args == explicit_arguments;
+        });
+    if (cached != dispatches.end()) {
+      target = cached->target;
+      generic_values = cached->generics;
+    } else {
+      target = resolve_overload(candidates, argument_types, explicit_arguments,
+                                nullptr, &ambiguous, context, &generic_values);
+      if (target)
+        dispatches.push_back({argument_types, explicit_arguments, target,
+                              generic_values});
+    }
     if (name.starts_with("operator ") &&
         (!target || target.external() || target.module() == "base"))
-      return operation(name.substr(9), args, std::move(loc));
+      return operation(name.substr(9), std::move(args), std::move(loc));
     if (!target) {
       if (ambiguous) {
         fail("ambiguous compile-time function: " + std::string(name), loc);
@@ -746,10 +921,10 @@ private:
         return std::nullopt;
       resolved.push_back(std::move(*value));
     }
-    return invoke(target, args, resolved);
+    return invoke(target, std::move(args), std::move(resolved));
   }
 
-  std::optional<Items> operation(std::string_view name, const Items& args,
+  std::optional<Items> operation(std::string_view name, Items args,
                                  Loc loc) {
     if (name == "[]" && args.size() == 2) {
       if (const Items* items = list(args[0])) {
@@ -784,17 +959,17 @@ private:
           fail("compile-time index is out of bounds", loc);
           return std::nullopt;
         }
-        Items out = *items;
-        out[static_cast<std::size_t>(*index)] = args[2];
-        return Items{Item(std::move(out))};
+        List* out = write_list(args[0]);
+        out->items[static_cast<std::size_t>(*index)] = std::move(args[2]);
+        return Items{std::move(args[0])};
       }
-      const auto* value = as<Attr>(args[0]);
       const auto key = string(args[1]);
       const auto item = attribute(args[2]);
-      if (value && value->dict() && key && item) {
-        Attr::Dict out = *value->dict();
-        out.insert_or_assign(std::string(*key), *item);
-        return Items{Item(Attr(std::move(out)))};
+      Attr* value = write_attr(args[0]);
+      auto* out = value ? std::get_if<Attr::Dict>(&value->data_) : nullptr;
+      if (out && key && item) {
+        out->insert_or_assign(std::string(*key), std::move(*item));
+        return Items{std::move(args[0])};
       }
       fail("compile-time indexed assignment has invalid operands", loc);
       return std::nullopt;
@@ -868,15 +1043,29 @@ private:
       if (name == "+") {
         const auto left_text = string(args[0]);
         const auto right_text = string(args[1]);
-        if (left_text && right_text)
-          return Items{Item(Attr(std::string(*left_text) +
-                                      std::string(*right_text)))};
-        const Items* left = list(args[0]);
-        const Items* right = list(args[1]);
+        if (left_text && right_text) {
+          Attr* value = write_attr(args[0]);
+          auto* out =
+              value ? std::get_if<std::string>(&value->data_) : nullptr;
+          if (!out) {
+            fail("string operator has invalid storage", loc);
+            return std::nullopt;
+          }
+          out->append(right_text->data(), right_text->size());
+          return Items{std::move(args[0])};
+        }
+        const List* left = list_data(args[0]);
+        const List* right = list_data(args[1]);
         if (left && right) {
-          Items value = *left;
-          value.insert(value.end(), right->begin(), right->end());
-          return Items{Item(std::move(value))};
+          List* value = write_list(args[0]);
+          value->items.insert(value->items.end(), right->items.begin(),
+                              right->items.end());
+          if (value->element.text() == "_")
+            value->element = right->element;
+          else if (right->element.text() != "_" &&
+                   value->element != right->element)
+            value->element = Ty("_");
+          return Items{std::move(args[0])};
         }
       }
       const auto left = integer(args[0]);
@@ -942,7 +1131,7 @@ private:
            name == "get" || name == "size" || name == "byte" ||
            name == "kind" || name == "assert" || name == "name" ||
            name == "args" || name == "int" || name == "str" ||
-           name == "text" || name == "replace" ||
+           name == "text" || name == "hex" || name == "replace" ||
            name == "ty";
   }
 
@@ -1053,6 +1242,32 @@ private:
         return Items{Item(Attr(std::string(type->text())))};
       if (const auto value = attribute(args[0]))
         return Items{Item(Attr(joggle::print(*value)))};
+    } else if (name == "hex" && args.size() == 2) {
+      const Attr* value = as<Attr>(args[0]);
+      const Attr::Bytes* bytes = value ? value->bytes() : nullptr;
+      const auto separator = string(args[1]);
+      if (bytes && separator) {
+        static constexpr char digits[] = "0123456789abcdef";
+        const std::size_t unit = separator->size() + 2;
+        if (unit < separator->size() ||
+            (!bytes->empty() &&
+             bytes->size() >
+                 (std::numeric_limits<std::size_t>::max() - 2) / unit)) {
+          fail("hex output is too large", loc);
+          return std::nullopt;
+        }
+        std::string out;
+        if (!bytes->empty())
+          out.reserve(bytes->size() * unit - separator->size());
+        for (std::size_t index = 0; index < bytes->size(); ++index) {
+          if (index)
+            out.append(separator->data(), separator->size());
+          const std::uint8_t byte = (*bytes)[index];
+          out.push_back(digits[byte >> 4]);
+          out.push_back(digits[byte & 15]);
+        }
+        return Items{Item(Attr(std::move(out)))};
+      }
     } else if (name == "replace" && args.size() == 3) {
       const auto input = string(args[0]);
       const auto from = string(args[1]);
@@ -1085,6 +1300,174 @@ private:
     }
     fail("invalid base." + std::string(name) + " compile-time call", loc);
     return std::nullopt;
+  }
+
+  std::optional<Item>
+  static_value(Val value,
+               std::unordered_set<ValueKey, ValueHash>& visiting) {
+    if (!value)
+      return std::nullopt;
+    if (value.is_const())
+      return materialize(value.constant());
+    const ValueKey key{value.store_, value.id_};
+    if (!visiting.insert(key).second)
+      return std::nullopt;
+    const Op def = value.def();
+    if (!def || def.kind() != Op::Kind::call ||
+        def.callee() != "base.list") {
+      visiting.erase(key);
+      return std::nullopt;
+    }
+    const std::vector<Val>& outputs = op_outs(def);
+    if (outputs.size() != 1 || outputs.front() != value) {
+      visiting.erase(key);
+      return std::nullopt;
+    }
+    Items items;
+    for (Val input : op_args(def)) {
+      auto item = static_value(input, visiting);
+      if (!item) {
+        visiting.erase(key);
+        return std::nullopt;
+      }
+      items.push_back(std::move(*item));
+    }
+    visiting.erase(key);
+    return Item(std::move(items));
+  }
+
+  std::optional<Attr> fold_value(Mod& mod, Op op, Fn fn) {
+    if (!op || op.store_ != &mod.impl_->store ||
+        op.kind() != Op::Kind::call || !fn || op_outs(op).size() != 1 ||
+        !env_.accepts(op, fn))
+      return std::nullopt;
+
+    Items args;
+    std::unordered_set<ValueKey, ValueHash> visiting;
+    for (Val value : op_args(op)) {
+      auto item = static_value(value, visiting);
+      if (!item)
+        return std::nullopt;
+      args.push_back(std::move(*item));
+    }
+
+    std::optional<Items> result;
+    const std::string_view callee = op.callee();
+    if (callee == "base.copy" && args.size() == 1) {
+      result = std::move(args);
+    } else if (callee.starts_with("operator ") && fn.external() &&
+               fn.module() == "base") {
+      result = operation(callee.substr(9), std::move(args), op.loc());
+    } else if (fn.external() && fn.module() == "base" &&
+               fundamental(fn.name())) {
+      if (fn.name() == "assert")
+        return std::nullopt;
+      result = fundamental(fn.name(), args, op.loc());
+    } else {
+      Items generics;
+      const std::vector<Val> params = fn.generics();
+      const std::vector<Ty> values = env_.match(op, fn);
+      if (params.size() != values.size())
+        return std::nullopt;
+      for (std::size_t index = 0; index < params.size(); ++index) {
+        auto item = generic(values[index], params[index].type(), op.loc());
+        if (!item)
+          return std::nullopt;
+        generics.push_back(std::move(*item));
+      }
+      result = invoke(fn, std::move(args), std::move(generics));
+    }
+    if (!result || result->size() != 1)
+      return std::nullopt;
+    auto value = attribute(result->front());
+    if (!value || value->list() ||
+        !detail::literal_matches(*value, op_outs(op).front().type()))
+      return std::nullopt;
+    return value;
+  }
+
+  bool replace_folded(Mod& mod, std::vector<Folded> folded) {
+    if (folded.empty())
+      return false;
+    detail::Store& store = mod.impl_->store;
+    std::unordered_map<std::uint32_t, std::uint32_t> op_replacements;
+    std::unordered_map<std::uint32_t, std::uint32_t> value_replacements;
+    op_replacements.reserve(folded.size());
+    value_replacements.reserve(folded.size());
+    store.ops.reserve(store.ops.size() + folded.size());
+    store.vals.reserve(store.vals.size() + folded.size());
+
+    for (Folded& item : folded) {
+      if (!item.op.valid() || item.op.store_ != &store ||
+          item.op.kind() != Op::Kind::call)
+        continue;
+      const std::uint32_t old_op = item.op.id_;
+      const detail::OpData& old = store.ops[old_op].data;
+      if (old.outs.size() != 1 ||
+          op_replacements.contains(old_op))
+        continue;
+      const std::uint32_t old_value = old.outs.front();
+      if (old_value >= store.vals.size() || !store.vals[old_value].live ||
+          !detail::literal_matches(item.value,
+                                   store.vals[old_value].data.type))
+        continue;
+
+      const std::uint32_t next_op =
+          static_cast<std::uint32_t>(store.ops.size());
+      const std::uint32_t next_value =
+          static_cast<std::uint32_t>(store.vals.size());
+      detail::ValData value = store.vals[old_value].data;
+      value.kind = detail::ValKind::result;
+      value.def = next_op;
+      value.index = 0;
+      value.users.clear();
+      detail::OpData constant;
+      constant.kind = Op::Kind::constant;
+      constant.blk = old.blk;
+      constant.outs.push_back(next_value);
+      constant.literal = std::move(item.value);
+      constant.meta = old.meta;
+      constant.form = old.form;
+      constant.loc = old.loc;
+      store.vals.push_back({std::move(value), 1, true});
+      store.ops.push_back({std::move(constant), 1, true});
+      op_replacements.emplace(old_op, next_op);
+      value_replacements.emplace(old_value, next_value);
+    }
+    if (op_replacements.empty())
+      return false;
+
+    for (auto& slot : store.ops) {
+      if (!slot.live)
+        continue;
+      for (std::uint32_t& argument : slot.data.args) {
+        const auto found = value_replacements.find(argument);
+        if (found != value_replacements.end())
+          argument = found->second;
+      }
+    }
+    for (auto& slot : store.blks) {
+      if (!slot.live)
+        continue;
+      std::vector<std::uint32_t> order;
+      order.reserve(slot.data.ops.size());
+      for (const std::uint32_t id : slot.data.ops) {
+        const auto found = op_replacements.find(id);
+        order.push_back(found == op_replacements.end() ? id : found->second);
+      }
+      slot.data.ops = std::move(order);
+    }
+    for (const auto& [old_op, next_op] : op_replacements) {
+      (void)next_op;
+      const std::uint32_t old_value = store.ops[old_op].data.outs.front();
+      store.vals[old_value].live = false;
+      ++store.vals[old_value].generation;
+      store.ops[old_op].live = false;
+      ++store.ops[old_op].generation;
+    }
+    detail::rebuild_uses(store);
+    detail::touch(store);
+    return true;
   }
 
   std::optional<Items> intrinsic(std::string_view name, const Items& args,
@@ -1483,6 +1866,43 @@ private:
           }
         }
       }
+    } else if (name == "fold" && args.size() == 3) {
+      const auto* mod = as<Mod*>(args[0]);
+      if (!mod || !*mod) {
+        fail("ir.fold requires a module", loc);
+        return std::nullopt;
+      }
+      std::vector<Op> ops;
+      std::vector<Fn> fns;
+      if (const auto* op = as<Op>(args[1])) {
+        const auto* fn = as<Fn>(args[2]);
+        if (!fn) {
+          fail("ir.fold requires a function for its call", loc);
+          return std::nullopt;
+        }
+        ops.push_back(*op);
+        fns.push_back(*fn);
+      } else {
+        auto selected_ops = handles<Op>(args[1]);
+        auto selected_fns = handles<Fn>(args[2]);
+        if (!selected_ops || !selected_fns ||
+            selected_ops->size() != selected_fns->size()) {
+          fail("ir.fold requires one function per call", loc);
+          return std::nullopt;
+        }
+        ops = std::move(*selected_ops);
+        fns = std::move(*selected_fns);
+      }
+      std::vector<Folded> folded;
+      folded.reserve(ops.size());
+      for (std::size_t index = 0; index < ops.size(); ++index) {
+        auto value = fold_value(**mod, ops[index], fns[index]);
+        if (value)
+          folded.push_back({ops[index], std::move(*value)});
+        if (failed_)
+          return std::nullopt;
+      }
+      return Items{Item(Attr(replace_folded(**mod, std::move(folded))))};
     } else if (name == "expand" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* op = as<Op>(args[1]);
@@ -1560,6 +1980,13 @@ private:
           return Items{
               Item(Attr((*mod)->replace(*old_value, *new_value, *user)))};
       }
+      if (mod && *mod && args.size() == 3) {
+        auto old_values = value_handles(args[1]);
+        auto new_values = value_handles(args[2]);
+        if (old_values && new_values)
+          return Items{
+              Item(Attr((*mod)->replace(*old_values, *new_values)))};
+      }
     } else if (name == "erase" && args.size() == 2) {
       const auto* mod = as<Mod*>(args[0]);
       if (mod && *mod) {
@@ -1567,6 +1994,8 @@ private:
           return Items{Item(Attr((*mod)->erase(*op)))};
         if (const auto* fn = as<Fn>(args[1]))
           return Items{Item(Attr((*mod)->erase(env_, *fn)))};
+        if (auto ops = handles<Op>(args[1]))
+          return Items{Item(Attr((*mod)->erase(*ops)))};
       }
     } else if (name == "returns" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
@@ -1641,6 +2070,12 @@ private:
   Env& env_;
   Error error_;
   Attr::List* trace_ = nullptr;
+  std::unordered_map<Site, std::vector<Dispatch>, SiteHash> dispatch_;
+  std::unordered_map<Site, std::vector<Val>, SiteHash> block_args_;
+  std::unordered_map<Site, std::vector<Op>, SiteHash> block_ops_;
+  std::unordered_map<Site, std::vector<Val>, SiteHash> op_args_;
+  std::unordered_map<Site, std::vector<Val>, SiteHash> op_outs_;
+  std::unordered_map<Site, std::vector<Blk>, SiteHash> op_blks_;
   bool failed_ = false;
 };
 

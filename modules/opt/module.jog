@@ -1,6 +1,55 @@
 module opt
 use ir
 
+fn fold(m: Mod, fns: list<Fn>) -> bool {
+  var calls: list<Op> = []
+  var bodies: list<Fn> = []
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" {
+      let target = ir.resolve(m, op)
+      if ir.live(target) {
+        var selected = false
+        for fn in fns {
+          if !selected && fn == target {
+            selected = true
+            calls += [op]
+            bodies += [fn]
+          }
+        }
+      }
+    }
+  }
+  return len(calls) != 0 && ir.fold(m, calls, bodies)
+}
+
+fn fold(m: Mod) -> bool {
+  return fold(m, ir.fns("base"))
+}
+
+fn copy(m: Mod) -> bool {
+  var calls: list<Op> = []
+  var old: list<Val> = []
+  var next: list<Val> = []
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" &&
+       ir.callee(op) == "base.copy" && len(ir.meta(op)) == 0 {
+      let args = ir.args(op)
+      let outs = ir.outs(op)
+      if len(args) == 1 && len(outs) == 1 &&
+         ir.type(args[0]) == ir.type(outs[0]) {
+        calls += [op]
+        old += [outs[0]]
+        next += [args[0]]
+      }
+    }
+  }
+  if len(calls) == 0 {
+    return false
+  }
+  base.assert(ir.replace(m, old, next), "opt.copy could not replace values")
+  return ir.erase(m, calls)
+}
+
 fn fold_identity(m: Mod, callee: str, identity: Attr, side: int) -> bool {
   var changed = false
   for op in ir.ops(m) {

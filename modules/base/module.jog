@@ -23,6 +23,7 @@ fn str(type: Ty) -> str;
 fn str(value: Attr) -> str;
 fn text(type: Ty) -> str;
 fn text(value: Attr) -> str;
+fn hex(value: bytes, separator: str) -> str;
 fn replace(text: str, from: str, to: str) -> str;
 fn ty(text: str) -> Ty;
 fn ty(value: int) -> Ty;

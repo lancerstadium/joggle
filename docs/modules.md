@@ -227,9 +227,11 @@ exposes `tensor.matmul`, and VM plus compiled C are checked against the official
 output tolerance. The VM result and instruction count are also repeatable.
 
 The `base.size` and `base.byte` functions provide bounds-checked inspection of
-an `Attr` byte payload. This deliberately small primitive is sufficient for a
-frontend module to decode compact integer constants; bulk tensor payloads stay
-opaque and are never copied into a second core representation.
+an `Attr` byte payload. `base.hex` formats a complete payload with a chosen
+separator in one bounded linear operation, which lets text emitters avoid an
+interpreted loop and repeated string copies. Frontends can still decode compact
+integer constants without copying bulk tensors into a second core
+representation.
 
 General compile-time values live in `base`, not `ir`. `len` covers statically
 typed lists, dictionaries, and dynamically obtained `Attr` containers;
@@ -502,6 +504,17 @@ function order and structural preorder, including nested loops and conditions.
 the immediate operations of one `Blk`. `ir.replace` replaces all uses by
 default; its four-argument overload changes only uses in one named `Op`.
 Both forms check type compatibility and dominance before changing the IR.
+The list overloads batch whole-rewrite replacement and erasure, resolve
+replacement chains, and rebuild use lists only once. `opt.copy` demonstrates
+that boundary by removing any number of `base.copy` calls without a core
+operator case or repeated whole-module scans.
+
+Partial evaluation is likewise selected by a module. `ir.fold` pairs calls with
+ordinary `Fn` handles, executes only calls whose operands are statically
+materializable, and replaces representable scalar results in one batch.
+`opt.fold(m)` supplies the `base` functions; `opt.fold(m, fns)` lets a format or
+target module nominate its own pure helpers. The core implements execution and
+structural commit once, while purity and selection remain module policy.
 
 `ir.find(m, name)` performs exact local function lookup and returns an invalid
 `Fn` when the symbol is absent; `ir.live` is the uniform validity test.
@@ -722,6 +735,12 @@ gate, a high-level tensor addition expands
 through the shared `tensor` body into a constructor, scalar-list shape loop,
 range loop, indexing, and scalar addition; that prepared model is then emitted,
 compiled, and executed. `c.source` does not invoke the transform.
+Each preparation round first composes `opt.fold` and `opt.copy`, so exposed
+static shape expressions do not become target-specific `len` or assignment
+cases. The C module itself owns only actual C capabilities: scalar/list and
+tensor access, standard floating-point math calls, structured control, and
+fixed tensor storage. Large byte literals use `base.hex` rather than an
+interpreted loop per byte.
 
 A read-only module function is invoked with `query(env, "module.fn", mod,
 result, args, cached)`. It is still declared with ordinary `fn` syntax. The

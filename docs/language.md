@@ -312,12 +312,27 @@ refinement uses `ir.type` explicitly. Successful edits advance
 `Mod::revision()`, while a failed run restores both the IR and its prior
 revision.
 
+The list overloads of `ir.replace` and `ir.erase` apply one checked batch edit.
+Replacement chains are collapsed before dominance checking, all uses are
+redirected in one traversal, and all selected operations are removed together.
+This is the scalable primitive for a transform; a module does not need a
+special C++ rewrite class to avoid quadratic graph walks.
+
+`ir.fold(m, calls, fns)` is the explicit partial-evaluation primitive. Each
+selected `Fn` must accept its corresponding call. Calls whose operands are not
+static are left unchanged; successful scalar results replace their calls as a
+single batch while retaining names, types, attributes, and source form. The
+standard `opt.fold(m)` selects visible `base` functions, and its overload
+accepts a user-selected `list<Fn>`. Parsing and emission never invoke it
+implicitly.
+
 `ir.def(v)` returns the operation defining a value; parameters have an invalid
 definition detectable with `ir.live`. Together with `ir.users`, this completes
 both directions of ordinary dataflow traversal. Byte attributes remain opaque
-storage by default, but `base.size(value)` and `base.byte(value, index)` provide
-checked compile-time access when a codec relation must interpret a small
-payload. They do not add file or ambient-memory access.
+storage by default. `base.size(value)` and `base.byte(value, index)` provide
+checked access to small payloads, while `base.hex(value, separator)` formats a
+complete payload in one bounded linear operation. They do not add file or
+ambient-memory access.
 
 `ir.name(v)` and `ir.rename(m, v, name)` are the symmetric readable-name
 operations. They matter when one source call is decomposed into several normal
