@@ -3,18 +3,6 @@ use base
 use ir
 use tensor
 
-fn put<T: Ty>(values: list<T>, at: int, next: T) -> list<T> {
-  var out: list<T> = []
-  for i in 0..len(values) {
-    if i == at {
-      out += [next]
-    } else {
-      out += [values[i]]
-    }
-  }
-  return out
-}
-
 fn position(ops: list<Op>, target: Op) -> int {
   for i in 0..len(ops) {
     if ops[i] == target {
@@ -113,7 +101,7 @@ fn plan(m: Mod, fn: Fn) -> bool {
         if kind != "loop" && kind != "branch" && kind != "yield" {
           let use = position(ops, user)
           if use > lasts[at] {
-            lasts = put(lasts, at, use)
+            lasts[at] = use
           }
         }
       }
@@ -139,9 +127,9 @@ fn plan(m: Mod, fn: Fn) -> bool {
       slot_ends += [lasts[item]]
     } else {
       if counts[item] > slot_counts[selected] {
-        slot_counts = put(slot_counts, selected, counts[item])
+        slot_counts[selected] = counts[item]
       }
-      slot_ends = put(slot_ends, selected, lasts[item])
+      slot_ends[selected] = lasts[item]
     }
     slots += [selected]
   }

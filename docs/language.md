@@ -231,6 +231,20 @@ for key in keys(attrs) { inspect(key) }
 ```
 
 `attrs[key]` is strict; `get` returns `nil` or an explicit fallback when absent.
+Mutable lists and dictionaries use the same indexed assignment syntax as a
+model tensor; overload resolution selects the collection or tensor meaning:
+
+```jog
+var order = [0, 1, 2]
+order[1] = 7
+var report = {}
+report["ops"] = len(ir.ops(m))
+```
+
+Indexed collection assignment returns an updated value internally, so it keeps
+ordinary value semantics and participates in compile-time failure handling. A
+list index outside its bounds is an error; assigning a dictionary key replaces
+that key or inserts it without changing the language or IR operation set.
 `kind` reports the structural value kind, and `len` applies to lists or
 dictionaries. `int` and `str` project a checked `Attr` leaf into a typed scalar;
 the same names also project structural `Ty` terms. These operations are in

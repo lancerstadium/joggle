@@ -706,6 +706,29 @@ private:
       }
       return Items{materialize(found->second)};
     }
+    if (name == "[]=" && args.size() == 3) {
+      if (const Items* items = list(args[0])) {
+        const auto index = integer(args[1]);
+        if (!index || *index < 0 ||
+            static_cast<std::size_t>(*index) >= items->size()) {
+          fail("compile-time index is out of bounds", loc);
+          return std::nullopt;
+        }
+        Items out = *items;
+        out[static_cast<std::size_t>(*index)] = args[2];
+        return Items{Item(std::move(out))};
+      }
+      const auto* value = as<Attr>(args[0]);
+      const auto key = string(args[1]);
+      const auto item = attribute(args[2]);
+      if (value && value->dict() && key && item) {
+        Attr::Dict out = *value->dict();
+        out.insert_or_assign(std::string(*key), *item);
+        return Items{Item(Attr(std::move(out)))};
+      }
+      fail("compile-time indexed assignment has invalid operands", loc);
+      return std::nullopt;
+    }
     if (name == ".." && args.size() == 2) {
       const auto first = integer(args[0]);
       const auto last = integer(args[1]);

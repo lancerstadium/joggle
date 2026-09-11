@@ -249,6 +249,16 @@ fn compound_probe(m: Mod) -> bool {
   return x == 2
 }
 
+fn collection_update_probe(m: Mod) -> bool {
+  var values = [1, 2, 3]
+  values[1] = 7
+  var fields = {first: 1}
+  fields["first"] = values[1]
+  fields["second"] = 9
+  return values == [1, 7, 3] && int(fields["first"]) == 7 &&
+         int(fields["second"]) == 9
+}
+
 fn numel_probe(m: Mod) -> bool {
   return tensor.numel<[2, 3, 4]>() == 24
 }

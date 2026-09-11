@@ -31,6 +31,8 @@ fn ty(name: str, args: list<Ty>) -> Ty;
 fn []<T: Ty>(xs: list<T>, index: int) -> T;
 fn [](xs: dict, key: str) -> Attr;
 fn [](xs: Attr, index: int) -> Attr;
+fn []=<T: Ty>(xs: list<T>, index: int, value: T) -> list<T>;
+fn []=(xs: dict, key: str, value: Attr) -> dict;
 
 fn +<T: Ty>(x: T) -> T;
 fn +<A: Ty, B: Ty>(a: A, b: B) -> A;

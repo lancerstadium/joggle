@@ -1333,6 +1333,8 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "script.generic_probe", overload_execution));
   CHECK(joggle::run(env, "script.multi_probe", overload_execution));
   CHECK(joggle::run(env, "script.compound_probe", overload_execution));
+  CHECK(joggle::run(env, "script.collection_update_probe",
+                    overload_execution));
   CHECK(joggle::run(env, "script.numel_probe", overload_execution));
   CHECK(joggle::run(env, "script.make_pair", overload_execution));
   CHECK(joggle::print(overload_execution)

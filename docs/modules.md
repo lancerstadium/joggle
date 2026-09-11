@@ -178,6 +178,12 @@ diagnostic, while the three-argument `get` supplies a caller-chosen fallback.
 bounded computation that did not converge; failure is located and rolls back
 the enclosing compile-time transaction.
 
+Mutable lists and dictionaries also implement `[]=` through `base`. A module
+can update a typed work list or assemble a structured report with ordinary
+`items[index] = value` syntax; no builder object or report-specific host API is
+needed. List updates are bounds checked, while dictionary updates insert or
+replace a string key and retain value semantics.
+
 `Ty` is also a normal compile-time value. `name`, `args`, and `int` decompose a
 type tree; the `kind` overload distinguishes integer, Boolean, list, and type
 terms; `ty` reconstructs one from text, an integer term, or a constructor name
