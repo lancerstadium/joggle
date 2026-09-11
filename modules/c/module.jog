@@ -753,6 +753,13 @@ local fn signature(m: Mod, fn: Fn) -> str {
   return out + ")"
 }
 
+local fn linkage(m: Mod, fn: Fn) -> str {
+  if owned(m, fn) && ir.local(fn) {
+    return "static "
+  }
+  return ""
+}
+
 local fn definition(m: Mod, fn: Fn) -> str {
   let bodies = ir.blks(fn)
   assert(len(bodies) >= 1, "c: function has no body")
@@ -769,7 +776,8 @@ local fn definition(m: Mod, fn: Fn) -> str {
               base.ident(base.name(type)) + "_" + text(slot) + "[" +
               text(mem.count(fn, slot)) + "];\n"
   }
-  return signature(m, fn) + " {\n" + memory + block(m, bodies[0], 1) + "}\n"
+  return linkage(m, fn) + signature(m, fn) + " {\n" +
+         memory + block(m, bodies[0], 1) + "}\n"
 }
 
 local fn functions(m: Mod) -> list<Fn> {
@@ -783,12 +791,17 @@ local fn functions(m: Mod) -> list<Fn> {
 }
 
 local fn exports(m: Mod) -> list<Fn> {
-  let all = functions(m)
-  let entries = ir.where(all, "entry", true)
+  var visible: list<Fn> = []
+  for fn in functions(m) {
+    if !ir.local(fn) {
+      visible += [fn]
+    }
+  }
+  let entries = ir.where(visible, "entry", true)
   if len(entries) != 0 {
     return entries
   }
-  return all
+  return visible
 }
 
 local fn dependencies(m: Mod) -> list<Fn> {
@@ -820,7 +833,7 @@ local fn prototypes(m: Mod, fns: list<Fn>) -> str {
              "c: overloaded or colliding function name " + name)
     }
     names += [name]
-    declarations += signature(m, fn) + ";\n"
+    declarations += linkage(m, fn) + signature(m, fn) + ";\n"
   }
   return declarations
 }

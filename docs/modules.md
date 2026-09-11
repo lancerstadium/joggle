@@ -846,8 +846,10 @@ incidental emitter loop type from silently becoming part of the model ABI.
 `c.header` emits the same checked prototypes
 as `c.source`, wrapped for C++ linkage, through the ordinary read-only emit
 boundary. The test compiles the generated header and source together with
-strict-prototype warnings enabled. Generated files remain under the ignored
-build tree for inspection.
+strict-prototype warnings enabled. A model `local fn` is defined and declared
+`static` inside the generated translation unit and is never included in the
+public header; both spellings still come from the same signature function.
+Generated files remain under the ignored build tree for inspection.
 
 The separate `math` module declares each current primitive as exact `f32` and
 `f64` overloads. C and VM independently state which of those primitives they

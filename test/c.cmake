@@ -78,6 +78,10 @@ if(emitted MATCHES "jog_math")
           "prepared C declared a math function already emitted through libm:\n"
           "${emitted}")
 endif()
+if(NOT emitted MATCHES "static int64_t jog_offset\\(int64_t v_x\\)")
+  message(FATAL_ERROR
+          "prepared C did not give a local helper internal linkage:\n${emitted}")
+endif()
 execute_process(
   COMMAND "${TOOL}" emit c.header "${prepared}" -M "${MODULES}"
   RESULT_VARIABLE result

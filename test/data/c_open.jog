@@ -3,7 +3,7 @@ use base
 use nn
 use tensor
 
-fn offset(x: i64) -> i64 {
+local fn offset(x: i64) -> i64 {
   return x + i64(7)
 }
 
