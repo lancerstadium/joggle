@@ -627,10 +627,12 @@ function names or required in module source.
 derives unique live-ins and the single live-out, inserts the requested call,
 and removes the region transactionally. It rejects mixed `Blk`s, reordered or
 duplicate operations, multiple live-outs, invalid dominance, and fusion across
-an unselected executable operation. `opt.fuse` is a normal `.jog` helper that
-finds a single-use call chain from a user-supplied list of callee names; a
-frontend bridge can invoke it explicitly without registering operator classes
-or modifying the core.
+an unselected executable operation. If the requested callee is visible, its
+ordinary argument, generic, and result signature must match the region
+boundary; an unknown callee remains an open call for a later research module to
+define. `opt.fuse` is a normal `.jog` helper that finds a single-use call chain
+from a user-supplied list of callee names; a frontend bridge can invoke it
+explicitly without registering operator classes or modifying the core.
 
 ### Binary codecs
 

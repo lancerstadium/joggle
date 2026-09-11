@@ -1428,7 +1428,8 @@ private:
           }
           ops.push_back(*op);
         }
-        return Items{Item(Attr((*mod)->fuse(ops, std::string(*callee))))};
+        return Items{
+            Item(Attr((*mod)->fuse(env_, ops, std::string(*callee))))};
       }
     } else if (name == "replace" &&
                (args.size() == 3 || args.size() == 4)) {

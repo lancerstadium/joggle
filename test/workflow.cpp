@@ -1675,9 +1675,41 @@ int main(int argc, char** argv) {
       unsafe_group.push_back(op);
   }
   CHECK(unsafe_group.size() == 2);
-  CHECK(!unsafe_fusion.fuse(unsafe_group, "test.fused"));
+  CHECK(!unsafe_fusion.fuse(env, unsafe_group, "test.fused"));
   CHECK(joggle::print(unsafe_fusion) == unsafe_before);
   CHECK(!unsafe_fusion.diags().empty());
+
+  joggle::Mod typed_fusion;
+  constexpr std::string_view typed_fusion_source =
+      "module typed_fusion\n"
+      "fn incompatible(x: i32) -> f32;\n"
+      "fn compatible(x: i32) -> i32;\n"
+      "fn main(x: i32) -> i32 {\n"
+      "  let first: i32 = experiment.first(x)\n"
+      "  let last: i32 = experiment.last(first)\n"
+      "  return last\n}\n";
+  CHECK(joggle::parse(env, typed_fusion_source, typed_fusion,
+                      "typed-fusion.jog"));
+  CHECK(typed_fusion.verify(env));
+  std::vector<joggle::Op> typed_group;
+  for (joggle::Op op : typed_fusion.find_fn("main").body().ops())
+    if (op.kind() == joggle::Op::Kind::call)
+      typed_group.push_back(op);
+  CHECK(typed_group.size() == 2);
+  const std::string typed_before = joggle::print(typed_fusion);
+  const std::uint64_t typed_revision = typed_fusion.revision();
+  CHECK(!typed_fusion.fuse(env, typed_group, "incompatible"));
+  CHECK(joggle::print(typed_fusion) == typed_before);
+  CHECK(typed_fusion.revision() == typed_revision);
+
+  typed_group.clear();
+  for (joggle::Op op : typed_fusion.find_fn("main").body().ops())
+    if (op.kind() == joggle::Op::Kind::call)
+      typed_group.push_back(op);
+  CHECK(typed_fusion.fuse(env, typed_group, "compatible"));
+  CHECK(typed_fusion.verify(env));
+  CHECK(joggle::print(typed_fusion).find("compatible(x)") !=
+        std::string::npos);
 
   joggle::Mod duplicate_meta;
   CHECK(!joggle::parse(env,

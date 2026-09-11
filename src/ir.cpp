@@ -1526,7 +1526,7 @@ bool Mod::args(const Env& env, Op op, std::span<const Val> values) {
   return true;
 }
 
-bool Mod::fuse(std::span<const Op> ops, std::string callee) {
+bool Mod::fuse(const Env& env, std::span<const Op> ops, std::string callee) {
   auto& store = impl_->store;
   auto reject = [&](std::string message, Loc loc = {}) {
     detail::add_diag(store.diags, std::move(message), std::move(loc));
@@ -1612,9 +1612,30 @@ bool Mod::fuse(std::span<const Op> ops, std::string callee) {
     store.diags = std::move(diags);
     return false;
   };
+  const std::string target = callee;
   Val fused = call(ops.back(), std::move(callee), inputs, output.type());
   if (!fused)
     return rollback();
+  const Ty applied{target};
+  const std::string_view symbol =
+      applied.args().empty() ? std::string_view(target) : applied.name();
+  const std::vector<Fn> declarations = env.resolve_fns(*this, symbol);
+  if (!declarations.empty()) {
+    std::vector<Ty> returns;
+    const Fn resolved =
+        env.resolve(*this, fused.def(), target, inputs, &returns);
+    const Ty actual = output.type();
+    const bool result_matches =
+        returns.size() == 1 &&
+        (actual.text() == "_" || returns.front().text() == "_" ||
+         actual == returns.front());
+    if (!resolved || !result_matches) {
+      detail::add_diag(store.diags,
+                       "fuse target does not accept the region signature",
+                       ops.front().loc());
+      return rollback();
+    }
+  }
   store.vals[fused.id_].data.name = std::string(output.name());
   store.vals[fused.id_].data.meta = output.meta();
   store.ops[fused.def().id_].data.form = old_form;

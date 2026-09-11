@@ -239,12 +239,15 @@ enum, or dispatch case to the evaluator.
 
 The operator-neutral region primitive computes live-ins and a single live-out
 for an ordered call region, enforces dominance and motion safety, preserves the
-visible result name, and commits the fusion atomically. The generic textual
-`opt.fuse` helper follows a user-supplied callee sequence; it contains no ONNX
-or NN operator names. A test-only bridge applies the helper to the pinned
-MobileNetV2 import and replaces 36 Conv-BatchNormalization-ReLU chains with 36
-user-named calls, reducing those 108 calls to 36. The optimized 28.4 MB module
-then verifies, prints, reparses, and remains structurally equal.
+visible result name, and commits the fusion atomically. A visible replacement
+callee must resolve through the same generic argument and result typing as an
+ordinary call; an unresolved callee stays open for experimental modules. The
+generic textual `opt.fuse` helper follows a user-supplied callee sequence; it
+contains no ONNX or NN operator names. A test-only bridge applies the helper to
+the pinned MobileNetV2 import and replaces 36
+Conv-BatchNormalization-ReLU chains with 36 user-named calls, reducing those
+108 calls to 36. The optimized 28.4 MB module then verifies, prints, reparses,
+and remains structurally equal.
 
 ## M6 first slice
 
