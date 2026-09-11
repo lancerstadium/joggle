@@ -385,7 +385,7 @@ its official protobuf input and output, then enable its extracted case:
 cmake -DOUT=.cache/onnx-zoo -DMODELS=mobilenetv2-7 -DAPP=ON \
   -P test/zoo.cmake
 cmake -S . -B build -DJOGGLE_BUILD_ONNX=ON \
-  -DJOGGLE_TEST_ONNX_APP=.cache/onnx-zoo/app/mobilenetv2-7
+  -DJOGGLE_EXAMPLE_MOBILENET=.cache/onnx-zoo/app/mobilenetv2-7
 cmake --build build
 ctest --test-dir build -R onnx-app-mobilenet --output-on-failure
 ```
@@ -397,7 +397,8 @@ storage placement, strict C99 compilation, and comparison of both targets'
 execution. Because the scalar VM path executes 98,167,456,513 instructions,
 this is intentionally a long application gate. Its inspectable `model.jog`,
 `model.vm`, `model.c`, generated `model.h`, input, expected output, executable,
-and `result.txt` remain under `build/onnx-app` after the test. The harness has
+and `result.txt` remain under `build/examples/mobilenet` after the test. The
+harness has
 no handwritten model declaration, so strict compilation also checks that the
 header is the actual application ABI rather than a decorative artifact.
 

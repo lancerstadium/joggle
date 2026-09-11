@@ -232,6 +232,10 @@ all 1,000 outputs with the official result. Source construction carries only
 mutable bindings actually
 changed by nested control flow, so readable `var` syntax does not replicate
 every in-scope binding across every exposed tensor loop.
+The complete driver, generated-C harness, reproducible pipeline, and artifact
+guide live together in the runnable
+[`examples/mobilenet`](examples/mobilenet) application rather than being hidden
+as test-only code.
 
 ## Analyze and emit
 

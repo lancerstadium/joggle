@@ -1,7 +1,7 @@
-if(NOT DEFINED TEST OR NOT DEFINED CC OR NOT DEFINED CASE OR
+if(NOT DEFINED APP OR NOT DEFINED CC OR NOT DEFINED CASE OR
    NOT DEFINED MODULES OR NOT DEFINED HARNESS OR NOT DEFINED ROOT)
   message(FATAL_ERROR
-          "ONNX application test requires TEST, CC, CASE, MODULES, HARNESS, and ROOT")
+          "MobileNet example requires APP, CC, CASE, MODULES, HARNESS, and ROOT")
 endif()
 
 file(REMOVE_RECURSE "${ROOT}")
@@ -15,7 +15,7 @@ set(prepared "${ROOT}/model.jog")
 set(image "${ROOT}/model.vm")
 
 execute_process(
-  COMMAND "${TEST}"
+  COMMAND "${APP}"
           "${CASE}/mobilenetv2-7.onnx"
           "${CASE}/test_data_set_0/input_0.pb"
           "${CASE}/test_data_set_0/output_0.pb"
