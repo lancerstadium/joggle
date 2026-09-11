@@ -36,10 +36,10 @@ endif()
 
 file(READ "${source}" emitted)
 if(NOT emitted MATCHES
-   "void jog_edgeZDmatmul\\(const float\\* v_a, const float\\* v_b, float\\* jog_out\\);")
+   "void jog_edge_matmul\\(const float\\* v_a, const float\\* v_b, float\\* jog_out\\);")
   message(FATAL_ERROR "external kernel prototype is absent:\n${emitted}")
 endif()
-if(NOT emitted MATCHES "jog_edgeZDmatmul\\(v_a, v_b, v[0-9]+\\);")
+if(NOT emitted MATCHES "jog_edge_matmul\\(v_a, v_b, v[0-9]+\\);")
   message(FATAL_ERROR "external kernel call is absent:\n${emitted}")
 endif()
 

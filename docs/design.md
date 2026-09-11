@@ -1153,6 +1153,11 @@ use C's `size_t` without inventing an IR pseudo-type. The emitter
 also recognizes optional `mem.slot`
 metadata; no C-specific field or storage object was added to core IR.
 
+Qualified external symbols use a readable module separator in C
+(`edge.matmul` becomes `jog_edge_matmul`). The same prototype pass rejects
+collisions after normalization. Calls mapped to standard C operators or libm
+functions are not also reported as external Joggle dependencies.
+
 The companion `c.header` function reuses the source emitter's checked
 prototypes and returns a C/C++-compatible header. Header generation is not an
 artifact kind in the host or core: it is another ordinary `fn(Mod) -> str`.

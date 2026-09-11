@@ -1,4 +1,4 @@
-void jog_edgeZDmatmul(const float* a, const float* b, float* out) {
+void jog_edge_matmul(const float* a, const float* b, float* out) {
   for (int i = 0; i != 2; ++i) {
     for (int j = 0; j != 2; ++j) {
       float sum = 0.0f;

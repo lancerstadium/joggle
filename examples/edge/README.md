@@ -28,6 +28,7 @@ build/examples/edge/model
 
 External functions must be monomorphic and use scalar or fixed-shape tensor
 types representable by the C ABI. Their generated symbol includes the module
-name (`edge.matmul` becomes `jog_edgeZDmatmul`) so dependencies do not collide
-with local model functions. `ZD` is the reversible namespace separator used by
-the common identifier encoder; an ordinary single underscore remains readable.
+name (`edge.matmul` becomes `jog_edge_matmul`) so dependencies do not collide
+with local model functions. The emitter checks every resulting C name and
+rejects an ambiguous normalization instead of silently linking the wrong
+function.

@@ -72,6 +72,12 @@ execute_process(
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "prepared C emission failed (${result}):\n${error}")
 endif()
+file(READ "${open_source}" emitted)
+if(emitted MATCHES "jog_math")
+  message(FATAL_ERROR
+          "prepared C declared a math function already emitted through libm:\n"
+          "${emitted}")
+endif()
 execute_process(
   COMMAND "${TOOL}" emit c.header "${prepared}" -M "${MODULES}"
   RESULT_VARIABLE result

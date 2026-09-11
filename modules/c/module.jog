@@ -241,7 +241,7 @@ fn symbol(m: Mod, fn: Fn) -> str {
   if local(m, fn) {
     return "jog_" + base.ident(ir.name(fn))
   }
-  return "jog_" + base.ident(ir.symbol(fn))
+  return "jog_" + base.ident(base.replace(ir.symbol(fn), ".", "_"))
 }
 
 fn args(m: Mod, values: list<Val>) -> str {
@@ -814,7 +814,7 @@ fn dependencies(m: Mod) -> list<Fn> {
   for op in ir.ops(m) {
     if ir.kind(op) == "call" {
       let fn = ir.resolve(m, op)
-      if external(m, fn) {
+      if external(m, fn) && math(m, op) == "" {
         var seen = false
         for existing in out {
           seen = existing == fn || seen
