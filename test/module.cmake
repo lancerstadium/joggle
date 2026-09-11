@@ -54,10 +54,11 @@ endif()
 set(upgrade_source "${TEST_ROOT}.upgrade")
 set(incompatible_source "${TEST_ROOT}.incompatible")
 set(invalid_source "${TEST_ROOT}.invalid-upgrade")
+set(dependent_source "${TEST_ROOT}.dependent")
 file(REMOVE_RECURSE "${upgrade_source}" "${incompatible_source}"
-                    "${invalid_source}")
+                    "${invalid_source}" "${dependent_source}")
 file(MAKE_DIRECTORY "${upgrade_source}" "${incompatible_source}"
-                    "${invalid_source}")
+                    "${invalid_source}" "${dependent_source}")
 file(COPY "${BUILD_ROOT}/sample/" DESTINATION "${upgrade_source}")
 file(READ "${upgrade_source}/module.jog" upgrade_module)
 string(REPLACE "fn keep<T: Ty>(x: T) -> T;"
@@ -104,6 +105,16 @@ if(EXISTS "${TEST_ROOT}/bad")
   message(FATAL_ERROR "invalid module was committed")
 endif()
 
+file(WRITE "${dependent_source}/module.jog"
+     "module dependent\nuse sample\nfn call(x: i32) -> i32 { return sample.ping(x) }\n")
+invoke(ok "${TOOL}" module install "${dependent_source}" "${TEST_ROOT}"
+       -M "${TEST_ROOT}")
+invoke(fail "${TOOL}" module uninstall sample "${TEST_ROOT}")
+if(NOT EXISTS "${TEST_ROOT}/sample/module.jog" OR
+   NOT EXISTS "${TEST_ROOT}/dependent/module.jog")
+  message(FATAL_ERROR "blocked uninstall changed the installed modules")
+endif()
+invoke(ok "${TOOL}" module uninstall dependent "${TEST_ROOT}")
 invoke(ok "${TOOL}" module uninstall sample "${TEST_ROOT}")
 if(EXISTS "${TEST_ROOT}/sample")
   message(FATAL_ERROR "uninstalled module remains")
@@ -111,7 +122,7 @@ endif()
 invoke(fail "${TOOL}" module uninstall sample "${TEST_ROOT}")
 
 file(REMOVE_RECURSE "${upgrade_source}" "${incompatible_source}"
-                    "${invalid_source}")
+                    "${invalid_source}" "${dependent_source}")
 
 file(GLOB residue "${TEST_ROOT}/*" "${TEST_ROOT}/.*")
 foreach(path IN LISTS residue)

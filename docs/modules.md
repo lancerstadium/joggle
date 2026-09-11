@@ -70,6 +70,10 @@ joggle module upgrade path/to/example local-modules -M modules
 joggle module uninstall example local-modules
 ```
 
+Uninstall scans the same installation root and refuses to remove a module that
+another installed module directly uses. Remove those dependents first; a
+refused uninstall leaves every directory unchanged.
+
 `list` is deterministic across the supplied roots, with the first root taking
 precedence for duplicate names. `info` performs a real load, then reports the
 selected path, dependencies, source fragments, and native library files.

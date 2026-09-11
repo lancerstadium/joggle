@@ -413,6 +413,28 @@ int upgrade(const fs::path& source, const fs::path& root,
   return 0;
 }
 
+bool find_dependents(std::string_view name, const fs::path& root,
+                     std::vector<std::string>& out) {
+  const fs::path target = (root / name).lexically_normal();
+  for (const auto& [directory_name, directory] : available({root})) {
+    (void)directory_name;
+    if (directory.lexically_normal() == target)
+      continue;
+
+    Mod declaration;
+    std::vector<fs::path> files;
+    if (!read(directory, declaration, files))
+      return false;
+    const std::vector<std::string> dependencies = declaration.uses();
+    if (std::find(dependencies.begin(), dependencies.end(), name) !=
+        dependencies.end())
+      out.emplace_back(declaration.name());
+  }
+  std::sort(out.begin(), out.end());
+  out.erase(std::unique(out.begin(), out.end()), out.end());
+  return true;
+}
+
 int uninstall(std::string_view name, const fs::path& root) {
   const fs::path target = root / name;
   Mod declaration;
@@ -422,6 +444,17 @@ int uninstall(std::string_view name, const fs::path& root) {
   if (declaration.name() != name) {
     std::cerr << "joggle: module declares '" << declaration.name()
               << "', refusing to uninstall it as '" << name << "'\n";
+    return 1;
+  }
+
+  std::vector<std::string> dependents;
+  if (!find_dependents(name, root, dependents))
+    return 1;
+  if (!dependents.empty()) {
+    std::cerr << "joggle: cannot uninstall " << name << "; required by";
+    for (const std::string& dependent : dependents)
+      std::cerr << ' ' << dependent;
+    std::cerr << '\n';
     return 1;
   }
 

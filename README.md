@@ -286,7 +286,8 @@ only after its declarations, dependencies, and optional native binding load
 successfully. Upgrade additionally requires every installed function signature
 to remain available; adding overloads and renaming generic parameters are
 compatible, while removing or changing a declaration is rejected before the
-staged copy can replace the installed directory.
+staged copy can replace the installed directory. Uninstall refuses to remove a
+module that another module in the same installation root directly uses.
 
 The optional ONNX codec keeps Protobuf out of the core build:
 
