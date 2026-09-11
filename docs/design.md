@@ -1095,16 +1095,22 @@ belong entirely to the module; core changes are limited to ordinary build and
 installation wiring.
 
 This slice covers signed 64-bit arithmetic, Boolean values, comparisons,
-bitwise operations, and structured branches. Arithmetic right shift is defined
-from unsigned bit operations rather than a host implementation-defined signed
-shift. Execution reports deterministic instruction steps, not hardware cycles.
-Malformed images, mismatched arguments, invalid shifts, and division by zero
-are negative gates. Repeated image generation and execution must be identical.
+bitwise operations, structured branches and range loops, and static tensors of
+those elements. Tensor parameters and results use row-major 64-bit slots;
+allocation, fill, multidimensional load, and versioned in-place update remain
+explicit image instructions. Loop-carried scalar and tensor values retain the
+ordinary IR semantics. Arithmetic right shift is defined from unsigned bit
+operations rather than a host implementation-defined signed shift. Execution
+reports deterministic instruction steps, not hardware cycles. Malformed
+images, mismatched arguments, invalid shifts, division by zero, and invalid
+tensor accesses are negative gates. Repeated image generation and execution
+must be identical.
 
-The slice is intentionally incomplete. A real second target gate requires
-loops and static tensors, explicit data-format sizing, and execution of a
-shared NN body also exercised by the C target. Those capabilities must extend
-the module protocol and must not add VM, tensor, or operator switches to core.
+The same `i64` tensor addition and nested-loop matrix multiplication are now
+executed by both the C and VM targets. The slice remains intentionally
+incomplete: the full second-target gate still requires explicit data-format
+sizing and a conventional imported network path. Those capabilities must
+extend modules and must not add VM, tensor, or operator switches to core.
 
 ### Storage planning
 

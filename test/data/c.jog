@@ -21,6 +21,32 @@ fn relu(x: f32) -> f32 {
   return x
 }
 
+fn int_add(
+  a: tensor<i64, [2, 3]>,
+  b: tensor<i64, [2, 3]>
+) -> tensor<i64, [2, 3]> {
+  var out = tensor<i64, [2, 3]>(i64(0))
+  for i in 0..2, j in 0..3 {
+    out[i, j] = a[i, j] + b[i, j]
+  }
+  return out
+}
+
+fn int_matmul(
+  a: tensor<i64, [2, 3]>,
+  b: tensor<i64, [3, 2]>
+) -> tensor<i64, [2, 2]> {
+  var out = tensor<i64, [2, 2]>(i64(0))
+  for i in 0..2, j in 0..2 {
+    var sum: i64 = i64(0)
+    for k in 0..3 {
+      sum += a[i, k] * b[k, j]
+    }
+    out[i, j] = sum
+  }
+  return out
+}
+
 fn matmul(
   a: tensor<f32, [2, 3]>,
   b: tensor<f32, [3, 2]>

@@ -25,17 +25,22 @@ void append(joggle::Attr::Bytes& out, std::int64_t value) {
     out.push_back(static_cast<std::uint8_t>(bits >> shift));
 }
 
-std::int64_t integer(const joggle::Attr::Bytes& bytes) {
-  if (bytes.size() != 8)
-    return 0;
-  std::uint64_t value = 0;
-  for (unsigned shift = 0; shift != 64; shift += 8)
-    value |= std::uint64_t{bytes[shift / 8]} << shift;
-  return std::bit_cast<std::int64_t>(value);
+std::vector<std::int64_t> integers(const joggle::Attr::Bytes& bytes) {
+  std::vector<std::int64_t> out;
+  if (bytes.size() % 8 != 0)
+    return out;
+  out.reserve(bytes.size() / 8);
+  for (std::size_t offset = 0; offset < bytes.size(); offset += 8) {
+    std::uint64_t value = 0;
+    for (unsigned shift = 0; shift != 64; shift += 8)
+      value |= std::uint64_t{bytes[offset + shift / 8]} << shift;
+    out.push_back(std::bit_cast<std::int64_t>(value));
+  }
+  return out;
 }
 
 bool execute(joggle::Env& env, std::string image, std::string entry,
-             std::vector<std::int64_t> inputs, std::int64_t& result,
+             std::vector<std::int64_t> inputs, joggle::Attr::Bytes& result,
              std::int64_t& steps) {
   joggle::Attr::Bytes bytes;
   for (const std::int64_t input : inputs)
@@ -47,7 +52,7 @@ bool execute(joggle::Env& env, std::string image, std::string entry,
   if (!env.call("vm.run", args, returns) || returns.size() != 2 ||
       !returns[0].bytes() || !returns[1].integer())
     return false;
-  result = integer(*returns[0].bytes());
+  result = *returns[0].bytes();
   steps = *returns[1].integer();
   return true;
 }
@@ -55,14 +60,14 @@ bool execute(joggle::Env& env, std::string image, std::string entry,
 }  // namespace
 
 int main(int argc, char** argv) {
-  CHECK(argc == 3);
+  CHECK(argc == 4);
   std::ifstream input(argv[1]);
   CHECK(input);
   std::ostringstream source;
   source << input.rdbuf();
 
   joggle::Env env;
-  env.path(argv[2]);
+  env.path(argv[3]);
   CHECK(env.load("vm"));
   joggle::Mod model;
   CHECK(joggle::parse(env, source.str(), model, argv[1]));
@@ -76,25 +81,27 @@ int main(int argc, char** argv) {
   CHECK(joggle::query(env, "vm.image", model, repeated_image));
   CHECK(repeated_image == image);
 
-  std::int64_t result = 0;
+  joggle::Attr::Bytes result;
   std::int64_t then_steps = 0;
   CHECK(execute(env, std::string(*image.string()), "main", {10, 5, 1}, result,
                 then_steps));
-  CHECK(result == 30 && then_steps > 0);
+  CHECK(integers(result) == std::vector<std::int64_t>{30} && then_steps > 0);
   std::int64_t again_steps = 0;
   CHECK(execute(env, std::string(*image.string()), "main", {10, 5, 1}, result,
                 again_steps));
-  CHECK(result == 30 && again_steps == then_steps);
+  CHECK(integers(result) == std::vector<std::int64_t>{30} &&
+        again_steps == then_steps);
 
   std::int64_t else_steps = 0;
   CHECK(execute(env, std::string(*image.string()), "main", {10, 5, 0}, result,
                 else_steps));
-  CHECK(result == 14 && else_steps == then_steps);
+  CHECK(integers(result) == std::vector<std::int64_t>{14} &&
+        else_steps == then_steps);
 
   std::int64_t shift_steps = 0;
   CHECK(execute(env, std::string(*image.string()), "shift", {-8, 2}, result,
                 shift_steps));
-  CHECK(result == -2 && shift_steps > 0);
+  CHECK(integers(result) == std::vector<std::int64_t>{-2} && shift_steps > 0);
 
   CHECK(!execute(env, std::string(*image.string()), "shift", {-8, 64},
                  result, shift_steps));
@@ -102,5 +109,49 @@ int main(int argc, char** argv) {
                  shift_steps));
   CHECK(!execute(env, "not-a-vm", "main", {10, 5, 1}, result, else_steps));
   CHECK(!env.diags().empty());
+
+  std::ifstream tensor_input(argv[2]);
+  CHECK(tensor_input);
+  std::ostringstream tensor_source;
+  tensor_source << tensor_input.rdbuf();
+  joggle::Mod tensor_model;
+  CHECK(joggle::parse(env, tensor_source.str(), tensor_model, argv[2]));
+  CHECK(tensor_model.verify(env));
+  const std::vector<joggle::Attr> selection{joggle::Attr("int_add")};
+  joggle::Attr tensor_image;
+  if (!joggle::query(env, "vm.image", tensor_model, tensor_image, selection)) {
+    env.print_diags(stderr);
+    return 1;
+  }
+  CHECK(tensor_image.string());
+  CHECK(tensor_image.string()->starts_with("joggle-vm 1\nfn int_add\n"));
+  std::int64_t tensor_steps = 0;
+  CHECK(execute(env, std::string(*tensor_image.string()), "int_add",
+                {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, result,
+                tensor_steps));
+  CHECK(integers(result) ==
+        (std::vector<std::int64_t>{8, 10, 12, 14, 16, 18}));
+  CHECK(tensor_steps > then_steps);
+
+  const std::vector<joggle::Attr> matmul_selection{
+      joggle::Attr("int_matmul")};
+  joggle::Attr matmul_image;
+  CHECK(joggle::query(env, "vm.image", tensor_model, matmul_image,
+                      matmul_selection));
+  CHECK(matmul_image.string());
+  std::int64_t matmul_steps = 0;
+  CHECK(execute(env, std::string(*matmul_image.string()), "int_matmul",
+                {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, result,
+                matmul_steps));
+  CHECK(integers(result) ==
+        (std::vector<std::int64_t>{58, 64, 139, 154}));
+  CHECK(matmul_steps > tensor_steps);
+  std::int64_t repeated_matmul_steps = 0;
+  CHECK(execute(env, std::string(*matmul_image.string()), "int_matmul",
+                {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, result,
+                repeated_matmul_steps));
+  CHECK(integers(result) ==
+        (std::vector<std::int64_t>{58, 64, 139, 154}));
+  CHECK(repeated_matmul_steps == matmul_steps);
   return 0;
 }

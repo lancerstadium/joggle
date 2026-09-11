@@ -326,11 +326,12 @@ compiled, and executed for both scalar and fixed-shape tensor values without
 adding a format case to either core or the C module. Constructor-call generic
 terms travel through the same structural edit boundary. This strengthens the
 first target gate. A new `vm` module establishes the independent second-target
-boundary for scalar functions: pure `.jog` reflection emits a deterministic
-image and a native module executes arithmetic and structured branches with an
-exact instruction-step count. Core gained no target or instruction cases.
-This is not yet the second target exit gate: exposed loops, static tensors,
-format-aware storage, and an official-model execution comparison remain open.
+boundary: pure `.jog` reflection emits a deterministic image and a native
+module executes arithmetic, structured branches and range loops, and static
+64-bit tensors with an exact instruction-step count. The same integer tensor
+add and nested-loop matrix multiplication run through C and VM. Core gained no
+target or instruction cases. This is not yet the second target exit gate:
+format-aware storage and an official-model execution comparison remain open.
 
 Exit gate: official models from two frontends pass through one shared semantic
 library and run through at least two targets without core operator switches.

@@ -173,27 +173,34 @@ the reflection ABI or add a parser case.
 
 ### Deterministic VM boundary
 
-`vm.image(m)` is an ordinary read-only module function. It accepts executable
-scalar functions in `m` and produces canonical text beginning with
-`joggle-vm 1`; unsupported types or structural operations are diagnosed during
-emission. The version is image data, not a versioned source symbol. The core
-does not parse this format and has no VM instruction enum.
+`vm.image(m)` and `vm.image(m, entry)` are ordinary read-only module functions.
+The first emits every executable function; the second selects one exact local
+entry, so unrelated functions need not satisfy the VM contract. Both produce
+canonical text beginning with `joggle-vm 1`; unsupported types or structural
+operations are diagnosed during emission. The version is image data, not a
+versioned source symbol. The core does not parse this format and has no VM
+instruction enum.
 
 `vm.run(image, entry, input)` is the matching native function. `input` contains
-one little-endian 64-bit slot per parameter and the returned byte string holds
-one little-endian 64-bit result. Its second result counts executed VM
-instructions, including selected control-flow instructions. The count is
-deterministic for one image and input, but it is not a wall-clock time or a
-hardware cycle estimate. The initial contract covers `bool`, `i64`, `index`,
-and `int`, integer arithmetic, comparisons, Boolean/bitwise operations, and
-structured conditions. Invalid division, shifts, images, entries, or input
-sizes fail through the normal module diagnostic boundary. Loops, tensors,
-function calls, and format-aware costs are intentionally still open.
+one little-endian 64-bit slot per scalar or tensor element; tensor parameters
+are concatenated in signature order and tensor results use row-major order.
+Its second result counts executed VM instructions, including loop conditions
+and selected control flow. The count is deterministic for one image and input,
+but it is not a wall-clock time or a hardware cycle estimate. The contract
+covers `bool`, `i64`, `index`, and `int`, static tensors of those elements,
+integer arithmetic, comparisons, Boolean/bitwise operations, structured
+conditions and range loops, allocation/fill, and checked linear or
+multidimensional indexing. Invalid division, shifts, images, entries, input
+sizes, shapes, or indices fail through the normal module diagnostic boundary.
+Local function calls, dynamic tensors, non-64-bit storage formats, and
+format-aware costs are intentionally still open.
 
 This split is the target-extension test: source code owns selection and
-emission policy, native code owns efficient execution, and neither requires a
-target abstraction in core. A later VM extension must consume exposed tensor
-loops and explicit data-format policy rather than introduce NN operator cases.
+emission policy, native code owns execution, and neither requires a target
+abstraction in core. The C and VM tests consume the same ordinary integer
+tensor-add and nested-loop matrix-multiplication functions. A later VM
+extension must consume explicit data-format policy rather than introduce NN
+operator cases.
 
 The `base.size` and `base.byte` functions provide bounds-checked inspection of
 an `Attr` byte payload. This deliberately small primitive is sufficient for a
