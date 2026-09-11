@@ -364,6 +364,10 @@ Function rename updates only calls that resolve to that exact overload, keeps a
 short call when it remains unambiguous, and otherwise qualifies it. Function
 erase rejects live callers, then invalidates the complete owned
 `Fn`/`Blk`/`Op`/`Val` tree in one revision.
+Function result contracts are editable through the overloaded `ir.returns`;
+parameter and body types continue to use `ir.type`. Verification checks every
+return owned by the function rather than only its final entry-block return, so
+an early nested return cannot bypass a format-lowering contract.
 
 ## M7 fifth slice
 
@@ -649,6 +653,9 @@ Compile-time `Ty` values now use the same immutable tree as the verifier:
 functions decompose, project, serialize, and construct it. The overloaded
 `ir.type(m, value, type)` and `Mod::type` write a type through a structured
 carried-value family and participate in revision tracking and rollback.
+`ir.returns(m, fn, types)` supplies the corresponding function-result edit;
+the normal verifier then checks all nested returns and resolved callers before
+the surrounding transform commits.
 
 A tested `.jog` function constructs `tensor<f32, [2, 3]>` from child `Ty`
 values, annotates an open frontend result, then computes six elements by

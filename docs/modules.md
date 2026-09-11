@@ -199,6 +199,10 @@ terms; `ty` reconstructs one from text, an integer term, or a constructor name
 plus child types; `str` is the explicit conversion back to canonical text.
 The overloaded `ir.type(m, value, type)` records an inferred type while keeping
 loop/condition-carried versions consistent and printable.
+The three-argument `ir.returns(m, fn, types)` updates a function's declared
+result types. It deliberately complements value retyping instead of introducing
+a type-lowering object: the enclosing `run` transaction commits only when all
+edited signatures, call results, and nested returns verify together.
 Typed empty lists retain their explicit element type, so module functions can
 build structural shapes incrementally. Lists retrieved from `Attr`
 dictionaries or IR metadata are ordinary iterable compile-time lists; callers

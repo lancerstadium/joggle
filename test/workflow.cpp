@@ -324,6 +324,46 @@ int main(int argc, char** argv) {
   CHECK(function_edit_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(function_edit, function_edit_roundtrip));
 
+  joggle::Mod nested_return;
+  constexpr std::string_view nested_return_source =
+      "module nested_return\n"
+      "fn bad(x: i32) -> i32 {\n"
+      "  if true { return true }\n"
+      "  return x\n"
+      "}\n";
+  CHECK(joggle::parse(env, nested_return_source, nested_return,
+                      "nested-return.jog"));
+  CHECK(!nested_return.verify(env));
+  CHECK(std::any_of(nested_return.diags().begin(), nested_return.diags().end(),
+                    [](const joggle::Diag& diag) {
+                      return diag.message.find("return type 'bool'") !=
+                             std::string::npos;
+                    }));
+
+  joggle::Mod return_edit;
+  CHECK(joggle::parse(env,
+                      "module return_edit\n"
+                      "fn identity(x: i32) -> i32 { return x }\n",
+                      return_edit, "return-edit.jog"));
+  CHECK(return_edit.verify(env));
+  const joggle::Fn identity = return_edit.find_fn("identity");
+  const std::uint64_t before_return_edit = return_edit.revision();
+  CHECK(return_edit.type(identity.params().front(), joggle::Ty("i64")));
+  CHECK(return_edit.returns(
+      identity, std::vector<joggle::Ty>{joggle::Ty("i64")}));
+  CHECK(return_edit.revision() == before_return_edit + 2);
+  CHECK(identity.returns() ==
+        std::vector<joggle::Ty>{joggle::Ty("i64")});
+  CHECK(return_edit.verify(env));
+  const std::uint64_t stable_return_edit = return_edit.revision();
+  CHECK(return_edit.returns(
+      identity, std::vector<joggle::Ty>{joggle::Ty("i64")}));
+  CHECK(return_edit.revision() == stable_return_edit);
+  CHECK(!return_edit.returns(identity,
+                             std::vector<joggle::Ty>{joggle::Ty{}}));
+  CHECK(return_edit.revision() == stable_return_edit);
+  return_edit.clear_diags();
+
   joggle::Op tensor_add;
   joggle::Op relu_call;
   for (joggle::Op op : network.find_fn("stage").ops())
@@ -404,6 +444,24 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "script.erase_renamed", scripted_function_edit));
   CHECK(scripted_function_edit.fns().empty());
   CHECK(scripted_function_edit.verify(env));
+  joggle::Mod scripted_return_edit;
+  CHECK(joggle::parse(env,
+                      "module scripted_return_edit\n"
+                      "fn identity(x: i32) -> i32 { return x }\n",
+                      scripted_return_edit, "scripted-return-edit.jog"));
+  CHECK(joggle::run(env, "script.retype_identity", scripted_return_edit));
+  CHECK(scripted_return_edit.verify(env));
+  CHECK(scripted_return_edit.find_fn("identity").params().front().type() ==
+        joggle::Ty("i64"));
+  CHECK(scripted_return_edit.find_fn("identity").returns() ==
+        std::vector<joggle::Ty>{joggle::Ty("i64")});
+  const std::string before_bad_return = joggle::print(scripted_return_edit);
+  const std::uint64_t before_bad_return_revision =
+      scripted_return_edit.revision();
+  CHECK(!joggle::run(env, "script.break_identity_return",
+                     scripted_return_edit));
+  CHECK(joggle::print(scripted_return_edit) == before_bad_return);
+  CHECK(scripted_return_edit.revision() == before_bad_return_revision);
   joggle::Mod scripted_fn;
   constexpr std::string_view scripted_fn_source =
       "module scripted.generated\n"

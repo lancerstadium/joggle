@@ -2389,6 +2389,23 @@ bool Mod::type(Val value, Ty next) {
   return true;
 }
 
+bool Mod::returns(Fn fn, std::span<const Ty> types) {
+  auto& store = impl_->store;
+  if (!fn.valid() || fn.store_ != &store ||
+      std::any_of(types.begin(), types.end(),
+                  [](const Ty& type) { return !type.valid(); })) {
+    detail::add_diag(store.diags,
+                     "returns requires a live function and valid types");
+    return false;
+  }
+  const std::vector<Ty> next(types.begin(), types.end());
+  if (store.fns[fn.id_].data.returns == next)
+    return true;
+  store.fns[fn.id_].data.returns = next;
+  touch(store);
+  return true;
+}
+
 bool Mod::rename(const Env& env, Fn fn, std::string name) {
   auto& store = impl_->store;
   const auto reject = [&](std::string message, Loc loc = {}) {

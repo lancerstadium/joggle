@@ -96,6 +96,21 @@ std::optional<std::vector<Val>> value_handles(const Item& item) {
   return out;
 }
 
+std::optional<std::vector<Ty>> types(const Item& item) {
+  const Items* items = list(item);
+  if (!items)
+    return std::nullopt;
+  std::vector<Ty> out;
+  out.reserve(items->size());
+  for (const Item& entry : *items) {
+    const auto* type = as<Ty>(entry);
+    if (!type)
+      return std::nullopt;
+    out.push_back(*type);
+  }
+  return out;
+}
+
 std::optional<std::vector<std::string>> strings(const Item& item) {
   const Items* items = list(item);
   if (!items)
@@ -1374,19 +1389,10 @@ private:
                                     *type);
           if (result)
             return Items{Item(result)};
-        } else if (const Items* type_items = list(args[4])) {
-          std::vector<Ty> types;
-          types.reserve(type_items->size());
-          for (const Item& item : *type_items) {
-            const auto* type = as<Ty>(item);
-            if (!type) {
-              fail("ir.call result types must be types", loc);
-              return std::nullopt;
-            }
-            types.push_back(*type);
-          }
+        } else if (auto result_types = types(args[4])) {
           Op result =
-              (*mod)->call(*before, std::string(*callee), inputs, types);
+              (*mod)->call(*before, std::string(*callee), inputs,
+                           *result_types);
           if (result)
             return Items{Item(result)};
         }
@@ -1519,6 +1525,12 @@ private:
         if (const auto* fn = as<Fn>(args[1]))
           return Items{Item(Attr((*mod)->erase(env_, *fn)))};
       }
+    } else if (name == "returns" && args.size() == 3) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* fn = as<Fn>(args[1]);
+      auto result_types = types(args[2]);
+      if (mod && *mod && fn && result_types)
+        return Items{Item(Attr((*mod)->returns(*fn, *result_types)))};
     } else if (name == "retarget" && args.size() == 4) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* op = as<Op>(args[1]);

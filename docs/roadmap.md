@@ -80,6 +80,8 @@ Status: complete.
   return, and yield construction.
 - Rename and erase function overloads while preserving resolved calls, overload
   uniqueness, nested ownership, and handle invalidation.
+- Retype values and function result contracts, and validate every return in
+  nested control flow before a transform commits.
 - Add nested walking, selective use replacement, cloning, moving, and `Blk`
   argument editing with explicit insertion points.
 - Give every successful mutation a module revision and make compound edits

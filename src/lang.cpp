@@ -2506,22 +2506,35 @@ bool Mod::verify(const Env& env) {
                        fn.loc);
       continue;
     }
-    const detail::OpData& ret = store.ops[body_ops.back()].data;
-    if (ret.args.size() != fn.returns.size())
-      detail::add_diag(store.diags,
-                       "return arity does not match function signature",
-                       ret.loc);
-    for (std::size_t index = 0;
-         index < std::min(ret.args.size(), fn.returns.size()); ++index) {
-      const Ty& actual = store.vals[ret.args[index]].data.type;
-      const Ty& expected = fn.returns[index];
-      if (!actual.empty() && actual.text() != "_" && !expected.empty() &&
-          expected.text() != "_" && actual != expected)
-        detail::add_diag(store.diags,
-                         "return type '" + std::string(actual.text()) +
-                             "' does not match '" +
-                             std::string(expected.text()) + "'",
-                         ret.loc);
+    const std::vector<std::string> generics =
+        generic_names(generic_info(store, fn));
+    for (const std::uint32_t blk : fn.blks) {
+      if (blk >= store.blks.size() || !store.blks[blk].live)
+        continue;
+      for (const std::uint32_t op : store.blks[blk].data.ops) {
+        if (op >= store.ops.size() || !store.ops[op].live ||
+            store.ops[op].data.kind != Op::Kind::ret)
+          continue;
+        const detail::OpData& ret = store.ops[op].data;
+        if (ret.args.size() != fn.returns.size())
+          detail::add_diag(store.diags,
+                           "return arity does not match function signature",
+                           ret.loc);
+        Bindings bindings;
+        for (std::size_t index = 0;
+             index < std::min(ret.args.size(), fn.returns.size()); ++index) {
+          const Ty& actual = store.vals[ret.args[index]].data.type;
+          const Ty& expected = fn.returns[index];
+          if (!actual.empty() && actual.text() != "_" && !expected.empty() &&
+              expected.text() != "_" && actual != expected &&
+              !unify(expected, actual, generics, bindings))
+            detail::add_diag(store.diags,
+                             "return type '" + std::string(actual.text()) +
+                                 "' does not match '" +
+                                 std::string(expected.text()) + "'",
+                             ret.loc);
+        }
+      }
     }
   }
   for (const auto& blk_slot : store.blks) {

@@ -417,6 +417,18 @@ fn erase_renamed(m: Mod) -> bool {
   return ir.erase(m, ir.find(m, "renamed"))
 }
 
+fn retype_identity(m: Mod) -> bool {
+  let f = ir.find(m, "identity")
+  let params = ir.params(f)
+  base.assert(len(params) == 1, "identity must have one parameter")
+  ir.type(m, params[0], ty("i64"))
+  return ir.returns(m, f, [ty("i64")])
+}
+
+fn break_identity_return(m: Mod) -> bool {
+  return ir.returns(m, ir.find(m, "identity"), [ty("bool")])
+}
+
 fn return_three(m: Mod) -> bool {
   for op in ir.ops(m) {
     if ir.kind(op) == "return" {

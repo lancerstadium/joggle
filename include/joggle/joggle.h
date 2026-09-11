@@ -384,6 +384,7 @@ public:
   bool erase(Op op);
   bool erase(const Env& env, Fn fn);
   bool type(Val value, Ty type);
+  bool returns(Fn fn, std::span<const Ty> types);
   bool rename(const Env& env, Fn fn, std::string name);
   bool rename(Val value, std::string name);
   bool rename(const Env& env, Op call, std::string callee);
