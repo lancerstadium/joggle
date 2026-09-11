@@ -433,6 +433,8 @@ copies a call, constant, loop, or condition, creates fresh `Blk`s/results, and
 remaps values defined inside the copied subtree. `ir.move` reorders an operation
 within its `Blk` atomically and rejects the change if any use would lose
 dominance. `ir.kind` and `ir.blks(op)` make structural selection explicit.
+Intrinsic constant types are checked against their attribute representation;
+custom types keep module-defined literal semantics.
 
 `ir.loop` creates iterator and carried `Blk` arguments plus an initial
 forwarding yield. `ir.branch` creates two initially forwarding arms. A module

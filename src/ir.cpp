@@ -169,6 +169,44 @@ bool printable_value(const detail::Store& store,
   return false;
 }
 
+bool literal_matches(const Attr& value, const Ty& type) {
+  const std::string_view name = type.name();
+  if (name == "_" || name == "Attr" || name == "meta")
+    return true;
+  if (name == "nil")
+    return value.empty();
+  if (name == "bool")
+    return value.boolean().has_value();
+  if (name == "int" || name == "index" ||
+      (name.size() > 1 && (name.front() == 'i' || name.front() == 'u') &&
+       std::all_of(name.begin() + 1, name.end(), [](char ch) {
+         return std::isdigit(static_cast<unsigned char>(ch));
+       })))
+    return value.integer().has_value();
+  if (name == "f16" || name == "f32" || name == "f64")
+    return value.real().has_value();
+  if (name == "str")
+    return value.string().has_value();
+  if (name == "bytes")
+    return value.bytes() != nullptr;
+  if (name == "dict")
+    return value.dict() != nullptr;
+  if (name == "list") {
+    const Attr::List* items = value.list();
+    if (!items || type.args().size() > 1)
+      return false;
+    if (type.args().empty())
+      return true;
+    return std::all_of(items->begin(), items->end(), [&](const Attr& item) {
+      return literal_matches(item, type.args().front());
+    });
+  }
+  if (name == "range" || name == "Ty" || name == "Mod" || name == "Fn" ||
+      name == "Blk" || name == "Op" || name == "Val")
+    return false;
+  return true;
+}
+
 std::optional<std::vector<std::string_view>>
 split_terms(std::string_view text) {
   std::vector<std::string_view> terms;
@@ -718,6 +756,13 @@ Val Mod::constant(Op before, Attr literal, Ty type) {
     detail::add_diag(
         store.diags,
         "constant requires a live insertion point and a valid result type");
+    return {};
+  }
+  if (!literal_matches(literal, type)) {
+    detail::add_diag(store.diags,
+                     "constant literal does not match result type '" +
+                         std::string(type.text()) + "'",
+                     before.loc());
     return {};
   }
   const std::uint32_t blk = store.ops[before.id_].data.blk;

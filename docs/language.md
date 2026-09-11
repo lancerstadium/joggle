@@ -314,6 +314,11 @@ when all operands and users remain dominated. `ir.kind(op)` returns `call`,
 nested bodies. A terminator supplies an insertion point even for an otherwise
 empty `Blk`, so there is no stateful builder object.
 
+`ir.constant` checks the representation of intrinsic literals, including
+nested lists, before editing the module. User-defined type constructors retain
+their own representation policy, so a custom format may deliberately wrap an
+integer, byte string, or another attribute without adding a core case.
+
 Structured construction follows the same rule. `ir.loop` receives iterator
 names, source values, and carried values, then returns an `Op` with one body and
 an initial `yield`. `ir.branch` returns an `Op` with two initially forwarding

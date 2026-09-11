@@ -1135,6 +1135,30 @@ int main(int argc, char** argv) {
   CHECK(rename_safety.rename(env, renamed_call, "compatible"));
   CHECK(rename_safety.verify(env));
 
+  joggle::Mod constant_safety;
+  CHECK(joggle::parse(env,
+                      "module constant_safety\n"
+                      "fn main() -> int { return 0 }\n",
+                      constant_safety, "constant-safety.jog"));
+  CHECK(constant_safety.verify(env));
+  const joggle::Op constant_ret =
+      constant_safety.find_fn("main").body().ops().back();
+  const std::string constant_before = joggle::print(constant_safety);
+  const std::uint64_t constant_revision = constant_safety.revision();
+  CHECK(!constant_safety.constant(constant_ret, joggle::Attr("not an int"),
+                                  joggle::Ty("i32")));
+  CHECK(joggle::print(constant_safety) == constant_before);
+  CHECK(constant_safety.revision() == constant_revision);
+  const joggle::Attr::List mixed{joggle::Attr(std::int64_t{1}),
+                                 joggle::Attr("two")};
+  CHECK(!constant_safety.constant(constant_ret, joggle::Attr(mixed),
+                                  joggle::Ty("list<int>")));
+  CHECK(joggle::print(constant_safety) == constant_before);
+  CHECK(constant_safety.revision() == constant_revision);
+  CHECK(constant_safety.constant(constant_ret, joggle::Attr("encoded"),
+                                 joggle::Ty("format<8>")));
+  CHECK(constant_safety.verify(env));
+
   joggle::Mod args_safety;
   CHECK(joggle::parse(env,
                       "module args_safety\n"
