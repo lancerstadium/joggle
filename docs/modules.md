@@ -231,9 +231,10 @@ body for VM execution. A later VM extension must consume explicit
 module-defined format policy rather than introduce NN operator cases.
 The pinned ONNX v1.19.0 `test_matmul_2d` backend case exercises the same
 boundary without handwritten Joggle input: its model and TensorProto data are
-hash-checked, the bridge removes all ONNX computation, ordinary `opt.expand`
-exposes `tensor.matmul`, and VM plus compiled C are checked against the official
-output tolerance. The VM result and instruction count are also repeatable.
+hash-checked, the bridge removes all ONNX computation, the out-of-tree
+`ikj.apply` module supplies the `tensor.matmul` body, and VM plus compiled C are
+checked against the official output tolerance. The VM result and instruction
+count are also repeatable.
 
 The `base.size` and `base.byte` functions provide bounds-checked inspection of
 an `Attr` byte payload. `base.hex` formats a complete payload with a chosen

@@ -320,6 +320,15 @@ share the same symbol.
 - Allow target modules to select supported calls, attach costs, simulate exact
   behavior, and emit their chosen representation.
 
+The repository now includes an executable out-of-tree implementation module:
+one generic `.jog` function replaces rank-two `tensor.matmul` with an `i-k-j`
+loop order, then composes with ordinary C preparation and read-only emission.
+Its numerical gate proves that kernel customization needs neither a target
+class nor a second kernel IR. This is an extension-mechanism case, not a claim
+that one loop order is generally faster. The optional official ONNX MatMul gate
+applies the same module after semantic conversion and checks its result through
+both VM and compiled C against the pinned ONNX output.
+
 The CLI now provides one target-neutral artifact boundary: `emit` executes an
 ordinary read-only `fn(Mod) -> str/bytes` and writes exactly those bytes. A
 pure `.jog` C99 module emits and executes fixed-shape tensor loops, local scalar
@@ -330,7 +339,7 @@ A separate target-neutral `mem.plan` function now computes static tensor live
 intervals and reusable same-element-type slots as open metadata. The C module
 optionally consumes the plan; a three-stage tensor chain compiles and executes
 with two physical buffers for three logical intermediates. Dynamic allocation,
-inter-function planning, and a genuinely different second target remain open.
+inter-function planning, and production-grade target runtimes remain open.
 After full semantic-body exposure, the official MobileNetV2 model completes C
 preparation, static memory planning, C99 emission, strict compilation, and an
 all-output comparison against the official ONNX Zoo protobuf result. The gate

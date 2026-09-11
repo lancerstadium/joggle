@@ -1,0 +1,23 @@
+module ikj
+use ir
+use opt
+use tensor
+
+[impl: "ikj"]
+fn tensor.matmul<E: Ty, M: int, N: int, K: int>(
+  a: tensor<E, [M, K]>, b: tensor<E, [K, N]>
+) -> tensor<E, [M, N]> {
+  var out = tensor<E, [M, N]>(E(0))
+  for i in 0..M, k in 0..K, j in 0..N {
+    out[i, j] = out[i, j] + a[i, k] * b[k, j]
+  }
+  return out
+}
+
+fn impls() -> list<Fn> {
+  return ir.where(ir.fns("ikj"), "impl", "ikj")
+}
+
+fn apply(m: Mod) -> bool {
+  return opt.apply(m, impls())
+}

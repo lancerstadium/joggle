@@ -402,6 +402,19 @@ if(JOGGLE_BUILD_TESTS)
   find_program(JOGGLE_TEST_C_COMPILER NAMES cc clang gcc)
   if(JOGGLE_TEST_C_COMPILER)
     add_test(
+      NAME ikj-example
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DTOOL=$<TARGET_FILE:joggle-tool>
+        -DCC=${JOGGLE_TEST_C_COMPILER}
+        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/examples/ikj/model.jog
+        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/examples/ikj/main.c
+        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DEXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/examples
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/ikj-example
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/ikj.cmake
+    )
+    add_test(
       NAME c-execution
       COMMAND
         ${CMAKE_COMMAND}
@@ -702,6 +715,7 @@ if(JOGGLE_BUILD_TESTS)
         -DCC=${JOGGLE_TEST_C_COMPILER}
         -DCASE=${onnx_execute_case}
         -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DEXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/examples
         -DROOT=${CMAKE_CURRENT_BINARY_DIR}/onnx-execution
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/onnx_execute.cmake
     )

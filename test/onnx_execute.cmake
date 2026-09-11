@@ -1,7 +1,8 @@
 if(NOT DEFINED TEST OR NOT DEFINED CC OR NOT DEFINED CASE OR
-   NOT DEFINED MODULES OR NOT DEFINED ROOT)
+   NOT DEFINED MODULES OR NOT DEFINED EXAMPLES OR NOT DEFINED ROOT)
   message(FATAL_ERROR
-          "ONNX execution test requires TEST, CC, CASE, MODULES, and ROOT")
+          "ONNX execution test requires TEST, CC, CASE, MODULES, "
+          "EXAMPLES, and ROOT")
 endif()
 
 file(REMOVE_RECURSE "${ROOT}")
@@ -16,7 +17,7 @@ execute_process(
           "${CASE}/test_data_set_0/input_0.pb"
           "${CASE}/test_data_set_0/input_1.pb"
           "${CASE}/test_data_set_0/output_0.pb"
-          "${source}" "${harness}" "${MODULES}"
+          "${source}" "${harness}" "${MODULES}" "${EXAMPLES}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error
@@ -51,5 +52,3 @@ if(NOT result EQUAL 0)
           "ONNX-generated C disagrees with the official output (${result}):\n"
           "${output}${error}")
 endif()
-
-file(REMOVE_RECURSE "${ROOT}")

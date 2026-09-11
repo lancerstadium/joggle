@@ -57,6 +57,32 @@ The output is normal `.jog` text and can be checked, transformed, or committed
 again. List several function names before the file to run an ad hoc sequence as
 one transaction; a failing later step restores all earlier edits.
 
+## Customize a kernel
+
+[`examples/ikj/module.jog`](examples/ikj/module.jog) is a complete out-of-tree
+implementation module. It replaces rank-two `tensor.matmul` with an `i-k-j`
+loop body using one generic function:
+
+```jog
+[impl: "ikj"]
+fn tensor.matmul<E: Ty, M: int, N: int, K: int>(
+  a: tensor<E, [M, K]>, b: tensor<E, [K, N]>
+) -> tensor<E, [M, N]> {
+  var out = tensor<E, [M, N]>(E(0))
+  for i in 0..M, k in 0..K, j in 0..N {
+    out[i, j] = out[i, j] + a[i, k] * b[k, j]
+  }
+  return out
+}
+```
+
+The module contains no C++ binding, target class, schedule object, or second
+kernel syntax. `ikj.apply` selects this ordinary body through open metadata;
+`c.prepare` then exposes only what the existing C emitter still cannot consume.
+The [example instructions](examples/ikj/README.md) generate inspectable IR and
+C in `build-dev/`, compile it with warnings as errors, and check its numerical
+result. The default test suite runs the same workflow.
+
 ## Language in one example
 
 ```jog

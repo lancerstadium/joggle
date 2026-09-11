@@ -129,7 +129,7 @@ std::string harness(const Bytes& left, const Bytes& right,
 }  // namespace
 
 int main(int argc, char** argv) {
-  CHECK(argc == 8);
+  CHECK(argc == 9);
   const Bytes model_data = read(argv[1]);
   CHECK(!model_data.empty());
   Bytes left;
@@ -141,6 +141,7 @@ int main(int argc, char** argv) {
 
   joggle::Env env;
   env.path(argv[7]);
+  env.path(argv[8]);
   CHECK(env.load("onnx"));
   const std::vector<joggle::Attr> read_args{joggle::Attr(model_data)};
   std::vector<joggle::Attr> read_result;
@@ -151,6 +152,7 @@ int main(int argc, char** argv) {
   CHECK(env.load("opt"));
   CHECK(env.load("vm"));
   CHECK(env.load("c"));
+  CHECK(env.load("ikj"));
   joggle::Mod model;
   CHECK(joggle::parse(env, *read_result.front().string(), model, argv[1]));
   CHECK(model.verify(env));
@@ -158,10 +160,12 @@ int main(int argc, char** argv) {
   const std::vector<joggle::Attr> dce_args{
       joggle::Attr(joggle::Attr::List{})};
   CHECK(joggle::run(env, "opt.dce", model, dce_args));
-  const std::vector<joggle::Attr> expand_args{
-      joggle::Attr(joggle::Attr::List{joggle::Attr("tensor.matmul")})};
-  CHECK(joggle::run(env, "opt.expand", model, expand_args));
+  CHECK(joggle::run(env, "ikj.apply", model));
+  CHECK(joggle::run(env, "vm.prepare", model));
+  CHECK(joggle::run(env, "c.prepare", model));
   CHECK(model.verify(env));
+  CHECK(joggle::print(model).find("for i in 0..3, k in 0..4, j in 0..3") !=
+        std::string::npos);
   for (joggle::Op op : model.ops()) {
     CHECK(!op.callee().starts_with("onnx."));
     CHECK(!op.meta("onnx"));

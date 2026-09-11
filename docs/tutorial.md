@@ -202,6 +202,15 @@ Use `opt.apply(m, impls, limit)` when a recursive specialization needs an
 explicit bound; ambiguity or bound exhaustion restores the complete input
 module, and declaration order is never a selection policy.
 
+The repository's [`examples/ikj/module.jog`](../examples/ikj/module.jog) turns
+that mechanism into an executable kernel customization. Its alternative
+`tensor.matmul` body changes the loop order to `i-k-j`; the generic element
+type and three dimensions are inferred from the real call. Run the example
+with `-M examples -M build-dev/modules`, then inspect the generated
+`build-dev/ikj.jog` before emitting C. The accompanying C gate checks
+`[58, 64, 139, 154]`, so the example is both readable source and a regression,
+not an unexecuted API sketch.
+
 Frontend attributes are structural dictionaries. A bridge can use
 `has(attrs, key)`, strict `attrs[key]`, `get(attrs, key, fallback)`, and
 `keys(attrs)` directly in `.jog`; no schema accessor class or frontend-specific
@@ -362,8 +371,9 @@ ctest --test-dir build --output-on-failure
 
 The separate backend download is small. It pins ONNX v1.19.0
 `test_matmul_2d`, including both inputs and the official output. Its execution
-gate converts and expands the imported model, runs the same ordinary IR through
-VM and compiled C, and checks both results against that output. Normal builds
+gate converts the imported model, selects the out-of-tree `ikj` implementation,
+runs the same ordinary IR through VM and compiled C, and checks both results
+against that output. Normal builds
 remain offline; neither download runs during configure.
 
 The application-sized numerical gate is separately opt-in because it expands

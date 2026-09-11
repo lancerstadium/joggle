@@ -610,6 +610,14 @@ call-driven materialization gate resolves a generic ReLU, reflects its concrete
 element and shape terms, retains a monomorphic local function, and retargets
 the call; a forced failure after cloning leaves no orphan function.
 
+The executable `examples/ikj` package applies the same mechanism to a familiar
+kernel decision. Its single generic alternative changes a rank-two matrix
+multiplication from `i-j-k` to `i-k-j`, after which the unchanged C preparation
+and emitter compile and numerically execute it. The package is intentionally
+outside `modules`: it is a user extension and no project build is needed to
+discover it with `-M examples`. This case establishes inspectable kernel-body
+control, not a performance advantage for that loop order.
+
 ## M8 sixth slice
 
 Optional embedding overloads measure each explicitly selected function with a
