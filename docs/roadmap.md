@@ -419,7 +419,12 @@ Status: in progress. `stat.summary` provides a deterministic, read-only
 structural snapshot through an ordinary module query. `stat.sum` can aggregate
 an external `fn(Mod, Op) -> int` measure through the typed invocation boundary,
 so cycle or resource models no longer require a core interface. The module
-still makes no timing or device-model claims of its own.
+still makes no timing or device-model claims of its own. The new `bounds`
+module proves revision-scoped integer intervals for constants, range
+iterators, safe scalar arithmetic, branches, and unchanged loop-carried values.
+Overflow and unsupported recurrences remain unknown. This supplies evidence
+for custom-width and address-generation experiments without allowing an
+emitter to silently change the program's integer semantics.
 
 - Record pipeline decisions, costs, code size, memory use, and deterministic
   cycle estimates through module functions and stable structured output.

@@ -1,8 +1,8 @@
-if(NOT DEFINED APP OR NOT DEFINED CC OR NOT DEFINED MODEL OR
+if(NOT DEFINED APP OR NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
    NOT DEFINED INPUT OR NOT DEFINED OUTPUT OR NOT DEFINED MODULES OR
    NOT DEFINED HARNESS OR NOT DEFINED ROOT)
   message(FATAL_ERROR
-          "ONNX example requires APP, CC, MODEL, INPUT, OUTPUT, MODULES, "
+          "ONNX example requires APP, TOOL, CC, MODEL, INPUT, OUTPUT, MODULES, "
           "HARNESS, and ROOT")
 endif()
 
@@ -15,6 +15,7 @@ set(expected "${ROOT}/expected.bin")
 set(program "${ROOT}/model")
 set(prepared "${ROOT}/model.jog")
 set(image "${ROOT}/model.vm")
+set(bounds "${ROOT}/bounds.json")
 
 execute_process(
   COMMAND "${APP}" "${MODEL}" "${INPUT}" "${OUTPUT}"
@@ -29,6 +30,17 @@ if(NOT result EQUAL 0)
           "ONNX preparation or VM execution failed (${result}):\n${output}${error}")
 endif()
 set(vm_output "${output}")
+
+execute_process(
+  COMMAND "${TOOL}" query bounds.report "${prepared}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${bounds}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "ONNX bounds analysis failed (${result}):\n${error}")
+endif()
 
 execute_process(
   COMMAND "${CC}" -std=c99 -O1 -Wall -Wextra -Wstrict-prototypes -Werror

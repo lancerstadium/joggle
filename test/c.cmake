@@ -165,6 +165,14 @@ if(NOT emitted_source MATCHES "for \\(size_t jog_i = 0;")
           "C source did not use an unsigned host count for fixed storage:\n"
           "${emitted_source}")
 endif()
+string(FIND "${emitted_source}"
+       "bool jog_logical(int64_t v_a, int64_t v_b) {\n  if"
+       duplicate_logical)
+if(NOT duplicate_logical EQUAL -1)
+  message(FATAL_ERROR
+          "C source emitted a short-circuit expression twice:\n"
+          "${emitted_source}")
+endif()
 
 execute_process(
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror

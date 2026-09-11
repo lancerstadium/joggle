@@ -1,0 +1,385 @@
+module bounds
+use base
+use ir
+
+local fn integer(type: Ty) -> bool {
+  let name = base.name(type)
+  return name == "bool" || name == "int" || name == "index" ||
+         name == "i8" || name == "i16" || name == "i32" || name == "i64" ||
+         name == "u8" || name == "u16" || name == "u32" || name == "u64"
+}
+
+local fn limits(type: Ty) -> list<int> {
+  let name = base.name(type)
+  let values = {
+    "bool.lo": 0, "bool.hi": 1,
+    "i8.lo": -128, "i8.hi": 127,
+    "i16.lo": -32768, "i16.hi": 32767,
+    "i32.lo": -2147483648, "i32.hi": 2147483647,
+    "i64.lo": -9223372036854775808, "i64.hi": 9223372036854775807,
+    "index.lo": -9223372036854775808,
+    "index.hi": 9223372036854775807,
+    "int.lo": -9223372036854775808,
+    "int.hi": 9223372036854775807,
+    "u8.lo": 0, "u8.hi": 255,
+    "u16.lo": 0, "u16.hi": 65535,
+    "u32.lo": 0, "u32.hi": 4294967295
+  }
+  if !base.has(values, name + ".lo") {
+    return []
+  }
+  return [base.int(values[name + ".lo"]), base.int(values[name + ".hi"])]
+}
+
+local fn id(value: Val) -> str {
+  return text(ir.key(value))
+}
+
+fn get(known: dict, value: Val) -> list<int> {
+  let value_id = id(value)
+  if !base.has(known, value_id + ".lo") ||
+     !base.has(known, value_id + ".hi") {
+    return []
+  }
+  return [
+    base.int(known[value_id + ".lo"]),
+    base.int(known[value_id + ".hi"])
+  ]
+}
+
+local fn add_value(left: int, right: int) -> list<int> {
+  let low = -9223372036854775807 - 1
+  let high = 9223372036854775807
+  if (right > 0 && left > high - right) ||
+     (right < 0 && left < low - right) {
+    return []
+  }
+  return [left + right]
+}
+
+local fn sub_value(left: int, right: int) -> list<int> {
+  let low = -9223372036854775807 - 1
+  let high = 9223372036854775807
+  if (right < 0 && left > high + right) ||
+     (right > 0 && left < low + right) {
+    return []
+  }
+  return [left - right]
+}
+
+local fn mul_value(left: int, right: int) -> list<int> {
+  let low = -9223372036854775807 - 1
+  let high = 9223372036854775807
+  if left > 0 {
+    if (right > 0 && left > high / right) ||
+       (right < 0 && right < low / left) {
+      return []
+    }
+  } else {
+    if left < 0 {
+      if (right > 0 && left < low / right) ||
+         (right < 0 && right < high / left) {
+        return []
+      }
+    }
+  }
+  return [left * right]
+}
+
+local fn add(left: list<int>, right: list<int>) -> list<int> {
+  if len(left) != 2 || len(right) != 2 {
+    return []
+  }
+  let lo = add_value(left[0], right[0])
+  let hi = add_value(left[1], right[1])
+  if len(lo) == 0 || len(hi) == 0 {
+    return []
+  }
+  return [lo[0], hi[0]]
+}
+
+local fn sub(left: list<int>, right: list<int>) -> list<int> {
+  if len(left) != 2 || len(right) != 2 {
+    return []
+  }
+  let lo = sub_value(left[0], right[1])
+  let hi = sub_value(left[1], right[0])
+  if len(lo) == 0 || len(hi) == 0 {
+    return []
+  }
+  return [lo[0], hi[0]]
+}
+
+local fn mul(left: list<int>, right: list<int>) -> list<int> {
+  if len(left) != 2 || len(right) != 2 {
+    return []
+  }
+  let aa = mul_value(left[0], right[0])
+  let ab = mul_value(left[0], right[1])
+  let ba = mul_value(left[1], right[0])
+  let bb = mul_value(left[1], right[1])
+  if len(aa) == 0 || len(ab) == 0 || len(ba) == 0 || len(bb) == 0 {
+    return []
+  }
+  var lo = aa[0]
+  var hi = aa[0]
+  for value in [ab[0], ba[0], bb[0]] {
+    if value < lo {
+      lo = value
+    }
+    if value > hi {
+      hi = value
+    }
+  }
+  return [lo, hi]
+}
+
+local fn neg(value: list<int>) -> list<int> {
+  if len(value) != 2 || value[0] == -9223372036854775807 - 1 {
+    return []
+  }
+  return [0 - value[1], 0 - value[0]]
+}
+
+local fn result(m: Mod, op: Op, known: dict) -> list<int> {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 || !integer(ir.type(outputs[0])) {
+    return []
+  }
+  let inputs = ir.args(op)
+  var name = ir.callee(op)
+  let target = ir.resolve(m, op)
+  if ir.live(target) {
+    name = ir.symbol(target)
+  }
+  if (name == "base.copy" || name == "operator +") && len(inputs) == 1 {
+    return get(known, inputs[0])
+  }
+  if name == "operator -" && len(inputs) == 1 {
+    return neg(get(known, inputs[0]))
+  }
+  if len(inputs) == 2 {
+    let left = get(known, inputs[0])
+    let right = get(known, inputs[1])
+    if name == "operator +" {
+      return add(left, right)
+    }
+    if name == "operator -" {
+      return sub(left, right)
+    }
+    if name == "operator *" {
+      return mul(left, right)
+    }
+    if name == "operator ==" || name == "operator !=" ||
+       name == "operator <" || name == "operator <=" ||
+       name == "operator >" || name == "operator >=" ||
+       name == "operator &&" || name == "operator ||" {
+      return [0, 1]
+    }
+  }
+  if len(inputs) == 1 && base.name(ir.type(outputs[0])) == name {
+    let value = get(known, inputs[0])
+    let target_limits = limits(ir.type(outputs[0]))
+    if len(value) == 2 && len(target_limits) == 2 &&
+       value[0] >= target_limits[0] && value[1] <= target_limits[1] {
+      return value
+    }
+  }
+  return []
+}
+
+fn infer(m: Mod) -> dict {
+  var known: dict = {}
+
+  for value in ir.vals(m) {
+    if ir.is_const(value) && base.kind(ir.constant(value)) == "int" &&
+       integer(ir.type(value)) {
+      let exact = base.int(ir.constant(value))
+      let allowed = limits(ir.type(value))
+      if len(allowed) == 0 ||
+         (exact >= allowed[0] && exact <= allowed[1]) {
+        let value_id = id(value)
+        known[value_id + ".lo"] = exact
+        known[value_id + ".hi"] = exact
+      }
+    }
+  }
+
+  for op in ir.ops(m) {
+    let kind = ir.kind(op)
+    if kind == "call" {
+      let outputs = ir.outs(op)
+      let value = result(m, op, known)
+      if len(outputs) == 1 && len(value) == 2 {
+        let value_id = id(outputs[0])
+        known[value_id + ".lo"] = value[0]
+        known[value_id + ".hi"] = value[1]
+      }
+    } else {
+      if kind == "loop" {
+        let bodies = ir.blks(op)
+        if len(bodies) == 1 {
+          let body_args = ir.args(bodies[0])
+          let outputs = ir.outs(op)
+          let carried = len(outputs)
+          let iterators = len(body_args) - carried
+          let sources = ir.args(op)
+          for i in 0..iterators {
+            let source = ir.def(sources[i])
+            if ir.live(source) && ir.callee(source) == "operator .." {
+              let range_args = ir.args(source)
+              if len(range_args) == 2 {
+                let first = get(known, range_args[0])
+                let last = get(known, range_args[1])
+                if len(first) == 2 && len(last) == 2 &&
+                   first[0] < last[1] &&
+                   last[1] != -9223372036854775807 - 1 {
+                  let value_id = id(body_args[i])
+                  known[value_id + ".lo"] = first[0]
+                  known[value_id + ".hi"] = last[1] - 1
+                }
+              }
+            }
+          }
+          let body_ops = ir.ops(bodies[0])
+          if len(body_ops) != 0 {
+            let yielded = ir.args(body_ops[len(body_ops) - 1])
+            for i in 0..carried {
+              let seed = iterators + i
+              if seed < len(sources) && i < len(yielded) &&
+                 yielded[i] == body_args[iterators + i] {
+                let value = get(known, sources[seed])
+                if len(value) == 2 {
+                  let value_id = id(body_args[iterators + i])
+                  known[value_id + ".lo"] = value[0]
+                  known[value_id + ".hi"] = value[1]
+                }
+              }
+            }
+          }
+        }
+      } else {
+        if kind == "branch" {
+          let inputs = ir.args(op)
+          for body in ir.blks(op) {
+            let body_args = ir.args(body)
+            for i in 0..len(body_args) {
+              if i + 1 < len(inputs) {
+                let value = get(known, inputs[i + 1])
+                if len(value) == 2 {
+                  let value_id = id(body_args[i])
+                  known[value_id + ".lo"] = value[0]
+                  known[value_id + ".hi"] = value[1]
+                }
+              }
+            }
+          }
+        } else {
+          if kind == "yield" {
+            let owner = ir.op(ir.blk(op))
+            if ir.live(owner) && ir.kind(owner) == "branch" {
+              let yielded = ir.args(op)
+              for i in 0..len(yielded) {
+                var complete = true
+                var lo = 0
+                var hi = 0
+                var first = true
+                for body in ir.blks(owner) {
+                  let body_ops = ir.ops(body)
+                  if len(body_ops) == 0 {
+                    complete = false
+                  } else {
+                    let arm = ir.args(body_ops[len(body_ops) - 1])
+                    if i >= len(arm) {
+                      complete = false
+                    } else {
+                      let value = get(known, arm[i])
+                      if len(value) != 2 {
+                        complete = false
+                      } else {
+                        if first || value[0] < lo {
+                          lo = value[0]
+                        }
+                        if first || value[1] > hi {
+                          hi = value[1]
+                        }
+                        first = false
+                      }
+                    }
+                  }
+                }
+                if complete && !first && i < len(ir.outs(owner)) {
+                  let value_id = id(ir.outs(owner)[i])
+                  known[value_id + ".lo"] = lo
+                  known[value_id + ".hi"] = hi
+                }
+              }
+            } else {
+              if ir.live(owner) && ir.kind(owner) == "loop" {
+                let bodies = ir.blks(owner)
+                let outputs = ir.outs(owner)
+                if len(bodies) == 1 {
+                  let body_args = ir.args(bodies[0])
+                  let iterators = len(body_args) - len(outputs)
+                  let sources = ir.args(owner)
+                  let yielded = ir.args(op)
+                  for i in 0..len(outputs) {
+                    if i < len(yielded) &&
+                       yielded[i] == body_args[iterators + i] &&
+                       iterators + i < len(sources) {
+                      let value = get(known, sources[iterators + i])
+                      if len(value) == 2 {
+                        let value_id = id(outputs[i])
+                        known[value_id + ".lo"] = value[0]
+                        known[value_id + ".hi"] = value[1]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return known
+}
+
+fn fits(known: dict, value: Val, type: Ty) -> bool {
+  let bound = get(known, value)
+  let allowed = limits(type)
+  return len(bound) == 2 && len(allowed) == 2 &&
+         bound[0] >= allowed[0] && bound[1] <= allowed[1]
+}
+
+fn report(m: Mod) -> dict {
+  let known = infer(m)
+  var rows: dict = {}
+  var integers = 0
+  var count = 0
+  for fn in ir.fns(m) {
+    for value in ir.vals(fn) {
+      if integer(ir.type(value)) {
+        integers += 1
+      }
+      let bound = get(known, value)
+      if len(bound) == 2 {
+        var row: dict = {}
+        row["fn"] = ir.name(fn)
+        row["name"] = ir.name(value)
+        row["type"] = text(ir.type(value))
+        row["lo"] = bound[0]
+        row["hi"] = bound[1]
+        rows[id(value)] = row
+        count += 1
+      }
+    }
+  }
+  var out: dict = {}
+  out["revision"] = ir.revision(m)
+  out["integers"] = integers
+  out["known"] = count
+  out["values"] = rows
+  return out
+}

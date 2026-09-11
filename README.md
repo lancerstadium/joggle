@@ -250,12 +250,18 @@ Analyses are read-only module functions:
 ```sh
 ./build/joggle query opt.untyped network.jog -M build/modules
 ./build/joggle query stat.summary network.jog -M build/modules
+./build/joggle query bounds.report network.jog -M build/modules
 ```
 
 An analysis policy can itself be a module. The runnable
 [`examples/cost`](examples/cost) example supplies an ordinary
 `fn(Mod, Op) -> int` weight function and aggregates it with `stat.sum`; the
 compiler core knows neither its unit nor its device assumptions.
+`bounds` is the corresponding reusable integer fact analysis. It proves only
+intervals justified by the current IR and leaves overflow, unsupported
+operations, and modified loop-carried recurrences unknown. It never changes an
+`index` type or chooses a target ABI; a format, address-generation, or emitter
+module may consume the facts explicitly.
 
 Emitters return `str` or `bytes` through the same read-only boundary:
 

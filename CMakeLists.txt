@@ -21,7 +21,7 @@ set(JOGGLE_EXAMPLE_MOBILENET "" CACHE PATH
 set(JOGGLE_TEST_TFLITE_MODEL "" CACHE FILEPATH
     "Official TFLite model used by tests")
 
-foreach(module base c ir math mem nn opt quant stat tensor vm)
+foreach(module base bounds c ir math mem nn opt quant stat tensor vm)
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/${module}")
   configure_file(
     "modules/${module}/module.jog"
@@ -272,6 +272,7 @@ install(FILES include/joggle/joggle.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/jo
 install(
   DIRECTORY
     modules/base
+    modules/bounds
     modules/c
     modules/ir
     modules/math
@@ -411,6 +412,15 @@ if(JOGGLE_BUILD_TESTS)
       -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
       -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
       -P ${CMAKE_CURRENT_SOURCE_DIR}/test/stat.cmake
+  )
+  add_test(
+    NAME bounds-report
+    COMMAND
+      ${CMAKE_COMMAND}
+      -DTOOL=$<TARGET_FILE:joggle-tool>
+      -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/bounds.jog
+      -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/bounds.cmake
   )
   add_test(
     NAME cli-emit
@@ -813,6 +823,7 @@ if(JOGGLE_BUILD_TESTS)
         COMMAND
           ${CMAKE_COMMAND}
           -DAPP=$<TARGET_FILE:joggle-onnx-app>
+          -DTOOL=$<TARGET_FILE:joggle-tool>
           -DCC=${JOGGLE_TEST_C_COMPILER}
           -DMODEL=${case}/${model}
           -DINPUT=${case}/test_data_set_0/input_0.pb

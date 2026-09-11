@@ -61,8 +61,9 @@ fundamentals, `ir` is universal reflection and editing, `opt` contains reusable
 textual transforms, `math` names scalar math primitives, `tensor` defines
 storage-neutral tensor computation, `quant` makes quantization policy explicit,
 and `nn` contains network semantics. `mem` assigns static tensor lifetimes to
-target-neutral reusable slots, while `stat` returns deterministic structural
-measurements. `c` is a removable first execution module and an optional
+target-neutral reusable slots, `stat` returns deterministic structural
+measurements, and `bounds` proves integer intervals without selecting a target.
+`c` is a removable first execution module and an optional
 consumer of memory metadata, not a target interface in core. `vm` is an
 independent deterministic execution module: its textual half emits an image
 through IR reflection and its native half interprets that image. The optional
@@ -890,8 +891,9 @@ and otherwise owns only actual C
 capabilities: scalar/list and
 tensor access, standard floating-point math calls, structured control, and
 fixed tensor storage. Structured short-circuit branches are recovered as C
-logical expressions from their forwarding arm, without a parser or core
-special case. Large byte literals use `base.hex` rather than an interpreted
+logical expressions from their forwarding arm and are not also emitted as
+empty statement-level branches, without a parser or core special case. Large
+byte literals use `base.hex` rather than an interpreted
 loop per byte.
 
 C symbols and locals use the shared injective `base.ident` fragment encoding
@@ -954,6 +956,24 @@ device interpretation. `stat.sum(m, measure)` takes an ordinary
 and rejects a measure that mutates the subject. The module defines traversal
 and aggregation only; units and device assumptions belong to the supplied
 function. [`examples/cost`](../examples/cost) is a runnable custom policy.
+
+`bounds.infer(m)` performs a read-only interval analysis over integer-like
+`Val`s. `bounds.get(facts, value)` returns `[lo, hi]` when the interval is
+known, and `bounds.fits(facts, value, type)` tests it against the representable
+range of another scalar type. `bounds.report(m)` is the printable summary.
+Facts use stable `ir.key` values and belong to the exact `Mod` revision that was
+analysed; callers should query them through `get` rather than persist the
+dictionary as IR metadata.
+
+The current transfer functions cover integer constants, range iterators,
+overflow-checked `+`, `-`, and `*`, safe scalar conversions, Boolean results,
+branch joins, and unchanged loop-carried values. Unsupported arithmetic,
+overflow, and modified recurrences remain unknown. The implementation makes
+one structural preorder traversal after constant initialization and keeps
+dictionary state; it does not rescan every value against every operation.
+Crucially, it does not rewrite types or choose C's index width. A later custom
+format, address-generation, WCET, or emitter policy can require a proof and
+then perform an explicit transformation.
 
 ### Binary codecs
 

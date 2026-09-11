@@ -1,0 +1,29 @@
+module bounded
+
+fn kernel() -> int {
+  var out = 0
+  for i in 2..6 {
+    let j = i * 4 - 1
+    if j < 10 {
+      out += j
+    }
+  }
+  return out
+}
+
+fn choose(flag: bool) -> int {
+  var selected = 3
+  if flag {
+    selected = 8
+  } else {
+    selected = -2
+  }
+  return selected
+}
+
+fn overflow() -> i64 {
+  let top = i64(9223372036854775807)
+  let wrapped = top + i64(1)
+  let product = top * i64(2)
+  return wrapped
+}

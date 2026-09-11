@@ -26,7 +26,7 @@ file(MAKE_DIRECTORY "${TEST_ROOT}")
 
 invoke(ok "${TOOL}" module list -M "${SOURCE_ROOT}")
 set(expected
-    "base\nc\nir\nmath\nmem\nnn\nonnx\nonnx.nn\nopt\nquant\nsat\nsat.c\nsat.vm\nstat\ntensor\ntflite\ntflite.nn\nvm\n")
+    "base\nbounds\nc\nir\nmath\nmem\nnn\nonnx\nonnx.nn\nopt\nquant\nsat\nsat.c\nsat.vm\nstat\ntensor\ntflite\ntflite.nn\nvm\n")
 if(NOT COMMAND_OUTPUT STREQUAL expected)
   message(FATAL_ERROR "module list is not canonical:\n${COMMAND_OUTPUT}")
 endif()
@@ -44,6 +44,18 @@ if(NOT COMMAND_OUTPUT MATCHES "fn source\\(m: Mod\\) -> str;\n" OR
    COMMAND_OUTPUT MATCHES "fn (label|expr|block)\\(")
   message(FATAL_ERROR
           "module info did not isolate the C module API:\n${COMMAND_OUTPUT}")
+endif()
+
+invoke(ok "${TOOL}" module info bounds -M "${SOURCE_ROOT}")
+if(NOT COMMAND_OUTPUT MATCHES "fn infer\\(m: Mod\\) -> dict;\n" OR
+   NOT COMMAND_OUTPUT MATCHES
+       "fn get\\(known: dict, value: Val\\) -> list<int>;\n" OR
+   NOT COMMAND_OUTPUT MATCHES
+       "fn fits\\(known: dict, value: Val, type: Ty\\) -> bool;\n" OR
+   NOT COMMAND_OUTPUT MATCHES "fn report\\(m: Mod\\) -> dict;\n" OR
+   COMMAND_OUTPUT MATCHES "fn (limits|mul_value|result)\\(")
+  message(FATAL_ERROR
+          "module info did not isolate the bounds API:\n${COMMAND_OUTPUT}")
 endif()
 
 invoke(ok "${TOOL}" module info onnx.nn -M "${SOURCE_ROOT}")

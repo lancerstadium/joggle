@@ -1175,6 +1175,10 @@ maps `index`, `int`, and `i32` to fixed-width signed types and contains no
 `size_t`, while source-only loops over compile-time-sized storage use
 `size_t`. A future index-width transform must therefore rewrite and prove IR
 types explicitly; changing a printer string cannot silently narrow semantics.
+The separate `bounds` module now provides the first reusable proof input for
+that decision. It returns revision-scoped integer intervals and deliberately
+does not mutate IR or alter `c.abi`; target policy remains an explicit consumer
+instead of an emitter side effect.
 
 Qualified external symbols use a readable module separator in C
 (`edge.matmul` becomes `jog_edge_matmul`). The same prototype pass rejects

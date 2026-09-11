@@ -57,10 +57,13 @@ model.jog
 model.vm
 model.c
 model.h
+bounds.json
 input.bin
 expected.bin
 result.txt
 ```
 
 `model.jog` is the loop-level IR consumed by both targets. `model.h` is the
-only model declaration consumed by `main.c`.
+only model declaration consumed by `main.c`. `bounds.json` contains proven
+integer intervals for that exact `model.jog` revision; it is evidence for later
+target policy, not an implicit change to the generated C ABI.
