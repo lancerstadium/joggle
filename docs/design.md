@@ -228,12 +228,14 @@ After structural type reflection completed the boundary, the whole format,
 policy, simulator, and emitter were added without changing the core
 library, parser, evaluator, public header, or operation vocabulary.
 
-The separate `sat.c` composition module exercises the inverse direction: it
-recursively maps concrete format types to ordinary C storage types, specializes
-one generic saturating body per width, and retargets only resolved format calls.
-The C module gained general support for a local single-result call used directly
-as an expression, but no `sat` name, width, or format policy. Compiled boundary
-tests at 5, 8, and 12 bits distinguish semantic lowering from a type-only demo.
+The format-owned `sat.materialize` function exercises the inverse direction:
+it recursively maps concrete format types through caller-supplied ordered
+storage limits, specializes one generic saturating body per width, and
+retargets only resolved format calls. `sat.c` selects narrow signed C storage;
+`sat.vm` selects the VM's `i64` storage. The target modules gained no `sat`
+name, width, or format policy. Compiled C boundary tests at 5, 8, and 12 bits
+plus deterministic VM execution of a `tensor<sat<5>, [4]>` distinguish
+semantic materialization from a type-only demo.
 
 ## M5 slice
 

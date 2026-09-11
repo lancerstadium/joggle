@@ -9,6 +9,7 @@ file(MAKE_DIRECTORY "${ROOT}")
 set(prepared "${ROOT}/prepared.jog")
 set(prepared_again "${ROOT}/prepared-again.jog")
 set(source "${ROOT}/model.c")
+set(header "${ROOT}/model.h")
 set(program "${ROOT}/model")
 
 execute_process(
@@ -48,7 +49,17 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "sat C emission failed (${result}):\n${error}")
 endif()
 execute_process(
-  COMMAND "${CC}" -std=c99 -Wall -Wextra -Werror
+  COMMAND "${TOOL}" emit c.header "${prepared}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${header}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "sat C header emission failed (${result}):\n${error}")
+endif()
+execute_process(
+  COMMAND "${CC}" -std=c99 -Wall -Wextra -Werror -Wstrict-prototypes
+          -include "${header}"
           "${source}" "${HARNESS}" -o "${program}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output

@@ -235,6 +235,12 @@ if(JOGGLE_BUILD_SAT)
     "${CMAKE_CURRENT_BINARY_DIR}/modules/sat.c/module.jog"
     COPYONLY
   )
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/sat.vm")
+  configure_file(
+    modules/sat.vm/module.jog
+    "${CMAKE_CURRENT_BINARY_DIR}/modules/sat.vm/module.jog"
+    COPYONLY
+  )
   install(
     TARGETS joggle-sat
     LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/sat/native
@@ -245,7 +251,7 @@ if(JOGGLE_BUILD_SAT)
     DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/sat
   )
   install(
-    DIRECTORY modules/sat.c
+    DIRECTORY modules/sat.c modules/sat.vm
     DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules
   )
 endif()
@@ -839,11 +845,12 @@ if(JOGGLE_BUILD_TESTS)
   if(JOGGLE_BUILD_SAT)
     add_executable(joggle-sat-test test/sat.cpp)
     target_link_libraries(joggle-sat-test PRIVATE Joggle::joggle)
-    add_dependencies(joggle-sat-test joggle-sat)
+    add_dependencies(joggle-sat-test joggle-sat joggle-vm)
     add_test(
       NAME sat
       COMMAND joggle-sat-test
               ${CMAKE_CURRENT_SOURCE_DIR}/test/data/sat.jog
+              ${CMAKE_CURRENT_SOURCE_DIR}/test/data/sat_vm.jog
               ${CMAKE_CURRENT_BINARY_DIR}/modules
     )
     if(JOGGLE_TEST_C_COMPILER)

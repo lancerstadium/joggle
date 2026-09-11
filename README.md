@@ -298,6 +298,10 @@ maps concrete `sat<W>` types to C storage, materializes width-specialized
 saturating helpers, and then calls `c.prepare`. The C module contains no
 `sat` name or format case. The executable regression covers scalar values and
 a fixed-shape tensor whose element format is defined entirely by the module.
+The same format-owned `sat.materialize` function accepts an ordered storage
+map; `sat.vm.prepare` maps every supported width to `i64`, invokes the unchanged
+VM preparation path, and executes the tensor case. Neither target knows the
+format name.
 
 The bundled `vm` module is a genuinely different execution target. Its pure
 `.jog` function `vm.image(Mod) -> str` reflects ordinary IR into a deterministic

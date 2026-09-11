@@ -9,6 +9,7 @@ file(MAKE_DIRECTORY "${ROOT}")
 
 set(prepared "${ROOT}/model.jog")
 set(source "${ROOT}/model.c")
+set(header "${ROOT}/model.h")
 set(program "${ROOT}/model")
 
 execute_process(
@@ -43,8 +44,19 @@ if(NOT result EQUAL 0)
 endif()
 
 execute_process(
+  COMMAND "${TOOL}" emit c.header "${prepared}"
+          -M "${EXAMPLES}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${header}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "IKJ C header emission failed (${result}):\n${error}")
+endif()
+
+execute_process(
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
-          "${source}" "${HARNESS}" -o "${program}"
+          -include "${header}" "${source}" "${HARNESS}" -o "${program}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error

@@ -39,3 +39,179 @@ fn select(m: Mod) -> bool {
   }
   return changed
 }
+
+fn storage(type: Ty, limits: list<int>, types: list<Ty>) -> Ty {
+  assert(sat.supports(type), "sat: expected a concrete sat type")
+  assert(len(limits) != 0 && len(limits) == len(types),
+         "sat: storage limits and types must be nonempty and aligned")
+  let width = int(args(type)[0])
+  var selected = ty("_")
+  var previous = 0
+  for i in 0..len(limits) {
+    assert(limits[i] > previous,
+           "sat: storage limits must be strictly increasing")
+    if selected == ty("_") && width <= limits[i] {
+      selected = types[i]
+    }
+    previous = limits[i]
+  }
+  assert(selected != ty("_"), "sat: no storage type covers the format")
+  return selected
+}
+
+fn stored(type: Ty, limits: list<int>, types: list<Ty>) -> Ty {
+  if sat.supports(type) {
+    return storage(type, limits, types)
+  }
+  let children = args(type)
+  if len(children) == 0 {
+    return type
+  }
+  var next: list<Ty> = []
+  var changed = false
+  for child in children {
+    let value = stored(child, limits, types)
+    next += [value]
+    changed = value != child || changed
+  }
+  if changed {
+    return ty(name(type), next)
+  }
+  return type
+}
+
+fn sum<W: int, S: Ty>(a: S, b: S) -> S {
+  let left: i64 = i64(a)
+  let right: i64 = i64(b)
+  let wide: i64 = left + right
+  let limit: i64 = i64(1) << (W - 1)
+  var result: S = S(0)
+  if wide < -limit {
+    result = S(-limit)
+  }
+  if wide >= -limit && wide <= limit - 1 {
+    result = S(wide)
+  }
+  if wide > limit - 1 {
+    result = S(limit - 1)
+  }
+  return result
+}
+
+fn sum_template() -> Fn {
+  for candidate in ir.fns("sat") {
+    if ir.name(candidate) == "sum" {
+      return candidate
+    }
+  }
+  assert(false, "sat: storage helper template is missing")
+  return ir.fns("sat")[0]
+}
+
+fn helper(m: Mod, width: int, type: Ty) -> Fn {
+  let helper_name = "sat_add_" + text(width)
+  let existing = ir.find(m, helper_name)
+  if ir.live(existing) {
+    let params = ir.params(existing)
+    let returns = ir.returns(existing)
+    assert(ir.has(existing, "sat.width") &&
+           ir.meta(existing, "sat.width") == width &&
+           len(params) == 2 && ir.type(params[0]) == type &&
+           ir.type(params[1]) == type &&
+           len(returns) == 1 && returns[0] == type,
+           "sat: helper name collides with another function")
+    return existing
+  }
+  let created = ir.clone(m, sum_template(), helper_name, [ty(width), type])
+  if ir.live(created) {
+    assert(ir.set(m, created, "sat.width", width),
+           "sat: could not mark a materialized helper")
+  }
+  return created
+}
+
+fn store_value(
+  m: Mod, value: Val, limits: list<int>, types: list<Ty>
+) -> bool {
+  let before = ir.type(value)
+  let after = stored(before, limits, types)
+  if after == before {
+    return false
+  }
+  assert(ir.type(m, value, after), "sat: could not retype a value")
+  return true
+}
+
+fn materialize(m: Mod, limits: list<int>, types: list<Ty>) -> bool {
+  let before = ir.revision(m)
+  var additions: list<Op> = []
+  var widths: list<int> = []
+  for op in ir.ops(m) {
+    if ir.kind(op) == "call" {
+      let outputs = ir.outs(op)
+      if len(outputs) == 1 && sat.supports(ir.type(outputs[0])) {
+        let target = ir.resolve(m, op)
+        if ir.live(target) {
+          let symbol = ir.symbol(target)
+          if symbol == "sat.add" || symbol == "sat.operator +" {
+            additions += [op]
+            widths += [int(args(ir.type(outputs[0]))[0])]
+          }
+        }
+      }
+    }
+  }
+
+  for f in ir.fns(m) {
+    for param in ir.params(f) {
+      store_value(m, param, limits, types)
+    }
+    for block in ir.blks(f) {
+      for arg in ir.args(block) {
+        store_value(m, arg, limits, types)
+      }
+      for op in ir.ops(block) {
+        for output in ir.outs(op) {
+          store_value(m, output, limits, types)
+        }
+      }
+    }
+    var returns: list<Ty> = []
+    var changed = false
+    for type in ir.returns(f) {
+      let next = stored(type, limits, types)
+      returns += [next]
+      changed = next != type || changed
+    }
+    if changed {
+      assert(ir.returns(m, f, returns),
+             "sat: could not retype function results")
+    }
+  }
+
+  for op in ir.ops(m) {
+    if ir.kind(op) == "call" {
+      var generics: list<Ty> = []
+      var changed = false
+      for type in ir.generics(op) {
+        let next = stored(type, limits, types)
+        generics += [next]
+        changed = next != type || changed
+      }
+      if changed {
+        assert(ir.generics(m, op, generics),
+               "sat: could not retype call generics")
+      }
+    }
+  }
+
+  for i in 0..len(additions) {
+    let op = additions[i]
+    let output = ir.outs(op)[0]
+    let implementation = helper(m, widths[i], ir.type(output))
+    assert(ir.live(implementation), "sat: could not materialize helper")
+    assert(ir.retarget(m, op, ir.name(implementation), ir.args(op)),
+           "sat: could not retarget addition")
+  }
+  return ir.revision(m) != before
+}

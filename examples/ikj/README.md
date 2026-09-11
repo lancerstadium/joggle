@@ -19,7 +19,10 @@ build-dev/joggle run ikj.apply c.prepare examples/ikj/model.jog \
   -M examples -M build-dev/modules > build-dev/ikj.jog
 build-dev/joggle emit c.source build-dev/ikj.jog \
   -M examples -M build-dev/modules > build-dev/ikj.c
+build-dev/joggle emit c.header build-dev/ikj.jog \
+  -M examples -M build-dev/modules > build-dev/ikj.h
 cc -std=c99 -Wall -Wextra -Werror \
+  -include build-dev/ikj.h \
   build-dev/ikj.c examples/ikj/main.c -o build-dev/ikj
 build-dev/ikj
 ```
@@ -30,8 +33,9 @@ The first command sequence performs two explicit ordinary transforms:
 2. `c.prepare` exposes only the remaining computation that C cannot emit
    directly.
 
-`c.source` stays read-only. Inspect `build-dev/ikj.jog` to see the actual loop
-body received by the emitter; no hidden lowering or target registry is used.
+`c.source` and `c.header` stay read-only. The harness consumes only the
+generated declaration. Inspect `build-dev/ikj.jog` to see the actual loop body
+received by the emitter; no hidden lowering or target registry is used.
 
 When the optional official ONNX backend case is enabled, the `onnx-execution`
 gate imports ONNX's pinned `test_matmul_2d`, converts it to shared tensor

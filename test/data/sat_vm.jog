@@ -1,23 +1,11 @@
-module sat_kernel
+module sat_vm
 use sat
 use tensor
 
-[entry]
 fn add5(a: sat<5>, b: sat<5>) -> sat<5> {
   return sat.add(a, b)
 }
 
-[entry]
-fn add8(a: sat<8>, b: sat<8>) -> sat<8> {
-  return a + b
-}
-
-[entry]
-fn add12(a: sat<12>, b: sat<12>) -> sat<12> {
-  return sat.add(a, b)
-}
-
-[entry]
 fn add_vec5(
   a: tensor<sat<5>, [4]>, b: tensor<sat<5>, [4]>
 ) -> tensor<sat<5>, [4]> {

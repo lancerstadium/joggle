@@ -1,10 +1,5 @@
 #include <stdint.h>
 
-int8_t jog_add5(int8_t a, int8_t b);
-int8_t jog_add8(int8_t a, int8_t b);
-int16_t jog_add12(int16_t a, int16_t b);
-void jog_add_vec5(const int8_t* a, const int8_t* b, int8_t* out);
-
 int main(void) {
   if (jog_add5(15, 15) != 15 || jog_add5(-16, -1) != -16)
     return 1;

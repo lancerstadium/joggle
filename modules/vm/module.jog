@@ -6,10 +6,13 @@ use tensor
 
 fn run(image: str, entry: str, input: bytes) -> (bytes, int);
 
-fn scalar(type: Ty) -> bool {
-  let name = base.name(type)
+fn scalar_name(name: str) -> bool {
   return name == "bool" || name == "i64" || name == "index" ||
          name == "int" || name == "f32" || name == "f64"
+}
+
+fn scalar(type: Ty) -> bool {
+  return scalar_name(base.name(type))
 }
 
 fn format(type: Ty) -> str {
@@ -176,7 +179,7 @@ fn accepts(m: Mod, op: Op) -> bool {
     return base.size(ir.constant(inputs[0])) ==
            count(ir.type(outputs[0])) * width(tensor.elem(ir.type(outputs[0])))
   }
-  if len(inputs) == 1 && len(outputs) == 1 && scalar(ty(name)) &&
+  if len(inputs) == 1 && len(outputs) == 1 && scalar_name(name) &&
      scalar(ir.type(inputs[0])) {
     return true
   }
@@ -314,7 +317,7 @@ fn call(m: Mod, op: Op) -> str {
            reg(result) + " " + text(count(ir.type(result))) +
            " " + text(data) + "\n"
   }
-  if len(inputs) == 1 && scalar(ty(name)) && scalar(ir.type(inputs[0])) {
+  if len(inputs) == 1 && scalar_name(name) && scalar(ir.type(inputs[0])) {
     return "cast " + format(ty(name)) + " " +
            reg(result) + " " +
            reg(inputs[0]) + "\n"

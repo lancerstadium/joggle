@@ -363,12 +363,13 @@ MobileNetV2 artifact, live IR values fall from 1,445,296 to 31,414 and a local
 Release `stat.summary` process falls from approximately 2.07 GB to 394 MB peak
 resident memory. These are application-gate observations rather than a general
 parser benchmark; operation and block counts are unchanged.
-The optional `sat.c` bridge now proves that a module-defined parametric format
-can be recursively retyped, specialized into local helpers, emitted through C,
-compiled, and executed for both scalar and fixed-shape tensor values without
-adding a format case to either core or the C module. Constructor-call generic
-terms travel through the same structural edit boundary. This strengthens the
-first target gate. A new `vm` module establishes the independent second-target
+The optional `sat` module now owns one parameterized materialization function:
+caller-supplied width limits and storage types recursively retype the format,
+specialize local helpers, and preserve constructor generics. Thin `sat.c` and
+`sat.vm` bridges select different storage maps without adding a format case to
+core, C, or VM. C compiles and executes scalar and fixed-shape tensor values;
+VM independently executes the same `tensor<sat<5>, [4]>` semantics. The `vm`
+module establishes the independent second-target
 boundary: pure `.jog` reflection emits a deterministic image and a native
 module executes typed `i64`, `f32`, and `f64` arithmetic, structured branches
 and range loops, and static tensors with an exact instruction-step count. The
@@ -390,8 +391,8 @@ The same exposed MobileNetV2 now passes VM-owned preparation, emits a complete
 VM image, and completes the official input/output comparison through both VM
 and compiled C. The VM records exactly 98,167,456,513 steps; the magnitude is
 evidence against treating full scalar exposure as the optimized execution
-form. A module-defined non-native format through the independent second target
-remains open, so the broader exit gate is not yet claimed.
+form. The module-defined non-native format gate now also crosses that
+independent target without teaching it the format.
 
 Exit gate: official models from two frontends pass through one shared semantic
 library and run through at least two targets without core operator switches.

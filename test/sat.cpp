@@ -1,5 +1,6 @@
 #include "joggle/joggle.h"
 
+#include <bit>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -19,6 +20,25 @@
 
 namespace {
 
+void append(joggle::Attr::Bytes& out, std::int64_t value) {
+  const std::uint64_t bits = static_cast<std::uint64_t>(value);
+  for (unsigned shift = 0; shift != 64; shift += 8)
+    out.push_back(static_cast<std::uint8_t>(bits >> shift));
+}
+
+std::vector<std::int64_t> integers(const joggle::Attr::Bytes& bytes) {
+  std::vector<std::int64_t> out;
+  if (bytes.size() % 8 != 0)
+    return out;
+  for (std::size_t offset = 0; offset < bytes.size(); offset += 8) {
+    std::uint64_t value = 0;
+    for (unsigned shift = 0; shift != 64; shift += 8)
+      value |= std::uint64_t{bytes[offset + shift / 8]} << shift;
+    out.push_back(std::bit_cast<std::int64_t>(value));
+  }
+  return out;
+}
+
 bool call(joggle::Env& env, std::string_view name,
           std::vector<joggle::Attr> args, std::vector<joggle::Attr>& returns) {
   env.clear_diags();
@@ -28,14 +48,14 @@ bool call(joggle::Env& env, std::string_view name,
 }  // namespace
 
 int main(int argc, char** argv) {
-  CHECK(argc == 3);
+  CHECK(argc == 4);
   std::ifstream input(argv[1]);
   CHECK(input);
   std::ostringstream source;
   source << input.rdbuf();
 
   joggle::Env env;
-  env.path(argv[2]);
+  env.path(argv[3]);
   CHECK(env.load("sat"));
   CHECK(env.load("sat.c"));
 
@@ -200,5 +220,40 @@ int main(int argc, char** argv) {
   const std::string once_lowered = joggle::print(nested_format);
   CHECK(joggle::run(env, "sat.c.lower", nested_format));
   CHECK(joggle::print(nested_format) == once_lowered);
+
+  CHECK(env.load("sat.vm"));
+  std::ifstream vm_input_file(argv[2]);
+  CHECK(vm_input_file);
+  std::ostringstream vm_source;
+  vm_source << vm_input_file.rdbuf();
+  joggle::Mod vm_case;
+  CHECK(joggle::parse(env, vm_source.str(), vm_case, argv[2]));
+  CHECK(vm_case.verify(env));
+  CHECK(joggle::run(env, "sat.vm.prepare", vm_case));
+  CHECK(vm_case.verify(env));
+  const std::string prepared_vm = joggle::print(vm_case);
+  CHECK(prepared_vm.find("sat<") == std::string::npos);
+  CHECK(joggle::run(env, "sat.vm.prepare", vm_case));
+  CHECK(joggle::print(vm_case) == prepared_vm);
+  CHECK(vm_case.find_fn("add5").params()[0].type() == joggle::Ty("i64"));
+  CHECK(vm_case.find_fn("add_vec5").params()[0].type() ==
+        joggle::Ty("tensor<i64, [4]>"));
+
+  const std::vector<joggle::Attr> image_args{joggle::Attr("add_vec5")};
+  joggle::Attr image;
+  CHECK(joggle::query(env, "vm.image", vm_case, image, image_args));
+  CHECK(image.string());
+  joggle::Attr::Bytes vm_input;
+  for (const std::int64_t value : {15, 10, -16, -10, 1, 10, -1, -10})
+    append(vm_input, value);
+  std::vector<joggle::Attr> vm_returns;
+  CHECK(call(env, "vm.run",
+             {joggle::Attr(std::string(*image.string())),
+              joggle::Attr("add_vec5"), joggle::Attr(std::move(vm_input))},
+             vm_returns));
+  CHECK(vm_returns.size() == 2 && vm_returns[0].bytes() &&
+        integers(*vm_returns[0].bytes()) ==
+            (std::vector<std::int64_t>{15, 15, -16, -16}) &&
+        vm_returns[1].integer() && *vm_returns[1].integer() > 0);
   return 0;
 }

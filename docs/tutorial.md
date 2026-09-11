@@ -471,13 +471,16 @@ The target bridge is separate from both the format and emitter:
   -M build/modules > prepared-sat.jog
 ./build/joggle emit c.source prepared-sat.jog \
   -M build/modules > prepared-sat.c
+./build/joggle run sat.vm.prepare test/data/sat_vm.jog \
+  -M build/modules > prepared-sat-vm.jog
 ```
 
-`sat.c` recursively replaces concrete format types, clones one generic helper
-per encountered width, and leaves ordinary local calls for `c.source`. A
-second preparation produces identical IR. Another target can define a
-different bridge without changing `sat`, while another format can target C
-without changing `c`.
+`sat.materialize` recursively replaces concrete format types and clones one
+generic helper per encountered width. `sat.c` supplies the ordered C storage
+map and leaves ordinary local calls for `c.source`; `sat.vm` instead maps the
+same format to `i64` before normal VM preparation. Repeating either preparation
+produces identical IR. Another format can use the same target boundaries
+without changing `c` or `vm`.
 
 The predicate uses ordinary `Ty` reflection rather than a native string parser.
 The `sat<8>` addition becomes `sat.add(a, b)` while the `i32` addition remains

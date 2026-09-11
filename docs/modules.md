@@ -985,14 +985,15 @@ quantization module rather than approximated by raw integer arithmetic.
 ### A hardware extension
 
 `sat` is a complete, intentionally small module for signed saturating integers.
-It demonstrates the five pieces a hardware experiment commonly needs without
-turning them into five plugin kinds:
+It keeps the related pieces a hardware experiment commonly needs together
+without turning them into separate plugin kinds:
 
 | Function | Role |
 | --- | --- |
 | `sat.add<W>` | Primitive over the module-defined `sat<W>` format. |
 | `sat.supports` | Structural `Ty` predicate used by selection policy. |
 | `sat.select` | Textual transform from matching `operator +` calls. |
+| `sat.materialize` | Retype the format through a caller-supplied storage map and specialize its implementation. |
 | `sat.sim` | Bit-exact scalar reference semantics. |
 | `sat.emit` | SystemVerilog text for the selected-width primitive. |
 
@@ -1002,16 +1003,18 @@ in the module;
 the core knows none of their names. A research module can replace any or all of
 these functions without adopting a target class hierarchy.
 
-The optional `sat.c` bridge demonstrates target composition rather than adding
-`sat` to the C emitter. Its `lowered` function recursively rewrites structural
-types, so `sat<W>` is handled equally as a scalar or a tensor element. `lower`
-retypes ordinary values and function contracts, specializes a generic
-saturating-add body through `ir.clone`, and retargets resolved format calls.
-`prepare` then invokes the unchanged C preparation function. Repeating the
-bridge is byte-identical, and generated C is compiled and checked at 5-, 8-,
-and 12-bit saturation boundaries. The same regression executes a
-`tensor<sat<5>, [4]>` kernel after recursively changing both value types and
-the tensor-constructor call to `i8` storage.
+The format-owned `sat.materialize` function recursively rewrites structural
+types, so `sat<W>` is handled equally as a scalar or a tensor element. Its two
+ordinary arguments describe ordered width limits and their storage `Ty`s. It
+retypes values and function contracts, specializes one generic saturating-add
+body through `ir.clone`, and retargets resolved format calls. The thin `sat.c`
+bridge supplies `[8,16,32,63]` and `[i8,i16,i32,i64]` before invoking unchanged
+C preparation; generated C is checked at 5-, 8-, and 12-bit boundaries. The
+thin `sat.vm` bridge supplies `[63]` and `[i64]`, then executes a
+`tensor<sat<5>, [4]>` through the unchanged deterministic VM. Both paths are
+byte-identical when repeated, and neither target module contains a format case.
+The C harness includes the generated header rather than duplicating the
+materialized narrow integer signatures by hand.
 
 `module.jog` contains the module header and imports. Files in `lib/*.jog` are
 appended in lexical path order and contain further declarations without another
