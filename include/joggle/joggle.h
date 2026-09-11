@@ -427,9 +427,15 @@ std::string print(const Attr& value);
 bool print(std::FILE* file, const Attr& value);
 bool structurally_equal(const Mod& left, const Mod& right);
 bool run(Env& env, std::string_view function, Mod& mod);
+bool run(Env& env, std::string_view function, Mod& mod,
+         std::span<const Attr> args);
 bool run(Env& env, std::string_view function, Mod& mod, Attr& report);
 bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
+         std::span<const Attr> args);
+bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
          std::chrono::nanoseconds& elapsed);
+bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
+         std::span<const Attr> args, std::chrono::nanoseconds& elapsed);
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod);
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
          Attr& report);

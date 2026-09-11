@@ -105,6 +105,10 @@ one rollback snapshot rather than one copy per step. It emits the same
 structural per-step report; bounded fixed points and revision-keyed read-only
 queries require no pass or analysis hierarchy. Optional C++ overloads return
 steady-clock durations separately, leaving canonical reports deterministic.
+Single embedding runs also accept typed `Attr` arguments after `Mod`, resolve
+the matching ordinary overload, record the arguments in the structural report,
+and retain whole-transform rollback. This makes parameterized policy functions
+directly usable without generated option objects or wrapper passes.
 
 - Compose ordinary transform functions into pipelines without a pass class or
   new surface keyword.
@@ -327,11 +331,14 @@ adding a format case to either core or the C module. Constructor-call generic
 terms travel through the same structural edit boundary. This strengthens the
 first target gate. A new `vm` module establishes the independent second-target
 boundary: pure `.jog` reflection emits a deterministic image and a native
-module executes arithmetic, structured branches and range loops, and static
-64-bit tensors with an exact instruction-step count. The same integer tensor
-add and nested-loop matrix multiplication run through C and VM. Core gained no
-target or instruction cases. This is not yet the second target exit gate:
-format-aware storage and an official-model execution comparison remain open.
+module executes typed `i64`, `f32`, and `f64` arithmetic, structured branches
+and range loops, and static tensors with an exact instruction-step count. The
+same integer and floating-point nested-loop matrix multiplications run through
+C and VM with their native element widths. Parameterized `opt.expand` also
+exposes and executes the existing shared tensor-add body without a target-owned
+lowering function. Core gained no target or instruction cases. This is not yet
+the second target exit gate: module-defined formats and an official-model
+execution comparison remain open.
 
 Exit gate: official models from two frontends pass through one shared semantic
 library and run through at least two targets without core operator switches.

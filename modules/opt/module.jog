@@ -326,13 +326,17 @@ fn expand(m: Mod, callees: list<str>) -> bool {
   var changed = false
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" {
+      let target = ir.resolve(m, op)
+      var symbol = ir.callee(op)
+      if ir.live(target) {
+        symbol = ir.symbol(target)
+      }
       var selected = false
       for callee in callees {
         if !selected {
-          if ir.callee(op) == callee {
+          if ir.callee(op) == callee || symbol == callee {
             selected = true
-            let fn = ir.resolve(m, op)
-            changed = ir.expand(m, op, fn) || changed
+            changed = ir.expand(m, op, target) || changed
           }
         }
       }

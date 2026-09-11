@@ -348,6 +348,7 @@ if(JOGGLE_BUILD_TESTS)
     COMMAND joggle-vm-test
             ${CMAKE_CURRENT_SOURCE_DIR}/test/data/vm.jog
             ${CMAKE_CURRENT_SOURCE_DIR}/test/data/c.jog
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_open.jog
             ${CMAKE_CURRENT_BINARY_DIR}/modules
   )
   add_test(

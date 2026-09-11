@@ -67,6 +67,10 @@ Compile-time execution is explicit, deterministic, and in-place on success.
 It has no ambient file, network, clock, or process access. A failed function or
 invalid result restores the input `Mod`, so experiments do not leave partially
 rewritten IR behind.
+The embedding run boundary may supply additional structural `Attr` arguments
+after `Mod`. They participate in normal overload resolution and appear in the
+deterministic step report. This keeps parameterized selection and scheduling
+policy in ordinary functions rather than generated pass-option classes.
 
 ## Invariants
 
@@ -1094,23 +1098,30 @@ explicit entry with byte inputs. The image protocol and instruction meanings
 belong entirely to the module; core changes are limited to ordinary build and
 installation wiring.
 
-This slice covers signed 64-bit arithmetic, Boolean values, comparisons,
-bitwise operations, structured branches and range loops, and static tensors of
-those elements. Tensor parameters and results use row-major 64-bit slots;
-allocation, fill, multidimensional load, and versioned in-place update remain
+Image version 2 covers signed 64-bit arithmetic, `f32` and `f64` arithmetic and
+conversion, Boolean values, comparisons, bitwise operations, structured
+branches and range loops, and static tensors of those elements. Every image
+value carries an explicit primitive format. Integer and floating inputs retain
+their 8- or 4-byte widths; tensor parameters and results use row-major elements.
+Allocation, fill, multidimensional load, and versioned in-place update remain
 explicit image instructions. Loop-carried scalar and tensor values retain the
 ordinary IR semantics. Arithmetic right shift is defined from unsigned bit
 operations rather than a host implementation-defined signed shift. Execution
 reports deterministic instruction steps, not hardware cycles. Malformed
-images, mismatched arguments, invalid shifts, division by zero, and invalid
-tensor accesses are negative gates. Repeated image generation and execution
-must be identical.
+images, mismatched arguments, invalid shifts, integer division by zero,
+out-of-range casts, and invalid tensor accesses are negative gates. Repeated
+image generation and execution must be identical.
 
-The same `i64` tensor addition and nested-loop matrix multiplication are now
-executed by both the C and VM targets. The slice remains intentionally
-incomplete: the full second-target gate still requires explicit data-format
-sizing and a conventional imported network path. Those capabilities must
-extend modules and must not add VM, tensor, or operator switches to core.
+The same `i64` tensor addition and both `i64` and `f32` nested-loop matrix
+multiplications are now executed by the C and VM targets. The slice remains
+intentionally incomplete: the full second-target gate still requires a
+module-defined format path and a conventional imported network. Those
+capabilities must extend modules and must not add VM, tensor, or operator
+switches to core.
+The high-level `tensor.operator +` path is separate from those handwritten
+loops: embedding code calls parameterized `opt.expand` first, then emits and
+executes the exposed shared body. A mismatched argument type is a rollback gate.
+No VM-specific preparation function or second lowering protocol is introduced.
 
 ### Storage planning
 

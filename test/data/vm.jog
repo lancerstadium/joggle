@@ -18,3 +18,17 @@ fn shift(x: i64, amount: i64) -> i64 {
 fn divide(x: i64, y: i64) -> i64 {
   return x / y
 }
+
+fn convert(x: f32) -> f64 {
+  let value: f64 = f64(x)
+  return value + 0.25
+}
+
+fn truncate(x: f64) -> i64 {
+  let value: i64 = i64(x)
+  return value
+}
+
+fn truth() -> bool {
+  return true
+}

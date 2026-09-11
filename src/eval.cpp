@@ -262,14 +262,19 @@ public:
 
   static bool sequence(Env& env,
                        std::span<const std::string_view> functions, Mod& mod,
-                       Attr& report,
+                       Attr& report, std::span<const Attr> args,
                        std::vector<std::chrono::nanoseconds>* elapsed);
 
   Eval(Env& env, Error error, Attr::List* trace = nullptr)
       : env_(env), error_(std::move(error)), trace_(trace) {}
 
-  std::optional<Items> run(Fn fn, Mod& mod) {
-    return invoke(fn, {Item(&mod)});
+  std::optional<Items> run(Fn fn, Mod& mod,
+                           std::span<const Attr> args = {}) {
+    Items values{Item(&mod)};
+    values.reserve(args.size() + 1);
+    for (const Attr& value : args)
+      values.push_back(materialize(value));
+    return invoke(fn, values);
   }
 
   std::optional<Items> query(Fn fn, Mod& mod,
@@ -1711,7 +1716,8 @@ bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
 
 bool detail::Eval::sequence(
     Env& env, std::span<const std::string_view> functions, Mod& mod,
-    Attr& report, std::vector<std::chrono::nanoseconds>* elapsed) {
+    Attr& report, std::span<const Attr> args,
+    std::vector<std::chrono::nanoseconds>* elapsed) {
   env.clear_diags();
   report = Attr{};
   if (elapsed)
@@ -1737,7 +1743,10 @@ bool detail::Eval::sequence(
     const std::vector<Ty> explicit_args =
         applied.args().empty() ? std::vector<Ty>{} : applied.args();
     const std::vector<Fn> candidates = env.find_fns(symbol);
-    const std::vector<Ty> argument_types{Ty("Mod")};
+    std::vector<Ty> argument_types{Ty("Mod")};
+    argument_types.reserve(args.size() + 1);
+    for (const Attr& value : args)
+      argument_types.push_back(detail::runtime_type(detail::materialize(value)));
     bool ambiguous = false;
     const Fn fn = detail::resolve_overload(
         candidates, argument_types, explicit_args, nullptr, &ambiguous);
@@ -1748,14 +1757,15 @@ bool detail::Eval::sequence(
         env.error("compile-time function not found: " +
                   std::string(function));
       } else {
-        env.error("compile-time entry has no fn(Mod) overload: " +
+        env.error("compile-time entry has no matching overload: " +
                   std::string(function));
       }
       return false;
     }
     const std::vector<Val> params = fn.params();
-    if (params.size() != 1 || params.front().type().text() != "Mod") {
-      env.error("compile-time entry must accept exactly one Mod: " +
+    if (params.size() != args.size() + 1 ||
+        params.front().type().text() != "Mod") {
+      env.error("compile-time entry must accept Mod followed by its arguments: " +
                     std::string(function),
                 fn.loc());
       return false;
@@ -1771,7 +1781,7 @@ bool detail::Eval::sequence(
     detail::Eval eval(env, [&](std::string message, Loc loc) {
       env.error(std::move(message), std::move(loc));
     }, &trace);
-    const auto result = eval.run(fn, mod);
+    const auto result = eval.run(fn, mod, args);
     if (!result)
       return false;
     if (result->size() != 1) {
@@ -1798,6 +1808,8 @@ bool detail::Eval::sequence(
     Attr::Dict summary;
     summary["ok"] = Attr(true);
     summary["fn"] = Attr(std::string(function));
+    if (!args.empty())
+      summary["args"] = Attr(Attr::List(args.begin(), args.end()));
     summary["reported"] = *returned;
     summary["before"] = Attr(static_cast<std::int64_t>(step_revision));
     summary["after"] = Attr(static_cast<std::int64_t>(after_revision));
@@ -1848,21 +1860,26 @@ bool detail::Eval::sequence(
 
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
          Attr& report) {
-  return detail::Eval::sequence(env, functions, mod, report, nullptr);
+  return detail::Eval::sequence(env, functions, mod, report, {}, nullptr);
 }
 
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
          Attr& report, std::vector<std::chrono::nanoseconds>& elapsed) {
-  return detail::Eval::sequence(env, functions, mod, report, &elapsed);
+  return detail::Eval::sequence(env, functions, mod, report, {}, &elapsed);
 }
 
 bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
          std::chrono::nanoseconds& elapsed) {
+  return run(env, function, mod, report, {}, elapsed);
+}
+
+bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
+         std::span<const Attr> args, std::chrono::nanoseconds& elapsed) {
   elapsed = std::chrono::nanoseconds::zero();
   const std::span<const std::string_view> functions(&function, 1);
   std::vector<std::chrono::nanoseconds> times;
   Attr sequence;
-  if (!detail::Eval::sequence(env, functions, mod, sequence, &times))
+  if (!detail::Eval::sequence(env, functions, mod, sequence, args, &times))
     return false;
   report = sequence.dict()->at("steps").list()->front();
   elapsed = times.front();
@@ -1870,9 +1887,14 @@ bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
 }
 
 bool run(Env& env, std::string_view function, Mod& mod, Attr& report) {
+  return run(env, function, mod, report, {});
+}
+
+bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
+         std::span<const Attr> args) {
   const std::span<const std::string_view> functions(&function, 1);
   Attr sequence;
-  if (!detail::Eval::sequence(env, functions, mod, sequence, nullptr))
+  if (!detail::Eval::sequence(env, functions, mod, sequence, args, nullptr))
     return false;
   report = sequence.dict()->at("steps").list()->front();
   return true;
@@ -1881,6 +1903,12 @@ bool run(Env& env, std::string_view function, Mod& mod, Attr& report) {
 bool run(Env& env, std::string_view function, Mod& mod) {
   Attr ignored;
   return run(env, function, mod, ignored);
+}
+
+bool run(Env& env, std::string_view function, Mod& mod,
+         std::span<const Attr> args) {
+  Attr ignored;
+  return run(env, function, mod, ignored, args);
 }
 
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod) {

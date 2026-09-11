@@ -3,10 +3,13 @@
 #include <bit>
 #include <charconv>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <limits>
+#include <locale>
 #include <memory>
 #include <new>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -62,6 +65,14 @@ bool integer(std::string_view text, std::int64_t& out) {
   return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size();
 }
 
+template <class T>
+bool floating(std::string_view text, T& out) {
+  std::istringstream input{std::string(text)};
+  input.imbue(std::locale::classic());
+  input >> out;
+  return input && input.peek() == std::char_traits<char>::eof();
+}
+
 bool reg(std::string_view text, int& out) {
   const auto parsed =
       std::from_chars(text.data(), text.data() + text.size(), out);
@@ -75,12 +86,53 @@ bool natural(std::string_view text, std::size_t& out) {
   return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size();
 }
 
+enum class Kind { i64, f32, f64 };
+
+bool kind(std::string_view text, Kind& out) {
+  if (text == "i64")
+    out = Kind::i64;
+  else if (text == "f32")
+    out = Kind::f32;
+  else if (text == "f64")
+    out = Kind::f64;
+  else
+    return false;
+  return true;
+}
+
+std::size_t width(Kind kind) {
+  return kind == Kind::f32 ? 4 : 8;
+}
+
 std::uint64_t bits(std::int64_t value) {
+  return std::bit_cast<std::uint64_t>(value);
+}
+
+std::uint64_t bits(float value) {
+  return std::bit_cast<std::uint32_t>(value);
+}
+
+std::uint64_t bits(double value) {
   return std::bit_cast<std::uint64_t>(value);
 }
 
 std::int64_t signed_value(std::uint64_t value) {
   return std::bit_cast<std::int64_t>(value);
+}
+
+float float_value(std::uint64_t value) {
+  return std::bit_cast<float>(static_cast<std::uint32_t>(value));
+}
+
+double double_value(std::uint64_t value) {
+  return std::bit_cast<double>(value);
+}
+
+std::uint32_t load32(const unsigned char* data) {
+  std::uint32_t out = 0;
+  for (unsigned shift = 0; shift != 32; shift += 8)
+    out |= std::uint32_t{*data++} << shift;
+  return out;
 }
 
 std::uint64_t load64(const unsigned char* data) {
@@ -95,13 +147,36 @@ void store64(std::vector<std::uint8_t>& out, std::uint64_t value) {
     out.push_back(static_cast<std::uint8_t>(value >> shift));
 }
 
-struct Value {
-  std::uint64_t scalar = 0;
-  std::shared_ptr<std::vector<std::uint64_t>> tensor;
+void store32(std::vector<std::uint8_t>& out, std::uint32_t value) {
+  for (unsigned shift = 0; shift != 32; shift += 8)
+    out.push_back(static_cast<std::uint8_t>(value >> shift));
+}
+
+std::uint64_t load_value(const unsigned char* data, Kind kind) {
+  return kind == Kind::f32 ? load32(data) : load64(data);
+}
+
+void store_value(std::vector<std::uint8_t>& out, Kind kind,
+                 std::uint64_t value) {
+  if (kind == Kind::f32)
+    store32(out, static_cast<std::uint32_t>(value));
+  else
+    store64(out, value);
+}
+
+struct Tensor {
+  Kind kind = Kind::i64;
+  std::vector<std::uint64_t> items;
 };
 
-Value scalar(std::uint64_t value) {
-  return Value{value, {}};
+struct Value {
+  Kind kind = Kind::i64;
+  std::uint64_t bits = 0;
+  std::shared_ptr<Tensor> tensor;
+};
+
+Value scalar(Kind kind, std::uint64_t value) {
+  return Value{kind, value, {}};
 }
 
 struct State {
@@ -129,7 +204,7 @@ struct State {
     return &found->second;
   }
 
-  bool read_scalar(int id, std::uint64_t& out) {
+  bool read_scalar(int id, Kind expected, std::uint64_t& out) {
     const Value* value = read(id);
     if (!value)
       return false;
@@ -137,7 +212,11 @@ struct State {
       error = "register " + std::to_string(id) + " is not scalar";
       return false;
     }
-    out = value->scalar;
+    if (value->kind != expected) {
+      error = "register " + std::to_string(id) + " has the wrong format";
+      return false;
+    }
+    out = value->bits;
     return true;
   }
 };
@@ -152,7 +231,7 @@ bool branch_bounds(const std::vector<Line>& code, std::size_t at,
   otherwise = last;
   for (std::size_t index = at + 1; index < last; ++index) {
     const std::string_view op = code[index].front();
-    if (op == "if" || op == "loop") {
+    if (op == "if" || op == "loop" || op == "each") {
       ++depth;
     } else if (op == "end") {
       if (depth == 0) {
@@ -177,7 +256,7 @@ bool loop_end(const std::vector<Line>& code, std::size_t at,
   std::size_t depth = 0;
   for (std::size_t index = at + 1; index < last; ++index) {
     const std::string_view op = code[index].front();
-    if (op == "if" || op == "loop") {
+    if (op == "if" || op == "loop" || op == "each") {
       ++depth;
     } else if (op == "end") {
       if (depth == 0) {
@@ -191,75 +270,170 @@ bool loop_end(const std::vector<Line>& code, std::size_t at,
   return false;
 }
 
-bool unary(std::string_view op, std::uint64_t input, std::uint64_t& output) {
-  if (op == "neg")
-    output = std::uint64_t{0} - input;
-  else if (op == "lnot")
-    output = input == 0;
-  else if (op == "bnot")
-    output = ~input;
+bool unary(std::string_view op, Kind kind, std::uint64_t input,
+           Value& output) {
+  if (op == "neg") {
+    if (kind == Kind::i64)
+      output = scalar(kind, std::uint64_t{0} - input);
+    else if (kind == Kind::f32)
+      output = scalar(kind, bits(-float_value(input)));
+    else
+      output = scalar(kind, bits(-double_value(input)));
+  } else if (op == "lnot" && kind == Kind::i64) {
+    output = scalar(Kind::i64, input == 0);
+  } else if (op == "bnot" && kind == Kind::i64) {
+    output = scalar(kind, ~input);
+  } else {
+    return false;
+  }
+  return true;
+}
+
+template <class T>
+bool floating_binary(std::string_view op, T left, T right, Value& output,
+                     Kind kind) {
+  if (op == "add")
+    output = scalar(kind, bits(left + right));
+  else if (op == "sub")
+    output = scalar(kind, bits(left - right));
+  else if (op == "mul")
+    output = scalar(kind, bits(left * right));
+  else if (op == "div")
+    output = scalar(kind, bits(left / right));
+  else if (op == "eq")
+    output = scalar(Kind::i64, left == right);
+  else if (op == "ne")
+    output = scalar(Kind::i64, left != right);
+  else if (op == "lt")
+    output = scalar(Kind::i64, left < right);
+  else if (op == "le")
+    output = scalar(Kind::i64, left <= right);
+  else if (op == "gt")
+    output = scalar(Kind::i64, left > right);
+  else if (op == "ge")
+    output = scalar(Kind::i64, left >= right);
   else
     return false;
   return true;
 }
 
-bool binary(std::string_view op, std::uint64_t left, std::uint64_t right,
-            std::uint64_t& output, std::string& error) {
+bool binary(std::string_view op, Kind kind, std::uint64_t left,
+            std::uint64_t right, Value& output, std::string& error) {
+  if (kind == Kind::f32)
+    return floating_binary(op, float_value(left), float_value(right), output,
+                           kind);
+  if (kind == Kind::f64)
+    return floating_binary(op, double_value(left), double_value(right), output,
+                           kind);
   const std::int64_t lhs = signed_value(left);
   const std::int64_t rhs = signed_value(right);
   if (op == "add")
-    output = left + right;
+    output = scalar(kind, left + right);
   else if (op == "sub")
-    output = left - right;
+    output = scalar(kind, left - right);
   else if (op == "mul")
-    output = left * right;
+    output = scalar(kind, left * right);
   else if (op == "div" || op == "rem") {
     if (rhs == 0) {
       error = "division by zero";
       return false;
     }
-    if (lhs == std::numeric_limits<std::int64_t>::min() && rhs == -1) {
-      output = op == "div" ? bits(lhs) : 0;
-    } else {
-      output = bits(op == "div" ? lhs / rhs : lhs % rhs);
-    }
+    if (lhs == std::numeric_limits<std::int64_t>::min() && rhs == -1)
+      output = scalar(kind, op == "div" ? bits(lhs) : 0);
+    else
+      output = scalar(kind, bits(op == "div" ? lhs / rhs : lhs % rhs));
   } else if (op == "and")
-    output = left & right;
+    output = scalar(kind, left & right);
   else if (op == "or")
-    output = left | right;
+    output = scalar(kind, left | right);
   else if (op == "xor")
-    output = left ^ right;
+    output = scalar(kind, left ^ right);
   else if (op == "shl" || op == "shr") {
     if (rhs < 0 || rhs >= 64) {
       error = "invalid shift count";
       return false;
     }
     const unsigned shift = static_cast<unsigned>(rhs);
-    if (op == "shl") {
-      output = left << shift;
-    } else if ((left >> 63U) == 0 || shift == 0) {
-      output = left >> shift;
-    } else {
-      output = ~(~left >> shift);
-    }
+    if (op == "shl")
+      output = scalar(kind, left << shift);
+    else if ((left >> 63U) == 0 || shift == 0)
+      output = scalar(kind, left >> shift);
+    else
+      output = scalar(kind, ~(~left >> shift));
   } else if (op == "eq")
-    output = left == right;
+    output = scalar(Kind::i64, left == right);
   else if (op == "ne")
-    output = left != right;
+    output = scalar(Kind::i64, left != right);
   else if (op == "lt")
-    output = lhs < rhs;
+    output = scalar(Kind::i64, lhs < rhs);
   else if (op == "le")
-    output = lhs <= rhs;
+    output = scalar(Kind::i64, lhs <= rhs);
   else if (op == "gt")
-    output = lhs > rhs;
+    output = scalar(Kind::i64, lhs > rhs);
   else if (op == "ge")
-    output = lhs >= rhs;
+    output = scalar(Kind::i64, lhs >= rhs);
   else if (op == "land")
-    output = left != 0 && right != 0;
+    output = scalar(Kind::i64, left != 0 && right != 0);
   else if (op == "lor")
-    output = left != 0 || right != 0;
+    output = scalar(Kind::i64, left != 0 || right != 0);
   else
     return false;
+  return true;
+}
+
+bool constant(std::string_view text, Kind kind, Value& output) {
+  if (kind == Kind::i64) {
+    if (text == "true" || text == "false") {
+      output = scalar(kind, text == "true");
+      return true;
+    }
+    std::int64_t value = 0;
+    if (!integer(text, value))
+      return false;
+    output = scalar(kind, bits(value));
+    return true;
+  }
+  if (kind == Kind::f32) {
+    float value = 0;
+    if (!floating(text, value))
+      return false;
+    output = scalar(kind, bits(value));
+    return true;
+  }
+  double value = 0;
+  if (!floating(text, value))
+    return false;
+  output = scalar(kind, bits(value));
+  return true;
+}
+
+bool cast(Kind target, const Value& input, Value& output) {
+  if (input.tensor)
+    return false;
+  if (target == input.kind) {
+    output = input;
+    return true;
+  }
+  if (target == Kind::f32) {
+    const float value = input.kind == Kind::i64
+                            ? static_cast<float>(signed_value(input.bits))
+                            : static_cast<float>(double_value(input.bits));
+    output = scalar(target, bits(value));
+    return true;
+  }
+  if (target == Kind::f64) {
+    const double value = input.kind == Kind::i64
+                             ? static_cast<double>(signed_value(input.bits))
+                             : static_cast<double>(float_value(input.bits));
+    output = scalar(target, bits(value));
+    return true;
+  }
+  const long double value = input.kind == Kind::f32
+                                ? float_value(input.bits)
+                                : double_value(input.bits);
+  if (!std::isfinite(value) || value < -0x1p63L || value >= 0x1p63L)
+    return false;
+  output = scalar(target, bits(static_cast<std::int64_t>(value)));
   return true;
 }
 
@@ -290,7 +464,7 @@ bool tensor_access(const Line& line, bool store, State& state) {
     std::uint64_t index_bits = 0;
     if (!natural(line[4 + axis], extent) ||
         !reg(line[4 + rank + axis], index_id) ||
-        !state.read_scalar(index_id, index_bits))
+        !state.read_scalar(index_id, Kind::i64, index_bits))
       return false;
     const std::int64_t index = signed_value(index_bits);
     if (index < 0 || static_cast<std::uint64_t>(index) >= extent) {
@@ -306,20 +480,25 @@ bool tensor_access(const Line& line, bool store, State& state) {
     extent_product *= extent;
     offset = offset * extent + static_cast<std::size_t>(index);
   }
-  if (extent_product != tensor.tensor->size() ||
-      offset >= tensor.tensor->size()) {
+  if (extent_product != tensor.tensor->items.size() ||
+      offset >= tensor.tensor->items.size()) {
     state.error = "tensor access shape does not match storage";
     return false;
   }
   if (store) {
     int value_id = -1;
-    std::uint64_t value = 0;
-    if (!reg(line.back(), value_id) || !state.read_scalar(value_id, value))
+    if (!reg(line.back(), value_id))
       return false;
-    (*tensor.tensor)[offset] = value;
+    const Value* value = state.read(value_id);
+    if (!value || value->tensor || value->kind != tensor.tensor->kind) {
+      state.error = "tensor store format does not match its element";
+      return false;
+    }
+    tensor.tensor->items[offset] = value->bits;
     state.regs[out_id] = tensor;
   } else {
-    state.regs[out_id] = scalar((*tensor.tensor)[offset]);
+    state.regs[out_id] =
+        scalar(tensor.tensor->kind, tensor.tensor->items[offset]);
   }
   return state.tick();
 }
@@ -335,7 +514,7 @@ bool execute(const std::vector<Line>& code, std::size_t first,
       std::size_t otherwise = last;
       std::size_t end = last;
       if (line.size() != 2 || !reg(line[1], condition_id) ||
-          !state.read_scalar(condition_id, condition) ||
+          !state.read_scalar(condition_id, Kind::i64, condition) ||
           !branch_bounds(code, at, last, otherwise, end, state.error) ||
           !state.tick())
         return false;
@@ -360,8 +539,8 @@ bool execute(const std::vector<Line>& code, std::size_t first,
       std::size_t end = last;
       if (line.size() != 4 || !reg(line[1], iterator_id) ||
           !reg(line[2], first_id) || !reg(line[3], last_id) ||
-          !state.read_scalar(first_id, first_bits) ||
-          !state.read_scalar(last_id, last_bits) ||
+          !state.read_scalar(first_id, Kind::i64, first_bits) ||
+          !state.read_scalar(last_id, Kind::i64, last_bits) ||
           !loop_end(code, at, last, end, state.error))
         return false;
       std::int64_t value = signed_value(first_bits);
@@ -371,11 +550,45 @@ bool execute(const std::vector<Line>& code, std::size_t first,
           return false;
         if (value >= stop)
           break;
-        state.regs[iterator_id] = scalar(bits(value));
+        state.regs[iterator_id] = scalar(Kind::i64, bits(value));
         if (!execute(code, at + 1, end, state))
           return false;
         ++value;
       }
+      at = end;
+      continue;
+    }
+    if (op == "each") {
+      int iterator_id = -1;
+      Kind format = Kind::i64;
+      std::size_t count = 0;
+      std::size_t end = last;
+      if (line.size() < 4 || !reg(line[1], iterator_id) ||
+          !kind(line[2], format) || !natural(line[3], count) ||
+          count > std::numeric_limits<std::size_t>::max() - 4 ||
+          line.size() != count + 4 ||
+          !loop_end(code, at, last, end, state.error))
+        return false;
+      for (std::size_t item = 0; item < count && !state.returned; ++item) {
+        if (!state.tick())
+          return false;
+        int item_id = -1;
+        if (!reg(line[4 + item], item_id)) {
+          state.error = "invalid list-loop item register";
+          return false;
+        }
+        const Value* value = state.read(item_id);
+        if (!value || value->tensor || value->kind != format) {
+          state.error = "list-loop item format does not match its iterator";
+          return false;
+        }
+        const Value copied = *value;
+        state.regs[iterator_id] = copied;
+        if (!execute(code, at + 1, end, state))
+          return false;
+      }
+      if (!state.returned && !state.tick())
+        return false;
       at = end;
       continue;
     }
@@ -386,19 +599,23 @@ bool execute(const std::vector<Line>& code, std::size_t first,
     if (op == "ret") {
       int id = -1;
       std::size_t count = 1;
-      if ((line.size() != 3 && line.size() != 4) ||
+      Kind format = Kind::i64;
+      if ((line.size() != 4 && line.size() != 5) ||
           !reg(line[1], id) ||
           (line[2] != "s" && line[2] != "t") ||
-          (line[2] == "s" && line.size() != 3) ||
+          !kind(line[3], format) ||
+          (line[2] == "s" && line.size() != 4) ||
           (line[2] == "t" &&
-           (line.size() != 4 || !natural(line[3], count)))) {
+           (line.size() != 5 || !natural(line[4], count)))) {
         state.error = "invalid return instruction";
         return false;
       }
       const Value* value = state.read(id);
-      if (!value || (line[2] == "s" && value->tensor) ||
+      if (!value || value->kind != format ||
+          (line[2] == "s" && value->tensor) ||
           (line[2] == "t" &&
-           (!value->tensor || value->tensor->size() != count)) ||
+           (!value->tensor || value->tensor->kind != format ||
+            value->tensor->items.size() != count)) ||
           !state.tick())
         return false;
       state.result = *value;
@@ -408,28 +625,51 @@ bool execute(const std::vector<Line>& code, std::size_t first,
     int out_id = -1;
     int left_id = -1;
     if (op == "const") {
-      std::int64_t value = 0;
-      if (line.size() != 3 || !reg(line[1], out_id) ||
-          !integer(line[2], value) || !state.tick()) {
+      Kind format = Kind::i64;
+      Value value;
+      if (line.size() != 4 || !kind(line[1], format) ||
+          !reg(line[2], out_id) || !constant(line[3], format, value) ||
+          !state.tick()) {
         state.error = "invalid const instruction";
         return false;
       }
-      state.regs[out_id] = scalar(bits(value));
+      state.regs[out_id] = value;
       continue;
     }
     if (op == "alloc") {
+      Kind format = Kind::i64;
       std::size_t count = 0;
       int fill_id = -1;
       std::uint64_t fill = 0;
-      if (line.size() != 4 || !reg(line[1], out_id) ||
-          !natural(line[2], count) || !reg(line[3], fill_id) ||
-          !state.read_scalar(fill_id, fill) || !state.tick()) {
+      if (line.size() != 5 || !kind(line[1], format) ||
+          !reg(line[2], out_id) || !natural(line[3], count) ||
+          !reg(line[4], fill_id) ||
+          !state.read_scalar(fill_id, format, fill) || !state.tick()) {
         if (state.error.empty())
           state.error = "invalid alloc instruction";
         return false;
       }
-      state.regs[out_id].tensor =
-          std::make_shared<std::vector<std::uint64_t>>(count, fill);
+      auto tensor = std::make_shared<Tensor>();
+      tensor->kind = format;
+      tensor->items.assign(count, fill);
+      state.regs[out_id] = Value{format, 0, std::move(tensor)};
+      continue;
+    }
+    if (op == "cast") {
+      Kind target = Kind::i64;
+      if (line.size() != 4 || !kind(line[1], target) ||
+          !reg(line[2], out_id) || !reg(line[3], left_id)) {
+        state.error = "invalid cast instruction";
+        return false;
+      }
+      const Value* input = state.read(left_id);
+      Value output;
+      if (!input || !cast(target, *input, output) || !state.tick()) {
+        if (state.error.empty())
+          state.error = "invalid scalar cast";
+        return false;
+      }
+      state.regs[out_id] = output;
       continue;
     }
     if (op == "load" || op == "store") {
@@ -452,33 +692,39 @@ bool execute(const std::vector<Line>& code, std::size_t first,
       state.regs[out_id] = copied;
       continue;
     }
-    if (line.size() == 3) {
+    if (line.size() == 4) {
+      Kind format = Kind::i64;
       std::uint64_t input = 0;
-      std::uint64_t output = 0;
-      if (!reg(line[1], out_id) || !reg(line[2], left_id) ||
-          !state.read_scalar(left_id, input) || !unary(op, input, output) ||
+      Value output;
+      if (!kind(line[1], format) || !reg(line[2], out_id) ||
+          !reg(line[3], left_id) ||
+          !state.read_scalar(left_id, format, input) ||
+          !unary(op, format, input, output) ||
           !state.tick()) {
         if (state.error.empty())
           state.error = "invalid unary instruction";
         return false;
       }
-      state.regs[out_id] = scalar(output);
+      state.regs[out_id] = output;
       continue;
     }
-    if (line.size() == 4) {
+    if (line.size() == 5) {
+      Kind format = Kind::i64;
       int right_id = -1;
       std::uint64_t left = 0;
       std::uint64_t right = 0;
-      std::uint64_t output = 0;
-      if (!reg(line[1], out_id) || !reg(line[2], left_id) ||
-          !reg(line[3], right_id) || !state.read_scalar(left_id, left) ||
-          !state.read_scalar(right_id, right) ||
-          !binary(op, left, right, output, state.error) || !state.tick()) {
+      Value output;
+      if (!kind(line[1], format) || !reg(line[2], out_id) ||
+          !reg(line[3], left_id) || !reg(line[4], right_id) ||
+          !state.read_scalar(left_id, format, left) ||
+          !state.read_scalar(right_id, format, right) ||
+          !binary(op, format, left, right, output, state.error) ||
+          !state.tick()) {
         if (state.error.empty())
           state.error = "invalid binary instruction";
         return false;
       }
-      state.regs[out_id] = scalar(output);
+      state.regs[out_id] = output;
       continue;
     }
     state.error = "unknown instruction " + std::string(op);
@@ -502,7 +748,7 @@ bool run_image(jog_call* call) {
                                     entry.data.string.size);
   const std::vector<Line> code = lines(source);
   if (code.empty() || code.front().size() != 2 ||
-      code.front()[0] != "joggle-vm" || code.front()[1] != "1")
+      code.front()[0] != "joggle-vm" || code.front()[1] != "2")
     return fail(call, "invalid image header");
 
   std::size_t first = code.size();
@@ -536,25 +782,29 @@ bool run_image(jog_call* call) {
   std::size_t offset = 0;
   while (first < last && code[first][0] == "param") {
     int id = -1;
+    Kind format = Kind::i64;
     std::size_t count = 1;
-    if ((code[first].size() != 3 && code[first].size() != 4) ||
+    if ((code[first].size() != 4 && code[first].size() != 5) ||
         !reg(code[first][1], id) ||
         (code[first][2] != "s" && code[first][2] != "t") ||
-        (code[first][2] == "s" && code[first].size() != 3) ||
+        !kind(code[first][3], format) ||
+        (code[first][2] == "s" && code[first].size() != 4) ||
         (code[first][2] == "t" &&
-         (code[first].size() != 4 || !natural(code[first][3], count))) ||
-        count > (input_size - offset) / 8)
+         (code[first].size() != 5 || !natural(code[first][4], count))) ||
+        count > (input_size - offset) / width(format))
       return fail(call, "input does not match function parameters");
     if (code[first][2] == "s") {
-      state.regs[id] = scalar(load64(bytes + offset));
+      state.regs[id] = scalar(format, load_value(bytes + offset, format));
     } else {
-      auto values = std::make_shared<std::vector<std::uint64_t>>();
-      values->reserve(count);
+      auto values = std::make_shared<Tensor>();
+      values->kind = format;
+      values->items.reserve(count);
       for (std::size_t item = 0; item < count; ++item)
-        values->push_back(load64(bytes + offset + item * 8));
-      state.regs[id].tensor = std::move(values);
+        values->items.push_back(
+            load_value(bytes + offset + item * width(format), format));
+      state.regs[id] = Value{format, 0, std::move(values)};
     }
-    offset += count * 8;
+    offset += count * width(format);
     ++first;
   }
   if (offset != input_size)
@@ -566,15 +816,16 @@ bool run_image(jog_call* call) {
 
   std::vector<std::uint8_t> output;
   if (state.result.tensor) {
-    if (state.result.tensor->size() >
-        std::numeric_limits<std::size_t>::max() / 8)
+    const std::size_t item_width = width(state.result.tensor->kind);
+    if (state.result.tensor->items.size() >
+        std::numeric_limits<std::size_t>::max() / item_width)
       return fail(call, "vm result is too large");
-    output.reserve(state.result.tensor->size() * 8);
-    for (const std::uint64_t value : *state.result.tensor)
-      store64(output, value);
+    output.reserve(state.result.tensor->items.size() * item_width);
+    for (const std::uint64_t value : state.result.tensor->items)
+      store_value(output, state.result.tensor->kind, value);
   } else {
-    output.reserve(8);
-    store64(output, state.result.scalar);
+    output.reserve(width(state.result.kind));
+    store_value(output, state.result.kind, state.result.bits);
   }
   jog_value result{};
   result.kind = JOG_BYTES;

@@ -113,6 +113,12 @@ dependencies.
 It never runs a transform as a side effect. The caller selects an ordinary
 function with `joggle::run` or `joggle run`; this keeps module installation,
 function definition, and execution as three separate operations.
+The embedding overload of `joggle::run` accepts `Attr` arguments after the
+mutable `Mod`. Overload resolution uses their structural runtime types, failure
+restores the exact input module, and a successful step records those arguments
+in its canonical report. Parameterized textual functions therefore need no
+C++ option structure or one-argument wrapper. Ad hoc CLI sequences remain the
+simple no-extra-argument form.
 
 Qualified and imported calls resolve through the explicit and transitive `use`
 closure. Local and imported declarations form one deterministic visible
@@ -176,31 +182,34 @@ the reflection ABI or add a parser case.
 `vm.image(m)` and `vm.image(m, entry)` are ordinary read-only module functions.
 The first emits every executable function; the second selects one exact local
 entry, so unrelated functions need not satisfy the VM contract. Both produce
-canonical text beginning with `joggle-vm 1`; unsupported types or structural
+canonical text beginning with `joggle-vm 2`; unsupported types or structural
 operations are diagnosed during emission. The version is image data, not a
 versioned source symbol. The core does not parse this format and has no VM
 instruction enum.
 
-`vm.run(image, entry, input)` is the matching native function. `input` contains
-one little-endian 64-bit slot per scalar or tensor element; tensor parameters
-are concatenated in signature order and tensor results use row-major order.
+`vm.run(image, entry, input)` is the matching native function. Image version 2
+tags each value as `i64`, `f32`, or `f64`. `bool`, `index`, and `int` use the
+`i64` representation; floating values retain their IEEE binary width. Input
+elements are little endian, tensor parameters are concatenated in signature
+order, and tensor results use row-major order.
 Its second result counts executed VM instructions, including loop conditions
 and selected control flow. The count is deterministic for one image and input,
 but it is not a wall-clock time or a hardware cycle estimate. The contract
-covers `bool`, `i64`, `index`, and `int`, static tensors of those elements,
-integer arithmetic, comparisons, Boolean/bitwise operations, structured
-conditions and range loops, allocation/fill, and checked linear or
-multidimensional indexing. Invalid division, shifts, images, entries, input
-sizes, shapes, or indices fail through the normal module diagnostic boundary.
-Local function calls, dynamic tensors, non-64-bit storage formats, and
-format-aware costs are intentionally still open.
+covers `bool`, `i64`, `index`, `int`, `f32`, and `f64`, static tensors of those
+elements, typed arithmetic and conversion, comparisons, Boolean/bitwise
+operations, structured conditions and range loops, allocation/fill, and
+checked linear or multidimensional indexing. Invalid integer division, shifts,
+images, entries, input sizes, shapes, indices, or out-of-range conversions fail
+through the normal module diagnostic boundary. Local function calls, dynamic
+tensors, module-defined storage formats, and format-aware costs are still open.
 
 This split is the target-extension test: source code owns selection and
 emission policy, native code owns execution, and neither requires a target
-abstraction in core. The C and VM tests consume the same ordinary integer
-tensor-add and nested-loop matrix-multiplication functions. A later VM
-extension must consume explicit data-format policy rather than introduce NN
-operator cases.
+abstraction in core. The C and VM tests consume the same ordinary integer and
+floating-point nested-loop matrix-multiplication functions. A parameterized
+`opt.expand` call additionally exposes the shared tensor `+` body for VM
+execution, without adding `vm.prepare`. A later VM extension must consume
+explicit module-defined format policy rather than introduce NN operator cases.
 
 The `base.size` and `base.byte` functions provide bounds-checked inspection of
 an `Attr` byte payload. This deliberately small primitive is sufficient for a

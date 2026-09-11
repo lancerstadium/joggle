@@ -8,7 +8,17 @@ fn run(image: str, entry: str, input: bytes) -> (bytes, int);
 fn scalar(type: Ty) -> bool {
   let name = base.name(type)
   return name == "bool" || name == "i64" || name == "index" ||
-         name == "int"
+         name == "int" || name == "f32" || name == "f64"
+}
+
+fn format(type: Ty) -> str {
+  let name = base.name(type)
+  if name == "f32" || name == "f64" {
+    return name
+  }
+  assert(name == "bool" || name == "i64" || name == "index" ||
+         name == "int", "vm: unsupported scalar format " + text(type))
+  return "i64"
 }
 
 fn supported(type: Ty) -> bool {
@@ -33,9 +43,9 @@ fn count(type: Ty) -> int {
 fn storage(type: Ty) -> str {
   assert(supported(type), "vm: unsupported value type " + text(type))
   if tensor.valid(type) {
-    return "t " + text(count(type))
+    return "t " + format(tensor.elem(type)) + " " + text(count(type))
   }
-  return "s"
+  return "s " + format(type)
 }
 
 fn id(function: Fn, value: Val) -> int {
@@ -96,6 +106,16 @@ fn unary(name: str) -> str {
   return ""
 }
 
+fn float_unary(code: str) -> bool {
+  return code == "copy" || code == "neg"
+}
+
+fn float_binary(code: str) -> bool {
+  return code == "add" || code == "sub" || code == "mul" ||
+         code == "div" || code == "eq" || code == "ne" ||
+         code == "lt" || code == "le" || code == "gt" || code == "ge"
+}
+
 fn access(function: Fn, op: Op, store: bool) -> str {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -135,7 +155,7 @@ fn call(m: Mod, function: Fn, op: Op) -> str {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   let name = ir.callee(op)
-  if name == "operator .." {
+  if name == "operator .." || name == "base.list" {
     return ""
   }
   if name == "operator []" {
@@ -152,12 +172,14 @@ fn call(m: Mod, function: Fn, op: Op) -> str {
      ir.symbol(target) == "tensor.tensor" {
     assert(len(inputs) == 1,
            "vm: tensor construction requires one fill value")
-    return "alloc " + reg(function, result) + " " +
+    return "alloc " + format(tensor.elem(ir.type(result))) + " " +
+           reg(function, result) + " " +
            text(count(ir.type(result))) + " " +
            reg(function, inputs[0]) + "\n"
   }
   if len(inputs) == 1 && scalar(ty(name)) && scalar(ir.type(inputs[0])) {
-    return "copy " + reg(function, result) + " " +
+    return "cast " + format(ty(name)) + " " +
+           reg(function, result) + " " +
            reg(function, inputs[0]) + "\n"
   }
   assert(scalar(ir.type(result)),
@@ -166,13 +188,29 @@ fn call(m: Mod, function: Fn, op: Op) -> str {
   if len(inputs) == 1 {
     let code = unary(name)
     assert(code != "", "vm: unsupported unary call " + name)
-    return code + " " + reg(function, result) + " " +
+    let type = format(ir.type(inputs[0]))
+    assert(type == "i64" || float_unary(code),
+           "vm: unsupported floating unary call " + name)
+    if code == "copy" {
+      return "copy " + reg(function, result) + " " +
+             reg(function, inputs[0]) + "\n"
+    }
+    return code + " " + type + " " + reg(function, result) + " " +
            reg(function, inputs[0]) + "\n"
   }
   if len(inputs) == 2 {
     let code = binary(name)
     assert(code != "", "vm: unsupported binary call " + name)
-    return code + " " + reg(function, result) + " " +
+    let type = format(ir.type(inputs[0]))
+    assert(scalar(ir.type(inputs[1])),
+           "vm: binary operands must be scalar")
+    if code != "shl" && code != "shr" {
+      assert(format(ir.type(inputs[1])) == type,
+             "vm: binary operand formats must match")
+    }
+    assert(type == "i64" || float_binary(code),
+           "vm: unsupported floating binary call " + name)
+    return code + " " + type + " " + reg(function, result) + " " +
            reg(function, inputs[0]) + " " + reg(function, inputs[1]) +
            "\n"
   }
@@ -186,8 +224,8 @@ fn constant(function: Fn, op: Op) -> str {
   let result = outputs[0]
   assert(scalar(ir.type(result)),
          "vm: unsupported constant type " + text(ir.type(result)))
-  return "const " + reg(function, result) + " " +
-         text(int(ir.constant(result))) + "\n"
+  return "const " + format(ir.type(result)) + " " +
+         reg(function, result) + " " + text(ir.constant(result)) + "\n"
 }
 
 fn arm(m: Mod, function: Fn, body: Blk, carried: list<Val>,
@@ -246,14 +284,24 @@ fn loop(m: Mod, function: Fn, op: Op) -> str {
   }
   for i in 0..iterators {
     let source = ir.def(sources[i])
-    assert(ir.live(source) && ir.kind(source) == "call" &&
-           ir.callee(source) == "operator ..",
-           "vm: loop source must be a range")
-    let bounds = ir.args(source)
-    assert(len(bounds) == 2, "vm: range must have two bounds")
-    out += "loop " + reg(function, args[i]) + " " +
-           reg(function, bounds[0]) + " " + reg(function, bounds[1]) +
-           "\n"
+    assert(ir.live(source) && ir.kind(source) == "call",
+           "vm: loop source must be a call")
+    let items = ir.args(source)
+    if ir.callee(source) == "operator .." {
+      assert(len(items) == 2, "vm: range must have two bounds")
+      out += "loop " + reg(function, args[i]) + " " +
+             reg(function, items[0]) + " " + reg(function, items[1]) +
+             "\n"
+    } else {
+      assert(ir.callee(source) == "base.list",
+             "vm: loop source must be a range or scalar list")
+      out += "each " + reg(function, args[i]) + " " +
+             format(ir.type(args[i])) + " " + text(len(items))
+      for item in items {
+        out += " " + reg(function, item)
+      }
+      out += "\n"
+    }
   }
   for i in 0..len(outputs) {
     out += "copy " + reg(function, args[iterators + i]) + " " +
@@ -327,7 +375,7 @@ fn definition(m: Mod, function: Fn) -> str {
 }
 
 fn image(m: Mod) -> str {
-  var out = "joggle-vm 1\n"
+  var out = "joggle-vm 2\n"
   var count = 0
   for function in ir.fns(m) {
     if len(ir.blks(function)) != 0 {
@@ -343,5 +391,5 @@ fn image(m: Mod, entry: str) -> str {
   let function = ir.find(m, entry)
   assert(ir.live(function) && len(ir.blks(function)) != 0,
          "vm: executable entry not found: " + entry)
-  return "joggle-vm 1\n" + definition(m, function)
+  return "joggle-vm 2\n" + definition(m, function)
 }

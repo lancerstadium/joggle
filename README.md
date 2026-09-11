@@ -117,6 +117,11 @@ Run it like any bundled function:
   -M build/modules -M path/to/my-modules
 ```
 
+Embedding code may also pass ordinary `Attr` arguments to a transform through
+`joggle::run`. This exposes parameterized functions such as
+`opt.expand(m, callees)` directly, with the supplied arguments recorded in the
+deterministic run report; no wrapper pass or generated option class is needed.
+
 Compile-time execution is transactional. If the function fails or produces an
 invalid module, Joggle restores the input. C++ and `.jog` functions edit the
 same `Fn`/`Blk`/`Op`/`Val` representation through the same checks.
@@ -216,11 +221,14 @@ The bundled `vm` module is a genuinely different execution target. Its pure
 `.jog` function `vm.image(Mod) -> str` reflects ordinary IR into a deterministic
 image, while its native `vm.run` implementation executes that image and returns
 both result bytes and an exact instruction-step count. It accepts scalar
-`bool`, `i64`, `index`, and `int` values plus static tensors of those elements,
-structured loops and branches, and checked multidimensional indexing. The same
-integer tensor-add and nested-loop matrix-multiplication functions execute
-through both C and VM gates. The step count is not presented as hardware
-cycles, and a conventional imported network remains an open M10 gate.
+`bool`, `i64`, `index`, `int`, `f32`, and `f64` values plus static tensors of
+those elements, structured loops and branches, checked multidimensional
+indexing, and explicit numeric conversion. Integer and floating-point
+nested-loop matrix multiplication execute through both C and VM gates. The
+parameterized run boundary also expands the shared high-level tensor `+` body
+and executes it in the VM without a VM-specific preparation function. The step
+count is not presented as hardware cycles, and a conventional imported network
+remains an open M10 gate.
 
 ## Guarantees and boundaries
 
