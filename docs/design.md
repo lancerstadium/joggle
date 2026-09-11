@@ -381,6 +381,13 @@ of pure callees. This makes effect assumptions visible at the call site and
 keeps unknown frontend or target calls conservative without adding an effect
 class, trait, or privileged attribute to the core.
 
+The bound is failure policy rather than permission to return an incomplete
+result. Each round compares the module revision; if the final allowed round
+still edits IR, `opt.fix` diagnoses non-convergence and the ordinary outer
+transaction restores the exact input. `opt.basic` uses the operation count plus
+one as a graph-derived bound. A reverse dead-use chain exercises both rollback
+under a deliberately tight bound and complete cleanup under a sufficient one.
+
 Deletion-aware transforms use `ir.live` when iterating an earlier operation
 snapshot. `ir.blk` and whole-dictionary `ir.meta` provide the remaining
 structural equality inputs: CSE only merges calls in one `Blk` with identical

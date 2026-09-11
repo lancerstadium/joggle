@@ -367,7 +367,9 @@ because it is tagged or installed. The bundled `opt.fix(m, pure, limit)` is one
 such function. Its `pure` list is explicit policy: an unknown call is never
 merged or deleted unless the caller names it. `ir.live` lets deletion-based
 transforms safely consume a traversal snapshot, while `ir.blk` and
-`ir.meta(op)` support structural comparison.
+`ir.meta(op)` support structural comparison. `limit` is checked: a final round
+that still changes the module is a transactional failure, not a successful
+partial fixed point.
 
 Canonical printing preserves expression trees with precedence-aware
 parentheses. In particular, `a && (b || c)`, `(a + b) * c`, and

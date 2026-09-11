@@ -98,6 +98,12 @@ forced rollback.
 - Implement reusable constant folding, dead-call elimination, common
   subexpression elimination, canonicalization, and region fusion as modules.
 
+The bundled optimization fixed point now derives progress from module
+revisions, rejects non-positive bounds, and rolls back when the last permitted
+round still changes IR. Its zero-policy entry derives a sufficient bound from
+the graph size; a deep reverse dead-use chain guards against silent partial
+cleanup.
+
 Exit gate: pipelines can be assembled in source and through the embedding API,
 produce identical results, and expose which step changed the module.
 

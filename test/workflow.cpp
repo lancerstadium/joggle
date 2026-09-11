@@ -1238,6 +1238,31 @@ int main(int argc, char** argv) {
   CHECK(joggle::query(env, "script.attr_query", cleaned, count,
                        missing_attr));
   CHECK(count.integer() == -1);
+  constexpr std::string_view deep_dead_source =
+      "module deep.dead\n"
+      "fn work(x: i32) -> i32 {\n"
+      "  let a: i32 = pure(x)\n"
+      "  let b: i32 = pure(a)\n"
+      "  let c: i32 = pure(b)\n"
+      "  let d: i32 = pure(c)\n"
+      "  return x\n"
+      "}\n";
+  joggle::Mod deep_dead;
+  CHECK(joggle::parse(env, deep_dead_source, deep_dead, "deep-dead.jog"));
+  CHECK(deep_dead.verify(env));
+  const std::string deep_before = joggle::print(deep_dead);
+  const std::uint64_t deep_revision = deep_dead.revision();
+  CHECK(!joggle::run(env, "script.clean_tight", deep_dead));
+  CHECK(joggle::print(deep_dead) == deep_before);
+  CHECK(deep_dead.revision() == deep_revision);
+  CHECK(!env.diags().empty());
+  CHECK(env.diags().front().message.find("did not converge") !=
+        std::string::npos);
+  env.clear_diags();
+  CHECK(joggle::run(env, "script.clean_pure", deep_dead));
+  CHECK(deep_dead.verify(env));
+  CHECK(joggle::query(env, "opt.count", deep_dead, count, pure_query));
+  CHECK(count.integer() == 0);
   joggle::Attr clean_report;
   CHECK(joggle::run(env, "script.clean_pure", cleaned, clean_report));
   CHECK(cleaned.verify(env));

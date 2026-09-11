@@ -405,6 +405,10 @@ fn clean_pure(m: Mod) -> bool {
   return opt.fix(m, ["pure"], 8)
 }
 
+fn clean_tight(m: Mod) -> bool {
+  return opt.fix(m, ["pure"], 2)
+}
+
 fn prepare(m: Mod) -> bool {
   var changed = opt.fold_add_zero(m)
   changed = mark_add(m) || changed

@@ -24,7 +24,10 @@ nested traversal, selective use replacement, and region fusion let such modules
 make real graph changes; the pinned MobileNetV2 test fuses 36 three-call chains.
 The `opt` module also supplies policy-parameterized CSE and dead-call
 elimination plus a bounded fixed-point pipeline; callers state which functions
-are pure instead of adopting a built-in effect hierarchy.
+are pure instead of adopting a built-in effect hierarchy. Its explicit bound
+is a checked resource limit: exhausting it while edits continue fails and
+rolls the enclosing transform back instead of returning partially optimized
+IR. `opt.basic` derives its bound from the current graph size.
 An optional `Attr` output from `run` reports nested function completions,
 body expansions with their chosen overload signatures, reported change flags,
 and actual revision deltas without another result type.

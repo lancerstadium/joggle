@@ -109,26 +109,33 @@ fn cse(m: Mod, pure: list<str>) -> bool {
 }
 
 fn fix(m: Mod, pure: list<str>, limit: int) -> bool {
+  base.assert(limit > 0, "opt.fix requires a positive limit")
   let safe = pure + ["operator +", "operator *"]
   var changed = false
   var again = true
+  var exhausted = false
   for i in 0..limit {
     if again {
-      again = false
-      again = fold_identity(m, "operator +", 0, 0) || again
-      again = fold_identity(m, "operator +", 0, 1) || again
-      again = fold_identity(m, "operator *", 1, 0) || again
-      again = fold_identity(m, "operator *", 1, 1) || again
-      again = cse(m, safe) || again
-      again = dce(m, safe) || again
+      let before = ir.revision(m)
+      fold_identity(m, "operator +", 0, 0)
+      fold_identity(m, "operator +", 0, 1)
+      fold_identity(m, "operator *", 1, 0)
+      fold_identity(m, "operator *", 1, 1)
+      cse(m, safe)
+      dce(m, safe)
+      again = ir.revision(m) != before
       changed = again || changed
+      if i == limit - 1 && again {
+        exhausted = true
+      }
     }
   }
+  base.assert(!exhausted, "opt.fix did not converge")
   return changed
 }
 
 fn basic(m: Mod) -> bool {
-  return fix(m, [], 8)
+  return fix(m, [], len(ir.ops(m)) + 1)
 }
 
 fn count(m: Mod, callee: str) -> int {
