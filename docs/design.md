@@ -331,7 +331,10 @@ unprintable hidden operations.
 ## M7 fourth slice
 
 The editor now constructs typed constants, deep-clones operation subtrees, and
-moves operations within a `Blk` through explicit `Op` positions. Deep cloning
+moves operations within a `Blk` through explicit `Op` positions. Loop and
+branch construction validates every carried value before changing any source
+binding from `let` to `var`, so a rejected structure is byte- and
+revision-stable. Deep cloning
 creates fresh results, `Blk`s, and `Blk` arguments, remaps internal dataflow,
 and works for nested loops and conditions; erasing the replaced source
 recursively invalidates its complete subtree. Motion is atomic and checks the

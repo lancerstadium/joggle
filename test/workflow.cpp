@@ -1035,6 +1035,45 @@ int main(int argc, char** argv) {
   CHECK(control_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(built_control, control_roundtrip));
 
+  joggle::Mod failed_structure;
+  CHECK(joggle::parse(env,
+                      "module failed.structure\n"
+                      "fn seed(x: int) -> int;\n"
+                      "fn main(n: int, flag: bool) -> int {\n"
+                      "  let total = seed(n)\n"
+                      "  return total\n"
+                      "}\n",
+                      failed_structure, "failed-structure.jog"));
+  CHECK(failed_structure.verify(env));
+  const joggle::Fn failed_main = failed_structure.find_fn("main");
+  const joggle::Op failed_ret = failed_main.body().ops().back();
+  const joggle::Val unnamed = failed_structure.constant(
+      failed_ret, joggle::Attr(std::int64_t{0}), joggle::Ty("int"));
+  CHECK(unnamed);
+  const std::vector<joggle::Val> failed_range_args{
+      unnamed, failed_main.params().front()};
+  const joggle::Val failed_range = failed_structure.call(
+      failed_ret, "operator ..", failed_range_args, joggle::Ty("range"));
+  CHECK(failed_range);
+  const joggle::Val total = failed_main.body().ops().front().outs().front();
+  const std::vector<joggle::Val> invalid_carried{total, unnamed};
+  const std::string failed_structure_text = joggle::print(failed_structure);
+  const std::uint64_t failed_structure_revision =
+      failed_structure.revision();
+  const std::vector<std::string> failed_names{"i"};
+  const std::vector<joggle::Val> failed_sources{failed_range};
+  CHECK(!failed_structure.loop(failed_ret, failed_names, failed_sources,
+                               invalid_carried));
+  CHECK(joggle::print(failed_structure) == failed_structure_text);
+  CHECK(failed_structure.revision() == failed_structure_revision);
+  failed_structure.clear_diags();
+  CHECK(!failed_structure.branch(failed_ret, failed_main.params()[1],
+                                 invalid_carried));
+  CHECK(joggle::print(failed_structure) == failed_structure_text);
+  CHECK(failed_structure.revision() == failed_structure_revision);
+  failed_structure.clear_diags();
+  CHECK(failed_structure.verify(env));
+
   joggle::Mod renamed_control;
   CHECK(joggle::parse(env, built_control_text, renamed_control,
                       "renamed-control.jog"));

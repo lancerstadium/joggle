@@ -338,7 +338,9 @@ round trips without reserving a module vocabulary.
 Structured construction follows the same rule. `ir.loop` receives iterator
 names, source values, and carried values, then returns an `Op` with one body and
 an initial `yield`. `ir.branch` returns an `Op` with two initially forwarding
-arms. `ir.args(blk)` obtains `Blk` arguments and `ir.args(m, op, values)`
+arms. All carried values are validated before their source bindings become
+mutable, so failure leaves both text and revision unchanged. `ir.args(blk)`
+obtains `Blk` arguments and `ir.args(m, op, values)`
 reconnects any operation, including `return` and `yield`, while enforcing its
 arity, dominance, structured-control types, and the complete signature of a
 resolved call. The C++ editor accepts the current `Env` explicitly for the same

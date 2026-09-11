@@ -847,6 +847,9 @@ Op Mod::loop(Op before, std::span<const std::string> names,
     const Op definition = value.def();
     if (!definition && !carried_arg(store, value.id_))
       return reject("loop-carried values must be mutable local bindings");
+  }
+  for (Val value : carried) {
+    const Op definition = value.def();
     if (definition) {
       detail::OpData& def = store.ops[definition.id_].data;
       if ((def.kind == Op::Kind::call || def.kind == Op::Kind::constant) &&
@@ -949,6 +952,9 @@ Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
     const Op definition = value.def();
     if (!definition && !carried_arg(store, value.id_))
       return reject("branch-carried values must be mutable local bindings");
+  }
+  for (Val value : carried) {
+    const Op definition = value.def();
     if (definition) {
       detail::OpData& def = store.ops[definition.id_].data;
       if ((def.kind == Op::Kind::call || def.kind == Op::Kind::constant) &&
