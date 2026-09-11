@@ -332,7 +332,8 @@ private:
   std::uint64_t cache_id() const noexcept;
   std::uint64_t cache_epoch() const noexcept;
   Fn resolve(const Mod& from, Op call, std::string_view callee,
-             std::span<const Val> args) const;
+             std::span<const Val> args,
+             std::vector<Ty>* returns = nullptr) const;
 
   friend class Parser;
   friend class Mod;

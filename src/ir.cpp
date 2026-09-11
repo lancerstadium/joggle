@@ -1890,8 +1890,26 @@ bool Mod::retarget(const Env& env, Op call, std::string callee,
                        call.loc());
       return false;
     }
-  if (!env.resolve(*this, call, callee, args))
+  std::vector<Ty> returns;
+  if (!env.resolve(*this, call, callee, args, &returns))
     return false;
+  const std::vector<Val> outputs = call.outs();
+  if (returns.size() != outputs.size()) {
+    detail::add_diag(store.diags,
+                     "retarget result count does not match the call",
+                     call.loc());
+    return false;
+  }
+  for (std::size_t index = 0; index < returns.size(); ++index) {
+    const Ty type = outputs[index].type();
+    if (type.text() != "_" && returns[index].text() != "_" &&
+        type != returns[index]) {
+      detail::add_diag(store.diags,
+                       "retarget result types do not match the call",
+                       call.loc());
+      return false;
+    }
+  }
 
   std::vector<std::uint32_t> values;
   values.reserve(args.size());

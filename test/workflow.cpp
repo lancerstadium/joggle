@@ -1083,6 +1083,16 @@ int main(int argc, char** argv) {
       incompatible_result.find_fn("apply").body().ops().front();
   CHECK(!env.accepts(source_call,
                      incompatible_result.find_fn("implementation")));
+  const std::string before_retarget = joggle::print(incompatible_result);
+  const std::uint64_t before_retarget_revision =
+      incompatible_result.revision();
+  CHECK(!incompatible_result.retarget(env, source_call, "implementation",
+                                      source_call.args()));
+  CHECK(joggle::print(incompatible_result) == before_retarget);
+  CHECK(incompatible_result.revision() == before_retarget_revision);
+  CHECK(!incompatible_result.diags().empty());
+  CHECK(incompatible_result.diags().back().message.find(
+            "result types do not match") != std::string::npos);
 
   joggle::Attr load_count;
   const std::vector<joggle::Attr> choose_query{joggle::Attr("choose")};

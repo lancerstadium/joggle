@@ -654,7 +654,8 @@ bool Env::expand(Mod& mod, Op call, Fn implementation) const {
 }
 
 Fn Env::resolve(const Mod& from, Op call, std::string_view callee,
-                std::span<const Val> values) const {
+                std::span<const Val> values,
+                std::vector<Ty>* resolved_returns) const {
   if (!call || call.kind() != Op::Kind::call)
     return {};
   const Ty applied{std::string(callee)};
@@ -671,7 +672,8 @@ Fn Env::resolve(const Mod& from, Op call, std::string_view callee,
   const std::vector<Fn> candidates = resolve_fns(from, symbol);
   const std::vector<Val> context = call.blk().fn().generics();
   return detail::resolve_overload(candidates, arguments, explicit_arguments,
-                                  nullptr, nullptr, context, nullptr, returns);
+                                  resolved_returns, nullptr, context, nullptr,
+                                  returns);
 }
 
 bool Env::bound(std::string_view symbol) const noexcept {
