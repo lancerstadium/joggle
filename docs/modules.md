@@ -54,7 +54,9 @@ storage-neutral tensor computation, `quant` makes quantization policy explicit,
 and `nn` contains network semantics. `mem` assigns static tensor lifetimes to
 target-neutral reusable slots, while `stat` returns deterministic structural
 measurements. `c` is a removable first execution module and an optional
-consumer of memory metadata, not a target interface in core. The optional
+consumer of memory metadata, not a target interface in core. `vm` is an
+independent deterministic execution module: its textual half emits an image
+through IR reflection and its native half interprets that image. The optional
 `onnx` module only transports a binary model. MLIR, JIT, simulation, hardware
 description, and additional target experiments remain removable modules.
 
@@ -168,6 +170,30 @@ The built-in `ir` module is the complete reflection boundary:
 These functions operate on generic handles and contain no NN operator names.
 Adding an importer, optimization, or target module therefore does not extend
 the reflection ABI or add a parser case.
+
+### Deterministic VM boundary
+
+`vm.image(m)` is an ordinary read-only module function. It accepts executable
+scalar functions in `m` and produces canonical text beginning with
+`joggle-vm 1`; unsupported types or structural operations are diagnosed during
+emission. The version is image data, not a versioned source symbol. The core
+does not parse this format and has no VM instruction enum.
+
+`vm.run(image, entry, input)` is the matching native function. `input` contains
+one little-endian 64-bit slot per parameter and the returned byte string holds
+one little-endian 64-bit result. Its second result counts executed VM
+instructions, including selected control-flow instructions. The count is
+deterministic for one image and input, but it is not a wall-clock time or a
+hardware cycle estimate. The initial contract covers `bool`, `i64`, `index`,
+and `int`, integer arithmetic, comparisons, Boolean/bitwise operations, and
+structured conditions. Invalid division, shifts, images, entries, or input
+sizes fail through the normal module diagnostic boundary. Loops, tensors,
+function calls, and format-aware costs are intentionally still open.
+
+This split is the target-extension test: source code owns selection and
+emission policy, native code owns efficient execution, and neither requires a
+target abstraction in core. A later VM extension must consume exposed tensor
+loops and explicit data-format policy rather than introduce NN operator cases.
 
 The `base.size` and `base.byte` functions provide bounds-checked inspection of
 an `Attr` byte payload. This deliberately small primitive is sufficient for a

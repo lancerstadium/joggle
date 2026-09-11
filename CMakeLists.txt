@@ -15,7 +15,7 @@ set(JOGGLE_TEST_ONNX_ZOO "" CACHE PATH
 set(JOGGLE_TEST_TFLITE_MODEL "" CACHE FILEPATH
     "Official TFLite model used by tests")
 
-foreach(module base c ir math mem nn opt quant stat tensor)
+foreach(module base c ir math mem nn opt quant stat tensor vm)
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/${module}")
   configure_file(
     "modules/${module}/module.jog"
@@ -26,6 +26,23 @@ endforeach()
 
 add_library(joggle src/env.cpp src/eval.cpp src/ir.cpp src/lang.cpp)
 add_library(Joggle::joggle ALIAS joggle)
+
+add_library(joggle-vm MODULE modules/vm/src/vm.cpp)
+target_compile_features(joggle-vm PRIVATE cxx_std_20)
+target_include_directories(joggle-vm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(joggle-vm PRIVATE /W4)
+else()
+  target_compile_options(joggle-vm PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+set_target_properties(
+  joggle-vm
+  PROPERTIES
+    PREFIX ""
+    OUTPUT_NAME "joggle_vm"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/vm/native"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/vm/native"
+)
 
 target_compile_features(joggle PUBLIC cxx_std_20)
 target_link_libraries(joggle PRIVATE ${CMAKE_DL_LIBS})
@@ -234,6 +251,11 @@ set_target_properties(joggle-tool PROPERTIES OUTPUT_NAME joggle)
 target_link_libraries(joggle-tool PRIVATE Joggle::joggle)
 
 install(TARGETS joggle joggle-tool EXPORT JoggleTargets)
+install(
+  TARGETS joggle-vm
+  LIBRARY DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/vm/native
+  RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/vm/native
+)
 install(FILES include/joggle/joggle.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/joggle)
 install(
   DIRECTORY
@@ -249,6 +271,10 @@ install(
     modules/tensor
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules
   PATTERN .DS_Store EXCLUDE
+)
+install(
+  FILES modules/vm/module.jog
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules/vm
 )
 install(
   EXPORT JoggleTargets
@@ -302,6 +328,8 @@ if(JOGGLE_BUILD_TESTS)
   target_link_libraries(joggle-workflow-test PRIVATE Joggle::joggle)
   add_executable(joggle-network-test test/network.cpp)
   target_link_libraries(joggle-network-test PRIVATE Joggle::joggle)
+  add_executable(joggle-vm-test test/vm.cpp)
+  target_link_libraries(joggle-vm-test PRIVATE Joggle::joggle)
   add_test(
     NAME workflow
     COMMAND joggle-workflow-test
@@ -313,6 +341,12 @@ if(JOGGLE_BUILD_TESTS)
     NAME network
     COMMAND joggle-network-test
             ${CMAKE_CURRENT_SOURCE_DIR}/modules
+            ${CMAKE_CURRENT_BINARY_DIR}/modules
+  )
+  add_test(
+    NAME vm
+    COMMAND joggle-vm-test
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/data/vm.jog
             ${CMAKE_CURRENT_BINARY_DIR}/modules
   )
   add_test(

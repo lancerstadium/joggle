@@ -1,0 +1,200 @@
+module vm
+use base
+use ir
+
+fn run(image: str, entry: str, input: bytes) -> (bytes, int);
+
+fn scalar(type: Ty) -> bool {
+  let name = base.name(type)
+  return name == "bool" || name == "i64" || name == "index" ||
+         name == "int"
+}
+
+fn id(function: Fn, value: Val) -> int {
+  var at = 0
+  for param in ir.params(function) {
+    if param == value {
+      return at
+    }
+    at += 1
+  }
+  for body in ir.blks(function) {
+    for arg in ir.args(body) {
+      if arg == value {
+        return at
+      }
+      at += 1
+    }
+  }
+  for op in ir.ops(function) {
+    for out in ir.outs(op) {
+      if out == value {
+        return at
+      }
+      at += 1
+    }
+  }
+  assert(false, "vm: value is outside its function")
+  return -1
+}
+
+fn reg(function: Fn, value: Val) -> str {
+  return text(id(function, value))
+}
+
+fn binary(name: str) -> str {
+  let ops = {
+    "operator +": "add", "operator -": "sub", "operator *": "mul",
+    "operator /": "div", "operator %": "rem", "operator &": "and",
+    "operator |": "or", "operator ^": "xor", "operator <<": "shl",
+    "operator >>": "shr", "operator ==": "eq", "operator !=": "ne",
+    "operator <": "lt", "operator <=": "le", "operator >": "gt",
+    "operator >=": "ge", "operator &&": "land", "operator ||": "lor"
+  }
+  if has(ops, name) {
+    return str(ops[name])
+  }
+  return ""
+}
+
+fn unary(name: str) -> str {
+  let ops = {
+    "operator +": "copy", "operator -": "neg",
+    "operator !": "lnot", "operator ~": "bnot"
+  }
+  if has(ops, name) {
+    return str(ops[name])
+  }
+  return ""
+}
+
+fn call(function: Fn, op: Op) -> str {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  assert(len(outputs) == 1,
+         "vm: scalar instruction must have one result")
+  let result = outputs[0]
+  assert(scalar(ir.type(result)),
+         "vm: unsupported result type " + text(ir.type(result)))
+  if len(inputs) == 1 {
+    let code = unary(ir.callee(op))
+    assert(code != "", "vm: unsupported unary call " + ir.callee(op))
+    return code + " " + reg(function, result) + " " +
+           reg(function, inputs[0]) + "\n"
+  }
+  if len(inputs) == 2 {
+    let code = binary(ir.callee(op))
+    assert(code != "", "vm: unsupported binary call " + ir.callee(op))
+    return code + " " + reg(function, result) + " " +
+           reg(function, inputs[0]) + " " + reg(function, inputs[1]) +
+           "\n"
+  }
+  assert(false, "vm: unsupported call " + ir.callee(op))
+  return ""
+}
+
+fn constant(function: Fn, op: Op) -> str {
+  let outputs = ir.outs(op)
+  assert(len(outputs) == 1, "vm: constant must have one result")
+  let result = outputs[0]
+  assert(scalar(ir.type(result)),
+         "vm: unsupported constant type " + text(ir.type(result)))
+  return "const " + reg(function, result) + " " +
+         text(int(ir.constant(result))) + "\n"
+}
+
+fn arm(function: Fn, body: Blk, carried: list<Val>,
+       outputs: list<Val>) -> str {
+  let args = ir.args(body)
+  assert(len(args) == len(carried),
+         "vm: branch carried values are inconsistent")
+  var out = ""
+  for i in 0..len(args) {
+    out += "copy " + reg(function, args[i]) + " " +
+           reg(function, carried[i]) + "\n"
+  }
+  out += block(function, body)
+  let ops = ir.ops(body)
+  assert(len(ops) != 0 && ir.kind(ops[len(ops) - 1]) == "yield",
+         "vm: branch arm must yield")
+  let yielded = ir.args(ops[len(ops) - 1])
+  assert(len(yielded) == len(outputs),
+         "vm: branch result count is inconsistent")
+  for i in 0..len(outputs) {
+    out += "copy " + reg(function, outputs[i]) + " " +
+           reg(function, yielded[i]) + "\n"
+  }
+  return out
+}
+
+fn branch(function: Fn, op: Op) -> str {
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  let bodies = ir.blks(op)
+  assert(len(inputs) >= 1 && len(bodies) == 2,
+         "vm: invalid branch structure")
+  var carried: list<Val> = []
+  for i in 1..len(inputs) {
+    carried += [inputs[i]]
+  }
+  return "if " + reg(function, inputs[0]) + "\n" +
+         arm(function, bodies[0], carried, outputs) + "else\n" +
+         arm(function, bodies[1], carried, outputs) + "end\n"
+}
+
+fn block(function: Fn, body: Blk) -> str {
+  var out = ""
+  for op in ir.ops(body) {
+    let kind = ir.kind(op)
+    if kind == "constant" {
+      out += constant(function, op)
+    } else {
+      if kind == "call" {
+        out += call(function, op)
+      } else {
+        if kind == "branch" {
+          out += branch(function, op)
+        } else {
+          if kind == "return" {
+            let values = ir.args(op)
+            assert(len(values) == 1,
+                   "vm: function must return one scalar")
+            out += "ret " + reg(function, values[0]) + "\n"
+          } else {
+            assert(kind == "yield", "vm: unsupported operation " + kind)
+          }
+        }
+      }
+    }
+  }
+  return out
+}
+
+fn definition(function: Fn) -> str {
+  assert(len(ir.generics(function)) == 0,
+         "vm: generic function must be specialized")
+  let returns = ir.returns(function)
+  assert(len(returns) == 1 && scalar(returns[0]),
+         "vm: function must return one integer scalar")
+  var out = "fn " + ir.name(function) + "\n"
+  for param in ir.params(function) {
+    assert(scalar(ir.type(param)),
+           "vm: unsupported parameter type " + text(ir.type(param)))
+    out += "param " + reg(function, param) + "\n"
+  }
+  out += block(function, ir.blks(function)[0])
+  return out + "endfn\n"
+}
+
+fn image(m: Mod) -> str {
+  var out = "joggle-vm 1\n"
+  var count = 0
+  for function in ir.fns(m) {
+    if len(ir.blks(function)) != 0 {
+      out += definition(function)
+      count += 1
+    }
+  }
+  assert(count != 0, "vm: module has no executable function")
+  return out
+}

@@ -325,7 +325,12 @@ can be recursively retyped, specialized into local helpers, emitted through C,
 compiled, and executed for both scalar and fixed-shape tensor values without
 adding a format case to either core or the C module. Constructor-call generic
 terms travel through the same structural edit boundary. This strengthens the
-first target gate but is not counted as the still missing second target.
+first target gate. A new `vm` module establishes the independent second-target
+boundary for scalar functions: pure `.jog` reflection emits a deterministic
+image and a native module executes arithmetic and structured branches with an
+exact instruction-step count. Core gained no target or instruction cases.
+This is not yet the second target exit gate: exposed loops, static tensors,
+format-aware storage, and an official-model execution comparison remain open.
 
 Exit gate: official models from two frontends pass through one shared semantic
 library and run through at least two targets without core operator switches.

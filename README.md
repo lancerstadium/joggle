@@ -212,6 +212,14 @@ saturating helpers, and then calls `c.prepare`. The C module contains no
 `sat` name or format case. The executable regression covers scalar values and
 a fixed-shape tensor whose element format is defined entirely by the module.
 
+The bundled `vm` module is the beginning of a genuinely different execution
+target. Its pure `.jog` function `vm.image(Mod) -> str` reflects ordinary IR
+into a deterministic image, while its native `vm.run` implementation executes
+that image and returns both result bytes and an exact instruction-step count.
+The current slice deliberately accepts only scalar `bool`, `i64`, `index`, and
+`int` functions with arithmetic and branches. Tensor storage and loops remain
+an open M10 gate; the step count is not presented as hardware cycles.
+
 ## Guarantees and boundaries
 
 - Core is C++20 plus the standard library; codecs keep dependencies local.

@@ -1084,6 +1084,28 @@ scalar addition, and stores. A second execution gate compiles and runs that
 path, while direct emission of the unprepared call continues to fail. This
 keeps preparation inspectable and separate from read-only artifact generation.
 
+## M10 deterministic-VM slice
+
+The second target starts as a closed scalar path rather than another emitter
+facade. The pure `.jog` `vm.image` function assigns deterministic register
+numbers by walking `Fn`/`Blk`/`Op`/`Val`, rejects unsupported structure, and
+emits a small textual image. The matching native `vm.run` function executes an
+explicit entry with byte inputs. The image protocol and instruction meanings
+belong entirely to the module; core changes are limited to ordinary build and
+installation wiring.
+
+This slice covers signed 64-bit arithmetic, Boolean values, comparisons,
+bitwise operations, and structured branches. Arithmetic right shift is defined
+from unsigned bit operations rather than a host implementation-defined signed
+shift. Execution reports deterministic instruction steps, not hardware cycles.
+Malformed images, mismatched arguments, invalid shifts, and division by zero
+are negative gates. Repeated image generation and execution must be identical.
+
+The slice is intentionally incomplete. A real second target gate requires
+loops and static tensors, explicit data-format sizing, and execution of a
+shared NN body also exercised by the C target. Those capabilities must extend
+the module protocol and must not add VM, tensor, or operator switches to core.
+
 ### Storage planning
 
 The pure `.jog` `mem` module demonstrates that resource policy can live above
