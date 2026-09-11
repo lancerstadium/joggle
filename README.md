@@ -223,6 +223,7 @@ a fixed-shape tensor whose element format is defined entirely by the module.
 - Cross-module body expansion has one environment-aware API and updates
   dependency visibility atomically.
 - Canonical text is deterministic and structurally round-trippable.
+- Optional per-step timings are returned separately from canonical reports.
 - Attribute names have no built-in target, schedule, placement, or device
   meaning.
 

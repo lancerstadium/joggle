@@ -671,6 +671,11 @@ normal `.jog` wrapper function. The CLI exposes the same overload by accepting
 several function names before the input file; neither path registers, owns, or
 serializes a pipeline object.
 
+The optional five-argument C++ overload returns a `chrono::nanoseconds` value
+for one function or an ordered vector for a host sequence. This is observation,
+not module semantics: durations are never inserted into the deterministic
+`Attr` report, and a failed sequence returns no partial timings.
+
 The bracket syntax is not a `host` special case. Any module may define its own
 keys and attach them to a function, value binding, or operation statement.
 Version and ABI information remains in package/API data; it is not encoded in

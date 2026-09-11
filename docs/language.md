@@ -556,6 +556,13 @@ CLI form is `joggle run fn1 fn2 ... model.jog`. A source wrapper, embedding
 sequence, and CLI sequence therefore differ only in where the list of calls is
 chosen, not in their IR or function semantics.
 
+Embedding code may additionally call
+`run(env, names, mod, report, elapsed)`. For one name, `elapsed` is a
+`chrono::nanoseconds`; for a span it is a vector aligned with the supplied
+names. Timing is intentionally absent from `report`, so the same run with or
+without measurement produces equal structural reports. A failed transaction
+clears the timing output.
+
 ### Open attributes
 
 Square brackets hold an open attribute dictionary rather than a fixed set of

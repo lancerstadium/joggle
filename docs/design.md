@@ -570,6 +570,20 @@ call-driven materialization gate resolves a generic ReLU, reflects its concrete
 element and shape terms, retains a monomorphic local function, and retargets
 the call; a forced failure after cloning leaves no orphan function.
 
+## M8 sixth slice
+
+Optional embedding overloads measure each explicitly selected function with a
+steady clock. A single-function call returns one `chrono::nanoseconds`; a host
+sequence returns a duration vector in the same order as its input names. The
+measurement covers resolution, compile-time execution, report construction,
+and post-step verification, but not the sequence's one-time input snapshot.
+
+Durations are a separate C++ output. They never enter `Attr`, canonical module
+text, or the CLI, so enabling measurement cannot make a report
+nondeterministic. Failure clears the duration output while the existing outer
+transaction restores the module. A regression runs the same sequence with and
+without measurement and requires structurally identical IR and reports.
+
 ## M9 local distribution slice
 
 The module directory is now executable tooling rather than a prose convention.

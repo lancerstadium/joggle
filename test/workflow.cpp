@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -455,7 +456,10 @@ int main(int argc, char** argv) {
   joggle::Mod matched_fn;
   CHECK(joggle::parse(env, network_source, matched_fn, "matched-fn.jog"));
   joggle::Attr matched_report;
-  CHECK(joggle::run(env, "script.clone_matched", matched_fn, matched_report));
+  std::chrono::nanoseconds matched_elapsed;
+  CHECK(joggle::run(env, "script.clone_matched", matched_fn, matched_report,
+                    matched_elapsed));
+  CHECK(matched_elapsed >= std::chrono::nanoseconds::zero());
   CHECK(matched_fn.verify(env));
   const joggle::Fn matched_relu = matched_fn.find_fn("relu_matched");
   CHECK(matched_relu && matched_relu.generics().empty());
@@ -2134,13 +2138,27 @@ int main(int argc, char** argv) {
   CHECK(joggle::query(env, "script.reflect_fn", reflected, reflected_result));
   CHECK(reflected_result.boolean() == true);
   joggle::Mod embedded_sequence;
+  joggle::Mod untimed_sequence;
   joggle::Mod source_sequence;
   CHECK(joggle::parse(env, source.str(), embedded_sequence, argv[1]));
+  CHECK(joggle::parse(env, source.str(), untimed_sequence, argv[1]));
   CHECK(joggle::parse(env, source.str(), source_sequence, argv[1]));
   constexpr std::string_view sequence[]{"opt.fold_add_zero",
                                         "script.mark_add"};
   joggle::Attr sequence_report;
-  CHECK(joggle::run(env, sequence, embedded_sequence, sequence_report));
+  std::vector<std::chrono::nanoseconds> sequence_elapsed;
+  CHECK(joggle::run(env, sequence, embedded_sequence, sequence_report,
+                    sequence_elapsed));
+  CHECK(sequence_elapsed.size() == std::size(sequence));
+  CHECK(std::all_of(sequence_elapsed.begin(), sequence_elapsed.end(),
+                    [](std::chrono::nanoseconds elapsed) {
+                      return elapsed >= std::chrono::nanoseconds::zero();
+                    }));
+  joggle::Attr untimed_sequence_report;
+  CHECK(joggle::run(env, sequence, untimed_sequence,
+                    untimed_sequence_report));
+  CHECK(joggle::print(untimed_sequence) == joggle::print(embedded_sequence));
+  CHECK(untimed_sequence_report == sequence_report);
   CHECK(joggle::run(env, "script.prepare", source_sequence));
   CHECK(joggle::print(embedded_sequence) == joggle::print(source_sequence));
   const joggle::Attr::Dict* sequence_summary = sequence_report.dict();
@@ -2154,7 +2172,13 @@ int main(int argc, char** argv) {
   const std::uint64_t before_sequence_revision = failed_sequence.revision();
   constexpr std::string_view invalid_sequence[]{"opt.fold_add_zero",
                                                 "script.bad_entry"};
-  CHECK(!joggle::run(env, invalid_sequence, failed_sequence));
+  joggle::Attr failed_sequence_report;
+  std::vector<std::chrono::nanoseconds> failed_sequence_elapsed{
+      std::chrono::nanoseconds(1)};
+  CHECK(!joggle::run(env, invalid_sequence, failed_sequence,
+                     failed_sequence_report, failed_sequence_elapsed));
+  CHECK(failed_sequence_report.empty());
+  CHECK(failed_sequence_elapsed.empty());
   CHECK(joggle::print(failed_sequence) == before_sequence);
   CHECK(failed_sequence.revision() == before_sequence_revision);
   CHECK(!env.diags().empty());
