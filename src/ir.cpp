@@ -1065,6 +1065,24 @@ Op Mod::clone(Op source, Op before) {
                                    before.id_);
   if (insertion == store.blks[destination].data.ops.end())
     return reject("clone insertion point is not in its Blk", before.loc());
+  std::unordered_set<std::string> used_names;
+  for (const auto& slot : store.vals)
+    if (slot.live && !slot.data.name.empty())
+      used_names.insert(slot.data.name);
+  std::unordered_map<std::string, std::string> copied_names;
+  const auto copy_name = [&](std::string_view source_name) {
+    if (source_name.empty())
+      return std::string{};
+    const auto found = copied_names.find(std::string(source_name));
+    if (found != copied_names.end())
+      return found->second;
+    std::string candidate(source_name);
+    for (std::size_t suffix = 1; used_names.contains(candidate); ++suffix)
+      candidate = std::string(source_name) + '_' + std::to_string(suffix);
+    used_names.insert(candidate);
+    copied_names.emplace(std::string(source_name), candidate);
+    return candidate;
+  };
   std::unordered_map<std::uint32_t, std::uint32_t> values;
   const auto copy_op = [&](const auto& self, std::uint32_t old_id,
                            std::uint32_t blk) -> std::uint32_t {
@@ -1084,6 +1102,9 @@ Op Mod::clone(Op source, Op before) {
 
     for (const std::uint32_t old_value : old.outs) {
       detail::ValData value = store.vals[old_value].data;
+      if (old_id == source.id_ &&
+          (old.form == detail::Form::let || old.form == detail::Form::var))
+        value.name = copy_name(value.name);
       value.def = next_id;
       value.index = store.ops[next_id].data.outs.size();
       value.users.clear();

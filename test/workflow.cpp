@@ -901,6 +901,13 @@ int main(int argc, char** argv) {
   const joggle::Blk old_body = old_loop.blks().front();
   const joggle::Op copied_loop = cloned_loop.clone(old_loop, old_loop);
   CHECK(copied_loop && copied_loop.blks().size() == 1);
+  CHECK(copied_loop.outs().front().name() == old_loop.outs().front().name());
+  CHECK(cloned_loop.verify(env));
+  joggle::Mod coexisting_loop;
+  CHECK(joggle::parse(env, joggle::print(cloned_loop), coexisting_loop,
+                      "coexisting-loop.jog"));
+  CHECK(coexisting_loop.verify(env));
+  CHECK(joggle::structurally_equal(cloned_loop, coexisting_loop));
   CHECK(cloned_loop.replace(old_loop.outs()[0], copied_loop.outs()[0]));
   CHECK(cloned_loop.erase(old_loop));
   CHECK(!old_loop.valid() && !old_body.valid());
@@ -910,6 +917,29 @@ int main(int argc, char** argv) {
                       "cloned-roundtrip.jog"));
   CHECK(cloned_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(cloned_loop, cloned_roundtrip));
+
+  joggle::Mod cloned_binding;
+  constexpr std::string_view binding_source =
+      "module binding\n"
+      "fn compute(x: i32) -> i32 {\n"
+      "  let value = first(x)\n"
+      "  return value\n"
+      "}\n";
+  CHECK(joggle::parse(env, binding_source, cloned_binding, "binding.jog"));
+  CHECK(cloned_binding.verify(env));
+  const joggle::Op old_binding =
+      cloned_binding.find_fn("compute").body().ops()[0];
+  const joggle::Op copied_binding =
+      cloned_binding.clone(old_binding, old_binding);
+  CHECK(copied_binding && copied_binding.outs().size() == 1);
+  CHECK(copied_binding.outs().front().name() !=
+        old_binding.outs().front().name());
+  CHECK(cloned_binding.verify(env));
+  joggle::Mod binding_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(cloned_binding), binding_roundtrip,
+                      "binding-roundtrip.jog"));
+  CHECK(binding_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(cloned_binding, binding_roundtrip));
 
   joggle::Mod scheduled;
   constexpr std::string_view schedule_source =
@@ -957,6 +987,9 @@ int main(int argc, char** argv) {
   CHECK(old_branch && old_branch.blks().size() == 2);
   const joggle::Op copied_branch = cloned_branch.clone(old_branch, old_branch);
   CHECK(copied_branch && copied_branch.blks().size() == 2);
+  CHECK(copied_branch.outs().front().name() ==
+        old_branch.outs().front().name());
+  CHECK(cloned_branch.verify(env));
   CHECK(cloned_branch.replace(old_branch.outs()[0],
                               copied_branch.outs()[0]));
   CHECK(cloned_branch.erase(old_branch));

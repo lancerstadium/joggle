@@ -336,7 +336,10 @@ branch construction validates every carried value before changing any source
 binding from `let` to `var`, so a rejected structure is byte- and
 revision-stable. Deep cloning
 creates fresh results, `Blk`s, and `Blk` arguments, remaps internal dataflow,
-and works for nested loops and conditions; erasing the replaced source
+freshens a copied declaration at the insertion scope, and works for nested
+loops and conditions. Structured carried names remain attached to their
+existing mutable binding. A clone is therefore printable and valid before its
+source is replaced or erased; erasing the replaced source
 recursively invalidates its complete subtree. Motion is atomic and checks the
 whole module's dominance before commit. The identical operations are available
 through `ir.constant`, `ir.clone`, and `ir.move`, with `ir.kind` and

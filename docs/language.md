@@ -326,6 +326,10 @@ nested bodies. A terminator supplies an insertion point even for an otherwise
 empty `Blk`, so there is no stateful builder object. Constructed result types
 are `Ty` or `list<Ty>` values rather than strings; reflected and computed types
 therefore pass back into the editor without serialization.
+Cloning deterministically freshens a copied `let` or `var` declaration at the
+insertion scope, so the source and clone may coexist without textual capture.
+Loop and condition results keep the name of the mutable binding they update;
+their iterators and carried arguments are already nested in fresh `Blk`s.
 
 `ir.constant` checks the representation of intrinsic literals, including
 nested lists, before editing the module. User-defined type constructors retain
