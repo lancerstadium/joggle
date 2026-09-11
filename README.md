@@ -160,8 +160,9 @@ graph-derived bound. Neither function runs during import or module loading.
 Its inference and conversion relations are ordinary `fn(Mod, Op) -> bool`
 functions selected through open metadata. Conversion preserves its explicit
 compute-then-shape order through module-owned `phase` attributes, not a core
-pipeline kind. `onnx.nn.apply` accepts an explicit function list, so an
-extension module can contribute another relation without editing `onnx.nn`.
+pipeline kind. The two-argument `onnx.nn.convert(m, rules)` accepts an explicit
+function list, so an extension module can contribute another relation without
+editing `onnx.nn`.
 On the official MobileNetV2 this covers every compute node. The model
 marker and tensor payloads remain ONNX transport calls; unknown operators in
 other models remain open rather than acquiring guessed semantics.
@@ -182,10 +183,11 @@ materialize its rescaling semantics through `quant`.
 The separately selected `tflite.nn` relation then converts all 66 compute calls
 in that model to shared `nn`/`tensor` functions. Its mappings are ordinary
 metadata-selected functions using the same open relation boundary as ONNX,
-without sharing a frontend dispatch table. `tflite.nn.apply` likewise accepts
-an explicit relation list. Logical-axis operands retain
-NHWC and both TFLite weight layouts without creating a second IR or a
-layout-specific core operation. Like the ONNX relation, it commits a new
+without sharing a frontend dispatch table. The corresponding two-argument
+`tflite.nn.convert` overload likewise accepts an explicit relation list.
+Logical-axis operands retain NHWC and both TFLite weight layouts without
+creating a second IR or a layout-specific core operation. Like the ONNX
+relation, it commits a new
 callee and every materialized operand through one checked `ir.retarget`; a
 failed relation cannot leave a call with half-updated arguments.
 

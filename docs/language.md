@@ -387,6 +387,10 @@ does not add a pipeline object to the language. Every step has a `kind`:
 the source semantic symbol, selected implementation symbol, parameter and
 return type patterns, and its exact revision delta. These are structural
 dictionary fields, not a second event class or callback interface.
+The named entry is selected by the same overload resolver as an ordinary DSL
+call, using `Mod` as its argument type. A module may therefore expose both
+`convert(m)` for the default workflow and `convert(m, rules)` for explicit
+composition without making the CLI name ambiguous.
 The same report is available from the CLI without mixing it into printed IR:
 
 ```sh

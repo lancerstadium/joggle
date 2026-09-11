@@ -340,9 +340,10 @@ Each ONNX inference and conversion relation is an ordinary function carrying
 open attributes owned by `onnx.nn`. The driver discovers those functions with
 `ir.fns`, selects them with `ir.where`, and executes them with `ir.invoke`.
 Conversion relations use `phase` only to preserve the module's explicit
-compute-then-shape order. `onnx.nn.apply(m, rules)` executes an explicitly
+compute-then-shape order. `onnx.nn.convert(m, rules)` executes an explicitly
 provided relation set, allowing another module to extend conversion without
-editing this module. Import remains a separate codec operation.
+editing this module; `convert(m)` remains the complete default entry. Import
+remains a separate codec operation.
 Convolution and pooling preserve symbolic batch or channel terms while
 requiring only the spatial extents used by their arithmetic to be integer
 literals. Conv accepts its schema's optional one-dimensional bias and maps it
@@ -647,9 +648,9 @@ activation, and softmax axis/scale as normal operands. Standard and depthwise Co
 Add/Sub/Mul, average/max pool, reshape, and softmax then resolve to shared
 functions. Each mapping is an ordinary function selected by its module-owned
 `on` attribute through the same `ir.where`/`ir.invoke` boundary as ONNX; there
-is no frontend-wide operator dispatch chain. `tflite.nn.apply(m, rules)` lets a
-caller supply a composed relation set while retaining this module's
-quantization guard. On
+is no frontend-wide operator dispatch chain. Its two-argument `convert`
+overload lets a caller supply a composed relation set while retaining this
+module's quantization guard. On
 the pinned MobileNetV2 this removes all 66 source compute calls while retaining
 the source model marker and payloads. A second invocation is unchanged, and
 all 66 converted bodies can be independently exposed and round-tripped.

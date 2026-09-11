@@ -1269,6 +1269,7 @@ int main(int argc, char** argv) {
   CHECK(stable_summary && stable_summary->at("changed").boolean() == false);
   CHECK(stable_summary->at("reported").boolean() == false);
   CHECK(stable_summary->at("edits").integer() == 0);
+  CHECK(joggle::run(env, "script.selected_entry", cleaned));
   CHECK(!joggle::run(env, "script.bad_entry", cleaned));
   CHECK(!env.diags().empty());
   env.clear_diags();

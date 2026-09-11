@@ -65,7 +65,7 @@ fn custom_onnx(m: Mod, op: Op) -> bool {
 
 fn extend_onnx(m: Mod) -> bool {
   let rules = ir.where(ir.fns("script"), "phase", "compute")
-  return onnx.nn.apply(m, rules)
+  return onnx.nn.convert(m, rules)
 }
 
 fn typed_frontier(m: Mod) -> list<str> {
@@ -474,6 +474,14 @@ fn elements(m: Mod, callee: str) -> int {
 
 fn bad_entry(m: Mod) -> int {
   return 0
+}
+
+fn selected_entry(value: int) -> bool {
+  return false
+}
+
+fn selected_entry(m: Mod) -> bool {
+  return true
 }
 
 fn mutating_query(m: Mod, callee: str) -> int {

@@ -2994,7 +2994,7 @@ fn convert_identity(m: Mod, op: Op) -> bool {
   return convert_unary(m, op, "base.copy")
 }
 
-fn apply(m: Mod, rules: list<Fn>) -> bool {
+fn convert(m: Mod, rules: list<Fn>) -> bool {
   var changed = false
   for op in ir.ops(m) {
     for rule in ir.where(rules, "on", ir.callee(op)) {
@@ -3009,7 +3009,7 @@ fn convert(m: Mod) -> bool {
   changed = ir.use(m, "nn") || changed
   changed = ir.use(m, "quant") || changed
   let rules = ir.fns("onnx.nn")
-  changed = apply(m, ir.where(rules, "phase", "compute")) || changed
-  changed = apply(m, ir.where(rules, "phase", "shape")) || changed
+  changed = convert(m, ir.where(rules, "phase", "compute")) || changed
+  changed = convert(m, ir.where(rules, "phase", "shape")) || changed
   return changed
 }

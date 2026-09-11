@@ -272,7 +272,8 @@ conversion explicit. Module-owned phases preserve conversion order, and an
 explicit relation-list entry allows out-of-module extension. The separate
 TFLite bridge uses the same boundary while retaining a different quantization
 policy. A malformed relation signature is rejected without changing model text
-or revision.
+or revision. Host transform entry selection now uses normal `Mod` overload
+resolution, so the default and explicit-relation forms share the same symbol.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.

@@ -1571,9 +1571,24 @@ bool run(Env& env, std::string_view function, Mod& mod, Attr& report) {
     return false;
   }
   detail::Store before = mod.impl_->store;
-  Fn fn = env.find_fn(function);
+  const Ty applied{std::string(function)};
+  const std::string symbol(applied.args().empty() ? function : applied.name());
+  const std::vector<Ty> explicit_args =
+      applied.args().empty() ? std::vector<Ty>{} : applied.args();
+  const std::vector<Fn> candidates = env.find_fns(symbol);
+  const std::vector<Ty> argument_types{Ty("Mod")};
+  bool ambiguous = false;
+  const Fn fn = detail::resolve_overload(
+      candidates, argument_types, explicit_args, nullptr, &ambiguous);
   if (!fn) {
-    env.error("compile-time function not found: " + std::string(function));
+    if (ambiguous) {
+      env.error("ambiguous compile-time entry: " + std::string(function));
+    } else if (candidates.empty()) {
+      env.error("compile-time function not found: " + std::string(function));
+    } else {
+      env.error("compile-time entry has no fn(Mod) overload: " +
+                std::string(function));
+    }
     return false;
   }
   const std::vector<Val> params = fn.params();

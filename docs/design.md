@@ -223,11 +223,11 @@ filters ordinary `Fn` values using open metadata, and `ir.invoke` executes only
 the uniform `fn(Mod, Op) -> bool` shape inside the current transaction. The
 evaluator knows neither the attribute key nor the operator vocabulary. The
 `onnx.nn` module uses `[on: ...]` for both inference and conversion, and a
-module-owned `phase` value preserves its two conversion sweeps. Its `apply`
-function accepts an explicit `Fn` list, so a separate module can contribute a
-new conversion relation without editing the built-in bridge. Another module
-may choose different metadata and policy without a registry, callback class,
-or parser extension.
+module-owned `phase` value preserves its two conversion sweeps. Its
+two-argument `convert` overload accepts an explicit `Fn` list, so a separate
+module can contribute a new conversion relation without editing the built-in
+bridge. Another module may choose different metadata and policy without a
+registry, callback class, or parser extension.
 
 The independently authored `tflite.nn` bridge uses the same two primitives for
 semantic conversion, despite different source metadata and layout rules. Its
@@ -413,6 +413,10 @@ Compile-time entry points are now checked against the promised
 `fn(Mod) -> bool` contract before execution. A false return still means “ran
 successfully but reported no change”; malformed entry signatures and runtime
 failures remain failures and roll the module back.
+Entry selection now resolves the supplied name against the actual `Mod`
+argument, just like ordinary source calls and read-only queries. Additional
+overloads no longer hide a valid host entry merely because the symbol is not
+globally unique.
 
 ## M8 third slice
 
