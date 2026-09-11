@@ -97,7 +97,7 @@ bool tensor(std::string_view path, std::string_view name,
 }  // namespace
 
 int main(int argc, char** argv) {
-  CHECK(argc == 10);
+  CHECK(argc == 11);
   const Bytes encoded = read(argv[1]);
   CHECK(!encoded.empty());
   Bytes input;
@@ -164,6 +164,9 @@ int main(int argc, char** argv) {
   CHECK(source.string()->find("static float jog_mem_f32_") !=
         std::string::npos);
   CHECK(write(argv[4], *source.string()));
+  joggle::Attr header;
+  CHECK(joggle::query(env, "c.header", model, header));
+  CHECK(header.string() && write(argv[10], *header.string()));
   CHECK(write(argv[5], input));
   CHECK(write(argv[6], expected));
   return 0;

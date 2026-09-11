@@ -396,8 +396,10 @@ storage placement, strict C99 compilation, and comparison of both targets'
 1,000 outputs. The model, input, output, and archive hashes are checked before
 execution. Because the scalar VM path executes 98,167,456,513 instructions,
 this is intentionally a long application gate. Its inspectable `model.jog`,
-`model.vm`, `model.c`, input, expected output, executable, and `result.txt`
-remain under `build/onnx-app` after the test.
+`model.vm`, `model.c`, generated `model.h`, input, expected output, executable,
+and `result.txt` remain under `build/onnx-app` after the test. The harness has
+no handwritten model declaration, so strict compilation also checks that the
+header is the actual application ABI rather than a decorative artifact.
 
 The MobileNetV2 gate checks 267 tensor constants, 155 nodes,
 14,156,560 initializer bytes, verifier result, and canonical round trip. It

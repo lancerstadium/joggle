@@ -7,6 +7,7 @@ endif()
 file(REMOVE_RECURSE "${ROOT}")
 file(MAKE_DIRECTORY "${ROOT}")
 set(source "${ROOT}/model.c")
+set(header "${ROOT}/model.h")
 set(input "${ROOT}/input.bin")
 set(expected "${ROOT}/expected.bin")
 set(program "${ROOT}/model")
@@ -19,7 +20,7 @@ execute_process(
           "${CASE}/test_data_set_0/input_0.pb"
           "${CASE}/test_data_set_0/output_0.pb"
           "${source}" "${input}" "${expected}" "${MODULES}"
-          "${prepared}" "${image}"
+          "${prepared}" "${image}" "${header}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error
@@ -31,8 +32,8 @@ endif()
 set(vm_output "${output}")
 
 execute_process(
-  COMMAND "${CC}" -std=c99 -O1 -Wall -Wextra -Werror
-          "${source}" "${HARNESS}" -lm -o "${program}"
+  COMMAND "${CC}" -std=c99 -O1 -Wall -Wextra -Wstrict-prototypes -Werror
+          -include "${header}" "${source}" "${HARNESS}" -lm -o "${program}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error

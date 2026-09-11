@@ -3,20 +3,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-void jog_matmul(const float* a, const float* b, float* out);
-void jog_weights(float* out);
-void jog_int_add(const int64_t* a, const int64_t* b, int64_t* out);
-void jog_int_matmul(const int64_t* a, const int64_t* b, int64_t* out);
-float jog_affine(float x);
-float jog_direct(float x);
-float jog_relu(float x);
-bool jog_logical(int64_t a, int64_t b);
-float jog_root(float x);
-double jog_unary_math(double x);
-double jog_power(double x, double y);
-int64_t jog_steps(void);
-int64_t jog_select(void);
-
 int main(void) {
   float weights[2] = {0.0f, 0.0f};
   jog_weights(weights);

@@ -3,8 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void jog_main(const float*, float*);
-
 static int read_exact(const char* path, void* data, size_t bytes) {
   FILE* file = fopen(path, "rb");
   if (!file)
