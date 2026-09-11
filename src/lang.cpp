@@ -2025,6 +2025,17 @@ Ty return_context(const detail::Store& store, std::uint32_t value) {
   return Ty("_");
 }
 
+bool statement_placeholder(const detail::Store& store,
+                           const detail::OpData& op) {
+  if (op.form != detail::Form::expr || op.outs.size() != 1)
+    return false;
+  const std::uint32_t output = op.outs.front();
+  if (output >= store.vals.size() || !store.vals[output].live)
+    return false;
+  const detail::ValData& value = store.vals[output].data;
+  return value.name.empty() && !value.type_annotation && value.users.empty();
+}
+
 void infer_call(detail::Store& store, const Mod& mod, const Env& env,
                 detail::OpData& op, bool diagnose) {
   if (op.callee == "base.copy" && op.args.size() == 1 && op.outs.size() == 1) {
@@ -2066,12 +2077,15 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
     arguments.push_back(store.vals[argument].data.type);
   std::vector<Ty> returns;
   std::vector<Ty> expected_returns;
-  expected_returns.reserve(op.outs.size());
-  for (const std::uint32_t output : op.outs) {
-    const detail::ValData& value = store.vals[output].data;
-    expected_returns.push_back(value.type_annotation
-                                   ? value.type
-                                   : return_context(store, output));
+  const bool statement = statement_placeholder(store, op);
+  if (!statement) {
+    expected_returns.reserve(op.outs.size());
+    for (const std::uint32_t output : op.outs) {
+      const detail::ValData& value = store.vals[output].data;
+      expected_returns.push_back(value.type_annotation
+                                     ? value.type
+                                     : return_context(store, output));
+    }
   }
   bool ambiguous = false;
   const std::uint32_t owner = store.blks[op.blk].data.fn;
@@ -2165,6 +2179,8 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
     return;
   }
   if (returns.size() != op.outs.size()) {
+    if (statement && returns.empty())
+      return;
     if (diagnose)
       detail::add_diag(store.diags,
                        "result count of '" + std::string(op.callee) +
@@ -2186,6 +2202,43 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
                            std::string(returns[index].text()) + "'",
                        op.loc);
   }
+}
+
+void normalize_void_statements(detail::Store& store, const Mod& mod,
+                               const Env& env) {
+  bool changed = false;
+  for (auto& slot : store.ops) {
+    detail::OpData& op = slot.data;
+    if (!slot.live || op.kind != Op::Kind::call ||
+        !statement_placeholder(store, op))
+      continue;
+    std::vector<Ty> explicit_args;
+    std::string symbol;
+    const std::vector<Fn> candidates =
+        declarations(mod, env, op.callee, explicit_args, symbol);
+    if (candidates.empty())
+      continue;
+    std::vector<Ty> arguments;
+    arguments.reserve(op.args.size());
+    for (const std::uint32_t argument : op.args)
+      arguments.push_back(store.vals[argument].data.type);
+    const std::uint32_t owner = store.blks[op.blk].data.fn;
+    const std::vector<GenericInfo> context =
+        owner == detail::none ? std::vector<GenericInfo>{}
+                              : generic_info(store, store.fns[owner].data);
+    std::vector<Ty> returns;
+    if (!select_overload(candidates, arguments, explicit_args, &returns,
+                         nullptr, context) ||
+        !returns.empty())
+      continue;
+    const std::uint32_t output = op.outs.front();
+    op.outs.clear();
+    store.vals[output].live = false;
+    ++store.vals[output].generation;
+    changed = true;
+  }
+  if (changed)
+    detail::rebuild_uses(store);
 }
 
 void infer_regions(detail::Store& store, const detail::OpData& op) {
@@ -2588,8 +2641,10 @@ bool Mod::verify(const Env& env) {
                          op.loc);
     }
   }
-  if (store.diags.empty())
+  if (store.diags.empty()) {
+    normalize_void_statements(store, *this, env);
     return true;
+  }
 
   std::vector<Diag> diagnostics = std::move(store.diags);
   for (std::size_t index = 0; index < original_types.size(); ++index)

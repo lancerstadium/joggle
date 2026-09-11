@@ -1199,6 +1199,33 @@ int main(int argc, char** argv) {
   CHECK(wrong_result_count.diags().front().message.find(
             "expects 2 results, got 1") != std::string::npos);
 
+  joggle::Mod statement_calls;
+  constexpr std::string_view statement_call_source =
+      "module statement_calls\n"
+      "fn observe(x: i32) -> ();\n"
+      "fn value(x: i32) -> i32;\n"
+      "fn run(x: i32) -> () {\n"
+      "  observe(x)\n"
+      "  value(x)\n"
+      "  return\n"
+      "}\n";
+  CHECK(joggle::parse(env, statement_call_source, statement_calls,
+                      "statement-calls.jog"));
+  CHECK(statement_calls.verify(env));
+  const std::vector<joggle::Op> statement_ops =
+      statement_calls.find_fn("run").body().ops();
+  CHECK(statement_ops.size() == 3);
+  CHECK(statement_ops[0].callee() == "observe");
+  CHECK(statement_ops[0].outs().empty());
+  CHECK(statement_ops[1].callee() == "value");
+  CHECK(statement_ops[1].outs().size() == 1);
+  CHECK(statement_ops[1].outs().front().type() == joggle::Ty("i32"));
+  joggle::Mod statement_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(statement_calls), statement_roundtrip,
+                      "statement-roundtrip.jog"));
+  CHECK(statement_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(statement_calls, statement_roundtrip));
+
   joggle::Mod incompatible_result;
   CHECK(joggle::parse(env,
                       "module incompatible_result\n"

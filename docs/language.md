@@ -51,6 +51,12 @@ fn +<T: Ty>(a: T, b: T) -> T;
 fn +<W: int>(a: sat<W>, b: sat<W>) -> sat<W>;
 ```
 
+A call may also stand alone as a statement. Resolution removes the parser's
+temporary result when the declaration returns nothing, while a call whose
+result is merely unused retains that result in the IR. This keeps the same
+source form for both cases without introducing a second call syntax. An open
+call keeps its temporary result until a later verification can resolve it.
+
 Ordinary and symbolic functions both form overload sets. Verification filters
 by arity and recursive generic unification, then prefers the structurally more
 specific signature; equally specific survivors are an ambiguity error. Local
