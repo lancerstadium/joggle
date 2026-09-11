@@ -40,8 +40,7 @@ fn abi() -> dict {
     "u8.c": "uint8_t",      "u8.bytes": 1,
     "u16.c": "uint16_t",    "u16.bytes": 2,
     "u32.c": "uint32_t",    "u32.bytes": 4,
-    "u64.c": "uint64_t",    "u64.bytes": 8,
-    "count.c": "size_t"
+    "u64.c": "uint64_t",    "u64.bytes": 8
   }
 }
 
@@ -58,7 +57,7 @@ fn scalar(type: Ty) -> str {
 }
 
 fn scalar_name(name: str) -> bool {
-  return has(abi(), name + ".c") && name != "count"
+  return has(abi(), name + ".c")
 }
 
 fn width(type: Ty) -> int {
@@ -66,7 +65,7 @@ fn width(type: Ty) -> int {
 }
 
 fn count_type() -> str {
-  return str(abi("count", "c"))
+  return "size_t"
 }
 
 fn index_type() -> str {

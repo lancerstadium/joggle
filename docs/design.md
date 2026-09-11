@@ -1132,8 +1132,9 @@ structure, emits local scalar calls and structured branches/loops, flattens
 static tensor indices, and uses caller-provided storage for tensor results.
 Scalar type spelling and byte width come from one ordinary ABI dictionary
 owned by the module; fixed C operator spellings are likewise module data, not
-core cases. Semantic indices and nonnegative array counts use separately named
-representations rather than scattered C literals. The emitter
+core cases. The dictionary contains only real IR scalar types. Semantic
+indices use their signed scalar ABI, while emitter-created fixed-array loops
+use C's `size_t` without inventing an IR pseudo-type. The emitter
 also recognizes optional `mem.slot`
 metadata; no C-specific field or storage object was added to core IR.
 

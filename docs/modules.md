@@ -788,9 +788,11 @@ them with a system C compiler under warnings-as-errors, and checks their
 numerical results.
 
 One `c.abi` dictionary is the source of both scalar spelling and byte width;
-`int` and semantic `index` currently choose signed 64-bit C storage, while
-static array-capacity loops use the separately named `count` role (`size_t`).
-These are C-module policies, not core types. `c.header` emits the same checked prototypes
+it contains only actual IR scalar types. `int` and semantic `index` currently
+choose signed 64-bit C storage. Emitter-created loops over fixed array storage
+use C's `size_t` directly; this is an implementation detail, not a synthetic
+Joggle type or ABI entry. These are C-module policies, not core types.
+`c.header` emits the same checked prototypes
 as `c.source`, wrapped for C++ linkage, through the ordinary read-only emit
 boundary. The test compiles the generated header and source together with
 strict-prototype warnings enabled. Generated files remain under the ignored

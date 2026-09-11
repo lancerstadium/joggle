@@ -36,6 +36,7 @@ endif()
 set(prepared "${ROOT}/prepared.jog")
 set(prepared_again "${ROOT}/prepared-again.jog")
 set(open_source "${ROOT}/open.c")
+set(open_header "${ROOT}/open.h")
 set(open_program "${ROOT}/open-model")
 execute_process(
   COMMAND "${TOOL}" run c.prepare "${OPEN_MODEL}" -M "${MODULES}"
@@ -72,8 +73,18 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "prepared C emission failed (${result}):\n${error}")
 endif()
 execute_process(
+  COMMAND "${TOOL}" emit c.header "${prepared}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${open_header}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "prepared C header emission failed (${result}):\n${error}")
+endif()
+execute_process(
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
-          "${open_source}" "${OPEN_HARNESS}" -o "${open_program}"
+          -include "${open_header}"
+          "${open_source}" "${OPEN_HARNESS}" -lm -o "${open_program}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error
@@ -120,7 +131,7 @@ endif()
 
 execute_process(
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
-          -include "${header}" "${source}" "${HARNESS}" -o "${program}"
+          -include "${header}" "${source}" "${HARNESS}" -lm -o "${program}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error
