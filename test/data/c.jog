@@ -39,6 +39,10 @@ fn power(x: f64, y: f64) -> f64 {
   return math.pow(x, y)
 }
 
+fn abi_probe(i: index, n: int, x: i32) -> i64 {
+  return i64(i) + i64(n) + i64(x)
+}
+
 fn steps() -> i64 {
   var count: i64 = i64(0)
   for i in 0..3 {

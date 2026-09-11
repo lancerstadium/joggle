@@ -1159,6 +1159,11 @@ indices use their signed scalar ABI, while emitter-created fixed-array loops
 use C's `size_t` without inventing an IR pseudo-type. The emitter
 also recognizes optional `mem.slot`
 metadata; no C-specific field or storage object was added to core IR.
+An executable ABI probe keeps that separation observable: the public header
+maps `index`, `int`, and `i32` to fixed-width signed types and contains no
+`size_t`, while source-only loops over compile-time-sized storage use
+`size_t`. A future index-width transform must therefore rewrite and prove IR
+types explicitly; changing a printer string cannot silently narrow semantics.
 
 Qualified external symbols use a readable module separator in C
 (`edge.matmul` becomes `jog_edge_matmul`). The same prototype pass rejects

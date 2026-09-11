@@ -51,6 +51,8 @@ int main(void) {
     return 12;
   if (jog_power(2.0, 5.0) != 32.0)
     return 13;
+  if (jog_abi_probe(2, 3, 4) != 9)
+    return 15;
   if (jog_steps() != 3)
     return 10;
   if (jog_select() != 7)

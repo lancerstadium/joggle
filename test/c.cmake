@@ -145,6 +145,22 @@ execute_process(
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "C header emission failed (${result}):\n${error}")
 endif()
+file(READ "${header}" emitted_header)
+if(NOT emitted_header MATCHES
+   "int64_t jog_abi_probe\\(int64_t v_i, int64_t v_n, int32_t v_x\\);")
+  message(FATAL_ERROR
+          "C header did not apply its scalar ABI structurally:\n${emitted_header}")
+endif()
+if(emitted_header MATCHES "size_t")
+  message(FATAL_ERROR
+          "C header leaked an emitter-private array counter:\n${emitted_header}")
+endif()
+file(READ "${source}" emitted_source)
+if(NOT emitted_source MATCHES "for \\(size_t jog_i = 0;")
+  message(FATAL_ERROR
+          "C source did not use an unsigned host count for fixed storage:\n"
+          "${emitted_source}")
+endif()
 
 execute_process(
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror

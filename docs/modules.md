@@ -818,6 +818,11 @@ it contains only actual IR scalar types. `int` and semantic `index` currently
 choose signed 64-bit C storage. Emitter-created loops over fixed array storage
 use C's `size_t` directly; this is an implementation detail, not a synthetic
 Joggle type or ABI entry. These are C-module policies, not core types.
+The executable ABI regression exposes `index`, `int`, and `i32` in one normal
+function and requires the generated prototype to use `int64_t`, `int64_t`, and
+`int32_t` respectively. It also requires `size_t` to remain absent from the
+public header while fixed-storage loops use it in the source. This prevents an
+incidental emitter loop type from silently becoming part of the model ABI.
 `c.header` emits the same checked prototypes
 as `c.source`, wrapped for C++ linkage, through the ordinary read-only emit
 boundary. The test compiles the generated header and source together with
