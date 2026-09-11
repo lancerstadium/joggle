@@ -89,6 +89,30 @@ fn unary(name: str) -> str {
   return ""
 }
 
+fn binary(m: Mod, op: Op) -> str {
+  let direct = binary(ir.callee(op))
+  if direct != "" {
+    return direct
+  }
+  let target = ir.resolve(m, op)
+  if ir.live(target) {
+    return binary(ir.symbol(target))
+  }
+  return ""
+}
+
+fn unary(m: Mod, op: Op) -> str {
+  let direct = unary(ir.callee(op))
+  if direct != "" {
+    return direct
+  }
+  let target = ir.resolve(m, op)
+  if ir.live(target) {
+    return unary(ir.symbol(target))
+  }
+  return ""
+}
+
 fn float_unary(code: str) -> bool {
   return code == "copy" || code == "neg" || code == "sqrt" ||
          code == "exp" || code == "ceil" || code == "tanh" ||
@@ -158,25 +182,25 @@ fn accepts(m: Mod, op: Op) -> bool {
     return false
   }
   if len(inputs) == 1 && scalar(ir.type(inputs[0])) {
-    let code = unary(name)
-    if code == "" {
+    let opcode = unary(m, op)
+    if opcode == "" {
       return false
     }
     let type = format(ir.type(inputs[0]))
-    return type == "i64" || float_unary(code)
+    return type == "i64" || float_unary(opcode)
   }
   if len(inputs) == 2 && scalar(ir.type(inputs[0])) &&
      scalar(ir.type(inputs[1])) {
-    let code = binary(name)
-    if code == "" {
+    let opcode = binary(m, op)
+    if opcode == "" {
       return false
     }
     let type = format(ir.type(inputs[0]))
-    if code != "shl" && code != "shr" &&
+    if opcode != "shl" && opcode != "shr" &&
        format(ir.type(inputs[1])) != type {
       return false
     }
-    return type == "i64" || float_binary(code)
+    return type == "i64" || float_binary(opcode)
   }
   return false
 }
@@ -297,31 +321,31 @@ fn call(m: Mod, op: Op) -> str {
          "vm: unsupported result type " + text(ir.type(result)) +
          " from " + name)
   if len(inputs) == 1 {
-    let code = unary(name)
-    assert(code != "", "vm: unsupported unary call " + name)
+    let opcode = unary(m, op)
+    assert(opcode != "", "vm: unsupported unary call " + name)
     let type = format(ir.type(inputs[0]))
-    assert(type == "i64" || float_unary(code),
+    assert(type == "i64" || float_unary(opcode),
            "vm: unsupported floating unary call " + name)
-    if code == "copy" {
+    if opcode == "copy" {
       return "copy " + reg(result) + " " +
              reg(inputs[0]) + "\n"
     }
-    return code + " " + type + " " + reg(result) + " " +
+    return opcode + " " + type + " " + reg(result) + " " +
            reg(inputs[0]) + "\n"
   }
   if len(inputs) == 2 {
-    let code = binary(name)
-    assert(code != "", "vm: unsupported binary call " + name)
+    let opcode = binary(m, op)
+    assert(opcode != "", "vm: unsupported binary call " + name)
     let type = format(ir.type(inputs[0]))
     assert(scalar(ir.type(inputs[1])),
            "vm: binary operands must be scalar")
-    if code != "shl" && code != "shr" {
+    if opcode != "shl" && opcode != "shr" {
       assert(format(ir.type(inputs[1])) == type,
              "vm: binary operand formats must match")
     }
-    assert(type == "i64" || float_binary(code),
+    assert(type == "i64" || float_binary(opcode),
            "vm: unsupported floating binary call " + name)
-    return code + " " + type + " " + reg(result) + " " +
+    return opcode + " " + type + " " + reg(result) + " " +
            reg(inputs[0]) + " " + reg(inputs[1]) +
            "\n"
   }

@@ -1,0 +1,4 @@
+module number
+
+fn qreal<W: int>() -> Ty;
+fn sqrt<W: int>(x: qreal<W>) -> qreal<W>;

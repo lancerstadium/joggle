@@ -712,7 +712,8 @@ bool Env::expand(Mod& mod, std::span<const Op> calls,
   mod.impl_->store.revision = backup.revision;
   mod.impl_->store.queries.clear();
   for (std::size_t index = 0; index < calls.size(); ++index)
-    if (!mod.expand(calls[index], implementations[index], semantics[index]))
+    if (!mod.expand(*this, calls[index], implementations[index],
+                    semantics[index]))
       return rollback();
   const detail::Dom dom(mod.impl_->store);
   for (std::uint32_t id = 0; id < mod.impl_->store.ops.size(); ++id) {

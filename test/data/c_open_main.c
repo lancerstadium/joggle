@@ -11,5 +11,14 @@ int main(void) {
       return 1;
   if (jog_carry(3) != 10)
     return 2;
+  const float sigmoid_input[4] = {-2.0f, -0.5f, 0.5f, 2.0f};
+  float sigmoid[4] = {0.0f};
+  jog_sigmoid(sigmoid_input, sigmoid);
+  for (int i = 0; i < 4; ++i) {
+    const float expected_sigmoid =
+        1.0f / (1.0f + expf(-sigmoid_input[i]));
+    if (fabsf(sigmoid[i] - expected_sigmoid) > 1e-6f)
+      return 3;
+  }
   return 0;
 }

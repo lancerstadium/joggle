@@ -574,6 +574,14 @@ copy. It substitutes structural types and explicit generic calls throughout the
 body; integer, Boolean, and recursively typed list values used as operands are
 materialized in the entry `Blk`. The ordinary call resolver checks generic
 constraints, and the resulting concrete overload is checked before commit.
+Calls that depended on the source function's generic terms are intentionally
+not tied to one overload in the template. After substitution they participate
+in normal resolution, so an exact scalar implementation can be selected without
+a universal declaration or function-name case.
+Newly resolvable copied calls also receive their result types during cloning or
+expansion. This keeps a transform's returned `Mod` immediately consumable by a
+capability predicate or emitter instead of relying on a serialize/reparse step
+to rerun type inference.
 The `Fn` overloads of `ir.rename` and `ir.erase` support the rest of that
 lifecycle. Rename follows resolved calls rather than raw spelling and respects
 overload collisions. Erase refuses live callers and invalidates the whole owned
@@ -797,6 +805,16 @@ as `c.source`, wrapped for C++ linkage, through the ordinary read-only emit
 boundary. The test compiles the generated header and source together with
 strict-prototype warnings enabled. Generated files remain under the ignored
 build tree for inspection.
+
+The separate `math` module declares each current primitive as exact `f32` and
+`f64` overloads. C and VM independently state which of those primitives they
+implement; neither target treats an arbitrary `Ty` as floating point. Generic
+`nn` bodies can still use the operations because dependent calls resolve only
+after their element type is specialized. The generic bodies use the normal
+unqualified overload set opened by `use math`; a custom number-format module
+may therefore supply a compatible overload without changing `math`, `nn`, or
+the core. C and VM canonicalize a resolved primitive to its owning symbol
+rather than matching its incidental source spelling.
 
 A resolved, bodyless, monomorphic `Fn` whose parameters and single result use
 representable scalar or fixed tensor types is also a C dependency declaration.

@@ -115,6 +115,7 @@ int main(int argc, char** argv) {
   CHECK(env.load("opt"));
   CHECK(env.load("c"));
   CHECK(env.load("math"));
+  CHECK(env.load("nn"));
   joggle::Mod model;
   CHECK(joggle::parse(env, source.str(), model, argv[1]));
   CHECK(model.verify(env));
@@ -408,5 +409,24 @@ int main(int argc, char** argv) {
   CHECK(floats(result) ==
         (std::vector<float>{6.0F, 8.0F, 10.0F, 12.0F}));
   CHECK(prepared_add_steps == add_steps);
+  const std::vector<joggle::Attr> sigmoid_selection{
+      joggle::Attr("sigmoid")};
+  joggle::Attr sigmoid_image;
+  CHECK(joggle::query(env, "vm.image", prepared_open_model, sigmoid_image,
+                      sigmoid_selection));
+  CHECK(sigmoid_image.string());
+  joggle::Attr::Bytes sigmoid_input;
+  for (const float value : {-2.0F, -0.5F, 0.5F, 2.0F})
+    append(sigmoid_input, value);
+  std::int64_t sigmoid_steps = 0;
+  CHECK(execute_bytes(env, std::string(*sigmoid_image.string()), "sigmoid",
+                      std::move(sigmoid_input), result, sigmoid_steps));
+  const std::vector<float> sigmoid_result = floats(result);
+  CHECK(sigmoid_result.size() == 4 && sigmoid_steps > 0);
+  const std::array<float, 4> sigmoid_values{-2.0F, -0.5F, 0.5F, 2.0F};
+  for (std::size_t index = 0; index < sigmoid_values.size(); ++index) {
+    const float expected = 1.0F / (1.0F + std::exp(-sigmoid_values[index]));
+    CHECK(std::abs(sigmoid_result[index] - expected) < 1.0e-6F);
+  }
   return 0;
 }

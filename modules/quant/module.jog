@@ -90,7 +90,7 @@ fn quantize<
   var out = tensor<Q, S>(Q(0))
   for i in 0..tensor.numel<S>() {
     let p = param(S, P, i, axis)
-    var value = math.round_even(x[i] / scale[p]) + E(zero[p])
+    var value = round_even(x[i] / scale[p]) + E(zero[p])
     if value < E(low) {
       value = E(low)
     }
@@ -119,7 +119,7 @@ fn dynamic<E: Ty, S: list<int>>(
   var zero_value = E(0)
   if high != low {
     scale_value = (high - low) / E(255)
-    zero_value = math.round_even(-low / scale_value)
+    zero_value = round_even(-low / scale_value)
     if zero_value < E(0) {
       zero_value = E(0)
     }

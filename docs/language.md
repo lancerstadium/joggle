@@ -151,6 +151,20 @@ compared, so a concrete but wrong-result candidate cannot hide a valid generic
 candidate. The choice is independent of declaration order.
 Conflicting bindings, wrong argument counts, and wrong concrete types receive
 source-located diagnostics.
+Calls whose argument or expected result contains a surrounding function's
+generic may remain unresolved until that generic is bound. Verification allows
+this only when at least one visible overload has a structurally possible arity
+and shape after masking the dependent terms; it never chooses an arbitrary
+candidate. A monomorphic body resolves normally after specialization, while a
+non-dependent invalid call is rejected immediately. This permits a generic
+tensor algorithm to call exact scalar overloads supplied by built-in or
+user-defined number formats without declaring a false catch-all function.
+An unqualified call forms its overload set from the current module and visible
+imports; a qualified call intentionally selects one module namespace. Generic
+library code therefore uses an imported unqualified name when downstream
+modules are meant to contribute overloads. Artifact modules inspect the
+resolved `Fn` symbol rather than depending on whichever spelling survived in
+the source text.
 For example,
 `sat.add(a, b)` over two `sat<8>` values has result type `sat<8>`, while mixing
 `sat<8>` and `sat<16>` is rejected. Unknown calls remain valid open IR so a

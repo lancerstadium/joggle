@@ -309,6 +309,21 @@ and ties are rejected. The base operator declarations provide general algebra;
 the `sat` module adds a more specific overload without modifying the parser,
 verifier, evaluator, or operator representation.
 
+A call inside a generic body may depend on that body's compile-time parameters.
+The verifier retains such a call as unresolved only when a visible overload is
+structurally possible after masking those dependent terms. It does not select a
+concrete overload early. Specialization substitutes the terms and returns to
+ordinary overload resolution; concrete mismatches remain errors. The `math`
+module consequently declares exact `f32` and `f64` primitives rather than
+pretending every `Ty` supports transcendental functions, while generic `nn`
+bodies remain reusable by compatible user-defined scalar overloads.
+Function cloning and body expansion immediately revisit copied calls in
+definition order. Any result made resolvable by generic substitution is typed
+inside the same IR edit; printing and reparsing are not required to close the
+new body. C and VM recognize portable primitives through the resolved function
+symbol, so qualified and overload-extensible source spellings have identical
+target meaning.
+
 The generic `sat.add<W: int>` declaration is the first module-defined
 parametric gate: inferred and explicit widths succeed, conflicting widths,
 wrong parameter types, and wrong arity fail with located diagnostics, and no

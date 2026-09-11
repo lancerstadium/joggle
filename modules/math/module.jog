@@ -1,9 +1,14 @@
 module math
-use base
 
-fn sqrt<T: Ty>(x: T) -> T;
-fn exp<T: Ty>(x: T) -> T;
-fn ceil<T: Ty>(x: T) -> T;
-fn pow<T: Ty>(x: T, y: T) -> T;
-fn tanh<T: Ty>(x: T) -> T;
-fn round_even<T: Ty>(x: T) -> T;
+fn sqrt(x: f32) -> f32;
+fn sqrt(x: f64) -> f64;
+fn exp(x: f32) -> f32;
+fn exp(x: f64) -> f64;
+fn ceil(x: f32) -> f32;
+fn ceil(x: f64) -> f64;
+fn pow(x: f32, y: f32) -> f32;
+fn pow(x: f64, y: f64) -> f64;
+fn tanh(x: f32) -> f32;
+fn tanh(x: f64) -> f64;
+fn round_even(x: f32) -> f32;
+fn round_even(x: f64) -> f64;

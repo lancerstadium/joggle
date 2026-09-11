@@ -328,6 +328,12 @@ if(JOGGLE_BUILD_TESTS)
     "${CMAKE_CURRENT_BINARY_DIR}/modules/script/module.jog"
     COPYONLY
   )
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/number")
+  configure_file(
+    test/data/number/module.jog
+    "${CMAKE_CURRENT_BINARY_DIR}/modules/number/module.jog"
+    COPYONLY
+  )
   add_executable(joggle-workflow-test test/workflow.cpp)
   target_link_libraries(joggle-workflow-test PRIVATE Joggle::joggle)
   add_executable(joggle-network-test test/network.cpp)

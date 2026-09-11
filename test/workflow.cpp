@@ -846,13 +846,18 @@ int main(int argc, char** argv) {
   CHECK(norm_call);
   const joggle::Fn norm_fn = env.resolve(norm_network, norm_call);
   CHECK(norm_fn && env.expand(norm_network, norm_call, norm_fn));
-  CHECK(norm_network.verify(env));
   std::size_t sqrt_calls = 0;
   for (joggle::Op op : norm_network.ops()) {
     CHECK(op.callee() != "nn.batch_norm");
-    sqrt_calls += op.callee() == "math.sqrt" ? 1 : 0;
+    const joggle::Fn target = env.resolve(norm_network, op);
+    if (target && target.module() == "math" && target.name() == "sqrt") {
+      CHECK(op.outs().size() == 1 &&
+            op.outs().front().type() == joggle::Ty("f32"));
+      ++sqrt_calls;
+    }
   }
   CHECK(sqrt_calls == 1);
+  CHECK(norm_network.verify(env));
   joggle::Mod norm_roundtrip;
   CHECK(joggle::parse(env, joggle::print(norm_network), norm_roundtrip,
                       "norm-network-roundtrip.jog"));
@@ -1817,6 +1822,73 @@ int main(int argc, char** argv) {
                       "overloads-roundtrip.jog"));
   CHECK(overload_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(overloaded, overload_roundtrip));
+
+  joggle::Mod dependent_overload;
+  constexpr std::string_view dependent_overload_source =
+      "module dependent.overload\n"
+      "fn root(x: f32) -> f32;\n"
+      "fn root(x: f64) -> f64;\n"
+      "fn apply<E: Ty>(x: E) -> E { return root(x) }\n"
+      "fn main(x: f32) -> f32 { return apply(x) }\n";
+  CHECK(joggle::parse(env, dependent_overload_source, dependent_overload,
+                      "dependent-overload.jog"));
+  CHECK(dependent_overload.verify(env));
+  const joggle::Fn dependent_apply = dependent_overload.find_fn("apply");
+  CHECK(dependent_apply &&
+        !env.resolve(dependent_overload,
+                     dependent_apply.body().ops().front()));
+  const joggle::Fn apply_f32 = dependent_overload.clone(
+      env, dependent_apply, "apply_f32",
+      std::vector<joggle::Ty>{joggle::Ty("f32")});
+  CHECK(apply_f32 && apply_f32.generics().empty());
+  CHECK(apply_f32.body().ops().front().outs().front().type() ==
+        joggle::Ty("f32"));
+  const joggle::Fn selected_root = env.resolve(
+      dependent_overload, apply_f32.body().ops().front());
+  CHECK(selected_root &&
+        selected_root.params().front().type() == joggle::Ty("f32"));
+  CHECK(dependent_overload.verify(env));
+  joggle::Mod dependent_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(dependent_overload),
+                      dependent_roundtrip, "dependent-roundtrip.jog"));
+  CHECK(dependent_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(dependent_overload,
+                                   dependent_roundtrip));
+
+  CHECK(env.load("number"));
+  joggle::Mod custom_number;
+  constexpr std::string_view custom_number_source =
+      "module custom.number\n"
+      "use math\n"
+      "use number\n"
+      "fn root<E: Ty>(x: E) -> E { return sqrt(x) }\n"
+      "fn main(x: qreal<8>) -> qreal<8> { return root(x) }\n";
+  CHECK(joggle::parse(env, custom_number_source, custom_number,
+                      "custom-number.jog"));
+  CHECK(custom_number.verify(env));
+  const joggle::Fn generic_root = custom_number.find_fn("root");
+  CHECK(generic_root &&
+        !env.resolve(custom_number, generic_root.body().ops().front()));
+  const joggle::Fn qreal_root = custom_number.clone(
+      env, generic_root, "qreal_root",
+      std::vector<joggle::Ty>{joggle::Ty("qreal<8>")});
+  CHECK(qreal_root && custom_number.verify(env));
+  const joggle::Fn number_sqrt =
+      env.resolve(custom_number, qreal_root.body().ops().front());
+  CHECK(number_sqrt && number_sqrt.module() == "number" &&
+        number_sqrt.name() == "sqrt");
+
+  joggle::Mod invalid_dependent;
+  CHECK(joggle::parse(env,
+                      "module invalid.dependent\n"
+                      "fn root(x: f32) -> f32;\n"
+                      "fn root(x: f64) -> f64;\n"
+                      "fn bad(x: i32) -> i32 { return root(x) }\n",
+                      invalid_dependent, "invalid-dependent.jog"));
+  CHECK(!invalid_dependent.verify(env));
+  CHECK(!invalid_dependent.diags().empty());
+  CHECK(invalid_dependent.diags().front().message.find("no overload") !=
+        std::string::npos);
 
   joggle::Mod intrinsic_casts;
   constexpr std::string_view intrinsic_cast_source =

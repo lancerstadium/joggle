@@ -2175,6 +2175,59 @@ Fn select_overload(std::span<const Fn> candidates,
   return best;
 }
 
+bool depends_on(const Ty& type, std::span<const GenericInfo> context) {
+  if (type.args().empty()) {
+    return std::any_of(context.begin(), context.end(), [&](const auto& item) {
+      return item.name == type.name();
+    });
+  }
+  return std::any_of(type.args().begin(), type.args().end(),
+                     [&](const Ty& arg) { return depends_on(arg, context); });
+}
+
+Ty mask_dependent(const Ty& type, std::span<const GenericInfo> context) {
+  if (type.args().empty())
+    return depends_on(type, context) ? Ty("_") : type;
+  std::vector<Ty> args;
+  args.reserve(type.args().size());
+  for (const Ty& arg : type.args())
+    args.push_back(mask_dependent(arg, context));
+  return Ty(std::string(type.name()), args);
+}
+
+bool can_defer(std::span<const Fn> candidates,
+               std::span<const Ty> arguments,
+               std::span<const Ty> explicit_arguments,
+               std::span<const Ty> expected_returns,
+               std::span<const GenericInfo> context) {
+  const auto dependent = [&](std::span<const Ty> types) {
+    return std::any_of(types.begin(), types.end(),
+                       [&](const Ty& type) { return depends_on(type, context); });
+  };
+  if (context.empty() ||
+      (!dependent(arguments) && !dependent(explicit_arguments) &&
+       !dependent(expected_returns)))
+    return false;
+
+  std::vector<Ty> masked_arguments;
+  std::vector<Ty> masked_explicit;
+  std::vector<Ty> masked_returns;
+  for (const Ty& type : arguments)
+    masked_arguments.push_back(mask_dependent(type, context));
+  for (const Ty& type : explicit_arguments)
+    masked_explicit.push_back(mask_dependent(type, context));
+  for (const Ty& type : expected_returns)
+    masked_returns.push_back(mask_dependent(type, context));
+
+  for (const Fn candidate : candidates) {
+    const std::array one{candidate};
+    if (select_overload(one, masked_arguments, masked_explicit, nullptr,
+                        nullptr, context, nullptr, masked_returns))
+      return true;
+  }
+  return false;
+}
+
 std::vector<Fn> declarations(const Mod& mod, const Env& env,
                              std::string_view callee,
                              std::vector<Ty>& explicit_args,
@@ -2304,6 +2357,17 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
                                 &ambiguous, context, nullptr,
                                 expected_returns);
   if (!fn) {
+    if (can_defer(candidates, arguments, explicit_args, expected_returns,
+                  context)) {
+      for (std::size_t index = 0;
+           index < op.outs.size() && index < expected_returns.size(); ++index) {
+        detail::ValData& result = store.vals[op.outs[index]].data;
+        if ((!result.type_annotation || result.type.text() == "_") &&
+            expected_returns[index].text() != "_")
+          result.type = expected_returns[index];
+      }
+      return;
+    }
     if (diagnose) {
       std::string message;
       if (ambiguous)

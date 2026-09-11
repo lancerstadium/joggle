@@ -149,7 +149,7 @@ fn expr(m: Mod, value: Val) -> str {
   if len(inputs) == 1 && scalar_name(name) {
     return "((" + scalar(ty(name)) + ")(" + expr(m, inputs[0]) + "))"
   }
-  let math_name = math(name, ir.type(value))
+  let math_name = math(m, op)
   if math_name != "" && (len(inputs) == 1 || len(inputs) == 2) {
     return math_name + "(" + args(m, inputs) + ")"
   }
@@ -298,6 +298,22 @@ fn math(op: str, type: Ty) -> str {
   return ""
 }
 
+fn math(m: Mod, op: Op) -> str {
+  let outputs = ir.outs(op)
+  if len(outputs) != 1 {
+    return ""
+  }
+  let direct = math(ir.callee(op), ir.type(outputs[0]))
+  if direct != "" {
+    return direct
+  }
+  let target = ir.resolve(m, op)
+  if ir.live(target) {
+    return math(ir.symbol(target), ir.type(outputs[0]))
+  }
+  return ""
+}
+
 fn accepts(m: Mod, op: Op) -> bool {
   let name = ir.callee(op)
   let inputs = ir.args(op)
@@ -346,8 +362,7 @@ fn accepts(m: Mod, op: Op) -> bool {
   if scalar_name(name) && len(inputs) == 1 && len(outputs) == 1 {
     return !tensor.valid(ir.type(outputs[0]))
   }
-  if len(outputs) == 1 && math(name, ir.type(outputs[0])) != "" &&
-     (len(inputs) == 1 || len(inputs) == 2) {
+  if math(m, op) != "" && (len(inputs) == 1 || len(inputs) == 2) {
     return true
   }
   return callable(m, target) && len(outputs) <= 1
@@ -565,7 +580,7 @@ fn call(m: Mod, op: Op, depth: int) -> str {
   }
 
   if len(outputs) == 1 {
-    let math_name = math(name, ir.type(outputs[0]))
+    let math_name = math(m, op)
     if math_name != "" && (len(inputs) == 1 || len(inputs) == 2) {
       if ir.name(outputs[0]) == "" {
         return ""

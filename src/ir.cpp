@@ -1250,6 +1250,23 @@ Op Mod::clone(Op source, Op before) {
   return Op(&store, cloned_id, store.ops[cloned_id].generation);
 }
 
+void Mod::infer(const Env& env, std::uint32_t id) {
+  auto& store = impl_->store;
+  if (id >= store.ops.size() || store.ops[id].data.kind != Op::Kind::call)
+    return;
+  const Op op(&store, id, store.ops[id].generation);
+  std::vector<Ty> returns;
+  if (!env.resolve(*this, op, op.callee(), op.args(), &returns) ||
+      returns.size() != op.outs().size())
+    return;
+  const std::vector<Val> outputs = op.outs();
+  for (std::size_t index = 0; index < outputs.size(); ++index) {
+    Ty& type = store.vals[outputs[index].id_].data.type;
+    if (type.text() == "_" && returns[index].text() != "_")
+      type = returns[index];
+  }
+}
+
 Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
               std::span<const Ty> generic_args) {
   auto& store = impl_->store;
@@ -1533,6 +1550,7 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
       store.ops[next_id].data.outs.push_back(value_id);
       values.emplace(old_value, value_id);
     }
+    infer(env, next_id);
     for (const std::uint32_t old_blk : old.blks) {
       detail::BlkData body;
       body.fn = next_fn_id;
@@ -1570,7 +1588,8 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
   return Fn(&store, next_fn_id, store.fns[next_fn_id].generation);
 }
 
-bool Mod::expand(Op call, Fn callee, std::string_view semantic) {
+bool Mod::expand(const Env& env, Op call, Fn callee,
+                 std::string_view semantic) {
   auto& store = impl_->store;
   if (!call.valid() || call.store_ != &store ||
       call.kind() != Op::Kind::call) {
@@ -1759,6 +1778,7 @@ bool Mod::expand(Op call, Fn callee, std::string_view semantic) {
       store.ops[next_id].data.outs.push_back(value_id);
       values.emplace(old_value, value_id);
     }
+    infer(env, next_id);
 
     for (const std::uint32_t old_blk : old.blks) {
       detail::BlkData body;

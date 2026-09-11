@@ -308,7 +308,7 @@ fn batch_norm<E: Ty, N: int, C: int, H: int, W: int>(
   var out = tensor<E, [N, C, H, W]>(E(0))
   for n in 0..N, c in 0..C, h in 0..H, w in 0..W {
     out[n, c, h, w] = (x[n, c, h, w] - mean[c]) /
-                      math.sqrt(variance[c] + E(epsilon)) * scale[c] + bias[c]
+                      sqrt(variance[c] + E(epsilon)) * scale[c] + bias[c]
   }
   return out
 }
@@ -503,7 +503,7 @@ fn pow<E: Ty, S: list<int>>(
 ) -> tensor<E, S> {
   var out = tensor<E, S>(E(0))
   for i in 0..tensor.numel<S>() {
-    out[i] = math.pow(left[i], right[i])
+    out[i] = pow(left[i], right[i])
   }
   return out
 }
@@ -523,7 +523,7 @@ fn sqrt<E: Ty, S: list<int>>(
 ) -> tensor<E, S> {
   var out = tensor<E, S>(E(0))
   for i in 0..tensor.numel<S>() {
-    out[i] = math.sqrt(x[i])
+    out[i] = sqrt(x[i])
   }
   return out
 }
@@ -543,7 +543,7 @@ fn tanh<E: Ty, S: list<int>>(
 ) -> tensor<E, S> {
   var out = tensor<E, S>(E(0))
   for i in 0..tensor.numel<S>() {
-    out[i] = math.tanh(x[i])
+    out[i] = tanh(x[i])
   }
   return out
 }
@@ -553,7 +553,7 @@ fn exp<E: Ty, S: list<int>>(
 ) -> tensor<E, S> {
   var out = tensor<E, S>(E(0))
   for i in 0..tensor.numel<S>() {
-    out[i] = math.exp(x[i])
+    out[i] = exp(x[i])
   }
   return out
 }
@@ -563,7 +563,7 @@ fn sigmoid<E: Ty, S: list<int>>(
 ) -> tensor<E, S> {
   var out = tensor<E, S>(E(0))
   for i in 0..tensor.numel<S>() {
-    out[i] = E(1) / (E(1) + math.exp(E(0) - x[i]))
+    out[i] = E(1) / (E(1) + exp(E(0) - x[i]))
   }
   return out
 }
@@ -573,7 +573,7 @@ fn ceil<E: Ty, S: list<int>>(
 ) -> tensor<E, S> {
   var out = tensor<E, S>(E(0))
   for i in 0..tensor.numel<S>() {
-    out[i] = math.ceil(x[i])
+    out[i] = ceil(x[i])
   }
   return out
 }
@@ -583,7 +583,7 @@ fn round_even<E: Ty, S: list<int>>(
 ) -> tensor<E, S> {
   var out = tensor<E, S>(E(0))
   for i in 0..tensor.numel<S>() {
-    out[i] = math.round_even(x[i])
+    out[i] = round_even(x[i])
   }
   return out
 }
@@ -615,7 +615,7 @@ fn softmax<E: Ty, S: list<int>>(
     var sum = E(0)
     for column in 0..width {
       let offset = tensor.reduce_offset(S, axes, line, column)
-      let value = math.exp((x[offset] - peak) * E(beta))
+      let value = exp((x[offset] - peak) * E(beta))
       out[offset] = value
       sum += value
     }

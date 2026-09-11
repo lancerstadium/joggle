@@ -421,7 +421,8 @@ private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
 
-  bool expand(Op call, Fn callee, std::string_view semantic);
+  bool expand(const Env& env, Op call, Fn callee, std::string_view semantic);
+  void infer(const Env& env, std::uint32_t op);
 
   friend class Parser;
   friend class Env;
