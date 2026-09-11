@@ -1618,6 +1618,20 @@ private:
       for (Op op : ops)
         out.emplace_back(op);
       return Items{Item(std::move(out))};
+    } else if (name == "vals" && args.size() == 1) {
+      std::vector<Val> vals;
+      if (const auto* mod = as<Mod*>(args[0]); mod && *mod)
+        vals = (*mod)->vals();
+      else if (const auto* fn = as<Fn>(args[0]))
+        vals = fn->vals();
+      else {
+        fail("invalid ir.vals compile-time call", loc);
+        return std::nullopt;
+      }
+      Items out;
+      for (Val value : vals)
+        out.emplace_back(value);
+      return Items{Item(std::move(out))};
     } else if ((name == "args" || name == "outs") && args.size() == 1) {
       std::vector<Val> vals;
       bool node = false;

@@ -159,7 +159,7 @@ The built-in `ir` module is the complete reflection boundary:
 
 | Function | Meaning |
 | --- | --- |
-| `fns`, `find`, `params`, `returns`, `generics`, `blks`, `ops`, `uses` | Find local or exactly qualified loaded functions and traverse signatures, explicit call terms, structure, and dependencies. |
+| `fns`, `find`, `params`, `returns`, `generics`, `blks`, `ops`, `vals`, `uses` | Find local or exactly qualified loaded functions and traverse signatures, explicit call terms, structure, runtime values, and dependencies. |
 | `args`, `outs`, `def`, `users` | Read operation dataflow in both directions. |
 | `live`, `blk`, `kind`, `form`, `callee`, `name`, `key`, `type` | Query handle state, operation kind and binding form, readable or ephemeral identity, and structural `Ty`. |
 | `resolve`, `symbol`, `accepts`, `match` | Resolve calls, identify functions, and select against explicit signatures. |
@@ -176,6 +176,13 @@ The built-in `ir` module is the complete reflection boundary:
 These functions operate on generic handles and contain no NN operator names.
 Adding an importer, optimization, or target module therefore does not extend
 the reflection ABI or add a parser case.
+
+`ir.vals(f)` returns every runtime value owned by a function in deterministic
+groups: parameters, nested block arguments, then operation results. Generic
+parameters are compile-time bindings and remain available only through
+`ir.generics(f)`. `ir.vals(m)` concatenates that view for local functions. This
+single traversal keeps analyses and transforms from rebuilding subtly different
+notions of a function's value set.
 
 `Op::kind()` / `ir.kind` describe computation structure (`call`, `constant`,
 `loop`, branch, return, or yield); `Op::form()` / `ir.form` describe how a call

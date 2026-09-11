@@ -290,6 +290,7 @@ public:
   Blk body() const noexcept;
   std::vector<Blk> blks() const;
   std::vector<Op> ops() const;
+  std::vector<Val> vals() const;
   Loc loc() const;
 
   friend bool operator==(const Fn&, const Fn&) = default;
@@ -380,6 +381,7 @@ public:
   bool use(const Env& env, std::string module);
   std::vector<Fn> fns() const;
   std::vector<Op> ops() const;
+  std::vector<Val> vals() const;
   std::vector<Fn> find_fns(std::string_view name) const;
   Fn find_fn(std::string_view name) const;
   std::uint64_t revision() const noexcept;

@@ -731,6 +731,18 @@ std::vector<Op> Fn::ops() const {
   visit(visit, body());
   return out;
 }
+std::vector<Val> Fn::vals() const {
+  std::vector<Val> out = params();
+  for (Blk blk : blks()) {
+    const std::vector<Val> args = blk.args();
+    out.insert(out.end(), args.begin(), args.end());
+  }
+  for (Op op : ops()) {
+    const std::vector<Val> results = op.outs();
+    out.insert(out.end(), results.begin(), results.end());
+  }
+  return out;
+}
 Loc Fn::loc() const { return valid() ? store_->fns[id_].data.loc : Loc{}; }
 
 Mod::Mod() : impl_(std::make_unique<Impl>()) {}
@@ -780,6 +792,15 @@ std::vector<Op> Mod::ops() const {
   std::vector<Op> out;
   for (Fn fn : fns()) {
     std::vector<Op> nested = fn.ops();
+    out.insert(out.end(), nested.begin(), nested.end());
+  }
+  return out;
+}
+
+std::vector<Val> Mod::vals() const {
+  std::vector<Val> out;
+  for (Fn fn : fns()) {
+    std::vector<Val> nested = fn.vals();
     out.insert(out.end(), nested.begin(), nested.end());
   }
   return out;

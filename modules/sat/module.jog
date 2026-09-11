@@ -163,18 +163,8 @@ fn materialize(m: Mod, limits: list<int>, types: list<Ty>) -> bool {
   }
 
   for f in ir.fns(m) {
-    for param in ir.params(f) {
-      store_value(m, param, limits, types)
-    }
-    for block in ir.blks(f) {
-      for arg in ir.args(block) {
-        store_value(m, arg, limits, types)
-      }
-      for op in ir.ops(block) {
-        for output in ir.outs(op) {
-          store_value(m, output, limits, types)
-        }
-      }
+    for value in ir.vals(f) {
+      store_value(m, value, limits, types)
     }
     var returns: list<Ty> = []
     var changed = false

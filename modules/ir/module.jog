@@ -17,6 +17,8 @@ fn blk(op: Op) -> Blk;
 fn ops(m: Mod) -> list<Op>;
 fn ops(f: Fn) -> list<Op>;
 fn ops(b: Blk) -> list<Op>;
+fn vals(m: Mod) -> list<Val>;
+fn vals(f: Fn) -> list<Val>;
 fn args(b: Blk) -> list<Val>;
 fn args(op: Op) -> list<Val>;
 fn outs(op: Op) -> list<Val>;

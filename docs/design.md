@@ -364,6 +364,11 @@ target, scheduling, or layout concepts in the core.
 `Fn::ops`, `Mod::ops`, and the overloaded `ir.ops` provide one deterministic
 structural-preorder walk without forcing every transform to spell three nested
 ownership loops. `Blk`-local traversal remains available when locality matters.
+`Fn::vals`, `Mod::vals`, and `ir.vals` similarly define the complete runtime
+value universe as parameters, nested block arguments, and operation results.
+They exclude compile-time generic bindings, which remain explicitly available
+through `generics`, so range, storage, and cost modules cannot accidentally
+disagree about which values execute.
 Use replacement now has an optional user operation, so a transform can redirect
 one edge without rewriting every consumer; both forms reject type or dominance
 violations before mutation. `Mod::revision` advances after successful edits and

@@ -2309,6 +2309,24 @@ int main(int argc, char** argv) {
   CHECK(matmul.params().size() == 2);
   CHECK(matmul.blks().size() == 3);
   CHECK(matmul.ops().size() > matmul.body().ops().size());
+  std::size_t matmul_values = matmul.params().size();
+  for (joggle::Blk blk : matmul.blks())
+    matmul_values += blk.args().size();
+  for (joggle::Op op : matmul.ops())
+    matmul_values += op.outs().size();
+  const std::vector<joggle::Val> reflected_values = matmul.vals();
+  const std::vector<joggle::Val> reflected_generics = matmul.generics();
+  CHECK(reflected_values.size() == matmul_values);
+  CHECK(std::none_of(reflected_values.begin(), reflected_values.end(),
+                     [&](joggle::Val value) {
+                       return std::find(reflected_generics.begin(),
+                                        reflected_generics.end(), value) !=
+                              reflected_generics.end();
+                     }));
+  std::size_t module_values = 0;
+  for (joggle::Fn fn : mod.fns())
+    module_values += fn.vals().size();
+  CHECK(mod.vals().size() == module_values);
 
   const std::string canonical = joggle::print(mod);
   CHECK(canonical.find("for i in 0..M, j in 0..N") != std::string::npos);

@@ -15,21 +15,6 @@ fn sum(m: Mod, measure: Fn) -> int {
   return total
 }
 
-fn vals(fn: Fn) -> list<Val> {
-  var out = ir.params(fn)
-  for body in ir.blks(fn) {
-    for value in ir.args(body) {
-      out += [value]
-    }
-  }
-  for op in ir.ops(fn) {
-    for value in ir.outs(op) {
-      out += [value]
-    }
-  }
-  return out
-}
-
 fn summary(m: Mod) -> dict {
   var fns = 0
   var blocks = 0
@@ -52,7 +37,7 @@ fn summary(m: Mod) -> dict {
   for fn in ir.fns(m) {
     fns += 1
     blocks += len(ir.blks(fn))
-    let fn_values = vals(fn)
+    let fn_values = ir.vals(fn)
     values += len(fn_values)
     for value in fn_values {
       let type = ir.type(value)

@@ -88,6 +88,9 @@ Status: complete.
   overload checks instead of requiring modules to parse callee spelling.
 - Add nested walking, selective use replacement, cloning, moving, and `Blk`
   argument editing with explicit insertion points.
+- Expose one deterministic runtime-value walk for functions and modules so
+  analyses do not independently reconstruct parameters, block arguments, and
+  operation results; keep compile-time generics separate.
 - Give every successful mutation a module revision and make compound edits
   atomic.
 - Preserve readable bindings during printing without exposing generated SSA
