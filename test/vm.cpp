@@ -1,6 +1,7 @@
 #include "joggle/joggle.h"
 
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -160,6 +161,25 @@ int main(int argc, char** argv) {
   CHECK(execute_bytes(env, std::string(*image.string()), "root",
                       std::move(root_input), result, root_steps));
   CHECK(floats(result) == std::vector<float>{3.0F} && root_steps > 0);
+
+  joggle::Attr::Bytes unary_math_input;
+  append(unary_math_input, 1.5);
+  std::int64_t unary_math_steps = 0;
+  CHECK(execute_bytes(env, std::string(*image.string()), "unary_math",
+                      std::move(unary_math_input), result,
+                      unary_math_steps));
+  const double unary_math_expected =
+      std::exp(1.5) + std::ceil(1.5) + std::tanh(1.5) + std::nearbyint(1.5);
+  CHECK(std::abs(real(result) - unary_math_expected) < 1.0e-12 &&
+        unary_math_steps > root_steps);
+
+  joggle::Attr::Bytes power_input;
+  append(power_input, 2.0);
+  append(power_input, 5.0);
+  std::int64_t power_steps = 0;
+  CHECK(execute_bytes(env, std::string(*image.string()), "power",
+                      std::move(power_input), result, power_steps));
+  CHECK(real(result) == 32.0 && power_steps > 0);
 
   std::int64_t shift_steps = 0;
   CHECK(execute(env, std::string(*image.string()), "shift", {-8, 2}, result,

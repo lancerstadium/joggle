@@ -1172,7 +1172,8 @@ explicit entry with byte inputs. The image protocol and instruction meanings
 belong entirely to the module; core contains no VM operation or image format.
 
 Image version 3 covers signed 64-bit arithmetic, `f32` and `f64` arithmetic and
-conversion, floating square root, Boolean values, comparisons, bitwise
+conversion, the current six-function floating `math` surface, Boolean values,
+comparisons, bitwise
 operations, structured branches and range loops, scalar literal-list
 selection, and static tensors of those elements. Every image
 value carries an explicit primitive format. Integer and floating inputs retain
@@ -1188,6 +1189,13 @@ cycles. Malformed
 images, mismatched arguments, invalid shifts, integer division by zero,
 out-of-range casts, and invalid tensor accesses are negative gates. Repeated
 image generation and execution must be identical.
+
+The VM and C regressions evaluate `sqrt`, `exp`, `ceil`, `pow`, `tanh`, and
+ties-to-even rounding from the same semantic declarations. Both reference
+targets currently delegate transcendentals to the host standard library, so
+the deterministic claim applies to image text, control flow, and instruction
+counts—not cross-platform last-bit equality. A fixed approximation or LUT is a
+module-selected implementation and must be evaluated as such.
 
 The same `i64` tensor addition and both `i64` and `f32` nested-loop matrix
 multiplications are now executed by the C and VM targets. The pinned ONNX

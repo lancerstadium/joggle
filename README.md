@@ -261,7 +261,8 @@ structured loops and conditions, short-circuit logical expressions,
 literal-list indexing, and the standard floating-point functions declared by
 `math`; unsupported IR fails with a diagnostic. Preparation composes the
 reusable static evaluator and copy propagation before exposing remaining
-calls.
+calls. C and VM cover the same current six-function `math` surface; host-libm
+transcendentals are not presented as cross-platform bit-exact implementations.
 The preparation policy is not a second target interface. `c.accepts(Mod, Op)`
 is an ordinary read-only function, and `opt.expose` repeatedly folds static
 work, removes copies, and exposes only calls that predicate rejects. A new

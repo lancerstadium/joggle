@@ -38,6 +38,14 @@ fn root(x: f32) -> f32 {
   return math.sqrt(x)
 }
 
+fn unary_math(x: f64) -> f64 {
+  return math.exp(x) + math.ceil(x) + math.tanh(x) + math.round_even(x)
+}
+
+fn power(x: f64, y: f64) -> f64 {
+  return math.pow(x, y)
+}
+
 fn pick(at: index) -> int {
   let values = [3, 5, 8]
   return values[at]

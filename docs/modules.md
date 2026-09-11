@@ -199,11 +199,17 @@ covers `bool`, `i64`, `index`, `int`, `f32`, and `f64`, static tensors of those
 elements, typed arithmetic and conversion, comparisons, Boolean/bitwise
 operations, structured conditions and range loops, allocation/fill, and
 checked scalar-list selection and linear or multidimensional tensor indexing.
-It also covers square root for floating-point batch-normalization bodies.
+It covers the complete current `math` surface: `sqrt`, `exp`, `ceil`, `pow`,
+`tanh`, and ties-to-even rounding for both floating formats. C and VM execute
+the same scalar conformance cases. These operations use the host standard
+library; their presence does not claim cross-platform bit identity for
+transcendentals.
 Invalid integer division, shifts, images, entries, input sizes, shapes, indices,
 or out-of-range conversions fail through the normal module diagnostic boundary.
 Local function calls, dynamic tensors, module-defined storage formats, and
-format-aware costs are still open.
+format-aware costs are still open. A bit-reproducible approximation must remain
+an explicitly selected implementation module rather than silently replacing a
+`math` call in the VM.
 
 `vm.prepare(m)` is the explicit target-policy function. Its ordinary
 `vm.accepts(m, op)` predicate recognizes exactly the calls the image emitter

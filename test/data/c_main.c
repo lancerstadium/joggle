@@ -12,6 +12,8 @@ float jog_direct(float x);
 float jog_relu(float x);
 bool jog_logical(int64_t a, int64_t b);
 float jog_root(float x);
+double jog_unary_math(double x);
+double jog_power(double x, double y);
 int64_t jog_steps(void);
 int64_t jog_select(void);
 
@@ -56,6 +58,12 @@ int main(void) {
     return 8;
   if (fabsf(jog_root(9.0f) - 4.0f) > 1e-6f)
     return 9;
+  const double unary_expected =
+      exp(1.5) + ceil(1.5) + tanh(1.5) + nearbyint(1.5);
+  if (fabs(jog_unary_math(1.5) - unary_expected) > 1e-12)
+    return 12;
+  if (jog_power(2.0, 5.0) != 32.0)
+    return 13;
   if (jog_steps() != 3)
     return 10;
   if (jog_select() != 7)

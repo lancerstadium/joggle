@@ -67,7 +67,8 @@ fn binary(name: str) -> str {
     "operator |": "or", "operator ^": "xor", "operator <<": "shl",
     "operator >>": "shr", "operator ==": "eq", "operator !=": "ne",
     "operator <": "lt", "operator <=": "le", "operator >": "gt",
-    "operator >=": "ge", "operator &&": "land", "operator ||": "lor"
+    "operator >=": "ge", "operator &&": "land", "operator ||": "lor",
+    "math.pow": "pow"
   }
   if has(ops, name) {
     return str(ops[name])
@@ -78,7 +79,9 @@ fn binary(name: str) -> str {
 fn unary(name: str) -> str {
   let ops = {
     "base.copy": "copy", "operator +": "copy", "operator -": "neg",
-    "operator !": "lnot", "operator ~": "bnot", "math.sqrt": "sqrt"
+    "operator !": "lnot", "operator ~": "bnot", "math.sqrt": "sqrt",
+    "math.exp": "exp", "math.ceil": "ceil", "math.tanh": "tanh",
+    "math.round_even": "round_even"
   }
   if has(ops, name) {
     return str(ops[name])
@@ -87,12 +90,14 @@ fn unary(name: str) -> str {
 }
 
 fn float_unary(code: str) -> bool {
-  return code == "copy" || code == "neg" || code == "sqrt"
+  return code == "copy" || code == "neg" || code == "sqrt" ||
+         code == "exp" || code == "ceil" || code == "tanh" ||
+         code == "round_even"
 }
 
 fn float_binary(code: str) -> bool {
   return code == "add" || code == "sub" || code == "mul" ||
-         code == "div" || code == "eq" || code == "ne" ||
+         code == "div" || code == "pow" || code == "eq" || code == "ne" ||
          code == "lt" || code == "le" || code == "gt" || code == "ge"
 }
 

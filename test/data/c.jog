@@ -30,6 +30,14 @@ fn root(x: f32) -> f32 {
   return math.sqrt(x) + f32(1)
 }
 
+fn unary_math(x: f64) -> f64 {
+  return math.exp(x) + math.ceil(x) + math.tanh(x) + math.round_even(x)
+}
+
+fn power(x: f64, y: f64) -> f64 {
+  return math.pow(x, y)
+}
+
 fn steps() -> i64 {
   var count: i64 = i64(0)
   for i in 0..3 {

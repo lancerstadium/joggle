@@ -299,23 +299,39 @@ bool loop_end(const std::vector<Line>& code, std::size_t at,
   return false;
 }
 
+template <class T>
+bool floating_unary(std::string_view op, T input, Value& output, Kind kind) {
+  T result{};
+  if (op == "neg")
+    result = -input;
+  else if (op == "sqrt")
+    result = std::sqrt(input);
+  else if (op == "exp")
+    result = std::exp(input);
+  else if (op == "ceil")
+    result = std::ceil(input);
+  else if (op == "tanh")
+    result = std::tanh(input);
+  else if (op == "round_even")
+    result = std::nearbyint(input);
+  else
+    return false;
+  output = scalar(kind, bits(result));
+  return true;
+}
+
 bool unary(std::string_view op, Kind kind, std::uint64_t input,
            Value& output) {
+  if (kind == Kind::f32)
+    return floating_unary(op, float_value(input), output, kind);
+  if (kind == Kind::f64)
+    return floating_unary(op, double_value(input), output, kind);
   if (op == "neg") {
-    if (kind == Kind::i64)
-      output = scalar(kind, std::uint64_t{0} - input);
-    else if (kind == Kind::f32)
-      output = scalar(kind, bits(-float_value(input)));
-    else
-      output = scalar(kind, bits(-double_value(input)));
+    output = scalar(kind, std::uint64_t{0} - input);
   } else if (op == "lnot" && kind == Kind::i64) {
     output = scalar(Kind::i64, input == 0);
   } else if (op == "bnot" && kind == Kind::i64) {
     output = scalar(kind, ~input);
-  } else if (op == "sqrt" && kind == Kind::f32) {
-    output = scalar(kind, bits(std::sqrt(float_value(input))));
-  } else if (op == "sqrt" && kind == Kind::f64) {
-    output = scalar(kind, bits(std::sqrt(double_value(input))));
   } else {
     return false;
   }
@@ -333,6 +349,8 @@ bool floating_binary(std::string_view op, T left, T right, Value& output,
     output = scalar(kind, bits(left * right));
   else if (op == "div")
     output = scalar(kind, bits(left / right));
+  else if (op == "pow")
+    output = scalar(kind, bits(std::pow(left, right)));
   else if (op == "eq")
     output = scalar(Kind::i64, left == right);
   else if (op == "ne")
