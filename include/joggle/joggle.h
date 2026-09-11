@@ -140,6 +140,7 @@ class Ty {
 public:
   Ty() = default;
   explicit Ty(std::string text);
+  Ty(std::string name, std::span<const Ty> args);
 
   bool empty() const noexcept;
   bool valid() const noexcept;

@@ -263,6 +263,10 @@ and remains structurally equal.
 ## M6 first slice
 
 `Ty` now preserves canonical text while exposing a recursive constructor tree.
+Both public constructors are structural boundaries: `Ty(text)` parses external
+text, while `Ty(name, args)` builds a checked tree directly. Generic
+substitution and inferred list types use the latter internally, so normal type
+rewrites do not serialize and reparse their children.
 Known local and qualified calls are resolved against their module declaration;
 generic bindings are inferred structurally and substituted into result types.
 The verifier also propagates list element and region argument types to a fixed

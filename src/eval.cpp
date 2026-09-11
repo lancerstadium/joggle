@@ -1,6 +1,7 @@
 #include "detail.h"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <charconv>
 #include <functional>
@@ -190,7 +191,8 @@ Ty runtime_type(const Item& item) {
         if (runtime_type((*items)[index]) != element)
           element = Ty("_");
     }
-    return Ty("list<" + std::string(element.text()) + ">");
+    const std::array<Ty, 1> args{element};
+    return Ty("list", args);
   }
   return Ty("_");
 }
@@ -1050,27 +1052,11 @@ private:
         return Items{Item(std::move(type))};
     } else if (name == "ty" && args.size() == 2) {
       const auto constructor = string(args[0]);
-      const Items* arguments = list(args[1]);
+      const auto arguments = types(args[1]);
       if (constructor && arguments) {
-        std::string text = *constructor == "[]"
-                               ? "["
-                               : std::string(*constructor) + '<';
-        for (std::size_t index = 0; index < arguments->size(); ++index) {
-          const auto* argument = as<Ty>((*arguments)[index]);
-          if (!argument || !argument->valid()) {
-            text.clear();
-            break;
-          }
-          if (index)
-            text += ", ";
-          text += argument->text();
-        }
-        if (!text.empty()) {
-          text += *constructor == "[]" ? ']' : '>';
-          Ty type(std::move(text));
-          if (type.valid())
-            return Items{Item(std::move(type))};
-        }
+        Ty type(std::string(*constructor), *arguments);
+        if (type.valid())
+          return Items{Item(std::move(type))};
       }
     }
     fail("invalid base." + std::string(name) + " compile-time call", loc);

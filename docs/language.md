@@ -88,6 +88,9 @@ The same tree is available to compile-time functions. `ir.type(value)` returns
 a `Ty`; `name(type)` and `args(type)` inspect it, `int(type)` projects a numeric
 term, and `str(type)` requests canonical text for a native boundary.
 `ty(text)`, `ty(integer)`, and `ty(name, arguments)` construct validated trees.
+The embedding API provides the corresponding `Ty(text)` and `Ty(name, args)`
+constructors, so a C++ extension never has to serialize nested type arguments
+just to construct a structural type.
 `ir.type(mod, value, type)` writes an inferred type back to a value and its
 structured carried-value family. `ir.returns(mod, fn, types)` edits the other
 part of a function signature, allowing a format conversion to retype parameters,

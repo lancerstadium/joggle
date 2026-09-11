@@ -1,6 +1,7 @@
 #include "detail.h"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cctype>
 #include <exception>
@@ -1795,14 +1796,11 @@ Ty substitute(const Ty& type, const std::vector<std::string>& generics,
   }
   if (type.args().empty())
     return type;
-  std::string text = type.name() == "[]" ? "[" : std::string(type.name()) + '<';
-  for (std::size_t index = 0; index < type.args().size(); ++index) {
-    if (index)
-      text += ", ";
-    text += substitute(type.args()[index], generics, bindings).text();
-  }
-  text += type.name() == "[]" ? ']' : '>';
-  return Ty(std::move(text));
+  std::vector<Ty> args;
+  args.reserve(type.args().size());
+  for (const Ty& arg : type.args())
+    args.push_back(substitute(arg, generics, bindings));
+  return Ty(std::string(type.name()), args);
 }
 
 bool integer_term(std::string_view text) {
@@ -1825,7 +1823,8 @@ Ty term_kind(const Ty& term, std::span<const GenericInfo> context) {
         if (term_kind(term.args()[index], context) != element)
           element = Ty("_");
     }
-    return Ty("list<" + std::string(element.text()) + ">");
+    const std::array<Ty, 1> args{element};
+    return Ty("list", args);
   }
   if (term.args().empty()) {
     if (term.name() == "_")
@@ -1974,9 +1973,10 @@ void infer_list(detail::Store& store, detail::OpData& op) {
       if (store.vals[op.args[index]].data.type != element)
         element = Ty("_");
   }
-  if (!op.outs.empty())
-    store.vals[op.outs.front()].data.type =
-        Ty("list<" + std::string(element.text()) + ">");
+  if (!op.outs.empty()) {
+    const std::array<Ty, 1> args{element};
+    store.vals[op.outs.front()].data.type = Ty("list", args);
+  }
 }
 
 Ty return_context(const detail::Store& store, std::uint32_t value) {

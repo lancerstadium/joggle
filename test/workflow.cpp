@@ -1,6 +1,7 @@
 #include "joggle/joggle.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -51,6 +52,17 @@ int main(int argc, char** argv) {
   CHECK(tensor_type.args()[1].name() == "[]");
   CHECK(tensor_type.args()[1].args().size() == 2);
   CHECK(!joggle::Ty("tensor<i32,>").valid());
+  const std::array<joggle::Ty, 2> shape_args{joggle::Ty("2"),
+                                             joggle::Ty("N")};
+  const joggle::Ty shape_type("[]", shape_args);
+  const std::array<joggle::Ty, 2> tensor_args{joggle::Ty("f32"), shape_type};
+  const joggle::Ty structured_tensor("tensor", tensor_args);
+  CHECK(shape_type.valid() && shape_type.text() == "[2, N]");
+  CHECK(structured_tensor == tensor_type);
+  CHECK(joggle::Ty("[]", std::span<const joggle::Ty>{}).text() == "[]");
+  CHECK(!joggle::Ty("tensor", std::span<const joggle::Ty>{}).valid());
+  const std::array<joggle::Ty, 1> invalid_args{joggle::Ty("tensor<")};
+  CHECK(!joggle::Ty("tensor", invalid_args).valid());
 
   std::ifstream input(argv[1]);
   CHECK(input);

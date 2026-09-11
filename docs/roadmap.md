@@ -67,6 +67,8 @@ Status: complete.
   from a resolved declaration.
 - Let module-defined type constructors use the same lookup and compile-time
   value machinery as built-in types.
+- Keep structural type construction symmetric: `.jog` uses `ty(name, args)`
+  and C++ uses `Ty(name, args)` without rebuilding type text.
 
 Exit gate: a module-defined parametric number format and nested tensor/list
 signatures resolve without parser cases, while intentionally ambiguous and

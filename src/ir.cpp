@@ -287,15 +287,11 @@ Ty substitute(const Ty& type, const Bindings& bindings) {
     const auto found = bindings.find(std::string(type.name()));
     return found == bindings.end() ? type : found->second;
   }
-  std::string text =
-      type.name() == "[]" ? "[" : std::string(type.name()) + '<';
-  for (std::size_t index = 0; index < type.args().size(); ++index) {
-    if (index)
-      text += ", ";
-    text += substitute(type.args()[index], bindings).text();
-  }
-  text += type.name() == "[]" ? ']' : '>';
-  return Ty(std::move(text));
+  std::vector<Ty> args;
+  args.reserve(type.args().size());
+  for (const Ty& arg : type.args())
+    args.push_back(substitute(arg, bindings));
+  return Ty(std::string(type.name()), args);
 }
 
 std::optional<std::int64_t> integer(const Ty& value) {
@@ -334,7 +330,8 @@ Ty generic_kind(const Ty& value) {
   for (std::size_t index = 1; index < value.args().size(); ++index)
     if (generic_kind(value.args()[index]) != element)
       element = Ty("_");
-  return Ty("list<" + std::string(element.text()) + ">");
+  const std::array<Ty, 1> args{element};
+  return Ty("list", args);
 }
 
 bool same_signature(const detail::Store& store,
@@ -478,6 +475,26 @@ Ty::Ty(std::string text) {
   text_ += close;
   valid_ = true;
 }
+
+Ty::Ty(std::string name, std::span<const Ty> args) {
+  const std::string_view constructor = trim(name);
+  if ((constructor != "[]" &&
+       (!valid_atom(constructor) || args.empty())) ||
+      std::any_of(args.begin(), args.end(),
+                  [](const Ty& arg) { return !arg.valid(); }))
+    return;
+  name_ = std::string(constructor);
+  args_.assign(args.begin(), args.end());
+  text_ = name_ == "[]" ? "[" : name_ + '<';
+  for (std::size_t index = 0; index < args_.size(); ++index) {
+    if (index)
+      text_ += ", ";
+    text_ += args_[index].text();
+  }
+  text_ += name_ == "[]" ? ']' : '>';
+  valid_ = true;
+}
+
 bool Ty::empty() const noexcept { return text_.empty(); }
 bool Ty::valid() const noexcept { return valid_; }
 std::string_view Ty::text() const noexcept { return text_; }
