@@ -470,7 +470,7 @@ int main(int argc, char** argv) {
   for (joggle::Op op : scalar_bridge.ops())
     if (op.callee() == "onnx.Mul")
       scalar_mul = op;
-  CHECK(scalar_mul && scalar_bridge.use("nn"));
+  CHECK(scalar_mul && scalar_bridge.use(env, "nn"));
   const std::string before_bad_retarget = joggle::print(scalar_bridge);
   CHECK(!scalar_bridge.retarget(env, scalar_mul, "nn.relu",
                                 scalar_mul.args()));

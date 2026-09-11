@@ -476,6 +476,33 @@ int main(int argc, char** argv) {
   CHECK(local_expand_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(local_expand, local_expand_roundtrip));
 
+  joggle::Mod detached_implementation;
+  CHECK(joggle::parse(env,
+                      "module detached.impl\n"
+                      "fn source(x: i32) -> i32 { return x }\n",
+                      detached_implementation, "detached-impl.jog"));
+  CHECK(detached_implementation.verify(env));
+  joggle::Mod detached_user;
+  CHECK(joggle::parse(env,
+                      "module detached.user\n"
+                      "fn main(x: i32) -> i32 {\n"
+                      "  let y: i32 = source(x)\n"
+                      "  return y\n"
+                      "}\n",
+                      detached_user, "detached-user.jog"));
+  CHECK(detached_user.verify(env));
+  const joggle::Op detached_call =
+      detached_user.find_fn("main").body().ops()[0];
+  const std::string detached_before = joggle::print(detached_user);
+  const std::uint64_t detached_revision = detached_user.revision();
+  CHECK(!env.expand(detached_user, detached_call,
+                    detached_implementation.find_fn("source")));
+  CHECK(joggle::print(detached_user) == detached_before);
+  CHECK(detached_user.revision() == detached_revision);
+  CHECK(detached_user.uses().empty());
+  detached_user.clear_diags();
+  CHECK(detached_user.verify(env));
+
   joggle::Mod rejected_expand;
   constexpr std::string_view rejected_expand_source =
       "module rejected.expand\n"
@@ -538,12 +565,15 @@ int main(int argc, char** argv) {
                            "return 0 }\n",
                       dependencies, "dependencies.jog"));
   const std::uint64_t dependencies_revision = dependencies.revision();
-  CHECK(dependencies.use("nn"));
+  CHECK(dependencies.use(env, "nn"));
   CHECK(dependencies.revision() == dependencies_revision + 1);
-  CHECK(dependencies.use("nn"));
+  CHECK(dependencies.use(env, "nn"));
   CHECK(dependencies.revision() == dependencies_revision + 1);
   const std::string dependencies_text = joggle::print(dependencies);
-  CHECK(!dependencies.use("not-a-module"));
+  CHECK(!dependencies.use(env, "not-a-module"));
+  CHECK(joggle::print(dependencies) == dependencies_text);
+  CHECK(dependencies.revision() == dependencies_revision + 1);
+  CHECK(!dependencies.use(env, "missing"));
   CHECK(joggle::print(dependencies) == dependencies_text);
   CHECK(dependencies.revision() == dependencies_revision + 1);
   dependencies.clear_diags();

@@ -589,7 +589,9 @@ No operator, frontend, target, or schedule name appears in the core mechanism.
 
 A frontend codec cannot assume the semantic modules that a later experiment
 will choose. The generic `Mod::use`/`ir.use` edit therefore adds a dependency
-explicitly and idempotently, with ordinary revision and rollback behavior.
+explicitly and idempotently, with ordinary revision and rollback behavior. It
+accepts only a module already loaded by the current environment and never
+performs an implicit load.
 `ir.uses` exposes the resulting dependency list without introducing a graph or
 package object.
 

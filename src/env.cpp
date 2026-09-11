@@ -640,20 +640,23 @@ bool Env::expand(Mod& mod, Op call, Fn implementation) const {
                std::string(source.name());
 
   detail::Store backup = mod.impl_->store;
+  const auto rollback = [&]() {
+    std::vector<Diag> diagnostics = std::move(mod.impl_->store.diags);
+    mod.impl_->store = std::move(backup);
+    mod.impl_->store.diags = std::move(diagnostics);
+    return false;
+  };
   const std::string implementation_symbol =
       std::string(implementation.module()) + "." +
       std::string(implementation.name());
   const std::vector<Fn> visible = resolve_fns(mod, implementation_symbol);
   if (std::find(visible.begin(), visible.end(), implementation) ==
-      visible.end())
-    mod.use(std::string(implementation.module()));
+          visible.end() &&
+      !mod.use(*this, std::string(implementation.module())))
+    return rollback();
   if (mod.expand(call, implementation, semantic))
     return true;
-
-  std::vector<Diag> diagnostics = std::move(mod.impl_->store.diags);
-  mod.impl_->store = std::move(backup);
-  mod.impl_->store.diags = std::move(diagnostics);
-  return false;
+  return rollback();
 }
 
 Fn Env::resolve(const Mod& from, Op call, std::string_view callee,

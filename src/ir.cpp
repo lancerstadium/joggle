@@ -640,11 +640,16 @@ Mod& Mod::operator=(Mod&&) noexcept = default;
 std::string_view Mod::name() const noexcept { return impl_->store.name; }
 std::vector<std::string> Mod::uses() const { return impl_->store.uses; }
 
-bool Mod::use(std::string module) {
+bool Mod::use(const Env& env, std::string module) {
   auto& store = impl_->store;
   if (!valid_module(module) || module == store.name) {
     detail::add_diag(store.diags,
                      "use requires a valid, different module name");
+    return false;
+  }
+  if (!env.loaded(module)) {
+    detail::add_diag(store.diags,
+                     "use requires the dependency module to be loaded");
     return false;
   }
   if (std::find(store.uses.begin(), store.uses.end(), module) !=

@@ -384,7 +384,9 @@ relation kinds.
 
 `ir.uses(m)` returns the module's declared dependencies and
 `ir.use(m, name)` adds one idempotently. Dependency edits advance the same
-module revision and participate in compile-time rollback. This lets an
+module revision and participate in compile-time rollback. The named module
+must already be loaded in the current environment; the edit never performs a
+hidden load or creates an unresolved dependency. This lets an
 explicit frontend bridge introduce the semantic library whose qualified
 functions it selects; parsing a frontend never does so implicitly.
 `ir.revision(m)` exposes that monotonically increasing revision to module code.

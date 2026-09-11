@@ -1496,7 +1496,7 @@ private:
       const auto* mod = as<Mod*>(args[0]);
       const auto module = string(args[1]);
       if (mod && *mod && module)
-        return Items{Item(Attr((*mod)->use(std::string(*module))))};
+        return Items{Item(Attr((*mod)->use(env_, std::string(*module))))};
     }
     fail("invalid ir." + std::string(name) + " compile-time call", loc);
     return std::nullopt;
