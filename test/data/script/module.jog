@@ -379,8 +379,27 @@ fn clone_matched(m: Mod) -> bool {
     if ir.live(fn) && ir.symbol(fn) == "nn.relu" {
       let generics = ir.match(op, fn)
       if len(generics) == 2 {
-        return ir.live(ir.clone(m, fn, "relu_matched", generics))
+        let local = ir.clone(m, fn, "relu_matched", generics)
+        assert(ir.live(local), "could not materialize matched function")
+        assert(
+          ir.rename(m, op, ir.symbol(local)),
+          "could not retarget matched call"
+        )
+        return true
       }
+    }
+  }
+  return false
+}
+
+fn clone_then_fail(m: Mod) -> bool {
+  for op in ir.ops(m) {
+    let fn = ir.resolve(m, op)
+    if ir.live(fn) && ir.symbol(fn) == "nn.relu" {
+      let local = ir.clone(m, fn, "orphan", ir.match(op, fn))
+      assert(ir.live(local), "could not materialize matched function")
+      assert(ir.rename(m, op, "invalid target"), "forced retarget failure")
+      return true
     }
   }
   return false

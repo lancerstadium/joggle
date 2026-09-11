@@ -277,10 +277,14 @@ For a real call, the ordinary matcher already knows those terms:
 let template = ir.resolve(m, call)
 let generics = ir.match(call, template)
 let local = ir.clone(m, template, "edge_relu", generics)
+assert(ir.live(local), "could not materialize function")
+assert(ir.rename(m, call, ir.symbol(local)), "could not retarget call")
 ```
 
 This retains the call-specific dtype and shape without a target descriptor or
-a second generic-inference interface.
+a second generic-inference interface. If either edit fails inside a `run`
+entry, its assertion restores the module before the clone, so no unused local
+function remains.
 
 ## Define a fusion policy
 

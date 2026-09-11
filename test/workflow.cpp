@@ -324,6 +324,21 @@ int main(int argc, char** argv) {
   CHECK(matched_relu.params().front().type() ==
         joggle::Ty("tensor<f32, [4]>") &&
         matched_relu.returns().front() == joggle::Ty("tensor<f32, [4]>"));
+  bool retargeted_relu = false;
+  for (const joggle::Op op : matched_fn.find_fn("stage").ops())
+    retargeted_relu =
+        op.callee() == "network.relu_matched" || retargeted_relu;
+  CHECK(retargeted_relu);
+  joggle::Mod failed_matched_fn;
+  CHECK(joggle::parse(env, network_source, failed_matched_fn,
+                      "failed-matched-fn.jog"));
+  const std::string before_failed_match = joggle::print(failed_matched_fn);
+  const std::uint64_t before_failed_match_revision =
+      failed_matched_fn.revision();
+  CHECK(!joggle::run(env, "script.clone_then_fail", failed_matched_fn));
+  CHECK(joggle::print(failed_matched_fn) == before_failed_match);
+  CHECK(failed_matched_fn.revision() == before_failed_match_revision);
+  CHECK(!failed_matched_fn.find_fn("orphan"));
   joggle::Mod scripted_fn;
   constexpr std::string_view scripted_fn_source =
       "module scripted.generated\n"

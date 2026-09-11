@@ -543,7 +543,10 @@ regression chooses a shape-specialized i8 ReLU implementation over a generic
 i8 overload, follows a second implementation layer at another shape, and
 proves a recursive implementation restores the exact input and revision. Its
 ordinary execution report also proves all three selected expansions, including
-both overload signatures and the intermediate implementation layer.
+both overload signatures and the intermediate implementation layer. A separate
+call-driven materialization gate resolves a generic ReLU, reflects its concrete
+element and shape terms, retains a monomorphic local function, and retargets
+the call; a forced failure after cloning leaves no orphan function.
 
 ## M9 local distribution slice
 
