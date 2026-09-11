@@ -612,8 +612,19 @@ Fn Env::match(Op call, std::span<const Fn> candidates,
   for (Fn candidate : candidates)
     if (candidate)
       live.push_back(candidate);
-  return detail::resolve_overload(live, arguments, {}, nullptr,
-                                  ambiguous, context, nullptr, returns);
+  std::vector<Ty> resolved_returns;
+  const Fn result = detail::resolve_overload(
+      live, arguments, {}, &resolved_returns, ambiguous, context, nullptr,
+      returns);
+  if (!result || resolved_returns.size() != returns.size())
+    return {};
+  for (std::size_t index = 0; index < returns.size(); ++index) {
+    if (returns[index].text() != "_" &&
+        resolved_returns[index].text() != "_" &&
+        returns[index] != resolved_returns[index])
+      return {};
+  }
+  return result;
 }
 
 bool Env::expand(Mod& mod, Op call, Fn implementation) const {

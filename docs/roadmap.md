@@ -57,6 +57,8 @@ The project is ready for sustained research use when all of the following hold:
 
 ### M6 — types and symbols
 
+Status: complete.
+
 - Replace opaque type strings internally with immutable structural type nodes.
 - Resolve local, imported, qualified, overloaded, and generic function calls.
 - Infer generic bindings from arguments and explicit parameters; propagate

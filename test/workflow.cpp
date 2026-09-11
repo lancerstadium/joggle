@@ -1058,6 +1058,32 @@ int main(int argc, char** argv) {
   CHECK(wrong_generic_kind.diags().front().message.find("expected 'int'") !=
         std::string::npos);
 
+  joggle::Mod wrong_result;
+  CHECK(joggle::parse(env,
+                      "module wrong_result\n"
+                      "fn make<T: Ty>() -> T;\n"
+                      "fn bad() -> i32 { return make<f32>() }\n",
+                      wrong_result, "wrong-result.jog"));
+  CHECK(!wrong_result.verify(env));
+  CHECK(!wrong_result.diags().empty());
+  CHECK(wrong_result.diags().front().message.find(
+            "return type 'f32' does not match 'i32'") != std::string::npos);
+
+  joggle::Mod incompatible_result;
+  CHECK(joggle::parse(env,
+                      "module incompatible_result\n"
+                      "fn implementation(x: i32) -> f32;\n"
+                      "fn apply(x: i32) -> i32 {\n"
+                      "  let y: i32 = source(x)\n"
+                      "  return y\n"
+                      "}\n",
+                      incompatible_result, "incompatible-result.jog"));
+  CHECK(incompatible_result.verify(env));
+  const joggle::Op source_call =
+      incompatible_result.find_fn("apply").body().ops().front();
+  CHECK(!env.accepts(source_call,
+                     incompatible_result.find_fn("implementation")));
+
   joggle::Attr load_count;
   const std::vector<joggle::Attr> choose_query{joggle::Attr("choose")};
   bool load_cached = true;
