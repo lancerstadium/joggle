@@ -357,9 +357,12 @@ boundary: pure `.jog` reflection emits a deterministic image and a native
 module executes typed `i64`, `f32`, and `f64` arithmetic, structured branches
 and range loops, and static tensors with an exact instruction-step count. The
 same integer and floating-point nested-loop matrix multiplications run through
-C and VM with their native element widths. Parameterized `opt.expand` also
-exposes and executes the existing shared tensor-add body without a target-owned
-lowering function. ONNX initializers and Constant nodes plus TFLite buffers now
+C and VM with their native element widths. The explicit `vm.prepare` function
+now supplies one ordinary structural capability predicate to generic
+`opt.expose`; the same mechanism serves C with a different predicate. It folds,
+removes copies, and exposes the existing shared tensor-add body without a
+target class, operator registry, or hidden emitter lowering. ONNX initializers
+and Constant nodes plus TFLite buffers now
 retarget to one result-typed `tensor.literal(bytes)` data primitive. C and VM
 both execute its size-checked raw payload, so target modules no longer need
 frontend-specific weight operations. The conversion is exercised by thirteen
@@ -369,10 +372,10 @@ backend MatMul case now completes binary import, conversion, dead-data cleanup,
 ordinary body expansion, and output comparison through both VM and compiled C.
 This is not yet the second target exit gate: application-sized execution
 through the independent VM and a module-defined format on that scale remain
-open. The same exposed MobileNetV2 can now be emitted as a complete VM image
-after scalar-list selection and constant-time value identity removed two
-target-boundary bottlenecks, but its interpreter run has not completed the
-official input/output comparison.
+open. The same exposed MobileNetV2 now passes VM-owned preparation and emits a
+complete VM image after scalar-list selection and constant-time value identity
+removed two target-boundary bottlenecks, but its interpreter run has not
+completed the official input/output comparison.
 
 Exit gate: official models from two frontends pass through one shared semantic
 library and run through at least two targets without core operator switches.

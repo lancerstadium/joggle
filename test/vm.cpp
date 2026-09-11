@@ -333,5 +333,34 @@ int main(int argc, char** argv) {
                       std::move(add_input), result, add_steps));
   CHECK(floats(result) == (std::vector<float>{6.0F, 8.0F, 10.0F, 12.0F}));
   CHECK(add_steps > 0);
+
+  joggle::Mod prepared_open_model;
+  CHECK(joggle::parse(env, open_source.str(), prepared_open_model, argv[3]));
+  CHECK(prepared_open_model.verify(env));
+  joggle::Attr prepare_report;
+  CHECK(joggle::run(env, "vm.prepare", prepared_open_model,
+                    prepare_report));
+  CHECK(prepare_report.dict() &&
+        prepare_report.dict()->at("changed").boolean() == true);
+  CHECK(prepared_open_model.verify(env));
+  CHECK(joggle::run(env, "vm.prepare", prepared_open_model,
+                    prepare_report));
+  CHECK(prepare_report.dict() &&
+        prepare_report.dict()->at("changed").boolean() == false);
+  joggle::Attr prepared_add_image;
+  CHECK(joggle::query(env, "vm.image", prepared_open_model,
+                      prepared_add_image, add_selection));
+  CHECK(prepared_add_image.string());
+  joggle::Attr::Bytes prepared_add_input;
+  for (const float value : {1.0F, 2.0F, 3.0F, 4.0F,
+                            5.0F, 6.0F, 7.0F, 8.0F})
+    append(prepared_add_input, value);
+  std::int64_t prepared_add_steps = 0;
+  CHECK(execute_bytes(env, std::string(*prepared_add_image.string()), "add",
+                      std::move(prepared_add_input), result,
+                      prepared_add_steps));
+  CHECK(floats(result) ==
+        (std::vector<float>{6.0F, 8.0F, 10.0F, 12.0F}));
+  CHECK(prepared_add_steps == add_steps);
   return 0;
 }

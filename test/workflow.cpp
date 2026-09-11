@@ -2255,6 +2255,17 @@ int main(int argc, char** argv) {
   CHECK(scripted_text.find("return x") != std::string::npos);
 
   CHECK(env.load("script"));
+  joggle::Mod guarded_exposure;
+  CHECK(joggle::parse(env, source.str(), guarded_exposure,
+                      "guarded-exposure.jog"));
+  const std::string guarded_before = joggle::print(guarded_exposure);
+  const std::uint64_t guarded_revision = guarded_exposure.revision();
+  CHECK(!joggle::run(env, "script.expose_with_mutating_cap",
+                     guarded_exposure));
+  CHECK(joggle::print(guarded_exposure) == guarded_before);
+  CHECK(guarded_exposure.revision() == guarded_revision);
+  CHECK(!env.diags().empty());
+  env.clear_diags();
   joggle::Mod reflected;
   CHECK(joggle::parse(env, source.str(), reflected, "matmul-reflection.jog"));
   CHECK(reflected.verify(env));

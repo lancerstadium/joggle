@@ -722,6 +722,14 @@ fn rebuild_tagged(m: Mod) -> bool {
   return changed
 }
 
+fn mutating_cap(m: Mod, op: Op) -> bool {
+  return ir.set(m, op, "invalid_capability_side_effect", true)
+}
+
+fn expose_with_mutating_cap(m: Mod) -> bool {
+  return opt.expose(m, ir.find("script.mutating_cap"), 4)
+}
+
 [entry]
 fn fuse_onnx(m: Mod) -> bool {
   return opt.fuse(

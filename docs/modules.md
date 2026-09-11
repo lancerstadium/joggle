@@ -159,7 +159,7 @@ The built-in `ir` module is the complete reflection boundary:
 
 | Function | Meaning |
 | --- | --- |
-| `fns`, `find`, `params`, `returns`, `generics`, `blks`, `ops`, `uses` | Find and traverse loaded functions, signatures, explicit call terms, structure, and dependencies. |
+| `fns`, `find`, `params`, `returns`, `generics`, `blks`, `ops`, `uses` | Find local or exactly qualified loaded functions and traverse signatures, explicit call terms, structure, and dependencies. |
 | `args`, `outs`, `def`, `users` | Read operation dataflow in both directions. |
 | `live`, `blk`, `kind`, `callee`, `name`, `key`, `type` | Query handle state, readable or ephemeral identity, structure, and structural `Ty`. |
 | `resolve`, `symbol`, `accepts`, `match` | Resolve calls, identify functions, and select against explicit signatures. |
@@ -205,11 +205,18 @@ or out-of-range conversions fail through the normal module diagnostic boundary.
 Local function calls, dynamic tensors, module-defined storage formats, and
 format-aware costs are still open.
 
+`vm.prepare(m)` is the explicit target-policy function. Its ordinary
+`vm.accepts(m, op)` predicate recognizes exactly the calls the image emitter
+can encode; generic `opt.expose` folds static helpers, removes copies, and
+exposes rejected calls with visible bodies to a bounded fixed point. A second
+call is byte-identical. `vm.image` remains read-only and never invokes
+preparation.
+
 `tensor.literal<E, S>(bytes)` is the frontend-neutral immutable tensor-data
 boundary. Its result type determines element format and shape; the payload
 retains the source bits rather than becoming a second core tensor object. The C
 module copies a size-checked payload into static storage, while VM image version
-2 carries the same hex bytes and reconstructs native-width elements. Neither
+3 carries the same hex bytes and reconstructs native-width elements. Neither
 target contains an ONNX or TFLite data-node case. The current C reference gate
 expects the host scalar object representation to match the payload; portable
 cross-representation decoding remains target policy rather than hidden IR
@@ -218,10 +225,10 @@ reinterpretation.
 This split is the target-extension test: source code owns selection and
 emission policy, native code owns execution, and neither requires a target
 abstraction in core. The C and VM tests consume the same ordinary integer and
-floating-point nested-loop matrix-multiplication functions. A parameterized
-`opt.expand` call additionally exposes the shared tensor `+` body for VM
-execution, without adding `vm.prepare`. A later VM extension must consume
-explicit module-defined format policy rather than introduce NN operator cases.
+floating-point nested-loop matrix-multiplication functions. Both parameterized
+`opt.expand` and capability-driven `vm.prepare` expose the shared tensor `+`
+body for VM execution. A later VM extension must consume explicit
+module-defined format policy rather than introduce NN operator cases.
 The pinned ONNX v1.19.0 `test_matmul_2d` backend case exercises the same
 boundary without handwritten Joggle input: its model and TensorProto data are
 hash-checked, the bridge removes all ONNX computation, ordinary `opt.expand`
@@ -524,6 +531,8 @@ structural commit once, while purity and selection remain module policy.
 
 `ir.find(m, name)` performs exact local function lookup and returns an invalid
 `Fn` when the symbol is absent; `ir.live` is the uniform validity test.
+`ir.find(name)` performs exact loaded-symbol lookup, including qualification,
+without adding a dependency to the edited model.
 `ir.params(f)`, `ir.returns(f)`, and `ir.generics(f)` expose the complete
 declared signature. `ir.generics(op)` exposes explicit call terms, while its
 three-argument edit overload validates replacements through ordinary call
@@ -635,6 +644,34 @@ selecting retained calls remains another normal module function. `base.list`,
 the language's internal materialization of list literals, is structural and is
 ignored by capability checks.
 
+For a structural target boundary, `opt.expose(m, accept, limit)` takes one
+ordinary `fn(Mod, Op) -> bool` instead of a declaration list. Each round
+composes static folding, copy removal, and one layer of body exposure until
+every remaining call is accepted or no progress is possible. The predicate
+must leave the module revision unchanged; mutation is diagnosed and the outer
+transform restores the exact input. `opt.frontier(m, accept)` reports calls
+rejected by the same predicate, while `opt.legalize(m, accept, limit)` provides
+body exposure without folding or copy removal.
+
+```jog
+module edge
+use ir
+use opt
+
+fn accepts(m: Mod, op: Op) -> bool {
+  return ir.callee(op) == "edge.dot"
+}
+
+fn prepare(m: Mod) -> bool {
+  return opt.expose(m, ir.find("edge.accepts"), len(ir.ops(m)) + 1)
+}
+```
+
+The predicate may inspect types, shapes, metadata, or module-owned format
+functions. It does not register operators or force each retained computation
+to have a duplicate declaration. Declaration-list legalization remains useful
+when accepted signatures themselves are the desired capability description.
+
 A body-bearing declaration is also an alternative implementation. `opt.apply`
 groups declarations by the resolved source symbol, asks `ir.match` to choose
 the most specific compatible overload, and expands that body to a fixed point.
@@ -733,7 +770,7 @@ them with a system C compiler under warnings-as-errors, and checks their
 numerical results.
 
 `c.prepare` is a separate, explicitly selected transform. It asks the same
-module-owned structural predicate whether a call is directly printable and
+ordinary `c.accepts(Mod, Op)` predicate whether a call is directly printable and
 expands unsupported calls only when their ordinary resolved function has a
 body and carries no unhandled metadata. The bounded fixed point is
 transactional and a second preparation is byte-identical. In the execution

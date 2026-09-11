@@ -228,6 +228,11 @@ literal-list indexing, and the standard floating-point functions declared by
 `math`; unsupported IR fails with a diagnostic. Preparation composes the
 reusable static evaluator and copy propagation before exposing remaining
 calls.
+The preparation policy is not a second target interface. `c.accepts(Mod, Op)`
+is an ordinary read-only function, and `opt.expose` repeatedly folds static
+work, removes copies, and exposes only calls that predicate rejects. A new
+target can supply the same one-function capability boundary without adding a
+target class, declaration catalogue, or core case.
 After `mem.plan`, the ordinary parameterized transform
 `c.place(m, "static")` can request static C workspace storage through open
 function metadata. Local storage remains the default. Placement is explicit:
@@ -248,16 +253,17 @@ those elements, structured loops and branches, checked multidimensional
 indexing, runtime selection from scalar literal lists, floating square root,
 and explicit numeric conversion. Integer and floating-point
 nested-loop matrix multiplication execute through both C and VM gates. The
-parameterized run boundary also expands the shared high-level tensor `+` body
-and executes it in the VM without a VM-specific preparation function. The step
-count is not presented as hardware cycles. Frontend bridges normalize ONNX and
-TFLite weight payloads to the shared `tensor.literal` primitive; C and VM both
-execute that primitive without knowing either frontend. The pinned official
+explicit `vm.prepare` function uses `vm.accepts(Mod, Op)` through the same
+generic `opt.expose` policy, expands the shared high-level tensor `+` body, and
+executes it in the VM. Preparation is never hidden inside image emission. The
+step count is not presented as hardware cycles. Frontend bridges normalize
+ONNX and TFLite weight payloads to the shared `tensor.literal` primitive; C and
+VM both execute that primitive without knowing either frontend. The pinned official
 ONNX `test_matmul_2d` case now imports, converts, expands, and matches its
 official output through both VM and compiled C. A complete application-network
 execution comparison remains an open M10 gate. The fully exposed MobileNetV2
-can be represented as a VM image, but its interpreter run is not claimed as a
-completed application execution.
+passes VM-owned preparation and becomes a complete 28 MB VM image, but its
+interpreter run is not claimed as a completed application execution.
 
 ## Guarantees and boundaries
 

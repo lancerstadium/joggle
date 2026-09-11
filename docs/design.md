@@ -568,6 +568,16 @@ operation metadata needs an explicit policy remain visible. A network test
 retains `nn.relu` for `tensor<i8, [4]>` while expanding the same symbol for
 `tensor<f32, [4]>`, then checks canonical round-trip stability.
 
+A complementary overload accepts one ordinary `fn(Mod, Op) -> bool` predicate.
+`opt.expose` composes static folding, copy removal, and one layer of exposure at
+a bounded fixed point; `opt.legalize` offers exposure alone and `opt.frontier`
+reports the rejected calls. The predicate may inspect any reflected structure,
+but it must not mutate the module. Revision checking enforces that rule and the
+normal outer transaction restores the complete input on violation. C and VM
+use this same mechanism with different predicates, so accepted computation is
+target-owned policy rather than a core target interface or duplicated operator
+declarations.
+
 The same explicit `Fn` set can supply implementations. `ir.match` performs the
 ordinary overload ranking inside that set, honors generic arguments written on
 the source call, and rejects a selected function when its substituted results
@@ -1163,15 +1173,17 @@ module-defined format path and an application-sized imported network. Those
 capabilities must extend modules and must not add VM, tensor, or operator cases
 to core.
 The high-level `tensor.operator +` path is separate from those handwritten
-loops: embedding code calls parameterized `opt.expand` first, then emits and
-executes the exposed shared body. A mismatched argument type is a rollback gate.
-No VM-specific preparation function or second lowering protocol is introduced.
-As a bounded capability probe, the MobileNetV2 function produced by the current
-explicit C preparation policy also emits a complete 28.8 MB VM image; register
-lookup no longer rescans the full function for every operand. The interpreter
-did not complete the application input within the bounded local probe, so this
-is an application-scale representation result, not the still-open second-target
-numerical execution gate or a target-neutral preparation claim.
+loops: both parameterized `opt.expand` and the explicit `vm.prepare` function
+expose and execute its shared body. `vm.prepare` supplies `vm.accepts(Mod, Op)`
+to the same generic `opt.expose` library used by C; image emission stays
+read-only and performs no hidden lowering. A mismatched argument type and a
+mutating predicate are rollback gates. On the exposed MobileNetV2 application,
+VM-owned preparation completes in 5.8 seconds at about 357 MB peak RSS and
+emission produces a 28 MB image in 3.5 seconds at about 444 MB peak RSS on the
+local reference machine. Register lookup no longer rescans the full function
+for every operand. The interpreter did not complete the application input
+within the bounded local probe, so this is an application-scale representation
+result, not the still-open second-target numerical execution gate.
 
 ### Storage planning
 

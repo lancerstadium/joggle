@@ -1484,6 +1484,9 @@ private:
           out.emplace_back(fn);
         return Items{Item(std::move(out))};
       }
+    } else if (name == "find" && args.size() == 1) {
+      if (const auto symbol = string(args[0]))
+        return Items{Item(env_.find_fn(*symbol))};
     } else if (name == "find" && args.size() == 2) {
       const auto* mod = as<Mod*>(args[0]);
       const auto symbol = string(args[1]);

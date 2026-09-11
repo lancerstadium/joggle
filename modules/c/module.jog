@@ -257,7 +257,7 @@ fn math(op: str, type: Ty) -> str {
   return ""
 }
 
-fn supported(m: Mod, op: Op) -> bool {
+fn accepts(m: Mod, op: Op) -> bool {
   let name = ir.callee(op)
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -313,43 +313,11 @@ fn supported(m: Mod, op: Op) -> bool {
 }
 
 fn prepare(m: Mod) -> bool {
-  var changed = false
-  var again = true
-  var exhausted = false
   let limit = len(ir.ops(m)) + 1
-  for round in 0..limit {
-    if again {
-      let before = ir.revision(m)
-      opt.fold(m)
-      opt.copy(m)
-      var calls: list<Op> = []
-      var bodies: list<Fn> = []
-      for op in ir.ops(m) {
-        if ir.live(op) && ir.kind(op) == "call" && !supported(m, op) {
-          let target = ir.resolve(m, op)
-          assert(ir.live(target) && len(ir.blks(target)) != 0,
-                 "c: call has no exposable body: " + ir.callee(op))
-          assert(len(ir.meta(op)) == 0,
-                 "c: cannot expose a call carrying metadata: " +
-                 ir.callee(op))
-          calls += [op]
-          bodies += [target]
-        }
-      }
-      if len(calls) != 0 {
-        ir.expand(m, calls, bodies)
-      }
-      again = ir.revision(m) != before
-      changed = again || changed
-      if round == limit - 1 && again {
-        exhausted = true
-      }
-    }
-  }
-  assert(!exhausted, "c.prepare did not converge")
+  let changed = opt.expose(m, ir.find("c.accepts"), limit)
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" {
-      assert(supported(m, op),
+      assert(accepts(m, op),
              "c: unsupported call remains: " + ir.callee(op))
     }
   }
@@ -487,7 +455,7 @@ fn call(m: Mod, op: Op, depth: int) -> str {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   let indent = pad(depth)
-  assert(supported(m, op), "c: call must be prepared: " + name)
+  assert(accepts(m, op), "c: call must be prepared: " + name)
   if name == "base.list" || name == "operator .." {
     return ""
   }

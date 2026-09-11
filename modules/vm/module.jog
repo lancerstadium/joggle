@@ -1,6 +1,7 @@
 module vm
 use base
 use ir
+use opt
 use tensor
 
 fn run(image: str, entry: str, input: bytes) -> (bytes, int);
@@ -95,6 +96,97 @@ fn float_binary(code: str) -> bool {
          code == "lt" || code == "le" || code == "gt" || code == "ge"
 }
 
+fn accepts(m: Mod, op: Op) -> bool {
+  if !ir.live(op) || ir.kind(op) != "call" {
+    return false
+  }
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  let name = ir.callee(op)
+  if name == "operator .." || name == "base.list" {
+    return true
+  }
+  if name == "base.copy" {
+    return len(inputs) == 1 && len(outputs) == 1 &&
+           supported(ir.type(outputs[0])) &&
+           ir.type(inputs[0]) == ir.type(outputs[0])
+  }
+  if name == "operator []" {
+    if len(inputs) < 2 || len(outputs) != 1 ||
+       !scalar(ir.type(outputs[0])) {
+      return false
+    }
+    let type = ir.type(inputs[0])
+    if base.name(type) == "list" {
+      let types = base.args(type)
+      let source = ir.def(inputs[0])
+      return len(inputs) == 2 && len(types) == 1 && scalar(types[0]) &&
+             ir.live(source) && ir.callee(source) == "base.list"
+    }
+    return tensor.static(type) && scalar(tensor.elem(type))
+  }
+  if name == "operator []=" {
+    return len(inputs) >= 3 && len(outputs) == 1 &&
+           tensor.static(ir.type(inputs[0])) &&
+           ir.type(inputs[0]) == ir.type(outputs[0]) &&
+           scalar(tensor.elem(ir.type(outputs[0])))
+  }
+  let target = ir.resolve(m, op)
+  if len(inputs) == 1 && len(outputs) == 1 &&
+     supported(ir.type(outputs[0])) && ir.live(target) &&
+     ir.symbol(target) == "tensor.tensor" {
+    return scalar(ir.type(inputs[0])) &&
+           ir.type(inputs[0]) == tensor.elem(ir.type(outputs[0]))
+  }
+  if len(inputs) == 1 && len(outputs) == 1 &&
+     tensor.static(ir.type(outputs[0])) && ir.is_const(inputs[0]) &&
+     base.kind(ir.constant(inputs[0])) == "bytes" && ir.live(target) &&
+     ir.symbol(target) == "tensor.literal" {
+    return base.size(ir.constant(inputs[0])) ==
+           count(ir.type(outputs[0])) * width(tensor.elem(ir.type(outputs[0])))
+  }
+  if len(inputs) == 1 && len(outputs) == 1 && scalar(ty(name)) &&
+     scalar(ir.type(inputs[0])) {
+    return true
+  }
+  if len(outputs) != 1 || !scalar(ir.type(outputs[0])) {
+    return false
+  }
+  if len(inputs) == 1 && scalar(ir.type(inputs[0])) {
+    let code = unary(name)
+    if code == "" {
+      return false
+    }
+    let type = format(ir.type(inputs[0]))
+    return type == "i64" || float_unary(code)
+  }
+  if len(inputs) == 2 && scalar(ir.type(inputs[0])) &&
+     scalar(ir.type(inputs[1])) {
+    let code = binary(name)
+    if code == "" {
+      return false
+    }
+    let type = format(ir.type(inputs[0]))
+    if code != "shl" && code != "shr" &&
+       format(ir.type(inputs[1])) != type {
+      return false
+    }
+    return type == "i64" || float_binary(code)
+  }
+  return false
+}
+
+fn prepare(m: Mod) -> bool {
+  let changed = opt.expose(m, ir.find("vm.accepts"), len(ir.ops(m)) + 1)
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" {
+      assert(accepts(m, op),
+             "vm: unsupported call remains: " + ir.callee(op))
+    }
+  }
+  return changed
+}
+
 fn access(op: Op, store: bool) -> str {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -154,6 +246,10 @@ fn call(m: Mod, op: Op) -> str {
   let name = ir.callee(op)
   if name == "operator .." || name == "base.list" {
     return ""
+  }
+  assert(accepts(m, op), "vm: call must be prepared: " + name)
+  if name == "base.copy" {
+    return "copy " + reg(outputs[0]) + " " + reg(inputs[0]) + "\n"
   }
   if name == "operator []" {
     return access(op, false)

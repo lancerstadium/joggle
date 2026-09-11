@@ -281,11 +281,43 @@ fn supports(m: Mod, op: Op, caps: list<Fn>) -> bool {
   return false
 }
 
+fn supports(m: Mod, op: Op, accept: Fn) -> bool {
+  let before = ir.revision(m)
+  let result = ir.invoke(m, op, accept)
+  assert(ir.revision(m) == before,
+         "opt: capability function must not mutate the module")
+  return result
+}
+
 fn frontier(m: Mod, caps: list<Fn>) -> list<str> {
   var out: list<str> = []
   for op in ir.ops(m) {
     if ir.live(op) && ir.kind(op) == "call" &&
        !supports(m, op, caps) {
+      var symbol = ir.callee(op)
+      let target = ir.resolve(m, op)
+      if ir.live(target) {
+        symbol = ir.symbol(target)
+      }
+      var seen = false
+      for item in out {
+        if item == symbol {
+          seen = true
+        }
+      }
+      if !seen {
+        out += [symbol]
+      }
+    }
+  }
+  return out
+}
+
+fn frontier(m: Mod, accept: Fn) -> list<str> {
+  var out: list<str> = []
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" &&
+       !supports(m, op, accept) {
       var symbol = ir.callee(op)
       let target = ir.resolve(m, op)
       if ir.live(target) {
@@ -326,6 +358,62 @@ fn legalize(m: Mod, caps: list<Fn>, limit: int) -> bool {
       changed = again || changed
     }
   }
+  return changed
+}
+
+fn expand(m: Mod, accept: Fn) -> bool {
+  var calls: list<Op> = []
+  var bodies: list<Fn> = []
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" &&
+       !supports(m, op, accept) && len(ir.meta(op)) == 0 {
+      let target = ir.resolve(m, op)
+      if ir.live(target) && len(ir.blks(target)) != 0 {
+        calls += [op]
+        bodies += [target]
+      }
+    }
+  }
+  return len(calls) != 0 && ir.expand(m, calls, bodies)
+}
+
+fn legalize(m: Mod, accept: Fn, limit: int) -> bool {
+  assert(limit >= 0, "opt.legalize limit must not be negative")
+  var changed = false
+  var again = true
+  var exceeded = false
+  for round in 0..(limit + 1) {
+    if again {
+      again = expand(m, accept)
+      changed = again || changed
+      if round == limit && again {
+        exceeded = true
+      }
+    }
+  }
+  assert(!exceeded, "opt.legalize did not converge within its limit")
+  return changed
+}
+
+fn expose(m: Mod, accept: Fn, limit: int) -> bool {
+  assert(limit >= 0, "opt.expose limit must not be negative")
+  var changed = false
+  var again = true
+  var exceeded = false
+  for round in 0..(limit + 1) {
+    if again {
+      let before = ir.revision(m)
+      fold(m)
+      copy(m)
+      expand(m, accept)
+      again = ir.revision(m) != before
+      changed = again || changed
+      if round == limit && again {
+        exceeded = true
+      }
+    }
+  }
+  assert(!exceeded, "opt.expose did not converge within its limit")
   return changed
 }
 
