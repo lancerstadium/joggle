@@ -980,7 +980,8 @@ implemented entirely in `.jog`: it traverses the same `Fn`/`Blk`/`Op`/`Val`
 structure, emits local scalar calls and structured branches/loops, flattens
 static tensor indices, and uses caller-provided storage for tensor results.
 Scalar type and fixed C operator spellings are ordinary dictionaries owned by
-the module, not core cases.
+the module, not core cases. The emitter also recognizes optional `mem.slot`
+metadata; no C-specific field or storage object was added to core IR.
 
 Emission is deliberately closed over the exposed computation. Dynamic tensor
 shapes, multi-results, and calls whose bodies still live in a dependency fail
@@ -988,8 +989,8 @@ with diagnostics; the emitter does not perform hidden lowering or invent
 semantics. The regression gate emits a concrete matrix multiplication and
 scalar call/branch functions, compiles the result as C99 with warnings treated
 as errors, executes it, and compares the numerical outputs. This establishes
-one portable end-to-end target while leaving whole-network storage planning
-and a genuinely different second target open.
+one portable end-to-end target while leaving dynamic allocation,
+inter-function planning, and a genuinely different second target open.
 
 The companion `c.prepare` transform is explicit and uses the emitter module's
 same structural support predicate. At a bounded fixed point it expands only an
@@ -999,3 +1000,27 @@ becomes its existing tensor constructor, shape-list loop, element loop, loads,
 scalar addition, and stores. A second execution gate compiles and runs that
 path, while direct emission of the unprepared call continues to fail. This
 keeps preparation inspectable and separate from read-only artifact generation.
+
+### Storage planning
+
+The pure `.jog` `mem` module demonstrates that resource policy can live above
+emitters without becoming a device model. `mem.plan` walks ordinary
+`Fn`/`Blk`/`Op`/`Val` dataflow, groups the value versions of each local tensor
+binding, derives a conservative live interval, and assigns the first compatible
+free slot. Slots never mix element types and grow to the largest required
+static extent. Parameters and constants remain outside the plan.
+
+Structured control flow carries lexical environment values through loop and
+branch boundaries. Those container and `yield` edges are aliases, not memory
+reads; nested operations remain the source of true uses. Treating the carrier
+edges as uses would keep every prior tensor live until the last loop. The
+planner therefore ignores only those structural edges while retaining loads,
+stores, calls, and returns. The resulting `mem.slot` values plus function-level
+`mem.types` and `mem.counts` are ordinary open metadata, so another allocator,
+simulator, or emitter can replace or consume them without a core API change.
+
+The regression starts from three composed `tensor` additions, explicitly
+exposes their shared bodies, assigns three logical intermediates to two
+buffers, repeats the plan to prove byte-level idempotence, emits C99, compiles
+with warnings as errors, and executes the numerical result. Running `c.source`
+without `mem.plan` retains the earlier one-array-per-binding behavior.

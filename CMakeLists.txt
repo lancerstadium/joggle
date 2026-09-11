@@ -15,7 +15,7 @@ set(JOGGLE_TEST_ONNX_ZOO "" CACHE PATH
 set(JOGGLE_TEST_TFLITE_MODEL "" CACHE FILEPATH
     "Official TFLite model used by tests")
 
-foreach(module base c ir math nn opt quant tensor)
+foreach(module base c ir math mem nn opt quant tensor)
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/${module}")
   configure_file(
     "modules/${module}/module.jog"
@@ -231,6 +231,7 @@ install(
     modules/c
     modules/ir
     modules/math
+    modules/mem
     modules/nn
     modules/opt
     modules/quant
@@ -353,6 +354,18 @@ if(JOGGLE_BUILD_TESTS)
         -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
         -DROOT=${CMAKE_CURRENT_BINARY_DIR}/c-test
         -P ${CMAKE_CURRENT_SOURCE_DIR}/test/c.cmake
+    )
+    add_test(
+      NAME mem-execution
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DTOOL=$<TARGET_FILE:joggle-tool>
+        -DCC=${JOGGLE_TEST_C_COMPILER}
+        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem.jog
+        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/mem_main.c
+        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/mem-test
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/mem.cmake
     )
   endif()
   add_test(

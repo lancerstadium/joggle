@@ -4,6 +4,7 @@ fn copy<T: Ty>(x: T) -> T;
 
 fn len<T: Ty>(xs: list<T>) -> int;
 fn len(xs: dict) -> int;
+fn len(xs: Attr) -> int;
 fn size(x: Attr) -> int;
 fn byte(x: Attr, index: int) -> int;
 fn keys(xs: dict) -> list<str>;
@@ -29,6 +30,7 @@ fn ty(name: str, args: list<Ty>) -> Ty;
 
 fn []<T: Ty>(xs: list<T>, index: int) -> T;
 fn [](xs: dict, key: str) -> Attr;
+fn [](xs: Attr, index: int) -> Attr;
 
 fn +<T: Ty>(x: T) -> T;
 fn +<A: Ty, B: Ty>(a: A, b: B) -> A;

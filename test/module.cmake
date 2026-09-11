@@ -26,7 +26,7 @@ file(MAKE_DIRECTORY "${TEST_ROOT}")
 
 invoke(ok "${TOOL}" module list -M "${SOURCE_ROOT}")
 set(expected
-    "base\nc\nir\nmath\nnn\nonnx\nonnx.nn\nopt\nquant\nsat\ntensor\ntflite\ntflite.nn\n")
+    "base\nc\nir\nmath\nmem\nnn\nonnx\nonnx.nn\nopt\nquant\nsat\ntensor\ntflite\ntflite.nn\n")
 if(NOT COMMAND_OUTPUT STREQUAL expected)
   message(FATAL_ERROR "module list is not canonical:\n${COMMAND_OUTPUT}")
 endif()

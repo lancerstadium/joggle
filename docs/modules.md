@@ -51,10 +51,12 @@ The standard modules are deliberately narrow. `base` declares scalar/list/dict
 fundamentals, `ir` is universal reflection and editing, `opt` contains reusable
 textual transforms, `math` names scalar math primitives, `tensor` defines
 storage-neutral tensor computation, `quant` makes quantization policy explicit,
-and `nn` contains network semantics. `c` is a removable first execution module,
-not a target interface in core. The optional `onnx` module only transports a
-binary model. MLIR, JIT, simulation, hardware description, and additional
-target experiments remain removable modules.
+and `nn` contains network semantics. `mem` assigns static tensor lifetimes to
+target-neutral reusable slots. `c` is a removable first execution module and an
+optional consumer of that metadata, not a target interface in core. The
+optional `onnx` module only transports a binary model. MLIR, JIT, simulation,
+hardware description, and additional target experiments remain removable
+modules.
 
 Version 0.1 searches explicit local paths. The CLI exposes that same local
 model directly:
@@ -163,11 +165,12 @@ an `Attr` byte payload. This deliberately small primitive is sufficient for a
 frontend module to decode compact integer constants; bulk tensor payloads stay
 opaque and are never copied into a second core representation.
 
-General compile-time values live in `base`, not `ir`. `len` covers lists and
-dictionaries; `keys`, `has`, and `get` expose deterministic dictionary access;
-and `attrs["key"]` is the strict indexing form. `int` and `str` project a
-checked attribute leaf when a transform needs a statically typed value. These
-are enough for an
+General compile-time values live in `base`, not `ir`. `len` covers statically
+typed lists, dictionaries, and dynamically obtained `Attr` containers;
+`keys`, `has`, and `get` expose deterministic dictionary access; and
+`attrs["key"]` or `items[index]` is the strict indexing form. `int` and `str`
+project a checked attribute leaf when a transform needs a statically typed
+value. These are enough for an
 explicit bridge function to interpret frontend attributes without adding an
 ONNX/TFLite field API or string-key cases to core. A missing strict key is a
 diagnostic, while the three-argument `get` supplies a caller-chosen fallback.

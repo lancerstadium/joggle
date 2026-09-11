@@ -1,0 +1,14 @@
+module chain
+use tensor
+
+fn add3(
+  a: tensor<f32, [4]>,
+  b: tensor<f32, [4]>,
+  c: tensor<f32, [4]>,
+  d: tensor<f32, [4]>
+) -> tensor<f32, [4]> {
+  let first = a + b
+  let second = first + c
+  let third = second + d
+  return third
+}

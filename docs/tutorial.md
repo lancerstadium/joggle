@@ -361,3 +361,19 @@ joggle emit c.source /tmp/prepared.jog \
 `c.prepare` expands only unsupported, metadata-free calls with a visible body
 and stops at the C module's scalar/tensor-access/control-flow boundary. It is
 transactional and bounded; it is not run by `emit` or module loading.
+
+Plan reusable storage only when the experiment needs it:
+
+```sh
+joggle run mem.plan /tmp/prepared.jog \
+  -M build/modules > /tmp/planned.jog
+joggle query mem.buffers /tmp/planned.jog -M build/modules
+joggle emit c.source /tmp/planned.jog \
+  -M build/modules > /tmp/planned.c
+```
+
+`mem.plan` is an ordinary idempotent transform. It handles fixed-shape local
+tensors, excludes parameters and constants, and reuses a slot only after the
+prior binding's last real use. `c.source` reads `mem.slot` metadata if present;
+it does not run the planner. A device-specific module may instead interpret or
+replace the same open metadata with its own allocation policy.

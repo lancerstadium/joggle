@@ -298,8 +298,11 @@ pure `.jog` C99 module emits and executes fixed-shape tensor loops, local scalar
 calls, and structured branches while rejecting unexposed dependency calls. Its
 separate `prepare` function expands a high-level tensor addition through the
 shared tensor body to a fixed point; direct emission remains read-only.
-Whole-network storage planning and a genuinely different second target remain
-open.
+A separate target-neutral `mem.plan` function now computes static tensor live
+intervals and reusable same-element-type slots as open metadata. The C module
+optionally consumes the plan; a three-stage tensor chain compiles and executes
+with two physical buffers for three logical intermediates. Dynamic allocation,
+inter-function planning, and a genuinely different second target remain open.
 
 Exit gate: official models from two frontends pass through one shared semantic
 library and run through at least two targets without core operator switches.

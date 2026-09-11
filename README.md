@@ -242,6 +242,21 @@ dynamic shapes, direct tensor expressions, and multi-results fail during
 emission instead of producing guessed code. This is a first executable target
 gate, not a claim that arbitrary imported networks are already C-ready.
 
+Storage planning is another explicit, target-neutral module step. After
+preparation, `mem.plan` derives live intervals from the shared IR, assigns
+same-element-type static tensors to reusable slots, and records the result as
+open metadata:
+
+```sh
+./build/joggle run mem.plan prepared.jog -M build/modules > planned.jog
+./build/joggle query mem.buffers planned.jog -M build/modules
+./build/joggle emit c.source planned.jog -M build/modules > model.c
+```
+
+The C module consumes those slots when present and keeps its prior local-array
+behavior otherwise. Neither module models a particular cache, SRAM capacity,
+or device.
+
 Module directories remain the only distribution unit. The CLI can discover,
 validate, inspect, install, upgrade, and uninstall them without a registry or
 another manifest:
