@@ -1643,8 +1643,7 @@ bool Mod::replace(Val old_value, Val new_value) {
     return true;
   const Ty old_type = old_value.type();
   const Ty new_type = new_value.type();
-  if (old_type.text() != "_" && new_type.text() != "_" &&
-      old_type != new_type) {
+  if (old_type != new_type) {
     detail::add_diag(store.diags, "replacement values have different types");
     return false;
   }
@@ -1689,8 +1688,7 @@ bool Mod::replace(Val old_value, Val new_value, Op user) {
     return true;
   const Ty old_type = old_value.type();
   const Ty new_type = new_value.type();
-  if (old_type.text() != "_" && new_type.text() != "_" &&
-      old_type != new_type) {
+  if (old_type != new_type) {
     detail::add_diag(store.diags, "replacement values have different types",
                      user.loc());
     return false;

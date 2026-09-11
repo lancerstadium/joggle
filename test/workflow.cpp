@@ -1128,6 +1128,30 @@ int main(int argc, char** argv) {
   CHECK(args_safety.revision() == before_args_revision + 1);
   CHECK(args_safety.verify(env));
 
+  joggle::Mod replace_safety;
+  CHECK(joggle::parse(env,
+                      "module replace_safety\n"
+                      "fn consume(x: i32) -> i32;\n"
+                      "fn apply() -> i32 {\n"
+                      "  let open = source()\n"
+                      "  let concrete: f32 = value()\n"
+                      "  return consume(open)\n"
+                      "}\n",
+                      replace_safety, "replace-safety.jog"));
+  CHECK(replace_safety.verify(env));
+  const std::vector<joggle::Op> replace_ops =
+      replace_safety.find_fn("apply").body().ops();
+  const joggle::Val open_value = replace_ops[0].outs().front();
+  const joggle::Val concrete_value = replace_ops[1].outs().front();
+  CHECK(open_value.type() == joggle::Ty("_"));
+  CHECK(concrete_value.type() == joggle::Ty("f32"));
+  const std::string before_unsafe_replace = joggle::print(replace_safety);
+  const std::uint64_t before_unsafe_replace_revision =
+      replace_safety.revision();
+  CHECK(!replace_safety.replace(open_value, concrete_value));
+  CHECK(joggle::print(replace_safety) == before_unsafe_replace);
+  CHECK(replace_safety.revision() == before_unsafe_replace_revision);
+
   joggle::Attr load_count;
   const std::vector<joggle::Attr> choose_query{joggle::Attr("choose")};
   bool load_cached = true;

@@ -288,9 +288,11 @@ same whole-module rollback as every other runtime failure.
 `ir.ops(m)` walks every function body in deterministic structural preorder,
 including nested loops and conditions. Use `ir.ops(f)` for one function or
 `ir.ops(b)` for one `Blk`. The optional fourth argument to `ir.replace` names a
-single user operation; omitting it redirects every use after checking type and
-dominance. Successful edits advance `Mod::revision()`, while a failed run
-restores both the IR and its prior revision.
+single user operation; omitting it redirects every use after checking exact
+structural type equality and dominance. `_` is not a rewrite wildcard; type
+refinement uses `ir.type` explicitly. Successful edits advance
+`Mod::revision()`, while a failed run restores both the IR and its prior
+revision.
 
 `ir.def(v)` returns the operation defining a value; parameters have an invalid
 definition detectable with `ir.live`. Together with `ir.users`, this completes
