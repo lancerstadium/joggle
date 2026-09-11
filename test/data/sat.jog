@@ -5,6 +5,14 @@ fn add8(a: sat<8>, b: sat<8>) -> sat<8> {
   return a + b
 }
 
+fn add1(a: sat<1>, b: sat<1>) -> sat<1> {
+  return a + b
+}
+
+fn add64(a: sat<64>, b: sat<64>) -> sat<64> {
+  return a + b
+}
+
 fn add32(a: i32, b: i32) -> i32 {
   return a + b
 }

@@ -205,11 +205,10 @@ measurements, not general performance claims.
 ## M4 slice
 
 The optional `sat` module is the extension-boundary gate. Its `sat<W>` type and
-`sat.add` primitive are ordinary signatures. Its textual `sat.select` function
-inspects the structural type and explicitly converts it to text for the native
-predicate; integer additions remain untouched. Three native scalar functions
-recognize supported formats, execute the saturating reference semantics, and
-emit a concrete SystemVerilog adder.
+`sat.add` primitive are ordinary signatures. Its textual `sat.supports` and
+`sat.select` functions inspect the structural type directly; integer additions
+remain untouched. Two native scalar functions execute the saturating reference
+semantics and emit a concrete SystemVerilog adder.
 
 SystemVerilog is an output of that removable module, not a core backend or IR.
 After structural type reflection completed the boundary, the whole format,

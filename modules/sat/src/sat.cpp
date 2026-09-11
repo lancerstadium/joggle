@@ -1,6 +1,5 @@
 #include "joggle/joggle.h"
 
-#include <charconv>
 #include <cstdint>
 #include <sstream>
 #include <string>
@@ -27,31 +26,6 @@ bool result(jog_call* call, std::string_view value) {
   jog_value out{};
   out.kind = JOG_STR;
   out.data.string = {value.data(), value.size()};
-  return call->api->ret(call, 0, &out);
-}
-
-bool width(std::string_view type, std::int64_t& out) {
-  if (!type.starts_with("sat<") || !type.ends_with('>'))
-    return false;
-  type.remove_prefix(4);
-  type.remove_suffix(1);
-  const auto parsed =
-      std::from_chars(type.data(), type.data() + type.size(), out);
-  return parsed.ec == std::errc{} && parsed.ptr == type.data() + type.size() &&
-         out >= 2 && out <= 63;
-}
-
-bool supports(jog_call* call, void*) {
-  jog_value value{};
-  if (call->api->arg_count(call) != 1 || !call->api->arg(call, 0, &value) ||
-      value.kind != JOG_STR)
-    return call->api->fail(call, "expected one type string");
-  std::int64_t bits = 0;
-  const bool accepted = width(
-      std::string_view(value.data.string.data, value.data.string.size), bits);
-  jog_value out{};
-  out.kind = JOG_BOOL;
-  out.data.boolean = accepted;
   return call->api->ret(call, 0, &out);
 }
 
@@ -105,7 +79,6 @@ bool emit(jog_call* call, void*) {
 JOGGLE_MODULE_EXPORT bool joggle_module(const jog_api* api,
                                         jog_module* module) {
   return joggle::compatible(api) &&
-         api->bind(module, "sat.supports", supports, nullptr) &&
          api->bind(module, "sat.sim", sim, nullptr) &&
          api->bind(module, "sat.emit", emit, nullptr);
 }

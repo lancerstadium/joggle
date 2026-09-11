@@ -6,7 +6,13 @@ fn +<W: int>(a: sat<W>, b: sat<W>) -> sat<W>;
 fn add<W: int>(a: sat<W>, b: sat<W>) -> sat<W>;
 
 [role: "match"]
-fn supports(type: str) -> bool;
+fn supports(type: Ty) -> bool {
+  if name(type) != "sat" || len(args(type)) != 1 {
+    return false
+  }
+  let width = args(type)[0]
+  return kind(width) == "int" && int(width) >= 2 && int(width) <= 63
+}
 
 [role: "sim"]
 fn sim(width: int, a: int, b: int) -> int;
@@ -23,7 +29,7 @@ fn select(m: Mod) -> bool {
         if ir.callee(op) == "operator +" {
           let outs = ir.outs(op)
           if len(outs) == 1 {
-            if sat.supports(str(ir.type(outs[0]))) {
+            if sat.supports(ir.type(outs[0])) {
               changed = ir.rename(m, op, "sat.add")
             }
           }

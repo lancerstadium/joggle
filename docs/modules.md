@@ -725,13 +725,14 @@ turning them into five plugin kinds:
 | Function | Role |
 | --- | --- |
 | `sat.add<W>` | Primitive over the module-defined `sat<W>` format. |
-| `sat.supports` | Type predicate used by selection policy. |
+| `sat.supports` | Structural `Ty` predicate used by selection policy. |
 | `sat.select` | Textual transform from matching `operator +` calls. |
 | `sat.sim` | Bit-exact scalar reference semantics. |
 | `sat.emit` | SystemVerilog text for the selected-width primitive. |
 
 Build it with `JOGGLE_BUILD_SAT=ON`. The declaration, transformation policy,
-reference semantics, and emitted representation stay together in the module;
+type predicate, reference semantics, and emitted representation stay together
+in the module;
 the core knows none of their names. A research module can replace any or all of
 these functions without adopting a target class hierarchy.
 

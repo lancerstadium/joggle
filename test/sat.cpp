@@ -115,7 +115,13 @@ int main(int argc, char** argv) {
       mod.find_fn("add8").body().ops().back().args().front().def();
   const joggle::Op abstract32 =
       mod.find_fn("add32").body().ops().back().args().front().def();
+  const joggle::Op abstract1 =
+      mod.find_fn("add1").body().ops().back().args().front().def();
+  const joggle::Op abstract64 =
+      mod.find_fn("add64").body().ops().back().args().front().def();
   CHECK(env.resolve(mod, abstract8).module() == "sat");
+  CHECK(env.resolve(mod, abstract1).module() == "sat");
+  CHECK(env.resolve(mod, abstract64).module() == "sat");
   CHECK(env.resolve(mod, abstract32).module() == "base");
   CHECK(joggle::run(env, "sat.select", mod));
   CHECK(mod.verify(env));
@@ -124,18 +130,19 @@ int main(int argc, char** argv) {
       mod.find_fn("add8").body().ops().back().args().front().def();
   const joggle::Op untouched =
       mod.find_fn("add32").body().ops().back().args().front().def();
+  const joggle::Op too_narrow =
+      mod.find_fn("add1").body().ops().back().args().front().def();
+  const joggle::Op too_wide =
+      mod.find_fn("add64").body().ops().back().args().front().def();
   CHECK(selected.callee() == "sat.add");
   CHECK(untouched.callee() == "operator +");
+  CHECK(too_narrow.callee() == "operator +");
+  CHECK(too_wide.callee() == "operator +");
   const std::string once = joggle::print(mod);
   CHECK(joggle::run(env, "sat.select", mod));
   CHECK(joggle::print(mod) == once);
 
   std::vector<joggle::Attr> returns;
-  CHECK(call(env, "sat.supports", {joggle::Attr("sat<8>")}, returns));
-  CHECK(returns.size() == 1 && returns[0].boolean() == true);
-  CHECK(call(env, "sat.supports", {joggle::Attr("i32")}, returns));
-  CHECK(returns.size() == 1 && returns[0].boolean() == false);
-
   CHECK(call(env, "sat.sim",
              {joggle::Attr(std::int64_t{8}), joggle::Attr(std::int64_t{100}),
               joggle::Attr(std::int64_t{100})},

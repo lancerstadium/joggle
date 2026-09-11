@@ -311,13 +311,14 @@ cmake --build build
 ./build/joggle run sat.select test/data/sat.jog -M build/modules
 ```
 
-The module declares both its type constructor and its symbolic algebra as
-ordinary functions:
+The module declares its type constructor, symbolic algebra, and structural
+format predicate as ordinary functions:
 
 ```jog
 fn sat<W: int>() -> Ty;
 fn +<W: int>(a: sat<W>, b: sat<W>) -> sat<W>;
 fn add<W: int>(a: sat<W>, b: sat<W>) -> sat<W>;
+fn supports(type: Ty) -> bool;
 ```
 
 After verification, embedding code can inspect the actual overload selected
@@ -329,11 +330,12 @@ if (!target)
   return mod.print_diags(stderr);
 ```
 
+The predicate uses ordinary `Ty` reflection rather than a native string parser.
 The `sat<8>` addition becomes `sat.add(a, b)` while the `i32` addition remains
 an ordinary `a + b`. `Env::call` invokes `sat.sim(8, 100, 100)` to obtain the
 saturated result `127`, or `sat.emit(8)` to obtain a standalone SystemVerilog
-implementation. `test/sat.cpp` exercises selection, idempotence, both saturation
-limits, type rejection, and emitter structure.
+implementation. `test/sat.cpp` exercises selection, idempotence, both
+saturation limits, type rejection, and emitter structure.
 
 ## Emit an exposed kernel as C
 
