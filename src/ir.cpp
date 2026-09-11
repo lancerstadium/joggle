@@ -337,6 +337,25 @@ Ty generic_kind(const Ty& value) {
   return Ty("list<" + std::string(element.text()) + ">");
 }
 
+bool same_signature(const detail::Store& store,
+                    const detail::FnData& candidate,
+                    std::span<const Ty> params,
+                    const std::vector<std::string>& generics) {
+  if (candidate.generic_vals.size() != generics.size() ||
+      candidate.params.size() != params.size())
+    return false;
+  std::vector<std::string> candidate_generics;
+  candidate_generics.reserve(candidate.generic_vals.size());
+  for (const std::uint32_t generic : candidate.generic_vals)
+    candidate_generics.push_back(store.vals[generic].data.name);
+  for (std::size_t index = 0; index < params.size(); ++index)
+    if (!detail::same_type_pattern(
+            store.vals[candidate.params[index]].data.type,
+            candidate_generics, params[index], generics))
+      return false;
+  return true;
+}
+
 }  // namespace
 
 bool detail::same_type_pattern(
@@ -1277,21 +1296,7 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
       if (id >= store.fns.size() || !store.fns[id].live)
         continue;
       const detail::FnData& candidate = store.fns[id].data;
-      if (candidate.generic_vals.size() != target_generics.size() ||
-          candidate.params.size() != initial_fn.params.size())
-        continue;
-      std::vector<std::string> candidate_generics;
-      candidate_generics.reserve(candidate.generic_vals.size());
-      for (const std::uint32_t generic : candidate.generic_vals)
-        candidate_generics.push_back(store.vals[generic].data.name);
-      bool same = true;
-      for (std::size_t index = 0; index < candidate.params.size(); ++index) {
-        same = same && detail::same_type_pattern(
-                           store.vals[candidate.params[index]].data.type,
-                           candidate_generics, target_params[index],
-                           target_generics);
-      }
-      if (same)
+      if (same_signature(store, candidate, target_params, target_generics))
         return reject("function clone would duplicate signature '" + name +
                           "'",
                       source_fn.loc());
@@ -2285,6 +2290,84 @@ bool Mod::erase(Op op) {
   return true;
 }
 
+bool Mod::erase(const Env& env, Fn fn) {
+  auto& store = impl_->store;
+  const auto reject = [&](std::string message, Loc loc = {}) {
+    detail::add_diag(store.diags, std::move(message), std::move(loc));
+    return false;
+  };
+  if (!fn.valid() || fn.store_ != &store)
+    return reject("erase requires a live function in this module");
+
+  for (std::uint32_t id = 0; id < store.ops.size(); ++id) {
+    if (!store.ops[id].live || store.ops[id].data.kind != Op::Kind::call)
+      continue;
+    const std::uint32_t blk = store.ops[id].data.blk;
+    if (blk >= store.blks.size() || !store.blks[blk].live ||
+        store.blks[blk].data.fn == fn.id_)
+      continue;
+    const Op call(&store, id, store.ops[id].generation);
+    if (env.resolve(*this, call) == fn)
+      return reject("cannot erase a function with live callers", call.loc());
+  }
+
+  const detail::FnData& data = store.fns[fn.id_].data;
+  std::unordered_set<std::uint32_t> ops;
+  std::unordered_set<std::uint32_t> values(data.generic_vals.begin(),
+                                           data.generic_vals.end());
+  values.insert(data.params.begin(), data.params.end());
+  for (const std::uint32_t blk : data.blks) {
+    if (blk >= store.blks.size() || !store.blks[blk].live)
+      return reject("function owns an invalid Blk", data.loc);
+    values.insert(store.blks[blk].data.args.begin(),
+                  store.blks[blk].data.args.end());
+    for (const std::uint32_t op : store.blks[blk].data.ops) {
+      if (op >= store.ops.size() || !store.ops[op].live)
+        return reject("function owns an invalid operation", data.loc);
+      ops.insert(op);
+      values.insert(store.ops[op].data.outs.begin(),
+                    store.ops[op].data.outs.end());
+    }
+  }
+  for (const std::uint32_t value : values) {
+    if (value >= store.vals.size() || !store.vals[value].live)
+      return reject("function owns an invalid value", data.loc);
+    for (const std::uint32_t user : store.vals[value].data.users)
+      if (!ops.contains(user))
+        return reject("cannot erase a function with externally used values",
+                      data.loc);
+  }
+
+  auto symbol = store.symbols.find(data.name);
+  if (symbol == store.symbols.end())
+    return reject("function is absent from its symbol table", data.loc);
+  auto& overloads = symbol->second;
+  const auto found = std::find(overloads.begin(), overloads.end(), fn.id_);
+  if (found == overloads.end())
+    return reject("function is absent from its overload set", data.loc);
+  overloads.erase(found);
+  if (overloads.empty())
+    store.symbols.erase(symbol);
+
+  for (const std::uint32_t blk : data.blks) {
+    store.blks[blk].live = false;
+    ++store.blks[blk].generation;
+  }
+  for (const std::uint32_t op : ops) {
+    store.ops[op].live = false;
+    ++store.ops[op].generation;
+  }
+  for (const std::uint32_t value : values) {
+    store.vals[value].live = false;
+    ++store.vals[value].generation;
+  }
+  store.fns[fn.id_].live = false;
+  ++store.fns[fn.id_].generation;
+  detail::rebuild_uses(store);
+  touch(store);
+  return true;
+}
+
 bool Mod::type(Val value, Ty next) {
   auto& store = impl_->store;
   if (!value.valid() || value.store_ != &store || !next.valid()) {
@@ -2303,6 +2386,92 @@ bool Mod::type(Val value, Ty next) {
   }
   if (changed)
     touch(store);
+  return true;
+}
+
+bool Mod::rename(const Env& env, Fn fn, std::string name) {
+  auto& store = impl_->store;
+  const auto reject = [&](std::string message, Loc loc = {}) {
+    detail::add_diag(store.diags, std::move(message), std::move(loc));
+    return false;
+  };
+  if (!fn.valid() || fn.store_ != &store || !valid_binding(name))
+    return reject("rename requires a live function and valid local name");
+  const detail::FnData& current = store.fns[fn.id_].data;
+  if (current.name == name)
+    return true;
+
+  std::vector<std::string> current_generics;
+  current_generics.reserve(current.generic_vals.size());
+  for (const std::uint32_t generic : current.generic_vals)
+    current_generics.push_back(store.vals[generic].data.name);
+  std::vector<Ty> current_params;
+  current_params.reserve(current.params.size());
+  for (const std::uint32_t param : current.params)
+    current_params.push_back(store.vals[param].data.type);
+  const auto existing = store.symbols.find(name);
+  if (existing != store.symbols.end()) {
+    for (const std::uint32_t id : existing->second) {
+      if (id >= store.fns.size() || !store.fns[id].live || id == fn.id_)
+        continue;
+      const detail::FnData& candidate = store.fns[id].data;
+      if (same_signature(store, candidate, current_params, current_generics))
+        return reject("function rename would duplicate signature '" + name +
+                          "'",
+                      current.loc);
+    }
+  }
+
+  std::vector<std::uint32_t> calls;
+  for (std::uint32_t id = 0; id < store.ops.size(); ++id) {
+    if (!store.ops[id].live || store.ops[id].data.kind != Op::Kind::call)
+      continue;
+    const Op call(&store, id, store.ops[id].generation);
+    if (env.resolve(*this, call) == fn)
+      calls.push_back(id);
+  }
+
+  detail::Store backup = store;
+  auto old_symbol = store.symbols.find(current.name);
+  if (old_symbol == store.symbols.end())
+    return reject("function is absent from its symbol table", current.loc);
+  auto& old_overloads = old_symbol->second;
+  const auto old = std::find(old_overloads.begin(), old_overloads.end(), fn.id_);
+  if (old == old_overloads.end())
+    return reject("function is absent from its overload set", current.loc);
+  old_overloads.erase(old);
+  if (old_overloads.empty())
+    store.symbols.erase(old_symbol);
+  store.fns[fn.id_].data.name = name;
+  store.symbols[name].push_back(fn.id_);
+
+  const std::string qualified = store.name + "." + name;
+  for (const std::uint32_t id : calls) {
+    const Ty applied(store.ops[id].data.callee);
+    std::string suffix;
+    if (applied.valid() && !applied.args().empty()) {
+      suffix += '<';
+      for (std::size_t index = 0; index < applied.args().size(); ++index) {
+        if (index)
+          suffix += ", ";
+        suffix += applied.args()[index].text();
+      }
+      suffix += '>';
+    }
+    store.ops[id].data.callee = name + suffix;
+    const Op call(&store, id, store.ops[id].generation);
+    if (env.resolve(*this, call) != fn)
+      store.ops[id].data.callee = qualified + suffix;
+  }
+  for (const std::uint32_t id : calls) {
+    const Op call(&store, id, store.ops[id].generation);
+    if (env.resolve(*this, call) == fn)
+      continue;
+    const Loc loc = call.loc();
+    store = std::move(backup);
+    return reject("function rename could not preserve a call", loc);
+  }
+  touch(store);
   return true;
 }
 

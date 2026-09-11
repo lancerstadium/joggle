@@ -355,6 +355,12 @@ materialized as normal constants and `base.list`; type parameters are replaced
 structurally in types and explicit call arguments. A source that attempts to
 use a type object as an ordinary runtime operand is rejected transactionally.
 Passing no generic arguments retains the generic function as described above.
+`ir.rename(m, fn, name)` changes a local function symbol and every call that
+resolves to that exact overload. It retains short call spelling when resolution
+stays unique and qualifies only collisions. An alpha-equivalent overload at the
+new name rejects the edit. `ir.erase(m, fn)` rejects a function with callers
+outside its own body; otherwise the function, generics, parameters, nested
+blocks, operations, and results become invalid together.
 
 `ir.constant` checks the representation of intrinsic literals, including
 nested lists, before editing the module. User-defined type constructors retain

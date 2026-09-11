@@ -126,6 +126,8 @@ Supplying a final `list<Ty>` binds the template generics and produces a
 monomorphic function through the same operation.
 `ir.match(call, fn)` supplies those terms directly from a resolved network
 call, so an extension does not reimplement dtype or shape inference.
+Function overloads of `ir.rename` and `ir.erase` let later transforms maintain
+or remove those helpers while preserving resolved calls and live handles.
 
 Local module lifecycle commands are deterministic and registry-free:
 

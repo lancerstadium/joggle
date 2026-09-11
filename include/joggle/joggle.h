@@ -382,7 +382,9 @@ public:
   bool replace(Val old_value, Val new_value);
   bool replace(Val old_value, Val new_value, Op user);
   bool erase(Op op);
+  bool erase(const Env& env, Fn fn);
   bool type(Val value, Ty type);
+  bool rename(const Env& env, Fn fn, std::string name);
   bool rename(Val value, std::string name);
   bool rename(const Env& env, Op call, std::string callee);
   bool retarget(const Env& env, Op call, std::string callee,

@@ -78,6 +78,8 @@ Status: complete.
 
 - Support multi-result calls and complete constant, call, `Blk`, loop, branch,
   return, and yield construction.
+- Rename and erase function overloads while preserving resolved calls, overload
+  uniqueness, nested ownership, and handle invalidation.
 - Add nested walking, selective use replacement, cloning, moving, and `Blk`
   argument editing with explicit insertion points.
 - Give every successful mutation a module revision and make compound edits

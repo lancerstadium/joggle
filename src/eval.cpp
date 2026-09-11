@@ -1513,9 +1513,12 @@ private:
       }
     } else if (name == "erase" && args.size() == 2) {
       const auto* mod = as<Mod*>(args[0]);
-      const auto* op = as<Op>(args[1]);
-      if (mod && *mod && op)
-        return Items{Item(Attr((*mod)->erase(*op)))};
+      if (mod && *mod) {
+        if (const auto* op = as<Op>(args[1]))
+          return Items{Item(Attr((*mod)->erase(*op)))};
+        if (const auto* fn = as<Fn>(args[1]))
+          return Items{Item(Attr((*mod)->erase(env_, *fn)))};
+      }
     } else if (name == "retarget" && args.size() == 4) {
       const auto* mod = as<Mod*>(args[0]);
       const auto* op = as<Op>(args[1]);
@@ -1528,6 +1531,9 @@ private:
       const auto* mod = as<Mod*>(args[0]);
       const auto value = string(args[2]);
       if (mod && *mod && value) {
+        if (const auto* fn = as<Fn>(args[1]))
+          return Items{Item(
+              Attr((*mod)->rename(env_, *fn, std::string(*value))))};
         if (const auto* op = as<Op>(args[1]))
           return Items{
               Item(Attr((*mod)->rename(env_, *op, std::string(*value))))};

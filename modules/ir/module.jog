@@ -66,6 +66,8 @@ fn fuse(m: Mod, ops: list<Op>, callee: str) -> bool;
 fn replace(m: Mod, old: Val, next: Val) -> bool;
 fn replace(m: Mod, old: Val, next: Val, user: Op) -> bool;
 fn erase(m: Mod, op: Op) -> bool;
+fn erase(m: Mod, fn: Fn) -> bool;
+fn rename(m: Mod, fn: Fn, name: str) -> bool;
 fn rename(m: Mod, value: Val, name: str) -> bool;
 fn rename(m: Mod, op: Op, callee: str) -> bool;
 fn retarget(m: Mod, op: Op, callee: str, args: list<Val>) -> bool;

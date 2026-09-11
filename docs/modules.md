@@ -450,6 +450,10 @@ copy. It substitutes structural types and explicit generic calls throughout the
 body; integer, Boolean, and recursively typed list values used as operands are
 materialized in the entry `Blk`. The ordinary call resolver checks generic
 constraints, and the resulting concrete overload is checked before commit.
+The `Fn` overloads of `ir.rename` and `ir.erase` support the rest of that
+lifecycle. Rename follows resolved calls rather than raw spelling and respects
+overload collisions. Erase refuses live callers and invalidates the whole owned
+body, so stale handles fail `ir.live` instead of observing detached IR.
 Intrinsic constant types are checked against their attribute representation;
 custom types keep module-defined literal semantics. Both `ir.constant` and
 `ir.call` accept structural `Ty` values, so a transform can reuse a reflected

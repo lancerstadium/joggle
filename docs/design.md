@@ -360,6 +360,10 @@ nested body, removes the generic parameters, and materializes integer, Boolean,
 and recursively typed list operands in the new entry `Blk`. Unsupported
 first-class compile-time objects, arity mismatches, open terms, and collisions
 with an existing concrete overload roll back both dependency and IR changes.
+Function rename updates only calls that resolve to that exact overload, keeps a
+short call when it remains unambiguous, and otherwise qualifies it. Function
+erase rejects live callers, then invalidates the complete owned
+`Fn`/`Blk`/`Op`/`Val` tree in one revision.
 
 ## M7 fifth slice
 

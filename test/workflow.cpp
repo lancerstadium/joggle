@@ -276,6 +276,54 @@ int main(int argc, char** argv) {
   CHECK(recursive_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(recursive_fn, recursive_roundtrip));
 
+  joggle::Mod function_edit;
+  constexpr std::string_view function_edit_source =
+      "module function_edit\n"
+      "fn helper<T: Ty>(x: T) -> T { return helper<T>(x) }\n"
+      "fn renamed(x: i32, y: i32) -> i32 { return x }\n"
+      "fn duplicate<U: Ty>(x: U) -> U { return x }\n"
+      "fn main(x: i32) -> i32 { return helper<i32>(x) }\n";
+  CHECK(joggle::parse(env, function_edit_source, function_edit,
+                      "function-edit.jog"));
+  CHECK(function_edit.verify(env));
+  joggle::Fn helper = function_edit.find_fn("helper");
+  joggle::Fn edit_main = function_edit.find_fn("main");
+  const joggle::Val helper_param = helper.params().front();
+  const joggle::Op helper_call = helper.body().ops().front();
+  const joggle::Op main_call = edit_main.body().ops().front();
+  const std::string before_function_rename = joggle::print(function_edit);
+  const std::uint64_t before_function_rename_revision =
+      function_edit.revision();
+  CHECK(!function_edit.rename(env, helper, "duplicate"));
+  CHECK(joggle::print(function_edit) == before_function_rename);
+  CHECK(function_edit.revision() == before_function_rename_revision);
+  function_edit.clear_diags();
+  CHECK(function_edit.rename(env, helper, "renamed"));
+  CHECK(function_edit.revision() == before_function_rename_revision + 1);
+  CHECK(helper.name() == "renamed" && !function_edit.find_fn("helper"));
+  CHECK(function_edit.find_fns("renamed").size() == 2);
+  CHECK(function_edit.verify(env));
+  const std::string renamed_function_text = joggle::print(function_edit);
+  CHECK(renamed_function_text.find("renamed<T>(x)") !=
+        std::string::npos);
+  CHECK(renamed_function_text.find("renamed<i32>(x)") !=
+        std::string::npos);
+  const std::uint64_t before_live_erase = function_edit.revision();
+  CHECK(!function_edit.erase(env, helper));
+  CHECK(function_edit.revision() == before_live_erase);
+  function_edit.clear_diags();
+  CHECK(function_edit.erase(env, edit_main));
+  CHECK(!edit_main && !main_call);
+  CHECK(function_edit.erase(env, helper));
+  CHECK(!helper && !helper_param && !helper_call);
+  CHECK(function_edit.find_fns("renamed").size() == 1);
+  CHECK(function_edit.verify(env));
+  joggle::Mod function_edit_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(function_edit),
+                      function_edit_roundtrip, "function-edit-roundtrip.jog"));
+  CHECK(function_edit_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(function_edit, function_edit_roundtrip));
+
   joggle::Op tensor_add;
   joggle::Op relu_call;
   for (joggle::Op op : network.find_fn("stage").ops())
@@ -339,6 +387,23 @@ int main(int argc, char** argv) {
   CHECK(joggle::print(failed_matched_fn) == before_failed_match);
   CHECK(failed_matched_fn.revision() == before_failed_match_revision);
   CHECK(!failed_matched_fn.find_fn("orphan"));
+  joggle::Mod scripted_function_edit;
+  constexpr std::string_view scripted_function_edit_source =
+      "module scripted_function_edit\n"
+      "fn helper(x: i32) -> i32 { return x }\n"
+      "fn main(x: i32) -> i32 { return helper(x) }\n";
+  CHECK(joggle::parse(env, scripted_function_edit_source,
+                      scripted_function_edit, "scripted-function-edit.jog"));
+  CHECK(joggle::run(env, "script.rename_helper", scripted_function_edit));
+  CHECK(scripted_function_edit.verify(env));
+  CHECK(scripted_function_edit.find_fn("renamed"));
+  CHECK(!scripted_function_edit.find_fn("helper"));
+  CHECK(joggle::print(scripted_function_edit)
+            .find("renamed(x)") != std::string::npos);
+  CHECK(joggle::run(env, "script.erase_main", scripted_function_edit));
+  CHECK(joggle::run(env, "script.erase_renamed", scripted_function_edit));
+  CHECK(scripted_function_edit.fns().empty());
+  CHECK(scripted_function_edit.verify(env));
   joggle::Mod scripted_fn;
   constexpr std::string_view scripted_fn_source =
       "module scripted.generated\n"

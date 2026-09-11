@@ -286,6 +286,23 @@ a second generic-inference interface. If either edit fails inside a `run`
 entry, its assertion restores the module before the clone, so no unused local
 function remains.
 
+Later passes may rename that exact overload or erase it after its callers are
+gone:
+
+```jog
+assert(ir.rename(m, local, "packed_relu"), "could not rename helper")
+```
+
+Rename follows resolved calls, not every matching string. After another
+transform has removed or retargeted every caller, the helper can be removed:
+
+```jog
+assert(ir.erase(m, local), "helper still has callers")
+```
+
+Erase invalidates the complete function body and rejects helpers that are still
+used elsewhere.
+
 ## Define a fusion policy
 
 A project module can reuse the generic chain matcher while choosing its own

@@ -405,6 +405,18 @@ fn clone_then_fail(m: Mod) -> bool {
   return false
 }
 
+fn rename_helper(m: Mod) -> bool {
+  return ir.rename(m, ir.find(m, "helper"), "renamed")
+}
+
+fn erase_main(m: Mod) -> bool {
+  return ir.erase(m, ir.find(m, "main"))
+}
+
+fn erase_renamed(m: Mod) -> bool {
+  return ir.erase(m, ir.find(m, "renamed"))
+}
+
 fn return_three(m: Mod) -> bool {
   for op in ir.ops(m) {
     if ir.kind(op) == "return" {
