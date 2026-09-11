@@ -621,12 +621,6 @@ Mod::Mod(Mod&&) noexcept = default;
 Mod& Mod::operator=(Mod&&) noexcept = default;
 
 std::string_view Mod::name() const noexcept { return impl_->store.name; }
-void Mod::name(std::string name) {
-  if (impl_->store.name == name)
-    return;
-  impl_->store.name = std::move(name);
-  touch(impl_->store);
-}
 std::vector<std::string> Mod::uses() const { return impl_->store.uses; }
 
 bool Mod::use(std::string module) {
