@@ -2376,6 +2376,10 @@ bool Mod::verify(const Env& env) {
   detail::rebuild_uses(store);
   if (store.name.empty())
     detail::add_diag(store.diags, "module has no name");
+  for (const std::string& dependency : store.uses)
+    if (!env.loaded(dependency))
+      detail::add_diag(store.diags,
+                       "dependency module is not loaded: " + dependency);
   for (const auto& fn_slot : store.fns) {
     if (!fn_slot.live)
       continue;

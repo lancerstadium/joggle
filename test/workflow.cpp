@@ -579,6 +579,17 @@ int main(int argc, char** argv) {
   dependencies.clear_diags();
   CHECK(dependencies.verify(env));
 
+  joggle::Mod missing_dependency;
+  CHECK(joggle::parse(env,
+                      "module missing_dependency\n"
+                      "use missing\n"
+                      "fn main() -> int { return 0 }\n",
+                      missing_dependency, "missing-dependency.jog"));
+  CHECK(!missing_dependency.verify(env));
+  CHECK(!missing_dependency.diags().empty());
+  CHECK(missing_dependency.diags().front().message.find(
+            "dependency module is not loaded") != std::string::npos);
+
   constexpr std::string_view inferred_source =
       "module inferred\n"
       "use tensor\n"

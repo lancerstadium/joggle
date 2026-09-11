@@ -389,6 +389,8 @@ must already be loaded in the current environment; the edit never performs a
 hidden load or creates an unresolved dependency. This lets an
 explicit frontend bridge introduce the semantic library whose qualified
 functions it selects; parsing a frontend never does so implicitly.
+Module verification likewise rejects declared dependencies absent from the
+environment, so embedding and command-line loading have the same closure rule.
 `ir.revision(m)` exposes that monotonically increasing revision to module code.
 It is intended for convergence and invalidation checks; it is not serialized
 into the model and cannot be used as a stable model identifier.
