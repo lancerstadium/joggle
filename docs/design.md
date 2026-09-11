@@ -552,6 +552,9 @@ revision plus explicit expansion and cloning events. Read-only predicates and
 unchanged helpers are omitted, so a structural capability check over every
 operation does not turn a preparation report into an operation-sized call log.
 The top-level step still reports its returned Boolean and before/after revision.
+The embedding and CLI paths do not allocate a trace at all when no report was
+requested; report collection is observational rather than a mandatory cost of
+running a transform.
 
 ## M8 fifth slice
 

@@ -309,7 +309,7 @@ public:
 
   static bool sequence(Env& env,
                        std::span<const std::string_view> functions, Mod& mod,
-                       Attr& report, std::span<const Attr> args,
+                       Attr* report, std::span<const Attr> args,
                        std::vector<std::chrono::nanoseconds>* elapsed);
 
   Eval(Env& env, Error error, Attr::List* trace = nullptr)
@@ -2210,10 +2210,11 @@ bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
 
 bool detail::Eval::sequence(
     Env& env, std::span<const std::string_view> functions, Mod& mod,
-    Attr& report, std::span<const Attr> args,
+    Attr* report, std::span<const Attr> args,
     std::vector<std::chrono::nanoseconds>* elapsed) {
   env.clear_diags();
-  report = Attr{};
+  if (report)
+    *report = Attr{};
   if (elapsed)
     elapsed->clear();
   detail::Store before = mod.impl_->store;
@@ -2229,7 +2230,7 @@ bool detail::Eval::sequence(
     return false;
   }
 
-  const auto one = [&](std::string_view function, Attr& step) {
+  const auto one = [&](std::string_view function, Attr* step) {
     const std::uint64_t step_revision = mod.revision();
     const Ty applied{std::string(function)};
     const std::string symbol(applied.args().empty() ? function
@@ -2274,7 +2275,7 @@ bool detail::Eval::sequence(
     Attr::List trace;
     detail::Eval eval(env, [&](std::string message, Loc loc) {
       env.error(std::move(message), std::move(loc));
-    }, &trace);
+    }, step ? &trace : nullptr);
     const auto result = eval.run(fn, mod, args);
     if (!result)
       return false;
@@ -2296,6 +2297,8 @@ bool detail::Eval::sequence(
                 std::string(function));
       return false;
     }
+    if (!step)
+      return true;
     if (!trace.empty())
       trace.pop_back();
     const std::uint64_t after_revision = mod.revision();
@@ -2311,12 +2314,13 @@ bool detail::Eval::sequence(
         Attr(static_cast<std::int64_t>(after_revision - step_revision));
     summary["changed"] = Attr(after_revision != step_revision);
     summary["steps"] = Attr(std::move(trace));
-    step = Attr(std::move(summary));
+    *step = Attr(std::move(summary));
     return true;
   };
 
   Attr::List steps;
-  steps.reserve(functions.size());
+  if (report)
+    steps.reserve(functions.size());
   if (elapsed)
     elapsed->reserve(functions.size());
   bool reported = false;
@@ -2325,19 +2329,23 @@ bool detail::Eval::sequence(
     std::chrono::steady_clock::time_point started;
     if (elapsed)
       started = std::chrono::steady_clock::now();
-    if (!one(function, step))
+    if (!one(function, report ? &step : nullptr))
       return rollback();
     if (elapsed)
       elapsed->push_back(
           std::chrono::duration_cast<std::chrono::nanoseconds>(
               std::chrono::steady_clock::now() - started));
-    if (const Attr::Dict* values = step.dict()) {
-      const auto found = values->find("reported");
-      reported = reported ||
-                 (found != values->end() && found->second.boolean() == true);
+    if (report) {
+      if (const Attr::Dict* values = step.dict()) {
+        const auto found = values->find("reported");
+        reported = reported ||
+                   (found != values->end() && found->second.boolean() == true);
+      }
+      steps.push_back(std::move(step));
     }
-    steps.push_back(std::move(step));
   }
+  if (!report)
+    return true;
   const std::uint64_t after_revision = mod.revision();
   Attr::Dict summary;
   summary["ok"] = Attr(true);
@@ -2348,18 +2356,18 @@ bool detail::Eval::sequence(
       Attr(static_cast<std::int64_t>(after_revision - before_revision));
   summary["changed"] = Attr(after_revision != before_revision);
   summary["steps"] = Attr(std::move(steps));
-  report = Attr(std::move(summary));
+  *report = Attr(std::move(summary));
   return true;
 }
 
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
          Attr& report) {
-  return detail::Eval::sequence(env, functions, mod, report, {}, nullptr);
+  return detail::Eval::sequence(env, functions, mod, &report, {}, nullptr);
 }
 
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
          Attr& report, std::vector<std::chrono::nanoseconds>& elapsed) {
-  return detail::Eval::sequence(env, functions, mod, report, {}, &elapsed);
+  return detail::Eval::sequence(env, functions, mod, &report, {}, &elapsed);
 }
 
 bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
@@ -2373,7 +2381,7 @@ bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
   const std::span<const std::string_view> functions(&function, 1);
   std::vector<std::chrono::nanoseconds> times;
   Attr sequence;
-  if (!detail::Eval::sequence(env, functions, mod, sequence, args, &times))
+  if (!detail::Eval::sequence(env, functions, mod, &sequence, args, &times))
     return false;
   report = sequence.dict()->at("steps").list()->front();
   elapsed = times.front();
@@ -2388,26 +2396,25 @@ bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
          std::span<const Attr> args) {
   const std::span<const std::string_view> functions(&function, 1);
   Attr sequence;
-  if (!detail::Eval::sequence(env, functions, mod, sequence, args, nullptr))
+  if (!detail::Eval::sequence(env, functions, mod, &sequence, args, nullptr))
     return false;
   report = sequence.dict()->at("steps").list()->front();
   return true;
 }
 
 bool run(Env& env, std::string_view function, Mod& mod) {
-  Attr ignored;
-  return run(env, function, mod, ignored);
+  const std::span<const std::string_view> functions(&function, 1);
+  return detail::Eval::sequence(env, functions, mod, nullptr, {}, nullptr);
 }
 
 bool run(Env& env, std::string_view function, Mod& mod,
          std::span<const Attr> args) {
-  Attr ignored;
-  return run(env, function, mod, ignored, args);
+  const std::span<const std::string_view> functions(&function, 1);
+  return detail::Eval::sequence(env, functions, mod, nullptr, args, nullptr);
 }
 
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod) {
-  Attr ignored;
-  return run(env, functions, mod, ignored);
+  return detail::Eval::sequence(env, functions, mod, nullptr, {}, nullptr);
 }
 
 }  // namespace joggle
