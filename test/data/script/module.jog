@@ -1,5 +1,6 @@
 module script
 use opt
+use stat
 use tensor
 use onnx.nn
 
@@ -54,10 +55,29 @@ fn apply_rules(m: Mod) -> bool {
   let rules = ir.fns("script")
   for op in ir.ops(m) {
     for rule in ir.where(rules, "on", ir.callee(op)) {
-      changed = ir.invoke(m, op, rule) || changed
+      changed = ir.invoke<bool>(m, op, rule) || changed
     }
   }
   return changed
+}
+
+fn op_cost(m: Mod, op: Op) -> int {
+  if ir.kind(op) == "call" {
+    return 2
+  }
+  return 1
+}
+
+fn model_cost(m: Mod) -> int {
+  return stat.sum(m, ir.find("script.op_cost"))
+}
+
+fn bad_cost(m: Mod, op: Op) -> bool {
+  return ir.live(op)
+}
+
+fn reject_bad_cost(m: Mod) -> int {
+  return stat.sum(m, ir.find("script.bad_cost"))
 }
 
 [case: "bad"]
@@ -69,7 +89,7 @@ fn reject_bad_rule(m: Mod) -> bool {
   let rules = ir.where(ir.fns("script"), "case", "bad")
   for op in ir.ops(m) {
     for rule in rules {
-      return ir.invoke(m, op, rule)
+      return ir.invoke<bool>(m, op, rule)
     }
   }
   return false

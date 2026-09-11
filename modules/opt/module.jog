@@ -283,7 +283,7 @@ fn supports(m: Mod, op: Op, caps: list<Fn>) -> bool {
 
 fn supports(m: Mod, op: Op, accept: Fn) -> bool {
   let before = ir.revision(m)
-  let result = ir.invoke(m, op, accept)
+  let result = ir.invoke<bool>(m, op, accept)
   assert(ir.revision(m) == before,
          "opt: capability function must not mutate the module")
   return result

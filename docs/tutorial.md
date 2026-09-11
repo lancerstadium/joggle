@@ -358,15 +358,16 @@ before committing the rewrite.
 Download the pinned official model matrix and enable the optional codec:
 
 ```sh
-cmake -DOUT=/tmp/joggle-onnx-zoo -P test/zoo.cmake
-cmake -DOUT=/tmp/joggle-onnx-backend -P test/backend.cmake
+cmake -DOUT=.cache/onnx-zoo -P test/zoo.cmake
+cmake -DOUT=.cache/onnx-backend -P test/backend.cmake
 cmake -S . -B build -DJOGGLE_BUILD_ONNX=ON \
-  -DJOGGLE_TEST_ONNX_ZOO=/tmp/joggle-onnx-zoo \
-  -DJOGGLE_TEST_ONNX_BACKEND=/tmp/joggle-onnx-backend
+  -DJOGGLE_TEST_ONNX_ZOO=.cache/onnx-zoo \
+  -DJOGGLE_TEST_ONNX_BACKEND=.cache/onnx-backend
 cmake --build build
 ctest --test-dir build --output-on-failure
-./build/joggle read onnx.read /tmp/joggle-onnx-zoo/mobilenetv2-7.onnx \
-  -M build/modules > /tmp/mobilenet.jog
+mkdir -p build/examples
+./build/joggle read onnx.read .cache/onnx-zoo/mobilenetv2-7.onnx \
+  -M build/modules > build/examples/mobilenet.jog
 ```
 
 The separate backend download is small. It pins ONNX v1.19.0
@@ -381,10 +382,10 @@ and executes a complete network. Fetch the hash-pinned ONNX Zoo archive with
 its official protobuf input and output, then enable its extracted case:
 
 ```sh
-cmake -DOUT=/tmp/joggle-onnx-zoo -DMODELS=mobilenetv2-7 -DAPP=ON \
+cmake -DOUT=.cache/onnx-zoo -DMODELS=mobilenetv2-7 -DAPP=ON \
   -P test/zoo.cmake
 cmake -S . -B build -DJOGGLE_BUILD_ONNX=ON \
-  -DJOGGLE_TEST_ONNX_APP=/tmp/joggle-onnx-zoo/app/mobilenetv2-7
+  -DJOGGLE_TEST_ONNX_APP=.cache/onnx-zoo/app/mobilenetv2-7
 cmake --build build
 ctest --test-dir build -R onnx-app-mobilenet --output-on-failure
 ```
@@ -484,9 +485,11 @@ The standard `c` module consumes computation only after its dependency calls
 have been exposed into local scalar, tensor-access, loop, and branch structure:
 
 ```sh
-joggle emit c.source test/data/c.jog -M build/modules > /tmp/model.c
-cc -std=c99 /tmp/model.c test/data/c_main.c -o /tmp/model
-/tmp/model
+mkdir -p build/examples
+joggle emit c.source test/data/c.jog -M build/modules > build/examples/model.c
+cc -std=c99 build/examples/model.c test/data/c_main.c \
+  -o build/examples/model
+build/examples/model
 ```
 
 `c.source` is an ordinary read-only `fn(Mod) -> str`. The command does not
@@ -500,9 +503,9 @@ another explicit function call:
 
 ```sh
 joggle run c.prepare test/data/c_open.jog \
-  -M build/modules > /tmp/prepared.jog
-joggle emit c.source /tmp/prepared.jog \
-  -M build/modules > /tmp/add.c
+  -M build/modules > build/examples/prepared.jog
+joggle emit c.source build/examples/prepared.jog \
+  -M build/modules > build/examples/add.c
 ```
 
 `c.prepare` expands only unsupported, metadata-free calls with a visible body
@@ -512,11 +515,11 @@ transactional and bounded; it is not run by `emit` or module loading.
 Plan reusable storage only when the experiment needs it:
 
 ```sh
-joggle run mem.plan /tmp/prepared.jog \
-  -M build/modules > /tmp/planned.jog
-joggle query mem.buffers /tmp/planned.jog -M build/modules
-joggle emit c.source /tmp/planned.jog \
-  -M build/modules > /tmp/planned.c
+joggle run mem.plan build/examples/prepared.jog \
+  -M build/modules > build/examples/planned.jog
+joggle query mem.buffers build/examples/planned.jog -M build/modules
+joggle emit c.source build/examples/planned.jog \
+  -M build/modules > build/examples/planned.c
 ```
 
 `mem.plan` is an ordinary idempotent transform. It handles fixed-shape local
@@ -534,8 +537,8 @@ fixed program-lifetime workspace.
 Inspect deterministic structural measurements before or after any step:
 
 ```sh
-joggle query stat.summary /tmp/prepared.jog -M build/modules
-joggle query stat.summary /tmp/planned.jog -M build/modules
+joggle query stat.summary build/examples/prepared.jog -M build/modules
+joggle query stat.summary build/examples/planned.jog -M build/modules
 ```
 
 The returned dictionary is stable and directly diffable. `tensor_vals` and

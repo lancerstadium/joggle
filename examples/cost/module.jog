@@ -1,0 +1,14 @@
+module cost
+use ir
+use stat
+
+fn weight(m: Mod, op: Op) -> int {
+  if ir.kind(op) == "call" {
+    return 4
+  }
+  return 1
+}
+
+fn total(m: Mod) -> int {
+  return stat.sum(m, ir.find("cost.weight"))
+}

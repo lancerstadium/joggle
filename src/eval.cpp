@@ -230,6 +230,20 @@ Ty runtime_type(const Item& item) {
   return Ty("_");
 }
 
+bool accepts_runtime(const Ty& expected, const Item& item) {
+  if (expected.text() == "_" || expected.text() == "Attr" ||
+      expected.text() == "meta")
+    return expected.text() == "_" || as<Attr>(item);
+  const Ty actual = runtime_type(item);
+  if (expected.name() == "list" && expected.args().size() == 1 &&
+      actual.name() == "list" && actual.args().size() == 1) {
+    if (actual.args().front().text() == "_")
+      return true;
+    return expected.args().front() == actual.args().front();
+  }
+  return expected == actual;
+}
+
 Item::Item(Items value) {
   Ty element("_");
   if (!value.empty()) {
@@ -855,8 +869,13 @@ private:
       return std::move(args);
     if (name == "base.list")
       return Items{Item(std::move(args))};
-    if (name.starts_with("ir."))
-      return intrinsic(name.substr(3), args, std::move(loc));
+    if (name.starts_with("ir.")) {
+      const Ty applied{std::string(name.substr(3))};
+      const std::string_view intrinsic_name =
+          applied.args().empty() ? name.substr(3) : applied.name();
+      const std::vector<Ty> generics = site.generics();
+      return intrinsic(intrinsic_name, args, std::move(loc), generics);
+    }
 
     const Ty applied{std::string(name)};
     const std::string_view symbol =
@@ -1473,7 +1492,8 @@ private:
   }
 
   std::optional<Items> intrinsic(std::string_view name, const Items& args,
-                                 Loc loc) {
+                                 Loc loc,
+                                 std::span<const Ty> generics = {}) {
     if (name == "fns" && args.size() == 1) {
       if (const auto* mod = as<Mod*>(args[0]); mod && *mod) {
         Items out;
@@ -1715,19 +1735,29 @@ private:
       const auto* op = as<Op>(args[1]);
       const auto* fn = as<Fn>(args[2]);
       if (mod && *mod && op && *op && fn && *fn) {
+        if (generics.size() != 1) {
+          fail("ir.invoke requires one explicit result type", loc);
+          return std::nullopt;
+        }
+        const Ty& expected = generics.front();
         const std::vector<Val> params = fn->params();
         const std::vector<Ty> returns = fn->returns();
         if (!fn->generics().empty() || params.size() != 2 ||
             params[0].type() != Ty("Mod") || params[1].type() != Ty("Op") ||
-            returns.size() != 1 || returns.front() != Ty("bool")) {
-          fail("ir.invoke requires fn(Mod, Op) -> bool", loc);
+            returns.size() != 1 || returns.front() != expected) {
+          fail("ir.invoke callback must be fn(Mod, Op) -> " +
+                   std::string(expected.text()),
+               loc);
           return std::nullopt;
         }
         auto result = invoke(*fn, {Item(*mod), Item(*op)});
         if (!result)
           return std::nullopt;
-        if (result->size() != 1 || !boolean(result->front())) {
-          fail("ir.invoke function returned an invalid result", loc);
+        if (result->size() != 1 ||
+            !accepts_runtime(expected, result->front())) {
+          fail("ir.invoke callback returned a value other than " +
+                   std::string(expected.text()),
+               loc);
           return std::nullopt;
         }
         return result;

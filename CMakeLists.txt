@@ -380,6 +380,16 @@ if(JOGGLE_BUILD_TESTS)
     cli-query PROPERTIES PASS_REGULAR_EXPRESSION "\\[\\]"
   )
   add_test(
+    NAME cost-example
+    COMMAND $<TARGET_FILE:joggle-tool> query cost.total
+            ${CMAKE_CURRENT_SOURCE_DIR}/examples/cost/model.jog
+            -M ${CMAKE_CURRENT_SOURCE_DIR}/examples
+            -M ${CMAKE_CURRENT_BINARY_DIR}/modules
+  )
+  set_tests_properties(
+    cost-example PROPERTIES PASS_REGULAR_EXPRESSION "5"
+  )
+  add_test(
     NAME stat-summary
     COMMAND
       ${CMAKE_COMMAND}

@@ -4,6 +4,17 @@ use ir
 use mem
 use tensor
 
+fn sum(m: Mod, measure: Fn) -> int {
+  var total = 0
+  for op in ir.ops(m) {
+    let before = ir.revision(m)
+    total += ir.invoke<int>(m, op, measure)
+    assert(ir.revision(m) == before,
+           "stat: measure function must not mutate the module")
+  }
+  return total
+}
+
 fn vals(fn: Fn) -> list<Val> {
   var out = ir.params(fn)
   for body in ir.blks(fn) {

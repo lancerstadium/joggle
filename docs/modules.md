@@ -163,7 +163,7 @@ The built-in `ir` module is the complete reflection boundary:
 | `args`, `outs`, `def`, `users` | Read operation dataflow in both directions. |
 | `live`, `blk`, `kind`, `callee`, `name`, `key`, `type` | Query handle state, readable or ephemeral identity, structure, and structural `Ty`. |
 | `resolve`, `symbol`, `accepts`, `match` | Resolve calls, identify functions, and select against explicit signatures. |
-| `where`, `invoke` | Select functions by open metadata and execute an ordinary `fn(Mod, Op) -> bool` transactionally. |
+| `where`, `invoke<R>` | Select functions by open metadata and execute an ordinary typed `fn(Mod, Op) -> R` transactionally. |
 | `is_const`, `constant` | Query constant IR values. |
 | `has`, `meta` | Query open function, value, or operation attributes. |
 | `call`, `constant`, `loop`, `branch` | Construct leaves and structured control flow. |
@@ -836,6 +836,15 @@ boundary; an unknown callee remains an open call for a later research module to
 define. `opt.fuse` is a normal `.jog` helper that finds a single-use call chain
 from a user-supplied list of callee names; a frontend bridge can invoke it
 explicitly without registering operator classes or modifying the core.
+
+### Measurements
+
+`stat.summary(m)` returns a stable structural dictionary without assigning a
+device interpretation. `stat.sum(m, measure)` takes an ordinary
+`fn(Mod, Op) -> int`, invokes it once per operation through `ir.invoke<int>`,
+and rejects a measure that mutates the subject. The module defines traversal
+and aggregation only; units and device assumptions belong to the supplied
+function. [`examples/cost`](../examples/cost) is a runnable custom policy.
 
 ### Binary codecs
 

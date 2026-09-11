@@ -299,7 +299,7 @@ written by the CLI through `--report` using the public canonical `Attr` printer.
 
 Open function metadata now also supports semantic relation discovery.
 `ir.where` selects `Fn` values without reserving a relation vocabulary, and
-`ir.invoke` transactionally executes the single `fn(Mod, Op) -> bool` boundary.
+`ir.invoke<R>` transactionally executes a typed `fn(Mod, Op) -> R` boundary.
 ONNX inference and conversion relations self-identify in their owning module,
 removing both central operator-name dispatch chains while leaving import and
 conversion explicit. Module-owned phases preserve conversion order, and an
@@ -391,10 +391,11 @@ library and run through at least two targets without core operator switches.
 
 ### M11 — research instrumentation
 
-Status: in progress. `stat.summary` now provides a deterministic, read-only
-structural snapshot through an ordinary module query. It separates IR tensor
-elements from planned storage elements and contains no timing or device-model
-claims.
+Status: in progress. `stat.summary` provides a deterministic, read-only
+structural snapshot through an ordinary module query. `stat.sum` can aggregate
+an external `fn(Mod, Op) -> int` measure through the typed invocation boundary,
+so cycle or resource models no longer require a core interface. The module
+still makes no timing or device-model claims of its own.
 
 - Record pipeline decisions, costs, code size, memory use, and deterministic
   cycle estimates through module functions and stable structured output.

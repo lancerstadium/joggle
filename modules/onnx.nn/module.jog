@@ -2032,7 +2032,7 @@ fn infer_once(m: Mod, rules: list<Fn>) -> bool {
   for op in ir.ops(m) {
     let matches = common + ir.where(selected, "on", ir.callee(op))
     for rule in matches {
-      changed = ir.invoke(m, op, rule) || changed
+      changed = ir.invoke<bool>(m, op, rule) || changed
     }
   }
   return changed
@@ -3029,7 +3029,7 @@ fn convert(m: Mod, rules: list<Fn>) -> bool {
     let selected = ir.where(rules, "phase", phase)
     for op in ir.ops(m) {
       for rule in ir.where(selected, "on", ir.callee(op)) {
-        changed = ir.invoke(m, op, rule) || changed
+        changed = ir.invoke<bool>(m, op, rule) || changed
       }
     }
   }

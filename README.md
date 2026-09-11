@@ -235,6 +235,11 @@ Analyses are read-only module functions:
 ./build/joggle query stat.summary network.jog -M build/modules
 ```
 
+An analysis policy can itself be a module. The runnable
+[`examples/cost`](examples/cost) example supplies an ordinary
+`fn(Mod, Op) -> int` weight function and aggregates it with `stat.sum`; the
+compiler core knows neither its unit nor its device assumptions.
+
 Emitters return `str` or `bytes` through the same read-only boundary:
 
 ```sh

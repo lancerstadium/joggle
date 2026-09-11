@@ -490,12 +490,15 @@ table.
 Open function attributes can also define module-owned relations without a
 second rule language. `ir.where(fns, key, value)` filters an explicit function
 list by exact metadata; a list-valued attribute matches when it contains the
-requested value. `ir.invoke(m, op, fn)` executes a selected ordinary
-`fn(Mod, Op) -> bool` in the current transaction. It rejects generic or
-incompatible signatures before execution, and an error in the invoked function
-rolls the enclosing compile-time entry back normally. Attribute names and
-values remain module policy: core does not reserve `on`, operator names, or
-relation kinds.
+requested value. `ir.invoke<R>(m, op, fn)` executes a selected ordinary
+`fn(Mod, Op) -> R` in the current transaction. The explicit result type keeps
+dynamic invocation typed even though `Fn` is a runtime handle. It rejects
+generic or incompatible callback signatures before execution, validates the
+returned value, and rolls the enclosing compile-time entry back normally on an
+error. A relation driver uses `ir.invoke<bool>`; a cost traversal can use
+`ir.invoke<int>` without adding another callback API. Attribute names, result
+types, and selection policy remain module-owned: core does not reserve `on`,
+operator names, relation kinds, or measurement units.
 
 `ir.uses(m)` returns the module's declared dependencies and
 `ir.use(m, name)` adds one idempotently. Dependency edits advance the same

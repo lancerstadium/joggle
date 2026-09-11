@@ -243,9 +243,11 @@ users, insert any call, replace uses, and erase the old operation. Dynamic list
 literals allow the same source language to collect IR handles.
 
 The same boundary now supports module-owned semantic relations. `ir.where`
-filters ordinary `Fn` values using open metadata, and `ir.invoke` executes only
-the uniform `fn(Mod, Op) -> bool` shape inside the current transaction. The
-evaluator knows neither the attribute key nor the operator vocabulary. The
+filters ordinary `Fn` values using open metadata, and `ir.invoke<R>` executes
+the uniform `fn(Mod, Op) -> R` shape inside the current transaction. Relation
+modules choose `R = bool`; analysis modules may select another ordinary result
+type. The evaluator knows neither the attribute key, operator vocabulary, nor
+the meaning of the returned value. The
 `onnx.nn` module uses `[on: ...]` for both inference and conversion, and a
 module-owned `phase` value preserves its two conversion sweeps. Its
 two-argument `convert` overload accepts an explicit `Fn` list, so a separate
@@ -1228,9 +1230,10 @@ without `mem.plan` retains the earlier one-array-per-binding behavior.
 
 ## M11 structural measurement slice
 
-The pure `.jog` `stat.summary` query is the first research-instrumentation
-slice. It derives a canonical dictionary directly from the public reflection
-surface: function, block, operation, and value counts; operation-kind counts;
+The pure `.jog` `stat` module is the first research-instrumentation slice.
+`stat.summary` derives a canonical dictionary directly from the public
+reflection surface: function, block, operation, and value counts;
+operation-kind counts;
 distinct callees and unresolved calls; tensor values and their known static
 elements; and optional `mem` slot counts and capacities. The implementation
 contains no frontend operator or target name.
@@ -1244,3 +1247,10 @@ ordering makes the output diffable and suitable for experiment records without
 putting a report class in core. A regression fixes the complete summary for the
 shared matrix example and the memory execution gate checks its two-slot,
 eight-element plan.
+
+`stat.sum(m, measure)` demonstrates the open measurement boundary rather than
+defining a built-in cost model. It traverses operations and invokes an ordinary
+module function of type `fn(Mod, Op) -> int` through `ir.invoke<int>`, rejecting
+mutating measures by revision. A research module can therefore assign cycles,
+energy proxies, code-size weights, or resource units without a device class or
+new core intrinsic. The unit and model remain explicit experiment policy.

@@ -601,6 +601,19 @@ int main(int argc, char** argv) {
     }
   }
   CHECK(matched);
+  std::int64_t expected_cost = 0;
+  for (joggle::Op op : relation.ops())
+    expected_cost += op.kind() == joggle::Op::Kind::call ? 2 : 1;
+  joggle::Attr model_cost;
+  CHECK(joggle::query(env, "script.model_cost", relation, model_cost));
+  CHECK(model_cost.integer() == expected_cost);
+  const std::string before_bad_cost = joggle::print(relation);
+  const std::uint64_t before_bad_cost_revision = relation.revision();
+  CHECK(!joggle::query(env, "script.reject_bad_cost", relation, model_cost));
+  CHECK(joggle::print(relation) == before_bad_cost);
+  CHECK(relation.revision() == before_bad_cost_revision);
+  CHECK(!env.diags().empty());
+  env.clear_diags();
   const std::string relation_before = joggle::print(relation);
   const std::uint64_t relation_revision = relation.revision();
   CHECK(!joggle::run(env, "script.reject_bad_rule", relation));
