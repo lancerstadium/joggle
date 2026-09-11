@@ -143,6 +143,7 @@ int main(int argc, char** argv) {
   CHECK(joggle::run(env, "tflite.nn.convert", semantic));
   CHECK(semantic.verify(env));
   CHECK(count(semantic, "tflite.tensor") == 0);
+  CHECK(count(semantic, "tflite.model") == 0);
   CHECK(count(semantic, "tensor.literal") == 107);
   CHECK(count(semantic, "tflite.CONV_2D") == 0);
   CHECK(count(semantic, "tflite.DEPTHWISE_CONV_2D") == 0);

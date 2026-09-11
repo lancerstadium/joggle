@@ -33,13 +33,13 @@ fn dce(m: Mod, pure: list<str>) -> bool {
   var changed = false
   for op in ir.ops(m) {
     if ir.live(op) {
-      var allowed = false
+      var allowed = ir.kind(op) == "constant"
       for callee in pure {
-        if callee == ir.callee(op) {
+        if ir.kind(op) == "call" && callee == ir.callee(op) {
           allowed = true
         }
       }
-      if ir.kind(op) == "call" && allowed {
+      if allowed {
         var unused = true
         for value in ir.outs(op) {
           if len(ir.users(value)) != 0 {

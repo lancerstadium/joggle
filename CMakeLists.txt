@@ -12,6 +12,8 @@ option(JOGGLE_BUILD_SAT "Build the optional saturating-integer module" OFF)
 option(JOGGLE_TEST_ONNX_HEAVY "Enable slow ONNX Model Zoo gates" OFF)
 set(JOGGLE_TEST_ONNX_ZOO "" CACHE PATH
     "Directory containing the pinned ONNX Model Zoo test set")
+set(JOGGLE_TEST_ONNX_BACKEND "" CACHE PATH
+    "Directory containing official ONNX backend test cases")
 set(JOGGLE_TEST_TFLITE_MODEL "" CACHE FILEPATH
     "Official TFLite model used by tests")
 
@@ -658,6 +660,60 @@ if(JOGGLE_BUILD_TESTS)
       NAME onnx-codec
       COMMAND joggle-onnx-codec-test ${CMAKE_CURRENT_BINARY_DIR}/modules
     )
+  endif()
+  if(JOGGLE_BUILD_ONNX AND JOGGLE_TEST_C_COMPILER AND
+     NOT JOGGLE_TEST_ONNX_BACKEND STREQUAL "")
+    set(onnx_execute_case "${JOGGLE_TEST_ONNX_BACKEND}/test_matmul_2d")
+    set(onnx_execute_files
+      model.onnx
+      test_data_set_0/input_0.pb
+      test_data_set_0/input_1.pb
+      test_data_set_0/output_0.pb
+    )
+    set(onnx_execute_hashes
+      946f3a49ccfdaf62586bbae8438065fe41a7e6a9b8006b14af3219999b49bb76
+      5c9fa13b29d31b4105ea162c0caecc951804499b016bdf268b8f470b404c1f79
+      7d950d6d6af29dfa3acab8c9fcdea76d553c11124013b106eb6622bc0ebf3dd4
+      c7928ba3e8fe85076974c955200532c2a24697119eb54b338fbc7c2639228e48
+    )
+    foreach(index RANGE 3)
+      list(GET onnx_execute_files ${index} file)
+      list(GET onnx_execute_hashes ${index} expected)
+      if(NOT EXISTS "${onnx_execute_case}/${file}")
+        message(FATAL_ERROR "missing pinned ONNX backend file: ${file}")
+      endif()
+      file(SHA256 "${onnx_execute_case}/${file}" actual)
+      if(NOT actual STREQUAL expected)
+        message(FATAL_ERROR "ONNX backend hash mismatch: ${file}")
+      endif()
+    endforeach()
+    add_executable(joggle-onnx-execute-test test/onnx_execute.cpp)
+    target_link_libraries(
+      joggle-onnx-execute-test PRIVATE Joggle::joggle joggle-onnx-proto
+    )
+    add_dependencies(joggle-onnx-execute-test joggle-onnx joggle-vm)
+    add_test(
+      NAME onnx-execution
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DTEST=$<TARGET_FILE:joggle-onnx-execute-test>
+        -DCC=${JOGGLE_TEST_C_COMPILER}
+        -DCASE=${onnx_execute_case}
+        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/onnx-execution
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/onnx_execute.cmake
+    )
+    set_tests_properties(onnx-execution PROPERTIES LABELS "onnx;execution")
+    if(APPLE AND CMAKE_CXX_FLAGS MATCHES "sanitize=address")
+      # Homebrew protobuf-lite is not ASan-instrumented, while Apple's libc++
+      # annotates std::string capacity in instrumented callers. Disable only
+      # those container annotations for this mixed-ABI fixture parser; normal
+      # address and undefined-behavior checks remain active.
+      set_property(
+        TEST onnx-execution PROPERTY ENVIRONMENT
+        "ASAN_OPTIONS=detect_container_overflow=0"
+      )
+    endif()
   endif()
   if(JOGGLE_BUILD_TFLITE AND NOT JOGGLE_TEST_TFLITE_MODEL STREQUAL "")
     file(SHA256 "${JOGGLE_TEST_TFLITE_MODEL}" tflite_model_sha256)

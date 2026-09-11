@@ -2100,6 +2100,16 @@ fn convert_tensor(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.literal", [inputs[2]])
 }
 
+[phase: "cleanup", on: "onnx.model"]
+fn convert_model(m: Mod, op: Op) -> bool {
+  for candidate in ir.ops(m) {
+    if ir.live(candidate) && candidate != op && ir.has(candidate, "onnx") {
+      return false
+    }
+  }
+  return ir.erase(m, op)
+}
+
 fn carry(m: Mod, source: Val, target: Val) -> bool {
   var changed = false
   let value_name = ir.name(source)
@@ -3015,7 +3025,7 @@ fn convert(m: Mod, rules: list<Fn>) -> bool {
   changed = ir.use(m, "nn") || changed
   changed = ir.use(m, "quant") || changed
   changed = ir.use(m, "tensor") || changed
-  for phase in ["data", "compute", "shape"] {
+  for phase in ["data", "compute", "shape", "cleanup"] {
     let selected = ir.where(rules, "phase", phase)
     for op in ir.ops(m) {
       for rule in ir.where(selected, "on", ir.callee(op)) {

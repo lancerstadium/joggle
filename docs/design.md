@@ -1115,18 +1115,21 @@ hex payload produced by `tensor.literal`, validates its native byte width, and
 does not introduce an internal core tensor representation. Loop-carried scalar
 and tensor values retain the ordinary IR semantics. Arithmetic right shift is
 defined from unsigned bit operations rather than a host implementation-defined
-signed shift. Execution
-reports deterministic instruction steps, not hardware cycles. Malformed
+signed shift. Execution reports deterministic instruction steps, not hardware
+cycles. Malformed
 images, mismatched arguments, invalid shifts, integer division by zero,
 out-of-range casts, and invalid tensor accesses are negative gates. Repeated
 image generation and execution must be identical.
 
 The same `i64` tensor addition and both `i64` and `f32` nested-loop matrix
-multiplications are now executed by the C and VM targets. The slice remains
+multiplications are now executed by the C and VM targets. The pinned ONNX
+v1.19.0 backend `test_matmul_2d` case additionally exercises the complete
+binary-import, semantic-conversion, dead-data cleanup, body-expansion, VM, and
+compiled-C path against its official TensorProto output. The slice remains
 intentionally incomplete: the full second-target gate still requires a
-module-defined format path and a conventional imported network. Those
-capabilities must extend modules and must not add VM, tensor, or operator
-switches to core.
+module-defined format path and an application-sized imported network. Those
+capabilities must extend modules and must not add VM, tensor, or operator cases
+to core.
 The high-level `tensor.operator +` path is separate from those handwritten
 loops: embedding code calls parameterized `opt.expand` first, then emits and
 executes the exposed shared body. A mismatched argument type is a rollback gate.

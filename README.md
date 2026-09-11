@@ -229,8 +229,10 @@ parameterized run boundary also expands the shared high-level tensor `+` body
 and executes it in the VM without a VM-specific preparation function. The step
 count is not presented as hardware cycles. Frontend bridges normalize ONNX and
 TFLite weight payloads to the shared `tensor.literal` primitive; C and VM both
-execute that primitive without knowing either frontend. A complete imported
-network execution comparison remains an open M10 gate.
+execute that primitive without knowing either frontend. The pinned official
+ONNX `test_matmul_2d` case now imports, converts, expands, and matches its
+official output through both VM and compiled C. A complete application-network
+execution comparison remains an open M10 gate.
 
 ## Guarantees and boundaries
 

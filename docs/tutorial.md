@@ -345,13 +345,21 @@ Download the pinned official model matrix and enable the optional codec:
 
 ```sh
 cmake -DOUT=/tmp/joggle-onnx-zoo -P test/zoo.cmake
+cmake -DOUT=/tmp/joggle-onnx-backend -P test/backend.cmake
 cmake -S . -B build -DJOGGLE_BUILD_ONNX=ON \
-  -DJOGGLE_TEST_ONNX_ZOO=/tmp/joggle-onnx-zoo
+  -DJOGGLE_TEST_ONNX_ZOO=/tmp/joggle-onnx-zoo \
+  -DJOGGLE_TEST_ONNX_BACKEND=/tmp/joggle-onnx-backend
 cmake --build build
 ctest --test-dir build --output-on-failure
 ./build/joggle read onnx.read /tmp/joggle-onnx-zoo/mobilenetv2-7.onnx \
   -M build/modules > /tmp/mobilenet.jog
 ```
+
+The separate backend download is small. It pins ONNX v1.19.0
+`test_matmul_2d`, including both inputs and the official output. Its execution
+gate converts and expands the imported model, runs the same ordinary IR through
+VM and compiled C, and checks both results against that output. Normal builds
+remain offline; neither download runs during configure.
 
 The MobileNetV2 gate checks 267 tensor constants, 155 nodes,
 14,156,560 initializer bytes, verifier result, and canonical round trip. It

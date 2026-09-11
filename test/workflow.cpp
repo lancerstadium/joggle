@@ -2188,6 +2188,7 @@ int main(int argc, char** argv) {
   constexpr std::string_view clean_source =
       "module clean\n"
       "fn work(x: i32) -> i32 {\n"
+      "  let unused: int = 7\n"
       "  let first: i32 = pure(x)\n"
       "  let same: i32 = pure(x)\n"
       "  let dead: i32 = pure(first)\n"
@@ -2275,9 +2276,14 @@ int main(int argc, char** argv) {
   CHECK(clean_summary->at("steps").list() &&
         !clean_summary->at("steps").list()->empty());
   std::size_t pure_calls = 0;
+  std::size_t unused_constants = 0;
   for (joggle::Op op : cleaned.ops())
     pure_calls += op.callee() == "pure" ? 1 : 0;
+  for (joggle::Op op : cleaned.ops())
+    if (op.kind() == joggle::Op::Kind::constant && !op.outs().empty())
+      unused_constants += op.outs().front().name() == "unused" ? 1 : 0;
   CHECK(pure_calls == 1);
+  CHECK(unused_constants == 0);
   CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query, &cached));
   CHECK(!cached && count.integer() == 1);
   CHECK(joggle::query(env, "opt.count", cleaned, count, pure_query, &cached));

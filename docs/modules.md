@@ -220,6 +220,11 @@ floating-point nested-loop matrix-multiplication functions. A parameterized
 `opt.expand` call additionally exposes the shared tensor `+` body for VM
 execution, without adding `vm.prepare`. A later VM extension must consume
 explicit module-defined format policy rather than introduce NN operator cases.
+The pinned ONNX v1.19.0 `test_matmul_2d` backend case exercises the same
+boundary without handwritten Joggle input: its model and TensorProto data are
+hash-checked, the bridge removes all ONNX computation, ordinary `opt.expand`
+exposes `tensor.matmul`, and VM plus compiled C are checked against the official
+output tolerance. The VM result and instruction count are also repeatable.
 
 The `base.size` and `base.byte` functions provide bounds-checked inspection of
 an `Attr` byte payload. This deliberately small primitive is sufficient for a
@@ -805,10 +810,12 @@ functions. Each mapping is an ordinary function selected by its module-owned
 `on` attribute through the same `ir.where`/`ir.invoke` boundary as ONNX; there
 is no frontend-wide operator dispatch chain. Its two-argument `convert`
 overload lets a caller supply a composed relation set while retaining this
-module's dependency preparation and quantization guard. On
-the pinned MobileNetV2 this removes all 66 source compute calls while retaining
-the source model marker and payloads. A second invocation is unchanged, and
-all 66 converted bodies can be independently exposed and round-tripped.
+module's dependency preparation and quantization guard. On the pinned
+MobileNetV2 this removes all 66 source compute calls and retargets all 107
+buffer payloads to `tensor.literal`. Once no operation retains TFLite semantic
+metadata, the final cleanup relation erases the source model marker; partially
+converted models retain it. A second invocation is unchanged, and all 66
+converted bodies can be independently exposed and round-tripped.
 Each successful mapping uses the same atomic `ir.retarget` operation as the
 ONNX bridge, so adding layout, padding, activation, or axis operands cannot
 expose an intermediate call with the source callee and target arguments.

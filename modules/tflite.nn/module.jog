@@ -110,6 +110,16 @@ fn convert_tensor(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.literal")
 }
 
+[phase: "cleanup", on: "tflite.model"]
+fn convert_model(m: Mod, op: Op) -> bool {
+  for candidate in ir.ops(m) {
+    if ir.live(candidate) && candidate != op && ir.has(candidate, "tflite") {
+      return false
+    }
+  }
+  return ir.erase(m, op)
+}
+
 fn convert_conv(m: Mod, op: Op, depthwise: bool) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -328,7 +338,7 @@ fn convert_softmax(m: Mod, op: Op) -> bool {
 fn convert(m: Mod, rules: list<Fn>) -> bool {
   var changed = ir.use(m, "nn")
   changed = ir.use(m, "tensor") || changed
-  for phase in ["data", "compute"] {
+  for phase in ["data", "compute", "cleanup"] {
     let selected = ir.where(rules, "phase", phase)
     for op in ir.ops(m) {
       if ir.live(op) && (phase == "data" || !quantized(op)) {

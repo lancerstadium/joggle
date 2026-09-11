@@ -341,9 +341,11 @@ retarget to one result-typed `tensor.literal(bytes)` data primitive. C and VM
 both execute its size-checked raw payload, so target modules no longer need
 frontend-specific weight operations. The conversion is exercised by thirteen
 official ONNX Zoo model gates and the official TFLite MobileNet gate. Core
-gained no frontend, target, or tensor-literal case. This is not yet
-the second target exit gate: module-defined formats and an official-model
-execution comparison remain open.
+gained no frontend, target, or tensor-literal case. The hash-pinned ONNX v1.19.0
+backend MatMul case now completes binary import, conversion, dead-data cleanup,
+ordinary body expansion, and output comparison through both VM and compiled C.
+This is not yet the second target exit gate: module-defined formats and an
+application-sized official-model execution comparison remain open.
 
 Exit gate: official models from two frontends pass through one shared semantic
 library and run through at least two targets without core operator switches.
