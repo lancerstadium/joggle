@@ -1303,6 +1303,23 @@ int main(int argc, char** argv) {
                       value_query, &statement_cached));
   CHECK(statement_cached);
   CHECK(statement_calls.verify(env));
+
+  joggle::Mod built_statement;
+  CHECK(joggle::parse(env,
+                      "module built.statement\n"
+                      "fn observe(x: i32) -> ();\n"
+                      "fn run(x: i32) -> () { return }\n",
+                      built_statement, "built-statement.jog"));
+  CHECK(built_statement.verify(env));
+  const std::uint64_t built_statement_revision = built_statement.revision();
+  CHECK(joggle::run(env, "script.insert_observe", built_statement));
+  CHECK(built_statement.revision() == built_statement_revision + 1);
+  CHECK(built_statement.verify(env));
+  const std::vector<joggle::Op> built_statement_ops =
+      built_statement.find_fn("run").body().ops();
+  CHECK(built_statement_ops.size() == 2);
+  CHECK(built_statement_ops.front().callee() == "observe");
+  CHECK(built_statement_ops.front().outs().empty());
   CHECK(statement_calls.revision() == statement_revision + 1);
   CHECK(joggle::query(env, "opt.count", statement_calls, statement_count,
                       value_query, &statement_cached));

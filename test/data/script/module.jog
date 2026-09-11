@@ -278,6 +278,22 @@ fn make_pair(m: Mod) -> bool {
   return false
 }
 
+fn insert_observe(m: Mod) -> bool {
+  for f in ir.fns(m) {
+    if ir.name(f) == "run" && len(ir.params(f)) == 1 {
+      for op in ir.ops(f) {
+        if ir.kind(op) == "return" {
+          let call = ir.call(
+            m, op, "observe", [ir.params(f)[0]], []
+          )
+          return ir.live(call) && len(ir.outs(call)) == 0
+        }
+      }
+    }
+  }
+  return false
+}
+
 fn mark_add(m: Mod) -> bool {
   for op in ir.ops(m) {
     if ir.callee(op) == "operator +" {
