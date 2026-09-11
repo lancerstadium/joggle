@@ -218,6 +218,14 @@ inspection. A module can use arbitrary function metadata to select work, query
 users, insert any call, replace uses, and erase the old operation. Dynamic list
 literals allow the same source language to collect IR handles.
 
+The same boundary now supports module-owned semantic relations. `ir.where`
+filters ordinary `Fn` values using open metadata, and `ir.invoke` executes only
+the uniform `fn(Mod, Op) -> bool` shape inside the current transaction. The
+evaluator knows neither the attribute key nor the operator vocabulary. The
+`onnx.nn` module uses `[on: ...]` to replace its former centralized dispatch
+chain, while another module may choose a different key and policy without a
+registry, callback class, or parser extension.
+
 The operator-neutral region primitive computes live-ins and a single live-out
 for an ordered call region, enforces dominance and motion safety, preserves the
 visible result name, and commits the fusion atomically. The generic textual

@@ -22,6 +22,37 @@ fn typed_caps() -> list<Fn> {
   return ir.fns("script")
 }
 
+[on: "opaque"]
+fn mark_rule(m: Mod, op: Op) -> bool {
+  return ir.set(m, op, "matched", true)
+}
+
+fn apply_rules(m: Mod) -> bool {
+  var changed = false
+  let rules = ir.fns("script")
+  for op in ir.ops(m) {
+    for rule in ir.where(rules, "on", ir.callee(op)) {
+      changed = ir.invoke(m, op, rule) || changed
+    }
+  }
+  return changed
+}
+
+[case: "bad"]
+fn bad_rule(m: Mod) -> bool {
+  return false
+}
+
+fn reject_bad_rule(m: Mod) -> bool {
+  let rules = ir.where(ir.fns("script"), "case", "bad")
+  for op in ir.ops(m) {
+    for rule in rules {
+      return ir.invoke(m, op, rule)
+    }
+  }
+  return false
+}
+
 fn typed_frontier(m: Mod) -> list<str> {
   return opt.frontier(m, typed_caps())
 }

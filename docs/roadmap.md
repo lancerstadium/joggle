@@ -263,6 +263,14 @@ with their source symbol, selected implementation signature, and revision
 delta, keeping observation on the real execution path. The same report can be
 written by the CLI through `--report` using the public canonical `Attr` printer.
 
+Open function metadata now also supports semantic relation discovery.
+`ir.where` selects `Fn` values without reserving a relation vocabulary, and
+`ir.invoke` transactionally executes the single `fn(Mod, Op) -> bool` boundary.
+ONNX inference relations self-identify in their owning module, removing the
+central operator-name dispatch chain while leaving import and conversion
+explicit. A malformed relation signature is rejected without changing model
+text or revision.
+
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.
 - Define reusable tensor and scalar computation libraries with function bodies

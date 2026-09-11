@@ -62,6 +62,7 @@ fn refine_graph_ref(m: Mod, op: Op, ref: Attr) -> bool {
   return changed
 }
 
+[on: "*"]
 fn refine_graphs(m: Mod, op: Op) -> bool {
   var changed = false
   let meta = attrs(op)
@@ -129,6 +130,12 @@ fn unary_rules() -> list<list<str>> {
   ]
 }
 
+[on: [
+  "onnx.Relu", "onnx.Dropout", "onnx.Sqrt", "onnx.Reciprocal",
+  "onnx.Tanh", "onnx.Exp", "onnx.Sigmoid", "onnx.Ceil", "onnx.Round",
+  "onnx.BatchNormalization", "onnx.LeakyRelu", "onnx.Softmax",
+  "onnx.Identity", "onnx.Clip", "onnx.LRN"
+]]
 fn infer_unary(m: Mod, op: Op) -> bool {
   let callee = ir.callee(op)
   if callee == "onnx.Dropout" {
@@ -210,6 +217,7 @@ fn spatial_pad(op: Op, kernel: list<int>) -> list<int> {
   return [top, left, ph - top, pw - left]
 }
 
+[on: "onnx.QuantizeLinear"]
 fn quant_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -232,6 +240,7 @@ fn quant_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], shaped(elem, tensor.dims(input)))
 }
 
+[on: "onnx.DequantizeLinear"]
 fn dequant_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -280,6 +289,7 @@ fn broadcast_type(m: Mod, op: Op, result_elem: Ty) -> bool {
   return set_type(m, outputs[0], shaped(elem, shape))
 }
 
+[on: ["onnx.Add", "onnx.Sub", "onnx.Mul", "onnx.Div", "onnx.Pow"]]
 fn binary_type(m: Mod, op: Op) -> bool {
   if len(ir.args(op)) != 2 {
     return false
@@ -287,11 +297,17 @@ fn binary_type(m: Mod, op: Op) -> bool {
   return broadcast_type(m, op, ty("_"))
 }
 
+[on: ["onnx.Equal", "onnx.Greater", "onnx.Less"]]
 fn compare_type(m: Mod, op: Op) -> bool {
   if len(ir.args(op)) != 2 {
     return false
   }
   return broadcast_type(m, op, ty("bool"))
+}
+
+[on: ["onnx.Max", "onnx.Min"]]
+fn extrema_type(m: Mod, op: Op) -> bool {
+  return broadcast_type(m, op, ty("_"))
 }
 
 fn signed(data: Attr, offset: int, width: int) -> int {
@@ -668,6 +684,7 @@ fn constant_result(op: Op) -> Ty {
   return shaped(elem, shape)
 }
 
+[on: "onnx.Constant"]
 fn constant_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
@@ -676,6 +693,7 @@ fn constant_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], constant_result(op))
 }
 
+[on: "onnx.Cast"]
 fn cast_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -690,6 +708,7 @@ fn cast_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], shaped(elem, tensor.dims(input)))
 }
 
+[on: "onnx.Shape"]
 fn shape_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -725,6 +744,7 @@ fn gather_result(op: Op) -> Ty {
   )
 }
 
+[on: "onnx.Gather"]
 fn gather_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
@@ -852,6 +872,17 @@ fn unary_shape_type(m: Mod, op: Op, squeeze: bool) -> bool {
   return set_type(m, outputs[0], result)
 }
 
+[on: "onnx.Unsqueeze"]
+fn unsqueeze_type(m: Mod, op: Op) -> bool {
+  return unary_shape_type(m, op, false)
+}
+
+[on: "onnx.Squeeze"]
+fn squeeze_type(m: Mod, op: Op) -> bool {
+  return unary_shape_type(m, op, true)
+}
+
+[on: "onnx.Slice"]
 fn slice_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -937,6 +968,7 @@ fn resize_result(op: Op) -> Ty {
   return shaped(tensor.elem(input), shape)
 }
 
+[on: "onnx.Resize"]
 fn resize_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
@@ -945,6 +977,7 @@ fn resize_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], resize_result(op))
 }
 
+[on: "onnx.NonZero"]
 fn nonzero_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -960,6 +993,7 @@ fn nonzero_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], shaped(ty("i64"), shape))
 }
 
+[on: "onnx.Range"]
 fn range_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -981,6 +1015,7 @@ fn range_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], shaped(tensor.elem(first), shape))
 }
 
+[on: "onnx.NonMaxSuppression"]
 fn nms_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -991,6 +1026,7 @@ fn nms_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], shaped(ty("i64"), shape))
 }
 
+[on: "onnx.Expand"]
 fn expand_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1023,6 +1059,7 @@ fn expand_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], shaped(tensor.elem(input), shape))
 }
 
+[on: "onnx.Tile"]
 fn tile_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1071,6 +1108,7 @@ fn tile_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], shaped(tensor.elem(input), shape))
 }
 
+[on: "onnx.TopK"]
 fn topk_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1146,6 +1184,7 @@ fn concat_result(op: Op) -> Ty {
   return shaped(tensor.elem(first), shape)
 }
 
+[on: "onnx.Concat"]
 fn concat_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
@@ -1154,6 +1193,7 @@ fn concat_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], concat_result(op))
 }
 
+[on: "onnx.Split"]
 fn split_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1227,6 +1267,7 @@ fn split_type(m: Mod, op: Op) -> bool {
   return changed
 }
 
+[on: "onnx.OneHot"]
 fn one_hot_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1259,6 +1300,7 @@ fn one_hot_type(m: Mod, op: Op) -> bool {
   )
 }
 
+[on: "onnx.DynamicQuantizeLinear"]
 fn dynamic_quant_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1282,6 +1324,7 @@ fn dynamic_quant_type(m: Mod, op: Op) -> bool {
   return changed
 }
 
+[on: "onnx.ConstantOfShape"]
 fn constant_shape_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1395,6 +1438,7 @@ fn reshape_result(op: Op) -> Ty {
   return shaped(tensor.elem(input), shape)
 }
 
+[on: "onnx.Reshape"]
 fn reshape_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
@@ -1414,6 +1458,7 @@ fn flattened(input: Ty, axis: int) -> Ty {
   return shaped(tensor.elem(input), shape)
 }
 
+[on: "onnx.Flatten"]
 fn infer_flatten(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1520,6 +1565,7 @@ fn matmul_result(op: Op) -> Ty {
   return shaped(tensor.elem(left), shape)
 }
 
+[on: "onnx.MatMul"]
 fn matmul_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
@@ -1559,6 +1605,7 @@ fn gemm_result(op: Op) -> Ty {
   return shaped(tensor.elem(left), shape)
 }
 
+[on: "onnx.Gemm"]
 fn gemm_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
@@ -1567,6 +1614,7 @@ fn gemm_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], gemm_result(op))
 }
 
+[on: "onnx.MatMulInteger"]
 fn integer_matmul_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1618,6 +1666,7 @@ fn fused_matmul_result(op: Op) -> Ty {
   return shaped(tensor.elem(left), shape)
 }
 
+[on: "com_microsoft.FusedMatMul"]
 fn fused_matmul_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
@@ -1641,6 +1690,7 @@ fn transpose_axes(op: Op, rank: int) -> list<int> {
   return axes
 }
 
+[on: "onnx.Transpose"]
 fn transpose_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1705,6 +1755,7 @@ fn reduce_result(op: Op) -> Ty {
   )
 }
 
+[on: "onnx.ReduceMean"]
 fn reduce_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
@@ -1713,6 +1764,7 @@ fn reduce_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], reduce_result(op))
 }
 
+[on: "onnx.Loop"]
 fn loop_type(m: Mod, op: Op) -> bool {
   let body = onnx.graph(m, op, "body")
   if !ir.live(body) {
@@ -1893,6 +1945,7 @@ fn conv_result(op: Op) -> Ty {
   return shaped(tensor.elem(x), shape)
 }
 
+[on: "onnx.Conv"]
 fn conv_type(m: Mod, op: Op) -> bool {
   let outputs = ir.outs(op)
   if len(outputs) != 1 {
@@ -1901,6 +1954,7 @@ fn conv_type(m: Mod, op: Op) -> bool {
   return set_type(m, outputs[0], conv_result(op))
 }
 
+[on: "onnx.GlobalAveragePool"]
 fn global_pool_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1921,6 +1975,7 @@ fn global_pool_type(m: Mod, op: Op) -> bool {
   )
 }
 
+[on: ["onnx.AveragePool", "onnx.MaxPool"]]
 fn pool_type(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -1968,121 +2023,12 @@ fn pool_type(m: Mod, op: Op) -> bool {
 
 fn infer_once(m: Mod) -> bool {
   var changed = false
+  let rules = ir.fns("onnx.nn")
+  let common = ir.where(rules, "on", "*")
   for op in ir.ops(m) {
-    changed = refine_graphs(m, op) || changed
-    if ir.callee(op) == "onnx.QuantizeLinear" {
-      changed = quant_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.DequantizeLinear" {
-      changed = dequant_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.DynamicQuantizeLinear" {
-      changed = dynamic_quant_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Constant" {
-      changed = constant_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.ConstantOfShape" {
-      changed = constant_shape_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Conv" {
-      changed = conv_type(m, op) || changed
-    }
-    changed = infer_unary(m, op) || changed
-    if ir.callee(op) == "onnx.Add" || ir.callee(op) == "onnx.Sub" ||
-       ir.callee(op) == "onnx.Mul" || ir.callee(op) == "onnx.Div" ||
-       ir.callee(op) == "onnx.Pow" {
-      changed = binary_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Max" || ir.callee(op) == "onnx.Min" {
-      changed = broadcast_type(m, op, ty("_")) || changed
-    }
-    if ir.callee(op) == "onnx.Equal" ||
-       ir.callee(op) == "onnx.Greater" ||
-       ir.callee(op) == "onnx.Less" {
-      changed = compare_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Flatten" {
-      changed = infer_flatten(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Reshape" {
-      changed = reshape_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Cast" {
-      changed = cast_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Shape" {
-      changed = shape_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Gather" {
-      changed = gather_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Unsqueeze" {
-      changed = unary_shape_type(m, op, false) || changed
-    }
-    if ir.callee(op) == "onnx.Squeeze" {
-      changed = unary_shape_type(m, op, true) || changed
-    }
-    if ir.callee(op) == "onnx.Slice" {
-      changed = slice_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Resize" {
-      changed = resize_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.NonZero" {
-      changed = nonzero_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Range" {
-      changed = range_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.NonMaxSuppression" {
-      changed = nms_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Expand" {
-      changed = expand_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Tile" {
-      changed = tile_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.TopK" {
-      changed = topk_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Concat" {
-      changed = concat_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Split" {
-      changed = split_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.OneHot" {
-      changed = one_hot_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.MatMul" {
-      changed = matmul_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Gemm" {
-      changed = gemm_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.MatMulInteger" {
-      changed = integer_matmul_type(m, op) || changed
-    }
-    if ir.callee(op) == "com_microsoft.FusedMatMul" {
-      changed = fused_matmul_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Transpose" {
-      changed = transpose_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.Loop" {
-      changed = loop_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.ReduceMean" {
-      changed = reduce_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.GlobalAveragePool" {
-      changed = global_pool_type(m, op) || changed
-    }
-    if ir.callee(op) == "onnx.AveragePool" ||
-       ir.callee(op) == "onnx.MaxPool" {
-      changed = pool_type(m, op) || changed
+    let selected = common + ir.where(rules, "on", ir.callee(op))
+    for rule in selected {
+      changed = ir.invoke(m, op, rule) || changed
     }
   }
   return changed

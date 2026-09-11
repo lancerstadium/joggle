@@ -1175,6 +1175,51 @@ private:
         }
         return Items{Item(selected)};
       }
+    } else if (name == "where" && args.size() == 3) {
+      const Items* items = list(args[0]);
+      const auto key = string(args[1]);
+      auto expected = attribute(args[2]);
+      if (items && key && expected) {
+        Items out;
+        for (const Item& item : *items) {
+          const auto* fn = as<Fn>(item);
+          if (!fn) {
+            fail("ir.where candidates must be functions", loc);
+            return std::nullopt;
+          }
+          const Attr* actual = fn->meta(*key);
+          bool selected = actual && *actual == *expected;
+          if (actual && actual->list()) {
+            for (const Attr& value : *actual->list())
+              selected = value == *expected || selected;
+          }
+          if (selected)
+            out.emplace_back(*fn);
+        }
+        return Items{Item(std::move(out))};
+      }
+    } else if (name == "invoke" && args.size() == 3) {
+      const auto* mod = as<Mod*>(args[0]);
+      const auto* op = as<Op>(args[1]);
+      const auto* fn = as<Fn>(args[2]);
+      if (mod && *mod && op && *op && fn && *fn) {
+        const std::vector<Val> params = fn->params();
+        const std::vector<Ty> returns = fn->returns();
+        if (!fn->generics().empty() || params.size() != 2 ||
+            params[0].type() != Ty("Mod") || params[1].type() != Ty("Op") ||
+            returns.size() != 1 || returns.front() != Ty("bool")) {
+          fail("ir.invoke requires fn(Mod, Op) -> bool", loc);
+          return std::nullopt;
+        }
+        auto result = invoke(*fn, {Item(*mod), Item(*op)});
+        if (!result)
+          return std::nullopt;
+        if (result->size() != 1 || !boolean(result->front())) {
+          fail("ir.invoke function returned an invalid result", loc);
+          return std::nullopt;
+        }
+        return result;
+      }
     } else if (name == "symbol" && args.size() == 1) {
       if (const auto* fn = as<Fn>(args[0]); fn && *fn)
         return Items{Item(Attr(std::string(fn->module()) + "." +

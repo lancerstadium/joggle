@@ -118,6 +118,31 @@ int main(int argc, char** argv) {
   }
   CHECK(network_cpp.verify(env));
   CHECK(env.load("script"));
+  constexpr std::string_view relation_source =
+      "module relation\n"
+      "fn main(x: i32) -> i32 {\n"
+      "  let y: i32 = opaque(x)\n"
+      "  return y\n"
+      "}\n";
+  joggle::Mod relation;
+  CHECK(joggle::parse(env, relation_source, relation, "relation.jog"));
+  CHECK(relation.verify(env));
+  CHECK(joggle::run(env, "script.apply_rules", relation));
+  CHECK(relation.verify(env));
+  bool matched = false;
+  for (joggle::Op op : relation.ops()) {
+    if (op.callee() == "opaque") {
+      const joggle::Attr* value = op.meta("matched");
+      matched = value && value->boolean().value_or(false);
+    }
+  }
+  CHECK(matched);
+  const std::string relation_before = joggle::print(relation);
+  const std::uint64_t relation_revision = relation.revision();
+  CHECK(!joggle::run(env, "script.reject_bad_rule", relation));
+  CHECK(joggle::print(relation) == relation_before);
+  CHECK(relation.revision() == relation_revision);
+  env.clear_diags();
   CHECK(joggle::run(env, "script.tensor_type_probe", network_cpp));
   CHECK(joggle::run(env, "script.byte_probe", network_cpp));
   CHECK(joggle::run(env, "script.def_probe", network_cpp));

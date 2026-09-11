@@ -157,6 +157,9 @@ compute node to shared semantics; `infer` remains available independently for
 typed source-graph experiments. Inference repeats deterministic graph sweeps
 until the module revision stops changing and rejects non-convergence within a
 graph-derived bound. Neither function runs during import or module loading.
+Its individual inference relations are ordinary `fn(Mod, Op) -> bool`
+functions selected through open metadata, so adding an operator relation does
+not extend a core registry or a centralized dispatch chain.
 On the official MobileNetV2 this covers every compute node. The model
 marker and tensor payloads remain ONNX transport calls; unknown operators in
 other models remain open rather than acquiring guessed semantics.

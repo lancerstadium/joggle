@@ -335,6 +335,16 @@ owning module only if not already visible, and rolls back both changes on
 failure. Thus an unqualified source call and a module-supplied implementation
 still use ordinary symbol resolution rather than a string alias table.
 
+Open function attributes can also define module-owned relations without a
+second rule language. `ir.where(fns, key, value)` filters an explicit function
+list by exact metadata; a list-valued attribute matches when it contains the
+requested value. `ir.invoke(m, op, fn)` executes a selected ordinary
+`fn(Mod, Op) -> bool` in the current transaction. It rejects generic or
+incompatible signatures before execution, and an error in the invoked function
+rolls the enclosing compile-time entry back normally. Attribute names and
+values remain module policy: core does not reserve `on`, operator names, or
+relation kinds.
+
 `ir.uses(m)` returns the module's declared dependencies and
 `ir.use(m, name)` adds one idempotently. Dependency edits advance the same
 module revision and participate in compile-time rollback. This lets an

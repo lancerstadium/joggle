@@ -143,6 +143,7 @@ The built-in `ir` module is the complete reflection boundary:
 | `args`, `outs`, `def`, `users` | Read operation dataflow in both directions. |
 | `live`, `blk`, `kind`, `callee`, `name`, `type` | Query handle state, readable identity, structure, and structural `Ty`. |
 | `resolve`, `symbol`, `accepts`, `match` | Resolve calls, identify functions, and select against explicit signatures. |
+| `where`, `invoke` | Select functions by open metadata and execute an ordinary `fn(Mod, Op) -> bool` transactionally. |
 | `is_const`, `constant` | Query constant IR values. |
 | `has`, `meta` | Query open function, value, or operation attributes. |
 | `call`, `constant`, `loop`, `branch` | Construct leaves and structured control flow. |
@@ -335,6 +336,13 @@ TopK, Resize-by-`sizes`, symbolic equal Split, and Squeeze contribute shapes
 when their constant operands or selected axes prove them. Resize-by-runtime
 `scales` and arithmetic over unrelated symbolic extents intentionally remain
 open.
+Each ONNX inference relation is an ordinary function carrying an open `on`
+attribute owned by `onnx.nn`. The driver discovers those functions with
+`ir.fns`, selects exact or shared relations with `ir.where`, and executes them
+with `ir.invoke`. Supporting another source operator therefore adds or extends
+a module function; it does not edit a central operator dispatch chain or the
+core evaluator. This registration affects inference only: import remains a
+codec operation and conversion remains an explicit module function.
 Convolution and pooling preserve symbolic batch or channel terms while
 requiring only the spatial extents used by their arithmetic to be integer
 literals. Conv accepts its schema's optional one-dimensional bias and maps it
