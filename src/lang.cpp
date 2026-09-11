@@ -2204,7 +2204,7 @@ void infer_call(detail::Store& store, const Mod& mod, const Env& env,
   }
 }
 
-void normalize_void_statements(detail::Store& store, const Mod& mod,
+bool normalize_void_statements(detail::Store& store, const Mod& mod,
                                const Env& env) {
   bool changed = false;
   for (auto& slot : store.ops) {
@@ -2239,6 +2239,7 @@ void normalize_void_statements(detail::Store& store, const Mod& mod,
   }
   if (changed)
     detail::rebuild_uses(store);
+  return changed;
 }
 
 void infer_regions(detail::Store& store, const detail::OpData& op) {
@@ -2647,7 +2648,11 @@ bool Mod::verify(const Env& env) {
     }
   }
   if (store.diags.empty()) {
-    normalize_void_statements(store, *this, env);
+    bool changed = normalize_void_statements(store, *this, env);
+    for (std::size_t index = 0; index < original_types.size(); ++index)
+      changed = store.vals[index].data.type != original_types[index] || changed;
+    if (changed)
+      detail::touch(store);
     return true;
   }
 

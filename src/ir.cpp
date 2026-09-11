@@ -270,12 +270,6 @@ split_terms(std::string_view text) {
   return terms;
 }
 
-void touch(detail::Store& store) {
-  if (store.revision != std::numeric_limits<std::uint64_t>::max())
-    ++store.revision;
-  store.queries.clear();
-}
-
 using Bindings = std::unordered_map<std::string, Ty>;
 
 Ty substitute(const Ty& type, const Bindings& bindings) {
@@ -305,6 +299,12 @@ std::optional<std::int64_t> integer(const Ty& value) {
 }
 
 }  // namespace
+
+void detail::touch(Store& store) {
+  if (store.revision != std::numeric_limits<std::uint64_t>::max())
+    ++store.revision;
+  store.queries.clear();
+}
 
 Attr::Attr(bool value) : data_(value) {}
 Attr::Attr(std::int64_t value) : data_(value) {}

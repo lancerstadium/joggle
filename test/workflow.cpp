@@ -1257,7 +1257,25 @@ int main(int argc, char** argv) {
       "}\n";
   CHECK(joggle::parse(env, statement_call_source, statement_calls,
                       "statement-calls.jog"));
+  const std::uint64_t statement_revision = statement_calls.revision();
+  const std::vector<joggle::Attr> value_query{joggle::Attr("value")};
+  joggle::Attr statement_count;
+  bool statement_cached = true;
+  CHECK(joggle::query(env, "opt.count", statement_calls, statement_count,
+                      value_query, &statement_cached));
+  CHECK(!statement_cached && statement_count.integer() == 1);
+  CHECK(joggle::query(env, "opt.count", statement_calls, statement_count,
+                      value_query, &statement_cached));
+  CHECK(statement_cached);
   CHECK(statement_calls.verify(env));
+  CHECK(statement_calls.revision() == statement_revision + 1);
+  CHECK(joggle::query(env, "opt.count", statement_calls, statement_count,
+                      value_query, &statement_cached));
+  CHECK(!statement_cached && statement_count.integer() == 1);
+  const std::uint64_t verified_statement_revision =
+      statement_calls.revision();
+  CHECK(statement_calls.verify(env));
+  CHECK(statement_calls.revision() == verified_statement_revision);
   const std::vector<joggle::Op> statement_ops =
       statement_calls.find_fn("run").body().ops();
   CHECK(statement_ops.size() == 3);

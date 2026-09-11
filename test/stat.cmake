@@ -15,7 +15,7 @@ endif()
 string(CONCAT expected
     "{\"blks\": 7, \"branches\": 1, \"callees\": 8, \"calls\": 14, "
     "\"consts\": 7, \"fns\": 3, \"loops\": 2, \"mem_elems\": 0, "
-    "\"mem_slots\": 0, \"ops\": 31, \"returns\": 3, \"revision\": 0, "
+    "\"mem_slots\": 0, \"ops\": 31, \"returns\": 3, \"revision\": 1, "
     "\"static_tensor_elems\": 0, \"static_tensor_vals\": 0, "
     "\"tensor_vals\": 8, \"unresolved\": 5, \"uses\": 1, "
     "\"vals\": 38, \"yields\": 4}\n")

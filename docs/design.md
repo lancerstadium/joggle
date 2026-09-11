@@ -75,7 +75,8 @@ rewritten IR behind.
 - Adding a module never generates or recompiles a core header.
 - Mutations go through `Mod` and preserve handle/use-def integrity.
 - Verification commits inferred types only when every module invariant holds;
-  failure restores the prior types and retains the diagnostics.
+  a changed commit advances the module revision exactly once, while failure
+  restores the prior types and retains the diagnostics.
 - Call insertion names its existing insertion point and rejects operands that
   do not dominate it; no mutable global builder state is required.
 - Unknown external symbols remain printable; operations that require their

@@ -1615,11 +1615,16 @@ bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
 bool run(Env& env, std::string_view function, Mod& mod, Attr& report) {
   env.clear_diags();
   report = Attr{};
+  detail::Store before = mod.impl_->store;
+  const std::uint64_t before_revision = mod.revision();
+  const auto rollback = [&]() {
+    mod.impl_->store = std::move(before);
+    return false;
+  };
   if (!mod.verify(env)) {
     env.error("cannot run a compile-time function on an invalid module");
     return false;
   }
-  detail::Store before = mod.impl_->store;
   const Ty applied{std::string(function)};
   const std::string symbol(applied.args().empty() ? function : applied.name());
   const std::vector<Ty> explicit_args =
@@ -1638,48 +1643,43 @@ bool run(Env& env, std::string_view function, Mod& mod, Attr& report) {
       env.error("compile-time entry has no fn(Mod) overload: " +
                 std::string(function));
     }
-    return false;
+    return rollback();
   }
   const std::vector<Val> params = fn.params();
   if (params.size() != 1 || params.front().type().text() != "Mod") {
     env.error("compile-time entry must accept exactly one Mod: " +
                   std::string(function),
               fn.loc());
-    return false;
+    return rollback();
   }
   const std::vector<Ty> returns = fn.returns();
   if (returns.size() != 1 || returns.front().text() != "bool") {
     env.error("compile-time entry must return exactly one bool: " +
                   std::string(function),
               fn.loc());
-    return false;
+    return rollback();
   }
-  const std::uint64_t before_revision = mod.revision();
   Attr::List trace;
   detail::Eval eval(env, [&](std::string message, Loc loc) {
     env.error(std::move(message), std::move(loc));
   }, &trace);
   const auto result = eval.run(fn, mod);
-  if (!result) {
-    mod.impl_->store = std::move(before);
-    return false;
-  }
+  if (!result)
+    return rollback();
   if (result->size() != 1) {
-    mod.impl_->store = std::move(before);
     env.error("compile-time entry returned an invalid result: " +
               std::string(function));
-    return false;
+    return rollback();
   }
   const Attr* returned = detail::as<Attr>(result->front());
   if (!returned || !returned->boolean()) {
-    mod.impl_->store = std::move(before);
     env.error("compile-time entry did not return bool: " +
               std::string(function));
-    return false;
+    return rollback();
   }
   if (!mod.verify(env)) {
     const std::vector<Diag> diagnostics = mod.diags();
-    mod.impl_->store = std::move(before);
+    rollback();
     for (const Diag& diagnostic : diagnostics)
       env.error(diagnostic.message, diagnostic.loc);
     env.error("compile-time function produced an invalid module: " +
@@ -1712,12 +1712,12 @@ bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
          Attr& report) {
   env.clear_diags();
   report = Attr{};
+  detail::Store before = mod.impl_->store;
+  const std::uint64_t before_revision = mod.revision();
   if (!mod.verify(env)) {
     env.error("cannot run compile-time functions on an invalid module");
     return false;
   }
-  detail::Store before = mod.impl_->store;
-  const std::uint64_t before_revision = mod.revision();
   Attr::List steps;
   steps.reserve(functions.size());
   bool reported = false;
