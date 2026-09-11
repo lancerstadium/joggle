@@ -547,6 +547,12 @@ two functions once through the C++ sequence overload and once through a
 textual wrapper, then requires byte-identical canonical IR; a deliberately bad
 second step exercises whole-sequence rollback.
 
+Nested execution traces retain functions that actually advance the module
+revision plus explicit expansion and cloning events. Read-only predicates and
+unchanged helpers are omitted, so a structural capability check over every
+operation does not turn a preparation report into an operation-sized call log.
+The top-level step still reports its returned Boolean and before/after revision.
+
 ## M8 fifth slice
 
 Capability-driven exposure remains a library mechanism. `opt.legalize` accepts

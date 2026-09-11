@@ -342,6 +342,20 @@ int main(int argc, char** argv) {
                     prepare_report));
   CHECK(prepare_report.dict() &&
         prepare_report.dict()->at("changed").boolean() == true);
+  const joggle::Attr::List* prepare_steps =
+      prepare_report.dict()->at("steps").list();
+  CHECK(prepare_steps && !prepare_steps->empty());
+  for (const joggle::Attr& step : *prepare_steps) {
+    const joggle::Attr::Dict* event = step.dict();
+    CHECK(event);
+    const auto kind = event->find("kind");
+    const auto changed = event->find("changed");
+    if (kind != event->end() && kind->second.string() == "fn")
+      CHECK(changed != event->end() && changed->second.boolean() == true);
+    const auto function = event->find("fn");
+    CHECK(function == event->end() ||
+          function->second.string() != "vm.accepts");
+  }
   CHECK(prepared_open_model.verify(env));
   CHECK(joggle::run(env, "vm.prepare", prepared_open_model,
                     prepare_report));

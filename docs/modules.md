@@ -671,6 +671,8 @@ The predicate may inspect types, shapes, metadata, or module-owned format
 functions. It does not register operators or force each retained computation
 to have a duplicate declaration. Declaration-list legalization remains useful
 when accepted signatures themselves are the desired capability description.
+Run reports record the resulting edits and explicit body-expansion events, not
+each read-only predicate invocation.
 
 A body-bearing declaration is also an alternative implementation. `opt.apply`
 groups declarations by the resolved source symbol, asks `ir.match` to choose

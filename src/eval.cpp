@@ -480,6 +480,8 @@ private:
     if (!trace_)
       return;
     const std::uint64_t after = mod.revision();
+    if (after == before)
+      return;
     Attr::Dict event;
     event["kind"] = Attr("fn");
     event["fn"] =
