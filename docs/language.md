@@ -244,6 +244,7 @@ be selected explicitly by the embedding API or CLI:
 ```sh
 joggle run opt.fold_add_zero model.jog -M modules
 joggle query opt.untyped model.jog -M modules
+joggle emit c.source model.jog -M modules > model.c
 ```
 
 Calls inside that function remain ordinary calls. Compile-time execution
@@ -413,6 +414,12 @@ The CLI `query` command invokes the same boundary for a function whose only
 argument is `Mod` and prints its canonical `Attr` result. Analyses needing
 explicit arguments continue to use the embedding overload; the command line
 does not invent an argument mini-language.
+
+The CLI `emit` command uses that same read-only boundary but requires a `str`
+or `bytes` result and writes its contents verbatim. An emitter is therefore an
+ordinary module function, not a target interface or a privileged pass kind.
+Mutation during emission is rejected by `query`, and redirecting standard
+output is sufficient to create text or binary artifacts.
 
 For a host-selected sequence, the embedding API also accepts
 `run(env, span_of_names, mod, report)`. It executes the same ordinary functions

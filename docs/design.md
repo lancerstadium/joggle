@@ -449,6 +449,12 @@ The command line exposes the no-extra-argument subset through
 embedding overload. `opt.untyped` uses this path to report distinct calls with
 open result types, complementing the symbol-oriented `opt.unresolved` query.
 
+`joggle emit module.fn model.jog` deliberately reuses this query boundary. It
+accepts only `str` or `bytes` and writes the payload verbatim, so text and
+binary generators remain read-only module functions. Core does not learn an
+artifact hierarchy, target kind, filename convention, or emitter lifecycle;
+shell redirection and embedding code decide where the returned bytes go.
+
 ## M8 fourth slice
 
 Embedding code can assemble an ordered transform sequence by passing a

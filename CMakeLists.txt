@@ -326,6 +326,17 @@ if(JOGGLE_BUILD_TESTS)
     cli-query PROPERTIES PASS_REGULAR_EXPRESSION "operator"
   )
   add_test(
+    NAME cli-emit
+    COMMAND
+      ${CMAKE_COMMAND}
+      -DTOOL=$<TARGET_FILE:joggle-tool>
+      -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
+      -DSOURCE_MODULES=${CMAKE_CURRENT_SOURCE_DIR}/modules
+      -DBUILD_MODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+      -DOUT=${CMAKE_CURRENT_BINARY_DIR}/emit.bin
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/emit.cmake
+  )
+  add_test(
     NAME cli-report
     COMMAND
       ${CMAKE_COMMAND}

@@ -23,6 +23,19 @@ fn typed_caps() -> list<Fn> {
   return ir.fns("script")
 }
 
+fn emit_name(m: Mod) -> str {
+  return ir.name(ir.find(m, "matmul"))
+}
+
+fn emit_wrong_type(m: Mod) -> bool {
+  return ir.revision(m) >= 0
+}
+
+fn emit_bytes(m: Mod) -> bytes {
+  assert(ir.revision(m) >= 0, "invalid module revision")
+  return hex"00410aff"
+}
+
 [on: "opaque"]
 fn mark_rule(m: Mod, op: Op) -> bool {
   return ir.set(m, op, "matched", true)

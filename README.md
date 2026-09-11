@@ -211,7 +211,12 @@ Check a module or run a textual transform:
 ```sh
 ./build/joggle check test/data/matmul.jog
 ./build/joggle run opt.fold_add_zero test/data/matmul.jog -M modules
+./build/joggle emit my.target.source model.jog -M modules > model.c
 ```
+
+`emit` invokes an ordinary read-only `fn(Mod) -> str/bytes` and writes the
+returned artifact verbatim. It adds no target interface: C, assembly, HDL, and
+binary modules can share the same checked output boundary.
 
 Module directories remain the only distribution unit. The CLI can discover,
 validate, inspect, install, upgrade, and uninstall them without a registry or

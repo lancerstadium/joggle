@@ -567,6 +567,10 @@ analysis and writes its canonical `Attr` result. `opt.unresolved` reports calls
 without a visible declaration; the complementary `opt.untyped` reports calls
 whose outputs still have the open `_` type. The distinction separates symbol
 coverage from type-propagation coverage.
+`joggle emit module.fn model.jog -M modules` invokes the same read-only function
+but requires `str` or `bytes` and writes the payload verbatim. A module can
+therefore expose source, HDL, assembly, or a binary image without implementing
+an emitter interface or changing the CLI for its artifact kind.
 
 A read-only module function is invoked with `query(env, "module.fn", mod,
 result, args, cached)`. It is still declared with ordinary `fn` syntax. The
