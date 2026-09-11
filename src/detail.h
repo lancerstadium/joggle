@@ -98,6 +98,11 @@ struct Store {
   mutable std::vector<QueryData> queries;
 };
 
+bool same_type_pattern(const Ty& left,
+                       const std::vector<std::string>& left_generics,
+                       const Ty& right,
+                       const std::vector<std::string>& right_generics);
+
 template <class T>
 inline bool live(const std::vector<Slot<T>>& slots, std::uint32_t id,
                  std::uint32_t generation) {

@@ -92,6 +92,15 @@ bool valid_callee(std::string_view text) {
   return valid_module(applied.name());
 }
 
+std::optional<std::size_t>
+generic_index(const std::vector<std::string>& generics, std::string_view name) {
+  const auto found = std::find(generics.begin(), generics.end(), name);
+  return found == generics.end()
+             ? std::nullopt
+             : std::optional<std::size_t>(
+                   static_cast<std::size_t>(found - generics.begin()));
+}
+
 bool carried_arg(const detail::Store& store, std::uint32_t value) {
   for (const auto& slot : store.blks) {
     if (!slot.live || slot.data.parent_op == detail::none ||
@@ -299,6 +308,23 @@ std::optional<std::int64_t> integer(const Ty& value) {
 }
 
 }  // namespace
+
+bool detail::same_type_pattern(
+    const Ty& left, const std::vector<std::string>& left_generics,
+    const Ty& right, const std::vector<std::string>& right_generics) {
+  const auto left_generic = generic_index(left_generics, left.name());
+  const auto right_generic = generic_index(right_generics, right.name());
+  if (left.args().empty() && right.args().empty() &&
+      (left_generic || right_generic))
+    return left_generic == right_generic;
+  if (left.name() != right.name() || left.args().size() != right.args().size())
+    return false;
+  for (std::size_t index = 0; index < left.args().size(); ++index)
+    if (!same_type_pattern(left.args()[index], left_generics,
+                           right.args()[index], right_generics))
+      return false;
+  return true;
+}
 
 void detail::touch(Store& store) {
   if (store.revision != std::numeric_limits<std::uint64_t>::max())
@@ -1150,6 +1176,215 @@ Op Mod::clone(Op source, Op before) {
   detail::rebuild_uses(store);
   touch(store);
   return Op(&store, cloned_id, store.ops[cloned_id].generation);
+}
+
+Fn Mod::clone(const Env& env, Fn source_fn, std::string name) {
+  auto& store = impl_->store;
+  const auto reject = [&](std::string message, Loc loc = {}) {
+    detail::add_diag(store.diags, std::move(message), std::move(loc));
+    return Fn{};
+  };
+  if (!source_fn.valid())
+    return reject("function clone requires a live source function");
+  if (!valid_module(store.name))
+    return reject("function clone requires a named destination module",
+                  source_fn.loc());
+  if (!valid_binding(name))
+    return reject("function clone requires a valid local function name",
+                  source_fn.loc());
+  if (source_fn.external() || !source_fn.body())
+    return reject("function clone requires a source body", source_fn.loc());
+  if (source_fn.store_ != &store && source_fn.module() == store.name)
+    return reject("function clone cannot merge distinct modules with one name",
+                  source_fn.loc());
+
+  const detail::Store& initial_source = *source_fn.store_;
+  const detail::FnData& initial_fn = initial_source.fns[source_fn.id_].data;
+  std::vector<std::string> source_generics;
+  source_generics.reserve(initial_fn.generic_vals.size());
+  for (const std::uint32_t id : initial_fn.generic_vals)
+    source_generics.push_back(initial_source.vals[id].data.name);
+  const auto existing = store.symbols.find(name);
+  if (existing != store.symbols.end()) {
+    for (const std::uint32_t id : existing->second) {
+      if (id >= store.fns.size() || !store.fns[id].live)
+        continue;
+      const detail::FnData& candidate = store.fns[id].data;
+      if (candidate.generic_vals.size() != initial_fn.generic_vals.size() ||
+          candidate.params.size() != initial_fn.params.size())
+        continue;
+      std::vector<std::string> candidate_generics;
+      candidate_generics.reserve(candidate.generic_vals.size());
+      for (const std::uint32_t generic : candidate.generic_vals)
+        candidate_generics.push_back(store.vals[generic].data.name);
+      bool same = true;
+      for (std::size_t index = 0; index < candidate.params.size(); ++index) {
+        same = same && detail::same_type_pattern(
+                           store.vals[candidate.params[index]].data.type,
+                           candidate_generics,
+                           initial_source.vals[initial_fn.params[index]].data.type,
+                           source_generics);
+      }
+      if (same)
+        return reject("function clone would duplicate signature '" + name +
+                          "'",
+                      source_fn.loc());
+    }
+  }
+
+  detail::Store backup = store;
+  const detail::Store* source =
+      source_fn.store_ == &store ? &backup : source_fn.store_;
+  const detail::FnData& old_fn = source->fns[source_fn.id_].data;
+  const Fn source_context(const_cast<detail::Store*>(source), source_fn.id_,
+                          source->fns[source_fn.id_].generation);
+  const auto rollback = [&](std::string message, Loc loc = {}) {
+    store = backup;
+    detail::add_diag(store.diags, std::move(message), std::move(loc));
+    return Fn{};
+  };
+
+  if (source != &backup) {
+    const std::string symbol = std::string(source_fn.module()) + "." +
+                               std::string(source_fn.name());
+    const std::vector<Fn> visible = env.resolve_fns(*this, symbol);
+    if (std::find(visible.begin(), visible.end(), source_fn) == visible.end() &&
+        !use(env, std::string(source_fn.module())))
+      return rollback("function clone could not make its source module visible",
+                      source_fn.loc());
+  }
+
+  detail::FnData next_fn = old_fn;
+  next_fn.name = std::move(name);
+  next_fn.generic_vals.clear();
+  next_fn.params.clear();
+  next_fn.blks.clear();
+  const auto next_fn_id = static_cast<std::uint32_t>(store.fns.size());
+  store.fns.push_back({std::move(next_fn), 1, true});
+  store.symbols[store.fns[next_fn_id].data.name].push_back(next_fn_id);
+
+  std::unordered_map<std::uint32_t, std::uint32_t> values;
+  const auto copy_value = [&](std::uint32_t old_id) {
+    detail::ValData value = source->vals[old_id].data;
+    value.users.clear();
+    const auto next_id = static_cast<std::uint32_t>(store.vals.size());
+    store.vals.push_back({std::move(value), 1, true});
+    values.emplace(old_id, next_id);
+    return next_id;
+  };
+  for (const std::uint32_t id : old_fn.generic_vals)
+    store.fns[next_fn_id].data.generic_vals.push_back(copy_value(id));
+  for (const std::uint32_t id : old_fn.params)
+    store.fns[next_fn_id].data.params.push_back(copy_value(id));
+
+  bool failed = false;
+  const auto copy_op = [&](const auto& self, std::uint32_t old_id,
+                           std::uint32_t blk) -> void {
+    const detail::OpData old = source->ops[old_id].data;
+    detail::OpData next = old;
+    next.blk = blk;
+    next.args.clear();
+    next.outs.clear();
+    next.blks.clear();
+    for (const std::uint32_t arg : old.args) {
+      const auto mapped = values.find(arg);
+      if (mapped == values.end()) {
+        failed = true;
+        return;
+      }
+      next.args.push_back(mapped->second);
+    }
+    if (old.kind == Op::Kind::call) {
+      const Ty applied(old.callee);
+      if (applied.valid()) {
+        const Op old_op(const_cast<detail::Store*>(source), old_id,
+                        source->ops[old_id].generation);
+        const std::vector<Fn> candidates =
+            env.resolve_fns(source_context, applied.name());
+        const Fn resolved = env.match(old_op, candidates);
+        if (resolved) {
+          std::string callee;
+          if (resolved.store_ == source && resolved.id_ == source_fn.id_) {
+            callee = store.name + "." + store.fns[next_fn_id].data.name;
+          } else {
+            bool ambiguous = false;
+            const std::vector<Fn> visible =
+                env.resolve_fns(*this, applied.name());
+            const Fn destination = env.match(old_op, visible, &ambiguous);
+            if (!ambiguous && destination == resolved)
+              callee = std::string(applied.name());
+            else
+              callee = std::string(resolved.module()) + "." +
+                       std::string(resolved.name());
+          }
+          if (!applied.args().empty()) {
+            callee += '<';
+            for (std::size_t index = 0; index < applied.args().size(); ++index) {
+              if (index)
+                callee += ", ";
+              callee += applied.args()[index].text();
+            }
+            callee += '>';
+          }
+          next.callee = std::move(callee);
+        }
+      }
+    }
+    const auto next_id = static_cast<std::uint32_t>(store.ops.size());
+    store.ops.push_back({std::move(next), 1, true});
+    store.blks[blk].data.ops.push_back(next_id);
+    for (const std::uint32_t old_value : old.outs) {
+      detail::ValData value = source->vals[old_value].data;
+      value.def = next_id;
+      value.index = store.ops[next_id].data.outs.size();
+      value.users.clear();
+      const auto value_id = static_cast<std::uint32_t>(store.vals.size());
+      store.vals.push_back({std::move(value), 1, true});
+      store.ops[next_id].data.outs.push_back(value_id);
+      values.emplace(old_value, value_id);
+    }
+    for (const std::uint32_t old_blk : old.blks) {
+      detail::BlkData body;
+      body.fn = next_fn_id;
+      body.parent_op = next_id;
+      const auto body_id = static_cast<std::uint32_t>(store.blks.size());
+      store.blks.push_back({std::move(body), 1, true});
+      store.fns[next_fn_id].data.blks.push_back(body_id);
+      store.ops[next_id].data.blks.push_back(body_id);
+      for (const std::uint32_t old_arg : source->blks[old_blk].data.args) {
+        detail::ValData value = source->vals[old_arg].data;
+        value.users.clear();
+        const auto value_id = static_cast<std::uint32_t>(store.vals.size());
+        store.vals.push_back({std::move(value), 1, true});
+        store.blks[body_id].data.args.push_back(value_id);
+        values.emplace(old_arg, value_id);
+      }
+      for (const std::uint32_t child : source->blks[old_blk].data.ops) {
+        self(self, child, body_id);
+        if (failed)
+          return;
+      }
+    }
+  };
+
+  const std::uint32_t old_body = old_fn.blks.front();
+  detail::BlkData body;
+  body.fn = next_fn_id;
+  const auto body_id = static_cast<std::uint32_t>(store.blks.size());
+  store.blks.push_back({std::move(body), 1, true});
+  store.fns[next_fn_id].data.blks.push_back(body_id);
+  for (const std::uint32_t old_arg : source->blks[old_body].data.args)
+    store.blks[body_id].data.args.push_back(copy_value(old_arg));
+  for (const std::uint32_t op : source->blks[old_body].data.ops) {
+    copy_op(copy_op, op, body_id);
+    if (failed)
+      return rollback("function clone encountered an unmapped value",
+                      source->ops[op].data.loc);
+  }
+  detail::rebuild_uses(store);
+  store.revision = backup.revision;
+  touch(store);
+  return Fn(&store, next_fn_id, store.fns[next_fn_id].generation);
 }
 
 bool Mod::expand(Op call, Fn callee, std::string_view semantic) {

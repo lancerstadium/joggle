@@ -346,6 +346,14 @@ through `ir.constant`, `ir.clone`, and `ir.move`, with `ir.kind` and
 `ir.blks(op)` completing structural discovery. Named constants now remain
 named when printed instead of being silently duplicated as inline literals.
 
+Function cloning uses the same `ir.clone` name rather than adding a builder or
+template object. It copies one complete generic `Fn`, including nested
+control flow and open metadata. Cross-module copies make the source dependency
+visible atomically, preserve unambiguous call spelling, qualify only collisions,
+and redirect self-recursion to the copied function. Alpha-equivalent overload
+signatures are rejected before mutation. C++ and `.jog` exercise the same
+primitive, including failure stability and canonical round-trip.
+
 ## M7 fifth slice
 
 Direct construction now covers loops and two-way conditions as well as calls
@@ -428,6 +436,10 @@ with the resolved source symbol, concrete implementation symbol, full overload
 type patterns, and revision delta, so selection evidence comes from the actual
 edit rather than a parallel planning engine. The original three-argument call
 remains the terse success/failure API.
+Function-level `ir.clone` contributes the analogous `clone` entry with source,
+copy, parameter and return patterns, and the exact revision interval. Thus a
+template-materialization experiment observes the committed edit rather than a
+separate proposed plan.
 The command line exposes this exact report with `--report <file>`. It keeps
 canonical `Mod` output on stdout and uses the same public `print(Attr)` overload
 as embedding code, preserving one reporting representation.

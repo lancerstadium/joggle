@@ -331,6 +331,15 @@ insertion scope, so the source and clone may coexist without textual capture.
 Loop and condition results keep the name of the mutable binding they update;
 their iterators and carried arguments are already nested in fresh `Blk`s.
 
+The overload `ir.clone(m, fn, name)` copies an entire function signature,
+metadata, generics, and nested body into `m`. This is the function-level
+primitive for generated helpers and local template materialization; it does not
+introduce a builder or a kernel class. A source from another module becomes
+visible through the normal dependency graph in the same revision commit. Calls
+retain their short spelling when it remains unambiguous, conflicting references
+are qualified, and recursive calls target the new local function. External
+declarations and duplicate overload signatures are rejected without mutation.
+
 `ir.constant` checks the representation of intrinsic literals, including
 nested lists, before editing the module. User-defined type constructors retain
 their own representation policy, so a custom format may deliberately wrap an
@@ -453,8 +462,10 @@ is the revision delta, and `steps` contains the same fields for nested
 does not add a pipeline object to the language. Every step has a `kind`:
 `fn` identifies an ordinary nested function completion, while `expand` records
 the source semantic symbol, selected implementation symbol, parameter and
-return type patterns, and its exact revision delta. These are structural
-dictionary fields, not a second event class or callback interface.
+return type patterns, and its exact revision delta. `clone` records the source
+template, copied symbol, signature, and revision interval of a function-level
+materialization. These are structural dictionary fields, not a second event
+class or callback interface.
 The named entry is selected by the same overload resolver as an ordinary DSL
 call, using `Mod` as its argument type. A module may therefore expose both
 `convert(m)` for the default workflow and `convert(m, rules)` for explicit

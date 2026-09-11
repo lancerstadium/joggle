@@ -439,6 +439,12 @@ copies a call, constant, loop, or condition, creates fresh `Blk`s/results, and
 remaps values defined inside the copied subtree. `ir.move` reorders an operation
 within its `Blk` atomically and rejects the change if any use would lose
 dominance. `ir.kind` and `ir.blks(op)` make structural selection explicit.
+The overload `ir.clone(m, fn, name)` instead copies a complete generic function
+into the edited module. It uses the existing dependency graph for cross-module
+templates, qualifies only call collisions, and retargets recursion to the new
+function. Research modules can therefore materialize helpers or local template
+copies without a generated header, function builder, or kernel-specific core
+API.
 Intrinsic constant types are checked against their attribute representation;
 custom types keep module-defined literal semantics. Both `ir.constant` and
 `ir.call` accept structural `Ty` values, so a transform can reuse a reflected
@@ -583,6 +589,9 @@ include nested transform completions. Entries use `kind: "fn"`; successful
 `source`, `impl`, `params`, `returns`, and the exact revision interval. This is
 enough to audit overload selection without an implementation-plan object or a
 second dry-run algorithm.
+Function materialization uses `kind: "clone"` with `source`, `copy`, `params`,
+`returns`, and the same revision fields, so generated helpers are equally
+auditable without a new reporting interface.
 `joggle run module.fn model.jog --report run.attr -M modules` writes that same
 structural report separately while preserving the transformed module on
 standard output. The implementation reuses the public `print(Attr)` overload,

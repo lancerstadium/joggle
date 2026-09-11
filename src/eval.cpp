@@ -332,6 +332,30 @@ private:
     trace_->emplace_back(std::move(event));
   }
 
+  void record_clone(Mod& mod, Fn source, Fn copy, std::uint64_t before) {
+    if (!trace_)
+      return;
+    Attr::List params;
+    for (Val param : copy.params())
+      params.emplace_back(std::string(param.type().text()));
+    Attr::List returns;
+    for (const Ty& type : copy.returns())
+      returns.emplace_back(std::string(type.text()));
+    const std::uint64_t after = mod.revision();
+    Attr::Dict event;
+    event["kind"] = Attr("clone");
+    event["source"] =
+        Attr(std::string(source.module()) + "." + std::string(source.name()));
+    event["copy"] =
+        Attr(std::string(copy.module()) + "." + std::string(copy.name()));
+    event["params"] = Attr(std::move(params));
+    event["returns"] = Attr(std::move(returns));
+    event["before"] = Attr(static_cast<std::int64_t>(before));
+    event["after"] = Attr(static_cast<std::int64_t>(after));
+    event["edits"] = Attr(static_cast<std::int64_t>(after - before));
+    trace_->emplace_back(std::move(event));
+  }
+
   std::optional<Items> values(const Frame& frame, const std::vector<Val>& vals,
                               Loc loc = {}) {
     Items out;
@@ -1378,12 +1402,24 @@ private:
       }
     } else if (name == "clone" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
-      const auto* op = as<Op>(args[1]);
-      const auto* before = as<Op>(args[2]);
-      if (mod && *mod && op && before) {
-        Op result = (*mod)->clone(*op, *before);
-        if (result)
-          return Items{Item(result)};
+      if (mod && *mod) {
+        if (const auto* op = as<Op>(args[1])) {
+          if (const auto* before = as<Op>(args[2])) {
+            Op result = (*mod)->clone(*op, *before);
+            if (result)
+              return Items{Item(result)};
+          }
+        }
+        if (const auto* fn = as<Fn>(args[1])) {
+          if (const auto target = string(args[2])) {
+            const std::uint64_t before = (*mod)->revision();
+            Fn result = (*mod)->clone(env_, *fn, std::string(*target));
+            if (result) {
+              record_clone(**mod, *fn, result, before);
+              return Items{Item(result)};
+            }
+          }
+        }
       }
     } else if (name == "expand" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);

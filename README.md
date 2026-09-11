@@ -119,6 +119,9 @@ Run it like any bundled function:
 Compile-time execution is transactional. If the function fails or produces an
 invalid module, Joggle restores the input. C++ and `.jog` functions edit the
 same `Fn`/`Blk`/`Op`/`Val` representation through the same checks.
+An extension may clone a normal module `fn` into the program with
+`ir.clone(m, fn, name)`, providing generated helpers and local template
+materialization without a separate kernel builder.
 
 Local module lifecycle commands are deterministic and registry-free:
 

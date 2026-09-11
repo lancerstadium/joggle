@@ -88,6 +88,87 @@ int main(int argc, char** argv) {
       "  return nn.relu(x + skip)\n}\n";
   CHECK(joggle::parse(env, network_source, network, "network.jog"));
   CHECK(network.verify(env));
+
+  const joggle::Fn relu_template = env.find_fn("nn.relu");
+  CHECK(relu_template && !relu_template.external());
+  joggle::Mod generated_fn;
+  constexpr std::string_view generated_source =
+      "module generated\n"
+      "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
+      "  return generated.relu(x)\n"
+      "}\n";
+  CHECK(joggle::parse(env, generated_source, generated_fn, "generated.jog"));
+  generated_fn.clear_diags();
+  const std::uint64_t before_fn_clone = generated_fn.revision();
+  const joggle::Fn local_relu =
+      generated_fn.clone(env, relu_template, "relu");
+  CHECK(local_relu && local_relu.name() == "relu");
+  CHECK(generated_fn.uses() == std::vector<std::string>{"nn"});
+  CHECK(generated_fn.revision() == before_fn_clone + 1);
+  CHECK(generated_fn.verify(env));
+  CHECK(generated_fn.find_fns("relu").size() == 1);
+  const std::string generated_text = joggle::print(generated_fn);
+  CHECK(generated_text.find("fn relu<E: Ty, S: list<int>>") !=
+        std::string::npos);
+  CHECK(generated_text.find("tensor.tensor") == std::string::npos);
+  generated_fn.clear_diags();
+  const std::uint64_t duplicate_fn_revision = generated_fn.revision();
+  CHECK(!generated_fn.clone(env, relu_template, "relu"));
+  CHECK(joggle::print(generated_fn) == generated_text);
+  CHECK(generated_fn.revision() == duplicate_fn_revision);
+  generated_fn.clear_diags();
+  CHECK(!generated_fn.clone(env, relu_template, "bad.name"));
+  CHECK(joggle::print(generated_fn) == generated_text);
+  CHECK(generated_fn.revision() == duplicate_fn_revision);
+  generated_fn.clear_diags();
+  const joggle::Fn leaky_template = env.find_fn("nn.leaky_relu");
+  CHECK(leaky_template);
+  const joggle::Fn local_leaky =
+      generated_fn.clone(env, leaky_template, "relu");
+  CHECK(local_leaky && generated_fn.revision() == duplicate_fn_revision + 1);
+  CHECK(generated_fn.verify(env));
+  CHECK(generated_fn.find_fns("relu").size() == 2);
+  joggle::Mod generated_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(generated_fn), generated_roundtrip,
+                      "generated-roundtrip.jog"));
+  CHECK(generated_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(generated_fn, generated_roundtrip));
+
+  joggle::Mod alpha_duplicate;
+  constexpr std::string_view alpha_source =
+      "module alpha\n"
+      "use tensor\n"
+      "fn copy<A: Ty, D: list<int>>(\n"
+      "  x: tensor<A, D>\n"
+      ") -> tensor<A, D> { return x }\n";
+  CHECK(joggle::parse(env, alpha_source, alpha_duplicate, "alpha.jog"));
+  CHECK(alpha_duplicate.verify(env));
+  const std::string alpha_text = joggle::print(alpha_duplicate);
+  const std::uint64_t alpha_revision = alpha_duplicate.revision();
+  CHECK(!alpha_duplicate.clone(env, relu_template, "copy"));
+  CHECK(joggle::print(alpha_duplicate) == alpha_text);
+  CHECK(alpha_duplicate.revision() == alpha_revision);
+  CHECK(alpha_duplicate.uses() == std::vector<std::string>{"tensor"});
+  alpha_duplicate.clear_diags();
+  CHECK(alpha_duplicate.verify(env));
+
+  joggle::Mod recursive_fn;
+  constexpr std::string_view recursive_source =
+      "module recursive\n"
+      "fn recur(n: int) -> int { return recur(n) }\n";
+  CHECK(joggle::parse(env, recursive_source, recursive_fn, "recursive.jog"));
+  CHECK(recursive_fn.verify(env));
+  const joggle::Fn recur = recursive_fn.find_fn("recur");
+  const joggle::Fn recur_copy = recursive_fn.clone(env, recur, "recur_copy");
+  CHECK(recur_copy && recursive_fn.verify(env));
+  const std::string recursive_text = joggle::print(recursive_fn);
+  CHECK(recursive_text.find("recursive.recur_copy(n)") != std::string::npos);
+  joggle::Mod recursive_roundtrip;
+  CHECK(joggle::parse(env, recursive_text, recursive_roundtrip,
+                      "recursive-roundtrip.jog"));
+  CHECK(recursive_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(recursive_fn, recursive_roundtrip));
+
   joggle::Op tensor_add;
   for (joggle::Op op : network.find_fn("stage").ops())
     if (op.callee() == "operator +")
@@ -119,6 +200,39 @@ int main(int argc, char** argv) {
   }
   CHECK(network_cpp.verify(env));
   CHECK(env.load("script"));
+  joggle::Mod scripted_fn;
+  constexpr std::string_view scripted_fn_source =
+      "module scripted.generated\n"
+      "use tensor\n"
+      "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
+      "  return scripted.generated.relu(x)\n"
+      "}\n";
+  CHECK(joggle::parse(env, scripted_fn_source, scripted_fn,
+                      "scripted-generated.jog"));
+  joggle::Attr fn_clone_report;
+  CHECK(joggle::run(env, "script.clone_relu", scripted_fn, fn_clone_report));
+  CHECK(scripted_fn.verify(env));
+  CHECK((scripted_fn.uses() == std::vector<std::string>{"tensor", "nn"}));
+  CHECK(scripted_fn.find_fns("relu").size() == 1);
+  const joggle::Attr::Dict* fn_clone_summary = fn_clone_report.dict();
+  CHECK(fn_clone_summary);
+  const joggle::Attr::List* fn_clone_steps =
+      fn_clone_summary->at("steps").list();
+  CHECK(fn_clone_steps && fn_clone_steps->size() == 1);
+  const joggle::Attr::Dict* fn_clone_event = fn_clone_steps->front().dict();
+  CHECK(fn_clone_event && fn_clone_event->at("kind").string() == "clone");
+  CHECK(fn_clone_event->at("source").string() == "nn.relu");
+  CHECK(fn_clone_event->at("copy").string() == "scripted.generated.relu");
+  CHECK(fn_clone_event->at("edits").integer() == 1);
+  CHECK(fn_clone_event->at("params").list() &&
+        fn_clone_event->at("params").list()->size() == 1);
+  CHECK(fn_clone_event->at("returns").list() &&
+        fn_clone_event->at("returns").list()->size() == 1);
+  joggle::Mod scripted_fn_roundtrip;
+  CHECK(joggle::parse(env, joggle::print(scripted_fn), scripted_fn_roundtrip,
+                      "scripted-generated-roundtrip.jog"));
+  CHECK(scripted_fn_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(scripted_fn, scripted_fn_roundtrip));
   constexpr std::string_view relation_source =
       "module relation\n"
       "fn main(x: i32) -> i32 {\n"

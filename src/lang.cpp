@@ -162,33 +162,6 @@ std::string operator_name(std::string_view spelling) {
   return "operator " + std::string(spelling);
 }
 
-std::optional<std::size_t>
-generic_index(const std::vector<std::string>& generics, std::string_view name) {
-  const auto found = std::find(generics.begin(), generics.end(), name);
-  return found == generics.end()
-             ? std::nullopt
-             : std::optional<std::size_t>(
-                   static_cast<std::size_t>(found - generics.begin()));
-}
-
-bool same_type_pattern(const Ty& left,
-                       const std::vector<std::string>& left_generics,
-                       const Ty& right,
-                       const std::vector<std::string>& right_generics) {
-  const auto left_generic = generic_index(left_generics, left.name());
-  const auto right_generic = generic_index(right_generics, right.name());
-  if (left.args().empty() && right.args().empty() &&
-      (left_generic || right_generic))
-    return left_generic == right_generic;
-  if (left.name() != right.name() || left.args().size() != right.args().size())
-    return false;
-  for (std::size_t index = 0; index < left.args().size(); ++index)
-    if (!same_type_pattern(left.args()[index], left_generics,
-                           right.args()[index], right_generics))
-      return false;
-  return true;
-}
-
 struct GenericInfo {
   std::string_view name;
   Ty type;
@@ -632,7 +605,7 @@ private:
         bool same = true;
         for (std::size_t index = 0; index < params.size(); ++index)
           same = same &&
-                 same_type_pattern(
+                 detail::same_type_pattern(
                      store_.vals[existing.params[index]].data.type,
                      existing_generics, params[index].type, parsed_generics);
         if (same)

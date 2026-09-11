@@ -229,6 +229,33 @@ if (!env.load("opt") || !joggle::run(env, "opt.fold_add_zero", mod))
 `Blk`s and operations through `ir`, replaces the result of `x + 0`, and erases
 the dead call. No C++ registration is required for that transform.
 
+## Materialize a function template
+
+A module may copy a normal function into the program when a transform needs a
+named helper or a local template boundary:
+
+```jog
+module localize
+use ir
+use nn
+
+fn apply(m: Mod) -> bool {
+  for fn in ir.fns("nn") {
+    if ir.name(fn) == "relu" {
+      return ir.live(ir.clone(m, fn, "edge_relu"))
+    }
+  }
+  return false
+}
+```
+
+The copied `Fn` retains its generic signature, nested loops, metadata, and
+ordinary calls. Joggle adds the source module to the program's dependency graph
+in the same transaction. A recursive template calls the new local function;
+only references that would become ambiguous are qualified. A duplicate overload
+or invalid destination name leaves both text and revision unchanged. There is
+no generated declaration, stateful builder, or separate kernel representation.
+
 ## Define a fusion policy
 
 A project module can reuse the generic chain matcher while choosing its own

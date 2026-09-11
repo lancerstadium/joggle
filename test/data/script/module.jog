@@ -353,6 +353,15 @@ fn clone_loop(m: Mod) -> bool {
   return false
 }
 
+fn clone_relu(m: Mod) -> bool {
+  for fn in ir.fns("nn") {
+    if ir.name(fn) == "relu" {
+      return ir.live(ir.clone(m, fn, "relu"))
+    }
+  }
+  return false
+}
+
 fn return_three(m: Mod) -> bool {
   for op in ir.ops(m) {
     if ir.kind(op) == "return" {
