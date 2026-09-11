@@ -75,6 +75,23 @@ bool valid_module(std::string_view text) {
   return false;
 }
 
+bool valid_callee(std::string_view text) {
+  constexpr std::string_view prefix = "operator ";
+  if (text.starts_with(prefix)) {
+    const std::string_view spelling = text.substr(prefix.size());
+    static constexpr std::string_view operators[] = {
+        "||", "&&", "==", "!=", "<",  "<=", ">",  ">=", "|",
+        "^",  "&",  "<<", ">>", "+",  "-",  "*",  "/",  "%",
+        "!",  "~",  "..", "[]", "[]="};
+    return std::find(std::begin(operators), std::end(operators), spelling) !=
+           std::end(operators);
+  }
+  const Ty applied{std::string(text)};
+  if (!applied.valid())
+    return false;
+  return valid_module(applied.name());
+}
+
 bool carried_arg(const detail::Store& store, std::uint32_t value) {
   for (const auto& slot : store.blks) {
     if (!slot.live || slot.data.parent_op == detail::none ||
@@ -681,12 +698,12 @@ std::uint64_t Mod::revision() const noexcept {
 Op Mod::call(Op before, std::string callee, std::span<const Val> args,
              std::span<const Ty> types) {
   auto& store = impl_->store;
-  if (!before.valid() || before.store_ != &store || callee.empty() ||
+  if (!before.valid() || before.store_ != &store || !valid_callee(callee) ||
       std::any_of(types.begin(), types.end(),
                   [](const Ty& type) { return !type.valid(); })) {
     detail::add_diag(store.diags,
-                     "call requires a live insertion point, callee, and valid "
-                     "result types");
+                     "call requires a live insertion point, valid callee, and "
+                     "valid result types");
     return {};
   }
   for (Val arg : args) {
@@ -1571,8 +1588,8 @@ bool Mod::fuse(const Env& env, std::span<const Op> ops, std::string callee) {
     detail::add_diag(store.diags, std::move(message), std::move(loc));
     return false;
   };
-  if (ops.size() < 2 || callee.empty())
-    return reject("fuse requires at least two calls and a callee");
+  if (ops.size() < 2 || !valid_callee(callee))
+    return reject("fuse requires at least two calls and a valid callee");
 
   const Blk blk = ops.front().blk();
   if (!blk || blk.store_ != &store)
@@ -1940,9 +1957,9 @@ bool Mod::rename(Val value, std::string name) {
 bool Mod::rename(const Env& env, Op call, std::string callee) {
   auto& store = impl_->store;
   if (!call.valid() || call.store_ != &store || call.kind() != Op::Kind::call ||
-      callee.empty()) {
+      !valid_callee(callee)) {
     detail::add_diag(store.diags,
-                     "rename requires a live call and non-empty callee");
+                     "rename requires a live call and valid callee");
     return false;
   }
   if (store.ops[call.id_].data.callee == callee)
@@ -1980,9 +1997,9 @@ bool Mod::retarget(const Env& env, Op call, std::string callee,
                    std::span<const Val> args) {
   auto& store = impl_->store;
   if (!call.valid() || call.store_ != &store ||
-      call.kind() != Op::Kind::call || callee.empty()) {
+      call.kind() != Op::Kind::call || !valid_callee(callee)) {
     detail::add_diag(store.diags,
-                     "retarget requires a live call and nonempty callee");
+                     "retarget requires a live call and valid callee");
     return false;
   }
   for (Val value : args)

@@ -1129,6 +1129,9 @@ int main(int argc, char** argv) {
       rename_safety.find_fn("main").body().ops()[0];
   const std::string rename_before = joggle::print(rename_safety);
   const std::uint64_t rename_safety_revision = rename_safety.revision();
+  CHECK(!rename_safety.rename(env, renamed_call, "bad callee"));
+  CHECK(joggle::print(rename_safety) == rename_before);
+  CHECK(rename_safety.revision() == rename_safety_revision);
   CHECK(!rename_safety.rename(env, renamed_call, "incompatible"));
   CHECK(joggle::print(rename_safety) == rename_before);
   CHECK(rename_safety.revision() == rename_safety_revision);
@@ -1145,6 +1148,10 @@ int main(int argc, char** argv) {
       constant_safety.find_fn("main").body().ops().back();
   const std::string constant_before = joggle::print(constant_safety);
   const std::uint64_t constant_revision = constant_safety.revision();
+  CHECK(!constant_safety.call(constant_ret, "bad callee", {},
+                              joggle::Ty("int")));
+  CHECK(joggle::print(constant_safety) == constant_before);
+  CHECK(constant_safety.revision() == constant_revision);
   CHECK(!constant_safety.constant(constant_ret, joggle::Attr("not an int"),
                                   joggle::Ty("i32")));
   CHECK(joggle::print(constant_safety) == constant_before);

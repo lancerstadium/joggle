@@ -318,6 +318,9 @@ empty `Blk`, so there is no stateful builder object.
 nested lists, before editing the module. User-defined type constructors retain
 their own representation policy, so a custom format may deliberately wrap an
 integer, byte string, or another attribute without adding a core case.
+Constructed and renamed callees must use the same qualified-name, explicit
+generic, or operator spelling accepted by the parser, preserving textual
+round trips without reserving a module vocabulary.
 
 Structured construction follows the same rule. `ir.loop` receives iterator
 names, source values, and carried values, then returns an `Op` with one body and
