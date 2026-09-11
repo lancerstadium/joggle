@@ -1,414 +1,222 @@
 # Joggle
 
-Joggle is a small C++20 compiler workbench for neural-network and hardware/
-software co-design research. It gives experiments one readable IR, one module
-format, and one extension boundary without prescribing a target, scheduler, or
-paper mechanism.
+Joggle is a small C++20 compiler workbench for neural-network and AI
+hardware/software co-design research. It provides one readable function IR,
+one module format, and one extension boundary. It does not prescribe a graph
+dialect, kernel dialect, target hierarchy, scheduler, or paper mechanism.
 
-The rebuilt core parses and verifies typed generic functions, multi-result
-calls, constants, structured loops and conditions, explicit returns, and
-loop-carried values.
-Generic parameters are ordinary `Val`s, so custom widths, element types, and
-shapes use the same type checker instead of a trait or kind registry. A tested
-C++ transform and an ordinary `.jog` function edit the same representation.
-Compile-time functions traverse universal IR handles and run transactionally;
-they are functions, not instances of a pass class. A separately built native
-module is also discovered, signature-checked, loaded, and called through the
-single native-function ABI. Module loading is transactional across the complete
-dependency closure: a failed parent restores newly loaded modules, native
-bindings, dynamic libraries, and the environment epoch. Functions, operations,
-and values may carry open,
-user-defined attributes without adding parser cases. Generic zero/multi-result
-call, constant, loop, and branch construction, deep cloning, checked motion,
-nested traversal, selective use replacement, and region fusion let such modules
-make real graph changes; the pinned MobileNetV2 test fuses 36 three-call chains.
-The `opt` module also supplies policy-parameterized CSE and dead-call
-elimination plus a bounded fixed-point pipeline; callers state which functions
-are pure instead of adopting a built-in effect hierarchy. Its explicit bound
-is a checked resource limit: exhausting it while edits continue fails and
-rolls the enclosing transform back instead of returning partially optimized
-IR. `opt.basic` derives its bound from the current graph size.
-An optional `Attr` output from `run` reports nested function completions,
-body expansions with their chosen overload signatures, reported change flags,
-and actual revision deltas without another result type.
-Ordinary read-only functions can be invoked through `query`; results are cached
-by function, explicit inputs, environment epoch, and module revision, while an
-attempted mutation is isolated and rejected.
-The same no-argument analysis boundary is available as
-`joggle query module.fn model.jog`; `opt.untyped` reports the distinct calls
-whose result types remain open after a chosen inference step.
-Host code may also pass an ordered span of function names to `run`; the complete
-sequence is transactional and returns the individual structural reports.
-The CLI exposes the same evidence with `joggle run ... --report run.attr` while
-keeping the transformed `Mod` on standard output. Both `Mod` and `Attr` use
-overloaded `print` functions, so embedding and command-line tools share their
-canonical text rather than maintaining a report serializer.
-Attribute keys are entirely module-owned: the same square-bracket form can
-describe placement, schedule, memory, format, cost, provenance, or a user's
-own experiment state. `host` has no privileged parser, verifier, or runtime
-meaning.
-The core contains no ONNX, device, instruction-set, runtime, or code-generation
-policy; those capabilities belong in removable modules.
-The optional ONNX transport preserves typed intermediate values and native
-multi-result/multi-output structure without defining any ONNX operator in core.
-Named ONNX dimensions become ordinary integer generics on the imported
-function, while anonymous dynamic dimensions remain `_`; both preserve one
-tensor type instead of introducing a dynamic-shape IR.
-Control-flow graph attributes use the same rule: each nested graph becomes an
-ordinary function. ONNX lexical captures become explicit trailing parameters,
-and the owning call records the corresponding operand positions. Optimizers
-therefore traverse one `Fn`/`Blk`/`Op`/`Val` structure rather than a private
-frontend region tree. Module code can recover that function with ordinary
-`ir.find` reflection and inspect its declared results with `ir.returns`; the
-ONNX helper `onnx.graph` only decodes transport metadata. Loop-carried and scan
-result types are consequently derived from the body signature instead of an
-importer switch or a second control-flow type system.
-Node attributes remain operation metadata rather than fake dataflow operands,
-while original value identity remains value metadata, so ordinary signature
-matching can bridge a real imported network. The pinned
-MobileNetV2 gate maps every one-input ReLU through the same data-driven relation
-used by small models and proves that a second bridge run is unchanged.
-The standard `math`, `tensor`, `quant`, and `nn` modules contain scalar math
-primitives and inspectable bodies for tensor algebra, explicit quantization,
-grouped 2-D convolution, batch
-normalization, average/max pooling, reshape, linear layers, and ReLU. A generic
-NumPy-style broadcast relation supports rank extension and singleton
-dimensions in shared tensor code, so ONNX and TFLite Add reuse the same
-inspectable semantics. A generic body-expansion edit can expose a
-selected network call as tensor calls and later expose those calls as loops.
-`opt.legalize` can instead retain calls accepted by a consumer's ordinary
-function signatures and expose everything else to a bounded depth;
-`opt.frontier` reports the remainder. Both reuse generic overload matching and
-have no NN-operator switch. `base`
-dictionary access lets ordinary bridge functions interpret frontend
-attributes. A bridge may add a module dependency and apply a data-driven call
-mapping, so frontend-to-network relationships stay outside both codecs and
-core. Compile-time functions can inspect, construct, and write structural `Ty`
-trees. `tensor.elem`, `tensor.shape`, `tensor.dims`, and `tensor.type` provide
-concrete and symbolic tensor projections plus one constructor, enabling shape
-and custom-format reasoning without parsing type strings. Generic function
-expansion can reuse caller-owned dimension bindings inside shape lists.
-Structural and static-shape predicates let relations safely retain
-not-yet-inferred calls. Common ONNX binary operations, Flatten, and rank-two-or-
-higher MatMul preserve named extents and reuse the same inspectable tensor/
-network bodies; MatMul broadcasts leading batch dimensions and Transpose is an
-ordinary rank-generic tensor permutation.
-Unrepresentable symbolic products remain source calls instead of triggering a
-model-specific guess.
-Convolution and pooling likewise keep symbolic batch dimensions while checking
-only the extents used by spatial arithmetic. Explicit and SAME/VALID padding
-forms share one relation, while ONNX Conv's optional bias reuses the existing
-layout-explicit `nn.conv2d` composition. General Gemm, LeakyReLU, and
-inference-mode Dropout cover residual classifiers and compact detectors without
-introducing frontend operations into `nn`. The frontend-neutral
-`quant` module defines per-tensor and per-axis zero-point subtraction,
-rescaling, round-to-nearest-even, saturation, and conversion as ordinary
-functions. Quantized element type and bounds are explicit operands, so custom
-formats can reuse the computation without becoming core types. The ONNX bridge
-maps compatible three-input QDQ nodes to those functions and leaves newer or
-incompatible schema forms visible.
-The same tensor library supplies broadcast-batched MatMul and an axis-generic
-line-offset relation. `nn.softmax` uses the latter directly, allowing frontend
-bridges to materialize an axis as an ordinary operand instead of choosing a
-rank-specific kernel class. Its axis-list overload jointly normalizes any
-selected dimensions. `onnx.opset` reads the imported model descriptor, so
-pre-13 Softmax maps its flattened suffix to an axis list while version 13 and
-later map one axis; an absent model version is not guessed. A complementary
-multi-axis relation maps reduction
-coordinates without transposing the tensor; the inspectable `tensor.mean` body
-therefore covers arbitrary normalized axes and either retained or removed
-dimensions. The ONNX bridge derives the result shape and conservatively keeps
-malformed reductions in the source namespace.
-Broadcast-aware division and power plus elementwise square root, reciprocal,
-and hyperbolic tangent complete a decomposed normalization/GELU path without a
-fused model-specific call. ONNX Add/Sub/Mul use the two-operand semantic
-overloads; activation-bearing overloads remain available to TFLite instead of
-injecting a synthetic `"NONE"` operand into every frontend.
-Shape programs do not introduce a second shape IR. `ir.def` exposes a value's
-ordinary defining operation, while bounded byte access lets a module decode
-small integer tensor constants. `onnx.nn` recursively evaluates the shape-only
-subset of Shape, Gather, Slice, Unsqueeze/Squeeze, Concat, and Cast when
-deriving a Reshape result. Known rank and unknown extents remain ordinary `_`
-dimension terms, while exact symbolic factors are cancelled without adding an
-expression dialect. A symbolic target such as `[N, 12]` therefore remains a
-normal tensor type and the converted Reshape still expands through
-`tensor.reshape`.
-The shared tensor module also gives Shape, Gather, positive-step Slice,
-OneHot, fill, and binary Concat normal function bodies. An N-input frontend
-Concat becomes a chain of that single binary primitive; a multi-result Split
-becomes independent slices. This covers arbitrary arity without variadic
-operator classes or arity-specific declarations, and preserves ordinary user
-attributes on the replacement computation.
-Type refinement fills only open tensor elements or dimensions and rejects
-conflicting facts. Structural relations for ConstantOfShape, OneHot, dynamic
-quantization, integer MatMul, Split, and transposed batched MatMul let a
-12-layer quantized BERT graph reach shared semantics. Dynamic quantization is a
-normal multi-result function, integer MatMul exposes zero-point subtraction and
-`i32` accumulation, Cast is an element loop, and a parameterized
-`tensor.matmul` absorbs transpose/scale instead of preserving a vendor call.
-On the imported BERT model, all 55 source Concats become 133 binary
-compositions, and Shape, Gather, Slice, Split, OneHot, and ConstantOfShape lose
-their schema names. Three calls with conflicting imported symbolic result
-contracts remain explicit instead of being silently coerced; a second
-conversion is byte-identical.
-`ir.retarget` atomically changes a call and its operands only when the ordinary
-overload resolver accepts the prospective call, so an unsupported mapping
-leaves that call unchanged rather than invalidating a complete transform.
-The optional `onnx.nn` relation module is selected explicitly. One `convert`
-call propagates intermediate tensor types and then converts every supported
-compute node to shared semantics; `infer` remains available independently for
-typed source-graph experiments. Inference repeats deterministic graph sweeps
-until the module revision stops changing and rejects non-convergence within a
-graph-derived bound. Neither function runs during import or module loading.
-Its inference and conversion relations are ordinary `fn(Mod, Op) -> bool`
-functions selected through open metadata. Conversion preserves its explicit
-compute-then-shape order through module-owned `phase` attributes, not a core
-pipeline kind. The two-argument `onnx.nn.convert(m, rules)` accepts an explicit
-function list and performs its own phase selection, so an extension module can
-append inference and conversion relations without editing `onnx.nn` or
-reimplementing its driver. The one-argument overload supplies the built-in
-module functions as that list.
-On the official MobileNetV2 this covers every compute node. The model
-marker and tensor payloads remain ONNX transport calls; unknown operators in
-other models remain open rather than acquiring guessed semantics.
-Conversion removes source-schema metadata only after its values have become
-ordinary operands. The same official model is then expanded one function body
-per compute node and verified and round-tripped as loop/tensor IR.
-The optional TFLite codec independently exercises the same boundary on the
-official TensorFlow Hub MobileNetV2. Its FlatBuffer schema generates a private
-build header with mini-reflection, so schema-known operator option tables are
-transported without a switch over operator names or a checked-in generated API.
-This second frontend adds no dependency or case to the core. Every TFLite
-tensor is represented by one typed `Val`; its source identity and optional
-quantization or sparsity description live on that value, while operator
-options remain on the producing `Op`. A dependency-local quantized Add gate
-checks import and canonical round-trip, then requires the generic floating-
-point bridge to retain that call until a TFLite relation can prove and
-materialize its rescaling semantics through `quant`.
-The separately selected `tflite.nn` relation then converts all 66 compute calls
-in that model to shared `nn`/`tensor` functions. Its mappings are ordinary
-metadata-selected functions using the same open relation boundary as ONNX,
-without sharing a frontend dispatch table. The corresponding two-argument
-`tflite.nn.convert` overload likewise owns dependency preparation while
-accepting an explicit relation list.
-Logical-axis operands retain NHWC and both TFLite weight layouts without
-creating a second IR or a layout-specific core operation. Like the ONNX
-relation, it commits a new
-callee and every materialized operand through one checked `ir.retarget`; a
-failed relation cannot leave a call with half-updated arguments.
+Joggle is pre-1.0 research software. Its core and extension contracts are
+tested on conventional ONNX and TFLite models, but its C emitter is not yet a
+production inference runtime.
 
-## Build
+## The model
+
+The public IR has seven concepts:
+
+```text
+Mod  Fn  Blk  Op  Val  Ty  Attr
+```
+
+`Mod` owns storage. `Fn`, `Blk`, `Op`, and `Val` are stable handles. `Ty` and
+`Attr` are structural values. Calls, constants, loops, conditions, returns,
+and block yields are the only structural operation kinds; concrete computation
+is an ordinary function call.
+
+A network graph is the calls and values in a function body. Exposing tensor
+semantics adds loops and scalar calls to that same function. A transform is
+also an ordinary function:
+
+```jog
+fn prepare(m: Mod) -> bool
+```
+
+There is no pass class, generated adaptor, operator class hierarchy, or hidden
+global registry. Frontends, semantic bridges, optimizations, analyses, memory
+planners, simulators, and emitters are removable modules.
+
+## Build and try it
+
+The default build needs only a C++20 compiler and CMake 3.20 or newer. It does
+not download dependencies.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
-cmake --install build --prefix /path/to/prefix
 ```
 
-Check a module or run a textual transform:
+Check a program and run a transform:
 
 ```sh
-./build/joggle check test/data/matmul.jog -M modules
-./build/joggle run opt.fold_add_zero test/data/matmul.jog -M modules
-./build/joggle emit my.target.source model.jog -M modules > model.c
+./build/joggle check test/data/matmul.jog -M build/modules
+./build/joggle run opt.fold_add_zero test/data/matmul.jog \
+  -M build/modules > transformed.jog
 ```
 
-`emit` invokes an ordinary read-only `fn(Mod) -> str/bytes` and writes the
-returned artifact verbatim. It adds no target interface: C, assembly, HDL, and
-binary modules can share the same checked output boundary.
+The output is normal `.jog` text and can be checked, transformed, or committed
+again.
 
-The bundled `c` module is the first concrete consumer. It emits static tensor
-kernels, scalar expressions, local calls, structured loops, and branches as
-portable C99:
+## Language in one example
+
+```jog
+module example
+use tensor
+
+fn matmul<T: Ty, M: int, N: int, K: int>(
+  a: tensor<T, [M, K]>,
+  b: tensor<T, [K, N]>
+) -> tensor<T, [M, N]> {
+  var c = tensor<T, [M, N]>(T(0))
+  for i in 0..M, j in 0..N {
+    var sum = T(0)
+    for k in 0..K {
+      sum += a[i, k] * b[k, j]
+    }
+    c[i, j] = sum
+  }
+  return c
+}
+```
+
+Generics are ordinary compile-time values. A module can define another type
+constructor with the same mechanism used by `tensor`; widths, shapes, layouts,
+and custom number formats do not require a core type registry.
+
+The complete syntax, including multi-result calls, structured control flow,
+operator overloading, compile-time functions, and open attributes, is in the
+[language reference](docs/language.md).
+
+## Write an extension
+
+A module is a directory containing `module.jog`. It may also contain sorted
+`.jog` fragments under `lib/` and one optional native library under `native/`.
+No second manifest or generated header is required.
+
+This transform attaches user-owned policy without adding a core concept:
+
+```jog
+module choose_lut
+use ir
+
+fn apply(m: Mod) -> bool {
+  var changed = false
+  for op in ir.ops(m) {
+    if ir.callee(op) == "nn.relu" {
+      changed = ir.set(m, op, "implementation", "lut") || changed
+    }
+  }
+  return changed
+}
+```
+
+Run it like any bundled function:
 
 ```sh
-./build/joggle emit c.source test/data/c.jog -M build/modules > model.c
-cc -std=c99 model.c test/data/c_main.c -o model && ./model
+./build/joggle run choose_lut.apply model.jog \
+  -M build/modules -M path/to/my-modules
 ```
 
-Tensor results use caller-provided output storage. Calls into dependency
-modules must first be exposed as ordinary loop/scalar IR. The optional,
-explicit preparation step does that by expanding existing function bodies:
+Compile-time execution is transactional. If the function fails or produces an
+invalid module, Joggle restores the input. C++ and `.jog` functions edit the
+same `Fn`/`Blk`/`Op`/`Val` representation through the same checks.
+
+Local module lifecycle commands are deterministic and registry-free:
 
 ```sh
-./build/joggle run c.prepare test/data/c_open.jog \
-  -M build/modules > prepared.jog
-./build/joggle emit c.source prepared.jog -M build/modules > model.c
+./build/joggle module list -M build/modules
+./build/joggle module info tensor -M build/modules
+./build/joggle module check tensor -M build/modules
+./build/joggle module install path/to/module local-modules -M build/modules
+./build/joggle module upgrade path/to/module local-modules -M build/modules
+./build/joggle module uninstall module_name local-modules
 ```
 
-`c.source` never invokes `c.prepare`. Unsupported types,
-dynamic shapes, direct tensor expressions, and multi-results fail during
-emission instead of producing guessed code. This is a first executable target
-gate, not a claim that arbitrary imported networks are already C-ready.
+Install and upgrade validate the complete dependency and native-library
+closure before changing the destination. Upgrade preserves existing function
+signatures. Uninstall refuses to remove a module still used by another module
+in the same installation root.
 
-Storage planning is another explicit, target-neutral module step. After
-preparation, `mem.plan` derives live intervals from the shared IR, assigns
-same-element-type static tensors to reusable slots, and records the result as
-open metadata:
+See the [module guide](docs/modules.md) and [tutorial](docs/tutorial.md) for a
+native function, semantic relation, custom format, fusion policy, and emitter.
 
-```sh
-./build/joggle run mem.plan prepared.jog -M build/modules > planned.jog
-./build/joggle query mem.buffers planned.jog -M build/modules
-./build/joggle emit c.source planned.jog -M build/modules > model.c
-```
+## Import a real network
 
-The C module consumes those slots when present and keeps its prior local-array
-behavior otherwise. Neither module models a particular cache, SRAM capacity,
-or device.
-
-`stat.summary` is a read-only structural measurement of the same module:
-
-```sh
-./build/joggle query stat.summary planned.jog -M build/modules
-```
-
-It reports deterministic `Fn`/`Blk`/`Op`/`Val`, control-flow,
-call-resolution, tensor, and planned-storage counts as one canonical
-dictionary. These are IR facts, not wall-clock or device-performance
-estimates.
-
-Module directories remain the only distribution unit. The CLI can discover,
-validate, inspect, install, upgrade, and uninstall them without a registry or
-another manifest:
-
-```sh
-./build/joggle module list -M modules
-./build/joggle module info tensor -M modules
-./build/joggle module check nn -M modules
-./build/joggle module install path/to/my.module local-modules -M modules
-./build/joggle module upgrade path/to/my.module local-modules -M modules
-./build/joggle module uninstall my.module local-modules
-```
-
-Installation refuses to overwrite an existing module and commits a staged copy
-only after its declarations, dependencies, and optional native binding load
-successfully. Upgrade additionally requires every installed function signature
-to remain available; adding overloads and renaming generic parameters are
-compatible, while removing or changing a declaration is rejected before the
-staged copy can replace the installed directory. Uninstall refuses to remove a
-module that another module in the same installation root directly uses.
-
-The optional ONNX codec keeps Protobuf out of the core build:
+ONNX is optional, so Protobuf never becomes a core dependency:
 
 ```sh
 cmake -S . -B build -DJOGGLE_BUILD_ONNX=ON
 cmake --build build
-./build/joggle read onnx.read model.onnx -M build/modules > model.jog
-./build/joggle query opt.untyped model.jog -M modules
+./build/joggle read onnx.read model.onnx \
+  -M build/modules > source.jog
+./build/joggle run onnx.nn.convert source.jog \
+  -M build/modules > network.jog
 ```
 
-After a frontend bridge, a consumer can retain exactly the functions it
-supports and expose the rest through ordinary function bodies:
+Import transports source operations and attributes. Conversion is a separate,
+explicit bridge module. Unknown operations remain visible source calls rather
+than receiving guessed semantics. A second optional TFLite codec and bridge
+exercise the same core boundary with different source metadata and layouts.
 
-```jog
-module edge
-use opt
-use ir
-use tensor
+The test matrix downloads pinned files only when its explicit ONNX Zoo gate is
+configured. Normal configure and build remain offline. Covered models include
+MobileNetV2, SqueezeNet, ResNet-18, Tiny YOLO, UltraFace, SSD-MobileNet,
+ShuffleNet, DenseNet, GoogLeNet, EfficientNet QDQ/INT8, and BiDAF. Coverage is
+reported conservatively: an imported or typed source call is not described as
+executable semantic support.
 
-fn tensor.matmul<M: int, N: int, K: int>(
-  a: tensor<i8, [M, K]>, b: tensor<i8, [K, N]>
-) -> tensor<i8, [M, N]>;
+## Analyze and emit
 
-fn caps() -> list<Fn> {
-  return ir.fns("edge")
-}
-
-fn prepare(m: Mod) -> bool {
-  return opt.legalize(m, caps(), 16)
-}
-```
-
-`opt.frontier(m, caps())` reports the remaining unsupported calls. Here the
-bodyless `tensor.matmul` declaration is a contract: its ordinary generic
-signature accepts matching `i8` matrix products and rejects other element
-types or ranks. This is a module function, not a target registry or a second
-IR.
-
-The same declaration may have a body, making it an implementation rather than
-only a boundary:
-
-```jog
-module edge
-use tensor
-use opt
-use ir
-
-fn dot<M: int, N: int, K: int>(
-  a: tensor<i8, [M, K]>, b: tensor<i8, [K, N]>
-) -> tensor<i8, [M, N]>;
-
-fn tensor.matmul<M: int, N: int, K: int>(
-  a: tensor<i8, [M, K]>, b: tensor<i8, [K, N]>
-) -> tensor<i8, [M, N]> {
-  return dot(a, b)
-}
-
-fn prepare(m: Mod) -> bool {
-  return opt.apply(m, ir.fns("edge"))
-}
-```
-
-`opt.apply` selects the most specific matching ordinary overload and keeps
-applying newly exposed implementations until the network reaches a fixed
-point. The two-argument form derives a bound from the implementation set; an
-explicit third argument controls the bound for recursive specialization. A
-non-converging set is diagnosed and the complete transform rolls back. The
-expander adds `use edge` only when that implementation was not already visible.
-`dot` may later be interpreted, simulated, or emitted by this module; Joggle
-core does not know that it is a hardware primitive.
-
-The optional TFLite codec similarly keeps FlatBuffers private to its module.
-Its opt-in build requires a FlatBuffers package that provides both the library
-and `flatc`:
+Analyses are read-only module functions:
 
 ```sh
-cmake -S . -B build -DJOGGLE_BUILD_TFLITE=ON
-cmake --build build
-./build/joggle read tflite.read model.tflite -M build/modules > model.jog
-./build/joggle run tflite.nn.convert model.jog -M build/modules > network.jog
+./build/joggle query opt.untyped network.jog -M build/modules
+./build/joggle query stat.summary network.jog -M build/modules
 ```
 
-The pinned integration model can be fetched and checked independently:
+Emitters return `str` or `bytes` through the same read-only boundary:
 
 ```sh
-cmake -DOUT=/tmp/mobilenet_v2.tflite -P test/tflite.cmake
+./build/joggle run c.prepare test/data/c_open.jog \
+  -M build/modules > prepared.jog
+./build/joggle run mem.plan prepared.jog \
+  -M build/modules > planned.jog
+./build/joggle emit c.source planned.jog \
+  -M build/modules > model.c
 ```
 
-The optional `sat` module is a compact extension example rather than a built-in
-target. It adds a parameterized saturating integer, a type-directed selection
-function, a scalar reference model, and a SystemVerilog emitter:
+`c.prepare`, `mem.plan`, and `c.source` are independent module functions.
+Emission never triggers hidden lowering or planning. The current C module
+supports fixed-shape tensor kernels, scalar expressions, local calls,
+structured loops, and conditions; unsupported IR fails with a diagnostic.
 
-```sh
-cmake -S . -B build -DJOGGLE_BUILD_SAT=ON
-cmake --build build
-./build/joggle run sat.select test/data/sat.jog -M build/modules
-```
+## Guarantees and boundaries
 
-The core and command-line tool require only a C++20 compiler and the standard
-library. Building does not download dependencies. Installation provides the
-`Joggle::joggle` CMake target, CLI, public header, and standard modules under
-`share/joggle/modules`.
+- Core is C++20 plus the standard library; codecs keep dependencies local.
+- Adding computation does not add an `Op` subclass or parser case.
+- Adding a module does not generate or rebuild a core header.
+- Module and compile-time-function failures are transactional.
+- Verification rejects missing, duplicate, and cyclic dependency structure;
+  failed inference restores prior types.
+- Cross-module body expansion has one environment-aware API and updates
+  dependency visibility atomically.
+- Canonical text is deterministic and structurally round-trippable.
+- Attribute names have no built-in target, schedule, placement, or device
+  meaning.
 
-## Shape of the project
+Joggle does not yet provide dynamic allocation, a production runtime, a
+hardware scheduler, or end-to-end performance portability. Those are module
+research opportunities, not implicit core promises.
 
-- `joggle::Env` owns loaded modules, native bindings, and environment
-  diagnostics.
-- `joggle::Mod` owns one self-contained IR unit.
-- `Fn`, `Blk`, `Op`, and `Val` are stable handles into a `Mod`.
-- `Ty` and `Attr` are structural values.
-- `.jog` is the only source and readable IR format.
-- imports, transforms, analyses, simulators, and emitters are module functions,
-  not separate plugin class families.
+## Documentation
 
-Start with [the design](docs/design.md), then read the
-[language](docs/language.md), [module model](docs/modules.md), and
-[tutorial](docs/tutorial.md). The [roadmap](docs/roadmap.md) defines the
-remaining completion gates and compatibility policy.
+- [Design](docs/design.md): architecture, invariants, and implemented slices.
+- [Language](docs/language.md): complete `.jog` grammar and semantics.
+- [Modules](docs/modules.md): packaging, native ABI, and bundled libraries.
+- [Tutorial](docs/tutorial.md): extension-oriented walkthroughs.
+- [Roadmap](docs/roadmap.md): completion gates and remaining work.
 
-The implementation removed during the redesign remains recoverable at Git tag
-`archive/pre-relaunch-a2a281e`.
+The implementation removed during the clean redesign remains recoverable at
+Git tag `archive/pre-relaunch-a2a281e`.
 
 ## License
 
