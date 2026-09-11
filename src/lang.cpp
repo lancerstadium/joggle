@@ -8,6 +8,7 @@
 #include <limits>
 #include <locale>
 #include <map>
+#include <set>
 #include <sstream>
 #include <unordered_map>
 #include <utility>
@@ -2380,10 +2381,18 @@ bool Mod::verify(const Env& env) {
     original_types.push_back(value.data.type);
   if (store.name.empty())
     detail::add_diag(store.diags, "module has no name");
-  for (const std::string& dependency : store.uses)
+  std::set<std::string, std::less<>> dependencies;
+  for (const std::string& dependency : store.uses) {
+    if (dependency == store.name)
+      detail::add_diag(store.diags,
+                       "module cannot depend on itself: " + dependency);
+    if (!dependencies.insert(dependency).second)
+      detail::add_diag(store.diags,
+                       "duplicate module dependency: " + dependency);
     if (!env.loaded(dependency))
       detail::add_diag(store.diags,
                        "dependency module is not loaded: " + dependency);
+  }
   for (const auto& fn_slot : store.fns) {
     if (!fn_slot.live)
       continue;

@@ -591,6 +591,35 @@ int main(int argc, char** argv) {
   CHECK(missing_dependency.diags().front().message.find(
             "dependency module is not loaded") != std::string::npos);
 
+  joggle::Mod self_dependency;
+  CHECK(joggle::parse(env,
+                      "module self_dependency\n"
+                      "use self_dependency\n"
+                      "fn main() -> int { return 0 }\n",
+                      self_dependency, "self-dependency.jog"));
+  CHECK(!self_dependency.verify(env));
+  CHECK(std::any_of(
+      self_dependency.diags().begin(), self_dependency.diags().end(),
+      [](const joggle::Diag& diag) {
+        return diag.message.find("cannot depend on itself") !=
+               std::string::npos;
+      }));
+
+  joggle::Mod duplicate_dependency;
+  CHECK(joggle::parse(env,
+                      "module duplicate_dependency\n"
+                      "use base\n"
+                      "use base\n"
+                      "fn main() -> int { return 0 }\n",
+                      duplicate_dependency, "duplicate-dependency.jog"));
+  CHECK(!duplicate_dependency.verify(env));
+  CHECK(std::any_of(
+      duplicate_dependency.diags().begin(), duplicate_dependency.diags().end(),
+      [](const joggle::Diag& diag) {
+        return diag.message.find("duplicate module dependency") !=
+               std::string::npos;
+      }));
+
   constexpr std::string_view inferred_source =
       "module inferred\n"
       "use tensor\n"

@@ -78,6 +78,8 @@ refused uninstall leaves every directory unchanged.
 precedence for duplicate names. `info` performs a real load, then reports the
 selected path, dependencies, source fragments, and native library files.
 `check` loads and verifies the full dependency closure.
+Self-dependencies and duplicate `use` declarations are invalid rather than
+being normalized differently by source loading and embedding code.
 
 Installation validates the source tree: symbolic links and special files are
 rejected, an existing target is never overwritten, and the copy is loaded from
