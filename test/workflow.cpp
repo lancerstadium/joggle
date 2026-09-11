@@ -1114,6 +1114,27 @@ int main(int argc, char** argv) {
   CHECK(env.accepts(explicit_match.find_fn("compatible").body().ops()[0],
                     explicit_candidate));
 
+  joggle::Mod rename_safety;
+  CHECK(joggle::parse(env,
+                      "module rename_safety\n"
+                      "fn incompatible(x: i32) -> f32;\n"
+                      "fn compatible(x: i32) -> i32;\n"
+                      "fn main(x: i32) -> i32 {\n"
+                      "  let y: i32 = source(x)\n"
+                      "  return y\n"
+                      "}\n",
+                      rename_safety, "rename-safety.jog"));
+  CHECK(rename_safety.verify(env));
+  const joggle::Op renamed_call =
+      rename_safety.find_fn("main").body().ops()[0];
+  const std::string rename_before = joggle::print(rename_safety);
+  const std::uint64_t rename_safety_revision = rename_safety.revision();
+  CHECK(!rename_safety.rename(env, renamed_call, "incompatible"));
+  CHECK(joggle::print(rename_safety) == rename_before);
+  CHECK(rename_safety.revision() == rename_safety_revision);
+  CHECK(rename_safety.rename(env, renamed_call, "compatible"));
+  CHECK(rename_safety.verify(env));
+
   joggle::Mod args_safety;
   CHECK(joggle::parse(env,
                       "module args_safety\n"

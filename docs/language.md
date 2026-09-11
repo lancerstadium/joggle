@@ -337,8 +337,10 @@ was present, and `ir.params`/`ir.returns` expose its inputs and result types.
 This is enough for a transport module to represent a nested source graph as an
 ordinary function and for a separate relation module to reason about it.
 
-Call conversion uses `ir.retarget(m, op, callee, args)`. It applies the same
-visibility, overload, generic, argument, result, and dominance checks as an
+Renaming a call checks any visible destination against the existing arguments
+and results; an unknown destination remains an open call. Call conversion that
+also changes operands uses `ir.retarget(m, op, callee, args)`. It applies the
+same visibility, overload, generic, argument, result, and dominance checks as an
 ordinary source call before changing either the callee or its operands. A
 failed match returns `false` with the original call intact. Bridge modules can
 therefore try a semantic function without constructing a parallel legality

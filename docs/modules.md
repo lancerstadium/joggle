@@ -555,10 +555,11 @@ has no built-in target meaning.
 `opt.rename(m, rules)` applies exact call-name pairs supplied as
 `list<list<str>>`. It knows no frontend or network names. A bridge first calls
 `ir.use` for its destination library, then supplies a relation such as
-`[["onnx.Relu", "nn.relu"]]`; final verification checks that the renamed
-call actually matches a visible destination function. Rules that need operand
-reordering, attribute interpretation, or new constants remain ordinary bridge
-code rather than hidden behavior in this simple relation helper.
+`[["onnx.Relu", "nn.relu"]]`. A visible destination is checked against the
+call signature before the name changes; an unknown destination remains open.
+Rules that need operand reordering, attribute interpretation, or new constants
+remain ordinary bridge code rather than hidden behavior in this simple relation
+helper.
 
 The C++ embedding API can call the same function as
 `run(env, "module.fn", mod)` or request a structural report with

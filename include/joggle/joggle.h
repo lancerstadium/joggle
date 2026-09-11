@@ -380,7 +380,7 @@ public:
   bool erase(Op op);
   bool type(Val value, Ty type);
   bool rename(Val value, std::string name);
-  bool rename(Op call, std::string callee);
+  bool rename(const Env& env, Op call, std::string callee);
   bool retarget(const Env& env, Op call, std::string callee,
                 std::span<const Val> args);
   bool set(Fn fn, std::string key, Attr value);

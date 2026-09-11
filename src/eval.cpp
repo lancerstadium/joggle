@@ -1461,7 +1461,8 @@ private:
       const auto value = string(args[2]);
       if (mod && *mod && value) {
         if (const auto* op = as<Op>(args[1]))
-          return Items{Item(Attr((*mod)->rename(*op, std::string(*value))))};
+          return Items{
+              Item(Attr((*mod)->rename(env_, *op, std::string(*value))))};
         if (const auto* val = as<Val>(args[1]))
           return Items{Item(Attr((*mod)->rename(*val, std::string(*value))))};
       }

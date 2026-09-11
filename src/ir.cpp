@@ -1898,7 +1898,7 @@ bool Mod::rename(Val value, std::string name) {
   return true;
 }
 
-bool Mod::rename(Op call, std::string callee) {
+bool Mod::rename(const Env& env, Op call, std::string callee) {
   auto& store = impl_->store;
   if (!call.valid() || call.store_ != &store || call.kind() != Op::Kind::call ||
       callee.empty()) {
@@ -1906,10 +1906,34 @@ bool Mod::rename(Op call, std::string callee) {
                      "rename requires a live call and non-empty callee");
     return false;
   }
-  if (store.ops[call.id_].data.callee != callee) {
-    store.ops[call.id_].data.callee = std::move(callee);
-    touch(store);
+  if (store.ops[call.id_].data.callee == callee)
+    return true;
+
+  const Ty applied{callee};
+  const std::string_view symbol =
+      applied.args().empty() ? std::string_view(callee) : applied.name();
+  const std::vector<Fn> declarations = env.resolve_fns(*this, symbol);
+  if (!declarations.empty()) {
+    const std::vector<Val> arguments = call.args();
+    std::vector<Ty> returns;
+    const Fn resolved =
+        env.resolve(*this, call, callee, arguments, &returns);
+    const std::vector<Val> outputs = call.outs();
+    bool compatible = resolved && returns.size() == outputs.size();
+    for (std::size_t index = 0; compatible && index < returns.size(); ++index) {
+      const Ty actual = outputs[index].type();
+      compatible = actual.text() == "_" || returns[index].text() == "_" ||
+                   actual == returns[index];
+    }
+    if (!compatible) {
+      detail::add_diag(store.diags,
+                       "rename target does not accept the call signature",
+                       call.loc());
+      return false;
+    }
   }
+  store.ops[call.id_].data.callee = std::move(callee);
+  touch(store);
   return true;
 }
 
