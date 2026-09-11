@@ -353,6 +353,13 @@ visible atomically, preserve unambiguous call spelling, qualify only collisions,
 and redirect self-recursion to the copied function. Alpha-equivalent overload
 signatures are rejected before mutation. C++ and `.jog` exercise the same
 primitive, including failure stability and canonical round-trip.
+The optional concrete-generic overload performs monomorphic materialization
+without adding a specialization object. It validates bindings through the same
+overload resolver as an ordinary call, substitutes the signature and complete
+nested body, removes the generic parameters, and materializes integer, Boolean,
+and recursively typed list operands in the new entry `Blk`. Unsupported
+first-class compile-time objects, arity mismatches, open terms, and collisions
+with an existing concrete overload roll back both dependency and IR changes.
 
 ## M7 fifth slice
 

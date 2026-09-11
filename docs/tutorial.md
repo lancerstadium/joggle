@@ -256,6 +256,21 @@ only references that would become ambiguous are qualified. A duplicate overload
 or invalid destination name leaves both text and revision unchanged. There is
 no generated declaration, stateful builder, or separate kernel representation.
 
+Pass concrete generic terms to create a monomorphic helper through the same
+operation:
+
+```jog
+let relu4 = ir.clone(
+  m, template, "relu4", [ty("f32"), ty("[4]")]
+)
+```
+
+The result is `fn relu4(x: tensor<f32, [4]>) -> tensor<f32, [4]>` with a fully
+substituted body and no generic parameters. Shape or width generics used as
+ordinary values become constants or list literals in the entry block. Invalid
+bindings and collisions with an existing concrete overload leave the program
+unchanged.
+
 ## Define a fusion policy
 
 A project module can reuse the generic chain matcher while choosing its own

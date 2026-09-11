@@ -122,6 +122,8 @@ same `Fn`/`Blk`/`Op`/`Val` representation through the same checks.
 An extension may clone a normal module `fn` into the program with
 `ir.clone(m, fn, name)`, providing generated helpers and local template
 materialization without a separate kernel builder.
+Supplying a final `list<Ty>` binds the template generics and produces a
+monomorphic function through the same operation.
 
 Local module lifecycle commands are deterministic and registry-free:
 

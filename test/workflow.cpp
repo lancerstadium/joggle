@@ -126,13 +126,111 @@ int main(int argc, char** argv) {
   const joggle::Fn local_leaky =
       generated_fn.clone(env, leaky_template, "relu");
   CHECK(local_leaky && generated_fn.revision() == duplicate_fn_revision + 1);
+  const std::vector<joggle::Ty> relu4_args{joggle::Ty("f32"),
+                                           joggle::Ty("[4]")};
+  const std::uint64_t before_relu4 = generated_fn.revision();
+  CHECK(!generated_fn.clone(env, relu_template, "main", relu4_args));
+  CHECK(generated_fn.revision() == before_relu4);
+  generated_fn.clear_diags();
+  const joggle::Fn local_relu4 =
+      generated_fn.clone(env, relu_template, "relu4", relu4_args);
+  CHECK(local_relu4 && local_relu4.generics().empty());
+  CHECK(local_relu4.params().size() == 1 &&
+        local_relu4.params().front().type() ==
+            joggle::Ty("tensor<f32, [4]>") &&
+        local_relu4.returns() ==
+            std::vector<joggle::Ty>{joggle::Ty("tensor<f32, [4]>")});
+  CHECK(generated_fn.revision() == before_relu4 + 1);
   CHECK(generated_fn.verify(env));
   CHECK(generated_fn.find_fns("relu").size() == 2);
+  const std::string specialized_text = joggle::print(generated_fn);
+  CHECK(specialized_text.find("fn relu4(") != std::string::npos);
+  CHECK(specialized_text.find("fn relu4<") == std::string::npos);
+  const std::uint64_t rejected_specialization = generated_fn.revision();
+  CHECK(!generated_fn.clone(
+      env, relu_template, "bad_relu",
+      std::vector<joggle::Ty>{joggle::Ty("f32")}));
+  CHECK(generated_fn.revision() == rejected_specialization);
+  generated_fn.clear_diags();
+  CHECK(!generated_fn.clone(
+      env, relu_template, "bad_relu",
+      std::vector<joggle::Ty>{joggle::Ty("[4]"), joggle::Ty("[4]")}));
+  CHECK(generated_fn.revision() == rejected_specialization);
+  generated_fn.clear_diags();
+  CHECK(!generated_fn.clone(
+      env, relu_template, "bad_relu",
+      std::vector<joggle::Ty>{joggle::Ty("f32"), joggle::Ty("[_, 4]")}));
+  CHECK(generated_fn.revision() == rejected_specialization);
+  generated_fn.clear_diags();
   joggle::Mod generated_roundtrip;
   CHECK(joggle::parse(env, joggle::print(generated_fn), generated_roundtrip,
                       "generated-roundtrip.jog"));
   CHECK(generated_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(generated_fn, generated_roundtrip));
+
+  joggle::Mod value_specialization;
+  constexpr std::string_view value_specialization_source =
+      "module specialize\n"
+      "use base\n"
+      "fn repeat<N: int>(x: i32) -> i32 {\n"
+      "  var y = x\n"
+      "  for i in 0..N { y += 1 }\n"
+      "  return y\n"
+      "}\n"
+      "fn shape<S: list<int>>(x: i32) -> i32 {\n"
+      "  return use_shape(x, S)\n"
+      "}\n"
+      "fn choose<B: bool>(x: i32) -> i32 {\n"
+      "  var y = x\n"
+      "  if B { y += 1 }\n"
+      "  return y\n"
+      "}\n"
+      "fn type_operand<T: Ty>(x: i32) -> i32 {\n"
+      "  return opaque(x, T)\n"
+      "}\n";
+  CHECK(joggle::parse(env, value_specialization_source, value_specialization,
+                      "specialize.jog"));
+  CHECK(value_specialization.verify(env));
+  const joggle::Fn repeat = value_specialization.find_fn("repeat");
+  const joggle::Fn shape = value_specialization.find_fn("shape");
+  const joggle::Fn choose_template = value_specialization.find_fn("choose");
+  const joggle::Fn type_operand =
+      value_specialization.find_fn("type_operand");
+  CHECK(value_specialization.clone(
+      env, repeat, "repeat4", std::vector<joggle::Ty>{joggle::Ty("4")}));
+  CHECK(value_specialization.clone(
+      env, shape, "shape23", std::vector<joggle::Ty>{joggle::Ty("[2, 3]")}));
+  CHECK(value_specialization.clone(
+      env, choose_template, "choose_true",
+      std::vector<joggle::Ty>{joggle::Ty("true")}));
+  const std::string before_type_operand = joggle::print(value_specialization);
+  const std::uint64_t type_operand_revision = value_specialization.revision();
+  CHECK(!value_specialization.clone(
+      env, type_operand, "type_operand_f32",
+      std::vector<joggle::Ty>{joggle::Ty("f32")}));
+  CHECK(joggle::print(value_specialization) == before_type_operand);
+  CHECK(value_specialization.revision() == type_operand_revision);
+  value_specialization.clear_diags();
+  CHECK(value_specialization.verify(env));
+  const std::string value_specialization_text =
+      joggle::print(value_specialization);
+  CHECK(value_specialization_text.find("fn repeat4(x: i32)") !=
+        std::string::npos);
+  CHECK(value_specialization_text.find("for i in 0..4") != std::string::npos);
+  CHECK(value_specialization_text.find("fn shape23(x: i32)") !=
+        std::string::npos);
+  CHECK(value_specialization_text.find("use_shape(x, [2, 3])") !=
+        std::string::npos);
+  CHECK(value_specialization_text.find("fn choose_true(x: i32)") !=
+        std::string::npos);
+  CHECK(value_specialization_text.find("if true") != std::string::npos);
+  joggle::Mod value_specialization_roundtrip;
+  CHECK(joggle::parse(env, value_specialization_text,
+                      value_specialization_roundtrip,
+                      "specialize-roundtrip.jog"));
+  CHECK(value_specialization_roundtrip.verify(env));
+  CHECK(joggle::structurally_equal(value_specialization,
+                                   value_specialization_roundtrip));
 
   joggle::Mod alpha_duplicate;
   constexpr std::string_view alpha_source =
@@ -155,14 +253,23 @@ int main(int argc, char** argv) {
   joggle::Mod recursive_fn;
   constexpr std::string_view recursive_source =
       "module recursive\n"
-      "fn recur(n: int) -> int { return recur(n) }\n";
+      "fn recur(n: int) -> int { return recur(n) }\n"
+      "fn generic<N: int>(n: int) -> int { return generic<N>(n) }\n";
   CHECK(joggle::parse(env, recursive_source, recursive_fn, "recursive.jog"));
   CHECK(recursive_fn.verify(env));
   const joggle::Fn recur = recursive_fn.find_fn("recur");
   const joggle::Fn recur_copy = recursive_fn.clone(env, recur, "recur_copy");
   CHECK(recur_copy && recursive_fn.verify(env));
+  const joggle::Fn generic_recur = recursive_fn.find_fn("generic");
+  const joggle::Fn generic4 = recursive_fn.clone(
+      env, generic_recur, "generic4",
+      std::vector<joggle::Ty>{joggle::Ty("4")});
+  CHECK(generic4 && generic4.generics().empty() && recursive_fn.verify(env));
   const std::string recursive_text = joggle::print(recursive_fn);
   CHECK(recursive_text.find("recursive.recur_copy(n)") != std::string::npos);
+  CHECK(recursive_text.find("fn generic4(n: int)") != std::string::npos);
+  CHECK(recursive_text.find("recursive.generic4(n)") != std::string::npos);
+  CHECK(recursive_text.find("recursive.generic4<") == std::string::npos);
   joggle::Mod recursive_roundtrip;
   CHECK(joggle::parse(env, recursive_text, recursive_roundtrip,
                       "recursive-roundtrip.jog"));
@@ -228,6 +335,39 @@ int main(int argc, char** argv) {
         fn_clone_event->at("params").list()->size() == 1);
   CHECK(fn_clone_event->at("returns").list() &&
         fn_clone_event->at("returns").list()->size() == 1);
+  CHECK(fn_clone_event->at("generics").list() &&
+        fn_clone_event->at("generics").list()->empty());
+  joggle::Attr fn_specialize_report;
+  CHECK(joggle::run(env, "script.clone_relu4", scripted_fn,
+                    fn_specialize_report));
+  CHECK(scripted_fn.verify(env));
+  const joggle::Fn scripted_relu4 = scripted_fn.find_fn("relu4");
+  CHECK(scripted_relu4 && scripted_relu4.generics().empty());
+  CHECK(scripted_relu4.params().front().type() ==
+        joggle::Ty("tensor<f32, [4]>") &&
+        scripted_relu4.returns().front() ==
+            joggle::Ty("tensor<f32, [4]>"));
+  const joggle::Attr::Dict* fn_specialize_summary =
+      fn_specialize_report.dict();
+  CHECK(fn_specialize_summary);
+  const joggle::Attr::List* fn_specialize_steps =
+      fn_specialize_summary->at("steps").list();
+  CHECK(fn_specialize_steps && fn_specialize_steps->size() == 1);
+  const joggle::Attr::Dict* fn_specialize_event =
+      fn_specialize_steps->front().dict();
+  CHECK(fn_specialize_event &&
+        fn_specialize_event->at("kind").string() == "clone");
+  CHECK(fn_specialize_event->at("copy").string() ==
+        "scripted.generated.relu4");
+  const joggle::Attr::List* specialized_params =
+      fn_specialize_event->at("params").list();
+  CHECK(specialized_params && specialized_params->size() == 1 &&
+        specialized_params->front().string() == "tensor<f32, [4]>");
+  const joggle::Attr::List* specialized_generics =
+      fn_specialize_event->at("generics").list();
+  CHECK(specialized_generics && specialized_generics->size() == 2 &&
+        (*specialized_generics)[0].string() == "f32" &&
+        (*specialized_generics)[1].string() == "[4]");
   joggle::Mod scripted_fn_roundtrip;
   CHECK(joggle::parse(env, joggle::print(scripted_fn), scripted_fn_roundtrip,
                       "scripted-generated-roundtrip.jog"));

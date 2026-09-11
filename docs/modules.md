@@ -445,6 +445,11 @@ templates, qualifies only call collisions, and retargets recursion to the new
 function. Research modules can therefore materialize helpers or local template
 copies without a generated header, function builder, or kernel-specific core
 API.
+The overload with a final `list<Ty>` binds all generics and emits a monomorphic
+copy. It substitutes structural types and explicit generic calls throughout the
+body; integer, Boolean, and recursively typed list values used as operands are
+materialized in the entry `Blk`. The ordinary call resolver checks generic
+constraints, and the resulting concrete overload is checked before commit.
 Intrinsic constant types are checked against their attribute representation;
 custom types keep module-defined literal semantics. Both `ir.constant` and
 `ir.call` accept structural `Ty` values, so a transform can reuse a reflected
@@ -589,9 +594,9 @@ include nested transform completions. Entries use `kind: "fn"`; successful
 `source`, `impl`, `params`, `returns`, and the exact revision interval. This is
 enough to audit overload selection without an implementation-plan object or a
 second dry-run algorithm.
-Function materialization uses `kind: "clone"` with `source`, `copy`, `params`,
-`returns`, and the same revision fields, so generated helpers are equally
-auditable without a new reporting interface.
+Function materialization uses `kind: "clone"` with `source`, `copy`, `generics`,
+`params`, `returns`, and the same revision fields, so generated helpers are
+equally auditable without a new reporting interface.
 `joggle run module.fn model.jog --report run.attr -M modules` writes that same
 structural report separately while preserving the transformed module on
 standard output. The implementation reuses the public `print(Attr)` overload,

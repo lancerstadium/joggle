@@ -332,7 +332,8 @@ private:
     trace_->emplace_back(std::move(event));
   }
 
-  void record_clone(Mod& mod, Fn source, Fn copy, std::uint64_t before) {
+  void record_clone(Mod& mod, Fn source, Fn copy, std::uint64_t before,
+                    std::span<const Ty> generics = {}) {
     if (!trace_)
       return;
     Attr::List params;
@@ -341,6 +342,9 @@ private:
     Attr::List returns;
     for (const Ty& type : copy.returns())
       returns.emplace_back(std::string(type.text()));
+    Attr::List bindings;
+    for (const Ty& type : generics)
+      bindings.emplace_back(std::string(type.text()));
     const std::uint64_t after = mod.revision();
     Attr::Dict event;
     event["kind"] = Attr("clone");
@@ -350,6 +354,7 @@ private:
         Attr(std::string(copy.module()) + "." + std::string(copy.name()));
     event["params"] = Attr(std::move(params));
     event["returns"] = Attr(std::move(returns));
+    event["generics"] = Attr(std::move(bindings));
     event["before"] = Attr(static_cast<std::int64_t>(before));
     event["after"] = Attr(static_cast<std::int64_t>(after));
     event["edits"] = Attr(static_cast<std::int64_t>(after - before));
@@ -1400,22 +1405,43 @@ private:
         if (result)
           return Items{Item(result)};
       }
-    } else if (name == "clone" && args.size() == 3) {
+    } else if (name == "clone" &&
+               (args.size() == 3 || args.size() == 4)) {
       const auto* mod = as<Mod*>(args[0]);
       if (mod && *mod) {
-        if (const auto* op = as<Op>(args[1])) {
-          if (const auto* before = as<Op>(args[2])) {
-            Op result = (*mod)->clone(*op, *before);
-            if (result)
-              return Items{Item(result)};
+        if (args.size() == 3) {
+          if (const auto* op = as<Op>(args[1])) {
+            if (const auto* before = as<Op>(args[2])) {
+              Op result = (*mod)->clone(*op, *before);
+              if (result)
+                return Items{Item(result)};
+            }
           }
         }
         if (const auto* fn = as<Fn>(args[1])) {
-          if (const auto target = string(args[2])) {
+          const auto target = string(args[2]);
+          std::vector<Ty> generics;
+          bool valid = args.size() == 3;
+          if (args.size() == 4) {
+            if (const Items* items = list(args[3])) {
+              valid = true;
+              generics.reserve(items->size());
+              for (const Item& item : *items) {
+                const auto* type = as<Ty>(item);
+                if (!type) {
+                  valid = false;
+                  break;
+                }
+                generics.push_back(*type);
+              }
+            }
+          }
+          if (target && valid) {
             const std::uint64_t before = (*mod)->revision();
-            Fn result = (*mod)->clone(env_, *fn, std::string(*target));
+            Fn result =
+                (*mod)->clone(env_, *fn, std::string(*target), generics);
             if (result) {
-              record_clone(**mod, *fn, result, before);
+              record_clone(**mod, *fn, result, before, generics);
               return Items{Item(result)};
             }
           }

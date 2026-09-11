@@ -339,6 +339,22 @@ visible through the normal dependency graph in the same revision commit. Calls
 retain their short spelling when it remains unambiguous, conflicting references
 are qualified, and recursive calls target the new local function. External
 declarations and duplicate overload signatures are rejected without mutation.
+The four-argument overload binds every generic at once:
+
+```jog
+let relu4 = ir.clone(
+  m, template, "relu4", [ty("f32"), ty("[4]")]
+)
+```
+
+A non-empty argument list must match the generic arity and constraints and may
+not contain `_`. The copied `Fn` has no generic parameters: bindings are
+substituted through parameter, result, local, and call types. Integer, Boolean,
+and recursively typed list parameters that occur as ordinary operands are
+materialized as normal constants and `base.list`; type parameters are replaced
+structurally in types and explicit call arguments. A source that attempts to
+use a type object as an ordinary runtime operand is rejected transactionally.
+Passing no generic arguments retains the generic function as described above.
 
 `ir.constant` checks the representation of intrinsic literals, including
 nested lists, before editing the module. User-defined type constructors retain
@@ -463,9 +479,9 @@ does not add a pipeline object to the language. Every step has a `kind`:
 `fn` identifies an ordinary nested function completion, while `expand` records
 the source semantic symbol, selected implementation symbol, parameter and
 return type patterns, and its exact revision delta. `clone` records the source
-template, copied symbol, signature, and revision interval of a function-level
-materialization. These are structural dictionary fields, not a second event
-class or callback interface.
+template, copied symbol, concrete generic bindings, signature, and revision
+interval of a function-level materialization. These are structural dictionary
+fields, not a second event class or callback interface.
 The named entry is selected by the same overload resolver as an ordinary DSL
 call, using `Mod` as its argument type. A module may therefore expose both
 `convert(m)` for the default workflow and `convert(m, rules)` for explicit

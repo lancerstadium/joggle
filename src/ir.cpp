@@ -1,6 +1,7 @@
 #include "detail.h"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cctype>
 #include <unordered_map>
@@ -305,6 +306,35 @@ std::optional<std::int64_t> integer(const Ty& value) {
   return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size()
              ? std::optional<std::int64_t>(result)
              : std::nullopt;
+}
+
+bool concrete_term(const Ty& value) {
+  if (!value.valid() || value.name() == "_")
+    return false;
+  return std::all_of(value.args().begin(), value.args().end(), concrete_term);
+}
+
+bool sized_integer_term(std::string_view name) {
+  return name.size() > 1 && (name.front() == 'i' || name.front() == 'u') &&
+         std::all_of(name.begin() + 1, name.end(), [](char ch) {
+           return std::isdigit(static_cast<unsigned char>(ch));
+         });
+}
+
+Ty generic_kind(const Ty& value) {
+  if (integer(value))
+    return Ty("int");
+  if (value.text() == "true" || value.text() == "false")
+    return Ty("bool");
+  if (value.name() != "[]")
+    return Ty("Ty");
+  if (value.args().empty())
+    return Ty("list<_>");
+  Ty element = generic_kind(value.args().front());
+  for (std::size_t index = 1; index < value.args().size(); ++index)
+    if (generic_kind(value.args()[index]) != element)
+      element = Ty("_");
+  return Ty("list<" + std::string(element.text()) + ">");
 }
 
 }  // namespace
@@ -1178,7 +1208,8 @@ Op Mod::clone(Op source, Op before) {
   return Op(&store, cloned_id, store.ops[cloned_id].generation);
 }
 
-Fn Mod::clone(const Env& env, Fn source_fn, std::string name) {
+Fn Mod::clone(const Env& env, Fn source_fn, std::string name,
+              std::span<const Ty> generic_args) {
   auto& store = impl_->store;
   const auto reject = [&](std::string message, Loc loc = {}) {
     detail::add_diag(store.diags, std::move(message), std::move(loc));
@@ -1204,13 +1235,49 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name) {
   source_generics.reserve(initial_fn.generic_vals.size());
   for (const std::uint32_t id : initial_fn.generic_vals)
     source_generics.push_back(initial_source.vals[id].data.name);
+  const bool specialized = !generic_args.empty();
+  if (specialized && generic_args.size() != initial_fn.generic_vals.size())
+    return reject("function clone generic argument count does not match",
+                  source_fn.loc());
+  Bindings bindings;
+  if (specialized)
+    for (std::size_t index = 0; index < generic_args.size(); ++index)
+      bindings.emplace(source_generics[index], generic_args[index]);
+  const std::vector<std::string> target_generics =
+      specialized ? std::vector<std::string>{} : source_generics;
+  std::vector<Ty> target_params;
+  target_params.reserve(initial_fn.params.size());
+  for (const std::uint32_t id : initial_fn.params)
+    target_params.push_back(
+        substitute(initial_source.vals[id].data.type, bindings));
+  std::vector<Ty> target_returns;
+  target_returns.reserve(initial_fn.returns.size());
+  for (const Ty& type : initial_fn.returns)
+    target_returns.push_back(substitute(type, bindings));
+  if (specialized) {
+    if (!std::all_of(generic_args.begin(), generic_args.end(), concrete_term))
+      return reject("function clone requires concrete generic arguments",
+                    source_fn.loc());
+    const std::array candidates{source_fn};
+    std::vector<Ty> resolved_returns;
+    std::vector<Ty> resolved_generics;
+    if (!detail::resolve_overload(candidates, target_params, generic_args,
+                                  &resolved_returns, nullptr, {},
+                                  &resolved_generics, target_returns) ||
+        resolved_returns != target_returns ||
+        resolved_generics !=
+            std::vector<Ty>(generic_args.begin(), generic_args.end()))
+      return reject("function clone generic arguments do not match the source "
+                    "function",
+                    source_fn.loc());
+  }
   const auto existing = store.symbols.find(name);
   if (existing != store.symbols.end()) {
     for (const std::uint32_t id : existing->second) {
       if (id >= store.fns.size() || !store.fns[id].live)
         continue;
       const detail::FnData& candidate = store.fns[id].data;
-      if (candidate.generic_vals.size() != initial_fn.generic_vals.size() ||
+      if (candidate.generic_vals.size() != target_generics.size() ||
           candidate.params.size() != initial_fn.params.size())
         continue;
       std::vector<std::string> candidate_generics;
@@ -1221,9 +1288,8 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name) {
       for (std::size_t index = 0; index < candidate.params.size(); ++index) {
         same = same && detail::same_type_pattern(
                            store.vals[candidate.params[index]].data.type,
-                           candidate_generics,
-                           initial_source.vals[initial_fn.params[index]].data.type,
-                           source_generics);
+                           candidate_generics, target_params[index],
+                           target_generics);
       }
       if (same)
         return reject("function clone would duplicate signature '" + name +
@@ -1256,6 +1322,7 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name) {
 
   detail::FnData next_fn = old_fn;
   next_fn.name = std::move(name);
+  next_fn.returns = target_returns;
   next_fn.generic_vals.clear();
   next_fn.params.clear();
   next_fn.blks.clear();
@@ -1266,16 +1333,105 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name) {
   std::unordered_map<std::uint32_t, std::uint32_t> values;
   const auto copy_value = [&](std::uint32_t old_id) {
     detail::ValData value = source->vals[old_id].data;
+    value.type = substitute(value.type, bindings);
     value.users.clear();
     const auto next_id = static_cast<std::uint32_t>(store.vals.size());
     store.vals.push_back({std::move(value), 1, true});
     values.emplace(old_id, next_id);
     return next_id;
   };
-  for (const std::uint32_t id : old_fn.generic_vals)
-    store.fns[next_fn_id].data.generic_vals.push_back(copy_value(id));
+  if (!specialized)
+    for (const std::uint32_t id : old_fn.generic_vals)
+      store.fns[next_fn_id].data.generic_vals.push_back(copy_value(id));
   for (const std::uint32_t id : old_fn.params)
     store.fns[next_fn_id].data.params.push_back(copy_value(id));
+
+  const std::uint32_t old_body = old_fn.blks.front();
+  detail::BlkData body;
+  body.fn = next_fn_id;
+  const auto body_id = static_cast<std::uint32_t>(store.blks.size());
+  store.blks.push_back({std::move(body), 1, true});
+  store.fns[next_fn_id].data.blks.push_back(body_id);
+  for (const std::uint32_t old_arg : source->blks[old_body].data.args)
+    store.blks[body_id].data.args.push_back(copy_value(old_arg));
+
+  const auto constant = [&](Attr literal, Ty type) {
+    detail::OpData op;
+    op.kind = Op::Kind::constant;
+    op.blk = body_id;
+    op.literal = std::move(literal);
+    op.loc = old_fn.loc;
+    const auto op_id = static_cast<std::uint32_t>(store.ops.size());
+    store.ops.push_back({std::move(op), 1, true});
+    store.blks[body_id].data.ops.push_back(op_id);
+    detail::ValData result;
+    result.type = std::move(type);
+    result.def = op_id;
+    const auto result_id = static_cast<std::uint32_t>(store.vals.size());
+    store.vals.push_back({std::move(result), 1, true});
+    store.ops[op_id].data.outs.push_back(result_id);
+    return result_id;
+  };
+  const auto materialize = [&](const auto& self, const Ty& expected,
+                               const Ty& value) -> std::optional<std::uint32_t> {
+    Ty type = expected.name() == "_" ? generic_kind(value) : expected;
+    if (type.name() == "int" || type.name() == "index" ||
+        sized_integer_term(type.name())) {
+      const auto number = integer(value);
+      if (!number)
+        return std::nullopt;
+      return constant(Attr(*number), std::move(type));
+    }
+    if (type.name() == "bool") {
+      if (value.text() != "true" && value.text() != "false")
+        return std::nullopt;
+      return constant(Attr(value.text() == "true"), std::move(type));
+    }
+    if (type.name() == "list" && type.args().size() == 1 &&
+        value.name() == "[]") {
+      std::vector<std::uint32_t> items;
+      items.reserve(value.args().size());
+      for (const Ty& item : value.args()) {
+        const auto materialized = self(self, type.args().front(), item);
+        if (!materialized)
+          return std::nullopt;
+        items.push_back(*materialized);
+      }
+      detail::OpData op;
+      op.kind = Op::Kind::call;
+      op.blk = body_id;
+      op.callee = "base.list";
+      op.args = std::move(items);
+      op.loc = old_fn.loc;
+      const auto op_id = static_cast<std::uint32_t>(store.ops.size());
+      store.ops.push_back({std::move(op), 1, true});
+      store.blks[body_id].data.ops.push_back(op_id);
+      detail::ValData result;
+      result.type = type;
+      result.def = op_id;
+      const auto result_id = static_cast<std::uint32_t>(store.vals.size());
+      store.vals.push_back({std::move(result), 1, true});
+      store.ops[op_id].data.outs.push_back(result_id);
+      return result_id;
+    }
+    return std::nullopt;
+  };
+  if (specialized) {
+    for (std::size_t index = 0; index < old_fn.generic_vals.size(); ++index) {
+      const std::uint32_t old_id = old_fn.generic_vals[index];
+      if (source->vals[old_id].data.users.empty())
+        continue;
+      const Ty expected =
+          substitute(source->vals[old_id].data.type, bindings);
+      const auto value =
+          materialize(materialize, expected, generic_args[index]);
+      if (!value)
+        return rollback("function clone cannot materialize generic argument '" +
+                            std::string(generic_args[index].text()) + "'",
+                        old_fn.loc);
+      values.emplace(old_id, *value);
+    }
+  }
 
   bool failed = false;
   const auto copy_op = [&](const auto& self, std::uint32_t old_id,
@@ -1297,6 +1453,8 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name) {
     if (old.kind == Op::Kind::call) {
       const Ty applied(old.callee);
       if (applied.valid()) {
+        const Ty concrete = substitute(applied, bindings);
+        next.callee = std::string(concrete.text());
         const Op old_op(const_cast<detail::Store*>(source), old_id,
                         source->ops[old_id].generation);
         const std::vector<Fn> candidates =
@@ -1317,12 +1475,15 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name) {
               callee = std::string(resolved.module()) + "." +
                        std::string(resolved.name());
           }
-          if (!applied.args().empty()) {
+          if (!(specialized && resolved.store_ == source &&
+                resolved.id_ == source_fn.id_) &&
+              !concrete.args().empty()) {
             callee += '<';
-            for (std::size_t index = 0; index < applied.args().size(); ++index) {
+            for (std::size_t index = 0; index < concrete.args().size();
+                 ++index) {
               if (index)
                 callee += ", ";
-              callee += applied.args()[index].text();
+              callee += concrete.args()[index].text();
             }
             callee += '>';
           }
@@ -1335,6 +1496,7 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name) {
     store.blks[blk].data.ops.push_back(next_id);
     for (const std::uint32_t old_value : old.outs) {
       detail::ValData value = source->vals[old_value].data;
+      value.type = substitute(value.type, bindings);
       value.def = next_id;
       value.index = store.ops[next_id].data.outs.size();
       value.users.clear();
@@ -1353,6 +1515,7 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name) {
       store.ops[next_id].data.blks.push_back(body_id);
       for (const std::uint32_t old_arg : source->blks[old_blk].data.args) {
         detail::ValData value = source->vals[old_arg].data;
+        value.type = substitute(value.type, bindings);
         value.users.clear();
         const auto value_id = static_cast<std::uint32_t>(store.vals.size());
         store.vals.push_back({std::move(value), 1, true});
@@ -1367,14 +1530,6 @@ Fn Mod::clone(const Env& env, Fn source_fn, std::string name) {
     }
   };
 
-  const std::uint32_t old_body = old_fn.blks.front();
-  detail::BlkData body;
-  body.fn = next_fn_id;
-  const auto body_id = static_cast<std::uint32_t>(store.blks.size());
-  store.blks.push_back({std::move(body), 1, true});
-  store.fns[next_fn_id].data.blks.push_back(body_id);
-  for (const std::uint32_t old_arg : source->blks[old_body].data.args)
-    store.blks[body_id].data.args.push_back(copy_value(old_arg));
   for (const std::uint32_t op : source->blks[old_body].data.ops) {
     copy_op(copy_op, op, body_id);
     if (failed)

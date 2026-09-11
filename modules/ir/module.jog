@@ -57,6 +57,7 @@ fn branch(
 ) -> Op;
 fn clone(m: Mod, op: Op, before: Op) -> Op;
 fn clone(m: Mod, fn: Fn, name: str) -> Fn;
+fn clone(m: Mod, fn: Fn, name: str, generics: list<Ty>) -> Fn;
 fn expand(m: Mod, call: Op, callee: Fn) -> bool;
 fn move(m: Mod, op: Op, before: Op) -> bool;
 fn args(m: Mod, op: Op, values: list<Val>) -> bool;
