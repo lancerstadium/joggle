@@ -260,6 +260,11 @@ class Eval {
 public:
   using Error = std::function<void(std::string, Loc)>;
 
+  static bool sequence(Env& env,
+                       std::span<const std::string_view> functions, Mod& mod,
+                       Attr& report,
+                       std::vector<std::chrono::nanoseconds>* elapsed);
+
   Eval(Env& env, Error error, Attr::List* trace = nullptr)
       : env_(env), error_(std::move(error)), trace_(trace) {}
 
@@ -1704,16 +1709,19 @@ bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
   return true;
 }
 
-bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
-         Attr& report, std::vector<std::chrono::nanoseconds>& elapsed) {
+bool detail::Eval::sequence(
+    Env& env, std::span<const std::string_view> functions, Mod& mod,
+    Attr& report, std::vector<std::chrono::nanoseconds>* elapsed) {
   env.clear_diags();
   report = Attr{};
-  elapsed.clear();
+  if (elapsed)
+    elapsed->clear();
   detail::Store before = mod.impl_->store;
   const std::uint64_t before_revision = mod.revision();
   const auto rollback = [&]() {
     mod.impl_->store = std::move(before);
-    elapsed.clear();
+    if (elapsed)
+      elapsed->clear();
     return false;
   };
   if (!mod.verify(env)) {
@@ -1803,15 +1811,20 @@ bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
 
   Attr::List steps;
   steps.reserve(functions.size());
-  elapsed.reserve(functions.size());
+  if (elapsed)
+    elapsed->reserve(functions.size());
   bool reported = false;
   for (const std::string_view function : functions) {
     Attr step;
-    const auto started = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point started;
+    if (elapsed)
+      started = std::chrono::steady_clock::now();
     if (!one(function, step))
       return rollback();
-    elapsed.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::steady_clock::now() - started));
+    if (elapsed)
+      elapsed->push_back(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              std::chrono::steady_clock::now() - started));
     if (const Attr::Dict* values = step.dict()) {
       const auto found = values->find("reported");
       reported = reported ||
@@ -1835,8 +1848,12 @@ bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
 
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
          Attr& report) {
-  std::vector<std::chrono::nanoseconds> ignored;
-  return run(env, functions, mod, report, ignored);
+  return detail::Eval::sequence(env, functions, mod, report, nullptr);
+}
+
+bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
+         Attr& report, std::vector<std::chrono::nanoseconds>& elapsed) {
+  return detail::Eval::sequence(env, functions, mod, report, &elapsed);
 }
 
 bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
@@ -1845,7 +1862,7 @@ bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
   const std::span<const std::string_view> functions(&function, 1);
   std::vector<std::chrono::nanoseconds> times;
   Attr sequence;
-  if (!run(env, functions, mod, sequence, times))
+  if (!detail::Eval::sequence(env, functions, mod, sequence, &times))
     return false;
   report = sequence.dict()->at("steps").list()->front();
   elapsed = times.front();
@@ -1853,8 +1870,12 @@ bool run(Env& env, std::string_view function, Mod& mod, Attr& report,
 }
 
 bool run(Env& env, std::string_view function, Mod& mod, Attr& report) {
-  std::chrono::nanoseconds ignored;
-  return run(env, function, mod, report, ignored);
+  const std::span<const std::string_view> functions(&function, 1);
+  Attr sequence;
+  if (!detail::Eval::sequence(env, functions, mod, sequence, nullptr))
+    return false;
+  report = sequence.dict()->at("steps").list()->front();
+  return true;
 }
 
 bool run(Env& env, std::string_view function, Mod& mod) {

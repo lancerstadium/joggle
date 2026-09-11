@@ -344,8 +344,7 @@ private:
 
   friend class Parser;
   friend class Mod;
-  friend bool run(Env&, std::span<const std::string_view>, Mod&, Attr&,
-                  std::vector<std::chrono::nanoseconds>&);
+  friend class detail::Eval;
   friend bool query(Env&, std::string_view, const Mod&, Attr&,
                     std::span<const Attr>, bool*);
 };
@@ -414,8 +413,7 @@ private:
 
   friend class Parser;
   friend class Env;
-  friend bool run(Env&, std::span<const std::string_view>, Mod&, Attr&,
-                  std::vector<std::chrono::nanoseconds>&);
+  friend class detail::Eval;
   friend bool query(Env&, std::string_view, const Mod&, Attr&,
                     std::span<const Attr>, bool*);
   friend std::string print(const Mod&);

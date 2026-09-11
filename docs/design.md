@@ -580,9 +580,11 @@ and post-step verification, but not the sequence's one-time input snapshot.
 
 Durations are a separate C++ output. They never enter `Attr`, canonical module
 text, or the CLI, so enabling measurement cannot make a report
-nondeterministic. Failure clears the duration output while the existing outer
-transaction restores the module. A regression runs the same sequence with and
-without measurement and requires structurally identical IR and reports.
+nondeterministic. The unmeasured overload neither allocates a duration vector
+nor reads the clock. Failure clears the duration output while the existing
+outer transaction restores the module. A regression runs the same sequence
+with and without measurement and requires structurally identical IR and
+reports.
 
 ## M9 local distribution slice
 
