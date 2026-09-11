@@ -293,8 +293,11 @@ share the same symbol.
   behavior, and emit their chosen representation.
 
 The CLI now provides one target-neutral artifact boundary: `emit` executes an
-ordinary read-only `fn(Mod) -> str/bytes` and writes exactly those bytes. The
-first portable execution module and target comparison remain open.
+ordinary read-only `fn(Mod) -> str/bytes` and writes exactly those bytes. A
+pure `.jog` C99 module emits and executes fixed-shape tensor loops, local scalar
+calls, and structured branches while rejecting unexposed dependency calls.
+Whole-network storage planning and a genuinely different second target remain
+open.
 
 Exit gate: official models from two frontends pass through one shared semantic
 library and run through at least two targets without core operator switches.

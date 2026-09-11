@@ -1,0 +1,417 @@
+module c
+use base
+use ir
+use tensor
+
+fn id(text: str) -> str {
+  var out = replace(text, ".", "_")
+  out = replace(out, " ", "_")
+  return out
+}
+
+fn val(value: Val) -> str {
+  return "v_" + id(ir.name(value))
+}
+
+fn scalars() -> dict {
+  return {
+    bool: "bool",
+    f32: "float",
+    f64: "double",
+    i8: "int8_t",
+    i16: "int16_t",
+    i32: "int32_t",
+    i64: "int64_t",
+    index: "int64_t",
+    int: "int64_t",
+    u8: "uint8_t",
+    u16: "uint16_t",
+    u32: "uint32_t",
+    u64: "uint64_t"
+  }
+}
+
+fn scalar(type: Ty) -> str {
+  let name = base.name(type)
+  let types = scalars()
+  assert(has(types, name), "c: unsupported scalar type " + text(type))
+  return str(types[name])
+}
+
+fn scalar_name(name: str) -> bool {
+  return has(scalars(), name)
+}
+
+fn count(type: Ty) -> int {
+  assert(tensor.static(type), "c: tensor shape must be static: " + text(type))
+  var out = 1
+  for extent in tensor.shape(type) {
+    out *= extent
+  }
+  return out
+}
+
+fn pad(depth: int) -> str {
+  var out = ""
+  for i in 0..depth {
+    out += "  "
+  }
+  return out
+}
+
+fn expr(value: Val) -> str {
+  if ir.is_const(value) {
+    return text(ir.constant(value))
+  }
+  if ir.name(value) != "" {
+    return val(value)
+  }
+  let op = ir.def(value)
+  assert(ir.live(op) && ir.kind(op) == "call",
+         "c: unnamed value has no callable definition")
+  let name = ir.callee(op)
+  let inputs = ir.args(op)
+  if name == "operator []" {
+    return index(inputs[0], inputs)
+  }
+  let binary_op = binary(name)
+  if binary_op != "" && len(inputs) == 2 {
+    return "(" + expr(inputs[0]) + " " + binary_op + " " +
+           expr(inputs[1]) + ")"
+  }
+  let unary_op = unary(name)
+  if unary_op != "" && len(inputs) == 1 {
+    return "(" + unary_op + expr(inputs[0]) + ")"
+  }
+  if len(inputs) == 1 && scalar_name(name) {
+    return "((" + scalar(ty(name)) + ")(" + expr(inputs[0]) + "))"
+  }
+  assert(false, "c: unnamed call must be assigned or exposed: " + name)
+  return ""
+}
+
+fn update(output: Val, inputs: list<Val>) -> bool {
+  for input in inputs {
+    if ir.name(output) == ir.name(input) && ir.name(output) != "" {
+      return true
+    }
+  }
+  return false
+}
+
+fn lhs(output: Val, inputs: list<Val>) -> str {
+  if update(output, inputs) {
+    return val(output)
+  }
+  return scalar(ir.type(output)) + " " + val(output)
+}
+
+fn index(base: Val, args: list<Val>) -> str {
+  let shape = tensor.shape(ir.type(base))
+  assert(len(args) == 2 || len(args) == len(shape) + 1,
+         "c: tensor index must be linear or match its rank")
+  var out = expr(args[1])
+  if len(args) != 2 {
+    for i in 2..len(args) {
+      out = "(" + out + " * " + text(shape[i - 1]) + " + " +
+            expr(args[i]) + ")"
+    }
+  }
+  return val(base) + "[" + out + "]"
+}
+
+fn local(m: Mod, fn: Fn) -> bool {
+  for candidate in ir.fns(m) {
+    if candidate == fn {
+      return true
+    }
+  }
+  return false
+}
+
+fn args(values: list<Val>) -> str {
+  var out = ""
+  for i in 0..len(values) {
+    if i != 0 {
+      out += ", "
+    }
+    out += expr(values[i])
+  }
+  return out
+}
+
+fn binary(op: str) -> str {
+  let operators = {
+    "operator %": "%", "operator &": "&", "operator &&": "&&",
+    "operator *": "*", "operator +": "+", "operator -": "-",
+    "operator /": "/", "operator <": "<", "operator <<": "<<",
+    "operator <=": "<=", "operator ==": "==", "operator >": ">",
+    "operator >=": ">=", "operator >>": ">>", "operator ^": "^",
+    "operator |": "|", "operator ||": "||", "operator !=": "!="
+  }
+  if has(operators, op) {
+    return str(operators[op])
+  }
+  return ""
+}
+
+fn unary(op: str) -> str {
+  let operators = {
+    "operator !": "!", "operator +": "+", "operator -": "-",
+    "operator ~": "~"
+  }
+  if has(operators, op) {
+    return str(operators[op])
+  }
+  return ""
+}
+
+fn tensor_new(op: Op, depth: int) -> str {
+  let outputs = ir.outs(op)
+  let inputs = ir.args(op)
+  assert(len(outputs) == 1 && len(inputs) == 1,
+         "c: tensor construction requires one fill value")
+  let output = outputs[0]
+  let type = ir.type(output)
+  let n = count(type)
+  let indent = pad(depth)
+  var out = indent + scalar(tensor.elem(type)) + " " + val(output) + "[" +
+            text(n) + "];\n"
+  out += indent + "for (size_t jog_i = 0; jog_i < " + text(n) +
+         "; ++jog_i) " + val(output) + "[jog_i] = " +
+         expr(inputs[0]) + ";\n"
+  return out
+}
+
+fn call(m: Mod, op: Op, depth: int) -> str {
+  let name = ir.callee(op)
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  let indent = pad(depth)
+  if name == "operator .." {
+    return ""
+  }
+  if name == "operator []" {
+    assert(len(outputs) == 1 && len(inputs) >= 2,
+           "c: invalid tensor load")
+    if ir.name(outputs[0]) == "" {
+      return ""
+    }
+    return indent + scalar(ir.type(outputs[0])) + " " + val(outputs[0]) +
+           " = " + index(inputs[0], inputs) + ";\n"
+  }
+  if name == "operator []=" {
+    assert(len(outputs) == 1 && len(inputs) >= 3,
+           "c: invalid tensor store")
+    var access: list<Val> = [inputs[0]]
+    for i in 1..len(inputs) - 1 {
+      access += [inputs[i]]
+    }
+    return indent + index(inputs[0], access) + " = " +
+           expr(inputs[len(inputs) - 1]) + ";\n"
+  }
+
+  let target = ir.resolve(m, op)
+  if len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
+     ir.live(target) && ir.symbol(target) == "tensor.tensor" {
+    return tensor_new(op, depth)
+  }
+
+  let binary_op = binary(name)
+  if binary_op != "" && len(inputs) == 2 && len(outputs) == 1 {
+    if ir.name(outputs[0]) == "" {
+      return ""
+    }
+    return indent + lhs(outputs[0], inputs) + " = " +
+           expr(inputs[0]) + " " + binary_op + " " +
+           expr(inputs[1]) + ";\n"
+  }
+
+  let unary_op = unary(name)
+  if unary_op != "" && len(inputs) == 1 && len(outputs) == 1 {
+    if ir.name(outputs[0]) == "" {
+      return ""
+    }
+    return indent + lhs(outputs[0], inputs) + " = " + unary_op +
+           expr(inputs[0]) + ";\n"
+  }
+
+  if len(inputs) == 1 && len(outputs) == 1 && scalar_name(name) {
+    if ir.name(outputs[0]) == "" {
+      return ""
+    }
+    return indent + lhs(outputs[0], inputs) + " = (" + scalar(ty(name)) + ")(" +
+           expr(inputs[0]) + ");\n"
+  }
+
+  assert(ir.live(target), "c: unresolved call must be exposed: " + name)
+  assert(local(m, target), "c: dependency call must be exposed: " + name)
+  assert(len(outputs) <= 1, "c: multi-result call is unsupported: " + name)
+  let callee = "jog_" + id(ir.name(target))
+  var actuals = args(inputs)
+  if len(outputs) == 0 {
+    return indent + callee + "(" + actuals + ");\n"
+  }
+  let output = outputs[0]
+  if tensor.valid(ir.type(output)) {
+    let type = ir.type(output)
+    var out = indent + scalar(tensor.elem(type)) + " " + val(output) + "[" +
+              text(count(type)) + "];\n"
+    if len(inputs) != 0 {
+      actuals += ", "
+    }
+    out += indent + callee + "(" + actuals + val(output) + ");\n"
+    return out
+  }
+  return indent + lhs(output, inputs) + " = " + callee + "(" +
+         actuals + ");\n"
+}
+
+fn ret(op: Op, depth: int) -> str {
+  let values = ir.args(op)
+  assert(len(values) == 1, "c: functions must return exactly one value")
+  let value = values[0]
+  let indent = pad(depth)
+  if !tensor.valid(ir.type(value)) {
+    return indent + "return " + expr(value) + ";\n"
+  }
+  assert(ir.name(value) != "",
+         "c: returned tensor computation must be assigned or exposed")
+  let n = count(ir.type(value))
+  return indent + "for (size_t jog_i = 0; jog_i < " + text(n) +
+         "; ++jog_i) jog_out[jog_i] = " + val(value) + "[jog_i];\n"
+}
+
+fn loop(m: Mod, op: Op, depth: int) -> str {
+  let bodies = ir.blks(op)
+  assert(len(bodies) == 1, "c: loop must have one body")
+  let body = bodies[0]
+  let body_args = ir.args(body)
+  let sources = ir.args(op)
+  let carried = len(ir.outs(op))
+  let iterators = len(body_args) - carried
+  assert(iterators > 0 && len(sources) >= iterators,
+         "c: loop source structure is invalid")
+  var out = ""
+  for i in 0..iterators {
+    let range = ir.def(sources[i])
+    assert(ir.live(range) && ir.callee(range) == "operator ..",
+           "c: loop source must be a range")
+    let bounds = ir.args(range)
+    assert(len(bounds) == 2, "c: range must have two bounds")
+    let iterator = val(body_args[i])
+    out += pad(depth + i) + "for (int64_t " + iterator + " = " +
+           expr(bounds[0]) + "; " + iterator + " < " + expr(bounds[1]) +
+           "; ++" + iterator + ") {\n"
+  }
+  out += block(m, body, depth + iterators)
+  for reverse in 0..iterators {
+    out += pad(depth + iterators - reverse - 1) + "}\n"
+  }
+  return out
+}
+
+fn branch(m: Mod, op: Op, depth: int) -> str {
+  let bodies = ir.blks(op)
+  let inputs = ir.args(op)
+  assert(len(bodies) == 2 && len(inputs) >= 1,
+         "c: branch structure is invalid")
+  let first = block(m, bodies[0], depth + 1)
+  let second = block(m, bodies[1], depth + 1)
+  var out = pad(depth) + "if (" + expr(inputs[0]) + ") {\n" + first
+  if second == "" {
+    out += pad(depth) + "}\n"
+  } else {
+    out += pad(depth) + "} else {\n" + second + pad(depth) + "}\n"
+  }
+  return out
+}
+
+fn block(m: Mod, body: Blk, depth: int) -> str {
+  var out = ""
+  for op in ir.ops(body) {
+    let kind = ir.kind(op)
+    if kind == "call" {
+      out += call(m, op, depth)
+    } else {
+      if kind == "loop" {
+        out += loop(m, op, depth)
+      } else {
+        if kind == "branch" {
+          out += branch(m, op, depth)
+        } else {
+          if kind == "return" {
+            out += ret(op, depth)
+          } else {
+            assert(kind == "constant" || kind == "yield",
+                   "c: unsupported operation kind " + kind)
+          }
+        }
+      }
+    }
+  }
+  return out
+}
+
+fn signature(fn: Fn) -> str {
+  let returns = ir.returns(fn)
+  assert(len(returns) == 1, "c: function must have exactly one result")
+  let result = returns[0]
+  var out = ""
+  if tensor.valid(result) {
+    count(result)
+    out = "void"
+  } else {
+    out = scalar(result)
+  }
+  out += " jog_" + id(ir.name(fn)) + "("
+  let params = ir.params(fn)
+  for i in 0..len(params) {
+    if i != 0 {
+      out += ", "
+    }
+    let type = ir.type(params[i])
+    if tensor.valid(type) {
+      count(type)
+      out += "const " + scalar(tensor.elem(type)) + "* " + val(params[i])
+    } else {
+      out += scalar(type) + " " + val(params[i])
+    }
+  }
+  if tensor.valid(result) {
+    if len(params) != 0 {
+      out += ", "
+    }
+    out += scalar(tensor.elem(result)) + "* jog_out"
+  }
+  return out + ")"
+}
+
+fn definition(m: Mod, fn: Fn) -> str {
+  let bodies = ir.blks(fn)
+  assert(len(bodies) >= 1, "c: function has no body")
+  return signature(fn) + " {\n" + block(m, bodies[0], 1) + "}\n"
+}
+
+fn source(m: Mod) -> str {
+  var declarations = ""
+  var definitions = ""
+  var names: list<str> = []
+  var count = 0
+  for fn in ir.fns(m) {
+    if len(ir.blks(fn)) != 0 {
+      let name = id(ir.name(fn))
+      for existing in names {
+        assert(existing != name,
+               "c: overloaded or colliding function name " + name)
+      }
+      names += [name]
+      declarations += signature(fn) + ";\n"
+      definitions += definition(m, fn) + "\n"
+      count += 1
+    }
+  }
+  assert(count != 0, "c: module has no function definitions")
+  return "#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n\n" +
+         declarations + "\n" + definitions
+}

@@ -849,7 +849,7 @@ private:
            name == "get" || name == "size" || name == "byte" ||
            name == "kind" || name == "assert" || name == "name" ||
            name == "args" || name == "int" || name == "str" ||
-           name == "text" ||
+           name == "text" || name == "replace" ||
            name == "ty";
   }
 
@@ -960,6 +960,19 @@ private:
         return Items{Item(Attr(std::string(type->text())))};
       if (const auto value = attribute(args[0]))
         return Items{Item(Attr(joggle::print(*value)))};
+    } else if (name == "replace" && args.size() == 3) {
+      const auto input = string(args[0]);
+      const auto from = string(args[1]);
+      const auto to = string(args[2]);
+      if (input && from && to && !from->empty()) {
+        std::string out(*input);
+        std::size_t offset = 0;
+        while ((offset = out.find(*from, offset)) != std::string::npos) {
+          out.replace(offset, from->size(), *to);
+          offset += to->size();
+        }
+        return Items{Item(Attr(std::move(out)))};
+      }
     } else if (name == "ty" && args.size() == 1) {
       Ty type;
       if (const auto value = integer(args[0]))

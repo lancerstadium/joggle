@@ -238,7 +238,9 @@ the same names also project structural `Ty` terms. These operations are in
 `text` instead returns the canonical spelling of an `Attr` or `Ty`; unlike the
 checked `str` projection, string attributes retain their quotes and escaping.
 Compile-time `+` concatenates strings as well as lists and integers, so emitter
-modules can assemble artifacts without a native helper.
+modules can assemble artifacts without a native helper. `replace` performs a
+left-to-right, non-overlapping string substitution and rejects an empty search
+string.
 
 ### Compile-time functions
 

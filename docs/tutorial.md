@@ -330,3 +330,20 @@ an ordinary `a + b`. `Env::call` invokes `sat.sim(8, 100, 100)` to obtain the
 saturated result `127`, or `sat.emit(8)` to obtain a standalone SystemVerilog
 implementation. `test/sat.cpp` exercises selection, idempotence, both saturation
 limits, type rejection, and emitter structure.
+
+## Emit an exposed kernel as C
+
+The standard `c` module consumes computation only after its dependency calls
+have been exposed into local scalar, tensor-access, loop, and branch structure:
+
+```sh
+joggle emit c.source test/data/c.jog -M build/modules > /tmp/model.c
+cc -std=c99 /tmp/model.c test/data/c_main.c -o /tmp/model
+/tmp/model
+```
+
+`c.source` is an ordinary read-only `fn(Mod) -> str`. The command does not
+choose a target pipeline or mutate the input. Static tensors become flat C
+arrays and tensor results use an output-pointer parameter. If a `tensor` or
+`nn` call has not been exposed, emission fails and names that call rather than
+performing an implicit lowering.

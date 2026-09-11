@@ -971,3 +971,22 @@ results and unlocks dependent Reshapes, reducing the observable frontier from
 280 to 219. CI pins that partial frontier: it can improve deliberately, but
 cannot
 silently regress or be reported as full model support.
+
+## M10 portable-C slice
+
+The target-neutral CLI path now writes a read-only module function's `str` or
+`bytes` result verbatim. The `c` module is its first execution consumer and is
+implemented entirely in `.jog`: it traverses the same `Fn`/`Blk`/`Op`/`Val`
+structure, emits local scalar calls and structured branches/loops, flattens
+static tensor indices, and uses caller-provided storage for tensor results.
+Scalar type and fixed C operator spellings are ordinary dictionaries owned by
+the module, not core cases.
+
+Emission is deliberately closed over the exposed computation. Dynamic tensor
+shapes, multi-results, and calls whose bodies still live in a dependency fail
+with diagnostics; the emitter does not perform hidden lowering or invent
+semantics. The regression gate emits a concrete matrix multiplication and
+scalar call/branch functions, compiles the result as C99 with warnings treated
+as errors, executes it, and compares the numerical outputs. This establishes
+one portable end-to-end target while leaving whole-network storage planning
+and a genuinely different second target open.

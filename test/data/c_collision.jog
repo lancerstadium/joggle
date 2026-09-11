@@ -1,0 +1,9 @@
+module collision
+
+fn choose(x: i32) -> i32 {
+  return x
+}
+
+fn choose(x: f32) -> f32 {
+  return x
+}

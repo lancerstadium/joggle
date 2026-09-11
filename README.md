@@ -218,6 +218,21 @@ Check a module or run a textual transform:
 returned artifact verbatim. It adds no target interface: C, assembly, HDL, and
 binary modules can share the same checked output boundary.
 
+The bundled `c` module is the first concrete consumer. It emits static tensor
+kernels, scalar expressions, local calls, structured loops, and branches as
+portable C99:
+
+```sh
+./build/joggle emit c.source test/data/c.jog -M build/modules > model.c
+cc -std=c99 model.c test/data/c_main.c -o model && ./model
+```
+
+Tensor results use caller-provided output storage. Calls into dependency
+modules must first be exposed as ordinary loop/scalar IR; unsupported types,
+dynamic shapes, direct tensor expressions, and multi-results fail during
+emission instead of producing guessed code. This is a first executable target
+gate, not a claim that arbitrary imported networks are already C-ready.
+
 Module directories remain the only distribution unit. The CLI can discover,
 validate, inspect, install, upgrade, and uninstall them without a registry or
 another manifest:

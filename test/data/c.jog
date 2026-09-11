@@ -1,0 +1,33 @@
+module kernel
+use tensor
+
+fn twice(x: f32) -> f32 {
+  return x + x
+}
+
+fn affine(x: f32) -> f32 {
+  let doubled = twice(x)
+  return doubled + f32(1)
+}
+
+fn relu(x: f32) -> f32 {
+  if x < f32(0) {
+    return f32(0)
+  }
+  return x
+}
+
+fn matmul(
+  a: tensor<f32, [2, 3]>,
+  b: tensor<f32, [3, 2]>
+) -> tensor<f32, [2, 2]> {
+  var out = tensor<f32, [2, 2]>(f32(0))
+  for i in 0..2, j in 0..2 {
+    var sum: f32 = f32(0)
+    for k in 0..3 {
+      sum += a[i, k] * b[k, j]
+    }
+    out[i, j] = sum
+  }
+  return out
+}

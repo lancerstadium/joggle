@@ -51,9 +51,10 @@ The standard modules are deliberately narrow. `base` declares scalar/list/dict
 fundamentals, `ir` is universal reflection and editing, `opt` contains reusable
 textual transforms, `math` names scalar math primitives, `tensor` defines
 storage-neutral tensor computation, `quant` makes quantization policy explicit,
-and `nn` contains network semantics. The optional `onnx` module only transports
-a binary model. MLIR, JIT, simulation, hardware description, and target
-experiments remain removable modules.
+and `nn` contains network semantics. `c` is a removable first execution module,
+not a target interface in core. The optional `onnx` module only transports a
+binary model. MLIR, JIT, simulation, hardware description, and additional
+target experiments remain removable modules.
 
 Version 0.1 searches explicit local paths. The CLI exposes that same local
 model directly:
@@ -571,6 +572,17 @@ coverage from type-propagation coverage.
 but requires `str` or `bytes` and writes the payload verbatim. A module can
 therefore expose source, HDL, assembly, or a binary image without implementing
 an emitter interface or changing the CLI for its artifact kind.
+
+`c.source` demonstrates the complete path in pure `.jog`. It reflects local
+functions, maps scalar types and fixed C operators from ordinary dictionaries,
+prints local calls and structured control flow, flattens statically shaped
+tensor indexing, and returns C99 text. Static tensor results become explicit
+caller-owned output pointers. A non-local call is not implicitly lowered:
+the module reports that it must be exposed first. Overloads or sanitized names
+that would collide in C are rejected before text is returned. The execution
+test emits a matrix multiplication plus scalar call/branch functions, compiles
+them with a system C compiler under warnings-as-errors, and checks their
+numerical results.
 
 A read-only module function is invoked with `query(env, "module.fn", mod,
 result, args, cached)`. It is still declared with ordinary `fn` syntax. The

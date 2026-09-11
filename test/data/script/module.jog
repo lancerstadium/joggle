@@ -40,7 +40,8 @@ fn text_probe(m: Mod) -> bool {
   return ir.revision(m) >= 0 &&
          "joggle" + "-" + "emit" == "joggle-emit" &&
          text(-12) == "-12" && text(true) == "true" &&
-         text("quoted") == "\"quoted\"" && text(ty("i32")) == "i32"
+         text("quoted") == "\"quoted\"" && text(ty("i32")) == "i32" &&
+         replace("a.b.b", "b", "cc") == "a.cc.cc"
 }
 
 [on: "opaque"]

@@ -15,7 +15,7 @@ set(JOGGLE_TEST_ONNX_ZOO "" CACHE PATH
 set(JOGGLE_TEST_TFLITE_MODEL "" CACHE FILEPATH
     "Official TFLite model used by tests")
 
-foreach(module base ir math nn opt quant tensor)
+foreach(module base c ir math nn opt quant tensor)
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/${module}")
   configure_file(
     "modules/${module}/module.jog"
@@ -228,6 +228,7 @@ install(FILES include/joggle/joggle.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/jo
 install(
   DIRECTORY
     modules/base
+    modules/c
     modules/ir
     modules/math
     modules/nn
@@ -336,6 +337,23 @@ if(JOGGLE_BUILD_TESTS)
       -DOUT=${CMAKE_CURRENT_BINARY_DIR}/emit.bin
       -P ${CMAKE_CURRENT_SOURCE_DIR}/test/emit.cmake
   )
+  find_program(JOGGLE_TEST_C_COMPILER NAMES cc clang gcc)
+  if(JOGGLE_TEST_C_COMPILER)
+    add_test(
+      NAME c-execution
+      COMMAND
+        ${CMAKE_COMMAND}
+        -DTOOL=$<TARGET_FILE:joggle-tool>
+        -DCC=${JOGGLE_TEST_C_COMPILER}
+        -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c.jog
+        -DOPEN_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_open.jog
+        -DCOLLISION_MODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_collision.jog
+        -DHARNESS=${CMAKE_CURRENT_SOURCE_DIR}/test/data/c_main.c
+        -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+        -DROOT=${CMAKE_CURRENT_BINARY_DIR}/c-test
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/c.cmake
+    )
+  endif()
   add_test(
     NAME cli-report
     COMMAND

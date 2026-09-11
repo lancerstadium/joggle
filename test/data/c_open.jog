@@ -1,0 +1,9 @@
+module open
+use tensor
+
+fn add(
+  a: tensor<f32, [4]>,
+  b: tensor<f32, [4]>
+) -> tensor<f32, [4]> {
+  return a + b
+}

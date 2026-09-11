@@ -1,0 +1,71 @@
+if(NOT DEFINED TOOL OR NOT DEFINED CC OR NOT DEFINED MODEL OR
+   NOT DEFINED OPEN_MODEL OR NOT DEFINED COLLISION_MODEL OR
+   NOT DEFINED HARNESS OR NOT DEFINED MODULES OR NOT DEFINED ROOT)
+  message(FATAL_ERROR
+          "C execution test requires TOOL, CC, MODEL, HARNESS, MODULES, ROOT")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${COLLISION_MODEL}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(result EQUAL 0 OR NOT error MATCHES "overloaded or colliding function name")
+  message(FATAL_ERROR
+          "C emission accepted a symbol collision (${result}):\n"
+          "${output}${error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${OPEN_MODEL}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(result EQUAL 0 OR NOT error MATCHES "must be assigned or exposed")
+  message(FATAL_ERROR
+          "C emission accepted an unexposed dependency call (${result}):\n"
+          "${output}${error}")
+endif()
+
+file(REMOVE_RECURSE "${ROOT}")
+file(MAKE_DIRECTORY "${ROOT}")
+set(source "${ROOT}/model.c")
+set(program "${ROOT}/model")
+
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${MODEL}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${source}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "C emission failed (${result}):\n${error}")
+endif()
+
+execute_process(
+  COMMAND "${CC}" -std=c99 -Wall -Wextra -Werror
+          "${source}" "${HARNESS}" -o "${program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  file(READ "${source}" emitted)
+  message(FATAL_ERROR
+          "generated C did not compile (${result}):\n${output}${error}\n${emitted}")
+endif()
+
+execute_process(
+  COMMAND "${program}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "generated C returned the wrong result (${result}):\n${output}${error}")
+endif()
+
+file(REMOVE_RECURSE "${ROOT}")
