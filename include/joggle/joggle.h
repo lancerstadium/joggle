@@ -373,7 +373,7 @@ public:
   Op clone(Op op, Op before);
   bool expand(Op call, Fn callee);
   bool move(Op op, Op before);
-  bool args(Op op, std::span<const Val> values);
+  bool args(const Env& env, Op op, std::span<const Val> values);
   bool fuse(std::span<const Op> ops, std::string callee);
   bool replace(Val old_value, Val new_value);
   bool replace(Val old_value, Val new_value, Op user);

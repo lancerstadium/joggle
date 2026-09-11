@@ -1412,7 +1412,7 @@ private:
       const auto* op = as<Op>(args[1]);
       auto values = value_handles(args[2]);
       if (mod && *mod && op && values)
-        return Items{Item(Attr((*mod)->args(*op, *values)))};
+        return Items{Item(Attr((*mod)->args(env_, *op, *values)))};
     } else if (name == "fuse" && args.size() == 3) {
       const auto* mod = as<Mod*>(args[0]);
       const Items* values = list(args[1]);

@@ -1436,7 +1436,7 @@ bool Mod::move(Op op, Op before) {
   return true;
 }
 
-bool Mod::args(Op op, std::span<const Val> values) {
+bool Mod::args(const Env& env, Op op, std::span<const Val> values) {
   auto& store = impl_->store;
   const auto reject = [&](std::string message) {
     detail::add_diag(store.diags, std::move(message), op.loc());
@@ -1450,7 +1450,7 @@ bool Mod::args(Op op, std::span<const Val> values) {
       return reject("operation arguments must dominate their use");
 
   const detail::OpData& data = store.ops[op.id_].data;
-  std::size_t expected = values.size();
+  std::size_t expected = data.args.size();
   if (data.kind == Op::Kind::constant)
     expected = 0;
   else if (data.kind == Op::Kind::loop)
@@ -1476,7 +1476,28 @@ bool Mod::args(Op op, std::span<const Val> values) {
   const auto compatible = [](const Ty& left, const Ty& right) {
     return left.text() == "_" || right.text() == "_" || left == right;
   };
-  if (data.kind == Op::Kind::ret) {
+  if (data.kind == Op::Kind::call) {
+    std::vector<Ty> returns;
+    const Fn current = env.resolve(*this, op);
+    const Fn next = env.resolve(*this, op, op.callee(), values, &returns);
+    if (current && !next)
+      return reject("call arguments do not match its resolved function");
+    if (next) {
+      const std::vector<Val> outputs = op.outs();
+      if (returns.size() != outputs.size())
+        return reject("call result count does not match its resolved function");
+      for (std::size_t index = 0; index < returns.size(); ++index)
+        if (!compatible(outputs[index].type(), returns[index]))
+          return reject(
+              "call result types do not match its resolved function");
+    }
+  } else if (data.kind == Op::Kind::loop ||
+             data.kind == Op::Kind::branch) {
+    for (std::size_t index = 0; index < values.size(); ++index)
+      if (!compatible(values[index].type(),
+                      store.vals[data.args[index]].data.type))
+        return reject("structured operation argument types do not match");
+  } else if (data.kind == Op::Kind::ret) {
     const std::uint32_t fn = store.blks[data.blk].data.fn;
     const std::vector<Ty>& returns = store.fns[fn].data.returns;
     for (std::size_t index = 0; index < values.size(); ++index)

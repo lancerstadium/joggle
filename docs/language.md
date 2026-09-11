@@ -317,9 +317,11 @@ names, source values, and carried values, then returns an `Op` with one body and
 an initial `yield`. `ir.branch` returns an `Op` with two initially forwarding
 arms. `ir.args(blk)` obtains `Blk` arguments and `ir.args(m, op, values)`
 reconnects any operation, including `return` and `yield`, while enforcing its
-structural arity and dominance. A named local selected as carried state prints
-as the corresponding ordinary `var`; users never construct `Blk` objects or
-source-presentation records themselves.
+arity, dominance, structured-control types, and the complete signature of a
+resolved call. The C++ editor accepts the current `Env` explicitly for the same
+check; textual functions receive it from their evaluator. A named local
+selected as carried state prints as the corresponding ordinary `var`; users
+never construct `Blk` objects or source-presentation records themselves.
 
 `ir.rename` treats the versions of a carried mutable binding as one lexical
 name. Calling it on the incoming value, a loop or branch `Blk` argument, a

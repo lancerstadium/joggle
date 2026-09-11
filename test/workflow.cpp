@@ -866,8 +866,8 @@ int main(int argc, char** argv) {
       inner_yield, "operator +", sum_args, joggle::Ty("int"));
   CHECK(sum && built_control.rename(sum, "total"));
   const std::vector<joggle::Val> inner_values{sum};
-  CHECK(built_control.args(inner_yield, inner_values));
-  CHECK(built_control.args(built_yield, inner_loop.outs()));
+  CHECK(built_control.args(env, inner_yield, inner_values));
+  CHECK(built_control.args(env, built_yield, inner_loop.outs()));
   const joggle::Op built_branch = built_control.branch(
       build_ret, build_fn.params()[1], built_loop.outs());
   CHECK(built_branch && built_branch.blks().size() == 2);
@@ -882,8 +882,8 @@ int main(int argc, char** argv) {
       then_yield, "operator +", then_args, joggle::Ty("int"));
   CHECK(increment && built_control.rename(increment, "total"));
   const std::vector<joggle::Val> then_values{increment};
-  CHECK(built_control.args(then_yield, then_values));
-  CHECK(built_control.args(build_ret, built_branch.outs()));
+  CHECK(built_control.args(env, then_yield, then_values));
+  CHECK(built_control.args(env, build_ret, built_branch.outs()));
   CHECK(built_control.verify(env));
   const std::string built_control_text = joggle::print(built_control);
   CHECK(built_control_text.find("for i in total..n") != std::string::npos);
@@ -1093,6 +1093,40 @@ int main(int argc, char** argv) {
   CHECK(!incompatible_result.diags().empty());
   CHECK(incompatible_result.diags().back().message.find(
             "result types do not match") != std::string::npos);
+
+  joggle::Mod args_safety;
+  CHECK(joggle::parse(env,
+                      "module args_safety\n"
+                      "fn take(x: i32) -> i32 { return x }\n"
+                      "fn apply(x: i32, other: f32) -> i32 {\n"
+                      "  return take(x)\n"
+                      "}\n"
+                      "fn open(x: i32, other: f32) -> i32 {\n"
+                      "  let y: i32 = source(x)\n"
+                      "  return y\n"
+                      "}\n",
+                      args_safety, "args-safety.jog"));
+  CHECK(args_safety.verify(env));
+  const joggle::Fn args_apply = args_safety.find_fn("apply");
+  const joggle::Op take_call =
+      args_apply.body().ops().back().args().front().def();
+  const std::string before_args = joggle::print(args_safety);
+  const std::uint64_t before_args_revision = args_safety.revision();
+  const std::vector<joggle::Val> no_args;
+  const std::vector<joggle::Val> wrong_args{args_apply.params()[1]};
+  const std::vector<joggle::Val> same_args{args_apply.params()[0]};
+  CHECK(!args_safety.args(env, take_call, no_args));
+  CHECK(!args_safety.args(env, take_call, wrong_args));
+  CHECK(joggle::print(args_safety) == before_args);
+  CHECK(args_safety.revision() == before_args_revision);
+  CHECK(args_safety.args(env, take_call, same_args));
+  CHECK(args_safety.revision() == before_args_revision);
+  const joggle::Fn open_args = args_safety.find_fn("open");
+  const joggle::Op open_call = open_args.body().ops().front();
+  const std::vector<joggle::Val> open_values{open_args.params()[1]};
+  CHECK(args_safety.args(env, open_call, open_values));
+  CHECK(args_safety.revision() == before_args_revision + 1);
+  CHECK(args_safety.verify(env));
 
   joggle::Attr load_count;
   const std::vector<joggle::Attr> choose_query{joggle::Attr("choose")};
