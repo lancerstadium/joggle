@@ -11,7 +11,7 @@ ctest --test-dir build --output-on-failure
 Then verify and canonically print the real matrix-multiplication fixture:
 
 ```sh
-./build/joggle check test/data/matmul.jog
+./build/joggle check test/data/matmul.jog -M modules
 ```
 
 Run the textual add-zero transform and print its result:
@@ -36,6 +36,10 @@ Run a read-only analysis without rewriting or reprinting the module:
 
 The result is a canonical `Attr` list of call names whose outputs still have
 the open `_` type. `opt.unresolved` is the separate symbol-visibility frontier.
+For every file command, the CLI loads the dependency closure declared by the
+model's `use` lines from the supplied module paths before verification. A
+frontend-produced model can therefore be checked, queried, transformed, or
+emitted without manually naming each transitive dependency.
 
 Inspect the modules available on the same explicit search path:
 
@@ -377,3 +381,15 @@ tensors, excludes parameters and constants, and reuses a slot only after the
 prior binding's last real use. `c.source` reads `mem.slot` metadata if present;
 it does not run the planner. A device-specific module may instead interpret or
 replace the same open metadata with its own allocation policy.
+
+Inspect deterministic structural measurements before or after any step:
+
+```sh
+joggle query stat.summary /tmp/prepared.jog -M build/modules
+joggle query stat.summary /tmp/planned.jog -M build/modules
+```
+
+The returned dictionary is stable and directly diffable. `tensor_vals` and
+`static_tensor_elems` describe represented IR values; `mem_slots` and
+`mem_elems` describe an explicit storage plan. Device bytes, cycles, and
+energy belong in a separate policy module rather than being guessed by `stat`.

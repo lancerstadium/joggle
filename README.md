@@ -209,7 +209,7 @@ cmake --install build --prefix /path/to/prefix
 Check a module or run a textual transform:
 
 ```sh
-./build/joggle check test/data/matmul.jog
+./build/joggle check test/data/matmul.jog -M modules
 ./build/joggle run opt.fold_add_zero test/data/matmul.jog -M modules
 ./build/joggle emit my.target.source model.jog -M modules > model.c
 ```
@@ -256,6 +256,17 @@ open metadata:
 The C module consumes those slots when present and keeps its prior local-array
 behavior otherwise. Neither module models a particular cache, SRAM capacity,
 or device.
+
+`stat.summary` is a read-only structural measurement of the same module:
+
+```sh
+./build/joggle query stat.summary planned.jog -M build/modules
+```
+
+It reports deterministic `Fn`/`Blk`/`Op`/`Val`, control-flow,
+call-resolution, tensor, and planned-storage counts as one canonical
+dictionary. These are IR facts, not wall-clock or device-performance
+estimates.
 
 Module directories remain the only distribution unit. The CLI can discover,
 validate, inspect, install, upgrade, and uninstall them without a registry or

@@ -309,6 +309,11 @@ library and run through at least two targets without core operator switches.
 
 ### M11 — research instrumentation
 
+Status: in progress. `stat.summary` now provides a deterministic, read-only
+structural snapshot through an ordinary module query. It separates IR tensor
+elements from planned storage elements and contains no timing or device-model
+claims.
+
 - Record pipeline decisions, costs, code size, memory use, and deterministic
   cycle estimates through module functions and stable structured output.
 - Make cloud/edge partitioning, JIT specialization, custom formats, LUT/logic

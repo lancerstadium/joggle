@@ -1024,3 +1024,22 @@ exposes their shared bodies, assigns three logical intermediates to two
 buffers, repeats the plan to prove byte-level idempotence, emits C99, compiles
 with warnings as errors, and executes the numerical result. Running `c.source`
 without `mem.plan` retains the earlier one-array-per-binding behavior.
+
+## M11 structural measurement slice
+
+The pure `.jog` `stat.summary` query is the first research-instrumentation
+slice. It derives a canonical dictionary directly from the public reflection
+surface: function, block, operation, and value counts; operation-kind counts;
+distinct callees and unresolved calls; tensor values and their known static
+elements; and optional `mem` slot counts and capacities. The implementation
+contains no frontend operator or target name.
+
+The distinction between structural and physical counts is explicit.
+`static_tensor_elems` counts elements represented by static tensor `Val`s,
+including control-flow versions, whereas `mem_elems` counts capacity in an
+explicit storage plan. Neither field predicts bytes, latency, or energy because
+those require a module-owned data-format or device policy. Canonical dictionary
+ordering makes the output diffable and suitable for experiment records without
+putting a report class in core. A regression fixes the complete summary for the
+shared matrix example and the memory execution gate checks its two-slot,
+eight-element plan.

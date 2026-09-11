@@ -18,7 +18,7 @@ namespace fs = std::filesystem;
 
 int usage() {
   std::cerr << "usage:\n"
-               "  joggle check <file.jog>\n"
+               "  joggle check <file.jog> [-M <module-dir>]...\n"
                "  joggle read <module.fn> <file> [-M <module-dir>]...\n"
                "  joggle run <module.fn> <file.jog> "
                "[--report <file>] [-M <module-dir>]...\n"
@@ -55,6 +55,16 @@ bool options(int argc, char** argv, int first, bool allow_report,
   return true;
 }
 
+bool load_uses(joggle::Env& env, const joggle::Mod& mod) {
+  for (const std::string& dependency : mod.uses()) {
+    if (!env.load(dependency)) {
+      env.print_diags(stderr);
+      return false;
+    }
+  }
+  return true;
+}
+
 int process(int argc, char** argv) {
   if (argc < 3)
     return usage();
@@ -66,7 +76,7 @@ int process(int argc, char** argv) {
   const bool emit = command == "emit";
   if (command != "check" && !execute && !decode && !inspect && !emit)
     return usage();
-  if ((!execute && !decode && !inspect && !emit && argc != 3) ||
+  if ((!execute && !decode && !inspect && !emit && argc < 3) ||
       ((execute || decode || inspect || emit) && argc < 4))
     return usage();
 
@@ -120,6 +130,8 @@ int process(int argc, char** argv) {
   joggle::Mod mod;
   if (!joggle::parse(env, source, mod, file))
     return mod.print_diags(stderr);
+  if (!load_uses(env, mod))
+    return 1;
   if (!mod.verify(env))
     return mod.print_diags(stderr);
   if (inspect || emit) {

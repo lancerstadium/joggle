@@ -52,11 +52,11 @@ fundamentals, `ir` is universal reflection and editing, `opt` contains reusable
 textual transforms, `math` names scalar math primitives, `tensor` defines
 storage-neutral tensor computation, `quant` makes quantization policy explicit,
 and `nn` contains network semantics. `mem` assigns static tensor lifetimes to
-target-neutral reusable slots. `c` is a removable first execution module and an
-optional consumer of that metadata, not a target interface in core. The
-optional `onnx` module only transports a binary model. MLIR, JIT, simulation,
-hardware description, and additional target experiments remain removable
-modules.
+target-neutral reusable slots, while `stat` returns deterministic structural
+measurements. `c` is a removable first execution module and an optional
+consumer of memory metadata, not a target interface in core. The optional
+`onnx` module only transports a binary model. MLIR, JIT, simulation, hardware
+description, and additional target experiments remain removable modules.
 
 Version 0.1 searches explicit local paths. The CLI exposes that same local
 model directly:

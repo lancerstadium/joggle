@@ -1,0 +1,120 @@
+module stat
+use base
+use ir
+use mem
+use tensor
+
+fn vals(fn: Fn) -> list<Val> {
+  var out = ir.params(fn)
+  for body in ir.blks(fn) {
+    for value in ir.args(body) {
+      out += [value]
+    }
+  }
+  for op in ir.ops(fn) {
+    for value in ir.outs(op) {
+      out += [value]
+    }
+  }
+  return out
+}
+
+fn summary(m: Mod) -> dict {
+  var fns = 0
+  var blocks = 0
+  var ops = 0
+  var values = 0
+  var calls = 0
+  var constants = 0
+  var loops = 0
+  var branches = 0
+  var returns = 0
+  var yields = 0
+  var unresolved = 0
+  var tensor_values = 0
+  var static_tensor_values = 0
+  var static_tensor_elements = 0
+  var callees = {}
+  var memory_slots = 0
+  var memory_elements = 0
+
+  for fn in ir.fns(m) {
+    fns += 1
+    blocks += len(ir.blks(fn))
+    let fn_values = vals(fn)
+    values += len(fn_values)
+    for value in fn_values {
+      let type = ir.type(value)
+      if tensor.valid(type) {
+        tensor_values += 1
+        if tensor.static(type) {
+          static_tensor_values += 1
+          var elements = 1
+          for extent in tensor.shape(type) {
+            elements *= extent
+          }
+          static_tensor_elements += elements
+        }
+      }
+    }
+    memory_slots += mem.slots(fn)
+    for slot in 0..mem.slots(fn) {
+      memory_elements += mem.count(fn, slot)
+    }
+  }
+
+  for op in ir.ops(m) {
+    ops += 1
+    let kind = ir.kind(op)
+    if kind == "call" {
+      calls += 1
+      let callee = ir.callee(op)
+      callees[callee] = true
+      if !ir.live(ir.resolve(m, op)) {
+        unresolved += 1
+      }
+    } else {
+      if kind == "constant" {
+        constants += 1
+      } else {
+        if kind == "loop" {
+          loops += 1
+        } else {
+          if kind == "branch" {
+            branches += 1
+          } else {
+            if kind == "return" {
+              returns += 1
+            } else {
+              if kind == "yield" {
+                yields += 1
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  var out = {}
+  out["revision"] = ir.revision(m)
+  out["uses"] = len(ir.uses(m))
+  out["fns"] = fns
+  out["blks"] = blocks
+  out["ops"] = ops
+  out["vals"] = values
+  out["calls"] = calls
+  out["callees"] = len(callees)
+  out["unresolved"] = unresolved
+  out["consts"] = constants
+  out["loops"] = loops
+  out["branches"] = branches
+  out["returns"] = returns
+  out["yields"] = yields
+  out["tensor_vals"] = tensor_values
+  out["static_tensor_vals"] = static_tensor_values
+  out["static_tensor_elems"] = static_tensor_elements
+  out["mem_slots"] = memory_slots
+  out["mem_elems"] = memory_elements
+  return out
+}

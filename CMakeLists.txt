@@ -15,7 +15,7 @@ set(JOGGLE_TEST_ONNX_ZOO "" CACHE PATH
 set(JOGGLE_TEST_TFLITE_MODEL "" CACHE FILEPATH
     "Official TFLite model used by tests")
 
-foreach(module base c ir math mem nn opt quant tensor)
+foreach(module base c ir math mem nn opt quant stat tensor)
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules/${module}")
   configure_file(
     "modules/${module}/module.jog"
@@ -235,6 +235,7 @@ install(
     modules/nn
     modules/opt
     modules/quant
+    modules/stat
     modules/tensor
   DESTINATION ${CMAKE_INSTALL_DATADIR}/joggle/modules
   PATTERN .DS_Store EXCLUDE
@@ -308,6 +309,7 @@ if(JOGGLE_BUILD_TESTS)
     NAME cli-check
     COMMAND $<TARGET_FILE:joggle-tool> check
             ${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
+            -M ${CMAKE_CURRENT_SOURCE_DIR}/modules
   )
   add_test(
     NAME cli-run
@@ -325,7 +327,16 @@ if(JOGGLE_BUILD_TESTS)
             -M ${CMAKE_CURRENT_SOURCE_DIR}/modules
   )
   set_tests_properties(
-    cli-query PROPERTIES PASS_REGULAR_EXPRESSION "operator"
+    cli-query PROPERTIES PASS_REGULAR_EXPRESSION "\\[\\]"
+  )
+  add_test(
+    NAME stat-summary
+    COMMAND
+      ${CMAKE_COMMAND}
+      -DTOOL=$<TARGET_FILE:joggle-tool>
+      -DMODEL=${CMAKE_CURRENT_SOURCE_DIR}/test/data/matmul.jog
+      -DMODULES=${CMAKE_CURRENT_BINARY_DIR}/modules
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/test/stat.cmake
   )
   add_test(
     NAME cli-emit

@@ -46,6 +46,20 @@ if(NOT result EQUAL 0 OR NOT buffers STREQUAL "2\n")
 endif()
 
 execute_process(
+  COMMAND "${TOOL}" query stat.summary "${planned}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE summary
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0 OR
+   NOT summary MATCHES "\"mem_slots\": 2" OR
+   NOT summary MATCHES "\"mem_elems\": 8")
+  message(FATAL_ERROR
+          "planned structural summary is invalid (${result}):\n"
+          "${summary}${error}")
+endif()
+
+execute_process(
   COMMAND "${TOOL}" run mem.plan "${planned}" -M "${MODULES}"
   RESULT_VARIABLE result
   OUTPUT_FILE "${planned_again}"
