@@ -143,6 +143,30 @@ int main(int argc, char** argv) {
   CHECK(joggle::print(relation) == relation_before);
   CHECK(relation.revision() == relation_revision);
   env.clear_diags();
+  CHECK(env.load("tflite.nn"));
+  constexpr std::string_view tflite_relation_source =
+      "module tflite.relation\n"
+      "use tflite\n"
+      "fn main(\n"
+      "  left: tensor<f32, [1, 3]>, right: tensor<f32, [2, 1]>\n"
+      ") -> tensor<f32, [2, 3]> {\n"
+      "  [tflite: {options: {fused_activation_function: \"NONE\"}}]\n"
+      "  let out: tensor<f32, [2, 3]> = tflite.ADD(left, right)\n"
+      "  return out\n"
+      "}\n";
+  joggle::Mod tflite_relation;
+  CHECK(joggle::parse(env, tflite_relation_source, tflite_relation,
+                      "tflite-relation.jog"));
+  CHECK(tflite_relation.verify(env));
+  CHECK(joggle::run(env, "tflite.nn.convert", tflite_relation));
+  CHECK(tflite_relation.verify(env));
+  std::size_t tflite_adds = 0;
+  std::size_t nn_adds = 0;
+  for (joggle::Op op : tflite_relation.ops()) {
+    tflite_adds += op.callee() == "tflite.ADD" ? 1 : 0;
+    nn_adds += op.callee() == "nn.add" ? 1 : 0;
+  }
+  CHECK(tflite_adds == 0 && nn_adds == 1);
   CHECK(joggle::run(env, "script.tensor_type_probe", network_cpp));
   CHECK(joggle::run(env, "script.byte_probe", network_cpp));
   CHECK(joggle::run(env, "script.def_probe", network_cpp));

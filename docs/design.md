@@ -226,6 +226,12 @@ evaluator knows neither the attribute key nor the operator vocabulary. The
 chain, while another module may choose a different key and policy without a
 registry, callback class, or parser extension.
 
+The independently authored `tflite.nn` bridge uses the same two primitives for
+semantic conversion, despite different source metadata and layout rules. Its
+quantization guard remains module policy around relation selection. This is the
+cross-frontend gate for the abstraction: neither frontend contributes a name,
+enum, or dispatch case to the evaluator.
+
 The operator-neutral region primitive computes live-ins and a single live-out
 for an ordered call region, enforces dominance and motion safety, preserves the
 visible result name, and commits the fusion atomically. The generic textual

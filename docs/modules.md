@@ -645,7 +645,9 @@ That relationship is the pure `.jog` module `tflite.nn`. Its `convert`
 function materializes padding, stride, dilation, groups, logical axes, fused
 activation, and softmax axis/scale as normal operands. Standard and depthwise Conv,
 Add/Sub/Mul, average/max pool, reshape, and softmax then resolve to shared
-functions. On
+functions. Each mapping is an ordinary function selected by its module-owned
+`on` attribute through the same `ir.where`/`ir.invoke` boundary as ONNX; there
+is no frontend-wide operator dispatch chain. On
 the pinned MobileNetV2 this removes all 66 source compute calls while retaining
 the source model marker and payloads. A second invocation is unchanged, and
 all 66 converted bodies can be independently exposed and round-tripped.

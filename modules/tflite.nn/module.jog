@@ -169,6 +169,16 @@ fn convert_conv(m: Mod, op: Op, depthwise: bool) -> bool {
   return convert_call(m, op, "nn.conv2d", inputs)
 }
 
+[on: "tflite.CONV_2D"]
+fn conv(m: Mod, op: Op) -> bool {
+  return convert_conv(m, op, false)
+}
+
+[on: "tflite.DEPTHWISE_CONV_2D"]
+fn depthwise_conv(m: Mod, op: Op) -> bool {
+  return convert_conv(m, op, true)
+}
+
 fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -196,6 +206,21 @@ fn convert_binary(m: Mod, op: Op, callee: str) -> bool {
   }
   inputs += [ir.constant(m, op, act, "str")]
   return convert_call(m, op, callee, inputs)
+}
+
+[on: "tflite.ADD"]
+fn add(m: Mod, op: Op) -> bool {
+  return convert_binary(m, op, "nn.add")
+}
+
+[on: "tflite.SUB"]
+fn sub(m: Mod, op: Op) -> bool {
+  return convert_binary(m, op, "nn.sub")
+}
+
+[on: "tflite.MUL"]
+fn mul(m: Mod, op: Op) -> bool {
+  return convert_binary(m, op, "nn.mul")
 }
 
 fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
@@ -247,6 +272,17 @@ fn convert_pool(m: Mod, op: Op, callee: str) -> bool {
   return convert_call(m, op, callee, inputs)
 }
 
+[on: "tflite.AVERAGE_POOL_2D"]
+fn avg_pool(m: Mod, op: Op) -> bool {
+  return convert_pool(m, op, "nn.avg_pool2d")
+}
+
+[on: "tflite.MAX_POOL_2D"]
+fn max_pool(m: Mod, op: Op) -> bool {
+  return convert_pool(m, op, "nn.max_pool2d")
+}
+
+[on: "tflite.RESHAPE"]
 fn convert_reshape(m: Mod, op: Op) -> bool {
   let inputs = ir.args(op)
   if len(inputs) < 1 || len(ir.outs(op)) != 1 {
@@ -256,6 +292,7 @@ fn convert_reshape(m: Mod, op: Op) -> bool {
   return convert_call(m, op, "tensor.reshape", values)
 }
 
+[on: "tflite.SOFTMAX"]
 fn convert_softmax(m: Mod, op: Op) -> bool {
   var inputs = ir.args(op)
   let outputs = ir.outs(op)
@@ -278,34 +315,11 @@ fn convert_softmax(m: Mod, op: Op) -> bool {
 
 fn convert(m: Mod) -> bool {
   var changed = ir.use(m, "nn")
+  let rules = ir.fns("tflite.nn")
   for op in ir.ops(m) {
     if ir.live(op) && !quantized(op) {
-      if ir.callee(op) == "tflite.CONV_2D" {
-        changed = convert_conv(m, op, false) || changed
-      }
-      if ir.callee(op) == "tflite.DEPTHWISE_CONV_2D" {
-        changed = convert_conv(m, op, true) || changed
-      }
-      if ir.callee(op) == "tflite.ADD" {
-        changed = convert_binary(m, op, "nn.add") || changed
-      }
-      if ir.callee(op) == "tflite.SUB" {
-        changed = convert_binary(m, op, "nn.sub") || changed
-      }
-      if ir.callee(op) == "tflite.MUL" {
-        changed = convert_binary(m, op, "nn.mul") || changed
-      }
-      if ir.callee(op) == "tflite.AVERAGE_POOL_2D" {
-        changed = convert_pool(m, op, "nn.avg_pool2d") || changed
-      }
-      if ir.callee(op) == "tflite.MAX_POOL_2D" {
-        changed = convert_pool(m, op, "nn.max_pool2d") || changed
-      }
-      if ir.callee(op) == "tflite.RESHAPE" {
-        changed = convert_reshape(m, op) || changed
-      }
-      if ir.callee(op) == "tflite.SOFTMAX" {
-        changed = convert_softmax(m, op) || changed
+      for rule in ir.where(rules, "on", ir.callee(op)) {
+        changed = ir.invoke(m, op, rule) || changed
       }
     }
   }

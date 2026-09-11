@@ -178,7 +178,9 @@ checks import and canonical round-trip, then requires the generic floating-
 point bridge to retain that call until a TFLite relation can prove and
 materialize its rescaling semantics through `quant`.
 The separately selected `tflite.nn` relation then converts all 66 compute calls
-in that model to shared `nn`/`tensor` functions. Logical-axis operands retain
+in that model to shared `nn`/`tensor` functions. Its mappings are ordinary
+metadata-selected functions using the same open relation boundary as ONNX,
+without sharing a frontend dispatch table. Logical-axis operands retain
 NHWC and both TFLite weight layouts without creating a second IR or a
 layout-specific core operation. Like the ONNX relation, it commits a new
 callee and every materialized operand through one checked `ir.retarget`; a

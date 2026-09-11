@@ -268,8 +268,10 @@ Open function metadata now also supports semantic relation discovery.
 `ir.invoke` transactionally executes the single `fn(Mod, Op) -> bool` boundary.
 ONNX inference relations self-identify in their owning module, removing the
 central operator-name dispatch chain while leaving import and conversion
-explicit. A malformed relation signature is rejected without changing model
-text or revision.
+explicit. The separate TFLite bridge now discovers its conversion relations
+through the same boundary while retaining a different quantization policy. A
+malformed relation signature is rejected without changing model text or
+revision.
 
 - Keep binary codecs such as ONNX and TFLite separate from semantic bridge
   modules.
