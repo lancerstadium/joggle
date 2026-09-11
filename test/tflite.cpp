@@ -192,7 +192,7 @@ int main(int argc, char** argv) {
     if (!selected)
       continue;
     const joggle::Fn fn = env.resolve(semantic_roundtrip, op);
-    CHECK(fn && semantic_roundtrip.expand(op, fn));
+    CHECK(fn && env.expand(semantic_roundtrip, op, fn));
     ++exposed;
   }
   CHECK(exposed == 66);
@@ -226,7 +226,7 @@ int main(int argc, char** argv) {
     if (op.callee() != "nn.add")
       continue;
     const joggle::Fn fn = env.resolve(broadcast, op);
-    CHECK(fn && broadcast.expand(op, fn));
+    CHECK(fn && env.expand(broadcast, op, fn));
   }
   CHECK(broadcast.verify(env));
 

@@ -294,7 +294,7 @@ int main(int argc, char** argv) {
     if (op.callee() == "nn.max_pool2d")
       max_pool_call = op;
   const joggle::Fn max_pool_fn = env.resolve(max_pool, max_pool_call);
-  CHECK(max_pool_fn && max_pool.expand(max_pool_call, max_pool_fn));
+  CHECK(max_pool_fn && env.expand(max_pool, max_pool_call, max_pool_fn));
   CHECK(max_pool.verify(env));
   for (joggle::Op op : max_pool.ops())
     CHECK(op.callee() != "nn.max_pool2d");
@@ -322,7 +322,7 @@ int main(int argc, char** argv) {
       add = op;
   CHECK(add);
   const joggle::Fn add_fn = env.resolve(broadcast, add);
-  CHECK(add_fn && broadcast.expand(add, add_fn));
+  CHECK(add_fn && env.expand(broadcast, add, add_fn));
   CHECK(broadcast.verify(env));
   std::vector<joggle::Op> copies;
   for (joggle::Op op : broadcast.ops())
@@ -331,7 +331,7 @@ int main(int argc, char** argv) {
   CHECK(copies.size() == 2);
   for (joggle::Op op : copies) {
     const joggle::Fn callee = env.resolve(broadcast, op);
-    CHECK(callee && broadcast.expand(op, callee));
+    CHECK(callee && env.expand(broadcast, op, callee));
   }
   CHECK(broadcast.verify(env));
   std::size_t loops = 0;
@@ -363,7 +363,7 @@ int main(int argc, char** argv) {
       residual_add = op;
   const joggle::Fn residual_fn = env.resolve(residual, residual_add);
   CHECK(residual_fn && residual_fn.generics().size() == 2);
-  CHECK(residual.expand(residual_add, residual_fn));
+  CHECK(env.expand(residual, residual_add, residual_fn));
   CHECK(residual.verify(env));
   for (joggle::Op op : residual.ops())
     CHECK(op.callee() != "tensor.broadcast");
@@ -412,7 +412,7 @@ int main(int argc, char** argv) {
       semantic_add = op;
   CHECK(semantic_add && semantic_add.args().size() == 2);
   const joggle::Fn semantic_fn = env.resolve(bridge, semantic_add);
-  CHECK(semantic_fn && bridge.expand(semantic_add, semantic_fn));
+  CHECK(semantic_fn && env.expand(bridge, semantic_add, semantic_fn));
   CHECK(bridge.verify(env));
 
   constexpr std::string_view binary_bridge_source =
@@ -447,7 +447,7 @@ int main(int argc, char** argv) {
       continue;
     CHECK(op.args().size() == 2 && op.meta().empty());
     const joggle::Fn fn = env.resolve(binary_bridge, op);
-    CHECK(fn && binary_bridge.expand(op, fn));
+    CHECK(fn && env.expand(binary_bridge, op, fn));
     ++binaries;
   }
   CHECK(binaries == 2 && binary_bridge.verify(env));
@@ -539,7 +539,7 @@ int main(int argc, char** argv) {
     if (!op.callee().starts_with("nn."))
       continue;
     const joggle::Fn fn = env.resolve(unary_bridge, op);
-    CHECK(fn && unary_bridge.expand(op, fn));
+    CHECK(fn && env.expand(unary_bridge, op, fn));
   }
   CHECK(unary_bridge.verify(env));
   CHECK(count(unary_bridge, "nn.sigmoid") == 0);
@@ -576,7 +576,7 @@ int main(int argc, char** argv) {
         op.callee() != "tensor.permute")
       continue;
     const joggle::Fn fn = env.resolve(matrix_bridge, op);
-    CHECK(fn && matrix_bridge.expand(op, fn));
+    CHECK(fn && env.expand(matrix_bridge, op, fn));
     ++matrix_calls;
   }
   CHECK(matrix_calls == 3 && matrix_bridge.verify(env));
@@ -605,7 +605,7 @@ int main(int argc, char** argv) {
   CHECK(semantic_pool.meta().empty());
   const joggle::Fn semantic_pool_fn = env.resolve(pool_bridge, semantic_pool);
   CHECK(semantic_pool_fn &&
-        pool_bridge.expand(semantic_pool, semantic_pool_fn));
+        env.expand(pool_bridge, semantic_pool, semantic_pool_fn));
   CHECK(pool_bridge.verify(env));
 
   constexpr std::string_view zoo_slice_source =
@@ -682,7 +682,8 @@ int main(int argc, char** argv) {
   CHECK(retained_binaries == 1);
   CHECK(symbolic_mul);
   const joggle::Fn symbolic_mul_fn = env.resolve(symbolic, symbolic_mul);
-  CHECK(symbolic_mul_fn && symbolic.expand(symbolic_mul, symbolic_mul_fn));
+  CHECK(symbolic_mul_fn &&
+        env.expand(symbolic, symbolic_mul, symbolic_mul_fn));
   CHECK(symbolic.verify(env));
 
   constexpr std::string_view qdq_source =
@@ -723,8 +724,8 @@ int main(int argc, char** argv) {
   const joggle::Fn quant_fn = env.resolve(qdq, quant);
   const joggle::Fn dequant_fn = env.resolve(qdq, dequant);
   CHECK(quant_fn && dequant_fn);
-  CHECK(qdq.expand(quant, quant_fn));
-  CHECK(qdq.expand(dequant, dequant_fn));
+  CHECK(env.expand(qdq, quant, quant_fn));
+  CHECK(env.expand(qdq, dequant, dequant_fn));
   CHECK(qdq.verify(env));
   joggle::Mod qdq_roundtrip;
   CHECK(joggle::parse(env, joggle::print(qdq), qdq_roundtrip,
@@ -774,9 +775,9 @@ int main(int argc, char** argv) {
       env.resolve(dynamic_quant, integer_matmul);
   const joggle::Fn cast_fn = env.resolve(dynamic_quant, cast);
   CHECK(dynamic_fn && integer_matmul_fn && cast_fn);
-  CHECK(dynamic_quant.expand(dynamic_call, dynamic_fn));
-  CHECK(dynamic_quant.expand(integer_matmul, integer_matmul_fn));
-  CHECK(dynamic_quant.expand(cast, cast_fn));
+  CHECK(env.expand(dynamic_quant, dynamic_call, dynamic_fn));
+  CHECK(env.expand(dynamic_quant, integer_matmul, integer_matmul_fn));
+  CHECK(env.expand(dynamic_quant, cast, cast_fn));
   CHECK(dynamic_quant.verify(env));
   joggle::Mod dynamic_quant_roundtrip;
   CHECK(joggle::parse(env, joggle::print(dynamic_quant),
@@ -824,13 +825,13 @@ int main(int argc, char** argv) {
   CHECK(semantic_conv && semantic_conv.args().size() == 11);
   CHECK(semantic_global_pool);
   const joggle::Fn symbolic_conv_fn = env.resolve(symbolic_conv, semantic_conv);
-  CHECK(symbolic_conv_fn && symbolic_conv.expand(semantic_conv,
-                                                 symbolic_conv_fn));
+  CHECK(symbolic_conv_fn &&
+        env.expand(symbolic_conv, semantic_conv, symbolic_conv_fn));
   CHECK(symbolic_conv.verify(env));
   const joggle::Fn symbolic_pool_fn =
       env.resolve(symbolic_conv, semantic_global_pool);
   CHECK(symbolic_pool_fn &&
-        symbolic_conv.expand(semantic_global_pool, symbolic_pool_fn));
+        env.expand(symbolic_conv, semantic_global_pool, symbolic_pool_fn));
   CHECK(symbolic_conv.verify(env));
 
   constexpr std::string_view partial_conv_source =
@@ -1078,7 +1079,7 @@ int main(int argc, char** argv) {
         op.callee() != "tensor.permute")
       continue;
     const joggle::Fn fn = env.resolve(symbolic_matrix, op);
-    CHECK(fn && symbolic_matrix.expand(op, fn));
+    CHECK(fn && env.expand(symbolic_matrix, op, fn));
     ++symbolic_matrix_calls;
   }
   CHECK(symbolic_matrix_calls == 3 && symbolic_matrix.verify(env));
@@ -1149,14 +1150,14 @@ int main(int argc, char** argv) {
   CHECK(structure_calls.size() == 4);
   for (joggle::Op op : structure_calls) {
     const joggle::Fn fn = env.resolve(shape_program, op);
-    CHECK(fn && shape_program.expand(op, fn));
+    CHECK(fn && env.expand(shape_program, op, fn));
   }
   CHECK(shape_program.verify(env));
   CHECK(semantic_reshape && semantic_reshape.args().size() == 1);
   const joggle::Fn shape_reshape_fn =
       env.resolve(shape_program, semantic_reshape);
   CHECK(shape_reshape_fn &&
-        shape_program.expand(semantic_reshape, shape_reshape_fn));
+        env.expand(shape_program, semantic_reshape, shape_reshape_fn));
   CHECK(shape_program.verify(env));
 
   constexpr std::string_view transformer_source =
@@ -1203,10 +1204,10 @@ int main(int argc, char** argv) {
                              joggle::Ty(
                                  "tensor<f32, [N, 12, 256, 64]>"));
   const joggle::Fn fill_fn = env.resolve(transformer, semantic_fill);
-  CHECK(fill_fn && transformer.expand(semantic_fill, fill_fn));
+  CHECK(fill_fn && env.expand(transformer, semantic_fill, fill_fn));
   CHECK(transformer.verify(env));
   const joggle::Fn scaled_matmul = env.resolve(transformer, scores);
-  CHECK(scaled_matmul && transformer.expand(scores, scaled_matmul));
+  CHECK(scaled_matmul && env.expand(transformer, scores, scaled_matmul));
   CHECK(transformer.verify(env));
 
   constexpr std::string_view default_fill_source =
@@ -1267,7 +1268,7 @@ int main(int argc, char** argv) {
   CHECK(split_slices[1].outs()[0].name() == "right");
   for (joggle::Op op : split_slices) {
     const joggle::Fn fn = env.resolve(split, op);
-    CHECK(fn && split.expand(op, fn));
+    CHECK(fn && env.expand(split, op, fn));
   }
   CHECK(split.verify(env));
 
@@ -1327,7 +1328,8 @@ int main(int argc, char** argv) {
       semantic_one_hot = op;
   CHECK(semantic_one_hot && semantic_one_hot.args().size() == 4);
   const joggle::Fn one_hot_fn = env.resolve(one_hot, semantic_one_hot);
-  CHECK(one_hot_fn && one_hot.expand(semantic_one_hot, one_hot_fn));
+  CHECK(one_hot_fn &&
+        env.expand(one_hot, semantic_one_hot, one_hot_fn));
   CHECK(one_hot.verify(env));
 
   constexpr std::string_view invalid_reshape_source =
@@ -1384,7 +1386,8 @@ int main(int argc, char** argv) {
   const joggle::Fn batched_matmul_fn =
       env.resolve(batched_matmul, semantic_batched_matmul);
   CHECK(batched_matmul_fn &&
-        batched_matmul.expand(semantic_batched_matmul, batched_matmul_fn));
+        env.expand(batched_matmul, semantic_batched_matmul,
+                   batched_matmul_fn));
   CHECK(batched_matmul.verify(env));
 
   constexpr std::string_view mixed_matmul_source =
@@ -1433,7 +1436,7 @@ int main(int argc, char** argv) {
   CHECK(semantic_softmax && semantic_softmax.args().size() == 3);
   CHECK(semantic_softmax.args()[1].constant().integer() == 1);
   const joggle::Fn softmax_fn = env.resolve(softmax, semantic_softmax);
-  CHECK(softmax_fn && softmax.expand(semantic_softmax, softmax_fn));
+  CHECK(softmax_fn && env.expand(softmax, semantic_softmax, softmax_fn));
   CHECK(softmax.verify(env));
 
   constexpr std::string_view legacy_softmax_source =
@@ -1459,7 +1462,7 @@ int main(int argc, char** argv) {
   CHECK(legacy_call && legacy_call.args().size() == 3);
   CHECK(legacy_call.args()[1].type() == joggle::Ty("list<int>"));
   const joggle::Fn legacy_fn = env.resolve(legacy_softmax, legacy_call);
-  CHECK(legacy_fn && legacy_softmax.expand(legacy_call, legacy_fn));
+  CHECK(legacy_fn && env.expand(legacy_softmax, legacy_call, legacy_fn));
   CHECK(legacy_softmax.verify(env));
 
   constexpr std::string_view mean_source =
@@ -1486,7 +1489,7 @@ int main(int argc, char** argv) {
       semantic_mean = op;
   CHECK(semantic_mean && semantic_mean.args().size() == 2);
   const joggle::Fn mean_fn = env.resolve(mean, semantic_mean);
-  CHECK(mean_fn && mean.expand(semantic_mean, mean_fn));
+  CHECK(mean_fn && env.expand(mean, semantic_mean, mean_fn));
   CHECK(mean.verify(env));
 
   constexpr std::string_view invalid_mean_source =
@@ -1552,7 +1555,7 @@ int main(int argc, char** argv) {
   CHECK(norm_calls.size() == 9);
   for (joggle::Op op : norm_calls) {
     const joggle::Fn fn = env.resolve(norm, op);
-    CHECK(fn && norm.expand(op, fn));
+    CHECK(fn && env.expand(norm, op, fn));
   }
   CHECK(norm.verify(env));
 

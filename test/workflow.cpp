@@ -114,7 +114,7 @@ int main(int argc, char** argv) {
     if (op.callee() != "operator +" && op.callee() != "nn.relu")
       continue;
     const joggle::Fn callee = env.resolve(network_cpp, op);
-    CHECK(callee && network_cpp.expand(op, callee));
+    CHECK(callee && env.expand(network_cpp, op, callee));
   }
   CHECK(network_cpp.verify(env));
   CHECK(env.load("script"));
@@ -259,7 +259,7 @@ int main(int argc, char** argv) {
       matmul_call = op;
   CHECK(matmul_call);
   const joggle::Fn matmul_fn = env.resolve(generic_matmul, matmul_call);
-  CHECK(matmul_fn && generic_matmul.expand(matmul_call, matmul_fn));
+  CHECK(matmul_fn && env.expand(generic_matmul, matmul_call, matmul_fn));
   CHECK(generic_matmul.verify(env));
   std::size_t matmul_loops = 0;
   for (joggle::Op op : generic_matmul.ops()) {
@@ -298,7 +298,7 @@ int main(int argc, char** argv) {
       conv_call = op;
   CHECK(conv_call);
   const joggle::Fn conv_fn = env.resolve(conv_network, conv_call);
-  CHECK(conv_fn && conv_network.expand(conv_call, conv_fn));
+  CHECK(conv_fn && env.expand(conv_network, conv_call, conv_fn));
   CHECK(conv_network.verify(env));
   joggle::Op layout_conv;
   for (joggle::Op op : conv_network.ops())
@@ -306,7 +306,8 @@ int main(int argc, char** argv) {
       layout_conv = op;
   CHECK(layout_conv);
   const joggle::Fn layout_conv_fn = env.resolve(conv_network, layout_conv);
-  CHECK(layout_conv_fn && conv_network.expand(layout_conv, layout_conv_fn));
+  CHECK(layout_conv_fn &&
+        env.expand(conv_network, layout_conv, layout_conv_fn));
   CHECK(conv_network.verify(env));
   std::size_t conv_loops = 0;
   for (joggle::Op op : conv_network.ops()) {
@@ -337,7 +338,7 @@ int main(int argc, char** argv) {
       pool_call = op;
   CHECK(pool_call);
   const joggle::Fn pool_fn = env.resolve(pool_network, pool_call);
-  CHECK(pool_fn && pool_network.expand(pool_call, pool_fn));
+  CHECK(pool_fn && env.expand(pool_network, pool_call, pool_fn));
   CHECK(pool_network.verify(env));
   for (joggle::Op op : pool_network.ops())
     CHECK(op.callee() != "nn.global_avg_pool2d");
@@ -367,7 +368,7 @@ int main(int argc, char** argv) {
       norm_call = op;
   CHECK(norm_call);
   const joggle::Fn norm_fn = env.resolve(norm_network, norm_call);
-  CHECK(norm_fn && norm_network.expand(norm_call, norm_fn));
+  CHECK(norm_fn && env.expand(norm_network, norm_call, norm_fn));
   CHECK(norm_network.verify(env));
   std::size_t sqrt_calls = 0;
   for (joggle::Op op : norm_network.ops()) {
@@ -398,7 +399,7 @@ int main(int argc, char** argv) {
       reshape_call = op;
   CHECK(reshape_call);
   const joggle::Fn reshape_fn = env.resolve(reshape_network, reshape_call);
-  CHECK(reshape_fn && reshape_network.expand(reshape_call, reshape_fn));
+  CHECK(reshape_fn && env.expand(reshape_network, reshape_call, reshape_fn));
   CHECK(reshape_network.verify(env));
   for (joggle::Op op : reshape_network.ops())
     CHECK(op.callee() != "tensor.reshape");
@@ -425,7 +426,7 @@ int main(int argc, char** argv) {
     if (op.callee() != "nn.linear" && op.callee() != "nn.relu")
       continue;
     const joggle::Fn callee = env.resolve(linear_network, op);
-    CHECK(callee && linear_network.expand(op, callee));
+    CHECK(callee && env.expand(linear_network, op, callee));
   }
   CHECK(linear_network.verify(env));
   joggle::Op exposed_matmul;
@@ -438,7 +439,7 @@ int main(int argc, char** argv) {
   const joggle::Fn exposed_matmul_fn =
       env.resolve(linear_network, exposed_matmul);
   CHECK(exposed_matmul_fn &&
-        linear_network.expand(exposed_matmul, exposed_matmul_fn));
+        env.expand(linear_network, exposed_matmul, exposed_matmul_fn));
   CHECK(linear_network.verify(env));
   for (joggle::Op op : linear_network.ops())
     CHECK(op.callee() != "tensor.matmul");
@@ -467,7 +468,7 @@ int main(int argc, char** argv) {
     if (op.callee() == "pair")
       pair_call = op;
   const joggle::Fn pair_fn = env.resolve(local_expand, pair_call);
-  CHECK(pair_call && pair_fn && local_expand.expand(pair_call, pair_fn));
+  CHECK(pair_call && pair_fn && env.expand(local_expand, pair_call, pair_fn));
   CHECK(local_expand.verify(env));
   CHECK(joggle::print(local_expand).find("pair(x)") == std::string::npos);
   joggle::Mod local_expand_roundtrip;
@@ -520,7 +521,7 @@ int main(int argc, char** argv) {
   CHECK(rejected_relu && rejected_relu.meta("keep"));
   const std::string rejected_text = joggle::print(rejected_expand);
   const std::uint64_t rejected_revision = rejected_expand.revision();
-  CHECK(!rejected_expand.expand(rejected_relu, relu));
+  CHECK(!env.expand(rejected_expand, rejected_relu, relu));
   CHECK(joggle::print(rejected_expand) == rejected_text);
   CHECK(rejected_expand.revision() == rejected_revision);
   rejected_expand.clear_diags();
@@ -1756,8 +1757,8 @@ int main(int argc, char** argv) {
   const joggle::Op conflict_call =
       value_attrs.find_fn("conflict").body().ops().front();
   const std::string before_conflict = joggle::print(value_attrs);
-  CHECK(!value_attrs.expand(conflict_call,
-                            env.resolve(value_attrs, conflict_call)));
+  CHECK(!env.expand(value_attrs, conflict_call,
+                    env.resolve(value_attrs, conflict_call)));
   CHECK(joggle::print(value_attrs) == before_conflict);
   value_attrs.clear_diags();
   CHECK(value_attrs.set(value_loop.blks()[0].args()[1], "bank",

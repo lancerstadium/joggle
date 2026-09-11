@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
       mul_call = op;
   CHECK(mul_call && mul_call.args().size() == 3);
   const joggle::Fn mul_fn = env.resolve(mul, mul_call);
-  CHECK(mul_fn && mul.expand(mul_call, mul_fn));
+  CHECK(mul_fn && env.expand(mul, mul_call, mul_fn));
   CHECK(mul.verify(env));
 
   constexpr std::string_view max_pool_source =
@@ -180,7 +180,7 @@ int main(int argc, char** argv) {
       max_pool_call = op;
   CHECK(max_pool_call && max_pool_call.args().size() == 7);
   const joggle::Fn max_pool_fn = env.resolve(max_pool, max_pool_call);
-  CHECK(max_pool_fn && max_pool.expand(max_pool_call, max_pool_fn));
+  CHECK(max_pool_fn && env.expand(max_pool, max_pool_call, max_pool_fn));
   CHECK(max_pool.verify(env));
   return 0;
 }

@@ -1120,10 +1120,6 @@ Op Mod::clone(Op source, Op before) {
   return Op(&store, cloned_id, store.ops[cloned_id].generation);
 }
 
-bool Mod::expand(Op call, Fn callee) {
-  return expand(call, callee, {});
-}
-
 bool Mod::expand(Op call, Fn callee, std::string_view semantic) {
   auto& store = impl_->store;
   if (!call.valid() || call.store_ != &store ||

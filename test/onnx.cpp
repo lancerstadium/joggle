@@ -281,7 +281,7 @@ int main(int argc, char** argv) {
       continue;
     CHECK(!op.meta("onnx"));
     const joggle::Fn callee = env.resolve(semantic_roundtrip, op);
-    CHECK(callee && semantic_roundtrip.expand(op, callee));
+    CHECK(callee && env.expand(semantic_roundtrip, op, callee));
     ++expanded;
   }
   CHECK(expanded == nodes);

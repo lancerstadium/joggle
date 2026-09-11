@@ -571,10 +571,10 @@ specialized tensor/format overload to reuse base scalar algebra in its body.
 
 The bridge between abstraction levels is an explicit function-body edit.
 `Env::resolve(mod, op)` applies the same import, qualification, overload, and
-generic rules as verification. `Mod::expand(op, fn)` substitutes that ordinary
-body at the call, remaps nested control flow and dataflow, specializes type and
-shape parameters, and preserves visible result bindings. The textual surface
-is the ordinary pair `ir.resolve` and `ir.expand`.
+generic rules as verification. `Env::expand(mod, op, fn)` substitutes that
+ordinary body at the call, remaps nested control flow and dataflow, specializes
+type and shape parameters, and preserves visible result bindings. The textual
+surface is the ordinary pair `ir.resolve` and `ir.expand`.
 
 `opt.expand` adds only caller-selected policy: it exposes one level of the
 named callees from a traversal snapshot. It does not recursively expand calls

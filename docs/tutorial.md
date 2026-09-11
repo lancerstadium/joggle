@@ -123,9 +123,9 @@ Running `expose.network` replaces only those two calls by their resolved
 bodies. A later invocation can expose `tensor.matmul`, while an experiment
 that maps the abstract call directly to a target primitive can leave it
 untouched. Body expansion is generic: the core contains no tensor or NN name,
-and C++ can perform the same edit with `env.resolve(mod, op)` followed by
-`mod.expand(op, fn)`. For an alternative implementation from another module,
-use `env.expand(mod, op, implementation)` so dependency visibility and body
+and C++ performs the same edit with `env.resolve(mod, op)` followed by
+`env.expand(mod, op, fn)`. The environment-aware edit handles both a resolved
+body and an alternative implementation, so dependency visibility and body
 expansion commit together.
 
 For a larger model, list the calls a consumer can already implement and let

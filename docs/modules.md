@@ -289,8 +289,8 @@ overload rules used by verification. `ir.expand(m, op, fn)` then substitutes
 that normal function body, including nested loops and conditions. Generic
 type, shape, and integer bindings are specialized at the call site; visible
 result names and structured carried bindings remain printable. The C++ pair
-`env.resolve(mod, op)` and `mod.expand(op, fn)` performs the identical edit.
-When a shape generic contains a caller's integer generic, expansion
+`env.resolve(mod, op)` and `env.expand(mod, op, fn)` performs the identical
+edit. When a shape generic contains a caller's integer generic, expansion
 materializes one ordinary `list<int>` value containing that existing binding.
 This keeps bodies such as symbolic reshape, matrix multiplication, and
 permutation representable instead of requiring dimensions to be frozen before
