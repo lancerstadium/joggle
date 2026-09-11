@@ -1153,7 +1153,7 @@ private:
            name == "kind" || name == "assert" || name == "name" ||
            name == "args" || name == "int" || name == "str" ||
            name == "text" || name == "hex" || name == "replace" ||
-           name == "ty";
+           name == "ident" || name == "ty";
   }
 
   std::optional<Items> fundamental(std::string_view name, const Items& args,
@@ -1299,6 +1299,38 @@ private:
         while ((offset = out.find(*from, offset)) != std::string::npos) {
           out.replace(offset, from->size(), *to);
           offset += to->size();
+        }
+        return Items{Item(Attr(std::move(out)))};
+      }
+    } else if (name == "ident" && args.size() == 1) {
+      if (const auto input = string(args[0])) {
+        static constexpr char digits[] = "0123456789abcdef";
+        std::string out;
+        if (input->size() > std::numeric_limits<std::size_t>::max() / 4) {
+          fail("identifier output is too large", loc);
+          return std::nullopt;
+        }
+        out.reserve(input->size() * 4);
+        for (std::size_t index = 0; index < input->size(); ++index) {
+          const unsigned char byte =
+              static_cast<unsigned char>((*input)[index]);
+          if ((byte >= 'a' && byte <= 'z') ||
+              (byte >= 'A' && byte <= 'Z') ||
+              (byte >= '0' && byte <= '9')) {
+            out.push_back(static_cast<char>(byte));
+          } else if (byte == '.') {
+            out.append("_D");
+          } else if (byte == '_') {
+            const bool ambiguous = index + 1 < input->size() &&
+                                   ((*input)[index + 1] == 'D' ||
+                                    (*input)[index + 1] == 'U' ||
+                                    (*input)[index + 1] == 'X');
+            out.append(ambiguous ? "_U" : "_");
+          } else {
+            out.append("_X");
+            out.push_back(digits[byte >> 4]);
+            out.push_back(digits[byte & 15]);
+          }
         }
         return Items{Item(Attr(std::move(out)))};
       }

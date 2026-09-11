@@ -827,6 +827,12 @@ logical expressions from their forwarding arm, without a parser or core
 special case. Large byte literals use `base.hex` rather than an interpreted
 loop per byte.
 
+C symbols and locals use the shared injective `base.ident` fragment encoding
+rather than a chain of punctuation replacements. The emitter's `jog_`, `v_`,
+and `jog_mem_` prefixes keep whole identifiers outside reserved namespaces;
+dots, ambiguous underscores, arbitrary punctuation, and UTF-8 bytes remain
+distinct. Collision checks still run on final emitted function symbols.
+
 When `mem.plan` has attached target-neutral reusable slots, `c.place(m,
 "static")` records an explicit C-only workspace choice on each emitted
 function; `"local"` removes it. The emitter reads this open metadata but never

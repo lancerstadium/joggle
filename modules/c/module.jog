@@ -5,24 +5,25 @@ use mem
 use opt
 use tensor
 
-fn id(text: str) -> str {
-  var out = replace(text, ".", "_")
-  out = replace(out, " ", "_")
-  return out
+fn label(value: Val) -> str {
+  let name = ir.name(value)
+  if name == "" {
+    return "v" + text(ir.key(value))
+  }
+  return base.ident(name)
 }
 
 fn val(value: Val) -> str {
   if mem.planned(value) {
     let type = ir.type(value)
     assert(tensor.valid(type), "c: planned value must be a tensor")
-    return "jog_mem_" + id(base.name(tensor.elem(type))) + "_" +
+    return "jog_mem_" + base.ident(base.name(tensor.elem(type))) + "_" +
            text(mem.slot(value))
   }
-  let name = ir.name(value)
-  if name == "" {
-    return "v" + text(ir.key(value))
+  if ir.name(value) == "" {
+    return label(value)
   }
-  return "v_" + id(name)
+  return "v_" + label(value)
 }
 
 fn abi() -> dict {
@@ -239,9 +240,9 @@ fn external(m: Mod, fn: Fn) -> bool {
 fn symbol(m: Mod, fn: Fn) -> str {
   assert(callable(m, fn), "c: function has no representable ABI")
   if local(m, fn) {
-    return "jog_" + id(ir.name(fn))
+    return "jog_" + base.ident(ir.name(fn))
   }
-  return "jog_" + id(ir.symbol(fn))
+  return "jog_" + base.ident(ir.symbol(fn))
 }
 
 fn args(m: Mod, values: list<Val>) -> str {
@@ -430,10 +431,10 @@ fn tensor_literal(op: Op, depth: int) -> str {
     return out
   }
   out += indent + "static const unsigned char jog_data_" +
-         id(ir.name(output)) +
+         label(output) +
          "[" + text(bytes) + "] = \"\\x" + base.hex(data, "\\x") +
          "\";\n" + indent + "memcpy(" + val(output) + ", jog_data_" +
-         id(ir.name(output)) + ", " + text(bytes) + ");\n"
+         label(output) + ", " + text(bytes) + ");\n"
   return out
 }
 
@@ -664,7 +665,7 @@ fn loop(m: Mod, op: Op, depth: int) -> str {
         out += pad(depth + i) + "for (" + index_type() + " " + iterator +
                " = 0; " + iterator + " < 0; ++" + iterator + ") {\n"
       } else {
-        let index = "jog_i_" + id(ir.name(body_args[i]))
+        let index = "jog_i_" + base.ident(ir.name(body_args[i]))
         let type = scalar(ir.type(body_args[i]))
         out += pad(depth + i) + "for (" + count_type() + " " + index +
                " = 0; " + index +
@@ -778,7 +779,7 @@ fn definition(m: Mod, fn: Fn) -> str {
   for slot in 0..mem.slots(fn) {
     let type = mem.type(fn, slot)
     memory += pad(1) + storage + scalar(type) + " jog_mem_" +
-              id(base.name(type)) + "_" + text(slot) + "[" +
+              base.ident(base.name(type)) + "_" + text(slot) + "[" +
               text(mem.count(fn, slot)) + "];\n"
   }
   return signature(m, fn) + " {\n" + memory + block(m, bodies[0], 1) + "}\n"

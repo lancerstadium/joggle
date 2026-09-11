@@ -28,5 +28,6 @@ build/examples/edge/model
 
 External functions must be monomorphic and use scalar or fixed-shape tensor
 types representable by the C ABI. Their generated symbol includes the module
-name (`edge.matmul` becomes `jog_edge_matmul`) so dependencies do not collide
-with local model functions.
+name (`edge.matmul` becomes `jog_edge_Dmatmul`) so dependencies do not collide
+with local model functions. `_D` is the reversible namespace separator used by
+the common identifier encoder; an actual underscore remains an underscore.

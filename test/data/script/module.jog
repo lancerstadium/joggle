@@ -42,7 +42,12 @@ fn text_probe(m: Mod) -> bool {
          "joggle" + "-" + "emit" == "joggle-emit" &&
          text(-12) == "-12" && text(true) == "true" &&
          text("quoted") == "\"quoted\"" && text(ty("i32")) == "i32" &&
-         replace("a.b.b", "b", "cc") == "a.cc.cc"
+         replace("a.b.b", "b", "cc") == "a.cc.cc" &&
+         base.ident("edge.matmul") == "edge_Dmatmul" &&
+         base.ident("edge_matmul") == "edge_matmul" &&
+         base.ident("_D_X_U") == "_UD_UX_UU" &&
+         base.ident("9/x-y") == "9_X2fx_X2dy" &&
+         base.ident("é") == "_Xc3_Xa9"
 }
 
 [on: "opaque"]
