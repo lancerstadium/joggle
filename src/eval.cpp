@@ -1683,26 +1683,26 @@ private:
     } else if (name == "form" && args.size() == 1) {
       if (const auto* op = as<Op>(args[0]); op && *op) {
         std::string_view value;
-        switch (op->store_->ops[op->id_].data.form) {
-        case detail::Form::hidden:
+        switch (op->form()) {
+        case Op::Form::hidden:
           value = "hidden";
           break;
-        case detail::Form::expr:
+        case Op::Form::expr:
           value = "expr";
           break;
-        case detail::Form::let:
+        case Op::Form::let:
           value = "let";
           break;
-        case detail::Form::var:
+        case Op::Form::var:
           value = "var";
           break;
-        case detail::Form::assign:
+        case Op::Form::assign:
           value = "assign";
           break;
-        case detail::Form::compound:
+        case Op::Form::compound:
           value = "compound";
           break;
-        case detail::Form::index_assign:
+        case Op::Form::index_assign:
           value = "index_assign";
           break;
         }

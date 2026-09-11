@@ -189,8 +189,8 @@ bool printable_value(const detail::Store& store,
         value.def == detail::none || value.def >= store.ops.size() ||
         !store.ops[value.def].live)
       continue;
-    const detail::Form form = store.ops[value.def].data.form;
-    if (form == detail::Form::let || form == detail::Form::var)
+    const Op::Form form = store.ops[value.def].data.form;
+    if (form == Op::Form::let || form == Op::Form::var)
       return true;
   }
   return false;
@@ -563,6 +563,9 @@ Op::operator bool() const noexcept { return valid(); }
 Op::Kind Op::kind() const noexcept {
   return valid() ? store_->ops[id_].data.kind : Kind::call;
 }
+Op::Form Op::form() const noexcept {
+  return valid() ? store_->ops[id_].data.form : Form::hidden;
+}
 std::string_view Op::callee() const noexcept {
   return valid() ? std::string_view(store_->ops[id_].data.callee)
                  : std::string_view{};
@@ -838,7 +841,7 @@ Op Mod::call(Op before, std::string callee, std::span<const Val> args,
   op.kind = Op::Kind::call;
   op.blk = blk;
   op.callee = std::move(callee);
-  op.form = types.empty() ? detail::Form::expr : detail::Form::hidden;
+  op.form = types.empty() ? Op::Form::expr : Op::Form::hidden;
   op.loc = before.loc();
   op.args.reserve(args.size());
   for (Val arg : args)
@@ -951,8 +954,8 @@ Op Mod::loop(Op before, std::span<const std::string> names,
     if (definition) {
       detail::OpData& def = store.ops[definition.id_].data;
       if ((def.kind == Op::Kind::call || def.kind == Op::Kind::constant) &&
-          def.form == detail::Form::let)
-        def.form = detail::Form::var;
+          def.form == Op::Form::let)
+        def.form = Op::Form::var;
     }
   }
 
@@ -1056,8 +1059,8 @@ Op Mod::branch(Op before, Val condition, std::span<const Val> carried) {
     if (definition) {
       detail::OpData& def = store.ops[definition.id_].data;
       if ((def.kind == Op::Kind::call || def.kind == Op::Kind::constant) &&
-          def.form == detail::Form::let)
-        def.form = detail::Form::var;
+          def.form == Op::Form::let)
+        def.form = Op::Form::var;
     }
   }
 
@@ -1201,7 +1204,7 @@ Op Mod::clone(Op source, Op before) {
     for (const std::uint32_t old_value : old.outs) {
       detail::ValData value = store.vals[old_value].data;
       if (old_id == source.id_ &&
-          (old.form == detail::Form::let || old.form == detail::Form::var))
+          (old.form == Op::Form::let || old.form == Op::Form::var))
         value.name = copy_name(value.name);
       value.def = next_id;
       value.index = store.ops[next_id].data.outs.size();
@@ -2115,11 +2118,11 @@ bool Mod::fuse(const Env& env, std::span<const Op> ops, std::string callee) {
                     output.def().loc());
   }
   const auto old_form = store.ops[output.def().id_].data.form;
-  if (old_form != detail::Form::hidden && old_form != detail::Form::let &&
-      old_form != detail::Form::var)
+  if (old_form != Op::Form::hidden && old_form != Op::Form::let &&
+      old_form != Op::Form::var)
     return reject("fuse live-out must be an expression value",
                   output.def().loc());
-  if (external_uses > 1 && old_form == detail::Form::hidden)
+  if (external_uses > 1 && old_form == Op::Form::hidden)
     return reject("an unnamed fuse live-out cannot have multiple users",
                   output.def().loc());
 
@@ -2660,8 +2663,8 @@ bool Mod::rename(Val value, std::string name) {
       continue;
     detail::OpData& op = store.ops[data.def].data;
     if ((op.kind == Op::Kind::call || op.kind == Op::Kind::constant) &&
-        op.form == detail::Form::hidden)
-      op.form = detail::Form::let;
+        op.form == Op::Form::hidden)
+      op.form = Op::Form::let;
   }
   for (const auto& blk_slot : store.blks) {
     if (!blk_slot.live || blk_slot.data.parent_op == detail::none ||
@@ -2906,9 +2909,9 @@ bool Mod::set(std::span<const Val> items, std::string key,
     if (value.kind == detail::ValKind::result && !value.name.empty() &&
         value.def != detail::none && value.def < store.ops.size() &&
         store.ops[value.def].live) {
-      const detail::Form form = store.ops[value.def].data.form;
-      source = source || form == detail::Form::let ||
-               form == detail::Form::var;
+      const Op::Form form = store.ops[value.def].data.form;
+      source = source || form == Op::Form::let ||
+               form == Op::Form::var;
     }
     if (source)
       printable[root(id)] = true;
@@ -2953,7 +2956,7 @@ bool Mod::set(Op op, std::string key, Attr value) {
   }
   const detail::OpData& data = store.ops[op.id_].data;
   if ((data.kind == Op::Kind::call || data.kind == Op::Kind::constant) &&
-      data.form == detail::Form::hidden) {
+      data.form == Op::Form::hidden) {
     detail::add_diag(store.diags,
                      "cannot annotate an operation nested in an expression",
                      data.loc);

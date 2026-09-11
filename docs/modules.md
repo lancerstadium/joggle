@@ -177,12 +177,13 @@ These functions operate on generic handles and contain no NN operator names.
 Adding an importer, optimization, or target module therefore does not extend
 the reflection ABI or add a parser case.
 
-`kind` describes computation structure (`call`, `constant`, `loop`, branch,
-return, or yield); `form` describes how a call or constant is bound (`let`,
-`var`, assignment, compound assignment, expression, or hidden intermediate).
-This distinction is semantic for mutable source bindings. Emitters consume it
-directly instead of guessing declaration or update behavior from repeated
-value names.
+`Op::kind()` / `ir.kind` describe computation structure (`call`, `constant`,
+`loop`, branch, return, or yield); `Op::form()` / `ir.form` describe how a call
+or constant is bound (`let`, `var`, assignment, compound assignment,
+expression, or hidden intermediate). This distinction is semantic for mutable
+source bindings. C++ and textual extensions observe the same enum-backed fact,
+and emitters consume it directly instead of guessing declaration or update
+behavior from repeated value names.
 
 ### Deterministic VM boundary
 

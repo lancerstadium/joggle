@@ -207,12 +207,22 @@ private:
 class Op {
 public:
   enum class Kind : std::uint8_t { call, constant, loop, branch, ret, yield };
+  enum class Form : std::uint8_t {
+    hidden,
+    expr,
+    let,
+    var,
+    assign,
+    compound,
+    index_assign
+  };
 
   Op() = default;
 
   bool valid() const noexcept;
   explicit operator bool() const noexcept;
   Kind kind() const noexcept;
+  Form form() const noexcept;
   std::string_view callee() const noexcept;
   std::vector<Ty> generics() const;
   std::vector<Val> args() const;

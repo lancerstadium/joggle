@@ -2527,6 +2527,17 @@ int main(int argc, char** argv) {
   const std::string folded_assignment_text = joggle::print(folded_assignment);
   CHECK(folded_assignment_text.find("value = 2") != std::string::npos);
   CHECK(folded_assignment_text.find("value += 3") != std::string::npos);
+  bool saw_var_form = false;
+  bool saw_assign_form = false;
+  bool saw_compound_form = false;
+  for (joggle::Op op : folded_assignment.ops()) {
+    saw_var_form = saw_var_form || op.form() == joggle::Op::Form::var;
+    saw_assign_form =
+        saw_assign_form || op.form() == joggle::Op::Form::assign;
+    saw_compound_form =
+        saw_compound_form || op.form() == joggle::Op::Form::compound;
+  }
+  CHECK(saw_var_form && saw_assign_form && saw_compound_form);
   joggle::Mod folded_assignment_roundtrip;
   CHECK(joggle::parse(env, folded_assignment_text,
                       folded_assignment_roundtrip,

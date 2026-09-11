@@ -494,7 +494,7 @@ private:
     return store_.ops[op].data.outs.front();
   }
 
-  void show(std::uint32_t value, detail::Form form, std::string name = {}) {
+  void show(std::uint32_t value, Op::Form form, std::string name = {}) {
     auto& val = store_.vals[value].data;
     if (!name.empty())
       val.name = std::move(name);
@@ -733,7 +733,7 @@ private:
         return false;
       if (word("let") || word("var")) {
         const bool mut = tokens_[pos_ - 1].text == "var";
-        const detail::Form form = mut ? detail::Form::var : detail::Form::let;
+        const Op::Form form = mut ? Op::Form::var : Op::Form::let;
         std::vector<Decl> names;
         do {
           Attr::Dict value_meta;
@@ -766,7 +766,7 @@ private:
           const std::uint32_t def = store_.vals[value].data.def;
           if (def == detail::none ||
               store_.ops[def].data.kind != Op::Kind::call ||
-              store_.ops[def].data.form != detail::Form::hidden ||
+              store_.ops[def].data.form != Op::Form::hidden ||
               store_.ops[def].data.outs.size() != 1)
             return fail("multiple bindings require one direct call");
           for (std::size_t index = 1; index < names.size(); ++index) {
@@ -783,7 +783,7 @@ private:
         if (expression_def == detail::none ||
             (store_.ops[expression_def].data.kind != Op::Kind::call &&
              store_.ops[expression_def].data.kind != Op::Kind::constant) ||
-            store_.ops[expression_def].data.form != detail::Form::hidden)
+            store_.ops[expression_def].data.form != Op::Form::hidden)
           value = add_call(blk, "base.copy", {value},
                            store_.vals[value].data.type, peek().loc);
         const std::uint32_t def = store_.vals[value].data.def;
@@ -1080,14 +1080,14 @@ private:
       if (rhs == detail::none)
         return false;
       std::uint32_t value = rhs;
-      detail::Form form = detail::Form::assign;
+      Op::Form form = Op::Form::assign;
       if (assignment != "=") {
         value = add_call(blk,
                          operator_name(assignment.substr(0,
                                                          assignment.size() - 1)),
                          {found->second.value, rhs},
                          store_.vals[found->second.value].data.type, name.loc);
-        form = detail::Form::compound;
+        form = Op::Form::compound;
       } else
         value = add_call(blk, "base.copy", {rhs},
                          store_.vals[found->second.value].data.type, name.loc);
@@ -1131,7 +1131,7 @@ private:
                    store_.vals[found->second.value].data.type, base.loc);
       store_.vals[value].data.meta =
           store_.vals[found->second.value].data.meta;
-      show(value, detail::Form::index_assign, base.text);
+      show(value, Op::Form::index_assign, base.text);
       if (!attach(value, std::move(meta)))
         return false;
       found->second.value = value;
@@ -1143,7 +1143,7 @@ private:
     const auto value = expression(blk, scope);
     if (value == detail::none)
       return false;
-    show(value, detail::Form::expr);
+    show(value, Op::Form::expr);
     if (!attach(value, std::move(meta)))
       return false;
     semi();
@@ -1553,9 +1553,9 @@ std::string render_value(const detail::Store& store, std::uint32_t value,
       }
     }
   }
-  if (op.kind == Op::Kind::constant && op.form == detail::Form::hidden)
+  if (op.kind == Op::Kind::constant && op.form == Op::Form::hidden)
     return attr_text(op.literal);
-  if (op.kind == Op::Kind::call && op.form == detail::Form::hidden) {
+  if (op.kind == Op::Kind::call && op.form == Op::Form::hidden) {
     std::string text = render_call(store, op);
     int level = 10;
     if (op.callee.starts_with("operator ")) {
@@ -1615,7 +1615,7 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
     if (((op.kind == Op::Kind::call || op.kind == Op::Kind::constant ||
           (op.kind == Op::Kind::branch &&
            op.logic != detail::Logic::none)) &&
-         op.form == detail::Form::hidden) ||
+         op.form == Op::Form::hidden) ||
         op.kind == Op::Kind::yield)
       continue;
     render_meta(out, op.meta, depth);
@@ -1624,8 +1624,8 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
       const auto result = op.outs.empty() ? detail::none : op.outs[0];
       const std::string name =
           result == detail::none ? "" : store.vals[result].data.name;
-      if (op.form == detail::Form::let || op.form == detail::Form::var) {
-        out << (op.form == detail::Form::var ? "var " : "let ");
+      if (op.form == Op::Form::let || op.form == Op::Form::var) {
+        out << (op.form == Op::Form::var ? "var " : "let ");
         for (std::size_t index = 0; index < op.outs.size(); ++index) {
           if (index)
             out << ", ";
@@ -1638,7 +1638,7 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
         out << " = "
             << (op.kind == Op::Kind::constant ? attr_text(op.literal)
                                               : render_call(store, op));
-      } else if (op.form == detail::Form::assign) {
+      } else if (op.form == Op::Form::assign) {
         out << name << " = ";
         if (op.kind == Op::Kind::constant)
           out << attr_text(op.literal);
@@ -1646,7 +1646,7 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
           out << render_value(store, op.args.back());
         else
           out << "<invalid>";
-      } else if (op.form == detail::Form::compound) {
+      } else if (op.form == Op::Form::compound) {
         if (op.kind == Op::Kind::constant) {
           out << name << " = " << attr_text(op.literal);
         } else if (!op.args.empty() &&
@@ -1659,7 +1659,7 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
         } else {
           out << name << " = <invalid>";
         }
-      } else if (op.form == detail::Form::index_assign) {
+      } else if (op.form == Op::Form::index_assign) {
         out << name << "[";
         for (std::size_t index = 1; index + 1 < op.args.size(); ++index) {
           if (index != 1)
@@ -1685,8 +1685,8 @@ void render_blk(std::ostringstream& out, const detail::Store& store,
     } else if (op.kind == Op::Kind::branch &&
                op.logic != detail::Logic::none) {
       const detail::ValData& value = store.vals[op.outs.front()].data;
-      if (op.form == detail::Form::let || op.form == detail::Form::var) {
-        out << (op.form == detail::Form::var ? "var " : "let ")
+      if (op.form == Op::Form::let || op.form == Op::Form::var) {
+        out << (op.form == Op::Form::var ? "var " : "let ")
             << value.name;
         if (value.type_annotation)
           out << ": " << value.type.text();
@@ -2296,7 +2296,7 @@ Ty return_context(const detail::Store& store, std::uint32_t value) {
 
 bool statement_placeholder(const detail::Store& store,
                            const detail::OpData& op) {
-  if (op.form != detail::Form::expr || op.outs.size() != 1)
+  if (op.form != Op::Form::expr || op.outs.size() != 1)
     return false;
   const std::uint32_t output = op.outs.front();
   if (output >= store.vals.size() || !store.vals[output].live)
@@ -2884,11 +2884,11 @@ bool Mod::verify(const Env& env) {
                        op.loc);
     if (op.kind == Op::Kind::call && op.callee.empty())
       detail::add_diag(store.diags, "call has no callee", op.loc);
-    const bool binds = op.form == detail::Form::let ||
-                       op.form == detail::Form::var ||
-                       op.form == detail::Form::assign ||
-                       op.form == detail::Form::compound ||
-                       op.form == detail::Form::index_assign;
+    const bool binds = op.form == Op::Form::let ||
+                       op.form == Op::Form::var ||
+                       op.form == Op::Form::assign ||
+                       op.form == Op::Form::compound ||
+                       op.form == Op::Form::index_assign;
     if (binds &&
         (op.outs.empty() ||
          std::any_of(op.outs.begin(), op.outs.end(), [&](std::uint32_t id) {
@@ -2897,27 +2897,27 @@ bool Mod::verify(const Env& env) {
          })))
       detail::add_diag(store.diags,
                        "visible operation requires named results", op.loc);
-    if ((op.form == detail::Form::assign ||
-         op.form == detail::Form::compound ||
-         op.form == detail::Form::index_assign) &&
+    if ((op.form == Op::Form::assign ||
+         op.form == Op::Form::compound ||
+         op.form == Op::Form::index_assign) &&
         op.outs.size() != 1)
       detail::add_diag(store.diags,
                        "assignment must produce exactly one result", op.loc);
-    if (op.kind == Op::Kind::call && op.form == detail::Form::assign &&
+    if (op.kind == Op::Kind::call && op.form == Op::Form::assign &&
         op.args.empty())
       detail::add_diag(store.diags, "assignment call has no value", op.loc);
-    if (op.kind == Op::Kind::call && op.form == detail::Form::compound &&
+    if (op.kind == Op::Kind::call && op.form == Op::Form::compound &&
         (op.args.size() < 2 ||
          !std::string_view(op.callee).starts_with("operator ")))
       detail::add_diag(store.diags,
                        "compound assignment call is inconsistent", op.loc);
-    if (op.form == detail::Form::index_assign &&
+    if (op.form == Op::Form::index_assign &&
         (op.kind != Op::Kind::call || op.args.size() < 3))
       detail::add_diag(store.diags,
                        "indexed assignment is inconsistent", op.loc);
     if ((op.kind == Op::Kind::call || op.kind == Op::Kind::constant) &&
         op.outs.size() > 1) {
-      if (op.form == detail::Form::hidden)
+      if (op.form == Op::Form::hidden)
         detail::add_diag(store.diags,
                          "multi-result operation must have named bindings",
                          op.loc);
