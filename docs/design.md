@@ -514,10 +514,13 @@ information from the module revision.
 
 The outer execution is transactional. If a later function is missing, has the
 wrong signature, fails, or leaves invalid IR, all earlier edits in that
-sequence are rolled back together. The workflow test runs the same two
-functions once through the C++ sequence overload and once through a textual
-wrapper, then requires byte-identical canonical IR; a deliberately bad second
-step exercises whole-sequence rollback.
+sequence are rolled back together. The implementation takes one rollback
+snapshot for the complete sequence; it does not copy the module again at every
+step. Each step is still verified and receives the same report it would have
+received through the single-function overload. The workflow test runs the same
+two functions once through the C++ sequence overload and once through a
+textual wrapper, then requires byte-identical canonical IR; a deliberately bad
+second step exercises whole-sequence rollback.
 
 ## M8 fifth slice
 

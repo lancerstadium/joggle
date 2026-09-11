@@ -1718,7 +1718,8 @@ bool query(Env& env, std::string_view function, const Mod& mod, Attr& result,
   return true;
 }
 
-bool run(Env& env, std::string_view function, Mod& mod, Attr& report) {
+bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
+         Attr& report) {
   env.clear_diags();
   report = Attr{};
   detail::Store before = mod.impl_->store;
@@ -1728,111 +1729,97 @@ bool run(Env& env, std::string_view function, Mod& mod, Attr& report) {
     return false;
   };
   if (!mod.verify(env)) {
-    env.error("cannot run a compile-time function on an invalid module");
-    return false;
-  }
-  const Ty applied{std::string(function)};
-  const std::string symbol(applied.args().empty() ? function : applied.name());
-  const std::vector<Ty> explicit_args =
-      applied.args().empty() ? std::vector<Ty>{} : applied.args();
-  const std::vector<Fn> candidates = env.find_fns(symbol);
-  const std::vector<Ty> argument_types{Ty("Mod")};
-  bool ambiguous = false;
-  const Fn fn = detail::resolve_overload(
-      candidates, argument_types, explicit_args, nullptr, &ambiguous);
-  if (!fn) {
-    if (ambiguous) {
-      env.error("ambiguous compile-time entry: " + std::string(function));
-    } else if (candidates.empty()) {
-      env.error("compile-time function not found: " + std::string(function));
-    } else {
-      env.error("compile-time entry has no fn(Mod) overload: " +
-                std::string(function));
-    }
-    return rollback();
-  }
-  const std::vector<Val> params = fn.params();
-  if (params.size() != 1 || params.front().type().text() != "Mod") {
-    env.error("compile-time entry must accept exactly one Mod: " +
-                  std::string(function),
-              fn.loc());
-    return rollback();
-  }
-  const std::vector<Ty> returns = fn.returns();
-  if (returns.size() != 1 || returns.front().text() != "bool") {
-    env.error("compile-time entry must return exactly one bool: " +
-                  std::string(function),
-              fn.loc());
-    return rollback();
-  }
-  Attr::List trace;
-  detail::Eval eval(env, [&](std::string message, Loc loc) {
-    env.error(std::move(message), std::move(loc));
-  }, &trace);
-  const auto result = eval.run(fn, mod);
-  if (!result)
-    return rollback();
-  if (result->size() != 1) {
-    env.error("compile-time entry returned an invalid result: " +
-              std::string(function));
-    return rollback();
-  }
-  const Attr* returned = detail::as<Attr>(result->front());
-  if (!returned || !returned->boolean()) {
-    env.error("compile-time entry did not return bool: " +
-              std::string(function));
-    return rollback();
-  }
-  if (!mod.verify(env)) {
-    const std::vector<Diag> diagnostics = mod.diags();
-    rollback();
-    for (const Diag& diagnostic : diagnostics)
-      env.error(diagnostic.message, diagnostic.loc);
-    env.error("compile-time function produced an invalid module: " +
-              std::string(function));
-    return false;
-  }
-  if (!trace.empty())
-    trace.pop_back();
-  const std::uint64_t after_revision = mod.revision();
-  Attr::Dict summary;
-  summary["ok"] = Attr(true);
-  summary["fn"] = Attr(std::string(function));
-  summary["reported"] = *returned;
-  summary["before"] = Attr(static_cast<std::int64_t>(before_revision));
-  summary["after"] = Attr(static_cast<std::int64_t>(after_revision));
-  summary["edits"] =
-      Attr(static_cast<std::int64_t>(after_revision - before_revision));
-  summary["changed"] = Attr(after_revision != before_revision);
-  summary["steps"] = Attr(std::move(trace));
-  report = Attr(std::move(summary));
-  return true;
-}
-
-bool run(Env& env, std::string_view function, Mod& mod) {
-  Attr ignored;
-  return run(env, function, mod, ignored);
-}
-
-bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
-         Attr& report) {
-  env.clear_diags();
-  report = Attr{};
-  detail::Store before = mod.impl_->store;
-  const std::uint64_t before_revision = mod.revision();
-  if (!mod.verify(env)) {
     env.error("cannot run compile-time functions on an invalid module");
     return false;
   }
+
+  const auto one = [&](std::string_view function, Attr& step) {
+    const std::uint64_t step_revision = mod.revision();
+    const Ty applied{std::string(function)};
+    const std::string symbol(applied.args().empty() ? function
+                                                    : applied.name());
+    const std::vector<Ty> explicit_args =
+        applied.args().empty() ? std::vector<Ty>{} : applied.args();
+    const std::vector<Fn> candidates = env.find_fns(symbol);
+    const std::vector<Ty> argument_types{Ty("Mod")};
+    bool ambiguous = false;
+    const Fn fn = detail::resolve_overload(
+        candidates, argument_types, explicit_args, nullptr, &ambiguous);
+    if (!fn) {
+      if (ambiguous) {
+        env.error("ambiguous compile-time entry: " + std::string(function));
+      } else if (candidates.empty()) {
+        env.error("compile-time function not found: " +
+                  std::string(function));
+      } else {
+        env.error("compile-time entry has no fn(Mod) overload: " +
+                  std::string(function));
+      }
+      return false;
+    }
+    const std::vector<Val> params = fn.params();
+    if (params.size() != 1 || params.front().type().text() != "Mod") {
+      env.error("compile-time entry must accept exactly one Mod: " +
+                    std::string(function),
+                fn.loc());
+      return false;
+    }
+    const std::vector<Ty> returns = fn.returns();
+    if (returns.size() != 1 || returns.front().text() != "bool") {
+      env.error("compile-time entry must return exactly one bool: " +
+                    std::string(function),
+                fn.loc());
+      return false;
+    }
+    Attr::List trace;
+    detail::Eval eval(env, [&](std::string message, Loc loc) {
+      env.error(std::move(message), std::move(loc));
+    }, &trace);
+    const auto result = eval.run(fn, mod);
+    if (!result)
+      return false;
+    if (result->size() != 1) {
+      env.error("compile-time entry returned an invalid result: " +
+                std::string(function));
+      return false;
+    }
+    const Attr* returned = detail::as<Attr>(result->front());
+    if (!returned || !returned->boolean()) {
+      env.error("compile-time entry did not return bool: " +
+                std::string(function));
+      return false;
+    }
+    if (!mod.verify(env)) {
+      for (const Diag& diagnostic : mod.diags())
+        env.error(diagnostic.message, diagnostic.loc);
+      env.error("compile-time function produced an invalid module: " +
+                std::string(function));
+      return false;
+    }
+    if (!trace.empty())
+      trace.pop_back();
+    const std::uint64_t after_revision = mod.revision();
+    Attr::Dict summary;
+    summary["ok"] = Attr(true);
+    summary["fn"] = Attr(std::string(function));
+    summary["reported"] = *returned;
+    summary["before"] = Attr(static_cast<std::int64_t>(step_revision));
+    summary["after"] = Attr(static_cast<std::int64_t>(after_revision));
+    summary["edits"] =
+        Attr(static_cast<std::int64_t>(after_revision - step_revision));
+    summary["changed"] = Attr(after_revision != step_revision);
+    summary["steps"] = Attr(std::move(trace));
+    step = Attr(std::move(summary));
+    return true;
+  };
+
   Attr::List steps;
   steps.reserve(functions.size());
   bool reported = false;
   for (const std::string_view function : functions) {
     Attr step;
-    if (!run(env, function, mod, step)) {
-      mod.impl_->store = std::move(before);
-      return false;
-    }
+    if (!one(function, step))
+      return rollback();
     if (const Attr::Dict* values = step.dict()) {
       const auto found = values->find("reported");
       reported = reported ||
@@ -1852,6 +1839,20 @@ bool run(Env& env, std::span<const std::string_view> functions, Mod& mod,
   summary["steps"] = Attr(std::move(steps));
   report = Attr(std::move(summary));
   return true;
+}
+
+bool run(Env& env, std::string_view function, Mod& mod, Attr& report) {
+  const std::span<const std::string_view> functions(&function, 1);
+  Attr sequence;
+  if (!run(env, functions, mod, sequence))
+    return false;
+  report = sequence.dict()->at("steps").list()->front();
+  return true;
+}
+
+bool run(Env& env, std::string_view function, Mod& mod) {
+  Attr ignored;
+  return run(env, function, mod, ignored);
 }
 
 bool run(Env& env, std::span<const std::string_view> functions, Mod& mod) {

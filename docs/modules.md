@@ -664,8 +664,10 @@ or metadata convention.
 Embedding code that chooses steps dynamically may pass a
 `span<const string_view>` to `run`. The overload executes the named functions
 in order, returns their ordinary reports in a `steps` list, and treats the
-whole sequence as one transaction. This is the host-side equivalent of writing
-a normal `.jog` wrapper function. The CLI exposes the same overload by accepting
+whole sequence as one transaction with one rollback snapshot. Verification is
+still performed after each function, but sequence length does not multiply the
+cost of copying the input IR. This is the host-side equivalent of writing a
+normal `.jog` wrapper function. The CLI exposes the same overload by accepting
 several function names before the input file; neither path registers, owns, or
 serializes a pipeline object.
 

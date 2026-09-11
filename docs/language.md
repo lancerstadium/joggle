@@ -547,10 +547,11 @@ output is sufficient to create text or binary artifacts.
 
 For a host-selected sequence, the embedding API also accepts
 `run(env, span_of_names, mod, report)`. It executes the same ordinary functions
-in order and rolls the complete sequence back if any step fails. The CLI form
-is `joggle run fn1 fn2 ... model.jog`. A source wrapper, embedding sequence, and
-CLI sequence therefore differ only in where the list of calls is chosen, not in
-their IR or function semantics.
+in order and rolls the complete sequence back if any step fails. One snapshot
+covers the complete sequence; validation and reports remain per function. The
+CLI form is `joggle run fn1 fn2 ... model.jog`. A source wrapper, embedding
+sequence, and CLI sequence therefore differ only in where the list of calls is
+chosen, not in their IR or function semantics.
 
 ### Open attributes
 
