@@ -95,7 +95,7 @@ if(NOT buffer_count EQUAL 2)
 endif()
 
 execute_process(
-  COMMAND "${CC}" -std=c99 -Wall -Wextra -Werror
+  COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
           "${source}" "${HARNESS}" -o "${program}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
@@ -115,5 +115,3 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR
           "planned C returned the wrong result (${result}):\n${output}${error}")
 endif()
-
-file(REMOVE_RECURSE "${ROOT}")

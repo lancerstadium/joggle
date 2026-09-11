@@ -772,6 +772,15 @@ test emits a matrix multiplication plus scalar call/branch functions, compiles
 them with a system C compiler under warnings-as-errors, and checks their
 numerical results.
 
+One `c.abi` dictionary is the source of both scalar spelling and byte width;
+`int` and range `index` currently choose signed 64-bit C storage, while static
+array-capacity loops use the separately named `size` representation. These are
+C-module policies, not core types. `c.header` emits the same checked prototypes
+as `c.source`, wrapped for C++ linkage, through the ordinary read-only emit
+boundary. The test compiles the generated header and source together with
+strict-prototype warnings enabled. Generated files remain under the ignored
+build tree for inspection.
+
 `c.prepare` is a separate, explicitly selected transform. It asks the same
 ordinary `c.accepts(Mod, Op)` predicate whether a call is directly printable and
 expands unsupported calls only when their ordinary resolved function has a

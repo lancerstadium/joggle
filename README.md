@@ -249,9 +249,12 @@ Emitters return `str` or `bytes` through the same read-only boundary:
   -M build/modules > planned.jog
 ./build/joggle emit c.source planned.jog \
   -M build/modules > model.c
+./build/joggle emit c.header planned.jog \
+  -M build/modules > model.h
 ```
 
-`c.prepare`, `mem.plan`, and `c.source` are independent module functions.
+`c.prepare`, `mem.plan`, `c.source`, and `c.header` are independent module
+functions.
 Emission never triggers hidden lowering or planning. The current C module
 supports fixed-shape tensor kernels, scalar expressions, local calls,
 structured loops and conditions, short-circuit logical expressions,

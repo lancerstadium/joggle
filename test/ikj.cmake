@@ -43,7 +43,7 @@ if(NOT result EQUAL 0)
 endif()
 
 execute_process(
-  COMMAND "${CC}" -std=c99 -Wall -Wextra -Werror
+  COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
           "${source}" "${HARNESS}" -o "${program}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output

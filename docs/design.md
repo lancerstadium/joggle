@@ -1120,9 +1120,16 @@ The target-neutral CLI path now writes a read-only module function's `str` or
 implemented entirely in `.jog`: it traverses the same `Fn`/`Blk`/`Op`/`Val`
 structure, emits local scalar calls and structured branches/loops, flattens
 static tensor indices, and uses caller-provided storage for tensor results.
-Scalar type and fixed C operator spellings are ordinary dictionaries owned by
-the module, not core cases. The emitter also recognizes optional `mem.slot`
+Scalar type spelling and byte width come from one ordinary ABI dictionary
+owned by the module; fixed C operator spellings are likewise module data, not
+core cases. Signed range values and nonnegative array-capacity indices use
+separately named representations rather than scattered C literals. The emitter
+also recognizes optional `mem.slot`
 metadata; no C-specific field or storage object was added to core IR.
+
+The companion `c.header` function reuses the source emitter's checked
+prototypes and returns a C/C++-compatible header. Header generation is not an
+artifact kind in the host or core: it is another ordinary `fn(Mod) -> str`.
 
 Emission is deliberately closed over the exposed computation. Dynamic tensor
 shapes, multi-results, and calls whose bodies still live in a dependency fail

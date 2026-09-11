@@ -72,7 +72,7 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "prepared C emission failed (${result}):\n${error}")
 endif()
 execute_process(
-  COMMAND "${CC}" -std=c99 -Wall -Wextra -Werror
+  COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
           "${open_source}" "${OPEN_HARNESS}" -o "${open_program}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
@@ -95,6 +95,7 @@ if(NOT result EQUAL 0)
 endif()
 
 set(source "${ROOT}/model.c")
+set(header "${ROOT}/model.h")
 set(program "${ROOT}/model")
 
 execute_process(
@@ -108,8 +109,18 @@ if(NOT result EQUAL 0)
 endif()
 
 execute_process(
-  COMMAND "${CC}" -std=c99 -Wall -Wextra -Werror
-          "${source}" "${HARNESS}" -o "${program}"
+  COMMAND "${TOOL}" emit c.header "${MODEL}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${header}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "C header emission failed (${result}):\n${error}")
+endif()
+
+execute_process(
+  COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
+          -include "${header}" "${source}" "${HARNESS}" -o "${program}"
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error
@@ -130,5 +141,3 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR
           "generated C returned the wrong result (${result}):\n${output}${error}")
 endif()
-
-file(REMOVE_RECURSE "${ROOT}")

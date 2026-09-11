@@ -21,46 +21,51 @@ fn val(value: Val) -> str {
   return "v_" + id(ir.name(value))
 }
 
-fn scalars() -> dict {
+fn abi() -> dict {
   return {
-    bool: "bool",
-    f32: "float",
-    f64: "double",
-    i8: "int8_t",
-    i16: "int16_t",
-    i32: "int32_t",
-    i64: "int64_t",
-    index: "int64_t",
-    int: "int64_t",
-    u8: "uint8_t",
-    u16: "uint16_t",
-    u32: "uint32_t",
-    u64: "uint64_t"
+    "bool.c": "bool",       "bool.bytes": 1,
+    "f32.c": "float",       "f32.bytes": 4,
+    "f64.c": "double",      "f64.bytes": 8,
+    "i8.c": "int8_t",       "i8.bytes": 1,
+    "i16.c": "int16_t",     "i16.bytes": 2,
+    "i32.c": "int32_t",     "i32.bytes": 4,
+    "i64.c": "int64_t",     "i64.bytes": 8,
+    "index.c": "int64_t",   "index.bytes": 8,
+    "int.c": "int64_t",     "int.bytes": 8,
+    "u8.c": "uint8_t",      "u8.bytes": 1,
+    "u16.c": "uint16_t",    "u16.bytes": 2,
+    "u32.c": "uint32_t",    "u32.bytes": 4,
+    "u64.c": "uint64_t",    "u64.bytes": 8,
+    "size.c": "size_t"
   }
+}
+
+fn abi(name: str, field: str) -> Attr {
+  let layout = abi()
+  let key = name + "." + field
+  assert(has(layout, key), "c: ABI has no " + key)
+  return layout[key]
 }
 
 fn scalar(type: Ty) -> str {
   let name = base.name(type)
-  let types = scalars()
-  assert(has(types, name), "c: unsupported scalar type " + text(type))
-  return str(types[name])
+  return str(abi(name, "c"))
 }
 
 fn scalar_name(name: str) -> bool {
-  return has(scalars(), name)
+  return has(abi(), name + ".c") && name != "size"
 }
 
 fn width(type: Ty) -> int {
-  let widths = {
-    bool: 1,
-    i8: 1, u8: 1,
-    i16: 2, u16: 2,
-    i32: 4, u32: 4, f32: 4,
-    i64: 8, u64: 8, index: 8, int: 8, f64: 8
-  }
-  let name = base.name(type)
-  assert(has(widths, name), "c: unsupported scalar width " + text(type))
-  return base.int(widths[name])
+  return base.int(abi(base.name(type), "bytes"))
+}
+
+fn size_type() -> str {
+  return str(abi("size", "c"))
+}
+
+fn range_type() -> str {
+  return scalar(ty("index"))
 }
 
 fn count(type: Ty) -> int {
@@ -356,7 +361,8 @@ fn tensor_new(m: Mod, op: Op, depth: int) -> str {
     out = indent + scalar(tensor.elem(type)) + " " + val(output) + "[" +
           text(n) + "];\n"
   }
-  out += indent + "for (size_t jog_i = 0; jog_i < " + text(n) +
+  out += indent + "for (" + size_type() +
+         " jog_i = 0; jog_i < " + text(n) +
          "; ++jog_i) " + val(output) + "[jog_i] = " +
          expr(m, inputs[0]) + ";\n"
   return out
@@ -570,7 +576,8 @@ fn ret(m: Mod, op: Op, depth: int) -> str {
   assert(ir.name(value) != "",
          "c: returned tensor computation must be assigned or exposed")
   let n = count(ir.type(value))
-  return indent + "for (size_t jog_i = 0; jog_i < " + text(n) +
+  return indent + "for (" + size_type() +
+         " jog_i = 0; jog_i < " + text(n) +
          "; ++jog_i) jog_out[jog_i] = " + val(value) + "[jog_i];\n"
 }
 
@@ -610,7 +617,8 @@ fn loop(m: Mod, op: Op, depth: int) -> str {
     if ir.callee(source) == "operator .." {
       let bounds = ir.args(source)
       assert(len(bounds) == 2, "c: range must have two bounds")
-      out += pad(depth + i) + "for (int64_t " + iterator + " = " +
+      out += pad(depth + i) + "for (" + range_type() + " " + iterator +
+             " = " +
              expr(m, bounds[0]) + "; " + iterator + " < " +
              expr(m, bounds[1]) +
              "; ++" + iterator + ") {\n"
@@ -619,12 +627,13 @@ fn loop(m: Mod, op: Op, depth: int) -> str {
              "c: loop source must be a range or scalar list")
       let items = ir.args(source)
       if len(items) == 0 {
-        out += pad(depth + i) + "for (int64_t " + iterator +
+        out += pad(depth + i) + "for (" + range_type() + " " + iterator +
                " = 0; " + iterator + " < 0; ++" + iterator + ") {\n"
       } else {
         let index = "jog_i_" + id(ir.name(body_args[i]))
         let type = scalar(ir.type(body_args[i]))
-        out += pad(depth + i) + "for (size_t " + index + " = 0; " + index +
+        out += pad(depth + i) + "for (" + size_type() + " " + index +
+               " = 0; " + index +
                " < " + text(len(items)) + "; ++" + index + ") {\n"
         out += pad(depth + i + 1) + "const " + type + " " + iterator +
                " = (const " + type + "[]){" + args(m, items) + "}[" + index +
@@ -697,6 +706,9 @@ fn signature(fn: Fn) -> str {
   }
   out += " jog_" + id(ir.name(fn)) + "("
   let params = ir.params(fn)
+  if len(params) == 0 && !tensor.valid(result) {
+    out += "void"
+  }
   for i in 0..len(params) {
     if i != 0 {
       out += ", "
@@ -737,9 +749,8 @@ fn definition(m: Mod, fn: Fn) -> str {
   return signature(fn) + " {\n" + memory + block(m, bodies[0], 1) + "}\n"
 }
 
-fn source(m: Mod) -> str {
+fn prototypes(m: Mod) -> str {
   var declarations = ""
-  var definitions = ""
   var names: list<str> = []
   var count = 0
   for fn in ir.fns(m) {
@@ -751,11 +762,30 @@ fn source(m: Mod) -> str {
       }
       names += [name]
       declarations += signature(fn) + ";\n"
-      definitions += definition(m, fn) + "\n"
       count += 1
     }
   }
   assert(count != 0, "c: module has no function definitions")
+  return declarations
+}
+
+fn header(m: Mod) -> str {
+  let declarations = prototypes(m)
+  return "#pragma once\n\n" +
+         "#include <stdbool.h>\n#include <stdint.h>\n\n" +
+         "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n" +
+         declarations +
+         "\n#ifdef __cplusplus\n}\n#endif\n"
+}
+
+fn source(m: Mod) -> str {
+  let declarations = prototypes(m)
+  var definitions = ""
+  for fn in ir.fns(m) {
+    if len(ir.blks(fn)) != 0 {
+      definitions += definition(m, fn) + "\n"
+    }
+  }
   return "#include <math.h>\n#include <stdbool.h>\n#include <stddef.h>\n" +
          "#include <stdint.h>\n" +
          "#include <string.h>\n\n" +

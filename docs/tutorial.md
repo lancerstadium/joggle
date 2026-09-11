@@ -487,16 +487,20 @@ have been exposed into local scalar, tensor-access, loop, and branch structure:
 ```sh
 mkdir -p build/examples
 joggle emit c.source test/data/c.jog -M build/modules > build/examples/model.c
-cc -std=c99 build/examples/model.c test/data/c_main.c \
+joggle emit c.header test/data/c.jog -M build/modules > build/examples/model.h
+cc -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror \
+  -include build/examples/model.h \
+  build/examples/model.c test/data/c_main.c \
   -o build/examples/model
 build/examples/model
 ```
 
-`c.source` is an ordinary read-only `fn(Mod) -> str`. The command does not
-choose a target pipeline or mutate the input. Static tensors become flat C
-arrays and tensor results use an output-pointer parameter. If a `tensor` or
-`nn` call has not been exposed, emission fails and names that call rather than
-performing an implicit lowering.
+`c.source` and `c.header` are ordinary read-only `fn(Mod) -> str` functions;
+there is no host-level header artifact case. The commands do not choose a
+target pipeline or mutate the input. Static tensors become flat C arrays and
+tensor results use an output-pointer parameter. If a `tensor` or `nn` call has
+not been exposed, emission fails and names that call rather than performing an
+implicit lowering.
 
 When the shared function bodies are the desired implementation, preparation is
 another explicit function call:
