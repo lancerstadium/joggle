@@ -1733,6 +1733,9 @@ private:
         return Items{Item(Attr(std::string(fn->name())))};
       if (const auto* value = as<Val>(args[0]); value && *value)
         return Items{Item(Attr(std::string(value->name())))};
+    } else if (name == "local" && args.size() == 1) {
+      if (const auto* fn = as<Fn>(args[0]))
+        return Items{Item(Attr(fn->local()))};
     } else if (name == "key" && args.size() == 1) {
       if (const auto* value = as<Val>(args[0]); value && *value)
         return Items{Item(Attr(static_cast<std::int64_t>(value->id_)))};

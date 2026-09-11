@@ -14,6 +14,15 @@ The directory is a distribution form, not a second IR object. Loading its
 sources produces ordinary declarations visible in an `Env`; parsing a model
 produces an ordinary `Mod`.
 
+An ordinary `fn` is part of the module's callable surface. `local fn` keeps an
+implementation helper inside its declaring module without creating a class,
+manifest export list, or naming convention. Explicit reflection may still
+inspect local functions, which is necessary for data-driven rule discovery,
+but cross-module resolution, direct invocation, `module info`, and upgrade
+compatibility operate on exported declarations only. The bundled C and VM
+modules use this boundary so their emitters no longer publish every formatting
+helper as user API.
+
 Pure `.jog` modules need no compiler toolchain. Native modules have one stable C
 entry point and attach callbacks to body-less function declarations. C++ STL
 containers, exceptions, RTTI, and virtual tables do not cross that boundary.
@@ -79,7 +88,7 @@ refused uninstall leaves every directory unchanged.
 `list` is deterministic across the supplied roots, with the first root taking
 precedence for duplicate names. `info` performs a real load, then reports the
 selected path, dependencies, source fragments, native library files, and every
-callable declaration in source order. Its `fn` lines use normal Joggle syntax,
+exported callable declaration in source order. Its `fn` lines use normal Joggle syntax,
 so overloads, generics, and structural types remain visible without a generated
 header or second interface description.
 `check` loads and verifies the full dependency closure.
@@ -161,7 +170,7 @@ The built-in `ir` module is the complete reflection boundary:
 | --- | --- |
 | `fns`, `find`, `params`, `returns`, `generics`, `blks`, `ops`, `vals`, `uses` | Find local or exactly qualified loaded functions and traverse signatures, explicit call terms, structure, runtime values, and dependencies. |
 | `args`, `outs`, `def`, `users` | Read operation dataflow in both directions. |
-| `live`, `blk`, `op`, `kind`, `form`, `callee`, `name`, `key`, `type` | Query handle state, bidirectional block ownership, operation kind and binding form, readable or ephemeral identity, and structural `Ty`. |
+| `live`, `local`, `blk`, `op`, `kind`, `form`, `callee`, `name`, `key`, `type` | Query handle state and function visibility, bidirectional block ownership, operation kind and binding form, readable or ephemeral identity, and structural `Ty`. |
 | `resolve`, `symbol`, `accepts`, `match` | Resolve calls, identify functions, and select against explicit signatures. |
 | `where`, `invoke<R>` | Select functions by open metadata and execute an ordinary typed `fn(Mod, Op) -> R` transactionally. |
 | `is_const`, `constant` | Query constant IR values. |

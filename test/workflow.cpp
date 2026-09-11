@@ -442,6 +442,34 @@ int main(int argc, char** argv) {
   }
   CHECK(network_cpp.verify(env));
   CHECK(env.load("script"));
+  joggle::Fn hidden;
+  for (joggle::Fn fn : env.fns("script"))
+    if (fn.name() == "hidden")
+      hidden = fn;
+  CHECK(hidden && hidden.local());
+  CHECK(!env.find_fn("script.hidden"));
+  constexpr std::string_view local_client_source =
+      "module local.client\n"
+      "use script\n"
+      "local fn hidden() -> bool {\n"
+      "  return true\n"
+      "}\n"
+      "fn main() -> bool {\n"
+      "  return hidden()\n"
+      "}\n";
+  joggle::Mod local_client;
+  CHECK(joggle::parse(env, local_client_source, local_client,
+                      "local-client.jog"));
+  CHECK(local_client.verify(env));
+  CHECK(local_client.find_fn("hidden").local());
+  CHECK(env.resolve(local_client, "hidden") == local_client.find_fn("hidden"));
+  CHECK(joggle::print(local_client).find("local fn hidden") !=
+        std::string::npos);
+  CHECK(!env.resolve(local_client, "script.hidden"));
+  CHECK(env.resolve(local_client, "script.local_probe"));
+  joggle::Attr local_result;
+  CHECK(joggle::query(env, "script.local_probe", network_cpp, local_result));
+  CHECK(local_result.boolean() && *local_result.boolean());
   joggle::Mod scripted_generic_edit;
   CHECK(joggle::parse(env, generic_edit_source, scripted_generic_edit,
                       "scripted-generic-edit.jog"));

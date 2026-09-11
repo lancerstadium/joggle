@@ -152,6 +152,9 @@ through the installed CLI, loaded, called, upgraded, and removed.
 Runtime loading is likewise transactional across its complete dependency
 closure, including module maps, native bindings, dynamic-library handles,
 loading state, and the environment epoch.
+Module-local helpers now use `local fn`; cross-module lookup, direct invocation,
+inspection, and compatibility checks expose only the callable surface while
+explicit reflection can still discover internal rule functions.
 
 - Keep source, native library, tests, documentation, dependencies, and the
   public compatibility surface in one module directory.

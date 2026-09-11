@@ -46,6 +46,13 @@ size-checked C ABI. The declaration remains the single source of its signature.
 The exported entry is always `joggle_module`; ABI evolution is represented in
 the API record instead of encoded in public symbol and type names.
 
+Functions are exported unless declared `local fn`. Local declarations resolve
+normally inside their owning module and remain structurally inspectable, but
+they cannot be selected through an importing module, a qualified host call, or
+the CLI. Module inspection and upgrade compatibility consequently describe the
+actual callable contract rather than every emitter helper. Visibility is a
+stored `Fn` fact, not reserved metadata, a generated manifest, or a prefix.
+
 Functions, operations, and values use the same open `Attr` dictionary and
 square-bracket syntax. Function attributes describe declarations and entry
 policy; operation attributes describe computation such as placement or

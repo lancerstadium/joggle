@@ -321,7 +321,10 @@ public:
     }
     while (!at_end()) {
       Attr::Dict meta;
-      if (!parse_meta(meta) || !parse_fn(std::move(meta)))
+      if (!parse_meta(meta))
+        return false;
+      const bool local = word("local");
+      if (!parse_fn(std::move(meta), local))
         return false;
     }
     compact_values();
@@ -553,7 +556,7 @@ private:
     return out;
   }
 
-  bool parse_fn(Attr::Dict meta) {
+  bool parse_fn(Attr::Dict meta, bool local) {
     if (!word("fn"))
       return fail("expected function declaration");
     const Token first = take();
@@ -583,6 +586,7 @@ private:
     data.name = name;
     data.loc = loc;
     data.meta = std::move(meta);
+    data.local = local;
     std::vector<Decl> generics;
     if (match("<")) {
       do {
@@ -1748,6 +1752,8 @@ std::string print(const Mod& mod) {
     first = false;
     const detail::FnData& fn = entry.data;
     render_meta(out, fn.meta, 0);
+    if (fn.local)
+      out << "local ";
     out << "fn ";
     const bool symbolic = std::string_view(fn.name).starts_with("operator ");
     const std::string_view spelling = symbolic

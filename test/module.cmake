@@ -38,6 +38,14 @@ if(NOT COMMAND_OUTPUT MATCHES
   message(FATAL_ERROR "unexpected module info:\n${COMMAND_OUTPUT}")
 endif()
 
+invoke(ok "${TOOL}" module info c -M "${SOURCE_ROOT}")
+if(NOT COMMAND_OUTPUT MATCHES "fn source\\(m: Mod\\) -> str;\n" OR
+   NOT COMMAND_OUTPUT MATCHES "fn header\\(m: Mod\\) -> str;\n" OR
+   COMMAND_OUTPUT MATCHES "fn (label|expr|block)\\(")
+  message(FATAL_ERROR
+          "module info did not isolate the C module API:\n${COMMAND_OUTPUT}")
+endif()
+
 invoke(ok "${TOOL}" module install "${BUILD_ROOT}/sample" "${TEST_ROOT}"
        -M "${BUILD_ROOT}")
 if(NOT EXISTS "${TEST_ROOT}/sample/module.jog")

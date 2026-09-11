@@ -495,6 +495,7 @@ std::vector<Fn> Env::find_fns(std::string_view symbol) const {
       continue;
     std::vector<Fn> candidates =
         module->find_fns(symbol.substr(name.size() + 1));
+    std::erase_if(candidates, [](Fn fn) { return fn.local(); });
     if (!candidates.empty()) {
       best = name.size();
       result = std::move(candidates);
@@ -560,6 +561,7 @@ std::vector<Fn> Env::resolve_fns(const detail::Store& from,
     if (module == impl_->modules.end())
       continue;
     std::vector<Fn> candidates = module->second->find_fns(symbol);
+    std::erase_if(candidates, [](Fn fn) { return fn.local(); });
     matches.insert(matches.end(), candidates.begin(), candidates.end());
   }
   return matches;

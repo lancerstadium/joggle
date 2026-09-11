@@ -34,6 +34,7 @@ fn form(op: Op) -> str;
 fn callee(op: Op) -> str;
 fn name(f: Fn) -> str;
 fn name(v: Val) -> str;
+fn local(f: Fn) -> bool;
 fn key(v: Val) -> int;
 fn type(v: Val) -> Ty;
 fn type(m: Mod, v: Val, type: Ty) -> bool;

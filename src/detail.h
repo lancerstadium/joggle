@@ -63,6 +63,7 @@ struct FnData {
   std::vector<Ty> returns;
   std::vector<std::uint32_t> blks;
   Attr::Dict meta;
+  bool local = false;
   bool external = false;
   Loc loc;
 };

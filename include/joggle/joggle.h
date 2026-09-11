@@ -285,6 +285,7 @@ public:
   std::vector<Val> generics() const;
   std::vector<Val> params() const;
   std::vector<Ty> returns() const;
+  bool local() const noexcept;
   bool external() const noexcept;
   const Attr::Dict& meta() const noexcept;
   const Attr* meta(std::string_view key) const noexcept;

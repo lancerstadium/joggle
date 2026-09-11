@@ -31,6 +31,27 @@ and `return`. It has generics, structural types, attributes, and overloadable
 operators. It has no `graph`, `kernel`, `compute`, `map`, `fold`, `rewrite`,
 `region`, or `pass` syntax.
 
+Top-level functions are exported by default. A helper that belongs only to its
+declaring module uses the ordinary `local fn` form:
+
+```jog
+use base
+
+local fn flatten(type: Ty) -> list<Ty> {
+  return args(type)
+}
+
+fn convert(m: Mod) -> bool {
+  return true
+}
+```
+
+Local functions participate in calls made by the same module and remain
+visible to explicit structural reflection, but imported or qualified lookup,
+CLI invocation, module information, and compatibility checks expose only the
+public surface. Visibility is a property of `Fn`, available as `Fn::local()`
+and `ir.local(fn)`; it is not encoded in an attribute or naming convention.
+
 Multiple loop variables denote a lexically nested Cartesian product. A source
 may be a range or any compile-time list, so the same form traverses tensor
 indices and IR collections. `return` is always an ordinary statement in the
@@ -59,8 +80,10 @@ call keeps its temporary result until a later verification can resolve it.
 
 Ordinary and symbolic functions both form overload sets. Verification filters
 by arity and recursive generic unification, then prefers the structurally more
-specific signature; equally specific survivors are an ambiguity error. Local
-and transitively imported declarations participate in the same visible family.
+specific signature; equally specific survivors are an ambiguity error.
+Same-module and transitively imported public declarations participate in the
+same visible family; module-local declarations participate only for calls made
+by their declaring module.
 This lets a tensor or number-format overload call less-specific base algebra in
 its own body, while a more-specific `sat<W>` overload still wins without a
 saturating-type case in the resolver.

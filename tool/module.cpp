@@ -227,8 +227,11 @@ std::string declaration(Fn fn) {
 bool compatible(const Mod& installed, const Mod& replacement) {
   std::multiset<std::string> available;
   for (Fn fn : replacement.fns())
-    available.insert(signature(fn));
+    if (!fn.local())
+      available.insert(signature(fn));
   for (Fn fn : installed.fns()) {
+    if (fn.local())
+      continue;
     const std::string required = signature(fn);
     const auto found = available.find(required);
     if (found == available.end()) {
@@ -321,7 +324,8 @@ int info(std::string_view name, const std::vector<fs::path>& roots) {
       std::cout << "native " << library.string() << '\n';
   }
   for (Fn fn : mod.fns())
-    std::cout << declaration(fn) << '\n';
+    if (!fn.local())
+      std::cout << declaration(fn) << '\n';
   return 0;
 }
 

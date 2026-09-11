@@ -4,6 +4,14 @@ use stat
 use tensor
 use onnx.nn
 
+local fn hidden(m: Mod) -> bool {
+  return ir.revision(m) >= 0
+}
+
+fn local_probe(m: Mod) -> bool {
+  return hidden(m)
+}
+
 fn nn.relu<S: list<int>>(x: tensor<i8, S>) -> tensor<i8, S> {
   return mid.relu(x)
 }

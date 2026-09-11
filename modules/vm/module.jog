@@ -6,16 +6,16 @@ use tensor
 
 fn run(image: str, entry: str, input: bytes) -> (bytes, int);
 
-fn scalar_name(name: str) -> bool {
+local fn scalar_name(name: str) -> bool {
   return name == "bool" || name == "i64" || name == "index" ||
          name == "int" || name == "f32" || name == "f64"
 }
 
-fn scalar(type: Ty) -> bool {
+local fn scalar(type: Ty) -> bool {
   return scalar_name(base.name(type))
 }
 
-fn format(type: Ty) -> str {
+local fn format(type: Ty) -> str {
   let name = base.name(type)
   if name == "f32" || name == "f64" {
     return name
@@ -25,21 +25,21 @@ fn format(type: Ty) -> str {
   return "i64"
 }
 
-fn width(type: Ty) -> int {
+local fn width(type: Ty) -> int {
   if format(type) == "f32" {
     return 4
   }
   return 8
 }
 
-fn supported(type: Ty) -> bool {
+local fn supported(type: Ty) -> bool {
   if scalar(type) {
     return true
   }
   return tensor.static(type) && scalar(tensor.elem(type))
 }
 
-fn count(type: Ty) -> int {
+local fn count(type: Ty) -> int {
   if !tensor.valid(type) {
     return 1
   }
@@ -51,7 +51,7 @@ fn count(type: Ty) -> int {
   return out
 }
 
-fn storage(type: Ty) -> str {
+local fn storage(type: Ty) -> str {
   assert(supported(type), "vm: unsupported value type " + text(type))
   if tensor.valid(type) {
     return "t " + format(tensor.elem(type)) + " " + text(count(type))
@@ -59,11 +59,11 @@ fn storage(type: Ty) -> str {
   return "s " + format(type)
 }
 
-fn reg(value: Val) -> str {
+local fn reg(value: Val) -> str {
   return text(ir.key(value))
 }
 
-fn binary(name: str) -> str {
+local fn binary(name: str) -> str {
   let ops = {
     "operator +": "add", "operator -": "sub", "operator *": "mul",
     "operator /": "div", "operator %": "rem", "operator &": "and",
@@ -79,7 +79,7 @@ fn binary(name: str) -> str {
   return ""
 }
 
-fn unary(name: str) -> str {
+local fn unary(name: str) -> str {
   let ops = {
     "base.copy": "copy", "operator +": "copy", "operator -": "neg",
     "operator !": "lnot", "operator ~": "bnot", "math.abs": "abs",
@@ -93,7 +93,7 @@ fn unary(name: str) -> str {
   return ""
 }
 
-fn binary(m: Mod, op: Op) -> str {
+local fn binary(m: Mod, op: Op) -> str {
   let direct = binary(ir.callee(op))
   if direct != "" {
     return direct
@@ -105,7 +105,7 @@ fn binary(m: Mod, op: Op) -> str {
   return ""
 }
 
-fn unary(m: Mod, op: Op) -> str {
+local fn unary(m: Mod, op: Op) -> str {
   let direct = unary(ir.callee(op))
   if direct != "" {
     return direct
@@ -117,14 +117,14 @@ fn unary(m: Mod, op: Op) -> str {
   return ""
 }
 
-fn float_unary(code: str) -> bool {
+local fn float_unary(code: str) -> bool {
   return code == "copy" || code == "neg" || code == "abs" ||
          code == "ceil" || code == "erf" || code == "exp" ||
          code == "floor" || code == "log" || code == "sqrt" ||
          code == "tanh" || code == "round_even"
 }
 
-fn float_binary(code: str) -> bool {
+local fn float_binary(code: str) -> bool {
   return code == "add" || code == "sub" || code == "mul" ||
          code == "div" || code == "pow" || code == "eq" || code == "ne" ||
          code == "lt" || code == "le" || code == "gt" || code == "ge"
@@ -221,7 +221,7 @@ fn prepare(m: Mod) -> bool {
   return changed
 }
 
-fn access(op: Op, store: bool) -> str {
+local fn access(op: Op, store: bool) -> str {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   assert(len(outputs) == 1, "vm: tensor access must have one result")
@@ -274,7 +274,7 @@ fn access(op: Op, store: bool) -> str {
   return out + "\n"
 }
 
-fn call(m: Mod, op: Op) -> str {
+local fn call(m: Mod, op: Op) -> str {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   let name = ir.callee(op)
@@ -358,7 +358,7 @@ fn call(m: Mod, op: Op) -> str {
   return ""
 }
 
-fn constant(op: Op) -> str {
+local fn constant(op: Op) -> str {
   let outputs = ir.outs(op)
   assert(len(outputs) == 1, "vm: constant must have one result")
   let result = outputs[0]
@@ -372,7 +372,7 @@ fn constant(op: Op) -> str {
          reg(result) + " " + text(ir.constant(result)) + "\n"
 }
 
-fn arm(m: Mod, body: Blk, carried: list<Val>,
+local fn arm(m: Mod, body: Blk, carried: list<Val>,
        outputs: list<Val>) -> str {
   let args = ir.args(body)
   assert(len(args) == len(carried),
@@ -396,7 +396,7 @@ fn arm(m: Mod, body: Blk, carried: list<Val>,
   return out
 }
 
-fn branch(m: Mod, op: Op) -> str {
+local fn branch(m: Mod, op: Op) -> str {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   let bodies = ir.blks(op)
@@ -411,7 +411,7 @@ fn branch(m: Mod, op: Op) -> str {
          arm(m, bodies[1], carried, outputs) + "end\n"
 }
 
-fn loop(m: Mod, op: Op) -> str {
+local fn loop(m: Mod, op: Op) -> str {
   let bodies = ir.blks(op)
   assert(len(bodies) == 1, "vm: loop must have one body")
   let body = bodies[0]
@@ -468,7 +468,7 @@ fn loop(m: Mod, op: Op) -> str {
   return out
 }
 
-fn block(m: Mod, body: Blk) -> str {
+local fn block(m: Mod, body: Blk) -> str {
   var out = ""
   for op in ir.ops(body) {
     let kind = ir.kind(op)
@@ -501,7 +501,7 @@ fn block(m: Mod, body: Blk) -> str {
   return out
 }
 
-fn definition(m: Mod, function: Fn) -> str {
+local fn definition(m: Mod, function: Fn) -> str {
   assert(len(ir.generics(function)) == 0,
          "vm: generic function must be specialized")
   let returns = ir.returns(function)

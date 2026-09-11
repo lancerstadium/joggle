@@ -698,6 +698,9 @@ std::vector<Val> Fn::params() const {
 std::vector<Ty> Fn::returns() const {
   return valid() ? store_->fns[id_].data.returns : std::vector<Ty>{};
 }
+bool Fn::local() const noexcept {
+  return valid() && store_->fns[id_].data.local;
+}
 bool Fn::external() const noexcept {
   return valid() && store_->fns[id_].data.external;
 }
