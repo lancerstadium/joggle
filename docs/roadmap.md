@@ -295,7 +295,9 @@ share the same symbol.
 The CLI now provides one target-neutral artifact boundary: `emit` executes an
 ordinary read-only `fn(Mod) -> str/bytes` and writes exactly those bytes. A
 pure `.jog` C99 module emits and executes fixed-shape tensor loops, local scalar
-calls, and structured branches while rejecting unexposed dependency calls.
+calls, and structured branches while rejecting unexposed dependency calls. Its
+separate `prepare` function expands a high-level tensor addition through the
+shared tensor body to a fixed point; direct emission remains read-only.
 Whole-network storage planning and a genuinely different second target remain
 open.
 

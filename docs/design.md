@@ -990,3 +990,12 @@ scalar call/branch functions, compiles the result as C99 with warnings treated
 as errors, executes it, and compares the numerical outputs. This establishes
 one portable end-to-end target while leaving whole-network storage planning
 and a genuinely different second target open.
+
+The companion `c.prepare` transform is explicit and uses the emitter module's
+same structural support predicate. At a bounded fixed point it expands only an
+unsupported call's already-defined ordinary body; missing semantics and
+unhandled operation metadata are errors. A shared `tensor` addition therefore
+becomes its existing tensor constructor, shape-list loop, element loop, loads,
+scalar addition, and stores. A second execution gate compiles and runs that
+path, while direct emission of the unprepared call continues to fail. This
+keeps preparation inspectable and separate from read-only artifact generation.

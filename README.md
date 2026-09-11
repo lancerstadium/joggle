@@ -228,7 +228,16 @@ cc -std=c99 model.c test/data/c_main.c -o model && ./model
 ```
 
 Tensor results use caller-provided output storage. Calls into dependency
-modules must first be exposed as ordinary loop/scalar IR; unsupported types,
+modules must first be exposed as ordinary loop/scalar IR. The optional,
+explicit preparation step does that by expanding existing function bodies:
+
+```sh
+./build/joggle run c.prepare test/data/c_open.jog \
+  -M build/modules > prepared.jog
+./build/joggle emit c.source prepared.jog -M build/modules > model.c
+```
+
+`c.source` never invokes `c.prepare`. Unsupported types,
 dynamic shapes, direct tensor expressions, and multi-results fail during
 emission instead of producing guessed code. This is a first executable target
 gate, not a claim that arbitrary imported networks are already C-ready.

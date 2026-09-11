@@ -584,6 +584,16 @@ test emits a matrix multiplication plus scalar call/branch functions, compiles
 them with a system C compiler under warnings-as-errors, and checks their
 numerical results.
 
+`c.prepare` is a separate, explicitly selected transform. It asks the same
+module-owned structural predicate whether a call is directly printable and
+expands unsupported calls only when their ordinary resolved function has a
+body and carries no unhandled metadata. The bounded fixed point is
+transactional and a second preparation is byte-identical. In the execution
+gate, a high-level tensor addition expands
+through the shared `tensor` body into a constructor, scalar-list shape loop,
+range loop, indexing, and scalar addition; that prepared model is then emitted,
+compiled, and executed. `c.source` does not invoke the transform.
+
 A read-only module function is invoked with `query(env, "module.fn", mod,
 result, args, cached)`. It is still declared with ordinary `fn` syntax. The
 call mode evaluates a verified snapshot, rejects attempted edits, and caches

@@ -347,3 +347,17 @@ choose a target pipeline or mutate the input. Static tensors become flat C
 arrays and tensor results use an output-pointer parameter. If a `tensor` or
 `nn` call has not been exposed, emission fails and names that call rather than
 performing an implicit lowering.
+
+When the shared function bodies are the desired implementation, preparation is
+another explicit function call:
+
+```sh
+joggle run c.prepare test/data/c_open.jog \
+  -M build/modules > /tmp/prepared.jog
+joggle emit c.source /tmp/prepared.jog \
+  -M build/modules > /tmp/add.c
+```
+
+`c.prepare` expands only unsupported, metadata-free calls with a visible body
+and stops at the C module's scalar/tensor-access/control-flow boundary. It is
+transactional and bounded; it is not run by `emit` or module loading.

@@ -166,6 +166,74 @@ fn unary(op: str) -> str {
   return ""
 }
 
+fn supported(m: Mod, op: Op) -> bool {
+  let name = ir.callee(op)
+  let inputs = ir.args(op)
+  let outputs = ir.outs(op)
+  if name == "base.list" || name == "operator .." {
+    return true
+  }
+  if name == "operator []" {
+    return len(outputs) == 1 && len(inputs) >= 2 &&
+           !tensor.valid(ir.type(outputs[0]))
+  }
+  if name == "operator []=" {
+    return len(outputs) == 1 && len(inputs) >= 3 &&
+           tensor.valid(ir.type(outputs[0]))
+  }
+  let target = ir.resolve(m, op)
+  if len(outputs) == 1 && tensor.valid(ir.type(outputs[0])) &&
+     ir.live(target) && ir.symbol(target) == "tensor.tensor" {
+    return true
+  }
+  if binary(name) != "" && len(inputs) == 2 && len(outputs) == 1 {
+    return !tensor.valid(ir.type(outputs[0]))
+  }
+  if unary(name) != "" && len(inputs) == 1 && len(outputs) == 1 {
+    return !tensor.valid(ir.type(outputs[0]))
+  }
+  if scalar_name(name) && len(inputs) == 1 && len(outputs) == 1 {
+    return !tensor.valid(ir.type(outputs[0]))
+  }
+  return ir.live(target) && local(m, target) && len(outputs) <= 1
+}
+
+fn prepare(m: Mod) -> bool {
+  var changed = false
+  var again = true
+  var exhausted = false
+  let limit = len(ir.ops(m)) + 1
+  for round in 0..limit {
+    if again {
+      let before = ir.revision(m)
+      for op in ir.ops(m) {
+        if ir.live(op) && ir.kind(op) == "call" && !supported(m, op) {
+          let target = ir.resolve(m, op)
+          assert(ir.live(target) && len(ir.blks(target)) != 0,
+                 "c: call has no exposable body: " + ir.callee(op))
+          assert(len(ir.meta(op)) == 0,
+                 "c: cannot expose a call carrying metadata: " +
+                 ir.callee(op))
+          ir.expand(m, op, target)
+        }
+      }
+      again = ir.revision(m) != before
+      changed = again || changed
+      if round == limit - 1 && again {
+        exhausted = true
+      }
+    }
+  }
+  assert(!exhausted, "c.prepare did not converge")
+  for op in ir.ops(m) {
+    if ir.live(op) && ir.kind(op) == "call" {
+      assert(supported(m, op),
+             "c: unsupported call remains: " + ir.callee(op))
+    }
+  }
+  return changed
+}
+
 fn tensor_new(op: Op, depth: int) -> str {
   let outputs = ir.outs(op)
   let inputs = ir.args(op)
@@ -188,7 +256,8 @@ fn call(m: Mod, op: Op, depth: int) -> str {
   let inputs = ir.args(op)
   let outputs = ir.outs(op)
   let indent = pad(depth)
-  if name == "operator .." {
+  assert(supported(m, op), "c: call must be prepared: " + name)
+  if name == "base.list" || name == "operator .." {
     return ""
   }
   if name == "operator []" {
@@ -218,7 +287,8 @@ fn call(m: Mod, op: Op, depth: int) -> str {
   }
 
   let binary_op = binary(name)
-  if binary_op != "" && len(inputs) == 2 && len(outputs) == 1 {
+  if binary_op != "" && len(inputs) == 2 && len(outputs) == 1 &&
+     !tensor.valid(ir.type(outputs[0])) {
     if ir.name(outputs[0]) == "" {
       return ""
     }
@@ -228,7 +298,8 @@ fn call(m: Mod, op: Op, depth: int) -> str {
   }
 
   let unary_op = unary(name)
-  if unary_op != "" && len(inputs) == 1 && len(outputs) == 1 {
+  if unary_op != "" && len(inputs) == 1 && len(outputs) == 1 &&
+     !tensor.valid(ir.type(outputs[0])) {
     if ir.name(outputs[0]) == "" {
       return ""
     }
@@ -236,7 +307,8 @@ fn call(m: Mod, op: Op, depth: int) -> str {
            expr(inputs[0]) + ";\n"
   }
 
-  if len(inputs) == 1 && len(outputs) == 1 && scalar_name(name) {
+  if len(inputs) == 1 && len(outputs) == 1 && scalar_name(name) &&
+     !tensor.valid(ir.type(outputs[0])) {
     if ir.name(outputs[0]) == "" {
       return ""
     }
@@ -244,9 +316,6 @@ fn call(m: Mod, op: Op, depth: int) -> str {
            expr(inputs[0]) + ");\n"
   }
 
-  assert(ir.live(target), "c: unresolved call must be exposed: " + name)
-  assert(local(m, target), "c: dependency call must be exposed: " + name)
-  assert(len(outputs) <= 1, "c: multi-result call is unsupported: " + name)
   let callee = "jog_" + id(ir.name(target))
   var actuals = args(inputs)
   if len(outputs) == 0 {
@@ -282,6 +351,17 @@ fn ret(op: Op, depth: int) -> str {
          "; ++jog_i) jog_out[jog_i] = " + val(value) + "[jog_i];\n"
 }
 
+fn constant(op: Op, depth: int) -> str {
+  let outputs = ir.outs(op)
+  assert(len(outputs) == 1, "c: constant must have one result")
+  let output = outputs[0]
+  if ir.name(output) == "" {
+    return ""
+  }
+  return pad(depth) + scalar(ir.type(output)) + " " + val(output) + " = " +
+         text(ir.constant(output)) + ";\n"
+}
+
 fn loop(m: Mod, op: Op, depth: int) -> str {
   let bodies = ir.blks(op)
   assert(len(bodies) == 1, "c: loop must have one body")
@@ -294,15 +374,32 @@ fn loop(m: Mod, op: Op, depth: int) -> str {
          "c: loop source structure is invalid")
   var out = ""
   for i in 0..iterators {
-    let range = ir.def(sources[i])
-    assert(ir.live(range) && ir.callee(range) == "operator ..",
-           "c: loop source must be a range")
-    let bounds = ir.args(range)
-    assert(len(bounds) == 2, "c: range must have two bounds")
+    let source = ir.def(sources[i])
+    assert(ir.live(source), "c: loop source has no definition")
     let iterator = val(body_args[i])
-    out += pad(depth + i) + "for (int64_t " + iterator + " = " +
-           expr(bounds[0]) + "; " + iterator + " < " + expr(bounds[1]) +
-           "; ++" + iterator + ") {\n"
+    if ir.callee(source) == "operator .." {
+      let bounds = ir.args(source)
+      assert(len(bounds) == 2, "c: range must have two bounds")
+      out += pad(depth + i) + "for (int64_t " + iterator + " = " +
+             expr(bounds[0]) + "; " + iterator + " < " + expr(bounds[1]) +
+             "; ++" + iterator + ") {\n"
+    } else {
+      assert(ir.callee(source) == "base.list",
+             "c: loop source must be a range or scalar list")
+      let items = ir.args(source)
+      if len(items) == 0 {
+        out += pad(depth + i) + "for (int64_t " + iterator +
+               " = 0; " + iterator + " < 0; ++" + iterator + ") {\n"
+      } else {
+        let index = "jog_i_" + id(ir.name(body_args[i]))
+        let type = scalar(ir.type(body_args[i]))
+        out += pad(depth + i) + "for (size_t " + index + " = 0; " + index +
+               " < " + text(len(items)) + "; ++" + index + ") {\n"
+        out += pad(depth + i + 1) + "const " + type + " " + iterator +
+               " = (const " + type + "[]){" + args(items) + "}[" + index +
+               "];\n"
+      }
+    }
   }
   out += block(m, body, depth + iterators)
   for reverse in 0..iterators {
@@ -343,8 +440,11 @@ fn block(m: Mod, body: Blk, depth: int) -> str {
           if kind == "return" {
             out += ret(op, depth)
           } else {
-            assert(kind == "constant" || kind == "yield",
-                   "c: unsupported operation kind " + kind)
+            if kind == "constant" {
+              out += constant(op, depth)
+            } else {
+              assert(kind == "yield", "c: unsupported operation kind " + kind)
+            }
           }
         }
       }
