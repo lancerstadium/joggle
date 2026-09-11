@@ -751,6 +751,23 @@ int main(int argc, char** argv) {
   CHECK(types_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(types, types_roundtrip));
 
+  joggle::Mod type_composition;
+  constexpr std::string_view type_composition_source =
+      "module type_composition\n"
+      "use tensor\n"
+      "fn tensor(x: i32) -> i32;\n"
+      "fn scalar(x: i32) -> i32 { return tensor(x) }\n"
+      "fn shaped(x: tensor<f32, [4]>) -> tensor<f32, [4]> { return x }\n";
+  CHECK(joggle::parse(env, type_composition_source, type_composition,
+                      "type-composition.jog"));
+  CHECK(type_composition.verify(env));
+  const joggle::Op scalar_call =
+      type_composition.find_fn("scalar").body().ops().front();
+  CHECK(env.resolve(type_composition, scalar_call).module() ==
+        "type_composition");
+  CHECK(type_composition.find_fn("shaped").params().front().type() ==
+        joggle::Ty("tensor<f32, [4]>"));
+
   joggle::Mod wrong_shape;
   CHECK(joggle::parse(
       env,

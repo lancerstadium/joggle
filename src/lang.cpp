@@ -2297,13 +2297,14 @@ struct TypeLookup {
 TypeLookup type_declaration(const Mod& mod, const Env& env, const Ty& type,
                             std::span<const GenericInfo> context) {
   std::vector<Fn> candidates = mod.find_fns(type.name());
-  if (candidates.empty()) {
-    const std::string symbol =
-        type.name().find('.') == std::string_view::npos
-            ? std::string(type.name()) + "." + std::string(type.name())
-            : std::string(type.name());
-    candidates = env.resolve_fns(mod, symbol);
-  }
+  const std::string symbol =
+      type.name().find('.') == std::string_view::npos
+          ? std::string(type.name()) + "." + std::string(type.name())
+          : std::string(type.name());
+  for (const Fn candidate : env.resolve_fns(mod, symbol))
+    if (std::find(candidates.begin(), candidates.end(), candidate) ==
+        candidates.end())
+      candidates.push_back(candidate);
   TypeLookup result;
   result.seen = !candidates.empty();
   for (const Fn candidate : candidates) {

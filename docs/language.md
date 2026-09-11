@@ -122,6 +122,8 @@ Type construction and value construction may share one name. For example,
 `fn tensor<E: Ty, S: list<int>>(fill: E) -> tensor<E, S>` constructs a value.
 They are normal overloads; the verifier identifies the zero-value-argument
 `Ty` overload when checking a type and the value overload when checking a call.
+Local and imported declarations are merged for both lookups, so adding a local
+value function with the same name cannot hide an imported type constructor.
 
 After `use sat`, `sat<8>` resolves to `sat.sat<8>`. No `type` keyword, generated
 class, registry callback, or metadata tag is involved. Constructor arity and
