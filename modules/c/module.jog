@@ -283,9 +283,10 @@ fn unary(op: str) -> str {
 
 fn math(op: str, type: Ty) -> str {
   let names = {
-    "math.ceil": "ceil", "math.exp": "exp", "math.pow": "pow",
-    "math.round_even": "nearbyint", "math.sqrt": "sqrt",
-    "math.tanh": "tanh"
+    "math.abs": "fabs", "math.ceil": "ceil", "math.erf": "erf",
+    "math.exp": "exp", "math.floor": "floor", "math.log": "log",
+    "math.pow": "pow", "math.round_even": "nearbyint",
+    "math.sqrt": "sqrt", "math.tanh": "tanh"
   }
   let name = base.name(type)
   if base.has(names, op) && (name == "f32" || name == "f64") {

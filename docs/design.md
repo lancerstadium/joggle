@@ -1205,7 +1205,7 @@ instruction meanings belong entirely to the module; core contains no VM
 operation or image format.
 
 Image version 3 covers signed 64-bit arithmetic, `f32` and `f64` arithmetic and
-conversion, the current six-function floating `math` surface, Boolean values,
+conversion, the current ten-function floating `math` surface, Boolean values,
 comparisons, bitwise
 operations, structured branches and range loops, scalar literal-list
 selection, and static tensors of those elements. Every image
@@ -1223,8 +1223,9 @@ images, mismatched arguments, invalid shifts, integer division by zero,
 out-of-range casts, and invalid tensor accesses are negative gates. Repeated
 image generation and execution must be identical.
 
-The VM and C regressions evaluate `sqrt`, `exp`, `ceil`, `pow`, `tanh`, and
-ties-to-even rounding from the same semantic declarations. Both reference
+The VM and C regressions evaluate `abs`, `floor`, `log`, `erf`, `sqrt`, `exp`,
+`ceil`, `pow`, `tanh`, and ties-to-even rounding from the same semantic
+declarations. Both reference
 targets currently delegate transcendentals to the host standard library, so
 the deterministic claim applies to image text, control flow, and instruction
 counts—not cross-platform last-bit equality. A fixed approximation or LUT is a

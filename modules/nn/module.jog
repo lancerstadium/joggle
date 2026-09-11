@@ -528,6 +528,46 @@ fn sqrt<E: Ty, S: list<int>>(
   return out
 }
 
+fn abs<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = abs(x[i])
+  }
+  return out
+}
+
+fn floor<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = floor(x[i])
+  }
+  return out
+}
+
+fn log<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = log(x[i])
+  }
+  return out
+}
+
+fn erf<E: Ty, S: list<int>>(
+  x: tensor<E, S>
+) -> tensor<E, S> {
+  var out = tensor<E, S>(E(0))
+  for i in 0..tensor.numel<S>() {
+    out[i] = erf(x[i])
+  }
+  return out
+}
+
 fn recip<E: Ty, S: list<int>>(
   x: tensor<E, S>
 ) -> tensor<E, S> {

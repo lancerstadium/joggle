@@ -45,7 +45,8 @@ int main(void) {
   if (fabsf(jog_root(9.0f) - 4.0f) > 1e-6f)
     return 9;
   const double unary_expected =
-      exp(1.5) + ceil(1.5) + tanh(1.5) + nearbyint(1.5);
+      fabs(1.5) + floor(1.5) + log(1.5) + erf(1.5) + exp(1.5) +
+      ceil(1.5) + tanh(1.5) + nearbyint(1.5);
   if (fabs(jog_unary_math(1.5) - unary_expected) > 1e-12)
     return 12;
   if (jog_power(2.0, 5.0) != 32.0)

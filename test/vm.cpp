@@ -170,7 +170,9 @@ int main(int argc, char** argv) {
                       std::move(unary_math_input), result,
                       unary_math_steps));
   const double unary_math_expected =
-      std::exp(1.5) + std::ceil(1.5) + std::tanh(1.5) + std::nearbyint(1.5);
+      std::abs(1.5) + std::floor(1.5) + std::log(1.5) + std::erf(1.5) +
+      std::exp(1.5) + std::ceil(1.5) + std::tanh(1.5) +
+      std::nearbyint(1.5);
   CHECK(std::abs(real(result) - unary_math_expected) < 1.0e-12 &&
         unary_math_steps > root_steps);
 

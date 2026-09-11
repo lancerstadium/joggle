@@ -230,7 +230,20 @@ enum class Tag {
   ret,
 };
 
-enum class Unary { neg, sqrt, exp, ceil, tanh, round_even, lnot, bnot };
+enum class Unary {
+  neg,
+  abs,
+  ceil,
+  erf,
+  exp,
+  floor,
+  log,
+  sqrt,
+  tanh,
+  round_even,
+  lnot,
+  bnot,
+};
 
 enum class Binary {
   add,
@@ -357,12 +370,20 @@ bool floating_unary(Unary op, T input, Value& output, Kind kind) {
   T result{};
   if (op == Unary::neg)
     result = -input;
-  else if (op == Unary::sqrt)
-    result = std::sqrt(input);
-  else if (op == Unary::exp)
-    result = std::exp(input);
+  else if (op == Unary::abs)
+    result = std::abs(input);
   else if (op == Unary::ceil)
     result = std::ceil(input);
+  else if (op == Unary::erf)
+    result = std::erf(input);
+  else if (op == Unary::exp)
+    result = std::exp(input);
+  else if (op == Unary::floor)
+    result = std::floor(input);
+  else if (op == Unary::log)
+    result = std::log(input);
+  else if (op == Unary::sqrt)
+    result = std::sqrt(input);
   else if (op == Unary::tanh)
     result = std::tanh(input);
   else if (op == Unary::round_even)
@@ -543,9 +564,13 @@ bool cast(Kind target, const Value& input, Value& output) {
 
 bool unary_code(std::string_view text, Unary& out) {
   if (text == "neg") out = Unary::neg;
-  else if (text == "sqrt") out = Unary::sqrt;
-  else if (text == "exp") out = Unary::exp;
+  else if (text == "abs") out = Unary::abs;
   else if (text == "ceil") out = Unary::ceil;
+  else if (text == "erf") out = Unary::erf;
+  else if (text == "exp") out = Unary::exp;
+  else if (text == "floor") out = Unary::floor;
+  else if (text == "log") out = Unary::log;
+  else if (text == "sqrt") out = Unary::sqrt;
   else if (text == "tanh") out = Unary::tanh;
   else if (text == "round_even") out = Unary::round_even;
   else if (text == "lnot") out = Unary::lnot;

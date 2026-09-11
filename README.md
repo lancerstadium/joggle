@@ -268,7 +268,7 @@ structured loops and conditions, short-circuit logical expressions,
 literal-list indexing, and the standard floating-point functions declared by
 `math`; unsupported IR fails with a diagnostic. Preparation composes the
 reusable static evaluator and copy propagation before exposing remaining
-calls. C and VM cover the same current six-primitive `math` surface through
+calls. C and VM cover the same current ten-primitive `math` surface through
 exact `f32` and `f64` overloads; host-libm transcendentals are not presented as
 cross-platform bit-exact implementations. Generic NN bodies defer only calls
 that depend on their element type, allowing specialization to select a precise

@@ -31,7 +31,8 @@ fn root(x: f32) -> f32 {
 }
 
 fn unary_math(x: f64) -> f64 {
-  return math.exp(x) + math.ceil(x) + math.tanh(x) + math.round_even(x)
+  return math.abs(x) + math.floor(x) + math.log(x) + math.erf(x) +
+         math.exp(x) + math.ceil(x) + math.tanh(x) + math.round_even(x)
 }
 
 fn power(x: f64, y: f64) -> f64 {

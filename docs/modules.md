@@ -368,9 +368,12 @@ specialization.
 The two-operand `nn.add`, `nn.sub`, `nn.mul`, and `nn.div` overloads express
 plain broadcasting. Separate three-operand Add/Sub/Mul overloads retain a
 frontend's fused activation only when one actually exists. `nn.pow`, `nn.sqrt`,
-`nn.recip`, `nn.tanh`, `nn.exp`, `nn.sigmoid`, `nn.ceil`, and `nn.round_even`
-expose scalar `math` calls inside their loops, so normalization, GELU,
-activation, and shape-derived arithmetic remain visible to later transforms.
+`nn.recip`, `nn.abs`, `nn.floor`, `nn.log`, `nn.erf`, `nn.tanh`, `nn.exp`,
+`nn.sigmoid`, `nn.ceil`, and `nn.round_even` expose scalar `math` calls inside
+their loops, so normalization, GELU, activation, and shape-derived arithmetic
+remain visible to later transforms. The shared `math` declarations are exact
+`f32`/`f64` overloads; a module-defined format joins the same open overload set
+instead of being admitted by an unconstrained numeric wildcard.
 The ONNX bridge keeps the same-signature unary subset in one data-driven
 source/destination table; adding one relation does not add another inference
 branch.

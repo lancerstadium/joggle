@@ -124,6 +124,9 @@ fn unary_rules() -> list<list<str>> {
     ["onnx.Reciprocal", "nn.recip"],
     ["onnx.Tanh", "nn.tanh"],
     ["onnx.Exp", "nn.exp"],
+    ["onnx.Floor", "nn.floor"],
+    ["onnx.Log", "nn.log"],
+    ["onnx.Erf", "nn.erf"],
     ["onnx.Sigmoid", "nn.sigmoid"],
     ["onnx.Ceil", "nn.ceil"],
     ["onnx.Round", "nn.round_even"]
@@ -132,7 +135,8 @@ fn unary_rules() -> list<list<str>> {
 
 [phase: "infer", on: [
   "onnx.Relu", "onnx.Dropout", "onnx.Sqrt", "onnx.Reciprocal",
-  "onnx.Tanh", "onnx.Exp", "onnx.Sigmoid", "onnx.Ceil", "onnx.Round",
+  "onnx.Tanh", "onnx.Exp", "onnx.Floor", "onnx.Log", "onnx.Erf",
+  "onnx.Sigmoid", "onnx.Ceil", "onnx.Round",
   "onnx.BatchNormalization", "onnx.LeakyRelu", "onnx.Softmax",
   "onnx.Identity", "onnx.Clip", "onnx.LRN"
 ]]
@@ -2449,7 +2453,8 @@ fn convert_unary(m: Mod, op: Op, callee: str) -> bool {
 
 [phase: "compute", on: [
   "onnx.Relu", "onnx.Dropout", "onnx.Sqrt", "onnx.Reciprocal",
-  "onnx.Tanh", "onnx.Exp", "onnx.Sigmoid", "onnx.Ceil", "onnx.Round"
+  "onnx.Tanh", "onnx.Exp", "onnx.Floor", "onnx.Log", "onnx.Erf",
+  "onnx.Sigmoid", "onnx.Ceil", "onnx.Round"
 ]]
 fn convert_unary(m: Mod, op: Op) -> bool {
   let source = ir.callee(op)

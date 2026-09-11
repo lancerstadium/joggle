@@ -506,12 +506,15 @@ int main(int argc, char** argv) {
   constexpr std::string_view unary_bridge_source =
       "module unary.bridge\n"
       "use onnx\n"
-      "fn main(x: tensor<f32, [2, 3]>) -> (_, _, _, _) {\n"
+      "fn main(x: tensor<f32, [2, 3]>) -> (_, _, _, _, _, _, _) {\n"
       "  let sigmoid = onnx.Sigmoid(x)\n"
       "  let exponent = onnx.Exp(sigmoid)\n"
+      "  let floor = onnx.Floor(exponent)\n"
+      "  let logarithm = onnx.Log(exponent)\n"
+      "  let error = onnx.Erf(sigmoid)\n"
       "  let ceiling = onnx.Ceil(exponent)\n"
       "  let rounded = onnx.Round(ceiling)\n"
-      "  return sigmoid, exponent, ceiling, rounded\n"
+      "  return sigmoid, exponent, floor, logarithm, error, ceiling, rounded\n"
       "}\n";
   joggle::Mod unary_bridge;
   CHECK(joggle::parse(env, unary_bridge_source, unary_bridge,
@@ -519,7 +522,7 @@ int main(int argc, char** argv) {
   CHECK(unary_bridge.verify(env));
   joggle::Attr untyped;
   CHECK(joggle::query(env, "opt.untyped", unary_bridge, untyped));
-  CHECK(untyped.list() && untyped.list()->size() == 4);
+  CHECK(untyped.list() && untyped.list()->size() == 7);
   CHECK(joggle::run(env, "onnx.nn.infer", unary_bridge));
   CHECK(unary_bridge.verify(env));
   CHECK(joggle::query(env, "opt.untyped", unary_bridge, untyped));
@@ -533,6 +536,9 @@ int main(int argc, char** argv) {
   CHECK(unary_bridge.verify(env));
   CHECK(count(unary_bridge, "nn.sigmoid") == 1);
   CHECK(count(unary_bridge, "nn.exp") == 1);
+  CHECK(count(unary_bridge, "nn.floor") == 1);
+  CHECK(count(unary_bridge, "nn.log") == 1);
+  CHECK(count(unary_bridge, "nn.erf") == 1);
   CHECK(count(unary_bridge, "nn.ceil") == 1);
   CHECK(count(unary_bridge, "nn.round_even") == 1);
   for (joggle::Op op : unary_bridge.ops()) {
@@ -544,6 +550,9 @@ int main(int argc, char** argv) {
   CHECK(unary_bridge.verify(env));
   CHECK(count(unary_bridge, "nn.sigmoid") == 0);
   CHECK(count(unary_bridge, "nn.exp") == 0);
+  CHECK(count(unary_bridge, "nn.floor") == 0);
+  CHECK(count(unary_bridge, "nn.log") == 0);
+  CHECK(count(unary_bridge, "nn.erf") == 0);
   CHECK(count(unary_bridge, "nn.ceil") == 0);
   CHECK(count(unary_bridge, "nn.round_even") == 0);
 
