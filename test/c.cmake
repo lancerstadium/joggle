@@ -87,6 +87,17 @@ execute_process(
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "prepared C header emission failed (${result}):\n${error}")
 endif()
+file(READ "${open_header}" emitted_header)
+if(emitted_header MATCHES "jog_offset")
+  message(FATAL_ERROR
+          "prepared C header exposed an unmarked helper:\n${emitted_header}")
+endif()
+if(NOT emitted_header MATCHES "jog_carry" OR
+   NOT emitted_header MATCHES "jog_add" OR
+   NOT emitted_header MATCHES "jog_sigmoid")
+  message(FATAL_ERROR
+          "prepared C header omitted a marked entry:\n${emitted_header}")
+endif()
 execute_process(
   COMMAND "${CC}" -std=c99 -Wall -Wextra -Wstrict-prototypes -Werror
           -include "${open_header}"

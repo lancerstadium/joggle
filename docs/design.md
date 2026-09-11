@@ -1161,6 +1161,11 @@ functions are not also reported as external Joggle dependencies.
 The companion `c.header` function reuses the source emitter's checked
 prototypes and returns a C/C++-compatible header. Header generation is not an
 artifact kind in the host or core: it is another ordinary `fn(Mod) -> str`.
+When at least one concrete function has `[entry]` metadata, only marked
+functions enter that public header; all body-bearing helpers remain in the C
+source. With no marks the module falls back to exporting every concrete
+function for compatibility. `entry` remains an open attribute interpreted by
+the selected emitter, not a parser keyword or a `main`-name convention.
 
 Emission is deliberately closed over the exposed computation. Dynamic tensor
 shapes, multi-results, and calls whose bodies still live in a dependency fail

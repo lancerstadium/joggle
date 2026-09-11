@@ -810,6 +810,15 @@ fn functions(m: Mod) -> list<Fn> {
   return out
 }
 
+fn exports(m: Mod) -> list<Fn> {
+  let all = functions(m)
+  let entries = ir.where(all, "entry", true)
+  if len(entries) != 0 {
+    return entries
+  }
+  return all
+}
+
 fn dependencies(m: Mod) -> list<Fn> {
   var out: list<Fn> = []
   for op in ir.ops(m) {
@@ -845,7 +854,7 @@ fn prototypes(m: Mod, fns: list<Fn>) -> str {
 }
 
 fn header(m: Mod) -> str {
-  let fns = functions(m)
+  let fns = exports(m)
   assert(len(fns) != 0, "c: module has no function definitions")
   let declarations = prototypes(m, fns)
   return "#pragma once\n\n" +

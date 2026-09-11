@@ -3,16 +3,22 @@ use base
 use nn
 use tensor
 
+fn offset(x: i64) -> i64 {
+  return x + i64(7)
+}
+
+[entry]
 fn carry(seed: i64) -> i64 {
   var value: i64 = base.copy(seed)
   for i in 0..2 {
     if i >= 1 {
-      value = seed + i64(7)
+      value = offset(seed)
     }
   }
   return value
 }
 
+[entry]
 fn add(
   a: tensor<f32, [4]>,
   b: tensor<f32, [4]>
@@ -20,6 +26,7 @@ fn add(
   return a + b
 }
 
+[entry]
 fn sigmoid(
   x: tensor<f32, [4]>
 ) -> tensor<f32, [4]> {

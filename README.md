@@ -266,6 +266,10 @@ Emitters return `str` or `bytes` through the same read-only boundary:
 
 `c.prepare`, `mem.plan`, `c.source`, and `c.header` are independent module
 functions.
+If any concrete function carries ordinary `[entry]` metadata, `c.header`
+exports only marked entries while `c.source` retains their internal helpers.
+A module with no entry marks keeps the pre-1.0 all-functions behavior. No
+function name is treated specially.
 Emission never triggers hidden lowering or planning. The current C module
 supports fixed-shape tensor kernels, scalar expressions, local calls,
 structured loops and conditions, short-circuit logical expressions,
