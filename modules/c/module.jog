@@ -40,7 +40,7 @@ fn abi() -> dict {
     "u16.c": "uint16_t",    "u16.bytes": 2,
     "u32.c": "uint32_t",    "u32.bytes": 4,
     "u64.c": "uint64_t",    "u64.bytes": 8,
-    "size.c": "size_t"
+    "count.c": "size_t"
   }
 }
 
@@ -57,18 +57,18 @@ fn scalar(type: Ty) -> str {
 }
 
 fn scalar_name(name: str) -> bool {
-  return has(abi(), name + ".c") && name != "size"
+  return has(abi(), name + ".c") && name != "count"
 }
 
 fn width(type: Ty) -> int {
   return base.int(abi(base.name(type), "bytes"))
 }
 
-fn size_type() -> str {
-  return str(abi("size", "c"))
+fn count_type() -> str {
+  return str(abi("count", "c"))
 }
 
-fn range_type() -> str {
+fn index_type() -> str {
   return scalar(ty("index"))
 }
 
@@ -397,7 +397,7 @@ fn tensor_new(m: Mod, op: Op, depth: int) -> str {
     out = indent + scalar(tensor.elem(type)) + " " + val(output) + "[" +
           text(n) + "];\n"
   }
-  out += indent + "for (" + size_type() +
+  out += indent + "for (" + count_type() +
          " jog_i = 0; jog_i < " + text(n) +
          "; ++jog_i) " + val(output) + "[jog_i] = " +
          expr(m, inputs[0]) + ";\n"
@@ -610,7 +610,7 @@ fn ret(m: Mod, op: Op, depth: int) -> str {
     return indent + "return " + expr(m, value) + ";\n"
   }
   let n = count(ir.type(value))
-  return indent + "for (" + size_type() +
+  return indent + "for (" + count_type() +
          " jog_i = 0; jog_i < " + text(n) +
          "; ++jog_i) jog_out[jog_i] = " + val(value) + "[jog_i];\n"
 }
@@ -651,7 +651,7 @@ fn loop(m: Mod, op: Op, depth: int) -> str {
     if ir.callee(source) == "operator .." {
       let bounds = ir.args(source)
       assert(len(bounds) == 2, "c: range must have two bounds")
-      out += pad(depth + i) + "for (" + range_type() + " " + iterator +
+      out += pad(depth + i) + "for (" + index_type() + " " + iterator +
              " = " +
              expr(m, bounds[0]) + "; " + iterator + " < " +
              expr(m, bounds[1]) +
@@ -661,12 +661,12 @@ fn loop(m: Mod, op: Op, depth: int) -> str {
              "c: loop source must be a range or scalar list")
       let items = ir.args(source)
       if len(items) == 0 {
-        out += pad(depth + i) + "for (" + range_type() + " " + iterator +
+        out += pad(depth + i) + "for (" + index_type() + " " + iterator +
                " = 0; " + iterator + " < 0; ++" + iterator + ") {\n"
       } else {
         let index = "jog_i_" + id(ir.name(body_args[i]))
         let type = scalar(ir.type(body_args[i]))
-        out += pad(depth + i) + "for (" + size_type() + " " + index +
+        out += pad(depth + i) + "for (" + count_type() + " " + index +
                " = 0; " + index +
                " < " + text(len(items)) + "; ++" + index + ") {\n"
         out += pad(depth + i + 1) + "const " + type + " " + iterator +
