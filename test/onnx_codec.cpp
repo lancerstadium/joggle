@@ -138,6 +138,7 @@ int main(int argc, char** argv) {
   CHECK(mod.verify(env));
   const joggle::Fn main = mod.find_fn("main");
   CHECK(main && main.generics().size() == 2 && main.params().size() == 1);
+  CHECK(main.meta("entry") && main.meta("entry")->boolean() == true);
   CHECK(main.generics()[0].name() == "batch_size");
   CHECK(main.generics()[0].type() == joggle::Ty("int"));
   CHECK(main.generics()[1].name() == "batch_size_1");

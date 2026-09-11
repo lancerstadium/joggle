@@ -1166,6 +1166,8 @@ functions enter that public header; all body-bearing helpers remain in the C
 source. With no marks the module falls back to exporting every concrete
 function for compatibility. `entry` remains an open attribute interpreted by
 the selected emitter, not a parser keyword or a `main`-name convention.
+ONNX and TFLite codecs preserve their format-defined top-level graph by marking
+that emitted function; nested source graphs are unmarked ordinary functions.
 
 Emission is deliberately closed over the exposed computation. Dynamic tensor
 shapes, multi-results, and calls whose bodies still live in a dependency fail

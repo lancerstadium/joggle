@@ -298,6 +298,8 @@ std::string emit(const tflite::Model& model) {
       }
     }
 
+    if (graph_index == 0)
+      out << "[entry]\n";
     out << "fn " << (graph_index == 0 ? "main" : "subgraph_" +
                                                     std::to_string(graph_index))
         << '(';

@@ -70,6 +70,7 @@ int main(int argc, char** argv) {
   CHECK(model.verify(env));
   const joggle::Fn main = model.find_fn("main");
   CHECK(main && main.params().size() == 1 && main.returns().size() == 1);
+  CHECK(main.meta("entry") && main.meta("entry")->boolean() == true);
   CHECK(main.params().front().type() ==
         joggle::Ty("tensor<f32, [1, 224, 224, 3]>"));
   CHECK(main.params().front().meta("tflite") &&

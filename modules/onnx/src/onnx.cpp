@@ -415,7 +415,7 @@ public:
     if (!model.has_graph())
       throw std::runtime_error("ONNX model has no graph");
     const Rendered main = graph(model.graph(), "main", "", {}, {}, &model);
-    std::string out = "module model\nuse onnx\n\n" + main.text;
+    std::string out = "module model\nuse onnx\n\n[entry]\n" + main.text;
     for (const std::string& nested : nested_)
       out += "\n" + nested;
     return out;

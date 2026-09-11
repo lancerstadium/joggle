@@ -218,6 +218,8 @@ Import transports source operations and attributes. Conversion is a separate,
 explicit bridge module. Unknown operations remain visible source calls rather
 than receiving guessed semantics. A second optional TFLite codec and bridge
 exercise the same core boundary with different source metadata and layouts.
+Both codecs mark the source format's top-level graph as `[entry]`; nested
+subgraphs remain ordinary internal functions.
 
 The test matrix downloads pinned files only when its explicit ONNX Zoo gate is
 configured. Normal configure and build remain offline. Covered models include
