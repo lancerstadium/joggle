@@ -180,6 +180,50 @@ std::string signature(Fn fn) {
   return result;
 }
 
+std::string declaration(Fn fn) {
+  std::ostringstream out;
+  const std::string_view name = fn.name();
+  const bool symbolic = name.starts_with("operator ");
+  const std::string_view spelling = symbolic ? name.substr(9) : name;
+  out << "fn " << spelling;
+
+  const std::vector<Val> generics = fn.generics();
+  if (!generics.empty()) {
+    if (symbolic && spelling.find('<') != std::string_view::npos)
+      out << ' ';
+    out << '<';
+    for (std::size_t index = 0; index < generics.size(); ++index) {
+      if (index)
+        out << ", ";
+      out << generics[index].name();
+      if (generics[index].type().text() != "_")
+        out << ": " << generics[index].type().text();
+    }
+    out << '>';
+  }
+
+  out << '(';
+  const std::vector<Val> inputs = fn.params();
+  for (std::size_t index = 0; index < inputs.size(); ++index) {
+    if (index)
+      out << ", ";
+    out << inputs[index].name() << ": " << inputs[index].type().text();
+  }
+  out << ") -> ";
+  const std::vector<Ty> outputs = fn.returns();
+  if (outputs.size() != 1)
+    out << '(';
+  for (std::size_t index = 0; index < outputs.size(); ++index) {
+    if (index)
+      out << ", ";
+    out << outputs[index].text();
+  }
+  if (outputs.size() != 1)
+    out << ')';
+  out << ';';
+  return out.str();
+}
+
 bool compatible(const Mod& installed, const Mod& replacement) {
   std::multiset<std::string> available;
   for (Fn fn : replacement.fns())
@@ -276,6 +320,8 @@ int info(std::string_view name, const std::vector<fs::path>& roots) {
     for (const fs::path& library : libraries)
       std::cout << "native " << library.string() << '\n';
   }
+  for (Fn fn : mod.fns())
+    std::cout << declaration(fn) << '\n';
   return 0;
 }
 

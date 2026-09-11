@@ -140,6 +140,10 @@ Local module lifecycle commands are deterministic and registry-free:
 ./build/joggle module uninstall module_name local-modules
 ```
 
+`module info` includes the callable `fn` declarations, so an installed
+extension remains discoverable without a generated header or separate
+manifest.
+
 Install and upgrade validate the complete dependency and native-library
 closure before changing the destination. Upgrade preserves existing function
 signatures. Uninstall refuses to remove a module still used by another module

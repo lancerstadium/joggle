@@ -34,7 +34,7 @@ endif()
 invoke(ok "${TOOL}" module check nn -M "${SOURCE_ROOT}")
 invoke(ok "${TOOL}" module info tensor -M "${SOURCE_ROOT}")
 if(NOT COMMAND_OUTPUT MATCHES
-   "^module tensor\npath .+\nuse base\nsource module.jog\n$")
+   "^module tensor\npath .+\nuse base\nsource module.jog\nfn tensor<E: Ty, S: list<int>>\\(\\) -> Ty;\n")
   message(FATAL_ERROR "unexpected module info:\n${COMMAND_OUTPUT}")
 endif()
 
@@ -49,6 +49,10 @@ invoke(ok "${TOOL}" module check sample -M "${TEST_ROOT}")
 invoke(ok "${TOOL}" module info sample -M "${TEST_ROOT}")
 if(NOT COMMAND_OUTPUT MATCHES "native joggle_sample\\.(so|dylib|dll)\n")
   message(FATAL_ERROR "native library is not reported:\n${COMMAND_OUTPUT}")
+endif()
+if(NOT COMMAND_OUTPUT MATCHES
+   "fn keep<T: Ty>\\(x: T\\) -> T;\n")
+  message(FATAL_ERROR "module declarations are not reported:\n${COMMAND_OUTPUT}")
 endif()
 
 set(upgrade_source "${TEST_ROOT}.upgrade")

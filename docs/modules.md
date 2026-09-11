@@ -76,7 +76,10 @@ refused uninstall leaves every directory unchanged.
 
 `list` is deterministic across the supplied roots, with the first root taking
 precedence for duplicate names. `info` performs a real load, then reports the
-selected path, dependencies, source fragments, and native library files.
+selected path, dependencies, source fragments, native library files, and every
+callable declaration in source order. Its `fn` lines use normal Joggle syntax,
+so overloads, generics, and structural types remain visible without a generated
+header or second interface description.
 `check` loads and verifies the full dependency closure.
 Self-dependencies and duplicate `use` declarations are invalid rather than
 being normalized differently by source loading and embedding code.
