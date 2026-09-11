@@ -74,6 +74,8 @@ rewritten IR behind.
 - Adding computation never adds an `Op` subclass or parser case.
 - Adding a module never generates or recompiles a core header.
 - Mutations go through `Mod` and preserve handle/use-def integrity.
+- A successful compound edit advances the module revision exactly once,
+  including an environment-aware expansion that also adds module visibility.
 - Verification commits inferred types only when every module invariant holds;
   a changed commit advances the module revision exactly once, while failure
   restores the prior types and retains the diagnostics.

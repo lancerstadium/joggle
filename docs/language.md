@@ -380,7 +380,8 @@ are an execution error rather than a declaration-order choice. When the chosen
 function comes from another module and its local name denotes the resolved
 source symbol, `ir.expand` treats it as an alternative implementation, adds its
 owning module only if not already visible, and rolls back both changes on
-failure. Thus an unqualified source call and a module-supplied implementation
+failure. The dependency and substituted body form one revision commit. Thus an
+unqualified source call and a module-supplied implementation
 still use ordinary symbol resolution rather than a string alias table.
 
 Open function attributes can also define module-owned relations without a

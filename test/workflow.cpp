@@ -478,6 +478,27 @@ int main(int argc, char** argv) {
   CHECK(local_expand_roundtrip.verify(env));
   CHECK(joggle::structurally_equal(local_expand, local_expand_roundtrip));
 
+  joggle::Mod imported_expand;
+  constexpr std::string_view imported_expand_source =
+      "module imported.expand\n"
+      "use tensor\n"
+      "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
+      "  let y: tensor<f32, [4]> = relu(x)\n"
+      "  return y\n}\n";
+  CHECK(joggle::parse(env, imported_expand_source, imported_expand,
+                      "imported-expand.jog"));
+  CHECK(imported_expand.verify(env));
+  joggle::Op imported_relu;
+  for (joggle::Op op : imported_expand.ops())
+    if (op.callee() == "relu")
+      imported_relu = op;
+  const std::uint64_t imported_revision = imported_expand.revision();
+  CHECK(imported_relu && env.expand(imported_expand, imported_relu, relu));
+  CHECK(imported_expand.revision() == imported_revision + 1);
+  CHECK(imported_expand.uses() ==
+        std::vector<std::string>({"tensor", "nn"}));
+  CHECK(imported_expand.verify(env));
+
   joggle::Mod detached_implementation;
   CHECK(joggle::parse(env,
                       "module detached.impl\n"
@@ -508,16 +529,16 @@ int main(int argc, char** argv) {
   joggle::Mod rejected_expand;
   constexpr std::string_view rejected_expand_source =
       "module rejected.expand\n"
-      "use nn\n"
+      "use tensor\n"
       "fn main(x: tensor<f32, [4]>) -> tensor<f32, [4]> {\n"
       "  [keep]\n"
-      "  let y = nn.relu(x)\n"
+      "  let y: tensor<f32, [4]> = relu(x)\n"
       "  return y\n}\n";
   CHECK(joggle::parse(env, rejected_expand_source, rejected_expand,
                       "rejected-expand.jog"));
   joggle::Op rejected_relu;
   for (joggle::Op op : rejected_expand.ops())
-    if (op.callee() == "nn.relu")
+    if (op.callee() == "relu")
       rejected_relu = op;
   CHECK(rejected_relu && rejected_relu.meta("keep"));
   const std::string rejected_text = joggle::print(rejected_expand);
@@ -525,6 +546,7 @@ int main(int argc, char** argv) {
   CHECK(!env.expand(rejected_expand, rejected_relu, relu));
   CHECK(joggle::print(rejected_expand) == rejected_text);
   CHECK(rejected_expand.revision() == rejected_revision);
+  CHECK(rejected_expand.uses() == std::vector<std::string>{"tensor"});
   rejected_expand.clear_diags();
   CHECK(rejected_expand.verify(env));
 

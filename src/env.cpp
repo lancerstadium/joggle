@@ -673,8 +673,11 @@ bool Env::expand(Mod& mod, Op call, Fn implementation) const {
           visible.end() &&
       !mod.use(*this, std::string(implementation.module())))
     return rollback();
-  if (mod.expand(call, implementation, semantic))
+  if (mod.expand(call, implementation, semantic)) {
+    mod.impl_->store.revision = backup.revision;
+    detail::touch(mod.impl_->store);
     return true;
+  }
   return rollback();
 }
 
