@@ -1054,6 +1054,8 @@ private:
     if (left == detail::none)
       return left;
     for (;;) {
+      if (peek().kind != Tk::symbol)
+        break;
       const int level = precedence(peek().text);
       if (level < minimum)
         break;
@@ -1078,7 +1080,8 @@ private:
   }
 
   std::uint32_t unary(std::uint32_t blk, Scope& scope) {
-    if (is("+") || is("-") || is("!") || is("~")) {
+    if (peek().kind == Tk::symbol &&
+        (is("+") || is("-") || is("!") || is("~"))) {
       const Token op = take();
       const auto arg = unary(blk, scope);
       if (arg == detail::none)

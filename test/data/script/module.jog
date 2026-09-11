@@ -36,6 +36,13 @@ fn emit_bytes(m: Mod) -> bytes {
   return hex"00410aff"
 }
 
+fn text_probe(m: Mod) -> bool {
+  return ir.revision(m) >= 0 &&
+         "joggle" + "-" + "emit" == "joggle-emit" &&
+         text(-12) == "-12" && text(true) == "true" &&
+         text("quoted") == "\"quoted\"" && text(ty("i32")) == "i32"
+}
+
 [on: "opaque"]
 fn mark_rule(m: Mod, op: Op) -> bool {
   return ir.set(m, op, "matched", true)

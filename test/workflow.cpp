@@ -193,6 +193,7 @@ int main(int argc, char** argv) {
   }
   CHECK(custom_calls == 0 && copies == 1);
   CHECK(joggle::run(env, "script.tensor_type_probe", network_cpp));
+  CHECK(joggle::run(env, "script.text_probe", network_cpp));
   CHECK(joggle::run(env, "script.byte_probe", network_cpp));
   CHECK(joggle::run(env, "script.def_probe", network_cpp));
   CHECK(joggle::run(env, "script.expand_network", network));

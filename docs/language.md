@@ -235,6 +235,10 @@ for key in keys(attrs) { inspect(key) }
 dictionaries. `int` and `str` project a checked `Attr` leaf into a typed scalar;
 the same names also project structural `Ty` terms. These operations are in
 `base`, leaving `ir` exclusively about `Mod/Fn/Blk/Op/Val` reflection.
+`text` instead returns the canonical spelling of an `Attr` or `Ty`; unlike the
+checked `str` projection, string attributes retain their quotes and escaping.
+Compile-time `+` concatenates strings as well as lists and integers, so emitter
+modules can assemble artifacts without a native helper.
 
 ### Compile-time functions
 

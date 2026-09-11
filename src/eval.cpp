@@ -773,6 +773,11 @@ private:
          name == "%") &&
         args.size() == 2) {
       if (name == "+") {
+        const auto left_text = string(args[0]);
+        const auto right_text = string(args[1]);
+        if (left_text && right_text)
+          return Items{Item(Attr(std::string(*left_text) +
+                                      std::string(*right_text)))};
         const Items* left = list(args[0]);
         const Items* right = list(args[1]);
         if (left && right) {
@@ -844,6 +849,7 @@ private:
            name == "get" || name == "size" || name == "byte" ||
            name == "kind" || name == "assert" || name == "name" ||
            name == "args" || name == "int" || name == "str" ||
+           name == "text" ||
            name == "ty";
   }
 
@@ -949,6 +955,11 @@ private:
       } else if (const auto value = string(args[0])) {
         return Items{Item(Attr(std::string(*value)))};
       }
+    } else if (name == "text" && args.size() == 1) {
+      if (const auto* type = as<Ty>(args[0]); type && type->valid())
+        return Items{Item(Attr(std::string(type->text())))};
+      if (const auto value = attribute(args[0]))
+        return Items{Item(Attr(joggle::print(*value)))};
     } else if (name == "ty" && args.size() == 1) {
       Ty type;
       if (const auto value = integer(args[0]))
