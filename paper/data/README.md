@@ -56,16 +56,21 @@ a stable speed effect.
 a C-emitter special case. The module keeps each output's floating-point
 reduction order but makes output columns the innermost loop. Compiler-owned
 call-site instances bind shapes and scalar configuration; the same module is
-then used unchanged for MobileNetV2, ResNet18, and TinyYOLOv2. All variants
-use external weights and Apple Clang 17 with strict C11, `-O3 -DNDEBUG`, three
-warm-ups, and ten measured calls in one unisolated process per variant.
+then used unchanged for MobileNetV2, ResNet18, TinyYOLOv2, UltraFace, and
+SqueezeNet. All variants use external weights and Apple Clang 17 with strict
+C11,
+`-O3 -DNDEBUG`, three warm-ups, and ten measured calls in one unisolated
+process per variant.
 
-Reference/spatial median latency is 203.305/108.218 ms for MobileNetV2,
-1,206.575/392.541 ms for ResNet18, and 2,247.627/371.412 ms for TinyYOLOv2,
-or 1.88x, 3.07x, and 6.05x within this pilot. Generated source falls from
-169,558 to 118,167 bytes, 63,895 to 46,274 bytes, and 56,762 to 43,877 bytes.
+Reference/spatial median latency is 203.305/105.479 ms for MobileNetV2,
+1,206.575/385.016 ms for ResNet18, 2,247.627/357.548 ms for TinyYOLOv2,
+34.180/25.139 ms for UltraFace, and 181.193/52.591 ms for SqueezeNet. The
+corresponding pilot ratios are 1.93x, 3.13x, 6.29x, 1.36x, and 3.45x.
+External-data source size stays within -1.3% to +3.5% of the reference-loop
+variant; this is a loop-quality result rather than source compaction.
 Checksums match within each pair and the prior reference comparisons retain
-maximum absolute errors of `2.0981e-5`, `5.0068e-6`, and `1.6689e-5`.
+maximum absolute errors of `2.0981e-5`, `5.0068e-6`, `1.6689e-5`,
+`3.5763e-7`, and `5.2452e-6`.
 Clang reports width-four vectorization of representative innermost output
 column loops that it did not vectorize in the reference ordering. This is
 direction-setting evidence for replaceable implementation modules, not a

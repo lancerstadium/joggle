@@ -1,10 +1,12 @@
 # Spatial convolution
 
-This source-only module supplies one alternative body for the ordinary
-six-argument `nn.conv2d` function. It keeps reduction order unchanged for each
-output but moves output rows and columns inside the reduction loops. Consecutive
-output columns then update consecutive input and output elements, giving a C
-compiler a vector-friendly innermost loop.
+This source-only module supplies one alternative implementation family for
+`nn.conv2d`. One `convolve` function owns the loop semantics; ordinary
+overloads adapt the compact, explicit-layout, and bias/activation signatures.
+It keeps reduction order unchanged for each output but moves output rows and
+columns inside the reduction loops. Consecutive output columns then update
+consecutive input and output elements, giving a C compiler a vector-friendly
+innermost loop.
 
 Apply it before target preparation:
 
@@ -20,8 +22,9 @@ configurations share one private helper, static configuration becomes part of
 its body, and weights remain normal parameters. The module does not edit ONNX,
 the shared `nn` semantics, memory planning, or C emission.
 
-The implementation currently covers static NCHW input, OIHW weights, and NCHW
-output through the compact six-argument overload. Its element type remains a
-generic `Ty`; the selected target still decides which concrete scalar types it
-can represent. Other layouts and fused-bias calls deliberately remain on their
-existing implementations.
+The compact overload uses NCHW input, OIHW weights, and NCHW output. The
+general overloads instead consume the same explicit axis lists as `nn`, so a
+non-default layout is never silently treated as NCHW. The element type remains
+a generic `Ty`; the selected target still decides which concrete scalar types
+it can represent. The `[impl: "spatial"]` tag belongs entirely to this module:
+`impls` discovers the family without a core registration table.

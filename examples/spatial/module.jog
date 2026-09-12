@@ -4,6 +4,68 @@ use nn
 use opt
 use tensor
 
+fn convolve<
+  E: Ty,
+  X: list<int>, K: list<int>, Y: list<int>
+>(
+  x: tensor<E, X>,
+  weight: tensor<E, K>,
+  stride: list<int>,
+  pad: list<int>,
+  dilation: list<int>,
+  groups: int,
+  x_axes: list<int>,
+  weight_axes: list<int>,
+  out_axes: list<int>
+) -> tensor<E, Y> {
+  let n_size = tensor.extent(X, x_axes, 0)
+  let h_size = tensor.extent(X, x_axes, 2)
+  let w_size = tensor.extent(X, x_axes, 3)
+  let m_size = tensor.extent(Y, out_axes, 1)
+  let q_size = tensor.extent(K, weight_axes, 1)
+  let r_size = tensor.extent(K, weight_axes, 2)
+  let s_size = tensor.extent(K, weight_axes, 3)
+  let oh_size = tensor.extent(Y, out_axes, 2)
+  let ow_size = tensor.extent(Y, out_axes, 3)
+  var out = tensor<E, Y>(E(0))
+  for n in 0..n_size, m in 0..m_size, q in 0..q_size,
+      r in 0..r_size, s in 0..s_size,
+      oh in 0..oh_size, ow in 0..ow_size {
+    let h = oh * stride[0] + r * dilation[0] - pad[0]
+    let w = ow * stride[1] + s * dilation[1] - pad[1]
+    if h >= 0 && h < h_size && w >= 0 && w < w_size {
+      let c = (m / (m_size / groups)) * q_size + q
+      let xi = tensor.offset(X, x_axes, [n, c, h, w])
+      let wi = tensor.offset(K, weight_axes, [m, q, r, s])
+      let yi = tensor.offset(Y, out_axes, [n, m, oh, ow])
+      out[yi] = out[yi] + x[xi] * weight[wi]
+    }
+  }
+  return out
+}
+
+[impl: "spatial"]
+fn nn.conv2d<
+  E: Ty,
+  X: list<int>, K: list<int>, Y: list<int>
+>(
+  x: tensor<E, X>,
+  weight: tensor<E, K>,
+  stride: list<int>,
+  pad: list<int>,
+  dilation: list<int>,
+  groups: int,
+  x_axes: list<int>,
+  weight_axes: list<int>,
+  out_axes: list<int>
+) -> tensor<E, Y> {
+  return convolve(
+    x, weight, stride, pad, dilation, groups,
+    x_axes, weight_axes, out_axes
+  )
+}
+
+[impl: "spatial"]
 fn nn.conv2d<
   E: Ty,
   N: int, C: int, H: int, W: int,
@@ -17,22 +79,40 @@ fn nn.conv2d<
   dilation: list<int>,
   groups: int
 ) -> tensor<E, [N, M, OH, OW]> {
-  var out = tensor<E, [N, M, OH, OW]>(E(0))
-  for n in 0..N, m in 0..M, q in 0..Q,
-      r in 0..R, s in 0..S, oh in 0..OH, ow in 0..OW {
-    let h = oh * stride[0] + r * dilation[0] - pad[0]
-    let w = ow * stride[1] + s * dilation[1] - pad[1]
-    if h >= 0 && h < H && w >= 0 && w < W {
-      let c = (m / (M / groups)) * Q + q
-      let xi = ((n * C + c) * H + h) * W + w
-      let wi = ((m * Q + q) * R + r) * S + s
-      let yi = ((n * M + m) * OH + oh) * OW + ow
-      out[yi] = out[yi] + x[xi] * weight[wi]
-    }
-  }
-  return out
+  return convolve(
+    x, weight, stride, pad, dilation, groups,
+    [0, 1, 2, 3], [0, 1, 2, 3], [0, 1, 2, 3]
+  )
+}
+
+[impl: "spatial"]
+fn nn.conv2d<
+  E: Ty,
+  X: list<int>, K: list<int>, B: list<int>, Y: list<int>
+>(
+  x: tensor<E, X>,
+  weight: tensor<E, K>,
+  values: tensor<E, B>,
+  stride: list<int>,
+  pad: list<int>,
+  dilation: list<int>,
+  groups: int,
+  x_axes: list<int>,
+  weight_axes: list<int>,
+  out_axes: list<int>,
+  activation: str
+) -> tensor<E, Y> {
+  let convolved: tensor<E, Y> = convolve(
+    x, weight, stride, pad, dilation, groups,
+    x_axes, weight_axes, out_axes
+  )
+  return nn.activate(nn.bias(convolved, values, out_axes), activation)
+}
+
+fn impls() -> list<Fn> {
+  return ir.where(ir.fns("spatial"), "impl", "spatial")
 }
 
 fn apply(m: Mod) -> bool {
-  return opt.instantiate(m, [ir.find("spatial.nn.conv2d")])
+  return opt.instantiate(m, impls())
 }

@@ -23,9 +23,13 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "spatial selection failed (${result}):\n${error}")
 endif()
 file(READ "${selected}" text)
-if(NOT text MATCHES
-   "for n in [^\n]+, m in [^\n]+, q in [^\n]+, r in [^\n]+, s in [^\n]+, oh in [^\n]+, ow in")
-  message(FATAL_ERROR "spatial selection omitted its loop order:\n${text}")
+string(REGEX MATCHALL
+       "opt.instance: \\{\"fn\": \"spatial.nn.conv2d\""
+       instances "${text}")
+list(LENGTH instances instance_count)
+if(NOT instance_count EQUAL 2)
+  message(FATAL_ERROR
+          "spatial selection expected two concrete implementations:\n${text}")
 endif()
 
 execute_process(
@@ -37,6 +41,11 @@ execute_process(
 )
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "spatial preparation failed (${result}):\n${error}")
+endif()
+file(READ "${prepared}" text)
+if(NOT text MATCHES
+   "for n in [^\n]+, m in [^\n]+, q in [^\n]+, r in [^\n]+, s in [^\n]+, oh in [^\n]+, ow in")
+  message(FATAL_ERROR "spatial preparation omitted its loop order:\n${text}")
 endif()
 execute_process(
   COMMAND "${TOOL}" emit c.source "${prepared}"

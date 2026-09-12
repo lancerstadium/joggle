@@ -2,6 +2,8 @@
 #include <stddef.h>
 
 void model_main(const float* x, const float* weight, float* out);
+void model_layout(const float* x, const float* weight, const float* bias,
+                  float* out);
 
 int main(void) {
   const float x[9] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
@@ -12,5 +14,10 @@ int main(void) {
   for (size_t i = 0; i < 4; ++i)
     if (fabsf(out[i] + 4.0f) > 1.0e-6f)
       return 1;
+  const float bias[1] = {5.0f};
+  model_layout(x, weight, bias, out);
+  for (size_t i = 0; i < 4; ++i)
+    if (fabsf(out[i] - 1.0f) > 1.0e-6f)
+      return 2;
   return 0;
 }

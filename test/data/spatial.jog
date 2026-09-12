@@ -9,3 +9,15 @@ fn main(
 ) -> tensor<f32, [1, 1, 2, 2]> {
   return nn.conv2d(x, weight, [1, 1], [0, 0, 0, 0], [1, 1], 1)
 }
+
+fn layout(
+  x: tensor<f32, [1, 3, 3, 1]>,
+  weight: tensor<f32, [1, 2, 2, 1]>,
+  bias: tensor<f32, [1]>
+) -> tensor<f32, [1, 2, 2, 1]> {
+  return nn.conv2d(
+    x, weight, bias,
+    [1, 1], [0, 0, 0, 0], [1, 1], 1,
+    [0, 2, 3, 1], [0, 2, 3, 1], [0, 2, 3, 1], "RELU"
+  )
+}

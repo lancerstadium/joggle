@@ -17,7 +17,8 @@ complexity. Each directory is a complete, runnable module or application.
 - [`edge`](edge) demonstrates external tensor kernel selection. A generic
   adapter forwards inferred dimensions to one bodyless `fn`; the C emitter
   derives and checks the concrete call ABI without knowing the kernel name.
-- [`spatial`](spatial) selects a portable convolution body whose loop order
+- [`spatial`](spatial) selects one portable convolution implementation family
+  across compact, explicit-layout, and fused signatures. Its loop order
   exposes consecutive output columns to an optimizing C compiler.
 - [`cost`](cost) demonstrates a user-defined structural measure. The unit and
   weighting policy stay in the module rather than becoming a compiler class.
