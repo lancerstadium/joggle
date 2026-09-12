@@ -75,6 +75,7 @@ fn clone(m: Mod, op: Op, before: Op) -> Op;
 fn clone(m: Mod, fn: Fn, name: str) -> Fn;
 fn clone(m: Mod, fn: Fn, name: str, generics: list<Ty>) -> Fn;
 fn fold(m: Mod, call: Op, fn: Fn) -> bool;
+fn fold(m: Mod, op: Op, fns: list<Fn>) -> bool;
 fn fold(m: Mod, calls: list<Op>, fns: list<Fn>) -> bool;
 fn expand(m: Mod, call: Op, callee: Fn) -> bool;
 fn expand(m: Mod, calls: list<Op>, callees: list<Fn>) -> bool;

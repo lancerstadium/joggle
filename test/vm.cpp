@@ -423,7 +423,7 @@ int main(int argc, char** argv) {
                       prepared_add_steps));
   CHECK(floats(result) ==
         (std::vector<float>{6.0F, 8.0F, 10.0F, 12.0F}));
-  CHECK(prepared_add_steps == add_steps);
+  CHECK(prepared_add_steps < add_steps);
   const std::vector<joggle::Attr> sigmoid_selection{
       joggle::Attr("sigmoid")};
   joggle::Attr sigmoid_image;

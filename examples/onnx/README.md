@@ -45,7 +45,7 @@ cmake --build build-onnx-app
 ctest --test-dir build-onnx-app -R '^onnx-app-mobilenet$' --output-on-failure
 ```
 
-The MobileNet VM case is intentionally slow: it executes roughly 98 billion
+The MobileNet VM case is intentionally slow: it executes roughly 96 billion
 scalar instructions. It is a correctness stress test, not the preferred
 optimized execution strategy.
 

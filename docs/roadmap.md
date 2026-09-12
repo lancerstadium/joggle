@@ -410,7 +410,7 @@ backend MatMul case now completes binary import, conversion, dead-data cleanup,
 ordinary body expansion, and output comparison through both VM and compiled C.
 The same exposed MobileNetV2 now passes VM-owned preparation, emits a complete
 VM image, and completes the official input/output comparison through both VM
-and compiled C. The VM records exactly 98,167,456,513 steps; the magnitude is
+and compiled C. The VM records exactly 95,592,386,975 steps; the magnitude is
 evidence against treating full scalar exposure as the optimized execution
 form. The module-defined non-native format gate now also crosses that
 independent target without teaching it the format.

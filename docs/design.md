@@ -1258,7 +1258,12 @@ Those are handled before target legalization by two ordinary `opt` functions:
 `fold` executes explicitly selected `Fn` handles on static operands, and `copy`
 performs batch identity propagation. Their commit path replaces values and
 erases operations in whole batches, so use lists and dominance are not rescanned
-once per selected call. The official expanded MobileNetV2 model now completes
+once per selected call. The same evaluator closes pure, metadata-free
+structured control when its sources and carried values are static. Folded
+carried results rewrite private mutable initializers; otherwise typed constants
+are inserted and lexical-aware dead-code elimination removes only declarations
+that no surviving assignment needs. The official expanded MobileNetV2 model
+now completes
 `c.prepare`, static storage planning, C99 emission, strict compilation, and
 comparison of all 1,000 official outputs. Logical `&&` and `||` values remain
 structured branches in the IR and
@@ -1331,7 +1336,7 @@ matches branch and loop boundaries in one structural pass; execution uses
 compact slots rather than string parsing or register hash lookup. On an Apple
 M4 Release build, the exposed MobileNetV2 image contains 26,017 lines and
 28,794,453 bytes. Its official input completes in 399.674 seconds and exactly
-98,167,456,513 VM steps, after which every output passes the same tolerance as
+95,592,386,975 VM steps, after which every output passes the same tolerance as
 compiled C. This closes correctness at application scale while exposing the
 real structural bottleneck: eager scalar exposure inflates work by orders of
 magnitude, so future performance work belongs in retained computation and loop

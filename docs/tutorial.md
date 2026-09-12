@@ -406,7 +406,7 @@ That test performs import, explicit semantic conversion, dead-data cleanup,
 body exposure, deterministic VM execution, static memory planning, explicit C
 storage placement, strict C99 compilation, and comparison of both targets'
 1,000 outputs. The model, input, output, and archive hashes are checked before
-execution. Because the scalar VM path executes 98,167,456,513 instructions,
+execution. Because the scalar VM path executes 95,592,386,975 instructions,
 this is intentionally a long application gate. Its inspectable `model.jog`,
 `model.vm`, `model.c`, generated `model.h`, input, expected output, executable,
 and `result.txt` remain under `build/examples/mobilenet` after the test. The

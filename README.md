@@ -172,8 +172,11 @@ invalid module, Joggle restores the input. C++ and `.jog` functions edit the
 same `Fn`/`Blk`/`Op`/`Val` representation through the same checks.
 `opt.fold(m)` evaluates calls to ordinary `base` functions when every operand
 is static; `opt.fold(m, fns)` applies the same mechanism to an explicitly
-selected set of user functions. It is a normal transform, not parser magic or
-a target hook. Batch `ir.replace` and `ir.erase` keep large rewrites linear in
+selected set of user functions. The same transform evaluates metadata-free
+loops and conditions whose complete input and called-function closure is
+static, while leaving runtime-dependent or annotated control intact. It is a
+normal transform, not parser magic or a target hook. Batch `ir.replace` and
+`ir.erase` keep large rewrites linear in
 the size of the IR instead of requiring one whole-module scan per value. The
 list form of `ir.set` similarly propagates distinct metadata values across all
 selected value families in one structural traversal. `ir.type` has the same
@@ -348,6 +351,8 @@ is an ordinary read-only function, and `opt.expose` repeatedly folds static
 work, removes copies, and exposes only calls that predicate rejects. A new
 target can supply the same one-function capability boundary without adding a
 target class, declaration catalogue, or core case.
+Pure static loops and conditions use that same evaluator; runtime-dependent or
+annotated control remains explicit for later scheduling and emission.
 `c.abi()` returns the default structural scalar descriptors. The configured
 forms of `c.prepare`, `c.source`, and `c.header` take sparse replacements, so a
 deployment module can choose a 32-bit index ABI or an external scalar typedef
@@ -385,7 +390,7 @@ ONNX and TFLite weight payloads to the shared `tensor.literal` primitive; C and
 VM both execute that primitive without knowing either frontend. The pinned official
 ONNX `test_matmul_2d` case now imports, converts, expands, and matches its
 official output through both VM and compiled C. The same gate now completes on
-the official MobileNetV2 application: its 28 MB image executes 98,167,456,513
+the official MobileNetV2 application: its 28 MB image executes 95,592,386,975
 deterministic VM steps and all 1,000 outputs agree with both the official
 TensorProto result and generated C. The large step count is deliberately
 reported: complete scalar exposure is correct, but is not an efficient

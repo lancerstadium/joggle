@@ -19,7 +19,14 @@ fn fold(m: Mod, fns: list<Fn>) -> bool {
       }
     }
   }
-  return len(calls) != 0 && ir.fold(m, calls, bodies)
+  var changed = len(calls) != 0 && ir.fold(m, calls, bodies)
+  for op in ir.ops(m) {
+    if ir.live(op) &&
+       (ir.kind(op) == "loop" || ir.kind(op) == "branch") {
+      changed = ir.fold(m, op, fns) || changed
+    }
+  }
+  return changed
 }
 
 fn fold(m: Mod) -> bool {
@@ -94,6 +101,22 @@ fn fold_add_zero(m: Mod) -> bool {
   return changed
 }
 
+local fn needs_declaration(op: Op) -> bool {
+  if ir.form(op) != "var" || len(ir.outs(op)) != 1 {
+    return false
+  }
+  let name = ir.name(ir.outs(op)[0])
+  for peer in ir.ops(ir.blk(op)) {
+    let form = ir.form(peer)
+    if ir.live(peer) && len(ir.outs(peer)) == 1 &&
+       (form == "assign" || form == "compound" ||
+        form == "index_assign") && ir.name(ir.outs(peer)[0]) == name {
+      return true
+    }
+  }
+  return false
+}
+
 fn dce(m: Mod, pure: list<str>) -> bool {
   var changed = false
   for op in ir.ops(m) {
@@ -104,6 +127,7 @@ fn dce(m: Mod, pure: list<str>) -> bool {
           allowed = true
         }
       }
+      allowed = allowed && !needs_declaration(op)
       if allowed {
         var unused = true
         for value in ir.outs(op) {
@@ -453,6 +477,7 @@ local fn expose_with(
       let before = ir.revision(m)
       fold(m)
       copy(m)
+      dce(m, [])
       expand_with(m, accept, arg, configured)
       again = ir.revision(m) != before
       changed = again || changed

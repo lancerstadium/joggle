@@ -96,6 +96,15 @@ fn select() -> i64 {
   return value
 }
 
+fn captured_steps() -> i64 {
+  let values = [1, 2, 3]
+  var sum: i64 = i64(0)
+  for i in 0..3 {
+    sum += i64(values[i])
+  }
+  return sum
+}
+
 fn assign_literal() -> bool {
   var value = false
   value = true

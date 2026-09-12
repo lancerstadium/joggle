@@ -84,6 +84,8 @@ int main(void) {
     return 10;
   if (jog_select() != 7)
     return 11;
+  if (jog_captured_steps() != 6)
+    return 24;
   if (!jog_assign_literal())
     return 14;
   return 0;

@@ -326,6 +326,21 @@ if(emitted_header MATCHES "jog_noop")
           "C header exposed a local zero-result helper:\n${emitted_header}")
 endif()
 file(READ "${source}" emitted_source)
+string(REGEX MATCH "int64_t jog_steps\\(void\\) \\{[^}]*\\}"
+       steps_source "${emitted_source}")
+string(REGEX MATCH "int64_t jog_select\\(void\\) \\{[^}]*\\}"
+       select_source "${emitted_source}")
+string(REGEX MATCH "int64_t jog_captured_steps\\(void\\) \\{[^}]*\\}"
+       captured_source "${emitted_source}")
+if(steps_source STREQUAL "" OR select_source STREQUAL "" OR
+   captured_source STREQUAL "" OR
+   steps_source MATCHES "for \\(.*\\)" OR
+   select_source MATCHES "for \\(.*\\)" OR
+   captured_source MATCHES "for \\(.*\\)")
+  message(FATAL_ERROR
+          "C preparation did not fold pure static control:\n"
+          "${steps_source}\n${select_source}\n${captured_source}")
+endif()
 if(NOT emitted_source MATCHES "#include <math.h>" OR
    emitted_source MATCHES "jog_round_even")
   message(FATAL_ERROR

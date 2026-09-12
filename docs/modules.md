@@ -282,7 +282,7 @@ checked against the official output tolerance. The VM result and instruction
 count are also repeatable.
 The opt-in official MobileNetV2 gate extends that evidence to a complete
 network and checks all 1,000 outputs through both targets. Its deterministic VM
-count is 98,167,456,513 steps; that number is evidence for retaining and
+count is 95,592,386,975 steps; that number is evidence for retaining and
 transforming higher-level computation before target execution, not a cycle
 estimate or a performance claim for scalar interpretation.
 
@@ -588,8 +588,12 @@ Partial evaluation is likewise selected by a module. `ir.fold` pairs calls with
 ordinary `Fn` handles, executes only calls whose operands are statically
 materializable, and replaces representable scalar results in one batch.
 `opt.fold(m)` supplies the `base` functions; `opt.fold(m, fns)` lets a format or
-target module nominate its own pure helpers. The core implements execution and
-structural commit once, while purity and selection remain module policy.
+target module nominate its own pure helpers. Its structured overload evaluates
+a loop or condition only when all incoming values and every nested call belong
+to that static closure. It preserves output types and source bindings, refuses
+annotated structure, and leaves runtime-dependent control unchanged. The core
+implements execution and structural commit once, while purity and selection
+remain module policy.
 
 `ir.find(m, name)` performs exact local function lookup and returns an invalid
 `Fn` when the symbol is absent; `ir.live` is the uniform validity test.
@@ -665,10 +669,12 @@ list literals is language structure and is not reported as an external call.
 `fold_identity` applies an explicit binary identity, `cse` merges structurally
 identical same-`Blk` calls, and `dce` removes unused calls. The latter two take
 a list of callees the caller asserts are pure; no unknown computation is
-silently treated as removable. `fix` composes these transforms for at most the
-requested number of rounds, while `basic` supplies a small algebra-only entry
-point. A research module can call the individual functions or wrap `fix` with
-its own purity policy using normal `.jog` code.
+silently treated as removable. Dead mutable initializers are removed only when
+no surviving assignment still needs their lexical declaration. `fix` composes
+these transforms for at most the requested number of rounds, while `basic`
+supplies a small algebra-only entry point. A research module can call the
+individual functions or wrap `fix` with its own purity policy using normal
+`.jog` code.
 
 `opt.expand(m, callees)` exposes one level of the named function bodies. A
 snapshot traversal deliberately does not recurse into calls created by the
@@ -891,7 +897,7 @@ remain self-contained. All three functions inspect the same prepared `Mod`, so
 no manifest, artifact hierarchy, or duplicated weight representation enters
 core IR. The executable gates check byte identity and both inline and
 external-data execution, including an official ONNX model. On the official
-MobileNetV2 artifact, this reduces generated C from 57,014,197 bytes to 348,344
+MobileNetV2 artifact, this reduces generated C from 56,911,938 bytes to 246,085
 bytes and emits a separate 14,156,560-byte blob. The application may read,
 memory-map, download, or point into ROM for that blob; storage and transport
 remain explicit application or target policy rather than a linker convention.

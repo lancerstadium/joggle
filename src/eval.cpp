@@ -412,6 +412,11 @@ private:
     Attr value;
   };
 
+  struct FoldedStructure {
+    Op op;
+    std::vector<Attr> values;
+  };
+
   void fail(std::string message, Loc loc = {}) {
     if (!failed_) {
       failed_ = true;
@@ -885,6 +890,8 @@ private:
       return std::move(args);
     if (name == "base.list")
       return Items{Item(std::move(args))};
+    if (name == "i64" && args.size() == 1 && integer(args.front()))
+      return std::move(args);
     if (name.starts_with("ir.")) {
       const Ty applied{std::string(name.substr(3))};
       const std::string_view intrinsic_name =
@@ -1390,9 +1397,78 @@ private:
     return std::nullopt;
   }
 
-  std::optional<Item>
-  static_value(Val value,
-               std::unordered_set<ValueKey, ValueHash>& visiting) {
+  bool foldable_operator(Op op) {
+    const std::string_view name = op.callee().substr(9);
+    const std::vector<Val>& args = op_args(op);
+    const auto integer_type = [](Ty type) {
+      const std::string_view name = type.name();
+      return name == "int" || name == "index" || name == "i8" ||
+             name == "i16" || name == "i32" || name == "i64" ||
+             name == "u8" || name == "u16" || name == "u32" ||
+             name == "u64";
+    };
+    const auto both = [&](auto predicate) {
+      return args.size() == 2 && predicate(args[0].type()) &&
+             predicate(args[1].type());
+    };
+    if (name == "==" || name == "!=")
+      return args.size() == 2;
+    if (name == ".." || name == "<" || name == "<=" || name == ">" ||
+        name == ">=" || name == "-" || name == "*" || name == "/" ||
+        name == "%" || name == "|" || name == "^" || name == "&" ||
+        name == "<<" || name == ">>")
+      return both(integer_type) ||
+             ((name == "-" || name == "+" || name == "~") &&
+              args.size() == 1 && integer_type(args[0].type()));
+    if (name == "+") {
+      if (args.size() == 1)
+        return integer_type(args[0].type());
+      if (both(integer_type))
+        return true;
+      return args.size() == 2 && args[0].type() == args[1].type() &&
+             (args[0].type().name() == "str" ||
+              args[0].type().name() == "bytes" ||
+              args[0].type().name() == "list");
+    }
+    if (name == "!" || name == "~")
+      return args.size() == 1 &&
+             (name == "!" ? args[0].type().name() == "bool"
+                          : integer_type(args[0].type()));
+    if (name == "&&" || name == "||")
+      return both([](Ty type) { return type.name() == "bool"; });
+    if (name == "[]")
+      return args.size() == 2 &&
+             (args[0].type().name() == "list" ||
+              args[0].type().name() == "dict" ||
+              args[0].type().name() == "Attr");
+    if (name == "[]=")
+      return args.size() == 3 &&
+             (args[0].type().name() == "list" ||
+              args[0].type().name() == "dict");
+    return false;
+  }
+
+  bool foldable_call(Mod& mod, Op op, std::span<const Fn> allowed) {
+    if (!op || op.kind() != Op::Kind::call)
+      return false;
+    const std::string_view name = op.callee();
+    if (name == "base.copy" || name == "base.list" || name == "i64")
+      return true;
+    const Fn target = env_.resolve(mod, op);
+    if (name.starts_with("operator "))
+      return foldable_operator(op) &&
+             (!target || (target.external() && target.module() == "base"));
+    if (!target)
+      return false;
+    if (target.external() && target.module() == "base")
+      return target.name() != "assert" && fundamental(target.name());
+    return std::find(allowed.begin(), allowed.end(), target) != allowed.end();
+  }
+
+  std::optional<Item> static_value(
+      Mod& mod, Val value,
+      std::unordered_set<ValueKey, ValueHash>& visiting,
+      std::span<const Fn> allowed, bool allow_var = false) {
     if (!value)
       return std::nullopt;
     if (value.is_const())
@@ -1402,7 +1478,9 @@ private:
       return std::nullopt;
     const Op def = value.def();
     if (!def || def.kind() != Op::Kind::call ||
-        def.callee() != "base.list") {
+        (def.form() != Op::Form::hidden && def.form() != Op::Form::let &&
+         !(allow_var && def.form() == Op::Form::var)) ||
+        !foldable_call(mod, def, allowed)) {
       visiting.erase(key);
       return std::nullopt;
     }
@@ -1413,15 +1491,19 @@ private:
     }
     Items items;
     for (Val input : op_args(def)) {
-      auto item = static_value(input, visiting);
+      auto item = static_value(mod, input, visiting, allowed);
       if (!item) {
         visiting.erase(key);
         return std::nullopt;
       }
       items.push_back(std::move(*item));
     }
+    auto result = call(def.blk().fn(), def, def.callee(), std::move(items),
+                       op_args(def), def.loc());
     visiting.erase(key);
-    return Item(std::move(items));
+    if (!result || result->size() != 1)
+      return std::nullopt;
+    return std::move(result->front());
   }
 
   std::optional<Attr> fold_value(Mod& mod, Op op, Fn fn) {
@@ -1433,7 +1515,8 @@ private:
     Items args;
     std::unordered_set<ValueKey, ValueHash> visiting;
     for (Val value : op_args(op)) {
-      auto item = static_value(value, visiting);
+      const std::span<const Fn> allowed(&fn, 1);
+      auto item = static_value(mod, value, visiting, allowed);
       if (!item)
         return std::nullopt;
       args.push_back(std::move(*item));
@@ -1472,6 +1555,189 @@ private:
         !detail::literal_matches(*value, op_outs(op).front().type()))
       return std::nullopt;
     return value;
+  }
+
+  bool foldable_structure(Mod& mod, Op root,
+                          std::span<const Fn> allowed) {
+    if (!root || (root.kind() != Op::Kind::loop &&
+                  root.kind() != Op::Kind::branch) ||
+        !root.meta().empty())
+      return false;
+    for (Blk blk : op_blks(root)) {
+      for (Val arg : block_args(blk))
+        if (!arg.meta().empty())
+          return false;
+      for (Op op : block_ops(blk)) {
+        if (!op.meta().empty())
+          return false;
+        for (Val out : op_outs(op))
+          if (!out.meta().empty())
+            return false;
+        if (op.kind() == Op::Kind::call) {
+          if (!foldable_call(mod, op, allowed))
+            return false;
+        } else if (op.kind() == Op::Kind::loop ||
+                   op.kind() == Op::Kind::branch) {
+          if (!foldable_structure(mod, op, allowed))
+            return false;
+        } else if (op.kind() == Op::Kind::ret) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  std::optional<std::vector<Attr>> fold_structure(
+      Mod& mod, Op op, std::span<const Fn> allowed) {
+    if (!op || (op.kind() != Op::Kind::loop &&
+                op.kind() != Op::Kind::branch) ||
+        !op.meta().empty())
+      return std::nullopt;
+    Items args;
+    std::unordered_set<ValueKey, ValueHash> visiting;
+    const std::vector<Val>& inputs = op_args(op);
+    const std::vector<Val>& outputs = op_outs(op);
+    const auto scalar = [](Ty type) {
+      const std::string_view name = type.name();
+      return name == "bool" || name == "int" || name == "index" ||
+             name == "i8" || name == "i16" || name == "i32" ||
+             name == "i64" || name == "u8" || name == "u16" ||
+             name == "u32" || name == "u64" || name == "str" ||
+             name == "bytes";
+    };
+    if (outputs.empty() || inputs.size() < outputs.size() ||
+        std::any_of(outputs.begin(), outputs.end(),
+                    [&](Val value) { return !scalar(value.type()); }))
+      return std::nullopt;
+    const std::size_t carried = inputs.size() - outputs.size();
+    for (std::size_t index = 0; index < inputs.size(); ++index) {
+      auto item = static_value(mod, inputs[index], visiting, allowed,
+                               index >= carried);
+      if (!item)
+        return std::nullopt;
+      args.push_back(std::move(*item));
+    }
+    if (!foldable_structure(mod, op, allowed))
+      return std::nullopt;
+    Frame frame;
+    for (std::size_t index = 0; index < inputs.size(); ++index)
+      put(frame, inputs[index], args[index]);
+
+    std::unordered_set<ValueKey, ValueHash> local;
+    std::function<void(Op)> collect = [&](Op nested) {
+      for (Blk blk : op_blks(nested)) {
+        for (Val arg : block_args(blk))
+          local.insert({arg.store_, arg.id_});
+        for (Op child : block_ops(blk)) {
+          for (Val out : op_outs(child))
+            local.insert({out.store_, out.id_});
+          if (child.kind() == Op::Kind::loop ||
+              child.kind() == Op::Kind::branch)
+            collect(child);
+        }
+      }
+    };
+    collect(op);
+    bool captures = true;
+    std::function<void(Op)> bind = [&](Op nested) {
+      for (Blk blk : op_blks(nested)) {
+        for (Op child : block_ops(blk)) {
+          for (Val value : op_args(child)) {
+            const ValueKey key{value.store_, value.id_};
+            if (!captures || local.contains(key) || frame.index.contains(key))
+              continue;
+            auto item = static_value(mod, value, visiting, allowed);
+            if (!item) {
+              captures = false;
+              return;
+            }
+            put(frame, value, std::move(*item));
+          }
+          if (child.kind() == Op::Kind::loop ||
+              child.kind() == Op::Kind::branch)
+            bind(child);
+        }
+      }
+    };
+    bind(op);
+    if (!captures)
+      return std::nullopt;
+    Flow flow = op.kind() == Op::Kind::loop
+                    ? loop(op, frame, std::move(args))
+                    : branch(op, frame, std::move(args));
+    if (flow.kind != FlowKind::next)
+      return std::nullopt;
+    std::vector<Attr> values;
+    values.reserve(outputs.size());
+    for (Val output : outputs) {
+      const Item* item = get(frame, output, op.loc());
+      if (!item)
+        return std::nullopt;
+      auto value = attribute(*item);
+      if (!value || value->list() ||
+          !detail::literal_matches(*value, output.type()))
+        return std::nullopt;
+      values.push_back(std::move(*value));
+    }
+    return values;
+  }
+
+  bool replace_structure(Mod& mod, FoldedStructure folded) {
+    Op op = folded.op;
+    const std::vector<Val> old = op.outs();
+    const std::vector<Val> args = op.args();
+    if (!op || (op.kind() != Op::Kind::loop &&
+                op.kind() != Op::Kind::branch) ||
+        old.size() != folded.values.size() || args.size() < old.size())
+      return false;
+    detail::Store& store = mod.impl_->store;
+    detail::Store backup = store;
+    std::vector<Val> next;
+    next.reserve(old.size());
+    const std::size_t carried = args.size() - old.size();
+    for (std::size_t index = 0; index < old.size(); ++index) {
+      const Val prior = old[index];
+      const Val seed = args[carried + index];
+      const Op def = seed ? seed.def() : Op{};
+      const std::vector<Op> users = seed ? seed.users() : std::vector<Op>{};
+      if (seed && seed.type() == prior.type() && seed.name() == prior.name() &&
+          seed.meta() == prior.meta() && def &&
+          def.form() == Op::Form::var && def.blks().empty() &&
+          def.outs().size() == 1 && users.size() == 1 && users[0] == op) {
+        detail::OpData& data = store.ops[def.id_].data;
+        data.kind = Op::Kind::constant;
+        data.callee.clear();
+        data.args.clear();
+        data.blks.clear();
+        data.iter_names.clear();
+        data.carried_count = 0;
+        data.logic = detail::Logic::none;
+        data.literal = std::move(folded.values[index]);
+        next.push_back(seed);
+        continue;
+      }
+      Val value = mod.constant(op, std::move(folded.values[index]),
+                               prior.type());
+      if (!value) {
+        store = std::move(backup);
+        fail("could not materialize a folded control result", op.loc());
+        return false;
+      }
+      detail::ValData& data = store.vals[value.id_].data;
+      const detail::ValData& prior_data = store.vals[prior.id_].data;
+      data.name = prior_data.name;
+      data.meta = prior_data.meta;
+      data.type_annotation = prior_data.type_annotation;
+      next.push_back(value);
+    }
+    if ((!old.empty() && !mod.replace(old, next)) || !mod.erase(op)) {
+      const Loc loc = op.loc();
+      store = std::move(backup);
+      fail("could not replace folded control", loc);
+      return false;
+    }
+    return true;
   }
 
   bool replace_folded(Mod& mod, std::vector<Folded> folded) {
@@ -2051,13 +2317,23 @@ private:
       std::vector<Op> ops;
       std::vector<Fn> fns;
       if (const auto* op = as<Op>(args[1])) {
-        const auto* fn = as<Fn>(args[2]);
-        if (!fn) {
-          fail("ir.fold requires a function for its call", loc);
+        if (const auto* fn = as<Fn>(args[2])) {
+          ops.push_back(*op);
+          fns.push_back(*fn);
+        } else if (auto allowed = handles<Fn>(args[2])) {
+          auto values = fold_structure(**mod, *op, *allowed);
+          if (failed_)
+            return std::nullopt;
+          if (!values)
+            return Items{Item(Attr(false))};
+          return Items{Item(Attr(replace_structure(
+              **mod, FoldedStructure{*op, std::move(*values)})))};
+        } else {
+          fail("ir.fold requires a function for a call or a function list "
+               "for structured control",
+               loc);
           return std::nullopt;
         }
-        ops.push_back(*op);
-        fns.push_back(*fn);
       } else {
         auto selected_ops = handles<Op>(args[1]);
         auto selected_fns = handles<Fn>(args[2]);
