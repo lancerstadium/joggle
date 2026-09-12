@@ -16,6 +16,9 @@ set(program "${ROOT}/model")
 set(prepared "${ROOT}/model.jog")
 set(image "${ROOT}/model.vm")
 set(bounds "${ROOT}/bounds.json")
+set(data "${ROOT}/model.bin")
+set(blob_source "${ROOT}/model-blob.c")
+set(blob_object "${ROOT}/model-blob.o")
 
 execute_process(
   COMMAND "${APP}" "${MODEL}" "${INPUT}" "${OUTPUT}"
@@ -40,6 +43,40 @@ execute_process(
 if(NOT result EQUAL 0)
   message(FATAL_ERROR
           "ONNX bounds analysis failed (${result}):\n${error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" emit c.data "${prepared}" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${data}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "ONNX data emission failed (${result}):\n${error}")
+endif()
+
+execute_process(
+  COMMAND "${TOOL}" emit c.source "${prepared}"
+          --arg "\"weights\"" -M "${MODULES}"
+  RESULT_VARIABLE result
+  OUTPUT_FILE "${blob_source}"
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "ONNX external-data C emission failed (${result}):\n${error}")
+endif()
+
+execute_process(
+  COMMAND "${CC}" -std=c99 -O1 -Wall -Wextra -Wstrict-prototypes -Werror
+          -I "${ROOT}" -c "${blob_source}" -o "${blob_object}"
+  RESULT_VARIABLE result
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR
+          "external-data ONNX C did not compile (${result}):\n${output}${error}")
 endif()
 
 execute_process(

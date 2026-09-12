@@ -56,6 +56,8 @@ Each configured case leaves these inspectable artifacts under
 model.jog
 model.vm
 model.c
+model-blob.c
+model.bin
 model.h
 bounds.json
 input.bin
@@ -64,12 +66,15 @@ result.txt
 ```
 
 `model.jog` is the loop-level IR consumed by both targets. `model.h` is the
-only model declaration consumed by `main.c`. `bounds.json` contains proven
+only model declaration consumed by `main.c`. `model.c` is the self-contained
+form; `model-blob.c` is also compiled under strict warnings and references the
+exact payload bytes in `model.bin`. `bounds.json` contains proven
 integer intervals for that exact `model.jog` revision; it is evidence for later
 target policy, not an implicit change to the generated C ABI.
 
-To keep application-sized weights out of the C parser, emit a raw companion
-blob and select the explicit external-data overload:
+The application gate produces both forms automatically. To reproduce the
+external-data pair by hand, emit a raw companion blob and select the explicit
+overload:
 
 ```sh
 joggle emit c.data model.jog -M modules > model.bin

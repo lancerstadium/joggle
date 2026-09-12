@@ -215,6 +215,8 @@ in the same installation root.
 
 See the [module guide](docs/modules.md) and [tutorial](docs/tutorial.md) for a
 native function, semantic relation, custom format, fusion policy, and emitter.
+The [example index](examples/README.md) separates compact extension examples
+from the official-network application gates and lists every generated artifact.
 
 ## Import a real network
 
